@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-caudal-950 text-slate-100 antialiased;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  @apply outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+  --tw-ring-color: #4f8cff;
+  --tw-ring-offset-color: #02070f;
+}
+
+::selection {
+  background: rgba(79, 140, 255, 0.35);
+}
