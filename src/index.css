@@ -24,6 +24,11 @@ textarea {
   --tw-ring-offset-color: #02070f;
 }
 
+select option {
+  background: #061127;
+  color: #f8fafc;
+}
+
 ::selection {
   background: rgba(79, 140, 255, 0.35);
 }
