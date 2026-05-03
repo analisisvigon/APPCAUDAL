@@ -1502,21 +1502,62 @@ function App() {
     });
   };
 
+  const addStatsCalledPlayer = (playerName) => {
+    if (!selectedMatch) return;
+    const currentCalled = getStatsCalledPlayerNames();
+    if (currentCalled.includes(playerName)) return;
+    updateSelectedMatchFields({
+      statsCalledPlayers: [...currentCalled, playerName],
+    });
+  };
+
   const getStatsPlayerData = (playerName) => {
     const lineup = selectedMatch?.statsLineup || [];
     const stored = selectedMatch?.statsPlayerData?.[playerName] || {};
     const isStarter = lineup.includes(playerName);
     const totals = getStatsPlayerTotals(playerName);
+    const yellowCount = Number(stored.yellowCount ?? (stored.yellow ? 1 : 0)) || 0;
     return {
       role: isStarter ? 'Titular' : 'Suplente',
       minutes: stored.minutes ?? (isStarter ? 90 : 0),
-      yellow: stored.yellow || false,
+      yellow: yellowCount > 0,
+      yellowCount,
       red: stored.red || false,
       injured: stored.injured || false,
       rating: stored.rating || '',
+      replacementName: stored.replacementName || '',
       goals: totals.goals,
       assists: totals.assists,
     };
+  };
+
+  const getStatsReplacementInfo = (starterName) => {
+    const stats = getStatsPlayerData(starterName);
+    const minutes = Number(stats.minutes || 0);
+    if (stats.role !== 'Titular' || minutes <= 0 || minutes >= 90 || !stats.replacementName) return null;
+    const replacement = players.find((player) => player.name === stats.replacementName);
+    return {
+      replacementName: stats.replacementName,
+      replacement,
+      minute: minutes,
+      substituteMinutes: 90 - minutes,
+    };
+  };
+
+  const getStatsSubstituteMinutes = (playerName) => {
+    const starter = getStatsCalledPlayers().find((calledPlayer) => {
+      const stats = getStatsPlayerData(calledPlayer.name);
+      const minutes = Number(stats.minutes || 0);
+      return stats.role === 'Titular' && minutes > 0 && minutes < 90 && stats.replacementName === playerName;
+    });
+    if (!starter) return 0;
+    return 90 - Number(getStatsPlayerData(starter.name).minutes || 0);
+  };
+
+  const getStatsReplacementOptions = (starterName) => {
+    const calledPlayers = getStatsCalledPlayers();
+    const substitutes = calledPlayers.filter((player) => getStatsPlayerData(player.name).role !== 'Titular' && player.name !== starterName);
+    return substitutes.length ? substitutes : calledPlayers.filter((player) => player.name !== starterName);
   };
 
   const updateStatsPlayerData = (playerName, fields) => {
@@ -1591,7 +1632,7 @@ function App() {
   };
 
   const renderZoneGrid = ({ value, onChange, zones = pitchZoneOptions, goal = false }) => (
-    <div className={`relative min-h-[260px] overflow-hidden rounded-3xl border-4 border-white/70 ${goal ? 'aspect-[16/9] min-h-[190px] bg-[#111827]' : 'aspect-[7/10] bg-[repeating-linear-gradient(90deg,#075f43_0,#075f43_16.6%,#08694a_16.6%,#08694a_33.3%)]'}`}>
+    <div className={`relative w-full overflow-hidden rounded-3xl border-4 border-white/70 ${goal ? 'aspect-[4/3] min-h-[220px] bg-[#111827]' : 'aspect-[7/10] min-h-[260px] bg-[repeating-linear-gradient(90deg,#075f43_0,#075f43_16.6%,#08694a_16.6%,#08694a_33.3%)]'}`}>
       {goal ? (
         <>
           <div className="absolute inset-x-6 top-5 bottom-5 rounded-t-2xl border-4 border-white/60 border-b-0" />
@@ -1607,7 +1648,7 @@ function App() {
           <div className="absolute bottom-4 left-1/2 h-20 w-40 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/45" />
         </>
       )}
-      <div className="absolute inset-4 grid grid-cols-3 grid-rows-3">
+      <div className={`${goal ? 'absolute inset-x-6 bottom-8 top-10' : 'absolute inset-4'} grid grid-cols-3 grid-rows-3`}>
         {zones.map((zone) => {
           const selected = goal ? value === zone : normalizePitchZone(value) === zone;
           return (
@@ -1615,7 +1656,7 @@ function App() {
               key={zone}
               type="button"
               onClick={() => onChange(zone)}
-              className={`whitespace-pre-line border border-white/15 px-1 text-center text-[9px] font-black uppercase leading-tight transition ${selected ? 'bg-caudal-electric/85 text-slate-950 shadow-[0_0_35px_rgba(79,140,255,0.45)]' : goal ? 'bg-black/15 text-slate-200 hover:bg-white/10' : 'bg-black/10 text-white hover:bg-emerald-400/20'}`}
+              className={`whitespace-pre-line break-words border border-white/15 px-1 text-center font-black uppercase transition ${goal ? 'text-[8px] leading-none' : 'text-[9px] leading-tight'} ${selected ? 'bg-caudal-electric/85 text-slate-950 shadow-[0_0_35px_rgba(79,140,255,0.45)]' : goal ? 'bg-black/15 text-slate-200 hover:bg-white/10' : 'bg-black/10 text-white hover:bg-emerald-400/20'}`}
             >
               {displayZoneLabel(zone)}
             </button>
@@ -1639,6 +1680,7 @@ function App() {
           const playerName = selectedMatch.statsLineup?.[slotIndex] || '';
           const player = players.find((item) => item.name === playerName);
           const stats = playerName ? getStatsPlayerData(playerName) : null;
+          const replacementInfo = playerName ? getStatsReplacementInfo(playerName) : null;
           return (
             <div
               key={`stats-slot-${slotIndex}`}
@@ -1652,17 +1694,41 @@ function App() {
               className={`absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center ${player ? 'cursor-grab' : ''}`}
               style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
             >
-              <div className={`flex h-14 w-14 items-center justify-center rounded-2xl border-2 text-sm font-black shadow-glow ${playerName ? 'border-caudal-electric bg-caudal-950 text-white' : 'border-dashed border-white/40 bg-white/10 text-white/70'}`}>
-                {player?.number || playerName?.slice(0, 2).toUpperCase() || slotIndex + 1}
+              <div className={`relative flex h-16 w-16 items-center justify-center rounded-full border-2 text-sm font-black shadow-glow ${playerName ? 'border-white bg-caudal-950 text-white' : 'border-dashed border-white/40 bg-white/10 text-white/70'}`}>
+                {player?.image ? (
+                  <img src={player.image} alt="" className="h-full w-full rounded-full object-cover" />
+                ) : (
+                  <span>{player?.number || playerName?.slice(0, 2).toUpperCase() || slotIndex + 1}</span>
+                )}
+                {playerName ? (
+                  <span className="absolute -bottom-2 left-1/2 flex h-6 min-w-6 -translate-x-1/2 items-center justify-center rounded-full bg-black px-1 text-xs font-black text-white">
+                    {player?.number || slotIndex + 1}
+                  </span>
+                ) : null}
+                {stats?.rating ? (
+                  <span className="absolute -right-3 top-0 rounded-full bg-caudal-electric px-1.5 py-0.5 text-[10px] font-black text-white">
+                    {stats.rating}
+                  </span>
+                ) : null}
+                {replacementInfo ? (
+                  <span className="absolute -left-5 top-8 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-black text-white" title="Sale">
+                    {replacementInfo.minute}' ↓
+                  </span>
+                ) : null}
               </div>
               <div className="max-w-[92px] truncate rounded-xl bg-black/60 px-2 py-1 text-[10px] font-bold text-white">
                 {playerName || getFormationRoles(selectedMatch.statsSystem || '4-4-2')[slotIndex]}
               </div>
+              {replacementInfo ? (
+                <div className="max-w-[108px] truncate rounded-xl bg-emerald-500 px-2 py-1 text-[10px] font-black text-white" title={`Entra ${replacementInfo.replacementName}`}>
+                  ↑ {replacementInfo.replacementName} · {replacementInfo.substituteMinutes}'
+                </div>
+              ) : null}
               {stats ? (
                 <div className="flex flex-wrap justify-center gap-1 text-[10px]">
                   {stats.goals ? <span title="Gol">⚽{stats.goals > 1 ? stats.goals : ''}</span> : null}
                   {stats.assists ? <span title="Asistencia">👟{stats.assists > 1 ? stats.assists : ''}</span> : null}
-                  {stats.yellow ? <span title="Amarilla">🟨</span> : null}
+                  {stats.yellow ? <span title="Amarilla">🟨{stats.yellowCount > 1 ? stats.yellowCount : ''}</span> : null}
                   {stats.red ? <span title="Roja">🟥</span> : null}
                   {stats.injured ? <span title="Lesión">🚑</span> : null}
                 </div>
@@ -1695,7 +1761,7 @@ function App() {
         const goals = goalEvents.filter((event) => event.type === 'Gol a favor' && event.scorer === player.name);
         const assists = goalEvents.filter((event) => event.type === 'Gol a favor' && event.assistant === player.name);
         const postEvents = (match.events || []).filter((event) => event.player === player.name);
-        const yellow = Boolean(stored.yellow || postEvents.some((event) => /tarjeta/i.test(event.type) && /amarilla/i.test(event.description || '')));
+        const yellow = Number(stored.yellowCount ?? (stored.yellow ? 1 : 0)) + postEvents.filter((event) => /tarjeta/i.test(event.type) && /amarilla/i.test(event.description || '')).length;
         const red = Boolean(stored.red || postEvents.some((event) => /tarjeta/i.test(event.type) && /roja/i.test(event.description || '')));
         const injured = Boolean(stored.injured || postEvents.some((event) => /lesi/i.test(`${event.type} ${event.description}`)));
         const minutes = Number(stored.minutes ?? (isStarter ? 90 : 0)) || 0;
@@ -1724,7 +1790,7 @@ function App() {
     const minutes = rows.reduce((sum, row) => sum + row.minutes, 0);
     const goals = rows.reduce((sum, row) => sum + row.goals.length, 0);
     const assists = rows.reduce((sum, row) => sum + row.assists.length, 0);
-    const yellow = rows.filter((row) => row.yellow).length;
+    const yellow = rows.reduce((sum, row) => sum + Number(row.yellow || 0), 0);
     const red = rows.filter((row) => row.red).length;
     const injured = rows.filter((row) => row.injured).length;
     const possibleMinutes = rows.length * 90;
@@ -1953,7 +2019,7 @@ function App() {
         const row = byPlayer.get(player.name);
         row.minutes += minutes;
         row.starts += isStarter ? 1 : 0;
-        row.yellow += stored.yellow ? 1 : 0;
+        row.yellow += Number(stored.yellowCount ?? (stored.yellow ? 1 : 0)) || 0;
         row.red += stored.red ? 1 : 0;
         if (stored.rating) {
           row.ratingTotal += Number(stored.rating) || 0;
@@ -1985,7 +2051,7 @@ function App() {
   const getGroupTendency = (scopedMatches) =>
     scopedMatches.slice(-5).reverse().map((match) => {
       const score = getMatchScoreData(match);
-      const cards = Object.values(match.statsPlayerData || {}).reduce((sum, row) => sum + (row.yellow ? 1 : 0) + (row.red ? 1 : 0), 0);
+      const cards = Object.values(match.statsPlayerData || {}).reduce((sum, row) => sum + (Number(row.yellowCount ?? (row.yellow ? 1 : 0)) || 0) + (row.red ? 1 : 0), 0);
       return {
         match,
         goalsFor: score.caudalGoals,
@@ -2007,7 +2073,7 @@ function App() {
       acc.starts += isStarter ? 1 : 0;
       acc.goals += goals;
       acc.assists += assists;
-      acc.yellow += stored.yellow ? 1 : 0;
+      acc.yellow += Number(stored.yellowCount ?? (stored.yellow ? 1 : 0)) || 0;
       acc.red += stored.red ? 1 : 0;
       acc.rating += Number(stored.rating) || 0;
       acc.rated += stored.rating ? 1 : 0;
@@ -3137,7 +3203,7 @@ function App() {
                               <td className="px-3 py-4 text-white">{row.minutes}</td>
                               <td className="px-3 py-4 text-white">{row.goals.length}</td>
                               <td className="px-3 py-4 text-white">{row.assists.length}</td>
-                              <td className="px-3 py-4">{row.yellow ? '🟨' : '-'}</td>
+                              <td className="px-3 py-4">{row.yellow ? `🟨${row.yellow > 1 ? row.yellow : ''}` : '-'}</td>
                               <td className="px-3 py-4">{row.red ? '🟥' : '-'}</td>
                               <td className="px-3 py-4">{row.injured ? '🚑' : '-'}</td>
                             </tr>
@@ -4631,7 +4697,7 @@ function App() {
                                 const stats = getStatsPlayerData(player.name);
                                 return (
                                   <p key={player.id}>
-                                    {player.name} {stats.yellow ? '🟨' : ''}{stats.red ? ' 🟥' : ''}{stats.injured ? ' 🚑' : ''}
+                                    {player.name} {stats.yellow ? `🟨${stats.yellowCount > 1 ? stats.yellowCount : ''}` : ''}{stats.red ? ' 🟥' : ''}{stats.injured ? ' 🚑' : ''}
                                   </p>
                                 );
                               })
@@ -4700,6 +4766,27 @@ function App() {
                             );
                           })}
                         </div>
+                        <div className="mt-5 rounded-3xl border border-dashed border-white/10 bg-black/15 p-4">
+                          <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Sin convocar</h4>
+                          <div className="mt-3 max-h-[260px] space-y-2 overflow-y-auto pr-1">
+                            {players.filter((player) => !getStatsCalledPlayerNames().includes(player.name)).length ? (
+                              players.filter((player) => !getStatsCalledPlayerNames().includes(player.name)).map((player) => (
+                                <div key={player.id} className="flex items-center gap-3 rounded-2xl bg-white/5 px-3 py-3 text-slate-300">
+                                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-xs font-black text-white">{player.number || '-'}</span>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-bold">{player.name}</p>
+                                    <p className="text-xs text-slate-500">{player.position}</p>
+                                  </div>
+                                  <button type="button" onClick={() => addStatsCalledPlayer(player.name)} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black text-slate-950">
+                                    Añadir
+                                  </button>
+                                </div>
+                              ))
+                            ) : (
+                              <p className="rounded-2xl bg-white/5 px-3 py-3 text-sm text-slate-500">No hay jugadores fuera de convocatoria.</p>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -4709,23 +4796,80 @@ function App() {
                         <table className="w-full min-w-[980px] text-left text-sm">
                           <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
                             <tr>
-                              {['Jugador', 'Rol', 'Minutos', 'Goles', 'Asistencias', 'Amarilla', 'Roja', 'Lesión', 'Valoración'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}
+                              {['Jugador', 'Rol', 'Minutos', 'Cambio por', 'Goles', 'Asistencias', 'Amarilla', 'Roja', 'Lesión', 'Valoración'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}
                             </tr>
                           </thead>
                           <tbody>
                             {[...getStatsCalledPlayers()].sort((a, b) => (getStatsPlayerData(a.name).role === 'Titular' ? -1 : 1) - (getStatsPlayerData(b.name).role === 'Titular' ? -1 : 1)).map((player) => {
                               const stats = getStatsPlayerData(player.name);
+                              const minutes = Number(stats.minutes || 0);
+                              const canReplace = stats.role === 'Titular' && minutes > 0 && minutes < 90;
+                              const substituteMinutes = stats.role === 'Suplente' ? getStatsSubstituteMinutes(player.name) : 0;
+                              const displayedMinutes = substituteMinutes || stats.minutes;
                               return (
                                 <tr key={player.id} className={`border-t border-white/10 ${stats.role === 'Titular' ? 'bg-caudal-electric/10' : 'bg-white/[0.02]'}`}>
                                   <td className="px-3 py-4 font-bold text-white">{player.name}</td>
                                   <td className="px-3 py-4 text-xs uppercase tracking-[0.14em] text-caudal-electric">{stats.role}</td>
-                                  <td className="px-3 py-4"><input type="number" value={stats.minutes} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value })} className="w-20 rounded-xl bg-white px-3 py-2 font-bold text-slate-950" /></td>
+                                  <td className="px-3 py-4"><input type="number" min="0" max="90" value={displayedMinutes} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value, replacementName: Number(event.target.value) >= 90 ? '' : stats.replacementName })} className="w-20 rounded-xl bg-white px-3 py-2 font-bold text-slate-950" /></td>
+                                  <td className="px-3 py-4">
+                                    <select
+                                      value={stats.replacementName}
+                                      disabled={!canReplace}
+                                      onChange={(event) => updateStatsPlayerData(player.name, { replacementName: event.target.value })}
+                                      className="w-52 rounded-xl bg-white px-3 py-2 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+                                    >
+                                      <option value="">{canReplace ? 'Seleccionar suplente' : 'Sin cambio'}</option>
+                                      {getStatsReplacementOptions(player.name).map((replacement) => (
+                                        <option key={replacement.id} value={replacement.name}>{replacement.name}</option>
+                                      ))}
+                                    </select>
+                                  </td>
                                   <td className="px-3 py-4 text-white">{stats.goals}</td>
                                   <td className="px-3 py-4 text-white">{stats.assists}</td>
-                                  <td className="px-3 py-4"><input type="checkbox" checked={stats.yellow} onChange={(event) => updateStatsPlayerData(player.name, { yellow: event.target.checked })} className="h-5 w-5" /></td>
-                                  <td className="px-3 py-4"><input type="checkbox" checked={stats.red} onChange={(event) => updateStatsPlayerData(player.name, { red: event.target.checked })} className="h-5 w-5" /></td>
+                                  <td className="px-3 py-4">
+                                    <div className="flex gap-1">
+                                      {[1, 2].map((cardNumber) => {
+                                        const active = stats.yellowCount >= cardNumber;
+                                        return (
+                                          <button
+                                            key={cardNumber}
+                                            type="button"
+                                            onClick={() => {
+                                              const nextCount = active && stats.yellowCount === cardNumber ? cardNumber - 1 : cardNumber;
+                                              updateStatsPlayerData(player.name, { yellowCount: nextCount, yellow: nextCount > 0 });
+                                            }}
+                                            className={`flex h-7 w-7 items-center justify-center rounded-md border text-[10px] font-black transition ${active ? 'border-yellow-200 bg-yellow-300 text-slate-950 shadow-[0_0_18px_rgba(253,224,71,0.35)]' : 'border-white/20 bg-white/10 text-slate-500 hover:bg-white/15'}`}
+                                            title={`${cardNumber} amarilla${cardNumber > 1 ? 's' : ''}`}
+                                          >
+                                            {cardNumber}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-4">
+                                    <button
+                                      type="button"
+                                      onClick={() => updateStatsPlayerData(player.name, { red: !stats.red })}
+                                      className={`flex h-7 w-7 items-center justify-center rounded-md border text-xs font-black transition ${stats.red ? 'border-red-200 bg-red-500 text-white shadow-[0_0_18px_rgba(239,68,68,0.35)]' : 'border-white/20 bg-white/10 text-slate-500 hover:bg-white/15'}`}
+                                      title="Roja"
+                                    >
+                                      R
+                                    </button>
+                                  </td>
                                   <td className="px-3 py-4"><button type="button" onClick={() => updateStatsPlayerData(player.name, { injured: !stats.injured })} className={`rounded-xl px-3 py-2 text-sm font-black ${stats.injured ? 'bg-red-100 text-red-700' : 'bg-white/10 text-slate-300'}`}>+</button></td>
-                                  <td className="px-3 py-4"><input value={stats.rating} onChange={(event) => updateStatsPlayerData(player.name, { rating: event.target.value })} placeholder="-" className="w-20 rounded-xl bg-emerald-50 px-3 py-2 text-center font-bold text-slate-950" /></td>
+                                  <td className="px-3 py-4">
+                                    <select
+                                      value={stats.rating}
+                                      onChange={(event) => updateStatsPlayerData(player.name, { rating: event.target.value })}
+                                      className={`w-16 rounded-xl px-2 py-2 text-center text-sm font-black outline-none transition ${stats.rating ? 'bg-emerald-300 text-slate-950' : 'bg-emerald-50 text-slate-400'}`}
+                                    >
+                                      <option value="">-</option>
+                                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((rating) => (
+                                        <option key={rating} value={rating}>{rating}</option>
+                                      ))}
+                                    </select>
+                                  </td>
                                 </tr>
                               );
                             })}
