@@ -167,6 +167,8 @@ const emptyMatchForm = {
   abpDefensiva: '',
   // PRE Partido - Sistemas enfrentados
   preCanvaLink: '',
+  preRivalReportText: '',
+  preRivalReportExtraction: null,
   preCaudalSystem: '4-4-2',
   preCaudalLineup: [],
   preRivalSystem: '',
@@ -222,6 +224,7 @@ const emptyMatchForm = {
   preCaudalPlayerToBoost: '',
   preRivalPlayerToWatch: '',
   preImportantDuels: '',
+  preAiSupportNotes: '',
   prePlayerNotes: {},
   preRivalPlayerNotes: {},
   preAiAnalysis: null,
@@ -390,6 +393,65 @@ const formatLineupForPrompt = (system, lineup) =>
     .map((role, index) => `${role}: ${lineup?.[index] || 'FALTA JUGADOR'}`)
     .join('\n');
 
+const getReportLineValue = (text, labels) => {
+  const lines = String(text || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const labelPattern = labels.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const regex = new RegExp(`^(?:${labelPattern})\\s*[:\\-–]\\s*(.+)$`, 'i');
+  const match = lines.map((line) => line.match(regex)).find(Boolean);
+  return match?.[1]?.trim() || '';
+};
+
+const findReportSentence = (text, keywords) => {
+  const normalizedKeywords = keywords.map((keyword) => keyword.toLowerCase());
+  return String(text || '')
+    .split(/[\n.;]+/)
+    .map((sentence) => sentence.trim())
+    .find((sentence) => normalizedKeywords.some((keyword) => sentence.toLowerCase().includes(keyword))) || '';
+};
+
+const detectReportOption = (text, options, fallback = '') => {
+  const lower = String(text || '').toLowerCase();
+  return options.find((option) => lower.includes(option.toLowerCase())) || fallback;
+};
+
+const extractRivalReportData = (text) => {
+  const source = String(text || '').trim();
+  const systemMatch = source.match(/\b[1-5]-[1-5]-[1-5](?:-[1-5])?\b/);
+  const fields = {
+    preRivalSystem: getReportLineValue(source, ['sistema rival', 'sistema', 'dibujo', 'formación', 'formacion']) || systemMatch?.[0] || '',
+    preRivalBaseSystem: getReportLineValue(source, ['sistema con balón', 'sistema con balon', 'sistema base', 'estructura ofensiva']) || '',
+    preRivalStyle: getReportLineValue(source, ['estilo', 'cómo juega', 'como juega', 'modelo rival']) || findReportSentence(source, ['directo', 'combinativo', 'posesión', 'posesion', 'bloque']),
+    preRivalStrengths: getReportLineValue(source, ['fortalezas', 'puntos fuertes', 'fuerte en', 'virtudes']) || findReportSentence(source, ['fortaleza', 'punto fuerte', 'destaca', 'peligro']),
+    preRivalWeaknesses: getReportLineValue(source, ['debilidades', 'puntos débiles', 'puntos debiles', 'sufre en', 'débil en', 'debil en']) || findReportSentence(source, ['debilidad', 'sufre', 'espacio', 'espalda']),
+    preRivalBuildUp: detectReportOption(source, ['Combinativo', 'Directo', 'Mixto'], ''),
+    preRivalDefensiveBlock: detectReportOption(source, ['Alto', 'Medio', 'Bajo'], ''),
+    preRivalPressure: findReportSentence(source, ['presión alta', 'presion alta']) ? 'Alta' : findReportSentence(source, ['presión baja', 'presion baja']) ? 'Baja' : findReportSentence(source, ['presión media', 'presion media']) ? 'Media' : '',
+    preRivalTransitions: detectReportOption(source, ['Directas', 'Equilibradas', 'Pausadas'], ''),
+    preRivalOffensiveOrganization: getReportLineValue(source, ['organización ofensiva', 'organizacion ofensiva', 'ataque organizado']) || findReportSentence(source, ['con balón', 'con balon', 'organización ofensiva', 'organizacion ofensiva']),
+    preRivalStartPlay: getReportLineValue(source, ['salida', 'inicio de juego', 'cómo inicia', 'como inicia']) || findReportSentence(source, ['salida', 'inicia', 'portero', 'centrales']),
+    preRivalProgression: getReportLineValue(source, ['progresión', 'progresion', 'cómo progresa', 'como progresa']) || findReportSentence(source, ['progresa', 'tercer hombre', 'por dentro', 'por fuera']),
+    preRivalFinishing: getReportLineValue(source, ['finalización', 'finalizacion', 'cómo finaliza', 'como finaliza']) || findReportSentence(source, ['centro', 'pase atrás', 'pase atras', 'remate', 'finaliza']),
+    preRivalOffensiveKeyPlayers: getReportLineValue(source, ['jugadores clave', 'jugadores clave ofensivos', 'amenazas', 'referentes']) || '',
+    preRivalDangerZones: getReportLineValue(source, ['zonas de peligro', 'dónde genera peligro', 'donde genera peligro', 'zona fuerte']) || findReportSentence(source, ['banda', 'intervalo', 'frontal', 'espalda']),
+    preRivalDefensiveOrganization: getReportLineValue(source, ['organización defensiva', 'organizacion defensiva', 'sin balón', 'sin balon']) || findReportSentence(source, ['sin balón', 'sin balon', 'defiende', 'bloque']),
+    preRivalPressureType: getReportLineValue(source, ['tipo de presión', 'tipo de presion', 'presión', 'presion']) || findReportSentence(source, ['hombre a hombre', 'orientada', 'pivote', 'presión']),
+    preRivalSpacesAllowed: getReportLineValue(source, ['espacios que deja', 'dónde deja espacios', 'donde deja espacios', 'espacios concedidos']) || findReportSentence(source, ['deja espacio', 'espalda', 'lado débil', 'lado debil', 'entre líneas', 'entre lineas']),
+    preRivalDefendsCrosses: getReportLineValue(source, ['defiende centros', 'cómo defiende centros', 'como defiende centros']) || findReportSentence(source, ['centros', 'área', 'area', 'primer palo', 'segundo palo']),
+    preRivalDefendsBack: getReportLineValue(source, ['defiende espalda', 'espalda centrales', 'defiende espalda de centrales']) || findReportSentence(source, ['espalda de centrales', 'línea alta', 'linea alta', 'cobertura']),
+    preRivalAfterLoss: getReportLineValue(source, ['tras pérdida', 'tras perdida', 'después de perder', 'despues de perder']) || findReportSentence(source, ['tras pérdida', 'tras perdida', 'repliega', 'presiona tras pérdida']),
+    preRivalAfterRecovery: getReportLineValue(source, ['tras robo', 'tras recuperación', 'tras recuperacion', 'después de robar', 'despues de robar']) || findReportSentence(source, ['tras robo', 'transición', 'transicion', 'primer pase']),
+    preRivalTransitionLaunchers: getReportLineValue(source, ['lanzadores transición', 'lanzadores transicion', 'lanzadores', 'quién corre', 'quien corre']) || '',
+    preRivalCornersFor: getReportLineValue(source, ['córners ofensivos', 'corners ofensivos', 'abp ofensiva', 'balón parado ofensivo', 'balon parado ofensivo']) || findReportSentence(source, ['córner ofensivo', 'corner ofensivo', 'abp ofensiva']),
+    preRivalCornersAgainst: getReportLineValue(source, ['córners defensivos', 'corners defensivos', 'abp defensiva', 'balón parado defensivo', 'balon parado defensivo']) || findReportSentence(source, ['córner defensivo', 'corner defensivo', 'abp defensiva']),
+  };
+  const cleanedFields = Object.fromEntries(Object.entries(fields).filter(([, value]) => String(value || '').trim()));
+  return {
+    fields: cleanedFields,
+    detectedCount: Object.keys(cleanedFields).length,
+    sourceLength: source.length,
+  };
+};
+
 const buildTacticalPrompt = ({ match, caudalSystem, rivalSystem, caudalLineup, rivalLineup, questionnaire, playerNotes = {}, rivalNotes = {} }) => {
   const sections = [
     ['Contexto', [
@@ -465,6 +527,9 @@ const buildTacticalPrompt = ({ match, caudalSystem, rivalSystem, caudalLineup, r
       `Notas jugadores Caudal: ${JSON.stringify(playerNotes)}`,
       `Caracteristicas jugadores rivales: ${JSON.stringify(rivalNotes)}`,
     ]],
+    ['Informacion adicional para la IA', [
+      valueOrMissing(questionnaire.preAiSupportNotes),
+    ]],
   ];
 
   return [
@@ -476,17 +541,23 @@ const buildTacticalPrompt = ({ match, caudalSystem, rivalSystem, caudalLineup, r
     '- Dar acciones concretas.',
     '- No inventar jugadores si no estan en los datos.',
     '- Si falta informacion, decir que dato falta.',
+    '- Cada bloque debe tener exactamente 3 frases verdes de HACER y 3 frases rojas de EVITAR.',
+    '- Las frases verdes deben empezar con una accion concreta y las rojas con una alerta concreta.',
+    '- Ventajas y riesgos deben comparar el sistema del C.D. Caudal con el sistema rival.',
+    '- Como atacar debe dividirse en FASE INICIACION, FASE CREACION y FASE FINALIZACION.',
+    '- Como defender debe dividirse en B.BAJO, B.MEDIO y B.ALTO, indicando cual es el bloque mas recomendable.',
+    '- Ajustes debe proponer cambios de tipo de juego, alturas de presion o sistema si el partido cambia.',
     '',
     'Devuelve el analisis con esta estructura:',
-    '1. Lectura general del partido',
-    '2. Ventajas para el C.D. Caudal',
-    '3. Riesgos principales',
-    '4. Como atacar al rival',
-    '5. Como defender al rival',
-    '6. Transiciones',
-    '7. Duelos individuales clave',
-    '8. Plan de partido recomendado',
-    '9. Ajustes si el partido se complica',
+    '1. LECTURA GENERAL: 3 HACER y 3 EVITAR',
+    '2. VENTAJAS: 3 HACER y 3 EVITAR comparando sistemas',
+    '3. RIESGOS: 3 HACER y 3 EVITAR comparando sistemas',
+    '4. COMO ATACAR: FASE INICIACION, FASE CREACION y FASE FINALIZACION; cada fase con 3 HACER y 3 EVITAR',
+    '5. COMO DEFENDER: B.BAJO, B.MEDIO y B.ALTO; cada bloque con 3 HACER y 3 EVITAR e indicar el recomendado',
+    '6. TRANSICIONES: 3 HACER y 3 EVITAR',
+    '7. DUELOS INDIVIDUALES: 3 HACER y 3 EVITAR',
+    '8. PLAN DE PARTIDO: 3 HACER y 3 EVITAR',
+    '9. AJUSTES: 3 HACER y 3 EVITAR',
     '',
     ...sections.flatMap(([title, lines]) => [`## ${title}`, ...lines, '']),
   ].join('\n');
@@ -511,6 +582,55 @@ const buildPlayerAdvice = ({ playerName, playerIndex, caudalSystem, rivalSystem,
       ? 'Aportar paciencia, amplitud y llegada al área; no precipitar centros sin ocupación de remate.'
       : `Buscar ventajas entre líneas contra el ${rivalSystem} y cerrar rápido tras pérdida.`,
   ];
+};
+
+const createTacticalBlock = (up, down) => ({
+  up: up.slice(0, 3),
+  down: down.slice(0, 3),
+});
+
+const createIndividualTacticalBlock = ({ upAttack, upDefense, downAttack, downDefense }) => ({
+  upAttack: upAttack.slice(0, 3),
+  upDefense: upDefense.slice(0, 3),
+  downAttack: downAttack.slice(0, 3),
+  downDefense: downDefense.slice(0, 3),
+});
+
+const buildPlayerTacticalAdvice = ({ playerName, playerIndex, caudalSystem, rivalSystem, questionnaire, playerProfile, playerNotes, rivalName, rivalNotes, role }) => {
+  const playerRole = role || getFormationRoles(caudalSystem)[playerIndex] || playerProfile?.position || 'Jugador';
+  const rivalBlock = questionnaire.preRivalDefensiveBlock || 'Medio';
+  const rivalWeaknesses = questionnaire.preRivalWeaknesses || 'los espacios entre líneas y la espalda de los laterales';
+  const rivalStrengths = questionnaire.preRivalStrengths || 'su orden defensivo y la transición tras robo';
+  const likelyZone = questionnaire.preCaudalAttackZones || (/Extremo|Lateral/i.test(playerRole) ? 'el carril exterior y el intervalo lateral-central' : 'la zona interior y la espalda del mediocentro rival');
+  const rivalReference = rivalName ? `${rivalName}${rivalNotes ? ` (${rivalNotes})` : ''}` : `el rival de su zona dentro del ${rivalSystem}`;
+  const profileDetail = [playerProfile?.foot ? `su pierna ${playerProfile.foot.toLowerCase()}` : '', playerNotes].filter(Boolean).join(' y ');
+
+  return createIndividualTacticalBlock({
+    upAttack: [
+      `${playerName}: jugar como ${playerRole.toLowerCase()} entendiendo dónde queda libre ${likelyZone} ante el ${rivalSystem}.`,
+      rivalBlock === 'Bajo'
+        ? 'Recibir con paciencia, fijar a su marca y acelerar solo cuando aparezca pase interior o ruptura clara.'
+        : 'Orientar el primer control para superar presión y conectar rápido con el apoyo cercano.',
+      profileDetail
+        ? `Usar ${profileDetail} para ganar ventaja en el duelo con ${rivalReference}.`
+        : `Tomar como referencia a ${rivalReference}: fijarlo, moverlo y atacar su espalda cuando mire balón.`,
+    ],
+    upDefense: [
+      `Tras pérdida, cerrar primero el pase interior de ${rivalReference} y después ajustar la marca.`,
+      `Defender perfilado para ver balón y rival; si ${rivalReference} ataca espacio, temporizar hasta la ayuda.`,
+      `Comunicar coberturas con el compañero cercano para que el ${rivalSystem} no encuentre superioridad en su zona.`,
+    ],
+    downAttack: [
+      `No recibir parado y de espaldas si no hay descarga cerca, porque el ${rivalSystem} puede encerrarlo.`,
+      `No conducir hacia la presión de ${rivalReference}; atraer y soltar antes de quedar encerrado.`,
+      `No forzar acciones individuales contra dos rivales si el punto fuerte rival es ${rivalStrengths}.`,
+    ],
+    downDefense: [
+      'No abandonar su zona tras atacar; primero equilibrar y después pensar en una segunda acción ofensiva.',
+      `No saltar a ${rivalReference} si el pase interior queda libre a su espalda.`,
+      'No mirar solo balón en centros o cambios de orientación; controlar marca, área útil y segunda jugada.',
+    ],
+  });
 };
 
 const buildTacticalAnalysis = ({ caudalSystem, rivalSystem, caudalLineup, rivalLineup = [], questionnaire, playerProfiles = [], playerNotes = {}, rivalProfiles = [], rivalNotes = {} }) => {
@@ -542,6 +662,9 @@ const buildTacticalAnalysis = ({ caudalSystem, rivalSystem, caudalLineup, rivalL
   const afterLossPlan = questionnaire.preCaudalAfterLoss || 'presión inmediata del jugador más cercano y cierre del pase interior por los mediocentros';
   const afterRecoveryPlan = questionnaire.preCaudalAfterRecovery || 'primer pase vertical si el rival está abierto y pausa si el robo llega en zona baja';
   const transitionLaunchers = questionnaire.preRivalTransitionLaunchers || rivalNames.filter((name, index) => /Pivote|Interior|Mediapunta|Delantero|Extremo/.test(rivalRoles[index])).slice(0, 2).join(' y ');
+  const recommendedDefensiveBlock = wantsDirect ? 'B.MEDIO' : wantsPress ? 'B.ALTO' : 'B.MEDIO';
+  const caudalMidfieldText = caudal.midfielders >= rival.midfielders ? 'igualdad o superioridad interior' : 'inferioridad interior si no juntamos líneas';
+  const widthText = caudalWide || rivalWideRisk ? 'la amplitud y los cambios de orientación' : 'los apoyos interiores antes de activar banda';
 
   return {
     generalReading: [
@@ -576,22 +699,243 @@ const buildTacticalAnalysis = ({ caudalSystem, rivalSystem, caudalLineup, rivalL
         ? 'Si la idea es presionar alto, saltar sobre central orientado a banda y cerrar pase interior con el pivote.'
         : 'Bloque medio preparado para robar y correr; no regalar espacios a la espalda de los mediocentros.',
     ],
-    individualByPlayer: caudalNames.map((playerName, playerIndex) => ({
-      playerName,
-      role: caudalRoles[playerIndex] || 'Jugador',
-      advice: buildPlayerAdvice({
+    individualByPlayer: caudalNames.map((playerName, playerIndex) => {
+      const playerProfile = playerProfiles.find((player) => player.name === playerName);
+      const rivalName = rivalNames[playerIndex];
+      const basePayload = {
         playerName,
         playerIndex,
         caudalSystem,
         rivalSystem,
         questionnaire,
-        playerProfile: playerProfiles.find((player) => player.name === playerName),
+        playerProfile,
         playerNotes: playerNotes[playerName],
-        rivalName: rivalNames[playerIndex],
-        rivalNotes: rivalNotes[rivalNames[playerIndex]],
+        rivalName,
+        rivalNotes: rivalNotes[rivalName],
         role: caudalRoles[playerIndex],
-      }),
-    })),
+      };
+
+      return {
+        playerName,
+        role: caudalRoles[playerIndex] || 'Jugador',
+        advice: buildPlayerAdvice(basePayload),
+        tacticalAdvice: buildPlayerTacticalAdvice(basePayload),
+      };
+    }),
+    tacticalBlocks: [
+      {
+        title: 'Lectura general',
+        ...createTacticalBlock(
+          [
+            `Relacionar nuestro ${caudalSystem} con su ${rivalSystem}: atacar donde aparezca ${weakness}.`,
+            block === 'Bajo'
+              ? 'Mover el bloque rival con paciencia, cambios de orientación y llegadas desde segunda línea.'
+              : 'Atraer la presión rival y acelerar cuando aparezca el hombre libre por dentro.',
+            `Cerrar el equipo tras cada ataque para que ${strength} no aparezca en campo abierto.`,
+          ],
+          [
+            `No partir al equipo entre mediocentros y delanteros, porque el ${rivalSystem} puede recibir entre líneas.`,
+            `No atacar siempre por el mismo carril; si el rival bascula cómodo, nos obliga a centros forzados.`,
+            `No perder por dentro con laterales altos: ahí aparece ${avoidScenario}.`,
+          ],
+        ),
+      },
+      {
+        title: 'Ventajas',
+        ...createTacticalBlock(
+          [
+            `Usar el ${caudalSystem} para generar ${caudalMidfieldText} ante su ${rivalSystem}.`,
+            `Atacar ${likelyAttackZone} cuando su línea defensiva salte tarde o quede abierta.`,
+            `Activar a ${playerToActivate} tras atraer en un lado, no desde una recepción aislada.`,
+          ],
+          [
+            `No convertir la ventaja del sistema en posesión plana sin profundidad.`,
+            `No dejar solo al receptor entre líneas; necesita apoyo cercano y amenaza a la espalda.`,
+            `No permitir que el ${rivalSystem} nos iguale con duelos directos en banda sin cobertura interior.`,
+          ],
+        ),
+      },
+      {
+        title: 'Riesgos',
+        ...createTacticalBlock(
+          [
+            `Proteger ${dangerZone} antes de que el rival active sus carreras.`,
+            `Tapar a ${rivalToLimit} con orientación corporal hacia fuera y ayuda del mediocentro cercano.`,
+            `Ajustar la espalda de laterales si nuestro ${caudalSystem} queda abierto al atacar.`,
+          ],
+          [
+            `No regalar una pérdida interior con el equipo ancho ante su ${rivalSystem}.`,
+            `No saltar a presionar de uno en uno; el rival puede encontrar al tercer hombre.`,
+            `No defender centros mirando solo balón; controlar área, frontal y segunda jugada.`,
+          ],
+        ),
+      },
+      {
+        title: 'Cómo atacar',
+        sections: [
+          {
+            title: 'Fase iniciación',
+            ...createTacticalBlock(
+              [
+                block === 'Bajo'
+                  ? 'Iniciar en corto con centrales abiertos y un mediocentro bajando para atraer su primera línea.'
+                  : 'Preparar salida con apoyo cercano al central presionado y tercer hombre por dentro.',
+                `Fijar a su primer salto y encontrar al jugador libre que deja el ${rivalSystem}.`,
+                'Si aprietan alto, alternar pase corto con envío al intervalo para ganar segunda jugada.',
+              ],
+              [
+                'No conducir hacia dentro si el pase al mediocentro está tapado.',
+                'No iniciar con los dos laterales altos a la vez si no hay cobertura del pivote.',
+                'No forzar pase vertical si el receptor está de espaldas y sin descarga cercana.',
+              ],
+            ),
+          },
+          {
+            title: 'Fase creación',
+            ...createTacticalBlock(
+              [
+                `Atraer en un costado y cambiar rápido para explotar ${widthText}.`,
+                `Buscar a ${playerToActivate} entre líneas o atacando intervalo cuando el rival bascule.`,
+                'Crear triángulos lateral-medio-extremo para progresar sin perder estructura.',
+              ],
+              [
+                'No juntar demasiados jugadores por dentro si el rival ya cerró el carril central.',
+                'No jugar de cara al bloque rival sin amenaza de ruptura.',
+                'No perder la ocupación del lado débil; ahí puede estar la ventaja final.',
+              ],
+            ),
+          },
+          {
+            title: 'Fase finalización',
+            ...createTacticalBlock(
+              [
+                'Finalizar ataques con remate o pase atrás para evitar transiciones limpias.',
+                'Ocupar primer palo, segundo palo y frontal antes de centrar.',
+                `Atacar ${likelyAttackZone} con llegada coordinada, no con centros sin ventaja.`,
+              ],
+              [
+                'No centrar si el área está vacía o con inferioridad clara.',
+                'No acabar jugadas con todos por delante del balón.',
+                'No precipitar tiros lejanos si existe pase atrás o continuidad por lado débil.',
+              ],
+            ),
+          },
+        ],
+      },
+      {
+        title: 'Cómo defender',
+        sections: [
+          {
+            title: 'B.BAJO',
+            badge: recommendedDefensiveBlock === 'B.BAJO' ? 'Recomendado' : 'Uso puntual',
+            ...createTacticalBlock(
+              [
+                'Cerrar área con centrales protegidos y mediocentros atentos a la frontal.',
+                `Orientar al rival hacia fuera y defender ${dangerZone} con ayudas previas.`,
+                'Salir tras robo con primer pase seguro antes de correr.',
+              ],
+              [
+                'No hundir a toda la línea en el área pequeña.',
+                'No permitir centros cómodos sin presión al poseedor.',
+                'No despejar siempre al mismo carril si no hay jugador para sostener la segunda jugada.',
+              ],
+            ),
+          },
+          {
+            title: 'B.MEDIO',
+            badge: recommendedDefensiveBlock === 'B.MEDIO' ? 'Recomendado' : 'Alternativa',
+            ...createTacticalBlock(
+              [
+                `Mantener bloque medio compacto para tapar a ${rivalToLimit}.`,
+                'Orientar la circulación rival hacia banda y saltar cuando el control sea malo.',
+                'Tener centrales preparados para anticipar y mediocentros cerca del rechace.',
+              ],
+              [
+                'No dejar distancia grande entre delantero y mediocentros.',
+                'No saltar el lateral sin que el extremo cierre línea de pase interior.',
+                'No permitir que el rival reciba de cara entre nuestra línea media y defensiva.',
+              ],
+            ),
+          },
+          {
+            title: 'B.ALTO',
+            badge: recommendedDefensiveBlock === 'B.ALTO' ? 'Recomendado' : 'Momento concreto',
+            ...createTacticalBlock(
+              [
+                'Saltar sobre central orientado a banda con extremo y delantero coordinados.',
+                'Cerrar pase al pivote rival antes de presionar al poseedor.',
+                'Tras robo alto, buscar finalización rápida o pase atrás al frontal.',
+              ],
+              [
+                'No presionar alto si la línea defensiva no acompaña.',
+                'No dejar al pivote rival recibir libre a la espalda de la primera presión.',
+                'No perseguir marcas hasta desordenar todo el bloque.',
+              ],
+            ),
+          },
+        ],
+      },
+      {
+        title: 'Transiciones',
+        ...createTacticalBlock(
+          [
+            `Tras pérdida: ${afterLossPlan}.`,
+            `Tras robo: ${afterRecoveryPlan}.`,
+            `Vigilar a ${transitionLaunchers || 'pivote e interiores rivales'} como primer lanzador de contraataque.`,
+          ],
+          [
+            'No perder balón con los dos mediocentros por delante de la jugada.',
+            'No correr todos hacia delante tras robo si el primer pase no es claro.',
+            'No permitir que el rival reciba de cara tras nuestro ataque finalizado mal.',
+          ],
+        ),
+      },
+      {
+        title: 'Duelos individuales',
+        ...createTacticalBlock(
+          [
+            questionnaire.preKeyMatchups || `${caudalNames[6]} debe imponerse en la zona del mediocentro para controlar ritmo y rechaces.`,
+            questionnaire.preCaudalPlayerToBoost ? `Potenciar a ${questionnaire.preCaudalPlayerToBoost} con recepciones orientadas.` : `Potenciar a ${playerToActivate} en la zona de ventaja.`,
+            questionnaire.preRivalPlayerToWatch ? `Vigilar a ${questionnaire.preRivalPlayerToWatch} con cobertura cercana.` : `Vigilar a ${rivalToLimit} cuando reciba entre líneas.`,
+          ],
+          [
+            'No dejar al jugador clave rival recibir de cara y con tiempo para levantar cabeza.',
+            'No aislar a nuestro jugador a potenciar contra dos rivales.',
+            'No defender los duelos sin cobertura; el segundo jugador debe cerrar la continuación.',
+          ],
+        ),
+      },
+      {
+        title: 'Plan de partido',
+        ...createTacticalBlock(
+          [
+            questionnaire.preCaudalBuildPlan || `Competir con equipo corto, ataques claros y control de ${dangerZone}.`,
+            `Atacar ${weakness} sin perder vigilancia sobre ${strength}.`,
+            'Priorizar ataques finalizados, presión tras pérdida y cambios de orientación con sentido.',
+          ],
+          [
+            `No entrar en intercambio de golpes si el rival vive de ${strength}.`,
+            'No confundir posesión con dominio si no se pisa área.',
+            'No abandonar el plan tras una pérdida; ajustar alturas y seguir atacando el punto débil.',
+          ],
+        ),
+      },
+      {
+        title: 'Ajustes',
+        ...createTacticalBlock(
+          [
+            'Si cuesta progresar, cambiar a salida de tres con un lateral bajo o un mediocentro incrustado.',
+            'Si falta profundidad, adelantar un extremo y buscar más rupturas al intervalo central-lateral.',
+            'Si el rival domina por dentro, cerrar con un medio más y atacar más directo la segunda jugada.',
+          ],
+          [
+            'No cambiar el sistema sin definir quién protege las pérdidas.',
+            'No acumular delanteros si el problema está en llegar con ventaja a zona de finalización.',
+            'No sostener presión alta si el equipo queda largo; bajar a bloque medio y juntar líneas.',
+          ],
+        ),
+      },
+    ],
     advantages: caudal.midfielders >= rival.midfielders
       ? 'Buena base para controlar mediocampo y orientar ataques con apoyos cercanos.'
       : 'Ventaja posible si se atrae por fuera y se encuentra al hombre libre entre líneas.',
@@ -1104,6 +1448,168 @@ const displayZoneLabel = (zone) =>
     .replace('Baja centro', 'Baja\nCENTRO')
     .replace('Baja derecha', 'Baja\nDER');
 
+const toTacticalItems = (value, fallback) => {
+  if (Array.isArray(value)) return value.filter(Boolean).slice(0, 3);
+  return value ? [value] : [fallback];
+};
+
+const getTacticalBlocksForRender = (analysis) => {
+  if (analysis?.tacticalBlocks?.length) return analysis.tacticalBlocks;
+
+  return [
+    {
+      title: 'Lectura general',
+      ...createTacticalBlock(
+        toTacticalItems(analysis?.generalReading, 'Analiza los sistemas para generar una lectura concreta.'),
+        ['Evitar conclusiones genéricas sin relación con el sistema rival.', 'Evitar pérdidas interiores con el equipo abierto.', 'Evitar ataques sin vigilancia tras pérdida.'],
+      ),
+    },
+    {
+      title: 'Cómo atacar',
+      ...createTacticalBlock(
+        toTacticalItems(analysis?.attackPlan, 'Busca ventajas por sistema y concreta la zona de ataque.'),
+        ['Evitar centros sin ocupación de área.', 'Evitar progresar sin apoyos cercanos.', 'Evitar atacar siempre por el mismo carril.'],
+      ),
+    },
+    {
+      title: 'Cómo defender',
+      ...createTacticalBlock(
+        toTacticalItems(analysis?.defendPlan, 'Define altura de bloque y emparejamientos defensivos.'),
+        ['Evitar saltos individuales sin cobertura.', 'Evitar dejar recibir de cara entre líneas.', 'Evitar defender centros sin controlar frontal.'],
+      ),
+    },
+  ];
+};
+
+const getIndividualAdviceForRender = (playerAdvice) => {
+  if (playerAdvice?.tacticalAdvice?.upAttack) return playerAdvice.tacticalAdvice;
+
+  const baseItems = toTacticalItems(playerAdvice?.advice, 'Selecciona un jugador y analiza sistemas para generar recomendaciones concretas.');
+  return createIndividualTacticalBlock({
+    upAttack: baseItems,
+    upDefense: ['Cerrar pase interior tras pérdida.', 'Temporizar hasta recibir ayuda.', 'Comunicar cobertura con el compañero cercano.'],
+    downAttack: ['No recibir parado si no hay apoyo cercano.', 'No conducir hacia la presión.', 'No forzar el duelo individual si aparece una ayuda rival.'],
+    downDefense: ['No perder la posición tras pérdida.', 'No saltar sin cobertura.', 'No mirar solo balón en centros o cambios de orientación.'],
+  });
+};
+
+const renderIndividualAdviceGroup = ({ title, items, tone, icon }) => {
+  const isUp = tone === 'up';
+  return (
+    <div className={`rounded-2xl border p-4 ${isUp ? 'border-emerald-300/20 bg-emerald-400/10' : 'border-rose-300/20 bg-rose-400/10'}`}>
+      <div className="mb-3 flex items-center gap-2">
+        <span className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-black ${isUp ? 'bg-emerald-400 text-slate-950' : 'bg-rose-400 text-white'}`}>
+          {icon}
+        </span>
+        <p className={`text-[11px] font-black uppercase tracking-[0.18em] ${isUp ? 'text-emerald-200' : 'text-rose-200'}`}>{title}</p>
+      </div>
+      <ul className="space-y-2">
+        {(items || []).map((item, index) => (
+          <li key={`${title}-${index}-${item}`} className="rounded-xl bg-[#091428]/70 px-3 py-2 text-sm leading-6 text-white">
+            {item}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
+const renderIndividualTacticalAdvice = (advice) => (
+  <div className="mt-4 grid gap-3 2xl:grid-cols-2">
+    <div className="rounded-3xl border border-emerald-300/15 bg-emerald-400/5 p-3">
+      <p className="px-1 pb-2 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-300">Hacer</p>
+      <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-1">
+        {renderIndividualAdviceGroup({ title: '3 acciones ofensivas', items: advice.upAttack, tone: 'up', icon: '↑' })}
+        {renderIndividualAdviceGroup({ title: '3 acciones defensivas', items: advice.upDefense, tone: 'up', icon: '↑' })}
+      </div>
+    </div>
+    <div className="rounded-3xl border border-rose-300/15 bg-rose-400/5 p-3">
+      <p className="px-1 pb-2 text-[10px] font-black uppercase tracking-[0.24em] text-rose-300">Evitar</p>
+      <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-1">
+        {renderIndividualAdviceGroup({ title: '3 acciones ofensivas', items: advice.downAttack, tone: 'down', icon: '↓' })}
+        {renderIndividualAdviceGroup({ title: '3 acciones defensivas', items: advice.downDefense, tone: 'down', icon: '↓' })}
+      </div>
+    </div>
+  </div>
+);
+
+const renderTacticalPoint = (item, tone, index) => {
+  const isUp = tone === 'up';
+  return (
+    <li
+      key={`${tone}-${index}-${item}`}
+      className={`flex gap-3 rounded-2xl border p-3 text-sm leading-6 ${
+        isUp
+          ? 'border-emerald-300/25 bg-emerald-400/10 text-emerald-50'
+          : 'border-rose-300/25 bg-rose-400/10 text-rose-50'
+      }`}
+    >
+      <span
+        className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-sm font-black ${
+          isUp ? 'bg-emerald-400 text-slate-950' : 'bg-rose-400 text-white'
+        }`}
+      >
+        {isUp ? '↑' : '↓'}
+      </span>
+      <span>{item}</span>
+    </li>
+  );
+};
+
+const renderTacticalChecklist = (block) => (
+  <div className="mt-4 grid gap-3 xl:grid-cols-2">
+    <div>
+      <p className="mb-2 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">Hacer</p>
+      <ul className="space-y-2">{(block.up || []).map((item, index) => renderTacticalPoint(item, 'up', index))}</ul>
+    </div>
+    <div>
+      <p className="mb-2 text-[10px] font-black uppercase tracking-[0.22em] text-rose-300">Evitar</p>
+      <ul className="space-y-2">{(block.down || []).map((item, index) => renderTacticalPoint(item, 'down', index))}</ul>
+    </div>
+  </div>
+);
+
+const renderTacticalBlock = (block) => (
+  <div key={block.title} className="rounded-3xl border border-white/5 bg-[#0f1e38]/80 p-5">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-white">{block.title}</p>
+      {block.badge ? (
+        <span className="rounded-full bg-caudal-electric/20 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">
+          {block.badge}
+        </span>
+      ) : null}
+    </div>
+    {block.sourceTags?.length ? (
+      <div className="mt-3 flex flex-wrap gap-2">
+        {block.sourceTags.map((tag) => (
+          <span key={`${block.title}-${tag}`} className="rounded-full border border-caudal-electric/20 bg-caudal-electric/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-caudal-electric">
+            Basado en: {tag}
+          </span>
+        ))}
+      </div>
+    ) : null}
+    {block.sections ? (
+      <div className="mt-4 space-y-4">
+        {block.sections.map((section) => (
+          <div key={section.title} className="rounded-2xl border border-white/5 bg-[#091428]/70 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-300">{section.title}</p>
+              {section.badge ? (
+                <span className="rounded-full bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-200">
+                  {section.badge}
+                </span>
+              ) : null}
+            </div>
+            {renderTacticalChecklist(section)}
+          </div>
+        ))}
+      </div>
+    ) : (
+      renderTacticalChecklist(block)
+    )}
+  </div>
+);
+
 function App() {
   const [activeTab, setActiveTab] = useState('Inicio');
   const [players, setPlayers] = useState(samplePlayers);
@@ -1144,12 +1650,12 @@ function App() {
   const [selectedRivalTacticalPlayerIndex, setSelectedRivalTacticalPlayerIndex] = useState(0);
   const [newRivalManualPlayerName, setNewRivalManualPlayerName] = useState('');
   const [openQuestionnaireSections, setOpenQuestionnaireSections] = useState({
+    rivalProfile: true,
     rivalAttack: true,
-    rivalDefense: false,
-    transitions: false,
-    setPieces: false,
-    caudalPlan: false,
-    duels: false,
+    rivalDefense: true,
+    transitionsSetPieces: false,
+    caudalPlan: true,
+    extraInfo: true,
   });
   const [eventTypes, setEventTypes] = useState(defaultEventTypes);
   const [selectedEventType, setSelectedEventType] = useState(defaultEventTypes[0].name);
@@ -1343,11 +1849,68 @@ function App() {
     preCaudalPlayerToBoost: selectedMatch?.preCaudalPlayerToBoost || '',
     preRivalPlayerToWatch: selectedMatch?.preRivalPlayerToWatch || '',
     preImportantDuels: selectedMatch?.preImportantDuels || '',
+    preAiSupportNotes: selectedMatch?.preAiSupportNotes || '',
   });
+
+  const getAiInputSummary = () => {
+    const questionnaire = getTacticalQuestionnaire();
+    const rivalNotes = selectedMatch?.preRivalPlayerNotes || {};
+    const caudalNotes = selectedMatch?.prePlayerNotes || {};
+    const rivalPlayersWithNotes = Object.entries(rivalNotes).filter(([, value]) => String(value || '').trim());
+    const caudalPlayersWithNotes = Object.entries(caudalNotes).filter(([, value]) => String(value || '').trim());
+    const hasRivalReportText = Boolean(String(selectedMatch?.preRivalReportText || '').trim());
+    const importantInputs = [
+      ['Texto informe rival', hasRivalReportText ? 'Disponible como fuente del cuestionario' : ''],
+      ['Sistema Caudal', selectedMatch?.preCaudalSystem || '4-4-2'],
+      ['Sistema rival', getCurrentRivalSystem()],
+      ['Estilo rival', questionnaire.preRivalStyle],
+      ['Bloque defensivo rival', questionnaire.preRivalDefensiveBlock],
+      ['Presión rival', questionnaire.preRivalPressure],
+      ['Tipo de presión', questionnaire.preRivalPressureType],
+      ['Fortalezas rival', questionnaire.preRivalStrengths],
+      ['Debilidades rival', questionnaire.preRivalWeaknesses],
+      ['Dónde genera peligro', questionnaire.preRivalDangerZones],
+      ['Espacios que concede', questionnaire.preRivalSpacesAllowed],
+      ['Cómo defiende centros', questionnaire.preRivalDefendsCrosses],
+      ['Cómo defiende espalda', questionnaire.preRivalDefendsBack],
+      ['Plan con balón Caudal', questionnaire.preCaudalBuildPlan],
+      ['Zonas a atacar', questionnaire.preCaudalAttackZones],
+      ['Jugadores a activar', questionnaire.preCaudalPlayersToActivate],
+      ['Rivales a tapar', questionnaire.preCaudalRivalsToBlock],
+      ['Qué evitar', questionnaire.preCaudalAvoid],
+      ['Información adicional IA', questionnaire.preAiSupportNotes],
+    ];
+    const filledInputs = importantInputs.filter(([, value]) => String(value || '').trim());
+    const tags = [
+      selectedMatch?.preCaudalSystem ? `Caudal ${selectedMatch.preCaudalSystem}` : 'Caudal 4-4-2',
+      `Rival ${getCurrentRivalSystem()}`,
+      questionnaire.preRivalDefensiveBlock ? `bloque ${questionnaire.preRivalDefensiveBlock}` : null,
+      questionnaire.preRivalPressure ? `presión ${questionnaire.preRivalPressure}` : null,
+      questionnaire.preRivalStrengths ? 'fortaleza rival' : null,
+      questionnaire.preRivalWeaknesses ? 'debilidad rival' : null,
+      questionnaire.preCaudalAttackZones ? 'zona a atacar' : null,
+      questionnaire.preAiSupportNotes ? 'información adicional' : null,
+      hasRivalReportText ? 'texto informe rival' : null,
+      rivalPlayersWithNotes.length ? `${rivalPlayersWithNotes.length} rivales con característica` : null,
+      caudalPlayersWithNotes.length ? `${caudalPlayersWithNotes.length} notas Caudal` : null,
+    ].filter(Boolean);
+    const score = filledInputs.length + rivalPlayersWithNotes.length + caudalPlayersWithNotes.length;
+    const confidence = score >= 12 ? 'Alta' : score >= 7 ? 'Media' : 'Baja';
+
+    return {
+      confidence,
+      filledInputs,
+      missingInputs: importantInputs.filter(([, value]) => !String(value || '').trim()).slice(0, 6),
+      rivalPlayersWithNotes,
+      caudalPlayersWithNotes,
+      tags,
+    };
+  };
 
   const runAiAnalysis = () => {
     if (!selectedMatch) return;
     const questionnaire = getTacticalQuestionnaire();
+    const inputSummary = getAiInputSummary();
     const caudalSystem = selectedMatch.preCaudalSystem || '4-4-2';
     const rivalSystem = getCurrentRivalSystem();
     const caudalLineup = selectedMatch.preCaudalLineup?.length ? selectedMatch.preCaudalLineup : players.slice(0, 11).map((player) => player.name);
@@ -1374,7 +1937,20 @@ function App() {
       rivalNotes: selectedMatch.preRivalPlayerNotes || {},
     });
     updateSelectedMatchFields({
-      preAiAnalysis: { ...analysis, prompt },
+      preAiAnalysis: { ...analysis, prompt, inputSummary },
+    });
+  };
+
+  const extractRivalReportToQuestionnaire = () => {
+    if (!selectedMatch) return;
+    const extraction = extractRivalReportData(selectedMatch.preRivalReportText || selectedMatch.preNotes || '');
+    updateSelectedMatchFields({
+      ...extraction.fields,
+      preRivalReportExtraction: {
+        ...extraction,
+        extractedAt: new Date().toISOString(),
+      },
+      preAiAnalysis: null,
     });
   };
 
@@ -2004,9 +2580,12 @@ function App() {
       starts: 0,
       ratingTotal: 0,
       ratingCount: 0,
+      roleMinutes: {},
     }]));
 
     scopedMatches.forEach((match) => {
+      const lineup = match.statsLineup || [];
+      const roles = getFormationRoles(match.statsSystem || '4-4-2');
       (match.statsGoalEvents || []).forEach((event) => {
         if (event.type !== 'Gol a favor') return;
         if (event.scorer && byPlayer.has(event.scorer)) byPlayer.get(event.scorer).goals += 1;
@@ -2014,17 +2593,35 @@ function App() {
       });
       players.forEach((player) => {
         const stored = match.statsPlayerData?.[player.name] || {};
-        const isStarter = (match.statsLineup || []).includes(player.name);
+        const slotIndex = lineup.indexOf(player.name);
+        const isStarter = slotIndex >= 0;
         const minutes = Number(stored.minutes ?? (isStarter ? 90 : 0)) || 0;
         const row = byPlayer.get(player.name);
         row.minutes += minutes;
         row.starts += isStarter ? 1 : 0;
+        if (isStarter && minutes > 0) {
+          const role = roles[slotIndex] || player.position || 'Sin posicion';
+          row.roleMinutes[role] = (row.roleMinutes[role] || 0) + minutes;
+        }
         row.yellow += Number(stored.yellowCount ?? (stored.yellow ? 1 : 0)) || 0;
         row.red += stored.red ? 1 : 0;
         if (stored.rating) {
           row.ratingTotal += Number(stored.rating) || 0;
           row.ratingCount += 1;
         }
+      });
+      lineup.forEach((starterName, slotIndex) => {
+        if (!starterName) return;
+        const stored = match.statsPlayerData?.[starterName] || {};
+        const starterMinutes = Number(stored.minutes ?? 90) || 0;
+        if (starterMinutes <= 0 || starterMinutes >= 90 || !stored.replacementName || !byPlayer.has(stored.replacementName)) return;
+        const replacementStored = match.statsPlayerData?.[stored.replacementName] || {};
+        if (Number(replacementStored.minutes || 0) > 0) return;
+        const role = roles[slotIndex] || 'Sin posicion';
+        const subMinutes = 90 - starterMinutes;
+        const replacementRow = byPlayer.get(stored.replacementName);
+        replacementRow.minutes += subMinutes;
+        replacementRow.roleMinutes[role] = (replacementRow.roleMinutes[role] || 0) + subMinutes;
       });
     });
 
@@ -2034,6 +2631,7 @@ function App() {
       cards: row.yellow + row.red,
       minutePct: Math.round((row.minutes / possibleMinutes) * 100),
       avgRating: row.ratingCount ? row.ratingTotal / row.ratingCount : 0,
+      primaryRole: getMostPlayedRole(row.roleMinutes, row.player.position),
       idealScore: row.minutes * 0.03 + row.starts * 6 + row.goals * 8 + row.assists * 6 + (row.ratingCount ? (row.ratingTotal / row.ratingCount) * 4 : 0),
     }));
     const top = (key) => rows.filter((row) => row[key] > 0).sort((a, b) => b[key] - a[key]).slice(0, 5);
@@ -2044,8 +2642,49 @@ function App() {
       booked: rows.filter((row) => row.cards > 0).sort((a, b) => b.cards - a.cards).slice(0, 5),
       minutes: top('minutes'),
       participations: top('goalParticipation'),
-      ideal: rows.filter((row) => row.idealScore > 0).sort((a, b) => b.idealScore - a.idealScore).slice(0, 11).map((row) => row.player),
+      idealRows: rows.filter((row) => row.idealScore > 0),
     };
+  };
+
+  const getMostPlayedRole = (roleMinutes, fallbackRole) => {
+    const entries = Object.entries(roleMinutes || {}).sort((a, b) => b[1] - a[1]);
+    return entries[0]?.[0] || fallbackRole || 'Sin posicion';
+  };
+
+  const normalizeIdealRole = (role) => {
+    const value = String(role || '').toLowerCase();
+    if (value.includes('portero')) return 'portero';
+    if (value.includes('lateral') || value.includes('carrilero')) return value.includes('izquier') ? 'banda-izquierda-def' : value.includes('derech') ? 'banda-derecha-def' : 'defensa';
+    if (value.includes('central') || value.includes('defensa')) return 'central';
+    if (value.includes('pivote') || value.includes('mediocentro') || value.includes('interior') || value.includes('mediapunta')) return 'medio';
+    if (value.includes('extremo')) return value.includes('izquier') ? 'banda-izquierda-atq' : value.includes('derech') ? 'banda-derecha-atq' : 'ataque';
+    if (value.includes('delantero')) return 'delantero';
+    return value;
+  };
+
+  const roleFitsSlot = (playerRole, slotRole) => {
+    const playerKey = normalizeIdealRole(playerRole);
+    const slotKey = normalizeIdealRole(slotRole);
+    if (playerKey === slotKey) return true;
+    if (slotKey === 'central') return ['central', 'defensa'].includes(playerKey);
+    if (slotKey === 'medio') return playerKey === 'medio';
+    if (slotKey === 'delantero') return ['delantero', 'ataque'].includes(playerKey);
+    if (slotKey.includes('banda-izquierda')) return playerKey.includes('banda-izquierda') || playerKey === 'medio';
+    if (slotKey.includes('banda-derecha')) return playerKey.includes('banda-derecha') || playerKey === 'medio';
+    return false;
+  };
+
+  const buildIdealElevenForSystem = (idealRows, system) => {
+    const roles = getFormationRoles(system);
+    const available = [...idealRows].sort((a, b) => b.idealScore - a.idealScore);
+    const used = new Set();
+    return roles.map((slotRole) => {
+      const exact = available.find((row) => !used.has(row.player.name) && roleFitsSlot(row.primaryRole, slotRole));
+      const fallback = exact || available.find((row) => !used.has(row.player.name));
+      if (!fallback) return null;
+      used.add(fallback.player.name);
+      return fallback;
+    });
   };
 
   const getGroupTendency = (scopedMatches) =>
@@ -2088,7 +2727,7 @@ function App() {
     </div>
   );
 
-  const renderIdealElevenPitch = (idealPlayers) => {
+  const renderIdealElevenPitch = (idealRows) => {
     const coordinates = getFormationCoordinates(idealSystem);
     const roles = getFormationRoles(idealSystem);
     return (
@@ -2099,13 +2738,19 @@ function App() {
         <div className="absolute left-1/2 top-4 h-24 w-56 -translate-x-1/2 rounded-b-3xl border-x-2 border-b-2 border-white/35" />
         <div className="absolute bottom-4 left-1/2 h-24 w-56 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/35" />
         {coordinates.map((slot, index) => {
-          const player = idealPlayers[index];
+          const row = idealRows[index];
+          const player = row?.player;
           return (
             <div key={`${roles[index]}-${index}`} className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
               <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border-2 border-caudal-electric/60 bg-caudal-950/80 text-xs font-black text-white">
                 {player?.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : player?.number || index + 1}
               </div>
               <span className="max-w-[90px] truncate rounded-xl bg-black/60 px-2 py-1 text-[10px] font-black text-white">{player?.name || roles[index]}</span>
+              {row?.primaryRole ? (
+                <span className="max-w-[96px] truncate rounded-xl bg-caudal-electric/90 px-2 py-0.5 text-[9px] font-black text-slate-950" title={`Rol más jugado: ${row.primaryRole}`}>
+                  {row.primaryRole}
+                </span>
+              ) : null}
             </div>
           );
         })}
@@ -2778,10 +3423,49 @@ function App() {
     });
   };
 
-  const renderQuestionnaireField = ({ label, field, placeholder, type = 'textarea', options = [] }) => (
-    <label key={field} className="space-y-2 text-sm text-slate-300">
+  const renderQuestionnaireField = ({ label, field, placeholder, type = 'textarea', options = [], multiple = false, wide = false }) => {
+    const selectedValues = String(selectedMatch[field] || '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const optionValue = (option) => (typeof option === 'string' ? option : option.value);
+    const optionLabel = (option) => (typeof option === 'string' ? option : option.label);
+    const toggleChip = (value) => {
+      if (!multiple) {
+        updateSelectedMatchFields({ [field]: selectedMatch[field] === value ? '' : value });
+        return;
+      }
+      const nextValues = selectedValues.includes(value)
+        ? selectedValues.filter((item) => item !== value)
+        : [...selectedValues, value];
+      updateSelectedMatchFields({ [field]: nextValues.join(', ') });
+    };
+
+    return (
+    <label key={field} className={`space-y-2 text-sm text-slate-300 ${wide ? 'md:col-span-2' : ''}`}>
       <span className="text-xs uppercase tracking-[0.18em] text-slate-500">{label}</span>
-      {type === 'select' ? (
+      {type === 'chips' ? (
+        <div className="flex flex-wrap gap-2">
+          {options.map((option) => {
+            const value = optionValue(option);
+            const isSelected = multiple ? selectedValues.includes(value) : selectedMatch[field] === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => toggleChip(value)}
+                className={`rounded-2xl px-3 py-2 text-xs font-black uppercase tracking-[0.1em] transition ${
+                  isSelected
+                    ? 'bg-emerald-300 text-slate-950 shadow-[0_0_20px_rgba(110,231,183,0.18)]'
+                    : 'bg-white/8 text-slate-300 ring-1 ring-white/10 hover:bg-white/15 hover:text-white'
+                }`}
+              >
+                {optionLabel(option)}
+              </button>
+            );
+          })}
+        </div>
+      ) : type === 'select' ? (
         <select
           value={selectedMatch[field] || options[0] || ''}
           onChange={(event) => updateSelectedMatchFields({ [field]: event.target.value })}
@@ -2800,7 +3484,8 @@ function App() {
         />
       )}
     </label>
-  );
+    );
+  };
 
   const renderQuestionnaireSection = ({ id, title, description, fields }) => {
     const isOpen = openQuestionnaireSections[id];
@@ -2831,8 +3516,8 @@ function App() {
 
   const renderSystemsPitch = () => {
     if (!selectedMatch) return null;
-    const toCaudalHalf = (position) => ({ x: 5 + (100 - position.y) * 0.43, y: position.x });
-    const toRivalHalf = (position) => ({ x: 95 - (100 - position.y) * 0.43, y: position.x });
+    const toCaudalHalf = (position) => ({ x: 10 + position.x * 0.8, y: 50 + position.y * 0.44 });
+    const toRivalHalf = (position) => ({ x: 10 + position.x * 0.8, y: 50 - position.y * 0.44 });
     const caudalCoordinates = getFormationCoordinates(selectedMatch.preCaudalSystem || '4-4-2').map(toCaudalHalf);
     const rivalCoordinates = getFormationCoordinates(getCurrentRivalSystem()).map(toRivalHalf);
     const caudalRoles = getFormationRoles(selectedMatch.preCaudalSystem || '4-4-2');
@@ -2850,13 +3535,13 @@ function App() {
           key={`${team}-${index}`}
           type={isCaudal || isRival ? 'button' : undefined}
           onClick={isCaudal ? () => setSelectedTacticalPlayerIndex(index) : isRival ? () => setSelectedRivalTacticalPlayerIndex(index) : undefined}
-          className={`absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 ${isCaudal ? 'text-caudal-electric' : 'text-rose-200'} ${isCaudal || isRival ? 'cursor-pointer' : ''}`}
+          className={`absolute flex w-16 -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 ${isCaudal ? 'text-caudal-electric' : 'text-rose-200'} ${isCaudal || isRival ? 'cursor-pointer' : ''}`}
           style={{ left: `${position.x}%`, top: `${position.y}%` }}
         >
-          <span className={`flex h-9 w-9 items-center justify-center rounded-full border text-[11px] font-black shadow-lg ${isCaudal ? 'border-caudal-electric bg-caudal-950' : 'border-rose-300 bg-rose-950'} ${isSelected ? 'ring-4 ring-caudal-electric/30' : ''}`}>
+          <span className={`flex h-8 w-8 items-center justify-center rounded-full border text-[10px] font-black shadow-lg ${isCaudal ? 'border-caudal-electric bg-caudal-950' : 'border-rose-300 bg-rose-950'} ${isSelected ? 'ring-4 ring-caudal-electric/30' : ''}`}>
             {index === 0 ? 'P' : index}
           </span>
-          <span className={`max-w-[86px] truncate rounded-md px-2 py-1 text-[10px] font-semibold ${isSelected ? (isCaudal ? 'bg-caudal-electric text-slate-950' : 'bg-rose-300 text-rose-950') : 'bg-black/55 text-white'}`}>
+          <span className={`max-w-16 truncate rounded-md px-1 py-0.5 text-[8px] font-semibold leading-none ${isSelected ? (isCaudal ? 'bg-caudal-electric text-slate-950' : 'bg-rose-300 text-rose-950') : 'bg-black/55 text-white'}`}>
             {playerName}
           </span>
         </PlayerTag>
@@ -2865,18 +3550,18 @@ function App() {
 
     return (
       <div className="overflow-hidden rounded-3xl border border-white/10 bg-[#0b5b3f] p-3 shadow-inner">
-        <div className="relative aspect-[16/10] min-h-[320px] overflow-hidden rounded-2xl border-2 border-white/60 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_50%,transparent_50%),linear-gradient(0deg,rgba(255,255,255,0.05)_50%,transparent_50%)] bg-[length:18%_100%,100%_18%] sm:min-h-[380px]">
-          <div className="absolute left-1/2 top-0 h-full w-px bg-white/60" />
+        <div className="relative mx-auto aspect-[7/10] min-h-[620px] max-w-[560px] overflow-hidden rounded-2xl border-2 border-white/60 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_50%,transparent_50%),linear-gradient(0deg,rgba(255,255,255,0.05)_50%,transparent_50%)] bg-[length:20%_100%,100%_14.2%]">
+          <div className="absolute left-0 right-0 top-1/2 h-px bg-white/60" />
           <div className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/60" />
-          <div className="absolute left-0 top-1/2 h-48 w-24 -translate-y-1/2 border-y-2 border-r-2 border-white/60" />
-          <div className="absolute right-0 top-1/2 h-48 w-24 -translate-y-1/2 border-y-2 border-l-2 border-white/60" />
-          <div className="absolute left-4 top-1/2 h-24 w-10 -translate-y-1/2 border-y-2 border-r-2 border-white/50" />
-          <div className="absolute right-4 top-1/2 h-24 w-10 -translate-y-1/2 border-y-2 border-l-2 border-white/50" />
-          <div className="absolute left-4 top-4 rounded-xl bg-black/35 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white">
-            C.D. Caudal · {selectedMatch.preCaudalSystem || '4-4-2'}
-          </div>
-          <div className="absolute right-4 top-4 rounded-xl bg-black/35 px-3 py-2 text-right text-xs font-bold uppercase tracking-[0.14em] text-white">
+          <div className="absolute left-1/2 top-0 h-24 w-48 -translate-x-1/2 rounded-b-3xl border-x-2 border-b-2 border-white/60" />
+          <div className="absolute bottom-0 left-1/2 h-24 w-48 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/60" />
+          <div className="absolute left-1/2 top-0 h-12 w-24 -translate-x-1/2 rounded-b-2xl border-x-2 border-b-2 border-white/45" />
+          <div className="absolute bottom-0 left-1/2 h-12 w-24 -translate-x-1/2 rounded-t-2xl border-x-2 border-t-2 border-white/45" />
+          <div className="absolute left-4 top-4 rounded-xl bg-rose-950/75 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white">
             Rival · {getCurrentRivalSystem()}
+          </div>
+          <div className="absolute bottom-4 left-4 rounded-xl bg-caudal-950/75 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white">
+            C.D. Caudal · {selectedMatch.preCaudalSystem || '4-4-2'}
           </div>
           {caudalCoordinates.map((position, index) => renderPlayer(position, index, 'caudal', caudalLineup))}
           {rivalCoordinates.map((position, index) => renderPlayer(position, index, 'rival', rivalLineup))}
@@ -3711,39 +4396,74 @@ function App() {
 
           return (
             <main className="space-y-6">
-              <section className="rounded-3xl border border-white/5 bg-white/5 p-6 shadow-glow backdrop-blur-md">
-                <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-                  <div>
-                    <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Análisis Grupal</p>
-                    <h2 className="mt-2 text-3xl font-black uppercase text-white">Métricas colectivas del equipo</h2>
-                    <p className="mt-2 text-sm text-slate-400">
-                      {hasData ? `${groupData.played} partidos en el filtro actual` : 'sin datos suficientes'}
-                    </p>
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap justify-start gap-2 xl:justify-end">
-                      {['Todos', 'Liga', 'Copa RFEF', 'Playoff', 'Amistoso'].map((filter) => (
-                        <button
-                          key={filter}
-                          type="button"
-                          onClick={() => setGroupCompetitionFilter(filter)}
-                          className={`rounded-2xl px-4 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${groupCompetitionFilter === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}
-                        >
-                          {filter}
-                        </button>
-                      ))}
+              <section className="overflow-hidden rounded-3xl border border-white/10 bg-[#091428]/90 shadow-glow backdrop-blur-md">
+                <div className="grid gap-0 xl:grid-cols-[0.9fr_1.35fr]">
+                  <div className="border-b border-white/10 p-6 xl:border-b-0 xl:border-r">
+                    <p className="text-xs font-black uppercase tracking-[0.34em] text-caudal-electric">Análisis grupal</p>
+                    <h2 className="mt-3 max-w-md text-3xl font-black uppercase leading-tight text-white sm:text-4xl">
+                      Métricas colectivas del equipo
+                    </h2>
+                    <div className="mt-5 flex flex-wrap gap-3">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Filtro actual</p>
+                        <p className="mt-1 text-sm font-bold text-white">{hasData ? `${groupData.played} partidos` : 'Sin datos'}</p>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Competición</p>
+                        <p className="mt-1 text-sm font-bold text-white">{groupCompetitionFilter}</p>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Contexto</p>
+                        <p className="mt-1 text-sm font-bold text-white">{groupContextFilter}</p>
+                      </div>
                     </div>
-                    <div className="flex flex-wrap justify-start gap-2 xl:justify-end">
-                      {['Todos', 'Local', 'Visitante', 'Últimos 5 partidos', 'Victorias', 'Empates', 'Derrotas'].map((filter) => (
-                        <button
-                          key={filter}
-                          type="button"
-                          onClick={() => setGroupContextFilter(filter)}
-                          className={`rounded-2xl px-4 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${groupContextFilter === filter ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}
-                        >
-                          {filter}
-                        </button>
-                      ))}
+                  </div>
+
+                  <div className="space-y-5 p-6">
+                    <div>
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Competición</p>
+                        <span className="hidden h-px flex-1 bg-white/10 sm:block" />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {['Todos', 'Liga', 'Copa RFEF', 'Playoff', 'Amistoso'].map((filter) => (
+                          <button
+                            key={filter}
+                            type="button"
+                            onClick={() => setGroupCompetitionFilter(filter)}
+                            className={`rounded-2xl px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] transition ${
+                              groupCompetitionFilter === filter
+                                ? 'bg-caudal-electric text-slate-950 shadow-[0_0_26px_rgba(79,140,255,0.28)]'
+                                : 'bg-white/8 text-slate-300 ring-1 ring-white/10 hover:bg-white/15 hover:text-white'
+                            }`}
+                          >
+                            {filter}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Vista del rendimiento</p>
+                        <span className="hidden h-px flex-1 bg-white/10 sm:block" />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {['Todos', 'Local', 'Visitante', 'Últimos 5 partidos', 'Victorias', 'Empates', 'Derrotas'].map((filter) => (
+                          <button
+                            key={filter}
+                            type="button"
+                            onClick={() => setGroupContextFilter(filter)}
+                            className={`rounded-2xl px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] transition ${
+                              groupContextFilter === filter
+                                ? 'bg-emerald-300 text-slate-950 shadow-[0_0_26px_rgba(110,231,183,0.25)]'
+                                : 'bg-white/8 text-slate-300 ring-1 ring-white/10 hover:bg-white/15 hover:text-white'
+                            }`}
+                          >
+                            {filter}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -3870,36 +4590,65 @@ function App() {
 
               <section className="grid gap-6 xl:grid-cols-2">
                 {[
-                  ['ABP ofensiva', abpFor, 'Eficacia ABP', abpFor.total ? `${Math.round((abpFor.total / Math.max(1, groupData.goalsFor)) * 100)}% de goles a favor` : 'sin datos suficientes'],
-                  ['ABP defensiva', abpAgainst, 'Vulnerabilidad ABP', abpAgainst.total ? `${Math.round((abpAgainst.total / Math.max(1, groupData.goalsAgainst)) * 100)}% de goles encajados` : 'sin datos suficientes'],
-                ].map(([title, summary, metric, value]) => (
-                  <div key={title} className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                    <div className="flex items-start justify-between gap-4">
-                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">{title}</h3>
-                      <span className={`rounded-2xl px-3 py-2 text-xs font-black uppercase ${abpGlobalReading === 'fuerte' ? 'bg-emerald-400/15 text-emerald-300' : abpGlobalReading === 'vulnerable' ? 'bg-red-400/15 text-red-300' : 'bg-white/10 text-slate-300'}`}>
-                        {title === 'ABP ofensiva' ? abpGlobalReading : abpGlobalReading}
-                      </span>
+                  ['ABP ofensiva', abpFor, 'Eficacia ABP', abpFor.total ? `${Math.round((abpFor.total / Math.max(1, groupData.goalsFor)) * 100)}%` : 'sin datos', groupData.goalsFor, 'bg-caudal-electric', 'text-caudal-electric'],
+                  ['ABP defensiva', abpAgainst, 'Vulnerabilidad ABP', abpAgainst.total ? `${Math.round((abpAgainst.total / Math.max(1, groupData.goalsAgainst)) * 100)}%` : 'sin datos', groupData.goalsAgainst, 'bg-red-400', 'text-red-300'],
+                ].map(([title, summary, metric, value, totalGoals, barClass, textClass]) => {
+                  const rows = [
+                    ['Córner', summary.corner],
+                    ['Falta directa', summary.directFreeKick],
+                    ['Falta con remate', summary.freeKickHeader],
+                    ['Penalti', summary.penalty],
+                    ['Segunda jugada', summary.secondBall],
+                  ];
+                  const maxAbp = Math.max(1, ...rows.map(([, count]) => count));
+                  const share = Math.round((summary.total / Math.max(1, totalGoals)) * 100);
+
+                  return (
+                  <div key={title} className="overflow-hidden rounded-3xl border border-white/5 bg-[#091428]/80 shadow-glow">
+                    <div className="flex items-start justify-between gap-4 border-b border-white/10 p-6">
+                      <div>
+                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">{title}</h3>
+                        <p className="mt-2 text-sm text-slate-400">{metric}</p>
+                      </div>
+                      <div className="text-right">
+                        <span className={`rounded-2xl px-3 py-2 text-xs font-black uppercase ${abpGlobalReading === 'fuerte' ? 'bg-emerald-400/15 text-emerald-300' : abpGlobalReading === 'vulnerable' ? 'bg-red-400/15 text-red-300' : 'bg-white/10 text-slate-300'}`}>
+                          {abpGlobalReading}
+                        </span>
+                        <p className={`mt-3 text-4xl font-black ${textClass}`}>{summary.total}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">goles ABP</p>
+                      </div>
                     </div>
-                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                      {[
-                        ['Córner', summary.corner],
-                        ['Falta directa', summary.directFreeKick],
-                        ['Falta con remate', summary.freeKickHeader],
-                        ['Penalti', summary.penalty],
-                        ['Segunda jugada', summary.secondBall],
-                      ].map(([label, count]) => (
-                        <div key={label} className="rounded-2xl bg-white/5 p-4">
-                          <p className="text-xs uppercase tracking-[0.14em] text-slate-500">{label}</p>
-                          <p className="mt-2 text-2xl font-black text-white">{count}</p>
+
+                    <div className="grid gap-6 p-6 lg:grid-cols-[1fr_160px]">
+                      <div className="space-y-4">
+                        {rows.map(([label, count]) => (
+                          <div key={label}>
+                            <div className="flex items-center justify-between gap-3 text-xs font-bold uppercase tracking-[0.12em]">
+                              <span className="text-slate-400">{label}</span>
+                              <span className="text-white">{count}</span>
+                            </div>
+                            <div className="mt-2 h-3 overflow-hidden rounded-full bg-white/10">
+                              <div className={`h-full rounded-full ${barClass}`} style={{ width: `${(count / maxAbp) * 100}%` }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="flex flex-col items-center justify-center rounded-3xl bg-white/5 p-4">
+                        <div className="relative flex h-28 w-28 items-center justify-center rounded-full" style={{ background: `conic-gradient(${title === 'ABP ofensiva' ? '#4f8cff' : '#f87171'} 0 ${share}%, rgba(255,255,255,0.1) ${share}% 100%)` }}>
+                          <div className="flex h-20 w-20 flex-col items-center justify-center rounded-full bg-[#091428]">
+                            <span className="text-2xl font-black text-white">{value}</span>
+                            <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500">del total</span>
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                    <div className="mt-5 rounded-2xl bg-white/5 p-4">
-                      <p className="text-xs uppercase tracking-[0.14em] text-slate-500">{metric}</p>
-                      <p className="mt-2 text-sm font-bold text-slate-200">{value}</p>
+                        <p className="mt-4 text-center text-xs font-bold leading-5 text-slate-400">
+                          {summary.total ? `${summary.total} de ${Math.max(1, totalGoals)} goles` : 'Sin acciones registradas'}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </section>
 
               <section className="grid gap-6 xl:grid-cols-2">
@@ -3988,7 +4737,7 @@ function App() {
                   </select>
                 </div>
                 <div className="mt-6">
-                  {rankings.ideal.length ? renderIdealElevenPitch(rankings.ideal) : <p className="rounded-2xl bg-white/5 p-6 text-center text-sm italic text-slate-500">sin datos suficientes</p>}
+                  {rankings.idealRows.length ? renderIdealElevenPitch(buildIdealElevenForSystem(rankings.idealRows, idealSystem)) : <p className="rounded-2xl bg-white/5 p-6 text-center text-sm italic text-slate-500">sin datos suficientes</p>}
                 </div>
               </section>
             </main>
@@ -4238,14 +4987,24 @@ function App() {
                                 className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white"
                               />
                             </label>
-                            <button
-                              type="button"
-                              disabled={!getCanvaEmbedUrl(selectedMatch.preCanvaLink)}
-                              onClick={() => setIsCanvaPreviewOpen(true)}
-                              className="h-fit rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:bg-slate-600/40"
-                            >
-                              Ampliar informe
-                            </button>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                disabled={!getCanvaEmbedUrl(selectedMatch.preCanvaLink)}
+                                onClick={() => setIsCanvaPreviewOpen(true)}
+                                className="h-fit rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:bg-slate-600/40"
+                              >
+                                Ampliar informe
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!selectedMatch.preCanvaLink}
+                                onClick={() => window.open(selectedMatch.preCanvaLink, '_blank', 'noopener,noreferrer')}
+                                className="h-fit rounded-2xl bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:bg-slate-600/40 disabled:text-slate-400"
+                              >
+                                Abrir enlace
+                              </button>
+                            </div>
                           </div>
                           {selectedMatch.preCanvaLink ? (
                             getCanvaEmbedUrl(selectedMatch.preCanvaLink) ? (
@@ -4267,16 +5026,6 @@ function App() {
                               Pega un enlace de Canva para visualizar el informe aquí.
                             </div>
                           )}
-                        </div>
-
-                        <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Notas rápidas</h4>
-                          <textarea
-                            value={selectedMatch.preNotes || ''}
-                            onChange={(event) => updateSelectedMatchFields({ preNotes: event.target.value })}
-                            placeholder="Resumen rápido del rival, estilo de juego y puntos clave..."
-                            className="mt-4 min-h-[180px] w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white placeholder:text-slate-500"
-                          />
                         </div>
 
                       </div>
@@ -4345,100 +5094,85 @@ function App() {
                         <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                           <div className="mb-5">
                             <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Cuestionario para análisis IA</h4>
-                            <p className="mt-2 text-sm text-slate-400">Rellena lo que sepas del rival y de vuestra intención de partido. Con esto la IA construye el plan.</p>
+                            <p className="mt-2 text-sm text-slate-400">Marca rápido lo que ves en el Canva. La IA usará este checklist y la información adicional como apoyo.</p>
                           </div>
                           <div className="space-y-3">
                             {[
                               {
-                                id: 'rivalAttack',
-                                title: 'Rival con balón',
-                                description: 'Cómo inicia, progresa, finaliza y dónde genera peligro.',
+                                id: 'rivalProfile',
+                                title: '1. Identidad táctica del rival',
+                                description: 'Modelo general, salida y ritmo de partido.',
                                 fields: [
-                                  { label: 'Cómo juega el rival', field: 'preRivalStyle', placeholder: 'Ej. equipo directo, laterales profundos, mucho balón parado...' },
-                                  { label: 'Organización ofensiva rival', field: 'preRivalOffensiveOrganization', placeholder: 'Estructura, alturas, comportamientos con balón...' },
-                                  { label: 'Sistema base rival', field: 'preRivalBaseSystem', placeholder: 'Sistema con balón si cambia respecto al dibujo inicial...' },
-                                  { label: 'Salida rival', field: 'preRivalBuildUp', type: 'select', options: ['Combinativo', 'Directo', 'Mixto'] },
-                                  { label: 'Cómo inicia juego', field: 'preRivalStartPlay', placeholder: 'Portero corto/largo, centrales abiertos, pivote, lateral...' },
-                                  { label: 'Cómo progresa', field: 'preRivalProgression', placeholder: 'Por dentro, por fuera, tercer hombre, balón directo...' },
-                                  { label: 'Cómo finaliza', field: 'preRivalFinishing', placeholder: 'Centros, tiros frontales, pase atrás, balón parado...' },
-                                  { label: 'Jugadores clave ofensivos', field: 'preRivalOffensiveKeyPlayers', placeholder: 'Nombres y por qué son importantes...' },
-                                  { label: 'Dónde genera más peligro', field: 'preRivalDangerZones', placeholder: 'Banda derecha, intervalo lateral-central, frontal...' },
-                                  { label: 'Cómo ataca bandas', field: 'preRivalWideAttack', placeholder: 'Dobladas, extremos a pie cambiado, centros tempranos...' },
-                                  { label: 'Cómo ocupa área', field: 'preRivalBoxOccupation', placeholder: 'Primer palo, segundo palo, rechace, frontal...' },
+                                  { label: 'Cómo juega', field: 'preRivalStyle', type: 'chips', options: ['Directo', 'Combinativo', 'Mixto', 'Ataque rápido', 'Posicional', 'Mucho ABP'], multiple: true },
+                                  { label: 'Salida rival', field: 'preRivalBuildUp', type: 'chips', options: ['Combinativo', 'Directo', 'Mixto'] },
+                                  { label: 'Transiciones', field: 'preRivalTransitions', type: 'chips', options: ['Directas', 'Equilibradas', 'Pausadas'] },
+                                  { label: 'Sistema con balón si cambia', field: 'preRivalBaseSystem', placeholder: 'Ej. 3-2-5, lateral dentro, doble pivote...' },
+                                ],
+                              },
+                              {
+                                id: 'rivalAttack',
+                                title: '2. Rival con balón',
+                                description: 'Cómo progresa y dónde hace daño.',
+                                fields: [
+                                  { label: 'Inicia juego', field: 'preRivalStartPlay', type: 'chips', options: ['Portero corto', 'Portero largo', 'Centrales abiertos', 'Pivote baja', 'Lateral alto', 'Busca punta'], multiple: true },
+                                  { label: 'Progresa', field: 'preRivalProgression', type: 'chips', options: ['Por dentro', 'Por fuera', 'Lado débil', 'Tercer hombre', 'Balón directo', 'Conducciones'], multiple: true },
+                                  { label: 'Finaliza', field: 'preRivalFinishing', type: 'chips', options: ['Centros', 'Pase atrás', 'Tiro frontal', 'Ruptura espalda', 'Segundo palo', 'ABP'], multiple: true },
+                                  { label: 'Zonas de peligro', field: 'preRivalDangerZones', type: 'chips', options: ['Banda izquierda', 'Banda derecha', 'Intervalo lateral-central', 'Entre líneas', 'Frontal', 'Área pequeña'], multiple: true },
+                                  { label: 'Jugadores clave ofensivos', field: 'preRivalOffensiveKeyPlayers', placeholder: 'Nombres y amenaza principal...', wide: true },
                                 ],
                               },
                               {
                                 id: 'rivalDefense',
-                                title: 'Rival sin balón',
-                                description: 'Bloque, presión, espacios y cómo defiende situaciones clave.',
+                                title: '3. Rival sin balón',
+                                description: 'Bloque, presión, espacios que concede y puntos fuertes/débiles.',
                                 fields: [
-                                  { label: 'Organización defensiva rival', field: 'preRivalDefensiveOrganization', placeholder: 'Cómo se ordenan sin balón...' },
-                                  { label: 'Sistema defensivo', field: 'preRivalDefensiveSystem', placeholder: 'Ej. 4-4-2 defendiendo, 5-4-1, marcas...' },
-                                  { label: 'Bloque defensivo', field: 'preRivalDefensiveBlock', type: 'select', options: ['Alto', 'Medio', 'Bajo'] },
-                                  { label: 'Altura del bloque', field: 'preRivalBlockHeightDetail', placeholder: 'Dónde esperan y cuándo saltan...' },
-                                  { label: 'Presión rival', field: 'preRivalPressure', type: 'select', options: ['Alta', 'Media', 'Baja'] },
-                                  { label: 'Tipo de presión', field: 'preRivalPressureType', placeholder: 'Hombre a hombre, orientada a banda, sobre pivote...' },
-                                  { label: 'Dónde deja espacios', field: 'preRivalSpacesAllowed', placeholder: 'Espalda de laterales, entre líneas, lado débil...' },
-                                  { label: 'Cómo defiende centros', field: 'preRivalDefendsCrosses', placeholder: 'Defiende área, marcas, punto penal, rechace...' },
-                                  { label: 'Cómo defiende espalda de centrales', field: 'preRivalDefendsBack', placeholder: 'Línea alta/baja, centrales lentos, coberturas...' },
-                                  { label: 'Cómo defiende segunda jugada', field: 'preRivalSecondBallDefense', placeholder: 'Quién recoge rechace, si se parte, si acumula...' },
-                                  { label: 'Fortalezas del rival', field: 'preRivalStrengths', placeholder: 'Qué hacen muy bien y qué debemos proteger...' },
-                                  { label: 'Debilidades del rival', field: 'preRivalWeaknesses', placeholder: 'Dónde sufren: espalda, centros laterales, presión, duelos...' },
+                                  { label: 'Bloque defensivo', field: 'preRivalDefensiveBlock', type: 'chips', options: ['Alto', 'Medio', 'Bajo'] },
+                                  { label: 'Presión', field: 'preRivalPressure', type: 'chips', options: ['Alta', 'Media', 'Baja'] },
+                                  { label: 'Tipo de presión', field: 'preRivalPressureType', type: 'chips', options: ['Hombre a hombre', 'Orientada a banda', 'Sobre pivote', 'Salta central', 'Repliega', 'Tras pérdida'], multiple: true },
+                                  { label: 'Deja espacios', field: 'preRivalSpacesAllowed', type: 'chips', options: ['Espalda lateral', 'Entre líneas', 'Lado débil', 'Frontal', 'Espalda centrales', 'Segundo palo'], multiple: true },
+                                  { label: 'Defiende centros', field: 'preRivalDefendsCrosses', type: 'chips', options: ['Zona', 'Hombre', 'Sufre segundo palo', 'Sufre rechace', 'Defiende área fuerte'], multiple: true },
+                                  { label: 'Defiende espalda', field: 'preRivalDefendsBack', type: 'chips', options: ['Línea alta', 'Línea baja', 'Centrales lentos', 'Buenas coberturas', 'Sufre rupturas'], multiple: true },
+                                  { label: 'Fortalezas', field: 'preRivalStrengths', placeholder: 'Qué hace muy bien...', wide: true },
+                                  { label: 'Debilidades', field: 'preRivalWeaknesses', placeholder: 'Dónde sufre más...', wide: true },
                                 ],
                               },
                               {
-                                id: 'transitions',
-                                title: 'Transiciones',
-                                description: 'Qué hacen ambos equipos tras pérdida y tras robo.',
+                                id: 'transitionsSetPieces',
+                                title: '4. Transiciones y ABP',
+                                description: 'Dos apartados rápidos para no dejar lo importante fuera.',
                                 fields: [
-                                  { label: 'Transiciones rival', field: 'preRivalTransitions', type: 'select', options: ['Directas', 'Equilibradas', 'Pausadas'] },
-                                  { label: 'Qué hace tras pérdida', field: 'preRivalAfterLoss', placeholder: 'Presiona, repliega, falta táctica, queda partido...' },
-                                  { label: 'Qué hace tras robo', field: 'preRivalAfterRecovery', placeholder: 'Primer pase vertical, busca punta, temporiza...' },
-                                  { label: 'Jugadores que lanzan transición', field: 'preRivalTransitionLaunchers', placeholder: 'Nombres, perfil, pase, conducción...' },
-                                  { label: 'Zonas donde corre mejor', field: 'preRivalBestRunningZones', placeholder: 'Banda izquierda, espalda lateral, carril central...' },
-                                  { label: 'Qué hacer tras pérdida', field: 'preCaudalAfterLoss', placeholder: 'Presión inmediata, cerrar dentro, falta táctica...' },
-                                  { label: 'Qué hacer tras robo', field: 'preCaudalAfterRecovery', placeholder: 'Primer pase, atacar espalda, asegurar posesión...' },
-                                ],
-                              },
-                              {
-                                id: 'setPieces',
-                                title: 'ABP',
-                                description: 'Balón parado ofensivo y defensivo del rival.',
-                                fields: [
-                                  { label: 'Córners ofensivos', field: 'preRivalCornersFor', placeholder: 'Tipo de golpeo, movimientos, bloqueos...' },
-                                  { label: 'Córners defensivos', field: 'preRivalCornersAgainst', placeholder: 'Zona, hombre, deja rechace, marcas débiles...' },
-                                  { label: 'Faltas laterales', field: 'preRivalWideFreeKicks', placeholder: 'Cómo las lanzan y cómo las defienden...' },
-                                  { label: 'Lanzadores', field: 'preRivalSetPieceTakers', placeholder: 'Nombres y pierna...' },
-                                  { label: 'Rematadores principales', field: 'preRivalMainHeaders', placeholder: 'Nombres, zona de remate, bloqueos...' },
+                                  { label: 'Tras pérdida rival', field: 'preRivalAfterLoss', type: 'chips', options: ['Presiona', 'Repliega', 'Falta táctica', 'Queda partido', 'Salta desordenado'], multiple: true },
+                                  { label: 'Tras robo rival', field: 'preRivalAfterRecovery', type: 'chips', options: ['Primer pase vertical', 'Busca punta', 'Corre bandas', 'Temporiza', 'Ataca espalda'], multiple: true },
+                                  { label: 'Nuestro tras pérdida', field: 'preCaudalAfterLoss', type: 'chips', options: ['Presión inmediata', 'Cerrar dentro', 'Temporizar', 'Falta táctica', 'Replegar bloque medio'], multiple: true },
+                                  { label: 'Nuestro tras robo', field: 'preCaudalAfterRecovery', type: 'chips', options: ['Primer pase vertical', 'Atacar espalda', 'Cambiar orientación', 'Asegurar posesión', 'Buscar delantero'], multiple: true },
+                                  { label: 'ABP rival', field: 'preRivalCornersFor', type: 'chips', options: ['Córner cerrado', 'Córner abierto', 'Bloqueos', 'Primer palo', 'Segundo palo', 'Rechace frontal'], multiple: true },
+                                  { label: 'ABP a atacar', field: 'preRivalCornersAgainst', type: 'chips', options: ['Sufre zona', 'Sufre hombre', 'Deja rechace', 'Mal segundo palo', 'Portero no sale'], multiple: true },
                                 ],
                               },
                               {
                                 id: 'caudalPlan',
-                                title: 'Nuestro plan',
-                                description: 'Plan con balón, sin balón y espacios que queremos atacar.',
+                                title: '5. Plan rápido Caudal',
+                                description: 'Qué queremos hacer y qué debemos evitar.',
                                 fields: [
-                                  { label: 'Nuestra intención para ganar', field: 'preCaudalIntent', placeholder: 'Ej. presión alta, atacar espalda de laterales, controlar mediocampo...' },
-                                  { label: 'Plan con balón', field: 'preCaudalBuildPlan', placeholder: 'Qué queremos hacer cuando tenemos balón...' },
-                                  { label: 'Cómo queremos iniciar', field: 'preCaudalStartPlay', placeholder: 'Salida corta/larga, atraer, jugar directo...' },
-                                  { label: 'Por dónde queremos progresar', field: 'preCaudalProgressionPlan', placeholder: 'Carril central, lado débil, banda concreta...' },
-                                  { label: 'Dónde queremos atacar', field: 'preCaudalAttackZones', placeholder: 'Intervalos, espalda, frontal, centros...' },
-                                  { label: 'Qué jugadores queremos activar', field: 'preCaudalPlayersToActivate', placeholder: 'Nombres y cómo activarles...' },
-                                  { label: 'Qué espacios queremos buscar', field: 'preCaudalSpacesToFind', placeholder: 'Espalda lateral, zona pivote, segundo palo...' },
-                                  { label: 'Dónde queremos presionar', field: 'preCaudalPressPlan', placeholder: 'Central derecho, lateral, pase al pivote...' },
-                                  { label: 'Qué jugadores rivales queremos tapar', field: 'preCaudalRivalsToBlock', placeholder: 'Nombres y líneas de pase a cerrar...' },
-                                  { label: 'Cómo defender sus puntos fuertes', field: 'preCaudalDefendStrengths', placeholder: 'Ayudas, coberturas, emparejamientos...' },
-                                  { label: 'Qué evitar', field: 'preCaudalAvoid', placeholder: 'Pérdidas interiores, faltas laterales, ida y vuelta...' },
+                                  { label: 'Intención', field: 'preCaudalIntent', type: 'chips', options: ['Presionar alto', 'Bloque medio', 'Atacar espalda', 'Dominar balón', 'Ser directo', 'Proteger área'], multiple: true },
+                                  { label: 'Iniciar', field: 'preCaudalStartPlay', type: 'chips', options: ['Salida corta', 'Salida de tres', 'Atraer y saltar', 'Jugar directo', 'Buscar segunda jugada'], multiple: true },
+                                  { label: 'Progresar', field: 'preCaudalProgressionPlan', type: 'chips', options: ['Por dentro', 'Por fuera', 'Lado débil', 'Tercer hombre', 'Cambio orientación'], multiple: true },
+                                  { label: 'Atacar', field: 'preCaudalAttackZones', type: 'chips', options: ['Espalda lateral', 'Intervalo central-lateral', 'Entre líneas', 'Frontal', 'Segundo palo', 'Centros laterales'], multiple: true },
+                                  { label: 'Presionar', field: 'preCaudalPressPlan', type: 'chips', options: ['Central', 'Lateral', 'Pivote', 'Pase atrás', 'Saque de banda', 'Tras control malo'], multiple: true },
+                                  { label: 'Evitar', field: 'preCaudalAvoid', type: 'chips', options: ['Pérdidas interiores', 'Faltas laterales', 'Partido ida y vuelta', 'Centros sin área', 'Saltar sin cobertura'], multiple: true },
+                                  { label: 'Jugadores a activar', field: 'preCaudalPlayersToActivate', placeholder: 'Nombres propios si los hay...' },
+                                  { label: 'Rivales a tapar', field: 'preCaudalRivalsToBlock', placeholder: 'Nombres propios si los hay...' },
                                 ],
                               },
                               {
-                                id: 'duels',
-                                title: 'Duelos individuales',
-                                description: 'Emparejamientos y jugadores que condicionan el partido.',
+                                id: 'extraInfo',
+                                title: '6. Información adicional para IA',
+                                description: 'Notas grupales o individuales que no encajan en el checklist.',
                                 fields: [
-                                  { label: 'Emparejamientos clave', field: 'preKeyMatchups', placeholder: 'Ej. nuestro lateral vs su extremo, pivote vs mediapunta...' },
                                   { label: 'Jugador nuestro a potenciar', field: 'preCaudalPlayerToBoost', placeholder: 'Nombre, zona y por qué...' },
                                   { label: 'Jugador rival a vigilar', field: 'preRivalPlayerToWatch', placeholder: 'Nombre, amenaza y cómo reducirle...' },
-                                  { label: 'Duelos importantes', field: 'preImportantDuels', placeholder: 'Duelos físicos, velocidad, juego aéreo, segunda jugada...' },
+                                  { label: 'Duelos importantes', field: 'preImportantDuels', placeholder: 'Duelos físicos, velocidad, juego aéreo, segunda jugada...', wide: true },
+                                  { label: 'Información adicional grupal o individual', field: 'preAiSupportNotes', placeholder: 'Ej. nuestro lateral llega tocado, su extremo no defiende, queremos proteger a un juvenil, el campo está pesado...', wide: true },
                                 ],
                               },
                             ].map(renderQuestionnaireSection)}
@@ -4482,7 +5216,7 @@ function App() {
                               </button>
                             </div>
                           </div>
-                          <div className="grid min-w-0 gap-5 2xl:grid-cols-[260px_minmax(0,1fr)_260px]">
+                          <div className="grid min-w-0 gap-5 2xl:grid-cols-[240px_minmax(0,1fr)_240px]">
                             <div className="min-w-0 rounded-3xl bg-[#0f1e38]/80 p-4">
                               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Plantilla Caudal</p>
                               <p className="mt-2 text-sm text-slate-400">
@@ -4556,9 +5290,13 @@ function App() {
                               </div>
                             </div>
                           </div>
-                          <div className="mt-4 rounded-3xl bg-[#0f1e38]/80 p-5">
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Aportaciones individuales seleccionadas</p>
-                            <div className="mt-3 grid gap-4 lg:grid-cols-3">
+                          <div className="mt-4 overflow-hidden rounded-3xl border border-white/5 bg-[#0f1e38]/80">
+                            <div className="border-b border-white/10 px-5 py-4">
+                              <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Aportaciones individuales seleccionadas</p>
+                              <p className="mt-1 text-sm text-slate-400">Compara al jugador del Caudal con su rival directo y separa acciones ofensivas y defensivas.</p>
+                            </div>
+                            <div className="grid gap-4 p-5 xl:grid-cols-[minmax(0,0.85fr)_minmax(420px,1.15fr)]">
+                              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
                               <label className="space-y-2 text-sm text-slate-300">
                                 <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Nota jugador Caudal</span>
                                 <textarea
@@ -4579,19 +5317,35 @@ function App() {
                                   className="min-h-[150px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
                                 />
                               </label>
-                              <div>
-                            {selectedMatch.preAiAnalysis?.individualByPlayer?.[selectedTacticalPlayerIndex] ? (
-                              <div className="mt-3">
-                                <h5 className="text-lg font-semibold text-white">{selectedMatch.preAiAnalysis.individualByPlayer[selectedTacticalPlayerIndex].playerName}</h5>
-                                {getSelectedRivalLineupName() ? (
-                                  <p className="mt-1 text-sm text-rose-200">Rival seleccionado: {getSelectedRivalLineupName()}</p>
-                                ) : null}
-                                <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-300">
-                                  {selectedMatch.preAiAnalysis.individualByPlayer[selectedTacticalPlayerIndex].advice.map((item) => (
-                                    <li key={item}>{item}</li>
-                                  ))}
-                                </ul>
                               </div>
+                              <div className="min-w-0 rounded-3xl bg-[#091428]/70 p-4">
+                            {selectedMatch.preAiAnalysis?.individualByPlayer?.[selectedTacticalPlayerIndex] ? (
+                              (() => {
+                                const playerAdvice = selectedMatch.preAiAnalysis.individualByPlayer[selectedTacticalPlayerIndex];
+                                const tacticalAdvice = getIndividualAdviceForRender(playerAdvice);
+                                return (
+                                  <div>
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                      <div>
+                                        <h5 className="text-xl font-black text-white">{playerAdvice.playerName}</h5>
+                                        <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-caudal-electric">{playerAdvice.role}</p>
+                                      </div>
+                                      {getSelectedRivalLineupName() ? (
+                                        <div className="rounded-2xl bg-rose-300/10 px-4 py-3 text-right">
+                                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-rose-200">Rival seleccionado</p>
+                                          <p className="mt-1 text-sm font-bold text-white">{getSelectedRivalLineupName()}</p>
+                                        </div>
+                                      ) : (
+                                        <div className="rounded-2xl bg-white/5 px-4 py-3 text-right">
+                                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Sin marca específica</p>
+                                          <p className="mt-1 text-sm font-bold text-slate-300">Rol + sistema rival</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {renderIndividualTacticalAdvice(tacticalAdvice)}
+                                  </div>
+                                );
+                              })()
                             ) : (
                               <p className="mt-3 text-sm text-slate-400">Pulsa "Analizar sistemas" y después selecciona un jugador del Caudal en el campo.</p>
                             )}
@@ -4614,33 +5368,78 @@ function App() {
                               Analizar sistemas
                             </button>
                           </div>
+                          {(() => {
+                            const inputSummary = selectedMatch.preAiAnalysis?.inputSummary || getAiInputSummary();
+                            const confidenceClass = inputSummary.confidence === 'Alta'
+                              ? 'bg-emerald-400/15 text-emerald-300'
+                              : inputSummary.confidence === 'Media'
+                                ? 'bg-amber-300/15 text-amber-200'
+                                : 'bg-rose-400/15 text-rose-200';
+
+                            return (
+                              <div className="mt-5 overflow-hidden rounded-3xl border border-white/10 bg-[#0f1e38]/80">
+                                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
+                                  <div>
+                                    <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Datos usados por la IA</p>
+                                    <p className="mt-1 text-sm text-slate-400">Esto es lo que entra al análisis cuando pulsas el botón.</p>
+                                  </div>
+                                  <span className={`rounded-2xl px-4 py-2 text-xs font-black uppercase tracking-[0.16em] ${confidenceClass}`}>
+                                    Confianza {inputSummary.confidence}
+                                  </span>
+                                </div>
+                                <div className="grid gap-4 p-5 xl:grid-cols-[1fr_0.75fr]">
+                                  <div>
+                                    <div className="flex flex-wrap gap-2">
+                                      {inputSummary.tags.map((tag) => (
+                                        <span key={tag} className="rounded-full bg-caudal-electric/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-caudal-electric">
+                                          {tag}
+                                        </span>
+                                      ))}
+                                    </div>
+                                    <div className="mt-4 grid gap-2 md:grid-cols-2">
+                                      {inputSummary.filledInputs.slice(0, 10).map(([label, value]) => (
+                                        <div key={label} className="rounded-2xl bg-white/5 p-3">
+                                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                                          <p className="mt-1 line-clamp-2 text-sm font-semibold text-white">{value}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <div className="space-y-3">
+                                    <div className="rounded-2xl bg-white/5 p-4">
+                                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Rivales con características</p>
+                                      {inputSummary.rivalPlayersWithNotes.length ? (
+                                        <div className="mt-3 space-y-2">
+                                          {inputSummary.rivalPlayersWithNotes.slice(0, 5).map(([name, note]) => (
+                                            <p key={name} className="text-sm text-slate-300"><span className="font-bold text-white">{name}:</span> {note}</p>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <p className="mt-2 text-sm text-slate-400">Aún no hay características individuales del rival.</p>
+                                      )}
+                                    </div>
+                                    {inputSummary.missingInputs.length ? (
+                                      <div className="rounded-2xl border border-amber-300/15 bg-amber-300/10 p-4">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-200">Para hacerlo más real</p>
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                          {inputSummary.missingInputs.map(([label]) => (
+                                            <span key={label} className="rounded-full bg-black/20 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-amber-100">{label}</span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
                           {selectedMatch.preAiAnalysis ? (
                             <div className="mt-6 space-y-4">
-                              <div className="grid gap-4 lg:grid-cols-2">
-                                {[
-                                  { title: 'Lectura general del partido', value: selectedMatch.preAiAnalysis.generalReading },
-                                  { title: 'Ventajas para el C.D. Caudal', value: selectedMatch.preAiAnalysis.advantages },
-                                  { title: 'Riesgos principales', value: selectedMatch.preAiAnalysis.risks },
-                                  { title: 'Cómo atacar al rival', value: selectedMatch.preAiAnalysis.attackPlan },
-                                  { title: 'Cómo defender al rival', value: selectedMatch.preAiAnalysis.defendPlan },
-                                  { title: 'Transiciones', value: selectedMatch.preAiAnalysis.transitionsPlan },
-                                  { title: 'Duelos individuales clave', value: selectedMatch.preAiAnalysis.duelsPlan },
-                                  { title: 'Plan de partido recomendado', value: selectedMatch.preAiAnalysis.recommendedPlan },
-                                  { title: 'Ajustes si el partido se complica', value: selectedMatch.preAiAnalysis.complicationAdjustments },
-                                ].map((group) => (
-                                  <div key={group.title} className="rounded-3xl bg-[#0f1e38]/80 p-5">
-                                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{group.title}</p>
-                                    {Array.isArray(group.value) ? (
-                                      <ul className="mt-3 space-y-3 text-sm leading-7 text-slate-300">
-                                        {group.value.map((item) => (
-                                          <li key={item}>{item}</li>
-                                        ))}
-                                      </ul>
-                                    ) : (
-                                      <p className="mt-3 text-sm leading-7 text-slate-300">{group.value || 'Analiza los sistemas y las alineaciones para generar una recomendación concreta.'}</p>
-                                    )}
-                                  </div>
-                                ))}
+                              <div className="grid gap-4">
+                                {getTacticalBlocksForRender(selectedMatch.preAiAnalysis).map((block) => renderTacticalBlock({
+                                  ...block,
+                                  sourceTags: block.sourceTags || selectedMatch.preAiAnalysis.inputSummary?.tags?.slice(0, 4),
+                                }))}
                               </div>
                             </div>
                           ) : (
