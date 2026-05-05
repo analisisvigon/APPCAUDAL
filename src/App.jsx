@@ -1,36 +1,9 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { supabase } from './lib/supabase';
+
 const clubCrest =
   'https://tmssl.akamaized.net//images/wappen/head/13226.png?lm=1747769013';
-
-const teamsStorageKey = 'caudal-opponent-teams';
-const matchesStorageKey = 'caudal-matches';
-
-const besoccerPlayerImage = (id) =>
-  `https://cdn.resfu.com/img_data/players/medium/${id}.jpg?size=120x&lossy=1`;
-
-const samplePlayers = [
-  { id: 1, name: 'Pablo Díez', dob: '2002-02-13', number: 1, position: 'Portero', foot: 'Ambas', image: besoccerPlayerImage(993926) },
-  { id: 2, name: 'Roberto Jara', dob: '1998-09-10', number: 1, position: 'Portero', foot: 'Derecha', image: '' },
-  { id: 3, name: 'Javi Moral', dob: '2005-03-19', number: 13, position: 'Portero', foot: 'No indicada', image: '' },
-  { id: 4, name: 'Roberto Albuquerque', dob: '1993-11-04', number: 4, position: 'Defensa central', foot: 'No indicada', image: besoccerPlayerImage(3337542) },
-  { id: 5, name: 'Agustín Porto', dob: '1995-03-20', number: 20, position: 'Defensa central', foot: 'No indicada', image: '' },
-  { id: 6, name: 'Mario Sánchez', dob: '2004-09-14', number: 5, position: 'Defensa central', foot: 'Derecha', image: besoccerPlayerImage(996212) },
-  { id: 7, name: 'Borja Rodríguez', dob: '1998-10-21', number: 19, position: 'Lateral izquierdo', foot: 'No indicada', image: besoccerPlayerImage(190774) },
-  { id: 8, name: 'Marcos Trabanco', dob: '2001-02-27', number: 2, position: 'Lateral derecho', foot: 'No indicada', image: besoccerPlayerImage(921989) },
-  { id: 9, name: 'Sergio Ordóñez', dob: '2001-01-04', number: 21, position: 'Lateral derecho', foot: 'Derecha', image: besoccerPlayerImage(934311) },
-  { id: 10, name: 'Santi Cabrera', dob: '2005-01-01', number: 17, position: 'Lateral derecho', foot: 'No indicada', image: '' },
-  { id: 11, name: 'Vicente Antuña', dob: '2005-01-01', number: 6, position: 'Mediocentro', foot: 'No indicada', image: '' },
-  { id: 12, name: 'Kike Fanjul', dob: '1993-12-24', number: 8, position: 'Mediocentro', foot: 'Derecha', image: besoccerPlayerImage(192110) },
-  { id: 13, name: 'Michael Oladipupo', dob: '2004-03-06', number: 24, position: 'Mediocentro', foot: 'No indicada', image: '' },
-  { id: 14, name: 'Iván Elena', dob: '1999-04-27', number: 22, position: 'Mediocentro ofensivo', foot: 'Ambas', image: besoccerPlayerImage(393748) },
-  { id: 15, name: 'Julio Delgado', dob: '1996-01-28', number: 18, position: 'Extremo izquierdo', foot: 'No indicada', image: besoccerPlayerImage(232521) },
-  { id: 16, name: 'Diego Boza', dob: '2002-08-23', number: 7, position: 'Extremo izquierdo', foot: 'No indicada', image: '' },
-  { id: 17, name: 'Nacho Velardi', dob: '1995-01-26', number: 10, position: 'Extremo derecho', foot: 'Izquierda', image: besoccerPlayerImage(414456) },
-  { id: 18, name: 'Diego Montequín', dob: '2002-02-05', number: 11, position: 'Extremo derecho', foot: 'Derecha', image: besoccerPlayerImage(951254) },
-  { id: 19, name: 'Claudio Medina', dob: '1993-09-04', number: 9, position: 'Delantero centro', foot: 'No indicada', image: besoccerPlayerImage(188741) },
-  { id: 20, name: 'Jairo Cárcaba', dob: '1992-05-27', number: 14, position: 'Delantero centro', foot: 'Derecha', image: besoccerPlayerImage(110439) },
-];
 
 const positions = [
   'Portero',
@@ -73,14 +46,6 @@ const squadGroups = [
 const gameSystems = ['4-4-2', '4-2-3-1', '4-3-3', '3-5-2', '3-4-3', '3-4-1-2', '5-3-2', '5-4-1', 'Otro'];
 const matchTypes = ['Liga', 'Copa RFEF', 'Play off', 'Amistoso'];
 const matchFilters = ['Todos', ...matchTypes];
-const defaultEventTypes = [
-  { id: 'goal-for', name: 'Gol favor', color: 'emerald' },
-  { id: 'goal-against', name: 'Gol rival', color: 'red' },
-  { id: 'chance', name: 'Ocasión', color: 'sky' },
-  { id: 'recovery', name: 'Recuperación', color: 'violet' },
-  { id: 'loss', name: 'Pérdida', color: 'amber' },
-  { id: 'card', name: 'Tarjeta', color: 'orange' },
-];
 const eventColorOptions = ['emerald', 'red', 'sky', 'violet', 'amber', 'orange', 'slate'];
 const goalPhaseOptions = {
   'Juego combinativo': ['Dentro del área', 'Fuera del área'],
@@ -248,6 +213,245 @@ const emptyTeamForm = {
 
 const emptyLineup = [];
 const emptyDepthChart = {};
+
+const normalizeSupabaseJugador = (player) => ({
+  id: player.id,
+  name: player.name ?? player.nombre ?? '',
+  dob: player.dob ?? player.fecha_nacimiento ?? '',
+  number: Number(player.number ?? player.dorsal) || 0,
+  position: player.position ?? player.posicion ?? '',
+  foot: player.foot ?? player.pierna ?? '',
+  image: player.image ?? player.imagen ?? '',
+});
+
+async function getJugadores() {
+  const { data, error } = await supabase.from("jugadores").select("*")
+  if (error) throw error
+  return (data || []).map(normalizeSupabaseJugador)
+}
+
+const createJugadorPayload = (formState) => ({
+  name: formState.name.trim() || 'Jugador sin nombre',
+  dob: formState.dob,
+  number: Number(formState.number) || 0,
+  position: formState.position,
+  foot: formState.foot,
+  image: formState.image.trim(),
+});
+
+const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+
+const snakeToCamel = (value) => value.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+
+const mapSnakeRowToCamel = (row) =>
+  Object.fromEntries(Object.entries(row || {}).map(([key, value]) => [snakeToCamel(key), value]));
+
+const partidoPreFieldMap = {
+  preNotes: 'pre_notes',
+  planConBalon: 'plan_con_balon',
+  planSinBalon: 'plan_sin_balon',
+  planTransiciones: 'plan_transiciones',
+  planClave: 'plan_clave',
+  planObjetivo: 'plan_objetivo',
+  abpEnlace: 'abp_enlace',
+  abpOfensiva: 'abp_ofensiva',
+  abpDefensiva: 'abp_defensiva',
+  preCanvaLink: 'pre_canva_link',
+  preRivalReportText: 'pre_rival_report_text',
+  preRivalReportExtraction: 'pre_rival_report_extraction',
+  preCaudalSystem: 'pre_caudal_system',
+  preRivalSystem: 'pre_rival_system',
+  preRivalStyle: 'pre_rival_style',
+  preRivalStrengths: 'pre_rival_strengths',
+  preRivalWeaknesses: 'pre_rival_weaknesses',
+  preRivalBuildUp: 'pre_rival_build_up',
+  preRivalDefensiveBlock: 'pre_rival_defensive_block',
+  preRivalPressure: 'pre_rival_pressure',
+  preRivalTransitions: 'pre_rival_transitions',
+  preAiAnalysis: 'pre_ai_analysis',
+};
+
+const partidoPostFieldMap = {
+  postVideoLink: 'post_video_link',
+  postNotes: 'post_notes',
+  postReality: 'post_reality',
+  postFulfilled: 'post_fulfilled',
+  postNotFulfilled: 'post_not_fulfilled',
+  postWhy: 'post_why',
+  postNextAdjustment: 'post_next_adjustment',
+  postRepeat: 'post_repeat',
+  postImprove: 'post_improve',
+  postTrainWeek: 'post_train_week',
+  postIndividualObservations: 'post_individual_observations',
+  postAiAnalysis: 'post_ai_analysis',
+};
+
+const partidoWritableFieldMap = {
+  ...partidoPreFieldMap,
+  ...partidoPostFieldMap,
+};
+
+Object.keys(emptyMatchForm)
+  .filter((key) => key.startsWith('preRival') || key.startsWith('preCaudal'))
+  .forEach((key) => {
+    partidoPreFieldMap[key] = key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+  });
+
+const normalizeSupabasePartido = (match) =>
+  normalizeMatch({
+    ...mapSnakeRowToCamel(match),
+    id: match.id,
+    date: match.date || '',
+    time: match.time || '',
+    type: match.type || 'Liga',
+    round: match.round || '',
+    stadium: match.stadium || '',
+    opponent: match.opponent || '',
+    opponentCrest: match.opponent_crest || '',
+    homeTeam: match.home_team || 'C.D. Caudal',
+    awayTeam: match.away_team || '',
+    isHome: Boolean(match.is_home),
+    status: match.status || 'Previa',
+    homeScore: match.home_score || '',
+    awayScore: match.away_score || '',
+    goalsFor: match.goals_for || '',
+    goalsAgainst: match.goals_against || '',
+    statsSystem: match.stats_system || '4-4-2',
+    equipoRivalId: match.equipo_rival_id || null,
+  });
+
+const createPartidoPayload = (matchFormState, teams = []) => {
+  const selectedTeam = findTeamByDisplayName(teams, matchFormState.opponent);
+  const equipoRivalId = isUuid(selectedTeam?.id) ? selectedTeam.id : null;
+  return {
+    date: matchFormState.date || null,
+    time: matchFormState.time || '',
+    type: matchFormState.type || 'Liga',
+    round: matchFormState.round || '',
+    stadium: matchFormState.stadium || '',
+    opponent: matchFormState.opponent || '',
+    opponent_crest: matchFormState.opponentCrest || '',
+    is_home: Boolean(matchFormState.isHome),
+    status: matchFormState.status || 'Previa',
+    home_team: matchFormState.isHome ? 'C.D. Caudal' : matchFormState.opponent,
+    away_team: matchFormState.isHome ? matchFormState.opponent : 'C.D. Caudal',
+    home_score: matchFormState.homeScore || '',
+    away_score: matchFormState.awayScore || '',
+    goals_for: matchFormState.goalsFor || '',
+    goals_against: matchFormState.goalsAgainst || '',
+    equipo_rival_id: equipoRivalId,
+  };
+};
+
+const normalizeSupabaseGoalEvent = (event) => ({
+  id: event.id,
+  partidoId: event.partido_id,
+  type: event.type || 'Gol a favor',
+  half: event.half || '1ª parte',
+  minute: event.minute || '',
+  scorer: event.scorer || '',
+  assistant: event.assistant || '',
+  phase: event.phase || 'Juego combinativo',
+  subphase: event.subphase || 'Dentro del área',
+  shotZone: event.shot_zone || 'F.Creación centro',
+  assistZone: event.assist_zone || 'F.Creación centro',
+  goalZone: event.goal_zone || 'Media centro',
+  contact: event.contact || 'Pie derecho',
+  videoUrl: event.video_url || '',
+});
+
+const createGoalEventPayload = (partidoId, draft) => ({
+  partido_id: partidoId,
+  type: draft.type,
+  half: draft.half,
+  minute: draft.minute,
+  scorer: draft.scorer,
+  assistant: draft.assistant,
+  phase: draft.phase,
+  subphase: draft.subphase,
+  shot_zone: draft.shotZone,
+  assist_zone: draft.assistZone,
+  goal_zone: draft.goalZone,
+  contact: draft.contact,
+  video_url: draft.videoUrl,
+});
+
+const normalizeSupabasePostEventType = (eventType) => ({
+  id: eventType.id,
+  legacyId: eventType.legacy_id || null,
+  name: eventType.name || '',
+  color: eventType.color || 'slate',
+  isDefault: Boolean(eventType.is_default),
+});
+
+const normalizeSupabasePostEvent = (event) => ({
+  id: event.id,
+  legacyId: event.legacy_id || null,
+  tipoEventoId: event.tipo_evento_id || null,
+  minute: event.minute || '',
+  type: event.type || '',
+  description: event.description || '',
+  player: event.player || '',
+  videoSeconds: Number(event.video_seconds || 0),
+});
+
+const normalizeSupabaseRivalPlayer = (player) => ({
+  id: player.id ?? player.legacy_id ?? player.name,
+  legacyId: player.legacy_id ?? null,
+  name: player.name ?? '',
+  image: player.image ?? '',
+  number: player.number ?? '',
+  position: player.position ?? '',
+  age: player.age ?? '',
+  role: player.role ?? 'Reserva',
+  isKey: Boolean(player.is_key),
+  yellowRisk: Boolean(player.yellow_risk),
+  suspended: Boolean(player.suspended),
+  injured: Boolean(player.injured),
+});
+
+const createRivalPlayerPayload = (teamId, player) => ({
+  equipo_rival_id: teamId,
+  legacy_id: player.legacyId ?? (!isUuid(player.id) ? String(player.id || player.name) : null),
+  name: player.name,
+  image: player.image || '',
+  number: String(player.number || ''),
+  position: player.position || '',
+  age: String(player.age || ''),
+  role: player.role || 'Reserva',
+  is_key: Boolean(player.isKey),
+  yellow_risk: Boolean(player.yellowRisk),
+  suspended: Boolean(player.suspended),
+  injured: Boolean(player.injured),
+});
+
+const createRivalTeamPayload = (teamFormState, importedData) => ({
+  name: cleanTeamDisplayName(teamFormState.name.trim() || importedData?.name || 'Equipo sin nombre'),
+  source_url: normalizeSourceUrl(teamFormState.sourceUrl),
+  crest: importedData?.crest || teamFormState.crest || '',
+  stadium: teamFormState.stadium.trim(),
+  kit_color: teamFormState.kitColor || '#ef233c',
+  system: teamFormState.system || '4-4-2',
+});
+
+const sanitizeStorageName = (value) =>
+  String(value || 'archivo')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9.-]/gi, '-')
+    .replace(/-+/g, '-')
+    .toLowerCase();
+
+const uploadPublicFile = async ({ bucket, file, folder = '' }) => {
+  if (!file) return '';
+  const extension = file.name.includes('.') ? file.name.split('.').pop() : 'jpg';
+  const baseName = sanitizeStorageName(file.name.replace(/\.[^.]+$/, ''));
+  const storagePath = [folder, `${Date.now()}-${baseName}.${extension}`].filter(Boolean).join('/');
+  const { error: uploadError } = await supabase.storage.from(bucket).upload(storagePath, file, { upsert: true });
+  if (uploadError) throw uploadError;
+  const { data } = supabase.storage.from(bucket).getPublicUrl(storagePath);
+  return data.publicUrl;
+};
 
 const formationLayouts = {
   '4-4-2': [
@@ -1612,23 +1816,20 @@ const renderTacticalBlock = (block) => (
 
 function App() {
   const [activeTab, setActiveTab] = useState('Inicio');
-  const [players, setPlayers] = useState(samplePlayers);
-  const [teams, setTeams] = useState(() => {
-    try {
-      const savedTeams = window.localStorage.getItem(teamsStorageKey);
-      return savedTeams ? JSON.parse(savedTeams) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [matches, setMatches] = useState(() => {
-    try {
-      const savedMatches = window.localStorage.getItem(matchesStorageKey);
-      return savedMatches ? JSON.parse(savedMatches).map(normalizeMatch) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [players, setPlayers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [empty, setEmpty] = useState(false);
+  const [isSavingPlayer, setIsSavingPlayer] = useState(false);
+  const [playerFormError, setPlayerFormError] = useState('');
+  const [teams, setTeams] = useState([]);
+  const [teamsLoading, setTeamsLoading] = useState(false);
+  const [teamsError, setTeamsError] = useState('');
+  const [isUploadingPlayerImage, setIsUploadingPlayerImage] = useState(false);
+  const [isUploadingTeamCrest, setIsUploadingTeamCrest] = useState(false);
+  const [homeLoading, setHomeLoading] = useState(false);
+  const [homeError, setHomeError] = useState('');
+  const [matches, setMatches] = useState([]);
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [draggedPlayer, setDraggedPlayer] = useState(null);
   const [importStatus, setImportStatus] = useState('');
@@ -1636,6 +1837,10 @@ function App() {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isTeamPanelOpen, setIsTeamPanelOpen] = useState(false);
   const [isMatchPanelOpen, setIsMatchPanelOpen] = useState(false);
+  const [preLoading, setPreLoading] = useState(false);
+  const [preError, setPreError] = useState('');
+  const [postLoading, setPostLoading] = useState(false);
+  const [postError, setPostError] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editingTeamId, setEditingTeamId] = useState(null);
   const [editingMatchId, setEditingMatchId] = useState(null);
@@ -1657,9 +1862,9 @@ function App() {
     caudalPlan: true,
     extraInfo: true,
   });
-  const [eventTypes, setEventTypes] = useState(defaultEventTypes);
-  const [selectedEventType, setSelectedEventType] = useState(defaultEventTypes[0].name);
-  const [newEventDraft, setNewEventDraft] = useState({ minute: '', type: defaultEventTypes[0].name, description: '', player: '' });
+  const [eventTypes, setEventTypes] = useState([]);
+  const [selectedEventType, setSelectedEventType] = useState('');
+  const [newEventDraft, setNewEventDraft] = useState({ minute: '', type: '', description: '', player: '' });
   const [newEventTypeDraft, setNewEventTypeDraft] = useState({ name: '', color: 'slate' });
   const [postVideoStartSeconds, setPostVideoStartSeconds] = useState(0);
   const [postCurrentMinute, setPostCurrentMinute] = useState('');
@@ -1671,10 +1876,15 @@ function App() {
   const [playerInfluenceFilter, setPlayerInfluenceFilter] = useState('Todos');
   const [selectedTimelineAction, setSelectedTimelineAction] = useState(null);
   const [playerReport, setPlayerReport] = useState(null);
+  const [playerProfileData, setPlayerProfileData] = useState(null);
+  const [playerProfileLoading, setPlayerProfileLoading] = useState(false);
+  const [playerProfileError, setPlayerProfileError] = useState('');
   const [groupCompetitionFilter, setGroupCompetitionFilter] = useState('Todos');
   const [groupContextFilter, setGroupContextFilter] = useState('Todos');
   const [groupAssistFilter, setGroupAssistFilter] = useState('Todas');
   const [groupShotFilter, setGroupShotFilter] = useState('Ambos');
+  const [groupLoading, setGroupLoading] = useState(false);
+  const [groupError, setGroupError] = useState('');
   const [idealSystem, setIdealSystem] = useState('4-4-2');
   const [formState, setFormState] = useState({
     name: '',
@@ -1687,8 +1897,521 @@ function App() {
   const [teamFormState, setTeamFormState] = useState(emptyTeamForm);
   const [matchFormState, setMatchFormState] = useState(emptyMatchForm);
   const [matchFormSection, setMatchFormSection] = useState('PRE');
+  const playerImageInputRef = useRef(null);
+  const teamCrestInputRef = useRef(null);
   const preSectionRef = useRef(null);
   const postSectionRef = useRef(null);
+
+  const loadTeams = async () => {
+    setTeamsLoading(true);
+    setTeamsError('');
+
+    try {
+      const [teamsResponse, playersResponse, lineupResponse, benchResponse] = await Promise.all([
+        supabase.from("equipos_rivales").select("*").order("name", { ascending: true }),
+        supabase.from("jugadores_rivales").select("*").order("name", { ascending: true }),
+        supabase.from("equipo_rival_alineacion").select("*").order("slot", { ascending: true }),
+        supabase.from("equipo_rival_banquillo").select("*").order("slot", { ascending: true }),
+      ]);
+      const failed = [teamsResponse, playersResponse, lineupResponse, benchResponse].find((response) => response.error);
+      if (failed) throw failed.error;
+
+      const playersByTeam = (playersResponse.data || []).reduce((acc, player) => {
+        acc[player.equipo_rival_id] = [...(acc[player.equipo_rival_id] || []), normalizeSupabaseRivalPlayer(player)];
+        return acc;
+      }, {});
+      const lineupByTeam = (lineupResponse.data || []).reduce((acc, row) => {
+        const player = normalizeSupabaseRivalPlayer({
+          ...(row.player_snapshot || {}),
+          id: row.jugador_rival_id || row.player_name,
+          name: row.player_name,
+          role: row.role || 'Titular',
+        });
+        acc[row.equipo_rival_id] = [
+          ...(acc[row.equipo_rival_id] || []),
+          { ...player, role: row.role || 'Titular', slot: row.slot, x: row.x, y: row.y },
+        ];
+        return acc;
+      }, {});
+      const benchByTeam = (benchResponse.data || []).reduce((acc, row) => {
+        const slots = [...(acc[row.equipo_rival_id]?.[row.starter_name] || [null, null])];
+        while (slots.length < 2) slots.push(null);
+        slots[row.slot] = row.player_name
+          ? normalizeSupabaseRivalPlayer({
+              ...(row.player_snapshot || {}),
+              id: row.jugador_rival_id || row.player_name,
+              name: row.player_name,
+              role: 'Reserva',
+            })
+          : null;
+        acc[row.equipo_rival_id] = { ...(acc[row.equipo_rival_id] || {}), [row.starter_name]: slots };
+        return acc;
+      }, {});
+
+      const nextTeams = (teamsResponse.data || []).map((team) => ({
+        id: team.id,
+        legacyId: team.legacy_id ?? null,
+        name: team.name || '',
+        sourceUrl: team.source_url || '',
+        crest: team.crest || '',
+        stadium: team.stadium || '',
+        kitColor: team.kit_color || '#ef233c',
+        system: team.system || '4-4-2',
+        squad: playersByTeam[team.id] || [],
+        lineup: lineupByTeam[team.id] || emptyLineup,
+        benchChart: benchByTeam[team.id] || emptyDepthChart,
+      }));
+
+      setTeams(nextTeams);
+      return nextTeams;
+    } catch (loadError) {
+      console.error('Error cargando equipos rivales desde Supabase:', loadError);
+      setTeamsError(loadError.message || 'No se pudieron cargar los equipos.');
+      return [];
+    } finally {
+      setTeamsLoading(false);
+    }
+  };
+
+  const persistTeamLineup = async (teamId, lineup) => {
+    const { error: deleteError } = await supabase.from("equipo_rival_alineacion").delete().eq("equipo_rival_id", teamId);
+    if (deleteError) throw deleteError;
+    const rows = (lineup || []).map((player, index) => ({
+      equipo_rival_id: teamId,
+      jugador_rival_id: isUuid(player.id) ? player.id : null,
+      player_name: player.name,
+      slot: Number.isInteger(player.slot) ? player.slot : index,
+      role: player.role || 'Titular',
+      x: player.x ?? null,
+      y: player.y ?? null,
+      player_snapshot: normalizeSquadEntry(player),
+    }));
+    if (!rows.length) return;
+    const { error: insertError } = await supabase.from("equipo_rival_alineacion").insert(rows);
+    if (insertError) throw insertError;
+  };
+
+  const persistTeamBench = async (teamId, benchChart) => {
+    const { error: deleteError } = await supabase.from("equipo_rival_banquillo").delete().eq("equipo_rival_id", teamId);
+    if (deleteError) throw deleteError;
+    const rows = Object.entries(benchChart || {}).flatMap(([starterName, slots]) =>
+      (slots || []).map((player, slot) => ({
+        equipo_rival_id: teamId,
+        starter_name: starterName,
+        slot,
+        jugador_rival_id: player && isUuid(player.id) ? player.id : null,
+        player_name: player?.name || null,
+        player_snapshot: player ? normalizeSquadEntry(player) : {},
+      }))
+    );
+    if (!rows.length) return;
+    const { error: insertError } = await supabase.from("equipo_rival_banquillo").insert(rows);
+    if (insertError) throw insertError;
+  };
+
+  const loadPartidos = async () => {
+    const { data, error: partidosError } = await supabase
+      .from("partidos")
+      .select("*")
+      .order("date", { ascending: false, nullsFirst: false });
+    if (partidosError) throw partidosError;
+    const nextMatches = (data || []).map(normalizeSupabasePartido);
+    setMatches(nextMatches);
+    return nextMatches;
+  };
+
+  const loadHomeDashboardData = async () => {
+    setHomeLoading(true);
+    setHomeError('');
+
+    try {
+      const [partidosResponse, jugadoresResponse, equiposResponse] = await Promise.all([
+        supabase.from("partidos").select("*").order("date", { ascending: true, nullsFirst: false }),
+        supabase.from("jugadores").select("*").order("name", { ascending: true }),
+        supabase.from("equipos_rivales").select("*").order("name", { ascending: true }),
+      ]);
+      const failed = [partidosResponse, jugadoresResponse, equiposResponse].find((response) => response.error);
+      if (failed) throw failed.error;
+
+      const nextPlayers = (jugadoresResponse.data || []).map(normalizeSupabaseJugador);
+      const nextMatches = (partidosResponse.data || []).map(normalizeSupabasePartido);
+      const baseTeams = (equiposResponse.data || []).map((team) => ({
+        id: team.id,
+        legacyId: team.legacy_id ?? null,
+        name: team.name || '',
+        sourceUrl: team.source_url || '',
+        crest: team.crest || '',
+        stadium: team.stadium || '',
+        kitColor: team.kit_color || '#ef233c',
+        system: team.system || '4-4-2',
+      }));
+
+      setPlayers(nextPlayers);
+      setEmpty(nextPlayers.length === 0);
+      setMatches(nextMatches);
+      setTeams((currentTeams) =>
+        baseTeams.map((team) => {
+          const currentTeam = currentTeams.find((item) => item.id === team.id);
+          return {
+            ...currentTeam,
+            ...team,
+            squad: currentTeam?.squad || [],
+            lineup: currentTeam?.lineup || emptyLineup,
+            benchChart: currentTeam?.benchChart || emptyDepthChart,
+          };
+        })
+      );
+
+      return { players: nextPlayers, matches: nextMatches, teams: baseTeams };
+    } catch (dashboardError) {
+      console.error('Error cargando Inicio desde Supabase:', dashboardError);
+      setHomeError(dashboardError.message || 'No se pudo cargar el dashboard de Inicio.');
+      return null;
+    } finally {
+      setHomeLoading(false);
+    }
+  };
+
+  const loadMatchStatsData = async (partidoId) => {
+    const [
+      partidoResponse,
+      convocadosResponse,
+      statsResponse,
+      goalsResponse,
+      slotsResponse,
+    ] = await Promise.all([
+      supabase.from("partidos").select("*").eq("id", partidoId).single(),
+      supabase.from("partido_convocados").select("*").eq("partido_id", partidoId),
+      supabase.from("partido_estadisticas_jugador").select("*").eq("partido_id", partidoId),
+      supabase.from("partido_eventos_gol").select("*").eq("partido_id", partidoId).order("minute", { ascending: true }),
+      supabase.from("partido_alineacion_slots").select("*").eq("partido_id", partidoId).eq("scope", "stats").order("slot", { ascending: true }),
+    ]);
+
+    const responses = [partidoResponse, convocadosResponse, statsResponse, goalsResponse, slotsResponse];
+    const failed = responses.find((response) => response.error);
+    if (failed) throw failed.error;
+
+    const statsLineup = Array.from({ length: 11 }, () => '');
+    (slotsResponse.data || []).forEach((slot) => {
+      if (Number.isInteger(slot.slot) && slot.slot >= 0 && slot.slot < 11) statsLineup[slot.slot] = slot.player_name || '';
+    });
+
+    const statsPlayerData = {};
+    (statsResponse.data || []).forEach((row) => {
+      statsPlayerData[row.player_name] = {
+        role: row.role || 'Suplente',
+        minutes: row.minutes ?? '',
+        yellow: Boolean(row.yellow),
+        yellowCount: Number(row.yellow_count || 0),
+        red: Boolean(row.red),
+        injured: Boolean(row.injured),
+        rating: row.rating || '',
+        replacementName: row.replacement_name || '',
+        jugadorId: row.jugador_id || null,
+      };
+    });
+
+    const detailedMatch = {
+      ...normalizeSupabasePartido(partidoResponse.data),
+      statsCalledPlayers: (convocadosResponse.data || []).map((row) => row.player_name),
+      statsPlayerData,
+      statsGoalEvents: (goalsResponse.data || []).map(normalizeSupabaseGoalEvent),
+      statsLineup,
+    };
+
+    setMatches((current) => current.map((match) => (match.id === partidoId ? { ...match, ...detailedMatch } : match)));
+    return detailedMatch;
+  };
+
+  const loadMatchPreData = async (partidoId) => {
+    setPreLoading(true);
+    setPreError('');
+
+    try {
+      const [partidoResponse, convocadosResponse, slotsResponse, notesResponse] = await Promise.all([
+        supabase.from("partidos").select("*").eq("id", partidoId).single(),
+        supabase.from("partido_convocados").select("*").eq("partido_id", partidoId),
+        supabase.from("partido_alineacion_slots").select("*").eq("partido_id", partidoId).in("scope", ["pre_caudal", "pre_rival"]).order("slot", { ascending: true }),
+        supabase.from("partido_notas_individuales_pre").select("*").eq("partido_id", partidoId),
+      ]);
+
+      const failed = [partidoResponse, convocadosResponse, slotsResponse, notesResponse].find((response) => response.error);
+      if (failed) throw failed.error;
+
+      const preCaudalLineup = Array.from({ length: 11 }, () => '');
+      const preRivalLineup = Array.from({ length: 11 }, () => '');
+      (slotsResponse.data || []).forEach((slot) => {
+        if (!Number.isInteger(slot.slot) || slot.slot < 0 || slot.slot > 10) return;
+        if (slot.scope === 'pre_caudal') preCaudalLineup[slot.slot] = slot.player_name || '';
+        if (slot.scope === 'pre_rival') preRivalLineup[slot.slot] = slot.player_name || '';
+      });
+
+      const prePlayerNotes = {};
+      const preRivalPlayerNotes = {};
+      (notesResponse.data || []).forEach((note) => {
+        if (note.scope === 'caudal') prePlayerNotes[note.player_name] = note.note || '';
+        if (note.scope === 'rival') preRivalPlayerNotes[note.player_name] = note.note || '';
+      });
+
+      const detailedMatch = {
+        ...normalizeSupabasePartido(partidoResponse.data),
+        statsCalledPlayers: (convocadosResponse.data || []).map((row) => row.player_name),
+        preCaudalLineup,
+        preRivalLineup,
+        prePlayerNotes,
+        preRivalPlayerNotes,
+      };
+
+      setMatches((current) => current.map((match) => (match.id === partidoId ? { ...match, ...detailedMatch } : match)));
+      return detailedMatch;
+    } catch (loadError) {
+      console.error('Error cargando PRE desde Supabase:', loadError);
+      setPreError(loadError.message || 'No se pudo cargar el PRE.');
+      return null;
+    } finally {
+      setPreLoading(false);
+    }
+  };
+
+  const loadMatchPostData = async (partidoId) => {
+    setPostLoading(true);
+    setPostError('');
+
+    try {
+      const [partidoResponse, postEventsResponse, eventTypesResponse, statsResponse, goalsResponse] = await Promise.all([
+        supabase.from("partidos").select("*").eq("id", partidoId).single(),
+        supabase.from("partido_eventos_post").select("*").eq("partido_id", partidoId).order("minute", { ascending: true }),
+        supabase.from("tipos_evento_post").select("*").order("name", { ascending: true }),
+        supabase.from("partido_estadisticas_jugador").select("*").eq("partido_id", partidoId),
+        supabase.from("partido_eventos_gol").select("*").eq("partido_id", partidoId).order("minute", { ascending: true }),
+      ]);
+
+      const failed = [partidoResponse, postEventsResponse, eventTypesResponse, statsResponse, goalsResponse].find((response) => response.error);
+      if (failed) throw failed.error;
+
+      const nextEventTypes = (eventTypesResponse.data || []).map(normalizeSupabasePostEventType);
+      setEventTypes(nextEventTypes);
+      setSelectedEventType((current) => nextEventTypes.some((eventType) => eventType.name === current) ? current : nextEventTypes[0]?.name || '');
+      setNewEventDraft((current) => ({
+        ...current,
+        type: nextEventTypes.some((eventType) => eventType.name === current.type) ? current.type : nextEventTypes[0]?.name || '',
+      }));
+
+      const statsPlayerData = {};
+      (statsResponse.data || []).forEach((row) => {
+        statsPlayerData[row.player_name] = {
+          role: row.role || 'Suplente',
+          minutes: row.minutes ?? '',
+          yellow: Boolean(row.yellow),
+          yellowCount: Number(row.yellow_count || 0),
+          red: Boolean(row.red),
+          injured: Boolean(row.injured),
+          rating: row.rating || '',
+          replacementName: row.replacement_name || '',
+        };
+      });
+
+      const detailedMatch = {
+        ...normalizeSupabasePartido(partidoResponse.data),
+        events: (postEventsResponse.data || []).map(normalizeSupabasePostEvent),
+        statsPlayerData,
+        statsGoalEvents: (goalsResponse.data || []).map(normalizeSupabaseGoalEvent),
+      };
+
+      setMatches((current) => current.map((match) => (match.id === partidoId ? { ...match, ...detailedMatch } : match)));
+      return detailedMatch;
+    } catch (loadError) {
+      console.error('Error cargando POST desde Supabase:', loadError);
+      setPostError(loadError.message || 'No se pudo cargar el POST.');
+      return null;
+    } finally {
+      setPostLoading(false);
+    }
+  };
+
+  const saveMatchLineupSlot = async ({ matchId, scope, slotIndex, playerName, jugadorRivalId = null }) => {
+    const player = scope === 'pre_caudal'
+      ? players.find((item) => item.name === playerName)
+      : getRivalAvailablePlayers().find((item) => item.name === playerName);
+    const payload = {
+      partido_id: matchId,
+      scope,
+      slot: slotIndex,
+      player_name: playerName,
+      jugador_id: scope === 'pre_caudal' && isUuid(player?.id) ? player.id : null,
+      jugador_rival_id: scope === 'pre_rival' ? (isUuid(jugadorRivalId) ? jugadorRivalId : isUuid(player?.id) ? player.id : null) : null,
+    };
+    const { error: slotError } = await supabase
+      .from("partido_alineacion_slots")
+      .upsert(payload, { onConflict: "partido_id,scope,slot" });
+    if (slotError) throw slotError;
+  };
+
+  const clearMatchLineupSlot = async ({ matchId, scope, slotIndex }) => {
+    const { error: slotError } = await supabase
+      .from("partido_alineacion_slots")
+      .delete()
+      .eq("partido_id", matchId)
+      .eq("scope", scope)
+      .eq("slot", slotIndex);
+    if (slotError) throw slotError;
+  };
+
+  const loadGroupAnalysisData = async () => {
+    setGroupLoading(true);
+    setGroupError('');
+
+    try {
+      const [partidosResponse, statsResponse, goalsResponse] = await Promise.all([
+        supabase.from("partidos").select("*").order("date", { ascending: true, nullsFirst: false }),
+        supabase.from("partido_estadisticas_jugador").select("*"),
+        supabase.from("partido_eventos_gol").select("*"),
+      ]);
+
+      const failed = [partidosResponse, statsResponse, goalsResponse].find((response) => response.error);
+      if (failed) throw failed.error;
+
+      const statsByMatch = (statsResponse.data || []).reduce((acc, row) => {
+        const current = acc[row.partido_id] || {};
+        current[row.player_name] = {
+          role: row.role || 'Suplente',
+          minutes: row.minutes ?? '',
+          yellow: Boolean(row.yellow),
+          yellowCount: Number(row.yellow_count || 0),
+          red: Boolean(row.red),
+          injured: Boolean(row.injured),
+          rating: row.rating || '',
+          replacementName: row.replacement_name || '',
+        };
+        acc[row.partido_id] = current;
+        return acc;
+      }, {});
+
+      const eventsByMatch = (goalsResponse.data || []).reduce((acc, event) => {
+        acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseGoalEvent(event)];
+        return acc;
+      }, {});
+
+      setMatches((partidosResponse.data || []).map((match) => ({
+        ...normalizeSupabasePartido(match),
+        statsGoalEvents: eventsByMatch[match.id] || [],
+        statsPlayerData: statsByMatch[match.id] || {},
+      })));
+    } catch (analysisError) {
+      console.error('Error cargando análisis grupal desde Supabase:', analysisError);
+      setGroupError(analysisError.message || 'No se pudo cargar el análisis grupal.');
+    } finally {
+      setGroupLoading(false);
+    }
+  };
+
+  const loadPlayerProfileData = async (player) => {
+    if (!player) return null;
+    setPlayerProfileLoading(true);
+    setPlayerProfileError('');
+
+    try {
+      const statsRequests = [
+        supabase.from("partido_estadisticas_jugador").select("*").eq("player_name", player.name),
+      ];
+      if (isUuid(player.id)) {
+        statsRequests.push(supabase.from("partido_estadisticas_jugador").select("*").eq("jugador_id", player.id));
+      }
+
+      const [scoredResponse, assistedResponse, ...statsResponses] = await Promise.all([
+        supabase.from("partido_eventos_gol").select("*").eq("scorer", player.name),
+        supabase.from("partido_eventos_gol").select("*").eq("assistant", player.name),
+        ...statsRequests,
+      ]);
+
+      const failed = [scoredResponse, assistedResponse, ...statsResponses].find((response) => response.error);
+      if (failed) throw failed.error;
+
+      const statsByKey = new Map();
+      statsResponses.flatMap((response) => response.data || []).forEach((row) => {
+        statsByKey.set(`${row.partido_id}-${row.player_name}`, row);
+      });
+      const statsRows = Array.from(statsByKey.values());
+
+      const goalEventsById = new Map();
+      [...(scoredResponse.data || []), ...(assistedResponse.data || [])].forEach((event) => {
+        goalEventsById.set(event.id, normalizeSupabaseGoalEvent(event));
+      });
+      const goalEvents = Array.from(goalEventsById.values());
+
+      const partidoIds = Array.from(new Set([
+        ...statsRows.map((row) => row.partido_id),
+        ...[...(scoredResponse.data || []), ...(assistedResponse.data || [])].map((event) => event.partido_id),
+      ].filter(Boolean)));
+
+      let partidosById = {};
+      if (partidoIds.length) {
+        const { data: partidoRows, error: partidosError } = await supabase.from("partidos").select("*").in("id", partidoIds);
+        if (partidosError) throw partidosError;
+        partidosById = Object.fromEntries((partidoRows || []).map((match) => [match.id, normalizeSupabasePartido(match)]));
+      }
+
+      const nextProfileData = { statsRows, goalEvents, partidosById };
+      setPlayerProfileData(nextProfileData);
+      return nextProfileData;
+    } catch (profileError) {
+      console.error('Error cargando ficha individual desde Supabase:', profileError);
+      setPlayerProfileError(profileError.message || 'No se pudo cargar la ficha del jugador.');
+      setPlayerProfileData(null);
+      return null;
+    } finally {
+      setPlayerProfileLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadJugadores = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const jugadores = await getJugadores();
+        if (!isMounted) return;
+        setPlayers(jugadores);
+        setEmpty(jugadores.length === 0);
+      } catch (loadError) {
+        if (!isMounted) return;
+        setPlayers([]);
+        setError(loadError.message || 'No se pudieron cargar los jugadores');
+        setEmpty(false);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    loadJugadores();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    loadPartidos().catch((loadError) => {
+      console.error('Error cargando partidos desde Supabase:', loadError);
+    });
+  }, []);
+
+  useEffect(() => {
+    loadTeams();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'Inicio') return;
+    loadHomeDashboardData();
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'Análisis Grupal') return;
+    loadGroupAnalysisData();
+  }, [activeTab]);
 
   const selectedTeam = useMemo(
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
@@ -1725,9 +2448,23 @@ function App() {
     );
   }, [teams]);
 
-  const updateSelectedMatchFields = (fields) => {
+  const updateSelectedMatchFields = async (fields) => {
     if (!selectedMatch) return;
     setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? { ...match, ...fields } : match)));
+    const payload = Object.fromEntries(
+      Object.entries(fields)
+        .filter(([field]) => partidoWritableFieldMap[field])
+        .map(([field, value]) => [partidoWritableFieldMap[field], value])
+    );
+    if (!Object.keys(payload).length) return;
+    const { error: updateError } = await supabase.from("partidos").update(payload).eq("id", selectedMatch.id);
+    if (updateError) {
+      console.error('Error guardando campos PRE en Supabase:', updateError);
+      setPreError(updateError.message || 'No se pudo guardar el PRE.');
+      return;
+    }
+    if (Object.keys(fields).some((field) => partidoPostFieldMap[field])) await loadMatchPostData(selectedMatch.id);
+    else await loadMatchPreData(selectedMatch.id);
   };
 
   const parseLineupText = (text) => text.split('\n').map((line) => line.trim()).filter(Boolean);
@@ -1958,33 +2695,67 @@ function App() {
     setNewEventDraft((prev) => ({ ...prev, [field]: value }));
   };
 
-  const addNewEvent = () => {
+  const addNewEvent = async () => {
     if (!selectedMatch) return;
     const minute = newEventDraft.minute || postCurrentMinute;
     if (!minute || !newEventDraft.description) return;
-    const nextEvent = {
-      id: Date.now(),
+    const selectedType = eventTypes.find((eventType) => eventType.name === newEventDraft.type);
+    if (!newEventDraft.type && !selectedEventType) {
+      setPostError('Carga o crea un tipo de evento POST antes de guardar.');
+      return;
+    }
+    const payload = {
+      partido_id: selectedMatch.id,
+      tipo_evento_id: selectedType?.id || null,
       minute,
-      type: newEventDraft.type,
+      type: newEventDraft.type || selectedEventType,
       description: newEventDraft.description,
       player: newEventDraft.player,
-      videoSeconds: Math.max(0, Math.round(Number(minute) * 60)),
+      video_seconds: Math.max(0, Math.round(Number(minute) * 60)),
     };
-    updateSelectedMatchFields({ events: [...(selectedMatch.events || []), nextEvent] });
+    const request = newEventDraft.id
+      ? supabase.from("partido_eventos_post").update(payload).eq("id", newEventDraft.id)
+      : supabase.from("partido_eventos_post").insert(payload);
+    const { error: eventError } = await request;
+    if (eventError) {
+      console.error('Error guardando evento POST en Supabase:', eventError);
+      setPostError(eventError.message || 'No se pudo guardar el evento POST.');
+      return;
+    }
     setNewEventDraft({ minute: '', type: selectedEventType, description: '', player: '' });
+    await loadMatchPostData(selectedMatch.id);
   };
 
-  const addEventType = () => {
+  const addEventType = async () => {
     const name = newEventTypeDraft.name.trim();
     if (!name) return;
-    const nextType = { id: `custom-${Date.now()}`, name, color: newEventTypeDraft.color };
+    const { data, error: typeError } = await supabase
+      .from("tipos_evento_post")
+      .insert({ legacy_id: `custom-${Date.now()}`, name, color: newEventTypeDraft.color, is_default: false })
+      .select("*")
+      .single();
+    if (typeError) {
+      console.error('Error creando tipo de evento POST en Supabase:', typeError);
+      setPostError(typeError.message || 'No se pudo crear el tipo de evento.');
+      return;
+    }
+    const nextType = normalizeSupabasePostEventType(data);
     setEventTypes((current) => [...current, nextType]);
     setSelectedEventType(name);
     setNewEventDraft((prev) => ({ ...prev, type: name }));
     setNewEventTypeDraft({ name: '', color: 'slate' });
   };
 
-  const updateEventType = (id, fields) => {
+  const updateEventType = async (id, fields) => {
+    const payload = {};
+    if (fields.name !== undefined) payload.name = fields.name;
+    if (fields.color !== undefined) payload.color = fields.color;
+    const { error: typeError } = await supabase.from("tipos_evento_post").update(payload).eq("id", id);
+    if (typeError) {
+      console.error('Error actualizando tipo de evento POST en Supabase:', typeError);
+      setPostError(typeError.message || 'No se pudo actualizar el tipo de evento.');
+      return;
+    }
     setEventTypes((current) =>
       current.map((eventType) => {
         if (eventType.id !== id) return eventType;
@@ -1998,7 +2769,13 @@ function App() {
     );
   };
 
-  const removeEventType = (id) => {
+  const removeEventType = async (id) => {
+    const { error: typeError } = await supabase.from("tipos_evento_post").delete().eq("id", id);
+    if (typeError) {
+      console.error('Error borrando tipo de evento POST en Supabase:', typeError);
+      setPostError(typeError.message || 'No se pudo borrar el tipo de evento.');
+      return;
+    }
     setEventTypes((current) => {
       const nextTypes = current.filter((eventType) => eventType.id !== id);
       const fallback = nextTypes[0]?.name || '';
@@ -2014,6 +2791,29 @@ function App() {
     const seconds = Number(event.videoSeconds) || Math.max(0, Math.round(Number(event.minute || 0) * 60));
     setPostVideoStartSeconds(seconds);
     setPostCurrentMinute(event.minute || '');
+  };
+
+  const editPostEvent = (event) => {
+    setSelectedEventType(event.type);
+    setPostCurrentMinute(event.minute || '');
+    setNewEventDraft({
+      id: event.id,
+      minute: event.minute || '',
+      type: event.type || selectedEventType,
+      description: event.description || '',
+      player: event.player || '',
+    });
+  };
+
+  const deletePostEvent = async (eventId) => {
+    if (!selectedMatch) return;
+    const { error: deleteError } = await supabase.from("partido_eventos_post").delete().eq("id", eventId);
+    if (deleteError) {
+      console.error('Error borrando evento POST en Supabase:', deleteError);
+      setPostError(deleteError.message || 'No se pudo borrar el evento POST.');
+      return;
+    }
+    await loadMatchPostData(selectedMatch.id);
   };
 
   const runPostAiAnalysis = () => {
@@ -2043,8 +2843,10 @@ function App() {
 
   const getStatsGoalEvents = () => selectedMatch?.statsGoalEvents || [];
   const getStatsScore = () => {
-    const caudalGoals = getStatsGoalEvents().filter((event) => event.type === 'Gol a favor').length;
-    const rivalGoals = getStatsGoalEvents().filter((event) => event.type === 'Gol en contra').length;
+    const eventCaudalGoals = getStatsGoalEvents().filter((event) => event.type === 'Gol a favor').length;
+    const eventRivalGoals = getStatsGoalEvents().filter((event) => event.type === 'Gol en contra').length;
+    const caudalGoals = eventCaudalGoals || Number(selectedMatch?.goalsFor) || Number(selectedMatch?.isHome ? selectedMatch?.homeScore : selectedMatch?.awayScore) || 0;
+    const rivalGoals = eventRivalGoals || Number(selectedMatch?.goalsAgainst) || Number(selectedMatch?.isHome ? selectedMatch?.awayScore : selectedMatch?.homeScore) || 0;
     return selectedMatch?.isHome
       ? { home: caudalGoals, away: rivalGoals, caudal: caudalGoals, rival: rivalGoals }
       : { home: rivalGoals, away: caudalGoals, caudal: caudalGoals, rival: rivalGoals };
@@ -2059,8 +2861,7 @@ function App() {
   };
 
   const getStatsCalledPlayerNames = () => {
-    if (selectedMatch?.statsCalledPlayers?.length) return selectedMatch.statsCalledPlayers;
-    return players.map((player) => player.name);
+    return selectedMatch?.statsCalledPlayers || [];
   };
 
   const getStatsCalledPlayers = () => {
@@ -2068,23 +2869,61 @@ function App() {
     return players.filter((player) => calledNames.includes(player.name));
   };
 
-  const removeStatsCalledPlayer = (playerName) => {
+  const removeStatsCalledPlayer = async (playerName) => {
     if (!selectedMatch) return;
-    const currentCalled = getStatsCalledPlayerNames();
-    const nextLineup = (selectedMatch.statsLineup || []).map((name) => (name === playerName ? '' : name));
-    updateSelectedMatchFields({
-      statsCalledPlayers: currentCalled.filter((name) => name !== playerName),
-      statsLineup: nextLineup,
-    });
+    const [{ error: convocadoError }, { error: statsError }, { error: slotsError }] = await Promise.all([
+      supabase.from("partido_convocados").delete().eq("partido_id", selectedMatch.id).eq("player_name", playerName),
+      supabase.from("partido_estadisticas_jugador").delete().eq("partido_id", selectedMatch.id).eq("player_name", playerName),
+      supabase.from("partido_alineacion_slots").delete().eq("partido_id", selectedMatch.id).eq("scope", "stats").eq("player_name", playerName),
+    ]);
+    const deleteError = convocadoError || statsError || slotsError;
+    if (deleteError) {
+      console.error('Error borrando convocado en Supabase:', deleteError);
+      return;
+    }
+    await loadMatchStatsData(selectedMatch.id);
   };
 
-  const addStatsCalledPlayer = (playerName) => {
+  const addStatsCalledPlayer = async (playerName) => {
     if (!selectedMatch) return;
     const currentCalled = getStatsCalledPlayerNames();
     if (currentCalled.includes(playerName)) return;
-    updateSelectedMatchFields({
-      statsCalledPlayers: [...currentCalled, playerName],
-    });
+    const player = players.find((item) => item.name === playerName);
+    const jugadorId = isUuid(player?.id) ? player.id : null;
+    const { error: convocadoError } = await supabase.from("partido_convocados").upsert(
+      {
+        partido_id: selectedMatch.id,
+        jugador_id: jugadorId,
+        player_name: playerName,
+      },
+      { onConflict: "partido_id,player_name" }
+    );
+    if (convocadoError) {
+      console.error('Error guardando convocado en Supabase:', convocadoError);
+      return;
+    }
+
+    const { error: statsError } = await supabase.from("partido_estadisticas_jugador").upsert(
+      {
+        partido_id: selectedMatch.id,
+        jugador_id: jugadorId,
+        player_name: playerName,
+        role: 'Suplente',
+        minutes: '0',
+        yellow: false,
+        yellow_count: 0,
+        red: false,
+        injured: false,
+        rating: '',
+        replacement_name: '',
+      },
+      { onConflict: "partido_id,player_name" }
+    );
+    if (statsError) {
+      console.error('Error inicializando rendimiento del convocado en Supabase:', statsError);
+      return;
+    }
+    await loadMatchStatsData(selectedMatch.id);
   };
 
   const getStatsPlayerData = (playerName) => {
@@ -2136,30 +2975,101 @@ function App() {
     return substitutes.length ? substitutes : calledPlayers.filter((player) => player.name !== starterName);
   };
 
-  const updateStatsPlayerData = (playerName, fields) => {
+  const updateStatsPlayerData = async (playerName, fields) => {
     if (!selectedMatch) return;
-    updateSelectedMatchFields({
-      statsPlayerData: {
-        ...(selectedMatch.statsPlayerData || {}),
-        [playerName]: {
-          ...(selectedMatch.statsPlayerData?.[playerName] || {}),
-          ...fields,
-        },
+    const current = getStatsPlayerData(playerName);
+    const player = players.find((item) => item.name === playerName);
+    const jugadorId = isUuid(player?.id) ? player.id : null;
+    const next = { ...current, ...fields };
+    const { error: statsError } = await supabase.from("partido_estadisticas_jugador").upsert(
+      {
+        partido_id: selectedMatch.id,
+        jugador_id: jugadorId,
+        player_name: playerName,
+        role: next.role,
+        minutes: String(next.minutes ?? ''),
+        yellow: Boolean(next.yellow),
+        yellow_count: Number(next.yellowCount || 0),
+        red: Boolean(next.red),
+        injured: Boolean(next.injured),
+        rating: String(next.rating || ''),
+        replacement_name: next.replacementName || '',
       },
-    });
+      { onConflict: "partido_id,player_name" }
+    );
+    if (statsError) {
+      console.error('Error guardando rendimiento individual en Supabase:', statsError);
+      return;
+    }
+    await loadMatchStatsData(selectedMatch.id);
   };
 
-  const updateStatsLineupSlot = (slotIndex, playerName) => {
+  const updateStatsLineupSlot = async (slotIndex, playerName) => {
     if (!selectedMatch || !playerName) return;
+    const player = players.find((item) => item.name === playerName);
+    const jugadorId = isUuid(player?.id) ? player.id : null;
     const calledNames = getStatsCalledPlayerNames();
-    const nextLineup = Array.from({ length: 11 }, (_, index) => selectedMatch.statsLineup?.[index] || '');
-    const repeatedIndex = nextLineup.findIndex((name, index) => name === playerName && index !== slotIndex);
-    if (repeatedIndex >= 0) nextLineup[repeatedIndex] = '';
-    nextLineup[slotIndex] = playerName;
-    updateSelectedMatchFields({
-      statsLineup: nextLineup,
-      statsCalledPlayers: calledNames.includes(playerName) ? calledNames : [...calledNames, playerName],
-    });
+    if (!calledNames.includes(playerName)) await addStatsCalledPlayer(playerName);
+
+    const repeatedSlots = (selectedMatch.statsLineup || [])
+      .map((name, index) => ({ name, index }))
+      .filter((entry) => entry.name === playerName && entry.index !== slotIndex);
+    if (repeatedSlots.length) {
+      const { error: repeatedError } = await supabase
+        .from("partido_alineacion_slots")
+        .delete()
+        .eq("partido_id", selectedMatch.id)
+        .eq("scope", "stats")
+        .in("slot", repeatedSlots.map((entry) => entry.index));
+      if (repeatedError) {
+        console.error('Error limpiando slots repetidos en Supabase:', repeatedError);
+        return;
+      }
+    }
+
+    const { error: slotError } = await supabase.from("partido_alineacion_slots").upsert(
+      {
+        partido_id: selectedMatch.id,
+        scope: 'stats',
+        slot: slotIndex,
+        player_name: playerName,
+        jugador_id: jugadorId,
+      },
+      { onConflict: "partido_id,scope,slot" }
+    );
+    if (slotError) {
+      console.error('Error guardando slot de alineación en Supabase:', slotError);
+      return;
+    }
+
+    const nextStats = { ...getStatsPlayerData(playerName), role: 'Titular', minutes: String(getStatsPlayerData(playerName).minutes || '90') };
+    await supabase.from("partido_estadisticas_jugador").upsert(
+      {
+        partido_id: selectedMatch.id,
+        jugador_id: jugadorId,
+        player_name: playerName,
+        role: 'Titular',
+        minutes: nextStats.minutes === '0' ? '90' : nextStats.minutes,
+        yellow: Boolean(nextStats.yellow),
+        yellow_count: Number(nextStats.yellowCount || 0),
+        red: Boolean(nextStats.red),
+        injured: Boolean(nextStats.injured),
+        rating: String(nextStats.rating || ''),
+        replacement_name: nextStats.replacementName || '',
+      },
+      { onConflict: "partido_id,player_name" }
+    );
+    await loadMatchStatsData(selectedMatch.id);
+  };
+
+  const updateStatsSystem = async (system) => {
+    if (!selectedMatch) return;
+    const { error: systemError } = await supabase.from("partidos").update({ stats_system: system }).eq("id", selectedMatch.id);
+    if (systemError) {
+      console.error('Error guardando sistema de estadísticas en Supabase:', systemError);
+      return;
+    }
+    await loadMatchStatsData(selectedMatch.id);
   };
 
   const handleDropOnStatsLineupSlot = (slotIndex) => {
@@ -2189,22 +3099,43 @@ function App() {
     });
   };
 
-  const saveGoalAnalysisEvent = () => {
+  const saveGoalAnalysisEvent = async () => {
     if (!selectedMatch || !goalAnalysisDraft.minute) return;
-    const nextEvents = [
-      ...(selectedMatch.statsGoalEvents || []),
-      { ...goalAnalysisDraft, id: Date.now() },
-    ];
+    const { error: goalError } = await supabase
+      .from("partido_eventos_gol")
+      .insert(createGoalEventPayload(selectedMatch.id, goalAnalysisDraft));
+    if (goalError) {
+      console.error('Error guardando análisis de gol en Supabase:', goalError);
+      return;
+    }
+
+    const { data: goalRows, error: goalsFetchError } = await supabase
+      .from("partido_eventos_gol")
+      .select("*")
+      .eq("partido_id", selectedMatch.id);
+    if (goalsFetchError) {
+      console.error('Error recalculando marcador desde Supabase:', goalsFetchError);
+      return;
+    }
+
+    const nextEvents = (goalRows || []).map(normalizeSupabaseGoalEvent);
     const caudalGoals = nextEvents.filter((event) => event.type === 'Gol a favor').length;
     const rivalGoals = nextEvents.filter((event) => event.type === 'Gol en contra').length;
-    updateSelectedMatchFields({
-      statsGoalEvents: nextEvents,
-      goalsFor: String(caudalGoals),
-      goalsAgainst: String(rivalGoals),
-      homeScore: selectedMatch.isHome ? String(caudalGoals) : String(rivalGoals),
-      awayScore: selectedMatch.isHome ? String(rivalGoals) : String(caudalGoals),
-    });
+    const scorePayload = {
+      goals_for: String(caudalGoals),
+      goals_against: String(rivalGoals),
+      home_score: selectedMatch.isHome ? String(caudalGoals) : String(rivalGoals),
+      away_score: selectedMatch.isHome ? String(rivalGoals) : String(caudalGoals),
+    };
+    const { error: matchScoreError } = await supabase.from("partidos").update(scorePayload).eq("id", selectedMatch.id);
+    if (matchScoreError) {
+      console.error('Error actualizando marcador del partido en Supabase:', matchScoreError);
+      return;
+    }
+
     setIsGoalAnalysisOpen(false);
+    await loadPartidos();
+    await loadMatchStatsData(selectedMatch.id);
   };
 
   const renderZoneGrid = ({ value, onChange, zones = pitchZoneOptions, goal = false }) => (
@@ -2318,44 +3249,41 @@ function App() {
 
   const getPlayerMatchRows = (player) => {
     if (!player) return [];
-    return matches
-      .filter((match) =>
-        playerCompetitionFilter === 'Todos' ||
-        match.type === playerCompetitionFilter ||
-        (playerCompetitionFilter === 'Playoff' && match.type === 'Play off')
-      )
-      .filter((match) => playerVenueFilter === 'Todos' || (playerVenueFilter === 'Local' ? match.isHome : !match.isHome))
-      .map((match) => {
-        const goalEvents = match.statsGoalEvents || [];
-        const stored = match.statsPlayerData?.[player.name] || {};
-        const lineup = match.statsLineup || [];
-        const calledNames = match.statsCalledPlayers || [];
-        const isStarter = lineup.includes(player.name);
-        const isCalled = calledNames.length
-          ? calledNames.includes(player.name)
-          : isStarter || Boolean(stored.minutes || stored.yellow || stored.red || stored.injured || stored.rating) || goalEvents.some((event) => event.scorer === player.name || event.assistant === player.name);
-        const goals = goalEvents.filter((event) => event.type === 'Gol a favor' && event.scorer === player.name);
-        const assists = goalEvents.filter((event) => event.type === 'Gol a favor' && event.assistant === player.name);
-        const postEvents = (match.events || []).filter((event) => event.player === player.name);
-        const yellow = Number(stored.yellowCount ?? (stored.yellow ? 1 : 0)) + postEvents.filter((event) => /tarjeta/i.test(event.type) && /amarilla/i.test(event.description || '')).length;
-        const red = Boolean(stored.red || postEvents.some((event) => /tarjeta/i.test(event.type) && /roja/i.test(event.description || '')));
-        const injured = Boolean(stored.injured || postEvents.some((event) => /lesi/i.test(`${event.type} ${event.description}`)));
-        const minutes = Number(stored.minutes ?? (isStarter ? 90 : 0)) || 0;
+    const statsRows = playerProfileData?.statsRows || [];
+    const goalEvents = playerProfileData?.goalEvents || [];
+    const partidosById = playerProfileData?.partidosById || {};
+
+    return statsRows
+      .map((stats) => {
+        const match = partidosById[stats.partido_id];
+        if (!match) return null;
+        const matchEvents = goalEvents.filter((event) => event.partidoId === stats.partido_id);
+        const yellowCount = Number(stats.yellow_count || 0) || (stats.yellow ? 1 : 0);
+        const cardActions = [
+          ...Array.from({ length: yellowCount }, (_, index) => ({ minute: stats.minutes || 90, type: `Tarjeta amarilla${yellowCount > 1 ? ` ${index + 1}` : ''}` })),
+          ...(stats.red ? [{ minute: stats.minutes || 90, type: 'Tarjeta roja' }] : []),
+        ];
         return {
           match,
-          isCalled,
-          role: isStarter ? 'Titular' : 'Suplente',
-          minutes,
-          goals,
-          assists,
-          yellow,
-          red,
-          injured,
-          rating: stored.rating || '',
-          postEvents,
+          isCalled: true,
+          role: stats.role || 'Suplente',
+          minutes: Number(stats.minutes || 0) || 0,
+          goals: matchEvents.filter((event) => event.scorer === player.name),
+          assists: matchEvents.filter((event) => event.assistant === player.name),
+          yellow: yellowCount,
+          red: Boolean(stats.red),
+          injured: Boolean(stats.injured),
+          rating: stats.rating || '',
+          cardActions,
         };
       })
-      .filter((row) => row.isCalled || row.minutes > 0 || row.goals.length || row.assists.length || row.yellow || row.red || row.injured);
+      .filter(Boolean)
+      .filter((row) =>
+        playerCompetitionFilter === 'Todos' ||
+        row.match.type === playerCompetitionFilter ||
+        (playerCompetitionFilter === 'Playoff' && row.match.type === 'Play off')
+      )
+      .filter((row) => playerVenueFilter === 'Todos' || (playerVenueFilter === 'Local' ? row.match.isHome : !row.match.isHome));
   };
 
   const getPlayerAggregate = (player) => {
@@ -2462,6 +3390,7 @@ function App() {
       .filter((match) => match.status === 'Finalizado' || (match.statsGoalEvents || []).length > 0)
       .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
     if (groupCompetitionFilter === 'Liga') scoped = scoped.filter((match) => match.type === 'Liga');
+    if (groupCompetitionFilter === 'Copa') scoped = scoped.filter((match) => /copa/i.test(match.type));
     if (groupCompetitionFilter === 'Copa RFEF') scoped = scoped.filter((match) => match.type === 'Copa RFEF');
     if (groupCompetitionFilter === 'Playoff') scoped = scoped.filter((match) => match.type === 'Play off');
     if (groupCompetitionFilter === 'Amistoso') scoped = scoped.filter((match) => match.type === 'Amistoso');
@@ -2576,6 +3505,7 @@ function App() {
       assists: 0,
       yellow: 0,
       red: 0,
+      injured: 0,
       minutes: 0,
       starts: 0,
       ratingTotal: 0,
@@ -2605,6 +3535,7 @@ function App() {
         }
         row.yellow += Number(stored.yellowCount ?? (stored.yellow ? 1 : 0)) || 0;
         row.red += stored.red ? 1 : 0;
+        row.injured += stored.injured ? 1 : 0;
         if (stored.rating) {
           row.ratingTotal += Number(stored.rating) || 0;
           row.ratingCount += 1;
@@ -2640,6 +3571,7 @@ function App() {
       scorers: top('goals'),
       assistants: top('assists'),
       booked: rows.filter((row) => row.cards > 0).sort((a, b) => b.cards - a.cards).slice(0, 5),
+      injured: top('injured'),
       minutes: top('minutes'),
       participations: top('goalParticipation'),
       idealRows: rows.filter((row) => row.idealScore > 0),
@@ -2720,6 +3652,32 @@ function App() {
     }, { playerName, minutes: 0, starts: 0, goals: 0, assists: 0, yellow: 0, red: 0, rating: 0, rated: 0 });
   };
 
+  const getGroupSubphaseRanking = (events) =>
+    Object.entries(countValues(events.map((event) => event.subphase)))
+      .filter(([subphase]) => subphase)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6);
+
+  const getGroupGoalZoneCounts = (events) => countValues(events.map((event) => event.goalZone));
+
+  const getGroupAlerts = (groupData, rankings, localSummary, awaySummary) => {
+    if (groupData.played < 3) return ['sin datos suficientes'];
+    const alerts = [];
+    const secondHalfAgainst = groupData.goalAgainstEvents.filter((event) => Number(event.minute) >= 45).length;
+    const firstHalfAgainst = groupData.goalAgainstEvents.length - secondHalfAgainst;
+    const abpFor = groupData.goalForEvents.filter((event) => event.phase === 'ABP').length;
+    const cardsLast = getGroupTendency(groupData.scoped).reduce((sum, row) => sum + row.cards, 0);
+    const topMinutes = rankings.minutes[0];
+
+    if (secondHalfAgainst > firstHalfAgainst) alerts.push('Encajamos más en la segunda parte');
+    if (abpFor >= Math.max(2, groupData.goalsFor * 0.35)) alerts.push('Marcamos más en ABP');
+    if (awaySummary.played >= 2 && Number(awaySummary.pointsPerGame) < Number(localSummary.pointsPerGame)) alerts.push('Sufrimos más como visitantes');
+    if (topMinutes && topMinutes.minutePct >= 80) alerts.push(`Alta carga de minutos en ${topMinutes.player.name}`);
+    if (cardsLast >= 8) alerts.push('Muchas tarjetas en últimos partidos');
+
+    return alerts.length ? alerts : ['sin datos suficientes'];
+  };
+
   const renderGroupMiniPitch = ({ counts, title }) => (
     <div className="rounded-3xl border border-white/10 bg-[#0f1e38]/80 p-5">
       <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">{title}</h4>
@@ -2770,12 +3728,34 @@ function App() {
     setSelectedTimelineAction(null);
   }, [selectedPlayerProfileId, playerCompetitionFilter, playerVenueFilter]);
 
-  const openMatchPage = (match, section) => {
+  useEffect(() => {
+    setPlayerReport(null);
+    setSelectedTimelineAction(null);
+    if (!selectedPlayerProfile) {
+      setPlayerProfileData(null);
+      setPlayerProfileError('');
+      return;
+    }
+    loadPlayerProfileData(selectedPlayerProfile);
+  }, [selectedPlayerProfileId]);
+
+  const openMatchPage = async (match, section) => {
     setSelectedMatchId(match.id);
     setMatchView(section === 'PRE' ? 'pre_partido' : section === 'ESTADÍSTICAS' ? 'estadisticas_partido' : 'post_partido');
     setMatchViewSection(section);
     if (section === 'PRE') {
       setPreSubTab('Informe rival');
+      await loadMatchPreData(match.id);
+    }
+    if (section === 'ESTADÍSTICAS') {
+      try {
+        await loadMatchStatsData(match.id);
+      } catch (loadError) {
+        console.error('Error cargando estadísticas del partido desde Supabase:', loadError);
+      }
+    }
+    if (section === 'POST') {
+      await loadMatchPostData(match.id);
     }
   };
 
@@ -2827,7 +3807,49 @@ function App() {
     return { total: scopedMatches.length, finished: finished.length, wins, goalsFor, goalsAgainst, cleanSheets, recent };
   }, [matches, matchFilter]);
 
+  const homeDashboard = useMemo(() => {
+    const scopedMatches = matchFilter === 'Todos' ? matches : matches.filter((match) => match.type === matchFilter);
+    const sortedMatches = [...scopedMatches].sort((a, b) => {
+      const dateCompare = String(a.date || '').localeCompare(String(b.date || ''));
+      if (dateCompare !== 0) return dateCompare;
+      return String(a.time || '').localeCompare(String(b.time || ''));
+    });
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const hasPlayedData = (match) => {
+      const score = getMatchScoreData(match);
+      return match.status === 'Finalizado' || (match.statsGoalEvents || []).length > 0 || score.caudalGoals > 0 || score.rivalGoals > 0;
+    };
+    const finished = sortedMatches.filter(hasPlayedData);
+    const nextMatch =
+      sortedMatches.find((match) => !hasPlayedData(match) && (!match.date || match.date >= todayKey)) ||
+      sortedMatches.find((match) => !hasPlayedData(match)) ||
+      null;
+    const lastMatch = finished[finished.length - 1] || null;
+    const balance = summarizeGroupMatches(finished);
+    const recent = finished.slice(-5).map((match) => {
+      const score = getMatchScoreData(match);
+      return {
+        id: match.id,
+        label: score.caudalGoals > score.rivalGoals ? 'V' : score.caudalGoals < score.rivalGoals ? 'D' : 'E',
+        match,
+      };
+    });
+
+    return {
+      scopedMatches,
+      nextMatch,
+      lastMatch,
+      balance,
+      recent,
+      playerCount: players.length,
+      sub23Count: players.filter((player) => calculateAge(player.dob) < 23).length,
+      rivalCount: teams.length,
+    };
+  }, [matches, players, teams, matchFilter]);
+
   const openForm = (player = null) => {
+    setPlayerFormError('');
+    setIsSavingPlayer(false);
     if (player) {
       setEditingId(player.id);
       setFormState({
@@ -2855,6 +3877,8 @@ function App() {
   const closeForm = () => {
     setIsPanelOpen(false);
     setEditingId(null);
+    setPlayerFormError('');
+    setIsSavingPlayer(false);
   };
 
   const openTeamForm = (team = null) => {
@@ -2888,9 +3912,56 @@ function App() {
     setFormState((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handlePlayerImageFileChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setIsUploadingPlayerImage(true);
+    setPlayerFormError('');
+    try {
+      const publicUrl = await uploadPublicFile({ bucket: 'jugadores', file, folder: sanitizeStorageName(formState.name || 'jugador') });
+      setFormState((prev) => ({ ...prev, image: publicUrl }));
+      if (editingId) {
+        const { error: updateError } = await supabase.from("jugadores").update({ image: publicUrl }).eq("id", editingId);
+        if (updateError) throw updateError;
+        const jugadores = await getJugadores();
+        setPlayers(jugadores);
+        setEmpty(jugadores.length === 0);
+      }
+    } catch (uploadError) {
+      console.error('Error subiendo foto de jugador a Supabase Storage:', uploadError);
+      setPlayerFormError(uploadError.message || 'No se pudo subir la foto del jugador.');
+    } finally {
+      setIsUploadingPlayerImage(false);
+      event.target.value = '';
+    }
+  };
+
   const handleTeamChange = (event) => {
     const { name, value } = event.target;
     setTeamFormState((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleTeamCrestFileChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setIsUploadingTeamCrest(true);
+    setImportStatus('');
+    try {
+      const publicUrl = await uploadPublicFile({ bucket: 'escudos', file, folder: sanitizeStorageName(teamFormState.name || 'equipo') });
+      setTeamFormState((prev) => ({ ...prev, crest: publicUrl }));
+      if (editingTeamId) {
+        const { error: updateError } = await supabase.from("equipos_rivales").update({ crest: publicUrl }).eq("id", editingTeamId);
+        if (updateError) throw updateError;
+        await loadTeams();
+      }
+      setImportStatus('Escudo subido a Supabase Storage.');
+    } catch (uploadError) {
+      console.error('Error subiendo escudo a Supabase Storage:', uploadError);
+      setImportStatus(uploadError.message || 'No se pudo subir el escudo.');
+    } finally {
+      setIsUploadingTeamCrest(false);
+      event.target.value = '';
+    }
   };
 
   const handleTeamPlayerChange = (index, field, value) => {
@@ -2902,29 +3973,21 @@ function App() {
     }));
   };
 
-  const handleSelectedTeamPlayerChange = (playerName, field, value) => {
+  const handleSelectedTeamPlayerChange = async (playerName, field, value) => {
     if (!selectedTeam) return;
-    setTeams((current) =>
-      current.map((team) => {
-        if (team.id !== selectedTeam.id) return team;
-        const updatePlayer = (entry) => {
-          const player = normalizeSquadEntry(entry);
-          return player.name === playerName ? { ...player, [field]: value } : player;
-        };
-
-        return {
-          ...team,
-          squad: team.squad.map(updatePlayer),
-          lineup: (team.lineup ?? emptyLineup).map(updatePlayer),
-          benchChart: Object.fromEntries(
-            Object.entries(team.benchChart ?? emptyDepthChart).map(([starterName, slots]) => [
-              starterName,
-              slots.map((entry) => (entry ? updatePlayer(entry) : entry)),
-            ])
-          ),
-        };
-      })
-    );
+    const currentPlayer = selectedTeam.squad.map(normalizeSquadEntry).find((player) => player.name === playerName);
+    if (!currentPlayer) return;
+    const nextPlayer = { ...currentPlayer, [field]: value };
+    const { error: updateError } = await supabase
+      .from("jugadores_rivales")
+      .update(createRivalPlayerPayload(selectedTeam.id, nextPlayer))
+      .eq("equipo_rival_id", selectedTeam.id)
+      .eq("name", playerName);
+    if (updateError) {
+      console.error('Error actualizando jugador rival en Supabase:', updateError);
+      return;
+    }
+    await loadTeams();
   };
 
   const handleAddTeamPlayer = () => {
@@ -2935,30 +3998,50 @@ function App() {
     setTeamFormState((prev) => ({ ...prev, squad: prev.squad.filter((_, playerIndex) => playerIndex !== index) }));
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
-    const payload = {
-      id: editingId ?? Date.now(),
-      name: formState.name.trim() || 'Jugador sin nombre',
-      dob: formState.dob,
-      number: Number(formState.number) || 0,
-      position: formState.position,
-      foot: formState.foot,
-      image: formState.image.trim(),
-    };
 
-    if (editingId) {
-      setPlayers((current) => current.map((player) => (player.id === editingId ? payload : player)));
-    } else {
-      setPlayers((current) => [payload, ...current]);
+    setIsSavingPlayer(true);
+    setPlayerFormError('');
+
+    try {
+      const payload = createJugadorPayload(formState);
+      const request = editingId
+        ? supabase.from("jugadores").update(payload).eq("id", editingId)
+        : supabase.from("jugadores").insert(payload);
+      const { error: saveError } = await request;
+      if (saveError) throw saveError;
+
+      const jugadores = await getJugadores();
+      setPlayers(jugadores);
+      setEmpty(jugadores.length === 0);
+      setError(null);
+      closeForm();
+    } catch (saveError) {
+      setPlayerFormError(saveError.message || 'No se pudo guardar el jugador');
+    } finally {
+      setIsSavingPlayer(false);
     }
-    closeForm();
   };
 
-  const handleDelete = (player) => {
+  const handleDelete = async (player) => {
     const confirmed = window.confirm(`¿Eliminar a ${player.name}? Esta acción no se puede deshacer.`);
     if (!confirmed) return;
-    setPlayers((current) => current.filter((item) => item.id !== player.id));
+    setLoading(true);
+    setError(null);
+    try {
+      const { error: deleteError } = await supabase.from("jugadores").delete().eq("id", player.id);
+      if (deleteError) throw deleteError;
+      const jugadores = await getJugadores();
+      setPlayers(jugadores);
+      setEmpty(jugadores.length === 0);
+      if (selectedPlayerProfileId === player.id) setSelectedPlayerProfileId(null);
+    } catch (deleteError) {
+      console.error('Error eliminando jugador en Supabase:', deleteError);
+      setError(deleteError.message || 'No se pudo eliminar el jugador.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const importTeamFromSource = async (sourceUrl) => {
@@ -3003,41 +4086,56 @@ function App() {
       }
     }
 
+    const currentTeam = teams.find((team) => team.id === editingTeamId);
     const payload = {
-      id: editingTeamId ?? Date.now(),
-      name: cleanTeamDisplayName(teamFormState.name.trim() || importedData?.name || 'Equipo sin nombre'),
-      crest: importedData?.crest || teamFormState.crest || teams.find((team) => team.id === editingTeamId)?.crest || '',
-      stadium: teamFormState.stadium.trim(),
-      kitColor: teamFormState.kitColor || '#ef233c',
-      sourceUrl: normalizeSourceUrl(teamFormState.sourceUrl),
-      system: teamFormState.system,
-      squad,
-      lineup: teams.find((team) => team.id === editingTeamId)?.lineup ?? emptyLineup,
-      benchChart: teams.find((team) => team.id === editingTeamId)?.benchChart ?? emptyDepthChart,
+      ...createRivalTeamPayload(teamFormState, importedData),
+      crest: importedData?.crest || teamFormState.crest || currentTeam?.crest || '',
     };
 
-    if (editingTeamId) {
-      setTeams((current) => current.map((team) => (team.id === editingTeamId ? payload : team)));
-    } else {
-      setTeams((current) => [payload, ...current]);
+    try {
+      const request = editingTeamId
+        ? supabase.from("equipos_rivales").update(payload).eq("id", editingTeamId).select("id").single()
+        : supabase.from("equipos_rivales").insert(payload).select("id").single();
+      const { data, error: teamError } = await request;
+      if (teamError) throw teamError;
+      const teamId = editingTeamId || data.id;
+
+      const { error: deletePlayersError } = await supabase.from("jugadores_rivales").delete().eq("equipo_rival_id", teamId);
+      if (deletePlayersError) throw deletePlayersError;
+
+      const playerRows = squad.map((player) => createRivalPlayerPayload(teamId, normalizeSquadEntry(player)));
+      if (playerRows.length) {
+        const { error: playersError } = await supabase.from("jugadores_rivales").insert(playerRows);
+        if (playersError) throw playersError;
+      }
+
+      await loadTeams();
+      setSelectedTeamId(teamId);
+      closeTeamForm();
+    } catch (saveError) {
+      console.error('Error guardando equipo rival en Supabase:', saveError);
+      setImportStatus(saveError.message || 'No se pudo guardar el equipo.');
     }
-    closeTeamForm();
   };
 
-  const handleTeamDelete = (team) => {
+  const handleTeamDelete = async (team) => {
     const confirmed = window.confirm(`¿Eliminar a ${team.name}? Esta acción no se puede deshacer.`);
     if (!confirmed) return;
-    setTeams((current) => current.filter((item) => item.id !== team.id));
+    const { error: deleteError } = await supabase.from("equipos_rivales").delete().eq("id", team.id);
+    if (deleteError) {
+      console.error('Error eliminando equipo rival en Supabase:', deleteError);
+      setSaveStatus(deleteError.message || 'No se pudo eliminar el equipo.');
+      return;
+    }
+    await loadTeams();
     if (selectedTeamId === team.id) setSelectedTeamId(null);
   };
 
   const handleSaveTeams = () => {
-    try {
-      window.localStorage.setItem(teamsStorageKey, JSON.stringify(teams));
-      setSaveStatus('Equipos guardados.');
-    } catch {
-      setSaveStatus('No se pudieron guardar los equipos.');
-    }
+    loadTeams().catch((loadError) => {
+      console.error('Error refrescando equipos rivales desde Supabase:', loadError);
+      setSaveStatus(loadError.message || 'No se pudieron cargar los equipos.');
+    });
   };
 
   const openMatchForm = (match = null, section = 'PRE') => {
@@ -3072,36 +4170,41 @@ function App() {
     setMatchFormState((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
-  const handleMatchSubmit = (event) => {
+  const handleMatchSubmit = async (event) => {
     event.preventDefault();
-    const payload = normalizeMatch({
-      ...matchFormState,
-      id: editingMatchId ?? Date.now(),
-      awayTeam: matchFormState.isHome ? matchFormState.opponent : 'C.D. Caudal',
-      homeTeam: matchFormState.isHome ? 'C.D. Caudal' : matchFormState.opponent,
-    });
 
-    if (editingMatchId) {
-      setMatches((current) => current.map((match) => (match.id === editingMatchId ? payload : match)));
-    } else {
-      setMatches((current) => [payload, ...current]);
+    try {
+      const payload = createPartidoPayload(matchFormState, teams);
+      const request = editingMatchId
+        ? supabase.from("partidos").update(payload).eq("id", editingMatchId)
+        : supabase.from("partidos").insert(payload);
+      const { error: saveError } = await request;
+      if (saveError) throw saveError;
+
+      await loadPartidos();
+      closeMatchForm();
+    } catch (saveError) {
+      console.error('Error guardando partido en Supabase:', saveError);
+      setSaveStatus(saveError.message || 'No se pudo guardar el partido.');
     }
-    closeMatchForm();
   };
 
-  const handleMatchDelete = (match) => {
+  const handleMatchDelete = async (match) => {
     const confirmed = window.confirm(`¿Eliminar el partido contra ${match.opponent}?`);
     if (!confirmed) return;
-    setMatches((current) => current.filter((item) => item.id !== match.id));
+    const { error: deleteError } = await supabase.from("partidos").delete().eq("id", match.id);
+    if (deleteError) {
+      console.error('Error eliminando partido en Supabase:', deleteError);
+      return;
+    }
+    await loadPartidos();
   };
 
   const handleSaveMatches = () => {
-    try {
-      window.localStorage.setItem(matchesStorageKey, JSON.stringify(matches));
-      setSaveStatus('Partidos guardados.');
-    } catch {
-      setSaveStatus('No se pudieron guardar los partidos.');
-    }
+    loadPartidos().catch((loadError) => {
+      console.error('Error refrescando partidos desde Supabase:', loadError);
+      setSaveStatus(loadError.message || 'No se pudieron cargar los partidos.');
+    });
   };
 
   const handleImportSquad = async () => {
@@ -3124,9 +4227,12 @@ function App() {
       }));
 
       if (editingTeamId) {
-        setTeams((current) =>
-          current.map((team) => (team.id === editingTeamId ? { ...team, crest: imported.crest || team.crest } : team))
-        );
+        const { error: crestError } = await supabase
+          .from("equipos_rivales")
+          .update({ crest: imported.crest || teamFormState.crest || '' })
+          .eq("id", editingTeamId);
+        if (crestError) console.error('Error actualizando escudo del equipo rival en Supabase:', crestError);
+        await loadTeams();
       }
 
       setImportStatus(`Plantilla importada: ${imported.players.length} jugadores detectados.`);
@@ -3135,10 +4241,25 @@ function App() {
     }
   };
 
-  const updateTeamLineup = (teamId, updater) => {
+  const updateTeamLineup = async (teamId, updater) => {
+    const team = teams.find((item) => item.id === teamId);
+    if (!team) return;
+    const nextLineup = updater(team.lineup ?? emptyLineup);
     setTeams((current) =>
-      current.map((team) => (team.id === teamId ? { ...team, lineup: updater(team.lineup ?? emptyLineup) } : team))
+      current.map((item) => (item.id === teamId ? { ...item, lineup: nextLineup } : item))
     );
+    try {
+      await persistTeamLineup(teamId, nextLineup);
+      const titularNames = nextLineup.map((player) => player.name).filter(Boolean);
+      await supabase.from("jugadores_rivales").update({ role: 'Reserva' }).eq("equipo_rival_id", teamId);
+      if (titularNames.length) {
+        await supabase.from("jugadores_rivales").update({ role: 'Titular' }).eq("equipo_rival_id", teamId).in("name", titularNames);
+      }
+      await loadTeams();
+    } catch (lineupError) {
+      console.error('Error guardando alineación rival en Supabase:', lineupError);
+      setSaveStatus(lineupError.message || 'No se pudo guardar la alineación.');
+    }
   };
 
   const handleDropOnField = (event) => {
@@ -3226,107 +4347,98 @@ function App() {
     setDraggedPlayer(null);
   };
 
-  const updateSelectedTeamSystem = (system) => {
+  const updateSelectedTeamSystem = async (system) => {
     if (!selectedTeam) return;
     const coordinates = getFormationCoordinates(system);
-    setTeams((current) =>
-      current.map((team) =>
-        team.id === selectedTeam.id
-          ? {
-              ...team,
-              system,
-              lineup: (team.lineup ?? emptyLineup)
-                .slice(0, 11)
-                .map((player, index) => ({ ...player, slot: player.slot ?? index, ...coordinates[player.slot ?? index] })),
-            }
-          : team
-      )
-    );
+    const nextLineup = (selectedTeam.lineup ?? emptyLineup)
+      .slice(0, 11)
+      .map((player, index) => ({ ...player, slot: player.slot ?? index, ...coordinates[player.slot ?? index] }));
+    const { error: systemError } = await supabase.from("equipos_rivales").update({ system }).eq("id", selectedTeam.id);
+    if (systemError) {
+      console.error('Error guardando sistema rival en Supabase:', systemError);
+      setSaveStatus(systemError.message || 'No se pudo guardar el sistema.');
+      return;
+    }
+    try {
+      await persistTeamLineup(selectedTeam.id, nextLineup);
+      await loadTeams();
+    } catch (lineupError) {
+      console.error('Error reajustando alineación rival en Supabase:', lineupError);
+    }
   };
 
-  const setSelectedTeamPlayerRole = (playerName, role) => {
+  const setSelectedTeamPlayerRole = async (playerName, role) => {
     if (!selectedTeam) return;
-    setTeams((current) =>
-      current.map((team) =>
-        team.id === selectedTeam.id
-          ? {
-              ...team,
-              squad: team.squad.map((entry) => {
-                const player = normalizeSquadEntry(entry);
-                return player.name === playerName ? { ...player, role } : player;
-              }),
-              lineup: role === 'Reserva' ? (team.lineup ?? emptyLineup).filter((player) => player.name !== playerName) : team.lineup,
-            }
-          : team
-      )
-    );
+    const { error: roleError } = await supabase
+      .from("jugadores_rivales")
+      .update({ role })
+      .eq("equipo_rival_id", selectedTeam.id)
+      .eq("name", playerName);
+    if (roleError) {
+      console.error('Error actualizando rol del jugador rival en Supabase:', roleError);
+      return;
+    }
+    if (role === 'Reserva') {
+      await updateTeamLineup(selectedTeam.id, (lineup) => lineup.filter((player) => player.name !== playerName));
+    } else {
+      await loadTeams();
+    }
   };
 
-  const toggleSelectedTeamKeyPlayer = (playerName) => {
+  const toggleSelectedTeamKeyPlayer = async (playerName) => {
     if (!selectedTeam) return;
-    setTeams((current) =>
-      current.map((team) => {
-        if (team.id !== selectedTeam.id) return team;
-        const currentPlayer = team.squad.map(normalizeSquadEntry).find((player) => player.name === playerName);
-        const nextIsKey = !currentPlayer?.isKey;
-
-        return {
-          ...team,
-          squad: team.squad.map((entry) => {
-            const player = normalizeSquadEntry(entry);
-            return player.name === playerName ? { ...player, isKey: nextIsKey } : player;
-          }),
-          lineup: (team.lineup ?? emptyLineup).map((player) =>
-            player.name === playerName ? { ...player, isKey: nextIsKey } : player
-          ),
-        };
-      })
-    );
+    const currentPlayer = selectedTeam.squad.map(normalizeSquadEntry).find((player) => player.name === playerName);
+    const nextIsKey = !currentPlayer?.isKey;
+    const { error: keyError } = await supabase
+      .from("jugadores_rivales")
+      .update({ is_key: nextIsKey })
+      .eq("equipo_rival_id", selectedTeam.id)
+      .eq("name", playerName);
+    if (keyError) {
+      console.error('Error marcando jugador clave rival en Supabase:', keyError);
+      return;
+    }
+    await loadTeams();
   };
 
-  const handleDropOnBenchSlot = (starterName, slotIndex) => {
+  const handleDropOnBenchSlot = async (starterName, slotIndex) => {
     if (!selectedTeam || !draggedPlayer) return;
     const droppedPlayer = { ...normalizeSquadEntry(draggedPlayer), role: 'Reserva' };
-
-    setTeams((current) =>
-      current.map((team) => {
-        if (team.id !== selectedTeam.id) return team;
-        const nextBenchChart = Object.fromEntries(
-          Object.entries(team.benchChart ?? emptyDepthChart).map(([chartStarter, slots]) => [
-            chartStarter,
-            slots.map((player) => (player?.name === droppedPlayer.name ? null : player)),
-          ])
-        );
-        const slots = [...(nextBenchChart[starterName] ?? [null, null])].slice(0, 2);
-        while (slots.length < 2) slots.push(null);
-        slots[slotIndex] = droppedPlayer;
-        nextBenchChart[starterName] = slots;
-
-        return {
-          ...team,
-          benchChart: nextBenchChart,
-          lineup: (team.lineup ?? emptyLineup).filter((player) => player.name !== droppedPlayer.name),
-          squad: team.squad.map((entry) => {
-            const player = normalizeSquadEntry(entry);
-            return player.name === droppedPlayer.name ? { ...player, role: 'Reserva' } : player;
-          }),
-        };
-      })
+    const nextBenchChart = Object.fromEntries(
+      Object.entries(selectedTeam.benchChart ?? emptyDepthChart).map(([chartStarter, slots]) => [
+        chartStarter,
+        slots.map((player) => (player?.name === droppedPlayer.name ? null : player)),
+      ])
     );
+    const slots = [...(nextBenchChart[starterName] ?? [null, null])].slice(0, 2);
+    while (slots.length < 2) slots.push(null);
+    slots[slotIndex] = droppedPlayer;
+    nextBenchChart[starterName] = slots;
+
+    try {
+      await persistTeamBench(selectedTeam.id, nextBenchChart);
+      await updateTeamLineup(selectedTeam.id, (lineup) => lineup.filter((player) => player.name !== droppedPlayer.name));
+      await supabase.from("jugadores_rivales").update({ role: 'Reserva' }).eq("equipo_rival_id", selectedTeam.id).eq("name", droppedPlayer.name);
+      await loadTeams();
+    } catch (benchError) {
+      console.error('Error guardando banquillo rival en Supabase:', benchError);
+      setSaveStatus(benchError.message || 'No se pudo guardar el banquillo.');
+    }
     setDraggedPlayer(null);
   };
 
-  const clearBenchSlot = (starterName, slotIndex) => {
+  const clearBenchSlot = async (starterName, slotIndex) => {
     if (!selectedTeam) return;
-    setTeams((current) =>
-      current.map((team) => {
-        if (team.id !== selectedTeam.id) return team;
-        const slots = [...(team.benchChart?.[starterName] ?? [null, null])].slice(0, 2);
-        while (slots.length < 2) slots.push(null);
-        slots[slotIndex] = null;
-        return { ...team, benchChart: { ...(team.benchChart ?? emptyDepthChart), [starterName]: slots } };
-      })
-    );
+    const slots = [...(selectedTeam.benchChart?.[starterName] ?? [null, null])].slice(0, 2);
+    while (slots.length < 2) slots.push(null);
+    slots[slotIndex] = null;
+    const nextBenchChart = { ...(selectedTeam.benchChart ?? emptyDepthChart), [starterName]: slots };
+    try {
+      await persistTeamBench(selectedTeam.id, nextBenchChart);
+      await loadTeams();
+    } catch (benchError) {
+      console.error('Error limpiando banquillo rival en Supabase:', benchError);
+    }
   };
 
   const getSelectedLineupName = () => {
@@ -3339,88 +4451,225 @@ function App() {
     return selectedMatch.preRivalLineup?.[selectedRivalTacticalPlayerIndex] || '';
   };
 
-  const updateCaudalLineupSlot = (slotIndex, playerName) => {
+  const updateCaudalLineupSlot = async (slotIndex, playerName) => {
     if (!selectedMatch) return;
     const nextLineup = Array.from({ length: 11 }, (_, index) => selectedMatch.preCaudalLineup?.[index] || '');
     const repeatedIndex = nextLineup.findIndex((name, index) => name === playerName && index !== slotIndex);
     if (repeatedIndex >= 0) nextLineup[repeatedIndex] = '';
     nextLineup[slotIndex] = playerName;
-    updateSelectedMatchFields({ preCaudalLineup: nextLineup });
+    setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? { ...match, preCaudalLineup: nextLineup } : match)));
+    try {
+      if (repeatedIndex >= 0) await clearMatchLineupSlot({ matchId: selectedMatch.id, scope: 'pre_caudal', slotIndex: repeatedIndex });
+      await saveMatchLineupSlot({ matchId: selectedMatch.id, scope: 'pre_caudal', slotIndex, playerName });
+      const player = players.find((item) => item.name === playerName);
+      await supabase.from("partido_convocados").upsert(
+        {
+          partido_id: selectedMatch.id,
+          jugador_id: isUuid(player?.id) ? player.id : null,
+          player_name: playerName,
+        },
+        { onConflict: "partido_id,player_name" }
+      );
+      await loadMatchPreData(selectedMatch.id);
+    } catch (slotError) {
+      console.error('Error guardando once PRE Caudal en Supabase:', slotError);
+      setPreError(slotError.message || 'No se pudo guardar la alineación PRE.');
+    }
   };
 
-  const updateRivalLineupSlot = (slotIndex, playerName) => {
+  const updateRivalLineupSlot = async (slotIndex, playerName) => {
     if (!selectedMatch) return;
     const nextLineup = Array.from({ length: 11 }, (_, index) => selectedMatch.preRivalLineup?.[index] || '');
     const repeatedIndex = nextLineup.findIndex((name, index) => name === playerName && index !== slotIndex);
     if (repeatedIndex >= 0) nextLineup[repeatedIndex] = '';
     nextLineup[slotIndex] = playerName;
-    updateSelectedMatchFields({ preRivalLineup: nextLineup });
+    setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? { ...match, preRivalLineup: nextLineup } : match)));
+    try {
+      if (repeatedIndex >= 0) await clearMatchLineupSlot({ matchId: selectedMatch.id, scope: 'pre_rival', slotIndex: repeatedIndex });
+      await saveMatchLineupSlot({ matchId: selectedMatch.id, scope: 'pre_rival', slotIndex, playerName });
+      await loadMatchPreData(selectedMatch.id);
+    } catch (slotError) {
+      console.error('Error guardando once PRE rival en Supabase:', slotError);
+      setPreError(slotError.message || 'No se pudo guardar la alineación rival.');
+    }
   };
 
-  const clearCaudalLineupSlot = (slotIndex) => {
+  const clearCaudalLineupSlot = async (slotIndex) => {
     if (!selectedMatch) return;
     const nextLineup = Array.from({ length: 11 }, (_, index) => selectedMatch.preCaudalLineup?.[index] || '');
     nextLineup[slotIndex] = '';
-    updateSelectedMatchFields({ preCaudalLineup: nextLineup });
+    setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? { ...match, preCaudalLineup: nextLineup } : match)));
+    try {
+      await clearMatchLineupSlot({ matchId: selectedMatch.id, scope: 'pre_caudal', slotIndex });
+      await loadMatchPreData(selectedMatch.id);
+    } catch (slotError) {
+      console.error('Error limpiando once PRE Caudal en Supabase:', slotError);
+      setPreError(slotError.message || 'No se pudo limpiar la alineación PRE.');
+    }
   };
 
-  const clearRivalLineupSlot = (slotIndex) => {
+  const clearRivalLineupSlot = async (slotIndex) => {
     if (!selectedMatch) return;
     const nextLineup = Array.from({ length: 11 }, (_, index) => selectedMatch.preRivalLineup?.[index] || '');
     nextLineup[slotIndex] = '';
-    updateSelectedMatchFields({ preRivalLineup: nextLineup });
+    setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? { ...match, preRivalLineup: nextLineup } : match)));
+    try {
+      await clearMatchLineupSlot({ matchId: selectedMatch.id, scope: 'pre_rival', slotIndex });
+      await loadMatchPreData(selectedMatch.id);
+    } catch (slotError) {
+      console.error('Error limpiando once PRE rival en Supabase:', slotError);
+      setPreError(slotError.message || 'No se pudo limpiar la alineación rival.');
+    }
   };
 
-  const loadSuggestedCaudalLineup = () => {
-    updateSelectedMatchFields({ preCaudalLineup: Array.from({ length: 11 }, (_, index) => players[index]?.name || '') });
+  const loadSuggestedCaudalLineup = async () => {
+    if (!selectedMatch) return;
+    const nextLineup = Array.from({ length: 11 }, (_, index) => players[index]?.name || '');
+    setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? { ...match, preCaudalLineup: nextLineup } : match)));
+    try {
+      await supabase.from("partido_alineacion_slots").delete().eq("partido_id", selectedMatch.id).eq("scope", "pre_caudal");
+      const rows = nextLineup
+        .map((playerName, slot) => ({ playerName, slot }))
+        .filter((row) => row.playerName);
+      for (const row of rows) {
+        await saveMatchLineupSlot({ matchId: selectedMatch.id, scope: 'pre_caudal', slotIndex: row.slot, playerName: row.playerName });
+        const player = players.find((item) => item.name === row.playerName);
+        await supabase.from("partido_convocados").upsert(
+          { partido_id: selectedMatch.id, jugador_id: isUuid(player?.id) ? player.id : null, player_name: row.playerName },
+          { onConflict: "partido_id,player_name" }
+        );
+      }
+      await loadMatchPreData(selectedMatch.id);
+    } catch (lineupError) {
+      console.error('Error cargando once sugerido Caudal en Supabase:', lineupError);
+      setPreError(lineupError.message || 'No se pudo guardar el once sugerido.');
+    }
     setSelectedTacticalPlayerIndex(0);
   };
 
-  const loadSuggestedRivalLineup = () => {
+  const loadSuggestedRivalLineup = async () => {
+    if (!selectedMatch) return;
     const rivalTeam = getRivalBaseTeam();
-    updateSelectedMatchFields({
-      preRivalSystem: rivalTeam?.system || getCurrentRivalSystem(),
-      preRivalLineup: Array.from({ length: 11 }, (_, index) => getRivalAvailablePlayers()[index]?.name || ''),
-    });
+    const nextSystem = rivalTeam?.system || getCurrentRivalSystem();
+    const nextLineup = Array.from({ length: 11 }, (_, index) => getRivalAvailablePlayers()[index]?.name || '');
+    setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? { ...match, preRivalSystem: nextSystem, preRivalLineup: nextLineup } : match)));
+    try {
+      await updateSelectedMatchFields({ preRivalSystem: nextSystem });
+      await supabase.from("partido_alineacion_slots").delete().eq("partido_id", selectedMatch.id).eq("scope", "pre_rival");
+      const rows = nextLineup
+        .map((playerName, slot) => ({ playerName, slot }))
+        .filter((row) => row.playerName);
+      for (const row of rows) {
+        await saveMatchLineupSlot({ matchId: selectedMatch.id, scope: 'pre_rival', slotIndex: row.slot, playerName: row.playerName });
+      }
+      await loadMatchPreData(selectedMatch.id);
+    } catch (lineupError) {
+      console.error('Error cargando once sugerido rival en Supabase:', lineupError);
+      setPreError(lineupError.message || 'No se pudo guardar el once rival.');
+    }
     setSelectedRivalTacticalPlayerIndex(0);
   };
 
-  const addManualRivalPlayer = () => {
+  const ensureManualRivalPlayer = async (player) => {
+    const rivalTeam = getRivalBaseTeam();
+    if (!rivalTeam?.id || !isUuid(rivalTeam.id)) return null;
+
+    const { data: existingRows, error: existingError } = await supabase
+      .from("jugadores_rivales")
+      .select("*")
+      .eq("equipo_rival_id", rivalTeam.id)
+      .eq("name", player.name)
+      .limit(1);
+    if (existingError) throw existingError;
+    if (existingRows?.[0]) return normalizeSupabaseRivalPlayer(existingRows[0]);
+
+    const { data: insertedPlayer, error: insertError } = await supabase
+      .from("jugadores_rivales")
+      .insert(createRivalPlayerPayload(rivalTeam.id, { ...createBlankTeamPlayer(), ...player, role: 'Titular' }))
+      .select("*")
+      .single();
+    if (insertError) throw insertError;
+    await loadTeams();
+    return normalizeSupabaseRivalPlayer(insertedPlayer);
+  };
+
+  const addManualRivalPlayer = async () => {
     const playerName = newRivalManualPlayerName.trim();
     if (!selectedMatch || !playerName) return;
     const rivalRoles = getFormationRoles(getCurrentRivalSystem());
+    const manualPlayer = { ...createBlankTeamPlayer(), name: playerName, number: '', position: rivalRoles[selectedRivalTacticalPlayerIndex] || '' };
     const exists = getRivalAvailablePlayers().some((player) => cleanTeamDisplayName(player.name).toLowerCase() === cleanTeamDisplayName(playerName).toLowerCase());
     const nextManualPlayers = exists
       ? selectedMatch.preRivalManualPlayers || []
-      : [...(selectedMatch.preRivalManualPlayers || []), { ...createBlankTeamPlayer(), name: playerName, position: rivalRoles[selectedRivalTacticalPlayerIndex] || '' }];
+      : [...(selectedMatch.preRivalManualPlayers || []), manualPlayer];
     const nextLineup = Array.from({ length: 11 }, (_, index) => selectedMatch.preRivalLineup?.[index] || '');
     nextLineup[selectedRivalTacticalPlayerIndex] = playerName;
-    updateSelectedMatchFields({ preRivalManualPlayers: nextManualPlayers, preRivalLineup: nextLineup });
+    setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? { ...match, preRivalManualPlayers: nextManualPlayers, preRivalLineup: nextLineup } : match)));
+    try {
+      const storedPlayer = exists ? getRivalAvailablePlayers().find((player) => cleanTeamDisplayName(player.name).toLowerCase() === cleanTeamDisplayName(playerName).toLowerCase()) : await ensureManualRivalPlayer(manualPlayer);
+      await saveMatchLineupSlot({
+        matchId: selectedMatch.id,
+        scope: 'pre_rival',
+        slotIndex: selectedRivalTacticalPlayerIndex,
+        playerName,
+        jugadorRivalId: storedPlayer?.id || null,
+      });
+      await loadMatchPreData(selectedMatch.id);
+    } catch (slotError) {
+      console.error('Error guardando jugador rival manual en PRE:', slotError);
+      setPreError(slotError.message || 'No se pudo guardar el jugador rival manual.');
+    }
     setNewRivalManualPlayerName('');
   };
 
-  const updateSelectedPlayerNote = (note) => {
+  const updateSelectedPlayerNote = async (note) => {
     if (!selectedMatch) return;
     const playerName = getSelectedLineupName();
     if (!playerName) return;
-    updateSelectedMatchFields({
-      prePlayerNotes: {
-        ...(selectedMatch.prePlayerNotes || {}),
-        [playerName]: note,
+    setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? {
+      ...match,
+      prePlayerNotes: { ...(match.prePlayerNotes || {}), [playerName]: note },
+    } : match)));
+    const { error: noteError } = await supabase.from("partido_notas_individuales_pre").upsert(
+      {
+        partido_id: selectedMatch.id,
+        scope: 'caudal',
+        player_name: playerName,
+        note,
       },
-    });
+      { onConflict: "partido_id,scope,player_name" }
+    );
+    if (noteError) {
+      console.error('Error guardando nota individual PRE Caudal en Supabase:', noteError);
+      setPreError(noteError.message || 'No se pudo guardar la nota individual.');
+      return;
+    }
+    await loadMatchPreData(selectedMatch.id);
   };
 
-  const updateSelectedRivalPlayerNote = (note) => {
+  const updateSelectedRivalPlayerNote = async (note) => {
     if (!selectedMatch) return;
     const playerName = getSelectedRivalLineupName();
     if (!playerName) return;
-    updateSelectedMatchFields({
-      preRivalPlayerNotes: {
-        ...(selectedMatch.preRivalPlayerNotes || {}),
-        [playerName]: note,
+    setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? {
+      ...match,
+      preRivalPlayerNotes: { ...(match.preRivalPlayerNotes || {}), [playerName]: note },
+    } : match)));
+    const { error: noteError } = await supabase.from("partido_notas_individuales_pre").upsert(
+      {
+        partido_id: selectedMatch.id,
+        scope: 'rival',
+        player_name: playerName,
+        note,
       },
-    });
+      { onConflict: "partido_id,scope,player_name" }
+    );
+    if (noteError) {
+      console.error('Error guardando nota individual PRE rival en Supabase:', noteError);
+      setPreError(noteError.message || 'No se pudo guardar la nota rival.');
+      return;
+    }
+    await loadMatchPreData(selectedMatch.id);
   };
 
   const renderQuestionnaireField = ({ label, field, placeholder, type = 'textarea', options = [], multiple = false, wide = false }) => {
@@ -3599,18 +4848,46 @@ function App() {
         {activeTab === 'Inicio' ? (
           <main className="grid gap-6 lg:grid-cols-[1.3fr_0.9fr]">
             <section className="space-y-6 rounded-3xl border border-white/5 bg-white/5 p-6 shadow-glow backdrop-blur-md">
+              {homeLoading ? (
+                <div className="rounded-3xl border border-white/10 bg-white/[0.04] px-5 py-4 text-sm text-slate-300">
+                  Cargando Inicio desde Supabase...
+                </div>
+              ) : null}
+              {homeError ? (
+                <div className="rounded-3xl border border-red-500/20 bg-red-500/10 px-5 py-4 text-sm text-red-100">
+                  {homeError}
+                </div>
+              ) : null}
               <div className="flex items-center gap-4">
                 <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-3xl bg-white p-2 shadow-sm">
                   <img src={clubCrest} alt="Escudo del C.D. Caudal" className="h-full w-full object-contain" />
                 </div>
                 <div>
-                  <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Bienvenida</p>
-                  <h2 className="mt-2 text-2xl font-semibold text-white">¡Bienvenido, cuerpo técnico!</h2>
+                  <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Dashboard</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-white">Resumen competitivo</h2>
                 </div>
               </div>
               <div className="space-y-3 text-slate-300">
-                <p>Esta es la base para gestionar tu plantilla de manera ágil y deportiva.</p>
-                <p>Gestiona alineaciones, jugadores y rápida información de la plantilla sin necesidad de backend.</p>
+                <p>Inicio calcula el estado del equipo desde Supabase: partidos, plantilla y rivales.</p>
+                <p>Filtro activo: <span className="font-semibold text-caudal-electric">{matchFilter}</span></p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-3xl bg-white/5 p-4">
+                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Próximo partido</p>
+                  <p className="mt-3 text-lg font-semibold text-white">{homeDashboard.nextMatch?.opponent || 'Sin partido programado'}</p>
+                  <p className="mt-1 text-sm text-slate-400">
+                    {homeDashboard.nextMatch ? `${matchDisplayDate(homeDashboard.nextMatch.date)}${homeDashboard.nextMatch.time ? ` · ${homeDashboard.nextMatch.time}` : ''} · ${homeDashboard.nextMatch.isHome ? 'Local' : 'Visitante'}` : 'Añade partidos para activar el calendario.'}
+                  </p>
+                </div>
+                <div className="rounded-3xl bg-white/5 p-4">
+                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Último resultado</p>
+                  <p className="mt-3 text-lg font-semibold text-white">
+                    {homeDashboard.lastMatch ? getMatchScoreLabel(homeDashboard.lastMatch) : 'Sin resultados'}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-400">
+                    {homeDashboard.lastMatch ? `${matchDisplayDate(homeDashboard.lastMatch.date)} · ${homeDashboard.lastMatch.type}` : 'Cuando cierres partidos aparecerán aquí.'}
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => setActiveTab('Plantilla')}
@@ -3634,15 +4911,36 @@ function App() {
                 </div>
               </div>
               <div className="mt-6 space-y-4 rounded-3xl border border-white/10 bg-caudal-900/80 p-5">
-                <p className="text-sm text-slate-300">Plantilla profesional con enfoque joven, organizada para entrenamientos y próximos pasos.</p>
+                <p className="text-sm text-slate-300">Balance general y racha reciente recalculados con los partidos cargados desde Supabase.</p>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-3xl bg-white/5 p-4">
                     <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Jugadores</p>
-                    <p className="mt-2 text-3xl font-semibold text-white">{players.length}</p>
+                    <p className="mt-2 text-3xl font-semibold text-white">{homeDashboard.playerCount}</p>
                   </div>
                   <div className="rounded-3xl bg-white/5 p-4">
-                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Sub-23</p>
-                    <p className="mt-2 text-3xl font-semibold text-white">{players.filter((player) => calculateAge(player.dob) < 23).length}</p>
+                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Rivales</p>
+                    <p className="mt-2 text-3xl font-semibold text-white">{homeDashboard.rivalCount}</p>
+                  </div>
+                  <div className="rounded-3xl bg-white/5 p-4">
+                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Balance</p>
+                    <p className="mt-2 text-3xl font-semibold text-white">{homeDashboard.balance.wins}-{homeDashboard.balance.draws}-{homeDashboard.balance.losses}</p>
+                    <p className="mt-1 text-xs text-slate-500">{homeDashboard.balance.goalsFor} GF · {homeDashboard.balance.goalsAgainst} GC</p>
+                  </div>
+                  <div className="rounded-3xl bg-white/5 p-4">
+                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Racha reciente</p>
+                    <div className="mt-3 flex gap-2">
+                      {homeDashboard.recent.length ? homeDashboard.recent.map((result) => (
+                        <span
+                          key={`${result.id}-${result.label}`}
+                          className={`flex h-9 w-9 items-center justify-center rounded-2xl text-sm font-black ${
+                            result.label === 'V' ? 'bg-emerald-400 text-slate-950' : result.label === 'D' ? 'bg-red-400 text-slate-950' : 'bg-amber-300 text-slate-950'
+                          }`}
+                          title={`${result.match.opponent} · ${matchDisplayDate(result.match.date)}`}
+                        >
+                          {result.label}
+                        </span>
+                      )) : <span className="text-sm text-slate-500">Sin datos</span>}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -3653,9 +4951,30 @@ function App() {
         {activeTab === 'Plantilla' ? (
           <main className="space-y-6">
             {selectedPlayerProfile ? (() => {
+              if (playerProfileLoading) {
+                return (
+                  <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 text-sm text-slate-400 shadow-glow">
+                    Cargando ficha del jugador...
+                  </section>
+                );
+              }
+              if (playerProfileError) {
+                return (
+                  <section className="rounded-3xl border border-red-500/20 bg-red-500/10 p-6 text-sm text-red-100 shadow-glow">
+                    {playerProfileError}
+                  </section>
+                );
+              }
               const aggregate = getPlayerAggregate(selectedPlayerProfile);
-              const allGoalActions = aggregate.rows.flatMap((row) => row.goals.map((event) => ({ ...event, match: row.match, action: 'Gol' })));
-              const allAssistActions = aggregate.rows.flatMap((row) => row.assists.map((event) => ({ ...event, match: row.match, action: 'Asistencia' })));
+              const visibleMatchIds = new Set(aggregate.rows.map((row) => row.match.id));
+              const allGoalActions = (playerProfileData?.goalEvents || [])
+                .filter((event) => event.scorer === selectedPlayerProfile.name && visibleMatchIds.has(event.partidoId))
+                .map((event) => ({ ...event, match: playerProfileData.partidosById[event.partidoId], action: 'Gol' }))
+                .filter((event) => event.match);
+              const allAssistActions = (playerProfileData?.goalEvents || [])
+                .filter((event) => event.assistant === selectedPlayerProfile.name && visibleMatchIds.has(event.partidoId))
+                .map((event) => ({ ...event, match: playerProfileData.partidosById[event.partidoId], action: 'Asistencia' }))
+                .filter((event) => event.match);
               const influenceActions = playerInfluenceFilter === 'Goles' ? allGoalActions : playerInfluenceFilter === 'Asistencias' ? allAssistActions : [...allGoalActions, ...allAssistActions];
               const shotZoneCounts = countPitchZones(influenceActions.map((event) => event.action === 'Gol' ? event.shotZone : event.assistZone));
               const goalZoneCounts = countValues(allGoalActions.map((event) => event.goalZone));
@@ -3664,7 +4983,7 @@ function App() {
               const timelineActions = [
                 ...allGoalActions.map((event) => ({ minute: event.minute, label: '⚽', type: 'Gol', match: event.match, videoUrl: event.videoUrl, actionKey: `goal-${event.match.id}-${event.id}`, title: `Gol · ${getMatchScoreLabel(event.match)}` })),
                 ...allAssistActions.map((event) => ({ minute: event.minute, label: '👟', type: 'Asistencia', match: event.match, videoUrl: event.videoUrl, actionKey: `assist-${event.match.id}-${event.id}`, title: `Asistencia · ${getMatchScoreLabel(event.match)}` })),
-                ...aggregate.rows.flatMap((row) => row.postEvents.filter((event) => /tarjeta/i.test(event.type)).map((event) => ({ minute: event.minute, label: '🟨', type: 'Tarjeta', match: row.match, actionKey: `card-${row.match.id}-${event.id || event.minute}`, title: `Tarjeta · ${getMatchScoreLabel(row.match)}` }))),
+                ...aggregate.rows.flatMap((row) => row.cardActions.map((event, cardIndex) => ({ minute: event.minute, label: event.type.includes('roja') ? 'R' : 'A', type: event.type, match: row.match, actionKey: `card-${row.match.id}-${cardIndex}`, title: `${event.type} · ${getMatchScoreLabel(row.match)}` }))),
               ].filter((event) => event.minute !== '');
               const assistantsToPlayer = countValues(allGoalActions.map((event) => event.assistant));
               const assistedByPlayer = countValues(allAssistActions.map((event) => event.scorer));
@@ -3930,6 +5249,19 @@ function App() {
               </div>
             </section>
 
+            {loading ? (
+              <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] px-5 py-6 text-sm text-slate-400">
+                Cargando jugadores...
+              </div>
+            ) : error ? (
+              <div className="rounded-3xl border border-red-500/20 bg-red-500/10 px-5 py-6 text-sm text-red-100">
+                {error}
+              </div>
+            ) : empty ? (
+              <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] px-5 py-6 text-sm text-slate-400">
+                No hay jugadores aún
+              </div>
+            ) : (
             <div className="space-y-6">
               {groupedPlayers.map((group) => (
                 <section key={group.title} className="space-y-4">
@@ -4011,6 +5343,7 @@ function App() {
                 </section>
               ))}
             </div>
+            )}
             </>
             )}
           </main>
@@ -4040,6 +5373,8 @@ function App() {
                 </div>
               </div>
               {saveStatus ? <p className="mt-3 text-sm text-caudal-electric">{saveStatus}</p> : null}
+              {teamsLoading ? <p className="mt-3 text-sm text-slate-400">Cargando equipos...</p> : null}
+              {teamsError ? <p className="mt-3 text-sm text-red-200">{teamsError}</p> : null}
             </section>
 
             {selectedTeam ? (
@@ -4375,6 +5710,11 @@ function App() {
           const awaySummary = summarizeGroupMatches(scopedMatches.filter((match) => !match.isHome));
           const trend = getGroupTendency(scopedMatches);
           const rankings = getGroupRankings(scopedMatches);
+          const subphaseForRows = getGroupSubphaseRanking(groupData.goalForEvents);
+          const subphaseAgainstRows = getGroupSubphaseRanking(groupData.goalAgainstEvents);
+          const goalZoneForCounts = getGroupGoalZoneCounts(groupData.goalForEvents);
+          const goalZoneAgainstCounts = getGroupGoalZoneCounts(groupData.goalAgainstEvents);
+          const automaticAlerts = getGroupAlerts(groupData, rankings, localSummary, awaySummary);
           const resultDonut = `conic-gradient(#34d399 0 ${groupData.played ? (groupData.wins / groupData.played) * 100 : 0}%, #facc15 ${groupData.played ? (groupData.wins / groupData.played) * 100 : 0}% ${groupData.played ? ((groupData.wins + groupData.draws) / groupData.played) * 100 : 0}%, #f87171 ${groupData.played ? ((groupData.wins + groupData.draws) / groupData.played) * 100 : 0}% 100%)`;
           const abpReading = (forGoals, againstGoals) => {
             if (!forGoals && !againstGoals) return 'neutro';
@@ -4396,6 +5736,16 @@ function App() {
 
           return (
             <main className="space-y-6">
+              {groupLoading ? (
+                <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 text-sm text-slate-400 shadow-glow">
+                  Cargando análisis grupal...
+                </section>
+              ) : null}
+              {groupError ? (
+                <section className="rounded-3xl border border-red-500/20 bg-red-500/10 p-6 text-sm text-red-100 shadow-glow">
+                  {groupError}
+                </section>
+              ) : null}
               <section className="overflow-hidden rounded-3xl border border-white/10 bg-[#091428]/90 shadow-glow backdrop-blur-md">
                 <div className="grid gap-0 xl:grid-cols-[0.9fr_1.35fr]">
                   <div className="border-b border-white/10 p-6 xl:border-b-0 xl:border-r">
@@ -4426,7 +5776,7 @@ function App() {
                         <span className="hidden h-px flex-1 bg-white/10 sm:block" />
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {['Todos', 'Liga', 'Copa RFEF', 'Playoff', 'Amistoso'].map((filter) => (
+                        {['Todos', 'Liga', 'Copa', 'Amistoso'].map((filter) => (
                           <button
                             key={filter}
                             type="button"
@@ -4589,6 +5939,42 @@ function App() {
               </section>
 
               <section className="grid gap-6 xl:grid-cols-2">
+                <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                  <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Subfases más repetidas</h3>
+                  <div className="mt-5 grid gap-4 md:grid-cols-2">
+                    {[
+                      ['A favor', subphaseForRows, 'text-caudal-electric'],
+                      ['En contra', subphaseAgainstRows, 'text-red-300'],
+                    ].map(([title, rows, color]) => (
+                      <div key={title}>
+                        <p className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500">{title}</p>
+                        {rows.length ? rows.map(([subphase, count]) => (
+                          <div key={subphase} className="mb-2 flex items-center justify-between gap-3 rounded-2xl bg-white/5 px-4 py-3">
+                            <span className="truncate text-sm font-bold text-white">{subphase}</span>
+                            <strong className={color}>{count}</strong>
+                          </div>
+                        )) : <p className="rounded-2xl bg-white/5 p-4 text-sm italic text-slate-500">sin datos suficientes</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                  <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Portería 3x3</h3>
+                  <div className="mt-5 grid gap-4 md:grid-cols-2">
+                    <div>
+                      <p className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500">Goles marcados</p>
+                      {renderReadOnlyZoneGrid({ counts: goalZoneForCounts, zones: goalZoneOptions, goal: true })}
+                    </div>
+                    <div>
+                      <p className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500">Goles encajados</p>
+                      {renderReadOnlyZoneGrid({ counts: goalZoneAgainstCounts, zones: goalZoneOptions, goal: true })}
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="grid gap-6 xl:grid-cols-2">
                 {[
                   ['ABP ofensiva', abpFor, 'Eficacia ABP', abpFor.total ? `${Math.round((abpFor.total / Math.max(1, groupData.goalsFor)) * 100)}%` : 'sin datos', groupData.goalsFor, 'bg-caudal-electric', 'text-caudal-electric'],
                   ['ABP defensiva', abpAgainst, 'Vulnerabilidad ABP', abpAgainst.total ? `${Math.round((abpAgainst.total / Math.max(1, groupData.goalsAgainst)) * 100)}%` : 'sin datos', groupData.goalsAgainst, 'bg-red-400', 'text-red-300'],
@@ -4702,7 +6088,7 @@ function App() {
 
               <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                 <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Ranking individual</h3>
-                <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
                   <div>
                     <p className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500">Máximos goleadores</p>
                     {rankingList(rankings.scorers, 'goals')}
@@ -4714,6 +6100,10 @@ function App() {
                   <div>
                     <p className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500">Más amonestados</p>
                     {rankingList(rankings.booked, 'cards')}
+                  </div>
+                  <div>
+                    <p className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500">Más lesiones</p>
+                    {rankingList(rankings.injured, 'injured')}
                   </div>
                   <div>
                     <p className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500">Más minutos</p>
@@ -4738,6 +6128,17 @@ function App() {
                 </div>
                 <div className="mt-6">
                   {rankings.idealRows.length ? renderIdealElevenPitch(buildIdealElevenForSystem(rankings.idealRows, idealSystem)) : <p className="rounded-2xl bg-white/5 p-6 text-center text-sm italic text-slate-500">sin datos suficientes</p>}
+                </div>
+              </section>
+
+              <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Alertas automáticas</h3>
+                <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                  {automaticAlerts.map((alert) => (
+                    <div key={alert} className="rounded-3xl border border-caudal-electric/15 bg-caudal-electric/10 p-4 text-sm font-bold text-white">
+                      {alert}
+                    </div>
+                  ))}
                 </div>
               </section>
             </main>
@@ -4953,6 +6354,16 @@ function App() {
 
                 {matchView === 'pre_partido' ? (
                   <section className="space-y-6">
+                    {preLoading ? (
+                      <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 text-sm text-slate-400 shadow-glow">
+                        Cargando PRE desde Supabase...
+                      </div>
+                    ) : null}
+                    {preError ? (
+                      <div className="rounded-3xl border border-red-500/20 bg-red-500/10 p-5 text-sm text-red-100 shadow-glow">
+                        {preError}
+                      </div>
+                    ) : null}
                     <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                         <div>
@@ -5538,7 +6949,7 @@ function App() {
                             <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Disposición táctica</h3>
                             <p className="mt-2 text-sm text-slate-400">Arrastra convocados al campo y modifica posiciones por sistema.</p>
                           </div>
-                          <select value={selectedMatch.statsSystem || '4-4-2'} onChange={(event) => updateSelectedMatchFields({ statsSystem: event.target.value })} className="rounded-2xl border border-white/10 bg-white px-5 py-3 text-sm font-black text-slate-950">
+                          <select value={selectedMatch.statsSystem || '4-4-2'} onChange={(event) => updateStatsSystem(event.target.value)} className="rounded-2xl border border-white/10 bg-white px-5 py-3 text-sm font-black text-slate-950">
                             {gameSystems.map((system) => <option key={system} value={system}>{system}</option>)}
                           </select>
                         </div>
@@ -5679,6 +7090,16 @@ function App() {
                   </section>
                 ) : (
                   <section className="space-y-6">
+                    {postLoading ? (
+                      <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 text-sm text-slate-400 shadow-glow">
+                        Cargando POST desde Supabase...
+                      </div>
+                    ) : null}
+                    {postError ? (
+                      <div className="rounded-3xl border border-red-500/20 bg-red-500/10 p-5 text-sm text-red-100 shadow-glow">
+                        {postError}
+                      </div>
+                    ) : null}
                     <div className="grid gap-6 xl:grid-cols-[1.45fr_0.85fr]">
                       <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -5721,7 +7142,7 @@ function App() {
                         <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                           <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Botonera editable</h4>
                           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                            {eventTypes.map((eventType) => (
+                            {eventTypes.length ? eventTypes.map((eventType) => (
                               <button
                                 key={eventType.id}
                                 type="button"
@@ -5733,7 +7154,11 @@ function App() {
                                 className={`rounded-3xl px-4 py-4 text-sm font-semibold transition ${eventButtonClass(eventType.color)} ${selectedEventType === eventType.name ? 'ring-2 ring-caudal-electric' : ''}`}>
                                 {eventType.name}
                               </button>
-                            ))}
+                            )) : (
+                              <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-slate-400 sm:col-span-2">
+                                Sin tipos cargados desde Supabase.
+                              </div>
+                            )}
                           </div>
                           <div className="mt-5 space-y-3">
                             {eventTypes.map((eventType) => (
@@ -5816,7 +7241,7 @@ function App() {
                               />
                             </label>
                             <button type="button" onClick={addNewEvent} className="w-full rounded-3xl bg-caudal-electric px-5 py-4 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]">
-                              Guardar evento
+                              {newEventDraft.id ? 'Actualizar evento' : 'Guardar evento'}
                             </button>
                           </div>
                         </div>
@@ -5843,6 +7268,40 @@ function App() {
                                 <span className={`rounded-2xl px-3 py-2 text-xs uppercase tracking-[0.18em] ${eventButtonClass(event.type)}`}>{event.minute}'</span>
                               </div>
                               <p className="mt-3 text-sm leading-7 text-slate-300">{event.description}</p>
+                              <div className="mt-3 flex gap-2">
+                                <span
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={(clickEvent) => {
+                                    clickEvent.stopPropagation();
+                                    editPostEvent(event);
+                                  }}
+                                  onKeyDown={(keyEvent) => {
+                                    if (keyEvent.key !== 'Enter') return;
+                                    keyEvent.stopPropagation();
+                                    editPostEvent(event);
+                                  }}
+                                  className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white"
+                                >
+                                  Editar
+                                </span>
+                                <span
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={(clickEvent) => {
+                                    clickEvent.stopPropagation();
+                                    deletePostEvent(event.id);
+                                  }}
+                                  onKeyDown={(keyEvent) => {
+                                    if (keyEvent.key !== 'Enter') return;
+                                    keyEvent.stopPropagation();
+                                    deletePostEvent(event.id);
+                                  }}
+                                  className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100"
+                                >
+                                  Borrar
+                                </span>
+                              </div>
                             </button>
                           ))
                         ) : (
@@ -6092,11 +7551,16 @@ function App() {
                 <p className="text-sm uppercase tracking-[0.3em] text-slate-400">{editingId ? 'Editar jugador' : 'Nuevo jugador'}</p>
                 <h3 className="mt-2 text-xl font-semibold text-white">Formulario de jugador</h3>
               </div>
-              <button onClick={closeForm} className="rounded-full bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/10">
+              <button onClick={closeForm} disabled={isSavingPlayer} className="rounded-full bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60">
                 Cerrar
               </button>
             </div>
             <form onSubmit={handleSubmit} className="min-h-0 space-y-5 overflow-y-auto px-6 py-6 sm:px-8">
+              {playerFormError ? (
+                <div className="rounded-3xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                  {playerFormError}
+                </div>
+              ) : null}
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="space-y-2 text-sm text-slate-300">
                   <span>Nombre completo</span>
@@ -6181,20 +7645,55 @@ function App() {
                   placeholder="https://..."
                 />
               </label>
+              <div className="space-y-2 text-sm text-slate-300">
+                <span>Subir imagen</span>
+                <input
+                  ref={playerImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePlayerImageFileChange}
+                  disabled={isUploadingPlayerImage || isSavingPlayer}
+                  className="hidden"
+                />
+                <div className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:flex-row sm:items-center">
+                  <button
+                    type="button"
+                    onClick={() => playerImageInputRef.current?.click()}
+                    disabled={isUploadingPlayerImage || isSavingPlayer}
+                    className="inline-flex w-fit items-center justify-center rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isUploadingPlayerImage ? 'Subiendo...' : 'Subir imagen'}
+                  </button>
+                  {formState.image ? (
+                    <div className="flex items-center gap-3">
+                      <div className="h-14 w-14 overflow-hidden rounded-2xl bg-white/10">
+                        <img src={formState.image} alt="" className="h-full w-full object-cover" />
+                      </div>
+                      <span className="text-xs text-slate-400">Preview actualizada</span>
+                    </div>
+                  ) : null}
+                </div>
+                {isUploadingPlayerImage ? <span className="text-xs text-caudal-electric">Subiendo foto...</span> : null}
+              </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
                 <button
                   type="button"
                   onClick={closeForm}
-                  className="inline-flex items-center justify-center rounded-3xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
+                  disabled={isSavingPlayer}
+                  className="inline-flex items-center justify-center rounded-3xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center justify-center rounded-2xl bg-caudal-electric px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]"
+                  disabled={isSavingPlayer}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-caudal-electric px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  Guardar jugador
+                  {isSavingPlayer ? (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-950/30 border-t-slate-950" />
+                  ) : null}
+                  {isSavingPlayer ? 'Guardando...' : 'Guardar jugador'}
                 </button>
               </div>
             </form>
@@ -6248,6 +7747,36 @@ function App() {
                     placeholder="Se rellena al importar"
                   />
                 </label>
+                <div className="space-y-2 text-sm text-slate-300">
+                  <span>Subir imagen</span>
+                  <input
+                    ref={teamCrestInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleTeamCrestFileChange}
+                    disabled={isUploadingTeamCrest}
+                    className="hidden"
+                  />
+                  <div className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/[0.03] p-3">
+                    <button
+                      type="button"
+                      onClick={() => teamCrestInputRef.current?.click()}
+                      disabled={isUploadingTeamCrest}
+                      className="inline-flex w-fit items-center justify-center rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isUploadingTeamCrest ? 'Subiendo...' : 'Subir imagen'}
+                    </button>
+                    {teamFormState.crest ? (
+                      <div className="flex items-center gap-3">
+                        <div className="h-12 w-12 overflow-hidden rounded-2xl bg-white/10 p-1">
+                          <img src={teamFormState.crest} alt="" className="h-full w-full object-contain" />
+                        </div>
+                        <span className="text-xs text-slate-400">Preview actualizada</span>
+                      </div>
+                    ) : null}
+                  </div>
+                  {isUploadingTeamCrest ? <span className="text-xs text-caudal-electric">Subiendo escudo...</span> : null}
+                </div>
                 <label className="space-y-2 text-sm text-slate-300">
                   <span>Estadio</span>
                   <input
