@@ -427,10 +427,10 @@ const createRivalPlayerPayload = (teamId, player) => ({
 
 const createRivalTeamPayload = (teamFormState, importedData) => ({
   name: cleanTeamDisplayName(teamFormState.name.trim() || importedData?.name || 'Equipo sin nombre'),
-  source_url: normalizeSourceUrl(teamFormState.sourceUrl),
+  source_url: normalizeSourceUrl(teamFormState.sourceUrl) || '',
   crest: importedData?.crest || teamFormState.crest || '',
-  stadium: teamFormState.stadium.trim(),
-  kit_color: teamFormState.kitColor || '#ef233c',
+  stadium: importedData?.stadium || teamFormState.stadium.trim(),
+  kit_color: importedData?.kitColor || teamFormState.kitColor || '#ef233c',
   system: teamFormState.system || '4-4-2',
 });
 
@@ -451,6 +451,44 @@ const uploadPublicFile = async ({ bucket, file, folder = '' }) => {
   if (uploadError) throw uploadError;
   const { data } = supabase.storage.from(bucket).getPublicUrl(storagePath);
   return data.publicUrl;
+};
+
+const getDominantImageColor = async (imageUrl) => {
+  if (!imageUrl) return '';
+  try {
+    const response = await fetch(imageUrl);
+    if (!response.ok) return '';
+    const blob = await response.blob();
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement('canvas');
+    const size = 32;
+    canvas.width = size;
+    canvas.height = size;
+    const context = canvas.getContext('2d');
+    context.drawImage(bitmap, 0, 0, size, size);
+    const pixels = context.getImageData(0, 0, size, size).data;
+    const colors = new Map();
+
+    for (let index = 0; index < pixels.length; index += 4) {
+      const alpha = pixels[index + 3];
+      if (alpha < 180) continue;
+      const red = pixels[index];
+      const green = pixels[index + 1];
+      const blue = pixels[index + 2];
+      if (red > 235 && green > 235 && blue > 235) continue;
+      if (red < 20 && green < 20 && blue < 20) continue;
+      const bucket = [red, green, blue].map((value) => Math.round(value / 32) * 32).join(',');
+      colors.set(bucket, (colors.get(bucket) || 0) + 1);
+    }
+
+    bitmap.close?.();
+    const dominant = Array.from(colors.entries()).sort((a, b) => b[1] - a[1])[0]?.[0];
+    if (!dominant) return '';
+    const [red, green, blue] = dominant.split(',').map(Number);
+    return `#${[red, green, blue].map((value) => Math.max(0, Math.min(255, value)).toString(16).padStart(2, '0')).join('')}`;
+  } catch {
+    return '';
+  }
 };
 
 const formationLayouts = {
@@ -1386,6 +1424,28 @@ const extractTeamName = (doc, fallback) => {
   return heading || title?.replace(/\s*[-|].*$/, '').trim() || fallback;
 };
 
+const extractStadium = (doc) => {
+  const text = (doc.body?.textContent || '').replace(/\s+/g, ' ').trim();
+  const labelMatch = text.match(/(?:Estadio|Campo|Campo de juego)\s*:?\s*([A-ZÁÉÍÓÚÑÜ][A-Za-zÁÉÍÓÚÑÜáéíóúñü0-9 .'-]{2,70})/i);
+  if (labelMatch) return labelMatch[1].replace(/\s+(Aforo|Capacidad|Dirección|Direccion|Ciudad).*$/i, '').trim();
+
+  const tableMatch = Array.from(doc.querySelectorAll('tr, li, p, div'))
+    .map((node) => node.textContent?.replace(/\s+/g, ' ').trim() || '')
+    .find((value) => /^(Estadio|Campo|Campo de juego)\b/i.test(value));
+
+  return tableMatch?.replace(/^(Estadio|Campo|Campo de juego)\s*:?\s*/i, '').replace(/\s+(Aforo|Capacidad|Dirección|Direccion|Ciudad).*$/i, '').trim() || '';
+};
+
+const extractKitColor = (doc) => {
+  const themeColor = doc.querySelector('meta[name="theme-color"]')?.content;
+  if (/^#[0-9a-f]{6}$/i.test(themeColor || '')) return themeColor;
+
+  const raw = doc.documentElement?.outerHTML ?? '';
+  const colors = raw.match(/#[0-9a-f]{6}\b/gi) || [];
+  const ignored = new Set(['#ffffff', '#000000', '#f8fafc', '#f5f5f5', '#eeeeee', '#e5e7eb']);
+  return colors.find((color) => !ignored.has(color.toLowerCase())) || '';
+};
+
 const resolveAssetUrl = (value, baseUrl) => {
   if (!value) return '';
   try {
@@ -1823,8 +1883,6 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [authError, setAuthError] = useState('');
-  const [authMessage, setAuthMessage] = useState('');
-  const [authMode, setAuthMode] = useState('signIn');
   const [authForm, setAuthForm] = useState({ email: '', password: '' });
   const [installPromptEvent, setInstallPromptEvent] = useState(null);
   const [isAppInstalled, setIsAppInstalled] = useState(false);
@@ -1921,7 +1979,6 @@ function App() {
   const handleAuthSubmit = async (event) => {
     event.preventDefault();
     setAuthError('');
-    setAuthMessage('');
     setAuthSubmitting(true);
 
     const credentials = {
@@ -1929,15 +1986,10 @@ function App() {
       password: authForm.password,
     };
 
-    const { data, error: authSubmitError } =
-      authMode === 'signUp'
-        ? await supabase.auth.signUp(credentials)
-        : await supabase.auth.signInWithPassword(credentials);
+    const { error: authSubmitError } = await supabase.auth.signInWithPassword(credentials);
 
     if (authSubmitError) {
       setAuthError(authSubmitError.message || 'No se pudo completar la autenticación.');
-    } else if (authMode === 'signUp' && !data.session) {
-      setAuthMessage('Registro creado. Revisa tu email para confirmar la cuenta.');
     }
 
     setAuthSubmitting(false);
@@ -1945,7 +1997,6 @@ function App() {
 
   const handleSignOut = async () => {
     setAuthError('');
-    setAuthMessage('');
     const { error: signOutError } = await supabase.auth.signOut();
     if (signOutError) {
       setAuthError(signOutError.message || 'No se pudo cerrar sesión.');
@@ -4186,6 +4237,8 @@ function App() {
         imported = {
           name: extractTeamName(doc, teamFormState.name),
           crest: extractCrest(doc, sourceUrl),
+          stadium: extractStadium(doc),
+          kitColor: extractKitColor(doc),
           players,
         };
         break;
@@ -4195,6 +4248,7 @@ function App() {
     }
 
     if (!imported) throw lastError ?? new Error('No se pudo importar.');
+    if (!imported.kitColor && imported.crest) imported.kitColor = await getDominantImageColor(imported.crest);
     return imported;
   };
 
@@ -4203,14 +4257,17 @@ function App() {
     let squad = teamFormState.squad.map(normalizeSquadEntry).filter((player) => player.name.trim());
     let importedData = null;
 
-    if (squad.length === 0 && teamFormState.sourceUrl.trim()) {
-      setImportStatus('Importando plantilla...');
+    if (teamFormState.sourceUrl.trim()) {
+      setImportStatus(squad.length === 0 ? 'Importando plantilla...' : 'Importando datos del equipo...');
       try {
         importedData = await importTeamFromSource(normalizeSourceUrl(teamFormState.sourceUrl));
-        squad = importedData.players;
+        if (squad.length === 0) squad = importedData.players;
       } catch (error) {
-        setImportStatus('No pude importar ese enlace. Pega la plantilla manualmente o prueba otro enlace de plantilla.');
-        return;
+        if (squad.length === 0) {
+          setImportStatus('No pude importar ese enlace. Pega la plantilla manualmente o prueba otro enlace de plantilla.');
+          return;
+        }
+        setImportStatus('No pude importar los datos del enlace, pero guardaré la información que has escrito.');
       }
     }
 
@@ -4351,15 +4408,21 @@ function App() {
         name: cleanTeamDisplayName(imported.name || prev.name),
         sourceUrl,
         crest: imported.crest || prev.crest,
+        stadium: imported.stadium || prev.stadium,
+        kitColor: imported.kitColor || prev.kitColor,
         squad: imported.players.map(normalizeSquadEntry),
       }));
 
       if (editingTeamId) {
-        const { error: crestError } = await supabase
+        const { error: teamUpdateError } = await supabase
           .from("equipos_rivales")
-          .update({ crest: imported.crest || teamFormState.crest || '' })
+          .update({
+            crest: imported.crest || teamFormState.crest || '',
+            stadium: imported.stadium || teamFormState.stadium || '',
+            kit_color: imported.kitColor || teamFormState.kitColor || '#ef233c',
+          })
           .eq("id", editingTeamId);
-        if (crestError) console.error('Error actualizando escudo del equipo rival en Supabase:', crestError);
+        if (teamUpdateError) console.error('Error actualizando equipo rival en Supabase:', teamUpdateError);
         await loadTeams();
       }
 
@@ -4972,7 +5035,6 @@ function App() {
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-5xl">C.D. Caudal de Mieres</h1>
             <p className="mt-3 text-sm text-slate-400">Mieres, Asturias</p>
             {authError ? <p className="mx-auto mt-6 max-w-md text-sm text-red-200">{authError}</p> : null}
-            {authMessage ? <p className="mx-auto mt-6 max-w-md text-sm text-caudal-electric">{authMessage}</p> : null}
             <form onSubmit={handleAuthSubmit} className="mx-auto mt-8 grid max-w-md gap-4 text-left">
               <label className="space-y-2 text-sm text-slate-300">
                 <span>Email</span>
@@ -4995,7 +5057,7 @@ function App() {
                   name="password"
                   value={authForm.password}
                   onChange={handleAuthFormChange}
-                  autoComplete={authMode === 'signUp' ? 'new-password' : 'current-password'}
+                  autoComplete="current-password"
                   className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white shadow-inner placeholder:text-slate-500"
                   placeholder="Tu contraseña"
                 />
@@ -5005,20 +5067,12 @@ function App() {
                 disabled={authLoading || authSubmitting}
                 className="mt-2 inline-flex items-center justify-center rounded-2xl bg-white px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-70"
               >
-                {authSubmitting ? 'Enviando...' : authMode === 'signUp' ? 'Registrarse' : 'Iniciar sesión'}
+                {authSubmitting ? 'Enviando...' : 'Iniciar sesión'}
               </button>
             </form>
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMode((current) => (current === 'signIn' ? 'signUp' : 'signIn'));
-                setAuthError('');
-                setAuthMessage('');
-              }}
-              className="mt-5 text-sm font-semibold text-caudal-electric transition hover:text-[#7aacff]"
-            >
-              {authMode === 'signUp' ? 'Ya tengo cuenta' : 'Crear cuenta'}
-            </button>
+            <p className="mx-auto mt-5 max-w-md text-sm text-slate-400">
+              Acceso privado para usuarios autorizados del cuerpo técnico.
+            </p>
           </section>
         </main>
       </div>
@@ -7946,17 +8000,16 @@ function App() {
               </button>
             </div>
 
-            <form onSubmit={handleTeamSubmit} className="min-h-0 space-y-5 overflow-y-auto px-6 py-6 sm:px-8">
+            <form onSubmit={handleTeamSubmit} noValidate className="min-h-0 space-y-5 overflow-y-auto px-6 py-6 sm:px-8">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <label className="space-y-2 text-sm text-slate-300">
                   <span>Enlace del equipo</span>
                   <input
-                    required
                     name="sourceUrl"
                     value={teamFormState.sourceUrl}
                     onChange={handleTeamChange}
                     className="w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white shadow-inner placeholder:text-slate-500"
-                    placeholder="https://es.besoccer.com/equipo/plantilla/..."
+                    placeholder="Opcional: https://es.besoccer.com/equipo/plantilla/..."
                   />
                 </label>
                 <label className="space-y-2 text-sm text-slate-300">
@@ -8049,14 +8102,14 @@ function App() {
 
               <div className="flex flex-col gap-2 rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-slate-400">
-                  El importador intenta rellenar nombre, escudo, jugadores y fotos desde el enlace.
+                  El importador intenta rellenar nombre, escudo, estadio, color, jugadores y fotos desde el enlace.
                 </p>
                 <button
                   type="button"
                   onClick={handleImportSquad}
                   className="inline-flex items-center justify-center rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25"
                 >
-                  Importar plantilla
+                  Importar datos
                 </button>
               </div>
               {importStatus ? <p className="text-sm text-caudal-electric">{importStatus}</p> : null}
