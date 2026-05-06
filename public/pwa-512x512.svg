@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="App Caudal">
-  <rect width="512" height="512" rx="108" fill="#000000"/>
-  <circle cx="256" cy="256" r="172" fill="#ffffff"/>
-  <circle cx="256" cy="256" r="146" fill="#061127"/>
-  <path d="M150 192h212v48H208v32h128v48H208v54h-58V192Z" fill="#4f8cff"/>
-  <path d="M308 192h54v182h-54v-48h-48v-48h48V192Z" fill="#ffffff"/>
-</svg>
