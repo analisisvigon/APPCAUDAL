@@ -13,8 +13,8 @@ export default defineConfig({
         name: 'App Caudal',
         short_name: 'Caudal',
         display: 'standalone',
-        theme_color: '#000000',
-        background_color: '#000000',
+        theme_color: '#d40000',
+        background_color: '#111111',
         icons: [
           {
             src: '/pwa-192x192.png',

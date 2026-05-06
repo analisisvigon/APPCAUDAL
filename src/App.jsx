@@ -1828,6 +1828,8 @@ function App() {
   const [authForm, setAuthForm] = useState({ email: '', password: '' });
   const [installPromptEvent, setInstallPromptEvent] = useState(null);
   const [isAppInstalled, setIsAppInstalled] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
+  const [isSplashVisible, setIsSplashVisible] = useState(true);
   const [empty, setEmpty] = useState(false);
   const [isSavingPlayer, setIsSavingPlayer] = useState(false);
   const [playerFormError, setPlayerFormError] = useState('');
@@ -2452,6 +2454,16 @@ function App() {
     return () => {
       isMounted = false;
       subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const fadeTimer = window.setTimeout(() => setIsSplashVisible(false), 1100);
+    const removeTimer = window.setTimeout(() => setShowSplash(false), 1400);
+
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(removeTimer);
     };
   }, []);
 
@@ -4936,10 +4948,21 @@ function App() {
   };
 
   const authUser = session?.user ?? null;
+  const splashScreen = showSplash ? (
+    <div
+      className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#111111] text-white transition-opacity duration-300 ${
+        isSplashVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
+      }`}
+    >
+      <img src="/pwa-192x192.png" alt="Escudo del C.D. Caudal" className="h-28 w-28 object-contain" />
+      <p className="mt-5 text-lg font-semibold tracking-wide">App Caudal</p>
+    </div>
+  ) : null;
 
   if (!authUser) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-caudal-950 via-caudal-900 to-[#05101f] text-slate-100">
+        {splashScreen}
         <main className="mx-auto flex min-h-screen max-w-4xl flex-col items-center justify-center px-4 py-10 text-center sm:px-6">
           <section className="w-full rounded-3xl border border-white/5 bg-white/5 p-8 shadow-glow backdrop-blur-md sm:p-10">
             <div className="mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded-3xl bg-white p-3 shadow-sm">
@@ -5004,6 +5027,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-caudal-950 via-caudal-900 to-[#05101f] text-slate-100">
+      {splashScreen}
       <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-4 pb-8 pt-6 sm:px-6 lg:px-8">
         <header className="mb-6 flex flex-col gap-4 rounded-3xl border border-white/5 bg-white/5 p-5 shadow-glow backdrop-blur-md sm:flex-row sm:items-center sm:justify-between">
           <div>
