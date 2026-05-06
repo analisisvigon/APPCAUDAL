@@ -1826,6 +1826,8 @@ function App() {
   const [authMessage, setAuthMessage] = useState('');
   const [authMode, setAuthMode] = useState('signIn');
   const [authForm, setAuthForm] = useState({ email: '', password: '' });
+  const [installPromptEvent, setInstallPromptEvent] = useState(null);
+  const [isAppInstalled, setIsAppInstalled] = useState(false);
   const [empty, setEmpty] = useState(false);
   const [isSavingPlayer, setIsSavingPlayer] = useState(false);
   const [playerFormError, setPlayerFormError] = useState('');
@@ -1948,6 +1950,17 @@ function App() {
       return;
     }
     setSession(null);
+  };
+
+  const handleInstallApp = async () => {
+    if (!installPromptEvent) return;
+
+    installPromptEvent.prompt();
+    const choice = await installPromptEvent.userChoice;
+    if (choice.outcome === 'accepted') {
+      setIsAppInstalled(true);
+      setInstallPromptEvent(null);
+    }
   };
 
   const loadTeams = async () => {
@@ -2439,6 +2452,31 @@ function App() {
     return () => {
       isMounted = false;
       subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const isStandalone = () =>
+      window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+    setIsAppInstalled(isStandalone());
+
+    const handleBeforeInstallPrompt = (event) => {
+      event.preventDefault();
+      if (!isStandalone()) setInstallPromptEvent(event);
+    };
+
+    const handleAppInstalled = () => {
+      setIsAppInstalled(true);
+      setInstallPromptEvent(null);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);
 
@@ -4979,6 +5017,15 @@ function App() {
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Sesión iniciada</p>
                 <p className="truncate font-semibold text-white">{authUser.email}</p>
               </div>
+              {installPromptEvent && !isAppInstalled ? (
+                <button
+                  type="button"
+                  onClick={handleInstallApp}
+                  className="inline-flex shrink-0 items-center justify-center rounded-2xl border border-caudal-electric/50 bg-white/5 px-4 py-2 text-sm font-semibold text-caudal-electric transition hover:bg-white/10"
+                >
+                  Instalar app
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={handleSignOut}
