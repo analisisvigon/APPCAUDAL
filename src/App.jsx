@@ -1819,6 +1819,13 @@ function App() {
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [authMessage, setAuthMessage] = useState('');
+  const [authMode, setAuthMode] = useState('signIn');
+  const [authForm, setAuthForm] = useState({ email: '', password: '' });
   const [empty, setEmpty] = useState(false);
   const [isSavingPlayer, setIsSavingPlayer] = useState(false);
   const [playerFormError, setPlayerFormError] = useState('');
@@ -1901,6 +1908,43 @@ function App() {
   const teamCrestInputRef = useRef(null);
   const preSectionRef = useRef(null);
   const postSectionRef = useRef(null);
+
+  const handleAuthFormChange = (event) => {
+    const { name, value } = event.target;
+    setAuthForm((current) => ({ ...current, [name]: value }));
+  };
+
+  const handleAuthSubmit = async (event) => {
+    event.preventDefault();
+    setAuthError('');
+    setAuthMessage('');
+    setAuthSubmitting(true);
+
+    const credentials = {
+      email: authForm.email.trim(),
+      password: authForm.password,
+    };
+
+    const { data, error: authSubmitError } =
+      authMode === 'signUp'
+        ? await supabase.auth.signUp(credentials)
+        : await supabase.auth.signInWithPassword(credentials);
+
+    if (authSubmitError) {
+      setAuthError(authSubmitError.message || 'No se pudo completar la autenticación.');
+    } else if (authMode === 'signUp' && !data.session) {
+      setAuthMessage('Registro creado. Revisa tu email para confirmar la cuenta.');
+    }
+
+    setAuthSubmitting(false);
+  };
+
+  const handleSignOut = async () => {
+    setAuthError('');
+    setAuthMessage('');
+    const { error: signOutError } = await supabase.auth.signOut();
+    if (signOutError) setAuthError(signOutError.message || 'No se pudo cerrar sesión.');
+  };
 
   const loadTeams = async () => {
     setTeamsLoading(true);
@@ -2363,6 +2407,36 @@ function App() {
       setPlayerProfileLoading(false);
     }
   };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadSession = async () => {
+      setAuthLoading(true);
+      setAuthError('');
+
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (!isMounted) return;
+
+      if (sessionError) setAuthError(sessionError.message || 'No se pudo cargar la sesión.');
+      setSession(data.session ?? null);
+      setAuthLoading(false);
+    };
+
+    loadSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setAuthLoading(false);
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -4819,6 +4893,74 @@ function App() {
     );
   };
 
+  const authUser = session?.user ?? null;
+  const authDisplayName = authUser?.user_metadata?.full_name || authUser?.user_metadata?.name || authUser?.email || 'Usuario';
+
+  if (!authUser) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-caudal-950 via-caudal-900 to-[#05101f] text-slate-100">
+        <main className="mx-auto flex min-h-screen max-w-4xl flex-col items-center justify-center px-4 py-10 text-center sm:px-6">
+          <section className="w-full rounded-3xl border border-white/5 bg-white/5 p-8 shadow-glow backdrop-blur-md sm:p-10">
+            <div className="mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded-3xl bg-white p-3 shadow-sm">
+              <img src={clubCrest} alt="Escudo del C.D. Caudal" className="h-full w-full object-contain" />
+            </div>
+            <p className="mt-8 text-xs uppercase tracking-[0.34em] text-slate-400">Entrenador</p>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-5xl">C.D. Caudal de Mieres</h1>
+            <p className="mt-3 text-sm text-slate-400">Mieres, Asturias</p>
+            {authError ? <p className="mx-auto mt-6 max-w-md text-sm text-red-200">{authError}</p> : null}
+            {authMessage ? <p className="mx-auto mt-6 max-w-md text-sm text-caudal-electric">{authMessage}</p> : null}
+            <form onSubmit={handleAuthSubmit} className="mx-auto mt-8 grid max-w-md gap-4 text-left">
+              <label className="space-y-2 text-sm text-slate-300">
+                <span>Email</span>
+                <input
+                  required
+                  type="email"
+                  name="email"
+                  value={authForm.email}
+                  onChange={handleAuthFormChange}
+                  autoComplete="email"
+                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white shadow-inner placeholder:text-slate-500"
+                  placeholder="tu@email.com"
+                />
+              </label>
+              <label className="space-y-2 text-sm text-slate-300">
+                <span>Contraseña</span>
+                <input
+                  required
+                  type="password"
+                  name="password"
+                  value={authForm.password}
+                  onChange={handleAuthFormChange}
+                  autoComplete={authMode === 'signUp' ? 'new-password' : 'current-password'}
+                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white shadow-inner placeholder:text-slate-500"
+                  placeholder="Tu contraseña"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={authLoading || authSubmitting}
+                className="mt-2 inline-flex items-center justify-center rounded-2xl bg-white px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {authSubmitting ? 'Enviando...' : authMode === 'signUp' ? 'Registrarse' : 'Iniciar sesión'}
+              </button>
+            </form>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode((current) => (current === 'signIn' ? 'signUp' : 'signIn'));
+                setAuthError('');
+                setAuthMessage('');
+              }}
+              className="mt-5 text-sm font-semibold text-caudal-electric transition hover:text-[#7aacff]"
+            >
+              {authMode === 'signUp' ? 'Ya tengo cuenta' : 'Crear cuenta'}
+            </button>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-caudal-950 via-caudal-900 to-[#05101f] text-slate-100">
       <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-4 pb-8 pt-6 sm:px-6 lg:px-8">
@@ -4828,21 +4970,39 @@ function App() {
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">C.D. Caudal de Mieres</h1>
             <p className="mt-1 text-sm text-slate-400">Mieres, Asturias</p>
           </div>
-          <nav className="flex flex-wrap gap-3">
-            {['Inicio', 'Plantilla', 'Equipos', 'Partidos', 'Análisis Grupal'].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
-                  activeTab === tab
-                    ? 'bg-caudal-electric text-slate-950 shadow-[0_15px_35px_rgba(79,140,255,0.22)]'
-                    : 'bg-white/10 text-slate-200 hover:bg-white/15'
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
-          </nav>
+          <div className="flex flex-col gap-3 sm:items-end">
+            <nav className="flex flex-wrap gap-3 sm:justify-end">
+              {['Inicio', 'Plantilla', 'Equipos', 'Partidos', 'Análisis Grupal'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                    activeTab === tab
+                      ? 'bg-caudal-electric text-slate-950 shadow-[0_15px_35px_rgba(79,140,255,0.22)]'
+                      : 'bg-white/10 text-slate-200 hover:bg-white/15'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </nav>
+            <div className="flex flex-col gap-2 sm:items-end">
+              {authError ? <p className="max-w-sm text-sm text-red-200">{authError}</p> : null}
+              <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+                <div className="text-sm text-slate-300 sm:text-right">
+                  <p className="font-semibold text-white">{authDisplayName}</p>
+                  <p className="text-xs text-slate-400">{authUser.email}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
+                >
+                  Cerrar sesión
+                </button>
+              </div>
+            </div>
+          </div>
         </header>
 
         {activeTab === 'Inicio' ? (
