@@ -1943,7 +1943,11 @@ function App() {
     setAuthError('');
     setAuthMessage('');
     const { error: signOutError } = await supabase.auth.signOut();
-    if (signOutError) setAuthError(signOutError.message || 'No se pudo cerrar sesión.');
+    if (signOutError) {
+      setAuthError(signOutError.message || 'No se pudo cerrar sesión.');
+      return;
+    }
+    setSession(null);
   };
 
   const loadTeams = async () => {
@@ -4894,7 +4898,6 @@ function App() {
   };
 
   const authUser = session?.user ?? null;
-  const authDisplayName = authUser?.user_metadata?.full_name || authUser?.user_metadata?.name || authUser?.email || 'Usuario';
 
   if (!authUser) {
     return (
@@ -4970,7 +4973,20 @@ function App() {
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">C.D. Caudal de Mieres</h1>
             <p className="mt-1 text-sm text-slate-400">Mieres, Asturias</p>
           </div>
-          <div className="flex flex-col gap-3 sm:items-end">
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:items-end">
+            <div className="flex w-full flex-col gap-3 rounded-2xl border border-white/10 bg-caudal-950/40 p-3 sm:w-auto sm:min-w-72 sm:flex-row sm:items-center sm:justify-end">
+              <div className="min-w-0 text-sm text-slate-300 sm:text-right">
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Sesión iniciada</p>
+                <p className="truncate font-semibold text-white">{authUser.email}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="inline-flex shrink-0 items-center justify-center rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]"
+              >
+                Cerrar sesión
+              </button>
+            </div>
             <nav className="flex flex-wrap gap-3 sm:justify-end">
               {['Inicio', 'Plantilla', 'Equipos', 'Partidos', 'Análisis Grupal'].map((tab) => (
                 <button
@@ -4986,22 +5002,7 @@ function App() {
                 </button>
               ))}
             </nav>
-            <div className="flex flex-col gap-2 sm:items-end">
-              {authError ? <p className="max-w-sm text-sm text-red-200">{authError}</p> : null}
-              <div className="flex flex-wrap items-center gap-3 sm:justify-end">
-                <div className="text-sm text-slate-300 sm:text-right">
-                  <p className="font-semibold text-white">{authDisplayName}</p>
-                  <p className="text-xs text-slate-400">{authUser.email}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
-                >
-                  Cerrar sesión
-                </button>
-              </div>
-            </div>
+            {authError ? <p className="max-w-sm text-sm text-red-200">{authError}</p> : null}
           </div>
         </header>
 
