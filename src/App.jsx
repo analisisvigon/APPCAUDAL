@@ -4,6 +4,8 @@ import { supabase } from './lib/supabase';
 
 const clubCrest =
   'https://tmssl.akamaized.net//images/wappen/head/13226.png?lm=1747769013';
+const defaultHomePhrase = 'Trabajo, identidad y detalle competitivo para preparar cada partido.';
+const homePhraseConfigKey = 'home_hero_phrase';
 
 const positions = [
   'Portero',
@@ -397,6 +399,7 @@ const normalizeSupabasePostEvent = (event) => ({
 
 const normalizeSupabaseRivalPlayer = (player) => ({
   id: player.id ?? player.legacy_id ?? player.name,
+  jugadorRivalId: player.jugador_rival_id ?? player.id ?? null,
   legacyId: player.legacy_id ?? null,
   name: player.name ?? '',
   image: player.image ?? '',
@@ -404,8 +407,8 @@ const normalizeSupabaseRivalPlayer = (player) => ({
   position: player.position ?? '',
   age: player.age ?? '',
   role: player.role ?? 'Reserva',
-  isKey: Boolean(player.is_key),
-  yellowRisk: Boolean(player.yellow_risk),
+  isKey: Boolean(player.is_key ?? player.isKey),
+  yellowRisk: Boolean(player.yellow_risk ?? player.yellowRisk),
   suspended: Boolean(player.suspended),
   injured: Boolean(player.injured),
 });
@@ -1239,14 +1242,62 @@ const playerReservePlacement = (player) => {
 };
 const playerStatusBadges = (player) =>
   [
-    player.yellowRisk ? { label: 'A', className: 'bg-yellow-300 text-slate-950', title: 'Acumulación de amarillas' } : null,
-    player.suspended ? { label: 'R', className: 'bg-red-500 text-white', title: 'Expulsado o sancionado' } : null,
-    player.injured ? { label: '+', className: 'bg-white text-red-600', title: 'Lesionado' } : null,
+    player.yellowRisk ? { label: 'A', className: 'bg-yellow-300 text-slate-950', title: 'Amonestado' } : null,
+    player.injured ? { label: 'L', className: 'bg-red-500 text-white', title: 'Lesionado' } : null,
+    player.suspended ? { label: 'S', className: 'bg-slate-600 text-red-100 ring-1 ring-red-300/40', title: 'Sancionado' } : null,
+    player.isKey ? { label: '★', className: 'bg-amber-300 text-blue-950 ring-1 ring-blue-300/50', title: 'Jugador clave' } : null,
   ].filter(Boolean);
 
+const normalizePlayerIdentityName = (value) =>
+  cleanTeamDisplayName(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const mergeRivalPlayerData = (base, candidate) => ({
+  ...base,
+  ...Object.fromEntries(Object.entries(candidate || {}).filter(([, value]) => value !== '' && value !== null && value !== undefined)),
+  isKey: Boolean(base?.isKey || candidate?.isKey),
+  yellowRisk: Boolean(base?.yellowRisk || candidate?.yellowRisk),
+  suspended: Boolean(base?.suspended || candidate?.suspended),
+  injured: Boolean(base?.injured || candidate?.injured),
+});
+
+const dedupeRivalPlayers = (players) => {
+  const deduped = [];
+  const seenRivalIds = new Map();
+  const seenIds = new Map();
+  const seenNames = new Map();
+
+  players.map(normalizeSquadEntry).forEach((player) => {
+    if (!player.name) return;
+    const rivalId = player.jugadorRivalId || player.jugador_rival_id || null;
+    const id = player.id || null;
+    const normalizedName = normalizePlayerIdentityName(player.name);
+    const existingIndex =
+      (rivalId && seenRivalIds.get(rivalId)) ??
+      (id && seenIds.get(id)) ??
+      seenNames.get(normalizedName);
+
+    if (existingIndex !== undefined) {
+      deduped[existingIndex] = mergeRivalPlayerData(deduped[existingIndex], player);
+      return;
+    }
+
+    const nextIndex = deduped.length;
+    deduped.push(player);
+    if (rivalId) seenRivalIds.set(rivalId, nextIndex);
+    if (id) seenIds.set(id, nextIndex);
+    if (normalizedName) seenNames.set(normalizedName, nextIndex);
+  });
+
+  return deduped;
+};
+
 const getBenchGroups = (squad) =>
-  squad
-    .map(normalizeSquadEntry)
+  dedupeRivalPlayers(squad)
     .filter((player) => player.role !== 'Titular')
     .reduce((groups, player) => {
       const position = player.position || 'Sin posición';
@@ -1278,6 +1329,7 @@ const normalizeSquadEntry = (entry) => {
   const name = entry.name ?? '';
   return {
     id: entry.id ?? name,
+    jugadorRivalId: entry.jugadorRivalId ?? entry.jugador_rival_id ?? null,
     name,
     image: entry.image ?? '',
     number: entry.number ?? '',
@@ -1898,6 +1950,11 @@ function App() {
   const [isUploadingTeamCrest, setIsUploadingTeamCrest] = useState(false);
   const [homeLoading, setHomeLoading] = useState(false);
   const [homeError, setHomeError] = useState('');
+  const [homePhrase, setHomePhrase] = useState(defaultHomePhrase);
+  const [homePhraseDraft, setHomePhraseDraft] = useState(defaultHomePhrase);
+  const [isEditingHomePhrase, setIsEditingHomePhrase] = useState(false);
+  const [homePhraseSaving, setHomePhraseSaving] = useState(false);
+  const [homePhraseStatus, setHomePhraseStatus] = useState('');
   const [matches, setMatches] = useState([]);
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [draggedPlayer, setDraggedPlayer] = useState(null);
@@ -2034,13 +2091,27 @@ function App() {
         acc[player.equipo_rival_id] = [...(acc[player.equipo_rival_id] || []), normalizeSupabaseRivalPlayer(player)];
         return acc;
       }, {});
+      Object.keys(playersByTeam).forEach((teamId) => {
+        playersByTeam[teamId] = dedupeRivalPlayers(playersByTeam[teamId]);
+      });
+      const findLinkedRivalPlayer = (teamId, row) => {
+        const teamPlayers = playersByTeam[teamId] || [];
+        return (
+          teamPlayers.find((player) => row.jugador_rival_id && player.id === row.jugador_rival_id) ||
+          teamPlayers.find((player) => row.jugador_rival_id && player.jugadorRivalId === row.jugador_rival_id) ||
+          teamPlayers.find((player) => normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(row.player_name))
+        );
+      };
       const lineupByTeam = (lineupResponse.data || []).reduce((acc, row) => {
-        const player = normalizeSupabaseRivalPlayer({
+        const snapshotPlayer = normalizeSupabaseRivalPlayer({
           ...(row.player_snapshot || {}),
           id: row.jugador_rival_id || row.player_name,
+          jugador_rival_id: row.jugador_rival_id || null,
           name: row.player_name,
           role: row.role || 'Titular',
         });
+        const linkedPlayer = findLinkedRivalPlayer(row.equipo_rival_id, row);
+        const player = linkedPlayer ? { ...snapshotPlayer, ...linkedPlayer, name: row.player_name || linkedPlayer.name, role: row.role || linkedPlayer.role || 'Titular' } : snapshotPlayer;
         acc[row.equipo_rival_id] = [
           ...(acc[row.equipo_rival_id] || []),
           { ...player, role: row.role || 'Titular', slot: row.slot, x: row.x, y: row.y },
@@ -2051,12 +2122,17 @@ function App() {
         const slots = [...(acc[row.equipo_rival_id]?.[row.starter_name] || [null, null])];
         while (slots.length < 2) slots.push(null);
         slots[row.slot] = row.player_name
-          ? normalizeSupabaseRivalPlayer({
-              ...(row.player_snapshot || {}),
-              id: row.jugador_rival_id || row.player_name,
-              name: row.player_name,
-              role: 'Reserva',
-            })
+          ? (() => {
+              const snapshotPlayer = normalizeSupabaseRivalPlayer({
+                ...(row.player_snapshot || {}),
+                id: row.jugador_rival_id || row.player_name,
+                jugador_rival_id: row.jugador_rival_id || null,
+                name: row.player_name,
+                role: 'Reserva',
+              });
+              const linkedPlayer = findLinkedRivalPlayer(row.equipo_rival_id, row);
+              return linkedPlayer ? { ...snapshotPlayer, ...linkedPlayer, name: row.player_name || linkedPlayer.name, role: 'Reserva' } : snapshotPlayer;
+            })()
           : null;
         acc[row.equipo_rival_id] = { ...(acc[row.equipo_rival_id] || {}), [row.starter_name]: slots };
         return acc;
@@ -2134,21 +2210,66 @@ function App() {
     return nextMatches;
   };
 
+  const loadHomePhrase = async () => {
+    const { data, error: configError } = await supabase
+      .from("app_config")
+      .select("value")
+      .eq("key", homePhraseConfigKey)
+      .maybeSingle();
+
+    if (configError) {
+      console.warn('No se pudo cargar la frase de Inicio desde app_config:', configError);
+      setHomePhrase(defaultHomePhrase);
+      setHomePhraseDraft(defaultHomePhrase);
+      return defaultHomePhrase;
+    }
+
+    const nextPhrase = data?.value || defaultHomePhrase;
+    setHomePhrase(nextPhrase);
+    setHomePhraseDraft(nextPhrase);
+    return nextPhrase;
+  };
+
   const loadHomeDashboardData = async () => {
     setHomeLoading(true);
     setHomeError('');
 
     try {
-      const [partidosResponse, jugadoresResponse, equiposResponse] = await Promise.all([
+      const [partidosResponse, jugadoresResponse, equiposResponse, statsResponse, goalsResponse] = await Promise.all([
         supabase.from("partidos").select("*").order("date", { ascending: true, nullsFirst: false }),
         supabase.from("jugadores").select("*").order("name", { ascending: true }),
         supabase.from("equipos_rivales").select("*").order("name", { ascending: true }),
+        supabase.from("partido_estadisticas_jugador").select("*"),
+        supabase.from("partido_eventos_gol").select("*"),
       ]);
-      const failed = [partidosResponse, jugadoresResponse, equiposResponse].find((response) => response.error);
+      const failed = [partidosResponse, jugadoresResponse, equiposResponse, statsResponse, goalsResponse].find((response) => response.error);
       if (failed) throw failed.error;
 
       const nextPlayers = (jugadoresResponse.data || []).map(normalizeSupabaseJugador);
-      const nextMatches = (partidosResponse.data || []).map(normalizeSupabasePartido);
+      const statsByMatch = (statsResponse.data || []).reduce((acc, row) => {
+        const current = acc[row.partido_id] || {};
+        current[row.player_name] = {
+          role: row.role || 'Suplente',
+          minutes: row.minutes ?? '',
+          yellow: Boolean(row.yellow),
+          yellowCount: Number(row.yellow_count || 0),
+          red: Boolean(row.red),
+          injured: Boolean(row.injured),
+          rating: row.rating || '',
+          replacementName: row.replacement_name || '',
+        };
+        acc[row.partido_id] = current;
+        return acc;
+      }, {});
+      const eventsByMatch = (goalsResponse.data || []).reduce((acc, event) => {
+        acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseGoalEvent(event)];
+        return acc;
+      }, {});
+      const nextMatches = (partidosResponse.data || []).map((match) => ({
+        ...normalizeSupabasePartido(match),
+        statsGoalEvents: eventsByMatch[match.id] || [],
+        statsPlayerData: statsByMatch[match.id] || {},
+      }));
       const baseTeams = (equiposResponse.data || []).map((team) => ({
         id: team.id,
         legacyId: team.legacy_id ?? null,
@@ -2184,6 +2305,29 @@ function App() {
     } finally {
       setHomeLoading(false);
     }
+  };
+
+  const handleSaveHomePhrase = async () => {
+    const nextPhrase = homePhraseDraft.trim() || defaultHomePhrase;
+    setHomePhraseSaving(true);
+    setHomePhraseStatus('');
+
+    const { error: savePhraseError } = await supabase
+      .from("app_config")
+      .upsert({ key: homePhraseConfigKey, value: nextPhrase }, { onConflict: "key" });
+
+    if (savePhraseError) {
+      console.error('Error guardando la frase de Inicio en Supabase:', savePhraseError);
+      setHomePhraseStatus(savePhraseError.message || 'No se pudo guardar la frase en Supabase.');
+      setHomePhraseSaving(false);
+      return;
+    }
+
+    setHomePhrase(nextPhrase);
+    setHomePhraseDraft(nextPhrase);
+    setIsEditingHomePhrase(false);
+    setHomePhraseStatus('Frase guardada en Supabase.');
+    setHomePhraseSaving(false);
   };
 
   const loadMatchStatsData = async (partidoId) => {
@@ -2242,22 +2386,39 @@ function App() {
     setPreError('');
 
     try {
-      const [partidoResponse, convocadosResponse, slotsResponse, notesResponse] = await Promise.all([
+      const [partidoResponse, convocadosResponse, slotsResponse, notesResponse, rivalPlayersResponse] = await Promise.all([
         supabase.from("partidos").select("*").eq("id", partidoId).single(),
         supabase.from("partido_convocados").select("*").eq("partido_id", partidoId),
         supabase.from("partido_alineacion_slots").select("*").eq("partido_id", partidoId).in("scope", ["pre_caudal", "pre_rival"]).order("slot", { ascending: true }),
         supabase.from("partido_notas_individuales_pre").select("*").eq("partido_id", partidoId),
+        supabase.from("jugadores_rivales").select("*"),
       ]);
 
-      const failed = [partidoResponse, convocadosResponse, slotsResponse, notesResponse].find((response) => response.error);
+      const failed = [partidoResponse, convocadosResponse, slotsResponse, notesResponse, rivalPlayersResponse].find((response) => response.error);
       if (failed) throw failed.error;
 
       const preCaudalLineup = Array.from({ length: 11 }, () => '');
       const preRivalLineup = Array.from({ length: 11 }, () => '');
+      const preRivalLineupPlayers = Array.from({ length: 11 }, () => null);
+      const rivalPlayersById = new Map((rivalPlayersResponse.data || []).map((player) => [player.id, normalizeSupabaseRivalPlayer(player)]));
       (slotsResponse.data || []).forEach((slot) => {
         if (!Number.isInteger(slot.slot) || slot.slot < 0 || slot.slot > 10) return;
         if (slot.scope === 'pre_caudal') preCaudalLineup[slot.slot] = slot.player_name || '';
-        if (slot.scope === 'pre_rival') preRivalLineup[slot.slot] = slot.player_name || '';
+        if (slot.scope === 'pre_rival') {
+          preRivalLineup[slot.slot] = slot.player_name || '';
+          const snapshotPlayer = normalizeSupabaseRivalPlayer({
+            ...(slot.player_snapshot || {}),
+            id: slot.jugador_rival_id || slot.player_name,
+            name: slot.player_name,
+            role: 'Titular',
+          });
+          const linkedPlayer = rivalPlayersById.get(slot.jugador_rival_id);
+          preRivalLineupPlayers[slot.slot] = linkedPlayer
+            ? { ...snapshotPlayer, ...linkedPlayer, name: slot.player_name || linkedPlayer.name, role: 'Titular' }
+            : snapshotPlayer.name
+              ? snapshotPlayer
+              : null;
+        }
       });
 
       const prePlayerNotes = {};
@@ -2272,6 +2433,7 @@ function App() {
         statsCalledPlayers: (convocadosResponse.data || []).map((row) => row.player_name),
         preCaudalLineup,
         preRivalLineup,
+        preRivalLineupPlayers,
         prePlayerNotes,
         preRivalPlayerNotes,
       };
@@ -2355,6 +2517,7 @@ function App() {
       jugador_id: scope === 'pre_caudal' && isUuid(player?.id) ? player.id : null,
       jugador_rival_id: scope === 'pre_rival' ? (isUuid(jugadorRivalId) ? jugadorRivalId : isUuid(player?.id) ? player.id : null) : null,
     };
+    if (scope === 'pre_rival') payload.player_snapshot = player ? normalizeSquadEntry(player) : {};
     const { error: slotError } = await supabase
       .from("partido_alineacion_slots")
       .upsert(payload, { onConflict: "partido_id,scope,slot" });
@@ -2585,6 +2748,7 @@ function App() {
   useEffect(() => {
     if (activeTab !== 'Inicio') return;
     loadHomeDashboardData();
+    loadHomePhrase();
   }, [activeTab]);
 
   useEffect(() => {
@@ -2710,6 +2874,12 @@ function App() {
       if (player.name) byName.set(player.name, player);
     });
     return Array.from(byName.values());
+  };
+
+  const getRivalLineupPlayerForSlot = (slotIndex, playerName) => {
+    const slotPlayer = selectedMatch?.preRivalLineupPlayers?.[slotIndex];
+    if (slotPlayer?.name) return normalizeSquadEntry(slotPlayer);
+    return getRivalAvailablePlayers().find((player) => player.name === playerName) || null;
   };
 
   const getCurrentRivalSystem = () => selectedMatch?.preRivalSystem || selectedMatch?.rivalLineupSystem || '4-4-2';
@@ -4013,13 +4183,38 @@ function App() {
         match,
       };
     });
+    const weeklyMatches = finished.slice(-5);
+    const weeklyStats = weeklyMatches.reduce(
+      (acc, match) => {
+        Object.values(match.statsPlayerData || {}).forEach((stats) => {
+          acc.injured += stats.injured ? 1 : 0;
+          acc.yellow += Number(stats.yellowCount ?? (stats.yellow ? 1 : 0)) || 0;
+          acc.red += stats.red ? 1 : 0;
+        });
+        return acc;
+      },
+      { injured: 0, yellow: 0, red: 0 }
+    );
+    const recentPoints = recent.reduce((sum, result) => sum + (result.label === 'V' ? 3 : result.label === 'E' ? 1 : 0), 0);
+    const tendency =
+      recent.length < 2
+        ? 'Sin muestra'
+        : recentPoints >= recent.length * 2
+          ? 'Positiva'
+          : recentPoints >= recent.length
+            ? 'Estable'
+            : 'A corregir';
+    const nextOpponentTeam = nextMatch ? findTeamByDisplayName(teams, nextMatch.opponent) : null;
 
     return {
       scopedMatches,
       nextMatch,
+      nextOpponentTeam,
       lastMatch,
       balance,
       recent,
+      weeklyStats,
+      tendency,
       playerCount: players.length,
       sub23Count: players.filter((player) => calculateAge(player.dob) < 23).length,
       rivalCount: teams.length,
@@ -4254,11 +4449,11 @@ function App() {
 
   const handleTeamSubmit = async (event) => {
     event.preventDefault();
-    let squad = teamFormState.squad.map(normalizeSquadEntry).filter((player) => player.name.trim());
+    let squad = dedupeRivalPlayers(teamFormState.squad).filter((player) => player.name.trim());
     let importedData = null;
 
     if (teamFormState.sourceUrl.trim()) {
-      setImportStatus(squad.length === 0 ? 'Importando plantilla...' : 'Importando datos del equipo...');
+      setImportStatus('Importando datos del equipo...');
       try {
         importedData = await importTeamFromSource(normalizeSourceUrl(teamFormState.sourceUrl));
         if (squad.length === 0) squad = importedData.players;
@@ -4399,7 +4594,7 @@ function App() {
       return;
     }
 
-    setImportStatus('Importando plantilla...');
+    setImportStatus('Importando datos...');
     try {
       const imported = await importTeamFromSource(sourceUrl);
 
@@ -4768,11 +4963,10 @@ function App() {
     const { data: existingRows, error: existingError } = await supabase
       .from("jugadores_rivales")
       .select("*")
-      .eq("equipo_rival_id", rivalTeam.id)
-      .eq("name", player.name)
-      .limit(1);
+      .eq("equipo_rival_id", rivalTeam.id);
     if (existingError) throw existingError;
-    if (existingRows?.[0]) return normalizeSupabaseRivalPlayer(existingRows[0]);
+    const existingPlayer = (existingRows || []).find((row) => normalizePlayerIdentityName(row.name) === normalizePlayerIdentityName(player.name));
+    if (existingPlayer) return normalizeSupabaseRivalPlayer(existingPlayer);
 
     const { data: insertedPlayer, error: insertError } = await supabase
       .from("jugadores_rivales")
@@ -4969,6 +5163,8 @@ function App() {
       const isRival = team === 'rival';
       const isSelected = (isCaudal && selectedTacticalPlayerIndex === index) || (isRival && selectedRivalTacticalPlayerIndex === index);
       const playerName = lineup[index] || `${isCaudal ? 'Jugador' : 'Rol'} ${index + 1}`;
+      const statusPlayer = isRival ? getRivalLineupPlayerForSlot(index, playerName) : null;
+      const statusBadges = statusPlayer ? playerStatusBadges(statusPlayer) : [];
       const PlayerTag = isCaudal || isRival ? 'button' : 'div';
       return (
         <PlayerTag
@@ -4978,8 +5174,17 @@ function App() {
           className={`absolute flex w-16 -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 ${isCaudal ? 'text-caudal-electric' : 'text-rose-200'} ${isCaudal || isRival ? 'cursor-pointer' : ''}`}
           style={{ left: `${position.x}%`, top: `${position.y}%` }}
         >
-          <span className={`flex h-8 w-8 items-center justify-center rounded-full border text-[10px] font-black shadow-lg ${isCaudal ? 'border-caudal-electric bg-caudal-950' : 'border-rose-300 bg-rose-950'} ${isSelected ? 'ring-4 ring-caudal-electric/30' : ''}`}>
+          <span className={`relative flex h-8 w-8 items-center justify-center rounded-full border text-[10px] font-black shadow-lg ${isCaudal ? 'border-caudal-electric bg-caudal-950' : 'border-rose-300 bg-rose-950'} ${isSelected ? 'ring-4 ring-caudal-electric/30' : ''}`}>
             {index === 0 ? 'P' : index}
+            {statusBadges.length ? (
+              <span className="absolute -right-3 -top-2 flex max-w-14 flex-wrap justify-end gap-0.5">
+                {statusBadges.map((badge) => (
+                  <span key={badge.title} title={badge.title} className={`inline-flex h-3 min-w-3 items-center justify-center rounded-sm px-0.5 text-[8px] font-black leading-none ${badge.className}`}>
+                    {badge.label}
+                  </span>
+                ))}
+              </span>
+            ) : null}
           </span>
           <span className={`max-w-16 truncate rounded-md px-1 py-0.5 text-[8px] font-semibold leading-none ${isSelected ? (isCaudal ? 'bg-caudal-electric text-slate-950' : 'bg-rose-300 text-rose-950') : 'bg-black/55 text-white'}`}>
             {playerName}
@@ -5132,104 +5337,212 @@ function App() {
         </header>
 
         {activeTab === 'Inicio' ? (
-          <main className="grid gap-6 lg:grid-cols-[1.3fr_0.9fr]">
-            <section className="space-y-6 rounded-3xl border border-white/5 bg-white/5 p-6 shadow-glow backdrop-blur-md">
-              {homeLoading ? (
-                <div className="rounded-3xl border border-white/10 bg-white/[0.04] px-5 py-4 text-sm text-slate-300">
-                  Cargando Inicio desde Supabase...
-                </div>
-              ) : null}
-              {homeError ? (
-                <div className="rounded-3xl border border-red-500/20 bg-red-500/10 px-5 py-4 text-sm text-red-100">
-                  {homeError}
-                </div>
-              ) : null}
-              <div className="flex items-center gap-4">
-                <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-3xl bg-white p-2 shadow-sm">
+          <main className="space-y-5 pb-8">
+            <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#111111] shadow-glow">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(212,0,0,0.24),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.08),transparent_44%)]" />
+              <div className="relative grid gap-6 p-5 sm:p-6 lg:grid-cols-[auto_1fr_auto] lg:items-center">
+                <div className="mx-auto flex h-28 w-28 items-center justify-center overflow-hidden rounded-[2rem] bg-white p-3 shadow-[0_20px_50px_rgba(0,0,0,0.35)] sm:mx-0 sm:h-32 sm:w-32">
                   <img src={clubCrest} alt="Escudo del C.D. Caudal" className="h-full w-full object-contain" />
                 </div>
-                <div>
-                  <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Dashboard</p>
-                  <h2 className="mt-2 text-2xl font-semibold text-white">Resumen competitivo</h2>
-                </div>
-              </div>
-              <div className="space-y-3 text-slate-300">
-                <p>Inicio calcula el estado del equipo desde Supabase: partidos, plantilla y rivales.</p>
-                <p>Filtro activo: <span className="font-semibold text-caudal-electric">{matchFilter}</span></p>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="rounded-3xl bg-white/5 p-4">
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Próximo partido</p>
-                  <p className="mt-3 text-lg font-semibold text-white">{homeDashboard.nextMatch?.opponent || 'Sin partido programado'}</p>
-                  <p className="mt-1 text-sm text-slate-400">
-                    {homeDashboard.nextMatch ? `${matchDisplayDate(homeDashboard.nextMatch.date)}${homeDashboard.nextMatch.time ? ` · ${homeDashboard.nextMatch.time}` : ''} · ${homeDashboard.nextMatch.isHome ? 'Local' : 'Visitante'}` : 'Añade partidos para activar el calendario.'}
-                  </p>
-                </div>
-                <div className="rounded-3xl bg-white/5 p-4">
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Último resultado</p>
-                  <p className="mt-3 text-lg font-semibold text-white">
-                    {homeDashboard.lastMatch ? getMatchScoreLabel(homeDashboard.lastMatch) : 'Sin resultados'}
-                  </p>
-                  <p className="mt-1 text-sm text-slate-400">
-                    {homeDashboard.lastMatch ? `${matchDisplayDate(homeDashboard.lastMatch.date)} · ${homeDashboard.lastMatch.type}` : 'Cuando cierres partidos aparecerán aquí.'}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setActiveTab('Plantilla')}
-                className="mt-4 inline-flex items-center justify-center rounded-2xl bg-caudal-electric px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]"
-              >
-                Gestionar plantilla
-              </button>
-            </section>
-            <section className="rounded-3xl border border-white/5 bg-white/5 p-6 shadow-glow backdrop-blur-md">
-              <div className="flex items-center gap-4">
-                <div className="h-20 w-20 rounded-3xl bg-[#15224d] p-4 shadow-inner">
-                  <img
-                    src={clubCrest}
-                    alt="Escudo del equipo"
-                    className="h-full w-full rounded-2xl object-cover"
-                  />
-                </div>
-                <div>
-                  <p className="text-sm uppercase tracking-[0.35em] text-slate-400">Escudo</p>
-                  <h3 className="mt-2 text-xl font-semibold text-white">C.D. Caudal</h3>
-                </div>
-              </div>
-              <div className="mt-6 space-y-4 rounded-3xl border border-white/10 bg-caudal-900/80 p-5">
-                <p className="text-sm text-slate-300">Balance general y racha reciente recalculados con los partidos cargados desde Supabase.</p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-3xl bg-white/5 p-4">
-                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Jugadores</p>
-                    <p className="mt-2 text-3xl font-semibold text-white">{homeDashboard.playerCount}</p>
-                  </div>
-                  <div className="rounded-3xl bg-white/5 p-4">
-                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Rivales</p>
-                    <p className="mt-2 text-3xl font-semibold text-white">{homeDashboard.rivalCount}</p>
-                  </div>
-                  <div className="rounded-3xl bg-white/5 p-4">
-                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Balance</p>
-                    <p className="mt-2 text-3xl font-semibold text-white">{homeDashboard.balance.wins}-{homeDashboard.balance.draws}-{homeDashboard.balance.losses}</p>
-                    <p className="mt-1 text-xs text-slate-500">{homeDashboard.balance.goalsFor} GF · {homeDashboard.balance.goalsAgainst} GC</p>
-                  </div>
-                  <div className="rounded-3xl bg-white/5 p-4">
-                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Racha reciente</p>
-                    <div className="mt-3 flex gap-2">
-                      {homeDashboard.recent.length ? homeDashboard.recent.map((result) => (
-                        <span
-                          key={`${result.id}-${result.label}`}
-                          className={`flex h-9 w-9 items-center justify-center rounded-2xl text-sm font-black ${
-                            result.label === 'V' ? 'bg-emerald-400 text-slate-950' : result.label === 'D' ? 'bg-red-400 text-slate-950' : 'bg-amber-300 text-slate-950'
-                          }`}
-                          title={`${result.match.opponent} · ${matchDisplayDate(result.match.date)}`}
+                <div className="text-center sm:text-left">
+                  <p className="text-xs font-black uppercase tracking-[0.35em] text-red-200">Cuerpo técnico</p>
+                  <h2 className="mt-2 text-3xl font-black text-white sm:text-5xl">C.D. Caudal de Mieres</h2>
+                  <div className="mt-4 max-w-3xl">
+                    {isEditingHomePhrase ? (
+                      <div className="space-y-3">
+                        <textarea
+                          value={homePhraseDraft}
+                          onChange={(event) => setHomePhraseDraft(event.target.value)}
+                          rows={2}
+                          maxLength={180}
+                          className="w-full resize-none rounded-2xl border border-white/15 bg-black/35 px-4 py-3 text-sm text-white outline-none transition focus:border-red-400"
+                        />
+                        <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
+                          <button
+                            type="button"
+                            onClick={handleSaveHomePhrase}
+                            disabled={homePhraseSaving}
+                            className="rounded-2xl bg-red-600 px-4 py-2 text-sm font-black text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {homePhraseSaving ? 'Guardando...' : 'Guardar frase'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setHomePhraseDraft(homePhrase);
+                              setIsEditingHomePhrase(false);
+                              setHomePhraseStatus('');
+                            }}
+                            className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/15"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <p className="text-base font-medium leading-relaxed text-slate-200 sm:text-lg">{homePhrase}</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHomePhraseDraft(homePhrase);
+                            setIsEditingHomePhrase(true);
+                            setHomePhraseStatus('');
+                          }}
+                          className="mx-auto inline-flex shrink-0 items-center justify-center rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15 sm:mx-0"
                         >
-                          {result.label}
-                        </span>
-                      )) : <span className="text-sm text-slate-500">Sin datos</span>}
-                    </div>
+                          Editar
+                        </button>
+                      </div>
+                    )}
+                    {homePhraseStatus ? <p className="mt-2 text-xs text-slate-300">{homePhraseStatus}</p> : null}
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 rounded-3xl border border-white/10 bg-black/25 p-3 text-center">
+                  <div>
+                    <p className="text-2xl font-black text-white">{homeDashboard.playerCount}</p>
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Plantilla</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-black text-white">{homeDashboard.rivalCount}</p>
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Rivales</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-black text-white">{homeDashboard.balance.pointsPerGame}</p>
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Pts/part</p>
                   </div>
                 </div>
               </div>
+            </section>
+
+            {homeLoading ? (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-sm text-slate-300">
+                Cargando Inicio desde Supabase...
+              </div>
+            ) : null}
+            {homeError ? (
+              <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-5 py-4 text-sm text-red-100">
+                {homeError}
+              </div>
+            ) : null}
+
+            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                { tab: 'Plantilla', icon: '11', title: 'Plantilla', copy: `${homeDashboard.playerCount} jugadores`, accent: 'from-red-600/30 to-white/5' },
+                { tab: 'Equipos', icon: 'EQ', title: 'Equipos', copy: `${homeDashboard.rivalCount} rivales`, accent: 'from-yellow-400/25 to-white/5' },
+                { tab: 'Partidos', icon: '90', title: 'Partidos', copy: homeDashboard.nextMatch ? 'Preparar siguiente' : 'Crear calendario', accent: 'from-sky-500/25 to-white/5' },
+                { tab: 'Análisis Grupal', icon: 'AG', title: 'Análisis Grupal', copy: `${homeDashboard.balance.played} partidos analizados`, accent: 'from-emerald-500/25 to-white/5' },
+              ].map((item) => (
+                <button
+                  key={item.tab}
+                  type="button"
+                  onClick={() => setActiveTab(item.tab)}
+                  className={`group min-h-32 rounded-3xl border border-white/10 bg-gradient-to-br ${item.accent} p-5 text-left shadow-glow transition duration-200 hover:-translate-y-0.5 hover:border-white/25 active:translate-y-0`}
+                >
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-sm font-black text-slate-950 shadow-lg transition group-hover:scale-105">
+                    {item.icon}
+                  </span>
+                  <p className="mt-5 text-xl font-black text-white">{item.title}</p>
+                  <p className="mt-1 text-sm text-slate-300">{item.copy}</p>
+                </button>
+              ))}
+            </section>
+
+            <section className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+              <div className="rounded-3xl border border-white/10 bg-white/[0.05] p-5 shadow-glow">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">Próximo partido</p>
+                    <h3 className="mt-2 text-2xl font-black text-white">
+                      {homeDashboard.nextMatch?.opponent || 'Sin partido programado'}
+                    </h3>
+                  </div>
+                  <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-3xl bg-white p-2">
+                    <img
+                      src={homeDashboard.nextMatch?.opponentCrest || homeDashboard.nextOpponentTeam?.crest || clubCrest}
+                      alt={homeDashboard.nextMatch?.opponent || 'Escudo rival'}
+                      className="h-full w-full object-contain"
+                    />
+                  </div>
+                </div>
+                <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-2xl bg-black/25 p-4">
+                    <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Fecha</p>
+                    <p className="mt-2 text-sm font-bold text-white">{homeDashboard.nextMatch ? matchDisplayDate(homeDashboard.nextMatch.date) : '-'}</p>
+                  </div>
+                  <div className="rounded-2xl bg-black/25 p-4">
+                    <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Hora</p>
+                    <p className="mt-2 text-sm font-bold text-white">{homeDashboard.nextMatch?.time || '-'}</p>
+                  </div>
+                  <div className="rounded-2xl bg-black/25 p-4">
+                    <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Condición</p>
+                    <p className="mt-2 text-sm font-bold text-white">{homeDashboard.nextMatch ? (homeDashboard.nextMatch.isHome ? 'Local' : 'Visitante') : '-'}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('Partidos')}
+                  className="mt-5 w-full rounded-2xl bg-red-600 px-5 py-3 text-sm font-black text-white transition hover:bg-red-500 sm:w-auto"
+                >
+                  Ir a partidos
+                </button>
+              </div>
+
+              <div className="rounded-3xl border border-white/10 bg-[#091428]/90 p-5 shadow-glow">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">Estado semanal</p>
+                    <h3 className="mt-2 text-xl font-black text-white">{homeDashboard.tendency}</h3>
+                  </div>
+                  <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-black uppercase tracking-[0.18em] text-slate-200">
+                    Últimos 5
+                  </span>
+                </div>
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl bg-red-500/10 p-4">
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-red-200">Lesionados</p>
+                    <p className="mt-2 text-3xl font-black text-white">{homeDashboard.weeklyStats.injured}</p>
+                  </div>
+                  <div className="rounded-2xl bg-yellow-300/10 p-4">
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-yellow-100">Amonest.</p>
+                    <p className="mt-2 text-3xl font-black text-white">{homeDashboard.weeklyStats.yellow}</p>
+                  </div>
+                </div>
+                <div className="mt-5 rounded-2xl bg-black/25 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Últimos resultados</p>
+                    <p className="text-xs font-semibold text-slate-300">
+                      {homeDashboard.balance.wins}-{homeDashboard.balance.draws}-{homeDashboard.balance.losses}
+                    </p>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {homeDashboard.recent.length ? homeDashboard.recent.map((result) => (
+                      <span
+                        key={`${result.id}-${result.label}`}
+                        className={`flex h-10 w-10 items-center justify-center rounded-2xl text-sm font-black ${
+                          result.label === 'V' ? 'bg-emerald-400 text-slate-950' : result.label === 'D' ? 'bg-red-400 text-slate-950' : 'bg-amber-300 text-slate-950'
+                        }`}
+                        title={`${result.match.opponent} · ${matchDisplayDate(result.match.date)}`}
+                      >
+                        {result.label}
+                      </span>
+                    )) : <span className="text-sm text-slate-500">Sin datos cerrados</span>}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="grid gap-3 sm:grid-cols-3">
+              {[
+                ['Goles', `${homeDashboard.balance.goalsFor}-${homeDashboard.balance.goalsAgainst}`],
+                ['Porterías a cero', homeDashboard.balance.cleanSheets],
+                ['Sub-23', homeDashboard.sub23Count],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">{label}</p>
+                  <p className="mt-2 text-3xl font-black text-white">{value}</p>
+                </div>
+              ))}
             </section>
           </main>
         ) : null}
@@ -5716,16 +6029,15 @@ function App() {
                     </div>
 
                     <div className="mt-5 space-y-5">
-                      {selectedTeam.squad.length > 0 ? (
+                      {dedupeRivalPlayers(selectedTeam.squad).length > 0 ? (
                         ['Titular', 'Reserva'].map((role) => (
                           <div key={role} className="space-y-2">
                             <p className="text-xs uppercase tracking-[0.25em] text-slate-500">{role === 'Titular' ? 'Titulares' : 'Reservas'}</p>
-                            {selectedTeam.squad
-                              .map(normalizeSquadEntry)
+                            {dedupeRivalPlayers(selectedTeam.squad)
                               .filter((player) => player.role === role)
                               .map((player) => (
                                 <div
-                                  key={player.name}
+                                  key={player.jugadorRivalId || player.id || normalizePlayerIdentityName(player.name)}
                                   draggable
                                   onDragStart={() => setDraggedPlayer(player)}
                                   onClick={() => openTeamForm(selectedTeam)}
@@ -5843,6 +6155,15 @@ function App() {
                           {player.number ? (
                             <span className="absolute left-1 top-1 z-10 rounded-md bg-caudal-electric px-1.5 py-0.5 text-[10px] font-bold leading-none text-slate-950">
                               {player.number}
+                            </span>
+                          ) : null}
+                          {playerStatusBadges(player).length ? (
+                            <span className="absolute right-0 top-0 z-10 flex max-w-16 flex-wrap justify-end gap-0.5 p-0.5">
+                              {playerStatusBadges(player).map((badge) => (
+                                <span key={badge.title} title={badge.title} className={`inline-flex h-4 min-w-4 items-center justify-center rounded-sm px-1 text-[9px] font-black leading-none ${badge.className}`}>
+                                  {badge.label}
+                                </span>
+                              ))}
                             </span>
                           ) : null}
                           {player.image ? (
