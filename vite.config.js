@@ -8,7 +8,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifestFilename: 'manifest.json',
-      includeAssets: ['pwa-192x192.svg', 'pwa-512x512.svg'],
+      includeAssets: ['pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
         name: 'App Caudal',
         short_name: 'Caudal',
@@ -17,15 +17,15 @@ export default defineConfig({
         background_color: '#000000',
         icons: [
           {
-            src: '/pwa-192x192.svg',
+            src: '/pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/svg+xml',
+            type: 'image/png',
             purpose: 'any maskable',
           },
           {
-            src: '/pwa-512x512.svg',
+            src: '/pwa-512x512.png',
             sizes: '512x512',
-            type: 'image/svg+xml',
+            type: 'image/png',
             purpose: 'any maskable',
           },
         ],
