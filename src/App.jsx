@@ -5428,18 +5428,66 @@ function App() {
 
             <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {[
-                { tab: 'Plantilla', icon: '11', title: 'Plantilla', copy: `${homeDashboard.playerCount} jugadores`, accent: 'from-red-600/30 to-white/5' },
-                { tab: 'Equipos', icon: 'EQ', title: 'Equipos', copy: `${homeDashboard.rivalCount} rivales`, accent: 'from-yellow-400/25 to-white/5' },
-                { tab: 'Partidos', icon: '90', title: 'Partidos', copy: homeDashboard.nextMatch ? 'Preparar siguiente' : 'Crear calendario', accent: 'from-sky-500/25 to-white/5' },
-                { tab: 'Análisis Grupal', icon: 'AG', title: 'Análisis Grupal', copy: `${homeDashboard.balance.played} partidos analizados`, accent: 'from-emerald-500/25 to-white/5' },
+                {
+                  tab: 'Plantilla',
+                  title: 'Plantilla',
+                  copy: `${homeDashboard.playerCount} jugadores`,
+                  accent: 'from-red-600/25 to-white/5',
+                  icon: (
+                    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-8 w-8">
+                      <path d="M8 10.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" fill="none" stroke="currentColor" strokeWidth="1.8" />
+                      <path d="M16.5 11a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" fill="none" stroke="currentColor" strokeWidth="1.8" />
+                      <path d="M3.5 19.5c.55-3.35 2.05-5.25 4.5-5.25s3.95 1.9 4.5 5.25" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+                      <path d="M13.5 15c2.65.15 4.4 1.65 5 4.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+                    </svg>
+                  ),
+                },
+                {
+                  tab: 'Equipos',
+                  title: 'Equipos',
+                  copy: `${homeDashboard.rivalCount} rivales`,
+                  accent: 'from-yellow-400/20 to-white/5',
+                  icon: (
+                    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-8 w-8">
+                      <path d="M12 3.5 19 6v5.2c0 4.15-2.55 7.35-7 9.3-4.45-1.95-7-5.15-7-9.3V6l7-2.5Z" fill="none" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
+                      <path d="M8.5 12h7M12 8.5v7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+                    </svg>
+                  ),
+                },
+                {
+                  tab: 'Partidos',
+                  title: 'Partidos',
+                  copy: homeDashboard.nextMatch ? 'Preparar siguiente' : 'Crear calendario',
+                  accent: 'from-sky-500/22 to-white/5',
+                  icon: (
+                    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-8 w-8">
+                      <path d="M7 4v3M17 4v3M5 8h14" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+                      <path d="M6.5 5.5h11A2.5 2.5 0 0 1 20 8v9.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5V8a2.5 2.5 0 0 1 2.5-2.5Z" fill="none" stroke="currentColor" strokeWidth="1.8" />
+                      <path d="M8 13h3M8 16h7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+                    </svg>
+                  ),
+                },
+                {
+                  tab: 'Análisis Grupal',
+                  title: 'Análisis Grupal',
+                  copy: `${homeDashboard.balance.played} partidos analizados`,
+                  accent: 'from-emerald-500/20 to-white/5',
+                  icon: (
+                    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-8 w-8">
+                      <path d="M5 19V5M5 19h15" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+                      <path d="M8.5 15.5v-4M12.5 15.5v-7M16.5 15.5v-10" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+                      <path d="m8 8.5 3.5 2 5-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+                    </svg>
+                  ),
+                },
               ].map((item) => (
                 <button
                   key={item.tab}
                   type="button"
                   onClick={() => setActiveTab(item.tab)}
-                  className={`group min-h-32 rounded-3xl border border-white/10 bg-gradient-to-br ${item.accent} p-5 text-left shadow-glow transition duration-200 hover:-translate-y-0.5 hover:border-white/25 active:translate-y-0`}
+                  className={`group min-h-32 rounded-3xl border border-white/10 bg-gradient-to-br ${item.accent} p-5 text-left shadow-glow transition duration-200 hover:-translate-y-0.5 hover:border-white/25 hover:shadow-[0_20px_55px_rgba(96,165,250,0.16)] active:translate-y-0`}
                 >
-                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-sm font-black text-slate-950 shadow-lg transition group-hover:scale-105">
+                  <span className="inline-flex text-sky-100 drop-shadow-[0_0_18px_rgba(147,197,253,0.35)] transition duration-200 group-hover:scale-105 group-hover:text-white">
                     {item.icon}
                   </span>
                   <p className="mt-5 text-xl font-black text-white">{item.title}</p>
