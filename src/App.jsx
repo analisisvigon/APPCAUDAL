@@ -188,6 +188,11 @@ const emptyMatchForm = {
   preCaudalAfterLoss: '',
   preCaudalAfterRecovery: '',
   preKeyMatchups: '',
+  preSystemReading: null,
+  preKeyMatchupsTable: [],
+  prePlanTrigger: '',
+  prePlanAvoid: '',
+  prePlanAdjustment: '',
   preCaudalPlayerToBoost: '',
   preRivalPlayerToWatch: '',
   preImportantDuels: '',
@@ -270,6 +275,11 @@ const partidoPreFieldMap = {
   preRivalDefensiveBlock: 'pre_rival_defensive_block',
   preRivalPressure: 'pre_rival_pressure',
   preRivalTransitions: 'pre_rival_transitions',
+  preSystemReading: 'pre_system_reading',
+  preKeyMatchupsTable: 'pre_key_matchups_table',
+  prePlanTrigger: 'pre_plan_trigger',
+  prePlanAvoid: 'pre_plan_avoid',
+  prePlanAdjustment: 'pre_plan_adjustment',
   preAiAnalysis: 'pre_ai_analysis',
 };
 
@@ -3005,6 +3015,122 @@ function App() {
 
   const getCurrentRivalSystem = () => selectedMatch?.preRivalSystem || selectedMatch?.rivalLineupSystem || '4-4-2';
 
+  const getSystemStructure = (system) => {
+    const parts = String(system || '4-4-2').match(/\d+/g)?.map(Number) || [4, 4, 2];
+    const defenders = parts[0] || 4;
+    const attackers = parts[parts.length - 1] || 2;
+    const midfielders = parts.slice(1, -1).reduce((sum, part) => sum + part, 0) || 4;
+    return { defenders, midfielders, attackers };
+  };
+
+  const buildSystemTacticalReading = (caudalSystem, rivalSystem) => {
+    const caudal = getSystemStructure(caudalSystem);
+    const rival = getSystemStructure(rivalSystem);
+    const midfieldDiff = caudal.midfielders - rival.midfielders;
+    const wingBackRival = rival.defenders >= 5;
+    const caudalBackFour = caudal.defenders === 4;
+    const reading = {
+      advantages: [],
+      risks: [],
+      attackZones: [],
+      protectZones: [],
+      adjustments: [],
+    };
+
+    if (midfieldDiff > 0) {
+      reading.advantages.push(`Superioridad interior: ${caudal.midfielders} medios contra ${rival.midfielders}.`);
+      reading.attackZones.push('Recibir entre líneas y activar tercer hombre por dentro.');
+    } else if (midfieldDiff < 0) {
+      reading.risks.push(`Riesgo de inferioridad por dentro: ${caudal.midfielders} medios contra ${rival.midfielders}.`);
+      reading.protectZones.push('Cerrar carril central y orientar la presión hacia banda.');
+      reading.adjustments.push('Acercar un delantero o extremo al pivote rival cuando progresen por dentro.');
+    } else {
+      reading.advantages.push('Igualdad interior: decidir por orientación corporal, apoyos cercanos y ritmo de circulación.');
+    }
+
+    if (rival.attackers >= 3 && caudalBackFour) {
+      reading.risks.push('Sus tres atacantes pueden fijar centrales y atacar espalda de laterales.');
+      reading.protectZones.push('Espalda de nuestros laterales y distancia central-lateral.');
+      reading.adjustments.push('Extremo del lado débil preparado para cerrar lateral rival y proteger segundo palo.');
+    }
+
+    if (wingBackRival) {
+      reading.attackZones.push('Espalda de carrileros si saltan alto.');
+      reading.protectZones.push('Centros laterales y segundo palo.');
+      reading.adjustments.push('Atacar rápido tras robo a la espalda del carrilero alejado.');
+    }
+
+    if (caudal.attackers >= 2 && rival.defenders <= 4) {
+      reading.advantages.push('Dos puntas pueden fijar centrales y liberar segunda jugada.');
+      reading.attackZones.push('Intervalos central-lateral y rechace frontal.');
+    }
+
+    if (caudalSystem === '4-4-2' && rivalSystem === '4-3-3') {
+      reading.risks.push('Su pivote puede quedar libre si nuestros puntas no coordinan saltos.');
+      reading.adjustments.push('Un punta tapa pivote y el otro orienta hacia central menos dominante.');
+    }
+    if (caudalSystem === '4-2-3-1' && rivalSystem === '4-4-2') {
+      reading.advantages.push('El mediapunta puede recibir a la espalda de sus dos medios.');
+      reading.attackZones.push('Zona del 10, especialmente tras atraer a sus centrales.');
+    }
+    if (caudalSystem === '4-3-3' && rivalSystem === '5-3-2') {
+      reading.advantages.push('Extremos abiertos pueden fijar carrileros y aislar uno contra uno.');
+      reading.risks.push('Si perdemos por dentro, sus dos puntas quedan listos para transición.');
+      reading.adjustments.push('Pivote siempre por detrás de balón para cortar primera transición.');
+    }
+
+    Object.keys(reading).forEach((key) => {
+      if (!reading[key].length) reading[key].push('Sin lectura específica todavía: completar con comportamiento real del rival.');
+    });
+    return {
+      caudalSystem,
+      rivalSystem,
+      generatedAt: new Date().toISOString(),
+      ...reading,
+    };
+  };
+
+  const defaultSystemMatchups = (caudalSystem, rivalSystem) => [
+    {
+      zone: 'Carril central',
+      duel: `${caudalSystem} vs ${rivalSystem}`,
+      reading: 'Controlar superioridades interiores y orientación de la presión.',
+      action: 'Ajustar distancia entre puntas, pivote y centrales.',
+    },
+    {
+      zone: 'Bandas',
+      duel: 'Lateral/extremo vs banda rival',
+      reading: 'Decidir cuándo saltar y cuándo proteger espalda.',
+      action: 'Activar ayudas del extremo y vigilar segundo palo.',
+    },
+  ];
+
+  const generateSystemReading = () => {
+    if (!selectedMatch) return;
+    const caudalSystem = selectedMatch.preCaudalSystem || '4-4-2';
+    const rivalSystem = getCurrentRivalSystem();
+    updateSelectedMatchFields({
+      preSystemReading: buildSystemTacticalReading(caudalSystem, rivalSystem),
+      preKeyMatchupsTable: selectedMatch.preKeyMatchupsTable?.length ? selectedMatch.preKeyMatchupsTable : defaultSystemMatchups(caudalSystem, rivalSystem),
+    });
+  };
+
+  const updateSystemMatchup = (index, field, value) => {
+    const current = selectedMatch?.preKeyMatchupsTable?.length ? selectedMatch.preKeyMatchupsTable : defaultSystemMatchups(selectedMatch?.preCaudalSystem || '4-4-2', getCurrentRivalSystem());
+    const next = current.map((row, rowIndex) => (rowIndex === index ? { ...row, [field]: value } : row));
+    updateSelectedMatchFields({ preKeyMatchupsTable: next });
+  };
+
+  const addSystemMatchup = () => {
+    const current = selectedMatch?.preKeyMatchupsTable || [];
+    updateSelectedMatchFields({ preKeyMatchupsTable: [...current, { zone: '', duel: '', reading: '', action: '' }] });
+  };
+
+  const removeSystemMatchup = (index) => {
+    const current = selectedMatch?.preKeyMatchupsTable || [];
+    updateSelectedMatchFields({ preKeyMatchupsTable: current.filter((_, rowIndex) => rowIndex !== index) });
+  };
+
   const getTacticalQuestionnaire = () => ({
     preRivalStyle: selectedMatch?.preRivalStyle || '',
     preRivalStrengths: selectedMatch?.preRivalStrengths || '',
@@ -5591,6 +5717,37 @@ function App() {
     );
   };
 
+  const renderFacingSystemsOverview = () => {
+    if (!selectedMatch) return null;
+    const caudalSystem = selectedMatch.preCaudalSystem || '4-4-2';
+    const rivalSystem = getCurrentRivalSystem();
+    const caudalCoordinates = getFormationCoordinates(caudalSystem).map(toCaudalHalf);
+    const rivalCoordinates = getFormationCoordinates(rivalSystem).map((slot) => ({ x: 100 - slot.x, y: 100 - slot.y }));
+    return (
+      <div className="relative mx-auto aspect-[7/8.4] min-h-[420px] w-full max-w-3xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner">
+        <div className="absolute inset-4 rounded-[28px] border-2 border-white/55" />
+        <div className="absolute left-4 right-4 top-1/2 h-px bg-white/35" />
+        <div className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/35" />
+        <div className="absolute left-1/2 top-4 h-20 w-48 -translate-x-1/2 rounded-b-3xl border-x-2 border-b-2 border-white/35" />
+        <div className="absolute bottom-4 left-1/2 h-20 w-48 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/35" />
+        <div className="absolute left-0 right-0 top-1/2 flex -translate-y-1/2 justify-between px-5 text-[10px] font-black uppercase tracking-[0.16em] text-white/45">
+          <span>Rival {rivalSystem}</span>
+          <span>Caudal {caudalSystem}</span>
+        </div>
+        {rivalCoordinates.map((slot, index) => (
+          <div key={`rival-overview-${index}`} className="absolute flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-rose-200 bg-rose-500/80 text-[10px] font-black text-white shadow-lg" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
+            {index === 0 ? 'P' : index}
+          </div>
+        ))}
+        {caudalCoordinates.map((slot, index) => (
+          <div key={`caudal-overview-${index}`} className="absolute flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-caudal-electric bg-caudal-950 text-[10px] font-black text-caudal-electric shadow-lg" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
+            {index === 0 ? 'P' : index}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const authUser = session?.user ?? null;
   const splashScreen = showSplash ? (
     <div
@@ -7477,64 +7634,143 @@ function App() {
                       </div>
                     ) : (
                       <div className="space-y-6">
-                        <div className="grid gap-6 lg:grid-cols-2">
-                          <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                            <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Campo 1</p>
-                                <h4 className="mt-2 text-xl font-semibold text-white">C.D. Caudal</h4>
-                              </div>
-                            </div>
+                        <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                          <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto_auto] lg:items-end">
                             <label className="space-y-2 text-sm text-slate-300">
-                              <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Sistema</span>
+                              <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Sistema Caudal</span>
                               <select
                                 value={selectedMatch.preCaudalSystem || '4-4-2'}
                                 onChange={(event) => updateSelectedMatchFields({ preCaudalSystem: event.target.value })}
                                 className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white"
                               >
-                                {gameSystems.map((system) => (
-                                  <option key={system} value={system}>{system}</option>
-                                ))}
+                                {gameSystems.map((system) => <option key={system} value={system}>{system}</option>)}
                               </select>
                             </label>
-                          </div>
-
-                          <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                            <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Campo 2</p>
-                                <h4 className="mt-2 text-xl font-semibold text-white">Rival</h4>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const rivalTeam = getRivalBaseTeam();
-                                  if (rivalTeam) {
-                                    updateSelectedMatchFields({
-                                      opponent: cleanTeamDisplayName(rivalTeam.name),
-                                      opponentCrest: rivalTeam.crest || selectedMatch.opponentCrest,
-                                      preRivalSystem: rivalTeam.system,
-                                    });
-                                  }
-                                }}
-                                className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white hover:bg-white/15"
-                              >
-                                Cargar desde Equipos
-                              </button>
-                            </div>
                             <label className="space-y-2 text-sm text-slate-300">
-                              <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Sistema</span>
+                              <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Sistema rival</span>
                               <select
                                 value={getCurrentRivalSystem()}
                                 onChange={(event) => updateSelectedMatchFields({ preRivalSystem: event.target.value })}
                                 className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white"
                               >
-                                {gameSystems.map((system) => (
-                                  <option key={system} value={system}>{system}</option>
-                                ))}
+                                {gameSystems.map((system) => <option key={system} value={system}>{system}</option>)}
                               </select>
                             </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const rivalTeam = getRivalBaseTeam();
+                                if (rivalTeam) {
+                                  updateSelectedMatchFields({
+                                    opponent: cleanTeamDisplayName(rivalTeam.name),
+                                    opponentCrest: rivalTeam.crest || selectedMatch.opponentCrest,
+                                    preRivalSystem: rivalTeam.system,
+                                  });
+                                }
+                              }}
+                              className="rounded-2xl bg-white/10 px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-white hover:bg-white/15"
+                            >
+                              Cargar desde Equipos
+                            </button>
+                            <button
+                              type="button"
+                              onClick={generateSystemReading}
+                              className="rounded-2xl bg-caudal-electric px-4 py-3 text-xs font-black uppercase tracking-[0.16em] text-slate-950 hover:bg-[#7aacff]"
+                            >
+                              Generar lectura
+                            </button>
                           </div>
+                        </div>
+
+                        <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+                          <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                            <div className="mb-5">
+                              <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Visualización táctica</h4>
+                              <p className="mt-2 text-sm text-slate-400">Ambos dibujos enfrentados en el mismo campo para ver alturas, emparejamientos y espacios.</p>
+                            </div>
+                            {renderFacingSystemsOverview()}
+                          </div>
+                          <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Lectura táctica automática</h4>
+                                <p className="mt-2 text-sm text-slate-400">Reglas simples según sistemas. Puedes ajustar el plan en las notas manuales.</p>
+                              </div>
+                            </div>
+                            <div className="mt-5 grid gap-3">
+                              {[
+                                ['Ventajas para Caudal', selectedMatch.preSystemReading?.advantages, 'text-emerald-300'],
+                                ['Riesgos para Caudal', selectedMatch.preSystemReading?.risks, 'text-red-300'],
+                                ['Zonas a atacar', selectedMatch.preSystemReading?.attackZones, 'text-caudal-electric'],
+                                ['Zonas a proteger', selectedMatch.preSystemReading?.protectZones, 'text-amber-200'],
+                                ['Ajustes recomendados', selectedMatch.preSystemReading?.adjustments, 'text-white'],
+                              ].map(([title, items, color]) => (
+                                <div key={title} className="rounded-2xl bg-white/5 p-4">
+                                  <p className={`text-xs font-black uppercase tracking-[0.16em] ${color}`}>{title}</p>
+                                  <ul className="mt-3 space-y-2 text-sm text-slate-300">
+                                    {(items?.length ? items : ['Pulsa "Generar lectura" para crear una propuesta.']).map((item) => (
+                                      <li key={item}>• {item}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Matchups clave</h4>
+                              <p className="mt-2 text-sm text-slate-400">Duelos y acciones concretas para trasladar la lectura al partido.</p>
+                            </div>
+                            <button type="button" onClick={addSystemMatchup} className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white hover:bg-white/15">
+                              Añadir matchup
+                            </button>
+                          </div>
+                          <div className="space-y-3">
+                            {(selectedMatch.preKeyMatchupsTable?.length ? selectedMatch.preKeyMatchupsTable : defaultSystemMatchups(selectedMatch.preCaudalSystem || '4-4-2', getCurrentRivalSystem())).map((row, index) => (
+                              <div key={`matchup-${index}`} className="grid gap-3 rounded-3xl bg-white/5 p-4 lg:grid-cols-[0.7fr_1fr_1.2fr_1.2fr_auto]">
+                                {[
+                                  ['Zona', 'zone'],
+                                  ['Duelo', 'duel'],
+                                  ['Lectura', 'reading'],
+                                  ['Acción recomendada', 'action'],
+                                ].map(([label, field]) => (
+                                  <label key={field} className="space-y-1 text-xs text-slate-400">
+                                    <span className="uppercase tracking-[0.14em] text-slate-500">{label}</span>
+                                    <textarea
+                                      rows={2}
+                                      value={row[field] || ''}
+                                      onChange={(event) => updateSystemMatchup(index, field, event.target.value)}
+                                      className="min-h-[64px] w-full resize-none rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                                    />
+                                  </label>
+                                ))}
+                                <button type="button" onClick={() => removeSystemMatchup(index)} className="h-fit self-end rounded-2xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100 hover:bg-red-500/25">
+                                  Borrar
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="grid gap-4 lg:grid-cols-3">
+                          {[
+                            ['Qué queremos provocar', 'prePlanTrigger', 'Ej. saltos del lateral rival, pase interior forzado, juego directo incómodo...'],
+                            ['Qué queremos evitar', 'prePlanAvoid', 'Ej. pérdidas interiores, centros laterales sin presión, transiciones tras córner...'],
+                            ['Ajuste si no funciona', 'prePlanAdjustment', 'Ej. pasar a bloque medio, liberar mediapunta, cambiar orientación antes...'],
+                          ].map(([label, field, placeholder]) => (
+                            <label key={field} className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 text-sm text-slate-300 shadow-glow">
+                              <span className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">{label}</span>
+                              <textarea
+                                value={selectedMatch[field] || ''}
+                                onChange={(event) => updateSelectedMatchFields({ [field]: event.target.value })}
+                                placeholder={placeholder}
+                                className="mt-3 min-h-[130px] w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
+                              />
+                            </label>
+                          ))}
                         </div>
 
                         <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
