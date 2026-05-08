@@ -7890,56 +7890,6 @@ function App() {
                     ) : (
                       <SystemsFacingErrorBoundary resetKey={`${selectedMatch?.id || 'sin-partido'}-${preSubTab}`}>
                       <div className="space-y-6">
-                        <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                          <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto_auto] lg:items-end">
-                            <label className="space-y-2 text-sm text-slate-300">
-                              <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Sistema Caudal</span>
-                              <select
-                                value={selectedMatch.preCaudalSystem || '4-4-2'}
-                                onChange={(event) => updateSelectedMatchFields({ preCaudalSystem: event.target.value })}
-                                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white"
-                              >
-                                {gameSystems.map((system) => <option key={system} value={system}>{system}</option>)}
-                              </select>
-                            </label>
-                            <label className="space-y-2 text-sm text-slate-300">
-                              <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Sistema rival</span>
-                              <select
-                                value={getCurrentRivalSystem()}
-                                onChange={(event) => updateSelectedMatchFields({ preRivalSystem: event.target.value })}
-                                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white"
-                              >
-                                {gameSystems.map((system) => <option key={system} value={system}>{system}</option>)}
-                              </select>
-                            </label>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                const rivalTeam = getRivalBaseTeam();
-                                if (rivalTeam) {
-                                  await updateSelectedMatchFields({
-                                    opponent: cleanTeamDisplayName(rivalTeam.name),
-                                    opponentCrest: rivalTeam.crest || selectedMatch.opponentCrest,
-                                    preRivalSystem: rivalTeam.system,
-                                  });
-                                }
-                                await loadSuggestedCaudalLineup();
-                                await loadSuggestedRivalLineup();
-                              }}
-                              className="rounded-2xl bg-caudal-electric px-4 py-3 text-xs font-black uppercase tracking-[0.16em] text-slate-950 hover:bg-[#7aacff]"
-                            >
-                              Cargar alineaciones
-                            </button>
-                            <button
-                              type="button"
-                              onClick={clearTacticalQuestion}
-                              className="rounded-2xl bg-red-500/15 px-4 py-3 text-xs font-bold uppercase tracking-[0.16em] text-red-100 hover:bg-red-500/25"
-                            >
-                              Limpiar lectura
-                            </button>
-                          </div>
-                        </div>
-
                         <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
                           <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                             <div className="mb-5">
@@ -8027,6 +7977,8 @@ function App() {
                           </div>
                         </div>
 
+                        {false ? (
+                        <>
                         <div className="hidden">
                         <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
                           <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
@@ -8486,6 +8438,8 @@ function App() {
                             <div className="mt-6 rounded-3xl bg-[#0f1e38]/80 p-5 text-sm text-slate-400">Pulsa "Analizar sistemas" para obtener una previsión automática.</div>
                           )}
                         </div>
+                        </>
+                        ) : null}
                       </div>
                       </SystemsFacingErrorBoundary>
                     )}
@@ -8875,6 +8829,80 @@ function App() {
                                   </div>
                                 )}
                               </div>
+                              <div className="mt-4 rounded-3xl border border-white/5 bg-[#091428]/80 p-5">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div>
+                                    <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Clips del vídeo</h4>
+                                    <p className="mt-2 text-sm text-slate-400">Edita jugador y descripción, o salta directamente al momento del vídeo.</p>
+                                  </div>
+                                  <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-300">{(selectedMatch.events || []).length} eventos</span>
+                                </div>
+                                <div className="mt-5 space-y-3">
+                                  {(selectedMatch.events || []).length > 0 ? (
+                                    [...(selectedMatch.events || [])]
+                                      .sort((a, b) => Number(a.videoSeconds || 0) - Number(b.videoSeconds || 0))
+                                      .map((event) => (
+                                      <div key={event.id} className={`rounded-3xl border p-4 transition ${selectedPostEventId === event.id ? 'border-caudal-electric/60 bg-caudal-electric/10' : 'border-white/5 bg-[#0f1e38]/80'}`}>
+                                        <div className="grid gap-3 lg:grid-cols-[90px_150px_1fr_auto] lg:items-center">
+                                          <label className="space-y-1 text-xs text-slate-500">
+                                            <span className="uppercase tracking-[0.14em]">Minuto</span>
+                                            <input
+                                              value={event.minute || ''}
+                                              onChange={(changeEvent) => updatePostEventLocal(event.id, { minute: changeEvent.target.value })}
+                                              onBlur={(blurEvent) => savePostEventInline({ ...event, minute: blurEvent.target.value })}
+                                              className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white"
+                                            />
+                                          </label>
+                                          <label className="space-y-1 text-xs text-slate-500">
+                                            <span className="uppercase tracking-[0.14em]">Tipo</span>
+                                            <select
+                                              value={event.type || ''}
+                                              onChange={(changeEvent) => {
+                                                updatePostEventLocal(event.id, { type: changeEvent.target.value });
+                                                const selectedType = eventTypes.find((eventType) => eventType.name === changeEvent.target.value);
+                                                savePostEventInline({ ...event, type: changeEvent.target.value, tipoEventoId: selectedType?.id || null });
+                                              }}
+                                              className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white"
+                                            >
+                                              {eventTypes.map((eventType) => <option key={eventType.id} value={eventType.name}>{eventType.name}</option>)}
+                                            </select>
+                                          </label>
+                                          <label className="space-y-1 text-xs text-slate-500">
+                                            <span className="uppercase tracking-[0.14em]">Descripción</span>
+                                            <input
+                                              value={event.description || ''}
+                                              onChange={(changeEvent) => updatePostEventLocal(event.id, { description: changeEvent.target.value })}
+                                              onBlur={(blurEvent) => savePostEventInline({ ...event, description: blurEvent.target.value })}
+                                              placeholder="Añadir detalle del clip"
+                                              className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                                            />
+                                          </label>
+                                          <div className="flex flex-wrap gap-2 lg:justify-end">
+                                            <button type="button" onClick={() => seekPostVideoToEvent(event)} className={`rounded-xl px-3 py-2 text-xs font-bold ${eventButtonClass(event.type)}`}>
+                                              Ir {formatVideoSeconds(event.videoSeconds)}
+                                            </button>
+                                            <button type="button" onClick={() => deletePostEvent(event.id)} className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100">
+                                              Eliminar
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <label className="mt-3 block space-y-1 text-xs text-slate-500">
+                                          <span className="uppercase tracking-[0.14em]">Jugador</span>
+                                          <input
+                                            value={event.player || ''}
+                                            onChange={(changeEvent) => updatePostEventLocal(event.id, { player: changeEvent.target.value })}
+                                            onBlur={(blurEvent) => savePostEventInline({ ...event, player: blurEvent.target.value })}
+                                            placeholder="Opcional"
+                                            className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                                          />
+                                        </label>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <div className="rounded-3xl bg-[#0f1e38]/80 p-6 text-sm text-slate-400">No se han marcado clips todavía.</div>
+                                  )}
+                                </div>
+                              </div>
                             </>
                           ) : (
                             <div className="flex min-h-[420px] items-center justify-center rounded-3xl border border-dashed border-white/10 bg-black/20 text-center text-sm text-slate-400">
@@ -9003,96 +9031,7 @@ function App() {
                     </div>
 
                     <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Clips del vídeo</h4>
-                          <p className="mt-2 text-sm text-slate-400">Edita jugador y descripción, o salta directamente al momento del vídeo.</p>
-                        </div>
-                        <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-300">{(selectedMatch.events || []).length} eventos</span>
-                      </div>
-                      <div className="mt-5 space-y-3">
-                        {(selectedMatch.events || []).length > 0 ? (
-                          [...(selectedMatch.events || [])]
-                            .sort((a, b) => Number(a.videoSeconds || 0) - Number(b.videoSeconds || 0))
-                            .map((event) => (
-                            <div key={event.id} className={`rounded-3xl border p-4 transition ${selectedPostEventId === event.id ? 'border-caudal-electric/60 bg-caudal-electric/10' : 'border-white/5 bg-[#0f1e38]/80'}`}>
-                              <div className="grid gap-3 lg:grid-cols-[90px_160px_1fr_1.4fr_auto] lg:items-center">
-                                <label className="space-y-1 text-xs text-slate-500">
-                                  <span className="uppercase tracking-[0.14em]">Minuto</span>
-                                  <input
-                                    value={event.minute || ''}
-                                    onChange={(changeEvent) => updatePostEventLocal(event.id, { minute: changeEvent.target.value })}
-                                    onBlur={(blurEvent) => savePostEventInline({ ...event, minute: blurEvent.target.value })}
-                                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white"
-                                  />
-                                </label>
-                                <label className="space-y-1 text-xs text-slate-500">
-                                  <span className="uppercase tracking-[0.14em]">Tipo</span>
-                                  <select
-                                    value={event.type || ''}
-                                    onChange={(changeEvent) => {
-                                      updatePostEventLocal(event.id, { type: changeEvent.target.value });
-                                      const selectedType = eventTypes.find((eventType) => eventType.name === changeEvent.target.value);
-                                      savePostEventInline({ ...event, type: changeEvent.target.value, tipoEventoId: selectedType?.id || null });
-                                    }}
-                                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white"
-                                  >
-                                    {eventTypes.map((eventType) => <option key={eventType.id} value={eventType.name}>{eventType.name}</option>)}
-                                  </select>
-                                </label>
-                                <label className="space-y-1 text-xs text-slate-500">
-                                  <span className="uppercase tracking-[0.14em]">Jugador</span>
-                                  <input
-                                    value={event.player || ''}
-                                    onChange={(changeEvent) => updatePostEventLocal(event.id, { player: changeEvent.target.value })}
-                                    onBlur={(blurEvent) => savePostEventInline({ ...event, player: blurEvent.target.value })}
-                                    placeholder="Opcional"
-                                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500"
-                                  />
-                                </label>
-                                <label className="space-y-1 text-xs text-slate-500">
-                                  <span className="uppercase tracking-[0.14em]">Descripción</span>
-                                  <input
-                                    value={event.description || ''}
-                                    onChange={(changeEvent) => updatePostEventLocal(event.id, { description: changeEvent.target.value })}
-                                    onBlur={(blurEvent) => savePostEventInline({ ...event, description: blurEvent.target.value })}
-                                    placeholder="Añadir detalle del clip"
-                                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500"
-                                  />
-                                </label>
-                                <div className="flex flex-wrap gap-2 lg:justify-end">
-                                  <button type="button" onClick={() => seekPostVideoToEvent(event)} className={`rounded-xl px-3 py-2 text-xs font-bold ${eventButtonClass(event.type)}`}>
-                                    Ir {formatVideoSeconds(event.videoSeconds)}
-                                  </button>
-                                  <button type="button" onClick={() => deletePostEvent(event.id)} className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100">
-                                    Eliminar
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="rounded-3xl bg-[#0f1e38]/80 p-6 text-sm text-slate-400">No se han marcado clips todavía.</div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                      <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Comparativa PRE vs POST</h4>
-                      <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                        {[
-                          { label: 'PRE - Plan con balón', value: selectedMatch.planConBalon },
-                          { label: 'PRE - Plan sin balón', value: selectedMatch.planSinBalon },
-                          { label: 'PRE - Transiciones', value: selectedMatch.planTransiciones },
-                          { label: 'PRE - Claves individuales', value: selectedMatch.preKeyMatchups || selectedMatch.planClave },
-                          { label: 'PRE - Objetivo', value: selectedMatch.planObjetivo },
-                        ].map((item) => (
-                          <div key={item.label} className="rounded-3xl bg-[#0f1e38]/80 p-5">
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{item.label}</p>
-                            <p className="mt-3 text-sm leading-7 text-slate-300">{item.value || 'Sin dato PRE registrado.'}</p>
-                          </div>
-                        ))}
-                      </div>
+                      <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Lectura POST del partido</h4>
                       <div className="mt-5 grid gap-4 lg:grid-cols-2">
                         {[
                           { label: 'Qué ocurrió realmente', field: 'postReality' },
@@ -9112,44 +9051,6 @@ function App() {
                           </label>
                         ))}
                       </div>
-                    </div>
-
-                    <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Análisis IA Post partido</h4>
-                          <p className="mt-2 text-sm text-slate-400">Placeholder estructurado usando PRE, eventos, resultado y notas POST.</p>
-                        </div>
-                        <button type="button" onClick={runPostAiAnalysis} className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]">
-                          Analizar partido con IA
-                        </button>
-                      </div>
-                      {selectedMatch.postAiAnalysis ? (
-                        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                          {[
-                            { title: 'Qué funcionó', value: selectedMatch.postAiAnalysis.worked },
-                            { title: 'Qué no funcionó', value: selectedMatch.postAiAnalysis.notWorked },
-                            { title: 'Por qué', value: selectedMatch.postAiAnalysis.why },
-                            { title: 'Qué repetir', value: selectedMatch.postAiAnalysis.repeat },
-                            { title: 'Qué corregir', value: selectedMatch.postAiAnalysis.correct },
-                            { title: 'Qué entrenar esta semana', value: selectedMatch.postAiAnalysis.train },
-                            { title: 'Jugadores o zonas a revisar', value: selectedMatch.postAiAnalysis.review },
-                          ].map((item) => (
-                            <div key={item.title} className="rounded-3xl bg-[#0f1e38]/80 p-5">
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{item.title}</p>
-                              {Array.isArray(item.value) ? (
-                                <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-300">
-                                  {item.value.map((line) => <li key={line}>{line}</li>)}
-                                </ul>
-                              ) : (
-                                <p className="mt-3 text-sm leading-7 text-slate-300">{item.value}</p>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="mt-5 rounded-3xl bg-[#0f1e38]/80 p-5 text-sm text-slate-400">Pulsa "Analizar partido con IA" para generar una lectura postpartido estructurada.</div>
-                      )}
                     </div>
 
                     <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
