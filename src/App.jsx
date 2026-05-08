@@ -1992,6 +1992,8 @@ function App() {
   const [selectedTacticalPlayerIndex, setSelectedTacticalPlayerIndex] = useState(0);
   const [selectedRivalTacticalPlayerIndex, setSelectedRivalTacticalPlayerIndex] = useState(0);
   const [newRivalManualPlayerName, setNewRivalManualPlayerName] = useState('');
+  const [tacticalQuestionMode, setTacticalQuestionMode] = useState('Macro');
+  const [tacticalQuestionText, setTacticalQuestionText] = useState('');
   const [openQuestionnaireSections, setOpenQuestionnaireSections] = useState({
     rivalProfile: true,
     rivalAttack: true,
@@ -2009,6 +2011,9 @@ function App() {
   const [postVideoSaveStatus, setPostVideoSaveStatus] = useState('');
   const [postVideoDuration, setPostVideoDuration] = useState(0);
   const [selectedPostEventId, setSelectedPostEventId] = useState(null);
+  const [postYoutubeReady, setPostYoutubeReady] = useState(false);
+  const [postClipSaving, setPostClipSaving] = useState(false);
+  const [postClipFeedback, setPostClipFeedback] = useState('');
   const [isGoalAnalysisOpen, setIsGoalAnalysisOpen] = useState(false);
   const [goalAnalysisDraft, setGoalAnalysisDraft] = useState(defaultGoalAnalysisDraft);
   const [isStatsCallupPanelOpen, setIsStatsCallupPanelOpen] = useState(false);
@@ -2836,6 +2841,7 @@ function App() {
     if (!selectedMatch?.postVideoLink || matchView !== 'post_partido') {
       postYoutubePlayerRef.current = null;
       setPostVideoDuration(0);
+      setPostYoutubeReady(false);
       return;
     }
 
@@ -2847,6 +2853,7 @@ function App() {
           events: {
             onReady: (event) => {
               if (cancelled) return;
+              setPostYoutubeReady(true);
               const duration = Number(event.target.getDuration?.() || 0);
               if (duration > 0) setPostVideoDuration(duration);
             },
@@ -2880,6 +2887,7 @@ function App() {
 
     return () => {
       cancelled = true;
+      setPostYoutubeReady(false);
       try {
         postYoutubePlayerRef.current?.destroy?.();
       } catch {
@@ -3131,6 +3139,77 @@ function App() {
     updateSelectedMatchFields({ preKeyMatchupsTable: current.filter((_, rowIndex) => rowIndex !== index) });
   };
 
+  const buildTacticalQuestionAnswer = (mode, question) => {
+    const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
+    const rivalSystem = getCurrentRivalSystem();
+    const caudal = getSystemStructure(caudalSystem);
+    const rival = getSystemStructure(rivalSystem);
+    const hasCaudalNames = (selectedMatch?.preCaudalLineup || []).some(Boolean);
+    const hasRivalNames = (selectedMatch?.preRivalLineup || []).some(Boolean);
+    const q = question.toLowerCase();
+
+    if (mode === 'Micro' || /jugador|duelo|vigilar|marca/i.test(question)) {
+      const caudalRefs = hasCaudalNames ? (selectedMatch.preCaudalLineup || []).filter(Boolean).slice(0, 3).join(', ') : 'nuestros jugadores de carril central';
+      const rivalRefs = hasRivalNames ? (selectedMatch.preRivalLineup || []).filter(Boolean).slice(0, 3).join(', ') : 'sus referencias ofensivas';
+      return `Lectura micro: relaciona ${caudalRefs} contra ${rivalRefs}. Prioridad: ganar la primera orientación corporal, cerrar pase interior y activar ayuda cercana tras pérdida. Si el duelo está en banda, que nuestro extremo llegue a tiempo para que el lateral no defienda dos alturas.`;
+    }
+
+    if (q.includes('bloque') || q.includes('atacamos')) {
+      return `Para atacar su ${rivalSystem}, mueve el balón hasta fijar su primera línea y acelera cuando el lado débil quede abierto. Contra ${rival.midfielders} medios rivales, necesitamos apoyos cortos por dentro y una amenaza a espalda para que no puedan saltar todos hacia balón.`;
+    }
+    if (q.includes('superioridad')) {
+      const diff = caudal.midfielders - rival.midfielders;
+      return diff >= 0
+        ? `La superioridad más clara puede estar por dentro: ${caudal.midfielders} medios nuestros contra ${rival.midfielders} rivales. Hay que atraer a un medio rival y encontrar tercer hombre entre líneas.`
+        : `No tenemos superioridad natural por dentro: ${caudal.midfielders} contra ${rival.midfielders}. La ventaja debe buscarse por fuera, con cambios de orientación y atacando la espalda del lateral/carrilero.`;
+    }
+    if (q.includes('pérdida') || q.includes('perdida') || q.includes('transiciones')) {
+      return `Tras pérdida, el riesgo principal es quedar partidos entre nuestra línea de medios y centrales. Primer ajuste: pérdida por dentro exige falta táctica o presión inmediata; pérdida por fuera exige cerrar pase interior y proteger segundo palo.`;
+    }
+    if (q.includes('vigilar')) {
+      return `El jugador rival a vigilar debe ser el que conecte transición y último pase. Si no hay nombre definido, prioriza su punta o extremo del lado fuerte: no permitir que reciba girado ni que ataque la espalda sin contacto previo.`;
+    }
+    if (q.includes('ajuste') || q.includes('progresamos')) {
+      return `Si no progresamos, baja un apoyo entre centrales o acerca el mediapunta al pivote para crear una salida de tres más un hombre libre. Si aun así nos fijan, saltar al lado débil antes de conducir por dentro.`;
+    }
+
+    return `Lectura macro: ${caudalSystem} contra ${rivalSystem}. Queremos que el partido se juegue donde podamos juntar pases cortos y activar el lado débil. Evitar pérdidas interiores sin cobertura y ajustar la presión para que el rival no encuentre al hombre libre a espalda de nuestra primera línea.`;
+  };
+
+  const askTacticalQuestion = () => {
+    if (!selectedMatch) return;
+    const question = tacticalQuestionText.trim() || '¿Dónde tenemos superioridad?';
+    const answer = buildTacticalQuestionAnswer(tacticalQuestionMode, question);
+    updateSelectedMatchFields({
+      preAiAnalysis: {
+        ...(selectedMatch.preAiAnalysis || {}),
+        tacticalQuestion: {
+          mode: tacticalQuestionMode,
+          question,
+          answer,
+          createdAt: new Date().toISOString(),
+          context: {
+            caudalSystem: selectedMatch.preCaudalSystem || '4-4-2',
+            rivalSystem: getCurrentRivalSystem(),
+            caudalLineup: selectedMatch.preCaudalLineup || [],
+            rivalLineup: selectedMatch.preRivalLineup || [],
+          },
+        },
+      },
+    });
+  };
+
+  const clearTacticalQuestion = () => {
+    if (!selectedMatch) return;
+    updateSelectedMatchFields({
+      preAiAnalysis: {
+        ...(selectedMatch.preAiAnalysis || {}),
+        tacticalQuestion: null,
+      },
+    });
+    setTacticalQuestionText('');
+  };
+
   const getTacticalQuestionnaire = () => ({
     preRivalStyle: selectedMatch?.preRivalStyle || '',
     preRivalStrengths: selectedMatch?.preRivalStrengths || '',
@@ -3292,6 +3371,7 @@ function App() {
   };
 
   const getPostVideoCurrentSeconds = () => {
+    if (!postYoutubeReady || !postYoutubePlayerRef.current?.getCurrentTime) return null;
     try {
       const currentTime = postYoutubePlayerRef.current?.getCurrentTime?.();
       if (Number.isFinite(Number(currentTime))) return Math.max(0, Math.round(Number(currentTime)));
@@ -3299,6 +3379,82 @@ function App() {
       console.error('Error leyendo segundo actual del vídeo POST:', playerError);
     }
     return null;
+  };
+
+  const markPostClip = async (eventType) => {
+    if (!selectedMatch || !eventType) return;
+    const seconds = getPostVideoCurrentSeconds();
+    if (seconds === null) {
+      setPostError('El vídeo todavía no está listo. Reproduce el vídeo y vuelve a pulsar el botón.');
+      return;
+    }
+
+    setPostClipSaving(true);
+    setPostError('');
+    const payload = {
+      partido_id: selectedMatch.id,
+      tipo_evento_id: eventType.id || null,
+      type: eventType.name,
+      video_seconds: seconds,
+      minute: String(Math.floor(seconds / 60)),
+      description: '',
+      player: '',
+    };
+
+    const { data: savedClip, error: clipError } = await supabase
+      .from("partido_eventos_post")
+      .insert(payload)
+      .select("id")
+      .single();
+
+    if (clipError) {
+      console.error('Error marcando clip POST en Supabase:', { matchId: selectedMatch.id, payload, error: clipError });
+      setPostError(clipError.message || 'No se pudo guardar el clip POST.');
+      setPostClipSaving(false);
+      return;
+    }
+
+    setSelectedPostEventId(savedClip?.id || null);
+    setPostClipFeedback(`Clip guardado ${formatVideoSeconds(seconds)} · ${eventType.name}`);
+    await loadMatchPostData(selectedMatch.id);
+    setPostClipSaving(false);
+  };
+
+  const updatePostEventLocal = (eventId, fields) => {
+    setMatches((current) =>
+      current.map((match) => {
+        if (match.id !== selectedMatch?.id) return match;
+        return {
+          ...match,
+          events: (match.events || []).map((event) => (event.id === eventId ? { ...event, ...fields } : event)),
+        };
+      })
+    );
+  };
+
+  const savePostEventInline = async (event) => {
+    if (!selectedMatch || !event?.id) return;
+    const selectedType = eventTypes.find((eventType) => eventType.name === event.type);
+    const payload = {
+      tipo_evento_id: selectedType?.id || event.tipoEventoId || null,
+      minute: event.minute || String(Math.floor(Number(event.videoSeconds || 0) / 60)),
+      type: event.type || selectedType?.name || '',
+      description: event.description || '',
+      player: event.player || '',
+      video_seconds: Math.max(0, Math.round(Number(event.videoSeconds || 0))),
+    };
+    const { error: eventError } = await supabase.from("partido_eventos_post").update(payload).eq("id", event.id);
+    if (eventError) {
+      console.error('Error actualizando clip POST en Supabase:', { eventId: event.id, payload, error: eventError });
+      setPostError(eventError.message || 'No se pudo actualizar el clip POST.');
+      return;
+    }
+    await loadMatchPostData(selectedMatch.id);
+  };
+
+  const savePostEventInlineById = async (eventId) => {
+    const event = matches.find((match) => match.id === selectedMatch?.id)?.events?.find((item) => item.id === eventId);
+    if (event) await savePostEventInline(event);
   };
 
   const syncDraftWithCurrentVideoTime = () => {
@@ -3553,6 +3709,13 @@ function App() {
       left: `${Math.max(1, Math.min(99, (seconds / postVideoDuration) * 100))}%`,
       top: `${Math.min(28, nearbyBefore * 10)}px`,
     };
+  };
+
+  const formatVideoSeconds = (seconds) => {
+    const total = Math.max(0, Math.round(Number(seconds || 0)));
+    const minutes = Math.floor(total / 60);
+    const rest = total % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
   };
 
   const runStatsOperation = async (reason, operation) => {
@@ -5723,6 +5886,8 @@ function App() {
     const rivalSystem = getCurrentRivalSystem();
     const caudalCoordinates = getFormationCoordinates(caudalSystem).map(toCaudalHalf);
     const rivalCoordinates = getFormationCoordinates(rivalSystem).map((slot) => ({ x: 100 - slot.x, y: 100 - slot.y }));
+    const caudalRoles = getFormationRoles(caudalSystem);
+    const rivalRoles = getFormationRoles(rivalSystem);
     return (
       <div className="relative mx-auto aspect-[7/8.4] min-h-[420px] w-full max-w-3xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner">
         <div className="absolute inset-4 rounded-[28px] border-2 border-white/55" />
@@ -5735,13 +5900,19 @@ function App() {
           <span>Caudal {caudalSystem}</span>
         </div>
         {rivalCoordinates.map((slot, index) => (
-          <div key={`rival-overview-${index}`} className="absolute flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-rose-200 bg-rose-500/80 text-[10px] font-black text-white shadow-lg" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
-            {index === 0 ? 'P' : index}
+          <div key={`rival-overview-${index}`} className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
+            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 bg-rose-500/80 text-[10px] font-black text-white shadow-lg">{index === 0 ? 'P' : index}</span>
+            <span className="max-w-20 truncate rounded-md bg-black/55 px-1.5 py-0.5 text-[8px] font-semibold text-white">
+              {selectedMatch.preRivalLineup?.[index] || rivalRoles[index] || `R${index + 1}`}
+            </span>
           </div>
         ))}
         {caudalCoordinates.map((slot, index) => (
-          <div key={`caudal-overview-${index}`} className="absolute flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-caudal-electric bg-caudal-950 text-[10px] font-black text-caudal-electric shadow-lg" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
-            {index === 0 ? 'P' : index}
+          <div key={`caudal-overview-${index}`} className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
+            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-caudal-electric bg-caudal-950 text-[10px] font-black text-caudal-electric shadow-lg">{index === 0 ? 'P' : index}</span>
+            <span className="max-w-20 truncate rounded-md bg-black/55 px-1.5 py-0.5 text-[8px] font-semibold text-white">
+              {selectedMatch.preCaudalLineup?.[index] || caudalRoles[index] || `C${index + 1}`}
+            </span>
           </div>
         ))}
       </div>
@@ -7658,30 +7829,120 @@ function App() {
                             </label>
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={async () => {
                                 const rivalTeam = getRivalBaseTeam();
                                 if (rivalTeam) {
-                                  updateSelectedMatchFields({
+                                  await updateSelectedMatchFields({
                                     opponent: cleanTeamDisplayName(rivalTeam.name),
                                     opponentCrest: rivalTeam.crest || selectedMatch.opponentCrest,
                                     preRivalSystem: rivalTeam.system,
                                   });
                                 }
+                                await loadSuggestedCaudalLineup();
+                                await loadSuggestedRivalLineup();
                               }}
-                              className="rounded-2xl bg-white/10 px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-white hover:bg-white/15"
+                              className="rounded-2xl bg-caudal-electric px-4 py-3 text-xs font-black uppercase tracking-[0.16em] text-slate-950 hover:bg-[#7aacff]"
                             >
-                              Cargar desde Equipos
+                              Cargar alineaciones
                             </button>
                             <button
                               type="button"
-                              onClick={generateSystemReading}
-                              className="rounded-2xl bg-caudal-electric px-4 py-3 text-xs font-black uppercase tracking-[0.16em] text-slate-950 hover:bg-[#7aacff]"
+                              onClick={clearTacticalQuestion}
+                              className="rounded-2xl bg-red-500/15 px-4 py-3 text-xs font-bold uppercase tracking-[0.16em] text-red-100 hover:bg-red-500/25"
                             >
-                              Generar lectura
+                              Limpiar lectura
                             </button>
                           </div>
                         </div>
 
+                        <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+                          <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                            <div className="mb-5">
+                              <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Pizarra táctica</h4>
+                              <p className="mt-2 text-sm text-slate-400">Un único campo con Caudal y rival enfrentados. Si hay alineaciones, aparecen los nombres; si no, los roles.</p>
+                            </div>
+                            {renderFacingSystemsOverview()}
+                          </div>
+
+                          <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                            <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Pregunta táctica a la IA</h4>
+                            <div className="mt-5 grid grid-cols-2 rounded-2xl border border-white/10 bg-white/5 p-1">
+                              {['Macro', 'Micro'].map((mode) => (
+                                <button
+                                  key={mode}
+                                  type="button"
+                                  onClick={() => setTacticalQuestionMode(mode)}
+                                  className={`rounded-xl px-4 py-2 text-sm font-bold ${tacticalQuestionMode === mode ? 'bg-caudal-electric text-slate-950' : 'text-slate-300'}`}
+                                >
+                                  {mode === 'Macro' ? 'Macro: estructuras' : 'Micro: jugadores/duelos'}
+                                </button>
+                              ))}
+                            </div>
+                            <textarea
+                              value={tacticalQuestionText}
+                              onChange={(event) => setTacticalQuestionText(event.target.value)}
+                              placeholder="Pregunta libre sobre cómo atacar, defender, ajustar o vigilar duelos..."
+                              className="mt-4 min-h-[120px] w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
+                            />
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              {[
+                                '¿Cómo atacamos su bloque?',
+                                '¿Dónde tenemos superioridad?',
+                                '¿Qué riesgos tenemos tras pérdida?',
+                                '¿Qué jugador rival debemos vigilar?',
+                                '¿Qué ajuste harías si no progresamos?',
+                                '¿Cómo defender sus transiciones?',
+                              ].map((question) => (
+                                <button
+                                  key={question}
+                                  type="button"
+                                  onClick={() => setTacticalQuestionText(question)}
+                                  className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-white/15"
+                                >
+                                  {question}
+                                </button>
+                              ))}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={askTacticalQuestion}
+                              className="mt-4 w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 hover:bg-[#7aacff]"
+                            >
+                              Preguntar
+                            </button>
+                            {selectedMatch.preAiAnalysis?.tacticalQuestion?.answer ? (
+                              <div className="mt-5 rounded-3xl border border-caudal-electric/20 bg-caudal-electric/10 p-5">
+                                <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">{selectedMatch.preAiAnalysis.tacticalQuestion.mode} · respuesta guardada</p>
+                                <p className="mt-3 text-sm leading-7 text-slate-100">{selectedMatch.preAiAnalysis.tacticalQuestion.answer}</p>
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => updateSelectedMatchFields({ preAiSupportNotes: selectedMatch.preAiAnalysis.tacticalQuestion.answer })}
+                                    className="rounded-2xl bg-caudal-electric/20 px-3 py-2 text-xs font-bold text-caudal-electric hover:bg-caudal-electric/30"
+                                  >
+                                    Guardar como nota PRE
+                                  </button>
+                                  {[
+                                    ['Copiar a plan con balón', 'planConBalon'],
+                                    ['Copiar a plan sin balón', 'planSinBalon'],
+                                    ['Copiar a transiciones', 'planTransiciones'],
+                                  ].map(([label, field]) => (
+                                    <button
+                                      key={field}
+                                      type="button"
+                                      onClick={() => updateSelectedMatchFields({ [field]: selectedMatch.preAiAnalysis.tacticalQuestion.answer })}
+                                      className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/15"
+                                    >
+                                      {label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="hidden">
                         <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
                           <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                             <div className="mb-5">
@@ -7859,6 +8120,7 @@ function App() {
                               },
                             ].map(renderQuestionnaireSection)}
                           </div>
+                        </div>
                         </div>
 
                         <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
@@ -8527,24 +8789,21 @@ function App() {
 
                       <aside className="space-y-6">
                         <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Botonera editable</h4>
+                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Marcar clips</h4>
+                          <p className="mt-2 text-sm text-slate-400">Pulsa un botón mientras ves la acción. Se guarda el clip en el segundo actual.</p>
+                          {postClipFeedback ? (
+                            <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm font-semibold text-emerald-200">
+                              {postClipFeedback}
+                            </div>
+                          ) : null}
                           <div className="mt-4 grid gap-3 sm:grid-cols-2">
                             {eventTypes.length ? eventTypes.map((eventType) => (
                               <button
                                 key={eventType.id}
                                 type="button"
-                                onClick={() => {
-                                  const currentSeconds = syncDraftWithCurrentVideoTime();
-                                  setSelectedEventType(eventType.name);
-                                  handleEventDraftChange('type', eventType.name);
-                                  if (currentSeconds !== null) {
-                                    handleEventDraftChange('minute', String(Math.floor(currentSeconds / 60)));
-                                    handleEventDraftChange('videoSeconds', currentSeconds);
-                                  } else {
-                                    handleEventDraftChange('minute', postCurrentMinute);
-                                  }
-                                }}
-                                className={`rounded-3xl px-4 py-4 text-sm font-semibold transition ${eventButtonClass(eventType.color)} ${selectedEventType === eventType.name ? 'ring-2 ring-caudal-electric' : ''}`}>
+                                onClick={() => markPostClip(eventType)}
+                                disabled={!postYoutubeReady || postClipSaving}
+                                className={`rounded-3xl px-4 py-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${eventButtonClass(eventType.color)}`}>
                                 {eventType.name}
                               </button>
                             )) : (
@@ -8553,6 +8812,11 @@ function App() {
                               </div>
                             )}
                           </div>
+                        </div>
+
+                        <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Configurar botones</h4>
+                          <p className="mt-2 text-sm text-slate-400">Edita los tipos que aparecen en la botonera de marcado.</p>
                           <div className="mt-5 space-y-3">
                             {eventTypes.map((eventType) => (
                               <div key={`edit-${eventType.id}`} className="grid gap-2 rounded-2xl bg-white/5 p-3 sm:grid-cols-[1fr_110px_auto]">
@@ -8644,61 +8908,74 @@ function App() {
                     <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Historial de eventos</h4>
-                          <p className="mt-2 text-sm text-slate-400">Haz clic en un evento para saltar el vídeo a ese minuto.</p>
+                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Clips del vídeo</h4>
+                          <p className="mt-2 text-sm text-slate-400">Edita jugador y descripción, o salta directamente al momento del vídeo.</p>
                         </div>
                         <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-300">{(selectedMatch.events || []).length} eventos</span>
                       </div>
-                      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      <div className="mt-5 space-y-3">
                         {(selectedMatch.events || []).length > 0 ? (
-                          [...(selectedMatch.events || [])].reverse().map((event) => (
-                            <button key={event.id} type="button" onClick={() => seekPostVideoToEvent(event)} className="rounded-3xl bg-[#0f1e38]/80 p-4 text-left transition hover:bg-white/10">
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <p className="text-sm font-semibold text-white">{event.type} - {event.minute}'</p>
-                                  <p className="text-sm text-slate-400">{event.player || 'Sin jugador definido'}</p>
+                          [...(selectedMatch.events || [])]
+                            .sort((a, b) => Number(a.videoSeconds || 0) - Number(b.videoSeconds || 0))
+                            .map((event) => (
+                            <div key={event.id} className={`rounded-3xl border p-4 transition ${selectedPostEventId === event.id ? 'border-caudal-electric/60 bg-caudal-electric/10' : 'border-white/5 bg-[#0f1e38]/80'}`}>
+                              <div className="grid gap-3 lg:grid-cols-[90px_160px_1fr_1.4fr_auto] lg:items-center">
+                                <label className="space-y-1 text-xs text-slate-500">
+                                  <span className="uppercase tracking-[0.14em]">Minuto</span>
+                                  <input
+                                    value={event.minute || ''}
+                                    onChange={(changeEvent) => updatePostEventLocal(event.id, { minute: changeEvent.target.value })}
+                                    onBlur={(blurEvent) => savePostEventInline({ ...event, minute: blurEvent.target.value })}
+                                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white"
+                                  />
+                                </label>
+                                <label className="space-y-1 text-xs text-slate-500">
+                                  <span className="uppercase tracking-[0.14em]">Tipo</span>
+                                  <select
+                                    value={event.type || ''}
+                                    onChange={(changeEvent) => {
+                                      updatePostEventLocal(event.id, { type: changeEvent.target.value });
+                                      const selectedType = eventTypes.find((eventType) => eventType.name === changeEvent.target.value);
+                                      savePostEventInline({ ...event, type: changeEvent.target.value, tipoEventoId: selectedType?.id || null });
+                                    }}
+                                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white"
+                                  >
+                                    {eventTypes.map((eventType) => <option key={eventType.id} value={eventType.name}>{eventType.name}</option>)}
+                                  </select>
+                                </label>
+                                <label className="space-y-1 text-xs text-slate-500">
+                                  <span className="uppercase tracking-[0.14em]">Jugador</span>
+                                  <input
+                                    value={event.player || ''}
+                                    onChange={(changeEvent) => updatePostEventLocal(event.id, { player: changeEvent.target.value })}
+                                    onBlur={(blurEvent) => savePostEventInline({ ...event, player: blurEvent.target.value })}
+                                    placeholder="Opcional"
+                                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                                  />
+                                </label>
+                                <label className="space-y-1 text-xs text-slate-500">
+                                  <span className="uppercase tracking-[0.14em]">Descripción</span>
+                                  <input
+                                    value={event.description || ''}
+                                    onChange={(changeEvent) => updatePostEventLocal(event.id, { description: changeEvent.target.value })}
+                                    onBlur={(blurEvent) => savePostEventInline({ ...event, description: blurEvent.target.value })}
+                                    placeholder="Añadir detalle del clip"
+                                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                                  />
+                                </label>
+                                <div className="flex flex-wrap gap-2 lg:justify-end">
+                                  <button type="button" onClick={() => seekPostVideoToEvent(event)} className={`rounded-xl px-3 py-2 text-xs font-bold ${eventButtonClass(event.type)}`}>
+                                    Ir {formatVideoSeconds(event.videoSeconds)}
+                                  </button>
+                                  <button type="button" onClick={() => deletePostEvent(event.id)} className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100">
+                                    Eliminar
+                                  </button>
                                 </div>
-                                <span className={`rounded-2xl px-3 py-2 text-xs uppercase tracking-[0.18em] ${eventButtonClass(event.type)}`}>{event.minute}'</span>
                               </div>
-                              <p className="mt-3 text-sm leading-7 text-slate-300">{event.description}</p>
-                              <div className="mt-3 flex gap-2">
-                                <span
-                                  role="button"
-                                  tabIndex={0}
-                                  onClick={(clickEvent) => {
-                                    clickEvent.stopPropagation();
-                                    editPostEvent(event);
-                                  }}
-                                  onKeyDown={(keyEvent) => {
-                                    if (keyEvent.key !== 'Enter') return;
-                                    keyEvent.stopPropagation();
-                                    editPostEvent(event);
-                                  }}
-                                  className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white"
-                                >
-                                  Editar
-                                </span>
-                                <span
-                                  role="button"
-                                  tabIndex={0}
-                                  onClick={(clickEvent) => {
-                                    clickEvent.stopPropagation();
-                                    deletePostEvent(event.id);
-                                  }}
-                                  onKeyDown={(keyEvent) => {
-                                    if (keyEvent.key !== 'Enter') return;
-                                    keyEvent.stopPropagation();
-                                    deletePostEvent(event.id);
-                                  }}
-                                  className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100"
-                                >
-                                  Borrar
-                                </span>
-                              </div>
-                            </button>
+                            </div>
                           ))
                         ) : (
-                          <div className="rounded-3xl bg-[#0f1e38]/80 p-6 text-sm text-slate-400">No se han registrado eventos postpartido todavía.</div>
+                          <div className="rounded-3xl bg-[#0f1e38]/80 p-6 text-sm text-slate-400">No se han marcado clips todavía.</div>
                         )}
                       </div>
                     </div>
