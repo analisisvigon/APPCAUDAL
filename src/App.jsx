@@ -253,6 +253,22 @@ const snakeToCamel = (value) => value.replace(/_([a-z])/g, (_, letter) => letter
 const mapSnakeRowToCamel = (row) =>
   Object.fromEntries(Object.entries(row || {}).map(([key, value]) => [snakeToCamel(key), value]));
 
+const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const safeArray = (value) => (Array.isArray(value) ? value : []);
+const safeObject = (value) => (isPlainObject(value) ? value : {});
+const normalizePreAiAnalysis = (value) => {
+  if (isPlainObject(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return isPlainObject(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
 const partidoPreFieldMap = {
   preNotes: 'pre_notes',
   planConBalon: 'plan_con_balon',
@@ -1384,11 +1400,24 @@ const createBlankTeamPlayer = () => ({
   injured: false,
 });
 
-const normalizeMatch = (match) => ({
-  ...emptyMatchForm,
-  ...match,
-  id: match.id ?? Date.now(),
-});
+const normalizeMatch = (match) => {
+  const merged = {
+    ...emptyMatchForm,
+    ...match,
+    id: match.id ?? Date.now(),
+  };
+
+  return {
+    ...merged,
+    preAiAnalysis: normalizePreAiAnalysis(merged.preAiAnalysis),
+    preCaudalLineup: safeArray(merged.preCaudalLineup),
+    preRivalLineup: safeArray(merged.preRivalLineup),
+    preRivalLineupPlayers: safeArray(merged.preRivalLineupPlayers),
+    preKeyMatchupsTable: safeArray(merged.preKeyMatchupsTable),
+    prePlayerNotes: safeObject(merged.prePlayerNotes),
+    preRivalPlayerNotes: safeObject(merged.preRivalPlayerNotes),
+  };
+};
 
 const cleanTeamDisplayName = (name) => name.replace(/^Plantilla\s+/i, '').trim();
 const comparableTeamName = (name) =>
@@ -1780,7 +1809,7 @@ const toTacticalItems = (value, fallback) => {
 };
 
 const getTacticalBlocksForRender = (analysis) => {
-  if (analysis?.tacticalBlocks?.length) return analysis.tacticalBlocks;
+  if (Array.isArray(analysis?.tacticalBlocks) && analysis.tacticalBlocks.length) return analysis.tacticalBlocks;
 
   return [
     {
@@ -2812,6 +2841,11 @@ function App() {
     [selectedMatchId, matches]
   );
 
+  const selectedPreAiAnalysis = useMemo(
+    () => normalizePreAiAnalysis(selectedMatch?.preAiAnalysis),
+    [selectedMatch?.preAiAnalysis]
+  );
+
   const selectedPlayerProfile = useMemo(
     () => players.find((player) => player.id === selectedPlayerProfileId) ?? null,
     [selectedPlayerProfileId, players]
@@ -3144,13 +3178,16 @@ function App() {
     const rivalSystem = getCurrentRivalSystem();
     const caudal = getSystemStructure(caudalSystem);
     const rival = getSystemStructure(rivalSystem);
-    const hasCaudalNames = (selectedMatch?.preCaudalLineup || []).some(Boolean);
-    const hasRivalNames = (selectedMatch?.preRivalLineup || []).some(Boolean);
-    const q = question.toLowerCase();
+    const caudalLineup = safeArray(selectedMatch?.preCaudalLineup);
+    const rivalLineup = safeArray(selectedMatch?.preRivalLineup);
+    const hasCaudalNames = caudalLineup.some(Boolean);
+    const hasRivalNames = rivalLineup.some(Boolean);
+    const safeQuestion = String(question || '');
+    const q = safeQuestion.toLowerCase();
 
-    if (mode === 'Micro' || /jugador|duelo|vigilar|marca/i.test(question)) {
-      const caudalRefs = hasCaudalNames ? (selectedMatch.preCaudalLineup || []).filter(Boolean).slice(0, 3).join(', ') : 'nuestros jugadores de carril central';
-      const rivalRefs = hasRivalNames ? (selectedMatch.preRivalLineup || []).filter(Boolean).slice(0, 3).join(', ') : 'sus referencias ofensivas';
+    if (mode === 'Micro' || /jugador|duelo|vigilar|marca/i.test(safeQuestion)) {
+      const caudalRefs = hasCaudalNames ? caudalLineup.filter(Boolean).slice(0, 3).join(', ') : 'nuestros jugadores de carril central';
+      const rivalRefs = hasRivalNames ? rivalLineup.filter(Boolean).slice(0, 3).join(', ') : 'sus referencias ofensivas';
       return `Lectura micro: relaciona ${caudalRefs} contra ${rivalRefs}. Prioridad: ganar la primera orientación corporal, cerrar pase interior y activar ayuda cercana tras pérdida. Si el duelo está en banda, que nuestro extremo llegue a tiempo para que el lateral no defienda dos alturas.`;
     }
 
@@ -3182,7 +3219,7 @@ function App() {
     const answer = buildTacticalQuestionAnswer(tacticalQuestionMode, question);
     updateSelectedMatchFields({
       preAiAnalysis: {
-        ...(selectedMatch.preAiAnalysis || {}),
+        ...(selectedPreAiAnalysis || {}),
         tacticalQuestion: {
           mode: tacticalQuestionMode,
           question,
@@ -3191,8 +3228,8 @@ function App() {
           context: {
             caudalSystem: selectedMatch.preCaudalSystem || '4-4-2',
             rivalSystem: getCurrentRivalSystem(),
-            caudalLineup: selectedMatch.preCaudalLineup || [],
-            rivalLineup: selectedMatch.preRivalLineup || [],
+            caudalLineup: safeArray(selectedMatch.preCaudalLineup),
+            rivalLineup: safeArray(selectedMatch.preRivalLineup),
           },
         },
       },
@@ -3203,7 +3240,7 @@ function App() {
     if (!selectedMatch) return;
     updateSelectedMatchFields({
       preAiAnalysis: {
-        ...(selectedMatch.preAiAnalysis || {}),
+        ...(selectedPreAiAnalysis || {}),
         tacticalQuestion: null,
       },
     });
@@ -5881,13 +5918,21 @@ function App() {
   };
 
   const renderFacingSystemsOverview = () => {
-    if (!selectedMatch) return null;
+    if (!selectedMatch) {
+      return (
+        <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] p-6 text-sm text-slate-400">
+          Selecciona un partido para ver la pizarra táctica.
+        </div>
+      );
+    }
     const caudalSystem = selectedMatch.preCaudalSystem || '4-4-2';
     const rivalSystem = getCurrentRivalSystem();
-    const caudalCoordinates = getFormationCoordinates(caudalSystem).map(toCaudalHalf);
-    const rivalCoordinates = getFormationCoordinates(rivalSystem).map((slot) => ({ x: 100 - slot.x, y: 100 - slot.y }));
-    const caudalRoles = getFormationRoles(caudalSystem);
-    const rivalRoles = getFormationRoles(rivalSystem);
+    const caudalCoordinates = safeArray(getFormationCoordinates(caudalSystem)).map(toCaudalHalf);
+    const rivalCoordinates = safeArray(getFormationCoordinates(rivalSystem)).map((slot) => ({ x: 100 - Number(slot?.x || 0), y: 100 - Number(slot?.y || 0) }));
+    const caudalRoles = safeArray(getFormationRoles(caudalSystem));
+    const rivalRoles = safeArray(getFormationRoles(rivalSystem));
+    const caudalLineup = safeArray(selectedMatch.preCaudalLineup);
+    const rivalLineup = safeArray(selectedMatch.preRivalLineup);
     return (
       <div className="relative mx-auto aspect-[7/8.4] min-h-[420px] w-full max-w-3xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner">
         <div className="absolute inset-4 rounded-[28px] border-2 border-white/55" />
@@ -5903,7 +5948,7 @@ function App() {
           <div key={`rival-overview-${index}`} className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
             <span className="flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 bg-rose-500/80 text-[10px] font-black text-white shadow-lg">{index === 0 ? 'P' : index}</span>
             <span className="max-w-20 truncate rounded-md bg-black/55 px-1.5 py-0.5 text-[8px] font-semibold text-white">
-              {selectedMatch.preRivalLineup?.[index] || rivalRoles[index] || `R${index + 1}`}
+              {rivalLineup[index] || rivalRoles[index] || `R${index + 1}`}
             </span>
           </div>
         ))}
@@ -5911,7 +5956,7 @@ function App() {
           <div key={`caudal-overview-${index}`} className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
             <span className="flex h-8 w-8 items-center justify-center rounded-full border border-caudal-electric bg-caudal-950 text-[10px] font-black text-caudal-electric shadow-lg">{index === 0 ? 'P' : index}</span>
             <span className="max-w-20 truncate rounded-md bg-black/55 px-1.5 py-0.5 text-[8px] font-semibold text-white">
-              {selectedMatch.preCaudalLineup?.[index] || caudalRoles[index] || `C${index + 1}`}
+              {caudalLineup[index] || caudalRoles[index] || `C${index + 1}`}
             </span>
           </div>
         ))}
@@ -7910,14 +7955,14 @@ function App() {
                             >
                               Preguntar
                             </button>
-                            {selectedMatch.preAiAnalysis?.tacticalQuestion?.answer ? (
+                            {selectedPreAiAnalysis?.tacticalQuestion?.answer ? (
                               <div className="mt-5 rounded-3xl border border-caudal-electric/20 bg-caudal-electric/10 p-5">
-                                <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">{selectedMatch.preAiAnalysis.tacticalQuestion.mode} · respuesta guardada</p>
-                                <p className="mt-3 text-sm leading-7 text-slate-100">{selectedMatch.preAiAnalysis.tacticalQuestion.answer}</p>
+                                <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">{selectedPreAiAnalysis.tacticalQuestion.mode || 'Macro'} · respuesta guardada</p>
+                                <p className="mt-3 text-sm leading-7 text-slate-100">{selectedPreAiAnalysis.tacticalQuestion.answer}</p>
                                 <div className="mt-4 flex flex-wrap gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => updateSelectedMatchFields({ preAiSupportNotes: selectedMatch.preAiAnalysis.tacticalQuestion.answer })}
+                                    onClick={() => updateSelectedMatchFields({ preAiSupportNotes: selectedPreAiAnalysis.tacticalQuestion.answer })}
                                     className="rounded-2xl bg-caudal-electric/20 px-3 py-2 text-xs font-bold text-caudal-electric hover:bg-caudal-electric/30"
                                   >
                                     Guardar como nota PRE
@@ -7930,7 +7975,7 @@ function App() {
                                     <button
                                       key={field}
                                       type="button"
-                                      onClick={() => updateSelectedMatchFields({ [field]: selectedMatch.preAiAnalysis.tacticalQuestion.answer })}
+                                      onClick={() => updateSelectedMatchFields({ [field]: selectedPreAiAnalysis.tacticalQuestion.answer })}
                                       className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/15"
                                     >
                                       {label}
@@ -8263,9 +8308,9 @@ function App() {
                               </label>
                               </div>
                               <div className="min-w-0 rounded-3xl bg-[#091428]/70 p-4">
-                            {selectedMatch.preAiAnalysis?.individualByPlayer?.[selectedTacticalPlayerIndex] ? (
+                            {selectedPreAiAnalysis?.individualByPlayer?.[selectedTacticalPlayerIndex] ? (
                               (() => {
-                                const playerAdvice = selectedMatch.preAiAnalysis.individualByPlayer[selectedTacticalPlayerIndex];
+                                const playerAdvice = selectedPreAiAnalysis.individualByPlayer[selectedTacticalPlayerIndex];
                                 const tacticalAdvice = getIndividualAdviceForRender(playerAdvice);
                                 return (
                                   <div>
@@ -8313,7 +8358,18 @@ function App() {
                             </button>
                           </div>
                           {(() => {
-                            const inputSummary = selectedMatch.preAiAnalysis?.inputSummary || getAiInputSummary();
+                            const inputSummary = {
+                              tags: [],
+                              filledInputs: [],
+                              rivalPlayersWithNotes: [],
+                              missingInputs: [],
+                              confidence: 'Baja',
+                              ...safeObject(selectedPreAiAnalysis?.inputSummary || getAiInputSummary()),
+                            };
+                            inputSummary.tags = safeArray(inputSummary.tags);
+                            inputSummary.filledInputs = safeArray(inputSummary.filledInputs);
+                            inputSummary.rivalPlayersWithNotes = safeArray(inputSummary.rivalPlayersWithNotes);
+                            inputSummary.missingInputs = safeArray(inputSummary.missingInputs);
                             const confidenceClass = inputSummary.confidence === 'Alta'
                               ? 'bg-emerald-400/15 text-emerald-300'
                               : inputSummary.confidence === 'Media'
@@ -8377,12 +8433,12 @@ function App() {
                               </div>
                             );
                           })()}
-                          {selectedMatch.preAiAnalysis ? (
+                          {selectedPreAiAnalysis ? (
                             <div className="mt-6 space-y-4">
                               <div className="grid gap-4">
-                                {getTacticalBlocksForRender(selectedMatch.preAiAnalysis).map((block) => renderTacticalBlock({
+                                {getTacticalBlocksForRender(selectedPreAiAnalysis).map((block) => renderTacticalBlock({
                                   ...block,
-                                  sourceTags: block.sourceTags || selectedMatch.preAiAnalysis.inputSummary?.tags?.slice(0, 4),
+                                  sourceTags: block.sourceTags || safeArray(selectedPreAiAnalysis.inputSummary?.tags).slice(0, 4),
                                 }))}
                               </div>
                             </div>
