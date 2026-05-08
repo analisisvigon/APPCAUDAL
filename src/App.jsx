@@ -1,4 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import React from 'react';
 
 import { supabase } from './lib/supabase';
 
@@ -6,6 +7,42 @@ const clubCrest =
   'https://tmssl.akamaized.net//images/wappen/head/13226.png?lm=1747769013';
 const defaultHomePhrase = 'Trabajo, identidad y detalle competitivo para preparar cada partido.';
 const homePhraseConfigKey = 'home_hero_phrase';
+
+class SystemsFacingErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Error cargando Sistemas enfrentados:', error, errorInfo);
+  }
+
+  componentDidUpdate(previousProps) {
+    if (previousProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="rounded-3xl border border-red-500/20 bg-red-500/10 p-6 text-red-100 shadow-glow">
+          <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">Error cargando Sistemas enfrentados</h4>
+          <p className="mt-3 break-words text-sm leading-6">
+            {this.state.error?.message || String(this.state.error)}
+          </p>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const positions = [
   'Portero',
@@ -5927,8 +5964,10 @@ function App() {
     }
     const caudalSystem = selectedMatch.preCaudalSystem || '4-4-2';
     const rivalSystem = getCurrentRivalSystem();
-    const caudalCoordinates = safeArray(getFormationCoordinates(caudalSystem)).map(toCaudalHalf);
-    const rivalCoordinates = safeArray(getFormationCoordinates(rivalSystem)).map((slot) => ({ x: 100 - Number(slot?.x || 0), y: 100 - Number(slot?.y || 0) }));
+    const toOverviewCaudalHalf = (slot) => ({ x: Number(slot?.x || 0), y: 50 + Number(slot?.y || 0) * 0.42 });
+    const toOverviewRivalHalf = (slot) => ({ x: 100 - Number(slot?.x || 0), y: 50 - Number(slot?.y || 0) * 0.42 });
+    const caudalCoordinates = safeArray(getFormationCoordinates(caudalSystem)).map(toOverviewCaudalHalf);
+    const rivalCoordinates = safeArray(getFormationCoordinates(rivalSystem)).map(toOverviewRivalHalf);
     const caudalRoles = safeArray(getFormationRoles(caudalSystem));
     const rivalRoles = safeArray(getFormationRoles(rivalSystem));
     const caudalLineup = safeArray(selectedMatch.preCaudalLineup);
@@ -7849,6 +7888,7 @@ function App() {
 
                       </div>
                     ) : (
+                      <SystemsFacingErrorBoundary resetKey={`${selectedMatch?.id || 'sin-partido'}-${preSubTab}`}>
                       <div className="space-y-6">
                         <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                           <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto_auto] lg:items-end">
@@ -8447,6 +8487,7 @@ function App() {
                           )}
                         </div>
                       </div>
+                      </SystemsFacingErrorBoundary>
                     )}
                   </section>
                 ) : matchView === 'estadisticas_partido' ? (
