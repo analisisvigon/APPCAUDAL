@@ -2088,6 +2088,48 @@ function App() {
   const [statsCallupError, setStatsCallupError] = useState('');
   const [selectedPlayerProfileId, setSelectedPlayerProfileId] = useState(null);
   const [playerCompetitionFilter, setPlayerCompetitionFilter] = useState('Todos');
+  const [performanceLoading, setPerformanceLoading] = useState(false);
+  const [performanceError, setPerformanceError] = useState('');
+  const [performanceStatus, setPerformanceStatus] = useState('');
+  const [performanceWeekStart, setPerformanceWeekStart] = useState(() => {
+    const today = new Date();
+    const day = today.getDay() || 7;
+    today.setDate(today.getDate() - day + 1);
+    return today.toISOString().slice(0, 10);
+  });
+  const [trainingSessions, setTrainingSessions] = useState([]);
+  const [wellnessEntries, setWellnessEntries] = useState([]);
+  const [rpeEntries, setRpeEntries] = useState([]);
+  const [performanceMatchStats, setPerformanceMatchStats] = useState([]);
+  const [performanceSessionDraft, setPerformanceSessionDraft] = useState({
+    sessionDate: new Date().toISOString().slice(0, 10),
+    microcycleLabel: '',
+    mdLabel: 'MD-4',
+    title: '',
+    sessionType: 'Entrenamiento',
+    plannedDuration: '',
+    notes: '',
+  });
+  const [wellnessDraft, setWellnessDraft] = useState({
+    jugadorId: '',
+    entryDate: new Date().toISOString().slice(0, 10),
+    sleepHours: '',
+    sleepQuality: '5',
+    fatigue: '5',
+    muscleSoreness: '5',
+    stress: '5',
+    mood: '5',
+    weight: '',
+    discomfort: '',
+    comment: '',
+  });
+  const [rpeDraft, setRpeDraft] = useState({
+    jugadorId: '',
+    sessionId: '',
+    durationMinutes: '',
+    rpe: '5',
+    comment: '',
+  });
   const [isLitoOpen, setIsLitoOpen] = useState(false);
   const [litoQuestion, setLitoQuestion] = useState('');
   const [litoLoading, setLitoLoading] = useState(false);
@@ -2877,6 +2919,11 @@ function App() {
     loadGroupAnalysisData();
   }, [activeTab]);
 
+  useEffect(() => {
+    if (activeTab !== 'Rendimiento') return;
+    loadPerformanceData();
+  }, [activeTab, performanceWeekStart]);
+
   const selectedTeam = useMemo(
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
     [selectedTeamId, teams]
@@ -2901,7 +2948,17 @@ function App() {
     String(value || '')
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase();
+      .toLowerCase()
+      .replace(/[¿?¡!.,;:()[\]{}'"`´]/g, ' ')
+      .replace(/\b(vs|versus|contra|frente a|frente al|ante|el|la|los|las|un|una|del|de|al)\b/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const getLitoTokens = (value) =>
+    normalizeLitoText(value)
+      .split(' ')
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 3);
 
   const formatLitoMatchName = (match) => {
     if (!match) return 'partido no identificado';
@@ -2917,15 +2974,24 @@ function App() {
     return `${home || 0}-${away || 0}`;
   };
 
-  const extractLitoRival = (question, knownRivals = []) => {
-    const normalizedQuestion = normalizeLitoText(question);
-    const direct = normalizedQuestion.match(/contra\s+(.+?)(?:\?|$| hace | en | del | de )/);
-    const directValue = direct?.[1]?.trim();
-    if (directValue) {
-      const known = knownRivals.find((rival) => normalizeLitoText(rival).includes(directValue) || directValue.includes(normalizeLitoText(rival)));
-      return known || directValue;
-    }
-    return knownRivals.find((rival) => normalizedQuestion.includes(normalizeLitoText(rival))) || '';
+  const findBestLitoRival = (question, knownRivals = []) => {
+    const questionText = normalizeLitoText(question);
+    const questionTokens = getLitoTokens(question);
+    const scored = knownRivals
+      .filter(Boolean)
+      .map((rival) => {
+        const rivalText = normalizeLitoText(rival);
+        const rivalTokens = getLitoTokens(rival);
+        let score = 0;
+        if (questionText.includes(rivalText) || rivalText.includes(questionText)) score += 8;
+        rivalTokens.forEach((token) => {
+          if (questionTokens.includes(token)) score += 4;
+          else if (questionTokens.some((questionToken) => questionToken.includes(token) || token.includes(questionToken))) score += 2;
+        });
+        return { rival, score };
+      })
+      .sort((a, b) => b.score - a.score);
+    return scored[0]?.score > 0 ? scored[0] : null;
   };
 
   const loadLitoContext = async () => {
@@ -2937,7 +3003,7 @@ function App() {
         .limit(60),
       supabase
         .from('partido_eventos_gol')
-        .select('id,partido_id,type,minute,scorer,assistant,phase,subphase')
+        .select('id,partido_id,type,minute,scorer,assistant,phase,subphase,description')
         .limit(300),
       supabase
         .from('partido_estadisticas_jugador')
@@ -2968,17 +3034,91 @@ function App() {
     };
   };
 
-  const findLitoMatch = (context, question) => {
+  const findLitoMatches = (context, question) => {
     const rivals = context.matches.map((match) => match.opponent).filter(Boolean);
-    const rival = extractLitoRival(question, rivals);
-    if (!rival) return context.matches[0] || null;
-    const normalizedRival = normalizeLitoText(rival);
-    return context.matches.find((match) => normalizeLitoText(match.opponent).includes(normalizedRival) || normalizedRival.includes(normalizeLitoText(match.opponent))) || null;
+    const best = findBestLitoRival(question, rivals);
+    if (!best) return { rival: '', matches: [] };
+    const rivalText = normalizeLitoText(best.rival);
+    return {
+      rival: best.rival,
+      matches: context.matches.filter((match) => {
+        const opponentText = normalizeLitoText(match.opponent);
+        return opponentText.includes(rivalText) || rivalText.includes(opponentText) || getLitoTokens(best.rival).some((token) => opponentText.includes(token));
+      }),
+    };
+  };
+
+  const findLitoMatch = (context, question) => {
+    const result = findLitoMatches(context, question);
+    return result.matches[0] || null;
+  };
+
+  const detectLitoIntent = (question) => {
+    const text = normalizeLitoText(question);
+    const rawText = normalizeLitoText(String(question || '').replace(/-/g, ' '));
+    if ((text.includes('partidos') || text.includes('calendario')) && (text.includes('jugamos') || text.includes('jugado') || text.includes('hasta ahora') || text.includes('ultimos'))) return 'played_matches';
+    if ((text.includes('gol') || text.includes('goles') || text.includes('marco') || text.includes('marcaron') || text.includes('metio')) && (text.includes('ultimo partido') || text.includes('ultima partido'))) return 'last_match_goals';
+    if (text.includes('gol') || text.includes('goles') || text.includes('marco') || text.includes('marcaron') || text.includes('metio')) return 'goals_vs_rival';
+    if (text.includes('como quedo') || text.includes('resultado') || text.includes('ultimo partido')) return 'last_match';
+    if (text.includes('sistema') && (text.includes('mas') || text.includes('usamos mas'))) return 'most_used_system';
+    if (text.includes('sistema')) return 'system_vs_rival';
+    if (text.includes('amarilla') || text.includes('tarjeta')) return 'yellow_cards';
+    if (text.includes('minuto')) return 'minutes';
+    if (text.includes('rivales') && (rawText.includes('4 4 2') || text.includes('442'))) return 'rivals_442';
+    if (text.includes('encaj') && text.includes('transicion')) return 'conceded_transition';
+    return 'unknown';
   };
 
   const answerLitoQuestion = (question, context) => {
     const normalizedQuestion = normalizeLitoText(question);
+    const intent = detectLitoIntent(question);
+    const rivalResult = findLitoMatches(context, question);
     const notFound = 'No encontré datos suficientes en Supabase para responder eso.';
+    const logBase = {
+      question,
+      normalizedQuestion,
+      intent,
+      rivalDetected: rivalResult.rival || null,
+      matchesFound: rivalResult.matches.length,
+    };
+
+    if (intent === 'played_matches') {
+      const playedMatches = context.matches.filter((match) => match.status === 'Finalizado' || match.home_score !== null || match.away_score !== null);
+      console.log('Lito debug:', { ...logBase, filters: 'played_matches', matchesFound: playedMatches.length, goalsFound: 0 });
+      if (!playedMatches.length) return notFound;
+      return `Partidos jugados hasta ahora:\n${playedMatches.slice(0, 10).map((match) => `- ${formatLitoMatchName(match)}: ${getLitoMatchScore(match)}`).join('\n')}`;
+    }
+
+    if (intent === 'goals_vs_rival' || intent === 'last_match_goals') {
+      const matchesForGoals = intent === 'last_match_goals'
+        ? [context.matches[0]].filter(Boolean)
+        : rivalResult.matches;
+      const goals = context.goals.filter((goal) => matchesForGoals.some((match) => match.id === goal.partido_id) && goal.type === 'Gol a favor');
+      console.log('Lito debug:', { ...logBase, filters: intent, matchesFound: matchesForGoals.length, goalsFound: goals.length });
+      if (!matchesForGoals.length) return notFound;
+      if (!goals.length) return 'No encontré goles registrados contra ese rival.';
+      const byMatch = matchesForGoals
+        .map((match) => {
+          const matchGoals = goals.filter((goal) => goal.partido_id === match.id);
+          if (!matchGoals.length) return null;
+          const details = matchGoals.map((goal) => {
+            const how = [goal.phase, goal.subphase, goal.description].filter(Boolean).join(' · ');
+            return `${goal.scorer || 'Sin goleador'}${goal.minute ? ` (${goal.minute}')` : ''}${how ? `: ${how}` : ''}`;
+          });
+          return `${rivalResult.rival ? `Encontré datos para: ${match.opponent}. ` : ''}${formatLitoMatchName(match)}: ${details.join('; ')}`;
+        })
+        .filter(Boolean);
+      return byMatch.join('\n');
+    }
+
+    if (intent === 'last_match') {
+      const match = context.matches[0];
+      console.log('Lito debug:', { ...logBase, filters: 'last_match', matchesFound: match ? 1 : 0, goalsFound: context.goals.filter((goal) => goal.partido_id === match?.id).length });
+      if (!match) return notFound;
+      const goals = context.goals.filter((goal) => goal.partido_id === match.id);
+      const scorers = goals.filter((goal) => goal.type === 'Gol a favor').map((goal) => goal.scorer).filter(Boolean);
+      return `El último partido fue contra ${formatLitoMatchName(match)} y quedó ${getLitoMatchScore(match)}. ${scorers.length ? `Goles Caudal: ${scorers.join(', ')}.` : 'No tengo goleadores a favor registrados.'}`;
+    }
 
     if (normalizedQuestion.includes('quien marco') || normalizedQuestion.includes('quién marcó')) {
       const match = normalizedQuestion.includes('ultimo partido') || normalizedQuestion.includes('último partido')
@@ -2990,56 +3130,53 @@ function App() {
       return `Contra ${formatLitoMatchName(match)} marcaron: ${goals.map((goal) => `${goal.scorer || 'Sin goleador'}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.`;
     }
 
-    if (normalizedQuestion.includes('como quedo') || normalizedQuestion.includes('cómo quedó') || normalizedQuestion.includes('ultimo partido') || normalizedQuestion.includes('último partido')) {
-      const match = context.matches[0];
-      if (!match) return notFound;
-      const goals = context.goals.filter((goal) => goal.partido_id === match.id);
-      const scorers = goals.filter((goal) => goal.type === 'Gol a favor').map((goal) => goal.scorer).filter(Boolean);
-      return `El último partido fue contra ${formatLitoMatchName(match)} y quedó ${getLitoMatchScore(match)}. ${scorers.length ? `Goles Caudal: ${scorers.join(', ')}.` : 'No tengo goleadores a favor registrados.'}`;
-    }
-
-    if (normalizedQuestion.includes('sistema') && normalizedQuestion.includes('contra')) {
-      const match = findLitoMatch(context, question);
+    if (intent === 'system_vs_rival') {
+      const match = rivalResult.matches[0] || findLitoMatch(context, question);
+      console.log('Lito debug:', { ...logBase, filters: 'system_vs_rival', matchesFound: match ? 1 : 0, goalsFound: 0 });
       if (!match) return notFound;
       const system = match.stats_system || match.pre_caudal_system || 'sin sistema guardado';
       const rivalSystem = match.pre_rival_system || match.rival_lineup_system || 'sin sistema rival guardado';
       return `Contra ${formatLitoMatchName(match)} usamos ${system}. El sistema rival guardado es ${rivalSystem}.`;
     }
 
-    if (normalizedQuestion.includes('amarilla') || normalizedQuestion.includes('tarjeta')) {
+    if (intent === 'yellow_cards') {
       const totals = context.stats.reduce((acc, row) => {
         const name = row.player_name || 'Sin jugador';
         acc[name] = (acc[name] || 0) + Number(row.yellow_count || (row.yellow ? 1 : 0));
         return acc;
       }, {});
       const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
+      console.log('Lito debug:', { ...logBase, filters: 'yellow_cards', matchesFound: context.matches.length, goalsFound: 0 });
       if (!top || top[1] <= 0) return notFound;
       return `El jugador con más amarillas registradas es ${top[0]}, con ${top[1]}.`;
     }
 
-    if (normalizedQuestion.includes('minuto')) {
+    if (intent === 'minutes') {
       const totals = context.stats.reduce((acc, row) => {
         const name = row.player_name || 'Sin jugador';
         acc[name] = (acc[name] || 0) + Number(row.minutes || 0);
         return acc;
       }, {});
       const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
+      console.log('Lito debug:', { ...logBase, filters: 'minutes', matchesFound: context.matches.length, goalsFound: 0 });
       if (!top || top[1] <= 0) return notFound;
       return `El jugador con más minutos registrados es ${top[0]}, con ${top[1]} minutos.`;
     }
 
-    if (normalizedQuestion.includes('rivales') && normalizedQuestion.includes('4-4-2')) {
+    if (intent === 'rivals_442') {
       const rivals = context.teams.filter((team) => String(team.system || '').trim() === '4-4-2');
+      console.log('Lito debug:', { ...logBase, filters: 'rivals_442', matchesFound: rivals.length, goalsFound: 0 });
       if (!rivals.length) return notFound;
       return `Rivales con 4-4-2 guardado: ${rivals.map((team) => team.name).join(', ')}.`;
     }
 
-    if (normalizedQuestion.includes('encaj') && normalizedQuestion.includes('transicion')) {
+    if (intent === 'conceded_transition') {
       const goals = context.goals.filter((goal) => goal.type === 'Gol en contra' && normalizeLitoText(`${goal.phase || ''} ${goal.subphase || ''}`).includes('transicion'));
+      console.log('Lito debug:', { ...logBase, filters: 'conceded_transition', matchesFound: context.matches.length, goalsFound: goals.length });
       return `Hay ${goals.length} goles encajados en transición registrados en Supabase.`;
     }
 
-    if (normalizedQuestion.includes('sistema') && (normalizedQuestion.includes('mas') || normalizedQuestion.includes('más'))) {
+    if (intent === 'most_used_system') {
       const totals = context.matches.reduce((acc, match) => {
         const system = match.stats_system || match.pre_caudal_system;
         if (!system) return acc;
@@ -3047,10 +3184,12 @@ function App() {
         return acc;
       }, {});
       const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
+      console.log('Lito debug:', { ...logBase, filters: 'most_used_system', matchesFound: context.matches.length, goalsFound: 0 });
       if (!top) return notFound;
       return `El sistema más usado en los partidos guardados es ${top[0]}, con ${top[1]} partidos.`;
     }
 
+    console.log('Lito debug:', { ...logBase, filters: 'unknown', goalsFound: 0 });
     return notFound;
   };
 
@@ -3076,6 +3215,251 @@ function App() {
     } finally {
       setLitoLoading(false);
     }
+  };
+
+  const addDays = (dateString, days) => {
+    const date = new Date(`${dateString}T00:00:00`);
+    date.setDate(date.getDate() + days);
+    return date.toISOString().slice(0, 10);
+  };
+
+  const performanceWeekEnd = addDays(performanceWeekStart, 6);
+
+  const normalizePerformanceNumber = (value) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : 0;
+  };
+
+  const getWellnessScore = (entry) => {
+    if (!entry) return null;
+    const values = [
+      entry.sleep_quality,
+      entry.mood,
+      11 - normalizePerformanceNumber(entry.fatigue),
+      11 - normalizePerformanceNumber(entry.muscle_soreness),
+      11 - normalizePerformanceNumber(entry.stress),
+    ].map(Number).filter((value) => Number.isFinite(value) && value > 0);
+    if (!values.length) return null;
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  };
+
+  const getPerformancePlayerName = (playerId) =>
+    players.find((player) => player.id === playerId)?.name || 'Jugador';
+
+  const loadPerformanceData = async () => {
+    setPerformanceLoading(true);
+    setPerformanceError('');
+    const weekEnd = addDays(performanceWeekStart, 6);
+
+    try {
+      const [sessionsResponse, wellnessResponse, rpeResponse, statsResponse] = await Promise.all([
+        supabase
+          .from('training_sessions')
+          .select('*')
+          .gte('session_date', performanceWeekStart)
+          .lte('session_date', weekEnd)
+          .order('session_date', { ascending: true }),
+        supabase
+          .from('wellness_entries')
+          .select('*')
+          .gte('entry_date', performanceWeekStart)
+          .lte('entry_date', weekEnd)
+          .order('entry_date', { ascending: true }),
+        supabase
+          .from('rpe_entries')
+          .select('*')
+          .gte('entry_date', performanceWeekStart)
+          .lte('entry_date', weekEnd)
+          .order('entry_date', { ascending: true }),
+        supabase
+          .from('partido_estadisticas_jugador')
+          .select('player_name,minutes')
+      ]);
+
+      const failed = [sessionsResponse, wellnessResponse, rpeResponse, statsResponse].find((response) => response.error);
+      if (failed) {
+        console.error('Error cargando Rendimiento desde Supabase:', failed.error);
+        throw failed.error;
+      }
+
+      setTrainingSessions(sessionsResponse.data || []);
+      setWellnessEntries(wellnessResponse.data || []);
+      setRpeEntries(rpeResponse.data || []);
+      setPerformanceMatchStats(statsResponse.data || []);
+    } catch (loadError) {
+      console.error('Error cargando Rendimiento:', loadError);
+      setPerformanceError(loadError.message || 'No se pudo cargar Rendimiento. Revisa que hayas ejecutado supabase_rendimiento.sql.');
+    } finally {
+      setPerformanceLoading(false);
+    }
+  };
+
+  const saveTrainingSession = async (event) => {
+    event.preventDefault();
+    setPerformanceStatus('');
+    setPerformanceError('');
+    const payload = {
+      session_date: performanceSessionDraft.sessionDate,
+      microcycle_label: performanceSessionDraft.microcycleLabel || `Semana ${performanceWeekStart}`,
+      md_label: performanceSessionDraft.mdLabel,
+      title: performanceSessionDraft.title || performanceSessionDraft.sessionType,
+      session_type: performanceSessionDraft.sessionType,
+      planned_duration: performanceSessionDraft.plannedDuration ? Number(performanceSessionDraft.plannedDuration) : null,
+      notes: performanceSessionDraft.notes || '',
+    };
+    const { error: sessionError } = await supabase.from('training_sessions').insert(payload);
+    if (sessionError) {
+      console.error('Error guardando sesión de Rendimiento:', { payload, error: sessionError });
+      setPerformanceError(sessionError.message || 'No se pudo guardar la sesión.');
+      return;
+    }
+    setPerformanceStatus('Sesión guardada en Supabase.');
+    setPerformanceSessionDraft((current) => ({ ...current, title: '', plannedDuration: '', notes: '' }));
+    await loadPerformanceData();
+  };
+
+  const saveWellnessEntry = async (event) => {
+    event.preventDefault();
+    if (!wellnessDraft.jugadorId) {
+      setPerformanceError('Selecciona un jugador para guardar wellness.');
+      return;
+    }
+    setPerformanceStatus('');
+    setPerformanceError('');
+    const payload = {
+      jugador_id: wellnessDraft.jugadorId,
+      entry_date: wellnessDraft.entryDate,
+      sleep_hours: wellnessDraft.sleepHours ? Number(wellnessDraft.sleepHours) : null,
+      sleep_quality: Number(wellnessDraft.sleepQuality),
+      fatigue: Number(wellnessDraft.fatigue),
+      muscle_soreness: Number(wellnessDraft.muscleSoreness),
+      stress: Number(wellnessDraft.stress),
+      mood: Number(wellnessDraft.mood),
+      weight: wellnessDraft.weight ? Number(wellnessDraft.weight) : null,
+      discomfort: wellnessDraft.discomfort || '',
+      comment: wellnessDraft.comment || '',
+    };
+    const { error: wellnessError } = await supabase
+      .from('wellness_entries')
+      .upsert(payload, { onConflict: 'jugador_id,entry_date' });
+    if (wellnessError) {
+      console.error('Error guardando wellness en Supabase:', { payload, error: wellnessError });
+      setPerformanceError(wellnessError.message || 'No se pudo guardar wellness.');
+      return;
+    }
+    setPerformanceStatus('Wellness guardado en Supabase.');
+    await loadPerformanceData();
+  };
+
+  const saveRpeEntry = async (event) => {
+    event.preventDefault();
+    if (!rpeDraft.jugadorId || !rpeDraft.sessionId) {
+      setPerformanceError('Selecciona jugador y sesión para guardar RPE.');
+      return;
+    }
+    const session = trainingSessions.find((item) => item.id === rpeDraft.sessionId);
+    setPerformanceStatus('');
+    setPerformanceError('');
+    const payload = {
+      jugador_id: rpeDraft.jugadorId,
+      session_id: rpeDraft.sessionId,
+      entry_date: session?.session_date || performanceWeekStart,
+      duration_minutes: Number(rpeDraft.durationMinutes || session?.planned_duration || 0),
+      rpe: Number(rpeDraft.rpe),
+      comment: rpeDraft.comment || '',
+    };
+    const { error: rpeError } = await supabase
+      .from('rpe_entries')
+      .upsert(payload, { onConflict: 'jugador_id,session_id' });
+    if (rpeError) {
+      console.error('Error guardando RPE en Supabase:', { payload, error: rpeError });
+      setPerformanceError(rpeError.message || 'No se pudo guardar RPE.');
+      return;
+    }
+    setPerformanceStatus('RPE guardado en Supabase.');
+    await loadPerformanceData();
+  };
+
+  const getPerformancePlayerRows = () => players.map((player) => {
+    const wellness = wellnessEntries.filter((entry) => entry.jugador_id === player.id);
+    const rpes = rpeEntries.filter((entry) => entry.jugador_id === player.id);
+    const latestWellness = [...wellness].sort((a, b) => String(b.entry_date).localeCompare(String(a.entry_date)))[0];
+    const wellnessScores = wellness.map(getWellnessScore).filter((score) => score !== null);
+    const totalLoad = rpes.reduce((sum, entry) => sum + normalizePerformanceNumber(entry.load ?? normalizePerformanceNumber(entry.duration_minutes) * normalizePerformanceNumber(entry.rpe)), 0);
+    const totalMinutes = rpes.reduce((sum, entry) => sum + normalizePerformanceNumber(entry.duration_minutes), 0);
+    const avgRpe = rpes.length ? rpes.reduce((sum, entry) => sum + normalizePerformanceNumber(entry.rpe), 0) / rpes.length : 0;
+    const repeatedHighRpe = rpes.filter((entry) => normalizePerformanceNumber(entry.rpe) >= 8).length >= 2;
+    const hasDiscomfort = Boolean([latestWellness?.discomfort, latestWellness?.comment, ...rpes.map((entry) => entry.comment)].join(' ').match(/molest|dolor|carga|tocado|fatiga/i));
+    const red = latestWellness && (
+      normalizePerformanceNumber(latestWellness.fatigue) >= 8 ||
+      normalizePerformanceNumber(latestWellness.muscle_soreness) >= 8 ||
+      normalizePerformanceNumber(latestWellness.stress) >= 8 ||
+      normalizePerformanceNumber(latestWellness.sleep_quality) <= 2
+    );
+    const yellow = !red && (
+      normalizePerformanceNumber(latestWellness?.sleep_quality) <= 3 ||
+      repeatedHighRpe ||
+      hasDiscomfort
+    );
+    const status = red ? 'rojo' : yellow ? 'amarillo' : 'verde';
+    const matchMinutes = performanceMatchStats
+      .filter((row) => row.player_name === player.name)
+      .reduce((sum, row) => sum + normalizePerformanceNumber(row.minutes), 0);
+
+    return {
+      player,
+      wellness,
+      latestWellness,
+      wellnessScore: wellnessScores.length ? wellnessScores.reduce((sum, score) => sum + score, 0) / wellnessScores.length : null,
+      totalLoad,
+      totalMinutes,
+      avgRpe,
+      status,
+      matchMinutes,
+      repeatedHighRpe,
+      hasDiscomfort,
+    };
+  });
+
+  const getPerformanceDashboard = () => {
+    const rows = getPerformancePlayerRows();
+    const totalLoad = rows.reduce((sum, row) => sum + row.totalLoad, 0);
+    const totalVolume = rows.reduce((sum, row) => sum + row.totalMinutes, 0);
+    const rpeValues = rpeEntries.map((entry) => normalizePerformanceNumber(entry.rpe)).filter(Boolean);
+    const wellnessScores = rows.map((row) => row.wellnessScore).filter((score) => score !== null);
+    const dailyLoad = trainingSessions.map((session) => {
+      const load = rpeEntries
+        .filter((entry) => entry.session_id === session.id)
+        .reduce((sum, entry) => sum + normalizePerformanceNumber(entry.load ?? normalizePerformanceNumber(entry.duration_minutes) * normalizePerformanceNumber(entry.rpe)), 0);
+      return { session, load };
+    });
+    const peak = [...dailyLoad].sort((a, b) => b.load - a.load)[0];
+    const riskRows = rows.filter((row) => row.status !== 'verde');
+    return {
+      rows,
+      totalLoad,
+      totalVolume,
+      avgRpe: rpeValues.length ? rpeValues.reduce((sum, value) => sum + value, 0) / rpeValues.length : 0,
+      avgWellness: wellnessScores.length ? wellnessScores.reduce((sum, value) => sum + value, 0) / wellnessScores.length : null,
+      dailyLoad,
+      peak,
+      topLoad: [...rows].sort((a, b) => b.totalLoad - a.totalLoad).slice(0, 5),
+      topFatigue: [...rows].sort((a, b) => normalizePerformanceNumber(b.latestWellness?.fatigue) - normalizePerformanceNumber(a.latestWellness?.fatigue)).slice(0, 5),
+      riskRows,
+    };
+  };
+
+  const getPerformanceReport = () => {
+    const dashboard = getPerformanceDashboard();
+    const intensity = dashboard.totalLoad > 6000 ? 'alta' : dashboard.totalLoad > 3000 ? 'media-alta' : 'controlada';
+    const peakText = dashboard.peak?.load ? ` Pico de carga en ${dashboard.peak.session.md_label || dashboard.peak.session.session_date}.` : '';
+    const riskText = dashboard.riskRows.length
+      ? ` ${dashboard.riskRows.slice(0, 4).map((row) => row.player.name).join(', ')} presentan indicadores a vigilar.`
+      : ' Sin alertas relevantes en el semáforo PF.';
+    const wellnessText = dashboard.avgWellness
+      ? ` Wellness grupal medio ${dashboard.avgWellness.toFixed(1)}/10.`
+      : ' Sin wellness suficiente para valorar tendencia grupal.';
+    return `Microciclo con carga ${intensity}.${peakText}${riskText}${wellnessText}`;
   };
 
   useEffect(() => {
@@ -6193,6 +6577,164 @@ function App() {
     );
   };
 
+  const renderPerformanceSection = () => {
+    const dashboard = getPerformanceDashboard();
+    const statusClass = {
+      verde: 'border-emerald-300/20 bg-emerald-400/10 text-emerald-200',
+      amarillo: 'border-amber-300/20 bg-amber-300/10 text-amber-100',
+      rojo: 'border-red-300/25 bg-red-500/10 text-red-100',
+    };
+    const mdOptions = ['MD+1', 'MD-4', 'MD-3', 'MD-2', 'MD-1', 'MD'];
+
+    return (
+      <section className="space-y-6">
+        <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Rendimiento</p>
+              <h2 className="mt-2 text-3xl font-semibold text-white">Control PF del microciclo</h2>
+              <p className="mt-2 text-sm text-slate-400">Wellness, RPE, carga interna y alertas simples sincronizadas con Supabase.</p>
+            </div>
+            <label className="space-y-2 text-sm text-slate-300">
+              <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Inicio semana</span>
+              <input type="date" value={performanceWeekStart} onChange={(event) => setPerformanceWeekStart(event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
+            </label>
+          </div>
+          <p className="mt-4 text-xs uppercase tracking-[0.18em] text-slate-500">{performanceWeekStart} / {performanceWeekEnd}</p>
+        </div>
+
+        {performanceError ? <div className="rounded-3xl border border-red-500/20 bg-red-500/10 p-5 text-sm text-red-100">{performanceError}</div> : null}
+        {performanceStatus ? <div className="rounded-3xl border border-emerald-400/20 bg-emerald-400/10 p-5 text-sm text-emerald-100">{performanceStatus}</div> : null}
+        {performanceLoading ? <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 text-sm text-slate-400">Cargando Rendimiento desde Supabase...</div> : null}
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {[
+            ['Carga semanal', Math.round(dashboard.totalLoad), 'UA'],
+            ['RPE medio', dashboard.avgRpe ? dashboard.avgRpe.toFixed(1) : '-', '/10'],
+            ['Wellness medio', dashboard.avgWellness ? dashboard.avgWellness.toFixed(1) : '-', '/10'],
+            ['Volumen total', Math.round(dashboard.totalVolume), 'min'],
+          ].map(([label, value, suffix]) => (
+            <div key={label} className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{label}</p>
+              <p className="mt-3 text-3xl font-black text-white">{value} <span className="text-sm text-slate-500">{suffix}</span></p>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+          <form onSubmit={saveTrainingSession} className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Crear sesión</h3>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <input type="date" value={performanceSessionDraft.sessionDate} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, sessionDate: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
+              <select value={performanceSessionDraft.mdLabel} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, mdLabel: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
+                {mdOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+              <input value={performanceSessionDraft.title} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Título sesión" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
+              <input type="number" min="0" value={performanceSessionDraft.plannedDuration} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, plannedDuration: event.target.value }))} placeholder="Duración planificada" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
+            </div>
+            <textarea value={performanceSessionDraft.notes} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Notas de la sesión" className="mt-4 min-h-[90px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
+            <button type="submit" className="mt-4 w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950">Guardar sesión</button>
+          </form>
+
+          <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Resumen por día</h3>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {mdOptions.map((md) => {
+                const sessions = trainingSessions.filter((session) => session.md_label === md);
+                const load = sessions.reduce((sum, session) => sum + dashboard.dailyLoad.filter((item) => item.session.id === session.id).reduce((acc, item) => acc + item.load, 0), 0);
+                return (
+                  <div key={md} className="rounded-2xl bg-white/5 p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">{md}</p>
+                    <p className="mt-2 text-2xl font-black text-white">{Math.round(load)}</p>
+                    <p className="mt-1 text-xs text-slate-500">{sessions.length} sesiones</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-2">
+          <form onSubmit={saveWellnessEntry} className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Wellness diario</h3>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <select value={wellnessDraft.jugadorId} onChange={(event) => setWellnessDraft((current) => ({ ...current, jugadorId: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
+                <option value="">Jugador</option>
+                {players.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}
+              </select>
+              <input type="date" value={wellnessDraft.entryDate} onChange={(event) => setWellnessDraft((current) => ({ ...current, entryDate: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
+              {[
+                ['Sueño calidad', 'sleepQuality'],
+                ['Fatiga', 'fatigue'],
+                ['Dolor muscular', 'muscleSoreness'],
+                ['Estrés', 'stress'],
+                ['Ánimo', 'mood'],
+                ['Peso', 'weight'],
+              ].map(([label, field]) => (
+                <label key={field} className="space-y-1 text-xs uppercase tracking-[0.14em] text-slate-500">
+                  <span>{label}</span>
+                  <input type="number" min={field === 'weight' ? undefined : 1} max={field === 'weight' ? undefined : 10} step={field === 'weight' ? '0.1' : '1'} value={wellnessDraft[field]} onChange={(event) => setWellnessDraft((current) => ({ ...current, [field]: event.target.value }))} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
+                </label>
+              ))}
+            </div>
+            <input value={wellnessDraft.discomfort} onChange={(event) => setWellnessDraft((current) => ({ ...current, discomfort: event.target.value }))} placeholder="Molestias" className="mt-4 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
+            <textarea value={wellnessDraft.comment} onChange={(event) => setWellnessDraft((current) => ({ ...current, comment: event.target.value }))} placeholder="Comentario libre" className="mt-4 min-h-[80px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
+            <button type="submit" className="mt-4 w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950">Guardar wellness</button>
+          </form>
+
+          <form onSubmit={saveRpeEntry} className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">RPE post-entrenamiento</h3>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <select value={rpeDraft.jugadorId} onChange={(event) => setRpeDraft((current) => ({ ...current, jugadorId: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
+                <option value="">Jugador</option>
+                {players.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}
+              </select>
+              <select value={rpeDraft.sessionId} onChange={(event) => setRpeDraft((current) => ({ ...current, sessionId: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
+                <option value="">Sesión</option>
+                {trainingSessions.map((session) => <option key={session.id} value={session.id}>{session.md_label || session.session_date} · {session.title || session.session_type}</option>)}
+              </select>
+              <input type="number" min="0" value={rpeDraft.durationMinutes} onChange={(event) => setRpeDraft((current) => ({ ...current, durationMinutes: event.target.value }))} placeholder="Duración minutos" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
+              <input type="number" min="1" max="10" value={rpeDraft.rpe} onChange={(event) => setRpeDraft((current) => ({ ...current, rpe: event.target.value }))} placeholder="RPE 1-10" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
+            </div>
+            <p className="mt-3 rounded-2xl bg-white/5 px-4 py-3 text-sm text-slate-300">Carga automática: <span className="font-black text-white">{normalizePerformanceNumber(rpeDraft.durationMinutes) * normalizePerformanceNumber(rpeDraft.rpe)}</span></p>
+            <textarea value={rpeDraft.comment} onChange={(event) => setRpeDraft((current) => ({ ...current, comment: event.target.value }))} placeholder="Comentario libre" className="mt-4 min-h-[90px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
+            <button type="submit" className="mt-4 w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950">Guardar RPE</button>
+          </form>
+        </div>
+
+        <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+          <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Semáforo PF y evolución individual</h3>
+          <div className="mt-5 overflow-x-auto">
+            <table className="w-full min-w-[920px] text-left text-sm">
+              <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                <tr>{['Jugador', 'Estado', 'Carga', 'RPE medio', 'Wellness', 'Peso', 'Min partido', 'Molestias'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}</tr>
+              </thead>
+              <tbody>
+                {dashboard.rows.map((row) => (
+                  <tr key={row.player.id} className="border-t border-white/10">
+                    <td className="px-3 py-4 font-bold text-white">{row.player.name}</td>
+                    <td className="px-3 py-4"><span className={`rounded-full border px-3 py-1 text-xs font-black uppercase ${statusClass[row.status]}`}>{row.status}</span></td>
+                    <td className="px-3 py-4 text-white">{Math.round(row.totalLoad)}</td>
+                    <td className="px-3 py-4 text-white">{row.avgRpe ? row.avgRpe.toFixed(1) : '-'}</td>
+                    <td className="px-3 py-4 text-white">{row.wellnessScore ? row.wellnessScore.toFixed(1) : '-'}</td>
+                    <td className="px-3 py-4 text-white">{row.latestWellness?.weight || '-'}</td>
+                    <td className="px-3 py-4 text-white">{row.matchMinutes}</td>
+                    <td className="px-3 py-4 text-slate-300">{row.latestWellness?.discomfort || row.latestWellness?.comment || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+          <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Informe semanal PF</h3>
+          <p className="mt-4 rounded-3xl bg-[#0f1e38]/80 p-5 text-sm leading-7 text-slate-200">{getPerformanceReport()}</p>
+        </div>
+      </section>
+    );
+  };
+
   const authUser = session?.user ?? null;
   const splashScreen = showSplash ? (
     <div
@@ -6296,7 +6838,7 @@ function App() {
               </button>
             </div>
             <nav className="flex flex-wrap gap-3 sm:justify-end">
-              {['Inicio', 'Plantilla', 'Equipos', 'Partidos', 'Análisis Grupal'].map((tab) => (
+              {['Inicio', 'Plantilla', 'Equipos', 'Partidos', 'Rendimiento', 'Análisis Grupal'].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -6404,7 +6946,7 @@ function App() {
               </div>
             ) : null}
 
-            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
               {[
                 {
                   tab: 'Plantilla',
@@ -6442,6 +6984,18 @@ function App() {
                       <path d="M7 4v3M17 4v3M5 8h14" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
                       <path d="M6.5 5.5h11A2.5 2.5 0 0 1 20 8v9.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5V8a2.5 2.5 0 0 1 2.5-2.5Z" fill="none" stroke="currentColor" strokeWidth="1.8" />
                       <path d="M8 13h3M8 16h7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+                    </svg>
+                  ),
+                },
+                {
+                  tab: 'Rendimiento',
+                  title: 'Rendimiento',
+                  copy: 'Wellness y carga',
+                  accent: 'from-cyan-400/20 to-white/5',
+                  icon: (
+                    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-8 w-8">
+                      <path d="M4 13h4l2-6 4 12 2-6h4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+                      <path d="M5 20h14" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
                     </svg>
                   ),
                 },
@@ -7319,6 +7873,10 @@ function App() {
               </section>
             )}
           </main>
+        ) : null}
+
+        {activeTab === 'Rendimiento' ? (
+          <main>{renderPerformanceSection()}</main>
         ) : null}
 
         {activeTab === 'Análisis Grupal' ? (() => {
