@@ -2088,6 +2088,15 @@ function App() {
   const [statsCallupError, setStatsCallupError] = useState('');
   const [selectedPlayerProfileId, setSelectedPlayerProfileId] = useState(null);
   const [playerCompetitionFilter, setPlayerCompetitionFilter] = useState('Todos');
+  const [isLitoOpen, setIsLitoOpen] = useState(false);
+  const [litoQuestion, setLitoQuestion] = useState('');
+  const [litoLoading, setLitoLoading] = useState(false);
+  const [litoMessages, setLitoMessages] = useState([
+    {
+      role: 'assistant',
+      text: 'Soy Lito. Pregúntame por partidos, goles, sistemas, tarjetas o minutos guardados en Supabase.',
+    },
+  ]);
   const [playerVenueFilter, setPlayerVenueFilter] = useState('Todos');
   const [playerInfluenceFilter, setPlayerInfluenceFilter] = useState('Todos');
   const [selectedTimelineAction, setSelectedTimelineAction] = useState(null);
@@ -2887,6 +2896,187 @@ function App() {
     () => players.find((player) => player.id === selectedPlayerProfileId) ?? null,
     [selectedPlayerProfileId, players]
   );
+
+  const normalizeLitoText = (value) =>
+    String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+
+  const formatLitoMatchName = (match) => {
+    if (!match) return 'partido no identificado';
+    const date = matchDisplayDate(match.date);
+    return `${match.opponent || 'Rival sin nombre'}${date && date !== '-' ? ` (${date})` : ''}`;
+  };
+
+  const getLitoMatchScore = (match) => {
+    if (!match) return 'sin marcador';
+    const home = match.home_score ?? match.homeScore ?? '';
+    const away = match.away_score ?? match.awayScore ?? '';
+    if (home === '' && away === '') return 'sin marcador guardado';
+    return `${home || 0}-${away || 0}`;
+  };
+
+  const extractLitoRival = (question, knownRivals = []) => {
+    const normalizedQuestion = normalizeLitoText(question);
+    const direct = normalizedQuestion.match(/contra\s+(.+?)(?:\?|$| hace | en | del | de )/);
+    const directValue = direct?.[1]?.trim();
+    if (directValue) {
+      const known = knownRivals.find((rival) => normalizeLitoText(rival).includes(directValue) || directValue.includes(normalizeLitoText(rival)));
+      return known || directValue;
+    }
+    return knownRivals.find((rival) => normalizedQuestion.includes(normalizeLitoText(rival))) || '';
+  };
+
+  const loadLitoContext = async () => {
+    const [matchesResponse, goalsResponse, statsResponse, teamsResponse, playersResponse] = await Promise.all([
+      supabase
+        .from('partidos')
+        .select('id,date,time,opponent,home_score,away_score,is_home,status,pre_caudal_system,pre_rival_system,rival_lineup_system,stats_system')
+        .order('date', { ascending: false, nullsFirst: false })
+        .limit(60),
+      supabase
+        .from('partido_eventos_gol')
+        .select('id,partido_id,type,minute,scorer,assistant,phase,subphase')
+        .limit(300),
+      supabase
+        .from('partido_estadisticas_jugador')
+        .select('partido_id,player_name,minutes,yellow,yellow_count,red,rating,role')
+        .limit(500),
+      supabase
+        .from('equipos_rivales')
+        .select('id,name,system')
+        .limit(200),
+      supabase
+        .from('jugadores')
+        .select('id,name,position')
+        .limit(200),
+    ]);
+
+    const failed = [matchesResponse, goalsResponse, statsResponse, teamsResponse, playersResponse].find((response) => response.error);
+    if (failed) {
+      console.error('Error consultando datos de Lito en Supabase:', failed.error);
+      throw failed.error;
+    }
+
+    return {
+      matches: matchesResponse.data || [],
+      goals: goalsResponse.data || [],
+      stats: statsResponse.data || [],
+      teams: teamsResponse.data || [],
+      players: playersResponse.data || [],
+    };
+  };
+
+  const findLitoMatch = (context, question) => {
+    const rivals = context.matches.map((match) => match.opponent).filter(Boolean);
+    const rival = extractLitoRival(question, rivals);
+    if (!rival) return context.matches[0] || null;
+    const normalizedRival = normalizeLitoText(rival);
+    return context.matches.find((match) => normalizeLitoText(match.opponent).includes(normalizedRival) || normalizedRival.includes(normalizeLitoText(match.opponent))) || null;
+  };
+
+  const answerLitoQuestion = (question, context) => {
+    const normalizedQuestion = normalizeLitoText(question);
+    const notFound = 'No encontré datos suficientes en Supabase para responder eso.';
+
+    if (normalizedQuestion.includes('quien marco') || normalizedQuestion.includes('quién marcó')) {
+      const match = normalizedQuestion.includes('ultimo partido') || normalizedQuestion.includes('último partido')
+        ? context.matches[0]
+        : findLitoMatch(context, question);
+      if (!match) return notFound;
+      const goals = context.goals.filter((goal) => goal.partido_id === match.id && goal.type === 'Gol a favor');
+      if (!goals.length) return `No encontré goles a favor guardados para ${formatLitoMatchName(match)}.`;
+      return `Contra ${formatLitoMatchName(match)} marcaron: ${goals.map((goal) => `${goal.scorer || 'Sin goleador'}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.`;
+    }
+
+    if (normalizedQuestion.includes('como quedo') || normalizedQuestion.includes('cómo quedó') || normalizedQuestion.includes('ultimo partido') || normalizedQuestion.includes('último partido')) {
+      const match = context.matches[0];
+      if (!match) return notFound;
+      const goals = context.goals.filter((goal) => goal.partido_id === match.id);
+      const scorers = goals.filter((goal) => goal.type === 'Gol a favor').map((goal) => goal.scorer).filter(Boolean);
+      return `El último partido fue contra ${formatLitoMatchName(match)} y quedó ${getLitoMatchScore(match)}. ${scorers.length ? `Goles Caudal: ${scorers.join(', ')}.` : 'No tengo goleadores a favor registrados.'}`;
+    }
+
+    if (normalizedQuestion.includes('sistema') && normalizedQuestion.includes('contra')) {
+      const match = findLitoMatch(context, question);
+      if (!match) return notFound;
+      const system = match.stats_system || match.pre_caudal_system || 'sin sistema guardado';
+      const rivalSystem = match.pre_rival_system || match.rival_lineup_system || 'sin sistema rival guardado';
+      return `Contra ${formatLitoMatchName(match)} usamos ${system}. El sistema rival guardado es ${rivalSystem}.`;
+    }
+
+    if (normalizedQuestion.includes('amarilla') || normalizedQuestion.includes('tarjeta')) {
+      const totals = context.stats.reduce((acc, row) => {
+        const name = row.player_name || 'Sin jugador';
+        acc[name] = (acc[name] || 0) + Number(row.yellow_count || (row.yellow ? 1 : 0));
+        return acc;
+      }, {});
+      const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
+      if (!top || top[1] <= 0) return notFound;
+      return `El jugador con más amarillas registradas es ${top[0]}, con ${top[1]}.`;
+    }
+
+    if (normalizedQuestion.includes('minuto')) {
+      const totals = context.stats.reduce((acc, row) => {
+        const name = row.player_name || 'Sin jugador';
+        acc[name] = (acc[name] || 0) + Number(row.minutes || 0);
+        return acc;
+      }, {});
+      const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
+      if (!top || top[1] <= 0) return notFound;
+      return `El jugador con más minutos registrados es ${top[0]}, con ${top[1]} minutos.`;
+    }
+
+    if (normalizedQuestion.includes('rivales') && normalizedQuestion.includes('4-4-2')) {
+      const rivals = context.teams.filter((team) => String(team.system || '').trim() === '4-4-2');
+      if (!rivals.length) return notFound;
+      return `Rivales con 4-4-2 guardado: ${rivals.map((team) => team.name).join(', ')}.`;
+    }
+
+    if (normalizedQuestion.includes('encaj') && normalizedQuestion.includes('transicion')) {
+      const goals = context.goals.filter((goal) => goal.type === 'Gol en contra' && normalizeLitoText(`${goal.phase || ''} ${goal.subphase || ''}`).includes('transicion'));
+      return `Hay ${goals.length} goles encajados en transición registrados en Supabase.`;
+    }
+
+    if (normalizedQuestion.includes('sistema') && (normalizedQuestion.includes('mas') || normalizedQuestion.includes('más'))) {
+      const totals = context.matches.reduce((acc, match) => {
+        const system = match.stats_system || match.pre_caudal_system;
+        if (!system) return acc;
+        acc[system] = (acc[system] || 0) + 1;
+        return acc;
+      }, {});
+      const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
+      if (!top) return notFound;
+      return `El sistema más usado en los partidos guardados es ${top[0]}, con ${top[1]} partidos.`;
+    }
+
+    return notFound;
+  };
+
+  const handleLitoSubmit = async (event) => {
+    event.preventDefault();
+    const question = litoQuestion.trim();
+    if (!question || litoLoading) return;
+
+    setLitoMessages((current) => [...current, { role: 'user', text: question }]);
+    setLitoQuestion('');
+    setLitoLoading(true);
+
+    try {
+      const context = await loadLitoContext();
+      const answer = answerLitoQuestion(question, context);
+      setLitoMessages((current) => [...current, { role: 'assistant', text: answer }]);
+    } catch (litoError) {
+      console.error('Error respondiendo con Lito:', litoError);
+      setLitoMessages((current) => [
+        ...current,
+        { role: 'assistant', text: 'No encontré datos suficientes en Supabase para responder eso.' },
+      ]);
+    } finally {
+      setLitoLoading(false);
+    }
+  };
 
   useEffect(() => {
     setMatches((current) =>
@@ -9082,6 +9272,102 @@ function App() {
           </main>
         ) : null}
       </div>
+
+      {authUser ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setIsLitoOpen(true)}
+            className="fixed bottom-5 right-5 z-40 flex items-center gap-3 rounded-full border border-caudal-electric/30 bg-[#091428] px-5 py-4 text-sm font-black text-white shadow-[0_18px_45px_rgba(0,0,0,0.45)] transition hover:-translate-y-0.5 hover:border-caudal-electric/60 hover:bg-[#0f1e38]"
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-caudal-electric text-sm font-black text-slate-950">Li</span>
+            Lito
+          </button>
+
+          {isLitoOpen ? (
+            <div className="fixed inset-0 z-50 flex justify-end bg-black/45 backdrop-blur-sm">
+              <button
+                type="button"
+                aria-label="Cerrar Lito"
+                onClick={() => setIsLitoOpen(false)}
+                className="hidden flex-1 sm:block"
+              />
+              <aside className="flex h-full w-full max-w-md flex-col border-l border-white/10 bg-[#071224] shadow-[0_0_60px_rgba(0,0,0,0.55)] sm:rounded-l-3xl">
+                <div className="border-b border-white/10 px-5 py-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.24em] text-caudal-electric">Asistente</p>
+                      <h3 className="mt-1 text-2xl font-black text-white">Lito</h3>
+                      <p className="mt-2 text-sm text-slate-400">Consulta datos reales guardados en Supabase.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsLitoOpen(false)}
+                      className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/15"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+                </div>
+
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5">
+                  {litoMessages.map((message, index) => (
+                    <div
+                      key={`${message.role}-${index}`}
+                      className={`rounded-3xl px-4 py-3 text-sm leading-6 ${
+                        message.role === 'user'
+                          ? 'ml-8 bg-caudal-electric text-slate-950'
+                          : 'mr-8 border border-white/10 bg-white/[0.06] text-slate-100'
+                      }`}
+                    >
+                      {message.text}
+                    </div>
+                  ))}
+                  {litoLoading ? (
+                    <div className="mr-8 rounded-3xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm text-slate-300">
+                      Consultando Supabase...
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="border-t border-white/10 px-5 py-4">
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {[
+                      '¿Quién marcó en el último partido?',
+                      '¿Qué jugador tiene más amarillas?',
+                      '¿Qué rivales juegan 4-4-2?',
+                    ].map((example) => (
+                      <button
+                        key={example}
+                        type="button"
+                        onClick={() => setLitoQuestion(example)}
+                        className="rounded-full bg-white/10 px-3 py-2 text-[11px] font-semibold text-slate-200 hover:bg-white/15"
+                      >
+                        {example}
+                      </button>
+                    ))}
+                  </div>
+                  <form onSubmit={handleLitoSubmit} className="flex gap-2">
+                    <input
+                      value={litoQuestion}
+                      onChange={(event) => setLitoQuestion(event.target.value)}
+                      placeholder="Pregunta a Lito..."
+                      className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!litoQuestion.trim() || litoLoading}
+                      className="rounded-2xl bg-caudal-electric px-4 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Enviar
+                    </button>
+                  </form>
+                </div>
+              </aside>
+            </div>
+          ) : null}
+        </>
+      ) : null}
 
       {isCanvaPreviewOpen && selectedMatch && getCanvaEmbedUrl(selectedMatch.preCanvaLink) ? (
         <div className="fixed inset-0 z-50 bg-black/80 p-3 backdrop-blur-sm sm:p-6">
