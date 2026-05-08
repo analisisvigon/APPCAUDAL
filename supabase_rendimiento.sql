@@ -3,6 +3,7 @@ create table if not exists public.training_sessions (
   session_date date not null,
   microcycle_label text,
   md_label text,
+  form_code text unique,
   title text,
   session_type text not null default 'Entrenamiento',
   planned_duration int,
@@ -44,6 +45,11 @@ create table if not exists public.rpe_entries (
 
 create index if not exists training_sessions_date_idx on public.training_sessions(session_date);
 create index if not exists training_sessions_microcycle_idx on public.training_sessions(microcycle_label);
+alter table public.training_sessions
+add column if not exists form_code text;
+create unique index if not exists training_sessions_form_code_key
+on public.training_sessions(form_code)
+where form_code is not null;
 create index if not exists wellness_entries_date_idx on public.wellness_entries(entry_date);
 create index if not exists wellness_entries_jugador_date_idx on public.wellness_entries(jugador_id, entry_date);
 create index if not exists rpe_entries_date_idx on public.rpe_entries(entry_date);

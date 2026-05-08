@@ -2105,6 +2105,7 @@ function App() {
     sessionDate: new Date().toISOString().slice(0, 10),
     microcycleLabel: '',
     mdLabel: 'MD-4',
+    formCode: '',
     title: '',
     sessionType: 'Entrenamiento',
     plannedDuration: '',
@@ -3302,6 +3303,7 @@ function App() {
       session_date: performanceSessionDraft.sessionDate,
       microcycle_label: performanceSessionDraft.microcycleLabel || `Semana ${performanceWeekStart}`,
       md_label: performanceSessionDraft.mdLabel,
+      form_code: performanceSessionDraft.formCode || null,
       title: performanceSessionDraft.title || performanceSessionDraft.sessionType,
       session_type: performanceSessionDraft.sessionType,
       planned_duration: performanceSessionDraft.plannedDuration ? Number(performanceSessionDraft.plannedDuration) : null,
@@ -3314,7 +3316,7 @@ function App() {
       return;
     }
     setPerformanceStatus('Sesión guardada en Supabase.');
-    setPerformanceSessionDraft((current) => ({ ...current, title: '', plannedDuration: '', notes: '' }));
+    setPerformanceSessionDraft((current) => ({ ...current, formCode: '', title: '', plannedDuration: '', notes: '' }));
     await loadPerformanceData();
   };
 
@@ -6629,9 +6631,13 @@ function App() {
               <select value={performanceSessionDraft.mdLabel} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, mdLabel: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
                 {mdOptions.map((option) => <option key={option} value={option}>{option}</option>)}
               </select>
+              <input value={performanceSessionDraft.formCode} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, formCode: event.target.value }))} placeholder="RPE-2026-05-08-MD3" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
               <input value={performanceSessionDraft.title} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Título sesión" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
               <input type="number" min="0" value={performanceSessionDraft.plannedDuration} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, plannedDuration: event.target.value }))} placeholder="Duración planificada" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
             </div>
+            <p className="mt-3 rounded-2xl bg-white/5 px-4 py-3 text-xs text-slate-400">
+              Código para Google Forms RPE: <span className="font-bold text-white">{performanceSessionDraft.formCode || 'RPE-YYYY-MM-DD-MD3'}</span>
+            </p>
             <textarea value={performanceSessionDraft.notes} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Notas de la sesión" className="mt-4 min-h-[90px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
             <button type="submit" className="mt-4 w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950">Guardar sesión</button>
           </form>
