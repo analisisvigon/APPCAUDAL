@@ -6587,6 +6587,25 @@ function App() {
       rojo: 'border-red-300/25 bg-red-500/10 text-red-100',
     };
     const mdOptions = ['MD+1', 'MD-4', 'MD-3', 'MD-2', 'MD-1', 'MD'];
+    const playerMapRows = players.map((player) => ({
+      form_name: player.name,
+      jugador_id: player.id,
+      name: player.name,
+    }));
+    const playerMapClipboardText = [
+      'form_name\tjugador_id\tname',
+      ...playerMapRows.map((row) => `${row.form_name}\t${row.jugador_id}\t${row.name}`),
+    ].join('\n');
+    const copyPlayersMap = async () => {
+      try {
+        await navigator.clipboard.writeText(playerMapClipboardText);
+        setPerformanceStatus('Mapa de jugadores copiado. Pégalo directamente en Google Sheets.');
+        setPerformanceError('');
+      } catch (copyError) {
+        console.error('Error copiando mapa de jugadores:', copyError);
+        setPerformanceError('No se pudo copiar el mapa de jugadores desde el navegador.');
+      }
+    };
 
     return (
       <section className="space-y-6">
@@ -6657,6 +6676,36 @@ function App() {
                 );
               })}
             </div>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Exportar mapa jugadores</h3>
+              <p className="mt-2 text-sm text-slate-400">Tabla lista para pegar en la hoja jugadores_map de Google Sheets.</p>
+            </div>
+            <button type="button" onClick={copyPlayersMap} className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950">
+              Copiar mapa jugadores
+            </button>
+          </div>
+          <div className="mt-5 max-h-72 overflow-auto rounded-2xl border border-white/10">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="bg-white/5 text-xs uppercase tracking-[0.16em] text-slate-500">
+                <tr>
+                  {['form_name', 'jugador_id', 'name'].map((head) => <th key={head} className="px-4 py-3">{head}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {playerMapRows.map((row) => (
+                  <tr key={row.jugador_id} className="border-t border-white/10">
+                    <td className="px-4 py-3 font-semibold text-white">{row.form_name}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-300">{row.jugador_id}</td>
+                    <td className="px-4 py-3 text-slate-300">{row.name}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
 
