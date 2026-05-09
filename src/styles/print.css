@@ -364,6 +364,10 @@
   cursor: grab;
 }
 
+.print-dossier {
+  display: none;
+}
+
 .diagram-print-sheet {
   padding: 8mm;
 }
@@ -867,10 +871,11 @@
   body,
   #root {
     width: 210mm;
-    height: 297mm;
+    min-height: 297mm;
+    height: auto;
     margin: 0;
     padding: 0;
-    overflow: hidden !important;
+    overflow: visible !important;
     background: #fff !important;
     color: #000 !important;
   }
@@ -897,6 +902,21 @@
     height: 297mm !important;
   }
 
+  .printing-dossier.print-dossier,
+  .printing-dossier .print-dossier {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .printing-dossier .print-current-sheet {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
   .lineup-print-sheet {
     position: absolute;
     inset: 0 auto auto 0;
@@ -913,6 +933,20 @@
     break-before: avoid;
     break-after: avoid;
     break-inside: avoid;
+  }
+
+  .printing-dossier .lineup-print-sheet {
+    position: relative !important;
+    inset: auto !important;
+    page-break-before: always;
+    page-break-after: always;
+    break-before: page;
+    break-after: page;
+  }
+
+  .printing-dossier .lineup-print-sheet:first-child {
+    page-break-before: avoid;
+    break-before: avoid;
   }
 
   .lineup-print-sheet.diagram-print-landscape {

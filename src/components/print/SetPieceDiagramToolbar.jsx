@@ -9,6 +9,7 @@ export default function SetPieceDiagramToolbar({ onAdd, onDelete, selectedElemen
     ['double_arrow', 'Flecha doble'],
     ['zone', 'Zona'],
     ['text', 'Texto'],
+    ['block', 'Bloqueo'],
   ];
 
   return (

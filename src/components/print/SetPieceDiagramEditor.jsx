@@ -5,6 +5,7 @@ import SetPieceDiagramToolbar from './SetPieceDiagramToolbar';
 const createId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const isArrow = (element) => ['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow'].includes(element?.type);
+const isTextBox = (element) => ['text_box', 'block'].includes(element?.type);
 const cloneElements = (elements) => JSON.parse(JSON.stringify(elements || []));
 
 const createElement = (type) => {
@@ -12,6 +13,8 @@ const createElement = (type) => {
   if (isArrow({ type })) return { id: createId(), type, x1: 20, y1: 46, x2: 44, y2: 26, dashed: type === 'dashed_arrow' };
   if (type === 'zone') return { id: createId(), type, x: 34, y: 18, width: 22, height: 12, label: 'Zona' };
   if (type === 'text') return { id: createId(), type, x: 42, y: 40, label: 'Texto' };
+  if (type === 'block') return { id: createId(), type, x: 42, y: 34, width: 18, height: 8, label: 'BLOQUEO' };
+  if (type === 'text_box') return { id: createId(), type, x: 58, y: 10, width: 32, height: 24, label: 'TEXTO' };
   if (type === 'opponent') return { id: createId(), type, x: 50, y: 17, label: 'R' };
   return { id: createId(), type: 'player', x: 50, y: 35, label: '1', player_id: '' };
 };
@@ -125,10 +128,10 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
         <div className="space-y-3">
           <SetPieceDiagramToolbar onAdd={addElement} onDelete={deleteSelected} selectedElement={selectedElement} />
           <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-white/5 p-3 text-xs font-bold text-white">
-            <button type="button" onClick={undo} disabled={historyIndex <= 0} className="rounded-xl bg-white/10 px-3 py-2 disabled:opacity-40">Undo</button>
-            <button type="button" onClick={redo} disabled={historyIndex >= history.length - 1} className="rounded-xl bg-white/10 px-3 py-2 disabled:opacity-40">Redo</button>
+            <button type="button" title="Vuelve al paso anterior" onClick={undo} disabled={historyIndex <= 0} className="rounded-xl bg-white/10 px-3 py-2 disabled:opacity-40">Deshacer</button>
+            <button type="button" title="Recupera el paso deshecho" onClick={redo} disabled={historyIndex >= history.length - 1} className="rounded-xl bg-white/10 px-3 py-2 disabled:opacity-40">Rehacer</button>
             <button type="button" onClick={duplicateSelected} disabled={!selectedElement} className="rounded-xl bg-white/10 px-3 py-2 disabled:opacity-40">Duplicar elemento</button>
-            <button type="button" onClick={() => setSnapEnabled((value) => !value)} className={`rounded-xl px-3 py-2 ${snapEnabled ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-white'}`}>Iman</button>
+            <button type="button" title="Ayuda a colocar elementos en líneas o posiciones cercanas" onClick={() => setSnapEnabled((value) => !value)} className={`rounded-xl px-3 py-2 ${snapEnabled ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-white'}`}>Alinear / Imán</button>
             <button type="button" onClick={() => setZoom((value) => Math.max(0.75, Number((value - 0.1).toFixed(1))))} className="rounded-xl bg-white/10 px-3 py-2">-</button>
             <span className="px-1 text-slate-300">{Math.round(zoom * 100)}%</span>
             <button type="button" onClick={() => setZoom((value) => Math.min(1.6, Number((value + 0.1).toFixed(1))))} className="rounded-xl bg-white/10 px-3 py-2">+</button>
@@ -142,6 +145,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
                 onChange={updateElements}
                 players={players}
                 snap={snapEnabled}
+                fullField={String(diagram.tipo || '').includes('saque_inicio')}
               />
             </div>
           </div>
@@ -170,6 +174,14 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
                   onChange={(event) => updateSelected({ label: event.target.value })}
                   placeholder="Etiqueta"
                   className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
+                />
+              ) : null}
+              {isTextBox(selectedElement) ? (
+                <textarea
+                  value={selectedElement.label || ''}
+                  onChange={(event) => updateSelected({ label: event.target.value })}
+                  placeholder="Texto"
+                  className="min-h-[140px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
                 />
               ) : null}
               {selectedElement.type === 'player' ? (
@@ -201,7 +213,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
                   <option value="double_arrow">Doble</option>
                 </select>
               ) : null}
-              {selectedElement.type === 'zone' ? (
+              {['zone', 'block', 'text_box'].includes(selectedElement.type) ? (
                 <div className="grid grid-cols-2 gap-3">
                   <input type="number" value={selectedElement.width || 18} onChange={(event) => updateSelected({ width: Number(event.target.value) })} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
                   <input type="number" value={selectedElement.height || 10} onChange={(event) => updateSelected({ height: Number(event.target.value) })} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />

@@ -17,13 +17,13 @@ const offensiveSetPieceTypes = [
   { id: 'corner_ofensivo', label: 'Córner ofensivo' },
   { id: 'falta_lateral_ofensiva', label: 'Falta lateral ofensiva' },
   { id: 'saque_banda_ofensivo', label: 'Saque de banda ofensivo' },
+  { id: 'saque_inicio_ofensivo', label: 'Saque de inicio' },
 ];
 
 const defensiveSetPieceTypes = [
   { id: 'corner_defensivo', label: 'Córner defensivo' },
   { id: 'falta_lateral_defensiva', label: 'Falta lateral defensiva' },
   { id: 'saque_banda_defensivo', label: 'Saque de banda defensivo' },
-  { id: 'saque_inicio', label: 'Saque de inicio' },
 ];
 
 const defaultOffensiveRoles = [
@@ -128,6 +128,14 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
   const [librarySearch, setLibrarySearch] = useState('');
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryError, setLibraryError] = useState('');
+  const [printMode, setPrintMode] = useState('current');
+  const [dossierOptions, setDossierOptions] = useState({
+    lineup: true,
+    takers: true,
+    offensive: true,
+    defensive: true,
+    kickoff: true,
+  });
   const sheetRef = useRef(null);
 
   useEffect(() => {
@@ -284,7 +292,16 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
   };
 
   const handlePrint = () => {
+    setPrintMode('current');
     window.print();
+  };
+
+  const handlePrintDossier = () => {
+    setPrintMode('dossier');
+    window.setTimeout(() => {
+      window.print();
+      window.setTimeout(() => setPrintMode('current'), 300);
+    }, 80);
   };
 
   const getTakerEntry = (type, order) =>
@@ -484,6 +501,23 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     ));
   };
 
+  const getDiagramsByTypes = (types) =>
+    setPieceDiagrams
+      .filter((diagram) => types.includes(diagram.tipo) && diagram.tipo !== 'saque_inicio_ofensivo')
+      .sort((a, b) => String(a.tipo).localeCompare(String(b.tipo)) || Number(a.orden) - Number(b.orden));
+
+  const getKickoffDiagram = () =>
+    setPieceDiagrams.find((diagram) => diagram.tipo === 'saque_inicio_ofensivo') || {
+      ...createDefaultDiagram('saque_inicio_ofensivo', 1, offensiveSetPieceTypes),
+      partido_id: match?.id || '',
+    };
+
+  const chunkDiagrams = (diagrams, size = 2) => {
+    const chunks = [];
+    for (let index = 0; index < diagrams.length; index += size) chunks.push(diagrams.slice(index, index + size));
+    return chunks.length ? chunks : [[]];
+  };
+
   const updateCurrentDiagram = (mode, nextDiagram) => {
     setDiagramStatus('');
     setDiagramError('');
@@ -647,16 +681,34 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
 
   const addDefensiveQuickElement = (label) => {
     const current = getCurrentDiagram('defensive');
+    const presets = {
+      marca_individual: {
+        type: 'text_box',
+        x: 60,
+        y: 8,
+        width: 34,
+        height: 34,
+        label: 'MARCA INDIVIDUAL:\nALBUQUERQUE:\nM. NOYA:\nAGUS PORTO:\nTRABANCO:\nO. OLADIPUPO:\n*BORJA RGUEZ*:',
+      },
+      posibles_rematadores: {
+        type: 'text_box',
+        x: 60,
+        y: 44,
+        width: 28,
+        height: 22,
+        label: 'POSIBLES REMATADORES\nSAID\nDIEGO\nMUNDAKA\nMARISCAL',
+      },
+      rechace: { type: 'text_box', x: 62, y: 42, width: 24, height: 12, label: 'RECHACE' },
+      rechace_corto: { type: 'text_box', x: 58, y: 38, width: 30, height: 14, label: 'RECHACE Y CORTO' },
+      marca_rechace: { type: 'text_box', x: 58, y: 24, width: 30, height: 14, label: 'MARCA Y RECHACE' },
+      zona_defensiva: { type: 'zone', x: 34, y: 18, width: 28, height: 16, label: 'ZONA DEFENSIVA' },
+    };
+    const preset = presets[label] || { type: 'text_box', x: 50, y: 18, width: 24, height: 12, label: label.toUpperCase() };
     const nextElements = [
       ...(current.elements || []),
       {
         id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        type: label === 'zona' ? 'zone' : 'text',
-        x: label === 'zona' ? 36 : 50,
-        y: 18 + ((current.elements || []).length % 6) * 6,
-        width: label === 'zona' ? 22 : undefined,
-        height: label === 'zona' ? 12 : undefined,
-        label: label.toUpperCase(),
+        ...preset,
       },
     ];
     updateCurrentDiagram('defensive', { ...current, elements: nextElements });
@@ -804,7 +856,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
   const printTitle = printView === 'alineacion' ? 'Alineación' : printView === 'lanzadores' ? 'Lanzadores' : printView === 'abp_ofensiva' ? 'ABP ofensiva' : 'ABP defensiva';
 
   return (
-    <section className="match-print-tab space-y-6">
+    <section className={`match-print-tab space-y-6 ${printMode === 'dossier' ? 'printing-dossier' : ''}`}>
       <div className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -815,6 +867,9 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <button type="button" onClick={() => openDuplicateModal('all')} className="rounded-2xl bg-white/10 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-white/15">
               Duplicar preparación desde otro partido
+            </button>
+            <button type="button" onClick={handlePrintDossier} className="rounded-2xl bg-white px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-slate-100">
+              Imprimir dossier completo
             </button>
             <div className="flex rounded-2xl bg-white/10 p-1">
               {[
@@ -850,6 +905,25 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
               Guardar PDF
             </button> : null}
           </div>
+        </div>
+        <div className="mt-5 flex flex-wrap gap-3 rounded-2xl bg-black/20 p-3 text-xs font-bold text-slate-200">
+          <span className="uppercase tracking-[0.18em] text-slate-500">Incluir en dossier</span>
+          {[
+            ['lineup', 'Alineación'],
+            ['takers', 'Lanzadores'],
+            ['offensive', 'ABP Ofensiva'],
+            ['defensive', 'ABP Defensiva'],
+            ['kickoff', 'Saque de inicio'],
+          ].map(([key, label]) => (
+            <label key={key} className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={Boolean(dossierOptions[key])}
+                onChange={(event) => setDossierOptions((current) => ({ ...current, [key]: event.target.checked }))}
+              />
+              {label}
+            </label>
+          ))}
         </div>
       </div>
 
@@ -1045,11 +1119,18 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
             </button>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            {['zona', 'marca', 'rechace', 'barrera', 'vigilancia'].map((label) => (
+            {[
+              ['marca_individual', 'Marca individual'],
+              ['posibles_rematadores', 'Posibles rematadores'],
+              ['rechace', 'Rechace'],
+              ['rechace_corto', 'Rechace y corto'],
+              ['marca_rechace', 'Marca y rechace'],
+              ['zona_defensiva', 'Zona defensiva'],
+            ].map(([id, label]) => (
               <button
-                key={label}
+                key={id}
                 type="button"
-                onClick={() => addDefensiveQuickElement(label)}
+                onClick={() => addDefensiveQuickElement(id)}
                 className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-white/15"
               >
                 {label}
@@ -1091,7 +1172,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
         </div>
       ) : null}
 
-      <div ref={sheetRef} className="print-sheet-frame">
+      <div ref={sheetRef} className="print-sheet-frame print-current-sheet">
         {printView === 'alineacion' ? (
           <div>
             <div className="print-hidden mb-4 flex justify-center">
@@ -1119,19 +1200,52 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
           <SetPieceDiagramPrintSheet
             match={match}
             title={offensiveSetPieceTypes.find((type) => type.id === offensiveType)?.label || 'ABP ofensiva'}
-            diagrams={getPrintDiagrams('offensive')}
+            diagrams={offensiveType === 'saque_inicio_ofensivo' ? [getCurrentDiagram('offensive')] : getPrintDiagrams('offensive')}
             players={players}
+            layout={offensiveType === 'saque_inicio_ofensivo' ? 'landscape' : 'portrait'}
           />
         ) : (
           <SetPieceDiagramPrintSheet
             match={match}
             title={defensiveSetPieceTypes.find((type) => type.id === defensiveType)?.label || 'ABP defensiva'}
-            diagrams={defensiveType === 'saque_inicio' ? [getCurrentDiagram('defensive')] : getPrintDiagrams('defensive')}
+            diagrams={getPrintDiagrams('defensive')}
             players={players}
-            layout={defensiveType === 'saque_inicio' ? 'landscape' : 'portrait'}
           />
         )}
       </div>
+
+      {printMode === 'dossier' ? (
+        <div className="print-dossier">
+          {dossierOptions.lineup ? (
+            <LineupPrintSheet
+              match={match}
+              starters={printData.starters}
+              bench={printData.bench}
+              coordinates={printData.coordinates}
+              system={printData.system}
+              kit={kit}
+            />
+          ) : null}
+          {dossierOptions.takers ? (
+            <SetPieceTakersPrintSheet match={match} sections={setPieceSections} takers={setPieceTakers} players={players} />
+          ) : null}
+          {dossierOptions.offensive ? chunkDiagrams(getDiagramsByTypes(offensiveSetPieceTypes.map((type) => type.id))).map((diagrams, index) => (
+            <SetPieceDiagramPrintSheet key={`offensive-dossier-${index}`} match={match} title="ABP ofensiva" diagrams={diagrams} players={players} />
+          )) : null}
+          {dossierOptions.defensive ? chunkDiagrams(getDiagramsByTypes(defensiveSetPieceTypes.map((type) => type.id))).map((diagrams, index) => (
+            <SetPieceDiagramPrintSheet key={`defensive-dossier-${index}`} match={match} title="ABP defensiva" diagrams={diagrams} players={players} />
+          )) : null}
+          {dossierOptions.kickoff ? (
+            <SetPieceDiagramPrintSheet
+              match={match}
+              title="Saque de inicio"
+              diagrams={[getKickoffDiagram()]}
+              players={players}
+              layout="landscape"
+            />
+          ) : null}
+        </div>
+      ) : null}
 
       {libraryModal ? (
         <div className="print-hidden fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4">
