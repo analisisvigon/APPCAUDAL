@@ -10,7 +10,7 @@ const formatDate = (value) => {
 
 export default function LineupPrintSheet({ match, starters = [], bench = [], coordinates = [], system = '4-4-2', kit = 'home' }) {
   return (
-    <article className="lineup-print-sheet">
+    <article className="lineup-print-sheet print-sheet-a4">
       <header className="print-sheet-header">
         <div>
           <p className="print-sheet-kicker">C.D. Caudal de Mieres</p>
@@ -39,13 +39,6 @@ export default function LineupPrintSheet({ match, starters = [], bench = [], coo
             )}
           </div>
         </aside>
-      </section>
-
-      <section className="print-observations">
-        <h2>Observaciones</h2>
-        <div className="print-observation-lines">
-          {Array.from({ length: 7 }).map((_, index) => <span key={index} />)}
-        </div>
       </section>
     </article>
   );
