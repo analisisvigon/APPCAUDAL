@@ -22,13 +22,14 @@ const splitLines = (value) => String(value || '').split('\n').slice(0, 12);
 
 const BallIcon = ({ x, y, selected }) => (
   <g>
-    <circle cx={x} cy={y} r={selected ? 3.7 : 3} fill="white" stroke="currentColor" strokeWidth="1.2" />
-    <path d={`M${x} ${y - 1.45}l1.25.9-.48 1.45h-1.54l-.48-1.45Z`} fill="currentColor" />
-    <path d={`M${x - 2.25} ${y - 1.05}l1.28.55.15 1.4-1.08.95-.95-.9.12-1.35Z`} fill="currentColor" />
-    <path d={`M${x + 2.25} ${y - 1.05}l-1.28.55-.15 1.4 1.08.95.95-.9-.12-1.35Z`} fill="currentColor" />
-    <path d={`M${x - 1.15} ${y + 2.1}l1.15-.85 1.15.85-.42 1.05h-1.66Z`} fill="currentColor" />
-    <path d={`M${x - 1.95} ${y - 1.05}Q${x - 0.95} ${y - 2.35} ${x} ${y - 1.45}Q${x + 0.95} ${y - 2.35} ${x + 1.95} ${y - 1.05}`} fill="none" stroke="currentColor" strokeWidth="0.38" />
-    <path d={`M${x - 2.1} ${y + 1.75}Q${x - 1.15} ${y + 1.05} ${x - 0.77} ${y - 0.1}M${x + 2.1} ${y + 1.75}Q${x + 1.15} ${y + 1.05} ${x + 0.77} ${y - 0.1}`} fill="none" stroke="currentColor" strokeWidth="0.38" />
+    <circle cx={x} cy={y} r={selected ? 2.8 : 2.35} fill="white" stroke="currentColor" strokeWidth="0.9" />
+    <path d={`M${x} ${y - 1.05}l1 .72-.38 1.18h-1.24l-.38-1.18Z`} fill="currentColor" />
+    {[270, 342, 54, 126, 198].map((angle) => {
+      const radians = (angle * Math.PI) / 180;
+      const x2 = x + Math.cos(radians) * 2.05;
+      const y2 = y + Math.sin(radians) * 2.05;
+      return <line key={angle} x1={x} y1={y} x2={x2} y2={y2} stroke="currentColor" strokeWidth="0.36" />;
+    })}
   </g>
 );
 
@@ -51,7 +52,6 @@ function PitchLines({ fullField = false }) {
   return (
     <>
       <rect x="1" y="1" width="98" height="70" fill="white" stroke="currentColor" strokeWidth="0.8" />
-      <line x1="1" y1="36" x2="99" y2="36" stroke="currentColor" strokeWidth="0.45" strokeDasharray="2 2" />
       <rect x="22" y="1" width="56" height="21" fill="none" stroke="currentColor" strokeWidth="0.7" />
       <rect x="36" y="1" width="28" height="9" fill="none" stroke="currentColor" strokeWidth="0.7" />
       <rect x="42" y="1" width="16" height="2.5" fill="none" stroke="currentColor" strokeWidth="0.9" />
@@ -134,10 +134,10 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
       onPointerDown={() => !readOnly && onSelect('')}
     >
       <defs>
-        <marker id="diagram-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <marker id="diagram-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="3.6" markerHeight="3.6" orient="auto-start-reverse">
           <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
         </marker>
-        <marker id="diagram-arrow-start" viewBox="0 0 10 10" refX="2" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <marker id="diagram-arrow-start" viewBox="0 0 10 10" refX="2" refY="5" markerWidth="3.6" markerHeight="3.6" orient="auto-start-reverse">
           <path d="M 10 0 L 0 5 L 10 10 z" fill="currentColor" />
         </marker>
       </defs>
@@ -154,7 +154,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           const path = curved ? `M${element.x1} ${element.y1} Q${midX} ${midY} ${element.x2} ${element.y2}` : `M${element.x1} ${element.y1} L${element.x2} ${element.y2}`;
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
-              <path d={path} fill="none" stroke="currentColor" strokeWidth={selected ? 1.6 : 1.05} strokeDasharray={dashed ? '4 3' : ''} markerEnd="url(#diagram-arrow)" markerStart={double ? 'url(#diagram-arrow-start)' : ''} />
+              <path d={path} fill="none" stroke="currentColor" strokeWidth={selected ? 1.05 : 0.72} strokeDasharray={dashed ? '3 2.4' : ''} markerEnd="url(#diagram-arrow)" markerStart={double ? 'url(#diagram-arrow-start)' : ''} />
               {selected && !readOnly ? (
                 <>
                   <circle cx={element.x1} cy={element.y1} r="2" fill="white" stroke="currentColor" strokeWidth="0.7" onPointerDown={(event) => startDrag(event, element, 'arrow-start')} />
@@ -165,12 +165,11 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           );
         }
         if (element.type === 'block') {
-          const radius = Math.max(2.5, Math.min(8, (element.width || 8) / 2));
+          const radius = Math.max(1.9, Math.min(5.2, (element.width || 7) / 2));
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
               <circle cx={element.x} cy={element.y} r={radius} fill="white" stroke="currentColor" strokeWidth={selected ? 1.3 : 1} />
-              <path d={`M${element.x - radius * 0.55} ${element.y - radius * 0.55}L${element.x + radius * 0.55} ${element.y + radius * 0.55}M${element.x + radius * 0.55} ${element.y - radius * 0.55}L${element.x - radius * 0.55} ${element.y + radius * 0.55}`} stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" />
-              {element.label ? <text x={element.x} y={element.y + radius + 4} textAnchor="middle" fontSize="2.6" fontWeight="900">{element.label}</text> : null}
+              <path d={`M${element.x - radius * 0.55} ${element.y - radius * 0.55}L${element.x + radius * 0.55} ${element.y + radius * 0.55}M${element.x + radius * 0.55} ${element.y - radius * 0.55}L${element.x - radius * 0.55} ${element.y + radius * 0.55}`} stroke="currentColor" strokeWidth="0.65" strokeLinecap="round" />
               {selected && !readOnly ? (
                 <rect x={element.x + radius - 1.5} y={element.y + radius - 1.5} width="3.5" height="3.5" fill="white" stroke="currentColor" strokeWidth="0.7" onPointerDown={(event) => startDrag(event, element, 'resize')} />
               ) : null}
@@ -215,12 +214,12 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
         const name = getPlayerName(element, playersById);
         return (
           <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
-            <circle cx={element.x} cy={element.y} r={selected ? 3.6 : 3.2} fill={isOpponent ? 'white' : 'currentColor'} stroke="currentColor" strokeWidth="0.8" />
-            <text x={element.x} y={element.y + 1.15} textAnchor="middle" fontSize="3" fontWeight="900" fill={isOpponent ? 'currentColor' : 'white'}>
+            <circle cx={element.x} cy={element.y} r={selected ? 2.8 : 2.45} fill={isOpponent ? 'white' : 'currentColor'} stroke="currentColor" strokeWidth="0.65" />
+            <text x={element.x} y={element.y + 0.9} textAnchor="middle" fontSize="2.25" fontWeight="900" fill={isOpponent ? 'currentColor' : 'white'}>
               {element.label || ''}
             </text>
             {name ? (
-              <text x={element.x} y={element.y + 7.2} textAnchor="middle" fontSize="2.4" fontWeight="800" fill="currentColor">
+              <text x={element.x} y={element.y + 5.8} textAnchor="middle" fontSize="1.75" fontWeight="800" fill="currentColor">
                 {name.split(' ').slice(0, 2).join(' ').toUpperCase()}
               </text>
             ) : null}

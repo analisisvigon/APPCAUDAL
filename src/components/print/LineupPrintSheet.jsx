@@ -9,6 +9,10 @@ const formatDate = (value) => {
 };
 
 export default function LineupPrintSheet({ match, starters = [], bench = [], coordinates = [], system = '4-4-2', kit = 'home' }) {
+  console.log('LINEUP DATA:', { match, system, coordinates });
+  console.log('STARTERS:', starters);
+  console.log('BENCH / SUBSTITUTES:', bench);
+
   return (
     <article className="lineup-print-sheet print-sheet-a4">
       <header className="print-sheet-header">
@@ -35,7 +39,7 @@ export default function LineupPrintSheet({ match, starters = [], bench = [], coo
                 <span>{player.shirtName || player.shirt_name || player.shortName || player.name}</span>
               </div>
             )) : (
-              <p className="print-empty">Sin suplentes definidos.</p>
+              <p className="print-empty">No hay suplentes seleccionados</p>
             )}
           </div>
         </aside>

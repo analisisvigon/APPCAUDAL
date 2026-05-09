@@ -934,6 +934,16 @@
     visibility: hidden !important;
   }
 
+  .printing-dossier .print-sheet-frame {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
   .lineup-print-sheet {
     position: absolute;
     inset: 0 auto auto 0;
@@ -963,8 +973,13 @@
   }
 
   .printing-dossier .lineup-print-sheet:first-child {
-    page-break-before: avoid;
-    break-before: avoid;
+    page-break-before: auto !important;
+    break-before: auto !important;
+  }
+
+  .printing-dossier .lineup-print-sheet:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
   }
 
   .lineup-print-sheet.diagram-print-landscape {

@@ -279,11 +279,18 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
       return toPrintPlayer(player, name || `Puesto ${index + 1}`);
     });
     const starterNames = new Set(starters.map((player) => normalizeText(player.name)));
-    const calledPlayers = match?.statsCalledPlayers?.length ? match.statsCalledPlayers : players;
+    const rawCalledPlayers = match?.statsCalledPlayers?.length ? match.statsCalledPlayers : players;
+    const calledPlayers = rawCalledPlayers.map((entry) => {
+      if (typeof entry === 'string') return byName.get(normalizeText(entry)) || { name: entry, shirtName: entry };
+      return entry;
+    });
     const bench = calledPlayers
       .filter((player) => !starterNames.has(normalizeText(player.name)))
       .map((player) => toPrintPlayer(byName.get(normalizeText(player.name)) || player, player.name));
     const coordinates = typeof getFormationCoordinates === 'function' ? getFormationCoordinates(system) : [];
+    console.log('LINEUP DATA:', lineupNames);
+    console.log('STARTERS:', starters);
+    console.log('BENCH / SUBSTITUTES:', bench);
     return { system, starters, bench, coordinates };
   }, [match, players, getFormationCoordinates]);
 
@@ -924,6 +931,10 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
               {label}
             </label>
           ))}
+        </div>
+        <div className="mt-4 rounded-2xl bg-black/30 p-3 text-xs text-slate-300">
+          <p className="font-black uppercase tracking-[0.18em] text-slate-500">DEBUG SUPLENTES:</p>
+          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words">{JSON.stringify(printData.bench || [], null, 2)}</pre>
         </div>
       </div>
 
