@@ -265,6 +265,85 @@
   font-size: 9pt;
 }
 
+.set-piece-print-sheet {
+  padding: 10mm;
+}
+
+.set-piece-header {
+  height: 36mm;
+  border-bottom: 2pt solid #000;
+  overflow: hidden;
+  text-align: center;
+}
+
+.set-piece-header p {
+  margin: 0;
+  font-size: 10pt;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.set-piece-header h1 {
+  margin: 3mm 0 2mm;
+  font-size: 34pt;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.set-piece-header div {
+  display: flex;
+  justify-content: center;
+  gap: 8mm;
+  font-size: 10pt;
+  font-weight: 700;
+}
+
+.set-piece-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5mm;
+  height: 237mm;
+  margin-top: 5mm;
+  overflow: hidden;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.set-piece-box {
+  min-height: 72mm;
+  border: 1.2pt solid #000;
+  padding: 4mm;
+  box-sizing: border-box;
+  overflow: hidden;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.set-piece-box h2 {
+  margin: 0 0 5mm;
+  border-bottom: 1pt solid #000;
+  padding-bottom: 2mm;
+  font-size: 14pt;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.set-piece-row {
+  display: grid;
+  grid-template-columns: 12mm 1fr;
+  align-items: center;
+  min-height: 14mm;
+  border-bottom: 0.8pt solid #000;
+  font-size: 12pt;
+  font-weight: 800;
+}
+
+.set-piece-row strong {
+  font-size: 13pt;
+}
+
 @page {
   size: A4 portrait;
   margin: 0;
@@ -328,7 +407,11 @@
   .print-pitch,
   .print-bench,
   .print-bench-row,
-  .print-player-shirt {
+  .print-player-shirt,
+  .set-piece-header,
+  .set-piece-grid,
+  .set-piece-box,
+  .set-piece-row {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
