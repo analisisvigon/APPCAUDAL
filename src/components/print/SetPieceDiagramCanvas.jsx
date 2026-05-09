@@ -22,12 +22,13 @@ const splitLines = (value) => String(value || '').split('\n').slice(0, 12);
 
 const BallIcon = ({ x, y, selected }) => (
   <g>
-    <circle cx={x} cy={y} r={selected ? 3.4 : 2.8} fill="white" stroke="currentColor" strokeWidth="1.15" />
-    <path d={`M${x} ${y - 1.55}l1.45 1.05-.55 1.65h-1.8L${x - 1.45} ${y - 0.5}Z`} fill="currentColor" />
-    <path d={`M${x - 0.1} ${y - 1.55}Q${x - 2.3} ${y - 1.2} ${x - 2.55} ${y + 0.6}`} fill="none" stroke="currentColor" strokeWidth="0.45" />
-    <path d={`M${x + 1.45} ${y - 0.5}Q${x + 2.7} ${y + 0.75} ${x + 1.35} ${y + 2}`} fill="none" stroke="currentColor" strokeWidth="0.45" />
-    <path d={`M${x - 1.45} ${y - 0.5}Q${x - 2.55} ${y + 0.95} ${x - 1.1} ${y + 2.05}`} fill="none" stroke="currentColor" strokeWidth="0.45" />
-    <path d={`M${x - 0.9} ${y + 1.15}Q${x} ${y + 2.65} ${x + 0.9} ${y + 1.15}`} fill="none" stroke="currentColor" strokeWidth="0.45" />
+    <circle cx={x} cy={y} r={selected ? 3.7 : 3} fill="white" stroke="currentColor" strokeWidth="1.2" />
+    <path d={`M${x} ${y - 1.45}l1.25.9-.48 1.45h-1.54l-.48-1.45Z`} fill="currentColor" />
+    <path d={`M${x - 2.25} ${y - 1.05}l1.28.55.15 1.4-1.08.95-.95-.9.12-1.35Z`} fill="currentColor" />
+    <path d={`M${x + 2.25} ${y - 1.05}l-1.28.55-.15 1.4 1.08.95.95-.9-.12-1.35Z`} fill="currentColor" />
+    <path d={`M${x - 1.15} ${y + 2.1}l1.15-.85 1.15.85-.42 1.05h-1.66Z`} fill="currentColor" />
+    <path d={`M${x - 1.95} ${y - 1.05}Q${x - 0.95} ${y - 2.35} ${x} ${y - 1.45}Q${x + 0.95} ${y - 2.35} ${x + 1.95} ${y - 1.05}`} fill="none" stroke="currentColor" strokeWidth="0.38" />
+    <path d={`M${x - 2.1} ${y + 1.75}Q${x - 1.15} ${y + 1.05} ${x - 0.77} ${y - 0.1}M${x + 2.1} ${y + 1.75}Q${x + 1.15} ${y + 1.05} ${x + 0.77} ${y - 0.1}`} fill="none" stroke="currentColor" strokeWidth="0.38" />
   </g>
 );
 
@@ -82,6 +83,10 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
     }
     if (drag.mode === 'arrow-end') {
       updateElement(drag.element.id, { x2: snapValue(clamp(drag.origin.x2 + dx), snap), y2: snapValue(clamp(drag.origin.y2 + dy, 0, 72), snap) });
+      return;
+    }
+    if (drag.mode === 'resize' && drag.element.type === 'block') {
+      updateElement(drag.element.id, { width: snapValue(clamp((drag.origin.width || 8) + dx, 5, 16), snap) });
       return;
     }
     if (drag.mode === 'resize') {
@@ -155,6 +160,19 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
                   <circle cx={element.x1} cy={element.y1} r="2" fill="white" stroke="currentColor" strokeWidth="0.7" onPointerDown={(event) => startDrag(event, element, 'arrow-start')} />
                   <circle cx={element.x2} cy={element.y2} r="2" fill="white" stroke="currentColor" strokeWidth="0.7" onPointerDown={(event) => startDrag(event, element, 'arrow-end')} />
                 </>
+              ) : null}
+            </g>
+          );
+        }
+        if (element.type === 'block') {
+          const radius = Math.max(2.5, Math.min(8, (element.width || 8) / 2));
+          return (
+            <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
+              <circle cx={element.x} cy={element.y} r={radius} fill="white" stroke="currentColor" strokeWidth={selected ? 1.3 : 1} />
+              <path d={`M${element.x - radius * 0.55} ${element.y - radius * 0.55}L${element.x + radius * 0.55} ${element.y + radius * 0.55}M${element.x + radius * 0.55} ${element.y - radius * 0.55}L${element.x - radius * 0.55} ${element.y + radius * 0.55}`} stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" />
+              {element.label ? <text x={element.x} y={element.y + radius + 4} textAnchor="middle" fontSize="2.6" fontWeight="900">{element.label}</text> : null}
+              {selected && !readOnly ? (
+                <rect x={element.x + radius - 1.5} y={element.y + radius - 1.5} width="3.5" height="3.5" fill="white" stroke="currentColor" strokeWidth="0.7" onPointerDown={(event) => startDrag(event, element, 'resize')} />
               ) : null}
             </g>
           );
