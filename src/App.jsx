@@ -2,6 +2,8 @@
 import React from 'react';
 
 import { supabase } from './lib/supabase';
+import MatchPrintTab from './components/print/MatchPrintTab';
+import './styles/print.css';
 
 const clubCrest =
   'https://tmssl.akamaized.net//images/wappen/head/13226.png?lm=1747769013';
@@ -261,6 +263,7 @@ const emptyDepthChart = {};
 const normalizeSupabaseJugador = (player) => ({
   id: player.id,
   name: player.name ?? player.nombre ?? '',
+  shirtName: player.shirt_name ?? player.nombre_camiseta ?? player.short_name ?? '',
   dob: player.dob ?? player.fecha_nacimiento ?? '',
   number: Number(player.number ?? player.dorsal) || 0,
   position: player.position ?? player.posicion ?? '',
@@ -276,6 +279,7 @@ async function getJugadores() {
 
 const createJugadorPayload = (formState) => ({
   name: formState.name.trim() || 'Jugador sin nombre',
+  shirt_name: formState.shirtName.trim(),
   dob: formState.dob,
   number: Number(formState.number) || 0,
   position: formState.position,
@@ -2156,6 +2160,7 @@ function App() {
   const [idealSystem, setIdealSystem] = useState('4-4-2');
   const [formState, setFormState] = useState({
     name: '',
+    shirtName: '',
     dob: '',
     number: '',
     position: 'Portero',
@@ -5400,7 +5405,7 @@ function App() {
 
   const openMatchPage = async (match, section) => {
     setSelectedMatchId(match.id);
-    setMatchView(section === 'PRE' ? 'pre_partido' : section === 'ESTADÍSTICAS' ? 'estadisticas_partido' : 'post_partido');
+    setMatchView(section === 'PRE' ? 'pre_partido' : section === 'ESTADÍSTICAS' ? 'estadisticas_partido' : section === 'IMPRESIÓN' ? 'impresion_partido' : 'post_partido');
     setMatchViewSection(section);
     if (section === 'PRE') {
       setPreSubTab('Informe rival');
@@ -5415,6 +5420,14 @@ function App() {
     }
     if (section === 'POST') {
       await loadMatchPostData(match.id);
+    }
+    if (section === 'IMPRESIÓN') {
+      await loadMatchPreData(match.id);
+      try {
+        await loadMatchStatsData(match.id);
+      } catch (loadError) {
+        console.error('Error cargando datos de impresión del partido desde Supabase:', loadError);
+      }
     }
   };
 
@@ -5543,6 +5556,7 @@ function App() {
       setEditingId(player.id);
       setFormState({
         name: player.name,
+        shirtName: player.shirtName || player.name,
         dob: player.dob,
         number: player.number,
         position: player.position,
@@ -5553,6 +5567,7 @@ function App() {
       setEditingId(null);
       setFormState({
         name: '',
+        shirtName: '',
         dob: '',
         number: '',
         position: 'Portero',
@@ -7525,6 +7540,7 @@ function App() {
                       <p className="text-xs uppercase tracking-[0.3em] text-slate-500">#{displayDorsal(player.number)}</p>
                       <h3 className="truncate text-lg font-semibold text-white">{player.name}</h3>
                       <p className="text-sm text-slate-400">{player.position}</p>
+                      <p className="mt-1 truncate text-xs font-bold uppercase tracking-[0.14em] text-caudal-electric">{player.shirtName || player.name}</p>
                     </div>
                   </div>
                   <div className="mt-4 grid gap-3 rounded-3xl border border-white/5 bg-white/5 p-4 text-sm text-slate-300">
@@ -7535,6 +7551,10 @@ function App() {
                     <div className="flex items-center justify-between">
                       <span>Pierna</span>
                       <strong className="text-white">{player.foot}</strong>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span>Nombre camiseta</span>
+                      <strong className="truncate text-white">{player.shirtName || player.name}</strong>
                     </div>
                     <div className="flex items-center justify-between">
                       <span>Edad</span>
@@ -8537,8 +8557,8 @@ function App() {
                             <p className="mt-2 text-sm font-bold text-white">{caudalIsHome ? match.opponent : 'C.D. Caudal'}</p>
                           </div>
                         </div>
-                        <div className="grid grid-cols-3 border-t border-white/10">
-                          {['PRE', 'ESTADÍSTICAS', 'POST'].map((section) => (
+                        <div className="grid grid-cols-4 border-t border-white/10">
+                          {['PRE', 'ESTADÍSTICAS', 'POST', 'IMPRESIÓN'].map((section) => (
                             <button
                               key={section}
                               onClick={() => {
@@ -8572,8 +8592,8 @@ function App() {
                       >
                         {statsRefreshing ? 'Actualizando...' : '← Volver a partidos'}
                       </button>
-                      <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{matchView === 'pre_partido' ? 'Pre partido' : matchView === 'estadisticas_partido' ? 'Estadísticas' : 'Post partido'}</p>
-                      <h2 className="mt-2 text-3xl font-semibold text-white">{matchView === 'pre_partido' ? 'PRE partido' : matchView === 'estadisticas_partido' ? 'Estadísticas del partido' : 'POST partido'}</h2>
+                      <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{matchView === 'pre_partido' ? 'Pre partido' : matchView === 'estadisticas_partido' ? 'Estadísticas' : matchView === 'impresion_partido' ? 'Impresión' : 'Post partido'}</p>
+                      <h2 className="mt-2 text-3xl font-semibold text-white">{matchView === 'pre_partido' ? 'PRE partido' : matchView === 'estadisticas_partido' ? 'Estadísticas del partido' : matchView === 'impresion_partido' ? 'IMPRESIÓN' : 'POST partido'}</h2>
                       <p className="mt-2 text-sm text-slate-400">{matchDisplayDate(selectedMatch.date)} · {selectedMatch.type} · {selectedMatch.round}</p>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
@@ -8591,7 +8611,7 @@ function App() {
                   </div>
 
                   <div className="mt-6 flex flex-wrap gap-3">
-                    {['PRE', 'ESTADÍSTICAS', 'POST'].map((section) => (
+                    {['PRE', 'ESTADÍSTICAS', 'POST', 'IMPRESIÓN'].map((section) => (
                       <button
                         key={section}
                         onClick={() => openMatchPage(selectedMatch, section)}
@@ -9530,6 +9550,12 @@ function App() {
                       )}
                     </div>
                   </section>
+                ) : matchView === 'impresion_partido' ? (
+                  <MatchPrintTab
+                    match={selectedMatch}
+                    players={players}
+                    getFormationCoordinates={getFormationCoordinates}
+                  />
                 ) : (
                   <section className="space-y-6">
                     {postLoading ? (
@@ -10250,6 +10276,16 @@ function App() {
                     onChange={handleChange}
                     className="w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white shadow-inner placeholder:text-slate-500"
                     placeholder="Ej. Pablo Núñez"
+                  />
+                </label>
+                <label className="space-y-2 text-sm text-slate-300">
+                  <span>Nombre camiseta</span>
+                  <input
+                    name="shirtName"
+                    value={formState.shirtName}
+                    onChange={handleChange}
+                    className="w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm uppercase text-white shadow-inner placeholder:text-slate-500"
+                    placeholder="Ej. PABLO NÚÑEZ"
                   />
                 </label>
                 <label className="space-y-2 text-sm text-slate-300">

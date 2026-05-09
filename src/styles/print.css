@@ -1,0 +1,305 @@
+.print-sheet-frame {
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+  padding: 16px 0 32px;
+}
+
+.lineup-print-sheet {
+  width: 210mm;
+  min-height: 297mm;
+  background: #fff;
+  color: #000;
+  padding: 12mm;
+  font-family: Arial, Helvetica, sans-serif;
+  box-shadow: none;
+}
+
+.print-sheet-header {
+  display: grid;
+  grid-template-columns: 1fr 70mm;
+  gap: 8mm;
+  border-bottom: 1.5pt solid #000;
+  padding-bottom: 5mm;
+}
+
+.print-sheet-kicker {
+  margin: 0 0 2mm;
+  font-size: 10pt;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.print-sheet-header h1 {
+  margin: 0;
+  font-size: 22pt;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.print-sheet-meta {
+  border: 1pt solid #000;
+  padding: 3mm;
+  font-size: 9pt;
+  line-height: 1.45;
+}
+
+.print-sheet-meta p {
+  margin: 0;
+}
+
+.print-lineup-layout {
+  display: grid;
+  grid-template-columns: 1fr 54mm;
+  gap: 7mm;
+  margin-top: 7mm;
+  align-items: start;
+}
+
+.print-pitch {
+  position: relative;
+  height: 185mm;
+  border: 1.5pt solid #000;
+  background: #fff;
+  overflow: hidden;
+}
+
+.print-pitch-line,
+.print-pitch-circle,
+.print-pitch-box {
+  position: absolute;
+  border-color: #000;
+}
+
+.print-pitch-line.halfway {
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1pt solid #000;
+}
+
+.print-pitch-circle {
+  left: 50%;
+  top: 50%;
+  width: 34mm;
+  height: 34mm;
+  transform: translate(-50%, -50%);
+  border: 1pt solid #000;
+  border-radius: 50%;
+}
+
+.print-pitch-box {
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 1pt solid #000;
+  border-right: 1pt solid #000;
+}
+
+.print-pitch-box.big {
+  width: 62mm;
+  height: 28mm;
+}
+
+.print-pitch-box.small {
+  width: 32mm;
+  height: 12mm;
+}
+
+.print-pitch-box.top {
+  top: 0;
+  border-bottom: 1pt solid #000;
+}
+
+.print-pitch-box.bottom {
+  bottom: 0;
+  border-top: 1pt solid #000;
+}
+
+.print-player-slot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+.print-player-shirt {
+  position: relative;
+  width: 25mm;
+  height: 26mm;
+  color: #000;
+  text-align: center;
+}
+
+.print-player-shirt.compact {
+  width: 17mm;
+  height: 18mm;
+  flex: 0 0 auto;
+}
+
+.print-shirt-shape {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.shirt-body {
+  fill: #fff;
+  stroke: #000;
+  stroke-width: 3;
+}
+
+.print-player-shirt.away .shirt-body {
+  fill: #f6d345;
+}
+
+.print-player-shirt.goalkeeper .shirt-body {
+  fill: #d9d9d9;
+}
+
+.shirt-stripe {
+  fill: #111;
+  opacity: 0.28;
+}
+
+.shirt-neck {
+  fill: #fff;
+  stroke: #000;
+  stroke-width: 2;
+}
+
+.print-shirt-number {
+  position: absolute;
+  left: 50%;
+  top: 8.5mm;
+  transform: translateX(-50%);
+  font-size: 13pt;
+  line-height: 1;
+  font-weight: 900;
+}
+
+.print-shirt-name {
+  position: absolute;
+  left: -5mm;
+  right: -5mm;
+  top: 22mm;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 6.2pt;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.print-player-shirt.compact .print-shirt-number {
+  top: 5.5mm;
+  font-size: 9pt;
+}
+
+.print-player-shirt.compact .print-shirt-name {
+  display: none;
+}
+
+.print-bench {
+  border: 1pt solid #000;
+  padding: 4mm;
+  min-height: 185mm;
+}
+
+.print-bench h2,
+.print-observations h2 {
+  margin: 0 0 4mm;
+  font-size: 12pt;
+  text-transform: uppercase;
+}
+
+.print-bench-list {
+  display: grid;
+  gap: 2.5mm;
+}
+
+.print-bench-row {
+  display: grid;
+  grid-template-columns: 18mm 1fr;
+  align-items: center;
+  gap: 2mm;
+  border-bottom: 0.7pt solid #000;
+  padding-bottom: 2mm;
+  font-size: 8.5pt;
+  font-weight: 700;
+}
+
+.print-empty {
+  margin: 0;
+  font-size: 9pt;
+}
+
+.print-observations {
+  margin-top: 7mm;
+  border: 1pt solid #000;
+  padding: 4mm;
+}
+
+.print-observation-lines {
+  display: grid;
+  gap: 6mm;
+}
+
+.print-observation-lines span {
+  display: block;
+  border-bottom: 0.8pt solid #000;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 0;
+}
+
+@media print {
+  html,
+  body,
+  #root {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .lineup-print-sheet,
+  .lineup-print-sheet * {
+    visibility: visible !important;
+  }
+
+  .print-hidden {
+    display: none !important;
+  }
+
+  .print-sheet-frame {
+    display: block !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  .lineup-print-sheet {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 210mm;
+    min-height: 297mm;
+    padding: 10mm;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  .print-player-shirt.away .shirt-body,
+  .print-player-shirt.goalkeeper .shirt-body {
+    fill: #fff !important;
+  }
+
+  .shirt-stripe {
+    fill: #000 !important;
+    opacity: 0.22 !important;
+  }
+}
