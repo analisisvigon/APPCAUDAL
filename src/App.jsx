@@ -2,6 +2,7 @@
 import React from 'react';
 
 import { supabase } from './lib/supabase';
+import LibrarySection from './components/library/LibrarySection';
 import MatchPrintTab from './components/print/MatchPrintTab';
 import './styles/print.css';
 
@@ -6908,7 +6909,7 @@ function App() {
               </button>
             </div>
             <nav className="flex flex-wrap gap-3 sm:justify-end">
-              {['Inicio', 'Plantilla', 'Equipos', 'Partidos', 'Rendimiento', 'Análisis Grupal'].map((tab) => (
+              {['Inicio', 'Plantilla', 'Equipos', 'Partidos', 'Biblioteca', 'Rendimiento', 'Análisis Grupal'].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -7054,6 +7055,19 @@ function App() {
                       <path d="M7 4v3M17 4v3M5 8h14" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
                       <path d="M6.5 5.5h11A2.5 2.5 0 0 1 20 8v9.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5V8a2.5 2.5 0 0 1 2.5-2.5Z" fill="none" stroke="currentColor" strokeWidth="1.8" />
                       <path d="M8 13h3M8 16h7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+                    </svg>
+                  ),
+                },
+                {
+                  tab: 'Biblioteca',
+                  title: 'Biblioteca',
+                  copy: 'Tareas y ABP',
+                  accent: 'from-violet-400/18 to-white/5',
+                  icon: (
+                    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-8 w-8">
+                      <path d="M5.5 5.5h13v13h-13z" fill="none" stroke="currentColor" strokeWidth="1.8" />
+                      <path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+                      <path d="m17.5 4.5 2 2M4.5 17.5l2 2" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
                     </svg>
                   ),
                 },
@@ -7948,6 +7962,10 @@ function App() {
               </section>
             )}
           </main>
+        ) : null}
+
+        {activeTab === 'Biblioteca' ? (
+          <LibrarySection players={players} />
         ) : null}
 
         {activeTab === 'Rendimiento' ? (
@@ -9553,6 +9571,7 @@ function App() {
                 ) : matchView === 'impresion_partido' ? (
                   <MatchPrintTab
                     match={selectedMatch}
+                    matches={matches}
                     players={players}
                     getFormationCoordinates={getFormationCoordinates}
                   />

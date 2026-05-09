@@ -5,7 +5,10 @@ export default function SetPieceDiagramToolbar({ onAdd, onDelete, selectedElemen
     ['ball', 'Balón'],
     ['arrow', 'Flecha'],
     ['dashed_arrow', 'Línea discontinua'],
+    ['curved_arrow', 'Flecha curva'],
+    ['double_arrow', 'Flecha doble'],
     ['zone', 'Zona'],
+    ['text', 'Texto'],
   ];
 
   return (

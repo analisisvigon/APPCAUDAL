@@ -12,7 +12,7 @@
   overflow: hidden;
   background: #fff;
   color: #000;
-  padding: 8mm;
+  padding: 6mm;
   font-family: Arial, Helvetica, sans-serif;
   box-shadow: none;
 }
@@ -26,18 +26,18 @@
 
 .print-sheet-header {
   display: grid;
-  grid-template-columns: 1fr 62mm;
-  gap: 5mm;
+  grid-template-columns: 1fr 52mm;
+  gap: 4mm;
   border-bottom: 1.5pt solid #000;
-  height: 25mm;
-  padding-bottom: 3mm;
+  height: 20mm;
+  padding-bottom: 2mm;
   box-sizing: border-box;
   overflow: hidden;
 }
 
 .print-sheet-kicker {
-  margin: 0 0 1.5mm;
-  font-size: 8pt;
+  margin: 0 0 1mm;
+  font-size: 7pt;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -45,16 +45,16 @@
 
 .print-sheet-header h1 {
   margin: 0;
-  font-size: 17pt;
+  font-size: 15pt;
   line-height: 1.05;
   text-transform: uppercase;
 }
 
 .print-sheet-meta {
   border: 1pt solid #000;
-  padding: 2mm;
-  font-size: 7.8pt;
-  line-height: 1.25;
+  padding: 1.5mm;
+  font-size: 7pt;
+  line-height: 1.18;
   overflow: hidden;
 }
 
@@ -64,10 +64,10 @@
 
 .print-lineup-layout {
   display: grid;
-  grid-template-columns: 1fr 47mm;
-  gap: 5mm;
-  height: 254mm;
-  margin-top: 5mm;
+  grid-template-columns: 1fr 42mm;
+  gap: 4mm;
+  height: 265mm;
+  margin-top: 4mm;
   align-items: start;
   overflow: hidden;
   page-break-inside: avoid;
@@ -76,7 +76,7 @@
 
 .print-pitch {
   position: relative;
-  height: 254mm;
+  height: 265mm;
   border: 1.5pt solid #000;
   background: #fff;
   overflow: hidden;
@@ -143,8 +143,8 @@
 
 .print-player-shirt {
   position: relative;
-  width: 22mm;
-  height: 23mm;
+  width: 29mm;
+  height: 30mm;
   color: #000;
   text-align: center;
 }
@@ -189,22 +189,22 @@
 .print-shirt-number {
   position: absolute;
   left: 50%;
-  top: 7.2mm;
-  transform: translateX(-50%);
-  font-size: 11pt;
+  top: 50%;
+  transform: translate(-50%, -42%);
+  font-size: 15pt;
   line-height: 1;
   font-weight: 900;
 }
 
 .print-shirt-name {
   position: absolute;
-  left: -6mm;
-  right: -6mm;
-  top: 19mm;
+  left: -8mm;
+  right: -8mm;
+  top: 31mm;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 5.5pt;
+  font-size: 7.5pt;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -221,7 +221,7 @@
 .print-bench {
   border: 1pt solid #000;
   padding: 3mm;
-  height: 254mm;
+  height: 265mm;
   box-sizing: border-box;
   overflow: hidden;
   page-break-inside: avoid;
@@ -229,35 +229,41 @@
 }
 
 .print-bench h2 {
-  margin: 0 0 2.5mm;
-  font-size: 10pt;
+  margin: 0 0 3mm;
+  font-size: 11pt;
   text-transform: uppercase;
 }
 
 .print-bench-list {
   display: grid;
-  gap: 1.5mm;
-  max-height: 241mm;
+  gap: 0;
+  max-height: 251mm;
   overflow: hidden;
 }
 
 .print-bench-row {
   display: grid;
-  grid-template-columns: 12mm 1fr;
+  grid-template-columns: 10mm 1fr;
   align-items: center;
-  gap: 1.5mm;
-  border-bottom: 0.7pt solid #000;
-  min-height: 12mm;
-  padding-bottom: 1mm;
-  font-size: 6.8pt;
-  font-weight: 700;
+  gap: 2mm;
+  border-bottom: 0.9pt solid #000;
+  min-height: 10.2mm;
+  padding: 1.3mm 0;
+  font-size: 8pt;
+  font-weight: 900;
   overflow: hidden;
+}
+
+.print-bench-row strong {
+  font-size: 9pt;
+  text-align: center;
 }
 
 .print-bench-row span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-transform: uppercase;
 }
 
 .print-empty {
@@ -270,7 +276,7 @@
 }
 
 .set-piece-header {
-  height: 36mm;
+  height: 30mm;
   border-bottom: 2pt solid #000;
   overflow: hidden;
   text-align: center;
@@ -285,8 +291,8 @@
 }
 
 .set-piece-header h1 {
-  margin: 3mm 0 2mm;
-  font-size: 34pt;
+  margin: 2mm 0 1.5mm;
+  font-size: 30pt;
   line-height: 1;
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -303,16 +309,16 @@
 .set-piece-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 5mm;
-  height: 237mm;
-  margin-top: 5mm;
+  gap: 7mm;
+  height: 249mm;
+  margin-top: 6mm;
   overflow: hidden;
   page-break-inside: avoid;
   break-inside: avoid;
 }
 
 .set-piece-box {
-  min-height: 72mm;
+  min-height: 110mm;
   border: 1.2pt solid #000;
   padding: 4mm;
   box-sizing: border-box;
@@ -322,26 +328,26 @@
 }
 
 .set-piece-box h2 {
-  margin: 0 0 5mm;
+  margin: 0 0 7mm;
   border-bottom: 1pt solid #000;
   padding-bottom: 2mm;
-  font-size: 14pt;
+  font-size: 16pt;
   font-weight: 900;
   text-transform: uppercase;
 }
 
 .set-piece-row {
   display: grid;
-  grid-template-columns: 12mm 1fr;
+  grid-template-columns: 15mm 1fr;
   align-items: center;
-  min-height: 14mm;
+  min-height: 20mm;
   border-bottom: 0.8pt solid #000;
-  font-size: 12pt;
+  font-size: 14pt;
   font-weight: 800;
 }
 
 .set-piece-row strong {
-  font-size: 13pt;
+  font-size: 15pt;
 }
 
 .set-piece-diagram-canvas {
@@ -441,19 +447,46 @@
 }
 
 .diagram-print-card .set-piece-diagram-canvas {
-  height: 83mm;
+  height: 88mm;
   aspect-ratio: auto;
   border: 1pt solid #000;
 }
 
 .diagram-print-card p {
   margin: 2mm 0 0;
-  height: 20mm;
+  height: 15mm;
   overflow: hidden;
   white-space: pre-wrap;
   font-size: 8.5pt;
   line-height: 1.25;
   font-weight: 700;
+}
+
+.diagram-print-landscape {
+  width: 297mm;
+  height: 210mm;
+  padding: 7mm;
+}
+
+.diagram-print-landscape .diagram-print-header {
+  height: 21mm;
+}
+
+.diagram-print-landscape .diagram-print-grid {
+  height: 171mm;
+}
+
+.diagram-print-landscape .diagram-print-card {
+  height: 171mm;
+}
+
+.diagram-print-landscape .diagram-print-card .set-piece-diagram-canvas {
+  height: 132mm;
+}
+
+.diagram-print-landscape .diagram-print-card p {
+  height: 17mm;
+  font-size: 9pt;
 }
 
 .offensive-abp-print-sheet {
@@ -685,8 +718,147 @@
   text-transform: uppercase;
 }
 
+.library-print-sheet {
+  padding: 8mm;
+}
+
+.library-print-header {
+  height: 20mm;
+  border-bottom: 1.6pt solid #000;
+  overflow: hidden;
+  text-align: center;
+}
+
+.library-print-header p {
+  margin: 0;
+  font-size: 8pt;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.library-print-header h1 {
+  margin: 2mm 0 0;
+  font-size: 17pt;
+  line-height: 1;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.library-print-grid {
+  display: grid;
+  gap: 4mm;
+  height: 261mm;
+  margin-top: 4mm;
+  overflow: hidden;
+}
+
+.library-print-1 .library-print-grid {
+  grid-template-columns: 1fr;
+}
+
+.library-print-2 .library-print-grid {
+  grid-template-columns: 1fr;
+}
+
+.library-print-4 .library-print-grid {
+  grid-template-columns: 1fr 1fr;
+}
+
+.library-print-card {
+  border: 1.2pt solid #000;
+  padding: 3mm;
+  box-sizing: border-box;
+  overflow: hidden;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.library-print-1 .library-print-card {
+  height: 257mm;
+}
+
+.library-print-2 .library-print-card {
+  height: 126mm;
+}
+
+.library-print-4 .library-print-card {
+  height: 61mm;
+}
+
+.library-print-card-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3mm;
+  align-items: center;
+  height: 11mm;
+  border-bottom: 1pt solid #000;
+  margin-bottom: 2mm;
+  overflow: hidden;
+}
+
+.library-print-card-head h2 {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12pt;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.library-print-card-head span {
+  border: 1pt solid #000;
+  padding: 1mm 2mm;
+  font-size: 7pt;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.library-print-card .set-piece-diagram-canvas {
+  height: 70mm;
+  aspect-ratio: auto;
+  border: 1pt solid #000;
+}
+
+.library-print-1 .library-print-card .set-piece-diagram-canvas {
+  height: 172mm;
+}
+
+.library-print-4 .library-print-card .set-piece-diagram-canvas {
+  height: 31mm;
+}
+
+.library-print-info {
+  display: grid;
+  gap: 1.5mm;
+  margin-top: 2mm;
+  overflow: hidden;
+  font-size: 7.5pt;
+  line-height: 1.2;
+}
+
+.library-print-1 .library-print-info {
+  font-size: 10pt;
+}
+
+.library-print-4 .library-print-info {
+  max-height: 12mm;
+  font-size: 5.8pt;
+}
+
+.library-print-info p {
+  margin: 0;
+  overflow: hidden;
+}
+
 @page {
   size: A4 portrait;
+  margin: 0;
+}
+
+@page landscape-abp {
+  size: A4 landscape;
   margin: 0;
 }
 
@@ -732,7 +904,7 @@
     height: 297mm !important;
     min-height: 0 !important;
     max-height: 297mm !important;
-    padding: 8mm !important;
+    padding: 6mm !important;
     box-sizing: border-box !important;
     overflow: hidden !important;
     page-break-before: avoid;
@@ -741,6 +913,14 @@
     break-before: avoid;
     break-after: avoid;
     break-inside: avoid;
+  }
+
+  .lineup-print-sheet.diagram-print-landscape {
+    width: 297mm !important;
+    height: 210mm !important;
+    max-height: 210mm !important;
+    padding: 7mm !important;
+    page: landscape-abp;
   }
 
   .print-sheet-header,
@@ -762,7 +942,10 @@
   .defensive-abp-zone,
   .offensive-abp-text,
   .offensive-abp-roles,
-  .offensive-role-row {
+  .offensive-role-row,
+  .library-print-header,
+  .library-print-grid,
+  .library-print-card {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }

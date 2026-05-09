@@ -31,8 +31,8 @@ export default function LineupPrintSheet({ match, starters = [], bench = [], coo
           <div className="print-bench-list">
             {bench.length ? bench.map((player) => (
               <div key={player.id || player.name} className="print-bench-row">
-                <PlayerShirt player={player} kit={kit} goalkeeper={String(player.position || '').toLowerCase().includes('portero')} compact />
-                <span>{player.name}</span>
+                <strong>{player.number || player.dorsal || '-'}</strong>
+                <span>{player.shirtName || player.shirt_name || player.shortName || player.name}</span>
               </div>
             )) : (
               <p className="print-empty">Sin suplentes definidos.</p>

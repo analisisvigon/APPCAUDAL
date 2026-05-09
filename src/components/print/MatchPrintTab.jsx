@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import LineupPrintSheet from './LineupPrintSheet';
+import SetPieceDiagramCanvas from './SetPieceDiagramCanvas';
 import SetPieceDiagramEditor from './SetPieceDiagramEditor';
 import SetPieceDiagramPrintSheet from './SetPieceDiagramPrintSheet';
 import SetPieceTakersPrintSheet from './SetPieceTakersPrintSheet';
@@ -10,8 +11,6 @@ const setPieceSections = [
   { id: 'faltas_directas', label: 'Faltas directas' },
   { id: 'faltas_laterales', label: 'Faltas laterales' },
   { id: 'corners', label: 'Córners' },
-  { id: 'saques_banda', label: 'Saques de banda' },
-  { id: 'rechaces_segunda_jugada', label: 'Rechaces / segunda jugada' },
 ];
 
 const offensiveSetPieceTypes = [
@@ -92,7 +91,7 @@ const toPrintPlayer = (player, fallbackName = '') => ({
   shirtName: player?.shirtName || player?.shirt_name || player?.shortName || fallbackName || player?.name || '',
 });
 
-export default function MatchPrintTab({ match, players = [], getFormationCoordinates }) {
+export default function MatchPrintTab({ match, matches = [], players = [], getFormationCoordinates }) {
   const [printView, setPrintView] = useState('alineacion');
   const [kit, setKit] = useState('home');
   const [setPieceTakers, setSetPieceTakers] = useState([]);
@@ -119,6 +118,16 @@ export default function MatchPrintTab({ match, players = [], getFormationCoordin
   const [diagramSaving, setDiagramSaving] = useState(false);
   const [diagramError, setDiagramError] = useState('');
   const [diagramStatus, setDiagramStatus] = useState('');
+  const [duplicateModal, setDuplicateModal] = useState(null);
+  const [duplicateSourceId, setDuplicateSourceId] = useState('');
+  const [duplicateMode, setDuplicateMode] = useState('add');
+  const [duplicateBusy, setDuplicateBusy] = useState(false);
+  const [duplicateMessage, setDuplicateMessage] = useState('');
+  const [libraryModal, setLibraryModal] = useState(null);
+  const [libraryItems, setLibraryItems] = useState([]);
+  const [librarySearch, setLibrarySearch] = useState('');
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryError, setLibraryError] = useState('');
   const sheetRef = useRef(null);
 
   useEffect(() => {
@@ -525,6 +534,271 @@ export default function MatchPrintTab({ match, players = [], getFormationCoordin
     }
   };
 
+  const duplicateCurrentDiagram = async (mode) => {
+    if (!match?.id) return;
+    setDiagramSaving(true);
+    setDiagramError('');
+    setDiagramStatus('');
+    try {
+      const source = getCurrentDiagram(mode);
+      const type = getDiagramType(mode);
+      const definitions = getDiagramDefinitions(mode);
+      const usedOrders = setPieceDiagrams
+        .filter((diagram) => diagram.tipo === type)
+        .map((diagram) => Number(diagram.orden))
+        .filter((order) => Number.isFinite(order));
+      const nextOrder = Math.max(0, ...usedOrders) + 1;
+      const baseTitle = source.titulo || definitions.find((item) => item.id === type)?.label || 'ABP';
+      const payload = {
+        partido_id: match.id,
+        tipo: type,
+        orden: nextOrder,
+        titulo: `${baseTitle} copia`,
+        consigna: source.consigna || '',
+        elements: JSON.parse(JSON.stringify(Array.isArray(source.elements) ? source.elements : [])),
+      };
+      const { data, error } = await supabase
+        .from('match_set_piece_diagrams')
+        .insert(payload)
+        .select('*')
+        .single();
+      if (error) throw error;
+      setSetPieceDiagrams((current) => [...current, data]);
+      if (mode === 'offensive') setOffensiveDiagramOrder(Number(data.orden));
+      else setDefensiveDiagramOrder(Number(data.orden));
+      setDiagramStatus(`Jugada duplicada como ${data.titulo || `Jugada ${data.orden}`}.`);
+    } catch (duplicateError) {
+      console.error('Error duplicando diagrama ABP en Supabase:', duplicateError);
+      setDiagramError(duplicateError.message || 'No se pudo duplicar la jugada.');
+    } finally {
+      setDiagramSaving(false);
+    }
+  };
+
+  const openLibraryModal = async (mode) => {
+    setLibraryModal(mode);
+    setLibrarySearch('');
+    setLibraryError('');
+    setLibraryLoading(true);
+    try {
+      const categories = mode === 'offensive'
+        ? ['ABP Ofensiva', 'Estrategia']
+        : ['ABP Defensiva', 'Estrategia'];
+      const { data, error } = await supabase
+        .from('training_library')
+        .select('*')
+        .in('categoria', categories)
+        .order('updated_at', { ascending: false });
+      if (error) throw error;
+      setLibraryItems(data || []);
+    } catch (error) {
+      console.error('Error cargando biblioteca desde Supabase:', error);
+      setLibraryError(error.message || 'No se pudo cargar la biblioteca.');
+      setLibraryItems([]);
+    } finally {
+      setLibraryLoading(false);
+    }
+  };
+
+  const saveCurrentDiagramToLibrary = async (mode) => {
+    setDiagramSaving(true);
+    setDiagramError('');
+    setDiagramStatus('');
+    try {
+      const diagram = getCurrentDiagram(mode);
+      const category = mode === 'offensive' ? 'ABP Ofensiva' : 'ABP Defensiva';
+      const label = getDiagramDefinitions(mode).find((item) => item.id === diagram.tipo)?.label || category;
+      const payload = {
+        nombre: diagram.titulo || `${label} ${diagram.orden || 1}`,
+        tipo: diagram.tipo,
+        categoria: category,
+        descripcion: diagram.consigna || '',
+        objetivo: '',
+        variantes: '',
+        dimensiones: '',
+        jugadores: '',
+        duracion: '',
+        material: '',
+        elements: Array.isArray(diagram.elements) ? diagram.elements : [],
+      };
+      const { error } = await supabase.from('training_library').insert(payload);
+      if (error) throw error;
+      setDiagramStatus('Jugada guardada en biblioteca.');
+    } catch (error) {
+      console.error('Error guardando jugada en biblioteca:', error);
+      setDiagramError(error.message || 'No se pudo guardar en biblioteca.');
+    } finally {
+      setDiagramSaving(false);
+    }
+  };
+
+  const loadLibraryItemIntoDiagram = (item) => {
+    if (!libraryModal) return;
+    const current = getCurrentDiagram(libraryModal);
+    updateCurrentDiagram(libraryModal, {
+      ...current,
+      titulo: item.nombre || current.titulo,
+      consigna: item.descripcion || item.objetivo || current.consigna || '',
+      elements: JSON.parse(JSON.stringify(Array.isArray(item.elements) ? item.elements : [])),
+    });
+    setDiagramStatus(`Cargado desde biblioteca: ${item.nombre}. Guarda la jugada para sincronizarla con el partido.`);
+    setLibraryModal(null);
+  };
+
+  const addDefensiveQuickElement = (label) => {
+    const current = getCurrentDiagram('defensive');
+    const nextElements = [
+      ...(current.elements || []),
+      {
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        type: label === 'zona' ? 'zone' : 'text',
+        x: label === 'zona' ? 36 : 50,
+        y: 18 + ((current.elements || []).length % 6) * 6,
+        width: label === 'zona' ? 22 : undefined,
+        height: label === 'zona' ? 12 : undefined,
+        label: label.toUpperCase(),
+      },
+    ];
+    updateCurrentDiagram('defensive', { ...current, elements: nextElements });
+  };
+
+  const filteredLibraryItems = libraryItems.filter((item) => {
+    const query = librarySearch.trim().toLowerCase();
+    if (!query) return true;
+    return [item.nombre, item.categoria, item.tipo, item.descripcion, item.objetivo]
+      .some((value) => String(value || '').toLowerCase().includes(query));
+  });
+
+  const openDuplicateModal = (kind) => {
+    setDuplicateModal(kind);
+    setDuplicateSourceId('');
+    setDuplicateMode(kind === 'lineup' || kind === 'takers' ? 'replace' : 'add');
+    setDuplicateMessage('');
+    setDiagramError('');
+  };
+
+  const copyRows = async ({ table, sourceId, targetId, columns, conflict, replace = false, filter }) => {
+    let query = supabase.from(table).select('*').eq('partido_id', sourceId);
+    if (filter) query = filter(query);
+    const { data, error } = await query;
+    if (error) throw error;
+    if (replace) {
+      let deleteQuery = supabase.from(table).delete().eq('partido_id', targetId);
+      if (filter) deleteQuery = filter(deleteQuery);
+      const { error: deleteError } = await deleteQuery;
+      if (deleteError) throw deleteError;
+    }
+    if (!data?.length) return [];
+    const rows = data.map((row) => Object.fromEntries(columns.map((column) => [column, row[column]]))).map((row) => ({ ...row, partido_id: targetId }));
+    const request = conflict
+      ? supabase.from(table).upsert(rows, { onConflict: conflict }).select('*')
+      : supabase.from(table).insert(rows).select('*');
+    const { data: inserted, error: insertError } = await request;
+    if (insertError) throw insertError;
+    return inserted || rows;
+  };
+
+  const copyDiagrams = async ({ sourceId, targetId, mode, replace }) => {
+    const types = mode === 'offensive'
+      ? offensiveSetPieceTypes.map((item) => item.id)
+      : mode === 'defensive'
+        ? defensiveSetPieceTypes.map((item) => item.id)
+        : [...offensiveSetPieceTypes, ...defensiveSetPieceTypes].map((item) => item.id);
+    const { data, error } = await supabase.from('match_set_piece_diagrams').select('*').eq('partido_id', sourceId).in('tipo', types).order('orden', { ascending: true });
+    if (error) throw error;
+    if (replace) {
+      const { error: deleteError } = await supabase.from('match_set_piece_diagrams').delete().eq('partido_id', targetId).in('tipo', types);
+      if (deleteError) throw deleteError;
+    }
+    if (!data?.length) return [];
+    const existing = replace ? [] : (setPieceDiagrams.filter((diagram) => types.includes(diagram.tipo)) || []);
+    const nextByType = new Map();
+    existing.forEach((diagram) => {
+      nextByType.set(diagram.tipo, Math.max(nextByType.get(diagram.tipo) || 0, Number(diagram.orden) || 0));
+    });
+    const rows = data.map((diagram) => {
+      const nextOrder = replace ? Number(diagram.orden) || 1 : (nextByType.get(diagram.tipo) || 0) + 1;
+      nextByType.set(diagram.tipo, nextOrder);
+      return {
+        partido_id: targetId,
+        tipo: diagram.tipo,
+        orden: nextOrder,
+        titulo: replace ? diagram.titulo : `${diagram.titulo || 'ABP'} copia`,
+        consigna: diagram.consigna || '',
+        elements: Array.isArray(diagram.elements) ? diagram.elements : [],
+      };
+    });
+    const { data: inserted, error: insertError } = await supabase.from('match_set_piece_diagrams').upsert(rows, { onConflict: 'partido_id,tipo,orden' }).select('*');
+    if (insertError) throw insertError;
+    setSetPieceDiagrams((current) => replace
+      ? [...current.filter((diagram) => !types.includes(diagram.tipo)), ...(inserted || rows)]
+      : [...current, ...(inserted || rows)]);
+    return inserted || rows;
+  };
+
+  const copyLineupFromMatch = async ({ sourceId, targetId, replace }) => {
+    const { data: sourceMatch, error: matchError } = await supabase
+      .from('partidos')
+      .select('pre_caudal_system,stats_system')
+      .eq('id', sourceId)
+      .single();
+    if (matchError) throw matchError;
+    const { error: updateError } = await supabase
+      .from('partidos')
+      .update({ pre_caudal_system: sourceMatch.pre_caudal_system || '4-4-2', stats_system: sourceMatch.stats_system || sourceMatch.pre_caudal_system || '4-4-2' })
+      .eq('id', targetId);
+    if (updateError) throw updateError;
+    await copyRows({
+      table: 'partido_alineacion_slots',
+      sourceId,
+      targetId,
+      columns: ['scope', 'slot', 'player_name', 'jugador_id', 'jugador_rival_id', 'player_snapshot'],
+      conflict: 'partido_id,scope,slot',
+      replace,
+      filter: (query) => query.in('scope', ['pre_caudal', 'stats']),
+    });
+    await copyRows({
+      table: 'partido_convocados',
+      sourceId,
+      targetId,
+      columns: ['jugador_id', 'player_name'],
+      conflict: 'partido_id,player_name',
+      replace,
+    });
+  };
+
+  const copyTakersFromMatch = async ({ sourceId, targetId, replace }) => {
+    const rows = await copyRows({
+      table: 'match_set_piece_takers',
+      sourceId,
+      targetId,
+      columns: ['tipo', 'orden', 'jugador_id', 'nombre_manual'],
+      conflict: 'partido_id,tipo,orden',
+      replace,
+    });
+    setSetPieceTakers(rows);
+  };
+
+  const runDuplicateImport = async () => {
+    if (!match?.id || !duplicateSourceId || duplicateSourceId === match.id) return;
+    const replace = duplicateMode === 'replace';
+    setDuplicateBusy(true);
+    setDuplicateMessage('');
+    setDiagramError('');
+    try {
+      if (duplicateModal === 'lineup' || duplicateModal === 'all') await copyLineupFromMatch({ sourceId: duplicateSourceId, targetId: match.id, replace: true });
+      if (duplicateModal === 'takers' || duplicateModal === 'all') await copyTakersFromMatch({ sourceId: duplicateSourceId, targetId: match.id, replace: true });
+      if (duplicateModal === 'offensive' || duplicateModal === 'all') await copyDiagrams({ sourceId: duplicateSourceId, targetId: match.id, mode: 'offensive', replace });
+      if (duplicateModal === 'defensive' || duplicateModal === 'all') await copyDiagrams({ sourceId: duplicateSourceId, targetId: match.id, mode: 'defensive', replace });
+      setDuplicateMessage('Preparación duplicada correctamente.');
+    } catch (error) {
+      console.error('Error duplicando preparación desde otro partido:', error);
+      setDiagramError(error.message || 'No se pudo duplicar la preparación.');
+    } finally {
+      setDuplicateBusy(false);
+    }
+  };
+
   const currentOffensiveNote = getOffensiveNote();
   const currentDefensiveNote = getDefensiveNote();
   const printTitle = printView === 'alineacion' ? 'Alineación' : printView === 'lanzadores' ? 'Lanzadores' : printView === 'abp_ofensiva' ? 'ABP ofensiva' : 'ABP defensiva';
@@ -539,6 +813,9 @@ export default function MatchPrintTab({ match, players = [], getFormationCoordin
             <p className="mt-2 text-sm text-slate-400">Hoja A4 en blanco y negro para el cuerpo técnico.</p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <button type="button" onClick={() => openDuplicateModal('all')} className="rounded-2xl bg-white/10 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-white/15">
+              Duplicar preparación desde otro partido
+            </button>
             <div className="flex rounded-2xl bg-white/10 p-1">
               {[
                 ['alineacion', 'Alineación'],
@@ -595,6 +872,11 @@ export default function MatchPrintTab({ match, players = [], getFormationCoordin
           {setPieceLoading ? <p className="mt-4 text-sm text-slate-400">Cargando lanzadores desde Supabase...</p> : null}
           {setPieceError ? <p className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-100">{setPieceError}</p> : null}
           {setPieceStatus ? <p className="mt-4 rounded-2xl bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">{setPieceStatus}</p> : null}
+          <div className="mt-4">
+            <button type="button" onClick={() => openDuplicateModal('takers')} className="rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15">
+              Duplicar lanzadores desde otro partido
+            </button>
+          </div>
           <div className="mt-5 grid gap-4 xl:grid-cols-2">
             {setPieceSections.map((section) => (
               <div key={section.id} className="rounded-3xl bg-white/5 p-4">
@@ -636,18 +918,48 @@ export default function MatchPrintTab({ match, players = [], getFormationCoordin
               <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Editor visual ABP ofensiva</h4>
               <p className="mt-2 text-sm text-slate-400">Diseña la jugada con círculos, balón, flechas, líneas discontinuas y zonas. Se imprimen 2 jugadas por hoja.</p>
             </div>
-            <button
-              type="button"
-              onClick={() => saveCurrentDiagram('offensive')}
-              disabled={diagramSaving}
-              className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {diagramSaving ? 'Guardando...' : 'Guardar jugada'}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => duplicateCurrentDiagram('offensive')}
+                disabled={diagramSaving}
+                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Duplicar jugada
+              </button>
+              <button
+                type="button"
+                onClick={() => saveCurrentDiagramToLibrary('offensive')}
+                disabled={diagramSaving}
+                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Guardar en biblioteca
+              </button>
+              <button
+                type="button"
+                onClick={() => openLibraryModal('offensive')}
+                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15"
+              >
+                Cargar desde biblioteca
+              </button>
+              <button
+                type="button"
+                onClick={() => saveCurrentDiagram('offensive')}
+                disabled={diagramSaving}
+                className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {diagramSaving ? 'Guardando...' : 'Guardar jugada'}
+              </button>
+            </div>
           </div>
           {diagramLoading ? <p className="mt-4 text-sm text-slate-400">Cargando diagramas desde Supabase...</p> : null}
           {diagramError ? <p className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-100">{diagramError}</p> : null}
           {diagramStatus ? <p className="mt-4 rounded-2xl bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">{diagramStatus}</p> : null}
+          <div className="mt-4">
+            <button type="button" onClick={() => openDuplicateModal('offensive')} className="rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15">
+              Duplicar ABP OFENSIVA
+            </button>
+          </div>
           <div className="mt-5 flex flex-wrap gap-2">
             {offensiveSetPieceTypes.map((type) => (
               <button
@@ -659,7 +971,10 @@ export default function MatchPrintTab({ match, players = [], getFormationCoordin
                 {type.label}
               </button>
             ))}
-            {[1, 2].map((order) => (
+            {Array.from(new Set([1, 2, ...setPieceDiagrams.filter((diagram) => diagram.tipo === offensiveType).map((diagram) => Number(diagram.orden))]))
+              .filter((order) => Number.isFinite(order))
+              .sort((a, b) => a - b)
+              .map((order) => (
               <button
                 key={`off-${order}`}
                 type="button"
@@ -687,18 +1002,60 @@ export default function MatchPrintTab({ match, players = [], getFormationCoordin
               <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Editor visual ABP defensiva</h4>
               <p className="mt-2 text-sm text-slate-400">Diferencia equipo propio y rival, añade zonas, flechas y trayectorias. Se imprimen 2 jugadas por hoja.</p>
             </div>
-            <button
-              type="button"
-              onClick={() => saveCurrentDiagram('defensive')}
-              disabled={diagramSaving}
-              className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {diagramSaving ? 'Guardando...' : 'Guardar jugada'}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => duplicateCurrentDiagram('defensive')}
+                disabled={diagramSaving}
+                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Duplicar jugada
+              </button>
+              <button
+                type="button"
+                onClick={() => saveCurrentDiagramToLibrary('defensive')}
+                disabled={diagramSaving}
+                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Guardar en biblioteca
+              </button>
+              <button
+                type="button"
+                onClick={() => openLibraryModal('defensive')}
+                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15"
+              >
+                Cargar desde biblioteca
+              </button>
+              <button
+                type="button"
+                onClick={() => saveCurrentDiagram('defensive')}
+                disabled={diagramSaving}
+                className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {diagramSaving ? 'Guardando...' : 'Guardar jugada'}
+              </button>
+            </div>
           </div>
           {diagramLoading ? <p className="mt-4 text-sm text-slate-400">Cargando diagramas desde Supabase...</p> : null}
           {diagramError ? <p className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-100">{diagramError}</p> : null}
           {diagramStatus ? <p className="mt-4 rounded-2xl bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">{diagramStatus}</p> : null}
+          <div className="mt-4">
+            <button type="button" onClick={() => openDuplicateModal('defensive')} className="rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15">
+              Duplicar ABP DEFENSIVA
+            </button>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {['zona', 'marca', 'rechace', 'barrera', 'vigilancia'].map((label) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => addDefensiveQuickElement(label)}
+                className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-white/15"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="mt-5 flex flex-wrap gap-2">
             {defensiveSetPieceTypes.map((type) => (
               <button
@@ -710,7 +1067,10 @@ export default function MatchPrintTab({ match, players = [], getFormationCoordin
                 {type.label}
               </button>
             ))}
-            {[1, 2].map((order) => (
+            {Array.from(new Set([1, 2, ...setPieceDiagrams.filter((diagram) => diagram.tipo === defensiveType).map((diagram) => Number(diagram.orden))]))
+              .filter((order) => Number.isFinite(order))
+              .sort((a, b) => a - b)
+              .map((order) => (
               <button
                 key={`def-${order}`}
                 type="button"
@@ -733,14 +1093,21 @@ export default function MatchPrintTab({ match, players = [], getFormationCoordin
 
       <div ref={sheetRef} className="print-sheet-frame">
         {printView === 'alineacion' ? (
-          <LineupPrintSheet
-            match={match}
-            starters={printData.starters}
-            bench={printData.bench}
-            coordinates={printData.coordinates}
-            system={printData.system}
-            kit={kit}
-          />
+          <div>
+            <div className="print-hidden mb-4 flex justify-center">
+              <button type="button" onClick={() => openDuplicateModal('lineup')} className="rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15">
+                Copiar alineación desde otro partido
+              </button>
+            </div>
+            <LineupPrintSheet
+              match={match}
+              starters={printData.starters}
+              bench={printData.bench}
+              coordinates={printData.coordinates}
+              system={printData.system}
+              kit={kit}
+            />
+          </div>
         ) : printView === 'lanzadores' ? (
           <SetPieceTakersPrintSheet
             match={match}
@@ -753,15 +1120,117 @@ export default function MatchPrintTab({ match, players = [], getFormationCoordin
             match={match}
             title={offensiveSetPieceTypes.find((type) => type.id === offensiveType)?.label || 'ABP ofensiva'}
             diagrams={getPrintDiagrams('offensive')}
+            players={players}
           />
         ) : (
           <SetPieceDiagramPrintSheet
             match={match}
             title={defensiveSetPieceTypes.find((type) => type.id === defensiveType)?.label || 'ABP defensiva'}
-            diagrams={getPrintDiagrams('defensive')}
+            diagrams={defensiveType === 'saque_inicio' ? [getCurrentDiagram('defensive')] : getPrintDiagrams('defensive')}
+            players={players}
+            layout={defensiveType === 'saque_inicio' ? 'landscape' : 'portrait'}
           />
         )}
       </div>
+
+      {libraryModal ? (
+        <div className="print-hidden fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4">
+          <div className="max-h-[88vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-white/10 bg-caudal-950 p-6 shadow-glow">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Biblioteca</p>
+                <h3 className="mt-2 text-xl font-semibold text-white">Cargar jugada desde biblioteca</h3>
+                <p className="mt-2 text-sm text-slate-400">El dibujo se copia en la jugada actual. Después pulsa Guardar jugada para asociarlo al partido.</p>
+              </div>
+              <button type="button" onClick={() => setLibraryModal(null)} className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-bold text-white">Cerrar</button>
+            </div>
+            <input
+              value={librarySearch}
+              onChange={(event) => setLibrarySearch(event.target.value)}
+              placeholder="Buscar en biblioteca"
+              className="mt-5 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
+            />
+            {libraryLoading ? <p className="mt-4 text-sm text-slate-400">Cargando biblioteca desde Supabase...</p> : null}
+            {libraryError ? <p className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-100">{libraryError}</p> : null}
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              {filteredLibraryItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => loadLibraryItemIntoDiagram(item)}
+                  className="rounded-3xl border border-white/5 bg-white/5 p-4 text-left transition hover:border-caudal-electric/40 hover:bg-white/10"
+                >
+                  <div className="grid grid-cols-[120px_1fr] gap-4">
+                    <div className="rounded-2xl bg-white p-2 text-black">
+                      <SetPieceDiagramCanvas elements={item.elements || []} readOnly />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-white">{item.nombre}</p>
+                      <p className="mt-1 text-xs uppercase tracking-[0.14em] text-caudal-electric">{item.categoria || item.tipo}</p>
+                      <p className="mt-2 line-clamp-3 text-xs text-slate-400">{item.descripcion || item.objetivo || 'Sin descripción'}</p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+              {!libraryLoading && !filteredLibraryItems.length ? (
+                <p className="rounded-2xl border border-dashed border-white/10 p-5 text-sm text-slate-400 md:col-span-2">No hay jugadas guardadas en esta categoría de biblioteca.</p>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {duplicateModal ? (
+        <div className="print-hidden fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-caudal-950 p-6 shadow-glow">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Duplicar</p>
+                <h3 className="mt-2 text-xl font-semibold text-white">
+                  {duplicateModal === 'all' ? 'Preparación completa' : duplicateModal === 'lineup' ? 'Alineación' : duplicateModal === 'takers' ? 'Lanzadores' : duplicateModal === 'offensive' ? 'ABP ofensiva' : 'ABP defensiva'}
+                </h3>
+              </div>
+              <button type="button" onClick={() => setDuplicateModal(null)} className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-bold text-white">Cerrar</button>
+            </div>
+            <label className="mt-5 block space-y-2 text-sm text-slate-300">
+              <span>Partido origen</span>
+              <select value={duplicateSourceId} onChange={(event) => setDuplicateSourceId(event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-sm font-bold text-slate-950">
+                <option value="">Selecciona partido</option>
+                {matches.filter((item) => item.id !== match?.id).map((item) => (
+                  <option key={item.id} value={item.id}>{item.date || ''} · {item.opponent || 'Sin rival'}</option>
+                ))}
+              </select>
+            </label>
+            {(duplicateModal === 'offensive' || duplicateModal === 'defensive' || duplicateModal === 'all') ? (
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                {[
+                  ['add', 'Añadir como nuevas jugadas'],
+                  ['replace', 'Reemplazar datos existentes'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setDuplicateMode(value)}
+                    className={`rounded-2xl px-4 py-3 text-sm font-bold ${duplicateMode === value ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-white'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-5 rounded-2xl bg-amber-300/10 p-4 text-sm text-amber-100">Esta acción reemplaza la información actual de esta sección para evitar duplicados.</p>
+            )}
+            {duplicateMessage ? <p className="mt-4 rounded-2xl bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">{duplicateMessage}</p> : null}
+            {diagramError ? <p className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-100">{diagramError}</p> : null}
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => setDuplicateModal(null)} className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white">Cancelar</button>
+              <button type="button" onClick={runDuplicateImport} disabled={!duplicateSourceId || duplicateBusy} className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60">
+                {duplicateBusy ? 'Duplicando...' : 'Duplicar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
