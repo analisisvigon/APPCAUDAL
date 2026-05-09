@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import LineupPrintSheet from './LineupPrintSheet';
+import OffensiveSetPiecePrintSheet from './OffensiveSetPiecePrintSheet';
 import SetPieceTakersPrintSheet from './SetPieceTakersPrintSheet';
 
 const setPieceSections = [
@@ -11,6 +12,32 @@ const setPieceSections = [
   { id: 'saques_banda', label: 'Saques de banda' },
   { id: 'rechaces_segunda_jugada', label: 'Rechaces / segunda jugada' },
 ];
+
+const offensiveSetPieceTypes = [
+  { id: 'corner_ofensivo', label: 'Córner ofensivo' },
+  { id: 'falta_lateral_ofensiva', label: 'Falta lateral ofensiva' },
+  { id: 'saque_banda_ofensivo', label: 'Saque de banda ofensivo' },
+];
+
+const defaultOffensiveRoles = [
+  'Lanzador',
+  'Primer palo',
+  'Segundo palo',
+  'Zona de remate',
+  'Rechace',
+  'Seguridad',
+];
+
+const createDefaultOffensiveNote = (type) => {
+  const definition = offensiveSetPieceTypes.find((item) => item.id === type);
+  return {
+    partido_id: '',
+    tipo: type,
+    titulo: definition?.label || 'ABP ofensiva',
+    descripcion: '',
+    roles: defaultOffensiveRoles.map((role) => ({ role, jugadorId: '', playerName: '', manualName: '' })),
+  };
+};
 
 const normalizeText = (value) =>
   String(value || '')
@@ -33,6 +60,12 @@ export default function MatchPrintTab({ match, players = [], getFormationCoordin
   const [setPieceSaving, setSetPieceSaving] = useState(false);
   const [setPieceError, setSetPieceError] = useState('');
   const [setPieceStatus, setSetPieceStatus] = useState('');
+  const [offensiveType, setOffensiveType] = useState('corner_ofensivo');
+  const [offensiveNotes, setOffensiveNotes] = useState([]);
+  const [offensiveLoading, setOffensiveLoading] = useState(false);
+  const [offensiveSaving, setOffensiveSaving] = useState(false);
+  const [offensiveError, setOffensiveError] = useState('');
+  const [offensiveStatus, setOffensiveStatus] = useState('');
   const sheetRef = useRef(null);
 
   useEffect(() => {
@@ -57,6 +90,41 @@ export default function MatchPrintTab({ match, players = [], getFormationCoordin
       }
     };
     loadSetPieceTakers();
+  }, [match?.id]);
+
+  useEffect(() => {
+    const loadOffensiveNotes = async () => {
+      if (!match?.id) return;
+      setOffensiveLoading(true);
+      setOffensiveError('');
+      try {
+        const { data, error } = await supabase
+          .from('match_set_piece_notes')
+          .select('*')
+          .eq('partido_id', match.id)
+          .in('tipo', offensiveSetPieceTypes.map((item) => item.id))
+          .order('tipo', { ascending: true });
+        if (error) throw error;
+        const nextNotes = offensiveSetPieceTypes.map((type) => {
+          const stored = (data || []).find((item) => item.tipo === type.id);
+          const fallback = createDefaultOffensiveNote(type.id);
+          return {
+            ...fallback,
+            ...(stored || {}),
+            partido_id: match.id,
+            roles: Array.isArray(stored?.roles) && stored.roles.length ? stored.roles : fallback.roles,
+          };
+        });
+        setOffensiveNotes(nextNotes);
+      } catch (loadError) {
+        console.error('Error cargando ABP ofensiva desde Supabase:', loadError);
+        setOffensiveError(loadError.message || 'No se pudieron cargar las ABP ofensivas.');
+        setOffensiveNotes(offensiveSetPieceTypes.map((type) => ({ ...createDefaultOffensiveNote(type.id), partido_id: match.id })));
+      } finally {
+        setOffensiveLoading(false);
+      }
+    };
+    loadOffensiveNotes();
   }, [match?.id]);
 
   const printData = useMemo(() => {
@@ -143,13 +211,75 @@ export default function MatchPrintTab({ match, players = [], getFormationCoordin
     }
   };
 
+  const getOffensiveNote = () =>
+    offensiveNotes.find((note) => note.tipo === offensiveType) || {
+      ...createDefaultOffensiveNote(offensiveType),
+      partido_id: match?.id || '',
+    };
+
+  const updateOffensiveNote = (fields) => {
+    setOffensiveStatus('');
+    setOffensiveError('');
+    setOffensiveNotes((current) => {
+      const exists = current.some((note) => note.tipo === offensiveType);
+      if (exists) {
+        return current.map((note) => (note.tipo === offensiveType ? { ...note, ...fields } : note));
+      }
+      return [...current, { ...createDefaultOffensiveNote(offensiveType), partido_id: match?.id || '', ...fields }];
+    });
+  };
+
+  const updateOffensiveRole = (index, fields) => {
+    const note = getOffensiveNote();
+    const roles = Array.isArray(note.roles) && note.roles.length ? note.roles : createDefaultOffensiveNote(offensiveType).roles;
+    updateOffensiveNote({
+      roles: roles.map((role, roleIndex) => (roleIndex === index ? { ...role, ...fields } : role)),
+    });
+  };
+
+  const saveOffensiveNote = async () => {
+    if (!match?.id) return;
+    setOffensiveSaving(true);
+    setOffensiveError('');
+    setOffensiveStatus('');
+    try {
+      const note = getOffensiveNote();
+      const payload = {
+        partido_id: match.id,
+        tipo: note.tipo,
+        titulo: note.titulo || offensiveSetPieceTypes.find((item) => item.id === note.tipo)?.label || 'ABP ofensiva',
+        descripcion: note.descripcion || '',
+        roles: Array.isArray(note.roles) ? note.roles : [],
+      };
+      const { data, error } = await supabase
+        .from('match_set_piece_notes')
+        .upsert(payload, { onConflict: 'partido_id,tipo' })
+        .select('*')
+        .single();
+      if (error) throw error;
+      setOffensiveNotes((current) => {
+        const exists = current.some((item) => item.tipo === data.tipo);
+        return exists ? current.map((item) => (item.tipo === data.tipo ? data : item)) : [...current, data];
+      });
+      setOffensiveStatus('ABP ofensiva guardada en Supabase.');
+    } catch (saveError) {
+      console.error('Error guardando ABP ofensiva en Supabase:', saveError);
+      setOffensiveError(saveError.message || 'No se pudo guardar la ABP ofensiva.');
+    } finally {
+      setOffensiveSaving(false);
+    }
+  };
+
+  const currentOffensiveNote = getOffensiveNote();
+  const printTitle = printView === 'alineacion' ? 'Alineación' : printView === 'lanzadores' ? 'Lanzadores' : 'ABP ofensiva';
+
   return (
     <section className="match-print-tab space-y-6">
       <div className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Impresión</p>
-            <h3 className="mt-2 text-2xl font-semibold text-white">{printView === 'alineacion' ? 'Alineación' : 'Lanzadores'}</h3>
+            <h3 className="mt-2 text-2xl font-semibold text-white">{printTitle}</h3>
             <p className="mt-2 text-sm text-slate-400">Hoja A4 en blanco y negro para el cuerpo técnico.</p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -157,6 +287,7 @@ export default function MatchPrintTab({ match, players = [], getFormationCoordin
               {[
                 ['alineacion', 'Alineación'],
                 ['lanzadores', 'Lanzadores'],
+                ['abp_ofensiva', 'ABP ofensiva'],
               ].map(([value, label]) => (
                 <button
                   key={value}
@@ -179,7 +310,7 @@ export default function MatchPrintTab({ match, players = [], getFormationCoordin
               Vista previa
             </button>
             <button type="button" onClick={handlePrint} className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-[#7aacff]">
-              Imprimir {printView === 'alineacion' ? 'alineación' : 'lanzadores'}
+              Imprimir {printView === 'alineacion' ? 'alineación' : printView === 'lanzadores' ? 'lanzadores' : 'ABP'}
             </button>
             {printView === 'alineacion' ? <button type="button" onClick={handlePrint} className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15">
               Guardar PDF
@@ -241,6 +372,88 @@ export default function MatchPrintTab({ match, players = [], getFormationCoordin
         </div>
       ) : null}
 
+      {printView === 'abp_ofensiva' ? (
+        <div className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Configurar ABP ofensiva</h4>
+              <p className="mt-2 text-sm text-slate-400">Plantillas fijas para córner, falta lateral y saque de banda ofensivo.</p>
+            </div>
+            <button
+              type="button"
+              onClick={saveOffensiveNote}
+              disabled={offensiveSaving}
+              className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {offensiveSaving ? 'Guardando...' : 'Guardar ABP'}
+            </button>
+          </div>
+          {offensiveLoading ? <p className="mt-4 text-sm text-slate-400">Cargando ABP ofensiva desde Supabase...</p> : null}
+          {offensiveError ? <p className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-100">{offensiveError}</p> : null}
+          {offensiveStatus ? <p className="mt-4 rounded-2xl bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">{offensiveStatus}</p> : null}
+          <div className="mt-5 flex flex-wrap gap-2">
+            {offensiveSetPieceTypes.map((type) => (
+              <button
+                key={type.id}
+                type="button"
+                onClick={() => setOffensiveType(type.id)}
+                className={`rounded-2xl px-4 py-2 text-xs font-black uppercase tracking-[0.12em] ${offensiveType === type.id ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}
+              >
+                {type.label}
+              </button>
+            ))}
+          </div>
+          <div className="mt-5 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+            <div className="space-y-4 rounded-3xl bg-white/5 p-4">
+              <input
+                value={currentOffensiveNote.titulo || ''}
+                onChange={(event) => updateOffensiveNote({ titulo: event.target.value })}
+                placeholder="Título de la jugada"
+                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
+              />
+              <textarea
+                value={currentOffensiveNote.descripcion || ''}
+                onChange={(event) => updateOffensiveNote({ descripcion: event.target.value })}
+                placeholder="Texto explicativo de la ABP"
+                className="min-h-[220px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
+              />
+            </div>
+            <div className="rounded-3xl bg-white/5 p-4">
+              <h5 className="text-xs font-black uppercase tracking-[0.16em] text-white">Roles / jugadores</h5>
+              <div className="mt-4 space-y-3">
+                {(Array.isArray(currentOffensiveNote.roles) ? currentOffensiveNote.roles : []).map((role, index) => (
+                  <div key={`${role.role}-${index}`} className="grid gap-3 lg:grid-cols-[0.8fr_1fr_1fr]">
+                    <input
+                      value={role.role || ''}
+                      onChange={(event) => updateOffensiveRole(index, { role: event.target.value })}
+                      placeholder="Rol"
+                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
+                    />
+                    <select
+                      value={role.jugadorId || ''}
+                      onChange={(event) => {
+                        const player = players.find((item) => item.id === event.target.value);
+                        updateOffensiveRole(index, { jugadorId: event.target.value, playerName: player?.name || '', manualName: '' });
+                      }}
+                      className="rounded-2xl border border-white/10 bg-white px-4 py-3 text-sm font-bold text-slate-950"
+                    >
+                      <option value="">Jugador plantilla</option>
+                      {players.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}
+                    </select>
+                    <input
+                      value={role.manualName || ''}
+                      onChange={(event) => updateOffensiveRole(index, { manualName: event.target.value, jugadorId: '', playerName: '' })}
+                      placeholder="Nombre manual"
+                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div ref={sheetRef} className="print-sheet-frame">
         {printView === 'alineacion' ? (
           <LineupPrintSheet
@@ -251,12 +464,17 @@ export default function MatchPrintTab({ match, players = [], getFormationCoordin
             system={printData.system}
             kit={kit}
           />
-        ) : (
+        ) : printView === 'lanzadores' ? (
           <SetPieceTakersPrintSheet
             match={match}
             sections={setPieceSections}
             takers={setPieceTakers}
             players={players}
+          />
+        ) : (
+          <OffensiveSetPiecePrintSheet
+            match={match}
+            note={currentOffensiveNote}
           />
         )}
       </div>
