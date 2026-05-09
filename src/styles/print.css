@@ -211,6 +211,23 @@
   padding: 0.4mm 0.8mm;
 }
 
+.print-captain-badge {
+  position: absolute;
+  right: -1mm;
+  top: 4mm;
+  display: inline-flex;
+  width: 6mm;
+  height: 6mm;
+  align-items: center;
+  justify-content: center;
+  border: 1pt solid #000;
+  border-radius: 50%;
+  background: #fff;
+  color: #000;
+  font-size: 7pt;
+  font-weight: 900;
+}
+
 .goalkeeper-slot {
   transform: translate(-50%, -58%);
 }

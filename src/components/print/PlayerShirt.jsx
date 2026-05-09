@@ -1,7 +1,7 @@
 const getDisplayName = (player) =>
   player?.shirtName || player?.shirt_name || player?.shortName || player?.name || player?.label || '';
 
-export default function PlayerShirt({ player, kit = 'home', goalkeeper = false, compact = false }) {
+export default function PlayerShirt({ player, kit = 'home', goalkeeper = false, compact = false, captain = false }) {
   const number = player?.number || player?.dorsal || '';
   const name = getDisplayName(player);
   const kitClass = goalkeeper ? 'goalkeeper' : kit === 'away' ? 'away' : 'home';
@@ -24,6 +24,7 @@ export default function PlayerShirt({ player, kit = 'home', goalkeeper = false, 
       </svg>
       <span className="print-shirt-number">{number || '-'}</span>
       <span className="print-shirt-name">{name || 'Jugador'}</span>
+      {captain ? <span className="print-captain-badge">C</span> : null}
     </div>
   );
 }

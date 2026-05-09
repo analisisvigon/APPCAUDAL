@@ -27,7 +27,7 @@ export default function SetPieceDiagramPrintSheet({ match, title = 'ABP', diagra
               <span>{diagram.orden || index + 1}</span>
             </div>
             <SetPieceDiagramCanvas elements={diagram.elements || []} players={players} fullField={layout === 'landscape' || String(diagram.tipo || '').includes('saque_inicio')} readOnly />
-            <p>{diagram.consigna || 'Consigna pendiente.'}</p>
+            <p>{diagram.consigna || ''}</p>
           </div>
         ))}
       </section>

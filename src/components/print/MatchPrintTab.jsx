@@ -185,7 +185,12 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     defensive: true,
     kickoff: true,
   });
+  const [captainPlayerId, setCaptainPlayerId] = useState(match?.captainPlayerId || '');
   const sheetRef = useRef(null);
+
+  useEffect(() => {
+    setCaptainPlayerId(match?.captainPlayerId || '');
+  }, [match?.captainPlayerId, match?.id]);
 
   useEffect(() => {
     const loadSetPieceTakers = async () => {
@@ -318,10 +323,25 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     const system = match?.statsSystem || match?.preCaudalSystem || '4-4-2';
     const byName = new Map(players.map((player) => [normalizeText(player.name), player]));
     const { starters } = getLineupStarters({ match, playersByName: byName });
-    const bench = getLineupBench({ match, players, starters, playersByName: byName });
+    const markedStarters = starters.map((player) => ({ ...player, isCaptain: Boolean(captainPlayerId && player.id === captainPlayerId) }));
+    const bench = getLineupBench({ match, players, starters: markedStarters, playersByName: byName })
+      .map((player) => ({ ...player, isCaptain: Boolean(captainPlayerId && player.id === captainPlayerId) }));
     const coordinates = typeof getFormationCoordinates === 'function' ? getFormationCoordinates(system) : [];
-    return { system, starters, bench, coordinates };
-  }, [match, players, getFormationCoordinates]);
+    return { system, starters: markedStarters, bench, coordinates };
+  }, [match, players, getFormationCoordinates, captainPlayerId]);
+
+  const handleCaptainChange = async (nextCaptainId) => {
+    if (!match?.id) return;
+    setCaptainPlayerId(nextCaptainId);
+    const { error } = await supabase
+      .from('partidos')
+      .update({ captain_player_id: nextCaptainId || null })
+      .eq('id', match.id);
+    if (error) {
+      console.error('Error guardando capitán desde impresión:', error);
+      setCaptainPlayerId(match?.captainPlayerId || '');
+    }
+  };
 
   const handlePreview = () => {
     sheetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -931,6 +951,15 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                 <option value="away">Suplente / amarilla a rayas</option>
               </select>
             </label> : null}
+            {printView === 'alineacion' ? <label className="space-y-2 text-sm text-slate-300">
+              <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Capitán</span>
+              <select value={captainPlayerId || ''} onChange={(event) => handleCaptainChange(event.target.value)} className="rounded-2xl border border-white/10 bg-white px-4 py-3 text-sm font-bold text-slate-950">
+                <option value="">Sin capitán</option>
+                {(match?.statsCalledPlayers?.length ? printData.starters.concat(printData.bench).filter((player) => player.id && !String(player.name || '').startsWith('Puesto ')) : players).map((player) => (
+                  <option key={player.id} value={player.id}>{player.number || player.dorsal || '-'} · {player.name}</option>
+                ))}
+              </select>
+            </label> : null}
             <button type="button" onClick={handlePreview} className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15">
               Vista previa
             </button>
@@ -1223,6 +1252,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
               coordinates={printData.coordinates}
               system={printData.system}
               kit={kit}
+              captainPlayerId={captainPlayerId}
             />
           </div>
         ) : printView === 'lanzadores' ? (
@@ -1260,6 +1290,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
               coordinates={printData.coordinates}
               system={printData.system}
               kit={kit}
+              captainPlayerId={captainPlayerId}
             />
           ) : null}
           {dossierOptions.takers ? (

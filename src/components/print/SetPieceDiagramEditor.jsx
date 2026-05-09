@@ -7,6 +7,18 @@ const createId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const isArrow = (element) => ['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow'].includes(element?.type);
 const isTextBox = (element) => ['text_box', 'block'].includes(element?.type);
 const cloneElements = (elements) => JSON.parse(JSON.stringify(elements || []));
+const quickConsignas = [
+  'Atacar primer palo',
+  'Atacar segundo palo',
+  'Bloqueo',
+  'Arrastre',
+  'Segunda jugada',
+  'Rechace',
+  'Vigilancia',
+  'Barrera',
+  'Marca individual',
+  'Zona',
+];
 
 const createElement = (type) => {
   if (type === 'ball') return { id: createId(), type, x: 8, y: 8 };
@@ -33,6 +45,11 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
   );
 
   const updateDiagram = (fields) => onChange({ ...diagram, ...fields });
+  const appendQuickConsigna = (phrase) => {
+    const current = String(diagram.consigna || '').trim();
+    const next = current ? `${current}.\n${phrase}` : phrase;
+    updateDiagram({ consigna: next });
+  };
 
   const pushHistory = (elements) => {
     const nextHistory = history.slice(0, historyIndex + 1);
@@ -158,12 +175,30 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
             placeholder="Titulo de la jugada"
             className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
           />
-          <textarea
-            value={diagram.consigna || ''}
-            onChange={(event) => updateDiagram({ consigna: event.target.value })}
-            placeholder="Consigna breve"
-            className="min-h-[90px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
-          />
+          <div className="space-y-3">
+            <label className="block space-y-2">
+              <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Consigna rápida</span>
+              <textarea
+                value={diagram.consigna || ''}
+                onChange={(event) => updateDiagram({ consigna: event.target.value })}
+                placeholder="Máximo recomendado: 3 líneas"
+                rows={3}
+                className="min-h-[84px] w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
+              />
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {quickConsignas.map((phrase) => (
+                <button
+                  key={phrase}
+                  type="button"
+                  onClick={() => appendQuickConsigna(phrase)}
+                  className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/15"
+                >
+                  {phrase}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {selectedElement ? (
             <div className="space-y-3 rounded-2xl bg-black/20 p-4">

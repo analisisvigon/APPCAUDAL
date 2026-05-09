@@ -18,7 +18,7 @@ export default function FootballPitchPrint({ players = [], coordinates = [], kit
             className={`print-player-slot ${goalkeeper ? 'goalkeeper-slot' : ''}`}
             style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
           >
-            <PlayerShirt player={player} kit={kit} goalkeeper={goalkeeper} />
+            <PlayerShirt player={player} kit={kit} goalkeeper={goalkeeper} captain={Boolean(player.isCaptain)} />
           </div>
         );
       })}

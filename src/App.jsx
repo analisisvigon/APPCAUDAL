@@ -150,6 +150,7 @@ const emptyMatchForm = {
   statsLineup: [],
   statsCalledPlayers: [],
   statsPlayerData: {},
+  captainPlayerId: null,
   preNotes: '',
   postNotes: '',
   postReality: '',
@@ -387,6 +388,7 @@ const normalizeSupabasePartido = (match) =>
     goalsFor: match.goals_for || '',
     goalsAgainst: match.goals_against || '',
     statsSystem: match.stats_system || '4-4-2',
+    captainPlayerId: match.captain_player_id || null,
     equipoRivalId: match.equipo_rival_id || null,
   });
 
@@ -4735,6 +4737,21 @@ function App() {
       return;
     }
     await refreshStatsFromSupabase(selectedMatch.id, 'sistema de estadísticas');
+  };
+
+  const updateMatchCaptain = async (captainPlayerId) => {
+    if (!selectedMatch) return;
+    const nextCaptainId = captainPlayerId || null;
+    const { error: captainError } = await supabase
+      .from("partidos")
+      .update({ captain_player_id: nextCaptainId })
+      .eq("id", selectedMatch.id);
+    if (captainError) {
+      console.error('Error guardando capitán del partido en Supabase:', captainError);
+      setStatsError(captainError.message || 'No se pudo guardar el capitán.');
+      return;
+    }
+    setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? { ...match, captainPlayerId: nextCaptainId } : match)));
   };
 
   const handleDropOnStatsLineupSlot = (slotIndex) => {
@@ -9388,6 +9405,19 @@ function App() {
                             {gameSystems.map((system) => <option key={system} value={system}>{system}</option>)}
                           </select>
                         </div>
+                        <label className="mt-5 block space-y-2 text-sm text-slate-300">
+                          <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Capitán</span>
+                          <select
+                            value={selectedMatch.captainPlayerId || ''}
+                            onChange={(event) => updateMatchCaptain(event.target.value)}
+                            className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-sm font-black text-slate-950"
+                          >
+                            <option value="">Sin capitán</option>
+                            {(getStatsCalledPlayers().length ? getStatsCalledPlayers() : players).map((player) => (
+                              <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
+                            ))}
+                          </select>
+                        </label>
                         <div className="mt-5">{renderStatsPitch()}</div>
                       </div>
                       <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
