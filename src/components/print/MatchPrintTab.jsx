@@ -91,6 +91,55 @@ const toPrintPlayer = (player, fallbackName = '') => ({
   shirtName: player?.shirtName || player?.shirt_name || player?.shortName || fallbackName || player?.name || '',
 });
 
+const getPlayerNameFromEntry = (entry) => {
+  if (!entry) return '';
+  if (typeof entry === 'string') return entry;
+  return entry.name || entry.player_name || entry.fullName || '';
+};
+
+const normalizePrintPlayerEntry = (entry, playersByName) => {
+  const name = getPlayerNameFromEntry(entry);
+  const linked = playersByName.get(normalizeText(name));
+  if (typeof entry === 'string') return toPrintPlayer(linked, entry);
+  return toPrintPlayer(linked || entry, name);
+};
+
+const getLineupStarters = ({ match, playersByName }) => {
+  const lineupNames = (match?.preCaudalLineup || []).some(Boolean)
+    ? match.preCaudalLineup
+    : (match?.statsLineup || []).some(Boolean)
+      ? match.statsLineup
+      : [];
+
+  const starters = Array.from({ length: 11 }, (_, index) => {
+    const name = lineupNames[index] || '';
+    if (!name) return toPrintPlayer(null, `Puesto ${index + 1}`);
+    return normalizePrintPlayerEntry(name, playersByName);
+  });
+
+  return { lineupNames, starters };
+};
+
+const getLineupBench = ({ match, players, starters, playersByName }) => {
+  const starterNames = new Set(
+    starters
+      .map((player) => normalizeText(player.name))
+      .filter((name) => name && !name.startsWith('puesto '))
+  );
+  const rawCalledPlayers = match?.statsCalledPlayers?.length ? match.statsCalledPlayers : players;
+  const calledPlayers = rawCalledPlayers
+    .map((entry) => normalizePrintPlayerEntry(entry, playersByName))
+    .filter((player) => normalizeText(player.name));
+
+  const byName = new Map();
+  calledPlayers.forEach((player) => {
+    const key = normalizeText(player.name);
+    if (!starterNames.has(key) && !byName.has(key)) byName.set(key, player);
+  });
+
+  return Array.from(byName.values());
+};
+
 export default function MatchPrintTab({ match, matches = [], players = [], getFormationCoordinates }) {
   const [printView, setPrintView] = useState('alineacion');
   const [kit, setKit] = useState('home');
@@ -267,30 +316,10 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
 
   const printData = useMemo(() => {
     const system = match?.statsSystem || match?.preCaudalSystem || '4-4-2';
-    const lineupNames = (match?.statsLineup || []).some(Boolean)
-      ? match.statsLineup
-      : (match?.preCaudalLineup || []).some(Boolean)
-        ? match.preCaudalLineup
-        : players.slice(0, 11).map((player) => player.name);
     const byName = new Map(players.map((player) => [normalizeText(player.name), player]));
-    const starters = Array.from({ length: 11 }, (_, index) => {
-      const name = lineupNames[index] || '';
-      const player = byName.get(normalizeText(name));
-      return toPrintPlayer(player, name || `Puesto ${index + 1}`);
-    });
-    const starterNames = new Set(starters.map((player) => normalizeText(player.name)));
-    const rawCalledPlayers = match?.statsCalledPlayers?.length ? match.statsCalledPlayers : players;
-    const calledPlayers = rawCalledPlayers.map((entry) => {
-      if (typeof entry === 'string') return byName.get(normalizeText(entry)) || { name: entry, shirtName: entry };
-      return entry;
-    });
-    const bench = calledPlayers
-      .filter((player) => !starterNames.has(normalizeText(player.name)))
-      .map((player) => toPrintPlayer(byName.get(normalizeText(player.name)) || player, player.name));
+    const { starters } = getLineupStarters({ match, playersByName: byName });
+    const bench = getLineupBench({ match, players, starters, playersByName: byName });
     const coordinates = typeof getFormationCoordinates === 'function' ? getFormationCoordinates(system) : [];
-    console.log('LINEUP DATA:', lineupNames);
-    console.log('STARTERS:', starters);
-    console.log('BENCH / SUBSTITUTES:', bench);
     return { system, starters, bench, coordinates };
   }, [match, players, getFormationCoordinates]);
 
@@ -931,10 +960,6 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
               {label}
             </label>
           ))}
-        </div>
-        <div className="mt-4 rounded-2xl bg-black/30 p-3 text-xs text-slate-300">
-          <p className="font-black uppercase tracking-[0.18em] text-slate-500">DEBUG SUPLENTES:</p>
-          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words">{JSON.stringify(printData.bench || [], null, 2)}</pre>
         </div>
       </div>
 

@@ -9,10 +9,6 @@ const formatDate = (value) => {
 };
 
 export default function LineupPrintSheet({ match, starters = [], bench = [], coordinates = [], system = '4-4-2', kit = 'home' }) {
-  console.log('LINEUP DATA:', { match, system, coordinates });
-  console.log('STARTERS:', starters);
-  console.log('BENCH / SUBSTITUTES:', bench);
-
   return (
     <article className="lineup-print-sheet print-sheet-a4">
       <header className="print-sheet-header">
