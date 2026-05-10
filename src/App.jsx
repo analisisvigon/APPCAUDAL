@@ -4,6 +4,7 @@ import React from 'react';
 import { supabase } from './lib/supabase';
 import LibrarySection from './components/library/LibrarySection';
 import MatchPrintTab from './components/print/MatchPrintTab';
+import StatusMessage from './components/shared/StatusMessage';
 import './styles/print.css';
 
 const clubCrest =
@@ -498,6 +499,7 @@ const normalizeSupabaseQuickEvent = (event) => ({
   equipo: event.equipo || 'caudal',
   tipoEvento: event.tipo_evento || '',
   minute: String(event.minuto ?? ''),
+  reviewed: Boolean(event.reviewed),
   createdAt: event.created_at || '',
 });
 
@@ -2084,11 +2086,16 @@ function App() {
   const [preError, setPreError] = useState('');
   const [statsRefreshing, setStatsRefreshing] = useState(false);
   const [statsError, setStatsError] = useState('');
+  const [statsSaveStatus, setStatsSaveStatus] = useState('');
   const [statsViewMode, setStatsViewMode] = useState('completa');
   const [delegatedMinute, setDelegatedMinute] = useState('0');
   const [delegatedEventDraft, setDelegatedEventDraft] = useState(null);
   const [delegatedEventSaving, setDelegatedEventSaving] = useState(false);
   const [delegatedEventFeedback, setDelegatedEventFeedback] = useState('');
+  const [quickEventStatus, setQuickEventStatus] = useState('');
+  const [quickEventSavingIds, setQuickEventSavingIds] = useState([]);
+  const [pendingQuickEventDeleteId, setPendingQuickEventDeleteId] = useState(null);
+  const [pendingPostEventDeleteId, setPendingPostEventDeleteId] = useState(null);
   const [postLoading, setPostLoading] = useState(false);
   const [postError, setPostError] = useState('');
   const [editingId, setEditingId] = useState(null);
@@ -2187,6 +2194,7 @@ function App() {
     },
   ]);
   const [playerVenueFilter, setPlayerVenueFilter] = useState('Todos');
+  const [playerQuickScope, setPlayerQuickScope] = useState('Últimos 5 partidos');
   const [playerInfluenceFilter, setPlayerInfluenceFilter] = useState('Todos');
   const [selectedTimelineAction, setSelectedTimelineAction] = useState(null);
   const [playerReport, setPlayerReport] = useState(null);
@@ -2195,6 +2203,7 @@ function App() {
   const [playerProfileError, setPlayerProfileError] = useState('');
   const [groupCompetitionFilter, setGroupCompetitionFilter] = useState('Todos');
   const [groupContextFilter, setGroupContextFilter] = useState('Todos');
+  const [groupQuickReviewedOnly, setGroupQuickReviewedOnly] = useState(true);
   const [groupAssistFilter, setGroupAssistFilter] = useState('Todas');
   const [groupShotFilter, setGroupShotFilter] = useState('Ambos');
   const [groupLoading, setGroupLoading] = useState(false);
@@ -2714,9 +2723,25 @@ function App() {
         };
       });
 
+      let quickEvents = [];
+      const quickEventsResponse = await supabase
+        .from("match_quick_events")
+        .select("*")
+        .eq("partido_id", partidoId)
+        .order("minuto", { ascending: true });
+      if (quickEventsResponse.error) {
+        console.warn('No se pudieron cargar eventos rápidos en POST; se continúa sin ellos:', {
+          partidoId,
+          error: quickEventsResponse.error,
+        });
+      } else {
+        quickEvents = (quickEventsResponse.data || []).map(normalizeSupabaseQuickEvent);
+      }
+
       const detailedMatch = {
         ...normalizeSupabasePartido(partidoResponse.data),
         events: (postEventsResponse.data || []).map(normalizeSupabasePostEvent),
+        quickEvents,
         statsPlayerData,
         statsGoalEvents: (goalsResponse.data || []).map(normalizeSupabaseGoalEvent),
       };
@@ -4343,13 +4368,18 @@ function App() {
 
   const deletePostEvent = async (eventId) => {
     if (!selectedMatch) return;
+    setPostVideoSaveStatus('Guardando...');
     const { error: deleteError } = await supabase.from("partido_eventos_post").delete().eq("id", eventId);
     if (deleteError) {
       console.error('Error borrando evento POST en Supabase:', { eventId, error: deleteError });
       setPostError(deleteError.message || 'No se pudo borrar el evento POST.');
+      setPostVideoSaveStatus('Error al guardar');
       return;
     }
+    setPendingPostEventDeleteId(null);
     await loadMatchPostData(selectedMatch.id);
+    setPostVideoSaveStatus('Guardado ✓');
+    window.setTimeout(() => setPostVideoSaveStatus((current) => (current === 'Guardado ✓' ? '' : current)), 2200);
   };
 
   const runPostAiAnalysis = () => {
@@ -4462,8 +4492,20 @@ function App() {
     const currentMatchId = selectedMatch?.id;
     if (!currentMatchId) return null;
     const operationPromise = statsOperationRef.current.catch(() => null).then(async () => {
-      await operation();
-      return refreshStatsFromSupabase(currentMatchId, reason);
+      setStatsSaveStatus('Guardando...');
+      setStatsError('');
+      try {
+        await operation();
+        const refreshed = await refreshStatsFromSupabase(currentMatchId, reason);
+        setStatsSaveStatus('Guardado ✓');
+        window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Guardado ✓' ? '' : current)), 2200);
+        return refreshed;
+      } catch (operationError) {
+        console.error(`Error guardando estadísticas (${reason}) en Supabase:`, operationError);
+        setStatsSaveStatus('Error al guardar');
+        setStatsError(operationError.message || 'No se pudo guardar el cambio en estadísticas.');
+        return null;
+      }
     });
     statsOperationRef.current = operationPromise.catch(() => null);
     return operationPromise;
@@ -4879,6 +4921,7 @@ function App() {
         equipo: delegatedEventDraft.side,
         tipo_evento: delegatedEventDraft.tipoEvento,
         minuto: minute,
+        reviewed: false,
       };
       const { error } = await supabase.from("match_quick_events").insert(payload);
       if (error) throw error;
@@ -4896,6 +4939,56 @@ function App() {
     } finally {
       setDelegatedEventSaving(false);
     }
+  };
+
+  const updateQuickEvent = async (eventId, fields) => {
+    if (!selectedMatch || !eventId) return;
+    setQuickEventStatus('Guardando...');
+    setPostError('');
+    setQuickEventSavingIds((current) => (current.includes(eventId) ? current : [...current, eventId]));
+    const payload = {};
+    if (fields.tipoEvento !== undefined) {
+      const definition = delegatedEventDefinitions.find((item) => item.tipoEvento === fields.tipoEvento);
+      payload.tipo_evento = fields.tipoEvento;
+      payload.equipo = definition?.side || fields.equipo || 'caudal';
+      if (payload.equipo === 'rival') payload.jugador_id = null;
+    }
+    if (fields.equipo !== undefined) payload.equipo = fields.equipo;
+    if (fields.minute !== undefined) payload.minuto = Math.max(0, Math.min(130, Number(fields.minute) || 0));
+    if (fields.jugadorId !== undefined) payload.jugador_id = isUuid(fields.jugadorId) ? fields.jugadorId : null;
+    if (fields.reviewed !== undefined) payload.reviewed = Boolean(fields.reviewed);
+
+    const { error } = await supabase.from("match_quick_events").update(payload).eq("id", eventId);
+    if (error) {
+      console.error('Error actualizando evento rápido en Supabase:', { eventId, payload, error });
+      setPostError(error.message || 'No se pudo actualizar el evento rápido.');
+      setQuickEventStatus('Error al guardar');
+      setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
+      return;
+    }
+    await loadMatchPostData(selectedMatch.id);
+    setQuickEventStatus('Guardado ✓');
+    window.setTimeout(() => setQuickEventStatus((current) => (current === 'Guardado ✓' ? '' : current)), 2200);
+    setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
+  };
+
+  const deleteQuickEvent = async (eventId) => {
+    if (!selectedMatch || !eventId) return;
+    setQuickEventStatus('Guardando...');
+    setQuickEventSavingIds((current) => (current.includes(eventId) ? current : [...current, eventId]));
+    const { error } = await supabase.from("match_quick_events").delete().eq("id", eventId);
+    if (error) {
+      console.error('Error borrando evento rápido en Supabase:', { eventId, error });
+      setPostError(error.message || 'No se pudo borrar el evento rápido.');
+      setQuickEventStatus('Error al guardar');
+      setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
+      return;
+    }
+    setPendingQuickEventDeleteId(null);
+    await loadMatchPostData(selectedMatch.id);
+    setQuickEventStatus('Guardado ✓');
+    window.setTimeout(() => setQuickEventStatus((current) => (current === 'Guardado ✓' ? '' : current)), 2200);
+    setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
   };
 
   const openGoalAnalysisModal = () => {
@@ -5029,10 +5122,9 @@ function App() {
           </div>
 
           {delegatedEventFeedback ? (
-            <div className="mt-4 rounded-2xl bg-emerald-400/10 px-4 py-3 text-sm font-bold text-emerald-100">
-              {delegatedEventFeedback}
-            </div>
+            <StatusMessage status={delegatedEventFeedback} className="mt-4" />
           ) : null}
+          {delegatedEventSaving ? <StatusMessage status="Guardando..." className="mt-4" /> : null}
 
           <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
             {delegatedCounterPairs.map((counter) => (
@@ -5056,7 +5148,8 @@ function App() {
                   key={definition.key}
                   type="button"
                   onClick={() => openDelegatedEventModal(definition)}
-                  className="min-h-[92px] rounded-3xl bg-caudal-electric px-4 py-5 text-left text-lg font-black text-slate-950 shadow-glow transition active:scale-[0.98]"
+                  disabled={delegatedEventSaving}
+                  className="min-h-[92px] rounded-3xl bg-caudal-electric px-4 py-5 text-left text-lg font-black text-slate-950 shadow-glow transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {definition.label}
                 </button>
@@ -5072,7 +5165,8 @@ function App() {
                   key={definition.key}
                   type="button"
                   onClick={() => openDelegatedEventModal(definition)}
-                  className="min-h-[92px] rounded-3xl bg-red-500 px-4 py-5 text-left text-lg font-black text-white shadow-glow transition active:scale-[0.98]"
+                  disabled={delegatedEventSaving}
+                  className="min-h-[92px] rounded-3xl bg-red-500 px-4 py-5 text-left text-lg font-black text-white shadow-glow transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {definition.label}
                 </button>
@@ -5305,29 +5399,47 @@ function App() {
   };
 
   const getPlayerQuickSummary = (player) => {
-    const quickEvents = (playerProfileData?.quickEvents || [])
+    const scopedReviewedEvents = (playerProfileData?.quickEvents || [])
       .map((event) => ({ ...event, match: playerProfileData?.partidosById?.[event.partidoId] }))
       .filter((event) => event.match)
+      .filter((event) => event.reviewed)
       .filter((event) =>
         playerCompetitionFilter === 'Todos' ||
         event.match.type === playerCompetitionFilter ||
         (playerCompetitionFilter === 'Playoff' && event.match.type === 'Play off')
       )
       .filter((event) => playerVenueFilter === 'Todos' || (playerVenueFilter === 'Local' ? event.match.isHome : !event.match.isHome));
+    const orderedMatchIds = [...new Map(
+      scopedReviewedEvents
+        .slice()
+        .sort((a, b) => new Date(b.match.date || 0) - new Date(a.match.date || 0))
+        .map((event) => [event.partidoId, event.match])
+    ).keys()];
+    const quickScopeLimit = playerQuickScope === 'Últimos 3 partidos' ? 3 : playerQuickScope === 'Últimos 5 partidos' ? 5 : null;
+    const visibleMatchIds = quickScopeLimit ? new Set(orderedMatchIds.slice(0, quickScopeLimit)) : null;
+    const quickEvents = visibleMatchIds
+      ? scopedReviewedEvents.filter((event) => visibleMatchIds.has(event.partidoId))
+      : scopedReviewedEvents;
     const summary = getQuickEventSummary(quickEvents);
     const recent = quickEvents
       .slice()
       .sort((a, b) => new Date(b.match.date || 0) - new Date(a.match.date || 0) || Number(b.minute || 0) - Number(a.minute || 0));
+    const matchCount = new Set(quickEvents.map((event) => event.partidoId)).size;
+    const shotAccuracyValue = Number(String(summary.shotAccuracy).replace('%', '')) || 0;
+    const readings = [
+      summary.recoveries >= 5 ? 'Alto volumen de recuperaciones' : null,
+      summary.losses > summary.recoveries && summary.losses >= 3 ? 'Muchas pérdidas respecto a recuperaciones' : null,
+      summary.shots + summary.shotsOnTarget >= 3 ? 'Participa en finalización' : null,
+      summary.shots >= 3 && shotAccuracyValue >= 50 ? 'Buena precisión de tiro' : null,
+      quickScopeLimit && quickEvents.length <= 2 ? 'Poca participación reciente' : null,
+    ].filter(Boolean);
     return {
       ...summary,
       events: quickEvents,
       recent,
-      alerts: [
-        summary.losses >= 5 ? 'Jugador con muchas pérdidas en el filtro actual' : null,
-        summary.recoveries >= 5 ? 'Jugador con alto volumen de recuperaciones' : null,
-        summary.shots >= 4 && Number(summary.shotAccuracy.replace('%', '')) < 35 ? 'Baja eficacia de tiro a puerta' : null,
-        summary.recoveryLossBalance < -2 ? 'Balance recuperación/pérdida negativo' : null,
-      ].filter(Boolean),
+      matchesWithEvents: matchCount,
+      readings,
+      alerts: readings,
     };
   };
 
@@ -5460,7 +5572,10 @@ function App() {
   };
 
   const getGroupAnalysisData = () => {
-    const scoped = getGroupScopedMatches();
+    const scoped = getGroupScopedMatches().map((match) => ({
+      ...match,
+      quickEvents: groupQuickReviewedOnly ? (match.quickEvents || []).filter((event) => event.reviewed) : (match.quickEvents || []),
+    }));
     const results = scoped.reduce((acc, match) => {
       const score = getMatchScoreData(match);
       if (score.caudalGoals > score.rivalGoals) acc.wins += 1;
@@ -5738,36 +5853,39 @@ function App() {
   const getGroupAutomaticReadings = (groupData) => {
     const quickEvents = groupData.quickEvents || [];
     const quickSummary = groupData.quickSummary || getQuickEventSummary([]);
+    if (!quickEvents.length && groupQuickReviewedOnly) return ['No hay eventos revisados suficientes. Revisa los eventos en POST para activar este análisis.'];
     if (!quickEvents.length) return ['No hay suficientes datos de eventos rápidos para generar lecturas avanzadas.'];
 
     const readings = [];
     const shotAccuracyValue = Number(quickSummary.shotAccuracy.replace('%', '')) || 0;
     const concededDangerValue = Number(quickSummary.concededDanger.replace('%', '')) || 0;
 
+    if (quickSummary.shots > quickSummary.rivalShots) readings.push('Generamos más tiros que el rival.');
     if (quickSummary.shots >= 8 && shotAccuracyValue < 35) {
       readings.push('El equipo genera volumen de tiro, pero necesita mejorar precisión a puerta.');
     } else if (quickSummary.shotsOnTarget >= Math.max(3, quickSummary.shots * 0.45)) {
       readings.push('Buena eficacia ofensiva: una parte alta de los tiros acaba entre palos.');
-    } else if (quickSummary.shots > quickSummary.rivalShots) {
-      readings.push('El equipo está produciendo más tiros que el rival en el filtro actual.');
     }
 
+    if (quickSummary.rivalShotsOnTarget >= Math.max(3, quickSummary.shotsOnTarget)) readings.push('El rival nos está tirando demasiado a puerta.');
     if (quickSummary.rivalShots >= 8 && concededDangerValue >= 40) {
       readings.push('El rival está generando demasiados tiros a puerta: conviene revisar protección de área y presión al poseedor.');
     } else if (quickSummary.rivalShotsOnTarget <= Math.max(1, quickSummary.rivalShots * 0.25)) {
       readings.push('Solidez defensiva correcta: se están reduciendo los tiros claros del rival.');
     }
 
+    if (quickSummary.corners >= 4 || quickSummary.rivalCorners >= 4) {
+      readings.push(quickSummary.corners >= quickSummary.rivalCorners ? 'Mucho balón parado a favor.' : 'Mucho balón parado en contra.');
+    }
     if (quickSummary.corners >= quickSummary.rivalCorners + 3) {
       readings.push('El equipo carga bastante el balón parado ofensivo y fuerza más córners que el rival.');
     } else if (quickSummary.rivalCorners >= quickSummary.corners + 3) {
       readings.push('El rival está acumulando córners: revisar defensa de banda y despejes hacia zonas seguras.');
     }
 
+    if (quickSummary.losses > quickSummary.recoveries) readings.push('Hay más pérdidas que recuperaciones.');
     if (quickSummary.recoveries > quickSummary.losses) {
       readings.push('Buen balance de presión: hay más recuperaciones que pérdidas.');
-    } else if (quickSummary.losses > quickSummary.recoveries) {
-      readings.push('Las pérdidas superan a las recuperaciones: revisar apoyos cercanos y seguridad en salida.');
     }
 
     const scopedWithQuick = (groupData.scoped || []).filter((match) => (match.quickEvents || []).length);
@@ -5808,6 +5926,9 @@ function App() {
     if (topOwnShotRange?.ownShots > 0) readings.push(`El tramo con más tiros propios es ${topOwnShotRange.range}'.`);
     if (topRivalShotRange?.rivalShots > 0) readings.push(`El tramo con más tiros rivales es ${topRivalShotRange.range}': controlar ese momento del partido.`);
     if (topLossRange?.losses >= 2) readings.push(`El tramo con más pérdidas es ${topLossRange.range}': revisar gestión de balón en esa fase.`);
+    const firstHalfRecoveries = quickEvents.filter((event) => event.tipoEvento === 'recuperacion' && Number(event.minute) < 45).length;
+    const secondHalfRecoveries = quickEvents.filter((event) => event.tipoEvento === 'recuperacion' && Number(event.minute) >= 45).length;
+    if (secondHalfRecoveries > firstHalfRecoveries) readings.push('El equipo recupera más en la segunda parte.');
 
     const homeMatches = (groupData.scoped || []).filter((match) => match.isHome && (match.quickEvents || []).length);
     const awayMatches = (groupData.scoped || []).filter((match) => !match.isHome && (match.quickEvents || []).length);
@@ -5873,7 +5994,7 @@ function App() {
 
   useEffect(() => {
     setSelectedTimelineAction(null);
-  }, [selectedPlayerProfileId, playerCompetitionFilter, playerVenueFilter]);
+  }, [selectedPlayerProfileId, playerCompetitionFilter, playerVenueFilter, playerQuickScope]);
 
   useEffect(() => {
     setPlayerReport(null);
@@ -7794,41 +7915,54 @@ function App() {
                   <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Eventos rápidos del delegado</h3>
-                        <p className="mt-2 text-sm text-slate-400">Datos registrados en partido desde móvil y vinculados a este jugador.</p>
+                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Resumen competitivo</h3>
+                        <p className="mt-2 text-sm text-slate-400">Solo eventos revisados en POST y vinculados a este jugador.</p>
                       </div>
-                      {quick.alerts.length ? (
-                        <div className="flex flex-wrap gap-2">
-                          {quick.alerts.map((alert) => (
-                            <span key={alert} className="rounded-2xl bg-amber-300/15 px-3 py-2 text-xs font-bold text-amber-100">{alert}</span>
+                      <div className="flex flex-wrap gap-2">
+                        {['Últimos 3 partidos', 'Últimos 5 partidos', 'Temporada completa'].map((filter) => (
+                          <button key={filter} onClick={() => setPlayerQuickScope(filter)} className={`rounded-2xl px-3 py-2 text-xs font-black uppercase tracking-[0.12em] ${playerQuickScope === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>{filter}</button>
+                        ))}
+                      </div>
+                    </div>
+                    {quick.events.length ? (
+                      <>
+                        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+                          {[
+                            ['Partidos con eventos', quick.matchesWithEvents],
+                            ['Tiros', quick.shots],
+                            ['Tiros a puerta', quick.shotsOnTarget],
+                            ['% tiros a puerta', quick.shotAccuracy],
+                            ['Recuperaciones', quick.recoveries],
+                            ['Pérdidas', quick.losses],
+                            ['Balance rec/pérd', quick.recoveryLossBalance],
+                            ['Faltas', quick.fouls],
+                            ['Córners provocados', quick.corners],
+                          ].map(([label, value]) => (
+                            <div key={label} className="rounded-3xl border border-white/5 bg-white/5 p-4">
+                              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                              <p className="mt-2 text-2xl font-black text-white">{value}</p>
+                            </div>
                           ))}
                         </div>
-                      ) : null}
-                    </div>
-                    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
-                      {[
-                        ['Tiros', quick.shots],
-                        ['A puerta', quick.shotsOnTarget],
-                        ['% puerta', quick.shotAccuracy],
-                        ['Faltas', quick.fouls],
-                        ['Recuperaciones', quick.recoveries],
-                        ['Pérdidas', quick.losses],
-                        ['Balance', quick.recoveryLossBalance],
-                      ].map(([label, value]) => (
-                        <div key={label} className="rounded-3xl border border-white/5 bg-white/5 p-4">
-                          <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{label}</p>
-                          <p className="mt-2 text-2xl font-black text-white">{value}</p>
+                        {quick.readings.length ? (
+                          <div className="mt-5 flex flex-wrap gap-2">
+                            {quick.readings.map((reading) => (
+                              <span key={reading} className="rounded-2xl bg-amber-300/15 px-3 py-2 text-xs font-bold text-amber-100">{reading}</span>
+                            ))}
+                          </div>
+                        ) : null}
+                        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                          {quick.recent.slice(0, 4).map((event) => (
+                            <div key={event.id} className="rounded-2xl bg-white/5 p-4 text-sm">
+                              <p className="font-black text-white">{event.minute}' · {quickEventLabelByType[event.tipoEvento] || event.tipoEvento}</p>
+                              <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">{event.match.opponent} · {matchDisplayDate(event.match.date)}</p>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                    <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                      {quick.recent.slice(0, 4).length ? quick.recent.slice(0, 4).map((event) => (
-                        <div key={event.id} className="rounded-2xl bg-white/5 p-4 text-sm">
-                          <p className="font-black text-white">{event.minute}' · {quickEventLabelByType[event.tipoEvento] || event.tipoEvento}</p>
-                          <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">{event.match.opponent} · {matchDisplayDate(event.match.date)}</p>
-                        </div>
-                      )) : <p className="rounded-2xl bg-white/5 p-4 text-sm italic text-slate-500">Sin eventos rápidos registrados para este jugador.</p>}
-                    </div>
+                      </>
+                    ) : (
+                      <p className="mt-5 rounded-2xl bg-white/5 p-4 text-sm italic text-slate-500">No hay eventos revisados suficientes para este jugador.</p>
+                    )}
                   </section>
 
                   <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
@@ -8630,6 +8764,24 @@ function App() {
                           </button>
                         ))}
                       </div>
+                    </div>
+
+                    <div>
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Eventos rápidos</p>
+                        <span className="hidden h-px flex-1 bg-white/10 sm:block" />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setGroupQuickReviewedOnly((value) => !value)}
+                        className={`rounded-2xl px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] transition ${
+                          groupQuickReviewedOnly
+                            ? 'bg-caudal-electric text-slate-950 shadow-[0_0_26px_rgba(79,140,255,0.28)]'
+                            : 'bg-white/8 text-slate-300 ring-1 ring-white/10 hover:bg-white/15 hover:text-white'
+                        }`}
+                      >
+                        {groupQuickReviewedOnly ? 'Solo eventos revisados' : 'Todos los eventos'}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -9917,6 +10069,7 @@ function App() {
                         Actualizando estadísticas desde Supabase...
                       </div>
                     ) : null}
+                    <StatusMessage status={statsSaveStatus} />
                     <div className="flex flex-wrap gap-2 rounded-3xl border border-white/5 bg-[#091428]/80 p-3 shadow-glow">
                       <button
                         type="button"
@@ -10342,7 +10495,9 @@ function App() {
                                   {(selectedMatch.events || []).length > 0 ? (
                                     [...(selectedMatch.events || [])]
                                       .sort((a, b) => Number(a.videoSeconds || 0) - Number(b.videoSeconds || 0))
-                                      .map((event) => (
+                                      .map((event) => {
+                                      const isConfirmingDelete = pendingPostEventDeleteId === event.id;
+                                      return (
                                       <div key={event.id} className={`rounded-3xl border p-4 transition ${selectedPostEventId === event.id ? 'border-caudal-electric/60 bg-caudal-electric/10' : 'border-white/5 bg-[#0f1e38]/80'}`}>
                                         <div className="grid gap-3 lg:grid-cols-[90px_150px_1fr_auto] lg:items-center">
                                           <label className="space-y-1 text-xs text-slate-500">
@@ -10382,9 +10537,20 @@ function App() {
                                             <button type="button" onClick={() => seekPostVideoToEvent(event)} className={`rounded-xl px-3 py-2 text-xs font-bold ${eventButtonClass(event.type)}`}>
                                               Ir {formatVideoSeconds(event.videoSeconds)}
                                             </button>
-                                            <button type="button" onClick={() => deletePostEvent(event.id)} className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100">
-                                              Eliminar
-                                            </button>
+                                            {isConfirmingDelete ? (
+                                              <>
+                                                <button type="button" onClick={() => deletePostEvent(event.id)} className="rounded-xl bg-red-500 px-3 py-2 text-xs font-bold text-white">
+                                                  Confirmar
+                                                </button>
+                                                <button type="button" onClick={() => setPendingPostEventDeleteId(null)} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-slate-200">
+                                                  Cancelar
+                                                </button>
+                                              </>
+                                            ) : (
+                                              <button type="button" onClick={() => setPendingPostEventDeleteId(event.id)} className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100">
+                                                Eliminar
+                                              </button>
+                                            )}
                                           </div>
                                         </div>
                                         <label className="mt-3 block space-y-1 text-xs text-slate-500">
@@ -10398,7 +10564,8 @@ function App() {
                                           />
                                         </label>
                                       </div>
-                                    ))
+                                      );
+                                    })
                                   ) : (
                                     <div className="rounded-3xl bg-[#0f1e38]/80 p-6 text-sm text-slate-400">No se han marcado clips todavía.</div>
                                   )}
@@ -10529,6 +10696,118 @@ function App() {
                           </div>
                         </div>
                       </aside>
+                    </div>
+
+                    <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Eventos rápidos del partido</h4>
+                          <p className="mt-2 text-sm text-slate-400">Revisa lo apuntado por el delegado antes de que alimente el análisis grupal.</p>
+                        </div>
+                        <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-300">
+                          {(selectedMatch.quickEvents || []).filter((event) => event.reviewed).length}/{(selectedMatch.quickEvents || []).length} revisados
+                        </span>
+                      </div>
+                      <StatusMessage status={quickEventStatus} className="mt-4" />
+                      <div className="mt-5 space-y-3">
+                        {(selectedMatch.quickEvents || []).length ? (
+                          [...(selectedMatch.quickEvents || [])]
+                            .sort((a, b) => Number(a.minute || 0) - Number(b.minute || 0))
+                            .map((event) => {
+                              const definition = delegatedEventDefinitions.find((item) => item.tipoEvento === event.tipoEvento);
+                              const isRival = (definition?.side || event.equipo) === 'rival';
+                              const isSaving = quickEventSavingIds.includes(event.id);
+                              const isConfirmingDelete = pendingQuickEventDeleteId === event.id;
+                              return (
+                                <div key={event.id} className={`rounded-3xl border p-4 ${event.reviewed ? 'border-emerald-400/25 bg-emerald-400/10' : 'border-white/5 bg-[#0f1e38]/80'}`}>
+                                  <div className="grid gap-3 lg:grid-cols-[90px_180px_1fr_auto] lg:items-end">
+                                    <label className="space-y-1 text-xs text-slate-500">
+                                      <span className="uppercase tracking-[0.14em]">Minuto</span>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max="130"
+                                        defaultValue={event.minute || '0'}
+                                        onBlur={(blurEvent) => updateQuickEvent(event.id, { minute: blurEvent.target.value })}
+                                        disabled={isSaving}
+                                        className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white"
+                                      />
+                                    </label>
+                                    <label className="space-y-1 text-xs text-slate-500">
+                                      <span className="uppercase tracking-[0.14em]">Tipo</span>
+                                      <select
+                                        value={event.tipoEvento}
+                                        onChange={(changeEvent) => updateQuickEvent(event.id, { tipoEvento: changeEvent.target.value })}
+                                        disabled={isSaving}
+                                        className="w-full rounded-xl border border-white/10 bg-white px-3 py-2 text-sm font-bold text-slate-950"
+                                      >
+                                        {delegatedEventDefinitions.map((item) => (
+                                          <option key={item.tipoEvento} value={item.tipoEvento}>{item.label}</option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                    <label className="space-y-1 text-xs text-slate-500">
+                                      <span className="uppercase tracking-[0.14em]">Jugador</span>
+                                      <select
+                                        value={event.jugadorId || ''}
+                                        disabled={isRival || isSaving}
+                                        onChange={(changeEvent) => updateQuickEvent(event.id, { jugadorId: changeEvent.target.value })}
+                                        className="w-full rounded-xl border border-white/10 bg-white px-3 py-2 text-sm font-bold text-slate-950 disabled:bg-white/10 disabled:text-slate-500"
+                                      >
+                                        <option value="">{isRival ? 'Evento rival' : 'Sin jugador'}</option>
+                                        {getStatsCalledPlayers().map((player) => (
+                                          <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                    <div className="flex flex-wrap gap-2 lg:justify-end">
+                                      <button
+                                        type="button"
+                                        onClick={() => updateQuickEvent(event.id, { reviewed: !event.reviewed })}
+                                        disabled={isSaving}
+                                        className={`rounded-xl px-3 py-2 text-xs font-black ${event.reviewed ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-slate-200'}`}
+                                      >
+                                        {isSaving ? 'Guardando...' : event.reviewed ? 'Revisado' : 'Marcar revisado'}
+                                      </button>
+                                      {isConfirmingDelete ? (
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={() => deleteQuickEvent(event.id)}
+                                            disabled={isSaving}
+                                            className="rounded-xl bg-red-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                                          >
+                                            Confirmar
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setPendingQuickEventDeleteId(null)}
+                                            className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-slate-200"
+                                          >
+                                            Cancelar
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => setPendingQuickEventDeleteId(event.id)}
+                                          disabled={isSaving}
+                                          className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100 disabled:opacity-60"
+                                        >
+                                          Borrar
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })
+                        ) : (
+                          <div className="rounded-3xl border border-dashed border-white/10 bg-black/20 p-6 text-sm text-slate-400">
+                            No hay eventos rápidos registrados para este partido.
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">

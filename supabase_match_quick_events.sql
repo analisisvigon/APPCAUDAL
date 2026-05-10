@@ -18,8 +18,12 @@ create table if not exists public.match_quick_events (
     )
   ),
   minuto integer not null default 0,
+  reviewed boolean not null default false,
   created_at timestamptz not null default now()
 );
+
+alter table public.match_quick_events
+add column if not exists reviewed boolean not null default false;
 
 create index if not exists match_quick_events_partido_idx on public.match_quick_events(partido_id);
 create index if not exists match_quick_events_jugador_idx on public.match_quick_events(jugador_id);
