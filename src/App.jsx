@@ -467,6 +467,40 @@ const normalizeSupabasePostEvent = (event) => ({
   videoSeconds: Number(event.video_seconds || 0),
 });
 
+const delegatedEventDefinitions = [
+  { key: 'tiro', tipoEvento: 'tiro', label: 'Tiro', side: 'caudal', needsPlayer: true },
+  { key: 'tiro_puerta', tipoEvento: 'tiro_puerta', label: 'Tiro a puerta', side: 'caudal', needsPlayer: true },
+  { key: 'corner', tipoEvento: 'corner', label: 'Córner', side: 'caudal', needsPlayer: true },
+  { key: 'falta', tipoEvento: 'falta', label: 'Falta', side: 'caudal', needsPlayer: true },
+  { key: 'recuperacion', tipoEvento: 'recuperacion', label: 'Recuperación', side: 'caudal', needsPlayer: true },
+  { key: 'perdida', tipoEvento: 'perdida', label: 'Pérdida', side: 'caudal', needsPlayer: true },
+  { key: 'tiro_rival', tipoEvento: 'tiro_rival', label: 'Tiro rival', side: 'rival', needsPlayer: false },
+  { key: 'tiro_puerta_rival', tipoEvento: 'tiro_puerta_rival', label: 'Tiro a puerta rival', side: 'rival', needsPlayer: false },
+  { key: 'corner_rival', tipoEvento: 'corner_rival', label: 'Córner rival', side: 'rival', needsPlayer: false },
+  { key: 'falta_rival', tipoEvento: 'falta_rival', label: 'Falta rival', side: 'rival', needsPlayer: false },
+];
+
+const delegatedCounterPairs = [
+  { label: 'Tiros', caudal: 'tiro', rival: 'tiro_rival' },
+  { label: 'Tiros puerta', caudal: 'tiro_puerta', rival: 'tiro_puerta_rival' },
+  { label: 'Córners', caudal: 'corner', rival: 'corner_rival' },
+  { label: 'Faltas', caudal: 'falta', rival: 'falta_rival' },
+  { label: 'Recuperaciones', caudal: 'recuperacion', rival: null },
+  { label: 'Pérdidas', caudal: 'perdida', rival: null },
+];
+
+const quickEventLabelByType = Object.fromEntries(delegatedEventDefinitions.map((definition) => [definition.tipoEvento, definition.label]));
+
+const normalizeSupabaseQuickEvent = (event) => ({
+  id: event.id,
+  partidoId: event.partido_id,
+  jugadorId: event.jugador_id || null,
+  equipo: event.equipo || 'caudal',
+  tipoEvento: event.tipo_evento || '',
+  minute: String(event.minuto ?? ''),
+  createdAt: event.created_at || '',
+});
+
 const normalizeSupabaseRivalPlayer = (player) => ({
   id: player.id ?? player.legacy_id ?? player.name,
   jugadorRivalId: player.jugador_rival_id ?? player.id ?? null,
@@ -2050,6 +2084,11 @@ function App() {
   const [preError, setPreError] = useState('');
   const [statsRefreshing, setStatsRefreshing] = useState(false);
   const [statsError, setStatsError] = useState('');
+  const [statsViewMode, setStatsViewMode] = useState('completa');
+  const [delegatedMinute, setDelegatedMinute] = useState('0');
+  const [delegatedEventDraft, setDelegatedEventDraft] = useState(null);
+  const [delegatedEventSaving, setDelegatedEventSaving] = useState(false);
+  const [delegatedEventFeedback, setDelegatedEventFeedback] = useState('');
   const [postLoading, setPostLoading] = useState(false);
   const [postError, setPostError] = useState('');
   const [editingId, setEditingId] = useState(null);
@@ -2516,6 +2555,21 @@ function App() {
       throw failed.error;
     }
 
+    let quickEvents = [];
+    const quickEventsResponse = await supabase
+      .from("match_quick_events")
+      .select("*")
+      .eq("partido_id", partidoId)
+      .order("minuto", { ascending: true });
+    if (quickEventsResponse.error) {
+      console.warn('No se pudieron cargar eventos rápidos; se continúa sin ellos:', {
+        partidoId,
+        error: quickEventsResponse.error,
+      });
+    } else {
+      quickEvents = (quickEventsResponse.data || []).map(normalizeSupabaseQuickEvent);
+    }
+
     const statsLineup = Array.from({ length: 11 }, () => '');
     (slotsResponse.data || []).forEach((slot) => {
       if (Number.isInteger(slot.slot) && slot.slot >= 0 && slot.slot < 11) statsLineup[slot.slot] = slot.player_name || '';
@@ -2541,6 +2595,7 @@ function App() {
       statsCalledPlayers: (convocadosResponse.data || []).map((row) => row.player_name),
       statsPlayerData,
       statsGoalEvents: (goalsResponse.data || []).map(normalizeSupabaseGoalEvent),
+      quickEvents,
       statsLineup,
     };
 
@@ -2720,6 +2775,14 @@ function App() {
       const failed = [partidosResponse, statsResponse, goalsResponse].find((response) => response.error);
       if (failed) throw failed.error;
 
+      let quickEventsRows = [];
+      const quickEventsResponse = await supabase.from("match_quick_events").select("*");
+      if (quickEventsResponse.error) {
+        console.warn('No se pudieron cargar eventos rápidos para Análisis Grupal; se continúa sin ellos:', quickEventsResponse.error);
+      } else {
+        quickEventsRows = quickEventsResponse.data || [];
+      }
+
       const statsByMatch = (statsResponse.data || []).reduce((acc, row) => {
         const current = acc[row.partido_id] || {};
         current[row.player_name] = {
@@ -2741,9 +2804,15 @@ function App() {
         return acc;
       }, {});
 
+      const quickEventsByMatch = quickEventsRows.reduce((acc, event) => {
+        acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseQuickEvent(event)];
+        return acc;
+      }, {});
+
       setMatches((partidosResponse.data || []).map((match) => ({
         ...normalizeSupabasePartido(match),
         statsGoalEvents: eventsByMatch[match.id] || [],
+        quickEvents: quickEventsByMatch[match.id] || [],
         statsPlayerData: statsByMatch[match.id] || {},
       })));
     } catch (analysisError) {
@@ -2767,14 +2836,25 @@ function App() {
         statsRequests.push(supabase.from("partido_estadisticas_jugador").select("*").eq("jugador_id", player.id));
       }
 
-      const [scoredResponse, assistedResponse, ...statsResponses] = await Promise.all([
+      const quickEventRequest = isUuid(player.id)
+        ? supabase.from("match_quick_events").select("*").eq("jugador_id", player.id)
+        : Promise.resolve({ data: [], error: null });
+
+      const [scoredResponse, assistedResponse, quickEventsResponse, ...statsResponses] = await Promise.all([
         supabase.from("partido_eventos_gol").select("*").eq("scorer", player.name),
         supabase.from("partido_eventos_gol").select("*").eq("assistant", player.name),
+        quickEventRequest,
         ...statsRequests,
       ]);
 
       const failed = [scoredResponse, assistedResponse, ...statsResponses].find((response) => response.error);
       if (failed) throw failed.error;
+      if (quickEventsResponse.error) {
+        console.warn('No se pudieron cargar eventos rápidos de jugador; se continúa sin ellos:', {
+          playerId: player.id,
+          error: quickEventsResponse.error,
+        });
+      }
 
       const statsByKey = new Map();
       statsResponses.flatMap((response) => response.data || []).forEach((row) => {
@@ -2787,10 +2867,12 @@ function App() {
         goalEventsById.set(event.id, normalizeSupabaseGoalEvent(event));
       });
       const goalEvents = Array.from(goalEventsById.values());
+      const quickEvents = quickEventsResponse.error ? [] : (quickEventsResponse.data || []).map(normalizeSupabaseQuickEvent);
 
       const partidoIds = Array.from(new Set([
         ...statsRows.map((row) => row.partido_id),
         ...[...(scoredResponse.data || []), ...(assistedResponse.data || [])].map((event) => event.partido_id),
+        ...quickEvents.map((event) => event.partidoId),
       ].filter(Boolean)));
 
       let partidosById = {};
@@ -2800,7 +2882,7 @@ function App() {
         partidosById = Object.fromEntries((partidoRows || []).map((match) => [match.id, normalizeSupabasePartido(match)]));
       }
 
-      const nextProfileData = { statsRows, goalEvents, partidosById };
+      const nextProfileData = { statsRows, goalEvents, quickEvents, partidosById };
       setPlayerProfileData(nextProfileData);
       return nextProfileData;
     } catch (profileError) {
@@ -4760,6 +4842,62 @@ function App() {
     setDraggedPlayer(null);
   };
 
+  const getDelegatedEvents = () => selectedMatch?.quickEvents || [];
+
+  const getDelegatedCount = (tipoEvento) => {
+    if (!tipoEvento) return 0;
+    return getDelegatedEvents().filter((event) => event.tipoEvento === tipoEvento).length;
+  };
+
+  const openDelegatedEventModal = (definition) => {
+    setStatsError('');
+    setDelegatedEventFeedback('');
+    setDelegatedEventDraft({
+      ...definition,
+      minute: delegatedMinute || '0',
+      jugadorId: '',
+    });
+  };
+
+  const updateDelegatedMinute = (value) => {
+    const nextMinute = Math.max(0, Math.min(130, Number(value) || 0));
+    setDelegatedMinute(String(nextMinute));
+    setDelegatedEventDraft((current) => (current ? { ...current, minute: String(nextMinute) } : current));
+  };
+
+  const saveDelegatedEvent = async () => {
+    if (!selectedMatch || !delegatedEventDraft) return;
+    setDelegatedEventSaving(true);
+    setStatsError('');
+    setDelegatedEventFeedback('');
+    try {
+      const minute = Math.max(0, Math.min(130, Number(delegatedEventDraft.minute) || 0));
+      const selectedPlayer = players.find((player) => player.id === delegatedEventDraft.jugadorId);
+      const payload = {
+        partido_id: selectedMatch.id,
+        jugador_id: delegatedEventDraft.side === 'caudal' && isUuid(delegatedEventDraft.jugadorId) ? delegatedEventDraft.jugadorId : null,
+        equipo: delegatedEventDraft.side,
+        tipo_evento: delegatedEventDraft.tipoEvento,
+        minuto: minute,
+      };
+      const { error } = await supabase.from("match_quick_events").insert(payload);
+      if (error) throw error;
+      setDelegatedMinute(String(minute));
+      setDelegatedEventDraft(null);
+      setDelegatedEventFeedback(`${delegatedEventDraft.label} guardado en el ${minute}'${selectedPlayer ? ` · ${selectedPlayer.name}` : ''}`);
+      await refreshStatsFromSupabase(selectedMatch.id, 'evento de Modo Delegado');
+    } catch (error) {
+      console.error('Error guardando evento de Modo Delegado en Supabase:', {
+        matchId: selectedMatch?.id,
+        draft: delegatedEventDraft,
+        error,
+      });
+      setStatsError(error.message || 'No se pudo guardar el evento del Modo Delegado.');
+    } finally {
+      setDelegatedEventSaving(false);
+    }
+  };
+
   const openGoalAnalysisModal = () => {
     setGoalAnalysisDraft({
       ...defaultGoalAnalysisDraft,
@@ -4854,6 +4992,160 @@ function App() {
       </div>
     </div>
   );
+
+  const renderDelegatedStatsMode = () => {
+    const caudalEvents = delegatedEventDefinitions.filter((definition) => definition.side === 'caudal');
+    const rivalEvents = delegatedEventDefinitions.filter((definition) => definition.side === 'rival');
+    const calledPlayers = getStatsCalledPlayers();
+    const recentEvents = getDelegatedEvents()
+      .slice()
+      .sort((a, b) => Number(b.minute || 0) - Number(a.minute || 0))
+      .slice(0, 8);
+    const playersById = new Map(players.map((player) => [player.id, player]));
+
+    return (
+      <div className="space-y-4">
+        <div className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-6">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-caudal-electric">Modo Delegado</p>
+              <h3 className="mt-1 text-xl font-black text-white">Registro rápido de partido</h3>
+            </div>
+            <div className="flex items-center gap-2 rounded-2xl bg-black/25 p-2">
+              <button type="button" onClick={() => updateDelegatedMinute(Number(delegatedMinute || 0) - 1)} className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-xl font-black text-white">-</button>
+              <label className="flex flex-col items-center">
+                <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Min</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="130"
+                  value={delegatedMinute}
+                  onChange={(event) => updateDelegatedMinute(event.target.value)}
+                  className="w-16 rounded-xl bg-white px-2 py-2 text-center text-lg font-black text-slate-950"
+                />
+              </label>
+              <button type="button" onClick={() => updateDelegatedMinute(Number(delegatedMinute || 0) + 1)} className="flex h-11 w-11 items-center justify-center rounded-xl bg-caudal-electric text-xl font-black text-slate-950">+</button>
+            </div>
+          </div>
+
+          {delegatedEventFeedback ? (
+            <div className="mt-4 rounded-2xl bg-emerald-400/10 px-4 py-3 text-sm font-bold text-emerald-100">
+              {delegatedEventFeedback}
+            </div>
+          ) : null}
+
+          <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            {delegatedCounterPairs.map((counter) => (
+              <div key={counter.label} className="rounded-2xl bg-white/5 p-3 text-center">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{counter.label}</p>
+                <p className="mt-1 text-2xl font-black text-white">
+                  {getDelegatedCount(counter.caudal)}
+                  {counter.rival ? <span className="text-slate-500"> - {getDelegatedCount(counter.rival)}</span> : null}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-6">
+            <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">Nuestro equipo</h4>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              {caudalEvents.map((definition) => (
+                <button
+                  key={definition.key}
+                  type="button"
+                  onClick={() => openDelegatedEventModal(definition)}
+                  className="min-h-[92px] rounded-3xl bg-caudal-electric px-4 py-5 text-left text-lg font-black text-slate-950 shadow-glow transition active:scale-[0.98]"
+                >
+                  {definition.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-6">
+            <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">Rival</h4>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              {rivalEvents.map((definition) => (
+                <button
+                  key={definition.key}
+                  type="button"
+                  onClick={() => openDelegatedEventModal(definition)}
+                  className="min-h-[92px] rounded-3xl bg-red-500 px-4 py-5 text-left text-lg font-black text-white shadow-glow transition active:scale-[0.98]"
+                >
+                  {definition.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-6">
+          <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">Últimos eventos</h4>
+          <div className="mt-4 space-y-2">
+            {recentEvents.length ? recentEvents.map((event) => (
+              <div key={event.id} className="flex items-center justify-between gap-3 rounded-2xl bg-white/5 px-4 py-3 text-sm">
+                <span className="font-black text-white">{event.minute}' · {quickEventLabelByType[event.tipoEvento] || event.tipoEvento}</span>
+                <span className="truncate text-right text-slate-400">{playersById.get(event.jugadorId)?.name || selectedMatch?.opponent || 'Rival'}</span>
+              </div>
+            )) : (
+              <p className="rounded-2xl bg-white/5 px-4 py-4 text-sm text-slate-400">Todavía no hay eventos rápidos registrados.</p>
+            )}
+          </div>
+        </div>
+
+        {delegatedEventDraft ? (
+          <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/70 px-4 py-4 sm:items-center">
+            <div className="w-full max-w-md rounded-3xl border border-white/10 bg-caudal-950 p-5 shadow-glow">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Guardar evento</p>
+                  <h3 className="mt-1 text-2xl font-black text-white">{delegatedEventDraft.label}</h3>
+                </div>
+                <button type="button" onClick={() => setDelegatedEventDraft(null)} className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-bold text-white">Cerrar</button>
+              </div>
+              <label className="mt-5 block space-y-2">
+                <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Minuto</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="130"
+                  value={delegatedEventDraft.minute}
+                  onChange={(event) => setDelegatedEventDraft((current) => ({ ...current, minute: event.target.value }))}
+                  className="w-full rounded-2xl bg-white px-4 py-4 text-xl font-black text-slate-950"
+                />
+              </label>
+              {delegatedEventDraft.needsPlayer ? (
+                <label className="mt-4 block space-y-2">
+                  <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Jugador</span>
+                  <select
+                    value={delegatedEventDraft.jugadorId}
+                    onChange={(event) => setDelegatedEventDraft((current) => ({ ...current, jugadorId: event.target.value }))}
+                    className="w-full rounded-2xl bg-white px-4 py-4 text-base font-black text-slate-950"
+                  >
+                    <option value="">Sin jugador</option>
+                    {calledPlayers.map((player) => (
+                      <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
+                    ))}
+                  </select>
+                  {!calledPlayers.length ? <p className="text-xs text-amber-100">Añade convocados para poder asociar jugadores rápido.</p> : null}
+                </label>
+              ) : null}
+              <button
+                type="button"
+                onClick={saveDelegatedEvent}
+                disabled={delegatedEventSaving}
+                className="mt-5 flex min-h-[58px] w-full items-center justify-center rounded-2xl bg-caudal-electric px-5 py-4 text-base font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {delegatedEventSaving ? 'Guardando...' : 'Guardar evento'}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  };
 
   const renderStatsPitch = () => {
     if (!selectedMatch) return null;
@@ -4968,6 +5260,77 @@ function App() {
       .filter((row) => playerVenueFilter === 'Todos' || (playerVenueFilter === 'Local' ? row.match.isHome : !row.match.isHome));
   };
 
+  const getQuickEventCount = (events, tipoEvento) =>
+    events.filter((event) => event.tipoEvento === tipoEvento).length;
+
+  const getQuickEventRate = (part, total) =>
+    total ? `${Math.round((part / total) * 100)}%` : '0%';
+
+  const getQuickEventSummary = (events = []) => {
+    const shots = getQuickEventCount(events, 'tiro');
+    const shotsOnTarget = getQuickEventCount(events, 'tiro_puerta');
+    const rivalShots = getQuickEventCount(events, 'tiro_rival');
+    const rivalShotsOnTarget = getQuickEventCount(events, 'tiro_puerta_rival');
+    const recoveries = getQuickEventCount(events, 'recuperacion');
+    const losses = getQuickEventCount(events, 'perdida');
+    return {
+      shots,
+      shotsOnTarget,
+      rivalShots,
+      rivalShotsOnTarget,
+      corners: getQuickEventCount(events, 'corner'),
+      rivalCorners: getQuickEventCount(events, 'corner_rival'),
+      fouls: getQuickEventCount(events, 'falta'),
+      rivalFouls: getQuickEventCount(events, 'falta_rival'),
+      recoveries,
+      losses,
+      recoveryLossBalance: recoveries - losses,
+      shotAccuracy: getQuickEventRate(shotsOnTarget, shots),
+      concededDanger: getQuickEventRate(rivalShotsOnTarget, rivalShots),
+    };
+  };
+
+  const getQuickEventsByMinuteRange = (events) => {
+    const ranges = ['0-15', '15-30', '30-45', '45-60', '60-75', '75-90'];
+    return ranges.map((range) => {
+      const [from, to] = range.split('-').map(Number);
+      const isLastRange = to === 90;
+      const scoped = events.filter((event) => Number(event.minute) >= from && (isLastRange ? Number(event.minute) <= to : Number(event.minute) < to));
+      return {
+        range,
+        caudal: scoped.filter((event) => event.equipo === 'caudal').length,
+        rival: scoped.filter((event) => event.equipo === 'rival').length,
+      };
+    });
+  };
+
+  const getPlayerQuickSummary = (player) => {
+    const quickEvents = (playerProfileData?.quickEvents || [])
+      .map((event) => ({ ...event, match: playerProfileData?.partidosById?.[event.partidoId] }))
+      .filter((event) => event.match)
+      .filter((event) =>
+        playerCompetitionFilter === 'Todos' ||
+        event.match.type === playerCompetitionFilter ||
+        (playerCompetitionFilter === 'Playoff' && event.match.type === 'Play off')
+      )
+      .filter((event) => playerVenueFilter === 'Todos' || (playerVenueFilter === 'Local' ? event.match.isHome : !event.match.isHome));
+    const summary = getQuickEventSummary(quickEvents);
+    const recent = quickEvents
+      .slice()
+      .sort((a, b) => new Date(b.match.date || 0) - new Date(a.match.date || 0) || Number(b.minute || 0) - Number(a.minute || 0));
+    return {
+      ...summary,
+      events: quickEvents,
+      recent,
+      alerts: [
+        summary.losses >= 5 ? 'Jugador con muchas pérdidas en el filtro actual' : null,
+        summary.recoveries >= 5 ? 'Jugador con alto volumen de recuperaciones' : null,
+        summary.shots >= 4 && Number(summary.shotAccuracy.replace('%', '')) < 35 ? 'Baja eficacia de tiro a puerta' : null,
+        summary.recoveryLossBalance < -2 ? 'Balance recuperación/pérdida negativo' : null,
+      ].filter(Boolean),
+    };
+  };
+
   const getPlayerAggregate = (player) => {
     const rows = getPlayerMatchRows(player);
     const played = rows.filter((row) => row.minutes > 0 || row.role === 'Titular').length;
@@ -4980,6 +5343,7 @@ function App() {
     const red = rows.filter((row) => row.red).length;
     const injured = rows.filter((row) => row.injured).length;
     const possibleMinutes = rows.length * 90;
+    const quick = getPlayerQuickSummary(player);
     return {
       rows,
       played,
@@ -4995,6 +5359,7 @@ function App() {
       goalsPer90: minutes ? (goals / minutes * 90).toFixed(2) : '0.00',
       assistsPer90: minutes ? (assists / minutes * 90).toFixed(2) : '0.00',
       directGoalParticipation: goals + assists,
+      quick,
     };
   };
 
@@ -5048,10 +5413,10 @@ function App() {
 
   const generatePlayerReport = (player, aggregate) => {
     setPlayerReport({
-      general: `${player.name} acumula ${aggregate.played} partidos, ${aggregate.minutes}' y ${aggregate.directGoalParticipation} participaciones directas de gol en el filtro actual.`,
-      strengths: aggregate.goals || aggregate.assists ? 'Aporta producción ofensiva medible: revisar sus acciones de gol/asistencia para repetir zonas y sociedades.' : 'Sin producción ofensiva registrada: valorar influencia sin balón, continuidad y ocupación de zonas.',
-      improve: aggregate.yellow || aggregate.red ? 'Controlar acciones disciplinarias y momentos de riesgo competitivo.' : 'Aumentar presencia en acciones decisivas si su rol lo permite.',
-      trend: aggregate.rows.slice(-3).length ? `Últimos ${aggregate.rows.slice(-3).length} partidos registrados: ${aggregate.rows.slice(-3).reduce((sum, row) => sum + row.minutes, 0)} minutos.` : 'Sin tendencia reciente registrada.',
+      general: `${player.name} acumula ${aggregate.played} partidos, ${aggregate.minutes}' y ${aggregate.directGoalParticipation} participaciones directas de gol en el filtro actual. En eventos rápidos: ${aggregate.quick.shots} tiros, ${aggregate.quick.recoveries} recuperaciones y ${aggregate.quick.losses} pérdidas.`,
+      strengths: aggregate.quick.recoveries > aggregate.quick.losses ? 'Buen balance presión/pérdida: recupera más de lo que pierde en los eventos registrados.' : aggregate.goals || aggregate.assists ? 'Aporta producción ofensiva medible: revisar sus acciones de gol/asistencia para repetir zonas y sociedades.' : 'Sin producción ofensiva registrada: valorar influencia sin balón, continuidad y ocupación de zonas.',
+      improve: aggregate.quick.losses >= 5 ? 'Acumula pérdidas: revisar zonas, apoyos y perfil corporal en últimos partidos.' : aggregate.yellow || aggregate.red ? 'Controlar acciones disciplinarias y momentos de riesgo competitivo.' : 'Aumentar presencia en acciones decisivas si su rol lo permite.',
+      trend: aggregate.quick.recent.slice(0, 3).length ? `Últimos eventos rápidos: ${aggregate.quick.recent.slice(0, 3).map((event) => `${quickEventLabelByType[event.tipoEvento] || event.tipoEvento} vs ${event.match.opponent}`).join(', ')}.` : aggregate.rows.slice(-3).length ? `Últimos ${aggregate.rows.slice(-3).length} partidos registrados: ${aggregate.rows.slice(-3).reduce((sum, row) => sum + row.minutes, 0)} minutos.` : 'Sin tendencia reciente registrada.',
     });
   };
 
@@ -5107,12 +5472,15 @@ function App() {
       return acc;
     }, { wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, cleanSheets: 0 });
     const allGoalEvents = scoped.flatMap((match) => (match.statsGoalEvents || []).map((event) => ({ ...event, match })));
+    const quickEvents = scoped.flatMap((match) => (match.quickEvents || []).map((event) => ({ ...event, match })));
     const goalForEvents = allGoalEvents.filter((event) => event.type === 'Gol a favor');
     const goalAgainstEvents = allGoalEvents.filter((event) => event.type === 'Gol en contra');
     const points = results.wins * 3 + results.draws;
     return {
       scoped,
       allGoalEvents,
+      quickEvents,
+      quickSummary: getQuickEventSummary(quickEvents),
       goalForEvents,
       goalAgainstEvents,
       played: scoped.length,
@@ -5305,12 +5673,14 @@ function App() {
     scopedMatches.slice(-5).reverse().map((match) => {
       const score = getMatchScoreData(match);
       const cards = Object.values(match.statsPlayerData || {}).reduce((sum, row) => sum + (Number(row.yellowCount ?? (row.yellow ? 1 : 0)) || 0) + (row.red ? 1 : 0), 0);
+      const quick = getQuickEventSummary(match.quickEvents || []);
       return {
         match,
         goalsFor: score.caudalGoals,
         goalsAgainst: score.rivalGoals,
         cleanSheet: score.rivalGoals === 0,
         cards,
+        quick,
       };
     });
 
@@ -5345,6 +5715,7 @@ function App() {
   const getGroupAlerts = (groupData, rankings, localSummary, awaySummary) => {
     if (groupData.played < 3) return ['sin datos suficientes'];
     const alerts = [];
+    const quickSummary = groupData.quickSummary || getQuickEventSummary([]);
     const secondHalfAgainst = groupData.goalAgainstEvents.filter((event) => Number(event.minute) >= 45).length;
     const firstHalfAgainst = groupData.goalAgainstEvents.length - secondHalfAgainst;
     const abpFor = groupData.goalForEvents.filter((event) => event.phase === 'ABP').length;
@@ -5356,8 +5727,102 @@ function App() {
     if (awaySummary.played >= 2 && Number(awaySummary.pointsPerGame) < Number(localSummary.pointsPerGame)) alerts.push('Sufrimos más como visitantes');
     if (topMinutes && topMinutes.minutePct >= 80) alerts.push(`Alta carga de minutos en ${topMinutes.player.name}`);
     if (cardsLast >= 8) alerts.push('Muchas tarjetas en últimos partidos');
+    if (quickSummary.rivalShots >= 10 && Number(quickSummary.concededDanger.replace('%', '')) >= 45) alerts.push('Equipo concede muchos tiros a puerta');
+    if (quickSummary.shots >= 10 && Number(quickSummary.shotAccuracy.replace('%', '')) < 35) alerts.push('Baja eficacia de tiro a puerta');
+    if (quickSummary.losses > quickSummary.recoveries) alerts.push('Aumentan las pérdidas: revisar salida y apoyos cercanos');
+    if (quickSummary.recoveries >= quickSummary.losses + 5) alerts.push('Mejora la presión: más recuperaciones que pérdidas');
 
     return alerts.length ? alerts : ['sin datos suficientes'];
+  };
+
+  const getGroupAutomaticReadings = (groupData) => {
+    const quickEvents = groupData.quickEvents || [];
+    const quickSummary = groupData.quickSummary || getQuickEventSummary([]);
+    if (!quickEvents.length) return ['No hay suficientes datos de eventos rápidos para generar lecturas avanzadas.'];
+
+    const readings = [];
+    const shotAccuracyValue = Number(quickSummary.shotAccuracy.replace('%', '')) || 0;
+    const concededDangerValue = Number(quickSummary.concededDanger.replace('%', '')) || 0;
+
+    if (quickSummary.shots >= 8 && shotAccuracyValue < 35) {
+      readings.push('El equipo genera volumen de tiro, pero necesita mejorar precisión a puerta.');
+    } else if (quickSummary.shotsOnTarget >= Math.max(3, quickSummary.shots * 0.45)) {
+      readings.push('Buena eficacia ofensiva: una parte alta de los tiros acaba entre palos.');
+    } else if (quickSummary.shots > quickSummary.rivalShots) {
+      readings.push('El equipo está produciendo más tiros que el rival en el filtro actual.');
+    }
+
+    if (quickSummary.rivalShots >= 8 && concededDangerValue >= 40) {
+      readings.push('El rival está generando demasiados tiros a puerta: conviene revisar protección de área y presión al poseedor.');
+    } else if (quickSummary.rivalShotsOnTarget <= Math.max(1, quickSummary.rivalShots * 0.25)) {
+      readings.push('Solidez defensiva correcta: se están reduciendo los tiros claros del rival.');
+    }
+
+    if (quickSummary.corners >= quickSummary.rivalCorners + 3) {
+      readings.push('El equipo carga bastante el balón parado ofensivo y fuerza más córners que el rival.');
+    } else if (quickSummary.rivalCorners >= quickSummary.corners + 3) {
+      readings.push('El rival está acumulando córners: revisar defensa de banda y despejes hacia zonas seguras.');
+    }
+
+    if (quickSummary.recoveries > quickSummary.losses) {
+      readings.push('Buen balance de presión: hay más recuperaciones que pérdidas.');
+    } else if (quickSummary.losses > quickSummary.recoveries) {
+      readings.push('Las pérdidas superan a las recuperaciones: revisar apoyos cercanos y seguridad en salida.');
+    }
+
+    const scopedWithQuick = (groupData.scoped || []).filter((match) => (match.quickEvents || []).length);
+    if (scopedWithQuick.length >= 6) {
+      const previous = scopedWithQuick.slice(0, -3);
+      const recent = scopedWithQuick.slice(-3);
+      const previousSummary = getQuickEventSummary(previous.flatMap((match) => match.quickEvents || []));
+      const recentSummary = getQuickEventSummary(recent.flatMap((match) => match.quickEvents || []));
+      const previousPerMatch = previous.length ? previousSummary.shots / previous.length : 0;
+      const recentPerMatch = recent.length ? recentSummary.shots / recent.length : 0;
+      const previousLosses = previous.length ? previousSummary.losses / previous.length : 0;
+      const recentLosses = recent.length ? recentSummary.losses / recent.length : 0;
+      const previousRecoveries = previous.length ? previousSummary.recoveries / previous.length : 0;
+      const recentRecoveries = recent.length ? recentSummary.recoveries / recent.length : 0;
+
+      if (recentPerMatch >= previousPerMatch + 2) readings.push('Tendencia positiva: en los últimos 3 partidos aumenta el volumen de tiro.');
+      if (recentLosses >= previousLosses + 2) readings.push('Tendencia a vigilar: aumentan las pérdidas en los últimos 3 partidos.');
+      if (recentRecoveries >= previousRecoveries + 2) readings.push('Mejora la presión reciente: suben las recuperaciones en los últimos 3 partidos.');
+    }
+
+    const ranges = getQuickEventsByMinuteRange(quickEvents);
+    const ownShotTypes = new Set(['tiro', 'tiro_puerta']);
+    const rivalShotTypes = new Set(['tiro_rival', 'tiro_puerta_rival']);
+    const rangeDetails = ranges.map((range) => {
+      const [from, to] = range.range.split('-').map(Number);
+      const isLastRange = to === 90;
+      const scoped = quickEvents.filter((event) => Number(event.minute) >= from && (isLastRange ? Number(event.minute) <= to : Number(event.minute) < to));
+      return {
+        range: range.range,
+        ownShots: scoped.filter((event) => ownShotTypes.has(event.tipoEvento)).length,
+        rivalShots: scoped.filter((event) => rivalShotTypes.has(event.tipoEvento)).length,
+        losses: scoped.filter((event) => event.tipoEvento === 'perdida').length,
+      };
+    });
+    const topOwnShotRange = rangeDetails.slice().sort((a, b) => b.ownShots - a.ownShots)[0];
+    const topRivalShotRange = rangeDetails.slice().sort((a, b) => b.rivalShots - a.rivalShots)[0];
+    const topLossRange = rangeDetails.slice().sort((a, b) => b.losses - a.losses)[0];
+    if (topOwnShotRange?.ownShots > 0) readings.push(`El tramo con más tiros propios es ${topOwnShotRange.range}'.`);
+    if (topRivalShotRange?.rivalShots > 0) readings.push(`El tramo con más tiros rivales es ${topRivalShotRange.range}': controlar ese momento del partido.`);
+    if (topLossRange?.losses >= 2) readings.push(`El tramo con más pérdidas es ${topLossRange.range}': revisar gestión de balón en esa fase.`);
+
+    const homeMatches = (groupData.scoped || []).filter((match) => match.isHome && (match.quickEvents || []).length);
+    const awayMatches = (groupData.scoped || []).filter((match) => !match.isHome && (match.quickEvents || []).length);
+    if (homeMatches.length && awayMatches.length) {
+      const homeSummary = getQuickEventSummary(homeMatches.flatMap((match) => match.quickEvents || []));
+      const awaySummary = getQuickEventSummary(awayMatches.flatMap((match) => match.quickEvents || []));
+      const homeShots = homeSummary.shots / homeMatches.length;
+      const awayShots = awaySummary.shots / awayMatches.length;
+      const homeRivalShots = homeSummary.rivalShots / homeMatches.length;
+      const awayRivalShots = awaySummary.rivalShots / awayMatches.length;
+      if (homeShots >= awayShots + 2) readings.push('Como local se genera más volumen de tiro que fuera de casa.');
+      if (awayRivalShots >= homeRivalShots + 2) readings.push('Como visitante se conceden más tiros: ajustar bloque y vigilancia tras pérdida.');
+    }
+
+    return readings.slice(0, 8);
   };
 
   const renderGroupMiniPitch = ({ counts, title }) => (
@@ -7246,6 +7711,7 @@ function App() {
                 );
               }
               const aggregate = getPlayerAggregate(selectedPlayerProfile);
+              const quick = aggregate.quick;
               const visibleMatchIds = new Set(aggregate.rows.map((row) => row.match.id));
               const allGoalActions = (playerProfileData?.goalEvents || [])
                 .filter((event) => event.scorer === selectedPlayerProfile.name && visibleMatchIds.has(event.partidoId))
@@ -7263,6 +7729,7 @@ function App() {
               const timelineActions = [
                 ...allGoalActions.map((event) => ({ minute: event.minute, label: '⚽', type: 'Gol', match: event.match, videoUrl: event.videoUrl, actionKey: `goal-${event.match.id}-${event.id}`, title: `Gol · ${getMatchScoreLabel(event.match)}` })),
                 ...allAssistActions.map((event) => ({ minute: event.minute, label: '👟', type: 'Asistencia', match: event.match, videoUrl: event.videoUrl, actionKey: `assist-${event.match.id}-${event.id}`, title: `Asistencia · ${getMatchScoreLabel(event.match)}` })),
+                ...quick.events.map((event) => ({ minute: event.minute, label: quickEventLabelByType[event.tipoEvento]?.slice(0, 1) || 'E', type: quickEventLabelByType[event.tipoEvento] || event.tipoEvento, match: event.match, actionKey: `quick-${event.match.id}-${event.id}`, title: `${quickEventLabelByType[event.tipoEvento] || event.tipoEvento} · ${getMatchScoreLabel(event.match)}` })),
                 ...aggregate.rows.flatMap((row) => row.cardActions.map((event, cardIndex) => ({ minute: event.minute, label: event.type.includes('roja') ? 'R' : 'A', type: event.type, match: row.match, actionKey: `card-${row.match.id}-${cardIndex}`, title: `${event.type} · ${getMatchScoreLabel(row.match)}` }))),
               ].filter((event) => event.minute !== '');
               const assistantsToPlayer = countValues(allGoalActions.map((event) => event.assistant));
@@ -7321,6 +7788,46 @@ function App() {
                         <button key={filter} onClick={() => setPlayerVenueFilter(filter)} className={`rounded-2xl px-4 py-2 text-xs font-black uppercase tracking-[0.14em] ${playerVenueFilter === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>{filter}</button>
                       ))}
                       <button onClick={() => generatePlayerReport(selectedPlayerProfile, aggregate)} className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-white">Generar reporte</button>
+                    </div>
+                  </section>
+
+                  <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Eventos rápidos del delegado</h3>
+                        <p className="mt-2 text-sm text-slate-400">Datos registrados en partido desde móvil y vinculados a este jugador.</p>
+                      </div>
+                      {quick.alerts.length ? (
+                        <div className="flex flex-wrap gap-2">
+                          {quick.alerts.map((alert) => (
+                            <span key={alert} className="rounded-2xl bg-amber-300/15 px-3 py-2 text-xs font-bold text-amber-100">{alert}</span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
+                      {[
+                        ['Tiros', quick.shots],
+                        ['A puerta', quick.shotsOnTarget],
+                        ['% puerta', quick.shotAccuracy],
+                        ['Faltas', quick.fouls],
+                        ['Recuperaciones', quick.recoveries],
+                        ['Pérdidas', quick.losses],
+                        ['Balance', quick.recoveryLossBalance],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded-3xl border border-white/5 bg-white/5 p-4">
+                          <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                          <p className="mt-2 text-2xl font-black text-white">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      {quick.recent.slice(0, 4).length ? quick.recent.slice(0, 4).map((event) => (
+                        <div key={event.id} className="rounded-2xl bg-white/5 p-4 text-sm">
+                          <p className="font-black text-white">{event.minute}' · {quickEventLabelByType[event.tipoEvento] || event.tipoEvento}</p>
+                          <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">{event.match.opponent} · {matchDisplayDate(event.match.date)}</p>
+                        </div>
+                      )) : <p className="rounded-2xl bg-white/5 p-4 text-sm italic text-slate-500">Sin eventos rápidos registrados para este jugador.</p>}
                     </div>
                   </section>
 
@@ -8015,7 +8522,15 @@ function App() {
           const subphaseAgainstRows = getGroupSubphaseRanking(groupData.goalAgainstEvents);
           const goalZoneForCounts = getGroupGoalZoneCounts(groupData.goalForEvents);
           const goalZoneAgainstCounts = getGroupGoalZoneCounts(groupData.goalAgainstEvents);
+          const quickSummary = groupData.quickSummary || getQuickEventSummary([]);
+          const quickMinuteRanges = getQuickEventsByMinuteRange(groupData.quickEvents || []);
+          const maxQuickRange = Math.max(1, ...quickMinuteRanges.flatMap((row) => [row.caudal, row.rival]));
+          const quickEvolution = scopedMatches.map((match) => ({
+            match,
+            summary: getQuickEventSummary(match.quickEvents || []),
+          }));
           const automaticAlerts = getGroupAlerts(groupData, rankings, localSummary, awaySummary);
+          const automaticReadings = getGroupAutomaticReadings(groupData);
           const resultDonut = `conic-gradient(#34d399 0 ${groupData.played ? (groupData.wins / groupData.played) * 100 : 0}%, #facc15 ${groupData.played ? (groupData.wins / groupData.played) * 100 : 0}% ${groupData.played ? ((groupData.wins + groupData.draws) / groupData.played) * 100 : 0}%, #f87171 ${groupData.played ? ((groupData.wins + groupData.draws) / groupData.played) * 100 : 0}% 100%)`;
           const abpReading = (forGoals, againstGoals) => {
             if (!forGoals && !againstGoals) return 'neutro';
@@ -8137,6 +8652,94 @@ function App() {
                     <div key={label} className="rounded-3xl border border-white/5 bg-white/5 p-5">
                       <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
                       <p className="mt-3 text-3xl font-black text-white">{value}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Eventos rápidos del Modo Delegado</h3>
+                    <p className="mt-2 text-sm text-slate-400">Agregado desde `match_quick_events`: acciones a favor, en contra, eficacia y tramos.</p>
+                  </div>
+                  <div className="rounded-2xl bg-white/5 px-4 py-3 text-right">
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Balance rec/pérd</p>
+                    <p className={`mt-1 text-2xl font-black ${quickSummary.recoveryLossBalance >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{quickSummary.recoveryLossBalance}</p>
+                  </div>
+                </div>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                  {[
+                    ['Tiros', `${quickSummary.shots} - ${quickSummary.rivalShots}`],
+                    ['Tiros puerta', `${quickSummary.shotsOnTarget} - ${quickSummary.rivalShotsOnTarget}`],
+                    ['Córners', `${quickSummary.corners} - ${quickSummary.rivalCorners}`],
+                    ['Faltas', `${quickSummary.fouls} - ${quickSummary.rivalFouls}`],
+                    ['Eficacia tiro', quickSummary.shotAccuracy],
+                    ['Peligro concedido', quickSummary.concededDanger],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-3xl border border-white/5 bg-white/5 p-5">
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                      <p className="mt-3 text-3xl font-black text-white">{value}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_1.15fr]">
+                  <div className="rounded-3xl bg-[#0f1e38]/80 p-5">
+                    <h4 className="text-xs font-black uppercase tracking-[0.18em] text-white">Tramos de partido</h4>
+                    <div className="mt-6 grid h-52 grid-cols-6 items-end gap-2 border-b border-white/10 pb-3">
+                      {quickMinuteRanges.map((row) => (
+                        <div key={row.range} className="flex h-full flex-col items-center justify-end gap-2">
+                          <div className="flex h-40 w-full items-end justify-center gap-1">
+                            <div className="w-4 rounded-t-lg bg-caudal-electric" style={{ height: `${(row.caudal / maxQuickRange) * 100}%` }} title={`Caudal: ${row.caudal}`} />
+                            <div className="w-4 rounded-t-lg bg-red-400" style={{ height: `${(row.rival / maxQuickRange) * 100}%` }} title={`Rival: ${row.rival}`} />
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-500">{row.range}'</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4 flex gap-4 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
+                      <span className="text-caudal-electric">Caudal</span>
+                      <span className="text-red-300">Rival</span>
+                    </div>
+                  </div>
+                  <div className="rounded-3xl bg-[#0f1e38]/80 p-5">
+                    <h4 className="text-xs font-black uppercase tracking-[0.18em] text-white">Evolución por partido</h4>
+                    <div className="mt-4 space-y-3">
+                      {quickEvolution.length ? quickEvolution.slice(-6).reverse().map(({ match, summary }) => (
+                        <div key={match.id} className="rounded-2xl bg-white/5 p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-black text-white">{match.opponent}</p>
+                              <p className="text-xs uppercase tracking-[0.12em] text-slate-500">{matchDisplayDate(match.date)} · {match.isHome ? 'Local' : 'Visitante'}</p>
+                            </div>
+                            <p className="text-sm font-black text-caudal-electric">T {summary.shots}-{summary.rivalShots}</p>
+                          </div>
+                          <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                            <span className="rounded-xl bg-white/5 px-2 py-2 text-slate-300">Puerta {summary.shotsOnTarget}-{summary.rivalShotsOnTarget}</span>
+                            <span className="rounded-xl bg-white/5 px-2 py-2 text-slate-300">Córners {summary.corners}-{summary.rivalCorners}</span>
+                            <span className={`rounded-xl px-2 py-2 ${summary.recoveryLossBalance >= 0 ? 'bg-emerald-400/10 text-emerald-200' : 'bg-red-400/10 text-red-200'}`}>Rec/Pér {summary.recoveryLossBalance}</span>
+                          </div>
+                        </div>
+                      )) : <p className="rounded-2xl bg-white/5 p-4 text-sm italic text-slate-500">Sin eventos rápidos registrados.</p>}
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Lecturas automáticas</h3>
+                    <p className="mt-2 text-sm text-slate-400">Interpretación rápida basada en partidos, goles, estadísticas y eventos del Modo Delegado.</p>
+                  </div>
+                  <span className="rounded-2xl bg-white/5 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                    Máx. 8 lecturas
+                  </span>
+                </div>
+                <div className="mt-5 grid gap-3 md:grid-cols-2">
+                  {automaticReadings.map((reading, index) => (
+                    <div key={`${reading}-${index}`} className="rounded-3xl border border-caudal-electric/15 bg-caudal-electric/10 p-4 text-sm font-semibold leading-6 text-white">
+                      {reading}
                     </div>
                   ))}
                 </div>
@@ -9314,6 +9917,24 @@ function App() {
                         Actualizando estadísticas desde Supabase...
                       </div>
                     ) : null}
+                    <div className="flex flex-wrap gap-2 rounded-3xl border border-white/5 bg-[#091428]/80 p-3 shadow-glow">
+                      <button
+                        type="button"
+                        onClick={() => setStatsViewMode('completa')}
+                        className={`rounded-2xl px-5 py-3 text-sm font-black uppercase tracking-[0.12em] transition ${statsViewMode === 'completa' ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}
+                      >
+                        Estadísticas
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStatsViewMode('delegado')}
+                        className={`rounded-2xl px-5 py-3 text-sm font-black uppercase tracking-[0.12em] transition ${statsViewMode === 'delegado' ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}
+                      >
+                        Modo Delegado
+                      </button>
+                    </div>
+                    {statsViewMode === 'delegado' ? renderDelegatedStatsMode() : (
+                    <>
                     <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                       <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Resumen de marcador</h3>
                       <div className="mt-6 grid items-center gap-6 lg:grid-cols-[1fr_auto_1fr]">
@@ -9597,6 +10218,8 @@ function App() {
                         </div>
                       )}
                     </div>
+                    </>
+                    )}
                   </section>
                 ) : matchView === 'impresion_partido' ? (
                   <MatchPrintTab

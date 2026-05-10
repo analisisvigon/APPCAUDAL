@@ -231,14 +231,11 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
           .order('tipo', { ascending: true })
           .order('orden', { ascending: true });
         if (error) throw error;
-        const defaults = [
-          ...offensiveSetPieceTypes.flatMap((type) => [1, 2].map((order) => createDefaultDiagram(type.id, order, offensiveSetPieceTypes))),
-          ...defensiveSetPieceTypes.flatMap((type) => [1, 2].map((order) => createDefaultDiagram(type.id, order, defensiveSetPieceTypes))),
-        ].map((diagram) => {
-          const stored = (data || []).find((item) => item.tipo === diagram.tipo && Number(item.orden) === Number(diagram.orden));
-          return { ...diagram, ...(stored || {}), partido_id: match.id, elements: Array.isArray(stored?.elements) ? stored.elements : diagram.elements };
-        });
-        setSetPieceDiagrams(defaults);
+        setSetPieceDiagrams((data || []).map((diagram) => ({
+          ...diagram,
+          partido_id: match.id,
+          elements: Array.isArray(diagram.elements) ? diagram.elements.filter((element) => element.type !== 'player_note') : [],
+        })));
       } catch (loadError) {
         console.error('Error cargando diagramas ABP desde Supabase:', loadError);
         setDiagramError(loadError.message || 'No se pudieron cargar los diagramas ABP.');
@@ -546,15 +543,27 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     };
   };
 
+  const getTypeDiagrams = (mode) => {
+    const type = getDiagramType(mode);
+    return setPieceDiagrams
+      .filter((diagram) => diagram.tipo === type)
+      .sort((a, b) => Number(a.orden) - Number(b.orden));
+  };
+
+  const getDiagramOrders = (mode) => getTypeDiagrams(mode).map((diagram) => Number(diagram.orden)).filter((order) => Number.isFinite(order));
+
   const getPrintDiagrams = (mode) => {
+    return getTypeDiagrams(mode);
+  };
+
+  const addDiagram = (mode) => {
     const definitions = getDiagramDefinitions(mode);
     const type = getDiagramType(mode);
-    return [1, 2].map((order) => (
-      setPieceDiagrams.find((diagram) => diagram.tipo === type && Number(diagram.orden) === order) || {
-        ...createDefaultDiagram(type, order, definitions),
-        partido_id: match?.id || '',
-      }
-    ));
+    const nextOrder = Math.max(0, ...getDiagramOrders(mode)) + 1;
+    const nextDiagram = { ...createDefaultDiagram(type, nextOrder, definitions), partido_id: match?.id || '' };
+    setSetPieceDiagrams((current) => [...current, nextDiagram]);
+    if (mode === 'offensive') setOffensiveDiagramOrder(nextOrder);
+    else setDefensiveDiagramOrder(nextOrder);
   };
 
   const getDiagramsByTypes = (types) =>
@@ -562,17 +571,19 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
       .filter((diagram) => types.includes(diagram.tipo) && diagram.tipo !== 'saque_inicio_ofensivo')
       .sort((a, b) => String(a.tipo).localeCompare(String(b.tipo)) || Number(a.orden) - Number(b.orden));
 
-  const getKickoffDiagram = () =>
-    setPieceDiagrams.find((diagram) => diagram.tipo === 'saque_inicio_ofensivo') || {
-      ...createDefaultDiagram('saque_inicio_ofensivo', 1, offensiveSetPieceTypes),
-      partido_id: match?.id || '',
-    };
+  const getKickoffDiagrams = () =>
+    setPieceDiagrams
+      .filter((diagram) => diagram.tipo === 'saque_inicio_ofensivo')
+      .sort((a, b) => Number(a.orden) - Number(b.orden));
 
   const chunkDiagrams = (diagrams, size = 2) => {
     const chunks = [];
     for (let index = 0; index < diagrams.length; index += size) chunks.push(diagrams.slice(index, index + size));
-    return chunks.length ? chunks : [[]];
+    return chunks;
   };
+
+  const cleanDiagramElements = (elements) =>
+    (Array.isArray(elements) ? elements : []).filter((element) => element.type !== 'player_note');
 
   const updateCurrentDiagram = (mode, nextDiagram) => {
     setDiagramStatus('');
@@ -601,7 +612,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
         orden: Number(diagram.orden) || 1,
         titulo: diagram.titulo || '',
         consigna: diagram.consigna || '',
-        elements: Array.isArray(diagram.elements) ? diagram.elements : [],
+        elements: cleanDiagramElements(diagram.elements),
       };
       const { data, error } = await supabase
         .from('match_set_piece_diagrams')
@@ -645,7 +656,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
         orden: nextOrder,
         titulo: `${baseTitle} copia`,
         consigna: source.consigna || '',
-        elements: JSON.parse(JSON.stringify(Array.isArray(source.elements) ? source.elements : [])),
+        elements: JSON.parse(JSON.stringify(cleanDiagramElements(source.elements))),
       };
       const { data, error } = await supabase
         .from('match_set_piece_diagrams')
@@ -660,6 +671,57 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     } catch (duplicateError) {
       console.error('Error duplicando diagrama ABP en Supabase:', duplicateError);
       setDiagramError(duplicateError.message || 'No se pudo duplicar la jugada.');
+    } finally {
+      setDiagramSaving(false);
+    }
+  };
+
+  const deleteCurrentDiagram = async (mode) => {
+    const source = getCurrentDiagram(mode);
+    const type = getDiagramType(mode);
+    const definitions = getDiagramDefinitions(mode);
+    if (!source?.tipo) return;
+    setDiagramSaving(true);
+    setDiagramError('');
+    setDiagramStatus('');
+    try {
+      const isPersisted = Boolean(source.id);
+      if (match?.id && isPersisted) {
+        const { error } = await supabase.from('match_set_piece_diagrams').delete().eq('partido_id', match.id).eq('tipo', type);
+        if (error) throw error;
+      }
+      const remaining = setPieceDiagrams
+        .filter((diagram) => !(diagram.tipo === source.tipo && Number(diagram.orden) === Number(source.orden)))
+        .sort((a, b) => Number(a.orden) - Number(b.orden));
+      const sameType = remaining.filter((diagram) => diagram.tipo === type);
+      const otherTypes = remaining.filter((diagram) => diagram.tipo !== type);
+      const compacted = sameType.map((diagram, index) => ({
+        ...diagram,
+        orden: index + 1,
+        titulo: diagram.titulo || `${definitions.find((item) => item.id === type)?.label || 'ABP'} ${index + 1}`,
+      }));
+      if (match?.id && isPersisted && compacted.length) {
+        const rows = compacted.map((diagram) => ({
+          partido_id: match.id,
+          tipo: diagram.tipo,
+          orden: Number(diagram.orden) || 1,
+          titulo: diagram.titulo || '',
+          consigna: diagram.consigna || '',
+          elements: cleanDiagramElements(diagram.elements),
+        }));
+        const { data, error } = await supabase.from('match_set_piece_diagrams').insert(rows).select('*');
+        if (error) throw error;
+        setSetPieceDiagrams([...otherTypes, ...(data || compacted)]);
+      } else {
+        setSetPieceDiagrams([...otherTypes, ...compacted]);
+      }
+      const nextOrder = compacted.length ? Math.min(Number(source.orden) || 1, compacted.length) : 1;
+      if (mode === 'offensive') setOffensiveDiagramOrder(nextOrder);
+      else setDefensiveDiagramOrder(nextOrder);
+      setDiagramStatus('Jugada eliminada.');
+    } catch (error) {
+      console.error('Error eliminando jugada ABP:', error);
+      setDiagramError(error.message || 'No se pudo eliminar la jugada.');
     } finally {
       setDiagramSaving(false);
     }
@@ -709,7 +771,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
         jugadores: '',
         duracion: '',
         material: '',
-        elements: Array.isArray(diagram.elements) ? diagram.elements : [],
+        elements: cleanDiagramElements(diagram.elements),
       };
       const { error } = await supabase.from('training_library').insert(payload);
       if (error) throw error;
@@ -729,7 +791,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
       ...current,
       titulo: item.nombre || current.titulo,
       consigna: item.descripcion || item.objetivo || current.consigna || '',
-      elements: JSON.parse(JSON.stringify(Array.isArray(item.elements) ? item.elements : [])),
+      elements: JSON.parse(JSON.stringify(cleanDiagramElements(item.elements))),
     });
     setDiagramStatus(`Cargado desde biblioteca: ${item.nombre}. Guarda la jugada para sincronizarla con el partido.`);
     setLibraryModal(null);
@@ -761,7 +823,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     };
     const preset = presets[label] || { type: 'text_box', x: 50, y: 18, width: 24, height: 12, label: label.toUpperCase() };
     const nextElements = [
-      ...(current.elements || []),
+      ...cleanDiagramElements(current.elements),
       {
         id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
         ...preset,
@@ -833,7 +895,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
         orden: nextOrder,
         titulo: replace ? diagram.titulo : `${diagram.titulo || 'ABP'} copia`,
         consigna: diagram.consigna || '',
-        elements: Array.isArray(diagram.elements) ? diagram.elements : [],
+        elements: cleanDiagramElements(diagram.elements),
       };
     });
     const { data: inserted, error: insertError } = await supabase.from('match_set_piece_diagrams').upsert(rows, { onConflict: 'partido_id,tipo,orden' }).select('*');
@@ -1060,16 +1122,32 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => duplicateCurrentDiagram('offensive')}
+                onClick={() => addDiagram('offensive')}
                 disabled={diagramSaving}
+                className="rounded-2xl bg-white px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Añadir jugada
+              </button>
+              <button
+                type="button"
+                onClick={() => duplicateCurrentDiagram('offensive')}
+                disabled={diagramSaving || !getTypeDiagrams('offensive').length}
                 className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Duplicar jugada
               </button>
               <button
                 type="button"
+                onClick={() => deleteCurrentDiagram('offensive')}
+                disabled={diagramSaving || !getTypeDiagrams('offensive').length}
+                className="rounded-2xl bg-red-500/15 px-5 py-3 text-sm font-bold text-red-100 transition hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Eliminar jugada
+              </button>
+              <button
+                type="button"
                 onClick={() => saveCurrentDiagramToLibrary('offensive')}
-                disabled={diagramSaving}
+                disabled={diagramSaving || !getTypeDiagrams('offensive').length}
                 className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Guardar en biblioteca
@@ -1084,7 +1162,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
               <button
                 type="button"
                 onClick={() => saveCurrentDiagram('offensive')}
-                disabled={diagramSaving}
+                disabled={diagramSaving || !getTypeDiagrams('offensive').length}
                 className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {diagramSaving ? 'Guardando...' : 'Guardar jugada'}
@@ -1110,10 +1188,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                 {type.label}
               </button>
             ))}
-            {Array.from(new Set([1, 2, ...setPieceDiagrams.filter((diagram) => diagram.tipo === offensiveType).map((diagram) => Number(diagram.orden))]))
-              .filter((order) => Number.isFinite(order))
-              .sort((a, b) => a - b)
-              .map((order) => (
+            {getDiagramOrders('offensive').map((order) => (
               <button
                 key={`off-${order}`}
                 type="button"
@@ -1124,12 +1199,17 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
               </button>
             ))}
           </div>
+          {!getTypeDiagrams('offensive').length ? (
+            <p className="mt-4 rounded-2xl bg-white/5 px-4 py-3 text-sm text-slate-400">Sin jugadas para este tipo. Pulsa Añadir jugada para empezar.</p>
+          ) : null}
           <div className="mt-5">
-            <SetPieceDiagramEditor
-              diagram={getCurrentDiagram('offensive')}
-              players={players}
-              onChange={(diagram) => updateCurrentDiagram('offensive', diagram)}
-            />
+            {getTypeDiagrams('offensive').length ? (
+              <SetPieceDiagramEditor
+                diagram={getCurrentDiagram('offensive')}
+                players={players}
+                onChange={(diagram) => updateCurrentDiagram('offensive', diagram)}
+              />
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -1144,16 +1224,32 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => duplicateCurrentDiagram('defensive')}
+                onClick={() => addDiagram('defensive')}
                 disabled={diagramSaving}
+                className="rounded-2xl bg-white px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Añadir jugada
+              </button>
+              <button
+                type="button"
+                onClick={() => duplicateCurrentDiagram('defensive')}
+                disabled={diagramSaving || !getTypeDiagrams('defensive').length}
                 className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Duplicar jugada
               </button>
               <button
                 type="button"
+                onClick={() => deleteCurrentDiagram('defensive')}
+                disabled={diagramSaving || !getTypeDiagrams('defensive').length}
+                className="rounded-2xl bg-red-500/15 px-5 py-3 text-sm font-bold text-red-100 transition hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Eliminar jugada
+              </button>
+              <button
+                type="button"
                 onClick={() => saveCurrentDiagramToLibrary('defensive')}
-                disabled={diagramSaving}
+                disabled={diagramSaving || !getTypeDiagrams('defensive').length}
                 className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Guardar en biblioteca
@@ -1168,7 +1264,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
               <button
                 type="button"
                 onClick={() => saveCurrentDiagram('defensive')}
-                disabled={diagramSaving}
+                disabled={diagramSaving || !getTypeDiagrams('defensive').length}
                 className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {diagramSaving ? 'Guardando...' : 'Guardar jugada'}
@@ -1196,7 +1292,8 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                 key={id}
                 type="button"
                 onClick={() => addDefensiveQuickElement(id)}
-                className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-white/15"
+                disabled={!getTypeDiagrams('defensive').length}
+                className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {label}
               </button>
@@ -1213,10 +1310,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                 {type.label}
               </button>
             ))}
-            {Array.from(new Set([1, 2, ...setPieceDiagrams.filter((diagram) => diagram.tipo === defensiveType).map((diagram) => Number(diagram.orden))]))
-              .filter((order) => Number.isFinite(order))
-              .sort((a, b) => a - b)
-              .map((order) => (
+            {getDiagramOrders('defensive').map((order) => (
               <button
                 key={`def-${order}`}
                 type="button"
@@ -1227,12 +1321,17 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
               </button>
             ))}
           </div>
+          {!getTypeDiagrams('defensive').length ? (
+            <p className="mt-4 rounded-2xl bg-white/5 px-4 py-3 text-sm text-slate-400">Sin jugadas para este tipo. Pulsa Añadir jugada para empezar.</p>
+          ) : null}
           <div className="mt-5">
-            <SetPieceDiagramEditor
-              diagram={getCurrentDiagram('defensive')}
-              players={players}
-              onChange={(diagram) => updateCurrentDiagram('defensive', diagram)}
-            />
+            {getTypeDiagrams('defensive').length ? (
+              <SetPieceDiagramEditor
+                diagram={getCurrentDiagram('defensive')}
+                players={players}
+                onChange={(diagram) => updateCurrentDiagram('defensive', diagram)}
+              />
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -1263,20 +1362,38 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
             players={players}
           />
         ) : printView === 'abp_ofensiva' ? (
-          <SetPieceDiagramPrintSheet
-            match={match}
-            title={offensiveSetPieceTypes.find((type) => type.id === offensiveType)?.label || 'ABP ofensiva'}
-            diagrams={offensiveType === 'saque_inicio_ofensivo' ? [getCurrentDiagram('offensive')] : getPrintDiagrams('offensive')}
-            players={players}
-            layout={offensiveType === 'saque_inicio_ofensivo' ? 'landscape' : 'portrait'}
-          />
+          offensiveType === 'saque_inicio_ofensivo' ? (
+            getPrintDiagrams('offensive').map((diagram) => (
+              <SetPieceDiagramPrintSheet
+                key={`kickoff-current-${diagram.id || diagram.orden}`}
+                match={match}
+                title={offensiveSetPieceTypes.find((type) => type.id === offensiveType)?.label || 'Saque de inicio'}
+                diagrams={[diagram]}
+                players={players}
+                layout="landscape"
+              />
+            ))
+          ) : (
+            chunkDiagrams(getPrintDiagrams('offensive')).map((diagrams, index) => (
+              <SetPieceDiagramPrintSheet
+                key={`offensive-current-${index}`}
+                match={match}
+                title={offensiveSetPieceTypes.find((type) => type.id === offensiveType)?.label || 'ABP ofensiva'}
+                diagrams={diagrams}
+                players={players}
+              />
+            ))
+          )
         ) : (
-          <SetPieceDiagramPrintSheet
-            match={match}
-            title={defensiveSetPieceTypes.find((type) => type.id === defensiveType)?.label || 'ABP defensiva'}
-            diagrams={getPrintDiagrams('defensive')}
-            players={players}
-          />
+          chunkDiagrams(getPrintDiagrams('defensive')).map((diagrams, index) => (
+            <SetPieceDiagramPrintSheet
+              key={`defensive-current-${index}`}
+              match={match}
+              title={defensiveSetPieceTypes.find((type) => type.id === defensiveType)?.label || 'ABP defensiva'}
+              diagrams={diagrams}
+              players={players}
+            />
+          ))
         )}
       </div>
 
@@ -1302,15 +1419,16 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
           {dossierOptions.defensive ? chunkDiagrams(getDiagramsByTypes(defensiveSetPieceTypes.map((type) => type.id))).map((diagrams, index) => (
             <SetPieceDiagramPrintSheet key={`defensive-dossier-${index}`} match={match} title="ABP defensiva" diagrams={diagrams} players={players} />
           )) : null}
-          {dossierOptions.kickoff ? (
+          {dossierOptions.kickoff ? getKickoffDiagrams().map((diagram) => (
             <SetPieceDiagramPrintSheet
+              key={`kickoff-dossier-${diagram.id || diagram.orden}`}
               match={match}
               title="Saque de inicio"
-              diagrams={[getKickoffDiagram()]}
+              diagrams={[diagram]}
               players={players}
               layout="landscape"
             />
-          ) : null}
+          )) : null}
         </div>
       ) : null}
 

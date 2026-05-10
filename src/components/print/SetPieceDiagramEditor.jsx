@@ -32,17 +32,20 @@ const createElement = (type) => {
 };
 
 export default function SetPieceDiagramEditor({ diagram, players = [], onChange }) {
+  const drawableElements = useMemo(
+    () => (Array.isArray(diagram.elements) ? diagram.elements : []).filter((element) => element.type !== 'player_note'),
+    [diagram.elements]
+  );
   const [selectedId, setSelectedId] = useState('');
-  const [history, setHistory] = useState([cloneElements(diagram.elements || [])]);
+  const [history, setHistory] = useState([cloneElements(drawableElements)]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [zoom, setZoom] = useState(1);
-  const [playerNoteDraft, setPlayerNoteDraft] = useState({ playerId: '', text: '' });
   const historyChangeRef = useRef(false);
 
   const selectedElement = useMemo(
-    () => (diagram.elements || []).find((element) => element.id === selectedId) || null,
-    [diagram.elements, selectedId]
+    () => drawableElements.find((element) => element.id === selectedId) || null,
+    [drawableElements, selectedId]
   );
 
   const updateDiagram = (fields) => onChange({ ...diagram, ...fields });
@@ -65,22 +68,19 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
     if (!options.skipHistory) pushHistory(elements);
   };
 
-  const tacticalElements = (diagram.elements || []).filter((element) => element.type !== 'player_note');
-  const playerNotes = (diagram.elements || []).filter((element) => element.type === 'player_note');
-
   useEffect(() => {
     if (historyChangeRef.current) {
       historyChangeRef.current = false;
       return;
     }
-    setHistory([cloneElements(diagram.elements || [])]);
+    setHistory([cloneElements(drawableElements)]);
     setHistoryIndex(0);
     setSelectedId('');
   }, [diagram.id, diagram.tipo, diagram.orden]);
 
   const updateSelected = (fields) => {
     if (!selectedElement) return;
-    updateElements((diagram.elements || []).map((element) => (element.id === selectedElement.id ? { ...element, ...fields } : element)));
+    updateElements(drawableElements.map((element) => (element.id === selectedElement.id ? { ...element, ...fields } : element)));
   };
 
   const undo = () => {
@@ -117,38 +117,13 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
 
   const addElement = (type) => {
     const element = createElement(type);
-    updateElements([...(diagram.elements || []), element]);
+    updateElements([...drawableElements, element]);
     setSelectedId(element.id);
-  };
-
-  const addPlayerNote = () => {
-    const player = players.find((item) => item.id === playerNoteDraft.playerId);
-    const text = playerNoteDraft.text.trim();
-    if (!player || !text) return;
-    updateElements([
-      ...(diagram.elements || []),
-      {
-        id: createId(),
-        type: 'player_note',
-        player_id: player.id,
-        player_name: player.shirt_name || player.shirtName || player.shortName || player.name,
-        text,
-      },
-    ]);
-    setPlayerNoteDraft({ playerId: playerNoteDraft.playerId, text: '' });
-  };
-
-  const updatePlayerNote = (noteId, fields) => {
-    updateElements((diagram.elements || []).map((element) => (element.id === noteId ? { ...element, ...fields } : element)));
-  };
-
-  const deletePlayerNote = (noteId) => {
-    updateElements((diagram.elements || []).filter((element) => element.id !== noteId));
   };
 
   const deleteSelected = () => {
     if (!selectedElement) return;
-    updateElements((diagram.elements || []).filter((element) => element.id !== selectedElement.id));
+    updateElements(drawableElements.filter((element) => element.id !== selectedElement.id));
     setSelectedId('');
   };
 
@@ -164,7 +139,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
       copy.x = Math.min(100, (copy.x || 0) + 4);
       copy.y = Math.min(72, (copy.y || 0) + 4);
     }
-    updateElements([...(diagram.elements || []), copy]);
+    updateElements([...drawableElements, copy]);
     setSelectedId(copy.id);
   };
 
@@ -185,52 +160,14 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
           <div className="overflow-auto rounded-3xl bg-white p-3 text-black">
             <div style={{ width: `${zoom * 100}%`, minWidth: '100%' }}>
               <SetPieceDiagramCanvas
-                elements={tacticalElements}
+                elements={drawableElements}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
-                onChange={(nextTacticalElements) => updateElements([...nextTacticalElements, ...playerNotes])}
+                onChange={updateElements}
                 players={players}
                 snap={snapEnabled}
                 fullField={String(diagram.tipo || '').includes('saque_inicio')}
               />
-            </div>
-          </div>
-
-          <div className="space-y-3 rounded-2xl bg-black/20 p-4">
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-300">Consignas por jugador</p>
-            <div className="grid gap-2 sm:grid-cols-[1fr_1.2fr_auto]">
-              <select
-                value={playerNoteDraft.playerId}
-                onChange={(event) => setPlayerNoteDraft((current) => ({ ...current, playerId: event.target.value }))}
-                className="rounded-xl border border-white/10 bg-white px-3 py-2 text-xs font-bold text-slate-950"
-              >
-                <option value="">Jugador</option>
-                {players.map((player) => <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>)}
-              </select>
-              <input
-                value={playerNoteDraft.text}
-                onChange={(event) => setPlayerNoteDraft((current) => ({ ...current, text: event.target.value }))}
-                placeholder="Consigna corta"
-                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white placeholder:text-slate-500"
-              />
-              <button type="button" onClick={addPlayerNote} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white">Añadir</button>
-            </div>
-            <div className="space-y-2">
-              {playerNotes.map((note) => (
-                <div key={note.id} className="grid gap-2 sm:grid-cols-[1fr_1.3fr_auto]">
-                  <input
-                    value={note.player_name || ''}
-                    onChange={(event) => updatePlayerNote(note.id, { player_name: event.target.value })}
-                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white"
-                  />
-                  <input
-                    value={note.text || ''}
-                    onChange={(event) => updatePlayerNote(note.id, { text: event.target.value })}
-                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
-                  />
-                  <button type="button" onClick={() => deletePlayerNote(note.id)} className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100">Borrar</button>
-                </div>
-              ))}
             </div>
           </div>
         </div>
@@ -302,6 +239,32 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
                   <option value="">Vincular jugador</option>
                   {players.map((player) => <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>)}
                 </select>
+              ) : null}
+              {['player', 'opponent'].includes(selectedElement.type) ? (
+                <div className="space-y-3">
+                  <textarea
+                    value={selectedElement.note || ''}
+                    onChange={(event) => updateSelected({ note: event.target.value })}
+                    placeholder="Consigna del jugador"
+                    rows={3}
+                    className="w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    {quickConsignas.map((phrase) => (
+                      <button
+                        key={`${selectedElement.id}-${phrase}`}
+                        type="button"
+                        onClick={() => {
+                          const current = String(selectedElement.note || '').trim();
+                          updateSelected({ note: current ? `${current}. ${phrase}` : phrase });
+                        }}
+                        className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/15"
+                      >
+                        {phrase}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ) : null}
               {isArrow(selectedElement) ? (
                 <select
