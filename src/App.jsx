@@ -4,6 +4,7 @@ import React from 'react';
 import { supabase } from './lib/supabase';
 import LibrarySection from './components/library/LibrarySection';
 import MatchPrintTab from './components/print/MatchPrintTab';
+import AccordionSection from './components/shared/AccordionSection';
 import StatusMessage from './components/shared/StatusMessage';
 import './styles/print.css';
 
@@ -2089,6 +2090,8 @@ function App() {
   const [statsSaveStatus, setStatsSaveStatus] = useState('');
   const [statsViewMode, setStatsViewMode] = useState('completa');
   const [delegatedMinute, setDelegatedMinute] = useState('0');
+  const [delegatedSide, setDelegatedSide] = useState('caudal');
+  const [showAllDelegatedEvents, setShowAllDelegatedEvents] = useState(false);
   const [delegatedEventDraft, setDelegatedEventDraft] = useState(null);
   const [delegatedEventSaving, setDelegatedEventSaving] = useState(false);
   const [delegatedEventFeedback, setDelegatedEventFeedback] = useState('');
@@ -2205,6 +2208,7 @@ function App() {
   const [groupContextFilter, setGroupContextFilter] = useState('Todos');
   const [groupQuickReviewedOnly, setGroupQuickReviewedOnly] = useState(true);
   const [groupAssistFilter, setGroupAssistFilter] = useState('Todas');
+  const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [groupShotFilter, setGroupShotFilter] = useState('Ambos');
   const [groupLoading, setGroupLoading] = useState(false);
   const [groupError, setGroupError] = useState('');
@@ -5089,22 +5093,23 @@ function App() {
   const renderDelegatedStatsMode = () => {
     const caudalEvents = delegatedEventDefinitions.filter((definition) => definition.side === 'caudal');
     const rivalEvents = delegatedEventDefinitions.filter((definition) => definition.side === 'rival');
+    const activeDelegatedEvents = delegatedSide === 'rival' ? rivalEvents : caudalEvents;
     const calledPlayers = getStatsCalledPlayers();
-    const recentEvents = getDelegatedEvents()
+    const orderedDelegatedEvents = getDelegatedEvents()
       .slice()
-      .sort((a, b) => Number(b.minute || 0) - Number(a.minute || 0))
-      .slice(0, 8);
+      .sort((a, b) => Number(b.minute || 0) - Number(a.minute || 0));
+    const recentEvents = orderedDelegatedEvents.slice(0, showAllDelegatedEvents ? 50 : 5);
     const playersById = new Map(players.map((player) => [player.id, player]));
 
     return (
       <div className="space-y-4">
-        <div className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-6">
-          <div className="flex items-center justify-between gap-3">
+        <div className="sticky top-2 z-30 rounded-3xl border border-white/5 bg-[#091428]/95 p-4 shadow-glow backdrop-blur-md sm:p-6">
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-caudal-electric">Modo Delegado</p>
-              <h3 className="mt-1 text-xl font-black text-white">Registro rápido de partido</h3>
+              <h3 className="mt-1 text-xl font-black text-white">{getStatsScore().home} - {getStatsScore().away} · {selectedMatch?.opponent || 'Rival'}</h3>
             </div>
-            <div className="flex items-center gap-2 rounded-2xl bg-black/25 p-2">
+            <div className="flex items-center justify-between gap-2 rounded-2xl bg-black/25 p-2">
               <button type="button" onClick={() => updateDelegatedMinute(Number(delegatedMinute || 0) - 1)} className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-xl font-black text-white">-</button>
               <label className="flex flex-col items-center">
                 <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Min</span>
@@ -5126,11 +5131,27 @@ function App() {
           ) : null}
           {delegatedEventSaving ? <StatusMessage status="Guardando..." className="mt-4" /> : null}
 
-          <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="mt-4 grid grid-cols-2 gap-2 rounded-3xl bg-black/20 p-2">
+            {[
+              ['caudal', 'Nuestro equipo'],
+              ['rival', 'Rival'],
+            ].map(([side, label]) => (
+              <button
+                key={side}
+                type="button"
+                onClick={() => setDelegatedSide(side)}
+                className={`min-h-[48px] rounded-2xl px-4 py-3 text-sm font-black uppercase tracking-[0.12em] transition ${delegatedSide === side ? side === 'caudal' ? 'bg-caudal-electric text-slate-950' : 'bg-red-500 text-white' : 'bg-white/10 text-slate-300'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {delegatedCounterPairs.map((counter) => (
               <div key={counter.label} className="rounded-2xl bg-white/5 p-3 text-center">
                 <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{counter.label}</p>
-                <p className="mt-1 text-2xl font-black text-white">
+                <p className="mt-1 text-xl font-black text-white">
                   {getDelegatedCount(counter.caudal)}
                   {counter.rival ? <span className="text-slate-500"> - {getDelegatedCount(counter.rival)}</span> : null}
                 </p>
@@ -5139,44 +5160,32 @@ function App() {
           </div>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-6">
-            <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">Nuestro equipo</h4>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              {caudalEvents.map((definition) => (
-                <button
-                  key={definition.key}
-                  type="button"
-                  onClick={() => openDelegatedEventModal(definition)}
-                  disabled={delegatedEventSaving}
-                  className="min-h-[92px] rounded-3xl bg-caudal-electric px-4 py-5 text-left text-lg font-black text-slate-950 shadow-glow transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {definition.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-6">
-            <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">Rival</h4>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              {rivalEvents.map((definition) => (
-                <button
-                  key={definition.key}
-                  type="button"
-                  onClick={() => openDelegatedEventModal(definition)}
-                  disabled={delegatedEventSaving}
-                  className="min-h-[92px] rounded-3xl bg-red-500 px-4 py-5 text-left text-lg font-black text-white shadow-glow transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {definition.label}
-                </button>
-              ))}
-            </div>
+        <div className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-6">
+          <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">{delegatedSide === 'caudal' ? 'Nuestro equipo' : 'Rival'}</h4>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            {activeDelegatedEvents.map((definition) => (
+              <button
+                key={definition.key}
+                type="button"
+                onClick={() => openDelegatedEventModal(definition)}
+                disabled={delegatedEventSaving}
+                className={`min-h-[86px] rounded-3xl px-4 py-5 text-left text-lg font-black shadow-glow transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${delegatedSide === 'caudal' ? 'bg-caudal-electric text-slate-950' : 'bg-red-500 text-white'}`}
+              >
+                {definition.label}
+              </button>
+            ))}
           </div>
         </div>
 
         <div className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-6">
-          <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">Últimos eventos</h4>
+          <div className="flex items-center justify-between gap-3">
+            <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">Últimos eventos</h4>
+            {orderedDelegatedEvents.length > 5 ? (
+              <button type="button" onClick={() => setShowAllDelegatedEvents((current) => !current)} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-slate-200">
+                {showAllDelegatedEvents ? 'Ver menos' : 'Ver todos'}
+              </button>
+            ) : null}
+          </div>
           <div className="mt-4 space-y-2">
             {recentEvents.length ? recentEvents.map((event) => (
               <div key={event.id} className="flex items-center justify-between gap-3 rounded-2xl bg-white/5 px-4 py-3 text-sm">
@@ -5190,8 +5199,8 @@ function App() {
         </div>
 
         {delegatedEventDraft ? (
-          <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/70 px-4 py-4 sm:items-center">
-            <div className="w-full max-w-md rounded-3xl border border-white/10 bg-caudal-950 p-5 shadow-glow">
+          <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/70 px-3 pb-3 pt-10 sm:items-center sm:px-4 sm:py-4">
+            <div className="max-h-[86vh] w-full max-w-md overflow-y-auto rounded-t-[2rem] border border-white/10 bg-caudal-950 p-5 shadow-glow sm:rounded-3xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Guardar evento</p>
@@ -5230,7 +5239,7 @@ function App() {
                 type="button"
                 onClick={saveDelegatedEvent}
                 disabled={delegatedEventSaving}
-                className="mt-5 flex min-h-[58px] w-full items-center justify-center rounded-2xl bg-caudal-electric px-5 py-4 text-base font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-5 flex min-h-[60px] w-full items-center justify-center rounded-2xl bg-caudal-electric px-5 py-4 text-base font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {delegatedEventSaving ? 'Guardando...' : 'Guardar evento'}
               </button>
@@ -7410,6 +7419,18 @@ function App() {
   };
 
   const authUser = session?.user ?? null;
+  const desktopTabs = ['Inicio', 'Plantilla', 'Equipos', 'Partidos', 'Biblioteca', 'Rendimiento', 'Análisis Grupal'];
+  const mobilePrimaryTabs = [
+    ['Inicio', 'Inicio'],
+    ['Partidos', 'Partidos'],
+    ['Plantilla', 'Plantilla'],
+    ['Análisis Grupal', 'Análisis'],
+  ];
+  const mobileMoreTabs = ['Equipos', 'Rendimiento', 'Biblioteca'];
+  const goToTab = (tab) => {
+    setActiveTab(tab);
+    setIsMobileMoreOpen(false);
+  };
   const splashScreen = showSplash ? (
     <div
       className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#111111] text-white transition-opacity duration-300 ${
@@ -7481,7 +7502,7 @@ function App() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-caudal-950 via-caudal-900 to-[#05101f] text-slate-100">
       {splashScreen}
-      <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-4 pb-8 pt-6 sm:px-6 lg:px-8">
+      <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-4 pb-28 pt-6 sm:px-6 sm:pb-8 lg:px-8">
         <header className="mb-6 flex flex-col gap-4 rounded-3xl border border-white/5 bg-white/5 p-5 shadow-glow backdrop-blur-md sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.34em] text-slate-400">Entrenador</p>
@@ -7511,11 +7532,11 @@ function App() {
                 Cerrar sesión
               </button>
             </div>
-            <nav className="flex flex-wrap gap-3 sm:justify-end">
-              {['Inicio', 'Plantilla', 'Equipos', 'Partidos', 'Biblioteca', 'Rendimiento', 'Análisis Grupal'].map((tab) => (
+            <nav className="hidden flex-wrap gap-3 sm:flex sm:justify-end">
+              {desktopTabs.map((tab) => (
                 <button
                   key={tab}
-                  onClick={() => setActiveTab(tab)}
+                  onClick={() => goToTab(tab)}
                   className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
                     activeTab === tab
                       ? 'bg-caudal-electric text-slate-950 shadow-[0_15px_35px_rgba(79,140,255,0.22)]'
@@ -7529,6 +7550,52 @@ function App() {
             {authError ? <p className="max-w-sm text-sm text-red-200">{authError}</p> : null}
           </div>
         </header>
+
+        <nav className="fixed inset-x-3 bottom-3 z-50 rounded-3xl border border-white/10 bg-[#071225]/95 p-2 shadow-glow backdrop-blur-md sm:hidden">
+          {isMobileMoreOpen ? (
+            <div className="mb-2 grid grid-cols-2 gap-2 rounded-2xl bg-white/5 p-2">
+              {mobileMoreTabs.map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => goToTab(tab)}
+                  className={`min-h-[46px] rounded-2xl px-3 py-2 text-xs font-black uppercase tracking-[0.1em] ${activeTab === tab ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200'}`}
+                >
+                  {tab}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLitoOpen(true);
+                  setIsMobileMoreOpen(false);
+                }}
+                className="min-h-[46px] rounded-2xl bg-white/10 px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-slate-200"
+              >
+                Lito
+              </button>
+            </div>
+          ) : null}
+          <div className="grid grid-cols-5 gap-1">
+            {mobilePrimaryTabs.map(([tab, label]) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => goToTab(tab)}
+                className={`min-h-[48px] rounded-2xl px-2 py-2 text-[11px] font-black uppercase tracking-[0.08em] ${activeTab === tab ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200'}`}
+              >
+                {label}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setIsMobileMoreOpen((current) => !current)}
+              className={`min-h-[48px] rounded-2xl px-2 py-2 text-[11px] font-black uppercase tracking-[0.08em] ${isMobileMoreOpen || mobileMoreTabs.includes(activeTab) ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-200'}`}
+            >
+              Más
+            </button>
+          </div>
+        </nav>
 
         {activeTab === 'Inicio' ? (
           <main className="space-y-5 pb-8">
@@ -7861,6 +7928,7 @@ function App() {
               const videoActions = [...allGoalActions, ...allAssistActions].filter((event) => event.videoUrl);
               return (
                 <>
+                  <AccordionSection title="Datos del jugador" subtitle="Ficha, dorsal, edad y resumen base" defaultOpen>
                   <section className="rounded-3xl border border-white/5 bg-[#07111f] p-6 shadow-glow">
                     <button onClick={() => setSelectedPlayerProfileId(null)} className="mb-5 rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white">Volver a plantilla</button>
                     <div className="grid gap-6 lg:grid-cols-[160px_1fr]">
@@ -7897,7 +7965,9 @@ function App() {
                       </div>
                     </div>
                   </section>
+                  </AccordionSection>
 
+                  <AccordionSection title="Acciones" subtitle="Filtros de ficha y generación de reporte">
                   <section className="flex flex-col gap-4 rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex flex-wrap gap-2">
                       {['Todos', 'Liga', 'Copa RFEF', 'Playoff', 'Amistoso'].map((filter) => (
@@ -7911,7 +7981,9 @@ function App() {
                       <button onClick={() => generatePlayerReport(selectedPlayerProfile, aggregate)} className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-white">Generar reporte</button>
                     </div>
                   </section>
+                  </AccordionSection>
 
+                  <AccordionSection title="Resumen competitivo" subtitle="Eventos rápidos revisados" defaultOpen>
                   <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
@@ -7964,7 +8036,9 @@ function App() {
                       <p className="mt-5 rounded-2xl bg-white/5 p-4 text-sm italic text-slate-500">No hay eventos revisados suficientes para este jugador.</p>
                     )}
                   </section>
+                  </AccordionSection>
 
+                  <AccordionSection title="Estadísticas" subtitle="Influencia táctica, finalización y sociedades">
                   <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
                     <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                       <div className="flex items-center justify-between gap-3">
@@ -8065,7 +8139,9 @@ function App() {
                       </div>
                     </div>
                   </section>
+                  </AccordionSection>
 
+                  <AccordionSection title="Historial" subtitle="Timeline e historial partido a partido">
                   <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Impacto en el tiempo (0' - 90')</h3>
                     <div className="relative mt-12 h-20 rounded-2xl bg-white/5">
@@ -8137,6 +8213,7 @@ function App() {
                       </table>
                     </div>
                   </section>
+                  </AccordionSection>
 
                   {playerReport ? (
                     <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
@@ -8787,6 +8864,7 @@ function App() {
                 </div>
               </section>
 
+              <AccordionSection title="Resumen" subtitle="Balance general del equipo" defaultOpen>
               <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                 <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Resumen competitivo</h3>
                 <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -8808,7 +8886,9 @@ function App() {
                   ))}
                 </div>
               </section>
+              </AccordionSection>
 
+              <AccordionSection title="Eventos rápidos" subtitle="Modo Delegado agregado por partido">
               <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
@@ -8877,7 +8957,9 @@ function App() {
                   </div>
                 </div>
               </section>
+              </AccordionSection>
 
+              <AccordionSection title="Lecturas automáticas" subtitle="Interpretación útil para cuerpo técnico" defaultOpen>
               <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div>
@@ -8896,7 +8978,9 @@ function App() {
                   ))}
                 </div>
               </section>
+              </AccordionSection>
 
+              <AccordionSection title="Tendencias" subtitle="Resultados, tramos y evolución">
               <section className="grid gap-6 xl:grid-cols-[0.85fr_1.4fr]">
                 <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                   <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Distribución de resultados</h3>
@@ -8940,7 +9024,10 @@ function App() {
                   </div>
                 </div>
               </section>
+              </AccordionSection>
 
+              <AccordionSection title="Goles / fases" subtitle="Fases, zonas y balón parado">
+              <AccordionSection title="Tendencias" subtitle="Local, visitante y últimos partidos">
               <section className="grid gap-6 xl:grid-cols-2">
                 {[
                   ['Cómo marcamos', phaseFor, 'bg-caudal-electric'],
@@ -8967,6 +9054,7 @@ function App() {
                   );
                 })}
               </section>
+              </AccordionSection>
 
               <section className="grid gap-6 xl:grid-cols-2">
                 <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
@@ -9141,7 +9229,9 @@ function App() {
                   </div>
                 </div>
               </section>
+              </AccordionSection>
 
+              <AccordionSection title="Rankings" subtitle="Jugadores destacados por métricas">
               <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                 <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Ranking individual</h3>
                 <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
@@ -9197,6 +9287,7 @@ function App() {
                   ))}
                 </div>
               </section>
+              </AccordionSection>
             </main>
           );
         })() : null}
@@ -9400,13 +9491,14 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="mt-6 flex flex-wrap gap-3">
+                  <div className="mt-6 grid grid-cols-4 gap-2 sm:flex sm:flex-wrap sm:gap-3">
                     {['PRE', 'ESTADÍSTICAS', 'POST', 'IMPRESIÓN'].map((section) => (
                       <button
                         key={section}
                         onClick={() => openMatchPage(selectedMatch, section)}
-                        className={`rounded-2xl px-4 py-3 text-sm font-semibold uppercase tracking-[0.12em] ${matchViewSection === section ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}>
-                        {section}
+                        className={`min-h-[46px] rounded-2xl px-2 py-3 text-[11px] font-black uppercase tracking-[0.08em] sm:px-4 sm:text-sm sm:font-semibold sm:tracking-[0.12em] ${matchViewSection === section ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}>
+                        <span className="sm:hidden">{section === 'ESTADÍSTICAS' ? 'ESTAD.' : section === 'IMPRESIÓN' ? 'IMP.' : section}</span>
+                        <span className="hidden sm:inline">{section}</span>
                       </button>
                     ))}
                   </div>
@@ -10086,8 +10178,13 @@ function App() {
                         Modo Delegado
                       </button>
                     </div>
-                    {statsViewMode === 'delegado' ? renderDelegatedStatsMode() : (
+                    {statsViewMode === 'delegado' ? (
+                    <AccordionSection title="Modo Delegado" subtitle="Registro rápido durante el partido" defaultOpen>
+                      {renderDelegatedStatsMode()}
+                    </AccordionSection>
+                    ) : (
                     <>
+                    <AccordionSection title="Resumen rápido" subtitle="Marcador, goles, tarjetas y lesiones" defaultOpen>
                     <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                       <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Resumen de marcador</h3>
                       <div className="mt-6 grid items-center gap-6 lg:grid-cols-[1fr_auto_1fr]">
@@ -10167,7 +10264,9 @@ function App() {
                         )) : <div className="rounded-3xl bg-[#0f1e38]/80 p-6 text-sm text-slate-400">No hay eventos clave todavía.</div>}
                       </div>
                     </div>
+                    </AccordionSection>
 
+                    <AccordionSection title="Alineación y convocados" subtitle="Campo, sistema y lista de jugadores">
                     <div className="grid gap-6 xl:grid-cols-[1.35fr_0.75fr]">
                       <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -10263,7 +10362,9 @@ function App() {
                         )}
                       </div>
                     </div>
+                    </AccordionSection>
 
+                    <AccordionSection title="Eventos / goles / tarjetas" subtitle="Análisis de goles y acciones clave">
                     <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
@@ -10371,6 +10472,7 @@ function App() {
                         </div>
                       )}
                     </div>
+                    </AccordionSection>
                     </>
                     )}
                   </section>
@@ -10868,7 +10970,7 @@ function App() {
           <button
             type="button"
             onClick={() => setIsLitoOpen(true)}
-            className="fixed bottom-5 right-5 z-40 flex items-center gap-3 rounded-full border border-caudal-electric/30 bg-[#091428] px-5 py-4 text-sm font-black text-white shadow-[0_18px_45px_rgba(0,0,0,0.45)] transition hover:-translate-y-0.5 hover:border-caudal-electric/60 hover:bg-[#0f1e38]"
+            className="fixed bottom-5 right-5 z-40 hidden items-center gap-3 rounded-full border border-caudal-electric/30 bg-[#091428] px-5 py-4 text-sm font-black text-white shadow-[0_18px_45px_rgba(0,0,0,0.45)] transition hover:-translate-y-0.5 hover:border-caudal-electric/60 hover:bg-[#0f1e38] sm:flex"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-caudal-electric text-sm font-black text-slate-950">Li</span>
             Lito
