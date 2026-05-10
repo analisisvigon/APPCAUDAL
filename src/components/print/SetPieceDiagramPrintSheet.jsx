@@ -20,16 +20,28 @@ export default function SetPieceDiagramPrintSheet({ match, title = 'ABP', diagra
         </div>
       </header>
       <section className="diagram-print-grid">
-        {printable.map((diagram, index) => (
-          <div key={diagram.id || `${diagram.tipo}-${diagram.orden}-${index}`} className="diagram-print-card">
-            <div className="diagram-print-card-head">
-              <h2>{diagram.titulo || `Jugada ${diagram.orden || index + 1}`}</h2>
-              <span>{diagram.orden || index + 1}</span>
+        {printable.map((diagram, index) => {
+          const elements = Array.isArray(diagram.elements) ? diagram.elements : [];
+          const tacticalElements = elements.filter((element) => element.type !== 'player_note');
+          const playerNotes = elements.filter((element) => element.type === 'player_note' && (element.player_name || element.text));
+          return (
+            <div key={diagram.id || `${diagram.tipo}-${diagram.orden}-${index}`} className="diagram-print-card">
+              <div className="diagram-print-card-head">
+                <h2>{diagram.titulo || `Jugada ${diagram.orden || index + 1}`}</h2>
+                <span>{diagram.orden || index + 1}</span>
+              </div>
+              <SetPieceDiagramCanvas elements={tacticalElements} players={players} fullField={layout === 'landscape' || String(diagram.tipo || '').includes('saque_inicio')} readOnly />
+              {(diagram.consigna || playerNotes.length) ? (
+                <div className="diagram-print-consigna">
+                  {diagram.consigna ? <p>{diagram.consigna}</p> : null}
+                  {playerNotes.map((note) => (
+                    <p key={note.id}><strong>{note.player_name || 'Jugador'}:</strong> {note.text || ''}</p>
+                  ))}
+                </div>
+              ) : null}
             </div>
-            <SetPieceDiagramCanvas elements={diagram.elements || []} players={players} fullField={layout === 'landscape' || String(diagram.tipo || '').includes('saque_inicio')} readOnly />
-            <p>{diagram.consigna || ''}</p>
-          </div>
-        ))}
+          );
+        })}
       </section>
     </article>
   );

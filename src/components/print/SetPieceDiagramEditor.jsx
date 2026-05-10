@@ -37,6 +37,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
   const [historyIndex, setHistoryIndex] = useState(0);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [zoom, setZoom] = useState(1);
+  const [playerNoteDraft, setPlayerNoteDraft] = useState({ playerId: '', text: '' });
   const historyChangeRef = useRef(false);
 
   const selectedElement = useMemo(
@@ -63,6 +64,9 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
     updateDiagram({ elements });
     if (!options.skipHistory) pushHistory(elements);
   };
+
+  const tacticalElements = (diagram.elements || []).filter((element) => element.type !== 'player_note');
+  const playerNotes = (diagram.elements || []).filter((element) => element.type === 'player_note');
 
   useEffect(() => {
     if (historyChangeRef.current) {
@@ -117,6 +121,31 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
     setSelectedId(element.id);
   };
 
+  const addPlayerNote = () => {
+    const player = players.find((item) => item.id === playerNoteDraft.playerId);
+    const text = playerNoteDraft.text.trim();
+    if (!player || !text) return;
+    updateElements([
+      ...(diagram.elements || []),
+      {
+        id: createId(),
+        type: 'player_note',
+        player_id: player.id,
+        player_name: player.shirt_name || player.shirtName || player.shortName || player.name,
+        text,
+      },
+    ]);
+    setPlayerNoteDraft({ playerId: playerNoteDraft.playerId, text: '' });
+  };
+
+  const updatePlayerNote = (noteId, fields) => {
+    updateElements((diagram.elements || []).map((element) => (element.id === noteId ? { ...element, ...fields } : element)));
+  };
+
+  const deletePlayerNote = (noteId) => {
+    updateElements((diagram.elements || []).filter((element) => element.id !== noteId));
+  };
+
   const deleteSelected = () => {
     if (!selectedElement) return;
     updateElements((diagram.elements || []).filter((element) => element.id !== selectedElement.id));
@@ -156,14 +185,52 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
           <div className="overflow-auto rounded-3xl bg-white p-3 text-black">
             <div style={{ width: `${zoom * 100}%`, minWidth: '100%' }}>
               <SetPieceDiagramCanvas
-                elements={diagram.elements || []}
+                elements={tacticalElements}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
-                onChange={updateElements}
+                onChange={(nextTacticalElements) => updateElements([...nextTacticalElements, ...playerNotes])}
                 players={players}
                 snap={snapEnabled}
                 fullField={String(diagram.tipo || '').includes('saque_inicio')}
               />
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-2xl bg-black/20 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-300">Consignas por jugador</p>
+            <div className="grid gap-2 sm:grid-cols-[1fr_1.2fr_auto]">
+              <select
+                value={playerNoteDraft.playerId}
+                onChange={(event) => setPlayerNoteDraft((current) => ({ ...current, playerId: event.target.value }))}
+                className="rounded-xl border border-white/10 bg-white px-3 py-2 text-xs font-bold text-slate-950"
+              >
+                <option value="">Jugador</option>
+                {players.map((player) => <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>)}
+              </select>
+              <input
+                value={playerNoteDraft.text}
+                onChange={(event) => setPlayerNoteDraft((current) => ({ ...current, text: event.target.value }))}
+                placeholder="Consigna corta"
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white placeholder:text-slate-500"
+              />
+              <button type="button" onClick={addPlayerNote} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white">Añadir</button>
+            </div>
+            <div className="space-y-2">
+              {playerNotes.map((note) => (
+                <div key={note.id} className="grid gap-2 sm:grid-cols-[1fr_1.3fr_auto]">
+                  <input
+                    value={note.player_name || ''}
+                    onChange={(event) => updatePlayerNote(note.id, { player_name: event.target.value })}
+                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white"
+                  />
+                  <input
+                    value={note.text || ''}
+                    onChange={(event) => updatePlayerNote(note.id, { text: event.target.value })}
+                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
+                  />
+                  <button type="button" onClick={() => deletePlayerNote(note.id)} className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100">Borrar</button>
+                </div>
+              ))}
             </div>
           </div>
         </div>

@@ -8,7 +8,15 @@ const formatDate = (value) => {
   return new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
 };
 
+const getBenchNumber = (player) => {
+  const value = player?.number ?? player?.dorsal;
+  const parsed = Number.parseInt(String(value ?? '').replace(/[^\d]/g, ''), 10);
+  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+};
+
 export default function LineupPrintSheet({ match, starters = [], bench = [], coordinates = [], system = '4-4-2', kit = 'home', captainPlayerId = null }) {
+  const sortedBench = [...bench].sort((a, b) => getBenchNumber(a) - getBenchNumber(b));
+
   return (
     <article className="lineup-print-sheet print-sheet-a4">
       <header className="print-sheet-header">
@@ -29,7 +37,7 @@ export default function LineupPrintSheet({ match, starters = [], bench = [], coo
         <aside className="print-bench">
           <h2>Banquillo</h2>
           <div className="print-bench-list">
-            {bench.length ? bench.map((player) => (
+            {sortedBench.length ? sortedBench.map((player) => (
               <div key={player.id || player.name} className="print-bench-row">
                 <strong>{player.number || player.dorsal || '-'}</strong>
                 <span>{player.shirtName || player.shirt_name || player.shortName || player.name}{player.id === captainPlayerId || player.isCaptain ? ' (C)' : ''}</span>
