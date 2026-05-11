@@ -712,6 +712,115 @@ const getFormationLayout = (system) => formationLayouts[system] ?? formationLayo
 const getFormationCoordinates = (system) => getFormationLayout(system).map(({ x, y }) => ({ x, y }));
 const getFormationRoles = (system) => getFormationLayout(system).map(({ role }) => role);
 
+const idealFormationSlots = {
+  '4-4-2': [
+    { id: 'POR', label: 'POR', line: 'porteria', x: 50, y: 89 },
+    { id: 'LD', label: 'LD', line: 'defensa', x: 82, y: 73 },
+    { id: 'DFC_D', label: 'DFC derecho', line: 'defensa', x: 61, y: 73 },
+    { id: 'DFC_I', label: 'DFC izquierdo', line: 'defensa', x: 39, y: 73 },
+    { id: 'LI', label: 'LI', line: 'defensa', x: 18, y: 73 },
+    { id: 'MD', label: 'MD', line: 'medio', x: 82, y: 45 },
+    { id: 'MC_D', label: 'MC derecho', line: 'medio', x: 61, y: 45 },
+    { id: 'MC_I', label: 'MC izquierdo', line: 'medio', x: 39, y: 45 },
+    { id: 'MI', label: 'MI', line: 'medio', x: 18, y: 45 },
+    { id: 'DC_D', label: 'DC derecho', line: 'ataque', x: 58, y: 16 },
+    { id: 'DC_I', label: 'DC izquierdo', line: 'ataque', x: 42, y: 16 },
+  ],
+  '4-3-3': [
+    { id: 'POR', label: 'POR', line: 'porteria', x: 50, y: 89 },
+    { id: 'LD', label: 'LD', line: 'defensa', x: 82, y: 73 },
+    { id: 'DFC_D', label: 'DFC derecho', line: 'defensa', x: 61, y: 73 },
+    { id: 'DFC_I', label: 'DFC izquierdo', line: 'defensa', x: 39, y: 73 },
+    { id: 'LI', label: 'LI', line: 'defensa', x: 18, y: 73 },
+    { id: 'MCD', label: 'MCD', line: 'medio', x: 50, y: 56 },
+    { id: 'MC_D', label: 'Interior derecho', line: 'medio', x: 62, y: 40 },
+    { id: 'MC_I', label: 'Interior izquierdo', line: 'medio', x: 38, y: 40 },
+    { id: 'ED', label: 'ED', line: 'ataque', x: 80, y: 18 },
+    { id: 'DC', label: 'DC', line: 'ataque', x: 50, y: 14 },
+    { id: 'EI', label: 'EI', line: 'ataque', x: 20, y: 18 },
+  ],
+  '4-2-3-1': [
+    { id: 'POR', label: 'POR', line: 'porteria', x: 50, y: 89 },
+    { id: 'LD', label: 'LD', line: 'defensa', x: 82, y: 73 },
+    { id: 'DFC_D', label: 'DFC derecho', line: 'defensa', x: 61, y: 73 },
+    { id: 'DFC_I', label: 'DFC izquierdo', line: 'defensa', x: 39, y: 73 },
+    { id: 'LI', label: 'LI', line: 'defensa', x: 18, y: 73 },
+    { id: 'MCD_D', label: 'Pivote derecho', line: 'medio', x: 61, y: 52 },
+    { id: 'MCD_I', label: 'Pivote izquierdo', line: 'medio', x: 39, y: 52 },
+    { id: 'MPD', label: 'MPD', line: 'mediapunta', x: 82, y: 32 },
+    { id: 'MPC', label: 'MPC', line: 'mediapunta', x: 50, y: 32 },
+    { id: 'MPI', label: 'MPI', line: 'mediapunta', x: 18, y: 32 },
+    { id: 'DC', label: 'DC', line: 'ataque', x: 50, y: 14 },
+  ],
+  '5-3-2': [
+    { id: 'POR', label: 'POR', line: 'porteria', x: 50, y: 89 },
+    { id: 'CAD', label: 'CAD', line: 'defensa', x: 88, y: 73 },
+    { id: 'DFC_D', label: 'DFC derecho', line: 'defensa', x: 68, y: 75 },
+    { id: 'DFC_C', label: 'DFC central', line: 'defensa', x: 50, y: 76 },
+    { id: 'DFC_I', label: 'DFC izquierdo', line: 'defensa', x: 32, y: 75 },
+    { id: 'CAI', label: 'CAI', line: 'defensa', x: 12, y: 73 },
+    { id: 'MC_D', label: 'MC derecho', line: 'medio', x: 66, y: 45 },
+    { id: 'MC_C', label: 'MC central', line: 'medio', x: 50, y: 49 },
+    { id: 'MC_I', label: 'MC izquierdo', line: 'medio', x: 34, y: 45 },
+    { id: 'DC_D', label: 'DC derecho', line: 'ataque', x: 58, y: 16 },
+    { id: 'DC_I', label: 'DC izquierdo', line: 'ataque', x: 42, y: 16 },
+  ],
+  '3-5-2': [
+    { id: 'POR', label: 'POR', line: 'porteria', x: 50, y: 89 },
+    { id: 'DFC_D', label: 'DFC derecho', line: 'defensa', x: 72, y: 73 },
+    { id: 'DFC_C', label: 'DFC central', line: 'defensa', x: 50, y: 75 },
+    { id: 'DFC_I', label: 'DFC izquierdo', line: 'defensa', x: 28, y: 73 },
+    { id: 'MCD', label: 'MCD', line: 'medio', x: 50, y: 56 },
+    { id: 'CAD', label: 'CAD', line: 'medio', x: 86, y: 43 },
+    { id: 'MC_D', label: 'MC derecho', line: 'medio', x: 62, y: 38 },
+    { id: 'MC_I', label: 'MC izquierdo', line: 'medio', x: 38, y: 38 },
+    { id: 'CAI', label: 'CAI', line: 'medio', x: 14, y: 43 },
+    { id: 'DC_D', label: 'DC derecho', line: 'ataque', x: 58, y: 16 },
+    { id: 'DC_I', label: 'DC izquierdo', line: 'ataque', x: 42, y: 16 },
+  ],
+};
+
+const stripAccents = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const getIdealFormationSlots = (system) => idealFormationSlots[system] || getFormationLayout(system).map((slot, index) => ({
+  id: `SLOT_${index}`,
+  label: slot.role,
+  line: index === 0 ? 'porteria' : index < 5 ? 'defensa' : index < 9 ? 'medio' : 'ataque',
+  x: slot.x,
+  y: slot.y,
+}));
+
+const normalizeIdealSlotId = ({ system, role, slotIndex, targetSlots = getIdealFormationSlots(system) }) => {
+  const value = stripAccents(role).toLowerCase();
+  const byIndex = targetSlots[slotIndex];
+  const bySide = (rightId, centerId, leftId) => {
+    if (value.includes('derech')) return rightId;
+    if (value.includes('izquier')) return leftId;
+    return centerId || byIndex?.id;
+  };
+
+  if (value.includes('portero')) return 'POR';
+  if (value.includes('lateral')) return value.includes('derech') ? 'LD' : value.includes('izquier') ? 'LI' : byIndex?.id;
+  if (value.includes('carrilero')) return value.includes('derech') ? 'CAD' : value.includes('izquier') ? 'CAI' : byIndex?.id;
+  if (value.includes('central') || value.includes('defensa')) return bySide('DFC_D', 'DFC_C', 'DFC_I');
+  if (value.includes('pivote')) return byIndex?.id?.startsWith('MCD') ? byIndex.id : 'MCD';
+  if (value.includes('mediapunta')) return bySide('MPD', 'MPC', 'MPI');
+  if (value.includes('interior')) return bySide('MC_D', 'MC_C', 'MC_I');
+  if (value.includes('mediocentro')) return byIndex?.id?.startsWith('MC') || byIndex?.id?.startsWith('MCD') ? byIndex.id : 'MC_C';
+  if (value.includes('extremo')) {
+    if (system === '4-4-2') return value.includes('derech') ? 'MD' : value.includes('izquier') ? 'MI' : byIndex?.id;
+    if (system === '4-2-3-1') return value.includes('derech') ? 'MPD' : value.includes('izquier') ? 'MPI' : byIndex?.id;
+    return value.includes('derech') ? 'ED' : value.includes('izquier') ? 'EI' : byIndex?.id;
+  }
+  if (value.includes('delantero')) return bySide('DC_D', 'DC', 'DC_I');
+  return byIndex?.id;
+};
+
+const getIdealSlotForStoredSlot = (system, slotIndex, role) => {
+  const targetSlots = getIdealFormationSlots(system);
+  const normalizedId = normalizeIdealSlotId({ system, role, slotIndex, targetSlots });
+  return targetSlots.find((slot) => slot.id === normalizedId) || targetSlots[slotIndex] || null;
+};
+
 const getSystemProfile = (system) => {
   const parts = String(system || '4-4-2')
     .split('-')
@@ -5840,11 +5949,14 @@ function App() {
         row.starts += isStarter ? 1 : 0;
         if (isStarter && minutes > 0) {
           const role = roles[slotIndex] || player.position || 'Sin posicion';
+          const idealSlot = getIdealSlotForStoredSlot(system, slotIndex, role);
           row.roleMinutes[role] = (row.roleMinutes[role] || 0) + minutes;
-          const slotKey = `${system}-${slotIndex}`;
+          const slotKey = `${system}-${idealSlot?.id || slotIndex}`;
           const slotUsage = row.slotUsage[slotKey] || {
             system,
             slot: slotIndex,
+            slotId: idealSlot?.id || `SLOT_${slotIndex}`,
+            visualLabel: idealSlot?.label || role,
             role,
             scope: source.scope,
             minutes: 0,
@@ -5876,7 +5988,8 @@ function App() {
         const replacementStored = match.statsPlayerData?.[stored.replacementName] || {};
         if (Number(replacementStored.minutes || 0) > 0) return;
         const role = roles[slotIndex] || 'Sin posicion';
-        const slotKey = `${system}-${slotIndex}`;
+        const idealSlot = getIdealSlotForStoredSlot(system, slotIndex, role);
+        const slotKey = `${system}-${idealSlot?.id || slotIndex}`;
         const subMinutes = 90 - starterMinutes;
         const replacementRow = byPlayer.get(stored.replacementName);
         replacementRow.minutes += subMinutes;
@@ -5884,6 +5997,8 @@ function App() {
         const slotUsage = replacementRow.slotUsage[slotKey] || {
           system,
           slot: slotIndex,
+          slotId: idealSlot?.id || `SLOT_${slotIndex}`,
+          visualLabel: idealSlot?.label || role,
           role,
           scope: source.scope,
           minutes: 0,
@@ -5925,53 +6040,99 @@ function App() {
   };
 
   const normalizeIdealRole = (role) => {
-    const value = String(role || '').toLowerCase();
-    if (value.includes('portero')) return 'portero';
-    if (value.includes('lateral') || value.includes('carrilero')) return value.includes('izquier') ? 'banda-izquierda-def' : value.includes('derech') ? 'banda-derecha-def' : 'defensa';
-    if (value.includes('central') || value.includes('defensa')) return 'central';
-    if (value.includes('pivote') || value.includes('mediocentro') || value.includes('interior') || value.includes('mediapunta')) return 'medio';
-    if (value.includes('extremo')) return value.includes('izquier') ? 'banda-izquierda-atq' : value.includes('derech') ? 'banda-derecha-atq' : 'ataque';
-    if (value.includes('delantero')) return 'delantero';
-    return value;
+    const value = stripAccents(role).toLowerCase();
+    if (value.includes('portero')) return 'POR';
+    if (value.includes('lateral derecho')) return 'LD';
+    if (value.includes('lateral izquierdo')) return 'LI';
+    if (value.includes('carrilero derecho')) return 'CAD';
+    if (value.includes('carrilero izquierdo')) return 'CAI';
+    if (value.includes('central') || value.includes('defensa')) return 'DFC';
+    if (value.includes('pivote')) return 'MCD';
+    if (value.includes('mediapunta')) return 'MP';
+    if (value.includes('mediocentro') || value.includes('interior')) return 'MC';
+    if (value.includes('extremo derecho')) return 'ED';
+    if (value.includes('extremo izquierdo')) return 'EI';
+    if (value.includes('extremo')) return 'EXT';
+    if (value.includes('delantero')) return 'DC';
+    return value.toUpperCase();
   };
 
-  const roleFitsSlot = (playerRole, slotRole) => {
+  const playerPositionFitsIdealSlot = (playerRole, slot) => {
     const playerKey = normalizeIdealRole(playerRole);
-    const slotKey = normalizeIdealRole(slotRole);
-    if (playerKey === slotKey) return true;
-    if (slotKey === 'central') return ['central', 'defensa'].includes(playerKey);
-    if (slotKey === 'medio') return playerKey === 'medio';
-    if (slotKey === 'delantero') return ['delantero', 'ataque'].includes(playerKey);
-    if (slotKey.includes('banda-izquierda')) return playerKey.includes('banda-izquierda') || playerKey === 'medio';
-    if (slotKey.includes('banda-derecha')) return playerKey.includes('banda-derecha') || playerKey === 'medio';
+    const slotId = slot?.id || '';
+    if (!playerKey || !slotId) return false;
+    if (slotId === 'POR') return playerKey === 'POR';
+    if (slotId === 'LD') return playerKey === 'LD' || playerKey === 'CAD';
+    if (slotId === 'LI') return playerKey === 'LI' || playerKey === 'CAI';
+    if (slotId === 'CAD') return playerKey === 'CAD' || playerKey === 'LD' || playerKey === 'ED';
+    if (slotId === 'CAI') return playerKey === 'CAI' || playerKey === 'LI' || playerKey === 'EI';
+    if (slotId.startsWith('DFC')) return playerKey === 'DFC';
+    if (slotId.startsWith('MCD')) return playerKey === 'MCD' || playerKey === 'MC';
+    if (slotId.startsWith('MC')) return playerKey === 'MC' || playerKey === 'MCD';
+    if (slotId.startsWith('MP')) return playerKey === 'MP' || playerKey === 'MC' || playerKey === 'ED' || playerKey === 'EI' || playerKey === 'EXT';
+    if (slotId === 'ED') return playerKey === 'ED' || playerKey === 'EXT';
+    if (slotId === 'EI') return playerKey === 'EI' || playerKey === 'EXT';
+    if (slotId.startsWith('DC')) return playerKey === 'DC';
     return false;
   };
 
   const buildIdealElevenForSystem = (idealRows, system) => {
-    const roles = getFormationRoles(system);
+    const slots = getIdealFormationSlots(system);
     const used = new Set();
-    return roles.map((slotRole, slotIndex) => {
-      const slotKey = `${system}-${slotIndex}`;
+    const assignments = slots.map((slot) => {
+      const slotKey = `${system}-${slot.id}`;
       const candidates = idealRows
         .map((row) => ({ row, usage: row.slotUsage?.[slotKey] }))
         .filter(({ row, usage }) => usage && !used.has(row.player.name))
         .sort((a, b) => {
-          const scoreA = a.usage.minutes * 0.04 + a.usage.starts * 8 + a.row.goals * 2 + a.row.assists * 2 + (a.usage.ratingCount ? (a.usage.ratingTotal / a.usage.ratingCount) * 3 : 0);
-          const scoreB = b.usage.minutes * 0.04 + b.usage.starts * 8 + b.row.goals * 2 + b.row.assists * 2 + (b.usage.ratingCount ? (b.usage.ratingTotal / b.usage.ratingCount) * 3 : 0);
-          return scoreB - scoreA;
+          const ratingA = a.usage.ratingCount ? a.usage.ratingTotal / a.usage.ratingCount : 0;
+          const ratingB = b.usage.ratingCount ? b.usage.ratingTotal / b.usage.ratingCount : 0;
+          return b.usage.starts - a.usage.starts || b.usage.minutes - a.usage.minutes || ratingB - ratingA || b.row.idealScore - a.row.idealScore;
         });
       const exact = candidates[0];
       if (exact) {
         used.add(exact.row.player.name);
-        return { ...exact.row, primaryRole: exact.usage.role, idealSlotSource: exact.usage.scope, idealSlotMinutes: exact.usage.minutes };
+        return {
+          slot,
+          row: { ...exact.row, primaryRole: exact.usage.role, idealSlotSource: exact.usage.scope, idealSlotMinutes: exact.usage.minutes, idealSlotFallback: false },
+          debug: { source: exact.usage.scope, rawSlot: exact.usage.slot, role: exact.usage.role, normalizedSlot: slot.id },
+        };
       }
       const fallback = idealRows
-        .filter((row) => !used.has(row.player.name) && roleFitsSlot(row.player.position, slotRole))
-        .sort((a, b) => b.idealScore - a.idealScore)[0];
-      if (!fallback) return null;
+        .filter((row) => !used.has(row.player.name) && playerPositionFitsIdealSlot(row.player.position, slot))
+        .sort((a, b) => b.starts - a.starts || b.minutes - a.minutes || b.avgRating - a.avgRating || b.idealScore - a.idealScore)[0];
+      if (!fallback) return { slot, row: null, debug: { source: 'empty', normalizedSlot: slot.id } };
       used.add(fallback.player.name);
-      return { ...fallback, primaryRole: fallback.player.position, idealSlotSource: 'plantilla', idealSlotMinutes: 0 };
+      return {
+        slot,
+        row: { ...fallback, primaryRole: fallback.player.position, idealSlotSource: 'plantilla', idealSlotMinutes: 0, idealSlotFallback: true },
+        debug: { source: 'plantilla_fallback', role: fallback.player.position, normalizedSlot: slot.id },
+      };
     });
+    if (import.meta.env.DEV) {
+      console.groupCollapsed(`[Once ideal debug] ${system}`);
+      console.log('Sistema seleccionado:', system);
+      console.table(slots.map((slot) => ({ id: slot.id, linea: slot.line, etiqueta: slot.label, x: slot.x, y: slot.y })));
+      console.table(idealRows.flatMap((row) => Object.values(row.slotUsage || {}).filter((usage) => usage.system === system).map((usage) => ({
+        jugador: row.player.name,
+        scope: usage.scope,
+        slotReal: usage.slot,
+        rolReal: usage.role,
+        normalizado: usage.slotId,
+        minutos: usage.minutes,
+        titularidades: usage.starts,
+      }))));
+      console.table(assignments.map(({ slot, row, debug }) => ({
+        slot: slot.id,
+        etiqueta: slot.label,
+        jugador: row?.player?.name || '(vacío)',
+        origen: debug.source,
+        slotReal: debug.rawSlot ?? '',
+        rol: debug.role || '',
+      })));
+      console.groupEnd();
+    }
+    return assignments;
   };
 
   const getGroupTendency = (scopedMatches) =>
@@ -6144,32 +6305,32 @@ function App() {
   );
 
   const renderIdealElevenPitch = (idealRows, system) => {
-    const coordinates = getFormationCoordinates(system);
-    const roles = getFormationRoles(system);
+    const assignments = idealRows?.[0]?.slot ? idealRows : buildIdealElevenForSystem(idealRows, system);
     return (
-      <div className="relative mx-auto aspect-[7/8.9] min-h-[620px] max-w-3xl overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner">
-        <div className="absolute inset-4 rounded-[28px] border-2 border-white/55" />
-        <div className="absolute left-4 right-4 top-1/2 h-px bg-white/35" />
-        <div className="absolute left-1/2 top-1/2 h-32 w-32 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/35" />
-        <div className="absolute left-1/2 top-4 h-24 w-56 -translate-x-1/2 rounded-b-3xl border-x-2 border-b-2 border-white/35" />
-        <div className="absolute bottom-4 left-1/2 h-24 w-56 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/35" />
-        {coordinates.map((slot, index) => {
-          const row = idealRows[index];
+      <div className="mx-auto w-full max-w-[min(100%,42rem)] overflow-hidden">
+        <div className="relative mx-auto aspect-[7/8.9] w-full overflow-hidden rounded-2xl border border-white/20 bg-[#102616] shadow-inner sm:rounded-3xl">
+        <div className="absolute inset-3 rounded-2xl border-2 border-white/55 sm:inset-4 sm:rounded-[28px]" />
+        <div className="absolute left-3 right-3 top-1/2 h-px bg-white/35 sm:left-4 sm:right-4" />
+        <div className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/35 sm:h-32 sm:w-32" />
+        <div className="absolute left-1/2 top-3 h-16 w-36 -translate-x-1/2 rounded-b-3xl border-x-2 border-b-2 border-white/35 sm:top-4 sm:h-24 sm:w-56" />
+        <div className="absolute bottom-3 left-1/2 h-16 w-36 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/35 sm:bottom-4 sm:h-24 sm:w-56" />
+        {assignments.map(({ slot, row }, index) => {
           const player = row?.player;
           return (
-            <div key={`${roles[index]}-${index}`} className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
-              <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border-2 border-caudal-electric/60 bg-caudal-950/80 text-xs font-black text-white">
+            <div key={`${slot.id}-${index}`} className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-0.5 text-center sm:gap-1" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
+              <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-caudal-electric/60 bg-caudal-950/80 text-[10px] font-black text-white sm:h-14 sm:w-14 sm:rounded-2xl sm:border-2 sm:text-xs">
                 {player?.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : player?.number || index + 1}
               </div>
-              <span className="max-w-[90px] truncate rounded-xl bg-black/60 px-2 py-1 text-[10px] font-black text-white">{player?.name || roles[index]}</span>
+              <span className="max-w-[54px] truncate rounded-lg bg-black/60 px-1.5 py-0.5 text-[8px] font-black text-white sm:max-w-[90px] sm:rounded-xl sm:px-2 sm:py-1 sm:text-[10px]">{player?.name || slot.label}</span>
               {row?.primaryRole ? (
-                <span className="max-w-[96px] truncate rounded-xl bg-caudal-electric/90 px-2 py-0.5 text-[9px] font-black text-slate-950" title={`Rol más jugado: ${row.primaryRole}`}>
-                  {row.primaryRole}
+                <span className="max-w-[58px] truncate rounded-lg bg-caudal-electric/90 px-1.5 py-0.5 text-[7px] font-black text-slate-950 sm:max-w-[96px] sm:rounded-xl sm:px-2 sm:text-[9px]" title={`Rol más jugado: ${row.primaryRole}${row.idealSlotFallback ? ' (fallback plantilla)' : ''}`}>
+                  {row.idealSlotFallback ? `${slot.label}*` : row.primaryRole}
                 </span>
               ) : null}
             </div>
           );
         })}
+        </div>
       </div>
     );
   };
@@ -7604,7 +7765,7 @@ function App() {
   const mobilePrimaryTabs = [
     ['Inicio', 'Inicio'],
     ['Partidos', 'Partidos'],
-    ['Plantilla', 'Plantilla'],
+    ['Plantilla', 'Plant.'],
     ['Análisis Grupal', 'Análisis'],
   ];
   const mobileMoreTabs = ['Equipos', 'Rendimiento', 'Biblioteca'];
@@ -7763,7 +7924,7 @@ function App() {
                 key={tab}
                 type="button"
                 onClick={() => goToTab(tab)}
-                className={`min-h-[48px] rounded-2xl px-2 py-2 text-[11px] font-black uppercase tracking-[0.08em] ${activeTab === tab ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200'}`}
+                className={`min-h-[48px] rounded-2xl px-1.5 py-2 text-[10px] font-black uppercase tracking-[0.02em] ${activeTab === tab ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200'}`}
               >
                 {label}
               </button>
@@ -7771,7 +7932,7 @@ function App() {
             <button
               type="button"
               onClick={() => setIsMobileMoreOpen((current) => !current)}
-              className={`min-h-[48px] rounded-2xl px-2 py-2 text-[11px] font-black uppercase tracking-[0.08em] ${isMobileMoreOpen || mobileMoreTabs.includes(activeTab) ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-200'}`}
+              className={`min-h-[48px] rounded-2xl px-1.5 py-2 text-[10px] font-black uppercase tracking-[0.02em] ${isMobileMoreOpen || mobileMoreTabs.includes(activeTab) ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-200'}`}
             >
               Más
             </button>
@@ -9152,7 +9313,7 @@ function App() {
               </AccordionSection>
 
               <AccordionSection title="Lecturas automáticas" subtitle="Interpretación útil para cuerpo técnico" defaultOpen>
-              <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+              <section className="overflow-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-4 shadow-glow sm:p-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Lecturas automáticas</h3>
@@ -9643,8 +9804,9 @@ function App() {
                                 setMatchSections((prev) => ({ ...prev, [match.id]: section }));
                                 openMatchPage(match, section);
                               }}
-                              className={`px-3 py-3 text-xs font-bold uppercase tracking-[0.12em] ${activeSection === section ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.03] text-slate-500 hover:text-white'}`}>
-                              {section}
+                              className={`min-w-0 px-1 py-3 text-[10px] font-bold uppercase tracking-[0.02em] sm:px-3 sm:text-xs sm:tracking-[0.12em] ${activeSection === section ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.03] text-slate-500 hover:text-white'}`}>
+                              <span className="sm:hidden">{section === 'ESTADÍSTICAS' ? 'EST.' : section === 'IMPRESIÓN' ? 'IMP.' : section}</span>
+                              <span className="hidden sm:inline">{section}</span>
                             </button>
                           ))}
                         </div>
@@ -9688,13 +9850,13 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="mt-6 grid grid-cols-4 gap-2 sm:flex sm:flex-wrap sm:gap-3">
+                  <div className="mt-6 grid grid-cols-4 gap-1.5 sm:flex sm:flex-wrap sm:gap-3">
                     {['PRE', 'ESTADÍSTICAS', 'POST', 'IMPRESIÓN'].map((section) => (
                       <button
                         key={section}
                         onClick={() => openMatchPage(selectedMatch, section)}
-                        className={`min-h-[46px] rounded-2xl px-2 py-3 text-[11px] font-black uppercase tracking-[0.08em] sm:px-4 sm:text-sm sm:font-semibold sm:tracking-[0.12em] ${matchViewSection === section ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}>
-                        <span className="sm:hidden">{section === 'ESTADÍSTICAS' ? 'ESTAD.' : section === 'IMPRESIÓN' ? 'IMP.' : section}</span>
+                        className={`min-h-[42px] min-w-0 rounded-xl px-1.5 py-2.5 text-[10px] font-black uppercase tracking-[0.02em] sm:min-h-[46px] sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm sm:font-semibold sm:tracking-[0.12em] ${matchViewSection === section ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}>
+                        <span className="sm:hidden">{section === 'ESTADÍSTICAS' ? 'EST.' : section === 'IMPRESIÓN' ? 'IMP.' : section}</span>
                         <span className="hidden sm:inline">{section}</span>
                       </button>
                     ))}
