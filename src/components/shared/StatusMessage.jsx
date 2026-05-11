@@ -3,13 +3,13 @@ export default function StatusMessage({ status, className = '' }) {
 
   const normalized = String(status).toLowerCase();
   const tone = normalized.includes('error') || normalized.includes('no se pudo')
-    ? 'border-red-500/20 bg-red-500/10 text-red-100'
+    ? 'status-error'
     : normalized.includes('guardado') || normalized.includes('✓')
-      ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-100'
-      : 'border-white/10 bg-white/5 text-slate-300';
+      ? 'status-success'
+      : 'status-info';
 
   return (
-    <div className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${tone} ${className}`}>
+    <div className={`status-message ${tone} ${className}`}>
       {status}
     </div>
   );

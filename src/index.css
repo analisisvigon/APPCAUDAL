@@ -32,3 +32,111 @@ select option {
 ::selection {
   background: rgba(79, 140, 255, 0.35);
 }
+
+@layer components {
+  .app-card {
+    @apply rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow;
+  }
+
+  .app-card-soft {
+    @apply rounded-2xl border border-white/10 bg-white/5 p-4;
+  }
+
+  .app-section-eyebrow {
+    @apply text-xs font-black uppercase tracking-[0.18em] text-slate-500;
+  }
+
+  .app-section-title {
+    @apply text-sm font-bold uppercase tracking-[0.18em] text-white;
+  }
+
+  .app-subtitle {
+    @apply mt-2 text-sm leading-6 text-slate-400;
+  }
+
+  .app-label {
+    @apply space-y-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500;
+  }
+
+  .app-field-label {
+    @apply space-y-2 text-sm text-slate-300;
+  }
+
+  .app-input,
+  .app-select,
+  .app-textarea {
+    @apply w-full border border-white/10 bg-white/5 text-sm text-white transition placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .app-input,
+  .app-select {
+    @apply min-h-11 rounded-xl px-3 py-2;
+  }
+
+  .app-textarea {
+    @apply min-h-[110px] rounded-2xl px-4 py-3;
+  }
+
+  .app-select option {
+    @apply bg-[#061127] text-white;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  .btn-small {
+    @apply inline-flex min-h-11 items-center justify-center rounded-xl px-4 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-primary {
+    @apply bg-caudal-electric text-slate-950 hover:bg-[#7aacff];
+  }
+
+  .btn-secondary {
+    @apply bg-white/10 text-slate-200 ring-1 ring-white/10 hover:bg-white/15 hover:text-white;
+  }
+
+  .btn-danger {
+    @apply bg-red-500/15 text-red-100 ring-1 ring-red-400/20 hover:bg-red-500 hover:text-white;
+  }
+
+  .btn-small {
+    @apply min-h-9 rounded-lg px-3 py-1.5 text-xs;
+  }
+
+  .empty-state {
+    @apply rounded-2xl border border-dashed border-white/10 bg-black/20 p-5 text-sm text-slate-400;
+  }
+
+  .status-message {
+    @apply rounded-2xl border px-4 py-3 text-sm font-semibold;
+  }
+
+  .status-success {
+    @apply border-emerald-400/20 bg-emerald-400/10 text-emerald-100;
+  }
+
+  .status-error {
+    @apply border-red-500/20 bg-red-500/10 text-red-100;
+  }
+
+  .status-info {
+    @apply border-white/10 bg-white/5 text-slate-300;
+  }
+
+  .app-table-shell {
+    @apply overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.03];
+  }
+
+  .app-table {
+    @apply min-w-full text-left text-sm;
+  }
+
+  .app-table th {
+    @apply bg-white/5 px-3 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400;
+  }
+
+  .app-table td {
+    @apply border-t border-white/5 px-3 py-3 text-slate-200;
+  }
+}

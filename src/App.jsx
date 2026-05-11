@@ -2090,6 +2090,8 @@ function App() {
   const [statsSaveStatus, setStatsSaveStatus] = useState('');
   const [statsViewMode, setStatsViewMode] = useState('completa');
   const [delegatedMinute, setDelegatedMinute] = useState('0');
+  const [delegatedElapsedSeconds, setDelegatedElapsedSeconds] = useState(0);
+  const [delegatedTimerRunning, setDelegatedTimerRunning] = useState(false);
   const [delegatedSide, setDelegatedSide] = useState('caudal');
   const [showAllDelegatedEvents, setShowAllDelegatedEvents] = useState(false);
   const [delegatedEventDraft, setDelegatedEventDraft] = useState(null);
@@ -2212,7 +2214,7 @@ function App() {
   const [groupShotFilter, setGroupShotFilter] = useState('Ambos');
   const [groupLoading, setGroupLoading] = useState(false);
   const [groupError, setGroupError] = useState('');
-  const [idealSystem, setIdealSystem] = useState('4-4-2');
+  const [idealSystem, setIdealSystem] = useState('');
   const [formState, setFormState] = useState({
     name: '',
     shirtName: '',
@@ -2232,6 +2234,18 @@ function App() {
   const statsOperationRef = useRef(Promise.resolve());
   const postYoutubeIframeRef = useRef(null);
   const postYoutubePlayerRef = useRef(null);
+
+  useEffect(() => {
+    if (!delegatedTimerRunning) return undefined;
+    const intervalId = window.setInterval(() => {
+      setDelegatedElapsedSeconds((current) => Math.min(130 * 60, current + 1));
+    }, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [delegatedTimerRunning]);
+
+  useEffect(() => {
+    setDelegatedMinute(String(Math.min(130, Math.floor(delegatedElapsedSeconds / 60))));
+  }, [delegatedElapsedSeconds]);
 
   const handleAuthFormChange = (event) => {
     const { name, value } = event.target;
@@ -2795,13 +2809,14 @@ function App() {
     setGroupError('');
 
     try {
-      const [partidosResponse, statsResponse, goalsResponse] = await Promise.all([
+      const [partidosResponse, statsResponse, goalsResponse, slotsResponse] = await Promise.all([
         supabase.from("partidos").select("*").order("date", { ascending: true, nullsFirst: false }),
         supabase.from("partido_estadisticas_jugador").select("*"),
         supabase.from("partido_eventos_gol").select("*"),
+        supabase.from("partido_alineacion_slots").select("*").in("scope", ["stats", "pre_caudal"]).order("slot", { ascending: true }),
       ]);
 
-      const failed = [partidosResponse, statsResponse, goalsResponse].find((response) => response.error);
+      const failed = [partidosResponse, statsResponse, goalsResponse, slotsResponse].find((response) => response.error);
       if (failed) throw failed.error;
 
       let quickEventsRows = [];
@@ -2833,17 +2848,44 @@ function App() {
         return acc;
       }, {});
 
+      const slotsByMatch = (slotsResponse.data || []).reduce((acc, slot) => {
+        if (!slot.partido_id || !Number.isInteger(slot.slot) || slot.slot < 0 || slot.slot > 10) return acc;
+        const current = acc[slot.partido_id] || { stats: [], preCaudal: [] };
+        const normalizedSlot = {
+          scope: slot.scope,
+          slot: slot.slot,
+          playerName: slot.player_name || '',
+          jugadorId: slot.jugador_id || null,
+        };
+        if (slot.scope === 'stats') current.stats.push(normalizedSlot);
+        if (slot.scope === 'pre_caudal') current.preCaudal.push(normalizedSlot);
+        acc[slot.partido_id] = current;
+        return acc;
+      }, {});
+
       const quickEventsByMatch = quickEventsRows.reduce((acc, event) => {
         acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseQuickEvent(event)];
         return acc;
       }, {});
 
-      setMatches((partidosResponse.data || []).map((match) => ({
-        ...normalizeSupabasePartido(match),
-        statsGoalEvents: eventsByMatch[match.id] || [],
-        quickEvents: quickEventsByMatch[match.id] || [],
-        statsPlayerData: statsByMatch[match.id] || {},
-      })));
+      setMatches((partidosResponse.data || []).map((match) => {
+        const normalized = normalizeSupabasePartido(match);
+        const lineupSlots = slotsByMatch[match.id] || { stats: [], preCaudal: [] };
+        const statsLineup = Array.from({ length: 11 }, () => '');
+        lineupSlots.stats.forEach((slot) => {
+          statsLineup[slot.slot] = slot.playerName;
+        });
+        return {
+          ...normalized,
+          statsSystemRaw: match.stats_system || '',
+          preCaudalSystemRaw: match.pre_caudal_system || '',
+          statsGoalEvents: eventsByMatch[match.id] || [],
+          quickEvents: quickEventsByMatch[match.id] || [],
+          statsPlayerData: statsByMatch[match.id] || {},
+          lineupSlots,
+          statsLineup,
+        };
+      }));
     } catch (analysisError) {
       console.error('Error cargando análisis grupal desde Supabase:', analysisError);
       setGroupError(analysisError.message || 'No se pudo cargar el análisis grupal.');
@@ -2866,7 +2908,7 @@ function App() {
       }
 
       const quickEventRequest = isUuid(player.id)
-        ? supabase.from("match_quick_events").select("*").eq("jugador_id", player.id)
+        ? supabase.from("match_quick_events").select("*").eq("jugador_id", player.id).eq("reviewed", true)
         : Promise.resolve({ data: [], error: null });
 
       const [scoredResponse, assistedResponse, quickEventsResponse, ...statsResponses] = await Promise.all([
@@ -4907,8 +4949,24 @@ function App() {
 
   const updateDelegatedMinute = (value) => {
     const nextMinute = Math.max(0, Math.min(130, Number(value) || 0));
+    setDelegatedElapsedSeconds(nextMinute * 60);
     setDelegatedMinute(String(nextMinute));
     setDelegatedEventDraft((current) => (current ? { ...current, minute: String(nextMinute) } : current));
+  };
+
+  const resetDelegatedTimer = () => {
+    setDelegatedTimerRunning(false);
+    updateDelegatedMinute(0);
+  };
+
+  const pauseDelegatedTimerForHalftime = () => {
+    setDelegatedTimerRunning(false);
+    updateDelegatedMinute(45);
+  };
+
+  const startDelegatedSecondHalf = () => {
+    updateDelegatedMinute(45);
+    setDelegatedTimerRunning(true);
   };
 
   const saveDelegatedEvent = async () => {
@@ -4929,7 +4987,6 @@ function App() {
       };
       const { error } = await supabase.from("match_quick_events").insert(payload);
       if (error) throw error;
-      setDelegatedMinute(String(minute));
       setDelegatedEventDraft(null);
       setDelegatedEventFeedback(`${delegatedEventDraft.label} guardado en el ${minute}'${selectedPlayer ? ` · ${selectedPlayer.name}` : ''}`);
       await refreshStatsFromSupabase(selectedMatch.id, 'evento de Modo Delegado');
@@ -5104,25 +5161,48 @@ function App() {
     return (
       <div className="space-y-4">
         <div className="sticky top-2 z-30 rounded-3xl border border-white/5 bg-[#091428]/95 p-4 shadow-glow backdrop-blur-md sm:p-6">
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+          <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-caudal-electric">Modo Delegado</p>
               <h3 className="mt-1 text-xl font-black text-white">{getStatsScore().home} - {getStatsScore().away} · {selectedMatch?.opponent || 'Rival'}</h3>
+              <p className="mt-2 text-sm text-slate-400">El evento se guardará con el minuto actual del cronómetro.</p>
             </div>
-            <div className="flex items-center justify-between gap-2 rounded-2xl bg-black/25 p-2">
-              <button type="button" onClick={() => updateDelegatedMinute(Number(delegatedMinute || 0) - 1)} className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-xl font-black text-white">-</button>
-              <label className="flex flex-col items-center">
-                <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Min</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="130"
-                  value={delegatedMinute}
-                  onChange={(event) => updateDelegatedMinute(event.target.value)}
-                  className="w-16 rounded-xl bg-white px-2 py-2 text-center text-lg font-black text-slate-950"
-                />
-              </label>
-              <button type="button" onClick={() => updateDelegatedMinute(Number(delegatedMinute || 0) + 1)} className="flex h-11 w-11 items-center justify-center rounded-xl bg-caudal-electric text-xl font-black text-slate-950">+</button>
+            <div className="rounded-3xl border border-white/10 bg-black/25 p-3">
+              <div className="grid grid-cols-[52px_1fr_52px] items-center gap-2">
+                <button type="button" onClick={() => updateDelegatedMinute(Number(delegatedMinute || 0) - 1)} className="flex h-14 w-full items-center justify-center rounded-2xl bg-white/10 text-3xl font-black text-white transition hover:bg-white/15">-</button>
+                <label className="flex flex-col items-center rounded-3xl bg-white px-4 py-3">
+                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Minuto</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="130"
+                    value={delegatedMinute}
+                    onChange={(event) => updateDelegatedMinute(event.target.value)}
+                    className="w-24 bg-transparent text-center text-5xl font-black leading-none text-slate-950"
+                    aria-label="Minuto actual del cronómetro"
+                  />
+                  <span className="text-lg font-black text-slate-950">'</span>
+                </label>
+                <button type="button" onClick={() => updateDelegatedMinute(Number(delegatedMinute || 0) + 1)} className="flex h-14 w-full items-center justify-center rounded-2xl bg-caudal-electric text-3xl font-black text-slate-950 transition hover:bg-[#7aacff]">+</button>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDelegatedTimerRunning((current) => !current)}
+                  className={`min-h-12 rounded-2xl px-4 py-3 text-sm font-black uppercase tracking-[0.12em] transition ${delegatedTimerRunning ? 'bg-amber-300 text-slate-950' : 'bg-emerald-300 text-slate-950'}`}
+                >
+                  {delegatedTimerRunning ? 'Pausar' : Number(delegatedElapsedSeconds) > 0 ? 'Reanudar' : 'Iniciar partido'}
+                </button>
+                <button type="button" onClick={resetDelegatedTimer} className="min-h-12 rounded-2xl bg-white/10 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-200 transition hover:bg-white/15">
+                  Reiniciar
+                </button>
+                <button type="button" onClick={pauseDelegatedTimerForHalftime} className="min-h-12 rounded-2xl bg-white/10 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-200 transition hover:bg-white/15">
+                  Descanso
+                </button>
+                <button type="button" onClick={startDelegatedSecondHalf} className="min-h-12 rounded-2xl bg-caudal-electric px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-[#7aacff]">
+                  Segunda parte
+                </button>
+              </div>
             </div>
           </div>
 
@@ -5671,6 +5751,53 @@ function App() {
     return events;
   };
 
+  const getMatchLineupSource = (match) => {
+    const statsSlots = (match.lineupSlots?.stats || []).filter((slot) => slot.playerName);
+    const preCaudalSlots = (match.lineupSlots?.preCaudal || []).filter((slot) => slot.playerName);
+    if (statsSlots.length) {
+      return {
+        scope: 'stats',
+        system: match.statsSystemRaw || match.statsSystem || '',
+        slots: statsSlots,
+      };
+    }
+    if (preCaudalSlots.length) {
+      return {
+        scope: 'pre_caudal',
+        system: match.preCaudalSystemRaw || match.preCaudalSystem || '',
+        slots: preCaudalSlots,
+      };
+    }
+    return {
+      scope: 'none',
+      system: match.statsSystemRaw || match.statsSystem || match.preCaudalSystemRaw || match.preCaudalSystem || '',
+      slots: [],
+    };
+  };
+
+  const getMostUsedRealSystem = (scopedMatches) => {
+    const rows = scopedMatches
+      .map((match) => ({ match, source: getMatchLineupSource(match) }))
+      .filter(({ source }) => source.system && source.slots.length);
+    const counts = rows.reduce((acc, { source }) => {
+      acc[source.system] = (acc[source.system] || 0) + 1;
+      return acc;
+    }, {});
+    const systems = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    return {
+      system: systems[0]?.[0] || '',
+      count: systems[0]?.[1] || 0,
+      systems: Object.fromEntries(systems),
+      sources: rows.map(({ match, source }) => ({
+        matchId: match.id,
+        opponent: match.opponent,
+        system: source.system,
+        scope: source.scope,
+        slots: source.slots.map((slot) => ({ slot: slot.slot, playerName: slot.playerName })),
+      })),
+    };
+  };
+
   const getGroupRankings = (scopedMatches) => {
     const possibleMinutes = Math.max(1, scopedMatches.length * 90);
     const byPlayer = new Map(players.map((player) => [player.name, {
@@ -5685,11 +5812,19 @@ function App() {
       ratingTotal: 0,
       ratingCount: 0,
       roleMinutes: {},
+      slotUsage: {},
     }]));
 
     scopedMatches.forEach((match) => {
-      const lineup = match.statsLineup || [];
-      const roles = getFormationRoles(match.statsSystem || '4-4-2');
+      const source = getMatchLineupSource(match);
+      const lineup = source.slots.length
+        ? source.slots.reduce((acc, slot) => {
+          acc[slot.slot] = slot.playerName;
+          return acc;
+        }, Array.from({ length: 11 }, () => ''))
+        : match.statsLineup || [];
+      const system = source.system || match.statsSystem || '4-4-2';
+      const roles = getFormationRoles(system);
       (match.statsGoalEvents || []).forEach((event) => {
         if (event.type !== 'Gol a favor') return;
         if (event.scorer && byPlayer.has(event.scorer)) byPlayer.get(event.scorer).goals += 1;
@@ -5706,6 +5841,24 @@ function App() {
         if (isStarter && minutes > 0) {
           const role = roles[slotIndex] || player.position || 'Sin posicion';
           row.roleMinutes[role] = (row.roleMinutes[role] || 0) + minutes;
+          const slotKey = `${system}-${slotIndex}`;
+          const slotUsage = row.slotUsage[slotKey] || {
+            system,
+            slot: slotIndex,
+            role,
+            scope: source.scope,
+            minutes: 0,
+            starts: 0,
+            ratingTotal: 0,
+            ratingCount: 0,
+          };
+          slotUsage.minutes += minutes;
+          slotUsage.starts += 1;
+          if (stored.rating) {
+            slotUsage.ratingTotal += Number(stored.rating) || 0;
+            slotUsage.ratingCount += 1;
+          }
+          row.slotUsage[slotKey] = slotUsage;
         }
         row.yellow += Number(stored.yellowCount ?? (stored.yellow ? 1 : 0)) || 0;
         row.red += stored.red ? 1 : 0;
@@ -5723,10 +5876,23 @@ function App() {
         const replacementStored = match.statsPlayerData?.[stored.replacementName] || {};
         if (Number(replacementStored.minutes || 0) > 0) return;
         const role = roles[slotIndex] || 'Sin posicion';
+        const slotKey = `${system}-${slotIndex}`;
         const subMinutes = 90 - starterMinutes;
         const replacementRow = byPlayer.get(stored.replacementName);
         replacementRow.minutes += subMinutes;
         replacementRow.roleMinutes[role] = (replacementRow.roleMinutes[role] || 0) + subMinutes;
+        const slotUsage = replacementRow.slotUsage[slotKey] || {
+          system,
+          slot: slotIndex,
+          role,
+          scope: source.scope,
+          minutes: 0,
+          starts: 0,
+          ratingTotal: 0,
+          ratingCount: 0,
+        };
+        slotUsage.minutes += subMinutes;
+        replacementRow.slotUsage[slotKey] = slotUsage;
       });
     });
 
@@ -5738,6 +5904,7 @@ function App() {
       avgRating: row.ratingCount ? row.ratingTotal / row.ratingCount : 0,
       primaryRole: getMostPlayedRole(row.roleMinutes, row.player.position),
       idealScore: row.minutes * 0.03 + row.starts * 6 + row.goals * 8 + row.assists * 6 + (row.ratingCount ? (row.ratingTotal / row.ratingCount) * 4 : 0),
+      slotUsage: row.slotUsage,
     }));
     const top = (key) => rows.filter((row) => row[key] > 0).sort((a, b) => b[key] - a[key]).slice(0, 5);
     return {
@@ -5782,14 +5949,28 @@ function App() {
 
   const buildIdealElevenForSystem = (idealRows, system) => {
     const roles = getFormationRoles(system);
-    const available = [...idealRows].sort((a, b) => b.idealScore - a.idealScore);
     const used = new Set();
-    return roles.map((slotRole) => {
-      const exact = available.find((row) => !used.has(row.player.name) && roleFitsSlot(row.primaryRole, slotRole));
-      const fallback = exact || available.find((row) => !used.has(row.player.name));
+    return roles.map((slotRole, slotIndex) => {
+      const slotKey = `${system}-${slotIndex}`;
+      const candidates = idealRows
+        .map((row) => ({ row, usage: row.slotUsage?.[slotKey] }))
+        .filter(({ row, usage }) => usage && !used.has(row.player.name))
+        .sort((a, b) => {
+          const scoreA = a.usage.minutes * 0.04 + a.usage.starts * 8 + a.row.goals * 2 + a.row.assists * 2 + (a.usage.ratingCount ? (a.usage.ratingTotal / a.usage.ratingCount) * 3 : 0);
+          const scoreB = b.usage.minutes * 0.04 + b.usage.starts * 8 + b.row.goals * 2 + b.row.assists * 2 + (b.usage.ratingCount ? (b.usage.ratingTotal / b.usage.ratingCount) * 3 : 0);
+          return scoreB - scoreA;
+        });
+      const exact = candidates[0];
+      if (exact) {
+        used.add(exact.row.player.name);
+        return { ...exact.row, primaryRole: exact.usage.role, idealSlotSource: exact.usage.scope, idealSlotMinutes: exact.usage.minutes };
+      }
+      const fallback = idealRows
+        .filter((row) => !used.has(row.player.name) && roleFitsSlot(row.player.position, slotRole))
+        .sort((a, b) => b.idealScore - a.idealScore)[0];
       if (!fallback) return null;
       used.add(fallback.player.name);
-      return fallback;
+      return { ...fallback, primaryRole: fallback.player.position, idealSlotSource: 'plantilla', idealSlotMinutes: 0 };
     });
   };
 
@@ -5962,9 +6143,9 @@ function App() {
     </div>
   );
 
-  const renderIdealElevenPitch = (idealRows) => {
-    const coordinates = getFormationCoordinates(idealSystem);
-    const roles = getFormationRoles(idealSystem);
+  const renderIdealElevenPitch = (idealRows, system) => {
+    const coordinates = getFormationCoordinates(system);
+    const roles = getFormationRoles(system);
     return (
       <div className="relative mx-auto aspect-[7/8.9] min-h-[620px] max-w-3xl overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner">
         <div className="absolute inset-4 rounded-[28px] border-2 border-white/55" />
@@ -8729,6 +8910,10 @@ function App() {
           const awaySummary = summarizeGroupMatches(scopedMatches.filter((match) => !match.isHome));
           const trend = getGroupTendency(scopedMatches);
           const rankings = getGroupRankings(scopedMatches);
+          const mostUsedSystem = getMostUsedRealSystem(scopedMatches);
+          const effectiveIdealSystem = idealSystem || mostUsedSystem.system || gameSystems[0];
+          const idealSystemOptions = Array.from(new Set([mostUsedSystem.system, effectiveIdealSystem, ...gameSystems].filter((system) => system && system !== 'Otro')));
+          const idealElevenRows = effectiveIdealSystem ? buildIdealElevenForSystem(rankings.idealRows, effectiveIdealSystem) : [];
           const subphaseForRows = getGroupSubphaseRanking(groupData.goalForEvents);
           const subphaseAgainstRows = getGroupSubphaseRanking(groupData.goalAgainstEvents);
           const goalZoneForCounts = getGroupGoalZoneCounts(groupData.goalForEvents);
@@ -8736,6 +8921,7 @@ function App() {
           const quickSummary = groupData.quickSummary || getQuickEventSummary([]);
           const quickMinuteRanges = getQuickEventsByMinuteRange(groupData.quickEvents || []);
           const maxQuickRange = Math.max(1, ...quickMinuteRanges.flatMap((row) => [row.caudal, row.rival]));
+          const hasReviewedQuickEvents = (groupData.quickEvents || []).length > 0;
           const quickEvolution = scopedMatches.map((match) => ({
             match,
             summary: getQuickEventSummary(match.quickEvents || []),
@@ -8889,17 +9075,23 @@ function App() {
               </AccordionSection>
 
               <AccordionSection title="Eventos rápidos" subtitle="Modo Delegado agregado por partido">
-              <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+              <section className="app-card">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Eventos rápidos del Modo Delegado</h3>
-                    <p className="mt-2 text-sm text-slate-400">Agregado desde `match_quick_events`: acciones a favor, en contra, eficacia y tramos.</p>
+                    <h3 className="app-section-title">Eventos rápidos del Modo Delegado</h3>
+                    <p className="app-subtitle">Agregado desde match_quick_events con eventos revisados en POST como fuente principal.</p>
                   </div>
                   <div className="rounded-2xl bg-white/5 px-4 py-3 text-right">
                     <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Balance rec/pérd</p>
                     <p className={`mt-1 text-2xl font-black ${quickSummary.recoveryLossBalance >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{quickSummary.recoveryLossBalance}</p>
                   </div>
                 </div>
+                {groupQuickReviewedOnly && !hasReviewedQuickEvents ? (
+                  <div className="empty-state mt-5">
+                    <p className="font-bold text-slate-200">No hay eventos revisados suficientes.</p>
+                    <p className="mt-1">Marca eventos como revisados en POST para activar tiros, tiros a puerta, córners, faltas, recuperaciones, pérdidas y lecturas automáticas.</p>
+                  </div>
+                ) : null}
                 <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
                   {[
                     ['Tiros', `${quickSummary.shots} - ${quickSummary.rivalShots}`],
@@ -9266,14 +9458,19 @@ function App() {
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Once ideal</h3>
-                    <p className="mt-2 text-sm text-slate-500">Calculado por minutos, titularidades, goles, asistencias y valoración registrada.</p>
+                    <p className="mt-2 text-sm text-slate-500">Calculado por slots reales de alineación, minutos, titularidades, goles, asistencias y valoración registrada.</p>
+                    {mostUsedSystem.system ? (
+                      <p className="mt-2 text-sm font-bold text-caudal-electric">Sistema más usado: {mostUsedSystem.system} ({mostUsedSystem.count} {mostUsedSystem.count === 1 ? 'partido' : 'partidos'})</p>
+                    ) : (
+                      <p className="mt-2 text-sm text-amber-100">No hay datos suficientes para calcular sistema más usado.</p>
+                    )}
                   </div>
-                  <select value={idealSystem} onChange={(event) => setIdealSystem(event.target.value)} className="rounded-2xl border border-white/10 bg-white px-5 py-3 text-sm font-black text-slate-950">
-                    {['4-4-2', '4-2-3-1', '4-3-3', '5-3-2'].map((system) => <option key={system}>{system}</option>)}
+                  <select value={effectiveIdealSystem} onChange={(event) => setIdealSystem(event.target.value)} className="rounded-2xl border border-white/10 bg-white px-5 py-3 text-sm font-black text-slate-950">
+                    {idealSystemOptions.map((system) => <option key={system}>{system}</option>)}
                   </select>
                 </div>
                 <div className="mt-6">
-                  {rankings.idealRows.length ? renderIdealElevenPitch(buildIdealElevenForSystem(rankings.idealRows, idealSystem)) : <p className="rounded-2xl bg-white/5 p-6 text-center text-sm italic text-slate-500">sin datos suficientes</p>}
+                  {mostUsedSystem.system && rankings.idealRows.length ? renderIdealElevenPitch(idealElevenRows, effectiveIdealSystem) : <p className="rounded-2xl bg-white/5 p-6 text-center text-sm italic text-slate-500">sin datos suficientes</p>}
                 </div>
               </section>
 
@@ -10800,13 +10997,14 @@ function App() {
                       </aside>
                     </div>
 
-                    <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                    <div className="app-card">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
-                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Eventos rápidos del partido</h4>
-                          <p className="mt-2 text-sm text-slate-400">Revisa lo apuntado por el delegado antes de que alimente el análisis grupal.</p>
+                          <p className="app-section-eyebrow">POST partido</p>
+                          <h4 className="mt-2 app-section-title">Eventos rápidos del partido</h4>
+                          <p className="app-subtitle">Revisa lo apuntado por el delegado antes de que alimente el análisis grupal y la ficha individual.</p>
                         </div>
-                        <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-300">
+                        <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-300">
                           {(selectedMatch.quickEvents || []).filter((event) => event.reviewed).length}/{(selectedMatch.quickEvents || []).length} revisados
                         </span>
                       </div>
@@ -10817,14 +11015,14 @@ function App() {
                             .sort((a, b) => Number(a.minute || 0) - Number(b.minute || 0))
                             .map((event) => {
                               const definition = delegatedEventDefinitions.find((item) => item.tipoEvento === event.tipoEvento);
-                              const isRival = (definition?.side || event.equipo) === 'rival';
+                              const isRival = (event.equipo || definition?.side) === 'rival';
                               const isSaving = quickEventSavingIds.includes(event.id);
                               const isConfirmingDelete = pendingQuickEventDeleteId === event.id;
                               return (
-                                <div key={event.id} className={`rounded-3xl border p-4 ${event.reviewed ? 'border-emerald-400/25 bg-emerald-400/10' : 'border-white/5 bg-[#0f1e38]/80'}`}>
-                                  <div className="grid gap-3 lg:grid-cols-[90px_180px_1fr_auto] lg:items-end">
-                                    <label className="space-y-1 text-xs text-slate-500">
-                                      <span className="uppercase tracking-[0.14em]">Minuto</span>
+                                <div key={event.id} className={`rounded-2xl border p-4 ${event.reviewed ? 'border-emerald-400/25 bg-emerald-400/10' : 'border-white/10 bg-[#0f1e38]/80'}`}>
+                                  <div className="grid gap-3 lg:grid-cols-[90px_190px_140px_1fr_auto] lg:items-end">
+                                    <label className="app-label">
+                                      <span>Minuto</span>
                                       <input
                                         type="number"
                                         min="0"
@@ -10832,29 +11030,41 @@ function App() {
                                         defaultValue={event.minute || '0'}
                                         onBlur={(blurEvent) => updateQuickEvent(event.id, { minute: blurEvent.target.value })}
                                         disabled={isSaving}
-                                        className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white"
+                                        className="app-input font-bold"
                                       />
                                     </label>
-                                    <label className="space-y-1 text-xs text-slate-500">
-                                      <span className="uppercase tracking-[0.14em]">Tipo</span>
+                                    <label className="app-label">
+                                      <span>Tipo evento</span>
                                       <select
                                         value={event.tipoEvento}
                                         onChange={(changeEvent) => updateQuickEvent(event.id, { tipoEvento: changeEvent.target.value })}
                                         disabled={isSaving}
-                                        className="w-full rounded-xl border border-white/10 bg-white px-3 py-2 text-sm font-bold text-slate-950"
+                                        className="app-select font-bold"
                                       >
                                         {delegatedEventDefinitions.map((item) => (
                                           <option key={item.tipoEvento} value={item.tipoEvento}>{item.label}</option>
                                         ))}
                                       </select>
                                     </label>
-                                    <label className="space-y-1 text-xs text-slate-500">
-                                      <span className="uppercase tracking-[0.14em]">Jugador</span>
+                                    <label className="app-label">
+                                      <span>Equipo</span>
+                                      <select
+                                        value={isRival ? 'rival' : 'caudal'}
+                                        onChange={(changeEvent) => updateQuickEvent(event.id, { equipo: changeEvent.target.value, jugadorId: changeEvent.target.value === 'rival' ? '' : event.jugadorId })}
+                                        disabled={isSaving}
+                                        className="app-select font-bold"
+                                      >
+                                        <option value="caudal">Caudal</option>
+                                        <option value="rival">Rival</option>
+                                      </select>
+                                    </label>
+                                    <label className="app-label">
+                                      <span>Jugador asociado</span>
                                       <select
                                         value={event.jugadorId || ''}
                                         disabled={isRival || isSaving}
                                         onChange={(changeEvent) => updateQuickEvent(event.id, { jugadorId: changeEvent.target.value })}
-                                        className="w-full rounded-xl border border-white/10 bg-white px-3 py-2 text-sm font-bold text-slate-950 disabled:bg-white/10 disabled:text-slate-500"
+                                        className="app-select font-bold disabled:text-slate-500"
                                       >
                                         <option value="">{isRival ? 'Evento rival' : 'Sin jugador'}</option>
                                         {getStatsCalledPlayers().map((player) => (
@@ -10867,7 +11077,7 @@ function App() {
                                         type="button"
                                         onClick={() => updateQuickEvent(event.id, { reviewed: !event.reviewed })}
                                         disabled={isSaving}
-                                        className={`rounded-xl px-3 py-2 text-xs font-black ${event.reviewed ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-slate-200'}`}
+                                        className={`btn-small ${event.reviewed ? 'bg-emerald-300 text-slate-950 hover:bg-emerald-200' : 'btn-secondary'}`}
                                       >
                                         {isSaving ? 'Guardando...' : event.reviewed ? 'Revisado' : 'Marcar revisado'}
                                       </button>
@@ -10877,14 +11087,14 @@ function App() {
                                             type="button"
                                             onClick={() => deleteQuickEvent(event.id)}
                                             disabled={isSaving}
-                                            className="rounded-xl bg-red-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                                            className="btn-danger btn-small bg-red-500 text-white"
                                           >
                                             Confirmar
                                           </button>
                                           <button
                                             type="button"
                                             onClick={() => setPendingQuickEventDeleteId(null)}
-                                            className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-slate-200"
+                                            className="btn-secondary btn-small"
                                           >
                                             Cancelar
                                           </button>
@@ -10894,7 +11104,7 @@ function App() {
                                           type="button"
                                           onClick={() => setPendingQuickEventDeleteId(event.id)}
                                           disabled={isSaving}
-                                          className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100 disabled:opacity-60"
+                                          className="btn-danger btn-small"
                                         >
                                           Borrar
                                         </button>
@@ -10905,8 +11115,9 @@ function App() {
                               );
                             })
                         ) : (
-                          <div className="rounded-3xl border border-dashed border-white/10 bg-black/20 p-6 text-sm text-slate-400">
-                            No hay eventos rápidos registrados para este partido.
+                          <div className="empty-state">
+                            <p className="font-bold text-slate-200">No hay datos todavía</p>
+                            <p className="mt-1">Añade el primer registro desde Modo Delegado para revisarlo aquí.</p>
                           </div>
                         )}
                       </div>
