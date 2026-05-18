@@ -492,6 +492,8 @@ const delegatedCounterPairs = [
 ];
 
 const quickEventLabelByType = Object.fromEntries(delegatedEventDefinitions.map((definition) => [definition.tipoEvento, definition.label]));
+const hasPendingQuickEvents = (match) => (match?.quickEvents || []).some((event) => !event.reviewed);
+const pendingQuickEventsMessage = 'Este partido tiene eventos rápidos pendientes de revisar.';
 
 const normalizeSupabaseQuickEvent = (event) => ({
   id: event.id,
@@ -2528,12 +2530,27 @@ function App() {
   };
 
   const loadPartidos = async () => {
-    const { data, error: partidosError } = await supabase
-      .from("partidos")
-      .select("*")
-      .order("date", { ascending: false, nullsFirst: false });
+    const [{ data, error: partidosError }, quickEventsResponse] = await Promise.all([
+      supabase
+        .from("partidos")
+        .select("*")
+        .order("date", { ascending: false, nullsFirst: false }),
+      supabase.from("match_quick_events").select("*"),
+    ]);
     if (partidosError) throw partidosError;
-    const nextMatches = (data || []).map(normalizeSupabasePartido);
+    const quickEventsByMatch = quickEventsResponse.error
+      ? {}
+      : (quickEventsResponse.data || []).reduce((acc, event) => {
+          acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseQuickEvent(event)];
+          return acc;
+        }, {});
+    if (quickEventsResponse.error) {
+      console.warn('No se pudieron cargar eventos rápidos para Partidos; se continúa sin avisos:', quickEventsResponse.error);
+    }
+    const nextMatches = (data || []).map((match) => ({
+      ...normalizeSupabasePartido(match),
+      quickEvents: quickEventsByMatch[match.id] || [],
+    }));
     setMatches(nextMatches);
     return nextMatches;
   };
@@ -2563,15 +2580,19 @@ function App() {
     setHomeError('');
 
     try {
-      const [partidosResponse, jugadoresResponse, equiposResponse, statsResponse, goalsResponse] = await Promise.all([
+      const [partidosResponse, jugadoresResponse, equiposResponse, statsResponse, goalsResponse, quickEventsResponse] = await Promise.all([
         supabase.from("partidos").select("*").order("date", { ascending: true, nullsFirst: false }),
         supabase.from("jugadores").select("*").order("name", { ascending: true }),
         supabase.from("equipos_rivales").select("*").order("name", { ascending: true }),
         supabase.from("partido_estadisticas_jugador").select("*"),
         supabase.from("partido_eventos_gol").select("*"),
+        supabase.from("match_quick_events").select("*"),
       ]);
       const failed = [partidosResponse, jugadoresResponse, equiposResponse, statsResponse, goalsResponse].find((response) => response.error);
       if (failed) throw failed.error;
+      if (quickEventsResponse.error) {
+        console.warn('No se pudieron cargar eventos rápidos para Inicio; se continúa sin avisos:', quickEventsResponse.error);
+      }
 
       const nextPlayers = (jugadoresResponse.data || []).map(normalizeSupabaseJugador);
       const statsByMatch = (statsResponse.data || []).reduce((acc, row) => {
@@ -2593,10 +2614,17 @@ function App() {
         acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseGoalEvent(event)];
         return acc;
       }, {});
+      const quickEventsByMatch = quickEventsResponse.error
+        ? {}
+        : (quickEventsResponse.data || []).reduce((acc, event) => {
+            acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseQuickEvent(event)];
+            return acc;
+          }, {});
       const nextMatches = (partidosResponse.data || []).map((match) => ({
         ...normalizeSupabasePartido(match),
         statsGoalEvents: eventsByMatch[match.id] || [],
         statsPlayerData: statsByMatch[match.id] || {},
+        quickEvents: quickEventsByMatch[match.id] || [],
       }));
       const baseTeams = (equiposResponse.data || []).map((team) => ({
         id: team.id,
@@ -3345,17 +3373,8 @@ function App() {
     const intent = detectLitoIntent(question);
     const rivalResult = findLitoMatches(context, question);
     const notFound = 'No encontré datos suficientes en Supabase para responder eso.';
-    const logBase = {
-      question,
-      normalizedQuestion,
-      intent,
-      rivalDetected: rivalResult.rival || null,
-      matchesFound: rivalResult.matches.length,
-    };
-
     if (intent === 'played_matches') {
       const playedMatches = context.matches.filter((match) => match.status === 'Finalizado' || match.home_score !== null || match.away_score !== null);
-      console.log('Lito debug:', { ...logBase, filters: 'played_matches', matchesFound: playedMatches.length, goalsFound: 0 });
       if (!playedMatches.length) return notFound;
       return `Partidos jugados hasta ahora:\n${playedMatches.slice(0, 10).map((match) => `- ${formatLitoMatchName(match)}: ${getLitoMatchScore(match)}`).join('\n')}`;
     }
@@ -3365,7 +3384,6 @@ function App() {
         ? [context.matches[0]].filter(Boolean)
         : rivalResult.matches;
       const goals = context.goals.filter((goal) => matchesForGoals.some((match) => match.id === goal.partido_id) && goal.type === 'Gol a favor');
-      console.log('Lito debug:', { ...logBase, filters: intent, matchesFound: matchesForGoals.length, goalsFound: goals.length });
       if (!matchesForGoals.length) return notFound;
       if (!goals.length) return 'No encontré goles registrados contra ese rival.';
       const byMatch = matchesForGoals
@@ -3384,7 +3402,6 @@ function App() {
 
     if (intent === 'last_match') {
       const match = context.matches[0];
-      console.log('Lito debug:', { ...logBase, filters: 'last_match', matchesFound: match ? 1 : 0, goalsFound: context.goals.filter((goal) => goal.partido_id === match?.id).length });
       if (!match) return notFound;
       const goals = context.goals.filter((goal) => goal.partido_id === match.id);
       const scorers = goals.filter((goal) => goal.type === 'Gol a favor').map((goal) => goal.scorer).filter(Boolean);
@@ -3403,7 +3420,6 @@ function App() {
 
     if (intent === 'system_vs_rival') {
       const match = rivalResult.matches[0] || findLitoMatch(context, question);
-      console.log('Lito debug:', { ...logBase, filters: 'system_vs_rival', matchesFound: match ? 1 : 0, goalsFound: 0 });
       if (!match) return notFound;
       const system = match.stats_system || match.pre_caudal_system || 'sin sistema guardado';
       const rivalSystem = match.pre_rival_system || match.rival_lineup_system || 'sin sistema rival guardado';
@@ -3417,7 +3433,6 @@ function App() {
         return acc;
       }, {});
       const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
-      console.log('Lito debug:', { ...logBase, filters: 'yellow_cards', matchesFound: context.matches.length, goalsFound: 0 });
       if (!top || top[1] <= 0) return notFound;
       return `El jugador con más amarillas registradas es ${top[0]}, con ${top[1]}.`;
     }
@@ -3429,21 +3444,18 @@ function App() {
         return acc;
       }, {});
       const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
-      console.log('Lito debug:', { ...logBase, filters: 'minutes', matchesFound: context.matches.length, goalsFound: 0 });
       if (!top || top[1] <= 0) return notFound;
       return `El jugador con más minutos registrados es ${top[0]}, con ${top[1]} minutos.`;
     }
 
     if (intent === 'rivals_442') {
       const rivals = context.teams.filter((team) => String(team.system || '').trim() === '4-4-2');
-      console.log('Lito debug:', { ...logBase, filters: 'rivals_442', matchesFound: rivals.length, goalsFound: 0 });
       if (!rivals.length) return notFound;
       return `Rivales con 4-4-2 guardado: ${rivals.map((team) => team.name).join(', ')}.`;
     }
 
     if (intent === 'conceded_transition') {
       const goals = context.goals.filter((goal) => goal.type === 'Gol en contra' && normalizeLitoText(`${goal.phase || ''} ${goal.subphase || ''}`).includes('transicion'));
-      console.log('Lito debug:', { ...logBase, filters: 'conceded_transition', matchesFound: context.matches.length, goalsFound: goals.length });
       return `Hay ${goals.length} goles encajados en transición registrados en Supabase.`;
     }
 
@@ -3455,12 +3467,10 @@ function App() {
         return acc;
       }, {});
       const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
-      console.log('Lito debug:', { ...logBase, filters: 'most_used_system', matchesFound: context.matches.length, goalsFound: 0 });
       if (!top) return notFound;
       return `El sistema más usado en los partidos guardados es ${top[0]}, con ${top[1]} partidos.`;
     }
 
-    console.log('Lito debug:', { ...logBase, filters: 'unknown', goalsFound: 0 });
     return notFound;
   };
 
@@ -5770,7 +5780,11 @@ function App() {
   };
 
   const getGroupAnalysisData = () => {
-    const scoped = getGroupScopedMatches().map((match) => ({
+    const baseScoped = getGroupScopedMatches();
+    const unreviewedQuickEvents = baseScoped.flatMap((match) =>
+      (match.quickEvents || []).filter((event) => !event.reviewed).map((event) => ({ ...event, match }))
+    );
+    const scoped = baseScoped.map((match) => ({
       ...match,
       quickEvents: groupQuickReviewedOnly ? (match.quickEvents || []).filter((event) => event.reviewed) : (match.quickEvents || []),
     }));
@@ -5793,6 +5807,7 @@ function App() {
       scoped,
       allGoalEvents,
       quickEvents,
+      unreviewedQuickEvents,
       quickSummary: getQuickEventSummary(quickEvents),
       goalForEvents,
       goalAgainstEvents,
@@ -6109,29 +6124,6 @@ function App() {
         debug: { source: 'plantilla_fallback', role: fallback.player.position, normalizedSlot: slot.id },
       };
     });
-    if (import.meta.env.DEV) {
-      console.groupCollapsed(`[Once ideal debug] ${system}`);
-      console.log('Sistema seleccionado:', system);
-      console.table(slots.map((slot) => ({ id: slot.id, linea: slot.line, etiqueta: slot.label, x: slot.x, y: slot.y })));
-      console.table(idealRows.flatMap((row) => Object.values(row.slotUsage || {}).filter((usage) => usage.system === system).map((usage) => ({
-        jugador: row.player.name,
-        scope: usage.scope,
-        slotReal: usage.slot,
-        rolReal: usage.role,
-        normalizado: usage.slotId,
-        minutos: usage.minutes,
-        titularidades: usage.starts,
-      }))));
-      console.table(assignments.map(({ slot, row, debug }) => ({
-        slot: slot.id,
-        etiqueta: slot.label,
-        jugador: row?.player?.name || '(vacío)',
-        origen: debug.source,
-        slotReal: debug.rawSlot ?? '',
-        rol: debug.role || '',
-      })));
-      console.groupEnd();
-    }
     return assignments;
   };
 
@@ -6488,12 +6480,14 @@ function App() {
             ? 'Estable'
             : 'A corregir';
     const nextOpponentTeam = nextMatch ? findTeamByDisplayName(teams, nextMatch.opponent) : null;
+    const pendingQuickMatches = sortedMatches.filter(hasPendingQuickEvents);
 
     return {
       scopedMatches,
       nextMatch,
       nextOpponentTeam,
       lastMatch,
+      pendingQuickMatches,
       balance,
       recent,
       weeklyStats,
@@ -8028,6 +8022,11 @@ function App() {
                 {homeError}
               </div>
             ) : null}
+            {homeDashboard.pendingQuickMatches.length ? (
+              <div className="rounded-2xl border border-amber-300/20 bg-amber-300/10 px-5 py-4 text-sm font-semibold text-amber-100">
+                {pendingQuickEventsMessage}
+              </div>
+            ) : null}
 
             <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
               {[
@@ -9083,6 +9082,7 @@ function App() {
           const quickMinuteRanges = getQuickEventsByMinuteRange(groupData.quickEvents || []);
           const maxQuickRange = Math.max(1, ...quickMinuteRanges.flatMap((row) => [row.caudal, row.rival]));
           const hasReviewedQuickEvents = (groupData.quickEvents || []).length > 0;
+          const hasUnreviewedQuickEvents = (groupData.unreviewedQuickEvents || []).length > 0;
           const quickEvolution = scopedMatches.map((match) => ({
             match,
             summary: getQuickEventSummary(match.quickEvents || []),
@@ -9250,7 +9250,11 @@ function App() {
                 {groupQuickReviewedOnly && !hasReviewedQuickEvents ? (
                   <div className="empty-state mt-5">
                     <p className="font-bold text-slate-200">No hay eventos revisados suficientes.</p>
-                    <p className="mt-1">Marca eventos como revisados en POST para activar tiros, tiros a puerta, córners, faltas, recuperaciones, pérdidas y lecturas automáticas.</p>
+                    <p className="mt-1">
+                      {hasUnreviewedQuickEvents
+                        ? 'Hay eventos sin revisar en POST. Revisa el partido para que entren en el análisis.'
+                        : 'Marca eventos como revisados en POST para activar tiros, tiros a puerta, córners, faltas, recuperaciones, pérdidas y lecturas automáticas.'}
+                    </p>
                   </div>
                 ) : null}
                 <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
@@ -9380,7 +9384,6 @@ function App() {
               </AccordionSection>
 
               <AccordionSection title="Goles / fases" subtitle="Fases, zonas y balón parado">
-              <AccordionSection title="Tendencias" subtitle="Local, visitante y últimos partidos">
               <section className="grid gap-6 xl:grid-cols-2">
                 {[
                   ['Cómo marcamos', phaseFor, 'bg-caudal-electric'],
@@ -9407,7 +9410,6 @@ function App() {
                   );
                 })}
               </section>
-              </AccordionSection>
 
               <section className="grid gap-6 xl:grid-cols-2">
                 <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
@@ -9788,6 +9790,11 @@ function App() {
                                 ))}
                               </div>
                             ) : null}
+                            {hasPendingQuickEvents(match) ? (
+                              <p className="mt-3 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs font-bold text-amber-100">
+                                {pendingQuickEventsMessage}
+                              </p>
+                            ) : null}
                           </div>
                           <div className="text-center">
                             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 p-2 text-lg font-bold text-white">
@@ -9861,6 +9868,11 @@ function App() {
                       </button>
                     ))}
                   </div>
+                  {hasPendingQuickEvents(selectedMatch) ? (
+                    <div className="mt-5 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm font-semibold text-amber-100">
+                      {pendingQuickEventsMessage}
+                    </div>
+                  ) : null}
                 </div>
 
                 {matchView === 'pre_partido' ? (

@@ -178,6 +178,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryError, setLibraryError] = useState('');
   const [printMode, setPrintMode] = useState('current');
+  const [printValidationStatus, setPrintValidationStatus] = useState('');
   const [dossierOptions, setDossierOptions] = useState({
     lineup: true,
     takers: true,
@@ -349,7 +350,46 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     window.print();
   };
 
+  const getDossierContent = () => {
+    const hasLineup = printData.starters.some((player) => player?.name && !String(player.name).startsWith('Puesto '));
+    const hasTakers = setPieceTakers.some((entry) => entry.jugador_id || String(entry.nombre_manual || '').trim());
+    const offensiveDiagrams = getDiagramsByTypes(offensiveSetPieceTypes.map((type) => type.id));
+    const defensiveDiagrams = getDiagramsByTypes(defensiveSetPieceTypes.map((type) => type.id));
+    const kickoffDiagrams = getKickoffDiagrams();
+    const warnings = [];
+    if (dossierOptions.lineup && !hasLineup) warnings.push('Alineación está vacía.');
+    if (dossierOptions.takers && !hasTakers) warnings.push('Lanzadores está vacío.');
+    if (dossierOptions.offensive && !offensiveDiagrams.length) warnings.push('ABP Ofensiva no tiene jugadas.');
+    if (dossierOptions.defensive && !defensiveDiagrams.length) warnings.push('ABP Defensiva no tiene jugadas.');
+    if (dossierOptions.kickoff && !kickoffDiagrams.length) warnings.push('Saque de inicio está marcado pero no existe diagrama.');
+    return {
+      hasLineup,
+      hasTakers,
+      offensiveDiagrams,
+      defensiveDiagrams,
+      kickoffDiagrams,
+      warnings,
+    };
+  };
+
   const handlePrintDossier = () => {
+    const dossierContent = getDossierContent();
+    const printableSections = [
+      dossierOptions.lineup && dossierContent.hasLineup,
+      dossierOptions.takers && dossierContent.hasTakers,
+      dossierOptions.offensive && dossierContent.offensiveDiagrams.length,
+      dossierOptions.defensive && dossierContent.defensiveDiagrams.length,
+      dossierOptions.kickoff && dossierContent.kickoffDiagrams.length,
+    ].filter(Boolean).length;
+    if (dossierContent.warnings.length) {
+      setPrintValidationStatus(dossierContent.warnings.join(' '));
+    } else {
+      setPrintValidationStatus('');
+    }
+    if (!printableSections) {
+      setPrintValidationStatus('No hay contenido real para imprimir en el dossier.');
+      return;
+    }
     setPrintMode('dossier');
     window.setTimeout(() => {
       window.print();
@@ -973,6 +1013,8 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
   const currentDefensiveNote = getDefensiveNote();
   const printTitle = printView === 'alineacion' ? 'Alineación' : printView === 'lanzadores' ? 'Lanzadores' : printView === 'abp_ofensiva' ? 'ABP ofensiva' : 'ABP defensiva';
 
+  const dossierContent = getDossierContent();
+
   return (
     <section className={`match-print-tab space-y-6 ${printMode === 'dossier' ? 'printing-dossier' : ''}`}>
       <div className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
@@ -1052,6 +1094,11 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
             </label>
           ))}
         </div>
+        {printValidationStatus ? (
+          <p className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm font-semibold text-amber-100">
+            {printValidationStatus}
+          </p>
+        ) : null}
       </div>
 
       {printView === 'lanzadores' ? (
@@ -1399,7 +1446,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
 
       {printMode === 'dossier' ? (
         <div className="print-dossier">
-          {dossierOptions.lineup ? (
+          {dossierOptions.lineup && dossierContent.hasLineup ? (
             <LineupPrintSheet
               match={match}
               starters={printData.starters}
@@ -1410,16 +1457,16 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
               captainPlayerId={captainPlayerId}
             />
           ) : null}
-          {dossierOptions.takers ? (
+          {dossierOptions.takers && dossierContent.hasTakers ? (
             <SetPieceTakersPrintSheet match={match} sections={setPieceSections} takers={setPieceTakers} players={players} />
           ) : null}
-          {dossierOptions.offensive ? chunkDiagrams(getDiagramsByTypes(offensiveSetPieceTypes.map((type) => type.id))).map((diagrams, index) => (
+          {dossierOptions.offensive ? chunkDiagrams(dossierContent.offensiveDiagrams).map((diagrams, index) => (
             <SetPieceDiagramPrintSheet key={`offensive-dossier-${index}`} match={match} title="ABP ofensiva" diagrams={diagrams} players={players} />
           )) : null}
-          {dossierOptions.defensive ? chunkDiagrams(getDiagramsByTypes(defensiveSetPieceTypes.map((type) => type.id))).map((diagrams, index) => (
+          {dossierOptions.defensive ? chunkDiagrams(dossierContent.defensiveDiagrams).map((diagrams, index) => (
             <SetPieceDiagramPrintSheet key={`defensive-dossier-${index}`} match={match} title="ABP defensiva" diagrams={diagrams} players={players} />
           )) : null}
-          {dossierOptions.kickoff ? getKickoffDiagrams().map((diagram) => (
+          {dossierOptions.kickoff ? dossierContent.kickoffDiagrams.map((diagram) => (
             <SetPieceDiagramPrintSheet
               key={`kickoff-dossier-${diagram.id || diagram.orden}`}
               match={match}
