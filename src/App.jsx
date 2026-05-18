@@ -7780,20 +7780,20 @@ function App() {
 
   if (!authUser) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-caudal-950 via-caudal-900 to-[#05101f] text-slate-100">
+      <div className="min-h-screen bg-[radial-gradient(circle_at_50%_0%,rgba(61,217,255,0.10),transparent_34%),linear-gradient(180deg,#02070f_0%,#071225_48%,#030812_100%)] text-slate-100">
         {splashScreen}
-        <main className="mx-auto flex min-h-screen max-w-4xl flex-col items-center justify-center px-4 py-10 text-center sm:px-6">
-          <section className="w-full rounded-3xl border border-white/5 bg-white/5 p-8 shadow-glow backdrop-blur-md sm:p-10">
-            <div className="mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded-3xl bg-white p-3 shadow-sm">
+        <main className="mx-auto flex min-h-screen max-w-xl flex-col items-center justify-center px-4 py-7 text-center sm:px-6 sm:py-10">
+          <section className="w-full rounded-[1.65rem] border border-white/10 bg-[#081326]/88 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.38)] backdrop-blur-md sm:p-8">
+            <div className="mx-auto flex h-28 w-28 items-center justify-center overflow-hidden rounded-[1.45rem] bg-white p-3.5 shadow-[0_16px_45px_rgba(0,0,0,0.25)] sm:h-32 sm:w-32">
               <img src={clubCrest} alt="Escudo del C.D. Caudal" className="h-full w-full object-contain" />
             </div>
-            <p className="mt-8 text-xs uppercase tracking-[0.34em] text-slate-400">Entrenador</p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-5xl">C.D. Caudal de Mieres</h1>
-            <p className="mt-3 text-sm text-slate-400">Mieres, Asturias</p>
-            {authError ? <p className="mx-auto mt-6 max-w-md text-sm text-red-200">{authError}</p> : null}
-            <form onSubmit={handleAuthSubmit} className="mx-auto mt-8 grid max-w-md gap-4 text-left">
-              <label className="space-y-2 text-sm text-slate-300">
-                <span>Email</span>
+            <p className="mt-5 text-[11px] font-black uppercase tracking-[0.26em] text-caudal-electric/90">Panel cuerpo técnico</p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">C.D. Caudal de Mieres</h1>
+            <p className="mt-2 text-sm font-medium text-slate-500">Mieres, Asturias</p>
+            {authError ? <p className="mx-auto mt-5 max-w-sm rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">{authError}</p> : null}
+            <form onSubmit={handleAuthSubmit} className="mx-auto mt-7 grid max-w-sm gap-4 text-left sm:mt-8">
+              <label className="space-y-2 text-sm font-semibold text-slate-300">
+                <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Email</span>
                 <input
                   required
                   type="email"
@@ -7801,12 +7801,12 @@ function App() {
                   value={authForm.email}
                   onChange={handleAuthFormChange}
                   autoComplete="email"
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white shadow-inner placeholder:text-slate-500"
+                  className="min-h-[52px] w-full rounded-2xl border border-white/15 bg-white/[0.075] px-4 py-3 text-sm font-medium text-white shadow-inner transition duration-200 placeholder:text-slate-400 hover:border-white/25 focus:border-caudal-electric focus:bg-white/[0.095] focus:shadow-[0_0_0_4px_rgba(61,217,255,0.10)]"
                   placeholder="tu@email.com"
                 />
               </label>
-              <label className="space-y-2 text-sm text-slate-300">
-                <span>Contraseña</span>
+              <label className="space-y-2 text-sm font-semibold text-slate-300">
+                <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Contraseña</span>
                 <input
                   required
                   type="password"
@@ -7814,19 +7814,19 @@ function App() {
                   value={authForm.password}
                   onChange={handleAuthFormChange}
                   autoComplete="current-password"
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white shadow-inner placeholder:text-slate-500"
+                  className="min-h-[52px] w-full rounded-2xl border border-white/15 bg-white/[0.075] px-4 py-3 text-sm font-medium text-white shadow-inner transition duration-200 placeholder:text-slate-400 hover:border-white/25 focus:border-caudal-electric focus:bg-white/[0.095] focus:shadow-[0_0_0_4px_rgba(61,217,255,0.10)]"
                   placeholder="Tu contraseña"
                 />
               </label>
               <button
                 type="submit"
                 disabled={authLoading || authSubmitting}
-                className="mt-2 inline-flex items-center justify-center rounded-2xl bg-white px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-70"
+                className="mt-2 inline-flex min-h-[52px] items-center justify-center rounded-2xl bg-gradient-to-r from-white to-slate-200 px-6 py-3 text-sm font-black text-slate-950 shadow-[0_14px_35px_rgba(255,255,255,0.10)] transition duration-200 hover:-translate-y-0.5 hover:from-caudal-electric hover:to-[#aeefff] hover:shadow-[0_18px_45px_rgba(61,217,255,0.20)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
               >
                 {authSubmitting ? 'Enviando...' : 'Iniciar sesión'}
               </button>
             </form>
-            <p className="mx-auto mt-5 max-w-md text-sm text-slate-400">
+            <p className="mx-auto mt-5 max-w-sm text-sm leading-6 text-slate-500">
               Acceso privado para usuarios autorizados del cuerpo técnico.
             </p>
           </section>
