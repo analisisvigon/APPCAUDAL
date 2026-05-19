@@ -1460,10 +1460,10 @@ const playerReservePlacement = (player) => {
 };
 const playerStatusBadges = (player) =>
   [
-    player.yellowRisk ? { label: 'A', className: 'bg-yellow-300 text-slate-950', title: 'Amonestado' } : null,
-    player.injured ? { label: 'L', className: 'bg-red-500 text-white', title: 'Lesionado' } : null,
-    player.suspended ? { label: 'S', className: 'bg-slate-600 text-red-100 ring-1 ring-red-300/40', title: 'Sancionado' } : null,
-    player.isKey ? { label: '★', className: 'bg-amber-300 text-blue-950 ring-1 ring-blue-300/50', title: 'Jugador clave' } : null,
+    player.yellowRisk ? { label: 'AM', className: 'border border-amber-200/20 bg-amber-200/[0.12] text-amber-100', title: 'Amonestado' } : null,
+    player.injured ? { label: 'LES', className: 'border border-red-200/20 bg-red-300/[0.12] text-red-100', title: 'Lesionado' } : null,
+    player.suspended ? { label: 'RJ', className: 'border border-red-200/25 bg-slate-200/10 text-red-100', title: 'Riesgo roja' } : null,
+    player.isKey ? { label: 'CLV', className: 'border border-amber-200/25 bg-amber-200/[0.12] text-amber-100', title: 'Jugador clave' } : null,
   ].filter(Boolean);
 
 const normalizePlayerIdentityName = (value) =>
@@ -9268,8 +9268,8 @@ function App() {
                   </div>
                 </div>
 
-                <div className="grid gap-5 lg:grid-cols-[0.34fr_0.66fr]">
-                  <aside className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
+                <div className="grid gap-4 lg:grid-cols-[0.32fr_0.68fr]">
+                  <aside className="rounded-[1.5rem] border border-white/10 bg-[#091428]/[0.78] p-4 shadow-[0_16px_50px_rgba(0,0,0,0.18)]">
                     <div className="flex items-center gap-3">
                       <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-white p-2 text-sm font-bold text-caudal-950">
                         {selectedTeam.crest ? (
@@ -9283,12 +9283,30 @@ function App() {
                         <h3 className="truncate text-lg font-semibold text-white">{selectedTeam.name}</h3>
                       </div>
                     </div>
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      {[
+                        ['Altura', 'Por definir'],
+                        ['Presión', 'Por definir'],
+                        ['Clave', dedupeRivalPlayers(selectedTeam.squad).find((player) => player.isKey)?.name || 'Sin marcar'],
+                        ['ABP', 'Pendiente'],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2">
+                          <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
+                          <p className="mt-1 truncate text-xs font-bold text-slate-200">{value}</p>
+                        </div>
+                      ))}
+                    </div>
 
-                    <div className="mt-5 space-y-5">
+                    <div className="mt-4 space-y-4">
                       {dedupeRivalPlayers(selectedTeam.squad).length > 0 ? (
                         ['Titular', 'Reserva'].map((role) => (
                           <div key={role} className="space-y-2">
-                            <p className="text-xs uppercase tracking-[0.25em] text-slate-500">{role === 'Titular' ? 'Titulares' : 'Reservas'}</p>
+                            <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">{role === 'Titular' ? 'Titulares' : 'Reservas'}</p>
+                              <span className="rounded-lg bg-white/[0.055] px-2 py-0.5 text-[10px] font-black text-slate-400">
+                                {dedupeRivalPlayers(selectedTeam.squad).filter((player) => player.role === role).length}
+                              </span>
+                            </div>
                             {dedupeRivalPlayers(selectedTeam.squad)
                               .filter((player) => player.role === role)
                               .map((player) => (
@@ -9297,11 +9315,17 @@ function App() {
                                   draggable
                                   onDragStart={() => setDraggedPlayer(player)}
                                   onClick={() => openTeamForm(selectedTeam)}
-                                  className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm text-slate-100 transition hover:bg-white/20 ${
-                                    player.isKey ? 'border border-amber-300/80 bg-amber-300/10' : 'bg-white/10'
+                                  className={`group flex w-full items-center gap-3 rounded-2xl border px-3 py-2 text-left text-sm transition hover:bg-white/[0.08] ${
+                                    role === 'Titular' ? 'border-caudal-electric/18 bg-caudal-electric/[0.055] text-slate-100' : 'border-white/10 bg-white/[0.035] text-slate-300'
+                                  } ${
+                                    player.isKey ? 'shadow-[inset_0_0_0_1px_rgba(251,191,36,0.18)]' : ''
                                   }`}
                                 >
-                                  <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-800 text-xs font-bold">
+                                  <span
+                                    className={`flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl border text-xs font-bold ${
+                                      role === 'Titular' ? 'border-caudal-electric/30 bg-slate-900/70' : 'border-white/10 bg-slate-900/45 opacity-85'
+                                    }`}
+                                  >
                                     {player.image ? (
                                       <img src={player.image} alt={player.name} className="h-full w-full object-cover" />
                                     ) : (
@@ -9312,7 +9336,7 @@ function App() {
                                     <span className="flex items-center gap-1">
                                       <span className="block truncate">{displayPlayerName(player)}</span>
                                       {playerStatusBadges(player).map((badge) => (
-                                        <span key={badge.title} title={badge.title} className={`inline-flex h-4 min-w-4 items-center justify-center rounded-sm px-1 text-[10px] font-bold ${badge.className}`}>
+                                        <span key={badge.title} title={badge.title} className={`inline-flex min-h-4 items-center justify-center rounded-md px-1 text-[8px] font-black ${badge.className}`}>
                                           {badge.label}
                                         </span>
                                       ))}
@@ -9325,9 +9349,10 @@ function App() {
                                       event.stopPropagation();
                                       setSelectedTeamPlayerRole(player.name, role === 'Titular' ? 'Reserva' : 'Titular');
                                     }}
-                                    className="rounded-xl bg-caudal-950/80 px-2 py-1 text-xs font-semibold text-slate-200 hover:bg-caudal-900"
+                                    className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black text-slate-400 opacity-70 transition hover:bg-white/[0.08] hover:text-white group-hover:opacity-100"
+                                    title={role === 'Titular' ? 'Pasar a reserva' : 'Hacer titular'}
                                   >
-                                    {role === 'Titular' ? 'A reserva' : 'Hacer titular'}
+                                    {role === 'Titular' ? 'RES' : 'TIT'}
                                   </button>
                                   <button
                                     type="button"
@@ -9335,9 +9360,10 @@ function App() {
                                       event.stopPropagation();
                                       openTeamForm(selectedTeam);
                                     }}
-                                    className="rounded-xl bg-white/10 px-2 py-1 text-xs font-semibold text-slate-200 hover:bg-white/20"
+                                    className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black text-slate-400 opacity-70 transition hover:bg-white/[0.08] hover:text-white group-hover:opacity-100"
+                                    title="Editar rival"
                                   >
-                                    Editar
+                                    ED
                                   </button>
                                 </div>
                               ))}
@@ -9354,13 +9380,19 @@ function App() {
                   <div
                     onDragOver={(event) => event.preventDefault()}
                     onDrop={handleDropOnField}
-                    className="relative mx-auto aspect-[7/8.9] max-h-[760px] min-h-[620px] w-full max-w-[800px] overflow-hidden rounded-3xl border border-caudal-electric/25 bg-[radial-gradient(circle_at_center,rgba(79,140,255,0.22),transparent_34%),linear-gradient(180deg,rgba(8,32,75,0.96),rgba(5,18,46,0.98))] shadow-glow"
+                    className="relative mx-auto aspect-[7/8.9] max-h-[760px] min-h-[560px] w-full max-w-[800px] overflow-hidden rounded-[1.8rem] border border-white/10 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.10),transparent_22%),repeating-linear-gradient(90deg,rgba(17,96,68,0.96)_0,rgba(17,96,68,0.96)_12.5%,rgba(14,82,60,0.98)_12.5%,rgba(14,82,60,0.98)_25%),linear-gradient(180deg,#0b3d32,#082e28)] shadow-[0_22px_70px_rgba(0,0,0,0.30)]"
                   >
-                    <div className="absolute inset-4 rounded-[28px] border-2 border-white/40" />
-                    <div className="absolute left-4 right-4 top-1/2 h-px bg-white/35" />
-                    <div className="absolute left-1/2 top-1/2 h-32 w-32 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/35" />
-                    <div className="absolute left-1/2 top-4 h-24 w-56 -translate-x-1/2 rounded-b-3xl border-x-2 border-b-2 border-white/35" />
-                    <div className="absolute bottom-4 left-1/2 h-24 w-56 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/35" />
+                    <div className="absolute inset-0 bg-[linear-gradient(0deg,rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:100%_12.5%,14.28%_100%] opacity-35" />
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.08),transparent_17%),radial-gradient(circle_at_50%_82%,rgba(0,0,0,0.18),transparent_28%)]" />
+                    <div className="absolute left-[12%] right-[12%] top-[27%] h-px bg-white/10" />
+                    <div className="absolute left-[12%] right-[12%] bottom-[27%] h-px bg-white/10" />
+                    <div className="absolute inset-4 rounded-[28px] border border-white/35" />
+                    <div className="absolute left-4 right-4 top-1/2 h-px bg-white/30" />
+                    <div className="absolute left-1/2 top-1/2 h-32 w-32 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/25" />
+                    <div className="absolute left-1/2 top-4 h-24 w-56 -translate-x-1/2 rounded-b-3xl border-x border-b border-white/28" />
+                    <div className="absolute bottom-4 left-1/2 h-24 w-56 -translate-x-1/2 rounded-t-3xl border-x border-t border-white/28" />
+                    <div className="absolute left-1/2 top-[18%] h-px w-2/3 -translate-x-1/2 bg-white/10" />
+                    <div className="absolute left-1/2 bottom-[18%] h-px w-2/3 -translate-x-1/2 bg-white/10" />
                     {getFormationCoordinates(selectedTeam.system).map((slot, slotIndex) => {
                       const slotPlayer = getLineupSlotMap(selectedTeam.lineup ?? emptyLineup).get(slotIndex);
                       return (
@@ -9371,15 +9403,10 @@ function App() {
                             event.stopPropagation();
                             handleDropOnLineupSlot(slotIndex);
                           }}
-                          className={`absolute flex h-16 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-2xl border text-xs font-semibold ${
-                            slotPlayer
-                              ? 'border-transparent text-transparent'
-                              : 'border-dashed border-white/35 bg-white/10 text-white/80'
-                          }`}
+                          className={`absolute h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full transition ${slotPlayer ? 'opacity-0' : 'border border-white/[0.10] bg-white/[0.018] opacity-20 hover:opacity-45'}`}
                           style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
-                        >
-                          {slotPlayer ? '' : slotIndex + 1}
-                        </div>
+                          aria-label={`Zona táctica ${slotIndex + 1}`}
+                        />
                       );
                     })}
                     {(selectedTeam.lineup ?? emptyLineup).map((player) => (
@@ -9389,7 +9416,9 @@ function App() {
                         onDragStart={() => setDraggedPlayer(player)}
                         onDoubleClick={() => removeFromLineup(player.name)}
                         onClick={() => toggleSelectedTeamKeyPlayer(player.name)}
-                        className="absolute flex w-24 -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center"
+                        className={`group absolute flex w-24 -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center transition hover:-translate-y-[52%] ${
+                          player.isKey ? 'z-20' : 'z-10'
+                        }`}
                         style={{ left: `${player.x}%`, top: `${player.y}%` }}
                         title="Arrastra para mover. Clic marca destacado. Doble clic quita del campo."
                       >
@@ -9398,14 +9427,14 @@ function App() {
                             event.stopPropagation();
                             removeFromLineup(player.name);
                           }}
-                          className="absolute right-2 top-2 z-20 flex h-4 w-4 items-center justify-center rounded-full bg-red-500/80 text-[9px] font-bold text-white opacity-70 shadow transition hover:opacity-100"
+                          className="absolute right-1 top-1 z-30 flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-slate-950/70 text-[10px] font-black text-slate-300 opacity-0 shadow transition hover:border-red-200/30 hover:bg-red-500/20 hover:text-red-100 group-hover:opacity-100"
                           title="Quitar del once"
                         >
-                          X
+                          -
                         </span>
                         <span
-                          className={`relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border-2 bg-caudal-950/70 shadow-glow ${
-                            player.isKey ? 'border-amber-300' : 'border-caudal-electric/60'
+                          className={`relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border bg-caudal-950/78 shadow-[0_12px_28px_rgba(0,0,0,0.34)] transition group-hover:scale-[1.03] ${
+                            player.isKey ? 'border-amber-200/80 shadow-[0_0_0_1px_rgba(251,191,36,0.16),0_16px_34px_rgba(0,0,0,0.38)]' : 'border-caudal-electric/45'
                           }`}
                         >
                           {player.number ? (
@@ -9416,7 +9445,7 @@ function App() {
                           {playerStatusBadges(player).length ? (
                             <span className="absolute right-0 top-0 z-10 flex max-w-16 flex-wrap justify-end gap-0.5 p-0.5">
                               {playerStatusBadges(player).map((badge) => (
-                                <span key={badge.title} title={badge.title} className={`inline-flex h-4 min-w-4 items-center justify-center rounded-sm px-1 text-[9px] font-black leading-none ${badge.className}`}>
+                                <span key={badge.title} title={badge.title} className={`inline-flex min-h-4 items-center justify-center rounded-md px-1 text-[8px] font-black leading-none ${badge.className}`}>
                                   {badge.label}
                                 </span>
                               ))}
@@ -9428,13 +9457,8 @@ function App() {
                             player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)
                           )}
                         </span>
-                        <span className="mt-1 flex max-w-24 items-center gap-1 text-xs font-semibold leading-tight text-white drop-shadow">
+                        <span className="mt-1 flex max-w-24 items-center gap-1 rounded-lg bg-slate-950/30 px-1.5 py-0.5 text-xs font-semibold leading-tight text-white drop-shadow">
                           <span className="truncate">{displayPlayerName(player)}</span>
-                          {playerStatusBadges(player).map((badge) => (
-                            <span key={badge.title} title={badge.title} className={`inline-flex h-4 min-w-4 items-center justify-center rounded-sm px-1 text-[10px] font-bold ${badge.className}`}>
-                              {badge.label}
-                            </span>
-                          ))}
                         </span>
                         <div
                           className="absolute top-full mt-1 flex w-24 flex-col gap-1"
@@ -9459,8 +9483,8 @@ function App() {
                                   event.stopPropagation();
                                   clearBenchSlot(player.name, benchSlotIndex);
                                 }}
-                                className={`relative block min-h-4 max-w-24 truncate rounded-lg px-2 py-0.5 pr-4 text-[11px] leading-tight drop-shadow ${
-                                  benchPlayer ? 'bg-caudal-950/70 text-slate-200' : 'border border-dashed border-white/25 text-white/45'
+                                className={`relative block min-h-4 max-w-24 truncate rounded-lg px-2 py-0.5 pr-4 text-[10px] leading-tight drop-shadow transition ${
+                                  benchPlayer ? 'border border-white/10 bg-caudal-950/62 text-slate-200 hover:bg-caudal-950/80' : 'border border-dashed border-white/15 bg-white/[0.015] text-white/32 hover:text-white/55'
                                 }`}
                                 title={benchPlayer ? getPlayerMeta(benchPlayer) : 'Arrastra un reserva aquí'}
                               >
@@ -9474,7 +9498,7 @@ function App() {
                                     ))}
                                   </span>
                                 ) : (
-                                  `Reserva ${benchSlotIndex + 1}`
+                                  `R${benchSlotIndex + 1}`
                                 )}
                                 {benchPlayer ? (
                                   <button
@@ -9483,10 +9507,10 @@ function App() {
                                       event.stopPropagation();
                                       clearBenchSlot(player.name, benchSlotIndex);
                                     }}
-                                    className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] font-bold text-red-300 hover:text-red-100"
+                                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded text-[10px] font-black text-slate-400 opacity-60 hover:text-red-100 hover:opacity-100"
                                     title="Quitar reserva"
                                   >
-                                    X
+                                    -
                                   </button>
                                 ) : null}
                               </span>
