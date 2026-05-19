@@ -315,6 +315,57 @@ const saveStoredRivalTacticalIdentity = (teamId, identity) => {
   const current = readStoredRivalTacticalIdentity();
   window.localStorage.setItem(rivalTacticalIdentityKey, JSON.stringify({ ...current, [teamId]: getTeamTacticalIdentity(identity) }));
 };
+const createSuggestedConsignas = (identity = {}) => {
+  const data = getTeamTacticalIdentity(identity);
+  const items = [];
+  const add = (text, tone = 'ofensiva') => {
+    if (!items.some((item) => item.text === text)) items.push({ text, tone });
+  };
+
+  if (data.blockHeight === 'bajo') {
+    add('Dar amplitud y mover rápido de lado a lado antes de acelerar.', 'ofensiva');
+    add('Tener paciencia ofensiva: circular, fijar y atacar el intervalo libre.', 'fortaleza');
+  }
+  if (data.blockHeight === 'alto') {
+    add('Superar primera línea y atacar la espalda de su defensa.', 'ofensiva');
+  }
+  if (data.mainThreat === 'transición') {
+    add('Vigilancia tras pérdida: cerrar pase interior y primera carrera rival.', 'alerta');
+    add('Evitar pérdidas interiores con el equipo abierto.', 'vigilancia');
+  }
+  if (data.pressureType === 'tras pérdida' || data.pressureType === 'hombre a hombre') {
+    add('Salir de presión con tercer hombre o apoyo cercano.', 'ofensiva');
+    add('Atacar espalda tras atraer su salto de presión.', 'ofensiva');
+  }
+  if (data.pressureType === 'repliegue' || data.pressureType === 'espera') {
+    add('No precipitar centros: atraer, fijar y buscar pase atrás.', 'vigilancia');
+  }
+  if (data.detectedWeakness === 'espalda lateral' || data.offensiveFocus === 'espalda lateral') {
+    add('Atacar profundidad exterior a la espalda del lateral.', 'ofensiva');
+  }
+  if (data.mainThreat === 'ABP' || data.offensiveFocus === 'ABP') {
+    add('Evitar faltas laterales y controlar bloqueos en ABP.', 'alerta');
+  }
+  if (data.mainThreat === 'segunda jugada' || data.offensiveBehavior === 'segunda jugada') {
+    add('Ganar rechace frontal y orientar segundas jugadas hacia fuera.', 'vigilancia');
+  }
+  if (data.mainThreat === 'centros laterales') {
+    add('Tapar centro cómodo y proteger segundo palo.', 'alerta');
+  }
+  if (data.strongSide === 'izquierda' || data.strongSide === 'derecha') {
+    add(`Cerrar su lado fuerte ${data.strongSide} y obligarles a jugar por zona débil.`, 'vigilancia');
+  }
+  if (data.attackingRhythm === 'alto' || data.attackingRhythm === 'vertical') {
+    add('Temporizar pérdidas y no partir el equipo tras ataque finalizado.', 'alerta');
+  }
+  return items.slice(0, 6);
+};
+const consignaToneClass = {
+  alerta: 'border-red-200/25 bg-red-400/[0.10] text-red-100',
+  vigilancia: 'border-amber-200/25 bg-amber-200/[0.10] text-amber-100',
+  ofensiva: 'border-caudal-electric/25 bg-caudal-electric/[0.10] text-caudal-electric',
+  fortaleza: 'border-emerald-200/25 bg-emerald-200/[0.10] text-emerald-100',
+};
 
 const normalizeSupabaseJugador = (player) => ({
   id: player.id,
@@ -3360,6 +3411,36 @@ function App() {
     [selectedMatch?.preAiAnalysis]
   );
   const preReportChecklist = selectedPreAiAnalysis?.reportChecklist || {};
+  const selectedMatchRivalTeam = useMemo(
+    () => findTeamByDisplayName(teams, selectedMatch?.opponent || ''),
+    [teams, selectedMatch?.opponent]
+  );
+  const suggestedConsignas = selectedPreAiAnalysis?.suggestedConsignas || createSuggestedConsignas(selectedMatchRivalTeam || {});
+  const updateSuggestedConsignas = (nextConsignas) => {
+    updateSelectedMatchFields({
+      preAiAnalysis: {
+        ...(selectedPreAiAnalysis || {}),
+        suggestedConsignas: nextConsignas,
+      },
+    });
+  };
+  const editSuggestedConsigna = (index, text) => {
+    updateSuggestedConsignas(suggestedConsignas.map((item, itemIndex) => (itemIndex === index ? { ...item, text } : item)));
+  };
+  const removeSuggestedConsigna = (index) => {
+    updateSuggestedConsignas(suggestedConsignas.filter((_, itemIndex) => itemIndex !== index));
+  };
+  const moveSuggestedConsigna = (index, direction) => {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= suggestedConsignas.length) return;
+    const next = [...suggestedConsignas];
+    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+    updateSuggestedConsignas(next);
+  };
+  const addSuggestedConsignaToManual = (text) => {
+    const manualItems = (selectedMatch?.planClave || '').split('\n').map((item) => item.trim()).filter(Boolean);
+    if (!manualItems.includes(text)) updateSelectedMatchFields({ planClave: [...manualItems, text].join('\n') });
+  };
   const togglePreReportChecklist = (key) => {
     updateSelectedMatchFields({
       preAiAnalysis: {
@@ -4020,15 +4101,26 @@ function App() {
     return `https://www.youtube.com/embed/${match[1]}?enablejsapi=1${start}`;
   };
   const getCanvaEmbedUrl = (url) => {
-    if (!url) return null;
+    const rawUrl = String(url || '').trim();
+    if (!rawUrl) return null;
     try {
-      const canvaUrl = new URL(url);
-      if (!canvaUrl.hostname.includes('canva.com')) return null;
+      const normalizedUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+      const canvaUrl = new URL(normalizedUrl);
+      const host = canvaUrl.hostname.replace(/^www\./, '').toLowerCase();
+      if (!host.includes('canva.com') && !host.includes('canva.link')) return null;
+      canvaUrl.protocol = 'https:';
+      if (host.includes('canva.link')) return canvaUrl.toString();
       canvaUrl.searchParams.set('embed', '');
       return canvaUrl.toString();
     } catch {
       return null;
     }
+  };
+  const isCanvaUrl = (url) => Boolean(getCanvaEmbedUrl(url));
+  const openCanvaUrl = (url) => {
+    const normalizedUrl = getCanvaEmbedUrl(url) || String(url || '').trim();
+    if (!normalizedUrl) return;
+    window.open(normalizedUrl, '_blank', 'noopener,noreferrer');
   };
 
   const eventButtonClass = (typeOrColor) => {
@@ -10809,6 +10901,49 @@ function App() {
                                   <p className="rounded-xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-3 text-sm text-slate-500">Añade tres consignas para que el staff las lea de un vistazo.</p>
                                 ) : null}
                               </div>
+                              <div className="mt-5 border-t border-white/10 pt-4">
+                                <div className="flex items-center justify-between gap-3">
+                                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Consignas sugeridas</p>
+                                  {!isPreTalkMode ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => updateSuggestedConsignas(createSuggestedConsignas(selectedMatchRivalTeam || {}))}
+                                      className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-400 hover:bg-white/[0.08] hover:text-white"
+                                    >
+                                      Regenerar
+                                    </button>
+                                  ) : null}
+                                </div>
+                                <div className="mt-3 space-y-2">
+                                  {suggestedConsignas.length ? suggestedConsignas.map((item, index) => (
+                                    <div key={`${item.text}-${index}`} className={`rounded-xl border px-3 py-2 ${consignaToneClass[item.tone] || consignaToneClass.ofensiva}`}>
+                                      {isPreTalkMode ? (
+                                        <div className="flex gap-2 text-sm font-bold leading-5">
+                                          <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+                                          <span>{item.text}</span>
+                                        </div>
+                                      ) : (
+                                        <div className="grid gap-2">
+                                          <input
+                                            value={item.text}
+                                            onChange={(event) => editSuggestedConsigna(index, event.target.value)}
+                                            className="w-full bg-transparent text-sm font-bold leading-5 text-current outline-none"
+                                          />
+                                          <div className="flex flex-wrap gap-1.5">
+                                            <span className="rounded-md border border-current/20 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.1em]">{item.tone}</span>
+                                            <button type="button" onClick={() => addSuggestedConsignaToManual(item.text)} className="rounded-md bg-white/[0.10] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] hover:bg-white/[0.16]">Añadir</button>
+                                            <button type="button" onClick={() => moveSuggestedConsigna(index, -1)} className="rounded-md bg-white/[0.10] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] hover:bg-white/[0.16]">Subir</button>
+                                            <button type="button" onClick={() => moveSuggestedConsigna(index, 1)} className="rounded-md bg-white/[0.10] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] hover:bg-white/[0.16]">Bajar</button>
+                                            <button type="button" onClick={() => removeSuggestedConsigna(index)} className="rounded-md bg-red-500/[0.12] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] hover:bg-red-500/[0.18]">Eliminar</button>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )) : (
+                                    <p className="rounded-xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-3 text-sm text-slate-500">Define la identidad táctica del rival para generar sugerencias.</p>
+                                  )}
+                                </div>
+                              </div>
                             </section>
 
                             <section className={`rounded-[1.45rem] border border-white/10 bg-white/[0.025] p-5 ${isPreTalkMode ? 'hidden xl:block' : ''}`}>
@@ -10852,7 +10987,7 @@ function App() {
                                 />
                                 <button
                                   type="button"
-                                  disabled={!getCanvaEmbedUrl(selectedMatch.preCanvaLink)}
+                                  disabled={!isCanvaUrl(selectedMatch.preCanvaLink)}
                                   onClick={() => setIsCanvaPreviewOpen(true)}
                                   className="rounded-2xl bg-caudal-electric px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:bg-slate-600/40"
                                 >
@@ -10861,7 +10996,7 @@ function App() {
                                 <button
                                   type="button"
                                   disabled={!selectedMatch.preCanvaLink}
-                                  onClick={() => window.open(selectedMatch.preCanvaLink, '_blank', 'noopener,noreferrer')}
+                                  onClick={() => openCanvaUrl(selectedMatch.preCanvaLink)}
                                   className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:text-slate-500"
                                 >
                                   Abrir
@@ -10877,8 +11012,12 @@ function App() {
                                   allowFullScreen
                                 />
                               ) : (
-                                <div className="m-4 rounded-3xl bg-[#0f1e38]/80 p-5 text-sm text-slate-400">
-                                  Este enlace no parece ser de Canva. Usa un enlace de Canva para verlo dentro de la app.
+                                <div className="m-4 rounded-3xl border border-amber-200/15 bg-[#0f1e38]/80 p-5 text-sm text-slate-300">
+                                  <p className="font-bold text-amber-100">Preview no disponible</p>
+                                  <p className="mt-2 text-slate-400">El enlace puede ser válido, pero Canva no permite embeberlo aquí. Puedes abrirlo en una pestaña nueva.</p>
+                                  <button type="button" onClick={() => openCanvaUrl(selectedMatch.preCanvaLink)} className="mt-4 rounded-2xl bg-white/[0.08] px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-white hover:bg-white/[0.12]">
+                                    Abrir Canva
+                                  </button>
                                 </div>
                               )
                             ) : (
