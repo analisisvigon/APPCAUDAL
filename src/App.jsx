@@ -2195,6 +2195,8 @@ function App() {
   const [saveStatus, setSaveStatus] = useState('');
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isTeamPanelOpen, setIsTeamPanelOpen] = useState(false);
+  const [teamEditMode, setTeamEditMode] = useState(false);
+  const [editingTeamPlayerIndex, setEditingTeamPlayerIndex] = useState(null);
   const [isMatchPanelOpen, setIsMatchPanelOpen] = useState(false);
   const [preLoading, setPreLoading] = useState(false);
   const [preError, setPreError] = useState('');
@@ -6664,6 +6666,8 @@ function App() {
       setEditingTeamId(null);
       setTeamFormState(emptyTeamForm);
     }
+    setTeamEditMode(!team);
+    setEditingTeamPlayerIndex(null);
     setImportStatus('');
     setIsTeamPanelOpen(true);
   };
@@ -6671,6 +6675,8 @@ function App() {
   const closeTeamForm = () => {
     setIsTeamPanelOpen(false);
     setEditingTeamId(null);
+    setTeamEditMode(false);
+    setEditingTeamPlayerIndex(null);
     setImportStatus('');
   };
 
@@ -12430,9 +12436,16 @@ function App() {
                 <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">{editingTeamId ? 'Editar rival' : 'Nuevo rival'}</p>
                 <h3 className="mt-1 text-xl font-black text-white">Ficha profesional de scouting</h3>
               </div>
-              <button onClick={closeTeamForm} className="rounded-full bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/10">
-                Cerrar
-              </button>
+              <div className="flex items-center gap-2">
+                {editingTeamId ? (
+                  <button type="button" onClick={() => { setTeamEditMode((current) => !current); setEditingTeamPlayerIndex(null); }} className={`rounded-2xl border px-4 py-2 text-sm font-bold transition ${teamEditMode ? 'border-caudal-electric/30 bg-caudal-electric/90 text-slate-950' : 'border-white/10 bg-white/[0.06] text-white hover:bg-white/10'}`}>
+                    {teamEditMode ? 'Modo visual' : 'Editar ficha'}
+                  </button>
+                ) : null}
+                <button onClick={closeTeamForm} className="rounded-full bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/10">
+                  Cerrar
+                </button>
+              </div>
             </div>
 
             <form onSubmit={handleTeamSubmit} noValidate className="min-h-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
@@ -12471,18 +12484,22 @@ function App() {
               <section className="grid gap-4 lg:grid-cols-[1fr_0.72fr]">
                 <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.025] p-4">
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Identidad del rival</p>
+                  {teamEditMode ? (
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     {[
-                      ['sourceUrl', 'Enlace del equipo', 'Opcional: https://...'],
+                      ['sourceUrl', 'Fuente del equipo', 'Pegar enlace de fuente'],
                       ['name', 'Nombre del equipo', 'Se rellena al importar'],
-                      ['crest', 'URL escudo', 'Se rellena al importar'],
                       ['stadium', 'Estadio', 'Ej. El Bayu'],
                     ].map(([name, label, placeholder]) => (
                       <label key={name} className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                         <span>{label}</span>
-                        <input name={name} value={teamFormState[name]} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder={placeholder} />
+                        <input name={name} type={name === 'sourceUrl' ? 'password' : 'text'} value={teamFormState[name]} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder={placeholder} />
                       </label>
                     ))}
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2">
+                      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Escudo</p>
+                      <p className="mt-1 text-sm font-bold text-slate-200">{teamFormState.crest ? 'Imagen vinculada' : 'Sin imagen vinculada'}</p>
+                    </div>
                     <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                       <span>Color camiseta</span>
                       <input name="kitColor" type="color" value={teamFormState.kitColor} onChange={handleTeamChange} className="h-[40px] w-full rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 shadow-inner" />
@@ -12494,13 +12511,30 @@ function App() {
                       </select>
                     </label>
                   </div>
+                  ) : (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      {[
+                        ['Nombre', formTeamName],
+                        ['Estadio', teamFormState.stadium || 'Pendiente'],
+                        ['Sistema', teamFormState.system || 'Pendiente'],
+                        ['Fuente', teamFormState.sourceUrl ? 'Fuente vinculada' : 'Sin fuente vinculada'],
+                        ['Escudo', teamFormState.crest ? 'Imagen vinculada' : 'Sin imagen vinculada'],
+                        ['Color', teamFormState.kitColor || 'No definido'],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2">
+                          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+                          <p className="mt-1 truncate text-sm font-bold text-slate-200">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-4">
                   <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.025] p-4">
                     <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Importador</p>
-                    <p className="mt-2 text-sm leading-5 text-slate-400">Rellena identidad, escudo, estadio, color, jugadores y fotos desde el enlace.</p>
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <p className="mt-2 text-sm leading-5 text-slate-400">{teamFormState.sourceUrl ? 'Fuente vinculada para refrescar identidad y plantilla.' : 'Añade una fuente en edición para importar datos del rival.'}</p>
+                    {teamEditMode ? <div className="mt-3 flex flex-wrap items-center gap-2">
                       <button type="button" onClick={handleImportSquad} className="inline-flex min-h-[38px] items-center justify-center rounded-2xl bg-caudal-electric/90 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-caudal-electric">
                         Importar datos
                       </button>
@@ -12508,7 +12542,12 @@ function App() {
                       <button type="button" onClick={() => teamCrestInputRef.current?.click()} disabled={isUploadingTeamCrest} className="inline-flex min-h-[38px] items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60">
                         {isUploadingTeamCrest ? 'Subiendo...' : 'Subir escudo'}
                       </button>
-                    </div>
+                    </div> : (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-bold text-slate-300">{teamFormState.sourceUrl ? 'Fuente vinculada' : 'Fuente pendiente'}</span>
+                        <span className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-bold text-slate-300">{teamFormState.crest ? 'Imagen vinculada' : 'Escudo pendiente'}</span>
+                      </div>
+                    )}
                     {importStatus ? <p className="mt-2 text-sm text-caudal-electric">{importStatus}</p> : null}
                     {isUploadingTeamCrest ? <p className="mt-2 text-xs text-caudal-electric">Subiendo escudo...</p> : null}
                   </div>
@@ -12543,6 +12582,13 @@ function App() {
                   {teamFormState.squad.length > 0 ? (
                     teamFormState.squad.map((entry, index) => {
                       const player = normalizeSquadEntry(entry);
+                      const isEditingPlayer = teamEditMode && editingTeamPlayerIndex === index;
+                      const scoutingBadges = [
+                        player.isKey ? ['Clave', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
+                        player.yellowRisk ? ['Amonestado', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
+                        player.suspended ? ['Riesgo roja', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
+                        player.injured ? ['Lesionado', 'border-white/10 bg-white/[0.06] text-slate-100'] : null,
+                      ].filter(Boolean);
                       return (
                         <article key={`${player.id}-${index}`} className={`rounded-[1.25rem] border p-3 transition ${player.role === 'Titular' ? 'border-caudal-electric/25 bg-caudal-electric/[0.055]' : 'border-white/10 bg-white/[0.03]'} ${player.isKey ? 'shadow-[inset_0_0_0_1px_rgba(251,191,36,0.18)]' : ''}`}>
                           <div className="flex gap-3">
@@ -12550,26 +12596,36 @@ function App() {
                               {player.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
                             </div>
                             <div className="min-w-0 flex-1 space-y-2">
-                              <input value={player.name} onChange={(event) => handleTeamPlayerChange(index, 'name', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-3 py-2 text-sm font-bold text-white shadow-inner placeholder:text-slate-500" placeholder="Nombre" />
-                              <div className="grid grid-cols-[1fr_70px] gap-2">
-                                <select value={player.position} onChange={(event) => handleTeamPlayerChange(index, 'position', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner">
+                              {isEditingPlayer ? (
+                                <>
+                                  <input value={player.name} onChange={(event) => handleTeamPlayerChange(index, 'name', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-3 py-2 text-sm font-bold text-white shadow-inner placeholder:text-slate-500" placeholder="Nombre" />
+                                  <div className="grid grid-cols-[1fr_70px] gap-2">
+                                    <select value={player.position} onChange={(event) => handleTeamPlayerChange(index, 'position', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner">
                                 <option value="">Posición</option>
                                 {positions.map((position) => <option key={position} value={position}>{position}</option>)}
-                                </select>
-                                <input value={player.age} onChange={(event) => handleTeamPlayerChange(index, 'age', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner placeholder:text-slate-500" placeholder="Edad" />
-                              </div>
+                                    </select>
+                                    <input value={player.age} onChange={(event) => handleTeamPlayerChange(index, 'age', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner placeholder:text-slate-500" placeholder="Edad" />
+                                  </div>
+                                </>
+                              ) : (
+                                <div>
+                                  <h4 className="truncate text-sm font-black text-white">{player.name || 'Jugador sin nombre'}</h4>
+                                  <p className="mt-1 truncate text-xs font-semibold text-slate-400">{player.position || 'Sin posición'} · {player.age ? `${player.age} años` : 'Edad pendiente'}</p>
+                                  <p className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{player.role || 'Reserva'} · #{player.number || '-'}</p>
+                                </div>
+                              )}
                             </div>
                           </div>
-                          <div className="mt-3 grid grid-cols-[64px_1fr_70px] gap-2">
+                          {isEditingPlayer ? <div className="mt-3 grid grid-cols-[64px_1fr_70px] gap-2">
                             <input value={player.number} onChange={(event) => handleTeamPlayerChange(index, 'number', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner placeholder:text-slate-500" placeholder="Dorsal" />
-                            <input value={player.image} onChange={(event) => handleTeamPlayerChange(index, 'image', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner placeholder:text-slate-500" placeholder="URL foto" />
+                            <input type="password" value={player.image} onChange={(event) => handleTeamPlayerChange(index, 'image', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner placeholder:text-slate-500" placeholder="Pegar enlace foto" />
                             <select value={player.role} onChange={(event) => handleTeamPlayerChange(index, 'role', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner">
                               <option value="Titular">Titular</option>
                               <option value="Reserva">Reserva</option>
                             </select>
-                          </div>
+                          </div> : null}
                           <div className="mt-3 flex flex-wrap gap-1.5">
-                            {[
+                            {isEditingPlayer ? [
                               ['isKey', 'Destacado', 'text-amber-100 border-amber-200/20 bg-amber-200/10'],
                               ['yellowRisk', 'Amonestado', 'text-amber-100 border-amber-200/20 bg-amber-200/10'],
                               ['suspended', 'Riesgo roja', 'text-red-100 border-red-200/20 bg-red-300/10'],
@@ -12579,10 +12635,25 @@ function App() {
                                 <input type="checkbox" checked={Boolean(player[field])} onChange={(event) => handleTeamPlayerChange(index, field, event.target.checked)} className="h-3 w-3 accent-[#4f8cff]" />
                                 {label}
                               </label>
-                            ))}
+                            )) : scoutingBadges.length ? scoutingBadges.map(([label, className]) => (
+                              <span key={label} className={`rounded-xl border px-2 py-1 text-[10px] font-bold ${className}`}>{label}</span>
+                            )) : <span className="rounded-xl border border-white/10 bg-white/[0.035] px-2 py-1 text-[10px] font-bold text-slate-500">Sin alertas</span>}
                           </div>
-                          <div className="mt-3 flex justify-end">
-                            <button type="button" onClick={() => handleRemoveTeamPlayer(index)} className="rounded-xl border border-red-300/10 bg-red-500/10 px-3 py-1.5 text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar</button>
+                          {!isEditingPlayer ? (
+                            <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-slate-500">
+                              <span>Perfil táctico pendiente</span>
+                              <span>Pie dominante pendiente</span>
+                              <span>Amenaza ofensiva pendiente</span>
+                              <span>Especialista ABP pendiente</span>
+                            </div>
+                          ) : null}
+                          <div className="mt-3 flex justify-end gap-2">
+                            {teamEditMode ? (
+                              <button type="button" onClick={() => setEditingTeamPlayerIndex((current) => current === index ? null : index)} className="rounded-xl border border-white/10 bg-white/[0.055] px-3 py-1.5 text-xs font-bold text-slate-200 transition hover:bg-white/10">
+                                {isEditingPlayer ? 'Cerrar edición' : 'Editar'}
+                              </button>
+                            ) : null}
+                            {isEditingPlayer ? <button type="button" onClick={() => handleRemoveTeamPlayer(index)} className="rounded-xl border border-red-300/10 bg-transparent px-3 py-1.5 text-xs font-bold text-red-200/60 transition hover:bg-red-500/10">Papelera</button> : null}
                           </div>
                         </article>
                       );
