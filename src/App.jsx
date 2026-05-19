@@ -10358,10 +10358,11 @@ function App() {
             </div>
 
             <div className="grid gap-3 rounded-[1.7rem] border border-white/10 bg-white/[0.035] p-3 md:grid-cols-2 xl:grid-cols-5">
-              <button onClick={() => openMatchForm(null)} className="group min-h-32 rounded-[1.35rem] border border-dashed border-caudal-electric/25 bg-caudal-electric/[0.055] p-4 text-left transition hover:border-caudal-electric/60 hover:bg-caudal-electric/[0.09]">
-                <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-caudal-electric/25 bg-caudal-electric/15 text-2xl font-black text-caudal-electric transition group-hover:scale-105">+</span>
-                <p className="mt-5 text-xs font-black uppercase tracking-[0.18em] text-white">Nuevo partido</p>
-                <p className="mt-1 text-xs leading-5 text-slate-400">Crear semana de trabajo, rival y PRE.</p>
+              <button onClick={() => openMatchForm(null)} className="group relative min-h-32 overflow-hidden rounded-[1.35rem] border border-dashed border-caudal-electric/28 bg-caudal-electric/[0.055] p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition hover:-translate-y-0.5 hover:border-caudal-electric/65 hover:bg-caudal-electric/[0.09] hover:shadow-[0_16px_34px_rgba(79,140,255,0.12)]">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(79,140,255,0.18),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.05),transparent_45%)]" />
+                <span className="relative flex h-11 w-11 items-center justify-center rounded-2xl border border-caudal-electric/25 bg-caudal-electric/15 text-2xl font-black text-caudal-electric transition group-hover:scale-105">+</span>
+                <p className="relative mt-5 text-xs font-black uppercase tracking-[0.18em] text-white">Nuevo partido</p>
+                <p className="relative mt-1 text-xs leading-5 text-slate-400">Iniciar microciclo, rival, PRE y dossier.</p>
               </button>
               <div className="rounded-[1.35rem] border border-white/10 bg-[#091428]/80 p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Partidos totales</p>
@@ -10426,6 +10427,24 @@ function App() {
                     const hasRivalReport = Boolean(match.preRivalReportText || match.preRivalReportExtraction);
                     const hasCallup = Boolean((match.statsCalledPlayers || []).length || (match.preCaudalLineup || []).length);
                     const hasSetPieces = Boolean(match.abpOfensiva || match.abpDefensiva || match.preRivalCornersFor || match.preRivalCornersAgainst);
+                    const tacticalFocus =
+                      match.planClave ||
+                      match.preCaudalIntent ||
+                      match.preRivalStrengths ||
+                      opponentTeam?.style ||
+                      opponentTeam?.system ||
+                      'Foco táctico pendiente';
+                    const futureTacticalItems = [
+                      ['Sistema', match.preRivalBaseSystem || opponentTeam?.system || match.preRivalSystem || 'Por definir'],
+                      ['Foco', tacticalFocus],
+                      ['PRE', hasRivalReport || hasCallup || hasSetPieces ? 'En marcha' : 'Pendiente'],
+                    ];
+                    const microcycleItems = [
+                      { label: 'MD-4', ready: hasRivalReport },
+                      { label: 'MD-3', ready: Boolean(opponentTeam) },
+                      { label: 'PRE listo', ready: hasRivalReport && hasCallup },
+                      { label: 'Vídeo', ready: Boolean(match.preCanvaLink || match.postVideoLink) },
+                    ];
                     const futurePrepItems = [
                       { label: 'PREPARANDO', ready: !played },
                       { label: hasRivalReport ? 'INFORME LISTO' : 'INFORME PENDIENTE', ready: hasRivalReport },
@@ -10454,14 +10473,18 @@ function App() {
                         : score.caudal < score.rival
                           ? 'bg-red-500'
                           : 'bg-amber-300';
+                    const cardToneClass = played
+                      ? 'border-white/10 bg-[#091428]/[0.86] shadow-[0_18px_48px_rgba(0,0,0,0.22)] hover:border-white/20'
+                      : 'border-caudal-electric/[0.14] bg-[#08192c]/[0.80] shadow-[0_14px_40px_rgba(0,0,0,0.18)] hover:border-caudal-electric/30';
                     return (
-                      <article key={match.id} className="relative overflow-hidden rounded-[1.45rem] border border-white/10 bg-[#091428]/[0.82] shadow-[0_14px_42px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:border-caudal-electric/20">
+                      <article key={match.id} className={`relative overflow-hidden rounded-[1.45rem] border transition hover:-translate-y-0.5 ${cardToneClass}`}>
+                        <div className={`pointer-events-none absolute inset-0 ${played ? 'bg-[linear-gradient(180deg,rgba(255,255,255,0.035),transparent_38%)]' : 'bg-[radial-gradient(circle_at_50%_0%,rgba(79,140,255,0.13),transparent_34%),linear-gradient(180deg,rgba(79,140,255,0.035),transparent_44%)]'}`} />
                         <div className={`h-1.5 w-full ${resultStripeClass}`} />
                         <div className="absolute right-4 top-4 z-10 flex gap-2">
                           <button onClick={() => openMatchForm(match)} className="rounded-lg border border-white/10 bg-white/[0.07] px-2.5 py-1 text-[11px] font-bold text-white hover:bg-white/[0.12]">Editar</button>
                           <button onClick={() => handleMatchDelete(match)} className="rounded-lg border border-red-200/10 bg-red-500/10 px-2.5 py-1 text-[11px] font-bold text-red-100 hover:bg-red-500/[0.18]">Eliminar</button>
                         </div>
-                        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 pb-3 pt-4">
+                        <div className="relative grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 pb-3 pt-4">
                           <div className="text-center">
                             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-2">
                               <img src={caudalIsHome ? clubCrest : match.opponentCrest || clubCrest} alt="" className="h-full w-full object-contain" />
@@ -10470,7 +10493,9 @@ function App() {
                           </div>
                           <div className="text-center">
                             <p className="rounded-xl bg-caudal-950/80 px-3 py-1 text-xs text-slate-400">{matchDisplayDate(match.date)}</p>
-                            <p className="mt-2 text-5xl font-black leading-none text-white tracking-normal">{played ? `${score.home} - ${score.away}` : 'VS'}</p>
+                            <p className={`${played ? 'mt-3 text-6xl text-white drop-shadow-[0_8px_18px_rgba(0,0,0,0.35)]' : 'mt-3 text-3xl text-slate-400'} font-black leading-none tracking-normal`}>
+                              {played ? `${score.home} - ${score.away}` : 'VS'}
+                            </p>
                             <span className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${operationalStatus.className}`}>
                               {operationalStatus.label}
                             </span>
@@ -10484,26 +10509,43 @@ function App() {
                             <p className="mt-2 line-clamp-1 text-sm font-bold text-white">{caudalIsHome ? match.opponent : 'C.D. Caudal'}</p>
                           </div>
                         </div>
-                        <div className="px-4 pb-3">
+                        <div className="relative px-4 pb-3">
                           {played ? (
                             timelineEvents.length ? (
-                              <div className="grid gap-1.5 rounded-2xl border border-white/10 bg-white/[0.035] p-2">
+                              <div className="grid gap-1 rounded-2xl border border-white/10 bg-slate-950/[0.18] p-2">
                                 {timelineEvents.map((event, index) => (
-                                  <div key={`${event.label}-${event.minute}-${index}`} className="grid grid-cols-[44px_1fr_auto] items-center gap-2 rounded-xl bg-slate-950/20 px-2 py-1.5 text-xs">
-                                    <span className="font-black text-slate-500">{event.minute ? `${event.minute}'` : '--'}</span>
+                                  <div key={`${event.label}-${event.minute}-${index}`} className="grid grid-cols-[38px_1fr_auto] items-center gap-2 border-b border-white/[0.055] px-1.5 py-1.5 text-xs last:border-b-0">
+                                    <span className="font-black tabular-nums text-slate-500">{event.minute ? `${event.minute}'` : '--'}</span>
                                     <span className={`truncate font-semibold ${event.side === 'caudal' ? 'text-emerald-100' : event.side === 'rival' ? 'text-red-100' : 'text-slate-200'}`}>{event.label}</span>
-                                    <span className="rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-black uppercase text-slate-400">{event.detail}</span>
+                                    <span className={`rounded-md border px-1.5 py-0.5 text-[9px] font-black uppercase ${event.detail === 'LES' ? 'border-cyan-200/20 bg-cyan-200/[0.08] text-cyan-100' : event.detail.includes('AM') ? 'border-amber-200/25 bg-amber-200/[0.10] text-amber-100' : event.detail.includes('RJ') ? 'border-red-200/25 bg-red-400/[0.12] text-red-100' : 'border-white/10 bg-white/[0.04] text-slate-400'}`}>{event.detail}</span>
                                   </div>
                                 ))}
                               </div>
                             ) : null
                           ) : (
-                            <div className="flex flex-wrap gap-1.5 rounded-2xl border border-white/10 bg-white/[0.03] p-2">
-                              {futurePrepItems.map((item) => (
-                                <span key={item.label} className={`rounded-lg border px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] ${item.ready ? 'border-emerald-200/20 bg-emerald-200/[0.08] text-emerald-100' : 'border-amber-200/[0.18] bg-amber-200/[0.07] text-amber-100'}`}>
-                                  {item.label}
-                                </span>
-                              ))}
+                            <div className="space-y-2">
+                              <div className="grid gap-1.5 rounded-2xl border border-caudal-electric/[0.12] bg-white/[0.025] p-2">
+                                {futureTacticalItems.map(([label, value]) => (
+                                  <div key={label} className="grid grid-cols-[64px_1fr] items-center gap-2 text-xs">
+                                    <span className="font-black uppercase tracking-[0.12em] text-slate-500">{label}</span>
+                                    <span className="truncate font-semibold text-slate-200">{value}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {futurePrepItems.slice(1).map((item) => (
+                                  <span key={item.label} className={`rounded-lg border px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] ${item.ready ? 'border-emerald-200/20 bg-emerald-200/[0.08] text-emerald-100' : 'border-amber-200/[0.18] bg-amber-200/[0.07] text-amber-100'}`}>
+                                    {item.label}
+                                  </span>
+                                ))}
+                              </div>
+                              <div className="flex flex-wrap gap-1.5 border-t border-white/[0.06] pt-2">
+                                {microcycleItems.map((item) => (
+                                  <span key={item.label} className={`text-[9px] font-black uppercase tracking-[0.1em] ${item.ready ? 'text-caudal-electric/80' : 'text-slate-500'}`}>
+                                    {item.label}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
                           )}
                           {hasPendingQuickEvents(match) ? (
