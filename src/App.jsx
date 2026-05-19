@@ -7934,17 +7934,17 @@ function App() {
         </nav>
 
         {activeTab === 'Inicio' ? (
-          <main className="space-y-5 pb-8">
-            <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#111111] shadow-glow">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(212,0,0,0.24),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.08),transparent_44%)]" />
-              <div className="relative grid gap-6 p-5 sm:p-6 lg:grid-cols-[auto_1fr_auto] lg:items-center">
-                <div className="mx-auto flex h-28 w-28 items-center justify-center overflow-hidden rounded-[2rem] bg-white p-3 shadow-[0_20px_50px_rgba(0,0,0,0.35)] sm:mx-0 sm:h-32 sm:w-32">
+          <main className="space-y-4 pb-8 sm:space-y-5">
+            <section className="relative overflow-hidden rounded-[1.65rem] border border-white/10 bg-[#0b1220] shadow-[0_18px_60px_rgba(0,0,0,0.26)]">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(212,0,0,0.10),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.045),transparent_46%)]" />
+              <div className="relative grid gap-5 p-4 sm:p-5 lg:grid-cols-[auto_1fr_auto] lg:items-center">
+                <div className="mx-auto flex h-20 w-20 items-center justify-center overflow-hidden rounded-[1.35rem] bg-white p-2.5 shadow-[0_14px_35px_rgba(0,0,0,0.24)] sm:mx-0 sm:h-24 sm:w-24">
                   <img src={clubCrest} alt="Escudo del C.D. Caudal" className="h-full w-full object-contain" />
                 </div>
                 <div className="text-center sm:text-left">
-                  <p className="text-xs font-black uppercase tracking-[0.35em] text-red-200">Cuerpo técnico</p>
-                  <h2 className="mt-2 text-3xl font-black text-white sm:text-5xl">C.D. Caudal de Mieres</h2>
-                  <div className="mt-4 max-w-3xl">
+                  <p className="text-[11px] font-black uppercase tracking-[0.24em] text-red-200/80">Cuerpo técnico</p>
+                  <h2 className="mt-1.5 text-2xl font-black text-white sm:text-4xl">C.D. Caudal de Mieres</h2>
+                  <div className="mt-3 max-w-3xl">
                     {isEditingHomePhrase ? (
                       <div className="space-y-3">
                         <textarea
@@ -7952,14 +7952,14 @@ function App() {
                           onChange={(event) => setHomePhraseDraft(event.target.value)}
                           rows={2}
                           maxLength={180}
-                          className="w-full resize-none rounded-2xl border border-white/15 bg-black/35 px-4 py-3 text-sm text-white outline-none transition focus:border-red-400"
+                          className="w-full resize-none rounded-2xl border border-white/15 bg-black/25 px-4 py-3 text-sm text-white outline-none transition focus:border-red-300 focus:bg-black/35"
                         />
                         <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
                           <button
                             type="button"
                             onClick={handleSaveHomePhrase}
                             disabled={homePhraseSaving}
-                            className="rounded-2xl bg-red-600 px-4 py-2 text-sm font-black text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="rounded-2xl bg-red-500/90 px-4 py-2 text-sm font-black text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {homePhraseSaving ? 'Guardando...' : 'Guardar frase'}
                           </button>
@@ -7978,7 +7978,7 @@ function App() {
                       </div>
                     ) : (
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                        <p className="text-base font-medium leading-relaxed text-slate-200 sm:text-lg">{homePhrase}</p>
+                        <p className="text-sm font-medium leading-relaxed text-slate-300 sm:text-base">{homePhrase}</p>
                         <button
                           type="button"
                           onClick={() => {
@@ -7986,7 +7986,7 @@ function App() {
                             setIsEditingHomePhrase(true);
                             setHomePhraseStatus('');
                           }}
-                          className="mx-auto inline-flex shrink-0 items-center justify-center rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15 sm:mx-0"
+                          className="mx-auto inline-flex shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-3.5 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/10 sm:mx-0"
                         >
                           Editar
                         </button>
@@ -7995,18 +7995,18 @@ function App() {
                     {homePhraseStatus ? <p className="mt-2 text-xs text-slate-300">{homePhraseStatus}</p> : null}
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2 rounded-3xl border border-white/10 bg-black/25 p-3 text-center">
+                <div className="grid grid-cols-3 gap-2 rounded-[1.35rem] border border-white/10 bg-black/20 p-2.5 text-center">
                   <div>
-                    <p className="text-2xl font-black text-white">{homeDashboard.playerCount}</p>
-                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Plantilla</p>
+                    <p className="text-xl font-black text-white">{homeDashboard.playerCount}</p>
+                    <p className="text-[9px] uppercase tracking-[0.14em] text-slate-500">Plantilla</p>
                   </div>
                   <div>
-                    <p className="text-2xl font-black text-white">{homeDashboard.rivalCount}</p>
-                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Rivales</p>
+                    <p className="text-xl font-black text-white">{homeDashboard.rivalCount}</p>
+                    <p className="text-[9px] uppercase tracking-[0.14em] text-slate-500">Rivales</p>
                   </div>
                   <div>
-                    <p className="text-2xl font-black text-white">{homeDashboard.balance.pointsPerGame}</p>
-                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Pts/part</p>
+                    <p className="text-xl font-black text-white">{homeDashboard.balance.pointsPerGame}</p>
+                    <p className="text-[9px] uppercase tracking-[0.14em] text-slate-500">Pts/part</p>
                   </div>
                 </div>
               </div>
@@ -8028,13 +8028,14 @@ function App() {
               </div>
             ) : null}
 
-            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
               {[
                 {
                   tab: 'Plantilla',
                   title: 'Plantilla',
                   copy: `${homeDashboard.playerCount} jugadores`,
-                  accent: 'from-red-600/25 to-white/5',
+                  accent: 'bg-white/[0.045]',
+                  iconColor: 'text-red-100',
                   icon: (
                     <svg viewBox="0 0 24 24" aria-hidden="true" className="h-8 w-8">
                       <path d="M8 10.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" fill="none" stroke="currentColor" strokeWidth="1.8" />
@@ -8048,7 +8049,8 @@ function App() {
                   tab: 'Equipos',
                   title: 'Equipos',
                   copy: `${homeDashboard.rivalCount} rivales`,
-                  accent: 'from-yellow-400/20 to-white/5',
+                  accent: 'bg-white/[0.045]',
+                  iconColor: 'text-slate-100',
                   icon: (
                     <svg viewBox="0 0 24 24" aria-hidden="true" className="h-8 w-8">
                       <path d="M12 3.5 19 6v5.2c0 4.15-2.55 7.35-7 9.3-4.45-1.95-7-5.15-7-9.3V6l7-2.5Z" fill="none" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
@@ -8060,7 +8062,8 @@ function App() {
                   tab: 'Partidos',
                   title: 'Partidos',
                   copy: homeDashboard.nextMatch ? 'Preparar siguiente' : 'Crear calendario',
-                  accent: 'from-sky-500/22 to-white/5',
+                  accent: 'bg-white/[0.045]',
+                  iconColor: 'text-slate-100',
                   icon: (
                     <svg viewBox="0 0 24 24" aria-hidden="true" className="h-8 w-8">
                       <path d="M7 4v3M17 4v3M5 8h14" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
@@ -8073,7 +8076,8 @@ function App() {
                   tab: 'Biblioteca',
                   title: 'Biblioteca',
                   copy: 'Tareas y ABP',
-                  accent: 'from-violet-400/18 to-white/5',
+                  accent: 'bg-white/[0.045]',
+                  iconColor: 'text-slate-100',
                   icon: (
                     <svg viewBox="0 0 24 24" aria-hidden="true" className="h-8 w-8">
                       <path d="M5.5 5.5h13v13h-13z" fill="none" stroke="currentColor" strokeWidth="1.8" />
@@ -8086,7 +8090,8 @@ function App() {
                   tab: 'Rendimiento',
                   title: 'Rendimiento',
                   copy: 'Wellness y carga',
-                  accent: 'from-cyan-400/20 to-white/5',
+                  accent: 'bg-white/[0.045]',
+                  iconColor: 'text-slate-100',
                   icon: (
                     <svg viewBox="0 0 24 24" aria-hidden="true" className="h-8 w-8">
                       <path d="M4 13h4l2-6 4 12 2-6h4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
@@ -8098,7 +8103,8 @@ function App() {
                   tab: 'Análisis Grupal',
                   title: 'Análisis Grupal',
                   copy: `${homeDashboard.balance.played} partidos analizados`,
-                  accent: 'from-emerald-500/20 to-white/5',
+                  accent: 'bg-white/[0.045]',
+                  iconColor: 'text-slate-100',
                   icon: (
                     <svg viewBox="0 0 24 24" aria-hidden="true" className="h-8 w-8">
                       <path d="M5 19V5M5 19h15" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
@@ -8112,27 +8118,27 @@ function App() {
                   key={item.tab}
                   type="button"
                   onClick={() => setActiveTab(item.tab)}
-                  className={`group min-h-32 rounded-3xl border border-white/10 bg-gradient-to-br ${item.accent} p-5 text-left shadow-glow transition duration-200 hover:-translate-y-0.5 hover:border-white/25 hover:shadow-[0_20px_55px_rgba(96,165,250,0.16)] active:translate-y-0`}
+                  className={`group min-h-28 rounded-[1.35rem] border border-white/10 ${item.accent} p-4 text-left shadow-[0_12px_35px_rgba(0,0,0,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.07] active:translate-y-0`}
                 >
-                  <span className="inline-flex text-sky-100 drop-shadow-[0_0_18px_rgba(147,197,253,0.35)] transition duration-200 group-hover:scale-105 group-hover:text-white">
+                  <span className={`inline-flex ${item.iconColor} opacity-90 transition duration-200 group-hover:text-white group-hover:opacity-100`}>
                     {item.icon}
                   </span>
-                  <p className="mt-5 text-xl font-black text-white">{item.title}</p>
-                  <p className="mt-1 text-sm text-slate-300">{item.copy}</p>
+                  <p className="mt-4 text-base font-black text-white">{item.title}</p>
+                  <p className="mt-1 text-sm text-slate-400">{item.copy}</p>
                 </button>
               ))}
             </section>
 
-            <section className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
-              <div className="rounded-3xl border border-white/10 bg-white/[0.05] p-5 shadow-glow">
+            <section className="grid gap-4 xl:grid-cols-[1.18fr_0.82fr]">
+              <div className="rounded-[1.65rem] border border-white/10 bg-white/[0.055] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.20)] sm:p-6">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">Próximo partido</p>
-                    <h3 className="mt-2 text-2xl font-black text-white">
+                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-red-200/80">Próximo partido</p>
+                    <h3 className="mt-2 text-2xl font-black text-white sm:text-3xl">
                       {homeDashboard.nextMatch?.opponent || 'Sin partido programado'}
                     </h3>
                   </div>
-                  <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-3xl bg-white p-2">
+                  <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[1.35rem] bg-white p-2 shadow-[0_14px_35px_rgba(0,0,0,0.18)] sm:h-24 sm:w-24">
                     <img
                       src={homeDashboard.nextMatch?.opponentCrest || homeDashboard.nextOpponentTeam?.crest || clubCrest}
                       alt={homeDashboard.nextMatch?.opponent || 'Escudo rival'}
@@ -8141,51 +8147,51 @@ function App() {
                   </div>
                 </div>
                 <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-2xl bg-black/25 p-4">
-                    <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Fecha</p>
-                    <p className="mt-2 text-sm font-bold text-white">{homeDashboard.nextMatch ? matchDisplayDate(homeDashboard.nextMatch.date) : '-'}</p>
+                  <div className="rounded-2xl border border-white/[0.08] bg-black/20 p-4">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Fecha</p>
+                    <p className="mt-2 text-sm font-bold text-white">{homeDashboard.nextMatch ? matchDisplayDate(homeDashboard.nextMatch.date) : 'Pendiente'}</p>
                   </div>
-                  <div className="rounded-2xl bg-black/25 p-4">
-                    <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Hora</p>
-                    <p className="mt-2 text-sm font-bold text-white">{homeDashboard.nextMatch?.time || '-'}</p>
+                  <div className="rounded-2xl border border-white/[0.08] bg-black/20 p-4">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Hora</p>
+                    <p className="mt-2 text-sm font-bold text-white">{homeDashboard.nextMatch?.time || 'Pendiente'}</p>
                   </div>
-                  <div className="rounded-2xl bg-black/25 p-4">
-                    <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Condición</p>
-                    <p className="mt-2 text-sm font-bold text-white">{homeDashboard.nextMatch ? (homeDashboard.nextMatch.isHome ? 'Local' : 'Visitante') : '-'}</p>
+                  <div className="rounded-2xl border border-white/[0.08] bg-black/20 p-4">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Condición</p>
+                    <p className="mt-2 text-sm font-bold text-white">{homeDashboard.nextMatch ? (homeDashboard.nextMatch.isHome ? 'Local' : 'Visitante') : 'Pendiente'}</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setActiveTab('Partidos')}
-                  className="mt-5 w-full rounded-2xl bg-red-600 px-5 py-3 text-sm font-black text-white transition hover:bg-red-500 sm:w-auto"
+                  className="mt-5 w-full rounded-2xl bg-red-500/90 px-5 py-3 text-sm font-black text-white transition hover:bg-red-500 sm:w-auto"
                 >
                   Ir a partidos
                 </button>
               </div>
 
-              <div className="rounded-3xl border border-white/10 bg-[#091428]/90 p-5 shadow-glow">
+              <div className="rounded-[1.65rem] border border-white/10 bg-[#0b1424]/92 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">Estado semanal</p>
-                    <h3 className="mt-2 text-xl font-black text-white">{homeDashboard.tendency}</h3>
+                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">Estado semanal</p>
+                    <h3 className="mt-1.5 text-xl font-black text-white">{homeDashboard.tendency}</h3>
                   </div>
-                  <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-black uppercase tracking-[0.18em] text-slate-200">
+                  <span className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-300">
                     Últimos 5
                   </span>
                 </div>
-                <div className="mt-5 grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl bg-red-500/10 p-4">
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-red-200">Lesionados</p>
-                    <p className="mt-2 text-3xl font-black text-white">{homeDashboard.weeklyStats.injured}</p>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl border border-white/[0.08] bg-white/[0.04] p-3.5">
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Lesionados</p>
+                    <p className="mt-1.5 text-2xl font-black text-white">{homeDashboard.weeklyStats.injured}</p>
                   </div>
-                  <div className="rounded-2xl bg-yellow-300/10 p-4">
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-yellow-100">Amonest.</p>
-                    <p className="mt-2 text-3xl font-black text-white">{homeDashboard.weeklyStats.yellow}</p>
+                  <div className="rounded-2xl border border-white/[0.08] bg-white/[0.04] p-3.5">
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Amonest.</p>
+                    <p className="mt-1.5 text-2xl font-black text-white">{homeDashboard.weeklyStats.yellow}</p>
                   </div>
                 </div>
-                <div className="mt-5 rounded-2xl bg-black/25 p-4">
+                <div className="mt-4 rounded-2xl border border-white/[0.08] bg-black/[0.18] p-4">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Últimos resultados</p>
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Últimos resultados</p>
                     <p className="text-xs font-semibold text-slate-300">
                       {homeDashboard.balance.wins}-{homeDashboard.balance.draws}-{homeDashboard.balance.losses}
                     </p>
@@ -8195,13 +8201,13 @@ function App() {
                       <span
                         key={`${result.id}-${result.label}`}
                         className={`flex h-10 w-10 items-center justify-center rounded-2xl text-sm font-black ${
-                          result.label === 'V' ? 'bg-emerald-400 text-slate-950' : result.label === 'D' ? 'bg-red-400 text-slate-950' : 'bg-amber-300 text-slate-950'
+                          result.label === 'V' ? 'bg-emerald-300/85 text-slate-950' : result.label === 'D' ? 'bg-red-300/85 text-slate-950' : 'bg-amber-200/90 text-slate-950'
                         }`}
                         title={`${result.match.opponent} · ${matchDisplayDate(result.match.date)}`}
                       >
                         {result.label}
                       </span>
-                    )) : <span className="text-sm text-slate-500">Sin datos cerrados</span>}
+                    )) : <span className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-400">Sin partidos finalizados</span>}
                   </div>
                 </div>
               </div>
@@ -8213,9 +8219,9 @@ function App() {
                 ['Porterías a cero', homeDashboard.balance.cleanSheets],
                 ['Sub-23', homeDashboard.sub23Count],
               ].map(([label, value]) => (
-                <div key={label} className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-                  <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">{label}</p>
-                  <p className="mt-2 text-3xl font-black text-white">{value}</p>
+                <div key={label} className="rounded-[1.35rem] border border-white/10 bg-white/[0.035] p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
+                  <p className="mt-1.5 text-2xl font-black text-white">{value}</p>
                 </div>
               ))}
             </section>
