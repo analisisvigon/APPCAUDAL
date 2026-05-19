@@ -258,11 +258,63 @@ const emptyTeamForm = {
   stadium: '',
   kitColor: '#ef233c',
   system: '4-4-2',
+  strongSide: 'interior',
+  mainThreat: 'transición',
+  blockHeight: 'medio',
+  pressureType: 'espera',
+  attackingRhythm: 'medio',
+  offensiveBehavior: 'directo',
+  offensiveFocus: 'espalda lateral',
+  detectedWeakness: 'espalda lateral',
   squad: [],
 };
 
 const emptyLineup = [];
 const emptyDepthChart = {};
+const rivalTacticalIdentityKey = 'caudal_rival_tactical_identity_v1';
+const tacticalIdentityOptions = {
+  strongSide: ['izquierda', 'derecha', 'interior', 'ambos laterales', 'directo'],
+  mainThreat: ['transición', 'ABP', 'espalda lateral', 'delantero referencia', 'centros laterales', 'segunda jugada'],
+  blockHeight: ['alto', 'medio', 'bajo'],
+  pressureType: ['tras pérdida', 'espera', 'hombre a hombre', 'repliegue'],
+  attackingRhythm: ['alto', 'medio', 'pausado', 'vertical'],
+  offensiveBehavior: ['combinativo', 'directo', 'por fuera', 'segunda jugada', 'transición'],
+  offensiveFocus: ['izquierda', 'derecha', 'interior', 'espalda lateral', 'área', 'ABP'],
+  detectedWeakness: ['espalda lateral', 'defiende centros', 'pérdida interior', 'ABP defensiva', 'bloque bajo', 'retorno lento'],
+};
+const tacticalIdentityLabels = {
+  strongSide: 'Lado fuerte',
+  mainThreat: 'Amenaza principal',
+  blockHeight: 'Altura de bloque',
+  pressureType: 'Tipo de presión',
+  attackingRhythm: 'Ritmo ofensivo',
+  offensiveBehavior: 'Comportamiento ofensivo',
+  offensiveFocus: 'Foco ofensivo',
+  detectedWeakness: 'Debilidad detectada',
+};
+const getTeamTacticalIdentity = (team = {}) => ({
+  strongSide: team.strongSide || 'interior',
+  mainThreat: team.mainThreat || 'transición',
+  blockHeight: team.blockHeight || 'medio',
+  pressureType: team.pressureType || 'espera',
+  attackingRhythm: team.attackingRhythm || 'medio',
+  offensiveBehavior: team.offensiveBehavior || 'directo',
+  offensiveFocus: team.offensiveFocus || 'espalda lateral',
+  detectedWeakness: team.detectedWeakness || 'espalda lateral',
+});
+const readStoredRivalTacticalIdentity = () => {
+  if (typeof window === 'undefined') return {};
+  try {
+    return JSON.parse(window.localStorage.getItem(rivalTacticalIdentityKey) || '{}');
+  } catch {
+    return {};
+  }
+};
+const saveStoredRivalTacticalIdentity = (teamId, identity) => {
+  if (typeof window === 'undefined' || !teamId) return;
+  const current = readStoredRivalTacticalIdentity();
+  window.localStorage.setItem(rivalTacticalIdentityKey, JSON.stringify({ ...current, [teamId]: getTeamTacticalIdentity(identity) }));
+};
 
 const normalizeSupabaseJugador = (player) => ({
   id: player.id,
@@ -2535,6 +2587,7 @@ function App() {
         return acc;
       }, {});
 
+      const storedTacticalIdentity = readStoredRivalTacticalIdentity();
       const nextTeams = (teamsResponse.data || []).map((team) => ({
         id: team.id,
         legacyId: team.legacy_id ?? null,
@@ -2544,6 +2597,7 @@ function App() {
         stadium: team.stadium || '',
         kitColor: team.kit_color || '#ef233c',
         system: team.system || '4-4-2',
+        ...getTeamTacticalIdentity(storedTacticalIdentity[team.id]),
         squad: playersByTeam[team.id] || [],
         lineup: lineupByTeam[team.id] || emptyLineup,
         benchChart: benchByTeam[team.id] || emptyDepthChart,
@@ -6722,6 +6776,7 @@ function App() {
         stadium: team.stadium ?? '',
         kitColor: team.kitColor ?? '#ef233c',
         system: team.system,
+        ...getTeamTacticalIdentity(team),
         squad: team.squad.map(normalizeSquadEntry),
       });
     } else {
@@ -6940,6 +6995,7 @@ function App() {
       const { data, error: teamError } = await request;
       if (teamError) throw teamError;
       const teamId = editingTeamId || data.id;
+      saveStoredRivalTacticalIdentity(teamId, teamFormState);
 
       const { error: deletePlayersError } = await supabase.from("jugadores_rivales").delete().eq("equipo_rival_id", teamId);
       if (deletePlayersError) throw deletePlayersError;
@@ -9471,14 +9527,46 @@ function App() {
                     <div className="absolute left-[16%] top-[59%] h-[28%] w-px bg-white/[0.055]" />
                     <div className="absolute right-[16%] top-[59%] h-[28%] w-px bg-white/[0.055]" />
                     <div className="absolute bottom-[29%] left-[10%] rounded-lg border border-white/[0.07] bg-slate-950/20 px-2 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/35">
-                      lado fuerte
+                      {getTeamTacticalIdentity(selectedTeam).strongSide}
                     </div>
                     <div className="absolute bottom-[29%] right-[10%] rounded-lg border border-white/[0.07] bg-slate-950/20 px-2 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/35">
-                      amenaza
+                      {getTeamTacticalIdentity(selectedTeam).mainThreat}
                     </div>
                     <div className="absolute left-1/2 top-[57%] -translate-x-1/2 rounded-lg border border-white/[0.07] bg-slate-950/20 px-2 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/35">
-                      bloque
+                      bloque {getTeamTacticalIdentity(selectedTeam).blockHeight}
                     </div>
+                    {(() => {
+                      const identity = getTeamTacticalIdentity(selectedTeam);
+                      const sideClass =
+                        identity.strongSide === 'izquierda' ? 'left-[7%] top-[13%] h-[74%] w-[24%]' :
+                        identity.strongSide === 'derecha' ? 'right-[7%] top-[13%] h-[74%] w-[24%]' :
+                        identity.strongSide === 'ambos laterales' ? 'left-[7%] top-[13%] h-[74%] w-[86%]' :
+                        identity.strongSide === 'directo' ? 'left-[36%] top-[10%] h-[80%] w-[28%]' :
+                        'left-[31%] top-[13%] h-[74%] w-[38%]';
+                      const threatClass =
+                        identity.mainThreat === 'ABP' ? 'left-[27%] top-[8%] h-[18%] w-[46%]' :
+                        identity.mainThreat === 'transición' ? 'left-[18%] top-[46%] h-[34%] w-[64%]' :
+                        identity.mainThreat === 'centros laterales' ? 'left-[9%] top-[22%] h-[56%] w-[82%]' :
+                        identity.mainThreat === 'segunda jugada' ? 'left-[26%] top-[38%] h-[24%] w-[48%]' :
+                        identity.mainThreat === 'delantero referencia' ? 'left-[36%] top-[18%] h-[22%] w-[28%]' :
+                        'left-[14%] top-[28%] h-[48%] w-[72%]';
+                      const blockTop = identity.blockHeight === 'alto' ? 'top-[32%]' : identity.blockHeight === 'bajo' ? 'top-[66%]' : 'top-[49%]';
+                      const pressureLabel = identity.pressureType === 'tras pérdida' ? 'presión tras pérdida' : identity.pressureType;
+                      return (
+                        <>
+                          <div className={`pointer-events-none absolute rounded-[2rem] border border-caudal-electric/[0.10] bg-caudal-electric/[0.035] ${sideClass}`} />
+                          <div className={`pointer-events-none absolute rounded-full bg-amber-200/[0.075] blur-[2px] ${threatClass}`} />
+                          <div className={`pointer-events-none absolute left-[10%] right-[10%] ${blockTop} h-px bg-white/[0.20]`} />
+                          <div className={`pointer-events-none absolute left-[10%] right-[10%] ${blockTop} -translate-y-3 text-center text-[8px] font-black uppercase tracking-[0.18em] text-white/35`}>
+                            {pressureLabel}
+                          </div>
+                          <div className="pointer-events-none absolute left-1/2 top-[42%] h-12 w-px -translate-x-1/2 bg-gradient-to-b from-caudal-electric/0 via-caudal-electric/25 to-caudal-electric/0" />
+                          <div className="pointer-events-none absolute left-1/2 top-[36%] -translate-x-1/2 rounded-lg border border-caudal-electric/[0.12] bg-slate-950/20 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-caudal-electric/55">
+                            foco {identity.offensiveFocus}
+                          </div>
+                        </>
+                      );
+                    })()}
                     {getFormationCoordinates(selectedTeam.system).map((slot, slotIndex) => {
                       const slotPlayer = getLineupSlotMap(selectedTeam.lineup ?? emptyLineup).get(slotIndex);
                       return (
@@ -12761,6 +12849,54 @@ function App() {
                       ))}
                     </div>
                   </div>
+                </div>
+              </section>
+
+              <section className="rounded-[1.35rem] border border-caudal-electric/[0.12] bg-[#091428]/62 p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/70">Identidad táctica</p>
+                    <h4 className="mt-1 text-lg font-black text-white">Lectura manual del rival</h4>
+                  </div>
+                  <p className="text-xs font-semibold text-slate-500">Se refleja en la mesa táctica.</p>
+                </div>
+                {teamEditMode ? (
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    {Object.entries(tacticalIdentityOptions).map(([field, options]) => (
+                      <label key={field} className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                        <span>{tacticalIdentityLabels[field]}</span>
+                        <select
+                          name={field}
+                          value={teamFormState[field]}
+                          onChange={handleTeamChange}
+                          className="w-full rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-sm normal-case tracking-normal text-white shadow-inner"
+                        >
+                          {options.map((option) => <option key={option} value={option}>{option}</option>)}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    {Object.keys(tacticalIdentityOptions).map((field) => (
+                      <div key={field} className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2">
+                        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{tacticalIdentityLabels[field]}</p>
+                        <p className="mt-1 truncate text-sm font-bold text-slate-200">{teamFormState[field]}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-4 flex flex-wrap gap-1.5">
+                  {[
+                    ['Lado', teamFormState.strongSide],
+                    ['Amenaza', teamFormState.mainThreat],
+                    ['Bloque', teamFormState.blockHeight],
+                    ['Presión', teamFormState.pressureType],
+                  ].map(([label, value]) => (
+                    <span key={label} className="rounded-xl border border-white/10 bg-white/[0.045] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-300">
+                      {label}: <span className="text-caudal-electric/85">{value}</span>
+                    </span>
+                  ))}
                 </div>
               </section>
 
