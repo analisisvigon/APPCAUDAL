@@ -1498,31 +1498,30 @@ const playerReservePlacement = (player) => {
 };
 const playerStatusBadges = (player) =>
   [
-    player.yellowRisk ? { label: 'AM', className: 'border border-amber-200/20 bg-amber-200/[0.12] text-amber-100', title: 'Amonestado' } : null,
+    player.expelled || player.red ? { label: 'EXP', className: 'border border-red-200/25 bg-red-400/[0.14] text-red-100', title: 'Expulsado' } : null,
     player.injured ? { label: 'LES', className: 'border border-red-200/20 bg-red-300/[0.12] text-red-100', title: 'Lesionado' } : null,
-    player.suspended ? { label: 'RJ', className: 'border border-red-200/25 bg-slate-200/10 text-red-100', title: 'Riesgo roja' } : null,
-    player.isKey ? { label: 'CLV', className: 'border border-amber-200/25 bg-amber-200/[0.12] text-amber-100', title: 'Jugador clave' } : null,
-  ].filter(Boolean);
+    player.yellowRisk ? { label: 'AM', className: 'border border-amber-200/20 bg-amber-200/[0.12] text-amber-100', title: 'Apercibido / 5 amarillas' } : null,
+    player.suspended ? { label: 'RJR', className: 'border border-red-200/25 bg-slate-200/10 text-red-100', title: 'Riesgo roja' } : null,
+  ].filter(Boolean).slice(0, 1);
 
 const getPlayerTacticalBadges = (player) => {
   const position = normalizePlayerIdentityName(player.position || '');
-  return [
-    player.isKey ? { label: 'Clave', short: 'CLV', className: 'border-amber-200/25 bg-amber-200/[0.12] text-amber-100' } : null,
-    position.includes('pivote') ? { label: 'Pivote', short: 'PIV', className: 'border-cyan-200/20 bg-cyan-200/[0.10] text-cyan-100' } : null,
-    position.includes('delantero') ? { label: 'Referencia', short: 'REF', className: 'border-emerald-200/20 bg-emerald-200/[0.10] text-emerald-100' } : null,
-    position.includes('lateral') || position.includes('carrilero')
-      ? { label: 'Lateral ofensivo', short: 'LAT', className: 'border-sky-200/20 bg-sky-200/[0.10] text-sky-100' }
-      : null,
-    player.yellowRisk || player.injured || player.suspended
-      ? { label: 'Vigilado', short: 'VIG', className: 'border-red-200/20 bg-red-300/[0.10] text-red-100' }
-      : null,
-  ].filter(Boolean);
+  const primary = playerStatusBadges(player)[0] || null;
+  const secondary =
+    player.isKey ? { label: 'Jugador clave', short: 'CLA', className: 'border-amber-200/25 bg-amber-200/[0.12] text-amber-100' } :
+    player.isDifferential ? { label: 'Diferencial', short: 'DIF', className: 'border-emerald-200/25 bg-emerald-200/[0.10] text-emerald-100' } :
+    position.includes('pivote') ? { label: 'Pivote', short: 'PIV', className: 'border-cyan-200/20 bg-cyan-200/[0.10] text-cyan-100' } :
+    position.includes('delantero') ? { label: 'Referencia ofensiva', short: 'REF', className: 'border-emerald-200/20 bg-emerald-200/[0.10] text-emerald-100' } :
+    position.includes('lateral') || position.includes('carrilero') ? { label: 'Lateral ofensivo', short: 'LAT', className: 'border-sky-200/20 bg-sky-200/[0.10] text-sky-100' } :
+    null;
+  return [primary ? { ...primary, short: primary.label } : null, secondary].filter(Boolean).slice(0, 2);
 };
 
 const getPlayerFieldStyle = (player) => {
   const badges = getPlayerTacticalBadges(player).map((badge) => badge.short);
-  if (badges.includes('CLV')) return 'border-amber-200/80 shadow-[0_0_0_1px_rgba(251,191,36,0.16),0_18px_38px_rgba(0,0,0,0.40),0_0_28px_rgba(251,191,36,0.12)]';
-  if (badges.includes('VIG')) return 'border-red-200/45 shadow-[0_0_0_1px_rgba(248,113,113,0.10),0_14px_32px_rgba(0,0,0,0.36)]';
+  if (badges.includes('EXP') || badges.includes('LES') || badges.includes('RJR')) return 'border-red-200/45 shadow-[0_0_0_1px_rgba(248,113,113,0.10),0_16px_34px_rgba(0,0,0,0.38)]';
+  if (badges.includes('CLA')) return 'border-amber-200/80 shadow-[0_0_0_1px_rgba(251,191,36,0.16),0_18px_38px_rgba(0,0,0,0.40),0_0_28px_rgba(251,191,36,0.12)]';
+  if (badges.includes('DIF')) return 'border-emerald-200/55 shadow-[0_16px_34px_rgba(0,0,0,0.36)]';
   if (badges.includes('REF')) return 'border-emerald-200/45 shadow-[0_14px_32px_rgba(0,0,0,0.36)]';
   if (badges.includes('PIV')) return 'border-cyan-200/45 shadow-[0_14px_32px_rgba(0,0,0,0.36)]';
   if (badges.includes('LAT')) return 'border-sky-200/40 shadow-[0_14px_32px_rgba(0,0,0,0.34)]';
@@ -9350,7 +9349,7 @@ function App() {
                       {[
                         ['ALT', 'Altura', 'Por definir'],
                         ['PRS', 'Presión', 'Sin pauta'],
-                        ['CLV', 'Foco rival', dedupeRivalPlayers(selectedTeam.squad).find((player) => player.isKey)?.name || 'Sin marcar'],
+                        ['CLA', 'Foco rival', dedupeRivalPlayers(selectedTeam.squad).find((player) => player.isKey)?.name || 'Sin marcar'],
                         ['ABP', 'Balón parado', 'Pendiente'],
                       ].map(([code, label, value]) => (
                         <div key={label} className="group rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2 transition hover:border-caudal-electric/20 hover:bg-white/[0.055]">
@@ -9390,27 +9389,27 @@ function App() {
                                   }`}
                                 >
                                   <span
-                                    className={`flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl border text-xs font-bold ${
-                                      role === 'Titular' ? 'border-caudal-electric/30 bg-slate-900/70' : 'border-white/10 bg-slate-900/45 opacity-85'
+                                    className={`flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.14),transparent_42%),linear-gradient(145deg,rgba(15,23,42,0.95),rgba(8,20,40,0.92))] text-xs font-black shadow-[0_10px_24px_rgba(0,0,0,0.22)] ${
+                                      role === 'Titular' ? 'border-caudal-electric/30' : 'border-white/10 opacity-85'
                                     }`}
                                   >
                                     {player.image ? (
-                                      <img src={player.image} alt={player.name} className="h-full w-full object-cover object-top scale-110" />
+                                      <img src={player.image} alt={player.name} className="h-full w-full scale-[1.18] object-cover object-top" />
                                     ) : (
-                                      player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)
+                                      <span className="text-caudal-electric/85">{player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                                     )}
                                   </span>
                                   <span className="min-w-0 flex-1">
                                     <span className="flex items-center gap-1">
                                       <span className="block truncate">{displayPlayerName(player)}</span>
-                                      {playerStatusBadges(player).map((badge) => (
+                                      {playerStatusBadges(player).slice(0, 1).map((badge) => (
                                         <span key={badge.title} title={badge.title} className={`inline-flex min-h-4 items-center justify-center rounded-md px-1 text-[8px] font-black ${badge.className}`}>
                                           {badge.label}
                                         </span>
                                       ))}
                                     </span>
                                     <span className="mt-1 flex items-center gap-1">
-                                      {getPlayerTacticalBadges(player).slice(0, 2).map((badge) => (
+                                      {getPlayerTacticalBadges(player).slice(1, 2).map((badge) => (
                                         <span key={badge.label} title={badge.label} className={`inline-flex min-h-4 items-center rounded-md border px-1 text-[8px] font-black ${badge.className}`}>
                                           {badge.short}
                                         </span>
@@ -9506,7 +9505,7 @@ function App() {
                         onDragStart={() => setDraggedPlayer(player)}
                         onDoubleClick={() => removeFromLineup(player.name)}
                         onClick={() => toggleSelectedTeamKeyPlayer(player.name)}
-                        className={`group absolute flex w-24 -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center transition hover:-translate-y-[52%] ${
+                        className={`group absolute flex w-28 -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center transition hover:-translate-y-[52%] ${
                           player.isKey ? 'z-20' : 'z-10'
                         }`}
                         style={{ left: `${player.x}%`, top: `${player.y}%` }}
@@ -9523,7 +9522,7 @@ function App() {
                           -
                         </span>
                         <span
-                          className={`relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border bg-caudal-950/78 transition group-hover:scale-[1.03] ${fieldStyle}`}
+                          className={`relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.14),transparent_40%),linear-gradient(145deg,rgba(8,20,40,0.94),rgba(2,6,23,0.86))] text-sm font-black text-caudal-electric/85 transition group-hover:scale-[1.03] ${fieldStyle}`}
                         >
                           <span className="pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.16),transparent_38%)]" />
                           {player.number ? (
@@ -9531,23 +9530,14 @@ function App() {
                               {player.number}
                             </span>
                           ) : null}
-                          {playerStatusBadges(player).length ? (
-                            <span className="absolute right-0 top-0 z-10 flex max-w-16 flex-wrap justify-end gap-0.5 p-0.5">
-                              {playerStatusBadges(player).map((badge) => (
-                                <span key={badge.title} title={badge.title} className={`inline-flex min-h-4 items-center justify-center rounded-md px-1 text-[8px] font-black leading-none ${badge.className}`}>
-                                  {badge.label}
-                                </span>
-                              ))}
-                            </span>
-                          ) : null}
                           {player.image ? (
-                            <img src={player.image} alt={player.name} className="h-full w-full object-cover object-top scale-110" />
+                            <img src={player.image} alt={player.name} className="h-full w-full scale-[1.18] object-cover object-top" />
                           ) : (
-                            player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)
+                            <span className="relative z-10">{player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                           )}
                         </span>
                         {tacticalBadges.length ? (
-                          <span className="mt-1 flex max-w-24 justify-center gap-1">
+                          <span className="mt-1 flex max-w-28 justify-center gap-1">
                             {tacticalBadges.slice(0, 2).map((badge) => (
                               <span key={badge.label} title={badge.label} className={`inline-flex min-h-4 items-center rounded-md border px-1.5 text-[8px] font-black leading-none ${badge.className}`}>
                                 {badge.short}
@@ -9555,11 +9545,11 @@ function App() {
                             ))}
                           </span>
                         ) : null}
-                        <span className="mt-1 flex max-w-24 items-center gap-1 rounded-lg bg-slate-950/30 px-1.5 py-0.5 text-xs font-semibold leading-tight text-white drop-shadow">
+                        <span className="mt-1 flex max-w-28 items-center gap-1 rounded-lg bg-slate-950/30 px-1.5 py-0.5 text-xs font-semibold leading-tight text-white drop-shadow">
                           <span className="truncate">{displayPlayerName(player)}</span>
                         </span>
                         <div
-                          className="absolute top-full mt-1 flex w-24 flex-col gap-1"
+                          className="absolute top-full mt-1 flex w-28 flex-col gap-1"
                         >
                           {[0, 1].map((benchSlotIndex) => {
                             const benchPlayer = getBenchForStarter(player, selectedTeam.benchChart)[benchSlotIndex];
@@ -9582,7 +9572,7 @@ function App() {
                                   event.stopPropagation();
                                   clearBenchSlot(player.name, benchSlotIndex);
                                 }}
-                                className={`relative block min-h-4 max-w-24 truncate rounded-lg px-2 py-0.5 pr-4 text-[10px] leading-tight drop-shadow transition ${
+                                className={`relative block min-h-4 max-w-28 truncate rounded-lg px-2 py-0.5 pr-4 text-[10px] leading-tight drop-shadow transition ${
                                   benchPlayer ? 'border border-white/10 bg-caudal-950/62 text-slate-200 hover:bg-caudal-950/80' : 'border border-dashed border-white/15 bg-white/[0.015] text-white/32 hover:text-white/55'
                                 }`}
                                 title={benchPlayer ? getPlayerMeta(benchPlayer) : 'Arrastra un reserva aquí'}
