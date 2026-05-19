@@ -8326,39 +8326,103 @@ function App() {
               const assistedRows = Object.entries(assistedByPlayer).filter(([name]) => name);
               const maxSocietyCount = Math.max(1, ...assistantRows.map(([, count]) => count), ...assistedRows.map(([, count]) => count));
               const videoActions = [...allGoalActions, ...allAssistActions].filter((event) => event.videoUrl);
+              const selectedStaffStatus = staffStatusByPlayerId.get(selectedPlayerProfile.id) || {};
+              const availability = selectedStaffStatus.injured || selectedStaffStatus.suspended
+                ? 'Baja'
+                : selectedStaffStatus.touched || selectedStaffStatus.highLoad
+                  ? 'Duda'
+                  : 'Disponible';
+              const regularStarter = aggregate.played > 0 && aggregate.starts / aggregate.played >= 0.6;
+              const profileBadges = [
+                selectedStaffStatus.captain ? ['Capitán', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
+                selectedStaffStatus.sub23 ? ['Sub-23', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
+                selectedStaffStatus.injured ? ['Lesionado', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
+                selectedStaffStatus.suspended ? ['Sancionado', 'border-slate-200/20 bg-slate-200/10 text-slate-200'] : null,
+                selectedStaffStatus.highLoad ? ['Alta carga', 'border-orange-200/20 bg-orange-200/10 text-orange-100'] : null,
+                regularStarter ? ['Titular habitual', 'border-white/15 bg-white/[0.06] text-slate-200'] : null,
+              ].filter(Boolean);
+              const profileMetrics = [
+                { label: 'Minutos', value: `${aggregate.minutes}'`, priority: 'alta', kind: 'participacion', trend: aggregate.minutes ? '↑' : '=' },
+                { label: 'Titularidades', value: aggregate.starts, priority: 'alta', kind: 'participacion', trend: regularStarter ? '↑' : '=' },
+                { label: 'Participación', value: `${aggregate.participation}%`, priority: 'alta', kind: 'participacion', trend: Number(aggregate.participation) >= 60 ? '↑' : Number(aggregate.participation) ? '=' : '↓' },
+                { label: 'Goles', value: aggregate.goals, priority: 'alta', kind: 'ofensiva', trend: aggregate.goals ? '↑' : '=' },
+                { label: 'Asistencias', value: aggregate.assists, priority: 'alta', kind: 'ofensiva', trend: aggregate.assists ? '↑' : '=' },
+                { label: 'Suplencias', value: aggregate.subs, priority: 'media', kind: 'participacion', trend: aggregate.subs ? '=' : '↓' },
+                { label: 'Amarillas', value: aggregate.yellow, priority: 'media', kind: 'disciplina', trend: aggregate.yellow ? '↑' : '=' },
+                { label: 'Rojas', value: aggregate.red, priority: 'media', kind: 'disciplina', trend: aggregate.red ? '↑' : '=' },
+                { label: 'Lesiones', value: aggregate.injured, priority: 'media', kind: 'disciplina', trend: aggregate.injured ? '↑' : '=' },
+                { label: 'Partidos', value: aggregate.played, priority: 'baja', kind: 'participacion', trend: aggregate.played ? '=' : '↓' },
+              ];
+              const hasInfluenceData = influenceActions.length > 0;
+              const hasGoalZoneData = allGoalActions.some((event) => event.goalZone);
+              const hasGoalPhaseData = playerGoalPhaseCounts.some((row) => row.count > 0);
+              const dominantGoalPhase = hasGoalPhaseData ? [...playerGoalPhaseCounts].sort((a, b) => b.count - a.count)[0] : null;
+              const societyRows = Array.from(new Set([...assistantRows.map(([name]) => name), ...assistedRows.map(([name]) => name)]))
+                .map((name) => ({
+                  name,
+                  received: assistantsToPlayer[name] || 0,
+                  given: assistedByPlayer[name] || 0,
+                  total: (assistantsToPlayer[name] || 0) + (assistedByPlayer[name] || 0),
+                }))
+                .sort((a, b) => b.total - a.total);
+              const topAssistant = assistantRows.length ? [...assistantRows].sort((a, b) => b[1] - a[1])[0] : null;
+              const topAssociation = societyRows[0] || null;
+              const renderProfileEmptyState = (title, copy) => (
+                <div className="rounded-[1.35rem] border border-dashed border-white/10 bg-white/[0.035] p-5 text-sm text-slate-400">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] text-xs font-black text-slate-300">MV</div>
+                  <p className="mt-4 font-black text-white">{title}</p>
+                  <p className="mt-1 leading-6">{copy}</p>
+                </div>
+              );
               return (
                 <>
                   <AccordionSection title="Datos del jugador" subtitle="Ficha, dorsal, edad y resumen base" defaultOpen>
-                  <section className="rounded-3xl border border-white/5 bg-[#07111f] p-6 shadow-glow">
-                    <button onClick={() => setSelectedPlayerProfileId(null)} className="mb-5 rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white">Volver a plantilla</button>
-                    <div className="grid gap-6 lg:grid-cols-[160px_1fr]">
-                      <div className="flex h-40 w-40 items-center justify-center overflow-hidden rounded-[2rem] border-8 border-white/5 bg-slate-900 text-3xl font-black text-white">
-                        {selectedPlayerProfile.image ? <img src={selectedPlayerProfile.image} alt={selectedPlayerProfile.name} className="h-full w-full object-cover" /> : selectedPlayerProfile.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
+                  <section className="rounded-[1.65rem] border border-white/10 bg-[#07111f] p-5 shadow-[0_18px_60px_rgba(0,0,0,0.22)] sm:p-6">
+                    <button onClick={() => setSelectedPlayerProfileId(null)} className="mb-5 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10">Volver a plantilla</button>
+                    <div className="grid gap-6 lg:grid-cols-[190px_1fr]">
+                      <div className="space-y-3">
+                        <div className="flex h-44 w-44 items-center justify-center overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.14),rgba(255,255,255,0.05),rgba(212,0,0,0.12))] text-4xl font-black text-white shadow-[0_18px_50px_rgba(0,0,0,0.30)]">
+                          {selectedPlayerProfile.image ? <img src={selectedPlayerProfile.image} alt={selectedPlayerProfile.name} className="h-full w-full object-cover" /> : selectedPlayerProfile.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
+                        </div>
+                        <div className={`w-44 rounded-2xl border px-4 py-3 text-center text-xs font-black uppercase tracking-[0.12em] ${
+                          availability === 'Disponible'
+                            ? 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100'
+                            : availability === 'Duda'
+                              ? 'border-yellow-100/20 bg-yellow-100/10 text-yellow-100'
+                              : 'border-red-200/20 bg-red-300/10 text-red-100'
+                        }`}>
+                          {availability}
+                        </div>
                       </div>
                       <div>
-                        <div className="flex flex-wrap items-center gap-3">
-                          <span className="rounded-2xl bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-950">{selectedPlayerProfile.position}</span>
-                          <span className="text-sm font-semibold text-slate-400">#{displayDorsal(selectedPlayerProfile.number)}</span>
-                          <span className="text-sm font-semibold text-slate-400">{calculateAge(selectedPlayerProfile.dob)} años</span>
-                          {playerLabel(selectedPlayerProfile.dob) === 'Sub-23' ? <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold uppercase text-caudal-electric">Sub-23</span> : null}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-2xl border border-caudal-electric/30 bg-caudal-electric/90 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-950">{selectedPlayerProfile.position || 'Sin demarcación'}</span>
+                          <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">#{displayDorsal(selectedPlayerProfile.number)}</span>
+                          <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">{calculateAge(selectedPlayerProfile.dob)} años</span>
+                          <span className="rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-xs font-bold text-slate-400">Pie {selectedPlayerProfile.foot || 'no indicado'}</span>
+                          <span className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2 text-xs font-bold text-slate-500">Altura/peso pendiente</span>
                         </div>
-                        <h2 className="mt-4 text-5xl font-black uppercase tracking-tight text-white">{selectedPlayerProfile.name}</h2>
+                        <h2 className="mt-4 text-4xl font-black uppercase tracking-tight text-white sm:text-5xl">{selectedPlayerProfile.name}</h2>
+                        {profileBadges.length ? (
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {profileBadges.map(([label, className]) => (
+                              <span key={label} className={`rounded-2xl border px-3 py-2 text-xs font-bold ${className}`}>{label}</span>
+                            ))}
+                          </div>
+                        ) : null}
                         <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                          {[
-                            ['Partidos', aggregate.played],
-                            ['Titularidades', aggregate.starts],
-                            ['Suplencias', aggregate.subs],
-                            ['Minutos', `${aggregate.minutes}'`],
-                            ['Participación', `${aggregate.participation}%`],
-                            ['Goles', aggregate.goals],
-                            ['Asistencias', aggregate.assists],
-                            ['Amarillas', aggregate.yellow],
-                            ['Rojas', aggregate.red],
-                            ['Lesiones', aggregate.injured],
-                          ].map(([label, value]) => (
-                            <div key={label} className="rounded-3xl border border-white/10 bg-white/5 p-4">
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{label}</p>
-                              <p className="mt-2 text-2xl font-black text-white">{value}</p>
+                          {profileMetrics.map((metric) => (
+                            <div
+                              key={metric.label}
+                              className={`group rounded-[1.35rem] border p-4 transition duration-200 hover:-translate-y-0.5 ${
+                                metric.priority === 'alta' ? 'border-white/[0.12] bg-white/[0.065] shadow-[0_12px_34px_rgba(0,0,0,0.16)]' : 'border-white/[0.08] bg-white/[0.035]'
+                              } ${metric.kind === 'ofensiva' ? 'hover:border-emerald-200/25' : metric.kind === 'disciplina' ? 'hover:border-amber-200/20' : 'hover:border-caudal-electric/25'}`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{metric.label}</p>
+                                <span className={`text-xs font-black ${metric.trend === '↑' ? 'text-emerald-200' : metric.trend === '↓' ? 'text-slate-500' : 'text-slate-400'}`}>{metric.trend}</span>
+                              </div>
+                              <p className={`${metric.priority === 'alta' ? 'mt-2 text-3xl' : 'mt-2 text-2xl'} font-black text-white`}>{metric.value}</p>
                             </div>
                           ))}
                         </div>
@@ -8433,26 +8497,38 @@ function App() {
                         </div>
                       </>
                     ) : (
-                      <p className="mt-5 rounded-2xl bg-white/5 p-4 text-sm italic text-slate-500">No hay eventos revisados suficientes para este jugador.</p>
+                      <div className="mt-5">
+                        {renderProfileEmptyState(
+                          'Todavía no hay suficientes eventos revisados.',
+                          'Revisa POST para alimentar el análisis individual y convertir esta ficha en una lectura útil para el cuerpo técnico.'
+                        )}
+                      </div>
                     )}
                   </section>
                   </AccordionSection>
 
                   <AccordionSection title="Estadísticas" subtitle="Influencia táctica, finalización y sociedades">
-                  <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-                    <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                  <section className="grid gap-5 xl:grid-cols-[1.18fr_0.82fr]">
+                    <div className="rounded-[1.65rem] border border-white/10 bg-[#091428]/84 p-5 shadow-[0_18px_55px_rgba(0,0,0,0.18)] sm:p-6">
                       <div className="flex items-center justify-between gap-3">
                         <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Análisis de influencia táctica</h3>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                           {['Todos', 'Goles', 'Asistencias'].map((filter) => (
-                            <button key={filter} onClick={() => setPlayerInfluenceFilter(filter)} className={`rounded-xl px-3 py-2 text-xs font-bold ${playerInfluenceFilter === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>{filter}</button>
+                            <button key={filter} onClick={() => setPlayerInfluenceFilter(filter)} className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${playerInfluenceFilter === filter ? 'border-caudal-electric/30 bg-caudal-electric/90 text-slate-950' : 'border-white/10 bg-white/[0.05] text-slate-300 hover:bg-white/[0.08]'}`}>{filter}</button>
                           ))}
                         </div>
                       </div>
                       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-                        {renderReadOnlyZoneGrid({ counts: shotZoneCounts })}
+                        {hasInfluenceData ? (
+                          <div className="rounded-[1.35rem] border border-white/10 bg-black/15 p-3">
+                            {renderReadOnlyZoneGrid({ counts: shotZoneCounts })}
+                          </div>
+                        ) : renderProfileEmptyState(
+                          'Sin zonas de influencia registradas.',
+                          'Cuando haya goles, asistencias o eventos rápidos revisados, aquí aparecerán las zonas activas del jugador.'
+                        )}
                         <div className="space-y-5">
-                          <div className="rounded-3xl border border-caudal-electric/20 bg-[#0f1e38] p-5 text-slate-100">
+                          <div className="rounded-[1.35rem] border border-caudal-electric/15 bg-[#0f1e38]/88 p-5 text-slate-100">
                             <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Análisis ofensivo</p>
                             <div className="mt-4 grid gap-3">
                               {[
@@ -8460,41 +8536,73 @@ function App() {
                                 ['Asistencias/90', aggregate.assistsPer90, 'text-caudal-electric'],
                                 ['Participación directa', aggregate.directGoalParticipation, 'text-white'],
                               ].map(([label, value, color]) => (
-                                <div key={label} className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
+                                <div key={label} className="flex items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.045] px-4 py-3">
                                   <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">{label}</span>
                                   <strong className={`text-xl ${color}`}>{value}</strong>
                                 </div>
                               ))}
                             </div>
                           </div>
-                          <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-                            <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Tipo de gol</p>
-                            <div className="mt-4 space-y-3">
+                          <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.04] p-5">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Tipo de gol</p>
+                              {dominantGoalPhase ? <span className="rounded-xl bg-white/[0.06] px-2 py-1 text-[10px] font-bold text-slate-300">Domina: {dominantGoalPhase.phase}</span> : null}
+                            </div>
+                            {hasGoalPhaseData ? <div className="mt-4 space-y-3">
                               {playerGoalPhaseCounts.map((row) => (
                                 <div key={row.phase}>
                                   <div className="flex justify-between text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">
                                     <span>{row.phase}</span>
-                                    <span>{row.count}</span>
+                                    <span>{row.count} · {Math.round((row.count / Math.max(1, allGoalActions.length)) * 100)}%</span>
                                   </div>
-                                  <div className="mt-2 h-2 rounded-full bg-white/10">
-                                    <div className="h-full rounded-full bg-emerald-300" style={{ width: `${(row.count / maxPlayerGoalPhase) * 100}%` }} />
+                                  <div className="mt-2 h-1.5 rounded-full bg-white/10">
+                                    <div className={`h-full rounded-full ${dominantGoalPhase?.phase === row.phase ? 'bg-emerald-200' : 'bg-white/25'}`} style={{ width: `${(row.count / maxPlayerGoalPhase) * 100}%` }} />
                                   </div>
                                 </div>
                               ))}
-                            </div>
+                            </div> : <p className="mt-4 rounded-2xl border border-dashed border-white/10 bg-white/[0.035] p-4 text-sm text-slate-400">Sin goles suficientes para detectar patrón dominante.</p>}
                           </div>
-                          <div>
+                          <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.035] p-4">
                             <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Diana de finalización</p>
-                            <div className="mt-3 max-w-md">{renderReadOnlyZoneGrid({ counts: goalZoneCounts, zones: goalZoneOptions, goal: true })}</div>
+                            {hasGoalZoneData ? (
+                              <div className="mt-3 max-w-sm opacity-90">{renderReadOnlyZoneGrid({ counts: goalZoneCounts, zones: goalZoneOptions, goal: true })}</div>
+                            ) : (
+                              <p className="mt-3 rounded-2xl border border-dashed border-white/10 bg-black/10 p-4 text-sm text-slate-400">Sin tiros registrados en diana.</p>
+                            )}
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="space-y-6">
-                      <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                    <div className="space-y-5">
+                      <div className="rounded-[1.65rem] border border-white/10 bg-[#091428]/84 p-5 shadow-[0_18px_55px_rgba(0,0,0,0.16)]">
                         <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Sociedad ofensiva</h3>
-                        <div className="mt-5 space-y-6 text-sm text-slate-300">
+                        {societyRows.length ? <div className="mt-5 space-y-5 text-sm text-slate-300">
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Más asistencias recibidas</p>
+                              <p className="mt-2 truncate text-lg font-black text-white">{topAssistant?.[0] || 'Sin datos'}</p>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Mayor asociación</p>
+                              <p className="mt-2 truncate text-lg font-black text-white">{topAssociation?.name || 'Sin datos'}</p>
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Conexiones principales</p>
+                            {societyRows.slice(0, 4).map((row) => (
+                              <div key={row.name} className="mt-3 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="truncate font-bold text-white">{row.name}</span>
+                                  <strong className="text-caudal-electric">{row.total}</strong>
+                                </div>
+                                <p className="mt-1 text-xs text-slate-500">Recibe {row.received} · Asiste {row.given}</p>
+                                <div className="mt-2 h-1.5 rounded-full bg-white/10">
+                                  <div className="h-full rounded-full bg-caudal-electric/80" style={{ width: `${(row.total / maxSocietyCount) * 100}%` }} />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                           <div>
                             <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Principales asistentes</p>
                             {assistantRows.length ? assistantRows.map(([name, count]) => (
@@ -8523,18 +8631,21 @@ function App() {
                               </div>
                             )) : <p className="mt-2 italic text-slate-500">Sin datos registrados</p>}
                           </div>
-                        </div>
+                        </div> : <div className="mt-5">{renderProfileEmptyState('Sin sociedades ofensivas registradas.', 'Cuando haya goles y asistencias revisadas, se verán conexiones, participaciones compartidas y compañeros más asociados.')}</div>}
                       </div>
-                      <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                      <div className="rounded-[1.65rem] border border-white/10 bg-[#091428]/84 p-5 shadow-[0_18px_55px_rgba(0,0,0,0.16)]">
                         <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Videoteca de acciones</h3>
-                        <div className="mt-5 space-y-3">
+                        <div className="mt-5 grid gap-3 sm:grid-cols-2">
                           {videoActions.length ? videoActions.map((event) => (
-                            <div key={`${event.id}-${event.action}`} className="rounded-2xl bg-white/5 p-4 text-sm text-slate-300">
+                            <div key={`${event.id}-${event.action}`} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] text-sm text-slate-300">
+                              <div className="flex aspect-video items-center justify-center bg-[linear-gradient(135deg,rgba(61,217,255,0.12),rgba(255,255,255,0.04))] text-xs font-black uppercase tracking-[0.18em] text-slate-400">Clip</div>
+                              <div className="p-4">
                               <p className="font-bold text-white">{event.action} · {event.minute}' vs {event.match.opponent}</p>
                               <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">{event.match.type}</p>
-                              <button type="button" onClick={() => window.open(event.videoUrl, '_blank')} className="mt-3 rounded-xl bg-caudal-electric px-3 py-2 text-xs font-bold text-slate-950">Ver vídeo</button>
+                              <button type="button" onClick={() => window.open(event.videoUrl, '_blank')} className="mt-3 rounded-xl bg-caudal-electric/90 px-3 py-2 text-xs font-bold text-slate-950 transition hover:bg-caudal-electric">Ver análisis</button>
+                              </div>
                             </div>
-                          )) : <p className="text-sm italic text-slate-500">Sin vídeos registrados</p>}
+                          )) : <div className="sm:col-span-2">{renderProfileEmptyState('Sin clips guardados.', 'Los clips recientes y acciones destacadas aparecerán aquí cuando el POST tenga vídeo asociado.')}</div>}
                         </div>
                       </div>
                     </div>
@@ -8542,28 +8653,37 @@ function App() {
                   </AccordionSection>
 
                   <AccordionSection title="Historial" subtitle="Timeline e historial partido a partido">
-                  <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                  <section className="rounded-[1.65rem] border border-white/10 bg-[#091428]/84 p-5 shadow-[0_18px_55px_rgba(0,0,0,0.16)] sm:p-6">
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Impacto en el tiempo (0' - 90')</h3>
-                    <div className="relative mt-12 h-20 rounded-2xl bg-white/5">
-                      <div className="absolute left-4 right-4 top-1/2 h-1 -translate-y-1/2 rounded bg-white/10" />
-                      {[0, 15, 30, 45, 60, 75, 90].map((minute) => <span key={minute} className="absolute top-2 text-[10px] font-bold text-slate-500" style={{ left: `${minute / 90 * 100}%` }}>{minute}'</span>)}
-                      {timelineActions.map((event, index) => (
-                        <button
-                          type="button"
-                          key={`${event.title}-${index}`}
-                          title={event.title}
-                          onClick={() =>
-                            setSelectedTimelineAction((current) =>
-                              current?.actionKey === event.actionKey ? null : event
-                            )
-                          }
-                          className="absolute top-9 -translate-x-1/2 rounded-full bg-caudal-electric px-2 py-1 text-xs font-black text-slate-950 transition hover:bg-white"
-                          style={{ left: `${Math.min(100, Number(event.minute) / 90 * 100)}%` }}
-                        >
-                          {event.label}
-                        </button>
-                      ))}
-                    </div>
+                    {timelineActions.length ? (
+                      <div className="mt-6 overflow-x-auto pb-2">
+                        <div className="relative h-28 min-w-[720px] rounded-2xl border border-white/10 bg-white/[0.035]">
+                          <div className="absolute left-6 right-6 top-1/2 h-1 -translate-y-1/2 rounded bg-white/10" />
+                          {[0, 15, 30, 45, 60, 75, 90].map((minute) => <span key={minute} className="absolute top-4 text-[10px] font-bold text-slate-500" style={{ left: `${Math.max(2, minute / 90 * 96)}%` }}>{minute}'</span>)}
+                          {timelineActions.map((event, index) => {
+                            const eventTone = event.type === 'Gol' ? 'bg-emerald-200 text-slate-950' : event.type === 'Asistencia' ? 'bg-caudal-electric text-slate-950' : event.type.includes('roja') ? 'bg-red-200 text-slate-950' : event.type.includes('amarilla') ? 'bg-amber-200 text-slate-950' : 'bg-white text-slate-950';
+                            return (
+                              <button
+                                type="button"
+                                key={`${event.title}-${index}`}
+                                title={event.title}
+                                onClick={() =>
+                                  setSelectedTimelineAction((current) =>
+                                    current?.actionKey === event.actionKey ? null : event
+                                  )
+                                }
+                                className={`absolute top-12 -translate-x-1/2 rounded-full px-2.5 py-1 text-[10px] font-black shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition hover:scale-105 ${eventTone}`}
+                                style={{ left: `${Math.min(97, Math.max(3, Number(event.minute) / 90 * 96))}%` }}
+                              >
+                                {event.type.slice(0, 3)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-5">{renderProfileEmptyState('Sin momentos de impacto registrados.', 'Goles, asistencias, tarjetas y eventos rápidos revisados construirán aquí una línea temporal útil.')}</div>
+                    )}
                     {selectedTimelineAction ? (
                       <div className="mt-5 rounded-2xl border border-caudal-electric/30 bg-caudal-electric/10 p-4">
                         <p className="text-xs font-black uppercase tracking-[0.16em] text-caudal-electric">{selectedTimelineAction.type} · minuto {selectedTimelineAction.minute}'</p>
@@ -8586,29 +8706,41 @@ function App() {
                     ) : null}
                   </section>
 
-                  <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                  <section className="rounded-[1.65rem] border border-white/10 bg-[#091428]/84 p-5 shadow-[0_18px_55px_rgba(0,0,0,0.16)] sm:p-6">
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Historial partido a partido</h3>
                     <div className="mt-5 overflow-x-auto">
                       <table className="w-full min-w-[900px] text-left text-sm">
                         <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
-                          <tr>{['Fecha', 'Rival', 'L/V', 'Competición', 'Rol', 'Min', 'G', 'A', '🟨', '🟥', '🚑'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}</tr>
+                          <tr>{['Fecha', 'Rival', 'L/V', 'Competición', 'Rol', 'Min', 'Nota', 'G', 'A', 'TA', 'TR', 'Les.'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}</tr>
                         </thead>
                         <tbody>
-                          {aggregate.rows.length ? aggregate.rows.map((row) => (
-                            <tr key={row.match.id} className="border-t border-white/10">
+                          {aggregate.rows.length ? aggregate.rows.map((row) => {
+                            const matchRating = row.rating || '-';
+                            const impactScore = row.goals.length * 2 + row.assists.length + Number(row.minutes >= 60 ? 1 : 0);
+                            return (
+                            <tr key={row.match.id} className={`border-t border-white/10 transition hover:bg-white/[0.045] ${impactScore >= 3 ? 'bg-emerald-200/[0.035]' : row.red || row.injured ? 'bg-red-200/[0.025]' : ''}`}>
                               <td className="px-3 py-4 text-slate-300">{matchDisplayDate(row.match.date)}</td>
-                              <td className="px-3 py-4 font-bold text-white">{row.match.opponent}</td>
+                              <td className="px-3 py-4">
+                                <div className="flex items-center gap-3">
+                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 text-[10px] font-black text-slate-950">
+                                    {row.match.opponentCrest ? <img src={row.match.opponentCrest} alt="" className="h-full w-full object-contain" /> : row.match.opponent.slice(0, 2).toUpperCase()}
+                                  </span>
+                                  <span className="truncate font-bold text-white">{row.match.opponent}</span>
+                                </div>
+                              </td>
                               <td className="px-3 py-4 text-slate-300">{row.match.isHome ? 'Local' : 'Visitante'}</td>
                               <td className="px-3 py-4 text-slate-300">{row.match.type}</td>
-                              <td className="px-3 py-4 text-caudal-electric">{row.role}</td>
-                              <td className="px-3 py-4 text-white">{row.minutes}</td>
+                              <td className="px-3 py-4"><span className={`rounded-xl px-2 py-1 text-xs font-black ${row.role === 'Titular' ? 'bg-caudal-electric/15 text-caudal-electric' : 'bg-white/[0.06] text-slate-300'}`}>{row.role}</span></td>
+                              <td className="px-3 py-4 font-black text-white">{row.minutes}'</td>
+                              <td className="px-3 py-4 text-slate-300">{matchRating}</td>
                               <td className="px-3 py-4 text-white">{row.goals.length}</td>
                               <td className="px-3 py-4 text-white">{row.assists.length}</td>
-                              <td className="px-3 py-4">{row.yellow ? `🟨${row.yellow > 1 ? row.yellow : ''}` : '-'}</td>
-                              <td className="px-3 py-4">{row.red ? '🟥' : '-'}</td>
-                              <td className="px-3 py-4">{row.injured ? '🚑' : '-'}</td>
+                              <td className="px-3 py-4 text-amber-100">{row.yellow || '-'}</td>
+                              <td className="px-3 py-4 text-red-100">{row.red ? '1' : '-'}</td>
+                              <td className="px-3 py-4 text-red-100">{row.injured ? 'Sí' : '-'}</td>
                             </tr>
-                          )) : <tr><td colSpan="11" className="px-3 py-6 text-center text-slate-500">Sin datos registrados</td></tr>}
+                          );
+                          }) : <tr><td colSpan="12" className="px-3 py-6 text-center text-slate-500">Sin datos registrados</td></tr>}
                         </tbody>
                       </table>
                     </div>
