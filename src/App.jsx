@@ -495,6 +495,44 @@ const quickEventLabelByType = Object.fromEntries(delegatedEventDefinitions.map((
 const hasPendingQuickEvents = (match) => (match?.quickEvents || []).some((event) => !event.reviewed);
 const pendingQuickEventsMessage = 'Este partido tiene eventos rápidos pendientes de revisar.';
 
+const getMatchScoreValues = (match) => {
+  const statsEvents = match?.statsGoalEvents || [];
+  const statsCaudalGoals = statsEvents.filter((event) => event.type === 'Gol a favor').length;
+  const statsRivalGoals = statsEvents.filter((event) => event.type === 'Gol en contra').length;
+  const hasStatsScore = statsEvents.length > 0;
+  return {
+    statsEvents,
+    statsCaudalGoals,
+    statsRivalGoals,
+    hasStatsScore,
+    home: hasStatsScore ? (match.isHome ? statsCaudalGoals : statsRivalGoals) : match.homeScore || 0,
+    away: hasStatsScore ? (match.isHome ? statsRivalGoals : statsCaudalGoals) : match.awayScore || 0,
+    caudal: hasStatsScore ? statsCaudalGoals : Number(match.goalsFor || (match.isHome ? match.homeScore : match.awayScore) || 0),
+    rival: hasStatsScore ? statsRivalGoals : Number(match.goalsAgainst || (match.isHome ? match.awayScore : match.homeScore) || 0),
+  };
+};
+
+const isMatchPlayedForUi = (match) => {
+  const score = getMatchScoreValues(match);
+  return score.hasStatsScore || match?.status === 'Finalizado';
+};
+
+const getMatchOperationalStatus = (match) => {
+  if (hasPendingQuickEvents(match)) {
+    return { label: 'CON EVENTOS PENDIENTES', className: 'border-amber-200/25 bg-amber-200/[0.12] text-amber-100' };
+  }
+  if (!isMatchPlayedForUi(match)) {
+    return { label: 'PREPARANDO', className: 'border-caudal-electric/25 bg-caudal-electric/[0.10] text-caudal-electric' };
+  }
+  if ((match?.events || []).some((event) => event.reviewed)) {
+    return { label: 'ANALIZADO', className: 'border-emerald-200/25 bg-emerald-200/[0.10] text-emerald-100' };
+  }
+  if ((match?.events || []).length || (match?.quickEvents || []).length) {
+    return { label: 'EN REVISIÓN', className: 'border-sky-200/25 bg-sky-200/[0.10] text-sky-100' };
+  }
+  return { label: 'CERRADO', className: 'border-white/15 bg-white/[0.055] text-slate-300' };
+};
+
 const normalizeSupabaseQuickEvent = (event) => ({
   id: event.id,
   partidoId: event.partido_id,
@@ -9346,7 +9384,7 @@ function App() {
                                   onDragStart={() => setDraggedPlayer(player)}
                                   onClick={() => openTeamForm(selectedTeam)}
                                   className={`group flex w-full items-center gap-3 rounded-2xl border px-3 py-2 text-left text-sm transition hover:bg-white/[0.08] ${
-                                    role === 'Titular' ? 'border-caudal-electric/18 bg-caudal-electric/[0.055] text-slate-100' : 'border-white/10 bg-white/[0.035] text-slate-300'
+                                    role === 'Titular' ? 'border-caudal-electric/[0.18] bg-caudal-electric/[0.055] text-slate-100' : 'border-white/10 bg-white/[0.035] text-slate-300'
                                   } ${
                                     player.isKey ? 'shadow-[inset_0_0_0_1px_rgba(251,191,36,0.18)]' : ''
                                   }`}
@@ -9594,7 +9632,7 @@ function App() {
                     <article
                       key={team.id}
                       onClick={() => setSelectedTeamId(team.id)}
-                      className="group relative flex h-full min-h-[318px] cursor-pointer flex-col overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#091428]/82 p-4 shadow-[0_14px_40px_rgba(0,0,0,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c]"
+                      className="group relative flex h-full min-h-[318px] cursor-pointer flex-col overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.82] p-4 shadow-[0_14px_40px_rgba(0,0,0,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c]"
                     >
                       <div className="pointer-events-none absolute inset-0 opacity-70" style={{ background: `radial-gradient(circle at 18% 10%, ${accent}24, transparent 30%), linear-gradient(135deg, rgba(255,255,255,0.045), transparent 46%)` }} />
                       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:42px_42px] opacity-25" />
@@ -10294,17 +10332,18 @@ function App() {
 
         {activeTab === 'Partidos' ? (
           <main className="space-y-6">
-            <section className="rounded-3xl border border-white/5 bg-white/5 p-6 shadow-glow backdrop-blur-md">
+            <section className="rounded-[1.6rem] border border-white/10 bg-[#091428]/[0.72] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.20)] backdrop-blur-md">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Partidos</p>
-                  <h2 className="mt-2 text-2xl font-semibold text-white">Calendario y análisis</h2>
+                  <p className="text-xs font-black uppercase tracking-[0.28em] text-caudal-electric/75">Partidos</p>
+                  <h2 className="mt-1 text-2xl font-semibold text-white">Centro operativo competitivo</h2>
+                  <p className="mt-1 text-sm text-slate-400">Preparación, revisión y dinámica de temporada.</p>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  <button onClick={handleSaveMatches} className="rounded-2xl bg-white/15 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/25">
+                  <button onClick={handleSaveMatches} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/[0.10]">
                     Guardar partidos
                   </button>
-                  <button onClick={() => openMatchForm(null)} className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]">
+                  <button onClick={() => openMatchForm(null)} className="rounded-2xl bg-caudal-electric px-4 py-2.5 text-sm font-black text-slate-950 shadow-[0_12px_32px_rgba(79,140,255,0.20)] transition hover:-translate-y-0.5 hover:bg-[#7aacff]">
                     Nuevo partido
                   </button>
                 </div>
@@ -10328,16 +10367,17 @@ function App() {
               ))}
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-              <button onClick={() => openMatchForm(null)} className="min-h-40 rounded-3xl border border-dashed border-white/15 bg-white/[0.03] p-5 text-left transition hover:border-caudal-electric/60">
-                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-caudal-electric/15 text-3xl text-caudal-electric">+</span>
-                <p className="mt-8 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Nuevo partido</p>
+            <div className="grid gap-3 rounded-[1.7rem] border border-white/10 bg-white/[0.035] p-3 md:grid-cols-2 xl:grid-cols-5">
+              <button onClick={() => openMatchForm(null)} className="group min-h-32 rounded-[1.35rem] border border-dashed border-caudal-electric/25 bg-caudal-electric/[0.055] p-4 text-left transition hover:border-caudal-electric/60 hover:bg-caudal-electric/[0.09]">
+                <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-caudal-electric/25 bg-caudal-electric/15 text-2xl font-black text-caudal-electric transition group-hover:scale-105">+</span>
+                <p className="mt-5 text-xs font-black uppercase tracking-[0.18em] text-white">Nuevo partido</p>
+                <p className="mt-1 text-xs leading-5 text-slate-400">Crear semana de trabajo, rival y PRE.</p>
               </button>
-              <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
+              <div className="rounded-[1.35rem] border border-white/10 bg-[#091428]/80 p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Partidos totales</p>
-                <p className="mt-4 text-4xl font-semibold text-white">{matchStats.total}</p>
+                <p className="mt-3 text-4xl font-semibold text-white">{matchStats.total}</p>
                 {matchFilter === 'Todos' ? (
-                  <div className="mt-4 grid grid-cols-2 gap-2 text-xs uppercase text-slate-400">
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs uppercase text-slate-400">
                     {matchTypes.map((type) => (
                       <div key={type} className="rounded-xl bg-white/5 px-2 py-1">
                         <span className="block truncate">{type}</span>
@@ -10349,99 +10389,138 @@ function App() {
                   <p className="mt-4 text-xs font-bold uppercase tracking-[0.18em] text-caudal-electric">{matchFilter}</p>
                 )}
               </div>
-              <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
+              <div className="rounded-[1.35rem] border border-white/10 bg-[#091428]/80 p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Efectividad</p>
-                <p className="mt-4 text-3xl font-semibold text-emerald-400">{matchStats.wins} Victorias</p>
-                <div className="mt-4 h-2 rounded-full bg-white/10">
+                <p className="mt-3 text-3xl font-semibold text-emerald-300">{matchStats.wins} Victorias</p>
+                <div className="mt-3 h-2 rounded-full bg-white/10">
                   <div className="h-full rounded-full bg-emerald-400" style={{ width: `${matchStats.finished ? (matchStats.wins / matchStats.finished) * 100 : 0}%` }} />
                 </div>
               </div>
-              <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
+              <div className="rounded-[1.35rem] border border-white/10 bg-[#091428]/80 p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Balance de goles</p>
-                <p className="mt-4 text-3xl font-semibold text-white">{matchStats.goalsFor} - {matchStats.goalsAgainst}</p>
+                <p className="mt-3 text-3xl font-semibold text-white">{matchStats.goalsFor} - {matchStats.goalsAgainst}</p>
                 <p className="mt-2 text-xs uppercase text-slate-500">Favor / Contra</p>
               </div>
-              <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
+              <div className="rounded-[1.35rem] border border-white/10 bg-[#091428]/80 p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Forma reciente</p>
-                <div className="mt-5 flex gap-2">
+                <div className="mt-4 flex gap-2">
                   {(matchStats.recent.length ? matchStats.recent : ['-', '-', '-']).map((result, index) => (
                     <span key={`${result}-${index}`} className="flex h-9 w-9 items-center justify-center rounded-full border border-emerald-400/60 text-sm font-bold text-emerald-300">{result}</span>
                   ))}
                 </div>
-                <p className="mt-5 text-xs uppercase text-slate-500">Porterías a cero: {matchStats.cleanSheets}</p>
+                <p className="mt-4 text-xs uppercase text-slate-500">Porterías a cero: {matchStats.cleanSheets}</p>
               </div>
             </div>
 
-            <section className="space-y-4">
-              <h3 className="border-l-4 border-caudal-electric pl-3 text-sm font-bold uppercase tracking-[0.25em] text-white">Calendario general</h3>
+            <section className="space-y-4 pt-2">
+              <div className="flex items-end justify-between border-b border-white/10 pb-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-caudal-electric/70">Temporada</p>
+                  <h3 className="mt-1 text-lg font-semibold text-white">Calendario general</h3>
+                </div>
+                <p className="hidden text-xs font-bold uppercase tracking-[0.16em] text-slate-500 sm:block">Seguimiento competitivo</p>
+              </div>
               {filteredMatches.length > 0 ? (
                 <div className="grid gap-4 xl:grid-cols-2">
                   {filteredMatches.map((match) => {
                     const activeSection = matchSections[match.id] ?? 'PRE';
                     const caudalIsHome = match.isHome;
-                    const statsEvents = match.statsGoalEvents || [];
-                    const statsCaudalGoals = statsEvents.filter((event) => event.type === 'Gol a favor').length;
-                    const statsRivalGoals = statsEvents.filter((event) => event.type === 'Gol en contra').length;
-                    const hasStatsScore = statsEvents.length > 0;
-                    const cardHomeScore = hasStatsScore ? (match.isHome ? statsCaudalGoals : statsRivalGoals) : match.homeScore || 0;
-                    const cardAwayScore = hasStatsScore ? (match.isHome ? statsRivalGoals : statsCaudalGoals) : match.awayScore || 0;
-                    const played = hasStatsScore || match.status === 'Finalizado';
-                    const caudalResultGoals = hasStatsScore ? statsCaudalGoals : Number(match.goalsFor || (match.isHome ? match.homeScore : match.awayScore) || 0);
-                    const rivalResultGoals = hasStatsScore ? statsRivalGoals : Number(match.goalsAgainst || (match.isHome ? match.awayScore : match.homeScore) || 0);
-                    const resultStripeClass = !played
-                      ? 'bg-slate-400'
-                      : caudalResultGoals > rivalResultGoals
-                        ? 'bg-emerald-400'
-                        : caudalResultGoals < rivalResultGoals
-                          ? 'bg-red-500'
-                          : 'bg-amber-300';
+                    const score = getMatchScoreValues(match);
+                    const statsEvents = score.statsEvents;
+                    const played = isMatchPlayedForUi(match);
+                    const operationalStatus = getMatchOperationalStatus(match);
+                    const opponentTeam = findTeamByDisplayName(teams, match.opponent);
                     const cardPlayerRows = Object.entries(match.statsPlayerData || {})
                       .filter(([, stats]) => stats.yellow || stats.red || stats.injured)
                       .map(([name, stats]) => ({ name, stats }));
+                    const hasRivalReport = Boolean(match.preRivalReportText || match.preRivalReportExtraction);
+                    const hasCallup = Boolean((match.statsCalledPlayers || []).length || (match.preCaudalLineup || []).length);
+                    const hasSetPieces = Boolean(match.abpOfensiva || match.abpDefensiva || match.preRivalCornersFor || match.preRivalCornersAgainst);
+                    const futurePrepItems = [
+                      { label: 'PREPARANDO', ready: !played },
+                      { label: hasRivalReport ? 'INFORME LISTO' : 'INFORME PENDIENTE', ready: hasRivalReport },
+                      { label: opponentTeam ? 'RIVAL ANALIZADO' : 'RIVAL SIN ANALIZAR', ready: Boolean(opponentTeam) },
+                      { label: hasCallup ? 'CONVOCATORIA LISTA' : 'CONVOCATORIA PENDIENTE', ready: hasCallup },
+                      { label: hasSetPieces ? 'ABP CARGADA' : 'ABP PENDIENTE', ready: hasSetPieces },
+                    ];
+                    const timelineEvents = [
+                      ...statsEvents.map((event) => ({
+                        minute: event.minute,
+                        side: event.type === 'Gol a favor' ? 'caudal' : 'rival',
+                        label: event.type === 'Gol a favor' ? (event.scorer || 'Caudal') : (match.opponent || 'Rival'),
+                        detail: event.assistant ? `Asist. ${event.assistant}` : 'Gol',
+                      })),
+                      ...cardPlayerRows.map(({ name, stats }) => ({
+                        minute: '',
+                        side: 'staff',
+                        label: name,
+                        detail: [stats.yellow ? 'AM' : null, stats.red ? 'RJ' : null, stats.injured ? 'LES' : null].filter(Boolean).join(' · '),
+                      })),
+                    ].slice(0, 6);
+                    const resultStripeClass = !played
+                      ? 'bg-slate-400'
+                      : score.caudal > score.rival
+                        ? 'bg-emerald-400'
+                        : score.caudal < score.rival
+                          ? 'bg-red-500'
+                          : 'bg-amber-300';
                     return (
-                      <article key={match.id} className="relative overflow-hidden rounded-3xl border border-white/5 bg-[#091428]/80 shadow-glow">
-                        <div className={`h-2 w-full ${resultStripeClass}`} />
+                      <article key={match.id} className="relative overflow-hidden rounded-[1.45rem] border border-white/10 bg-[#091428]/[0.82] shadow-[0_14px_42px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:border-caudal-electric/20">
+                        <div className={`h-1.5 w-full ${resultStripeClass}`} />
                         <div className="absolute right-4 top-4 z-10 flex gap-2">
-                          <button onClick={() => openMatchForm(match)} className="rounded-xl bg-white/15 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/25">Editar</button>
-                          <button onClick={() => handleMatchDelete(match)} className="rounded-xl bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-100 hover:bg-red-500/25">Eliminar</button>
+                          <button onClick={() => openMatchForm(match)} className="rounded-lg border border-white/10 bg-white/[0.07] px-2.5 py-1 text-[11px] font-bold text-white hover:bg-white/[0.12]">Editar</button>
+                          <button onClick={() => handleMatchDelete(match)} className="rounded-lg border border-red-200/10 bg-red-500/10 px-2.5 py-1 text-[11px] font-bold text-red-100 hover:bg-red-500/[0.18]">Eliminar</button>
                         </div>
-                        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 p-5">
+                        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 pb-3 pt-4">
                           <div className="text-center">
-                            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white p-2">
+                            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-2">
                               <img src={caudalIsHome ? clubCrest : match.opponentCrest || clubCrest} alt="" className="h-full w-full object-contain" />
                             </div>
-                            <p className="mt-2 text-sm font-bold text-white">{caudalIsHome ? 'C.D. Caudal' : match.opponent}</p>
+                            <p className="mt-2 line-clamp-1 text-sm font-bold text-white">{caudalIsHome ? 'C.D. Caudal' : match.opponent}</p>
                           </div>
                           <div className="text-center">
-                            <p className="rounded-xl bg-caudal-950 px-3 py-1 text-xs text-slate-400">{matchDisplayDate(match.date)}</p>
-                            <p className="mt-3 text-4xl font-bold text-white">{played ? `${cardHomeScore} - ${cardAwayScore}` : 'vs'}</p>
-                            <p className="mt-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">{match.type} {match.round}</p>
+                            <p className="rounded-xl bg-caudal-950/80 px-3 py-1 text-xs text-slate-400">{matchDisplayDate(match.date)}</p>
+                            <p className="mt-2 text-5xl font-black leading-none text-white tracking-normal">{played ? `${score.home} - ${score.away}` : 'VS'}</p>
+                            <span className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${operationalStatus.className}`}>
+                              {operationalStatus.label}
+                            </span>
+                            <p className="mt-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{match.type} {match.round}</p>
                             {match.stadium ? <p className="mt-1 text-xs font-semibold text-slate-400">{match.stadium}</p> : null}
-                            {hasStatsScore || cardPlayerRows.length ? (
-                              <div className="mt-2 text-xs leading-5 text-slate-400">
-                                {statsEvents.filter((event) => event.type === 'Gol a favor').map((event) => (
-                                  <p key={event.id}>⚽ {event.scorer || 'Caudal'} {event.minute}'{event.assistant ? ` · 👟 ${event.assistant}` : ''}</p>
-                                ))}
-                                {statsEvents.filter((event) => event.type === 'Gol en contra').map((event) => (
-                                  <p key={event.id}>⚽ {match.opponent || 'Rival'} {event.minute}'</p>
-                                ))}
-                                {cardPlayerRows.map(({ name, stats }) => (
-                                  <p key={name}>{name} {stats.yellow ? '🟨' : ''}{stats.red ? ' 🟥' : ''}{stats.injured ? ' 🚑' : ''}</p>
-                                ))}
-                              </div>
-                            ) : null}
-                            {hasPendingQuickEvents(match) ? (
-                              <p className="mt-3 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs font-bold text-amber-100">
-                                {pendingQuickEventsMessage}
-                              </p>
-                            ) : null}
                           </div>
                           <div className="text-center">
-                            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 p-2 text-lg font-bold text-white">
+                            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 p-2 text-lg font-bold text-white">
                               {caudalIsHome ? (match.opponentCrest ? <img src={match.opponentCrest} alt="" className="h-full w-full object-contain" /> : match.opponent.slice(0, 2).toUpperCase()) : <img src={clubCrest} alt="" className="h-full w-full object-contain" />}
                             </div>
-                            <p className="mt-2 text-sm font-bold text-white">{caudalIsHome ? match.opponent : 'C.D. Caudal'}</p>
+                            <p className="mt-2 line-clamp-1 text-sm font-bold text-white">{caudalIsHome ? match.opponent : 'C.D. Caudal'}</p>
                           </div>
+                        </div>
+                        <div className="px-4 pb-3">
+                          {played ? (
+                            timelineEvents.length ? (
+                              <div className="grid gap-1.5 rounded-2xl border border-white/10 bg-white/[0.035] p-2">
+                                {timelineEvents.map((event, index) => (
+                                  <div key={`${event.label}-${event.minute}-${index}`} className="grid grid-cols-[44px_1fr_auto] items-center gap-2 rounded-xl bg-slate-950/20 px-2 py-1.5 text-xs">
+                                    <span className="font-black text-slate-500">{event.minute ? `${event.minute}'` : '--'}</span>
+                                    <span className={`truncate font-semibold ${event.side === 'caudal' ? 'text-emerald-100' : event.side === 'rival' ? 'text-red-100' : 'text-slate-200'}`}>{event.label}</span>
+                                    <span className="rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-black uppercase text-slate-400">{event.detail}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5 rounded-2xl border border-white/10 bg-white/[0.03] p-2">
+                              {futurePrepItems.map((item) => (
+                                <span key={item.label} className={`rounded-lg border px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] ${item.ready ? 'border-emerald-200/20 bg-emerald-200/[0.08] text-emerald-100' : 'border-amber-200/[0.18] bg-amber-200/[0.07] text-amber-100'}`}>
+                                  {item.label}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {hasPendingQuickEvents(match) ? (
+                            <p className="mt-2 rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs font-bold text-amber-100">
+                              {pendingQuickEventsMessage}
+                            </p>
+                          ) : null}
                         </div>
                         <div className="grid grid-cols-4 border-t border-white/10">
                           {['PRE', 'ESTADÍSTICAS', 'POST', 'IMPRESIÓN'].map((section) => (
@@ -10451,7 +10530,7 @@ function App() {
                                 setMatchSections((prev) => ({ ...prev, [match.id]: section }));
                                 openMatchPage(match, section);
                               }}
-                              className={`min-w-0 px-1 py-3 text-[10px] font-bold uppercase tracking-[0.02em] sm:px-3 sm:text-xs sm:tracking-[0.12em] ${activeSection === section ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.03] text-slate-500 hover:text-white'}`}>
+                              className={`min-w-0 px-1 py-3 text-[10px] font-black uppercase tracking-[0.02em] transition sm:px-3 sm:text-xs sm:tracking-[0.12em] ${activeSection === section ? 'bg-caudal-electric text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_-10px_30px_rgba(79,140,255,0.10)]' : 'bg-white/[0.025] text-slate-500 hover:bg-white/[0.055] hover:text-white'}`}>
                               <span className="sm:hidden">{section === 'ESTADÍSTICAS' ? 'EST.' : section === 'IMPRESIÓN' ? 'IMP.' : section}</span>
                               <span className="hidden sm:inline">{section}</span>
                             </button>
@@ -10502,7 +10581,7 @@ function App() {
                       <button
                         key={section}
                         onClick={() => openMatchPage(selectedMatch, section)}
-                        className={`min-h-[42px] min-w-0 rounded-xl px-1.5 py-2.5 text-[10px] font-black uppercase tracking-[0.02em] sm:min-h-[46px] sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm sm:font-semibold sm:tracking-[0.12em] ${matchViewSection === section ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}>
+                        className={`min-h-[42px] min-w-0 rounded-xl border px-1.5 py-2.5 text-[10px] font-black uppercase tracking-[0.02em] transition sm:min-h-[46px] sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm sm:font-semibold sm:tracking-[0.12em] ${matchViewSection === section ? 'border-caudal-electric/40 bg-caudal-electric text-slate-950 shadow-[0_10px_28px_rgba(79,140,255,0.16)]' : 'border-white/10 bg-white/[0.055] text-slate-200 hover:bg-white/[0.09] hover:text-white'}`}>
                         <span className="sm:hidden">{section === 'ESTADÍSTICAS' ? 'EST.' : section === 'IMPRESIÓN' ? 'IMP.' : section}</span>
                         <span className="hidden sm:inline">{section}</span>
                       </button>
