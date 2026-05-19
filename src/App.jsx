@@ -2341,6 +2341,7 @@ function App() {
   const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [matchViewSection, setMatchViewSection] = useState('PRE');
   const [preSubTab, setPreSubTab] = useState('Informe rival');
+  const [isPreTalkMode, setIsPreTalkMode] = useState(false);
   const [isCanvaPreviewOpen, setIsCanvaPreviewOpen] = useState(false);
   const [selectedTacticalPlayerIndex, setSelectedTacticalPlayerIndex] = useState(0);
   const [selectedRivalTacticalPlayerIndex, setSelectedRivalTacticalPlayerIndex] = useState(0);
@@ -3358,6 +3359,18 @@ function App() {
     () => normalizePreAiAnalysis(selectedMatch?.preAiAnalysis),
     [selectedMatch?.preAiAnalysis]
   );
+  const preReportChecklist = selectedPreAiAnalysis?.reportChecklist || {};
+  const togglePreReportChecklist = (key) => {
+    updateSelectedMatchFields({
+      preAiAnalysis: {
+        ...(selectedPreAiAnalysis || {}),
+        reportChecklist: {
+          ...preReportChecklist,
+          [key]: !preReportChecklist[key],
+        },
+      },
+    });
+  };
 
   const selectedPlayerProfile = useMemo(
     () => players.find((player) => player.id === selectedPlayerProfileId) ?? null,
@@ -10715,7 +10728,7 @@ function App() {
                 </div>
 
                 {matchView === 'pre_partido' ? (
-                  <section className="space-y-6">
+                  <section className={isPreTalkMode ? 'space-y-4' : 'space-y-6'}>
                     {preLoading ? (
                       <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 text-sm text-slate-400 shadow-glow">
                         Cargando PRE desde Supabase...
@@ -10734,6 +10747,13 @@ function App() {
                           <p className="mt-2 text-sm text-slate-400">Gestiona el informe rival y los sistemas enfrentados.</p>
                         </div>
                         <div className="flex flex-wrap gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setIsPreTalkMode(true)}
+                            className="rounded-2xl border border-caudal-electric/25 bg-caudal-electric/10 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-caudal-electric transition hover:bg-caudal-electric/15"
+                          >
+                            Modo charla
+                          </button>
                           {['Informe rival', 'Sistemas enfrentados'].map((tab) => (
                             <button
                               key={tab}
@@ -10747,66 +10767,182 @@ function App() {
                     </div>
 
                     {preSubTab === 'Informe rival' ? (
-                      <div className="space-y-6">
-                        <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                          <div className="grid gap-6 lg:grid-cols-[1fr_auto]">
-                            <label className="space-y-2 text-sm text-slate-300">
-                              <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Enlace del informe Canva</span>
-                              <input
-                                type="url"
-                                value={selectedMatch.preCanvaLink || ''}
-                                onChange={(event) => updateSelectedMatchFields({ preCanvaLink: event.target.value })}
-                                placeholder="https://www.canva.com/..."
-                                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white"
-                              />
-                            </label>
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                disabled={!getCanvaEmbedUrl(selectedMatch.preCanvaLink)}
-                                onClick={() => setIsCanvaPreviewOpen(true)}
-                                className="h-fit rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:bg-slate-600/40"
-                              >
-                                Ampliar informe
-                              </button>
-                              <button
-                                type="button"
-                                disabled={!selectedMatch.preCanvaLink}
-                                onClick={() => window.open(selectedMatch.preCanvaLink, '_blank', 'noopener,noreferrer')}
-                                className="h-fit rounded-2xl bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:bg-slate-600/40 disabled:text-slate-400"
-                              >
-                                Abrir enlace
-                              </button>
+                      <div className={isPreTalkMode ? 'space-y-4' : 'space-y-5'}>
+                        {isPreTalkMode ? (
+                          <div className="sticky top-3 z-30 flex items-center justify-between rounded-2xl border border-caudal-electric/20 bg-caudal-950/95 px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.30)] backdrop-blur">
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Modo charla</p>
+                              <p className="text-sm font-bold text-white">{selectedMatch.opponent || 'Rival'} · PRE</p>
                             </div>
+                            <button type="button" onClick={() => setIsPreTalkMode(false)} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-white hover:bg-white/10">
+                              Salir
+                            </button>
                           </div>
-                          {selectedMatch.preCanvaLink ? (
-                            getCanvaEmbedUrl(selectedMatch.preCanvaLink) ? (
-                              <div className="mt-6 overflow-hidden rounded-3xl border border-white/10 bg-[#0f1e38]/80">
+                        ) : null}
+
+                        <div className={`grid gap-5 ${isPreTalkMode ? 'xl:grid-cols-[0.42fr_0.58fr]' : 'xl:grid-cols-[0.38fr_0.62fr]'}`}>
+                          <div className="space-y-5">
+                            <section className="rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.20)]">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/75">Claves del partido</p>
+                                  <h4 className="mt-1 text-xl font-black text-white">Consignas rápidas</h4>
+                                </div>
+                                <span className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">PRE</span>
+                              </div>
+                              {!isPreTalkMode ? (
+                                <textarea
+                                  value={selectedMatch.planClave || ''}
+                                  onChange={(event) => updateSelectedMatchFields({ planClave: event.target.value })}
+                                  placeholder={'atacar espalda lateral izquierdo\nevitar pérdidas interiores\nvigilar segunda jugada'}
+                                  className="mt-4 min-h-[132px] w-full resize-none rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-3 text-sm leading-6 text-white placeholder:text-slate-500"
+                                />
+                              ) : null}
+                              <div className="mt-4 space-y-2">
+                                {(selectedMatch.planClave || '').split('\n').map((item) => item.trim()).filter(Boolean).slice(0, 6).map((item) => (
+                                  <div key={item} className="flex gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2 text-sm font-semibold leading-5 text-slate-100">
+                                    <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-caudal-electric" />
+                                    <span>{item}</span>
+                                  </div>
+                                ))}
+                                {!(selectedMatch.planClave || '').trim() ? (
+                                  <p className="rounded-xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-3 text-sm text-slate-500">Añade tres consignas para que el staff las lea de un vistazo.</p>
+                                ) : null}
+                              </div>
+                            </section>
+
+                            <section className={`rounded-[1.45rem] border border-white/10 bg-white/[0.025] p-5 ${isPreTalkMode ? 'hidden xl:block' : ''}`}>
+                              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Estado del informe</p>
+                              <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                                {[
+                                  ['videoReviewed', 'Vídeo revisado'],
+                                  ['abpAnalyzed', 'ABP analizado'],
+                                  ['systemConfirmed', 'Sistema confirmado'],
+                                  ['probableLineup', 'Alineación probable'],
+                                  ['setPiecesReviewed', 'Balón parado revisado'],
+                                  ['watchedPlayers', 'Jugadores vigilados'],
+                                ].map(([key, label]) => (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => togglePreReportChecklist(key)}
+                                    className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs font-black uppercase tracking-[0.08em] transition ${preReportChecklist[key] ? 'border-emerald-200/20 bg-emerald-200/[0.09] text-emerald-100' : 'border-amber-200/[0.16] bg-amber-200/[0.055] text-amber-100'}`}
+                                  >
+                                    <span>{label}</span>
+                                    <span>{preReportChecklist[key] ? 'OK' : 'PEND.'}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </section>
+                          </div>
+
+                          <section className="overflow-hidden rounded-[1.45rem] border border-white/10 bg-[#091428]/85 shadow-[0_18px_60px_rgba(0,0,0,0.24)]">
+                            <div className={`${isPreTalkMode ? 'hidden' : 'flex'} flex-col gap-3 border-b border-white/10 p-4 lg:flex-row lg:items-center lg:justify-between`}>
+                              <div>
+                                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Informe rival</p>
+                                <h4 className="mt-1 text-lg font-black text-white">Dashboard scouting Canva</h4>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <input
+                                  type="url"
+                                  value={selectedMatch.preCanvaLink || ''}
+                                  onChange={(event) => updateSelectedMatchFields({ preCanvaLink: event.target.value })}
+                                  placeholder="https://www.canva.com/..."
+                                  className="min-w-[260px] rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-2.5 text-sm text-white placeholder:text-slate-500"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={!getCanvaEmbedUrl(selectedMatch.preCanvaLink)}
+                                  onClick={() => setIsCanvaPreviewOpen(true)}
+                                  className="rounded-2xl bg-caudal-electric px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:bg-slate-600/40"
+                                >
+                                  Ampliar
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={!selectedMatch.preCanvaLink}
+                                  onClick={() => window.open(selectedMatch.preCanvaLink, '_blank', 'noopener,noreferrer')}
+                                  className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:text-slate-500"
+                                >
+                                  Abrir
+                                </button>
+                              </div>
+                            </div>
+                            {selectedMatch.preCanvaLink ? (
+                              getCanvaEmbedUrl(selectedMatch.preCanvaLink) ? (
                                 <iframe
                                   title="Informe Canva"
                                   src={getCanvaEmbedUrl(selectedMatch.preCanvaLink)}
-                                  className="h-[70vh] min-h-[520px] w-full"
+                                  className={`${isPreTalkMode ? 'h-[74vh] min-h-[620px]' : 'h-[62vh] min-h-[460px]'} w-full bg-[#0f1e38]/80`}
                                   allowFullScreen
                                 />
-                              </div>
+                              ) : (
+                                <div className="m-4 rounded-3xl bg-[#0f1e38]/80 p-5 text-sm text-slate-400">
+                                  Este enlace no parece ser de Canva. Usa un enlace de Canva para verlo dentro de la app.
+                                </div>
+                              )
                             ) : (
-                              <div className="mt-6 rounded-3xl bg-[#0f1e38]/80 p-5 text-sm text-slate-400">
-                                Este enlace no parece ser de Canva. Usa un enlace de Canva para verlo dentro de la app.
+                              <div className="m-4 rounded-3xl border border-dashed border-white/10 bg-[#0f1e38]/80 p-8 text-sm text-slate-400">
+                                Pega un enlace de Canva para visualizar el informe aquí.
                               </div>
-                            )
-                          ) : (
-                            <div className="mt-6 rounded-3xl bg-[#0f1e38]/80 p-5 text-sm text-slate-400">
-                              Pega un enlace de Canva para visualizar el informe aquí.
-                            </div>
-                          )}
+                            )}
+                          </section>
                         </div>
-
                       </div>
                     ) : (
                       <SystemsFacingErrorBoundary resetKey={`${selectedMatch?.id || 'sin-partido'}-${preSubTab}`}>
-                      <div className="space-y-6">
-                        <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-                          <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                      <div className={isPreTalkMode ? 'space-y-4' : 'space-y-6'}>
+                        {isPreTalkMode ? (
+                          <div className="sticky top-3 z-30 flex items-center justify-between rounded-2xl border border-caudal-electric/20 bg-caudal-950/95 px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.30)] backdrop-blur">
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Modo charla</p>
+                              <p className="text-sm font-bold text-white">Sistemas enfrentados · {selectedMatch.opponent || 'Rival'}</p>
+                            </div>
+                            <button type="button" onClick={() => setIsPreTalkMode(false)} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-white hover:bg-white/10">
+                              Salir
+                            </button>
+                          </div>
+                        ) : null}
+                        <div className={`rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/80 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.20)] ${isPreTalkMode ? 'hidden' : ''}`}>
+                          <div className="grid gap-4 xl:grid-cols-[1fr_auto_1fr] xl:items-center">
+                            <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Caudal</p>
+                              <p className="mt-2 text-2xl font-black text-white">{selectedMatch.preCaudalSystem || '4-4-2'}</p>
+                              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                                <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">Altura: {selectedMatch.preCaudalPressPlan ? 'activa' : 'por definir'}</span>
+                                <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">Presión: {selectedMatch.preCaudalPressPlan || 'pendiente'}</span>
+                              </div>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Comparador</p>
+                              <p className="mt-1 text-xl font-black text-white">CAUDAL vs RIVAL</p>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-100/80">Rival</p>
+                              <p className="mt-2 text-2xl font-black text-white">{getCurrentRivalSystem()}</p>
+                              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                                <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">Bloque: {selectedMatch.preRivalDefensiveBlock || 'medio'}</span>
+                                <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">Presión: {selectedMatch.preRivalPressure || 'media'}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="mt-4 grid gap-2 md:grid-cols-4">
+                            {[
+                              ['Ventaja', selectedMatch.preSystemReading?.advantages?.[0] || selectedMatch.preCaudalAttackZones || 'Definir superioridad principal'],
+                              ['Riesgo', selectedMatch.preSystemReading?.risks?.[0] || selectedMatch.preCaudalAvoid || 'Definir riesgo principal'],
+                              ['Emparejamiento', selectedMatch.preKeyMatchups || 'Duelos pendientes'],
+                              ['Ajuste', selectedMatch.prePlanAdjustment || 'Ajuste pendiente'],
+                            ].map(([label, value]) => (
+                              <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
+                                <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-200">{value}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className={`grid gap-6 ${isPreTalkMode ? 'xl:grid-cols-1' : 'xl:grid-cols-[1.05fr_0.95fr]'}`}>
+                          <div className={`rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow ${isPreTalkMode ? 'min-h-[78vh]' : ''}`}>
                             <div className="mb-5">
                               <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Pizarra táctica</h4>
                               <p className="mt-2 text-sm text-slate-400">Un único campo con Caudal y rival enfrentados. Si hay alineaciones, aparecen los nombres; si no, los roles.</p>
@@ -10814,7 +10950,7 @@ function App() {
                             {renderFacingSystemsOverview()}
                           </div>
 
-                          <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                          <div className={`rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow ${isPreTalkMode ? 'hidden' : ''}`}>
                             <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Pregunta táctica a la IA</h4>
                             <div className="mt-5 grid grid-cols-2 rounded-2xl border border-white/10 bg-white/5 p-1">
                               {['Macro', 'Micro'].map((mode) => (
@@ -11395,7 +11531,7 @@ function App() {
                     ) : (
                     <>
                     <AccordionSection title="Resumen rápido" subtitle="Marcador, goles, tarjetas y lesiones" defaultOpen>
-                    <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                    <div className={`rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow ${isPreTalkMode ? 'hidden' : ''}`}>
                       <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Resumen de marcador</h3>
                       <div className="mt-6 grid items-center gap-6 lg:grid-cols-[1fr_auto_1fr]">
                         <div className="text-center">
