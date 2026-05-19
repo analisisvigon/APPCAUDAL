@@ -2315,6 +2315,7 @@ function App() {
   const [playerQuickScope, setPlayerQuickScope] = useState('Últimos 5 partidos');
   const [playerInfluenceFilter, setPlayerInfluenceFilter] = useState('Todos');
   const [selectedTimelineAction, setSelectedTimelineAction] = useState(null);
+  const [expandedPlayerMatchId, setExpandedPlayerMatchId] = useState(null);
   const [playerReport, setPlayerReport] = useState(null);
   const [playerProfileData, setPlayerProfileData] = useState(null);
   const [playerProfileLoading, setPlayerProfileLoading] = useState(false);
@@ -5723,9 +5724,9 @@ function App() {
         {zones.map((zone) => {
           const count = counts[zone] || 0;
           return (
-          <div key={zone} className={`flex flex-col items-center justify-center border border-white/15 px-1 text-center ${count ? 'bg-caudal-electric/75 text-slate-950 shadow-[0_0_35px_rgba(79,140,255,0.45)]' : 'bg-black/10 text-slate-200'}`}>
-            <span className={`${goal ? 'text-[9px]' : 'text-[10px]'} whitespace-pre-line font-black uppercase leading-tight drop-shadow`}>{displayZoneLabel(zone)}</span>
-            <strong className={`${goal ? 'mt-0 text-lg' : 'mt-1 text-xl'}`}>{count}</strong>
+          <div key={zone} className={`flex flex-col items-center justify-center border border-white/10 px-1 text-center transition ${count ? 'bg-caudal-electric/55 text-white shadow-[inset_0_0_24px_rgba(61,217,255,0.22),0_0_24px_rgba(61,217,255,0.18)]' : 'bg-black/5 text-transparent'}`}>
+            <span className={`${goal ? 'text-[8px]' : 'text-[9px]'} whitespace-pre-line font-black uppercase leading-tight ${count ? 'text-white/90' : 'text-transparent'}`}>{count ? displayZoneLabel(zone) : ''}</span>
+            <strong className={`${goal ? 'mt-0 text-sm' : 'mt-0.5 text-base'} ${count ? 'text-white' : 'text-transparent'}`}>{count || ''}</strong>
           </div>
           );
         })}
@@ -8315,11 +8316,21 @@ function App() {
               const playerGoalPhaseCounts = countPhases(allGoalActions);
               const maxPlayerGoalPhase = Math.max(1, ...playerGoalPhaseCounts.map((row) => row.count));
               const timelineActions = [
-                ...allGoalActions.map((event) => ({ minute: event.minute, label: '⚽', type: 'Gol', match: event.match, videoUrl: event.videoUrl, actionKey: `goal-${event.match.id}-${event.id}`, title: `Gol · ${getMatchScoreLabel(event.match)}` })),
-                ...allAssistActions.map((event) => ({ minute: event.minute, label: '👟', type: 'Asistencia', match: event.match, videoUrl: event.videoUrl, actionKey: `assist-${event.match.id}-${event.id}`, title: `Asistencia · ${getMatchScoreLabel(event.match)}` })),
-                ...quick.events.map((event) => ({ minute: event.minute, label: quickEventLabelByType[event.tipoEvento]?.slice(0, 1) || 'E', type: quickEventLabelByType[event.tipoEvento] || event.tipoEvento, match: event.match, actionKey: `quick-${event.match.id}-${event.id}`, title: `${quickEventLabelByType[event.tipoEvento] || event.tipoEvento} · ${getMatchScoreLabel(event.match)}` })),
-                ...aggregate.rows.flatMap((row) => row.cardActions.map((event, cardIndex) => ({ minute: event.minute, label: event.type.includes('roja') ? 'R' : 'A', type: event.type, match: row.match, actionKey: `card-${row.match.id}-${cardIndex}`, title: `${event.type} · ${getMatchScoreLabel(row.match)}` }))),
+                ...allGoalActions.map((event) => ({ minute: event.minute, label: 'G', icon: 'Gol', type: 'Gol', tone: 'goal', match: event.match, videoUrl: event.videoUrl, actionKey: `goal-${event.match.id}-${event.id}`, title: `Gol · ${getMatchScoreLabel(event.match)}` })),
+                ...allAssistActions.map((event) => ({ minute: event.minute, label: 'A', icon: 'Asis', type: 'Asistencia', tone: 'assist', match: event.match, videoUrl: event.videoUrl, actionKey: `assist-${event.match.id}-${event.id}`, title: `Asistencia · ${getMatchScoreLabel(event.match)}` })),
+                ...quick.events.map((event) => ({ minute: event.minute, label: (quickEventLabelByType[event.tipoEvento] || event.tipoEvento).slice(0, 3), icon: (quickEventLabelByType[event.tipoEvento] || event.tipoEvento).slice(0, 3), type: quickEventLabelByType[event.tipoEvento] || event.tipoEvento, tone: 'quick', match: event.match, actionKey: `quick-${event.match.id}-${event.id}`, title: `${quickEventLabelByType[event.tipoEvento] || event.tipoEvento} · ${getMatchScoreLabel(event.match)}` })),
+                ...aggregate.rows.flatMap((row) => [
+                  ...row.cardActions.map((event, cardIndex) => ({ minute: event.minute, label: event.type.includes('roja') ? 'TR' : 'TA', icon: event.type.includes('roja') ? 'TR' : 'TA', type: event.type, tone: event.type.includes('roja') ? 'red' : 'yellow', match: row.match, actionKey: `card-${row.match.id}-${cardIndex}`, title: `${event.type} · ${getMatchScoreLabel(row.match)}` })),
+                  row.role === 'Suplente' && row.minutes > 0 ? { minute: Math.max(0, 90 - Number(row.minutes || 0)), label: 'CAM', icon: 'CAM', type: 'Cambio', tone: 'sub', match: row.match, actionKey: `sub-${row.match.id}`, title: `Entrada al partido · ${getMatchScoreLabel(row.match)}` } : null,
+                  row.injured ? { minute: row.minutes || 90, label: 'LES', icon: 'LES', type: 'Lesión', tone: 'injury', match: row.match, actionKey: `injury-${row.match.id}`, title: `Lesión · ${getMatchScoreLabel(row.match)}` } : null,
+                ].filter(Boolean)),
               ].filter((event) => event.minute !== '');
+              const timelineGroups = Object.values(timelineActions.reduce((acc, event) => {
+                const minuteKey = String(Math.max(0, Math.min(130, Number(event.minute) || 0)));
+                acc[minuteKey] = acc[minuteKey] || { minute: minuteKey, events: [] };
+                acc[minuteKey].events.push(event);
+                return acc;
+              }, {})).sort((a, b) => Number(a.minute) - Number(b.minute));
               const assistantsToPlayer = countValues(allGoalActions.map((event) => event.assistant));
               const assistedByPlayer = countValues(allAssistActions.map((event) => event.scorer));
               const assistantRows = Object.entries(assistantsToPlayer).filter(([name]) => name);
@@ -8368,23 +8379,44 @@ function App() {
               const topAssistant = assistantRows.length ? [...assistantRows].sort((a, b) => b[1] - a[1])[0] : null;
               const topAssociation = societyRows[0] || null;
               const recentFormRows = aggregate.rows.slice(-5);
-              const formPoints = recentFormRows.reduce((sum, row) => sum + Number(row.minutes >= 60 ? 2 : row.minutes > 0 ? 1 : 0) + row.goals.length * 2 + row.assists.length, 0) + Math.min(4, quick.recent.length);
+              const recentRatings = recentFormRows.map((row) => Number(row.rating)).filter(Boolean);
+              const avgRecentRating = recentRatings.length ? recentRatings.reduce((sum, rating) => sum + rating, 0) / recentRatings.length : 0;
+              const formPoints = recentFormRows.reduce((sum, row) => sum + Number(row.minutes >= 60 ? 2 : row.minutes > 0 ? 1 : 0) + row.goals.length * 2 + row.assists.length + (Number(row.rating) >= 7 ? 2 : Number(row.rating) >= 5 ? 1 : 0), 0) + Math.min(4, quick.recent.length);
               const formLabel = regularStarter
                 ? 'Titular consolidado'
                 : aggregate.directGoalParticipation >= 3
                   ? 'Impacto ofensivo alto'
+                  : avgRecentRating >= 7
+                    ? 'Buena dinámica'
+                    : avgRecentRating && avgRecentRating < 5
+                      ? 'Momento delicado'
                   : formPoints >= 8
                     ? 'En crecimiento'
                     : formPoints >= 4
-                      ? 'Regular'
+                      ? 'Irregular'
                       : aggregate.played ? 'Baja participación' : 'Sin muestra';
               const playerSubtitle = regularStarter ? 'Titular habitual' : selectedStaffStatus.sub23 ? 'Juvenil' : aggregate.participation < 30 ? 'Poca participación' : 'Rotación';
               const formDots = recentFormRows.length
                 ? recentFormRows.map((row) => {
                   const impact = row.goals.length + row.assists.length;
-                  return impact ? 'bg-emerald-300' : row.minutes >= 60 ? 'bg-caudal-electric' : row.minutes > 0 ? 'bg-amber-200' : 'bg-white/20';
+                  const rating = Number(row.rating) || 0;
+                  return rating >= 7 || impact ? 'bg-emerald-300' : rating >= 5 || row.minutes >= 60 ? 'bg-amber-200' : row.minutes > 0 ? 'bg-white/40' : rating ? 'bg-red-300' : 'bg-white/20';
                 })
                 : ['bg-white/15', 'bg-white/15', 'bg-white/15', 'bg-white/15', 'bg-white/15'];
+              const prePostRows = aggregate.rows
+                .map((row) => {
+                  const preNote = row.match.prePlayerNotes?.[selectedPlayerProfile.name] || '';
+                  const reviewedEvents = quick.events.filter((event) => event.partidoId === row.match.id);
+                  const achieved = !preNote ? 'Sin consigna' : (Number(row.rating) >= 7 || row.goals.length || row.assists.length || reviewedEvents.length >= 2) ? 'Cumplido' : reviewedEvents.length || row.minutes >= 45 ? 'Parcialmente' : 'No cumplido';
+                  return { row, preNote, reviewedEvents, achieved };
+                })
+                .filter((item) => item.preNote || item.reviewedEvents.length);
+              const tacticalTrendRows = [
+                quick.losses >= 4 ? ['Pérdidas en salida', 'Preparar tarea de seguridad y apoyos cercanos'] : null,
+                quick.shots <= 1 && aggregate.played ? ['Baja finalización', 'Asociar tarea de llegada y último tercio'] : null,
+                quick.recoveries >= 4 ? ['Buena activación tras pérdida', 'Guardar clips de presión efectiva'] : null,
+                aggregate.yellow + aggregate.red >= 2 ? ['Riesgo disciplinario', 'Revisar entradas, perfiles y duelos'] : null,
+              ].filter(Boolean);
               const renderProfileEmptyState = (title, copy, variant = 'compact') => {
                 if (variant === 'lines') {
                   return (
@@ -8474,6 +8506,7 @@ function App() {
                             <div>
                               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Forma reciente</p>
                               <p className="mt-1 text-lg font-black text-white">{formLabel}</p>
+                              <p className="mt-0.5 text-xs text-slate-500">{recentRatings.length ? `Nota media últimos partidos: ${avgRecentRating.toFixed(1)}` : 'Sin notas suficientes todavía'}</p>
                             </div>
                             <div className="flex items-center gap-2">
                               {formDots.map((dotClass, index) => <span key={`${dotClass}-${index}`} className={`h-4 w-4 rounded-full border border-white/10 ${dotClass}`} />)}
@@ -8575,6 +8608,51 @@ function App() {
                         )}
                       </div>
                     )}
+                  </section>
+                  </AccordionSection>
+
+                  <AccordionSection title="Plan vs Partido" subtitle="Relación PRE, POST y biblioteca">
+                  <section className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
+                    <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
+                      <div className="flex items-center justify-between gap-3">
+                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Consignas cumplidas</h3>
+                        <span className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-black text-slate-300">{prePostRows.length}</span>
+                      </div>
+                      {prePostRows.length ? (
+                        <div className="mt-4 space-y-3">
+                          {prePostRows.slice(0, 5).map(({ row, preNote, reviewedEvents, achieved }) => (
+                            <div key={row.match.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="truncate text-sm font-black text-white">{row.match.opponent}</p>
+                                <span className={`rounded-xl px-2 py-1 text-[10px] font-black ${achieved === 'Cumplido' ? 'bg-emerald-200/15 text-emerald-100' : achieved === 'Parcialmente' ? 'bg-amber-200/15 text-amber-100' : achieved === 'No cumplido' ? 'bg-red-200/15 text-red-100' : 'bg-white/[0.06] text-slate-300'}`}>{achieved}</span>
+                              </div>
+                              <p className="mt-2 line-clamp-2 text-sm text-slate-300">{preNote || 'Sin objetivo individual PRE registrado.'}</p>
+                              <p className="mt-2 text-xs text-slate-500">{reviewedEvents.length} eventos revisados · Nota {row.rating || '-'}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-4">{renderProfileEmptyState('Sin relación PRE-POST todavía.', 'Añade consignas individuales en PRE y revisa eventos en POST para medir cumplimiento táctico.', 'horizontal')}</div>
+                      )}
+                    </div>
+                    <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.025] p-4">
+                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Biblioteca conectada</h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-400">Base preparada para asociar tareas, clips y recursos cuando aparezcan patrones repetidos.</p>
+                      <div className="mt-4 space-y-2">
+                        {tacticalTrendRows.length ? tacticalTrendRows.map(([title, copy]) => (
+                          <div key={title} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                            <p className="text-sm font-black text-white">{title}</p>
+                            <p className="mt-1 text-xs text-slate-400">{copy}</p>
+                          </div>
+                        )) : (
+                          <>
+                            <span className="block h-2 rounded-full bg-white/10" />
+                            <span className="block h-2 w-2/3 rounded-full bg-white/10" />
+                            <p className="pt-2 text-sm text-slate-500">Sin patrones repetidos suficientes para proponer recursos.</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </section>
                   </AccordionSection>
 
@@ -8727,27 +8805,28 @@ function App() {
                   <AccordionSection title="Historial" subtitle="Timeline e historial partido a partido">
                   <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)] sm:p-5">
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Impacto en el tiempo (0' - 90')</h3>
-                    {timelineActions.length ? (
+                        {timelineGroups.length ? (
                       <div className="mt-4 overflow-x-auto pb-2">
                         <div className="relative h-24 min-w-[720px] rounded-2xl border border-white/10 bg-white/[0.03]">
                           <div className="absolute left-6 right-6 top-1/2 h-1 -translate-y-1/2 rounded bg-white/10" />
                           {[0, 15, 30, 45, 60, 75, 90].map((minute) => <span key={minute} className="absolute top-3 text-[10px] font-bold text-slate-500" style={{ left: `${Math.max(2, minute / 90 * 96)}%` }}>{minute}'</span>)}
-                          {timelineActions.map((event, index) => {
-                            const eventTone = event.type === 'Gol' ? 'bg-emerald-200 text-slate-950' : event.type === 'Asistencia' ? 'bg-caudal-electric text-slate-950' : event.type.includes('roja') ? 'bg-red-200 text-slate-950' : event.type.includes('amarilla') ? 'bg-amber-200 text-slate-950' : 'bg-white text-slate-950';
+                          {timelineGroups.map((group) => {
+                            const mainEvent = group.events[0];
+                            const eventTone = mainEvent.tone === 'goal' ? 'bg-emerald-200 text-slate-950' : mainEvent.tone === 'assist' ? 'bg-caudal-electric text-slate-950' : mainEvent.tone === 'red' || mainEvent.tone === 'injury' ? 'bg-red-200 text-slate-950' : mainEvent.tone === 'yellow' ? 'bg-amber-200 text-slate-950' : 'bg-white text-slate-950';
                             return (
                               <button
                                 type="button"
-                                key={`${event.title}-${index}`}
-                                title={event.title}
+                                key={group.minute}
+                                title={group.events.map((event) => `${event.minute}' ${event.type}`).join(' · ')}
                                 onClick={() =>
                                   setSelectedTimelineAction((current) =>
-                                    current?.actionKey === event.actionKey ? null : event
+                                    current?.actionKey === mainEvent.actionKey ? null : mainEvent
                                   )
                                 }
                                 className={`absolute top-10 -translate-x-1/2 rounded-full px-2.5 py-1 text-[10px] font-black shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition hover:scale-105 ${eventTone}`}
-                                style={{ left: `${Math.min(97, Math.max(3, Number(event.minute) / 90 * 96))}%` }}
+                                style={{ left: `${Math.min(97, Math.max(3, Number(group.minute) / 90 * 96))}%` }}
                               >
-                                {event.type.slice(0, 3)}
+                                {mainEvent.icon}{group.events.length > 1 ? `+${group.events.length - 1}` : ''}
                               </button>
                             );
                           })}
@@ -8791,17 +8870,22 @@ function App() {
                         <tbody>
                           {aggregate.rows.length ? aggregate.rows.map((row) => {
                             const matchRating = row.rating || '-';
+                            const ratingValue = Number(row.rating) || 0;
                             const impactScore = row.goals.length * 2 + row.assists.length + Number(row.minutes >= 60 ? 1 : 0);
                             const score = getMatchScoreData(row.match);
                             const resultLabel = score.caudalGoals > score.rivalGoals ? 'V' : score.caudalGoals < score.rivalGoals ? 'D' : 'E';
+                            const matchReviewedEvents = quick.events.filter((event) => event.partidoId === row.match.id);
+                            const preNote = row.match.prePlayerNotes?.[selectedPlayerProfile.name] || '';
                             const rowBadges = [
                               row.role === 'Titular' ? 'Titular' : 'Suplente',
                               impactScore >= 4 ? 'MVP' : null,
                               row.goals.length ? `Gol ${row.goals.length}` : null,
                               row.assists.length ? `Asist ${row.assists.length}` : null,
+                              row.match.captainPlayerId === selectedPlayerProfile.id ? 'Capitán' : null,
                             ].filter(Boolean);
                             return (
-                            <tr key={row.match.id} className={`cursor-pointer border-t border-white/10 transition hover:bg-white/[0.08] hover:shadow-[inset_3px_0_0_rgba(61,217,255,0.55)] ${impactScore >= 3 ? 'bg-emerald-200/[0.04]' : row.red || row.injured ? 'bg-red-200/[0.03]' : ''}`}>
+                            <React.Fragment key={row.match.id}>
+                            <tr onClick={() => setExpandedPlayerMatchId((current) => current === row.match.id ? null : row.match.id)} className={`cursor-pointer border-t border-white/10 transition hover:bg-white/[0.08] hover:shadow-[inset_3px_0_0_rgba(61,217,255,0.55)] ${ratingValue >= 7 || impactScore >= 3 ? 'bg-emerald-200/[0.04]' : ratingValue && ratingValue < 5 || row.red || row.injured ? 'bg-red-200/[0.03]' : ''}`}>
                               <td className="px-3 py-4 text-slate-300">{matchDisplayDate(row.match.date)}</td>
                               <td className="px-3 py-4">
                                 <span className={`rounded-xl px-2 py-1 text-xs font-black ${resultLabel === 'V' ? 'bg-emerald-200/15 text-emerald-100' : resultLabel === 'D' ? 'bg-red-200/15 text-red-100' : 'bg-amber-200/15 text-amber-100'}`}>
@@ -8821,7 +8905,7 @@ function App() {
                               <td className="px-3 py-4"><span className={`rounded-xl px-2 py-1 text-xs font-black ${row.role === 'Titular' ? 'bg-caudal-electric/15 text-caudal-electric' : 'bg-white/[0.06] text-slate-300'}`}>{row.role}</span></td>
                               <td className="px-3 py-4 font-black text-white">{row.minutes}'</td>
                               <td className="px-3 py-4">
-                                <span className={`rounded-xl px-2 py-1 text-xs font-black ${Number(matchRating) >= 7 ? 'bg-emerald-200/15 text-emerald-100' : Number(matchRating) ? 'bg-white/[0.06] text-slate-300' : 'text-slate-500'}`}>{matchRating}</span>
+                                <span className={`rounded-xl px-2 py-1 text-xs font-black ${ratingValue >= 7 ? 'bg-emerald-200/15 text-emerald-100' : ratingValue >= 5 ? 'bg-amber-200/15 text-amber-100' : ratingValue ? 'bg-red-200/15 text-red-100' : 'text-slate-500'}`}>{matchRating}</span>
                               </td>
                               <td className="px-3 py-4">
                                 <div className="flex flex-wrap gap-1.5">
@@ -8832,6 +8916,33 @@ function App() {
                               <td className="px-3 py-4 text-red-100">{row.red ? '1' : '-'}</td>
                               <td className="px-3 py-4 text-red-100">{row.injured ? 'Sí' : '-'}</td>
                             </tr>
+                            {expandedPlayerMatchId === row.match.id ? (
+                              <tr className="border-t border-white/5 bg-black/15">
+                                <td colSpan="12" className="px-3 py-4">
+                                  <div className="grid gap-3 lg:grid-cols-3">
+                                    <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Consigna PRE</p>
+                                      <p className="mt-2 text-sm leading-6 text-slate-300">{preNote || 'Sin consigna individual registrada.'}</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Eventos destacados</p>
+                                      <p className="mt-2 text-sm leading-6 text-slate-300">
+                                        {matchReviewedEvents.length
+                                          ? matchReviewedEvents.slice(0, 4).map((event) => `${event.minute}' ${quickEventLabelByType[event.tipoEvento] || event.tipoEvento}`).join(' · ')
+                                          : 'Sin eventos rápidos revisados vinculados.'}
+                                      </p>
+                                    </div>
+                                    <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Lectura competitiva</p>
+                                      <p className="mt-2 text-sm leading-6 text-slate-300">
+                                        {ratingValue >= 7 ? 'Buen rendimiento competitivo.' : ratingValue >= 5 ? 'Partido correcto con margen de mejora.' : ratingValue ? 'Partido a revisar.' : 'Añade nota individual para activar tendencia.'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            ) : null}
+                            </React.Fragment>
                           );
                           }) : <tr><td colSpan="12" className="px-3 py-6 text-center text-slate-500">Sin datos registrados</td></tr>}
                         </tbody>
