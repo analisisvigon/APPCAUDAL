@@ -5755,6 +5755,66 @@ function App() {
     return match.isHome ? `C.D. Caudal ${score.caudalGoals}-${score.rivalGoals} ${match.opponent}` : `${match.opponent} ${score.rivalGoals}-${score.caudalGoals} C.D. Caudal`;
   };
 
+  const getRivalCardProfile = (team) => {
+    const teamName = normalizePlayerIdentityName(cleanTeamDisplayName(team.name));
+    const relatedMatches = matches
+      .filter((match) => normalizePlayerIdentityName(match.opponent) === teamName)
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    const playedMatches = relatedMatches.filter((match) => match.status === 'Finalizado' || (match.statsGoalEvents || []).length || match.homeScore || match.awayScore);
+    const balance = playedMatches.reduce((acc, match) => {
+      const score = getMatchScoreData(match);
+      acc.goalsFor += score.caudalGoals;
+      acc.goalsAgainst += score.rivalGoals;
+      if (score.caudalGoals > score.rivalGoals) acc.wins += 1;
+      else if (score.caudalGoals < score.rivalGoals) acc.losses += 1;
+      else acc.draws += 1;
+      return acc;
+    }, { wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0 });
+    const latestMatch = relatedMatches[0] || null;
+    const daysAgo = latestMatch?.date
+      ? Math.max(0, Math.round((Date.now() - new Date(latestMatch.date).getTime()) / 86400000))
+      : null;
+    const hasSystem = Boolean(team.system);
+    const hasPlayers = dedupeRivalPlayers(team.squad || []).length > 0;
+    const hasSetPieces = relatedMatches.some((match) => match.preRivalCornersFor || match.preRivalCornersAgainst || match.preRivalWideFreeKicks || match.preRivalSetPieceTakers);
+    const hasReport = relatedMatches.some((match) => match.preRivalReportText || match.preRivalStyle || match.preRivalStrengths || match.preRivalWeaknesses);
+    const completedItems = [hasSystem, hasPlayers, hasSetPieces, hasReport].filter(Boolean).length;
+    const completion = completedItems >= 4 ? 'COMPLETO' : completedItems >= 2 ? 'PARCIAL' : 'SIN ANALIZAR';
+    const completionClass = completion === 'COMPLETO'
+      ? 'border-emerald-200/20 bg-emerald-200/10 text-emerald-100'
+      : completion === 'PARCIAL'
+        ? 'border-amber-200/20 bg-amber-200/10 text-amber-100'
+        : 'border-white/10 bg-white/[0.05] text-slate-300';
+    const scoutingSource = latestMatch || {};
+    const tacticalLines = [
+      team.system ? `Sistema: ${team.system}` : 'Sistema pendiente',
+      scoutingSource.preRivalDefensiveBlock ? `Bloque ${String(scoutingSource.preRivalDefensiveBlock).toLowerCase()}` : 'Bloque por definir',
+      scoutingSource.preRivalBuildUp ? `Salida ${String(scoutingSource.preRivalBuildUp).toLowerCase()}` : scoutingSource.preRivalStyle || 'Estilo pendiente',
+      scoutingSource.preRivalStrengths || (hasSetPieces ? 'Fuerte en ABP registrada' : ''),
+    ].filter(Boolean).slice(0, 3);
+    const recentResults = playedMatches.slice(0, 4).map((match) => {
+      const score = getMatchScoreData(match);
+      return score.caudalGoals > score.rivalGoals ? 'V' : score.caudalGoals < score.rivalGoals ? 'D' : 'E';
+    });
+    return {
+      relatedMatches,
+      playedMatches,
+      balance,
+      latestMatch,
+      lastAnalysisLabel: daysAgo === null ? 'Sin análisis reciente' : daysAgo === 0 ? 'Último análisis: hoy' : `Último análisis: hace ${daysAgo} días`,
+      completion,
+      completionClass,
+      checks: [
+        ['Sistema cargado', hasSystem],
+        ['Jugadores cargados', hasPlayers],
+        ['ABP registrada', hasSetPieces],
+        ['Informe rival preparado', hasReport],
+      ],
+      tacticalLines,
+      recentResults,
+    };
+  };
+
   const getGroupScopedMatches = () => {
     let scoped = matches
       .filter((match) => match.status === 'Finalizado' || (match.statsGoalEvents || []).length > 0)
@@ -9138,23 +9198,24 @@ function App() {
         ) : null}
 
         {activeTab === 'Equipos' ? (
-          <main className="space-y-6">
-            <section className="rounded-3xl border border-white/5 bg-white/5 p-6 shadow-glow backdrop-blur-md">
+          <main className="space-y-5">
+            <section className="rounded-[1.65rem] border border-white/10 bg-white/[0.045] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.16)] backdrop-blur-md">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Equipos</p>
-                  <h2 className="mt-2 text-2xl font-semibold text-white">Rivales de competición</h2>
+                  <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">Equipos / Rivales</p>
+                  <h2 className="mt-1.5 text-2xl font-black text-white">Scouting competitivo</h2>
+                  <p className="mt-1 text-sm text-slate-400">Perfiles reutilizables para PRE, partido y análisis rival.</p>
                 </div>
                 <div className="flex flex-wrap gap-3">
                   <button
                     onClick={handleSaveTeams}
-                    className="inline-flex items-center justify-center rounded-2xl bg-white/15 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/25"
+                    className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/10"
                   >
                     Guardar equipos
                   </button>
                   <button
                     onClick={() => openTeamForm(null)}
-                    className="inline-flex items-center justify-center rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]"
+                    className="inline-flex items-center justify-center rounded-2xl bg-caudal-electric/90 px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-caudal-electric"
                   >
                     Nuevo equipo
                   </button>
@@ -9432,49 +9493,84 @@ function App() {
                 </div>
               </section>
             ) : teams.length > 0 ? (
-              <div className="grid gap-4 lg:grid-cols-2">
-                {teams.map((team) => (
-                  <article
-                    key={team.id}
-                    onClick={() => setSelectedTeamId(team.id)}
-                    className="group relative min-h-72 cursor-pointer overflow-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-8 text-center shadow-glow transition hover:-translate-y-1 hover:border-caudal-electric/40"
-                  >
-                    <div className="mx-auto flex h-28 w-28 items-center justify-center rounded-full bg-white/10 p-2 ring-8 ring-white/5">
-                      <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl bg-white p-3 text-lg font-bold text-caudal-950">
-                        {team.crest ? (
-                          <img src={team.crest} alt={`Escudo de ${team.name}`} className="h-full w-full object-contain" />
-                        ) : (
-                          <span>{team.name.split(' ').map((part) => part[0]).join('').slice(0, 3)}</span>
-                        )}
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 min-[1700px]:grid-cols-4">
+                {teams.map((team) => {
+                  const profile = getRivalCardProfile(team);
+                  const accent = team.kitColor || '#4f8cff';
+                  return (
+                    <article
+                      key={team.id}
+                      onClick={() => setSelectedTeamId(team.id)}
+                      className="group relative cursor-pointer overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#091428]/82 p-4 shadow-[0_14px_40px_rgba(0,0,0,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c]"
+                    >
+                      <div className="pointer-events-none absolute inset-0 opacity-70" style={{ background: `radial-gradient(circle at 18% 10%, ${accent}24, transparent 30%), linear-gradient(135deg, rgba(255,255,255,0.045), transparent 46%)` }} />
+                      <div className="pointer-events-none absolute inset-x-4 bottom-0 h-px bg-caudal-electric/25" />
+                      <div className="relative flex gap-3">
+                        <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[1.25rem] border border-white/10 bg-white/[0.07] p-2 shadow-[0_12px_28px_rgba(0,0,0,0.20)]">
+                          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-white p-2 text-sm font-black text-caudal-950">
+                            {team.crest ? (
+                              <img src={team.crest} alt={`Escudo de ${team.name}`} className="h-full w-full object-contain" />
+                            ) : (
+                              <span>{team.name.split(' ').map((part) => part[0]).join('').slice(0, 3)}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <h3 className="truncate text-lg font-black uppercase text-white">{cleanTeamDisplayName(team.name)}</h3>
+                              <p className="mt-1 truncate text-xs font-bold uppercase tracking-[0.12em] text-slate-400">{team.stadium || 'Competición por definir'}</p>
+                            </div>
+                            <span className={`shrink-0 rounded-xl border px-2 py-1 text-[10px] font-black ${profile.completionClass}`}>
+                              {profile.completion}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-bold text-slate-300">
+                            <span className="rounded-xl border border-white/10 bg-white/[0.05] px-2 py-1">{profile.playedMatches.length} partidos analizados</span>
+                            <span className="rounded-xl border border-white/10 bg-white/[0.05] px-2 py-1">{profile.lastAnalysisLabel}</span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <h3 className="mt-7 truncate text-xl font-black uppercase text-white">{cleanTeamDisplayName(team.name)}</h3>
-                    <p className="mt-2 text-sm font-semibold uppercase tracking-[0.12em] text-slate-400">{team.stadium || 'Estadio sin definir'}</p>
-                    <p className="mt-3 text-sm font-bold uppercase tracking-[0.14em] text-caudal-electric">Sistema: {team.system}</p>
-                    <div className="absolute inset-x-0 bottom-0 h-2" style={{ backgroundColor: team.kitColor ?? '#ef233c' }} />
 
-                    <div className="mt-8 flex justify-center gap-3 opacity-0 transition group-hover:opacity-100">
-                      <button
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          openTeamForm(team);
-                        }}
-                        className="rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleTeamDelete(team);
-                        }}
-                        className="rounded-2xl bg-red-500/15 px-4 py-2 text-sm font-semibold text-red-200 transition hover:bg-red-500/25"
-                      >
-                        Eliminar
-                      </button>
-                    </div>
-                  </article>
-                ))}
+                      <div className="relative mt-3 grid gap-3 lg:grid-cols-[1fr_auto]">
+                        <div className="space-y-1.5">
+                          {profile.tacticalLines.map((line) => (
+                            <p key={line} className="truncate text-sm font-semibold text-slate-200">{line}</p>
+                          ))}
+                        </div>
+                        <div className="min-w-[110px] rounded-2xl border border-white/10 bg-black/15 px-3 py-2 text-right">
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">vs Caudal</p>
+                          <p className="mt-1 text-sm font-black text-white">{profile.balance.wins}V · {profile.balance.draws}E · {profile.balance.losses}D</p>
+                          <p className="mt-0.5 text-xs text-slate-400">{profile.balance.goalsFor}-{profile.balance.goalsAgainst} goles</p>
+                        </div>
+                      </div>
+
+                      <div className="relative mt-3 grid grid-cols-2 gap-1.5">
+                        {profile.checks.map(([label, ok]) => (
+                          <span key={label} className={`rounded-xl border px-2 py-1 text-[10px] font-bold ${ok ? 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100' : 'border-white/10 bg-white/[0.035] text-slate-500'}`}>
+                            {ok ? 'OK ' : ''}{label}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="relative mt-3 flex items-center justify-between gap-3">
+                        <div className="flex gap-1.5">
+                          {profile.recentResults.length ? profile.recentResults.map((result, index) => (
+                            <span key={`${result}-${index}`} className={`flex h-6 w-6 items-center justify-center rounded-lg text-[10px] font-black ${result === 'V' ? 'bg-emerald-200/85 text-slate-950' : result === 'D' ? 'bg-red-200/85 text-slate-950' : 'bg-amber-200/85 text-slate-950'}`}>
+                              {result}
+                            </span>
+                          )) : <span className="text-xs text-slate-500">Sin historial</span>}
+                        </div>
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          <button type="button" onClick={(event) => { event.stopPropagation(); setSelectedTeamId(team.id); }} className="rounded-xl border border-white/10 bg-white/[0.065] px-2.5 py-1.5 text-xs font-bold text-white transition hover:bg-white/[0.12]">Ver rival</button>
+                          <button type="button" onClick={(event) => { event.stopPropagation(); openTeamForm(team); }} className="rounded-xl border border-white/10 bg-white/[0.045] px-2.5 py-1.5 text-xs font-bold text-slate-200 transition hover:bg-white/10">Editar</button>
+                          <button type="button" onClick={(event) => { event.stopPropagation(); setActiveTab('Partidos'); }} className="rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-2.5 py-1.5 text-xs font-bold text-caudal-electric transition hover:bg-caudal-electric/15">Crear PRE</button>
+                          <button type="button" onClick={(event) => { event.stopPropagation(); setActiveTab('Partidos'); }} className="rounded-xl border border-white/10 bg-transparent px-2.5 py-1.5 text-xs font-bold text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-200">Ver partidos</button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             ) : (
               <section className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] px-6 py-8 text-sm text-slate-400">
