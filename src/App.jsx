@@ -2174,6 +2174,8 @@ function App() {
   const [empty, setEmpty] = useState(false);
   const [isSavingPlayer, setIsSavingPlayer] = useState(false);
   const [playerFormError, setPlayerFormError] = useState('');
+  const [playerSearchTerm, setPlayerSearchTerm] = useState('');
+  const [playerQuickFilter, setPlayerQuickFilter] = useState('Todos');
   const [teams, setTeams] = useState([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [teamsError, setTeamsError] = useState('');
@@ -6399,13 +6401,64 @@ function App() {
     }
   }, [isMatchPanelOpen, matchFormSection]);
 
+  const performancePlayerRows = useMemo(() => getPerformancePlayerRows(), [players, wellnessEntries, rpeEntries, performanceMatchStats]);
+  const performanceRowByPlayerId = useMemo(
+    () => new Map(performancePlayerRows.map((row) => [row.player.id, row])),
+    [performancePlayerRows]
+  );
+  const staffStatusByPlayerId = useMemo(() => {
+    const recentMatches = [...matches]
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+      .slice(0, 5);
+    const highLoadThreshold = Math.max(900, ...performancePlayerRows.map((row) => row.totalLoad).sort((a, b) => b - a).slice(0, 3), 0);
+    return new Map(players.map((player) => {
+      const recentStats = recentMatches.map((match) => match.statsPlayerData?.[player.name]).filter(Boolean);
+      const performanceRow = performanceRowByPlayerId.get(player.id);
+      const injured = recentStats.some((stats) => stats.injured);
+      const suspended = recentStats.some((stats) => stats.red);
+      const highLoad = Boolean(performanceRow?.totalLoad >= highLoadThreshold && performanceRow?.totalLoad > 0);
+      const touched = Boolean(performanceRow?.hasDiscomfort || performanceRow?.status === 'amarillo');
+      return [player.id, {
+        captain: matches.some((match) => match.captainPlayerId === player.id),
+        injured,
+        suspended,
+        sub23: playerLabel(player.dob) === 'Sub-23',
+        highLoad,
+        touched,
+        available: !injured && !suspended && !touched,
+      }];
+    }));
+  }, [matches, performancePlayerRows, performanceRowByPlayerId, players]);
+  const squadSummary = useMemo(() => {
+    const statuses = players.map((player) => staffStatusByPlayerId.get(player.id) || {});
+    return {
+      total: players.length,
+      available: statuses.filter((status) => status.available).length,
+      injured: statuses.filter((status) => status.injured).length,
+      suspended: statuses.filter((status) => status.suspended).length,
+    };
+  }, [players, staffStatusByPlayerId]);
+  const visiblePlayers = useMemo(() => {
+    const search = normalizePlayerIdentityName(playerSearchTerm);
+    return players.filter((player) => {
+      const status = staffStatusByPlayerId.get(player.id) || {};
+      const haystack = normalizePlayerIdentityName([player.name, player.shirtName, player.position, player.foot, displayDorsal(player.number)].filter(Boolean).join(' '));
+      const matchesSearch = !search || haystack.includes(search);
+      const matchesFilter =
+        playerQuickFilter === 'Todos' ||
+        (playerQuickFilter === 'Disponibles' && status.available) ||
+        (playerQuickFilter === 'Sub-23' && status.sub23) ||
+        (playerQuickFilter === 'Alertas' && (status.injured || status.suspended || status.highLoad || status.touched));
+      return matchesSearch && matchesFilter;
+    });
+  }, [playerQuickFilter, playerSearchTerm, players, staffStatusByPlayerId]);
   const groupedPlayers = useMemo(
     () =>
       squadGroups.map((group) => ({
         ...group,
-        players: players.filter((player) => group.positions.includes(player.position)),
+        players: visiblePlayers.filter((player) => group.positions.includes(player.position)),
       })),
-    [players]
+    [visiblePlayers]
   );
 
   const filteredMatches = useMemo(
@@ -8580,10 +8633,23 @@ function App() {
             })() : (
             <>
             <section className="rounded-[1.65rem] border border-white/10 bg-white/[0.045] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.18)] backdrop-blur-md">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div>
                   <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">Plantilla</p>
                   <h2 className="mt-1.5 text-2xl font-black text-white">Gestión de jugadores</h2>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-4 xl:min-w-[420px]">
+                  {[
+                    ['Total', squadSummary.total],
+                    ['Disponibles', squadSummary.available],
+                    ['Lesionados', squadSummary.injured],
+                    ['Sancionados', squadSummary.suspended],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-2xl border border-white/10 bg-black/15 px-3 py-2">
+                      <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
+                      <p className="mt-0.5 text-lg font-black text-white">{value}</p>
+                    </div>
+                  ))}
                 </div>
                 <button
                   onClick={() => openForm(null)}
@@ -8591,6 +8657,31 @@ function App() {
                 >
                   Nuevo jugador
                 </button>
+              </div>
+              <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-center">
+                <input
+                  type="search"
+                  value={playerSearchTerm}
+                  onChange={(event) => setPlayerSearchTerm(event.target.value)}
+                  placeholder="Buscar jugador, dorsal, demarcación..."
+                  className="min-h-[44px] w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-white outline-none transition placeholder:text-slate-500 hover:border-white/20 focus:border-caudal-electric/70 focus:bg-black/30"
+                />
+                <div className="flex flex-wrap gap-2">
+                  {['Todos', 'Disponibles', 'Sub-23', 'Alertas'].map((filter) => (
+                    <button
+                      key={filter}
+                      type="button"
+                      onClick={() => setPlayerQuickFilter(filter)}
+                      className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${
+                        playerQuickFilter === filter
+                          ? 'border-caudal-electric/40 bg-caudal-electric/90 text-slate-950'
+                          : 'border-white/10 bg-white/[0.045] text-slate-300 hover:bg-white/[0.075]'
+                      }`}
+                    >
+                      {filter}
+                    </button>
+                  ))}
+                </div>
               </div>
             </section>
 
@@ -8608,7 +8699,7 @@ function App() {
               </div>
             ) : (
             <div className="space-y-5">
-              {groupedPlayers.map((group) => (
+              {groupedPlayers.some((group) => group.players.length) ? groupedPlayers.filter((group) => group.players.length).map((group) => (
                 <section key={group.title} className="space-y-3">
                   <div className="flex items-end justify-between border-b border-white/10 pb-2.5">
                     <div>
@@ -8621,11 +8712,22 @@ function App() {
                   </div>
 
                   {group.players.length > 0 ? (
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                      {group.players.map((player) => (
-                        <article key={player.id} onClick={() => setSelectedPlayerProfileId(player.id)} className="group cursor-pointer rounded-[1.35rem] border border-white/10 bg-[#0a1425]/86 p-3.5 shadow-[0_12px_34px_rgba(0,0,0,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c]">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-slate-900 text-base font-black text-slate-200 shadow-[0_10px_24px_rgba(0,0,0,0.18)]">
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 min-[1800px]:grid-cols-5">
+                      {group.players.map((player) => {
+                        const staffStatus = staffStatusByPlayerId.get(player.id) || {};
+                        const indicators = [
+                          staffStatus.captain ? ['Capitán', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
+                          staffStatus.injured ? ['Lesionado', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
+                          staffStatus.suspended ? ['Sancionado', 'border-slate-200/20 bg-slate-200/10 text-slate-200'] : null,
+                          staffStatus.sub23 ? ['Sub-23', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
+                          staffStatus.highLoad ? ['Alta carga', 'border-orange-200/20 bg-orange-200/10 text-orange-100'] : null,
+                          staffStatus.touched ? ['Tocado', 'border-yellow-100/20 bg-yellow-100/10 text-yellow-100'] : null,
+                          staffStatus.available ? ['Disponible', 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100'] : null,
+                        ].filter(Boolean).slice(0, 3);
+                        return (
+                        <article key={player.id} onClick={() => setSelectedPlayerProfileId(player.id)} className="group cursor-pointer rounded-[1.35rem] border border-white/10 bg-[#0a1425]/86 p-4 shadow-[0_12px_34px_rgba(0,0,0,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/35 hover:bg-[#0d192c] hover:shadow-[0_16px_42px_rgba(0,0,0,0.22)] focus-within:border-caudal-electric/40">
+                  <div className="flex items-start gap-3.5">
+                    <div className="flex h-[60px] w-[60px] shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.16),rgba(255,255,255,0.055)_42%,rgba(212,0,0,0.12))] text-base font-black text-slate-100 shadow-[0_12px_28px_rgba(0,0,0,0.22)] transition duration-200 group-hover:scale-[1.02] group-hover:border-white/[0.18]">
                       {player.image ? (
                         <img src={player.image} alt={player.name} className="h-full w-full object-cover" />
                       ) : (
@@ -8633,17 +8735,21 @@ function App() {
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="mt-1 flex items-center gap-2">
                         <p className="rounded-xl border border-white/10 bg-white/[0.055] px-2 py-0.5 text-[10px] font-black text-slate-300">#{displayDorsal(player.number)}</p>
-                        {playerLabel(player.dob) === 'Sub-23' ? (
-                          <span className="rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-0.5 text-[10px] font-black uppercase text-caudal-electric">Sub-23</span>
-                        ) : null}
                       </div>
-                      <h3 className="mt-1.5 truncate text-base font-black text-white">{player.name}</h3>
-                      <p className="truncate text-xs font-semibold text-slate-400">{player.position || 'Sin demarcación'} · {player.foot || 'Sin pierna'}</p>
+                      <h3 className="mt-2 line-clamp-2 text-[15px] font-black leading-snug text-white">{player.name}</h3>
+                      <p className="mt-1 text-xs font-semibold leading-snug text-slate-300/90">{player.position || 'Sin demarcación'} · {player.foot || 'Sin pierna'}</p>
                     </div>
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-3 text-xs text-slate-400">
+                  <div className="mt-3.5 flex flex-wrap gap-1.5">
+                    {indicators.map(([label, className]) => (
+                      <span key={label} className={`rounded-xl border px-2 py-1 text-[10px] font-bold leading-none ${className}`}>
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-3.5 grid grid-cols-2 gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-3 text-xs text-slate-400">
                     <div>
                       <span className="block text-[10px] uppercase tracking-[0.14em] text-slate-500">Camiseta</span>
                       <strong className="mt-0.5 block truncate text-white">{player.shirtName || player.name}</strong>
@@ -8653,13 +8759,13 @@ function App() {
                       <strong className="mt-0.5 block text-white">{calculateAge(player.dob)} años</strong>
                     </div>
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <div className="mt-3.5 flex flex-wrap items-center gap-2">
                     <button
                       onClick={(event) => {
                         event.stopPropagation();
                         openForm(player);
                       }}
-                      className="rounded-xl border border-white/10 bg-white/[0.075] px-3 py-1.5 text-xs font-bold text-white transition hover:bg-white/15"
+                      className="rounded-xl border border-white/10 bg-white/[0.075] px-3 py-1.5 text-xs font-bold text-white transition hover:border-white/20 hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-caudal-electric/30"
                     >
                       Editar
                     </button>
@@ -8668,13 +8774,14 @@ function App() {
                         event.stopPropagation();
                         handleDelete(player);
                       }}
-                      className="rounded-xl border border-red-300/10 bg-transparent px-3 py-1.5 text-xs font-semibold text-red-200/65 transition hover:bg-red-500/10 hover:text-red-100"
+                      className="rounded-xl border border-red-300/10 bg-transparent px-3 py-1.5 text-xs font-semibold text-red-200/60 transition hover:bg-red-500/10 hover:text-red-100 focus:outline-none focus:ring-2 focus:ring-red-300/20"
                     >
                       Eliminar
                     </button>
                   </div>
                         </article>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="rounded-[1.35rem] border border-dashed border-white/10 bg-white/[0.03] px-5 py-5 text-sm text-slate-400">
@@ -8682,7 +8789,11 @@ function App() {
                     </div>
                   )}
                 </section>
-              ))}
+              )) : (
+                <div className="rounded-[1.35rem] border border-dashed border-white/10 bg-white/[0.03] px-5 py-5 text-sm text-slate-400">
+                  No hay jugadores que coincidan con la búsqueda o el filtro activo.
+                </div>
+              )}
             </div>
             )}
             </>
