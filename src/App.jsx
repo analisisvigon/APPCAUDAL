@@ -8367,24 +8367,82 @@ function App() {
                 .sort((a, b) => b.total - a.total);
               const topAssistant = assistantRows.length ? [...assistantRows].sort((a, b) => b[1] - a[1])[0] : null;
               const topAssociation = societyRows[0] || null;
-              const renderProfileEmptyState = (title, copy) => (
-                <div className="rounded-[1.35rem] border border-dashed border-white/10 bg-white/[0.035] p-5 text-sm text-slate-400">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] text-xs font-black text-slate-300">MV</div>
-                  <p className="mt-4 font-black text-white">{title}</p>
-                  <p className="mt-1 leading-6">{copy}</p>
-                </div>
-              );
+              const recentFormRows = aggregate.rows.slice(-5);
+              const formPoints = recentFormRows.reduce((sum, row) => sum + Number(row.minutes >= 60 ? 2 : row.minutes > 0 ? 1 : 0) + row.goals.length * 2 + row.assists.length, 0) + Math.min(4, quick.recent.length);
+              const formLabel = regularStarter
+                ? 'Titular consolidado'
+                : aggregate.directGoalParticipation >= 3
+                  ? 'Impacto ofensivo alto'
+                  : formPoints >= 8
+                    ? 'En crecimiento'
+                    : formPoints >= 4
+                      ? 'Regular'
+                      : aggregate.played ? 'Baja participación' : 'Sin muestra';
+              const playerSubtitle = regularStarter ? 'Titular habitual' : selectedStaffStatus.sub23 ? 'Juvenil' : aggregate.participation < 30 ? 'Poca participación' : 'Rotación';
+              const formDots = recentFormRows.length
+                ? recentFormRows.map((row) => {
+                  const impact = row.goals.length + row.assists.length;
+                  return impact ? 'bg-emerald-300' : row.minutes >= 60 ? 'bg-caudal-electric' : row.minutes > 0 ? 'bg-amber-200' : 'bg-white/20';
+                })
+                : ['bg-white/15', 'bg-white/15', 'bg-white/15', 'bg-white/15', 'bg-white/15'];
+              const renderProfileEmptyState = (title, copy, variant = 'compact') => {
+                if (variant === 'lines') {
+                  return (
+                    <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] p-4 text-sm text-slate-400">
+                      <p className="font-black text-white">{title}</p>
+                      <div className="mt-3 space-y-2">
+                        <span className="block h-1.5 w-3/4 rounded-full bg-white/10" />
+                        <span className="block h-1.5 w-1/2 rounded-full bg-white/10" />
+                      </div>
+                      <p className="mt-3 leading-5">{copy}</p>
+                    </div>
+                  );
+                }
+                if (variant === 'pitch') {
+                  return (
+                    <div className="grid gap-3 rounded-2xl border border-dashed border-white/10 bg-white/[0.025] p-4 text-sm text-slate-400 sm:grid-cols-[110px_1fr] sm:items-center">
+                      <div className="relative h-24 rounded-2xl border border-white/10 bg-[repeating-linear-gradient(90deg,#0b3d32_0,#0b3d32_33%,#0e473a_33%,#0e473a_66%)]">
+                        <div className="absolute inset-3 rounded-xl border border-white/20" />
+                        <div className="absolute left-1/2 top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/20" />
+                      </div>
+                      <div>
+                        <p className="font-black text-white">{title}</p>
+                        <p className="mt-1 leading-5">{copy}</p>
+                      </div>
+                    </div>
+                  );
+                }
+                if (variant === 'horizontal') {
+                  return (
+                    <div className="flex items-center gap-3 rounded-2xl border border-dashed border-white/10 bg-white/[0.025] p-4 text-sm text-slate-400">
+                      <div className="grid h-10 w-14 shrink-0 grid-cols-3 gap-1">
+                        {[1, 2, 3, 4, 5, 6].map((item) => <span key={item} className="rounded bg-white/10" />)}
+                      </div>
+                      <div>
+                        <p className="font-black text-white">{title}</p>
+                        <p className="mt-1 leading-5">{copy}</p>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] p-4 text-sm text-slate-400">
+                    <p className="font-black text-white">{title}</p>
+                    <p className="mt-1 leading-5">{copy}</p>
+                  </div>
+                );
+              };
               return (
                 <>
                   <AccordionSection title="Datos del jugador" subtitle="Ficha, dorsal, edad y resumen base" defaultOpen>
-                  <section className="rounded-[1.65rem] border border-white/10 bg-[#07111f] p-5 shadow-[0_18px_60px_rgba(0,0,0,0.22)] sm:p-6">
-                    <button onClick={() => setSelectedPlayerProfileId(null)} className="mb-5 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10">Volver a plantilla</button>
-                    <div className="grid gap-6 lg:grid-cols-[190px_1fr]">
-                      <div className="space-y-3">
-                        <div className="flex h-44 w-44 items-center justify-center overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.14),rgba(255,255,255,0.05),rgba(212,0,0,0.12))] text-4xl font-black text-white shadow-[0_18px_50px_rgba(0,0,0,0.30)]">
+                  <section className="rounded-[1.65rem] border border-white/10 bg-[#07111f] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.20)] sm:p-5">
+                    <button onClick={() => setSelectedPlayerProfileId(null)} className="mb-4 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10">Volver a plantilla</button>
+                    <div className="grid gap-5 lg:grid-cols-[210px_1fr]">
+                      <div className="space-y-2.5">
+                        <div className="flex h-48 w-48 items-center justify-center overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.14),rgba(255,255,255,0.05),rgba(212,0,0,0.12))] text-4xl font-black text-white shadow-[0_20px_48px_rgba(0,0,0,0.28)]">
                           {selectedPlayerProfile.image ? <img src={selectedPlayerProfile.image} alt={selectedPlayerProfile.name} className="h-full w-full object-cover" /> : selectedPlayerProfile.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
                         </div>
-                        <div className={`w-44 rounded-2xl border px-4 py-3 text-center text-xs font-black uppercase tracking-[0.12em] ${
+                        <div className={`w-48 rounded-2xl border px-4 py-2.5 text-center text-xs font-black uppercase tracking-[0.12em] ${
                           availability === 'Disponible'
                             ? 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100'
                             : availability === 'Duda'
@@ -8402,19 +8460,31 @@ function App() {
                           <span className="rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-xs font-bold text-slate-400">Pie {selectedPlayerProfile.foot || 'no indicado'}</span>
                           <span className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2 text-xs font-bold text-slate-500">Altura/peso pendiente</span>
                         </div>
-                        <h2 className="mt-4 text-4xl font-black uppercase tracking-tight text-white sm:text-5xl">{selectedPlayerProfile.name}</h2>
+                        <h2 className="mt-3 text-4xl font-black uppercase tracking-tight text-white sm:text-5xl">{selectedPlayerProfile.name}</h2>
+                        <p className="mt-1 text-sm font-bold uppercase tracking-[0.16em] text-slate-400">{playerSubtitle}</p>
                         {profileBadges.length ? (
-                          <div className="mt-4 flex flex-wrap gap-2">
+                          <div className="mt-3 flex flex-wrap gap-2">
                             {profileBadges.map(([label, className]) => (
-                              <span key={label} className={`rounded-2xl border px-3 py-2 text-xs font-bold ${className}`}>{label}</span>
+                              <span key={label} className={`rounded-2xl border px-3 py-1.5 text-xs font-bold ${className}`}>{label}</span>
                             ))}
                           </div>
                         ) : null}
-                        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                        <div className="mt-4 rounded-[1.35rem] border border-white/10 bg-white/[0.035] p-3">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Forma reciente</p>
+                              <p className="mt-1 text-lg font-black text-white">{formLabel}</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {formDots.map((dotClass, index) => <span key={`${dotClass}-${index}`} className={`h-4 w-4 rounded-full border border-white/10 ${dotClass}`} />)}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-4 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-5">
                           {profileMetrics.map((metric) => (
                             <div
                               key={metric.label}
-                              className={`group rounded-[1.35rem] border p-4 transition duration-200 hover:-translate-y-0.5 ${
+                              className={`group rounded-[1.25rem] border p-3.5 transition duration-200 hover:-translate-y-0.5 ${
                                 metric.priority === 'alta' ? 'border-white/[0.12] bg-white/[0.065] shadow-[0_12px_34px_rgba(0,0,0,0.16)]' : 'border-white/[0.08] bg-white/[0.035]'
                               } ${metric.kind === 'ofensiva' ? 'hover:border-emerald-200/25' : metric.kind === 'disciplina' ? 'hover:border-amber-200/20' : 'hover:border-caudal-electric/25'}`}
                             >
@@ -8422,7 +8492,7 @@ function App() {
                                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{metric.label}</p>
                                 <span className={`text-xs font-black ${metric.trend === '↑' ? 'text-emerald-200' : metric.trend === '↓' ? 'text-slate-500' : 'text-slate-400'}`}>{metric.trend}</span>
                               </div>
-                              <p className={`${metric.priority === 'alta' ? 'mt-2 text-3xl' : 'mt-2 text-2xl'} font-black text-white`}>{metric.value}</p>
+                              <p className={`${metric.priority === 'alta' ? 'mt-1.5 text-3xl' : 'mt-1.5 text-2xl'} font-black text-white`}>{metric.value}</p>
                             </div>
                           ))}
                         </div>
@@ -8432,27 +8502,27 @@ function App() {
                   </AccordionSection>
 
                   <AccordionSection title="Acciones" subtitle="Filtros de ficha y generación de reporte">
-                  <section className="flex flex-col gap-4 rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow lg:flex-row lg:items-center lg:justify-between">
+                  <section className="flex flex-col gap-3 border-b border-white/10 pb-4 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex flex-wrap gap-2">
                       {['Todos', 'Liga', 'Copa RFEF', 'Playoff', 'Amistoso'].map((filter) => (
-                        <button key={filter} onClick={() => setPlayerCompetitionFilter(filter)} className={`rounded-2xl px-4 py-2 text-xs font-black uppercase tracking-[0.14em] ${playerCompetitionFilter === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>{filter}</button>
+                        <button key={filter} onClick={() => setPlayerCompetitionFilter(filter)} className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${playerCompetitionFilter === filter ? 'border-caudal-electric/30 bg-caudal-electric/90 text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.07]'}`}>{filter}</button>
                       ))}
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {['Todos', 'Local', 'Visitante'].map((filter) => (
-                        <button key={filter} onClick={() => setPlayerVenueFilter(filter)} className={`rounded-2xl px-4 py-2 text-xs font-black uppercase tracking-[0.14em] ${playerVenueFilter === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>{filter}</button>
+                        <button key={filter} onClick={() => setPlayerVenueFilter(filter)} className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${playerVenueFilter === filter ? 'border-caudal-electric/30 bg-caudal-electric/90 text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.07]'}`}>{filter}</button>
                       ))}
-                      <button onClick={() => generatePlayerReport(selectedPlayerProfile, aggregate)} className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-white">Generar reporte</button>
+                      <button onClick={() => generatePlayerReport(selectedPlayerProfile, aggregate)} className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-white/10">Generar reporte</button>
                     </div>
                   </section>
                   </AccordionSection>
 
                   <AccordionSection title="Resumen competitivo" subtitle="Eventos rápidos revisados" defaultOpen>
-                  <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                  <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)] sm:p-5">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Resumen competitivo</h3>
-                        <p className="mt-2 text-sm text-slate-400">Solo eventos revisados en POST y vinculados a este jugador.</p>
+                        <p className="mt-1 text-sm text-slate-400">Solo eventos revisados en POST y vinculados a este jugador.</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {['Últimos 3 partidos', 'Últimos 5 partidos', 'Temporada completa'].map((filter) => (
@@ -8462,7 +8532,7 @@ function App() {
                     </div>
                     {quick.events.length ? (
                       <>
-                        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+                        <div className="mt-4 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
                           {[
                             ['Partidos con eventos', quick.matchesWithEvents],
                             ['Tiros', quick.shots],
@@ -8474,20 +8544,20 @@ function App() {
                             ['Faltas', quick.fouls],
                             ['Córners provocados', quick.corners],
                           ].map(([label, value]) => (
-                            <div key={label} className="rounded-3xl border border-white/5 bg-white/5 p-4">
+                            <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
                               <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{label}</p>
-                              <p className="mt-2 text-2xl font-black text-white">{value}</p>
+                              <p className="mt-1.5 text-2xl font-black text-white">{value}</p>
                             </div>
                           ))}
                         </div>
                         {quick.readings.length ? (
-                          <div className="mt-5 flex flex-wrap gap-2">
+                          <div className="mt-4 flex flex-wrap gap-2">
                             {quick.readings.map((reading) => (
                               <span key={reading} className="rounded-2xl bg-amber-300/15 px-3 py-2 text-xs font-bold text-amber-100">{reading}</span>
                             ))}
                           </div>
                         ) : null}
-                        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                           {quick.recent.slice(0, 4).map((event) => (
                             <div key={event.id} className="rounded-2xl bg-white/5 p-4 text-sm">
                               <p className="font-black text-white">{event.minute}' · {quickEventLabelByType[event.tipoEvento] || event.tipoEvento}</p>
@@ -8497,10 +8567,11 @@ function App() {
                         </div>
                       </>
                     ) : (
-                      <div className="mt-5">
+                      <div className="mt-4">
                         {renderProfileEmptyState(
                           'Todavía no hay suficientes eventos revisados.',
-                          'Revisa POST para alimentar el análisis individual y convertir esta ficha en una lectura útil para el cuerpo técnico.'
+                          'Revisa POST para alimentar el análisis individual y convertir esta ficha en una lectura útil para el cuerpo técnico.',
+                          'horizontal'
                         )}
                       </div>
                     )}
@@ -8508,8 +8579,8 @@ function App() {
                   </AccordionSection>
 
                   <AccordionSection title="Estadísticas" subtitle="Influencia táctica, finalización y sociedades">
-                  <section className="grid gap-5 xl:grid-cols-[1.18fr_0.82fr]">
-                    <div className="rounded-[1.65rem] border border-white/10 bg-[#091428]/84 p-5 shadow-[0_18px_55px_rgba(0,0,0,0.18)] sm:p-6">
+                  <section className="grid gap-4 xl:grid-cols-[1.18fr_0.82fr]">
+                    <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)] sm:p-5">
                       <div className="flex items-center justify-between gap-3">
                         <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Análisis de influencia táctica</h3>
                         <div className="flex flex-wrap gap-2">
@@ -8518,19 +8589,20 @@ function App() {
                           ))}
                         </div>
                       </div>
-                      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+                      <div className="mt-4 grid gap-4 lg:grid-cols-2">
                         {hasInfluenceData ? (
-                          <div className="rounded-[1.35rem] border border-white/10 bg-black/15 p-3">
+                          <div className="rounded-[1.25rem] bg-black/10 p-2.5">
                             {renderReadOnlyZoneGrid({ counts: shotZoneCounts })}
                           </div>
                         ) : renderProfileEmptyState(
                           'Sin zonas de influencia registradas.',
-                          'Cuando haya goles, asistencias o eventos rápidos revisados, aquí aparecerán las zonas activas del jugador.'
+                          'Cuando haya goles, asistencias o eventos rápidos revisados, aquí aparecerán las zonas activas del jugador.',
+                          'pitch'
                         )}
-                        <div className="space-y-5">
-                          <div className="rounded-[1.35rem] border border-caudal-electric/15 bg-[#0f1e38]/88 p-5 text-slate-100">
+                        <div className="space-y-4">
+                          <div className="rounded-[1.25rem] border border-caudal-electric/15 bg-[#0f1e38]/70 p-4 text-slate-100">
                             <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Análisis ofensivo</p>
-                            <div className="mt-4 grid gap-3">
+                            <div className="mt-3 grid gap-2.5">
                               {[
                                 ['Goles/90', aggregate.goalsPer90, 'text-emerald-300'],
                                 ['Asistencias/90', aggregate.assistsPer90, 'text-caudal-electric'],
@@ -8543,12 +8615,12 @@ function App() {
                               ))}
                             </div>
                           </div>
-                          <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.04] p-5">
+                          <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-4">
                             <div className="flex items-center justify-between gap-3">
                               <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Tipo de gol</p>
                               {dominantGoalPhase ? <span className="rounded-xl bg-white/[0.06] px-2 py-1 text-[10px] font-bold text-slate-300">Domina: {dominantGoalPhase.phase}</span> : null}
                             </div>
-                            {hasGoalPhaseData ? <div className="mt-4 space-y-3">
+                            {hasGoalPhaseData ? <div className="mt-3 space-y-2.5">
                               {playerGoalPhaseCounts.map((row) => (
                                 <div key={row.phase}>
                                   <div className="flex justify-between text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">
@@ -8560,24 +8632,24 @@ function App() {
                                   </div>
                                 </div>
                               ))}
-                            </div> : <p className="mt-4 rounded-2xl border border-dashed border-white/10 bg-white/[0.035] p-4 text-sm text-slate-400">Sin goles suficientes para detectar patrón dominante.</p>}
+                            </div> : <div className="mt-3">{renderProfileEmptyState('Sin patrón dominante.', 'No hay goles suficientes para perfilar el tipo de finalización.', 'lines')}</div>}
                           </div>
-                          <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.035] p-4">
+                          <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.025] p-4">
                             <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Diana de finalización</p>
                             {hasGoalZoneData ? (
                               <div className="mt-3 max-w-sm opacity-90">{renderReadOnlyZoneGrid({ counts: goalZoneCounts, zones: goalZoneOptions, goal: true })}</div>
                             ) : (
-                              <p className="mt-3 rounded-2xl border border-dashed border-white/10 bg-black/10 p-4 text-sm text-slate-400">Sin tiros registrados en diana.</p>
+                              <div className="mt-3">{renderProfileEmptyState('Sin tiros en diana.', 'La diana se activará al registrar zonas de finalización.', 'horizontal')}</div>
                             )}
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="space-y-5">
-                      <div className="rounded-[1.65rem] border border-white/10 bg-[#091428]/84 p-5 shadow-[0_18px_55px_rgba(0,0,0,0.16)]">
+                    <div className="space-y-4">
+                      <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
                         <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Sociedad ofensiva</h3>
-                        {societyRows.length ? <div className="mt-5 space-y-5 text-sm text-slate-300">
+                        {societyRows.length ? <div className="mt-4 space-y-4 text-sm text-slate-300">
                           <div className="grid gap-3 sm:grid-cols-2">
                             <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
                               <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Más asistencias recibidas</p>
@@ -8631,11 +8703,11 @@ function App() {
                               </div>
                             )) : <p className="mt-2 italic text-slate-500">Sin datos registrados</p>}
                           </div>
-                        </div> : <div className="mt-5">{renderProfileEmptyState('Sin sociedades ofensivas registradas.', 'Cuando haya goles y asistencias revisadas, se verán conexiones, participaciones compartidas y compañeros más asociados.')}</div>}
+                        </div> : <div className="mt-4">{renderProfileEmptyState('Sin sociedades ofensivas registradas.', 'Cuando haya goles y asistencias revisadas, se verán conexiones, participaciones compartidas y compañeros más asociados.', 'lines')}</div>}
                       </div>
-                      <div className="rounded-[1.65rem] border border-white/10 bg-[#091428]/84 p-5 shadow-[0_18px_55px_rgba(0,0,0,0.16)]">
+                      <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
                         <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Videoteca de acciones</h3>
-                        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
                           {videoActions.length ? videoActions.map((event) => (
                             <div key={`${event.id}-${event.action}`} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] text-sm text-slate-300">
                               <div className="flex aspect-video items-center justify-center bg-[linear-gradient(135deg,rgba(61,217,255,0.12),rgba(255,255,255,0.04))] text-xs font-black uppercase tracking-[0.18em] text-slate-400">Clip</div>
@@ -8645,7 +8717,7 @@ function App() {
                               <button type="button" onClick={() => window.open(event.videoUrl, '_blank')} className="mt-3 rounded-xl bg-caudal-electric/90 px-3 py-2 text-xs font-bold text-slate-950 transition hover:bg-caudal-electric">Ver análisis</button>
                               </div>
                             </div>
-                          )) : <div className="sm:col-span-2">{renderProfileEmptyState('Sin clips guardados.', 'Los clips recientes y acciones destacadas aparecerán aquí cuando el POST tenga vídeo asociado.')}</div>}
+                          )) : <div className="sm:col-span-2">{renderProfileEmptyState('Sin clips guardados.', 'Los clips recientes y acciones destacadas aparecerán aquí cuando el POST tenga vídeo asociado.', 'horizontal')}</div>}
                         </div>
                       </div>
                     </div>
@@ -8653,13 +8725,13 @@ function App() {
                   </AccordionSection>
 
                   <AccordionSection title="Historial" subtitle="Timeline e historial partido a partido">
-                  <section className="rounded-[1.65rem] border border-white/10 bg-[#091428]/84 p-5 shadow-[0_18px_55px_rgba(0,0,0,0.16)] sm:p-6">
+                  <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)] sm:p-5">
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Impacto en el tiempo (0' - 90')</h3>
                     {timelineActions.length ? (
-                      <div className="mt-6 overflow-x-auto pb-2">
-                        <div className="relative h-28 min-w-[720px] rounded-2xl border border-white/10 bg-white/[0.035]">
+                      <div className="mt-4 overflow-x-auto pb-2">
+                        <div className="relative h-24 min-w-[720px] rounded-2xl border border-white/10 bg-white/[0.03]">
                           <div className="absolute left-6 right-6 top-1/2 h-1 -translate-y-1/2 rounded bg-white/10" />
-                          {[0, 15, 30, 45, 60, 75, 90].map((minute) => <span key={minute} className="absolute top-4 text-[10px] font-bold text-slate-500" style={{ left: `${Math.max(2, minute / 90 * 96)}%` }}>{minute}'</span>)}
+                          {[0, 15, 30, 45, 60, 75, 90].map((minute) => <span key={minute} className="absolute top-3 text-[10px] font-bold text-slate-500" style={{ left: `${Math.max(2, minute / 90 * 96)}%` }}>{minute}'</span>)}
                           {timelineActions.map((event, index) => {
                             const eventTone = event.type === 'Gol' ? 'bg-emerald-200 text-slate-950' : event.type === 'Asistencia' ? 'bg-caudal-electric text-slate-950' : event.type.includes('roja') ? 'bg-red-200 text-slate-950' : event.type.includes('amarilla') ? 'bg-amber-200 text-slate-950' : 'bg-white text-slate-950';
                             return (
@@ -8672,7 +8744,7 @@ function App() {
                                     current?.actionKey === event.actionKey ? null : event
                                   )
                                 }
-                                className={`absolute top-12 -translate-x-1/2 rounded-full px-2.5 py-1 text-[10px] font-black shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition hover:scale-105 ${eventTone}`}
+                                className={`absolute top-10 -translate-x-1/2 rounded-full px-2.5 py-1 text-[10px] font-black shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition hover:scale-105 ${eventTone}`}
                                 style={{ left: `${Math.min(97, Math.max(3, Number(event.minute) / 90 * 96))}%` }}
                               >
                                 {event.type.slice(0, 3)}
@@ -8682,7 +8754,7 @@ function App() {
                         </div>
                       </div>
                     ) : (
-                      <div className="mt-5">{renderProfileEmptyState('Sin momentos de impacto registrados.', 'Goles, asistencias, tarjetas y eventos rápidos revisados construirán aquí una línea temporal útil.')}</div>
+                      <div className="mt-3">{renderProfileEmptyState('Sin momentos de impacto registrados.', 'Goles, asistencias, tarjetas y eventos rápidos revisados construirán aquí una línea temporal útil.', 'lines')}</div>
                     )}
                     {selectedTimelineAction ? (
                       <div className="mt-5 rounded-2xl border border-caudal-electric/30 bg-caudal-electric/10 p-4">
@@ -8706,20 +8778,36 @@ function App() {
                     ) : null}
                   </section>
 
-                  <section className="rounded-[1.65rem] border border-white/10 bg-[#091428]/84 p-5 shadow-[0_18px_55px_rgba(0,0,0,0.16)] sm:p-6">
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Historial partido a partido</h3>
-                    <div className="mt-5 overflow-x-auto">
-                      <table className="w-full min-w-[900px] text-left text-sm">
+                  <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/72 p-4 shadow-[0_16px_48px_rgba(0,0,0,0.18)] sm:p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Historial partido a partido</h3>
+                      <span className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-black text-slate-300">{aggregate.rows.length} registros</span>
+                    </div>
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="w-full min-w-[980px] text-left text-sm">
                         <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
-                          <tr>{['Fecha', 'Rival', 'L/V', 'Competición', 'Rol', 'Min', 'Nota', 'G', 'A', 'TA', 'TR', 'Les.'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}</tr>
+                          <tr>{['Fecha', 'Resultado', 'Rival', 'L/V', 'Competición', 'Rol', 'Min', 'Nota', 'Impacto', 'TA', 'TR', 'Les.'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}</tr>
                         </thead>
                         <tbody>
                           {aggregate.rows.length ? aggregate.rows.map((row) => {
                             const matchRating = row.rating || '-';
                             const impactScore = row.goals.length * 2 + row.assists.length + Number(row.minutes >= 60 ? 1 : 0);
+                            const score = getMatchScoreData(row.match);
+                            const resultLabel = score.caudalGoals > score.rivalGoals ? 'V' : score.caudalGoals < score.rivalGoals ? 'D' : 'E';
+                            const rowBadges = [
+                              row.role === 'Titular' ? 'Titular' : 'Suplente',
+                              impactScore >= 4 ? 'MVP' : null,
+                              row.goals.length ? `Gol ${row.goals.length}` : null,
+                              row.assists.length ? `Asist ${row.assists.length}` : null,
+                            ].filter(Boolean);
                             return (
-                            <tr key={row.match.id} className={`border-t border-white/10 transition hover:bg-white/[0.045] ${impactScore >= 3 ? 'bg-emerald-200/[0.035]' : row.red || row.injured ? 'bg-red-200/[0.025]' : ''}`}>
+                            <tr key={row.match.id} className={`cursor-pointer border-t border-white/10 transition hover:bg-white/[0.08] hover:shadow-[inset_3px_0_0_rgba(61,217,255,0.55)] ${impactScore >= 3 ? 'bg-emerald-200/[0.04]' : row.red || row.injured ? 'bg-red-200/[0.03]' : ''}`}>
                               <td className="px-3 py-4 text-slate-300">{matchDisplayDate(row.match.date)}</td>
+                              <td className="px-3 py-4">
+                                <span className={`rounded-xl px-2 py-1 text-xs font-black ${resultLabel === 'V' ? 'bg-emerald-200/15 text-emerald-100' : resultLabel === 'D' ? 'bg-red-200/15 text-red-100' : 'bg-amber-200/15 text-amber-100'}`}>
+                                  {resultLabel} · {score.caudalGoals}-{score.rivalGoals}
+                                </span>
+                              </td>
                               <td className="px-3 py-4">
                                 <div className="flex items-center gap-3">
                                   <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 text-[10px] font-black text-slate-950">
@@ -8732,9 +8820,14 @@ function App() {
                               <td className="px-3 py-4 text-slate-300">{row.match.type}</td>
                               <td className="px-3 py-4"><span className={`rounded-xl px-2 py-1 text-xs font-black ${row.role === 'Titular' ? 'bg-caudal-electric/15 text-caudal-electric' : 'bg-white/[0.06] text-slate-300'}`}>{row.role}</span></td>
                               <td className="px-3 py-4 font-black text-white">{row.minutes}'</td>
-                              <td className="px-3 py-4 text-slate-300">{matchRating}</td>
-                              <td className="px-3 py-4 text-white">{row.goals.length}</td>
-                              <td className="px-3 py-4 text-white">{row.assists.length}</td>
+                              <td className="px-3 py-4">
+                                <span className={`rounded-xl px-2 py-1 text-xs font-black ${Number(matchRating) >= 7 ? 'bg-emerald-200/15 text-emerald-100' : Number(matchRating) ? 'bg-white/[0.06] text-slate-300' : 'text-slate-500'}`}>{matchRating}</span>
+                              </td>
+                              <td className="px-3 py-4">
+                                <div className="flex flex-wrap gap-1.5">
+                                  {rowBadges.map((badge) => <span key={badge} className="rounded-xl border border-white/10 bg-white/[0.055] px-2 py-1 text-[10px] font-black text-slate-200">{badge}</span>)}
+                                </div>
+                              </td>
                               <td className="px-3 py-4 text-amber-100">{row.yellow || '-'}</td>
                               <td className="px-3 py-4 text-red-100">{row.red ? '1' : '-'}</td>
                               <td className="px-3 py-4 text-red-100">{row.injured ? 'Sí' : '-'}</td>
