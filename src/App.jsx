@@ -8229,7 +8229,7 @@ function App() {
         ) : null}
 
         {activeTab === 'Plantilla' ? (
-          <main className="space-y-6">
+          <main className="space-y-5">
             {selectedPlayerProfile ? (() => {
               if (playerProfileLoading) {
                 return (
@@ -8579,15 +8579,15 @@ function App() {
               );
             })() : (
             <>
-            <section className="rounded-3xl border border-white/5 bg-white/5 p-6 shadow-glow backdrop-blur-md">
+            <section className="rounded-[1.65rem] border border-white/10 bg-white/[0.045] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.18)] backdrop-blur-md">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Plantilla</p>
-                  <h2 className="mt-2 text-2xl font-semibold text-white">Gestión de jugadores</h2>
+                  <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">Plantilla</p>
+                  <h2 className="mt-1.5 text-2xl font-black text-white">Gestión de jugadores</h2>
                 </div>
                 <button
                   onClick={() => openForm(null)}
-                  className="inline-flex items-center justify-center rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]"
+                  className="inline-flex items-center justify-center rounded-2xl bg-caudal-electric/90 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-caudal-electric"
                 >
                   Nuevo jugador
                 </button>
@@ -8595,80 +8595,71 @@ function App() {
             </section>
 
             {loading ? (
-              <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] px-5 py-6 text-sm text-slate-400">
+              <div className="rounded-[1.35rem] border border-dashed border-white/10 bg-white/[0.03] px-5 py-5 text-sm text-slate-400">
                 Cargando jugadores...
               </div>
             ) : error ? (
-              <div className="rounded-3xl border border-red-500/20 bg-red-500/10 px-5 py-6 text-sm text-red-100">
+              <div className="rounded-[1.35rem] border border-red-500/20 bg-red-500/10 px-5 py-5 text-sm text-red-100">
                 {error}
               </div>
             ) : empty ? (
-              <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] px-5 py-6 text-sm text-slate-400">
+              <div className="rounded-[1.35rem] border border-dashed border-white/10 bg-white/[0.03] px-5 py-5 text-sm text-slate-400">
                 No hay jugadores aún
               </div>
             ) : (
-            <div className="space-y-6">
+            <div className="space-y-5">
               {groupedPlayers.map((group) => (
-                <section key={group.title} className="space-y-4">
-                  <div className="flex items-end justify-between border-b border-white/10 pb-3">
+                <section key={group.title} className="space-y-3">
+                  <div className="flex items-end justify-between border-b border-white/10 pb-2.5">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Demarcación</p>
-                      <h3 className="mt-1 text-xl font-semibold text-white">{group.title}</h3>
+                      <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Demarcación</p>
+                      <h3 className="mt-1 text-lg font-black text-white">{group.title}</h3>
                     </div>
-                    <span className="rounded-2xl bg-white/10 px-3 py-1 text-sm font-semibold text-slate-200">
+                    <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-1 text-xs font-black text-slate-300">
                       {group.players.length}
                     </span>
                   </div>
 
                   {group.players.length > 0 ? (
-                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                       {group.players.map((player) => (
-                        <article key={player.id} onClick={() => setSelectedPlayerProfileId(player.id)} className="group cursor-pointer rounded-3xl border border-white/5 bg-[#091428]/80 p-4 shadow-glow transition hover:-translate-y-1 hover:border-caudal-electric/40">
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-3xl bg-slate-800 text-lg font-bold text-slate-200">
+                        <article key={player.id} onClick={() => setSelectedPlayerProfileId(player.id)} className="group cursor-pointer rounded-[1.35rem] border border-white/10 bg-[#0a1425]/86 p-3.5 shadow-[0_12px_34px_rgba(0,0,0,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c]">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-slate-900 text-base font-black text-slate-200 shadow-[0_10px_24px_rgba(0,0,0,0.18)]">
                       {player.image ? (
                         <img src={player.image} alt={player.name} className="h-full w-full object-cover" />
                       ) : (
                         <span>{player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                       )}
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-xs uppercase tracking-[0.3em] text-slate-500">#{displayDorsal(player.number)}</p>
-                      <h3 className="truncate text-lg font-semibold text-white">{player.name}</h3>
-                      <p className="text-sm text-slate-400">{player.position}</p>
-                      <p className="mt-1 truncate text-xs font-bold uppercase tracking-[0.14em] text-caudal-electric">{player.shirtName || player.name}</p>
-                    </div>
-                  </div>
-                  <div className="mt-4 grid gap-3 rounded-3xl border border-white/5 bg-white/5 p-4 text-sm text-slate-300">
-                    <div className="flex items-center justify-between">
-                      <span>Dorsal</span>
-                              <strong className="text-white">{displayDorsal(player.number)}</strong>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>Pierna</span>
-                      <strong className="text-white">{player.foot}</strong>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span>Nombre camiseta</span>
-                      <strong className="truncate text-white">{player.shirtName || player.name}</strong>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>Edad</span>
-                      <strong className="text-white">{calculateAge(player.dob)} años</strong>
-                    </div>
-                    {playerLabel(player.dob) === 'Sub-23' ? (
-                      <div className="flex items-center justify-between rounded-2xl bg-[#10254d] px-3 py-2 text-xs uppercase tracking-[0.25em] text-caudal-electric">
-                        <span>Sub-23</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="rounded-xl border border-white/10 bg-white/[0.055] px-2 py-0.5 text-[10px] font-black text-slate-300">#{displayDorsal(player.number)}</p>
+                        {playerLabel(player.dob) === 'Sub-23' ? (
+                          <span className="rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-0.5 text-[10px] font-black uppercase text-caudal-electric">Sub-23</span>
+                        ) : null}
                       </div>
-                    ) : null}
+                      <h3 className="mt-1.5 truncate text-base font-black text-white">{player.name}</h3>
+                      <p className="truncate text-xs font-semibold text-slate-400">{player.position || 'Sin demarcación'} · {player.foot || 'Sin pierna'}</p>
+                    </div>
                   </div>
-                  <div className="mt-4 flex flex-wrap gap-3">
+                  <div className="mt-3 grid grid-cols-2 gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-3 text-xs text-slate-400">
+                    <div>
+                      <span className="block text-[10px] uppercase tracking-[0.14em] text-slate-500">Camiseta</span>
+                      <strong className="mt-0.5 block truncate text-white">{player.shirtName || player.name}</strong>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] uppercase tracking-[0.14em] text-slate-500">Edad</span>
+                      <strong className="mt-0.5 block text-white">{calculateAge(player.dob)} años</strong>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
                     <button
                       onClick={(event) => {
                         event.stopPropagation();
                         openForm(player);
                       }}
-                      className="rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25"
+                      className="rounded-xl border border-white/10 bg-white/[0.075] px-3 py-1.5 text-xs font-bold text-white transition hover:bg-white/15"
                     >
                       Editar
                     </button>
@@ -8677,7 +8668,7 @@ function App() {
                         event.stopPropagation();
                         handleDelete(player);
                       }}
-                      className="rounded-2xl bg-red-500/15 px-4 py-2 text-sm font-semibold text-red-200 transition hover:bg-red-500/25"
+                      className="rounded-xl border border-red-300/10 bg-transparent px-3 py-1.5 text-xs font-semibold text-red-200/65 transition hover:bg-red-500/10 hover:text-red-100"
                     >
                       Eliminar
                     </button>
@@ -8686,7 +8677,7 @@ function App() {
                       ))}
                     </div>
                   ) : (
-                    <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] px-5 py-6 text-sm text-slate-400">
+                    <div className="rounded-[1.35rem] border border-dashed border-white/10 bg-white/[0.03] px-5 py-5 text-sm text-slate-400">
                       No hay jugadores en este grupo.
                     </div>
                   )}
