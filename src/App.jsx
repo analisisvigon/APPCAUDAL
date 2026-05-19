@@ -9198,24 +9198,24 @@ function App() {
         ) : null}
 
         {activeTab === 'Equipos' ? (
-          <main className="space-y-5">
-            <section className="rounded-[1.65rem] border border-white/10 bg-white/[0.045] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.16)] backdrop-blur-md">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <main className="space-y-4">
+            <section className="rounded-[1.35rem] border border-white/10 bg-white/[0.04] px-4 py-3.5 shadow-[0_14px_40px_rgba(0,0,0,0.14)] backdrop-blur-md sm:px-5">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">Equipos / Rivales</p>
-                  <h2 className="mt-1.5 text-2xl font-black text-white">Scouting competitivo</h2>
-                  <p className="mt-1 text-sm text-slate-400">Perfiles reutilizables para PRE, partido y análisis rival.</p>
+                  <h2 className="mt-1 text-xl font-black text-white sm:text-2xl">Scouting competitivo</h2>
+                  <p className="mt-0.5 text-sm leading-5 text-slate-400">Perfiles reutilizables para PRE, partido y análisis rival.</p>
                 </div>
-                <div className="flex flex-wrap gap-3">
+                <div className="flex shrink-0 flex-wrap gap-2">
                   <button
                     onClick={handleSaveTeams}
-                    className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/10"
+                    className="inline-flex min-h-[40px] items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10"
                   >
                     Guardar equipos
                   </button>
                   <button
                     onClick={() => openTeamForm(null)}
-                    className="inline-flex items-center justify-center rounded-2xl bg-caudal-electric/90 px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-caudal-electric"
+                    className="inline-flex min-h-[40px] items-center justify-center rounded-2xl bg-caudal-electric/90 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-caudal-electric"
                   >
                     Nuevo equipo
                   </button>
@@ -9493,19 +9493,21 @@ function App() {
                 </div>
               </section>
             ) : teams.length > 0 ? (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 min-[1700px]:grid-cols-4">
+              <div className="grid auto-rows-fr gap-3 md:grid-cols-2 xl:grid-cols-3 min-[1700px]:grid-cols-4">
                 {teams.map((team) => {
                   const profile = getRivalCardProfile(team);
                   const accent = team.kitColor || '#4f8cff';
+                  const lastResult = profile.recentResults[0] || null;
                   return (
                     <article
                       key={team.id}
                       onClick={() => setSelectedTeamId(team.id)}
-                      className="group relative cursor-pointer overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#091428]/82 p-4 shadow-[0_14px_40px_rgba(0,0,0,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c]"
+                      className="group relative flex h-full min-h-[318px] cursor-pointer flex-col overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#091428]/82 p-4 shadow-[0_14px_40px_rgba(0,0,0,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c]"
                     >
                       <div className="pointer-events-none absolute inset-0 opacity-70" style={{ background: `radial-gradient(circle at 18% 10%, ${accent}24, transparent 30%), linear-gradient(135deg, rgba(255,255,255,0.045), transparent 46%)` }} />
+                      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:42px_42px] opacity-25" />
                       <div className="pointer-events-none absolute inset-x-4 bottom-0 h-px bg-caudal-electric/25" />
-                      <div className="relative flex gap-3">
+                      <div className="relative flex gap-3 border-b border-white/10 pb-3">
                         <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[1.25rem] border border-white/10 bg-white/[0.07] p-2 shadow-[0_12px_28px_rgba(0,0,0,0.20)]">
                           <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-white p-2 text-sm font-black text-caudal-950">
                             {team.crest ? (
@@ -9521,7 +9523,7 @@ function App() {
                               <h3 className="truncate text-lg font-black uppercase text-white">{cleanTeamDisplayName(team.name)}</h3>
                               <p className="mt-1 truncate text-xs font-bold uppercase tracking-[0.12em] text-slate-400">{team.stadium || 'Competición por definir'}</p>
                             </div>
-                            <span className={`shrink-0 rounded-xl border px-2 py-1 text-[10px] font-black ${profile.completionClass}`}>
+                            <span className={`shrink-0 rounded-lg border px-2 py-0.5 text-[9px] font-black tracking-[0.08em] ${profile.completionClass}`}>
                               {profile.completion}
                             </span>
                           </div>
@@ -9532,41 +9534,47 @@ function App() {
                         </div>
                       </div>
 
-                      <div className="relative mt-3 grid gap-3 lg:grid-cols-[1fr_auto]">
-                        <div className="space-y-1.5">
-                          {profile.tacticalLines.map((line) => (
-                            <p key={line} className="truncate text-sm font-semibold text-slate-200">{line}</p>
-                          ))}
-                        </div>
-                        <div className="min-w-[110px] rounded-2xl border border-white/10 bg-black/15 px-3 py-2 text-right">
-                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">vs Caudal</p>
-                          <p className="mt-1 text-sm font-black text-white">{profile.balance.wins}V · {profile.balance.draws}E · {profile.balance.losses}D</p>
-                          <p className="mt-0.5 text-xs text-slate-400">{profile.balance.goalsFor}-{profile.balance.goalsAgainst} goles</p>
-                        </div>
+                      <div className="relative mt-3 space-y-2">
+                        {profile.tacticalLines.map((line, index) => {
+                          const [label, value = ''] = line.includes(':') ? line.split(/:\s*/) : [index === 0 ? 'Sistema' : index === 1 ? 'Bloque' : 'Salida', line];
+                          const icon = index === 0 ? 'SYS' : index === 1 ? 'ALT' : 'SAL';
+                          return (
+                            <div key={line} className="flex items-center gap-2 text-sm">
+                              <span className="w-8 shrink-0 rounded-lg border border-white/10 bg-white/[0.04] px-1.5 py-1 text-center text-[9px] font-black text-slate-500">{icon}</span>
+                              <span className="shrink-0 text-xs font-black uppercase tracking-[0.12em] text-slate-500">{label}</span>
+                              <span className="min-w-0 truncate font-semibold text-slate-200">{value}</span>
+                            </div>
+                          );
+                        })}
                       </div>
 
-                      <div className="relative mt-3 grid grid-cols-2 gap-1.5">
+                      <div className="relative mt-3 grid grid-cols-4 gap-1.5 border-y border-white/10 py-2">
                         {profile.checks.map(([label, ok]) => (
-                          <span key={label} className={`rounded-xl border px-2 py-1 text-[10px] font-bold ${ok ? 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100' : 'border-white/10 bg-white/[0.035] text-slate-500'}`}>
-                            {ok ? 'OK ' : ''}{label}
+                          <span key={label} className="text-center text-[10px] font-bold text-slate-400">
+                            <span className={`block text-xs font-black ${ok ? 'text-emerald-100' : 'text-slate-600'}`}>{ok ? 'OK' : '--'}</span>
+                            <span className="mt-0.5 block truncate">{label.replace(' cargado', '').replace(' registrada', '').replace(' preparado', '')}</span>
                           </span>
                         ))}
                       </div>
 
-                      <div className="relative mt-3 flex items-center justify-between gap-3">
-                        <div className="flex gap-1.5">
-                          {profile.recentResults.length ? profile.recentResults.map((result, index) => (
-                            <span key={`${result}-${index}`} className={`flex h-6 w-6 items-center justify-center rounded-lg text-[10px] font-black ${result === 'V' ? 'bg-emerald-200/85 text-slate-950' : result === 'D' ? 'bg-red-200/85 text-slate-950' : 'bg-amber-200/85 text-slate-950'}`}>
-                              {result}
-                            </span>
-                          )) : <span className="text-xs text-slate-500">Sin historial</span>}
+                      <div className="relative mt-3 rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.055] px-3 py-2.5 shadow-[inset_0_0_24px_rgba(61,217,255,0.045)]">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-caudal-electric/80">vs Caudal</p>
+                            <p className="mt-1 text-lg font-black text-white">{profile.balance.wins}V · {profile.balance.draws}E · {profile.balance.losses}D</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs font-bold text-slate-300">{profile.balance.goalsFor}-{profile.balance.goalsAgainst} goles</p>
+                            <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">{lastResult ? `Último: ${lastResult}` : 'Sin historial'}</p>
+                          </div>
                         </div>
-                        <div className="flex flex-wrap justify-end gap-1.5">
-                          <button type="button" onClick={(event) => { event.stopPropagation(); setSelectedTeamId(team.id); }} className="rounded-xl border border-white/10 bg-white/[0.065] px-2.5 py-1.5 text-xs font-bold text-white transition hover:bg-white/[0.12]">Ver rival</button>
-                          <button type="button" onClick={(event) => { event.stopPropagation(); openTeamForm(team); }} className="rounded-xl border border-white/10 bg-white/[0.045] px-2.5 py-1.5 text-xs font-bold text-slate-200 transition hover:bg-white/10">Editar</button>
-                          <button type="button" onClick={(event) => { event.stopPropagation(); setActiveTab('Partidos'); }} className="rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-2.5 py-1.5 text-xs font-bold text-caudal-electric transition hover:bg-caudal-electric/15">Crear PRE</button>
-                          <button type="button" onClick={(event) => { event.stopPropagation(); setActiveTab('Partidos'); }} className="rounded-xl border border-white/10 bg-transparent px-2.5 py-1.5 text-xs font-bold text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-200">Ver partidos</button>
-                        </div>
+                      </div>
+
+                      <div className="relative mt-auto grid grid-cols-2 gap-1.5 pt-3 sm:grid-cols-4">
+                        <button type="button" onClick={(event) => { event.stopPropagation(); setSelectedTeamId(team.id); }} className="min-h-[34px] rounded-xl border border-white/10 bg-white/[0.065] px-2 py-1.5 text-xs font-bold text-white transition hover:bg-white/[0.12]">Ver rival</button>
+                        <button type="button" onClick={(event) => { event.stopPropagation(); openTeamForm(team); }} className="min-h-[34px] rounded-xl border border-white/10 bg-white/[0.045] px-2 py-1.5 text-xs font-bold text-slate-200 transition hover:bg-white/10">Editar</button>
+                        <button type="button" onClick={(event) => { event.stopPropagation(); setActiveTab('Partidos'); }} className="min-h-[34px] rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1.5 text-xs font-bold text-caudal-electric transition hover:bg-caudal-electric/15">Crear PRE</button>
+                        <button type="button" onClick={(event) => { event.stopPropagation(); setActiveTab('Partidos'); }} className="min-h-[34px] rounded-xl border border-white/10 bg-transparent px-2 py-1.5 text-xs font-bold text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-200">Partidos</button>
                       </div>
                     </article>
                   );
