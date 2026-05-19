@@ -12402,247 +12402,189 @@ function App() {
         </div>
       ) : null}
 
-      {isTeamPanelOpen ? (
+      {isTeamPanelOpen ? (() => {
+        const formSquad = dedupeRivalPlayers(teamFormState.squad.map(normalizeSquadEntry));
+        const starterCount = formSquad.filter((player) => player.role === 'Titular').length;
+        const reserveCount = formSquad.filter((player) => player.role !== 'Titular').length;
+        const keyCount = formSquad.filter((player) => player.isKey).length;
+        const alertCount = formSquad.filter((player) => player.yellowRisk || player.suspended || player.injured).length;
+        const currentTeamForForm = teams.find((team) => team.id === editingTeamId) || null;
+        const formTeamName = cleanTeamDisplayName(teamFormState.name || currentTeamForForm?.name || 'Rival sin nombre');
+        const relatedMatches = matches.filter((match) => normalizePlayerIdentityName(match.opponent) === normalizePlayerIdentityName(formTeamName));
+        const hasIdentity = Boolean(teamFormState.name && teamFormState.crest);
+        const hasSquad = formSquad.length > 0;
+        const hasSystem = Boolean(teamFormState.system);
+        const hasHistory = relatedMatches.length > 0;
+        const formCompletionCount = [hasIdentity, hasSquad, hasSystem, hasHistory].filter(Boolean).length;
+        const formCompletion = formCompletionCount >= 4 ? 'COMPLETO' : formCompletionCount >= 2 ? 'PARCIAL' : 'SIN ANALIZAR';
+        const formCompletionClass = formCompletion === 'COMPLETO'
+          ? 'border-emerald-200/20 bg-emerald-200/10 text-emerald-100'
+          : formCompletion === 'PARCIAL'
+            ? 'border-amber-200/20 bg-amber-200/10 text-amber-100'
+            : 'border-white/10 bg-white/[0.05] text-slate-300';
+        return (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black/50 px-4 py-6 backdrop-blur-sm sm:px-6">
-          <div className="mx-auto flex h-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-caudal-950 shadow-glow">
-            <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
+          <div className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-caudal-950 shadow-[0_24px_90px_rgba(0,0,0,0.45)]">
+            <div className="flex items-center justify-between border-b border-white/10 px-5 py-4 sm:px-6">
               <div>
-                <p className="text-sm uppercase tracking-[0.3em] text-slate-400">{editingTeamId ? 'Editar equipo' : 'Nuevo equipo'}</p>
-                <h3 className="mt-2 text-xl font-semibold text-white">Ficha del rival</h3>
+                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">{editingTeamId ? 'Editar rival' : 'Nuevo rival'}</p>
+                <h3 className="mt-1 text-xl font-black text-white">Ficha profesional de scouting</h3>
               </div>
               <button onClick={closeTeamForm} className="rounded-full bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/10">
                 Cerrar
               </button>
             </div>
 
-            <form onSubmit={handleTeamSubmit} noValidate className="min-h-0 space-y-5 overflow-y-auto px-6 py-6 sm:px-8">
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <label className="space-y-2 text-sm text-slate-300">
-                  <span>Enlace del equipo</span>
-                  <input
-                    name="sourceUrl"
-                    value={teamFormState.sourceUrl}
-                    onChange={handleTeamChange}
-                    className="w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white shadow-inner placeholder:text-slate-500"
-                    placeholder="Opcional: https://es.besoccer.com/equipo/plantilla/..."
-                  />
-                </label>
-                <label className="space-y-2 text-sm text-slate-300">
-                  <span>Nombre del equipo</span>
-                  <input
-                    name="name"
-                    value={teamFormState.name}
-                    onChange={handleTeamChange}
-                    className="w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white shadow-inner placeholder:text-slate-500"
-                    placeholder="Se rellena al importar"
-                  />
-                </label>
-                <label className="space-y-2 text-sm text-slate-300">
-                  <span>URL escudo</span>
-                  <input
-                    name="crest"
-                    value={teamFormState.crest}
-                    onChange={handleTeamChange}
-                    className="w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white shadow-inner placeholder:text-slate-500"
-                    placeholder="Se rellena al importar"
-                  />
-                </label>
-                <div className="space-y-2 text-sm text-slate-300">
-                  <span>Subir imagen</span>
-                  <input
-                    ref={teamCrestInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleTeamCrestFileChange}
-                    disabled={isUploadingTeamCrest}
-                    className="hidden"
-                  />
-                  <div className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/[0.03] p-3">
-                    <button
-                      type="button"
-                      onClick={() => teamCrestInputRef.current?.click()}
-                      disabled={isUploadingTeamCrest}
-                      className="inline-flex w-fit items-center justify-center rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isUploadingTeamCrest ? 'Subiendo...' : 'Subir imagen'}
-                    </button>
-                    {teamFormState.crest ? (
-                      <div className="flex items-center gap-3">
-                        <div className="h-12 w-12 overflow-hidden rounded-2xl bg-white/10 p-1">
-                          <img src={teamFormState.crest} alt="" className="h-full w-full object-contain" />
-                        </div>
-                        <span className="text-xs text-slate-400">Preview actualizada</span>
-                      </div>
-                    ) : null}
+            <form onSubmit={handleTeamSubmit} noValidate className="min-h-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
+              <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/74 p-4 shadow-[0_16px_50px_rgba(0,0,0,0.18)]">
+                <div className="grid gap-4 lg:grid-cols-[180px_1fr_auto] lg:items-center">
+                  <div className="flex h-36 w-36 items-center justify-center rounded-[1.5rem] border border-white/10 bg-white/[0.07] p-3 shadow-[0_16px_40px_rgba(0,0,0,0.22)]">
+                    <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl bg-white p-3 text-lg font-black text-caudal-950">
+                      {teamFormState.crest ? <img src={teamFormState.crest} alt="" className="h-full w-full object-contain" /> : formTeamName.split(' ').map((part) => part[0]).join('').slice(0, 3)}
+                    </div>
                   </div>
-                  {isUploadingTeamCrest ? <span className="text-xs text-caudal-electric">Subiendo escudo...</span> : null}
-                </div>
-                <label className="space-y-2 text-sm text-slate-300">
-                  <span>Estadio</span>
-                  <input
-                    name="stadium"
-                    value={teamFormState.stadium}
-                    onChange={handleTeamChange}
-                    className="w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white shadow-inner placeholder:text-slate-500"
-                    placeholder="Ej. El Bayu"
-                  />
-                </label>
-                <label className="space-y-2 text-sm text-slate-300">
-                  <span>Color camiseta</span>
-                  <input
-                    name="kitColor"
-                    type="color"
-                    value={teamFormState.kitColor}
-                    onChange={handleTeamChange}
-                    className="h-[46px] w-full rounded-3xl border border-white/10 bg-white/5 px-3 py-2 shadow-inner"
-                  />
-                </label>
-                <label className="space-y-2 text-sm text-slate-300">
-                  <span>Sistema habitual</span>
-                  <select
-                    required
-                    name="system"
-                    value={teamFormState.system}
-                    onChange={handleTeamChange}
-                    className="w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white shadow-inner"
-                  >
-                    {gameSystems.map((system) => (
-                      <option key={system} value={system}>
-                        {system}
-                      </option>
+                  <div className="min-w-0">
+                    <span className={`inline-flex rounded-lg border px-2 py-1 text-[10px] font-black tracking-[0.08em] ${formCompletionClass}`}>{formCompletion}</span>
+                    <h2 className="mt-3 truncate text-3xl font-black uppercase text-white">{formTeamName}</h2>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-300">
+                      <span className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-1.5">{teamFormState.stadium || 'Estadio pendiente'}</span>
+                      <span className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-1.5">Sistema {teamFormState.system || 'pendiente'}</span>
+                      <span className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-1.5">{relatedMatches.length} partidos registrados</span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4 lg:grid-cols-2">
+                    {[
+                      ['Jugadores', formSquad.length],
+                      ['Titulares', starterCount],
+                      ['Reservas', reserveCount],
+                      ['Alertas', alertCount],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2">
+                        <p className="text-lg font-black text-white">{value}</p>
+                        <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+                      </div>
                     ))}
-                  </select>
-                </label>
-              </div>
+                  </div>
+                </div>
+              </section>
 
-              <div className="flex flex-col gap-2 rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-slate-400">
-                  El importador intenta rellenar nombre, escudo, estadio, color, jugadores y fotos desde el enlace.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleImportSquad}
-                  className="inline-flex items-center justify-center rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25"
-                >
-                  Importar datos
-                </button>
-              </div>
-              {importStatus ? <p className="text-sm text-caudal-electric">{importStatus}</p> : null}
+              <section className="grid gap-4 lg:grid-cols-[1fr_0.72fr]">
+                <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.025] p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Identidad del rival</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    {[
+                      ['sourceUrl', 'Enlace del equipo', 'Opcional: https://...'],
+                      ['name', 'Nombre del equipo', 'Se rellena al importar'],
+                      ['crest', 'URL escudo', 'Se rellena al importar'],
+                      ['stadium', 'Estadio', 'Ej. El Bayu'],
+                    ].map(([name, label, placeholder]) => (
+                      <label key={name} className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                        <span>{label}</span>
+                        <input name={name} value={teamFormState[name]} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder={placeholder} />
+                      </label>
+                    ))}
+                    <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                      <span>Color camiseta</span>
+                      <input name="kitColor" type="color" value={teamFormState.kitColor} onChange={handleTeamChange} className="h-[40px] w-full rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 shadow-inner" />
+                    </label>
+                    <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                      <span>Sistema habitual</span>
+                      <select required name="system" value={teamFormState.system} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-sm normal-case tracking-normal text-white shadow-inner">
+                        {gameSystems.map((system) => <option key={system} value={system}>{system}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                </div>
 
-              <section className="space-y-3">
+                <div className="space-y-4">
+                  <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.025] p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Importador</p>
+                    <p className="mt-2 text-sm leading-5 text-slate-400">Rellena identidad, escudo, estadio, color, jugadores y fotos desde el enlace.</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <button type="button" onClick={handleImportSquad} className="inline-flex min-h-[38px] items-center justify-center rounded-2xl bg-caudal-electric/90 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-caudal-electric">
+                        Importar datos
+                      </button>
+                      <input ref={teamCrestInputRef} type="file" accept="image/*" onChange={handleTeamCrestFileChange} disabled={isUploadingTeamCrest} className="hidden" />
+                      <button type="button" onClick={() => teamCrestInputRef.current?.click()} disabled={isUploadingTeamCrest} className="inline-flex min-h-[38px] items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60">
+                        {isUploadingTeamCrest ? 'Subiendo...' : 'Subir escudo'}
+                      </button>
+                    </div>
+                    {importStatus ? <p className="mt-2 text-sm text-caudal-electric">{importStatus}</p> : null}
+                    {isUploadingTeamCrest ? <p className="mt-2 text-xs text-caudal-electric">Subiendo escudo...</p> : null}
+                  </div>
+                  <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.025] p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Scouting / estado</p>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      {[
+                        ['Identidad', hasIdentity],
+                        ['Plantilla', hasSquad],
+                        ['Sistema', hasSystem],
+                        ['Historial', hasHistory],
+                      ].map(([label, ok]) => (
+                        <span key={label} className={`rounded-xl border px-2 py-1.5 text-xs font-bold ${ok ? 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100' : 'border-white/10 bg-white/[0.035] text-slate-500'}`}>{ok ? 'OK ' : '-- '}{label}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="space-y-3 rounded-[1.35rem] border border-white/10 bg-[#091428]/62 p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm font-semibold text-slate-200">Plantilla</p>
-                  <button
-                    type="button"
-                    onClick={handleAddTeamPlayer}
-                    className="inline-flex w-fit items-center justify-center rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25"
-                  >
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Plantilla rival</p>
+                    <p className="mt-1 text-sm text-slate-400">{formSquad.length} jugadores cargados · {keyCount} destacados</p>
+                  </div>
+                  <button type="button" onClick={handleAddTeamPlayer} className="inline-flex w-fit items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10">
                     Añadir jugador
                   </button>
                 </div>
 
-                <div className="space-y-3">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {teamFormState.squad.length > 0 ? (
                     teamFormState.squad.map((entry, index) => {
                       const player = normalizeSquadEntry(entry);
                       return (
-                        <div key={`${player.id}-${index}`} className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-                          <div className="grid gap-3">
-                            <div className="grid gap-3 md:grid-cols-[1fr_1fr_0.45fr]">
-                              <input
-                                value={player.name}
-                                onChange={(event) => handleTeamPlayerChange(index, 'name', event.target.value)}
-                                className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white shadow-inner placeholder:text-slate-500"
-                                placeholder="Nombre"
-                              />
-                              <input
-                                value={player.image}
-                                onChange={(event) => handleTeamPlayerChange(index, 'image', event.target.value)}
-                                className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white shadow-inner placeholder:text-slate-500"
-                                placeholder="URL foto"
-                              />
-                              <input
-                                value={player.number}
-                                onChange={(event) => handleTeamPlayerChange(index, 'number', event.target.value)}
-                                className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white shadow-inner placeholder:text-slate-500"
-                                placeholder="Dorsal"
-                              />
+                        <article key={`${player.id}-${index}`} className={`rounded-[1.25rem] border p-3 transition ${player.role === 'Titular' ? 'border-caudal-electric/25 bg-caudal-electric/[0.055]' : 'border-white/10 bg-white/[0.03]'} ${player.isKey ? 'shadow-[inset_0_0_0_1px_rgba(251,191,36,0.18)]' : ''}`}>
+                          <div className="flex gap-3">
+                            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06] text-sm font-black text-slate-200">
+                              {player.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
                             </div>
-                            <div className="grid gap-3 md:grid-cols-[1fr_0.45fr_0.7fr_auto]">
-                              <select
-                                value={player.position}
-                                onChange={(event) => handleTeamPlayerChange(index, 'position', event.target.value)}
-                                className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white shadow-inner"
-                              >
+                            <div className="min-w-0 flex-1 space-y-2">
+                              <input value={player.name} onChange={(event) => handleTeamPlayerChange(index, 'name', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-3 py-2 text-sm font-bold text-white shadow-inner placeholder:text-slate-500" placeholder="Nombre" />
+                              <div className="grid grid-cols-[1fr_70px] gap-2">
+                                <select value={player.position} onChange={(event) => handleTeamPlayerChange(index, 'position', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner">
                                 <option value="">Posición</option>
-                                {positions.map((position) => (
-                                  <option key={position} value={position}>
-                                    {position}
-                                  </option>
-                                ))}
-                              </select>
-                              <input
-                                value={player.age}
-                                onChange={(event) => handleTeamPlayerChange(index, 'age', event.target.value)}
-                                className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white shadow-inner placeholder:text-slate-500"
-                                placeholder="Edad"
-                              />
-                              <select
-                                value={player.role}
-                                onChange={(event) => handleTeamPlayerChange(index, 'role', event.target.value)}
-                                className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white shadow-inner"
-                              >
-                                <option value="Titular">Titular</option>
-                                <option value="Reserva">Reserva</option>
-                              </select>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveTeamPlayer(index)}
-                                className="rounded-2xl bg-red-500/15 px-3 py-2 text-sm font-semibold text-red-200 transition hover:bg-red-500/25"
-                              >
-                                Quitar
-                              </button>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <label className="inline-flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2 text-sm text-slate-200">
-                              <input
-                                type="checkbox"
-                                checked={player.isKey}
-                                onChange={(event) => handleTeamPlayerChange(index, 'isKey', event.target.checked)}
-                                className="h-4 w-4 accent-[#4f8cff]"
-                              />
-                              Destacado
-                              </label>
-                              <label className="inline-flex items-center gap-2 rounded-2xl bg-yellow-300/10 px-3 py-2 text-sm text-yellow-100">
-                              <input
-                                type="checkbox"
-                                checked={player.yellowRisk}
-                                onChange={(event) => handleTeamPlayerChange(index, 'yellowRisk', event.target.checked)}
-                                className="h-4 w-4 accent-yellow-300"
-                              />
-                              Amarilla
-                              </label>
-                              <label className="inline-flex items-center gap-2 rounded-2xl bg-red-500/10 px-3 py-2 text-sm text-red-100">
-                              <input
-                                type="checkbox"
-                                checked={player.suspended}
-                                onChange={(event) => handleTeamPlayerChange(index, 'suspended', event.target.checked)}
-                                className="h-4 w-4 accent-red-500"
-                              />
-                              Roja
-                              </label>
-                              <label className="inline-flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2 text-sm text-slate-100">
-                              <input
-                                type="checkbox"
-                                checked={player.injured}
-                                onChange={(event) => handleTeamPlayerChange(index, 'injured', event.target.checked)}
-                                className="h-4 w-4 accent-red-500"
-                              />
-                              Cruz
-                              </label>
+                                {positions.map((position) => <option key={position} value={position}>{position}</option>)}
+                                </select>
+                                <input value={player.age} onChange={(event) => handleTeamPlayerChange(index, 'age', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner placeholder:text-slate-500" placeholder="Edad" />
+                              </div>
                             </div>
                           </div>
-                        </div>
+                          <div className="mt-3 grid grid-cols-[64px_1fr_70px] gap-2">
+                            <input value={player.number} onChange={(event) => handleTeamPlayerChange(index, 'number', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner placeholder:text-slate-500" placeholder="Dorsal" />
+                            <input value={player.image} onChange={(event) => handleTeamPlayerChange(index, 'image', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner placeholder:text-slate-500" placeholder="URL foto" />
+                            <select value={player.role} onChange={(event) => handleTeamPlayerChange(index, 'role', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner">
+                              <option value="Titular">Titular</option>
+                              <option value="Reserva">Reserva</option>
+                            </select>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            {[
+                              ['isKey', 'Destacado', 'text-amber-100 border-amber-200/20 bg-amber-200/10'],
+                              ['yellowRisk', 'Amonestado', 'text-amber-100 border-amber-200/20 bg-amber-200/10'],
+                              ['suspended', 'Riesgo roja', 'text-red-100 border-red-200/20 bg-red-300/10'],
+                              ['injured', 'Lesionado', 'text-slate-100 border-white/10 bg-white/[0.06]'],
+                            ].map(([field, label, className]) => (
+                              <label key={field} className={`inline-flex items-center gap-1.5 rounded-xl border px-2 py-1 text-[10px] font-bold ${className}`}>
+                                <input type="checkbox" checked={Boolean(player[field])} onChange={(event) => handleTeamPlayerChange(index, field, event.target.checked)} className="h-3 w-3 accent-[#4f8cff]" />
+                                {label}
+                              </label>
+                            ))}
+                          </div>
+                          <div className="mt-3 flex justify-end">
+                            <button type="button" onClick={() => handleRemoveTeamPlayer(index)} className="rounded-xl border border-red-300/10 bg-red-500/10 px-3 py-1.5 text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar</button>
+                          </div>
+                        </article>
                       );
                     })
                   ) : (
@@ -12653,7 +12595,7 @@ function App() {
                 </div>
               </section>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+              <div className="flex flex-col gap-3 rounded-[1.35rem] border border-white/10 bg-white/[0.025] p-4 sm:flex-row sm:items-center sm:justify-end">
                 <button
                   type="button"
                   onClick={closeTeamForm}
@@ -12671,7 +12613,8 @@ function App() {
             </form>
           </div>
         </div>
-      ) : null}
+        );
+      })() : null}
 
       {isMatchPanelOpen ? (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black/50 px-4 py-6 backdrop-blur-sm sm:px-6">
