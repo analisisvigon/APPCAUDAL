@@ -1636,6 +1636,42 @@ const getLineupSlotMap = (lineup) => {
   return usedSlots;
 };
 
+const getFirstFreeLineupSlot = (lineup, maxSlots = 11) => {
+  const occupiedSlots = new Set(safeArray(lineup).map((player) => player.slot).filter(Number.isInteger));
+  return Array.from({ length: maxSlots }, (_, index) => index).find((slot) => !occupiedSlots.has(slot));
+};
+
+const normalizeLineupEntryWithField = (entry, fallbackIndex = 0, system = '4-4-2') => {
+  const normalized = normalizeSquadEntry(entry);
+  const slot = Number.isInteger(entry?.slot) ? entry.slot : fallbackIndex;
+  const coordinates = getFormationCoordinates(system)[slot] || { x: 50, y: 50 };
+  return {
+    ...normalized,
+    role: entry?.role || normalized.role || 'Titular',
+    slot,
+    x: Number.isFinite(Number(entry?.x)) ? Number(entry.x) : coordinates.x,
+    y: Number.isFinite(Number(entry?.y)) ? Number(entry.y) : coordinates.y,
+  };
+};
+
+const getTeamFieldLineup = (team) => {
+  if (!team) return [];
+  const system = team.system || '4-4-2';
+  const lineup = safeArray(team.lineup).map((player, index) => normalizeLineupEntryWithField(player, index, system));
+  const lineupNames = new Set(lineup.map((player) => normalizePlayerIdentityName(player.name)));
+  const startersWithoutSlot = dedupeRivalPlayers(team.squad || []).filter(
+    (player) => player.role === 'Titular' && !lineupNames.has(normalizePlayerIdentityName(player.name))
+  );
+  const nextLineup = [...lineup];
+  startersWithoutSlot.forEach((player) => {
+    const freeSlot = getFirstFreeLineupSlot(nextLineup);
+    if (freeSlot === undefined) return;
+    const coordinates = getFormationCoordinates(system)[freeSlot] || { x: 50, y: 50 };
+    nextLineup.push({ ...normalizeSquadEntry(player), role: 'Titular', slot: freeSlot, ...coordinates, autoAssignedSlot: true });
+  });
+  return nextLineup;
+};
+
 const getPlayerMeta = (player) => [player.position, player.age ? `${player.age} años` : ''].filter(Boolean).join(' · ');
 const displayPlayerName = (player) => {
   const preferred = String(player?.shirtName || player?.shirt_name || player?.shortName || player?.short_name || '').trim();
@@ -3465,6 +3501,10 @@ function App() {
   const selectedTeam = useMemo(
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
     [selectedTeamId, teams]
+  );
+  const selectedTeamFieldLineup = useMemo(
+    () => getTeamFieldLineup(selectedTeam),
+    [selectedTeam]
   );
 
   const selectedMatch = useMemo(
@@ -7786,7 +7826,8 @@ function App() {
       if (existing) {
         return lineup.map((item) => (item.name === playerName ? { ...item, x, y } : item));
       }
-      return [...lineup.filter((item) => item.name !== playerName), { ...normalizeSquadEntry(draggedPlayer), role: 'Titular', x, y }];
+      const freeSlot = getFirstFreeLineupSlot(lineup);
+      return [...lineup.filter((item) => item.name !== playerName), { ...normalizeSquadEntry(draggedPlayer), role: 'Titular', slot: freeSlot ?? lineup.length, x, y }];
     });
     setTeams((current) =>
       current.map((team) =>
@@ -7880,6 +7921,7 @@ function App() {
 
   const setSelectedTeamPlayerRole = async (playerName, role) => {
     if (!selectedTeam) return;
+    const currentPlayer = selectedTeam.squad.map(normalizeSquadEntry).find((player) => player.name === playerName) || { ...createBlankTeamPlayer(), name: playerName };
     const { error: roleError } = await supabase
       .from("jugadores_rivales")
       .update({ role })
@@ -7892,7 +7934,18 @@ function App() {
     if (role === 'Reserva') {
       await updateTeamLineup(selectedTeam.id, (lineup) => lineup.filter((player) => player.name !== playerName));
     } else {
-      await loadTeams();
+      await updateTeamLineup(selectedTeam.id, (lineup) => {
+        if (lineup.some((player) => player.name === playerName)) {
+          return lineup.map((player, index) => player.name === playerName ? normalizeLineupEntryWithField({ ...player, role: 'Titular' }, index, selectedTeam.system) : player);
+        }
+        const freeSlot = getFirstFreeLineupSlot(lineup);
+        if (freeSlot === undefined) {
+          setSaveStatus('No hay slots libres en el XI. Quita un titular antes de añadir otro.');
+          return lineup;
+        }
+        const coordinates = getFormationCoordinates(selectedTeam.system)[freeSlot] || { x: 50, y: 50 };
+        return [...lineup, { ...normalizeSquadEntry(currentPlayer), role: 'Titular', slot: freeSlot, ...coordinates }];
+      });
     }
   };
 
@@ -10290,8 +10343,13 @@ function App() {
                         </>
                       );
                     })()}
+                    {selectedTeamFieldLineup.some((player) => player.autoAssignedSlot) ? (
+                      <div className="absolute left-1/2 top-16 z-40 -translate-x-1/2 rounded-xl border border-amber-200/20 bg-amber-200/[0.10] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-amber-100">
+                        Titular sin posición asignada · colocado en primer slot libre
+                      </div>
+                    ) : null}
                     {teamFieldEditMode ? getFormationCoordinates(selectedTeam.system).map((slot, slotIndex) => {
-                      const slotPlayer = getLineupSlotMap(selectedTeam.lineup ?? emptyLineup).get(slotIndex);
+                      const slotPlayer = getLineupSlotMap(selectedTeamFieldLineup).get(slotIndex);
                       return (
                         <div
                           key={`${selectedTeam.system}-${slotIndex}`}
@@ -10308,7 +10366,7 @@ function App() {
                         />
                       );
                     }) : null}
-                    {(selectedTeam.lineup ?? emptyLineup).map((player) => {
+                    {selectedTeamFieldLineup.map((player) => {
                       const tacticalBadges = getPlayerTacticalBadges(player);
                       const fieldStyle = getPlayerFieldStyle(player);
                       return (
@@ -10368,34 +10426,44 @@ function App() {
                         <span className="mt-0.5 flex max-w-24 items-center gap-1 rounded-md bg-slate-950/45 px-1.5 py-0.5 text-[11px] font-semibold leading-tight text-white shadow-sm" title={player.name}>
                           <span className="truncate">{displayPlayerName(player)}</span>
                         </span>
-                        {teamFieldEditMode && teamFieldViewMode === 'STAFF' ? <div
+                        {(getBenchForStarter(player, selectedTeam.benchChart).length || (teamFieldEditMode && teamFieldViewMode === 'STAFF')) ? <div
                           className="absolute top-full mt-1 flex w-24 flex-col gap-0.5"
                         >
                           {[0, 1].map((benchSlotIndex) => {
                             const benchPlayer = getBenchForStarter(player, selectedTeam.benchChart)[benchSlotIndex];
                             const benchBadges = benchPlayer ? getPlayerTacticalBadges(benchPlayer) : [];
+                            const benchUnavailable = benchPlayer ? isUnavailableRivalPlayer(benchPlayer) : false;
+                            if (!benchPlayer && !(teamFieldEditMode && teamFieldViewMode === 'STAFF')) return null;
                             return (
                               <span
                                 key={`${player.name}-bench-${benchSlotIndex}`}
-                                draggable={Boolean(benchPlayer)}
+                                draggable={Boolean(benchPlayer) && teamFieldEditMode}
                                 onDragStart={(event) => {
-                                  if (!benchPlayer) return;
+                                  if (!benchPlayer || !teamFieldEditMode) return;
                                   event.stopPropagation();
                                   setDraggedPlayer(benchPlayer);
                                 }}
-                                onDragOver={(event) => event.preventDefault()}
+                                onDragOver={(event) => {
+                                  if (teamFieldEditMode) event.preventDefault();
+                                }}
                                 onDrop={(event) => {
+                                  if (!teamFieldEditMode) return;
                                   event.stopPropagation();
                                   handleDropOnBenchSlot(player.name, benchSlotIndex);
                                 }}
                                 onDoubleClick={(event) => {
+                                  if (!teamFieldEditMode) return;
                                   event.stopPropagation();
                                   clearBenchSlot(player.name, benchSlotIndex);
                                 }}
                                 className={`relative block min-h-4 max-w-24 truncate rounded-md px-1.5 py-0.5 pr-4 text-[9px] leading-tight drop-shadow transition ${
-                                  benchPlayer ? 'border border-white/10 bg-caudal-950/62 text-slate-200 hover:bg-caudal-950/80' : 'border border-dashed border-white/15 bg-white/[0.015] text-white/32 hover:text-white/55'
+                                  benchPlayer
+                                    ? benchUnavailable
+                                      ? `border border-dashed ${getUnavailableVisualClass(benchPlayer)}`
+                                      : 'border border-white/10 bg-caudal-950/62 text-slate-200 hover:bg-caudal-950/80'
+                                    : 'border border-dashed border-white/15 bg-white/[0.015] text-white/32 hover:text-white/55'
                                 }`}
-                                title={benchPlayer ? getPlayerMeta(benchPlayer) : 'Arrastra un reserva aquí'}
+                                title={benchPlayer ? `${benchPlayer.name}${benchUnavailable ? ` · ${getUnavailableRivalReason(benchPlayer)}` : ''}` : 'Arrastra un reserva aquí'}
                               >
                                 {benchPlayer ? (
                                   <span className="flex items-center gap-1">
