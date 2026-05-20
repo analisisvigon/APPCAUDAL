@@ -5705,10 +5705,105 @@ function App() {
     return 90 - Number(getStatsPlayerData(starter.name).minutes || 0);
   };
 
+  const getStatsSubstitutionEvents = () =>
+    getStatsCalledPlayers()
+      .map((player) => {
+        const stats = getStatsPlayerData(player.name);
+        const minute = Number(stats.minutes || 0);
+        if (stats.role !== 'Titular' || !stats.replacementName || minute <= 0 || minute >= 90) return null;
+        return {
+          minute,
+          outPlayer: player.name,
+          inPlayer: stats.replacementName,
+          outStats: stats,
+          inStats: getStatsPlayerData(stats.replacementName),
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.minute - b.minute);
+
+  const getStatsMomentRange = (minuteValue) => {
+    const minute = Number(minuteValue || 0);
+    if (minute <= 15) return '0-15';
+    if (minute <= 30) return '15-30';
+    if (minute <= 45) return '30-45';
+    if (minute <= 60) return '45-60';
+    if (minute <= 75) return '60-75';
+    return '75-90';
+  };
+
+  const buildStatsAutoSummary = () => {
+    if (!selectedMatch) return '';
+    const score = getStatsScore();
+    const goals = getStatsGoalEvents();
+    const caudalGoalText = goals
+      .filter((event) => event.type === 'Gol a favor')
+      .map((event) => `${event.scorer || 'Caudal'}${event.minute ? ` ${event.minute}'` : ''}${event.phase ? ` (${event.phase})` : ''}`);
+    const againstGoalText = goals
+      .filter((event) => event.type === 'Gol en contra')
+      .map((event) => `gol rival${event.minute ? ` ${event.minute}'` : ''}`);
+    const cardText = getStatsCalledPlayers().flatMap((player) => {
+      const stats = getStatsPlayerData(player.name);
+      return [
+        stats.yellow ? `${player.name} amarilla${stats.yellowCount > 1 ? ` x${stats.yellowCount}` : ''}` : null,
+        stats.red ? `${player.name} roja` : null,
+        stats.injured ? `${player.name} lesión` : null,
+      ].filter(Boolean);
+    });
+    const substitutionText = getStatsSubstitutionEvents().map((event) => `${event.minute}': entra ${event.inPlayer} por ${event.outPlayer}`);
+    return [
+      `${score.caudal === score.rival ? 'Empate' : score.caudal > score.rival ? 'Victoria' : 'Derrota'} ${score.caudal}-${score.rival}.`,
+      caudalGoalText.length ? `Goles: ${caudalGoalText.join(', ')}.` : null,
+      againstGoalText.length ? `Encajados: ${againstGoalText.join(', ')}.` : null,
+      substitutionText.length ? `Cambios: ${substitutionText.join('; ')}.` : null,
+      cardText.length ? `Incidencias: ${cardText.join(', ')}.` : null,
+    ].filter(Boolean).join(' ');
+  };
+
+  const saveStatsAutoSummary = async () => {
+    if (!selectedMatch) return;
+    const summary = buildStatsAutoSummary();
+    if (!summary) return;
+    await updateSelectedMatchFields({ postNotes: summary });
+  };
+
+  const getPreStatsLinks = () => {
+    const stored = safeObject(selectedMatch?.postAiAnalysis)?.preStatsLinks || [];
+    const storedById = new Map(safeArray(stored).map((link) => [link.consignaId, link]));
+    return activeConsignas.map((text, index) => {
+      const consignaId = `consigna-${index}-${normalizePlayerIdentityName(text).slice(0, 24)}`;
+      return {
+        consignaId,
+        text,
+        fulfilled: null,
+        eventId: '',
+        ...safeObject(storedById.get(consignaId)),
+      };
+    });
+  };
+
+  const updatePreStatsLink = (consignaId, patch) => {
+    const currentLinks = getPreStatsLinks();
+    updateSelectedMatchFields({
+      postAiAnalysis: {
+        ...safeObject(selectedMatch?.postAiAnalysis),
+        preStatsLinks: currentLinks.map((link) => (link.consignaId === consignaId ? { ...link, ...patch } : link)),
+      },
+    });
+  };
+
   const getStatsReplacementOptions = (starterName) => {
     const calledPlayers = getStatsCalledPlayers();
     const substitutes = calledPlayers.filter((player) => getStatsPlayerData(player.name).role !== 'Titular' && player.name !== starterName);
     return substitutes.length ? substitutes : calledPlayers.filter((player) => player.name !== starterName);
+  };
+
+  const getStatsPlayedPosition = (playerName) => {
+    const slotIndex = safeArray(selectedMatch?.statsLineup).findIndex((name) => name === playerName);
+    if (slotIndex >= 0) return getFormationRoles(selectedMatch?.statsSystem || '4-4-2')[slotIndex] || 'Titular';
+    const substitution = getStatsSubstitutionEvents().find((event) => event.inPlayer === playerName);
+    if (substitution) return `Cambio por ${substitution.outPlayer}`;
+    return 'Sin posición';
   };
 
   const updateStatsPlayerData = async (playerName, fields) => {
@@ -5718,6 +5813,9 @@ function App() {
       const player = players.find((item) => item.name === playerName);
       const jugadorId = isUuid(player?.id) ? player.id : null;
       const next = { ...current, ...fields };
+      const hasPlayedEvent = Boolean(next.yellow || next.red || next.injured || next.goals || next.assists || next.replacementName);
+      const replacementMinute = Number(next.minutes || 0);
+      if (hasPlayedEvent && Number(next.minutes || 0) <= 0) next.minutes = next.role === 'Titular' ? '90' : '1';
       const payload = {
         partido_id: selectedMatch.id,
         jugador_id: jugadorId,
@@ -5735,6 +5833,33 @@ function App() {
       if (statsError) {
         console.error('Error guardando rendimiento individual en Supabase:', { playerName, payload, error: statsError });
         throw statsError;
+      }
+      if (next.replacementName && replacementMinute > 0 && replacementMinute < 90) {
+        const replacementPlayer = players.find((item) => item.name === next.replacementName);
+        const replacementCurrent = getStatsPlayerData(next.replacementName);
+        const replacementPayload = {
+          partido_id: selectedMatch.id,
+          jugador_id: isUuid(replacementPlayer?.id) ? replacementPlayer.id : null,
+          player_name: next.replacementName,
+          role: 'Suplente',
+          minutes: String(90 - replacementMinute),
+          yellow: Boolean(replacementCurrent.yellow),
+          yellow_count: Number(replacementCurrent.yellowCount || 0),
+          red: Boolean(replacementCurrent.red),
+          injured: Boolean(replacementCurrent.injured),
+          rating: String(replacementCurrent.rating || ''),
+          replacement_name: replacementCurrent.replacementName || '',
+        };
+        await supabase.from("partido_convocados").upsert(
+          {
+            partido_id: selectedMatch.id,
+            jugador_id: replacementPayload.jugador_id,
+            player_name: next.replacementName,
+          },
+          { onConflict: "partido_id,player_name" }
+        );
+        const { error: replacementError } = await supabase.from("partido_estadisticas_jugador").upsert(replacementPayload, { onConflict: "partido_id,player_name" });
+        if (replacementError) throw replacementError;
       }
     });
   };
@@ -6005,6 +6130,16 @@ function App() {
       return;
     }
 
+    if (goalAnalysisDraft.type === 'Gol a favor') {
+      const involvedPlayers = [goalAnalysisDraft.scorer, goalAnalysisDraft.assistant].filter(Boolean);
+      for (const playerName of involvedPlayers) {
+        const current = getStatsPlayerData(playerName);
+        await updateStatsPlayerData(playerName, {
+          minutes: Number(current.minutes || 0) > 0 ? current.minutes : current.role === 'Titular' ? '90' : '1',
+        });
+      }
+    }
+
     setIsGoalAnalysisOpen(false);
     await loadPartidos();
     await refreshStatsFromSupabase(selectedMatch.id, 'análisis de goles y marcador');
@@ -6243,6 +6378,13 @@ function App() {
           const player = players.find((item) => item.name === playerName);
           const stats = playerName ? getStatsPlayerData(playerName) : null;
           const replacementInfo = playerName ? getStatsReplacementInfo(playerName) : null;
+          const playerStateClass = stats?.red
+            ? 'border-red-300 bg-red-950/80 opacity-70'
+            : stats?.injured
+              ? 'border-rose-200 bg-slate-800/90 opacity-70 grayscale'
+              : replacementInfo
+                ? 'border-amber-200 bg-caudal-950/80 opacity-60'
+                : 'border-white bg-caudal-950 text-white';
           return (
             <div
               key={`stats-slot-${slotIndex}`}
@@ -6256,7 +6398,7 @@ function App() {
               className={`absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center ${player ? 'cursor-grab' : ''}`}
               style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
             >
-              <div className={`relative flex h-16 w-16 items-center justify-center rounded-full border-2 text-sm font-black shadow-glow ${playerName ? 'border-white bg-caudal-950 text-white' : 'border-dashed border-white/40 bg-white/10 text-white/70'}`}>
+              <div className={`relative flex h-16 w-16 items-center justify-center rounded-full border-2 text-sm font-black shadow-glow ${playerName ? playerStateClass : 'border-dashed border-white/40 bg-white/10 text-white/70'}`}>
                 {player?.image ? (
                   <img src={player.image} alt="" className="h-full w-full rounded-full object-cover" />
                 ) : (
@@ -6276,6 +6418,12 @@ function App() {
                   <span className="absolute -left-5 top-8 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-black text-white" title="Sale">
                     {replacementInfo.minute}' ↓
                   </span>
+                ) : null}
+                {stats?.injured ? (
+                  <span className="absolute -left-4 top-0 rounded-full bg-rose-700 px-1.5 py-0.5 text-[10px] font-black text-white" title="Lesionado">LES</span>
+                ) : null}
+                {stats?.red ? (
+                  <span className="absolute -left-4 bottom-0 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-black text-white" title="Expulsado">RJ</span>
                 ) : null}
               </div>
               <div className="max-w-[92px] truncate rounded-xl bg-black/60 px-2 py-1 text-[10px] font-bold text-white">
@@ -12812,6 +12960,37 @@ function App() {
                           </div>
                         </div>
                       </div>
+                      <div className="mt-4 rounded-3xl border border-caudal-electric/15 bg-caudal-electric/[0.055] p-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Autoresumen del partido</p>
+                            <p className="mt-2 text-sm leading-6 text-slate-100">{buildStatsAutoSummary() || 'Añade goles, cambios o incidencias para generar el resumen.'}</p>
+                          </div>
+                          <button type="button" onClick={saveStatsAutoSummary} className="shrink-0 rounded-2xl bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">
+                            Guardar en POST
+                          </button>
+                        </div>
+                      </div>
+                      {getPreStatsLinks().length ? (
+                        <div className="mt-4 rounded-3xl border border-white/10 bg-[#0f1e38]/70 p-4">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Relación PRE ↔ Estadísticas</p>
+                          <div className="mt-3 grid gap-2">
+                            {getPreStatsLinks().slice(0, 6).map((link) => (
+                              <div key={link.consignaId} className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/[0.035] p-3 sm:flex-row sm:items-center sm:justify-between">
+                                <p className="min-w-0 flex-1 truncate text-sm font-semibold text-white">{link.text}</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  <button type="button" onClick={() => updatePreStatsLink(link.consignaId, { fulfilled: true })} className={`rounded-lg px-2 py-1 text-[10px] font-black ${link.fulfilled === true ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-slate-300'}`}>Cumplida</button>
+                                  <button type="button" onClick={() => updatePreStatsLink(link.consignaId, { fulfilled: false })} className={`rounded-lg px-2 py-1 text-[10px] font-black ${link.fulfilled === false ? 'bg-red-400 text-white' : 'bg-white/10 text-slate-300'}`}>No</button>
+                                  <select value={link.eventId || ''} onChange={(event) => updatePreStatsLink(link.consignaId, { eventId: event.target.value })} className="rounded-lg bg-white px-2 py-1 text-[10px] font-bold text-slate-950">
+                                    <option value="">Sin evento</option>
+                                    {getStatsGoalEvents().map((event) => <option key={event.id} value={event.id}>{event.minute}' {event.type}</option>)}
+                                  </select>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
@@ -12821,19 +13000,28 @@ function App() {
                           <p className="mt-2 text-sm text-slate-400">Análisis de goles con fase, subfase y mapas visuales.</p>
                         </div>
                         <button type="button" onClick={openGoalAnalysisModal} className="rounded-2xl bg-red-500 px-5 py-3 text-sm font-bold uppercase tracking-[0.14em] text-white">
-                          Añadir análisis de gol
+                          Ampliar evento
                         </button>
                       </div>
                       <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                         {getStatsGoalEvents().length ? getStatsGoalEvents().map((event) => (
                           <div key={event.id} className="rounded-3xl bg-[#0f1e38]/80 p-5">
                             <p className="text-sm font-black text-caudal-electric">{event.minute}' · {event.type}</p>
+                            <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Tramo {getStatsMomentRange(event.minute)}</p>
                             <p className="mt-2 text-sm font-semibold text-white">{event.type === 'Gol a favor' ? event.scorer || 'Sin goleador' : selectedMatch.opponent || 'Rival'}</p>
                             {event.assistant ? <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">Asist. {event.assistant}</p> : null}
                             <p className="mt-3 text-sm text-slate-300">{event.phase} · {event.subphase}</p>
                             <p className="mt-1 text-xs text-slate-500">Remate: {normalizePitchZone(event.shotZone)} · Asistencia: {normalizePitchZone(event.assistZone)} · Portería: {event.goalZone}</p>
                           </div>
                         )) : <div className="rounded-3xl bg-[#0f1e38]/80 p-6 text-sm text-slate-400">No hay eventos clave todavía.</div>}
+                        {getStatsSubstitutionEvents().map((event) => (
+                          <div key={`${event.outPlayer}-${event.inPlayer}-${event.minute}`} className="rounded-3xl border border-violet-200/10 bg-violet-400/[0.06] p-5">
+                            <p className="text-sm font-black text-violet-200">{event.minute}' · Sustitución</p>
+                            <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Tramo {getStatsMomentRange(event.minute)}</p>
+                            <p className="mt-2 text-sm font-semibold text-white">Sale {event.outPlayer}</p>
+                            <p className="mt-1 text-sm text-slate-300">Entra {event.inPlayer} · {90 - event.minute}'</p>
+                          </div>
+                        ))}
                       </div>
                     </div>
                     </AccordionSection>
@@ -12954,11 +13142,11 @@ function App() {
                         ) : null}
                       </div>
                       {getStatsCalledPlayers().length ? (
-                      <div className="mt-5 overflow-x-auto">
+                      <div className="mt-5 max-h-[620px] overflow-auto rounded-2xl border border-white/10">
                         <table className="w-full min-w-[980px] text-left text-sm">
-                          <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                          <thead className="sticky top-0 z-10 bg-[#091428] text-xs uppercase tracking-[0.16em] text-slate-500">
                             <tr>
-                              {['Jugador', 'Rol', 'Minutos', 'Cambio por', 'Goles', 'Asistencias', 'Amarilla', 'Roja', 'Lesión', 'Valoración'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}
+                              {['Jugador', 'Rol', 'Pos real', 'Min', 'Sustitución', 'G', 'A', 'AM', 'RJ', 'LES', 'Val'].map((head) => <th key={head} className="px-3 py-2">{head}</th>)}
                             </tr>
                           </thead>
                           <tbody>
@@ -12968,27 +13156,30 @@ function App() {
                               const canReplace = stats.role === 'Titular' && minutes > 0 && minutes < 90;
                               const substituteMinutes = stats.role === 'Suplente' ? getStatsSubstituteMinutes(player.name) : 0;
                               const displayedMinutes = substituteMinutes || stats.minutes;
+                              const enteredAsSub = substituteMinutes > 0;
+                              const rowSummary = `${player.name}: ${displayedMinutes || 0}' · G${stats.goals} A${stats.assists}${stats.yellow ? ` · AM ${stats.yellowCount}` : ''}${stats.red ? ' · RJ' : ''}${stats.injured ? ' · LES' : ''}`;
                               return (
-                                <tr key={player.id} className={`border-t border-white/10 ${stats.role === 'Titular' ? 'bg-caudal-electric/10' : 'bg-white/[0.02]'}`}>
-                                  <td className="px-3 py-4 font-bold text-white">{player.name}</td>
-                                  <td className="px-3 py-4 text-xs uppercase tracking-[0.14em] text-caudal-electric">{stats.role}</td>
-                                  <td className="px-3 py-4"><input type="number" min="0" max="90" value={displayedMinutes} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value, replacementName: Number(event.target.value) >= 90 ? '' : stats.replacementName })} className="w-20 rounded-xl bg-white px-3 py-2 font-bold text-slate-950" /></td>
-                                  <td className="px-3 py-4">
+                                <tr key={player.id} title={rowSummary} className={`border-t border-white/10 transition hover:bg-white/[0.06] ${stats.red ? 'bg-red-500/[0.06]' : stats.injured ? 'bg-rose-500/[0.06]' : enteredAsSub ? 'bg-violet-400/[0.05]' : stats.role === 'Titular' ? 'bg-caudal-electric/10' : 'bg-white/[0.02]'}`}>
+                                  <td className="px-3 py-2 font-bold text-white">{player.name}</td>
+                                  <td className="px-3 py-2 text-xs uppercase tracking-[0.14em] text-caudal-electric">{enteredAsSub ? 'Entrado' : stats.role}</td>
+                                  <td className="px-3 py-2 text-xs font-semibold text-slate-300">{getStatsPlayedPosition(player.name)}</td>
+                                  <td className="px-3 py-2"><input type="number" min="0" max="90" value={displayedMinutes} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value, replacementName: Number(event.target.value) >= 90 ? '' : stats.replacementName })} className="w-16 rounded-lg bg-white px-2 py-1.5 font-bold text-slate-950" /></td>
+                                  <td className="px-3 py-2">
                                     <select
                                       value={stats.replacementName}
                                       disabled={!canReplace}
                                       onChange={(event) => updateStatsPlayerData(player.name, { replacementName: event.target.value })}
-                                      className="w-52 rounded-xl bg-white px-3 py-2 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+                                      className="w-48 rounded-lg bg-white px-2 py-1.5 text-xs font-bold text-slate-950 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
                                     >
-                                      <option value="">{canReplace ? 'Seleccionar suplente' : 'Sin cambio'}</option>
+                                      <option value="">{canReplace ? `Sale ${minutes}' · entra...` : enteredAsSub ? `Entra · ${displayedMinutes}'` : 'Sin cambio'}</option>
                                       {getStatsReplacementOptions(player.name).map((replacement) => (
                                         <option key={replacement.id} value={replacement.name}>{replacement.name}</option>
                                       ))}
                                     </select>
                                   </td>
-                                  <td className="px-3 py-4 text-white">{stats.goals}</td>
-                                  <td className="px-3 py-4 text-white">{stats.assists}</td>
-                                  <td className="px-3 py-4">
+                                  <td className="px-3 py-2 text-white">{stats.goals}</td>
+                                  <td className="px-3 py-2 text-white">{stats.assists}</td>
+                                  <td className="px-3 py-2">
                                     <div className="flex gap-1">
                                       {[1, 2].map((cardNumber) => {
                                         const active = stats.yellowCount >= cardNumber;
@@ -13009,7 +13200,7 @@ function App() {
                                       })}
                                     </div>
                                   </td>
-                                  <td className="px-3 py-4">
+                                  <td className="px-3 py-2">
                                     <button
                                       type="button"
                                       onClick={() => updateStatsPlayerData(player.name, { red: !stats.red })}
@@ -13019,8 +13210,8 @@ function App() {
                                       R
                                     </button>
                                   </td>
-                                  <td className="px-3 py-4"><button type="button" onClick={() => updateStatsPlayerData(player.name, { injured: !stats.injured })} className={`rounded-xl px-3 py-2 text-sm font-black ${stats.injured ? 'bg-red-100 text-red-700' : 'bg-white/10 text-slate-300'}`}>+</button></td>
-                                  <td className="px-3 py-4">
+                                  <td className="px-3 py-2"><button type="button" onClick={() => updateStatsPlayerData(player.name, { injured: !stats.injured })} className={`rounded-lg px-2.5 py-1.5 text-sm font-black ${stats.injured ? 'bg-red-100 text-red-700' : 'bg-white/10 text-slate-300'}`}>+</button></td>
+                                  <td className="px-3 py-2">
                                     <select
                                       value={stats.rating}
                                       onChange={(event) => updateStatsPlayerData(player.name, { rating: event.target.value })}
@@ -13653,7 +13844,7 @@ function App() {
             <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
               <div className="flex items-center gap-3">
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500 text-xl font-black text-white">+</span>
-                <h3 className="text-lg font-black uppercase tracking-[0.18em] text-white">Añadir análisis del gol</h3>
+                <h3 className="text-lg font-black uppercase tracking-[0.18em] text-white">Ampliar evento</h3>
               </div>
               <button type="button" onClick={() => setIsGoalAnalysisOpen(false)} className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-slate-200">Cerrar</button>
             </div>
@@ -13742,7 +13933,7 @@ function App() {
               </div>
 
               <button type="button" onClick={saveGoalAnalysisEvent} className="w-full rounded-3xl bg-caudal-electric px-5 py-4 text-sm font-black uppercase tracking-[0.16em] text-slate-950">
-                Guardar análisis de gol
+                Guardar / convertir en análisis
               </button>
             </div>
           </div>
