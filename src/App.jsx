@@ -883,8 +883,19 @@ const formationLayouts = {
 };
 
 const getFormationLayout = (system) => formationLayouts[system] ?? formationLayouts['4-4-2'];
-const getFormationCoordinates = (system) => getFormationLayout(system).map(({ x, y }) => ({ x, y }));
-const getFormationRoles = (system) => getFormationLayout(system).map(({ role }) => role);
+const getFormationSlots = (system, orientation = 'own') =>
+  getFormationLayout(system).map((slot, index) => ({
+    ...slot,
+    slot: index,
+    x: orientation === 'opponent_mirrored' ? 100 - slot.x : slot.x,
+    y: slot.y,
+  }));
+const getFormationCoordinates = (system) => getFormationSlots(system, 'own').map(({ x, y }) => ({ x, y }));
+const getFormationRoles = (system) => getFormationSlots(system, 'own').map(({ role }) => role);
+const mapFormationSlotToFacingPitch = (slot, side = 'caudal', scale = 0.42) => ({
+  x: Number(slot?.x ?? 50),
+  y: side === 'rival' ? 50 - Number(slot?.y ?? 50) * scale : 50 + Number(slot?.y ?? 50) * scale,
+});
 
 const idealFormationSlots = {
   '4-4-2': [
@@ -4363,14 +4374,13 @@ function App() {
 
   const getRivalFormationSlots = () => {
     const system = getCurrentRivalSystem();
-    const roles = getFormationRoles(system);
-    const baseCoordinates = getFormationCoordinates(system);
+    const baseSlots = getFormationSlots(system, 'own');
     const availableByName = new Map(getRivalAvailablePlayers().map((player) => [normalizePlayerIdentityName(player.name), normalizeSquadEntry(player)]));
     const savedLineup = safeArray(selectedMatchRivalTeam?.lineup)
       .map((entry, fallbackIndex) => {
         const normalized = normalizeSquadEntry(entry);
         const slot = Number.isFinite(Number(entry?.slot)) ? Number(entry.slot) : fallbackIndex;
-        const fallbackCoordinates = baseCoordinates[slot] || { x: 50, y: 50 };
+        const fallbackCoordinates = baseSlots[slot] || { x: 50, y: 50 };
         return {
           ...normalized,
           slot,
@@ -4387,10 +4397,10 @@ function App() {
         const isUnavailable = linkedPlayer ? isUnavailableRivalPlayer(linkedPlayer) : false;
         const coordinates = savedPlayer && Number.isFinite(Number(savedPlayer.x)) && Number.isFinite(Number(savedPlayer.y))
           ? { x: Number(savedPlayer.x), y: Number(savedPlayer.y) }
-          : baseCoordinates[index] || { x: 50, y: 50 };
+          : baseSlots[index] || { x: 50, y: 50 };
         return {
           slot: index,
-          role: roles[index] || `Rol ${index + 1}`,
+          role: baseSlots[index]?.role || `Rol ${index + 1}`,
           coordinates,
           player: linkedPlayer && !isUnavailable ? linkedPlayer : null,
           unavailablePlayer: linkedPlayer && isUnavailable ? linkedPlayer : null,
@@ -4403,8 +4413,8 @@ function App() {
     const fallbackPlayers = starters.length ? starters : getRivalAvailablePlayers().filter((player) => !isUnavailableRivalPlayer(player));
     return Array.from({ length: 11 }, (_, index) => ({
       slot: index,
-      role: roles[index] || `Rol ${index + 1}`,
-      coordinates: baseCoordinates[index] || { x: 50, y: 50 },
+      role: baseSlots[index]?.role || `Rol ${index + 1}`,
+      coordinates: baseSlots[index] || { x: 50, y: 50 },
       player: fallbackPlayers[index] || null,
       unavailablePlayer: null,
       source: fallbackPlayers[index] ? 'jugadores_rivales' : 'placeholder',
@@ -4684,8 +4694,10 @@ function App() {
     const hasCaudalNames = caudalLineup.some(Boolean);
     const hasRivalNames = rivalLineup.some(Boolean);
     const identity = liveRivalIdentity;
-    const keyPlayers = liveRivalPlayers.filter((player) => player.isKey).map((player) => player.name);
-    const alertPlayers = liveRivalMarkedPlayers.map((player) => `${player.name} (${playerStatusBadges(player).map((badge) => badge.label).join('/')})`);
+    const keyPlayers = liveRivalPlayers.filter((player) => player.isKey && !isUnavailableRivalPlayer(player)).map((player) => player.name);
+    const alertPlayers = liveRivalMarkedPlayers
+      .filter((player) => !isUnavailableRivalPlayer(player))
+      .map((player) => `${player.name} (${playerStatusBadges(player).map((badge) => badge.label).join('/')})`);
     const safeQuestion = String(question || '');
     const q = safeQuestion.toLowerCase();
 
@@ -4751,19 +4763,32 @@ function App() {
     setTacticalQuestionText('');
   };
 
+  const getUnavailableRivalPlayers = () => liveRivalPlayers.filter(isUnavailableRivalPlayer);
+
+  const getUnavailableRivalReason = (player) => {
+    if (player.yellowRisk) return 'sanción por acumulación';
+    if (player.suspended || player.expelled || player.red) return 'sanción / expulsión';
+    if (player.injured) return 'lesión';
+    return 'no disponible';
+  };
+
   const getAutomaticMicroDuels = () => {
     const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
     const rivalSystem = getCurrentRivalSystem();
     const caudalRoles = getFormationRoles(caudalSystem);
-    const rivalRoles = getFormationRoles(rivalSystem);
     const caudalLineup = getCaudalPitchNames(selectedMatch?.preCaudalLineup || [], [], caudalRoles);
-    const rivalLineup = getCaudalPitchNames(getCurrentRivalLineup(), rivalRoles, rivalRoles);
+    const rivalSlots = getRivalFormationSlots();
+    const rivalLineup = rivalSlots.map((slot) => slot.player?.name || slot.role || '');
     const identity = liveRivalIdentity;
-    const keyPlayers = liveRivalPlayers.filter((player) => player.isKey);
-    const unavailablePlayers = liveRivalPlayers.filter(isUnavailableRivalPlayer);
-    const doubtfulPlayers = liveRivalPlayers.filter((player) => player.doubtful && !isUnavailableRivalPlayer(player));
+    const availableXiPlayers = rivalSlots.map((slot) => slot.player).filter(Boolean).filter((player) => !isUnavailableRivalPlayer(player));
+    const availableMarkedPlayers = liveRivalPlayers.filter((player) => player.isKey && !isUnavailableRivalPlayer(player));
+    const availableStarters = liveRivalPlayers.filter((player) => player.role === 'Titular' && !isUnavailableRivalPlayer(player));
+    const microPool = dedupeRivalPlayers([...availableXiPlayers, ...availableMarkedPlayers, ...availableStarters]);
+    const keyPlayers = microPool.filter((player) => player.isKey);
+    const doubtfulPlayers = microPool.filter((player) => player.doubtful && !isUnavailableRivalPlayer(player));
     const rows = [];
     const add = (title, detail, action, tone = 'vigilancia', rivalPlayer = null) => {
+      if (rivalPlayer && isUnavailableRivalPlayer(rivalPlayer)) return;
       rows.push({ title, detail, action, tone, rivalPlayer });
     };
 
@@ -4773,15 +4798,6 @@ function App() {
         `${player.position || 'Jugador clave'} marcado como DEST; encaja con amenaza ${identity.mainThreat}.`,
         'Contacto previo, orientar hacia fuera y cobertura interior antes del salto.',
         'alerta',
-        player
-      );
-    });
-    unavailablePlayers.slice(0, 3).forEach((player) => {
-      add(
-        `Ausencia probable de ${player.name}`,
-        playerStatusBadges(player).map((badge) => badge.title).join(' · '),
-        `Atacar su zona natural: puede aparecer desajuste, suplente fuera de rol o cobertura tardía en ${player.position || 'su carril'}.`,
-        'ofensiva',
         player
       );
     });
@@ -8341,11 +8357,9 @@ function App() {
     }
     const caudalSystem = selectedMatch.preCaudalSystem || '4-4-2';
     const rivalSystem = getCurrentRivalSystem();
-    const toOverviewCaudalHalf = (slot) => ({ x: Number(slot?.x || 0), y: 50 + Number(slot?.y || 0) * 0.42 });
-    const toOverviewRivalHalf = (slot) => ({ x: Number(slot?.x || 0), y: 50 - Number(slot?.y || 0) * 0.42 });
     const rivalSlots = getRivalFormationSlots();
-    const caudalCoordinates = safeArray(getFormationCoordinates(caudalSystem)).map(toOverviewCaudalHalf);
-    const rivalCoordinates = rivalSlots.map((slot) => toOverviewRivalHalf(slot.coordinates || { x: 50, y: 50 }));
+    const caudalCoordinates = getFormationSlots(caudalSystem, 'own').map((slot) => mapFormationSlotToFacingPitch(slot, 'caudal', 0.42));
+    const rivalCoordinates = rivalSlots.map((slot) => mapFormationSlotToFacingPitch(slot.coordinates || { x: 50, y: 50 }, 'rival', 0.42));
     const caudalRoles = safeArray(getFormationRoles(caudalSystem));
     const rivalRoles = rivalSlots.map((slot) => slot.role);
     const caudalLineup = safeArray(selectedMatch.preCaudalLineup);
@@ -11953,22 +11967,37 @@ function App() {
                               ))}
                             </div>
                             {tacticalQuestionMode === 'Micro' && getFieldViewSettings().layers.microduels ? (
-                              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-                                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Microduelos automáticos</p>
-                                <div className="mt-3 space-y-2">
-                                  {getAutomaticMicroDuels().map((duel) => (
-                                    <div key={`${duel.title}-${duel.action}`} className={`rounded-xl border px-3 py-2 text-xs ${consignaToneClass[duel.tone] || consignaToneClass.vigilancia}`}>
-                                      <div className="flex flex-wrap items-center gap-1.5 font-black text-current">
-                                        <span>{duel.title}</span>
-                                        {duel.rivalPlayer ? playerStatusBadges(duel.rivalPlayer).slice(0, 3).map((badge) => (
-                                          <span key={badge.label} title={badge.title} className={`rounded px-1 text-[8px] ${badge.className}`}>{badge.label}</span>
-                                        )) : null}
+                              <div className="mt-4 space-y-3">
+                                <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Microduelos automáticos</p>
+                                  <div className="mt-3 space-y-2">
+                                    {getAutomaticMicroDuels().map((duel) => (
+                                      <div key={`${duel.title}-${duel.action}`} className={`rounded-xl border px-3 py-2 text-xs ${consignaToneClass[duel.tone] || consignaToneClass.vigilancia}`}>
+                                        <div className="flex flex-wrap items-center gap-1.5 font-black text-current">
+                                          <span>{duel.title}</span>
+                                          {duel.rivalPlayer ? playerStatusBadges(duel.rivalPlayer).filter((badge) => !['AM', 'RJ', 'LES'].includes(badge.label)).slice(0, 2).map((badge) => (
+                                            <span key={badge.label} title={badge.title} className={`rounded px-1 text-[8px] ${badge.className}`}>{badge.label}</span>
+                                          )) : null}
+                                        </div>
+                                        <p className="mt-1 leading-5 text-slate-200">{duel.detail}</p>
+                                        <p className="mt-1 font-semibold leading-5 text-white">{duel.action}</p>
                                       </div>
-                                      <p className="mt-1 leading-5 text-slate-200">{duel.detail}</p>
-                                      <p className="mt-1 font-semibold leading-5 text-white">{duel.action}</p>
-                                    </div>
-                                  ))}
+                                    ))}
+                                  </div>
                                 </div>
+                                {getUnavailableRivalPlayers().length ? (
+                                  <div className="rounded-2xl border border-amber-200/10 bg-amber-200/[0.035] p-4">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-100/70">Bajas / no disponibles</p>
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                      {getUnavailableRivalPlayers().slice(0, 8).map((player) => (
+                                        <span key={player.jugadorRivalId || player.id || player.name} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/35 px-2.5 py-1.5 text-xs text-slate-200">
+                                          <span className="font-black text-white">{displayPlayerName(player)}</span>
+                                          <span className="text-[10px] font-bold text-amber-100/75">{getUnavailableRivalReason(player)}</span>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ) : null}
                               </div>
                             ) : null}
                             <button
