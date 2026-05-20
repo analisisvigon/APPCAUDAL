@@ -1626,17 +1626,25 @@ const getLineupSlotMap = (lineup) => {
 };
 
 const getPlayerMeta = (player) => [player.position, player.age ? `${player.age} años` : ''].filter(Boolean).join(' · ');
-const displayPlayerName = (player) => player.name;
+const displayPlayerName = (player) => {
+  const preferred = String(player?.shirtName || player?.shirt_name || player?.shortName || player?.short_name || '').trim();
+  if (preferred) return preferred;
+  const parts = String(player?.name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return parts[0] || '';
+  const last = parts[parts.length - 1];
+  if (last.length <= 9) return `${parts[0][0]}. ${last}`;
+  return `${parts[0]} ${last[0]}.`;
+};
 const playerReservePlacement = (player) => {
   return 'below';
 };
 const playerStatusBadges = (player) =>
   [
-    player.injured ? { label: 'LES', className: 'border border-slate-400/25 bg-slate-800 text-slate-100 shadow-[0_0_14px_rgba(15,23,42,0.45)]', title: 'Lesionado / no disponible' } : null,
-    player.yellowRisk ? { label: 'AM', className: 'border border-yellow-100/60 bg-yellow-300 text-slate-950 shadow-[0_0_14px_rgba(250,204,21,0.28)]', title: 'No puede jugar por acumulación' } : null,
-    player.suspended || player.expelled || player.red ? { label: 'RJ', className: 'border border-red-100/50 bg-red-600 text-white shadow-[0_0_16px_rgba(220,38,38,0.32)]', title: 'No puede jugar por sanción' } : null,
-    player.doubtful || player.physicalDoubt ? { label: 'DUDA', className: 'border border-sky-200/20 bg-sky-200/[0.10] text-sky-100', title: 'Duda física' } : null,
-    player.isKey ? { label: 'DEST', className: 'border border-amber-100/50 bg-amber-300/[0.20] text-amber-100 shadow-[0_0_14px_rgba(251,191,36,0.20)]', title: 'Jugador diferencial' } : null,
+    player.injured ? { label: 'LES', className: 'border border-slate-400/20 bg-slate-800/85 text-slate-200', title: 'Lesionado / no disponible' } : null,
+    player.yellowRisk ? { label: 'AM', className: 'border border-yellow-200/35 bg-yellow-300/75 text-slate-950', title: 'No puede jugar por acumulación' } : null,
+    player.suspended || player.expelled || player.red ? { label: 'RJ', className: 'border border-red-200/30 bg-red-700/80 text-red-50', title: 'No puede jugar por sanción' } : null,
+    player.doubtful || player.physicalDoubt ? { label: 'DUDA', className: 'border border-sky-200/15 bg-sky-200/[0.08] text-sky-100', title: 'Duda física' } : null,
+    player.isKey ? { label: 'DEST', className: 'border border-amber-100/30 bg-amber-300/[0.14] text-amber-100', title: 'Jugador diferencial' } : null,
   ].filter(Boolean);
 
 const isUnavailableRivalPlayer = (player = {}) => Boolean(player.yellowRisk || player.suspended || player.injured || player.expelled || player.red);
@@ -1645,7 +1653,7 @@ const getPlayerTacticalBadges = (player) => {
   const position = normalizePlayerIdentityName(player.position || '');
   const primary = playerStatusBadges(player)[0] || null;
   const secondary =
-    player.isKey ? { label: 'Jugador clave', short: 'CLA', className: 'border-amber-200/25 bg-amber-200/[0.12] text-amber-100' } :
+    player.isKey ? { label: 'Jugador clave', short: 'CLA', className: 'border-sky-200/20 bg-sky-200/[0.08] text-sky-100' } :
     player.isDifferential ? { label: 'Diferencial', short: 'DIF', className: 'border-emerald-200/25 bg-emerald-200/[0.10] text-emerald-100' } :
     position.includes('pivote') ? { label: 'Pivote', short: 'PIV', className: 'border-cyan-200/20 bg-cyan-200/[0.10] text-cyan-100' } :
     position.includes('delantero') ? { label: 'Referencia ofensiva', short: 'REF', className: 'border-emerald-200/20 bg-emerald-200/[0.10] text-emerald-100' } :
@@ -1656,8 +1664,8 @@ const getPlayerTacticalBadges = (player) => {
 
 const getPlayerFieldStyle = (player) => {
   const badges = getPlayerTacticalBadges(player).map((badge) => badge.short);
-  if (badges.includes('EXP') || badges.includes('LES') || badges.includes('RJ')) return 'border-red-200/45 shadow-[0_0_0_1px_rgba(248,113,113,0.10),0_16px_34px_rgba(0,0,0,0.38)]';
-  if (badges.includes('DEST') || badges.includes('CLA')) return 'border-amber-200/80 shadow-[0_0_0_1px_rgba(251,191,36,0.16),0_18px_38px_rgba(0,0,0,0.40),0_0_28px_rgba(251,191,36,0.12)]';
+  if (badges.includes('EXP') || badges.includes('LES') || badges.includes('RJ')) return 'border-red-200/35 shadow-[0_0_0_1px_rgba(248,113,113,0.08),0_14px_30px_rgba(0,0,0,0.36)]';
+  if (badges.includes('DEST') || badges.includes('CLA')) return 'border-amber-200/55 shadow-[0_0_0_1px_rgba(251,191,36,0.10),0_16px_32px_rgba(0,0,0,0.38),0_0_18px_rgba(251,191,36,0.08)]';
   if (badges.includes('DIF')) return 'border-emerald-200/55 shadow-[0_16px_34px_rgba(0,0,0,0.36)]';
   if (badges.includes('REF')) return 'border-emerald-200/45 shadow-[0_14px_32px_rgba(0,0,0,0.36)]';
   if (badges.includes('PIV')) return 'border-cyan-200/45 shadow-[0_14px_32px_rgba(0,0,0,0.36)]';
@@ -2399,6 +2407,8 @@ function App() {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isTeamPanelOpen, setIsTeamPanelOpen] = useState(false);
   const [teamEditMode, setTeamEditMode] = useState(false);
+  const [teamFieldViewMode, setTeamFieldViewMode] = useState('LIMPIO');
+  const [teamFieldEditMode, setTeamFieldEditMode] = useState(false);
   const [editingTeamPlayerIndex, setEditingTeamPlayerIndex] = useState(null);
   const [isMatchPanelOpen, setIsMatchPanelOpen] = useState(false);
   const [preLoading, setPreLoading] = useState(false);
@@ -10179,34 +10189,64 @@ function App() {
                     </div>
                   </aside>
 
-                  <div
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={handleDropOnField}
-                    className="relative mx-auto aspect-[7/8.9] max-h-[760px] min-h-[560px] w-full max-w-[800px] overflow-hidden rounded-[1.8rem] border border-white/10 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.10),transparent_22%),repeating-linear-gradient(90deg,rgba(17,96,68,0.96)_0,rgba(17,96,68,0.96)_12.5%,rgba(14,82,60,0.98)_12.5%,rgba(14,82,60,0.98)_25%),linear-gradient(180deg,#0b3d32,#082e28)] shadow-[0_22px_70px_rgba(0,0,0,0.30)]"
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-[#091428]/70 px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-lg border border-rose-200/15 bg-rose-500/[0.10] px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-rose-100">Rival</span>
+                        <span className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-slate-300">{selectedTeam.system}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {['LIMPIO', 'STAFF'].map((mode) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setTeamFieldViewMode(mode)}
+                            className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition ${teamFieldViewMode === mode ? 'bg-caudal-electric text-slate-950' : 'border border-white/10 bg-white/[0.04] text-slate-400 hover:text-white'}`}
+                          >
+                            {mode}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setTeamFieldEditMode((value) => !value)}
+                          className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition ${teamFieldEditMode ? 'bg-amber-300 text-slate-950' : 'border border-white/10 bg-white/[0.04] text-slate-400 hover:text-white'}`}
+                          title={teamFieldEditMode ? 'Edición activada' : 'Edición bloqueada'}
+                        >
+                          {teamFieldEditMode ? 'Edición ON' : 'Candado'}
+                        </button>
+                      </div>
+                    </div>
+                    <div
+                    onDragOver={(event) => {
+                      if (teamFieldEditMode) event.preventDefault();
+                    }}
+                    onDrop={teamFieldEditMode ? handleDropOnField : undefined}
+                    className="relative mx-auto aspect-[7/8.9] max-h-[760px] min-h-[560px] w-full max-w-[800px] overflow-hidden rounded-[1.8rem] border border-white/10 bg-[radial-gradient(circle_at_50%_44%,rgba(255,255,255,0.115),transparent_24%),radial-gradient(circle_at_50%_74%,rgba(0,0,0,0.22),transparent_38%),repeating-linear-gradient(90deg,rgba(17,86,63,0.78)_0,rgba(17,86,63,0.78)_12.5%,rgba(13,72,55,0.82)_12.5%,rgba(13,72,55,0.82)_25%),linear-gradient(180deg,#104735_0%,#0b3b31_44%,#082c27_100%)] shadow-[0_24px_76px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]"
                   >
-                    <div className="absolute inset-0 bg-[linear-gradient(0deg,rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:100%_12.5%,14.28%_100%] opacity-35" />
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.08),transparent_17%),radial-gradient(circle_at_50%_82%,rgba(0,0,0,0.18),transparent_28%)]" />
-                    <div className="absolute left-[12%] right-[12%] top-[27%] h-px bg-white/10" />
-                    <div className="absolute left-[12%] right-[12%] bottom-[27%] h-px bg-white/10" />
-                    <div className="absolute inset-4 rounded-[28px] border border-white/35" />
-                    <div className="absolute left-4 right-4 top-1/2 h-px bg-white/30" />
-                    <div className="absolute left-1/2 top-1/2 h-32 w-32 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/25" />
-                    <div className="absolute left-1/2 top-4 h-24 w-56 -translate-x-1/2 rounded-b-3xl border-x border-b border-white/28" />
-                    <div className="absolute bottom-4 left-1/2 h-24 w-56 -translate-x-1/2 rounded-t-3xl border-x border-t border-white/28" />
-                    <div className="absolute left-1/2 top-[18%] h-px w-2/3 -translate-x-1/2 bg-white/10" />
-                    <div className="absolute left-1/2 bottom-[18%] h-px w-2/3 -translate-x-1/2 bg-white/10" />
-                    <div className="absolute inset-x-[12%] bottom-[18%] top-[55%] rounded-[2rem] border border-white/[0.055] bg-white/[0.018]" />
-                    <div className="absolute left-[16%] top-[59%] h-[28%] w-px bg-white/[0.055]" />
-                    <div className="absolute right-[16%] top-[59%] h-[28%] w-px bg-white/[0.055]" />
-                    <div className="absolute bottom-[29%] left-[10%] rounded-lg border border-white/[0.07] bg-slate-950/20 px-2 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/35">
+                    <div className="absolute inset-0 bg-[linear-gradient(0deg,rgba(255,255,255,0.028)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.020)_1px,transparent_1px)] bg-[size:100%_12.5%,14.28%_100%] opacity-20" />
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.055),transparent_18%),radial-gradient(circle_at_50%_50%,rgba(125,211,252,0.055),transparent_28%),radial-gradient(circle_at_50%_86%,rgba(0,0,0,0.20),transparent_30%)]" />
+                    <div className="absolute inset-0 opacity-[0.07] [background-image:radial-gradient(circle,rgba(255,255,255,0.45)_1px,transparent_1px)] [background-size:18px_18px]" />
+                    <div className="absolute left-[12%] right-[12%] top-[27%] h-px bg-white/[0.055]" />
+                    <div className="absolute left-[12%] right-[12%] bottom-[27%] h-px bg-white/[0.055]" />
+                    <div className="absolute inset-4 rounded-[28px] border border-white/22" />
+                    <div className="absolute left-4 right-4 top-1/2 h-px bg-white/18" />
+                    <div className="absolute left-1/2 top-1/2 h-32 w-32 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/16" />
+                    <div className="absolute left-1/2 top-4 h-24 w-56 -translate-x-1/2 rounded-b-3xl border-x border-b border-white/18" />
+                    <div className="absolute bottom-4 left-1/2 h-24 w-56 -translate-x-1/2 rounded-t-3xl border-x border-t border-white/18" />
+                    <div className="absolute left-1/2 top-[18%] h-px w-2/3 -translate-x-1/2 bg-white/[0.045]" />
+                    <div className="absolute left-1/2 bottom-[18%] h-px w-2/3 -translate-x-1/2 bg-white/[0.045]" />
+                    <div className="absolute inset-x-[12%] bottom-[18%] top-[55%] rounded-[2rem] border border-white/[0.035] bg-white/[0.010]" />
+                    <div className="absolute left-[16%] top-[59%] h-[28%] w-px bg-white/[0.035]" />
+                    <div className="absolute right-[16%] top-[59%] h-[28%] w-px bg-white/[0.035]" />
+                    {teamFieldViewMode === 'STAFF' ? <div className="absolute bottom-[29%] left-[10%] rounded-lg border border-dashed border-white/[0.06] bg-slate-950/15 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.14em] text-white/30">
                       {getTeamTacticalIdentity(selectedTeam).strongSide}
-                    </div>
-                    <div className="absolute bottom-[29%] right-[10%] rounded-lg border border-white/[0.07] bg-slate-950/20 px-2 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/35">
+                    </div> : null}
+                    {teamFieldViewMode === 'STAFF' ? <div className="absolute bottom-[29%] right-[10%] rounded-lg border border-dashed border-white/[0.06] bg-slate-950/15 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.14em] text-white/30">
                       {getTeamTacticalIdentity(selectedTeam).mainThreat}
-                    </div>
-                    <div className="absolute left-1/2 top-[57%] -translate-x-1/2 rounded-lg border border-white/[0.07] bg-slate-950/20 px-2 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/35">
+                    </div> : null}
+                    {teamFieldViewMode === 'STAFF' ? <div className="absolute left-1/2 top-[57%] -translate-x-1/2 rounded-lg border border-dashed border-white/[0.06] bg-slate-950/15 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.14em] text-white/30">
                       bloque {getTeamTacticalIdentity(selectedTeam).blockHeight}
-                    </div>
+                    </div> : null}
                     {(() => {
                       const identity = getTeamTacticalIdentity(selectedTeam);
                       const sideClass =
@@ -10224,92 +10264,102 @@ function App() {
                         'left-[14%] top-[28%] h-[48%] w-[72%]';
                       const blockTop = identity.blockHeight === 'alto' ? 'top-[32%]' : identity.blockHeight === 'bajo' ? 'top-[66%]' : 'top-[49%]';
                       const pressureLabel = identity.pressureType === 'tras pérdida' ? 'presión tras pérdida' : identity.pressureType;
+                      const showStaff = teamFieldViewMode === 'STAFF';
                       return (
                         <>
-                          <div className={`pointer-events-none absolute rounded-[2rem] border border-caudal-electric/[0.10] bg-caudal-electric/[0.035] ${sideClass}`} />
-                          <div className={`pointer-events-none absolute rounded-full bg-amber-200/[0.075] blur-[2px] ${threatClass}`} />
-                          <div className={`pointer-events-none absolute left-[10%] right-[10%] ${blockTop} h-px bg-white/[0.20]`} />
-                          <div className={`pointer-events-none absolute left-[10%] right-[10%] ${blockTop} -translate-y-3 text-center text-[8px] font-black uppercase tracking-[0.18em] text-white/35`}>
+                          <div className={`pointer-events-none absolute rounded-[2rem] border border-dashed border-caudal-electric/[0.12] bg-caudal-electric/[0.035] blur-[0.4px] ${sideClass}`} />
+                          {showStaff ? <div className={`pointer-events-none absolute rounded-full border border-dashed border-amber-100/[0.10] bg-amber-200/[0.045] blur-[1px] ${threatClass}`} /> : null}
+                          <div className={`pointer-events-none absolute left-[10%] right-[10%] ${blockTop} h-px bg-white/[0.10]`} />
+                          {showStaff ? <div className={`pointer-events-none absolute left-[10%] right-[10%] ${blockTop} -translate-y-3 text-center text-[7px] font-black uppercase tracking-[0.16em] text-white/28`}>
                             {pressureLabel}
-                          </div>
-                          <div className="pointer-events-none absolute left-1/2 top-[42%] h-12 w-px -translate-x-1/2 bg-gradient-to-b from-caudal-electric/0 via-caudal-electric/25 to-caudal-electric/0" />
-                          <div className="pointer-events-none absolute left-1/2 top-[36%] -translate-x-1/2 rounded-lg border border-caudal-electric/[0.12] bg-slate-950/20 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-caudal-electric/55">
+                          </div> : null}
+                          {showStaff ? <div className="pointer-events-none absolute left-1/2 top-[42%] h-12 w-px -translate-x-1/2 bg-gradient-to-b from-caudal-electric/0 via-caudal-electric/14 to-caudal-electric/0" /> : null}
+                          {showStaff ? <div className="pointer-events-none absolute left-1/2 top-[36%] -translate-x-1/2 rounded-lg border border-dashed border-caudal-electric/[0.10] bg-slate-950/15 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.12em] text-caudal-electric/42">
                             foco {identity.offensiveFocus}
-                          </div>
+                          </div> : null}
                         </>
                       );
                     })()}
-                    {getFormationCoordinates(selectedTeam.system).map((slot, slotIndex) => {
+                    {teamFieldEditMode ? getFormationCoordinates(selectedTeam.system).map((slot, slotIndex) => {
                       const slotPlayer = getLineupSlotMap(selectedTeam.lineup ?? emptyLineup).get(slotIndex);
                       return (
                         <div
                           key={`${selectedTeam.system}-${slotIndex}`}
-                          onDragOver={(event) => event.preventDefault()}
+                          onDragOver={(event) => {
+                            if (teamFieldEditMode) event.preventDefault();
+                          }}
                           onDrop={(event) => {
                             event.stopPropagation();
                             handleDropOnLineupSlot(slotIndex);
                           }}
-                          className={`absolute h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full transition ${slotPlayer ? 'opacity-0' : 'border border-white/[0.10] bg-white/[0.018] opacity-20 hover:opacity-45'}`}
+                          className={`absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full transition ${slotPlayer ? 'opacity-0' : 'border border-dashed border-white/[0.10] bg-white/[0.012] opacity-15 hover:opacity-35'}`}
                           style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
                           aria-label={`Zona táctica ${slotIndex + 1}`}
                         />
                       );
-                    })}
+                    }) : null}
                     {(selectedTeam.lineup ?? emptyLineup).map((player) => {
                       const tacticalBadges = getPlayerTacticalBadges(player);
                       const fieldStyle = getPlayerFieldStyle(player);
                       return (
                       <button
                         key={player.name}
-                        draggable
-                        onDragStart={() => setDraggedPlayer(player)}
-                        onDoubleClick={() => removeFromLineup(player.name)}
-                        onClick={() => toggleSelectedTeamKeyPlayer(player.name)}
-                        className={`group absolute flex w-28 -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center transition hover:-translate-y-[52%] ${
+                        draggable={teamFieldEditMode}
+                        onDragStart={() => {
+                          if (teamFieldEditMode) setDraggedPlayer(player);
+                        }}
+                        onDoubleClick={() => {
+                          if (teamFieldEditMode) removeFromLineup(player.name);
+                        }}
+                        onClick={() => {
+                          if (teamFieldEditMode) toggleSelectedTeamKeyPlayer(player.name);
+                        }}
+                        className={`group absolute flex w-24 -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center transition duration-300 ${teamFieldEditMode ? 'cursor-grab hover:-translate-y-[52%]' : 'cursor-default'} ${
                           player.isKey ? 'z-20' : 'z-10'
                         }`}
                         style={{ left: `${player.x}%`, top: `${player.y}%` }}
-                        title="Arrastra para mover. Clic marca destacado. Doble clic quita del campo."
+                        title={teamFieldEditMode ? 'Arrastra para mover. Clic marca destacado. Doble clic quita del campo.' : player.name}
                       >
-                        <span
+                        {teamFieldEditMode ? <span
                           onClick={(event) => {
                             event.stopPropagation();
                             removeFromLineup(player.name);
                           }}
-                          className="absolute right-1 top-1 z-30 flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-slate-950/70 text-[10px] font-black text-slate-300 opacity-0 shadow transition hover:border-red-200/30 hover:bg-red-500/20 hover:text-red-100 group-hover:opacity-100"
+                          className="absolute right-0 top-0 z-30 flex h-4 w-4 items-center justify-center rounded-full border border-white/10 bg-slate-950/70 text-[9px] font-black text-slate-300 opacity-0 shadow transition hover:border-red-200/30 hover:bg-red-500/20 hover:text-red-100 group-hover:opacity-100"
                           title="Quitar del once"
                         >
                           -
-                        </span>
+                        </span> : null}
+                        <span className="pointer-events-none absolute top-[54px] h-4 w-14 rounded-full bg-black/30 blur-md" />
                         <span
-                          className={`relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.14),transparent_40%),linear-gradient(145deg,rgba(8,20,40,0.94),rgba(2,6,23,0.86))] text-sm font-black text-caudal-electric/85 transition group-hover:scale-[1.03] ${fieldStyle}`}
+                          className={`relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.16),transparent_42%),linear-gradient(145deg,rgba(127,29,29,0.74),rgba(15,23,42,0.92))] text-sm font-black text-rose-100 transition duration-300 group-hover:scale-[1.03] ${fieldStyle}`}
                         >
-                          <span className="pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.16),transparent_38%)]" />
+                          <span className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.18),transparent_38%)]" />
                           {player.number ? (
-                            <span className="absolute left-1 top-1 z-10 rounded-md bg-caudal-electric px-1.5 py-0.5 text-[10px] font-bold leading-none text-slate-950">
+                            <span className="absolute left-1 top-1 z-10 rounded-full bg-slate-950/70 px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
                               {player.number}
                             </span>
                           ) : null}
                           {player.image ? (
-                            <img src={player.image} alt={player.name} className="h-full w-full scale-[1.18] object-cover object-top" />
+                            <img src={player.image} alt={player.name} className="h-full w-full scale-[1.14] object-cover object-top" />
                           ) : (
                             <span className="relative z-10">{player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                           )}
                         </span>
-                        {tacticalBadges.length ? (
-                          <span className="mt-1 flex max-w-28 justify-center gap-1">
+                        {teamFieldViewMode === 'STAFF' && tacticalBadges.length ? (
+                          <span className="mt-0.5 flex max-w-24 justify-center gap-0.5">
                             {tacticalBadges.slice(0, 2).map((badge) => (
-                              <span key={badge.label} title={badge.label} className={`inline-flex min-h-4 items-center rounded-md border px-1.5 text-[8px] font-black leading-none ${badge.className}`}>
+                              <span key={badge.label} title={badge.label} className={`inline-flex min-h-3 items-center rounded border px-1 text-[7px] font-black leading-none ${badge.className}`}>
                                 {badge.short}
                               </span>
                             ))}
                           </span>
                         ) : null}
-                        <span className="mt-1 flex max-w-28 items-center gap-1 rounded-lg bg-slate-950/30 px-1.5 py-0.5 text-xs font-semibold leading-tight text-white drop-shadow">
+                        <span className="mt-0.5 flex max-w-24 items-center gap-1 rounded-md bg-slate-950/45 px-1.5 py-0.5 text-[11px] font-semibold leading-tight text-white shadow-sm" title={player.name}>
                           <span className="truncate">{displayPlayerName(player)}</span>
                         </span>
-                        <div
-                          className="absolute top-full mt-1 flex w-28 flex-col gap-1"
+                        {teamFieldEditMode && teamFieldViewMode === 'STAFF' ? <div
+                          className="absolute top-full mt-1 flex w-24 flex-col gap-0.5"
                         >
                           {[0, 1].map((benchSlotIndex) => {
                             const benchPlayer = getBenchForStarter(player, selectedTeam.benchChart)[benchSlotIndex];
@@ -10332,7 +10382,7 @@ function App() {
                                   event.stopPropagation();
                                   clearBenchSlot(player.name, benchSlotIndex);
                                 }}
-                                className={`relative block min-h-4 max-w-28 truncate rounded-lg px-2 py-0.5 pr-4 text-[10px] leading-tight drop-shadow transition ${
+                                className={`relative block min-h-4 max-w-24 truncate rounded-md px-1.5 py-0.5 pr-4 text-[9px] leading-tight drop-shadow transition ${
                                   benchPlayer ? 'border border-white/10 bg-caudal-950/62 text-slate-200 hover:bg-caudal-950/80' : 'border border-dashed border-white/15 bg-white/[0.015] text-white/32 hover:text-white/55'
                                 }`}
                                 title={benchPlayer ? getPlayerMeta(benchPlayer) : 'Arrastra un reserva aquí'}
@@ -10365,10 +10415,11 @@ function App() {
                               </span>
                             );
                           })}
-                        </div>
+                        </div> : null}
                       </button>
                       );
                     })}
+                  </div>
                   </div>
                 </div>
               </section>
