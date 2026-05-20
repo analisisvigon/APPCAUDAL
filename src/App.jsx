@@ -1659,6 +1659,12 @@ const playerStatusBadges = (player) =>
   ].filter(Boolean);
 
 const isUnavailableRivalPlayer = (player = {}) => Boolean(player.yellowRisk || player.suspended || player.injured || player.expelled || player.red);
+const getUnavailableVisualClass = (player = {}) => {
+  if (player.yellowRisk) return 'border-amber-200/25 bg-amber-200/[0.08] text-amber-100 opacity-80';
+  if (player.suspended || player.expelled || player.red) return 'border-red-200/25 bg-red-500/[0.10] text-red-100 opacity-75';
+  if (player.injured) return 'border-slate-300/20 bg-slate-700/[0.16] text-slate-300 opacity-70 grayscale';
+  return 'border-white/10 bg-slate-950/35 text-slate-300 opacity-80';
+};
 
 const getPlayerTacticalBadges = (player) => {
   const position = normalizePlayerIdentityName(player.position || '');
@@ -8369,54 +8375,43 @@ function App() {
     const isCleanMode = fieldView.mode === 'LIMPIO';
     const layers = fieldView.layers;
     const showStaffDetails = !isCleanMode;
-    const sideClass =
-      identity.strongSide === 'izquierda' ? 'left-[8%] top-[8%] h-[42%] w-[24%]' :
-      identity.strongSide === 'derecha' ? 'right-[8%] top-[8%] h-[42%] w-[24%]' :
-      identity.strongSide === 'ambos laterales' ? 'left-[8%] top-[8%] h-[42%] w-[84%]' :
-      identity.strongSide === 'directo' ? 'left-[35%] top-[6%] h-[46%] w-[30%]' :
-      'left-[31%] top-[8%] h-[42%] w-[38%]';
-    const threatClass =
-      identity.mainThreat === 'ABP' ? 'left-[27%] top-[4%] h-[16%] w-[46%]' :
-      identity.mainThreat === 'transición' ? 'left-[18%] top-[38%] h-[28%] w-[64%]' :
-      identity.mainThreat === 'centros laterales' ? 'left-[9%] top-[14%] h-[42%] w-[82%]' :
-      identity.mainThreat === 'segunda jugada' ? 'left-[26%] top-[33%] h-[20%] w-[48%]' :
-      identity.mainThreat === 'delantero referencia' ? 'left-[36%] top-[13%] h-[18%] w-[28%]' :
-      'left-[14%] top-[20%] h-[35%] w-[72%]';
-    const blockTop = identity.blockHeight === 'alto' ? 'top-[38%]' : identity.blockHeight === 'bajo' ? 'top-[18%]' : 'top-[29%]';
-    const zoneColorClass = {
-      cyan: 'border-caudal-electric/20 bg-caudal-electric/[0.09] text-caudal-electric shadow-[0_0_16px_rgba(79,140,255,0.08)]',
-      amber: 'border-amber-200/20 bg-amber-200/[0.10] text-amber-100 shadow-[0_0_16px_rgba(251,191,36,0.07)]',
-      emerald: 'border-emerald-200/20 bg-emerald-200/[0.09] text-emerald-100 shadow-[0_0_16px_rgba(52,211,153,0.07)]',
-      red: 'border-red-200/20 bg-red-400/[0.09] text-red-100 shadow-[0_0_16px_rgba(248,113,113,0.07)]',
-    };
+    const hudChipClass = 'pointer-events-none rounded-lg border border-white/10 bg-slate-950/42 px-2 py-1 text-[7px] font-black uppercase tracking-[0.12em] text-white/55 backdrop-blur-sm';
+    const activeHudZones = getTacticalZones().filter((zone) => zone.active).slice(0, 3);
+    const leftHud = [
+      ['Lado fuerte', identity.strongSide],
+      ['Amplitud', identity.strongSide === 'ambos laterales' ? 'doble banda' : identity.strongSide],
+      ['Progresión', identity.attackingRhythm],
+    ].filter(([, value]) => value);
+    const rightHud = [
+      ['Transición', identity.mainThreat === 'transición' ? 'amenaza' : identity.attackingRhythm],
+      ['Amenaza', identity.mainThreat],
+      ['Foco', identity.offensiveFocus],
+      ...activeHudZones.slice(0, 2).map((zone) => ['Zona', zone.label]),
+    ].filter(([, value]) => value);
+    const topHud = [
+      ['Presión', identity.pressureType],
+      ['Bloque', identity.blockHeight],
+    ].filter(([, value]) => value);
+    const bottomHud = [
+      ['Debilidad', identity.detectedWeakness],
+      ['Espalda', identity.detectedWeakness === 'espalda lateral' ? 'lateral' : identity.strongSide],
+    ].filter(([, value]) => value);
+    const renderHudGroup = (items, className) => (
+      <div className={`absolute z-10 flex gap-1.5 ${className}`}>
+        {items.map(([label, value]) => (
+          <div key={`${label}-${value}`} className={hudChipClass}>
+            <span className="text-caudal-electric/55">{label}</span>
+            <span className="ml-1 text-white/70">{value}</span>
+          </div>
+        ))}
+      </div>
+    );
     return (
       <div className="relative mx-auto aspect-[7/8.4] min-h-[420px] w-full max-w-3xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner">
-        {layers.zones && showStaffDetails ? <div className={`pointer-events-none absolute rounded-[2rem] border border-caudal-electric/[0.08] bg-caudal-electric/[0.025] ${sideClass}`} /> : null}
-        {layers.zones && showStaffDetails ? <div className={`pointer-events-none absolute rounded-full bg-amber-200/[0.035] blur-[2px] ${threatClass}`} /> : null}
-        <div className={`pointer-events-none absolute left-[10%] right-[10%] ${blockTop} h-px bg-rose-100/20`} />
-        <div className={`pointer-events-none absolute left-[50%] ${blockTop} -translate-x-1/2 -translate-y-4 rounded-md border border-white/10 bg-slate-950/30 px-2 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/50`}>
-          bloque {identity.blockHeight} · {identity.pressureType}
-        </div>
-        {showStaffDetails ? <div className="pointer-events-none absolute right-5 top-5 z-10 rounded-xl border border-amber-200/12 bg-amber-200/[0.06] px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[0.12em] text-amber-100">
-          {identity.mainThreat} · {identity.offensiveFocus}
-        </div> : null}
-        {layers.zones ? getTacticalZones().filter((zone) => zone.active).slice(0, isCleanMode ? 2 : 99).map((zone) => {
-          const [title, ...rest] = String(zone.label || 'ZONA').split(/\s+-\s+|\s+·\s+/);
-          const subtitle = rest.join(' · ');
-          return (
-          <button
-            key={zone.id}
-            type="button"
-            onClick={() => updateTacticalZone(zone.id, { x: Number(zone.x || 50) >= 75 ? 25 : Number(zone.x || 50) + 12 })}
-            className={`absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-lg border px-2 py-1 text-center text-[8px] font-black uppercase tracking-[0.1em] backdrop-blur-sm transition duration-300 hover:scale-105 ${zoneColorClass[zone.color] || zoneColorClass.cyan}`}
-            style={{ left: `${zone.x || 50}%`, top: `${zone.y || 50}%` }}
-            title="Click para mover la zona"
-          >
-            <span className="block">{title}</span>
-            {subtitle ? <span className="mt-0.5 block text-[7px] font-bold tracking-[0.08em] opacity-70">{subtitle}</span> : null}
-          </button>
-          );
-        }) : null}
+        {layers.zones && showStaffDetails ? renderHudGroup(leftHud, 'left-4 top-1/2 -translate-y-1/2 flex-col items-start') : null}
+        {layers.zones && showStaffDetails ? renderHudGroup(rightHud, 'right-4 top-1/2 -translate-y-1/2 flex-col items-end') : null}
+        {layers.zones && showStaffDetails ? renderHudGroup(topHud, 'left-1/2 top-4 -translate-x-1/2 flex-row justify-center') : null}
+        {layers.zones && showStaffDetails ? renderHudGroup(bottomHud, 'bottom-4 left-1/2 -translate-x-1/2 flex-row justify-center') : null}
         <div className="absolute inset-4 rounded-[28px] border-2 border-white/55" />
         <div className="absolute left-4 right-4 top-1/2 h-px bg-white/35" />
         <div className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/35" />
@@ -8456,6 +8451,24 @@ function App() {
             {layers.names ? <span className="max-w-24 truncate rounded-md bg-black/65 px-1.5 py-0.5 text-[8px] font-semibold text-white shadow-sm">
               {rivalLineup[index] || rivalRoles[index] || `R${index + 1}`}
             </span> : null}
+            {layers.names && rivalSlots[index]?.player ? (
+              <div className="mt-0.5 flex w-24 flex-col items-center gap-0.5">
+                {getBenchForStarter(rivalSlots[index].player, selectedMatchRivalTeam?.benchChart).slice(0, 2).map((benchPlayer) => {
+                  const unavailable = isUnavailableRivalPlayer(benchPlayer);
+                  const statusBadge = playerStatusBadges(benchPlayer).find((badge) => ['AM', 'RJ', 'LES'].includes(badge.label));
+                  return (
+                    <span
+                      key={`${rivalSlots[index].player.name}-${benchPlayer.name}`}
+                      title={`${benchPlayer.name}${unavailable ? ` · ${getUnavailableRivalReason(benchPlayer)}` : ''}`}
+                      className={`max-w-24 truncate rounded-md border px-1.5 py-0.5 text-[7px] font-semibold leading-none shadow-sm ${unavailable ? `${getUnavailableVisualClass(benchPlayer)} border-dashed` : 'border-white/10 bg-slate-950/42 text-slate-300'}`}
+                    >
+                      <span className="text-white/45">↳</span> {displayPlayerName(benchPlayer)}
+                      {statusBadge ? <span className="ml-1 font-black">{statusBadge.label}</span> : null}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
         )) : null}
         {layers.caudal ? caudalCoordinates.map((slot, index) => (
