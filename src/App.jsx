@@ -887,7 +887,7 @@ const getFormationSlots = (system, orientation = 'own') =>
   getFormationLayout(system).map((slot, index) => ({
     ...slot,
     slot: index,
-    x: orientation === 'opponent_mirrored' ? 100 - slot.x : slot.x,
+    x: slot.x,
     y: slot.y,
   }));
 const getFormationCoordinates = (system) => getFormationSlots(system, 'own').map(({ x, y }) => ({ x, y }));
@@ -4408,22 +4408,21 @@ function App() {
           slot: index,
           role: baseSlots[index]?.role || `Rol ${index + 1}`,
           coordinates,
-          player: linkedPlayer && !isUnavailable ? linkedPlayer : null,
+          player: linkedPlayer || null,
           unavailablePlayer: linkedPlayer && isUnavailable ? linkedPlayer : null,
           source: savedPlayer ? 'equipo_rival_alineacion' : 'placeholder',
         };
       });
     }
 
-    const starters = getRivalAvailablePlayers().filter((player) => player.role === 'Titular' && !isUnavailableRivalPlayer(player));
-    const fallbackPlayers = starters.length ? starters : getRivalAvailablePlayers().filter((player) => !isUnavailableRivalPlayer(player));
+    const starters = getRivalAvailablePlayers().filter((player) => player.role === 'Titular');
     return Array.from({ length: 11 }, (_, index) => ({
       slot: index,
       role: baseSlots[index]?.role || `Rol ${index + 1}`,
       coordinates: baseSlots[index] || { x: 50, y: 50 },
-      player: fallbackPlayers[index] || null,
-      unavailablePlayer: null,
-      source: fallbackPlayers[index] ? 'jugadores_rivales' : 'placeholder',
+      player: starters[index] || null,
+      unavailablePlayer: starters[index] && isUnavailableRivalPlayer(starters[index]) ? starters[index] : null,
+      source: starters[index] ? 'jugadores_rivales' : 'placeholder',
     }));
   };
 
@@ -8429,7 +8428,7 @@ function App() {
               const unavailablePlayer = rivalSlots[index]?.unavailablePlayer || null;
               const badges = showStaffDetails && layers.badges && statusPlayer ? playerStatusBadges(statusPlayer) : [];
               return (
-                <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-rose-200 bg-rose-500/80 text-[10px] font-black text-white shadow-[0_0_26px_rgba(244,63,94,0.20)] transition duration-300">
+                <span className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border bg-rose-500/80 text-[10px] font-black text-white shadow-[0_0_26px_rgba(244,63,94,0.20)] transition duration-300 ${unavailablePlayer ? `border-dashed ${getUnavailableVisualClass(unavailablePlayer)}` : 'border-rose-200'}`}>
                   {statusPlayer?.image ? <img src={statusPlayer.image} alt="" className="h-full w-full object-cover object-center" /> : index === 0 ? 'P' : index}
                   {badges.length ? (
                     <span className="absolute -right-7 -top-2 flex max-w-20 flex-wrap justify-end gap-1">
@@ -8451,24 +8450,6 @@ function App() {
             {layers.names ? <span className="max-w-24 truncate rounded-md bg-black/65 px-1.5 py-0.5 text-[8px] font-semibold text-white shadow-sm">
               {rivalLineup[index] || rivalRoles[index] || `R${index + 1}`}
             </span> : null}
-            {layers.names && rivalSlots[index]?.player ? (
-              <div className="mt-0.5 flex w-24 flex-col items-center gap-0.5">
-                {getBenchForStarter(rivalSlots[index].player, selectedMatchRivalTeam?.benchChart).slice(0, 2).map((benchPlayer) => {
-                  const unavailable = isUnavailableRivalPlayer(benchPlayer);
-                  const statusBadge = playerStatusBadges(benchPlayer).find((badge) => ['AM', 'RJ', 'LES'].includes(badge.label));
-                  return (
-                    <span
-                      key={`${rivalSlots[index].player.name}-${benchPlayer.name}`}
-                      title={`${benchPlayer.name}${unavailable ? ` · ${getUnavailableRivalReason(benchPlayer)}` : ''}`}
-                      className={`max-w-24 truncate rounded-md border px-1.5 py-0.5 text-[7px] font-semibold leading-none shadow-sm ${unavailable ? `${getUnavailableVisualClass(benchPlayer)} border-dashed` : 'border-white/10 bg-slate-950/42 text-slate-300'}`}
-                    >
-                      <span className="text-white/45">↳</span> {displayPlayerName(benchPlayer)}
-                      {statusBadge ? <span className="ml-1 font-black">{statusBadge.label}</span> : null}
-                    </span>
-                  );
-                })}
-              </div>
-            ) : null}
           </div>
         )) : null}
         {layers.caudal ? caudalCoordinates.map((slot, index) => (
