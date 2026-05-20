@@ -4397,16 +4397,19 @@ function App() {
       .filter((player) => player.name && Number.isInteger(player.slot) && player.slot >= 0 && player.slot < 11);
 
     if (savedLineup.length) {
-      return Array.from({ length: 11 }, (_, index) => {
-        const savedPlayer = savedLineup.find((player) => Number(player.slot) === index);
+      return savedLineup
+        .sort((a, b) => Number(a.slot) - Number(b.slot))
+        .slice(0, 11)
+        .map((savedPlayer) => {
+        const slotIndex = Number(savedPlayer.slot);
         const linkedPlayer = savedPlayer ? (availableByName.get(normalizePlayerIdentityName(savedPlayer.name)) || savedPlayer) : null;
         const isUnavailable = linkedPlayer ? isUnavailableRivalPlayer(linkedPlayer) : false;
         const coordinates = savedPlayer && Number.isFinite(Number(savedPlayer.x)) && Number.isFinite(Number(savedPlayer.y))
           ? { x: Number(savedPlayer.x), y: Number(savedPlayer.y) }
-          : baseSlots[index] || { x: 50, y: 50 };
+          : baseSlots[slotIndex] || { x: 50, y: 50 };
         return {
-          slot: index,
-          role: baseSlots[index]?.role || `Rol ${index + 1}`,
+          slot: slotIndex,
+          role: baseSlots[slotIndex]?.role || `Rol ${slotIndex + 1}`,
           coordinates,
           player: linkedPlayer || null,
           unavailablePlayer: linkedPlayer && isUnavailable ? linkedPlayer : null,
@@ -4416,13 +4419,13 @@ function App() {
     }
 
     const starters = getRivalAvailablePlayers().filter((player) => player.role === 'Titular');
-    return Array.from({ length: 11 }, (_, index) => ({
-      slot: index,
-      role: baseSlots[index]?.role || `Rol ${index + 1}`,
-      coordinates: baseSlots[index] || { x: 50, y: 50 },
-      player: starters[index] || null,
-      unavailablePlayer: starters[index] && isUnavailableRivalPlayer(starters[index]) ? starters[index] : null,
-      source: starters[index] ? 'jugadores_rivales' : 'placeholder',
+    return starters.slice(0, 11).map((player, index) => ({
+      slot: Number.isInteger(player.slot) ? player.slot : index,
+      role: baseSlots[Number.isInteger(player.slot) ? player.slot : index]?.role || `Rol ${index + 1}`,
+      coordinates: baseSlots[Number.isInteger(player.slot) ? player.slot : index] || { x: 50, y: 50 },
+      player,
+      unavailablePlayer: isUnavailableRivalPlayer(player) ? player : null,
+      source: 'jugadores_rivales',
     }));
   };
 
@@ -8364,11 +8367,8 @@ function App() {
     const rivalSystem = getCurrentRivalSystem();
     const rivalSlots = getRivalFormationSlots();
     const caudalCoordinates = getFormationSlots(caudalSystem, 'own').map((slot) => mapFormationSlotToFacingPitch(slot, 'caudal', 0.42));
-    const rivalCoordinates = rivalSlots.map((slot) => mapFormationSlotToFacingPitch(slot.coordinates || { x: 50, y: 50 }, 'rival', 0.42));
     const caudalRoles = safeArray(getFormationRoles(caudalSystem));
-    const rivalRoles = rivalSlots.map((slot) => slot.role);
     const caudalLineup = safeArray(selectedMatch.preCaudalLineup);
-    const rivalLineup = rivalSlots.map((slot) => slot.player?.name || '');
     const identity = liveRivalIdentity;
     const fieldView = getFieldViewSettings();
     const isCleanMode = fieldView.mode === 'LIMPIO';
@@ -8420,16 +8420,17 @@ function App() {
           <span>Rival {rivalSystem}</span>
           <span>Caudal {caudalSystem}</span>
         </div>
-        {layers.rival ? rivalCoordinates.map((slot, index) => (
-          <div key={`rival-overview-${index}`} className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
+        {layers.rival ? rivalSlots.map((rivalSlot) => {
+          const slot = mapFormationSlotToFacingPitch(rivalSlot.coordinates || { x: 50, y: 50 }, 'rival', 0.42);
+          return (
+          <div key={`rival-overview-${rivalSlot.slot}-${rivalSlot.player?.name || rivalSlot.role}`} className="absolute z-30 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
             {(() => {
-              const playerName = rivalLineup[index] || '';
-              const statusPlayer = rivalSlots[index]?.player || null;
-              const unavailablePlayer = rivalSlots[index]?.unavailablePlayer || null;
+              const statusPlayer = rivalSlot.player || null;
+              const unavailablePlayer = rivalSlot.unavailablePlayer || null;
               const badges = showStaffDetails && layers.badges && statusPlayer ? playerStatusBadges(statusPlayer) : [];
               return (
                 <span className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border bg-rose-500/80 text-[10px] font-black text-white shadow-[0_0_26px_rgba(244,63,94,0.20)] transition duration-300 ${unavailablePlayer ? `border-dashed ${getUnavailableVisualClass(unavailablePlayer)}` : 'border-rose-200'}`}>
-                  {statusPlayer?.image ? <img src={statusPlayer.image} alt="" className="h-full w-full object-cover object-center" /> : index === 0 ? 'P' : index}
+                  {statusPlayer?.image ? <img src={statusPlayer.image} alt="" className="h-full w-full object-cover object-center" /> : rivalSlot.slot === 0 ? 'P' : rivalSlot.slot}
                   {badges.length ? (
                     <span className="absolute -right-7 -top-2 flex max-w-20 flex-wrap justify-end gap-1">
                       {badges.slice(0, 3).map((badge) => (
@@ -8448,12 +8449,13 @@ function App() {
               );
             })()}
             {layers.names ? <span className="max-w-24 truncate rounded-md bg-black/65 px-1.5 py-0.5 text-[8px] font-semibold text-white shadow-sm">
-              {rivalLineup[index] || rivalRoles[index] || `R${index + 1}`}
+              {rivalSlot.player?.name || rivalSlot.role}
             </span> : null}
           </div>
-        )) : null}
+          );
+        }) : null}
         {layers.caudal ? caudalCoordinates.map((slot, index) => (
-          <div key={`caudal-overview-${index}`} className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
+          <div key={`caudal-overview-${index}`} className="absolute z-30 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
             {(() => {
               const player = players.find((item) => item.name === caudalLineup[index]);
               return (
