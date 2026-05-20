@@ -3463,7 +3463,13 @@ function App() {
     [selectedMatchRivalTeam]
   );
   const liveRivalStarters = useMemo(() => {
-    const savedLineup = safeArray(selectedMatchRivalTeam?.lineup).sort((a, b) => Number(a.slot ?? 0) - Number(b.slot ?? 0)).map(normalizeSquadEntry);
+    const squadByName = new Map(liveRivalPlayers.map((player) => [normalizePlayerIdentityName(player.name), player]));
+    const savedLineup = safeArray(selectedMatchRivalTeam?.lineup)
+      .sort((a, b) => Number(a.slot ?? 0) - Number(b.slot ?? 0))
+      .map((entry) => {
+        const normalized = normalizeSquadEntry(entry);
+        return squadByName.get(normalizePlayerIdentityName(normalized.name)) || normalized;
+      });
     const savedAvailable = savedLineup.filter((player) => !isUnavailableRivalPlayer(player));
     const starters = liveRivalPlayers.filter((player) => player.role === 'Titular' && !isUnavailableRivalPlayer(player));
     const available = liveRivalPlayers.filter((player) => !isUnavailableRivalPlayer(player));
@@ -4330,31 +4336,7 @@ function App() {
   };
 
   const getCurrentRivalLineup = () => {
-    if (selectedMatch?.preRivalLineup?.length) {
-      const availablePool = liveRivalStarters.map((player) => player.name);
-      const used = new Set();
-      return selectedMatch.preRivalLineup.map((name, index) => {
-        const player = getRivalAvailablePlayers().find((item) => item.name === name);
-        if (player && isUnavailableRivalPlayer(player)) {
-          const replacement = availablePool.find((candidate) => !used.has(candidate) && !selectedMatch.preRivalLineup.includes(candidate));
-          if (replacement) {
-            used.add(replacement);
-            return replacement;
-          }
-          return '';
-        }
-        if (name) {
-          used.add(name);
-          return name;
-        }
-        const fallback = availablePool.find((candidate) => !used.has(candidate)) || '';
-        if (fallback) used.add(fallback);
-        return fallback;
-      });
-    }
-    if (selectedMatch?.rivalLineupPlayers?.length) return selectedMatch.rivalLineupPlayers.map((player) => player.name);
-    if (liveRivalStarters.length) return liveRivalStarters.map((player) => player.name);
-    return [];
+    return getRivalFormationSlots().map((slot) => slot.player?.name || '');
   };
 
   const getRivalAvailablePlayers = () => {
@@ -4369,10 +4351,59 @@ function App() {
     return Array.from(byName.values());
   };
 
+  const getRivalFormationSlots = () => {
+    const system = getCurrentRivalSystem();
+    const roles = getFormationRoles(system);
+    const baseCoordinates = getFormationCoordinates(system);
+    const availableByName = new Map(getRivalAvailablePlayers().map((player) => [normalizePlayerIdentityName(player.name), normalizeSquadEntry(player)]));
+    const savedLineup = safeArray(selectedMatchRivalTeam?.lineup)
+      .map((entry, fallbackIndex) => {
+        const normalized = normalizeSquadEntry(entry);
+        const slot = Number.isFinite(Number(entry?.slot)) ? Number(entry.slot) : fallbackIndex;
+        const fallbackCoordinates = baseCoordinates[slot] || { x: 50, y: 50 };
+        return {
+          ...normalized,
+          slot,
+          x: Number.isFinite(Number(entry?.x)) ? Number(entry.x) : fallbackCoordinates.x,
+          y: Number.isFinite(Number(entry?.y)) ? Number(entry.y) : fallbackCoordinates.y,
+        };
+      })
+      .filter((player) => player.name && Number.isInteger(player.slot) && player.slot >= 0 && player.slot < 11);
+
+    if (savedLineup.length) {
+      return Array.from({ length: 11 }, (_, index) => {
+        const savedPlayer = savedLineup.find((player) => Number(player.slot) === index);
+        const linkedPlayer = savedPlayer ? (availableByName.get(normalizePlayerIdentityName(savedPlayer.name)) || savedPlayer) : null;
+        const isUnavailable = linkedPlayer ? isUnavailableRivalPlayer(linkedPlayer) : false;
+        const coordinates = savedPlayer && Number.isFinite(Number(savedPlayer.x)) && Number.isFinite(Number(savedPlayer.y))
+          ? { x: Number(savedPlayer.x), y: Number(savedPlayer.y) }
+          : baseCoordinates[index] || { x: 50, y: 50 };
+        return {
+          slot: index,
+          role: roles[index] || `Rol ${index + 1}`,
+          coordinates,
+          player: linkedPlayer && !isUnavailable ? linkedPlayer : null,
+          unavailablePlayer: linkedPlayer && isUnavailable ? linkedPlayer : null,
+          source: savedPlayer ? 'equipo_rival_alineacion' : 'placeholder',
+        };
+      });
+    }
+
+    const starters = getRivalAvailablePlayers().filter((player) => player.role === 'Titular' && !isUnavailableRivalPlayer(player));
+    const fallbackPlayers = starters.length ? starters : getRivalAvailablePlayers().filter((player) => !isUnavailableRivalPlayer(player));
+    return Array.from({ length: 11 }, (_, index) => ({
+      slot: index,
+      role: roles[index] || `Rol ${index + 1}`,
+      coordinates: baseCoordinates[index] || { x: 50, y: 50 },
+      player: fallbackPlayers[index] || null,
+      unavailablePlayer: null,
+      source: fallbackPlayers[index] ? 'jugadores_rivales' : 'placeholder',
+    }));
+  };
+
   const getRivalLineupPlayerForSlot = (slotIndex, playerName) => {
-    const slotPlayer = selectedMatch?.preRivalLineupPlayers?.[slotIndex];
-    const normalizedSlotPlayer = slotPlayer?.name ? normalizeSquadEntry(slotPlayer) : null;
-    if (normalizedSlotPlayer?.name === playerName && !isUnavailableRivalPlayer(normalizedSlotPlayer)) return normalizedSlotPlayer;
+    const slotPlayer = getRivalFormationSlots()[slotIndex]?.player || null;
+    if (slotPlayer?.name) return slotPlayer;
     return getRivalAvailablePlayers().find((player) => player.name === playerName && !isUnavailableRivalPlayer(player)) || null;
   };
 
@@ -4590,7 +4621,7 @@ function App() {
   };
 
   const getFieldViewSettings = () => ({
-    mode: selectedPreAiAnalysis?.fieldView?.mode || 'STAFF',
+    mode: selectedPreAiAnalysis?.fieldView?.mode || 'LIMPIO',
     layers: {
       zones: selectedPreAiAnalysis?.fieldView?.layers?.zones ?? true,
       names: selectedPreAiAnalysis?.fieldView?.layers?.names ?? true,
@@ -8213,18 +8244,21 @@ function App() {
     if (!selectedMatch) return null;
     const toCaudalHalf = (position) => ({ x: 10 + position.x * 0.8, y: 50 + position.y * 0.44 });
     const toRivalHalf = (position) => ({ x: 10 + position.x * 0.8, y: 50 - position.y * 0.44 });
+    const rivalSlots = getRivalFormationSlots();
     const caudalCoordinates = getFormationCoordinates(selectedMatch.preCaudalSystem || '4-4-2').map(toCaudalHalf);
-    const rivalCoordinates = getFormationCoordinates(getCurrentRivalSystem()).map(toRivalHalf);
+    const rivalCoordinates = rivalSlots.map((slot) => toRivalHalf(slot.coordinates || { x: 50, y: 50 }));
     const caudalRoles = getFormationRoles(selectedMatch.preCaudalSystem || '4-4-2');
-    const rivalRoles = getFormationRoles(getCurrentRivalSystem());
+    const rivalRoles = rivalSlots.map((slot) => slot.role);
     const caudalLineup = getCaudalPitchNames(selectedMatch.preCaudalLineup || [], [], caudalRoles);
-    const rivalLineup = getCaudalPitchNames(getCurrentRivalLineup(), rivalRoles, rivalRoles);
+    const rivalLineup = rivalSlots.map((slot) => slot.player?.name || '');
     const renderPlayer = (position, index, team, lineup) => {
       const isCaudal = team === 'caudal';
       const isRival = team === 'rival';
       const isSelected = (isCaudal && selectedTacticalPlayerIndex === index) || (isRival && selectedRivalTacticalPlayerIndex === index);
-      const playerName = lineup[index] || `${isCaudal ? 'Jugador' : 'Rol'} ${index + 1}`;
-      const statusPlayer = isRival ? getRivalLineupPlayerForSlot(index, playerName) : null;
+      const playerName = lineup[index] || (isRival ? rivalRoles[index] : `${isCaudal ? 'Jugador' : 'Rol'} ${index + 1}`);
+      const rivalSlot = isRival ? rivalSlots[index] : null;
+      const statusPlayer = rivalSlot?.player || null;
+      const unavailablePlayer = rivalSlot?.unavailablePlayer || null;
       const caudalPlayer = isCaudal ? players.find((player) => player.name === playerName) : null;
       const visualPlayer = statusPlayer || caudalPlayer;
       const statusBadges = statusPlayer ? playerStatusBadges(statusPlayer) : [];
@@ -8250,6 +8284,11 @@ function App() {
                     {badge.label}
                   </span>
                 ))}
+              </span>
+            ) : null}
+            {unavailablePlayer ? (
+              <span title={`No disponible: ${unavailablePlayer.name}`} className="absolute -left-3 -top-2 inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-amber-300/35 bg-slate-950 px-1 text-[7px] font-black text-amber-100">
+                ND
               </span>
             ) : null}
           </span>
@@ -8293,13 +8332,14 @@ function App() {
     const caudalSystem = selectedMatch.preCaudalSystem || '4-4-2';
     const rivalSystem = getCurrentRivalSystem();
     const toOverviewCaudalHalf = (slot) => ({ x: Number(slot?.x || 0), y: 50 + Number(slot?.y || 0) * 0.42 });
-    const toOverviewRivalHalf = (slot) => ({ x: 100 - Number(slot?.x || 0), y: 50 - Number(slot?.y || 0) * 0.42 });
+    const toOverviewRivalHalf = (slot) => ({ x: Number(slot?.x || 0), y: 50 - Number(slot?.y || 0) * 0.42 });
+    const rivalSlots = getRivalFormationSlots();
     const caudalCoordinates = safeArray(getFormationCoordinates(caudalSystem)).map(toOverviewCaudalHalf);
-    const rivalCoordinates = safeArray(getFormationCoordinates(rivalSystem)).map(toOverviewRivalHalf);
+    const rivalCoordinates = rivalSlots.map((slot) => toOverviewRivalHalf(slot.coordinates || { x: 50, y: 50 }));
     const caudalRoles = safeArray(getFormationRoles(caudalSystem));
-    const rivalRoles = safeArray(getFormationRoles(rivalSystem));
+    const rivalRoles = rivalSlots.map((slot) => slot.role);
     const caudalLineup = safeArray(selectedMatch.preCaudalLineup);
-    const rivalLineup = safeArray(getCurrentRivalLineup());
+    const rivalLineup = rivalSlots.map((slot) => slot.player?.name || '');
     const identity = liveRivalIdentity;
     const fieldView = getFieldViewSettings();
     const isCleanMode = fieldView.mode === 'LIMPIO';
@@ -8320,23 +8360,23 @@ function App() {
       'left-[14%] top-[20%] h-[35%] w-[72%]';
     const blockTop = identity.blockHeight === 'alto' ? 'top-[38%]' : identity.blockHeight === 'bajo' ? 'top-[18%]' : 'top-[29%]';
     const zoneColorClass = {
-      cyan: 'border-caudal-electric/30 bg-caudal-electric/[0.14] text-caudal-electric shadow-[0_0_24px_rgba(79,140,255,0.12)]',
-      amber: 'border-amber-200/30 bg-amber-200/[0.14] text-amber-100 shadow-[0_0_24px_rgba(251,191,36,0.10)]',
-      emerald: 'border-emerald-200/30 bg-emerald-200/[0.12] text-emerald-100 shadow-[0_0_24px_rgba(52,211,153,0.10)]',
-      red: 'border-red-200/30 bg-red-400/[0.13] text-red-100 shadow-[0_0_24px_rgba(248,113,113,0.10)]',
+      cyan: 'border-caudal-electric/20 bg-caudal-electric/[0.09] text-caudal-electric shadow-[0_0_16px_rgba(79,140,255,0.08)]',
+      amber: 'border-amber-200/20 bg-amber-200/[0.10] text-amber-100 shadow-[0_0_16px_rgba(251,191,36,0.07)]',
+      emerald: 'border-emerald-200/20 bg-emerald-200/[0.09] text-emerald-100 shadow-[0_0_16px_rgba(52,211,153,0.07)]',
+      red: 'border-red-200/20 bg-red-400/[0.09] text-red-100 shadow-[0_0_16px_rgba(248,113,113,0.07)]',
     };
     return (
       <div className="relative mx-auto aspect-[7/8.4] min-h-[420px] w-full max-w-3xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner">
-        {layers.zones ? <div className={`pointer-events-none absolute rounded-[2rem] border border-caudal-electric/[0.10] bg-caudal-electric/[0.035] ${sideClass}`} /> : null}
-        {layers.zones ? <div className={`pointer-events-none absolute rounded-full bg-amber-200/[0.055] blur-[2px] ${threatClass}`} /> : null}
-        <div className={`pointer-events-none absolute left-[10%] right-[10%] ${blockTop} h-px bg-rose-100/30`} />
-        <div className={`pointer-events-none absolute left-[50%] ${blockTop} -translate-x-1/2 -translate-y-4 rounded-md border border-white/10 bg-slate-950/35 px-2 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/55`}>
+        {layers.zones && showStaffDetails ? <div className={`pointer-events-none absolute rounded-[2rem] border border-caudal-electric/[0.08] bg-caudal-electric/[0.025] ${sideClass}`} /> : null}
+        {layers.zones && showStaffDetails ? <div className={`pointer-events-none absolute rounded-full bg-amber-200/[0.035] blur-[2px] ${threatClass}`} /> : null}
+        <div className={`pointer-events-none absolute left-[10%] right-[10%] ${blockTop} h-px bg-rose-100/20`} />
+        <div className={`pointer-events-none absolute left-[50%] ${blockTop} -translate-x-1/2 -translate-y-4 rounded-md border border-white/10 bg-slate-950/30 px-2 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/50`}>
           bloque {identity.blockHeight} · {identity.pressureType}
         </div>
-        <div className="pointer-events-none absolute right-5 top-5 z-10 rounded-xl border border-amber-200/15 bg-amber-200/[0.08] px-3 py-2 text-[9px] font-black uppercase tracking-[0.12em] text-amber-100">
+        {showStaffDetails ? <div className="pointer-events-none absolute right-5 top-5 z-10 rounded-xl border border-amber-200/12 bg-amber-200/[0.06] px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[0.12em] text-amber-100">
           {identity.mainThreat} · {identity.offensiveFocus}
-        </div>
-        {layers.zones ? getTacticalZones().filter((zone) => zone.active).slice(0, isCleanMode ? 3 : 99).map((zone) => {
+        </div> : null}
+        {layers.zones ? getTacticalZones().filter((zone) => zone.active).slice(0, isCleanMode ? 2 : 99).map((zone) => {
           const [title, ...rest] = String(zone.label || 'ZONA').split(/\s+-\s+|\s+·\s+/);
           const subtitle = rest.join(' · ');
           return (
@@ -8344,7 +8384,7 @@ function App() {
             key={zone.id}
             type="button"
             onClick={() => updateTacticalZone(zone.id, { x: Number(zone.x || 50) >= 75 ? 25 : Number(zone.x || 50) + 12 })}
-            className={`absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-xl border px-2.5 py-1.5 text-center text-[9px] font-black uppercase tracking-[0.12em] backdrop-blur-sm transition duration-300 hover:scale-105 ${zoneColorClass[zone.color] || zoneColorClass.cyan}`}
+            className={`absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-lg border px-2 py-1 text-center text-[8px] font-black uppercase tracking-[0.1em] backdrop-blur-sm transition duration-300 hover:scale-105 ${zoneColorClass[zone.color] || zoneColorClass.cyan}`}
             style={{ left: `${zone.x || 50}%`, top: `${zone.y || 50}%` }}
             title="Click para mover la zona"
           >
@@ -8366,7 +8406,8 @@ function App() {
           <div key={`rival-overview-${index}`} className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
             {(() => {
               const playerName = rivalLineup[index] || '';
-              const statusPlayer = getRivalLineupPlayerForSlot(index, playerName);
+              const statusPlayer = rivalSlots[index]?.player || null;
+              const unavailablePlayer = rivalSlots[index]?.unavailablePlayer || null;
               const badges = showStaffDetails && layers.badges && statusPlayer ? playerStatusBadges(statusPlayer) : [];
               return (
                 <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-rose-200 bg-rose-500/80 text-[10px] font-black text-white shadow-[0_0_26px_rgba(244,63,94,0.20)] transition duration-300">
@@ -8378,6 +8419,11 @@ function App() {
                           {badge.label}
                         </span>
                       ))}
+                    </span>
+                  ) : null}
+                  {showStaffDetails && unavailablePlayer ? (
+                    <span title={`No disponible: ${unavailablePlayer.name}`} className="absolute -left-3 -top-2 inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-amber-300/35 bg-slate-950 px-1 text-[7px] font-black text-amber-100">
+                      ND
                     </span>
                   ) : null}
                 </span>
