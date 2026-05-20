@@ -392,6 +392,9 @@ const consignaToneClass = {
   vigilancia: 'border-amber-200/25 bg-amber-200/[0.10] text-amber-100',
   ofensiva: 'border-caudal-electric/25 bg-caudal-electric/[0.10] text-caudal-electric',
   fortaleza: 'border-emerald-200/25 bg-emerald-200/[0.10] text-emerald-100',
+  transición: 'border-indigo-200/25 bg-indigo-400/[0.12] text-indigo-100',
+  transicion: 'border-indigo-200/25 bg-indigo-400/[0.12] text-indigo-100',
+  abp: 'border-cyan-200/25 bg-cyan-300/[0.12] text-cyan-100',
 };
 
 const normalizeSupabaseJugador = (player) => ({
@@ -3548,6 +3551,72 @@ function App() {
         },
       },
     });
+  };
+
+  const getMatchKey = () => {
+    const manual = String(selectedPreAiAnalysis?.matchKey || '').trim();
+    if (manual) return manual;
+    const identity = liveRivalIdentity;
+    if (identity.detectedWeakness === 'espalda lateral') return `Atacar espalda del lateral en su lado ${identity.strongSide}.`;
+    if (identity.mainThreat === 'segunda jugada') return 'Cerrar segunda jugada interior y rechace frontal.';
+    if (identity.blockHeight === 'bajo') return 'Mover su bloque bajo y activar lado débil.';
+    if (identity.pressureType === 'hombre a hombre') return 'Atraer presión y liberar tercer hombre.';
+    return `Atacar ${identity.detectedWeakness} sin conceder ${identity.mainThreat}.`;
+  };
+
+  const updateMatchKey = (value) => updatePreAiAnalysisPatch({ matchKey: value });
+
+  const getDetectedPreRisks = () => {
+    const identity = liveRivalIdentity;
+    const risks = [];
+    const add = (label, tone = 'alerta') => {
+      if (!risks.some((risk) => risk.label === label)) risks.push({ label, tone });
+    };
+    if (identity.mainThreat === 'transición' || identity.attackingRhythm === 'vertical') add('Transición rival', 'alerta');
+    if (identity.mainThreat === 'segunda jugada') add('Segunda jugada', 'vigilancia');
+    if (identity.offensiveFocus === 'ABP' || identity.mainThreat === 'ABP') add('Balón parado', 'alerta');
+    if (identity.strongSide) add(`Lado fuerte ${identity.strongSide}`, 'vigilancia');
+    if (identity.pressureType === 'tras pérdida') add('Pérdida interior', 'alerta');
+    const keyPlayer = liveRivalPlayers.find((player) => player.isKey);
+    if (keyPlayer) add(`Duelo crítico: ${keyPlayer.name}`, 'vigilancia');
+    const unavailable = liveRivalPlayers.find(isUnavailableRivalPlayer);
+    if (unavailable) add(`Ausencia: ${unavailable.name}`, 'ofensiva');
+    return risks.slice(0, 7);
+  };
+
+  const getPreReviewRows = () => {
+    const hasSystem = Boolean(getCurrentRivalSystem());
+    const hasLineup = Boolean(getCurrentRivalLineup().filter(Boolean).length >= 8);
+    const hasCanva = Boolean(selectedMatch?.preCanvaLink);
+    const hasAbp = Boolean(selectedMatch?.abpOfensiva || selectedMatch?.abpDefensiva || selectedMatch?.preRivalCornersFor || selectedMatch?.preRivalCornersAgainst);
+    const hasMarkedPlayers = liveRivalMarkedPlayers.length > 0;
+    return [
+      { key: 'systemConfirmed', label: 'Sistema', status: hasSystem ? 'COMPLETADO' : 'PENDIENTE' },
+      { key: 'probableLineup', label: 'Alineación', status: hasLineup || preReportChecklist.probableLineup ? 'COMPLETADO' : 'PENDIENTE' },
+      { key: 'videoReviewed', label: 'Vídeo', status: hasCanva || preReportChecklist.videoReviewed ? 'COMPLETADO' : 'PENDIENTE' },
+      { key: 'abpAnalyzed', label: 'ABP', status: hasAbp || preReportChecklist.abpAnalyzed ? 'COMPLETADO' : 'CRÍTICO' },
+      { key: 'watchedPlayers', label: 'Estados', status: hasMarkedPlayers || preReportChecklist.watchedPlayers ? 'COMPLETADO' : 'PENDIENTE' },
+    ];
+  };
+
+  const getPreReviewContext = () => {
+    const context = [];
+    context.push(selectedMatch?.preCanvaLink ? 'Informe cargado' : 'Sin enlace de informe');
+    context.push(`${Math.max(0, getCurrentRivalLineup().filter(Boolean).length)} jugadores probables`);
+    context.push(getCurrentRivalSystem() ? 'Sistema confirmado' : 'Sistema pendiente');
+    context.push(preReportChecklist.videoReviewed || selectedMatch?.preCanvaLink ? 'Vídeo revisado' : 'Vídeo pendiente');
+    return context;
+  };
+
+  const getPreLastReviewLabel = () => {
+    const dateValue = selectedPreAiAnalysis?.generatedAt || selectedPreAiAnalysis?.tacticalQuestion?.createdAt || selectedPreAiAnalysis?.inputSummary?.createdAt;
+    if (!dateValue) return '';
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return '';
+    const diffDays = Math.max(0, Math.floor((Date.now() - date.getTime()) / 86400000));
+    if (diffDays === 0) return 'Última edición hoy';
+    if (diffDays === 1) return 'Última edición hace 1 día';
+    return `Última edición hace ${diffDays} días`;
   };
 
   const selectedPlayerProfile = useMemo(
@@ -11268,21 +11337,40 @@ function App() {
 
                         <div className={`grid gap-5 ${isPreTalkMode ? 'xl:grid-cols-[0.42fr_0.58fr]' : 'xl:grid-cols-[0.38fr_0.62fr]'}`}>
                           <div className="space-y-5">
+                            <section className="rounded-[1.45rem] border border-caudal-electric/20 bg-[linear-gradient(135deg,rgba(79,140,255,0.14),rgba(9,20,40,0.88))] p-5 shadow-[0_18px_50px_rgba(79,140,255,0.10)]">
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Clave del partido</p>
+                                  {isPreTalkMode ? (
+                                    <h4 className="mt-2 text-2xl font-black leading-tight text-white">{getMatchKey()}</h4>
+                                  ) : (
+                                    <input
+                                      value={getMatchKey()}
+                                      onChange={(event) => updateMatchKey(event.target.value)}
+                                      className="mt-2 w-full bg-transparent text-2xl font-black leading-tight text-white outline-none placeholder:text-slate-500"
+                                      placeholder="Idea principal del partido..."
+                                    />
+                                  )}
+                                </div>
+                                <span className="hidden rounded-2xl border border-white/10 bg-white/[0.08] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white sm:inline-flex">Briefing</span>
+                              </div>
+                            </section>
                             <section className="rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.20)]">
                               <div className="flex items-start justify-between gap-3">
                                 <div>
                                   <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/75">Claves del partido</p>
                                   <h4 className="mt-1 text-xl font-black text-white">Consignas del partido</h4>
                                 </div>
-                                <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{activeConsignas.length} activas</span>
+                                <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{activeConsignas.length} ACTIVAS</span>
                               </div>
-                              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.025] p-3">
+                              <div className={`${isPreTalkMode ? 'hidden' : 'mt-4'} rounded-2xl border border-white/10 bg-white/[0.025] p-3`}>
                                 <div className="flex items-center justify-between gap-3">
                                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Sugeridas automáticamente</p>
                                   {!isPreTalkMode ? (
                                     <button
                                       type="button"
-                                      onClick={() => updateSuggestedConsignas(createSuggestedConsignas(selectedMatchRivalTeam || liveRivalIdentity))}
+                                      title="Regenera solo sugerencias pendientes."
+                                      onClick={() => updateSuggestedConsignas(createSuggestedConsignas(selectedMatchRivalTeam || liveRivalIdentity).filter((item) => !activeConsignas.includes(item.text)))}
                                       className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-400 hover:bg-white/[0.08] hover:text-white"
                                     >
                                       Regenerar
@@ -11321,7 +11409,7 @@ function App() {
                                 </div>
                               </div>
                               <div className="mt-4 rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.045] p-3">
-                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Fijadas / manuales</p>
+                                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Consignas activas</p>
                                 {!isPreTalkMode ? (
                                   <div className="mt-3 flex gap-2">
                                     <input
@@ -11341,8 +11429,8 @@ function App() {
                                 ) : null}
                                 <div className="mt-3 flex flex-wrap gap-2">
                                   {activeConsignas.length ? activeConsignas.map((item, index) => (
-                                    <div key={`${item}-${index}`} className="group flex max-w-full items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.06] px-2.5 py-2 text-sm font-bold text-slate-100">
-                                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-caudal-electric" />
+                                    <div key={`${item}-${index}`} className="group flex max-w-full animate-[pulse_0.35s_ease-out_1] items-center gap-1.5 rounded-xl border border-caudal-electric/25 bg-caudal-electric/[0.085] px-2.5 py-2 text-sm font-bold text-slate-100 shadow-[0_0_22px_rgba(79,140,255,0.08)]">
+                                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-caudal-electric text-[8px] font-black text-slate-950">OK</span>
                                       {isPreTalkMode ? (
                                         <span className="max-w-[260px] truncate">{item}</span>
                                       ) : (
@@ -11361,29 +11449,58 @@ function App() {
                                   )}
                                 </div>
                               </div>
+                              {isPreTalkMode ? (
+                                <div className="mt-4 rounded-2xl border border-amber-200/15 bg-amber-200/[0.07] p-3">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-100">Riesgos</p>
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    {getDetectedPreRisks().map((risk) => (
+                                      <span key={risk.label} className={`rounded-xl border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.08em] ${consignaToneClass[risk.tone] || consignaToneClass.alerta}`}>{risk.label}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
                             </section>
 
                             <section className={`rounded-[1.45rem] border border-white/10 bg-white/[0.025] p-5 ${isPreTalkMode ? 'hidden xl:block' : ''}`}>
                               <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Estado del informe</p>
                               <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                                {[
-                                  ['videoReviewed', 'Vídeo revisado'],
-                                  ['abpAnalyzed', 'ABP analizado'],
-                                  ['systemConfirmed', 'Sistema confirmado'],
-                                  ['probableLineup', 'Alineación probable'],
-                                  ['setPiecesReviewed', 'Balón parado revisado'],
-                                  ['watchedPlayers', 'Estados rivales revisados'],
-                                ].map(([key, label]) => (
+                                {getPreReviewRows().map((row) => {
+                                  const statusClass = row.status === 'COMPLETADO'
+                                    ? 'border-emerald-200/20 bg-emerald-200/[0.09] text-emerald-100'
+                                    : row.status === 'CRÍTICO'
+                                      ? 'border-red-200/25 bg-red-400/[0.11] text-red-100'
+                                      : 'border-amber-200/[0.16] bg-amber-200/[0.055] text-amber-100';
+                                  const icon = row.status === 'COMPLETADO' ? 'OK' : row.status === 'CRÍTICO' ? '!' : '--';
+                                  return (
                                   <button
-                                    key={key}
+                                    key={row.key}
                                     type="button"
-                                    onClick={() => togglePreReportChecklist(key)}
-                                    className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs font-black uppercase tracking-[0.08em] transition ${preReportChecklist[key] ? 'border-emerald-200/20 bg-emerald-200/[0.09] text-emerald-100' : 'border-amber-200/[0.16] bg-amber-200/[0.055] text-amber-100'}`}
+                                    onClick={() => togglePreReportChecklist(row.key)}
+                                    className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs font-black uppercase tracking-[0.08em] transition ${statusClass}`}
                                   >
-                                    <span>{label}</span>
-                                    <span>{preReportChecklist[key] ? 'OK' : 'PEND.'}</span>
+                                    <span>{row.label}</span>
+                                    <span>{icon} {row.status}</span>
                                   </button>
-                                ))}
+                                  );
+                                })}
+                              </div>
+                              <div className="mt-5 border-t border-white/10 pt-4">
+                                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Riesgos detectados</p>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {getDetectedPreRisks().map((risk) => (
+                                    <span key={risk.label} className={`rounded-xl border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.08em] ${consignaToneClass[risk.tone] || consignaToneClass.alerta}`}>
+                                      {risk.label}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="mt-5 border-t border-white/10 pt-4">
+                                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Última revisión</p>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {getPreReviewContext().map((item) => (
+                                    <span key={item} className="rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-300">{item}</span>
+                                  ))}
+                                </div>
                               </div>
                             </section>
                           </div>
@@ -11393,7 +11510,7 @@ function App() {
                               <div>
                                 <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Informe rival</p>
                                 <h4 className="mt-1 text-lg font-black text-white">Enlace de scouting</h4>
-                                <p className="mt-1 text-sm text-slate-400">{selectedMatch.preCanvaLink ? 'Informe cargado' : 'Sin enlace'}{selectedMatch.preAiAnalysis?.inputSummary ? ' · PRE actualizado' : ''}</p>
+                                <p className="mt-1 text-sm text-slate-400">{selectedMatch.preCanvaLink ? 'Informe cargado' : 'Sin enlace'}{getPreLastReviewLabel() ? ` · ${getPreLastReviewLabel()}` : ''}</p>
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 <input
@@ -11420,6 +11537,41 @@ function App() {
                                   Copiar
                                 </button>
                               </div>
+                            </div>
+                          </section>
+                          <section className={`rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/85 p-5 shadow-[0_18px_60px_rgba(0,0,0,0.20)] ${isPreTalkMode ? 'hidden' : ''}`}>
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/75">Resumen rival</p>
+                                <h4 className="mt-1 text-lg font-black text-white">{selectedMatchRivalTeam?.name || selectedMatch.opponent || 'Rival'}</h4>
+                              </div>
+                              <span className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">EQUIPOS</span>
+                            </div>
+                            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                              {[
+                                ['Sistema', getCurrentRivalSystem()],
+                                ['Bloque', liveRivalIdentity.blockHeight],
+                                ['Presión', liveRivalIdentity.pressureType],
+                                ['Amenaza', liveRivalIdentity.mainThreat],
+                                ['Lado fuerte', liveRivalIdentity.strongSide],
+                                ['Debilidad', liveRivalIdentity.detectedWeakness],
+                                ['Foco ofensivo', liveRivalIdentity.offensiveFocus],
+                              ].map(([label, value]) => (
+                                <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2">
+                                  <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+                                  <p className="mt-1 truncate text-sm font-black text-white">{value}</p>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              {liveRivalMarkedPlayers.slice(0, 8).map((player) => (
+                                <span key={player.name} className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.045] px-2.5 py-1.5 text-xs font-bold text-slate-100">
+                                  {player.name}
+                                  {playerStatusBadges(player).slice(0, 2).map((badge) => (
+                                    <span key={badge.label} title={badge.title} className={`rounded px-1 text-[8px] font-black ${badge.className}`}>{badge.label}</span>
+                                  ))}
+                                </span>
+                              ))}
                             </div>
                           </section>
                         </div>
