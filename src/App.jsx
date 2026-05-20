@@ -1632,11 +1632,11 @@ const playerReservePlacement = (player) => {
 };
 const playerStatusBadges = (player) =>
   [
-    player.injured ? { label: 'LES', className: 'border border-slate-300/20 bg-slate-300/[0.16] text-slate-100', title: 'Lesionado / no disponible' } : null,
-    player.yellowRisk ? { label: 'AM', className: 'border border-yellow-200/35 bg-yellow-300/[0.22] text-yellow-100', title: 'No puede jugar por acumulación' } : null,
-    player.suspended || player.expelled || player.red ? { label: 'RJ', className: 'border border-red-200/35 bg-red-500/[0.22] text-red-100', title: 'No puede jugar por sanción' } : null,
+    player.injured ? { label: 'LES', className: 'border border-slate-400/25 bg-slate-800 text-slate-100 shadow-[0_0_14px_rgba(15,23,42,0.45)]', title: 'Lesionado / no disponible' } : null,
+    player.yellowRisk ? { label: 'AM', className: 'border border-yellow-100/60 bg-yellow-300 text-slate-950 shadow-[0_0_14px_rgba(250,204,21,0.28)]', title: 'No puede jugar por acumulación' } : null,
+    player.suspended || player.expelled || player.red ? { label: 'RJ', className: 'border border-red-100/50 bg-red-600 text-white shadow-[0_0_16px_rgba(220,38,38,0.32)]', title: 'No puede jugar por sanción' } : null,
     player.doubtful || player.physicalDoubt ? { label: 'DUDA', className: 'border border-sky-200/20 bg-sky-200/[0.10] text-sky-100', title: 'Duda física' } : null,
-    player.isKey ? { label: 'DEST', className: 'border border-amber-200/35 bg-amber-300/[0.18] text-amber-100', title: 'Jugador diferencial' } : null,
+    player.isKey ? { label: 'DEST', className: 'border border-amber-100/50 bg-amber-300/[0.20] text-amber-100 shadow-[0_0_14px_rgba(251,191,36,0.20)]', title: 'Jugador diferencial' } : null,
   ].filter(Boolean);
 
 const isUnavailableRivalPlayer = (player = {}) => Boolean(player.yellowRisk || player.suspended || player.injured || player.expelled || player.red);
@@ -2432,6 +2432,7 @@ function App() {
   const [preSubTab, setPreSubTab] = useState('Informe rival');
   const [isPreTalkMode, setIsPreTalkMode] = useState(false);
   const [manualConsignaDraft, setManualConsignaDraft] = useState('');
+  const [isTacticalZonesEditorOpen, setIsTacticalZonesEditorOpen] = useState(false);
   const [selectedTacticalPlayerIndex, setSelectedTacticalPlayerIndex] = useState(0);
   const [selectedRivalTacticalPlayerIndex, setSelectedRivalTacticalPlayerIndex] = useState(0);
   const [newRivalManualPlayerName, setNewRivalManualPlayerName] = useState('');
@@ -3464,10 +3465,13 @@ function App() {
   const liveRivalStarters = useMemo(() => {
     const savedLineup = safeArray(selectedMatchRivalTeam?.lineup).sort((a, b) => Number(a.slot ?? 0) - Number(b.slot ?? 0)).map(normalizeSquadEntry);
     const savedAvailable = savedLineup.filter((player) => !isUnavailableRivalPlayer(player));
-    if (savedAvailable.length) return savedAvailable;
     const starters = liveRivalPlayers.filter((player) => player.role === 'Titular' && !isUnavailableRivalPlayer(player));
     const available = liveRivalPlayers.filter((player) => !isUnavailableRivalPlayer(player));
-    return (starters.length ? starters : available).slice(0, 11);
+    const byName = new Map();
+    [...savedAvailable, ...starters, ...available].forEach((player) => {
+      if (player.name && !byName.has(player.name)) byName.set(player.name, player);
+    });
+    return Array.from(byName.values()).slice(0, 11);
   }, [liveRivalPlayers, selectedMatchRivalTeam]);
   const liveRivalMarkedPlayers = useMemo(
     () => liveRivalPlayers.filter((player) => player.isKey || player.yellowRisk || player.suspended || player.injured || player.doubtful),
@@ -4367,8 +4371,9 @@ function App() {
 
   const getRivalLineupPlayerForSlot = (slotIndex, playerName) => {
     const slotPlayer = selectedMatch?.preRivalLineupPlayers?.[slotIndex];
-    if (slotPlayer?.name) return normalizeSquadEntry(slotPlayer);
-    return getRivalAvailablePlayers().find((player) => player.name === playerName) || null;
+    const normalizedSlotPlayer = slotPlayer?.name ? normalizeSquadEntry(slotPlayer) : null;
+    if (normalizedSlotPlayer?.name === playerName && !isUnavailableRivalPlayer(normalizedSlotPlayer)) return normalizedSlotPlayer;
+    return getRivalAvailablePlayers().find((player) => player.name === playerName && !isUnavailableRivalPlayer(player)) || null;
   };
 
   const getCurrentRivalSystem = () => selectedMatchRivalTeam?.system || selectedMatch?.preRivalSystem || selectedMatch?.rivalLineupSystem || '4-4-2';
@@ -4584,6 +4589,50 @@ function App() {
     saveTacticalZones(getTacticalZones().filter((zone) => zone.id !== zoneId));
   };
 
+  const getFieldViewSettings = () => ({
+    mode: selectedPreAiAnalysis?.fieldView?.mode || 'STAFF',
+    layers: {
+      zones: selectedPreAiAnalysis?.fieldView?.layers?.zones ?? true,
+      names: selectedPreAiAnalysis?.fieldView?.layers?.names ?? true,
+      badges: selectedPreAiAnalysis?.fieldView?.layers?.badges ?? true,
+      rival: selectedPreAiAnalysis?.fieldView?.layers?.rival ?? true,
+      caudal: selectedPreAiAnalysis?.fieldView?.layers?.caudal ?? true,
+      microduels: selectedPreAiAnalysis?.fieldView?.layers?.microduels ?? true,
+    },
+  });
+
+  const updateFieldViewSettings = (patch) => {
+    const current = getFieldViewSettings();
+    updatePreAiAnalysisPatch({
+      fieldView: {
+        ...current,
+        ...patch,
+        layers: {
+          ...current.layers,
+          ...(patch.layers || {}),
+        },
+      },
+    });
+  };
+
+  const addTacticalScenario = (label = 'Escenario') => {
+    const scenarios = safeArray(selectedPreAiAnalysis?.tacticalScenarios);
+    updatePreAiAnalysisPatch({
+      tacticalScenarios: [
+        ...scenarios,
+        {
+          id: `scenario-${Date.now()}`,
+          label,
+          type: label,
+          caudalSystem: selectedMatch?.preCaudalSystem || '4-4-2',
+          rivalSystem: getCurrentRivalSystem(),
+          notes: selectedPreAiAnalysis?.tacticalQuestion?.answer || '',
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    });
+  };
+
   const buildTacticalQuestionAnswer = (mode, question) => {
     const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
     const rivalSystem = getCurrentRivalSystem();
@@ -4602,11 +4651,11 @@ function App() {
     if (mode === 'Micro' || /jugador|duelo|vigilar|marca/i.test(safeQuestion)) {
       const caudalRefs = hasCaudalNames ? caudalLineup.filter(Boolean).slice(0, 3).join(', ') : 'nuestros jugadores del carril activo';
       const rivalRefs = keyPlayers.length ? keyPlayers.slice(0, 3).join(', ') : hasRivalNames ? rivalLineup.filter(Boolean).slice(0, 3).join(', ') : `sus referencias de ${identity.mainThreat}`;
-      return `Lectura micro con contexto real: relacionar ${caudalRefs} contra ${rivalRefs}. El rival carga ${identity.strongSide} con foco ${identity.offensiveFocus}; los duelos clave deben negar recepción de cara, cerrar pase interior y activar ayuda cercana tras pérdida. Estados a explotar o vigilar: ${alertPlayers.length ? alertPlayers.slice(0, 4).join(', ') : 'sin alertas individuales marcadas en EQUIPOS'}.`;
+      return `Micro: ${caudalRefs} contra ${rivalRefs}. Negar giro, cerrar dentro y saltar con cobertura. Cargar ${identity.strongSide}; atacar ${identity.detectedWeakness}. ${alertPlayers.length ? `Estados: ${alertPlayers.slice(0, 3).join(', ')}.` : ''}`;
     }
 
     if (q.includes('bloque') || q.includes('atacamos')) {
-      return `Para atacar su ${rivalSystem} con bloque ${identity.blockHeight} y presión ${identity.pressureType}, fijar primero su lado fuerte ${identity.strongSide} y acelerar hacia ${identity.detectedWeakness}. Contra ${rival.midfielders} medios rivales, necesitamos apoyos cortos por dentro, amenaza a espalda y cambios de orientación antes de que puedan saltar todos hacia balón.`;
+      return `Fijar su ${rivalSystem}. Atraer presión ${identity.pressureType}. Cambiar a lado débil y atacar ${identity.detectedWeakness}.`;
     }
     if (q.includes('superioridad')) {
       const diff = caudal.midfielders - rival.midfielders;
@@ -4615,16 +4664,16 @@ function App() {
         : `No tenemos superioridad natural por dentro: ${caudal.midfielders} contra ${rival.midfielders}. La ventaja debe buscarse por fuera, con cambios de orientación y atacando la espalda del lateral/carrilero.`;
     }
     if (q.includes('pérdida') || q.includes('perdida') || q.includes('transiciones')) {
-      return `Tras pérdida, el riesgo real es ${identity.mainThreat} con ritmo ${identity.attackingRhythm}. Primer ajuste: pérdida por dentro exige presión inmediata o falta táctica; pérdida por fuera exige cerrar pase interior, proteger segundo palo y vigilar a ${keyPlayers[0] || 'su primer lanzador'}.`;
+      return `Pérdida interior prohibida. Presión inmediata o falta táctica. Cerrar pase a ${keyPlayers[0] || 'primer lanzador'} y proteger segundo palo.`;
     }
     if (q.includes('vigilar')) {
-      return `Vigilar primero a ${keyPlayers[0] || `la referencia de ${identity.mainThreat}`}. Si recibe en el lado fuerte ${identity.strongSide}, orientar hacia fuera, negar giro y tener cobertura interior antes de saltar.`;
+      return `Prioridad: ${keyPlayers[0] || identity.mainThreat}. Contacto previo, negar giro y orientar fuera. Saltar solo con cobertura.`;
     }
     if (q.includes('ajuste') || q.includes('progresamos')) {
-      return `Si no progresamos, baja un apoyo entre centrales o acerca el mediapunta al pivote para crear una salida de tres más un hombre libre. Si aun así nos fijan, saltar al lado débil antes de conducir por dentro.`;
+      return `Salida de tres. Mediapunta cerca del pivote. Fijar primera línea y atacar lado débil tras salto.`;
     }
 
-    return `Lectura macro: ${caudalSystem} contra ${rivalSystem}, rival de bloque ${identity.blockHeight}, presión ${identity.pressureType}, foco ${identity.offensiveFocus} y amenaza ${identity.mainThreat}. Queremos jugar hacia su debilidad ${identity.detectedWeakness}, activar lado débil y evitar pérdidas interiores sin cobertura.`;
+    return `${caudalSystem} vs ${rivalSystem}. Atacar ${identity.detectedWeakness}. Controlar ${identity.mainThreat}. Equipo corto tras pérdida.`;
   };
 
   const askTacticalQuestion = () => {
@@ -8252,6 +8301,10 @@ function App() {
     const caudalLineup = safeArray(selectedMatch.preCaudalLineup);
     const rivalLineup = safeArray(getCurrentRivalLineup());
     const identity = liveRivalIdentity;
+    const fieldView = getFieldViewSettings();
+    const isCleanMode = fieldView.mode === 'LIMPIO';
+    const layers = fieldView.layers;
+    const showStaffDetails = !isCleanMode;
     const sideClass =
       identity.strongSide === 'izquierda' ? 'left-[8%] top-[8%] h-[42%] w-[24%]' :
       identity.strongSide === 'derecha' ? 'right-[8%] top-[8%] h-[42%] w-[24%]' :
@@ -8274,8 +8327,8 @@ function App() {
     };
     return (
       <div className="relative mx-auto aspect-[7/8.4] min-h-[420px] w-full max-w-3xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner">
-        <div className={`pointer-events-none absolute rounded-[2rem] border border-caudal-electric/[0.16] bg-caudal-electric/[0.06] ${sideClass}`} />
-        <div className={`pointer-events-none absolute rounded-full bg-amber-200/[0.11] blur-[2px] ${threatClass}`} />
+        {layers.zones ? <div className={`pointer-events-none absolute rounded-[2rem] border border-caudal-electric/[0.10] bg-caudal-electric/[0.035] ${sideClass}`} /> : null}
+        {layers.zones ? <div className={`pointer-events-none absolute rounded-full bg-amber-200/[0.055] blur-[2px] ${threatClass}`} /> : null}
         <div className={`pointer-events-none absolute left-[10%] right-[10%] ${blockTop} h-px bg-rose-100/30`} />
         <div className={`pointer-events-none absolute left-[50%] ${blockTop} -translate-x-1/2 -translate-y-4 rounded-md border border-white/10 bg-slate-950/35 px-2 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/55`}>
           bloque {identity.blockHeight} · {identity.pressureType}
@@ -8283,18 +8336,23 @@ function App() {
         <div className="pointer-events-none absolute right-5 top-5 z-10 rounded-xl border border-amber-200/15 bg-amber-200/[0.08] px-3 py-2 text-[9px] font-black uppercase tracking-[0.12em] text-amber-100">
           {identity.mainThreat} · {identity.offensiveFocus}
         </div>
-        {getTacticalZones().filter((zone) => zone.active).map((zone) => (
+        {layers.zones ? getTacticalZones().filter((zone) => zone.active).slice(0, isCleanMode ? 3 : 99).map((zone) => {
+          const [title, ...rest] = String(zone.label || 'ZONA').split(/\s+-\s+|\s+·\s+/);
+          const subtitle = rest.join(' · ');
+          return (
           <button
             key={zone.id}
             type="button"
             onClick={() => updateTacticalZone(zone.id, { x: Number(zone.x || 50) >= 75 ? 25 : Number(zone.x || 50) + 12 })}
-            className={`absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-xl border px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] backdrop-blur-sm transition duration-300 hover:scale-105 ${zoneColorClass[zone.color] || zoneColorClass.cyan}`}
+            className={`absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-xl border px-2.5 py-1.5 text-center text-[9px] font-black uppercase tracking-[0.12em] backdrop-blur-sm transition duration-300 hover:scale-105 ${zoneColorClass[zone.color] || zoneColorClass.cyan}`}
             style={{ left: `${zone.x || 50}%`, top: `${zone.y || 50}%` }}
             title="Click para mover la zona"
           >
-            {zone.label || 'ZONA'}
+            <span className="block">{title}</span>
+            {subtitle ? <span className="mt-0.5 block text-[7px] font-bold tracking-[0.08em] opacity-70">{subtitle}</span> : null}
           </button>
-        ))}
+          );
+        }) : null}
         <div className="absolute inset-4 rounded-[28px] border-2 border-white/55" />
         <div className="absolute left-4 right-4 top-1/2 h-px bg-white/35" />
         <div className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/35" />
@@ -8304,12 +8362,12 @@ function App() {
           <span>Rival {rivalSystem}</span>
           <span>Caudal {caudalSystem}</span>
         </div>
-        {rivalCoordinates.map((slot, index) => (
+        {layers.rival ? rivalCoordinates.map((slot, index) => (
           <div key={`rival-overview-${index}`} className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
             {(() => {
               const playerName = rivalLineup[index] || '';
               const statusPlayer = getRivalLineupPlayerForSlot(index, playerName);
-              const badges = statusPlayer ? playerStatusBadges(statusPlayer) : [];
+              const badges = showStaffDetails && layers.badges && statusPlayer ? playerStatusBadges(statusPlayer) : [];
               return (
                 <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-rose-200 bg-rose-500/80 text-[10px] font-black text-white shadow-[0_0_26px_rgba(244,63,94,0.20)] transition duration-300">
                   {statusPlayer?.image ? <img src={statusPlayer.image} alt="" className="h-full w-full object-cover object-center" /> : index === 0 ? 'P' : index}
@@ -8325,12 +8383,12 @@ function App() {
                 </span>
               );
             })()}
-            <span className="max-w-24 truncate rounded-md bg-black/65 px-1.5 py-0.5 text-[8px] font-semibold text-white shadow-sm">
+            {layers.names ? <span className="max-w-24 truncate rounded-md bg-black/65 px-1.5 py-0.5 text-[8px] font-semibold text-white shadow-sm">
               {rivalLineup[index] || rivalRoles[index] || `R${index + 1}`}
-            </span>
+            </span> : null}
           </div>
-        ))}
-        {caudalCoordinates.map((slot, index) => (
+        )) : null}
+        {layers.caudal ? caudalCoordinates.map((slot, index) => (
           <div key={`caudal-overview-${index}`} className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
             {(() => {
               const player = players.find((item) => item.name === caudalLineup[index]);
@@ -8340,11 +8398,11 @@ function App() {
                 </span>
               );
             })()}
-            <span className="max-w-24 truncate rounded-md bg-black/65 px-1.5 py-0.5 text-[8px] font-semibold text-white shadow-sm">
+            {layers.names ? <span className="max-w-24 truncate rounded-md bg-black/65 px-1.5 py-0.5 text-[8px] font-semibold text-white shadow-sm">
               {caudalLineup[index] || caudalRoles[index] || `C${index + 1}`}
-            </span>
+            </span> : null}
           </div>
-        ))}
+        )) : null}
       </div>
     );
   };
@@ -11681,14 +11739,50 @@ function App() {
                               <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Pizarra táctica</h4>
                               <p className="mt-2 text-sm text-slate-400">Un único campo con Caudal y rival enfrentados. Si hay alineaciones, aparecen los nombres; si no, los roles.</p>
                             </div>
+                            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                              <div className="grid grid-cols-2 rounded-xl border border-white/10 bg-black/20 p-1">
+                                {['STAFF', 'LIMPIO'].map((mode) => (
+                                  <button
+                                    key={mode}
+                                    type="button"
+                                    onClick={() => updateFieldViewSettings({ mode })}
+                                    className={`rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] ${getFieldViewSettings().mode === mode ? 'bg-caudal-electric text-slate-950' : 'text-slate-400 hover:text-white'}`}
+                                  >
+                                    {mode}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {[
+                                  ['zones', 'Zonas'],
+                                  ['names', 'Nombres'],
+                                  ['badges', 'Badges'],
+                                  ['rival', 'Rival'],
+                                  ['caudal', 'Caudal'],
+                                  ['microduels', 'Micro'],
+                                ].map(([key, label]) => (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => updateFieldViewSettings({ layers: { [key]: !getFieldViewSettings().layers[key] } })}
+                                    className={`rounded-lg border px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] ${getFieldViewSettings().layers[key] ? 'border-caudal-electric/25 bg-caudal-electric/10 text-caudal-electric' : 'border-white/10 bg-white/[0.035] text-slate-500'}`}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
                             {renderFacingSystemsOverview()}
                             {!isPreTalkMode ? (
                               <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
                                 <div className="flex items-center justify-between gap-3">
                                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Zonas tácticas editables</p>
-                                  <button type="button" onClick={addTacticalZone} className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-caudal-electric">Añadir zona</button>
+                                  <div className="flex gap-2">
+                                    <button type="button" onClick={() => setIsTacticalZonesEditorOpen((current) => !current)} className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-300 hover:text-white">Editar zonas tácticas</button>
+                                    {isTacticalZonesEditorOpen ? <button type="button" onClick={addTacticalZone} className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-caudal-electric">Añadir zona</button> : null}
+                                  </div>
                                 </div>
-                                <div className="mt-3 grid gap-2">
+                                {isTacticalZonesEditorOpen ? <div className="mt-3 grid gap-2">
                                   {getTacticalZones().map((zone) => (
                                     <div key={zone.id} className="grid gap-2 rounded-xl border border-white/10 bg-white/[0.035] p-2 md:grid-cols-[auto_1fr_92px_92px_96px_auto] md:items-center">
                                       <button type="button" onClick={() => updateTacticalZone(zone.id, { active: !zone.active })} className={`h-8 rounded-lg px-2 text-[10px] font-black uppercase ${zone.active ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-400'}`}>{zone.active ? 'ON' : 'OFF'}</button>
@@ -11701,7 +11795,7 @@ function App() {
                                       <button type="button" onClick={() => removeTacticalZone(zone.id)} className="rounded-lg bg-red-500/15 px-2 py-2 text-[10px] font-black uppercase text-red-100">Borrar</button>
                                     </div>
                                   ))}
-                                </div>
+                                </div> : null}
                               </div>
                             ) : null}
                           </div>
@@ -11745,7 +11839,7 @@ function App() {
                                 </button>
                               ))}
                             </div>
-                            {tacticalQuestionMode === 'Micro' ? (
+                            {tacticalQuestionMode === 'Micro' && getFieldViewSettings().layers.microduels ? (
                               <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.035] p-4">
                                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Microduelos automáticos</p>
                                 <div className="mt-3 space-y-2">
@@ -11782,6 +11876,34 @@ function App() {
                                     className="rounded-2xl bg-caudal-electric/20 px-3 py-2 text-xs font-bold text-caudal-electric hover:bg-caudal-electric/30"
                                   >
                                     Guardar como nota PRE
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => addSuggestedConsignaToManual(selectedPreAiAnalysis.tacticalQuestion.answer)}
+                                    className="rounded-2xl bg-caudal-electric/20 px-3 py-2 text-xs font-bold text-caudal-electric hover:bg-caudal-electric/30"
+                                  >
+                                    Añadir como consigna
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateSelectedMatchFields({ planClave: [selectedMatch.planClave, selectedPreAiAnalysis.tacticalQuestion.answer].filter(Boolean).join('\n') })}
+                                    className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/15"
+                                  >
+                                    Enviar a charla
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateSelectedMatchFields({ prePlanAdjustment: selectedPreAiAnalysis.tacticalQuestion.answer })}
+                                    className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/15"
+                                  >
+                                    Guardar ajuste
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => addTacticalScenario('PLAN B')}
+                                    className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/15"
+                                  >
+                                    Crear escenario
                                   </button>
                                   {[
                                     ['Copiar a plan con balón', 'planConBalon'],
