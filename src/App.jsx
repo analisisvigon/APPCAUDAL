@@ -1629,13 +1629,14 @@ const playerReservePlacement = (player) => {
 };
 const playerStatusBadges = (player) =>
   [
-    player.expelled || player.red ? { label: 'EXP', className: 'border border-red-200/25 bg-red-400/[0.14] text-red-100', title: 'Expulsado' } : null,
-    player.injured ? { label: 'LES', className: 'border border-red-200/20 bg-red-300/[0.12] text-red-100', title: 'Lesionado' } : null,
-    player.yellowRisk ? { label: 'AM', className: 'border border-amber-200/20 bg-amber-200/[0.12] text-amber-100', title: 'Amonestado / riesgo suspensión' } : null,
-    player.suspended ? { label: 'RJ', className: 'border border-red-200/25 bg-slate-200/10 text-red-100', title: 'Riesgo roja' } : null,
+    player.injured ? { label: 'LES', className: 'border border-slate-300/20 bg-slate-300/[0.16] text-slate-100', title: 'Lesionado / no disponible' } : null,
+    player.yellowRisk ? { label: 'AM', className: 'border border-yellow-200/35 bg-yellow-300/[0.22] text-yellow-100', title: 'No puede jugar por acumulación' } : null,
+    player.suspended || player.expelled || player.red ? { label: 'RJ', className: 'border border-red-200/35 bg-red-500/[0.22] text-red-100', title: 'No puede jugar por sanción' } : null,
     player.doubtful || player.physicalDoubt ? { label: 'DUDA', className: 'border border-sky-200/20 bg-sky-200/[0.10] text-sky-100', title: 'Duda física' } : null,
-    player.isKey ? { label: 'DEST', className: 'border border-amber-200/25 bg-amber-200/[0.12] text-amber-100', title: 'Destacado' } : null,
+    player.isKey ? { label: 'DEST', className: 'border border-amber-200/35 bg-amber-300/[0.18] text-amber-100', title: 'Jugador diferencial' } : null,
   ].filter(Boolean);
+
+const isUnavailableRivalPlayer = (player = {}) => Boolean(player.yellowRisk || player.suspended || player.injured || player.expelled || player.red);
 
 const getPlayerTacticalBadges = (player) => {
   const position = normalizePlayerIdentityName(player.position || '');
@@ -2427,8 +2428,6 @@ function App() {
   const [matchViewSection, setMatchViewSection] = useState('PRE');
   const [preSubTab, setPreSubTab] = useState('Informe rival');
   const [isPreTalkMode, setIsPreTalkMode] = useState(false);
-  const [isCanvaPreviewOpen, setIsCanvaPreviewOpen] = useState(false);
-  const [canvaFrameFailed, setCanvaFrameFailed] = useState(false);
   const [manualConsignaDraft, setManualConsignaDraft] = useState('');
   const [selectedTacticalPlayerIndex, setSelectedTacticalPlayerIndex] = useState(0);
   const [selectedRivalTacticalPlayerIndex, setSelectedRivalTacticalPlayerIndex] = useState(0);
@@ -3432,10 +3431,6 @@ function App() {
     loadPerformanceData();
   }, [activeTab, performanceWeekStart]);
 
-  useEffect(() => {
-    setCanvaFrameFailed(false);
-  }, [selectedMatchId]);
-
   const selectedTeam = useMemo(
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
     [selectedTeamId, teams]
@@ -3464,10 +3459,12 @@ function App() {
     [selectedMatchRivalTeam]
   );
   const liveRivalStarters = useMemo(() => {
-    const savedLineup = safeArray(selectedMatchRivalTeam?.lineup).sort((a, b) => Number(a.slot ?? 0) - Number(b.slot ?? 0));
-    if (savedLineup.length) return savedLineup.map(normalizeSquadEntry);
-    const starters = liveRivalPlayers.filter((player) => player.role === 'Titular');
-    return (starters.length ? starters : liveRivalPlayers).slice(0, 11);
+    const savedLineup = safeArray(selectedMatchRivalTeam?.lineup).sort((a, b) => Number(a.slot ?? 0) - Number(b.slot ?? 0)).map(normalizeSquadEntry);
+    const savedAvailable = savedLineup.filter((player) => !isUnavailableRivalPlayer(player));
+    if (savedAvailable.length) return savedAvailable;
+    const starters = liveRivalPlayers.filter((player) => player.role === 'Titular' && !isUnavailableRivalPlayer(player));
+    const available = liveRivalPlayers.filter((player) => !isUnavailableRivalPlayer(player));
+    return (starters.length ? starters : available).slice(0, 11);
   }, [liveRivalPlayers, selectedMatchRivalTeam]);
   const liveRivalMarkedPlayers = useMemo(
     () => liveRivalPlayers.filter((player) => player.isKey || player.yellowRisk || player.suspended || player.injured || player.doubtful),
@@ -4200,23 +4197,6 @@ function App() {
     const start = Number(startSeconds) > 0 ? `&start=${Math.floor(Number(startSeconds))}` : '';
     return `https://www.youtube.com/embed/${match[1]}?enablejsapi=1${start}`;
   };
-  const getCanvaEmbedUrl = (url) => {
-    const rawUrl = String(url || '').trim();
-    if (!rawUrl) return null;
-    try {
-      const normalizedUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
-      const canvaUrl = new URL(normalizedUrl);
-      const host = canvaUrl.hostname.replace(/^www\./, '').toLowerCase();
-      if (!/(\.|^)canva\.com$/.test(host) && !/(\.|^)canva\.link$/.test(host)) return null;
-      canvaUrl.protocol = 'https:';
-      if (canvaUrl.pathname.includes('/embed')) return canvaUrl.toString();
-      if (host.endsWith('canva.link')) return canvaUrl.toString();
-      canvaUrl.searchParams.set('embed', '');
-      return canvaUrl.toString();
-    } catch {
-      return null;
-    }
-  };
   const getCanvaOpenUrl = (url) => {
     const rawUrl = String(url || '').trim();
     if (!rawUrl) return '';
@@ -4224,15 +4204,13 @@ function App() {
       const normalizedUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
       const canvaUrl = new URL(normalizedUrl);
       const host = canvaUrl.hostname.replace(/^www\./, '').toLowerCase();
-      if (!/(\.|^)canva\.com$/.test(host) && !/(\.|^)canva\.link$/.test(host)) return '';
       canvaUrl.protocol = 'https:';
       canvaUrl.searchParams.delete('embed');
       return canvaUrl.toString();
     } catch {
-      return '';
+      return rawUrl;
     }
   };
-  const isCanvaUrl = (url) => Boolean(getCanvaOpenUrl(url));
   const openCanvaUrl = (url) => {
     const normalizedUrl = getCanvaOpenUrl(url) || String(url || '').trim();
     if (!normalizedUrl) return;
@@ -4279,7 +4257,28 @@ function App() {
   };
 
   const getCurrentRivalLineup = () => {
-    if (selectedMatch?.preRivalLineup?.length) return selectedMatch.preRivalLineup;
+    if (selectedMatch?.preRivalLineup?.length) {
+      const availablePool = liveRivalStarters.map((player) => player.name);
+      const used = new Set();
+      return selectedMatch.preRivalLineup.map((name, index) => {
+        const player = getRivalAvailablePlayers().find((item) => item.name === name);
+        if (player && isUnavailableRivalPlayer(player)) {
+          const replacement = availablePool.find((candidate) => !used.has(candidate) && !selectedMatch.preRivalLineup.includes(candidate));
+          if (replacement) {
+            used.add(replacement);
+            return replacement;
+          }
+          return '';
+        }
+        if (name) {
+          used.add(name);
+          return name;
+        }
+        const fallback = availablePool.find((candidate) => !used.has(candidate)) || '';
+        if (fallback) used.add(fallback);
+        return fallback;
+      });
+    }
     if (selectedMatch?.rivalLineupPlayers?.length) return selectedMatch.rivalLineupPlayers.map((player) => player.name);
     if (liveRivalStarters.length) return liveRivalStarters.map((player) => player.name);
     return [];
@@ -4449,6 +4448,73 @@ function App() {
     updateSelectedMatchFields({ preKeyMatchupsTable: current.filter((_, rowIndex) => rowIndex !== index) });
   };
 
+  const updatePreAiAnalysisPatch = (patch) => {
+    updateSelectedMatchFields({
+      preAiAnalysis: {
+        ...(selectedPreAiAnalysis || {}),
+        ...patch,
+      },
+    });
+  };
+
+  const updateCaudalPreSystem = (system) => {
+    if (!selectedMatch) return;
+    const roles = getFormationRoles(system);
+    const currentLineup = safeArray(selectedMatch.preCaudalLineup);
+    const nextLineup = Array.from({ length: 11 }, (_, index) => currentLineup[index] || '');
+    updateSelectedMatchFields({
+      preCaudalSystem: system,
+      preCaudalLineup: nextLineup,
+      preSystemReading: buildSystemTacticalReading(system, getCurrentRivalSystem()),
+      preKeyMatchupsTable: defaultSystemMatchups(system, getCurrentRivalSystem()),
+      preAiAnalysis: {
+        ...(selectedPreAiAnalysis || {}),
+        tacticalQuestion: selectedPreAiAnalysis?.tacticalQuestion
+          ? {
+              ...selectedPreAiAnalysis.tacticalQuestion,
+              context: {
+                ...(selectedPreAiAnalysis.tacticalQuestion.context || {}),
+                caudalSystem: system,
+                caudalLineup: nextLineup,
+                caudalRoles: roles,
+              },
+            }
+          : selectedPreAiAnalysis?.tacticalQuestion,
+      },
+    });
+  };
+
+  const defaultTacticalZones = () => {
+    const identity = liveRivalIdentity;
+    return [
+      { id: 'strong-side', label: `LADO FUERTE ${identity.strongSide}`.toUpperCase(), active: true, color: 'cyan', x: identity.strongSide === 'derecha' ? 70 : identity.strongSide === 'izquierda' ? 18 : 38, y: 22 },
+      { id: 'threat', label: identity.mainThreat.toUpperCase(), active: true, color: 'amber', x: 50, y: 30 },
+      { id: 'weakness', label: identity.detectedWeakness.toUpperCase(), active: true, color: 'emerald', x: 50, y: 62 },
+      { id: 'transition', label: 'TRANSICIÓN', active: identity.mainThreat === 'transición', color: 'red', x: 50, y: 47 },
+    ];
+  };
+
+  const getTacticalZones = () => {
+    const stored = safeArray(selectedPreAiAnalysis?.tacticalZones);
+    return stored.length ? stored : defaultTacticalZones();
+  };
+
+  const saveTacticalZones = (zones) => {
+    updatePreAiAnalysisPatch({ tacticalZones: zones });
+  };
+
+  const updateTacticalZone = (zoneId, patch) => {
+    saveTacticalZones(getTacticalZones().map((zone) => (zone.id === zoneId ? { ...zone, ...patch } : zone)));
+  };
+
+  const addTacticalZone = () => {
+    saveTacticalZones([...getTacticalZones(), { id: `zone-${Date.now()}`, label: 'NUEVA ZONA', active: true, color: 'cyan', x: 50, y: 50 }]);
+  };
+
+  const removeTacticalZone = (zoneId) => {
+    saveTacticalZones(getTacticalZones().filter((zone) => zone.id !== zoneId));
+  };
+
   const buildTacticalQuestionAnswer = (mode, question) => {
     const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
     const rivalSystem = getCurrentRivalSystem();
@@ -4535,7 +4601,8 @@ function App() {
     const rivalLineup = getCaudalPitchNames(getCurrentRivalLineup(), rivalRoles, rivalRoles);
     const identity = liveRivalIdentity;
     const keyPlayers = liveRivalPlayers.filter((player) => player.isKey);
-    const alertPlayers = liveRivalPlayers.filter((player) => player.yellowRisk || player.suspended || player.injured || player.doubtful);
+    const unavailablePlayers = liveRivalPlayers.filter(isUnavailableRivalPlayer);
+    const doubtfulPlayers = liveRivalPlayers.filter((player) => player.doubtful && !isUnavailableRivalPlayer(player));
     const rows = [];
     const add = (title, detail, action, tone = 'vigilancia', rivalPlayer = null) => {
       rows.push({ title, detail, action, tone, rivalPlayer });
@@ -4550,11 +4617,20 @@ function App() {
         player
       );
     });
-    alertPlayers.slice(0, 3).forEach((player) => {
+    unavailablePlayers.slice(0, 3).forEach((player) => {
       add(
-        `Ventaja física/disciplinaria ante ${player.name}`,
+        `Ausencia probable de ${player.name}`,
         playerStatusBadges(player).map((badge) => badge.title).join(' · '),
-        'Atacarle con cambios de ritmo, cargas a su zona y decisiones que le obliguen a defender hacia atrás.',
+        `Atacar su zona natural: puede aparecer desajuste, suplente fuera de rol o cobertura tardía en ${player.position || 'su carril'}.`,
+        'ofensiva',
+        player
+      );
+    });
+    doubtfulPlayers.slice(0, 2).forEach((player) => {
+      add(
+        `Probar físicamente a ${player.name}`,
+        `${player.position || 'Jugador'} marcado como DUDA; medir si puede repetir esfuerzos.`,
+        'Alternar ritmo, cambios de orientación y carreras a su espalda sin regalar transición.',
         'ofensiva',
         player
       );
@@ -4571,6 +4647,22 @@ function App() {
       getSystemStructure(caudalSystem).midfielders >= getSystemStructure(rivalSystem).midfielders ? 'Activar tercer hombre y recibir perfilado.' : 'Cerrar mediocentro rival con punta o extremo por dentro.',
       'fortaleza'
     );
+    if (getSystemStructure(rivalSystem).defenders >= 5) {
+      add(
+        'Espalda de carrileros',
+        `Su ${rivalSystem} puede dejar espacio si el carrilero salta en presión ${identity.pressureType}.`,
+        'Atraer por dentro, soltar fuera y atacar el intervalo antes de que bascule el central exterior.',
+        'ofensiva'
+      );
+    }
+    if (identity.blockHeight === 'bajo') {
+      add(
+        'Bloque bajo rival',
+        `Defienden bajo y su debilidad marcada es ${identity.detectedWeakness}.`,
+        'Mover de lado a lado, fijar área con tres alturas y evitar centros sin ocupación.',
+        'fortaleza'
+      );
+    }
     if (caudalLineup[1] || rivalLineup[8]) {
       add(
         'Riesgo defensivo en espalda lateral',
@@ -8015,6 +8107,8 @@ function App() {
       const isSelected = (isCaudal && selectedTacticalPlayerIndex === index) || (isRival && selectedRivalTacticalPlayerIndex === index);
       const playerName = lineup[index] || `${isCaudal ? 'Jugador' : 'Rol'} ${index + 1}`;
       const statusPlayer = isRival ? getRivalLineupPlayerForSlot(index, playerName) : null;
+      const caudalPlayer = isCaudal ? players.find((player) => player.name === playerName) : null;
+      const visualPlayer = statusPlayer || caudalPlayer;
       const statusBadges = statusPlayer ? playerStatusBadges(statusPlayer) : [];
       const PlayerTag = isCaudal || isRival ? 'button' : 'div';
       return (
@@ -8025,11 +8119,15 @@ function App() {
           className={`absolute flex w-16 -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 ${isCaudal ? 'text-caudal-electric' : 'text-rose-200'} ${isCaudal || isRival ? 'cursor-pointer' : ''}`}
           style={{ left: `${position.x}%`, top: `${position.y}%` }}
         >
-          <span className={`relative flex h-8 w-8 items-center justify-center rounded-full border text-[10px] font-black shadow-lg ${isCaudal ? 'border-caudal-electric bg-caudal-950' : 'border-rose-300 bg-rose-950'} ${isSelected ? 'ring-4 ring-caudal-electric/30' : ''}`}>
-            {index === 0 ? 'P' : index}
+          <span className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border text-[10px] font-black shadow-lg transition duration-300 ${isCaudal ? 'border-caudal-electric bg-caudal-950' : 'border-rose-300 bg-rose-950 shadow-[0_0_24px_rgba(244,63,94,0.18)]'} ${isSelected ? 'ring-4 ring-caudal-electric/30' : ''}`}>
+            {visualPlayer?.image ? (
+              <img src={visualPlayer.image} alt="" className="h-full w-full object-cover object-center" />
+            ) : (
+              index === 0 ? 'P' : index
+            )}
             {statusBadges.length ? (
-              <span className="absolute -right-3 -top-2 flex max-w-14 flex-wrap justify-end gap-0.5">
-                {statusBadges.map((badge) => (
+              <span className="absolute -right-4 -top-2 flex max-w-20 flex-wrap justify-end gap-1">
+                {statusBadges.slice(0, 3).map((badge) => (
                   <span key={badge.title} title={badge.title} className={`inline-flex h-3 min-w-3 items-center justify-center rounded-sm px-0.5 text-[8px] font-black leading-none ${badge.className}`}>
                     {badge.label}
                   </span>
@@ -8099,6 +8197,12 @@ function App() {
       identity.mainThreat === 'delantero referencia' ? 'left-[36%] top-[13%] h-[18%] w-[28%]' :
       'left-[14%] top-[20%] h-[35%] w-[72%]';
     const blockTop = identity.blockHeight === 'alto' ? 'top-[38%]' : identity.blockHeight === 'bajo' ? 'top-[18%]' : 'top-[29%]';
+    const zoneColorClass = {
+      cyan: 'border-caudal-electric/30 bg-caudal-electric/[0.14] text-caudal-electric shadow-[0_0_24px_rgba(79,140,255,0.12)]',
+      amber: 'border-amber-200/30 bg-amber-200/[0.14] text-amber-100 shadow-[0_0_24px_rgba(251,191,36,0.10)]',
+      emerald: 'border-emerald-200/30 bg-emerald-200/[0.12] text-emerald-100 shadow-[0_0_24px_rgba(52,211,153,0.10)]',
+      red: 'border-red-200/30 bg-red-400/[0.13] text-red-100 shadow-[0_0_24px_rgba(248,113,113,0.10)]',
+    };
     return (
       <div className="relative mx-auto aspect-[7/8.4] min-h-[420px] w-full max-w-3xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner">
         <div className={`pointer-events-none absolute rounded-[2rem] border border-caudal-electric/[0.16] bg-caudal-electric/[0.06] ${sideClass}`} />
@@ -8110,6 +8214,18 @@ function App() {
         <div className="pointer-events-none absolute right-5 top-5 z-10 rounded-xl border border-amber-200/15 bg-amber-200/[0.08] px-3 py-2 text-[9px] font-black uppercase tracking-[0.12em] text-amber-100">
           {identity.mainThreat} · {identity.offensiveFocus}
         </div>
+        {getTacticalZones().filter((zone) => zone.active).map((zone) => (
+          <button
+            key={zone.id}
+            type="button"
+            onClick={() => updateTacticalZone(zone.id, { x: Number(zone.x || 50) >= 75 ? 25 : Number(zone.x || 50) + 12 })}
+            className={`absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-xl border px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] backdrop-blur-sm transition duration-300 hover:scale-105 ${zoneColorClass[zone.color] || zoneColorClass.cyan}`}
+            style={{ left: `${zone.x || 50}%`, top: `${zone.y || 50}%` }}
+            title="Click para mover la zona"
+          >
+            {zone.label || 'ZONA'}
+          </button>
+        ))}
         <div className="absolute inset-4 rounded-[28px] border-2 border-white/55" />
         <div className="absolute left-4 right-4 top-1/2 h-px bg-white/35" />
         <div className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/35" />
@@ -8126,10 +8242,10 @@ function App() {
               const statusPlayer = getRivalLineupPlayerForSlot(index, playerName);
               const badges = statusPlayer ? playerStatusBadges(statusPlayer) : [];
               return (
-                <span className="relative flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 bg-rose-500/80 text-[10px] font-black text-white shadow-lg">
-                  {index === 0 ? 'P' : index}
+                <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-rose-200 bg-rose-500/80 text-[10px] font-black text-white shadow-[0_0_26px_rgba(244,63,94,0.20)] transition duration-300">
+                  {statusPlayer?.image ? <img src={statusPlayer.image} alt="" className="h-full w-full object-cover object-center" /> : index === 0 ? 'P' : index}
                   {badges.length ? (
-                    <span className="absolute -right-6 -top-2 flex max-w-16 flex-wrap justify-end gap-0.5">
+                    <span className="absolute -right-7 -top-2 flex max-w-20 flex-wrap justify-end gap-1">
                       {badges.slice(0, 3).map((badge) => (
                         <span key={badge.label} title={badge.title} className={`inline-flex h-3 min-w-3 items-center justify-center rounded-sm px-0.5 text-[7px] font-black leading-none ${badge.className}`}>
                           {badge.label}
@@ -8140,15 +8256,22 @@ function App() {
                 </span>
               );
             })()}
-            <span className="max-w-20 truncate rounded-md bg-black/55 px-1.5 py-0.5 text-[8px] font-semibold text-white">
+            <span className="max-w-24 truncate rounded-md bg-black/65 px-1.5 py-0.5 text-[8px] font-semibold text-white shadow-sm">
               {rivalLineup[index] || rivalRoles[index] || `R${index + 1}`}
             </span>
           </div>
         ))}
         {caudalCoordinates.map((slot, index) => (
           <div key={`caudal-overview-${index}`} className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
-            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-caudal-electric bg-caudal-950 text-[10px] font-black text-caudal-electric shadow-lg">{index === 0 ? 'P' : index}</span>
-            <span className="max-w-20 truncate rounded-md bg-black/55 px-1.5 py-0.5 text-[8px] font-semibold text-white">
+            {(() => {
+              const player = players.find((item) => item.name === caudalLineup[index]);
+              return (
+                <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-caudal-electric bg-caudal-950 text-[10px] font-black text-caudal-electric shadow-lg transition duration-300">
+                  {player?.image ? <img src={player.image} alt="" className="h-full w-full object-cover object-center" /> : index === 0 ? 'P' : index}
+                </span>
+              );
+            })()}
+            <span className="max-w-24 truncate rounded-md bg-black/65 px-1.5 py-0.5 text-[8px] font-semibold text-white shadow-sm">
               {caudalLineup[index] || caudalRoles[index] || `C${index + 1}`}
             </span>
           </div>
@@ -11249,7 +11372,7 @@ function App() {
                                   ['systemConfirmed', 'Sistema confirmado'],
                                   ['probableLineup', 'Alineación probable'],
                                   ['setPiecesReviewed', 'Balón parado revisado'],
-                                  ['watchedPlayers', 'Jugadores vigilados'],
+                                  ['watchedPlayers', 'Estados rivales revisados'],
                                 ].map(([key, label]) => (
                                   <button
                                     key={key}
@@ -11266,37 +11389,27 @@ function App() {
                           </div>
 
                           <section className="overflow-hidden rounded-[1.45rem] border border-white/10 bg-[#091428]/85 shadow-[0_18px_60px_rgba(0,0,0,0.24)]">
-                            <div className={`${isPreTalkMode ? 'hidden' : 'flex'} flex-col gap-3 border-b border-white/10 p-4 lg:flex-row lg:items-center lg:justify-between`}>
+                            <div className={`${isPreTalkMode ? 'hidden' : 'flex'} flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between`}>
                               <div>
                                 <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Informe rival</p>
-                                <h4 className="mt-1 text-lg font-black text-white">Dashboard scouting Canva</h4>
+                                <h4 className="mt-1 text-lg font-black text-white">Enlace de scouting</h4>
+                                <p className="mt-1 text-sm text-slate-400">{selectedMatch.preCanvaLink ? 'Informe cargado' : 'Sin enlace'}{selectedMatch.preAiAnalysis?.inputSummary ? ' · PRE actualizado' : ''}</p>
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 <input
                                   type="url"
                                   value={selectedMatch.preCanvaLink || ''}
-                                  onChange={(event) => {
-                                    setCanvaFrameFailed(false);
-                                    updateSelectedMatchFields({ preCanvaLink: event.target.value });
-                                  }}
-                                  placeholder="canva.com, canva.link o enlace embed"
+                                  onChange={(event) => updateSelectedMatchFields({ preCanvaLink: event.target.value })}
+                                  placeholder="https://www.canva.com/..."
                                   className="min-w-[260px] rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-2.5 text-sm text-white placeholder:text-slate-500"
                                 />
                                 <button
                                   type="button"
-                                  disabled={!isCanvaUrl(selectedMatch.preCanvaLink)}
-                                  onClick={() => setIsCanvaPreviewOpen(true)}
-                                  className="rounded-2xl bg-caudal-electric px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:bg-slate-600/40"
-                                >
-                                  Ampliar
-                                </button>
-                                <button
-                                  type="button"
                                   disabled={!selectedMatch.preCanvaLink}
                                   onClick={() => openCanvaUrl(selectedMatch.preCanvaLink)}
-                                  className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:text-slate-500"
+                                  className="rounded-2xl bg-caudal-electric px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:bg-slate-600/40"
                                 >
-                                  Abrir
+                                  Abrir informe
                                 </button>
                                 <button
                                   type="button"
@@ -11308,48 +11421,6 @@ function App() {
                                 </button>
                               </div>
                             </div>
-                            {selectedMatch.preCanvaLink ? (
-                              getCanvaEmbedUrl(selectedMatch.preCanvaLink) && !canvaFrameFailed ? (
-                                <iframe
-                                  title="Informe Canva"
-                                  src={getCanvaEmbedUrl(selectedMatch.preCanvaLink)}
-                                  onError={() => setCanvaFrameFailed(true)}
-                                  className={`${isPreTalkMode ? 'h-[74vh] min-h-[620px]' : 'h-[62vh] min-h-[460px]'} w-full bg-[#0f1e38]/80`}
-                                  allowFullScreen
-                                />
-                              ) : (
-                                <div className="m-4 overflow-hidden rounded-3xl border border-caudal-electric/15 bg-[#0f1e38]/90 shadow-[0_18px_60px_rgba(0,0,0,0.22)]">
-                                  <div className="relative min-h-[320px] bg-[radial-gradient(circle_at_22%_18%,rgba(79,140,255,0.22),transparent_30%),linear-gradient(135deg,rgba(16,30,56,0.96),rgba(5,12,26,0.98))] p-6">
-                                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:42px_42px] opacity-45" />
-                                    <div className="relative flex h-full min-h-[268px] flex-col justify-between rounded-2xl border border-white/10 bg-slate-950/25 p-5">
-                                      <div className="flex items-center gap-3">
-                                        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#7d2cff] text-xl font-black text-white shadow-[0_12px_34px_rgba(125,44,255,0.28)]">C</span>
-                                        <div>
-                                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Informe Canva</p>
-                                          <h4 className="mt-1 text-xl font-black text-white">Preview protegido</h4>
-                                        </div>
-                                      </div>
-                                      <div>
-                                        <p className="max-w-xl text-sm leading-6 text-slate-300">Canva puede bloquear la vista embebida en algunos enlaces. El informe sigue disponible y la pestaña mantiene el acceso directo para el staff.</p>
-                                        <p className="mt-3 truncate rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-semibold text-slate-400">{getCanvaOpenUrl(selectedMatch.preCanvaLink) || selectedMatch.preCanvaLink}</p>
-                                        <div className="mt-4 flex flex-wrap gap-2">
-                                          <button type="button" onClick={() => openCanvaUrl(selectedMatch.preCanvaLink)} className="rounded-2xl bg-caudal-electric px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-slate-950 hover:bg-[#7aacff]">
-                                            Abrir informe
-                                          </button>
-                                          <button type="button" onClick={() => copyCanvaUrl(selectedMatch.preCanvaLink)} className="rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-white hover:bg-white/[0.12]">
-                                            Copiar enlace
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              )
-                            ) : (
-                              <div className="m-4 rounded-3xl border border-dashed border-white/10 bg-[#0f1e38]/80 p-8 text-sm text-slate-400">
-                                Pega un enlace de Canva para visualizar el informe aquí.
-                              </div>
-                            )}
                           </section>
                         </div>
                       </div>
@@ -11371,7 +11442,13 @@ function App() {
                           <div className="grid gap-4 xl:grid-cols-[1fr_auto_1fr] xl:items-center">
                             <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
                               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Caudal</p>
-                              <p className="mt-2 text-2xl font-black text-white">{selectedMatch.preCaudalSystem || '4-4-2'}</p>
+                              <select
+                                value={selectedMatch.preCaudalSystem || '4-4-2'}
+                                onChange={(event) => updateCaudalPreSystem(event.target.value)}
+                                className="mt-2 w-full rounded-2xl border border-caudal-electric/20 bg-slate-950/55 px-3 py-2 text-2xl font-black text-white outline-none transition focus:border-caudal-electric/60"
+                              >
+                                {gameSystems.filter((system) => system !== 'Otro').map((system) => <option key={system} value={system}>{system}</option>)}
+                              </select>
                               <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                                 <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">Altura: {selectedMatch.preCaudalPressPlan ? 'activa' : 'por definir'}</span>
                                 <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">Presión: {selectedMatch.preCaudalPressPlan || 'pendiente'}</span>
@@ -11453,6 +11530,28 @@ function App() {
                               <p className="mt-2 text-sm text-slate-400">Un único campo con Caudal y rival enfrentados. Si hay alineaciones, aparecen los nombres; si no, los roles.</p>
                             </div>
                             {renderFacingSystemsOverview()}
+                            {!isPreTalkMode ? (
+                              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+                                <div className="flex items-center justify-between gap-3">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Zonas tácticas editables</p>
+                                  <button type="button" onClick={addTacticalZone} className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-caudal-electric">Añadir zona</button>
+                                </div>
+                                <div className="mt-3 grid gap-2">
+                                  {getTacticalZones().map((zone) => (
+                                    <div key={zone.id} className="grid gap-2 rounded-xl border border-white/10 bg-white/[0.035] p-2 md:grid-cols-[auto_1fr_92px_92px_96px_auto] md:items-center">
+                                      <button type="button" onClick={() => updateTacticalZone(zone.id, { active: !zone.active })} className={`h-8 rounded-lg px-2 text-[10px] font-black uppercase ${zone.active ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-400'}`}>{zone.active ? 'ON' : 'OFF'}</button>
+                                      <input value={zone.label || ''} onChange={(event) => updateTacticalZone(zone.id, { label: event.target.value.toUpperCase() })} className="min-w-0 rounded-lg border border-white/10 bg-black/20 px-2 py-2 text-xs font-black uppercase tracking-[0.08em] text-white" />
+                                      <input type="number" min="5" max="95" value={zone.x || 50} onChange={(event) => updateTacticalZone(zone.id, { x: Number(event.target.value) })} className="rounded-lg border border-white/10 bg-black/20 px-2 py-2 text-xs font-bold text-white" />
+                                      <input type="number" min="5" max="95" value={zone.y || 50} onChange={(event) => updateTacticalZone(zone.id, { y: Number(event.target.value) })} className="rounded-lg border border-white/10 bg-black/20 px-2 py-2 text-xs font-bold text-white" />
+                                      <select value={zone.color || 'cyan'} onChange={(event) => updateTacticalZone(zone.id, { color: event.target.value })} className="rounded-lg border border-white/10 bg-black/20 px-2 py-2 text-xs font-bold text-white">
+                                        {['cyan', 'amber', 'emerald', 'red'].map((color) => <option key={color} value={color}>{color}</option>)}
+                                      </select>
+                                      <button type="button" onClick={() => removeTacticalZone(zone.id)} className="rounded-lg bg-red-500/15 px-2 py-2 text-[10px] font-black uppercase text-red-100">Borrar</button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
                           </div>
 
                           <div className={`rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow ${isPreTalkMode ? 'hidden' : ''}`}>
@@ -12953,47 +13052,6 @@ function App() {
             </div>
           ) : null}
         </>
-      ) : null}
-
-      {isCanvaPreviewOpen && selectedMatch && isCanvaUrl(selectedMatch.preCanvaLink) ? (
-        <div className="fixed inset-0 z-50 bg-black/80 p-3 backdrop-blur-sm sm:p-6">
-          <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-caudal-950 shadow-glow">
-            <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-slate-400">PRE partido</p>
-                <h3 className="mt-1 text-lg font-semibold text-white">Previsualización informe Canva</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsCanvaPreviewOpen(false)}
-                className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/15"
-              >
-                Cerrar
-              </button>
-            </div>
-            {getCanvaEmbedUrl(selectedMatch.preCanvaLink) && !canvaFrameFailed ? (
-              <iframe
-                title="Informe Canva ampliado"
-                src={getCanvaEmbedUrl(selectedMatch.preCanvaLink)}
-                onError={() => setCanvaFrameFailed(true)}
-                className="min-h-0 flex-1 bg-white"
-                allowFullScreen
-              />
-            ) : (
-              <div className="flex min-h-0 flex-1 items-center justify-center bg-[#071224] p-6">
-                <div className="max-w-xl rounded-3xl border border-caudal-electric/15 bg-white/[0.045] p-6 text-center">
-                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#7d2cff] text-2xl font-black text-white">C</div>
-                  <h4 className="mt-4 text-xl font-black text-white">Canva no permite embeber este informe</h4>
-                  <p className="mt-2 text-sm leading-6 text-slate-400">Puedes abrirlo o copiar el enlace sin salir del flujo de PRE.</p>
-                  <div className="mt-5 flex justify-center gap-2">
-                    <button type="button" onClick={() => openCanvaUrl(selectedMatch.preCanvaLink)} className="rounded-2xl bg-caudal-electric px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Abrir informe</button>
-                    <button type="button" onClick={() => copyCanvaUrl(selectedMatch.preCanvaLink)} className="rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-white">Copiar enlace</button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
       ) : null}
 
       {isGoalAnalysisOpen && selectedMatch ? (
