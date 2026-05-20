@@ -1654,22 +1654,27 @@ const normalizeLineupEntryWithField = (entry, fallbackIndex = 0, system = '4-4-2
   };
 };
 
+const getNearestFormationSlotIndex = (system, point) => {
+  const coordinates = getFormationCoordinates(system);
+  return coordinates.reduce((best, slot, index) => {
+    const distance = Math.hypot(Number(point.x) - slot.x, Number(point.y) - slot.y);
+    return distance < best.distance ? { index, distance } : best;
+  }, { index: 0, distance: Infinity }).index;
+};
+
 const getTeamFieldLineup = (team) => {
   if (!team) return [];
   const system = team.system || '4-4-2';
-  const lineup = safeArray(team.lineup).map((player, index) => normalizeLineupEntryWithField(player, index, system));
+  return safeArray(team.lineup).map((player, index) => normalizeLineupEntryWithField(player, index, system));
+};
+
+const getUnplacedTeamStarters = (team) => {
+  if (!team) return [];
+  const lineup = safeArray(team.lineup);
   const lineupNames = new Set(lineup.map((player) => normalizePlayerIdentityName(player.name)));
-  const startersWithoutSlot = dedupeRivalPlayers(team.squad || []).filter(
+  return dedupeRivalPlayers(team.squad || []).filter(
     (player) => player.role === 'Titular' && !lineupNames.has(normalizePlayerIdentityName(player.name))
   );
-  const nextLineup = [...lineup];
-  startersWithoutSlot.forEach((player) => {
-    const freeSlot = getFirstFreeLineupSlot(nextLineup);
-    if (freeSlot === undefined) return;
-    const coordinates = getFormationCoordinates(system)[freeSlot] || { x: 50, y: 50 };
-    nextLineup.push({ ...normalizeSquadEntry(player), role: 'Titular', slot: freeSlot, ...coordinates, autoAssignedSlot: true });
-  });
-  return nextLineup;
 };
 
 const getPlayerMeta = (player) => [player.position, player.age ? `${player.age} años` : ''].filter(Boolean).join(' · ');
@@ -2462,6 +2467,7 @@ function App() {
   const [teamEditMode, setTeamEditMode] = useState(false);
   const [teamFieldViewMode, setTeamFieldViewMode] = useState('LIMPIO');
   const [teamFieldEditMode, setTeamFieldEditMode] = useState(false);
+  const [selectedTeamPlacementPlayerName, setSelectedTeamPlacementPlayerName] = useState('');
   const [editingTeamPlayerIndex, setEditingTeamPlayerIndex] = useState(null);
   const [isMatchPanelOpen, setIsMatchPanelOpen] = useState(false);
   const [preLoading, setPreLoading] = useState(false);
@@ -3504,6 +3510,10 @@ function App() {
   );
   const selectedTeamFieldLineup = useMemo(
     () => getTeamFieldLineup(selectedTeam),
+    [selectedTeam]
+  );
+  const selectedTeamUnplacedStarters = useMemo(
+    () => getUnplacedTeamStarters(selectedTeam),
     [selectedTeam]
   );
 
@@ -7792,7 +7802,7 @@ function App() {
     }
   };
 
-  const updateTeamLineup = async (teamId, updater) => {
+  const updateTeamLineup = async (teamId, updater, options = {}) => {
     const team = teams.find((item) => item.id === teamId);
     if (!team) return;
     const nextLineup = updater(team.lineup ?? emptyLineup);
@@ -7801,7 +7811,13 @@ function App() {
     );
     try {
       await persistTeamLineup(teamId, nextLineup);
-      const titularNames = nextLineup.map((player) => player.name).filter(Boolean);
+      const lineupTitularNames = nextLineup.map((player) => player.name).filter(Boolean);
+      const preservedStarterNames = options.preserveUnplacedStarters === false
+        ? []
+        : dedupeRivalPlayers(team.squad || [])
+            .filter((player) => player.role === 'Titular' && !safeArray(options.demoteNames).includes(player.name))
+            .map((player) => player.name);
+      const titularNames = Array.from(new Set([...preservedStarterNames, ...lineupTitularNames]));
       await supabase.from("jugadores_rivales").update({ role: 'Reserva' }).eq("equipo_rival_id", teamId);
       if (titularNames.length) {
         await supabase.from("jugadores_rivales").update({ role: 'Titular' }).eq("equipo_rival_id", teamId).in("name", titularNames);
@@ -7819,15 +7835,24 @@ function App() {
     const rect = event.currentTarget.getBoundingClientRect();
     const x = Math.max(4, Math.min(88, ((event.clientX - rect.left) / rect.width) * 100));
     const y = Math.max(4, Math.min(96, ((event.clientY - rect.top) / rect.height) * 100));
+    const targetSlot = getNearestFormationSlotIndex(selectedTeam.system, { x, y });
 
     updateTeamLineup(selectedTeam.id, (lineup) => {
       const playerName = draggedPlayer.name;
+      const currentLineup = safeArray(lineup);
       const existing = lineup.find((item) => item.name === playerName);
+      const targetPlayer = currentLineup.find((item) => item.slot === targetSlot && item.name !== playerName);
       if (existing) {
-        return lineup.map((item) => (item.name === playerName ? { ...item, x, y } : item));
+        return currentLineup.map((item) => {
+          if (item.name === playerName) return { ...item, slot: targetSlot, x, y };
+          if (targetPlayer && item.name === targetPlayer.name) return { ...item, slot: existing.slot, x: existing.x, y: existing.y };
+          return item;
+        });
       }
-      const freeSlot = getFirstFreeLineupSlot(lineup);
-      return [...lineup.filter((item) => item.name !== playerName), { ...normalizeSquadEntry(draggedPlayer), role: 'Titular', slot: freeSlot ?? lineup.length, x, y }];
+      return [
+        ...currentLineup.filter((item) => item.name !== playerName && item.slot !== targetSlot),
+        { ...normalizeSquadEntry(draggedPlayer), role: 'Titular', slot: targetSlot, x, y },
+      ];
     });
     setTeams((current) =>
       current.map((team) =>
@@ -7843,11 +7868,12 @@ function App() {
       )
     );
     setDraggedPlayer(null);
+    setSelectedTeamPlacementPlayerName('');
   };
 
   const removeFromLineup = (playerName) => {
     if (!selectedTeam) return;
-    updateTeamLineup(selectedTeam.id, (lineup) => lineup.filter((item) => item.name !== playerName));
+    updateTeamLineup(selectedTeam.id, (lineup) => lineup.filter((item) => item.name !== playerName), { demoteNames: [playerName] });
     setTeams((current) =>
       current.map((team) =>
         team.id === selectedTeam.id
@@ -7879,10 +7905,16 @@ function App() {
     const coordinates = getFormationCoordinates(selectedTeam.system)[slotIndex];
     const droppedPlayer = { ...normalizeSquadEntry(draggedPlayer), role: 'Titular', slot: slotIndex, ...coordinates };
 
-    updateTeamLineup(selectedTeam.id, (lineup) => [
-      ...lineup.filter((player) => player.name !== droppedPlayer.name && player.slot !== slotIndex),
-      droppedPlayer,
-    ]);
+    updateTeamLineup(selectedTeam.id, (lineup) => {
+      const currentLineup = safeArray(lineup);
+      const previousPlayer = currentLineup.find((player) => player.name === droppedPlayer.name);
+      const targetPlayer = currentLineup.find((player) => player.slot === slotIndex && player.name !== droppedPlayer.name);
+      const withoutMoved = currentLineup.filter((player) => player.name !== droppedPlayer.name && player.slot !== slotIndex);
+      const swappedPlayer = targetPlayer && previousPlayer
+        ? { ...targetPlayer, slot: previousPlayer.slot, x: previousPlayer.x, y: previousPlayer.y }
+        : null;
+      return [...withoutMoved, ...(swappedPlayer ? [swappedPlayer] : []), droppedPlayer];
+    });
     setTeams((current) =>
       current.map((team) =>
         team.id === selectedTeam.id
@@ -7897,14 +7929,40 @@ function App() {
       )
     );
     setDraggedPlayer(null);
+    setSelectedTeamPlacementPlayerName('');
+  };
+
+  const assignSelectedTeamPlayerToSlot = (slotIndex, playerName = selectedTeamPlacementPlayerName) => {
+    if (!selectedTeam || !playerName) return;
+    const player = dedupeRivalPlayers(selectedTeam.squad || []).find((item) => item.name === playerName);
+    if (!player) return;
+    const coordinates = getFormationCoordinates(selectedTeam.system)[slotIndex] || { x: 50, y: 50 };
+    const droppedPlayer = { ...normalizeSquadEntry(player), role: 'Titular', slot: slotIndex, ...coordinates };
+    updateTeamLineup(selectedTeam.id, (lineup) => {
+      const currentLineup = safeArray(lineup);
+      const previousPlayer = currentLineup.find((item) => item.name === droppedPlayer.name);
+      const targetPlayer = currentLineup.find((item) => item.slot === slotIndex && item.name !== droppedPlayer.name);
+      const withoutMoved = currentLineup.filter((item) => item.name !== droppedPlayer.name && item.slot !== slotIndex);
+      const swappedPlayer = targetPlayer && previousPlayer
+        ? { ...targetPlayer, slot: previousPlayer.slot, x: previousPlayer.x, y: previousPlayer.y }
+        : null;
+      return [...withoutMoved, ...(swappedPlayer ? [swappedPlayer] : []), droppedPlayer];
+    });
+    setSelectedTeamPlacementPlayerName('');
   };
 
   const updateSelectedTeamSystem = async (system) => {
     if (!selectedTeam) return;
+    const decision = window.prompt('Cambiar sistema puede recolocar posiciones. Escribe AUTO para recolocar, MANUAL para mantener posiciones actuales o CANCELAR.', 'MANUAL');
+    const normalizedDecision = String(decision || '').trim().toUpperCase();
+    if (!normalizedDecision || normalizedDecision === 'CANCELAR' || normalizedDecision === 'CANCEL') return;
     const coordinates = getFormationCoordinates(system);
-    const nextLineup = (selectedTeam.lineup ?? emptyLineup)
-      .slice(0, 11)
-      .map((player, index) => ({ ...player, slot: player.slot ?? index, ...coordinates[player.slot ?? index] }));
+    const shouldAutoReposition = normalizedDecision === 'AUTO' || normalizedDecision === 'RECOLOCAR';
+    const nextLineup = shouldAutoReposition
+      ? (selectedTeam.lineup ?? emptyLineup)
+          .slice(0, 11)
+          .map((player, index) => ({ ...player, slot: player.slot ?? index, ...coordinates[player.slot ?? index] }))
+      : (selectedTeam.lineup ?? emptyLineup).slice(0, 11);
     const { error: systemError } = await supabase.from("equipos_rivales").update({ system }).eq("id", selectedTeam.id);
     if (systemError) {
       console.error('Error guardando sistema rival en Supabase:', systemError);
@@ -7932,20 +7990,11 @@ function App() {
       return;
     }
     if (role === 'Reserva') {
-      await updateTeamLineup(selectedTeam.id, (lineup) => lineup.filter((player) => player.name !== playerName));
+      await updateTeamLineup(selectedTeam.id, (lineup) => lineup.filter((player) => player.name !== playerName), { demoteNames: [playerName] });
+      if (selectedTeamPlacementPlayerName === playerName) setSelectedTeamPlacementPlayerName('');
     } else {
-      await updateTeamLineup(selectedTeam.id, (lineup) => {
-        if (lineup.some((player) => player.name === playerName)) {
-          return lineup.map((player, index) => player.name === playerName ? normalizeLineupEntryWithField({ ...player, role: 'Titular' }, index, selectedTeam.system) : player);
-        }
-        const freeSlot = getFirstFreeLineupSlot(lineup);
-        if (freeSlot === undefined) {
-          setSaveStatus('No hay slots libres en el XI. Quita un titular antes de añadir otro.');
-          return lineup;
-        }
-        const coordinates = getFormationCoordinates(selectedTeam.system)[freeSlot] || { x: 50, y: 50 };
-        return [...lineup, { ...normalizeSquadEntry(currentPlayer), role: 'Titular', slot: freeSlot, ...coordinates }];
-      });
+      setSelectedTeamPlacementPlayerName(currentPlayer.name);
+      await loadTeams();
     }
   };
 
@@ -10177,7 +10226,10 @@ function App() {
                             </div>
                             {dedupeRivalPlayers(selectedTeam.squad)
                               .filter((player) => player.role === role)
-                              .map((player) => (
+                              .map((player) => {
+                                const isPlacedStarter = selectedTeamFieldLineup.some((lineupPlayer) => normalizePlayerIdentityName(lineupPlayer.name) === normalizePlayerIdentityName(player.name));
+                                const isSelectedForPlacement = selectedTeamPlacementPlayerName === player.name;
+                                return (
                                 <div
                                   key={player.jugadorRivalId || player.id || normalizePlayerIdentityName(player.name)}
                                   draggable
@@ -10210,6 +10262,11 @@ function App() {
                                       ))}
                                     </span>
                                     <span className="mt-1 flex items-center gap-1">
+                                      {role === 'Titular' && !isPlacedStarter ? (
+                                        <span className={`inline-flex min-h-4 items-center rounded-md border px-1 text-[8px] font-black ${isSelectedForPlacement ? 'border-amber-200/30 bg-amber-300/20 text-amber-100' : 'border-amber-200/20 bg-amber-200/[0.08] text-amber-100/80'}`}>
+                                          SIN POS.
+                                        </span>
+                                      ) : null}
                                       {getPlayerTacticalBadges(player).slice(1, 2).map((badge) => (
                                         <span key={badge.label} title={badge.label} className={`inline-flex min-h-4 items-center rounded-md border px-1 text-[8px] font-black ${badge.className}`}>
                                           {badge.short}
@@ -10229,6 +10286,20 @@ function App() {
                                   >
                                     {role === 'Titular' ? 'RES' : 'TIT'}
                                   </button>
+                                  {role === 'Titular' ? (
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setSelectedTeamPlacementPlayerName(player.name);
+                                        setTeamFieldEditMode(true);
+                                      }}
+                                      className={`rounded-lg border px-2 py-1 text-[10px] font-black opacity-80 transition group-hover:opacity-100 ${isSelectedForPlacement ? 'border-amber-200/30 bg-amber-300/20 text-amber-100' : 'border-white/10 bg-white/[0.04] text-slate-400 hover:bg-white/[0.08] hover:text-white'}`}
+                                      title="Asignar posición"
+                                    >
+                                      POS
+                                    </button>
+                                  ) : null}
                                   <button
                                     type="button"
                                     onClick={(event) => {
@@ -10241,7 +10312,7 @@ function App() {
                                     ED
                                   </button>
                                 </div>
-                              ))}
+                              );})}
                           </div>
                         ))
                       ) : (
@@ -10279,6 +10350,31 @@ function App() {
                         </button>
                       </div>
                     </div>
+                    {selectedTeamUnplacedStarters.length ? (
+                      <div className="rounded-2xl border border-amber-200/15 bg-amber-200/[0.055] p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">Titulares sin posición asignada</p>
+                          <span className="text-[10px] font-bold text-amber-100/70">Selecciona y pulsa un slot vacío</span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {selectedTeamUnplacedStarters.map((player) => (
+                            <button
+                              key={player.jugadorRivalId || player.id || player.name}
+                              type="button"
+                              draggable
+                              onDragStart={() => setDraggedPlayer(player)}
+                              onClick={() => {
+                                setSelectedTeamPlacementPlayerName(player.name);
+                                setTeamFieldEditMode(true);
+                              }}
+                              className={`rounded-xl border px-2.5 py-1.5 text-xs font-bold transition ${selectedTeamPlacementPlayerName === player.name ? 'border-amber-200/40 bg-amber-300/20 text-amber-100' : 'border-white/10 bg-slate-950/30 text-slate-300 hover:text-white'}`}
+                            >
+                              {displayPlayerName(player)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     <div
                     onDragOver={(event) => {
                       if (teamFieldEditMode) event.preventDefault();
@@ -10350,9 +10446,18 @@ function App() {
                     ) : null}
                     {teamFieldEditMode ? getFormationCoordinates(selectedTeam.system).map((slot, slotIndex) => {
                       const slotPlayer = getLineupSlotMap(selectedTeamFieldLineup).get(slotIndex);
+                      const slotRole = getFormationRoles(selectedTeam.system)[slotIndex] || `Slot ${slotIndex + 1}`;
                       return (
                         <div
                           key={`${selectedTeam.system}-${slotIndex}`}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => {
+                            if (selectedTeamPlacementPlayerName) assignSelectedTeamPlayerToSlot(slotIndex);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' && selectedTeamPlacementPlayerName) assignSelectedTeamPlayerToSlot(slotIndex);
+                          }}
                           onDragOver={(event) => {
                             if (teamFieldEditMode) event.preventDefault();
                           }}
@@ -10360,10 +10465,18 @@ function App() {
                             event.stopPropagation();
                             handleDropOnLineupSlot(slotIndex);
                           }}
-                          className={`absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full transition ${slotPlayer ? 'opacity-0' : 'border border-dashed border-white/[0.10] bg-white/[0.012] opacity-15 hover:opacity-35'}`}
+                          className={`absolute flex min-h-9 min-w-16 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-xl border border-dashed px-1.5 py-1 text-center text-[7px] font-black uppercase tracking-[0.08em] transition ${
+                            slotPlayer
+                              ? selectedTeamPlacementPlayerName ? 'border-amber-200/25 bg-amber-200/[0.08] text-amber-100/70 opacity-80 hover:opacity-100' : 'border-white/[0.05] bg-white/[0.008] text-white/20 opacity-0'
+                              : selectedTeamPlacementPlayerName ? 'border-amber-200/30 bg-amber-200/[0.08] text-amber-100 opacity-85 hover:opacity-100' : 'border-white/[0.12] bg-white/[0.018] text-white/35 opacity-45 hover:opacity-75'
+                          }`}
                           style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
-                          aria-label={`Zona táctica ${slotIndex + 1}`}
-                        />
+                          aria-label={`Asignar ${slotRole}`}
+                          title={slotPlayer ? `${slotRole}: ${slotPlayer.name}` : `Slot libre: ${slotRole}`}
+                        >
+                          <span>{slotRole}</span>
+                          {slotPlayer && selectedTeamPlacementPlayerName ? <span className="mt-0.5 text-[6px] text-amber-100/60">intercambiar</span> : null}
+                        </div>
                       );
                     }) : null}
                     {selectedTeamFieldLineup.map((player) => {
