@@ -2483,6 +2483,7 @@ function App() {
   const [statsError, setStatsError] = useState('');
   const [statsSaveStatus, setStatsSaveStatus] = useState('');
   const [statsViewMode, setStatsViewMode] = useState('completa');
+  const [statsEventFilter, setStatsEventFilter] = useState('Todos');
   const [delegatedMinute, setDelegatedMinute] = useState('0');
   const [delegatedElapsedSeconds, setDelegatedElapsedSeconds] = useState(0);
   const [delegatedTimerRunning, setDelegatedTimerRunning] = useState(false);
@@ -5729,6 +5730,21 @@ function App() {
       .filter(Boolean)
       .sort((a, b) => a.minute - b.minute);
 
+  const getStatsPlayerVisualEvents = (playerName) => {
+    const stats = getStatsPlayerData(playerName);
+    const substitutionOut = getStatsReplacementInfo(playerName);
+    const substitutionIn = getStatsSubstitutionEvents().find((event) => event.inPlayer === playerName);
+    return [
+      stats.goals ? { key: 'goals', label: stats.goals > 1 ? `⚽${stats.goals}` : '⚽', title: `${stats.goals} gol${stats.goals > 1 ? 'es' : ''}`, className: 'bg-white text-slate-950' } : null,
+      stats.assists ? { key: 'assists', label: stats.assists > 1 ? `↗${stats.assists}` : '↗', title: `${stats.assists} asistencia${stats.assists > 1 ? 's' : ''}`, className: 'bg-caudal-electric text-slate-950' } : null,
+      stats.yellow ? { key: 'yellow', label: stats.yellowCount > 1 ? `AM${stats.yellowCount}` : 'AM', title: 'Amarilla', className: 'bg-yellow-300 text-slate-950' } : null,
+      stats.red ? { key: 'red', label: 'RJ', title: 'Roja', className: 'bg-red-600 text-white' } : null,
+      stats.injured ? { key: 'injured', label: '✚', title: 'Lesión', className: 'bg-rose-200 text-rose-800' } : null,
+      substitutionOut ? { key: 'sub-out', label: `${substitutionOut.minute}'↓`, title: `Sale por ${substitutionOut.replacementName}`, className: 'bg-emerald-500 text-white' } : null,
+      substitutionIn ? { key: 'sub-in', label: `${substitutionIn.minute}'↑`, title: `Entra por ${substitutionIn.outPlayer}`, className: 'bg-emerald-400 text-slate-950' } : null,
+    ].filter(Boolean);
+  };
+
   const getStatsMomentRange = (minuteValue) => {
     const minute = Number(minuteValue || 0);
     if (minute <= 15) return '0-15';
@@ -5743,12 +5759,18 @@ function App() {
     if (!selectedMatch) return '';
     const score = getStatsScore();
     const goals = getStatsGoalEvents();
+    const describeGoalContext = (event) => {
+      const attackType = event.attackType || event.subphase || event.phase || 'acción';
+      const source = event.assistZone ? `generada en ${normalizePitchZone(event.assistZone).toLowerCase()}` : '';
+      const finish = event.shotZone ? `finalizada en ${normalizePitchZone(event.shotZone).toLowerCase()}` : '';
+      return [attackType.toLowerCase(), source, finish].filter(Boolean).join(' y ');
+    };
     const caudalGoalText = goals
       .filter((event) => event.type === 'Gol a favor')
-      .map((event) => `${event.scorer || 'Caudal'}${event.minute ? ` ${event.minute}'` : ''}${event.phase ? ` (${event.phase})` : ''}`);
+      .map((event) => `${event.minute ? `${event.minute}': ` : ''}${event.scorer || 'Caudal'} marca tras ${describeGoalContext(event)}${event.assistant ? `. Asistencia de ${event.assistant}` : ''}`);
     const againstGoalText = goals
       .filter((event) => event.type === 'Gol en contra')
-      .map((event) => `gol rival${event.minute ? ` ${event.minute}'` : ''}`);
+      .map((event) => `${event.minute ? `${event.minute}': ` : ''}gol encajado tras ${describeGoalContext(event)}`);
     const cardText = getStatsCalledPlayers().flatMap((player) => {
       const stats = getStatsPlayerData(player.name);
       return [
@@ -5760,11 +5782,17 @@ function App() {
     const substitutionText = getStatsSubstitutionEvents().map((event) => `${event.minute}': entra ${event.inPlayer} por ${event.outPlayer}`);
     return [
       `${score.caudal === score.rival ? 'Empate' : score.caudal > score.rival ? 'Victoria' : 'Derrota'} ${score.caudal}-${score.rival}.`,
-      caudalGoalText.length ? `Goles: ${caudalGoalText.join(', ')}.` : null,
-      againstGoalText.length ? `Encajados: ${againstGoalText.join(', ')}.` : null,
-      substitutionText.length ? `Cambios: ${substitutionText.join('; ')}.` : null,
+      caudalGoalText.length ? `Resumen ofensivo: ${caudalGoalText.join('; ')}.` : 'Resumen ofensivo: sin goles registrados a favor.',
+      againstGoalText.length ? `Resumen defensivo: ${againstGoalText.join('; ')}.` : 'Resumen defensivo: sin goles encajados registrados.',
+      substitutionText.length ? `Cambios relevantes: ${substitutionText.join('; ')}.` : null,
       cardText.length ? `Incidencias: ${cardText.join(', ')}.` : null,
     ].filter(Boolean).join(' ');
+  };
+
+  const getStatsAutoSummarySections = () => {
+    const summary = buildStatsAutoSummary();
+    if (!summary) return [];
+    return summary.split(/(?=Resumen ofensivo:|Resumen defensivo:|Cambios relevantes:|Incidencias:)/).map((item) => item.trim()).filter(Boolean);
   };
 
   const saveStatsAutoSummary = async () => {
@@ -5787,6 +5815,92 @@ function App() {
         ...safeObject(storedById.get(consignaId)),
       };
     });
+  };
+
+  const getPreStatsCompliance = () => {
+    const links = getPreStatsLinks();
+    const assessed = links.filter((link) => link.fulfilled !== null && link.fulfilled !== undefined);
+    const score = assessed.reduce((sum, link) => sum + (link.fulfilled === true ? 1 : link.fulfilled === 'partial' ? 0.5 : 0), 0);
+    const percentage = assessed.length ? Math.round((score / assessed.length) * 100) : 0;
+    return {
+      total: links.length,
+      assessed: assessed.length,
+      percentage,
+      colorClass: percentage >= 70 ? 'bg-emerald-300' : percentage >= 45 ? 'bg-yellow-300' : 'bg-red-400',
+      textClass: percentage >= 70 ? 'text-emerald-200' : percentage >= 45 ? 'text-yellow-100' : 'text-red-100',
+    };
+  };
+
+  const getStatsKeyEvents = () => {
+    const goalEvents = getStatsGoalEvents().map((event) => ({
+      id: `goal-${event.id}`,
+      minute: Number(event.minute || 0),
+      type: event.type,
+      category: 'Goles',
+      priority: 1,
+      tone: event.type === 'Gol a favor' ? 'border-emerald-200/10 bg-emerald-400/[0.07]' : 'border-red-200/10 bg-red-500/[0.07]',
+      title: event.type === 'Gol a favor' ? event.scorer || 'Gol Caudal' : selectedMatch.opponent || 'Gol rival',
+      subtitle: event.assistant ? `Asist. ${event.assistant}` : `Tramo ${getStatsMomentRange(event.minute)}`,
+      detail: event.description || `${event.phase || 'Fase'} · ${event.subphase || 'Subfase'}`,
+      meta: `Finaliza: ${normalizePitchZone(event.shotZone)} · Genera: ${normalizePitchZone(event.assistZone)} · Entra: ${event.goalZone || '-'}`,
+    }));
+    const substitutions = getStatsSubstitutionEvents().map((event) => ({
+      id: `sub-${event.outPlayer}-${event.inPlayer}-${event.minute}`,
+      minute: event.minute,
+      type: 'Sustitución',
+      category: 'Cambios',
+      priority: 4,
+      tone: 'border-emerald-200/10 bg-emerald-400/[0.06]',
+      title: `Sale ${event.outPlayer}`,
+      subtitle: `Entra ${event.inPlayer} · ${90 - event.minute}'`,
+      detail: `Cambio en tramo ${getStatsMomentRange(event.minute)}`,
+      meta: '',
+    }));
+    const playerIncidents = getStatsCalledPlayers().flatMap((player) => {
+      const stats = getStatsPlayerData(player.name);
+      const minute = Number(stats.minutes || 90) || 90;
+      return [
+        stats.red ? {
+          id: `red-${player.name}`,
+          minute,
+          type: 'Roja',
+          category: 'Tarjetas',
+          priority: 2,
+          tone: 'border-red-200/10 bg-red-500/[0.08]',
+          title: player.name,
+          subtitle: `${minute}' · expulsión`,
+          detail: 'Condiciona estructura y minutos.',
+          meta: '',
+        } : null,
+        stats.injured ? {
+          id: `injury-${player.name}`,
+          minute,
+          type: 'Lesión',
+          category: 'Lesiones',
+          priority: 3,
+          tone: 'border-rose-200/10 bg-rose-400/[0.08]',
+          title: player.name,
+          subtitle: `${minute}' · lesión`,
+          detail: 'Incidencia médica registrada.',
+          meta: '',
+        } : null,
+        stats.yellow ? {
+          id: `yellow-${player.name}`,
+          minute,
+          type: 'Amarilla',
+          category: 'Tarjetas',
+          priority: 5,
+          tone: 'border-yellow-200/10 bg-yellow-300/[0.07]',
+          title: player.name,
+          subtitle: `${stats.yellowCount} amarilla${stats.yellowCount > 1 ? 's' : ''}`,
+          detail: 'Riesgo disciplinario.',
+          meta: '',
+        } : null,
+      ].filter(Boolean);
+    });
+    return [...goalEvents, ...playerIncidents, ...substitutions]
+      .filter((event) => statsEventFilter === 'Todos' || event.category === statsEventFilter)
+      .sort((a, b) => (a.priority - b.priority) || (a.minute - b.minute));
   };
 
   const updatePreStatsLink = (consignaId, patch) => {
@@ -6444,16 +6558,14 @@ function App() {
                     {stats.rating}
                   </span>
                 ) : null}
-                {replacementInfo ? (
-                  <span className="absolute -left-5 top-8 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-black text-white" title="Sale">
-                    {replacementInfo.minute}' ↓
-                  </span>
-                ) : null}
-                {stats?.injured ? (
-                  <span className="absolute -left-4 top-0 rounded-full bg-rose-700 px-1.5 py-0.5 text-[10px] font-black text-white" title="Lesionado">LES</span>
-                ) : null}
-                {stats?.red ? (
-                  <span className="absolute -left-4 bottom-0 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-black text-white" title="Expulsado">RJ</span>
+                {playerName ? (
+                  <div className="absolute -right-4 bottom-1 flex max-w-[54px] flex-wrap justify-end gap-0.5">
+                    {getStatsPlayerVisualEvents(playerName).map((event) => (
+                      <span key={event.key} title={event.title} className={`flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-[9px] font-black shadow-lg ${event.className}`}>
+                        {event.label}
+                      </span>
+                    ))}
+                  </div>
                 ) : null}
               </div>
               <div className="max-w-[92px] truncate rounded-xl bg-black/60 px-2 py-1 text-[10px] font-bold text-white">
@@ -6462,15 +6574,6 @@ function App() {
               {replacementInfo ? (
                 <div className="max-w-[108px] truncate rounded-xl bg-emerald-500 px-2 py-1 text-[10px] font-black text-white" title={`Entra ${replacementInfo.replacementName}`}>
                   ↑ {replacementInfo.replacementName} · {replacementInfo.substituteMinutes}'
-                </div>
-              ) : null}
-              {stats ? (
-                <div className="flex flex-wrap justify-center gap-1 text-[10px]">
-                  {stats.goals ? <span title="Gol">⚽{stats.goals > 1 ? stats.goals : ''}</span> : null}
-                  {stats.assists ? <span title="Asistencia">👟{stats.assists > 1 ? stats.assists : ''}</span> : null}
-                  {stats.yellow ? <span title="Amarilla">🟨{stats.yellowCount > 1 ? stats.yellowCount : ''}</span> : null}
-                  {stats.red ? <span title="Roja">🟥</span> : null}
-                  {stats.injured ? <span title="Lesión">🚑</span> : null}
                 </div>
               ) : null}
             </div>
@@ -12994,7 +13097,11 @@ function App() {
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div>
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Autoresumen del partido</p>
-                            <p className="mt-2 text-sm leading-6 text-slate-100">{buildStatsAutoSummary() || 'Añade goles, cambios o incidencias para generar el resumen.'}</p>
+                            <div className="mt-2 grid gap-2 text-sm leading-6 text-slate-100">
+                              {getStatsAutoSummarySections().length ? getStatsAutoSummarySections().map((section, index) => (
+                                <p key={`${section}-${index}`} className="rounded-2xl bg-black/20 px-3 py-2">{section}</p>
+                              )) : <p>Añade goles, cambios o incidencias para generar el resumen.</p>}
+                            </div>
                           </div>
                           <button type="button" onClick={saveStatsAutoSummary} className="shrink-0 rounded-2xl bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">
                             Guardar en POST
@@ -13003,13 +13110,27 @@ function App() {
                       </div>
                       {getPreStatsLinks().length ? (
                         <div className="mt-4 rounded-3xl border border-white/10 bg-[#0f1e38]/70 p-4">
-                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Relación PRE ↔ Estadísticas</p>
+                          {(() => {
+                            const compliance = getPreStatsCompliance();
+                            return (
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Relación PRE ↔ Estadísticas</p>
+                                  <p className={`mt-1 text-xs font-black ${compliance.textClass}`}>{compliance.assessed}/{compliance.total} revisadas · {compliance.percentage}% cumplimiento</p>
+                                </div>
+                                <div className="h-2 w-full overflow-hidden rounded-full bg-white/10 sm:max-w-[180px]">
+                                  <div className={`h-full rounded-full ${compliance.colorClass}`} style={{ width: `${compliance.percentage}%` }} />
+                                </div>
+                              </div>
+                            );
+                          })()}
                           <div className="mt-3 grid gap-2">
                             {getPreStatsLinks().slice(0, 6).map((link) => (
                               <div key={link.consignaId} className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/[0.035] p-3 sm:flex-row sm:items-center sm:justify-between">
                                 <p className="min-w-0 flex-1 truncate text-sm font-semibold text-white">{link.text}</p>
                                 <div className="flex flex-wrap gap-1.5">
                                   <button type="button" onClick={() => updatePreStatsLink(link.consignaId, { fulfilled: true })} className={`rounded-lg px-2 py-1 text-[10px] font-black ${link.fulfilled === true ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-slate-300'}`}>Cumplida</button>
+                                  <button type="button" onClick={() => updatePreStatsLink(link.consignaId, { fulfilled: 'partial' })} className={`rounded-lg px-2 py-1 text-[10px] font-black ${link.fulfilled === 'partial' ? 'bg-yellow-300 text-slate-950' : 'bg-white/10 text-slate-300'}`}>Parcial</button>
                                   <button type="button" onClick={() => updatePreStatsLink(link.consignaId, { fulfilled: false })} className={`rounded-lg px-2 py-1 text-[10px] font-black ${link.fulfilled === false ? 'bg-red-400 text-white' : 'bg-white/10 text-slate-300'}`}>No</button>
                                   <select value={link.eventId || ''} onChange={(event) => updatePreStatsLink(link.consignaId, { eventId: event.target.value })} className="rounded-lg bg-white px-2 py-1 text-[10px] font-bold text-slate-950">
                                     <option value="">Sin evento</option>
@@ -13027,31 +13148,40 @@ function App() {
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Eventos clave</h3>
-                          <p className="mt-2 text-sm text-slate-400">Análisis de goles con fase, subfase y mapas visuales.</p>
+                          <p className="mt-2 text-sm text-slate-400">Goles, cambios, tarjetas y lesiones ordenados por impacto táctico.</p>
                         </div>
                         <button type="button" onClick={openGoalAnalysisModal} className="rounded-2xl bg-red-500 px-5 py-3 text-sm font-bold uppercase tracking-[0.14em] text-white">
                           Registrar gol
                         </button>
                       </div>
-                      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                        {getStatsGoalEvents().length ? getStatsGoalEvents().map((event) => (
-                          <div key={event.id} className="rounded-3xl bg-[#0f1e38]/80 p-5">
-                            <p className="text-sm font-black text-caudal-electric">{event.minute}' · {event.type}</p>
-                            <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Tramo {getStatsMomentRange(event.minute)}</p>
-                            <p className="mt-2 text-sm font-semibold text-white">{event.type === 'Gol a favor' ? event.scorer || 'Sin goleador' : selectedMatch.opponent || 'Rival'}</p>
-                            {event.assistant ? <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">Asist. {event.assistant}</p> : null}
-                            <p className="mt-3 text-sm text-slate-300">{event.phase} · {event.subphase}</p>
-                            <p className="mt-1 text-xs text-slate-500">Remate: {normalizePitchZone(event.shotZone)} · Asistencia: {normalizePitchZone(event.assistZone)} · Portería: {event.goalZone}</p>
-                          </div>
-                        )) : <div className="rounded-3xl bg-[#0f1e38]/80 p-6 text-sm text-slate-400">No hay eventos clave todavía.</div>}
-                        {getStatsSubstitutionEvents().map((event) => (
-                          <div key={`${event.outPlayer}-${event.inPlayer}-${event.minute}`} className="rounded-3xl border border-violet-200/10 bg-violet-400/[0.06] p-5">
-                            <p className="text-sm font-black text-violet-200">{event.minute}' · Sustitución</p>
-                            <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Tramo {getStatsMomentRange(event.minute)}</p>
-                            <p className="mt-2 text-sm font-semibold text-white">Sale {event.outPlayer}</p>
-                            <p className="mt-1 text-sm text-slate-300">Entra {event.inPlayer} · {90 - event.minute}'</p>
-                          </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {['Todos', 'Goles', 'Cambios', 'Tarjetas', 'Lesiones'].map((filter) => (
+                          <button
+                            key={filter}
+                            type="button"
+                            onClick={() => setStatsEventFilter(filter)}
+                            className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] transition ${statsEventFilter === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}
+                          >
+                            {filter}
+                          </button>
                         ))}
+                      </div>
+                      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        {getStatsKeyEvents().length ? getStatsKeyEvents().map((event) => (
+                          <div key={event.id} className={`rounded-2xl border p-4 ${event.tone}`}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-black text-caudal-electric">{event.minute || '-'}' · {event.type}</p>
+                                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Tramo {getStatsMomentRange(event.minute)}</p>
+                              </div>
+                              <span className="rounded-lg bg-white/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">{event.category}</span>
+                            </div>
+                            <p className="mt-2 text-sm font-semibold text-white">{event.title}</p>
+                            <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">{event.subtitle}</p>
+                            <p className="mt-3 text-sm text-slate-300">{event.detail}</p>
+                            {event.meta ? <p className="mt-1 text-xs text-slate-500">{event.meta}</p> : null}
+                          </div>
+                        )) : <div className="rounded-3xl bg-[#0f1e38]/80 p-6 text-sm text-slate-400">No hay eventos para este filtro.</div>}
                       </div>
                     </div>
                     </AccordionSection>
@@ -13172,11 +13302,16 @@ function App() {
                         ) : null}
                       </div>
                       {getStatsCalledPlayers().length ? (
-                      <div className="mt-5 max-h-[620px] overflow-auto rounded-2xl border border-white/10">
-                        <table className="w-full min-w-[980px] text-left text-sm">
-                          <thead className="sticky top-0 z-10 bg-[#091428] text-xs uppercase tracking-[0.16em] text-slate-500">
+                      <div className="mt-5 max-h-[620px] overflow-auto rounded-2xl border border-white/10 bg-[#071123]/80">
+                        <table className="w-full min-w-[1040px] border-separate border-spacing-0 text-left text-xs">
+                          <thead className="sticky top-0 z-20 bg-[#091428] text-[10px] uppercase tracking-[0.14em] text-slate-500">
                             <tr>
-                              {['Jugador', 'Rol', 'Pos real', 'Min', 'Sustitución', 'G', 'A', 'AM', 'RJ', 'LES', 'Val'].map((head) => <th key={head} className="px-3 py-2">{head}</th>)}
+                              <th className="sticky left-0 z-30 min-w-[190px] bg-[#091428] px-3 py-2 text-left">Jugador</th>
+                              <th className="px-2 py-2 text-center">Rol</th>
+                              <th className="px-2 py-2 text-center">Pos real</th>
+                              <th className="px-2 py-2 text-center">Min</th>
+                              <th className="px-2 py-2 text-center">Cambio</th>
+                              {['G', 'A', 'AM', 'RJ', 'LES', 'VAL'].map((head) => <th key={head} className="px-2 py-2 text-center">{head}</th>)}
                             </tr>
                           </thead>
                           <tbody>
@@ -13189,17 +13324,22 @@ function App() {
                               const enteredAsSub = substituteMinutes > 0;
                               const rowSummary = `${player.name}: ${displayedMinutes || 0}' · G${stats.goals} A${stats.assists}${stats.yellow ? ` · AM ${stats.yellowCount}` : ''}${stats.red ? ' · RJ' : ''}${stats.injured ? ' · LES' : ''}`;
                               return (
-                                <tr key={player.id} title={rowSummary} className={`border-t border-white/10 transition hover:bg-white/[0.06] ${stats.red ? 'bg-red-500/[0.06]' : stats.injured ? 'bg-rose-500/[0.06]' : enteredAsSub ? 'bg-violet-400/[0.05]' : stats.role === 'Titular' ? 'bg-caudal-electric/10' : 'bg-white/[0.02]'}`}>
-                                  <td className="px-3 py-2 font-bold text-white">{player.name}</td>
-                                  <td className="px-3 py-2 text-xs uppercase tracking-[0.14em] text-caudal-electric">{enteredAsSub ? 'Entrado' : stats.role}</td>
-                                  <td className="px-3 py-2 text-xs font-semibold text-slate-300">{getStatsPlayedPosition(player.name)}</td>
-                                  <td className="px-3 py-2"><input type="number" min="0" max="90" value={displayedMinutes} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value, replacementName: Number(event.target.value) >= 90 ? '' : stats.replacementName })} className="w-16 rounded-lg bg-white px-2 py-1.5 font-bold text-slate-950" /></td>
-                                  <td className="px-3 py-2">
+                                <tr key={player.id} title={rowSummary} className={`group transition hover:bg-white/[0.07] ${stats.red ? 'bg-red-500/[0.06]' : stats.injured ? 'bg-rose-500/[0.06]' : enteredAsSub ? 'bg-emerald-400/[0.05]' : stats.role === 'Titular' ? 'bg-caudal-electric/10' : 'bg-white/[0.02]'}`}>
+                                  <td className={`sticky left-0 z-10 border-t border-white/10 px-3 py-2 font-bold text-white shadow-[8px_0_18px_rgba(0,0,0,0.22)] transition group-hover:bg-[#10213f] ${stats.red ? 'bg-[#1c1220]' : stats.injured ? 'bg-[#171525]' : stats.role === 'Titular' ? 'bg-[#0d1f3b]' : 'bg-[#091428]'}`}>
+                                    <div className="flex items-center gap-2">
+                                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/10 text-[11px] font-black text-white">{player.number || '-'}</span>
+                                      <span className="truncate">{player.name}</span>
+                                    </div>
+                                  </td>
+                                  <td className="border-t border-white/10 px-2 py-2 text-center text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{enteredAsSub ? 'Entrado' : stats.role}</td>
+                                  <td className="border-t border-white/10 px-2 py-2 text-center text-[11px] font-semibold text-slate-300">{getStatsPlayedPosition(player.name)}</td>
+                                  <td className="border-t border-white/10 px-2 py-2 text-center"><input type="number" min="0" max="90" value={displayedMinutes} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value, replacementName: Number(event.target.value) >= 90 ? '' : stats.replacementName })} className="w-14 rounded-lg bg-white px-2 py-1.5 text-center font-black text-slate-950" /></td>
+                                  <td className="border-t border-white/10 px-2 py-2 text-center">
                                     <select
                                       value={stats.replacementName}
                                       disabled={!canReplace}
                                       onChange={(event) => updateStatsPlayerData(player.name, { replacementName: event.target.value })}
-                                      className="w-48 rounded-lg bg-white px-2 py-1.5 text-xs font-bold text-slate-950 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+                                      className="w-44 rounded-lg bg-white px-2 py-1.5 text-[11px] font-bold text-slate-950 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
                                     >
                                       <option value="">{canReplace ? `Sale ${minutes}' · entra...` : enteredAsSub ? `Entra · ${displayedMinutes}'` : 'Sin cambio'}</option>
                                       {getStatsReplacementOptions(player.name).map((replacement) => (
@@ -13207,10 +13347,10 @@ function App() {
                                       ))}
                                     </select>
                                   </td>
-                                  <td className="px-3 py-2 text-white">{stats.goals}</td>
-                                  <td className="px-3 py-2 text-white">{stats.assists}</td>
-                                  <td className="px-3 py-2">
-                                    <div className="flex gap-1">
+                                  <td className="border-t border-white/10 px-2 py-2 text-center font-black text-white">{stats.goals}</td>
+                                  <td className="border-t border-white/10 px-2 py-2 text-center font-black text-white">{stats.assists}</td>
+                                  <td className="border-t border-white/10 px-2 py-2">
+                                    <div className="flex justify-center gap-1">
                                       {[1, 2].map((cardNumber) => {
                                         const active = stats.yellowCount >= cardNumber;
                                         return (
@@ -13221,7 +13361,7 @@ function App() {
                                               const nextCount = active && stats.yellowCount === cardNumber ? cardNumber - 1 : cardNumber;
                                               updateStatsPlayerData(player.name, { yellowCount: nextCount, yellow: nextCount > 0 });
                                             }}
-                                            className={`flex h-7 w-7 items-center justify-center rounded-md border text-[10px] font-black transition ${active ? 'border-yellow-200 bg-yellow-300 text-slate-950 shadow-[0_0_18px_rgba(253,224,71,0.35)]' : 'border-white/20 bg-white/10 text-slate-500 hover:bg-white/15'}`}
+                                            className={`flex h-6 w-6 items-center justify-center rounded-md border text-[10px] font-black transition ${active ? 'border-yellow-200 bg-yellow-300 text-slate-950' : 'border-white/20 bg-white/10 text-slate-500 hover:bg-white/15'}`}
                                             title={`${cardNumber} amarilla${cardNumber > 1 ? 's' : ''}`}
                                           >
                                             {cardNumber}
@@ -13230,22 +13370,22 @@ function App() {
                                       })}
                                     </div>
                                   </td>
-                                  <td className="px-3 py-2">
+                                  <td className="border-t border-white/10 px-2 py-2">
                                     <button
                                       type="button"
                                       onClick={() => updateStatsPlayerData(player.name, { red: !stats.red })}
-                                      className={`flex h-7 w-7 items-center justify-center rounded-md border text-xs font-black transition ${stats.red ? 'border-red-200 bg-red-500 text-white shadow-[0_0_18px_rgba(239,68,68,0.35)]' : 'border-white/20 bg-white/10 text-slate-500 hover:bg-white/15'}`}
+                                      className={`mx-auto flex h-6 w-6 items-center justify-center rounded-md border text-xs font-black transition ${stats.red ? 'border-red-200 bg-red-600 text-white' : 'border-white/20 bg-white/10 text-slate-500 hover:bg-white/15'}`}
                                       title="Roja"
                                     >
                                       R
                                     </button>
                                   </td>
-                                  <td className="px-3 py-2"><button type="button" onClick={() => updateStatsPlayerData(player.name, { injured: !stats.injured })} className={`rounded-lg px-2.5 py-1.5 text-sm font-black ${stats.injured ? 'bg-red-100 text-red-700' : 'bg-white/10 text-slate-300'}`}>+</button></td>
-                                  <td className="px-3 py-2">
+                                  <td className="border-t border-white/10 px-2 py-2 text-center"><button type="button" onClick={() => updateStatsPlayerData(player.name, { injured: !stats.injured })} className={`mx-auto flex h-6 min-w-6 items-center justify-center rounded-md px-1.5 text-xs font-black ${stats.injured ? 'bg-rose-200 text-rose-800' : 'bg-white/10 text-slate-300'}`}>+</button></td>
+                                  <td className="border-t border-white/10 px-2 py-2 text-center">
                                     <select
                                       value={stats.rating}
                                       onChange={(event) => updateStatsPlayerData(player.name, { rating: event.target.value })}
-                                      className={`w-16 rounded-xl px-2 py-2 text-center text-sm font-black outline-none transition ${stats.rating ? 'bg-emerald-300 text-slate-950' : 'bg-emerald-50 text-slate-400'}`}
+                                      className={`w-14 rounded-lg px-2 py-1.5 text-center text-xs font-black outline-none transition ${stats.rating ? 'bg-emerald-300 text-slate-950' : 'bg-emerald-50 text-slate-400'}`}
                                     >
                                       <option value="">-</option>
                                       {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((rating) => (
