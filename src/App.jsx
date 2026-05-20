@@ -2428,6 +2428,8 @@ function App() {
   const [preSubTab, setPreSubTab] = useState('Informe rival');
   const [isPreTalkMode, setIsPreTalkMode] = useState(false);
   const [isCanvaPreviewOpen, setIsCanvaPreviewOpen] = useState(false);
+  const [canvaFrameFailed, setCanvaFrameFailed] = useState(false);
+  const [manualConsignaDraft, setManualConsignaDraft] = useState('');
   const [selectedTacticalPlayerIndex, setSelectedTacticalPlayerIndex] = useState(0);
   const [selectedRivalTacticalPlayerIndex, setSelectedRivalTacticalPlayerIndex] = useState(0);
   const [newRivalManualPlayerName, setNewRivalManualPlayerName] = useState('');
@@ -3430,6 +3432,10 @@ function App() {
     loadPerformanceData();
   }, [activeTab, performanceWeekStart]);
 
+  useEffect(() => {
+    setCanvaFrameFailed(false);
+  }, [selectedMatchId]);
+
   const selectedTeam = useMemo(
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
     [selectedTeamId, teams]
@@ -3480,6 +3486,10 @@ function App() {
     };
   }, [liveRivalIdentity, liveRivalPlayers, selectedMatchRivalTeam]);
   const suggestedConsignas = selectedPreAiAnalysis?.suggestedConsignas || createSuggestedConsignas(selectedMatchRivalTeam || liveRivalIdentity);
+  const activeConsignas = (selectedMatch?.planClave || '').split('\n').map((item) => item.trim()).filter(Boolean);
+  const saveActiveConsignas = (items) => {
+    updateSelectedMatchFields({ planClave: items.map((item) => item.trim()).filter(Boolean).join('\n') });
+  };
   const updateSuggestedConsignas = (nextConsignas) => {
     updateSelectedMatchFields({
       preAiAnalysis: {
@@ -3502,8 +3512,34 @@ function App() {
     updateSuggestedConsignas(next);
   };
   const addSuggestedConsignaToManual = (text) => {
-    const manualItems = (selectedMatch?.planClave || '').split('\n').map((item) => item.trim()).filter(Boolean);
-    if (!manualItems.includes(text)) updateSelectedMatchFields({ planClave: [...manualItems, text].join('\n') });
+    const cleanText = String(text || '').trim();
+    if (!cleanText) return;
+    if (!activeConsignas.includes(cleanText)) saveActiveConsignas([...activeConsignas, cleanText]);
+  };
+  const acceptSuggestedConsigna = (index) => {
+    const item = suggestedConsignas[index];
+    if (!item) return;
+    addSuggestedConsignaToManual(item.text);
+    removeSuggestedConsigna(index);
+  };
+  const addManualConsigna = () => {
+    const cleanText = manualConsignaDraft.trim();
+    if (!cleanText) return;
+    saveActiveConsignas(activeConsignas.includes(cleanText) ? activeConsignas : [...activeConsignas, cleanText]);
+    setManualConsignaDraft('');
+  };
+  const editActiveConsigna = (index, text) => {
+    saveActiveConsignas(activeConsignas.map((item, itemIndex) => (itemIndex === index ? text : item)));
+  };
+  const removeActiveConsigna = (index) => {
+    saveActiveConsignas(activeConsignas.filter((_, itemIndex) => itemIndex !== index));
+  };
+  const moveActiveConsigna = (index, direction) => {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= activeConsignas.length) return;
+    const next = [...activeConsignas];
+    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+    saveActiveConsignas(next);
   };
   const togglePreReportChecklist = (key) => {
     updateSelectedMatchFields({
@@ -4171,20 +4207,48 @@ function App() {
       const normalizedUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
       const canvaUrl = new URL(normalizedUrl);
       const host = canvaUrl.hostname.replace(/^www\./, '').toLowerCase();
-      if (!host.includes('canva.com') && !host.includes('canva.link')) return null;
+      if (!/(\.|^)canva\.com$/.test(host) && !/(\.|^)canva\.link$/.test(host)) return null;
       canvaUrl.protocol = 'https:';
-      if (host.includes('canva.link')) return canvaUrl.toString();
+      if (canvaUrl.pathname.includes('/embed')) return canvaUrl.toString();
+      if (host.endsWith('canva.link')) return canvaUrl.toString();
       canvaUrl.searchParams.set('embed', '');
       return canvaUrl.toString();
     } catch {
       return null;
     }
   };
-  const isCanvaUrl = (url) => Boolean(getCanvaEmbedUrl(url));
+  const getCanvaOpenUrl = (url) => {
+    const rawUrl = String(url || '').trim();
+    if (!rawUrl) return '';
+    try {
+      const normalizedUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+      const canvaUrl = new URL(normalizedUrl);
+      const host = canvaUrl.hostname.replace(/^www\./, '').toLowerCase();
+      if (!/(\.|^)canva\.com$/.test(host) && !/(\.|^)canva\.link$/.test(host)) return '';
+      canvaUrl.protocol = 'https:';
+      canvaUrl.searchParams.delete('embed');
+      return canvaUrl.toString();
+    } catch {
+      return '';
+    }
+  };
+  const isCanvaUrl = (url) => Boolean(getCanvaOpenUrl(url));
   const openCanvaUrl = (url) => {
-    const normalizedUrl = getCanvaEmbedUrl(url) || String(url || '').trim();
+    const normalizedUrl = getCanvaOpenUrl(url) || String(url || '').trim();
     if (!normalizedUrl) return;
     window.open(normalizedUrl, '_blank', 'noopener,noreferrer');
+  };
+  const copyCanvaUrl = async (url) => {
+    const normalizedUrl = getCanvaOpenUrl(url) || String(url || '').trim();
+    if (!normalizedUrl) return;
+    try {
+      await navigator.clipboard.writeText(normalizedUrl);
+      setPreError('');
+      setSaveStatus('Enlace de Canva copiado.');
+    } catch (copyError) {
+      console.error('Error copiando enlace Canva:', copyError);
+      setPreError('No se pudo copiar el enlace de Canva.');
+    }
   };
 
   const eventButtonClass = (typeOrColor) => {
@@ -11085,36 +11149,17 @@ function App() {
                               <div className="flex items-start justify-between gap-3">
                                 <div>
                                   <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/75">Claves del partido</p>
-                                  <h4 className="mt-1 text-xl font-black text-white">Consignas rápidas</h4>
+                                  <h4 className="mt-1 text-xl font-black text-white">Consignas del partido</h4>
                                 </div>
-                                <span className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">PRE</span>
+                                <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{activeConsignas.length} activas</span>
                               </div>
-                              {!isPreTalkMode ? (
-                                <textarea
-                                  value={selectedMatch.planClave || ''}
-                                  onChange={(event) => updateSelectedMatchFields({ planClave: event.target.value })}
-                                  placeholder={'atacar espalda lateral izquierdo\nevitar pérdidas interiores\nvigilar segunda jugada'}
-                                  className="mt-4 min-h-[132px] w-full resize-none rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-3 text-sm leading-6 text-white placeholder:text-slate-500"
-                                />
-                              ) : null}
-                              <div className="mt-4 space-y-2">
-                                {(selectedMatch.planClave || '').split('\n').map((item) => item.trim()).filter(Boolean).slice(0, 6).map((item) => (
-                                  <div key={item} className="flex gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2 text-sm font-semibold leading-5 text-slate-100">
-                                    <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-caudal-electric" />
-                                    <span>{item}</span>
-                                  </div>
-                                ))}
-                                {!(selectedMatch.planClave || '').trim() ? (
-                                  <p className="rounded-xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-3 text-sm text-slate-500">Añade tres consignas para que el staff las lea de un vistazo.</p>
-                                ) : null}
-                              </div>
-                              <div className="mt-5 border-t border-white/10 pt-4">
+                              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.025] p-3">
                                 <div className="flex items-center justify-between gap-3">
-                                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Consignas sugeridas</p>
+                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Sugeridas automáticamente</p>
                                   {!isPreTalkMode ? (
                                     <button
                                       type="button"
-                                      onClick={() => updateSuggestedConsignas(createSuggestedConsignas(selectedMatchRivalTeam || {}))}
+                                      onClick={() => updateSuggestedConsignas(createSuggestedConsignas(selectedMatchRivalTeam || liveRivalIdentity))}
                                       className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-400 hover:bg-white/[0.08] hover:text-white"
                                     >
                                       Regenerar
@@ -11138,7 +11183,8 @@ function App() {
                                           />
                                           <div className="flex flex-wrap gap-1.5">
                                             <span className="rounded-md border border-current/20 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.1em]">{item.tone}</span>
-                                            <button type="button" onClick={() => addSuggestedConsignaToManual(item.text)} className="rounded-md bg-white/[0.10] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] hover:bg-white/[0.16]">Añadir</button>
+                                            <button type="button" onClick={() => acceptSuggestedConsigna(index)} className="rounded-md bg-white/[0.12] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] hover:bg-white/[0.18]">Aceptar</button>
+                                            <button type="button" onClick={() => addSuggestedConsignaToManual(item.text)} className="rounded-md bg-caudal-electric/15 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] text-caudal-electric hover:bg-caudal-electric/25">Fijar</button>
                                             <button type="button" onClick={() => moveSuggestedConsigna(index, -1)} className="rounded-md bg-white/[0.10] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] hover:bg-white/[0.16]">Subir</button>
                                             <button type="button" onClick={() => moveSuggestedConsigna(index, 1)} className="rounded-md bg-white/[0.10] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] hover:bg-white/[0.16]">Bajar</button>
                                             <button type="button" onClick={() => removeSuggestedConsigna(index)} className="rounded-md bg-red-500/[0.12] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] hover:bg-red-500/[0.18]">Eliminar</button>
@@ -11148,6 +11194,47 @@ function App() {
                                     </div>
                                   )) : (
                                     <p className="rounded-xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-3 text-sm text-slate-500">Define la identidad táctica del rival para generar sugerencias.</p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="mt-4 rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.045] p-3">
+                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Fijadas / manuales</p>
+                                {!isPreTalkMode ? (
+                                  <div className="mt-3 flex gap-2">
+                                    <input
+                                      value={manualConsignaDraft}
+                                      onChange={(event) => setManualConsignaDraft(event.target.value)}
+                                      onKeyDown={(event) => {
+                                        if (event.key === 'Enter') {
+                                          event.preventDefault();
+                                          addManualConsigna();
+                                        }
+                                      }}
+                                      placeholder="Añadir consigna..."
+                                      className="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2 text-sm font-semibold text-white placeholder:text-slate-500"
+                                    />
+                                    <button type="button" onClick={addManualConsigna} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Añadir</button>
+                                  </div>
+                                ) : null}
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {activeConsignas.length ? activeConsignas.map((item, index) => (
+                                    <div key={`${item}-${index}`} className="group flex max-w-full items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.06] px-2.5 py-2 text-sm font-bold text-slate-100">
+                                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-caudal-electric" />
+                                      {isPreTalkMode ? (
+                                        <span className="max-w-[260px] truncate">{item}</span>
+                                      ) : (
+                                        <input value={item} onChange={(event) => editActiveConsigna(index, event.target.value)} className="min-w-[130px] max-w-[260px] bg-transparent outline-none" />
+                                      )}
+                                      {!isPreTalkMode ? (
+                                        <span className="flex items-center gap-0.5 opacity-70 transition group-hover:opacity-100">
+                                          <button type="button" onClick={() => moveActiveConsigna(index, -1)} className="rounded-md px-1 text-[10px] text-slate-400 hover:bg-white/10 hover:text-white">^</button>
+                                          <button type="button" onClick={() => moveActiveConsigna(index, 1)} className="rounded-md px-1 text-[10px] text-slate-400 hover:bg-white/10 hover:text-white">v</button>
+                                          <button type="button" onClick={() => removeActiveConsigna(index)} className="rounded-md px-1 text-[10px] text-red-200 hover:bg-red-500/15">x</button>
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  )) : (
+                                    <p className="rounded-xl border border-dashed border-white/10 px-3 py-3 text-sm text-slate-500">Acepta una sugerida o añade una consigna manual.</p>
                                   )}
                                 </div>
                               </div>
@@ -11188,8 +11275,11 @@ function App() {
                                 <input
                                   type="url"
                                   value={selectedMatch.preCanvaLink || ''}
-                                  onChange={(event) => updateSelectedMatchFields({ preCanvaLink: event.target.value })}
-                                  placeholder="https://www.canva.com/..."
+                                  onChange={(event) => {
+                                    setCanvaFrameFailed(false);
+                                    updateSelectedMatchFields({ preCanvaLink: event.target.value });
+                                  }}
+                                  placeholder="canva.com, canva.link o enlace embed"
                                   className="min-w-[260px] rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-2.5 text-sm text-white placeholder:text-slate-500"
                                 />
                                 <button
@@ -11208,23 +11298,51 @@ function App() {
                                 >
                                   Abrir
                                 </button>
+                                <button
+                                  type="button"
+                                  disabled={!selectedMatch.preCanvaLink}
+                                  onClick={() => copyCanvaUrl(selectedMatch.preCanvaLink)}
+                                  className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:text-slate-500"
+                                >
+                                  Copiar
+                                </button>
                               </div>
                             </div>
                             {selectedMatch.preCanvaLink ? (
-                              getCanvaEmbedUrl(selectedMatch.preCanvaLink) ? (
+                              getCanvaEmbedUrl(selectedMatch.preCanvaLink) && !canvaFrameFailed ? (
                                 <iframe
                                   title="Informe Canva"
                                   src={getCanvaEmbedUrl(selectedMatch.preCanvaLink)}
+                                  onError={() => setCanvaFrameFailed(true)}
                                   className={`${isPreTalkMode ? 'h-[74vh] min-h-[620px]' : 'h-[62vh] min-h-[460px]'} w-full bg-[#0f1e38]/80`}
                                   allowFullScreen
                                 />
                               ) : (
-                                <div className="m-4 rounded-3xl border border-amber-200/15 bg-[#0f1e38]/80 p-5 text-sm text-slate-300">
-                                  <p className="font-bold text-amber-100">Preview no disponible</p>
-                                  <p className="mt-2 text-slate-400">El enlace puede ser válido, pero Canva no permite embeberlo aquí. Puedes abrirlo en una pestaña nueva.</p>
-                                  <button type="button" onClick={() => openCanvaUrl(selectedMatch.preCanvaLink)} className="mt-4 rounded-2xl bg-white/[0.08] px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-white hover:bg-white/[0.12]">
-                                    Abrir Canva
-                                  </button>
+                                <div className="m-4 overflow-hidden rounded-3xl border border-caudal-electric/15 bg-[#0f1e38]/90 shadow-[0_18px_60px_rgba(0,0,0,0.22)]">
+                                  <div className="relative min-h-[320px] bg-[radial-gradient(circle_at_22%_18%,rgba(79,140,255,0.22),transparent_30%),linear-gradient(135deg,rgba(16,30,56,0.96),rgba(5,12,26,0.98))] p-6">
+                                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:42px_42px] opacity-45" />
+                                    <div className="relative flex h-full min-h-[268px] flex-col justify-between rounded-2xl border border-white/10 bg-slate-950/25 p-5">
+                                      <div className="flex items-center gap-3">
+                                        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#7d2cff] text-xl font-black text-white shadow-[0_12px_34px_rgba(125,44,255,0.28)]">C</span>
+                                        <div>
+                                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Informe Canva</p>
+                                          <h4 className="mt-1 text-xl font-black text-white">Preview protegido</h4>
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <p className="max-w-xl text-sm leading-6 text-slate-300">Canva puede bloquear la vista embebida en algunos enlaces. El informe sigue disponible y la pestaña mantiene el acceso directo para el staff.</p>
+                                        <p className="mt-3 truncate rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-semibold text-slate-400">{getCanvaOpenUrl(selectedMatch.preCanvaLink) || selectedMatch.preCanvaLink}</p>
+                                        <div className="mt-4 flex flex-wrap gap-2">
+                                          <button type="button" onClick={() => openCanvaUrl(selectedMatch.preCanvaLink)} className="rounded-2xl bg-caudal-electric px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-slate-950 hover:bg-[#7aacff]">
+                                            Abrir informe
+                                          </button>
+                                          <button type="button" onClick={() => copyCanvaUrl(selectedMatch.preCanvaLink)} className="rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-white hover:bg-white/[0.12]">
+                                            Copiar enlace
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
                                 </div>
                               )
                             ) : (
@@ -12837,7 +12955,7 @@ function App() {
         </>
       ) : null}
 
-      {isCanvaPreviewOpen && selectedMatch && getCanvaEmbedUrl(selectedMatch.preCanvaLink) ? (
+      {isCanvaPreviewOpen && selectedMatch && isCanvaUrl(selectedMatch.preCanvaLink) ? (
         <div className="fixed inset-0 z-50 bg-black/80 p-3 backdrop-blur-sm sm:p-6">
           <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-caudal-950 shadow-glow">
             <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
@@ -12853,12 +12971,27 @@ function App() {
                 Cerrar
               </button>
             </div>
-            <iframe
-              title="Informe Canva ampliado"
-              src={getCanvaEmbedUrl(selectedMatch.preCanvaLink)}
-              className="min-h-0 flex-1 bg-white"
-              allowFullScreen
-            />
+            {getCanvaEmbedUrl(selectedMatch.preCanvaLink) && !canvaFrameFailed ? (
+              <iframe
+                title="Informe Canva ampliado"
+                src={getCanvaEmbedUrl(selectedMatch.preCanvaLink)}
+                onError={() => setCanvaFrameFailed(true)}
+                className="min-h-0 flex-1 bg-white"
+                allowFullScreen
+              />
+            ) : (
+              <div className="flex min-h-0 flex-1 items-center justify-center bg-[#071224] p-6">
+                <div className="max-w-xl rounded-3xl border border-caudal-electric/15 bg-white/[0.045] p-6 text-center">
+                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#7d2cff] text-2xl font-black text-white">C</div>
+                  <h4 className="mt-4 text-xl font-black text-white">Canva no permite embeber este informe</h4>
+                  <p className="mt-2 text-sm leading-6 text-slate-400">Puedes abrirlo o copiar el enlace sin salir del flujo de PRE.</p>
+                  <div className="mt-5 flex justify-center gap-2">
+                    <button type="button" onClick={() => openCanvaUrl(selectedMatch.preCanvaLink)} className="rounded-2xl bg-caudal-electric px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Abrir informe</button>
+                    <button type="button" onClick={() => copyCanvaUrl(selectedMatch.preCanvaLink)} className="rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-white">Copiar enlace</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       ) : null}
