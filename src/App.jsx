@@ -109,6 +109,8 @@ const pitchZoneOptions = [
   'F.Inicio derecha',
 ];
 const goalZoneOptions = ['Alta izquierda', 'Alta centro', 'Alta derecha', 'Media izquierda', 'Media centro', 'Media derecha', 'Baja izquierda', 'Baja centro', 'Baja derecha'];
+const goalAttackTypeOptions = ['Combinativo', 'Transición', 'ABP', 'Juego directo', 'Contraataque', 'Segunda jugada'];
+const goalSituationOptions = ['Organizado', 'Desorganizado', 'Superioridad', 'Igualdad', 'Inferioridad'];
 const defaultGoalAnalysisDraft = {
   type: 'Gol a favor',
   half: '1ª parte',
@@ -121,6 +123,9 @@ const defaultGoalAnalysisDraft = {
   assistZone: 'F.Creación centro',
   goalZone: 'Media centro',
   contact: 'Pie derecho',
+  attackType: 'Combinativo',
+  situation: 'Organizado',
+  summary: '',
   videoUrl: '',
 };
 
@@ -565,6 +570,7 @@ const normalizeSupabaseGoalEvent = (event) => ({
   goalZone: event.goal_zone || 'Media centro',
   contact: event.contact || 'Pie derecho',
   videoUrl: event.video_url || '',
+  description: event.description || '',
 });
 
 const createGoalEventPayload = (partidoId, draft) => ({
@@ -580,6 +586,7 @@ const createGoalEventPayload = (partidoId, draft) => ({
   assist_zone: draft.assistZone,
   goal_zone: draft.goalZone,
   contact: draft.contact,
+  description: draft.summary || '',
   video_url: draft.videoUrl,
 });
 
@@ -6084,25 +6091,45 @@ function App() {
     setIsGoalAnalysisOpen(true);
   };
 
+  const buildGoalDraftSummary = (draft = goalAnalysisDraft) => {
+    const minute = draft.minute ? `${draft.minute}': ` : '';
+    if (draft.type === 'Gol en contra') {
+      return `${minute}gol rival tras ${String(draft.attackType || draft.phase).toLowerCase()} (${String(draft.situation || '').toLowerCase()}) generado en ${normalizePitchZone(draft.assistZone)} y finalizado en ${normalizePitchZone(draft.shotZone)}.`;
+    }
+    const scorer = draft.scorer || 'Jugador Caudal';
+    const assist = draft.assistant ? ` Asistencia de ${draft.assistant}.` : '';
+    return `${minute}${scorer} marca tras ${String(draft.attackType || draft.phase).toLowerCase()} ${String(draft.situation || '').toLowerCase()} generado en ${normalizePitchZone(draft.assistZone)} y finalizado en ${normalizePitchZone(draft.shotZone)}.${assist}`;
+  };
+
   const updateGoalAnalysisDraft = (field, value) => {
     setGoalAnalysisDraft((prev) => {
+      const withAutoSummary = (next) => ({
+        ...next,
+        summary: !prev.summary || prev.summary === buildGoalDraftSummary(prev) ? buildGoalDraftSummary(next) : next.summary,
+      });
       if (field === 'phase') {
-        return { ...prev, phase: value, subphase: goalPhaseOptions[value]?.[0] || '' };
+        return withAutoSummary({ ...prev, phase: value, subphase: goalPhaseOptions[value]?.[0] || '', attackType: value === 'Transición' ? 'Transición' : value });
       }
       if (field === 'type' && value === 'Gol en contra') {
-        return { ...prev, type: value, scorer: '', assistant: '' };
+        return withAutoSummary({ ...prev, type: value, scorer: '', assistant: '' });
       }
-      return { ...prev, [field]: value };
+      return withAutoSummary({ ...prev, [field]: value });
     });
   };
 
   const saveGoalAnalysisEvent = async () => {
     if (!selectedMatch || !goalAnalysisDraft.minute) return;
+    setStatsSaveStatus('Guardando gol...');
+    const payloadDraft = {
+      ...goalAnalysisDraft,
+      summary: goalAnalysisDraft.summary || buildGoalDraftSummary(goalAnalysisDraft),
+    };
     const { error: goalError } = await supabase
       .from("partido_eventos_gol")
-      .insert(createGoalEventPayload(selectedMatch.id, goalAnalysisDraft));
+      .insert(createGoalEventPayload(selectedMatch.id, payloadDraft));
     if (goalError) {
       console.error('Error guardando análisis de gol en Supabase:', goalError);
+      setStatsSaveStatus('Error al guardar gol');
       return;
     }
 
@@ -6123,6 +6150,7 @@ function App() {
       goals_against: String(rivalGoals),
       home_score: selectedMatch.isHome ? String(caudalGoals) : String(rivalGoals),
       away_score: selectedMatch.isHome ? String(rivalGoals) : String(caudalGoals),
+      post_notes: [selectedMatch.postNotes, payloadDraft.summary].filter(Boolean).join('\n'),
     };
     const { error: matchScoreError } = await supabase.from("partidos").update(scorePayload).eq("id", selectedMatch.id);
     if (matchScoreError) {
@@ -6130,8 +6158,8 @@ function App() {
       return;
     }
 
-    if (goalAnalysisDraft.type === 'Gol a favor') {
-      const involvedPlayers = [goalAnalysisDraft.scorer, goalAnalysisDraft.assistant].filter(Boolean);
+    if (payloadDraft.type === 'Gol a favor') {
+      const involvedPlayers = [payloadDraft.scorer, payloadDraft.assistant].filter(Boolean);
       for (const playerName of involvedPlayers) {
         const current = getStatsPlayerData(playerName);
         await updateStatsPlayerData(playerName, {
@@ -6143,10 +6171,12 @@ function App() {
     setIsGoalAnalysisOpen(false);
     await loadPartidos();
     await refreshStatsFromSupabase(selectedMatch.id, 'análisis de goles y marcador');
+    setStatsSaveStatus('Gol registrado ✓');
+    window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Gol registrado ✓' ? '' : current)), 2200);
   };
 
-  const renderZoneGrid = ({ value, onChange, zones = pitchZoneOptions, goal = false }) => (
-    <div className={`relative w-full overflow-hidden rounded-3xl border-4 border-white/70 ${goal ? 'aspect-[4/3] min-h-[220px] bg-[#111827]' : 'aspect-[7/10] min-h-[260px] bg-[repeating-linear-gradient(90deg,#075f43_0,#075f43_16.6%,#08694a_16.6%,#08694a_33.3%)]'}`}>
+  const renderZoneGrid = ({ value, onChange, zones = pitchZoneOptions, goal = false, compact = false }) => (
+    <div className={`relative w-full overflow-hidden rounded-2xl border-2 border-white/60 ${goal ? `aspect-[4/3] ${compact ? 'min-h-[140px]' : 'min-h-[220px]'} bg-[#111827]` : `aspect-[7/8] ${compact ? 'min-h-[170px]' : 'min-h-[260px]'} bg-[repeating-linear-gradient(90deg,#075f43_0,#075f43_16.6%,#08694a_16.6%,#08694a_33.3%)]`}`}>
       {goal ? (
         <>
           <div className="absolute inset-x-6 top-5 bottom-5 rounded-t-2xl border-4 border-white/60 border-b-0" />
@@ -13000,7 +13030,7 @@ function App() {
                           <p className="mt-2 text-sm text-slate-400">Análisis de goles con fase, subfase y mapas visuales.</p>
                         </div>
                         <button type="button" onClick={openGoalAnalysisModal} className="rounded-2xl bg-red-500 px-5 py-3 text-sm font-bold uppercase tracking-[0.14em] text-white">
-                          Ampliar evento
+                          Registrar gol
                         </button>
                       </div>
                       <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -13844,96 +13874,102 @@ function App() {
             <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
               <div className="flex items-center gap-3">
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500 text-xl font-black text-white">+</span>
-                <h3 className="text-lg font-black uppercase tracking-[0.18em] text-white">Ampliar evento</h3>
+                <div>
+                  <h3 className="text-lg font-black uppercase tracking-[0.18em] text-white">Registrar gol</h3>
+                  <p className="mt-1 text-sm text-slate-400">Análisis táctico y contextual del evento</p>
+                </div>
               </div>
               <button type="button" onClick={() => setIsGoalAnalysisOpen(false)} className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-slate-200">Cerrar</button>
             </div>
-            <div className="space-y-6 px-6 py-6">
-              <div className="grid gap-4 lg:grid-cols-2">
-                <div className="grid grid-cols-2 rounded-3xl border border-white/10 bg-white/5 p-1">
-                  {['Gol a favor', 'Gol en contra'].map((type) => (
-                    <button key={type} type="button" onClick={() => updateGoalAnalysisDraft('type', type)} className={`rounded-2xl px-4 py-3 text-sm font-bold uppercase tracking-[0.12em] ${goalAnalysisDraft.type === type ? 'bg-emerald-500 text-white' : 'text-slate-400'}`}>{type}</button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-2 rounded-3xl border border-white/10 bg-white/5 p-1">
-                  {['1ª parte', '2ª parte'].map((half) => (
-                    <button key={half} type="button" onClick={() => updateGoalAnalysisDraft('half', half)} className={`rounded-2xl px-4 py-3 text-sm font-bold uppercase tracking-[0.12em] ${goalAnalysisDraft.half === half ? 'bg-caudal-electric text-slate-950' : 'text-slate-400'}`}>{half}</button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid gap-4 lg:grid-cols-3">
-                <label className="space-y-2 text-sm text-slate-300">
-                  <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Minuto</span>
-                  <input value={goalAnalysisDraft.minute} onChange={(event) => updateGoalAnalysisDraft('minute', event.target.value)} placeholder="Min" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
-                </label>
-                {goalAnalysisDraft.type === 'Gol a favor' ? (
-                  <>
-                    <label className="space-y-2 text-sm text-slate-300">
-                      <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Goleador</span>
-                      <select value={goalAnalysisDraft.scorer} onChange={(event) => updateGoalAnalysisDraft('scorer', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
-                        <option value="">Seleccionar...</option>
+            <div className="max-h-[calc(100vh-150px)] space-y-4 overflow-y-auto px-6 py-5 pb-24">
+              <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Evento</p>
+                <div className="mt-4 grid gap-3 lg:grid-cols-5">
+                  <div className="grid grid-cols-2 rounded-2xl border border-white/10 bg-white/5 p-1 lg:col-span-2">
+                    {['Gol a favor', 'Gol en contra'].map((type) => (
+                      <button key={type} type="button" onClick={() => updateGoalAnalysisDraft('type', type)} className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.1em] ${goalAnalysisDraft.type === type ? 'bg-emerald-500 text-white' : 'text-slate-400'}`}>{type}</button>
+                    ))}
+                  </div>
+                  <input value={goalAnalysisDraft.minute} onChange={(event) => updateGoalAnalysisDraft('minute', event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') saveGoalAnalysisEvent(); }} placeholder="Minuto" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
+                  <div className="grid grid-cols-2 rounded-2xl border border-white/10 bg-white/5 p-1 lg:col-span-2">
+                    {['1ª parte', '2ª parte'].map((half) => (
+                      <button key={half} type="button" onClick={() => updateGoalAnalysisDraft('half', half)} className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.1em] ${goalAnalysisDraft.half === half ? 'bg-caudal-electric text-slate-950' : 'text-slate-400'}`}>{half}</button>
+                    ))}
+                  </div>
+                  {goalAnalysisDraft.type === 'Gol a favor' ? (
+                    <>
+                      <select value={goalAnalysisDraft.scorer} onChange={(event) => updateGoalAnalysisDraft('scorer', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white lg:col-span-2">
+                        <option value="">Goleador...</option>
                         {players.map((player) => <option key={player.id} value={player.name}>{player.name}</option>)}
                       </select>
-                    </label>
-                    <label className="space-y-2 text-sm text-slate-300">
-                      <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Asistente</span>
-                      <select value={goalAnalysisDraft.assistant} onChange={(event) => updateGoalAnalysisDraft('assistant', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
+                      <select value={goalAnalysisDraft.assistant} onChange={(event) => updateGoalAnalysisDraft('assistant', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white lg:col-span-2">
                         <option value="">Sin asistencia</option>
                         {players.map((player) => <option key={player.id} value={player.name}>{player.name}</option>)}
                       </select>
-                    </label>
-                  </>
-                ) : null}
-              </div>
+                    </>
+                  ) : null}
+                </div>
+              </section>
 
-              <div className="grid gap-4 lg:grid-cols-2">
-                <label className="space-y-2 text-sm text-slate-300">
-                  <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Fase del juego</span>
-                  <select value={goalAnalysisDraft.phase} onChange={(event) => updateGoalAnalysisDraft('phase', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
+              <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Contexto táctico</p>
+                <div className="mt-4 grid gap-3 lg:grid-cols-4">
+                  <select value={goalAnalysisDraft.phase} onChange={(event) => updateGoalAnalysisDraft('phase', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
                     {Object.keys(goalPhaseOptions).map((phase) => <option key={phase} value={phase}>{phase}</option>)}
                   </select>
-                </label>
-                <label className="space-y-2 text-sm text-slate-300">
-                  <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Subfase</span>
-                  <select value={goalAnalysisDraft.subphase} onChange={(event) => updateGoalAnalysisDraft('subphase', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
+                  <select value={goalAnalysisDraft.subphase} onChange={(event) => updateGoalAnalysisDraft('subphase', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
                     {(goalPhaseOptions[goalAnalysisDraft.phase] || []).map((subphase) => <option key={subphase} value={subphase}>{subphase}</option>)}
                   </select>
-                </label>
-              </div>
+                  <select value={goalAnalysisDraft.attackType} onChange={(event) => updateGoalAnalysisDraft('attackType', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
+                    {goalAttackTypeOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+                  </select>
+                  <select value={goalAnalysisDraft.situation} onChange={(event) => updateGoalAnalysisDraft('situation', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
+                    {goalSituationOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+                  </select>
+                </div>
+              </section>
 
-              <div className="grid gap-6 lg:grid-cols-3">
-                <div>
-                  <p className="mb-3 text-center text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Zona de remate</p>
-                  {renderZoneGrid({ value: goalAnalysisDraft.shotZone, onChange: (zone) => updateGoalAnalysisDraft('shotZone', zone) })}
+              <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Mapas</p>
+                <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                  <div>
+                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Dónde se genera</p>
+                    {renderZoneGrid({ value: goalAnalysisDraft.assistZone, onChange: (zone) => updateGoalAnalysisDraft('assistZone', zone), compact: true })}
+                  </div>
+                  <div>
+                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Dónde finaliza</p>
+                    {renderZoneGrid({ value: goalAnalysisDraft.shotZone, onChange: (zone) => updateGoalAnalysisDraft('shotZone', zone), compact: true })}
+                  </div>
+                  <div>
+                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Dónde entra</p>
+                    {renderZoneGrid({ value: goalAnalysisDraft.goalZone, onChange: (zone) => updateGoalAnalysisDraft('goalZone', zone), zones: goalZoneOptions, goal: true, compact: true })}
+                  </div>
                 </div>
-                <div>
-                  <p className="mb-3 text-center text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Zona de asistencia</p>
-                  {renderZoneGrid({ value: goalAnalysisDraft.assistZone, onChange: (zone) => updateGoalAnalysisDraft('assistZone', zone) })}
-                </div>
-                <div>
-                  <p className="mb-3 text-center text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Zona portería</p>
-                  {renderZoneGrid({ value: goalAnalysisDraft.goalZone, onChange: (zone) => updateGoalAnalysisDraft('goalZone', zone), zones: goalZoneOptions, goal: true })}
-                </div>
-              </div>
+              </section>
 
-              <div className="grid gap-4 lg:grid-cols-2">
-                <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Superficie de contacto</p>
-                  <div className="mt-3 grid grid-cols-2 gap-3">
-                    {['Pie derecho', 'Pie izquierdo', 'Cabeza', 'Otro'].map((contact) => (
-                      <button key={contact} type="button" onClick={() => updateGoalAnalysisDraft('contact', contact)} className={`rounded-2xl px-4 py-3 text-sm font-bold ${goalAnalysisDraft.contact === contact ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>{contact}</button>
+              <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+                <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Finalización</p>
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    {['Pie derecho', 'Pie izquierdo', 'Cabeza', 'Rechace', 'Desvío', 'Otro'].map((contact) => (
+                      <button key={contact} type="button" onClick={() => updateGoalAnalysisDraft('contact', contact)} className={`rounded-xl px-3 py-2 text-xs font-bold ${goalAnalysisDraft.contact === contact ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>{contact}</button>
                     ))}
                   </div>
                 </div>
-                <label className="space-y-2 text-sm text-slate-300">
-                  <span className="text-xs uppercase tracking-[0.18em] text-slate-500">URL del vídeo opcional</span>
-                  <input value={goalAnalysisDraft.videoUrl} onChange={(event) => updateGoalAnalysisDraft('videoUrl', event.target.value)} placeholder="https://..." className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
-                </label>
-              </div>
+                <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Clip de vídeo</p>
+                  <input value={goalAnalysisDraft.videoUrl} onChange={(event) => updateGoalAnalysisDraft('videoUrl', event.target.value)} placeholder="LongoMatch / Hudl / YouTube timestamp / vídeo local..." className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
+                </div>
+              </section>
 
+              <section className="rounded-3xl border border-caudal-electric/15 bg-caudal-electric/[0.055] p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Autoresumen editable</p>
+                <textarea value={goalAnalysisDraft.summary || buildGoalDraftSummary(goalAnalysisDraft)} onChange={(event) => updateGoalAnalysisDraft('summary', event.target.value)} className="mt-3 min-h-[76px] w-full resize-none rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3 text-sm leading-6 text-white" />
+              </section>
+            </div>
+            <div className="sticky bottom-0 border-t border-white/10 bg-[#111b2a]/95 px-6 py-4 backdrop-blur">
               <button type="button" onClick={saveGoalAnalysisEvent} className="w-full rounded-3xl bg-caudal-electric px-5 py-4 text-sm font-black uppercase tracking-[0.16em] text-slate-950">
-                Guardar / convertir en análisis
+                {statsSaveStatus === 'Guardando gol...' ? 'Guardando...' : 'Guardar gol'}
               </button>
             </div>
           </div>
