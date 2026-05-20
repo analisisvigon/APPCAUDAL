@@ -127,6 +127,10 @@ const defaultGoalAnalysisDraft = {
   situation: 'Organizado',
   summary: '',
   videoUrl: '',
+  attackDirection: 'derecha',
+  offensivePattern: 'acción combinativa',
+  recoveryType: 'no especificada',
+  realOrigin: 'por dentro',
 };
 
 const emptyMatchForm = {
@@ -2537,6 +2541,7 @@ function App() {
   const [postClipFeedback, setPostClipFeedback] = useState('');
   const [isGoalAnalysisOpen, setIsGoalAnalysisOpen] = useState(false);
   const [goalAnalysisDraft, setGoalAnalysisDraft] = useState(defaultGoalAnalysisDraft);
+  const [lastGoalAnalysisContext, setLastGoalAnalysisContext] = useState(null);
   const [isStatsCallupPanelOpen, setIsStatsCallupPanelOpen] = useState(false);
   const [selectedStatsCallups, setSelectedStatsCallups] = useState([]);
   const [statsCallupSaving, setStatsCallupSaving] = useState(false);
@@ -6197,22 +6202,74 @@ function App() {
   };
 
   const openGoalAnalysisModal = () => {
+    const remembered = lastGoalAnalysisContext || {};
     setGoalAnalysisDraft({
       ...defaultGoalAnalysisDraft,
+      ...remembered,
+      minute: '',
+      summary: '',
+      videoUrl: '',
       scorer: players[0]?.name || '',
       assistant: '',
     });
     setIsGoalAnalysisOpen(true);
   };
 
+  const getGoalZonePhrase = (zone) => {
+    const normalized = normalizePitchZone(zone).toLowerCase();
+    if (normalized.includes('inicio')) return normalized.replace('f.', 'zona de ');
+    if (normalized.includes('creación')) return normalized.replace('f.', 'zona de ');
+    if (normalized.includes('finalización')) return normalized.replace('f.', 'zona de ');
+    return normalized;
+  };
+
+  const getGoalSidePhrase = (zone) => {
+    const normalized = String(zone || '').toLowerCase();
+    if (normalized.includes('izquierda')) return 'por izquierda';
+    if (normalized.includes('derecha')) return 'por derecha';
+    if (normalized.includes('centro')) return 'por dentro';
+    return 'por dentro';
+  };
+
   const buildGoalDraftSummary = (draft = goalAnalysisDraft) => {
     const minute = draft.minute ? `${draft.minute}': ` : '';
+    const action = String(draft.attackType || draft.phase || 'acción').toLowerCase();
+    const situation = draft.situation ? ` ${String(draft.situation).toLowerCase()}` : '';
+    const originSide = getGoalSidePhrase(draft.assistZone);
+    const origin = getGoalZonePhrase(draft.assistZone);
+    const finish = getGoalZonePhrase(draft.shotZone);
+    const goal = draft.goalZone ? ` Entra ${String(draft.goalZone).toLowerCase()}.` : '';
     if (draft.type === 'Gol en contra') {
-      return `${minute}gol rival tras ${String(draft.attackType || draft.phase).toLowerCase()} (${String(draft.situation || '').toLowerCase()}) generado en ${normalizePitchZone(draft.assistZone)} y finalizado en ${normalizePitchZone(draft.shotZone)}.`;
+      return `${minute}gol rival en una ${action}${situation} iniciada ${originSide} y terminada desde ${finish}.${goal}`;
     }
     const scorer = draft.scorer || 'Jugador Caudal';
     const assist = draft.assistant ? ` Asistencia de ${draft.assistant}.` : '';
-    return `${minute}${scorer} marca tras ${String(draft.attackType || draft.phase).toLowerCase()} ${String(draft.situation || '').toLowerCase()} generado en ${normalizePitchZone(draft.assistZone)} y finalizado en ${normalizePitchZone(draft.shotZone)}.${assist}`;
+    return `${minute}${scorer} finaliza una ${action}${situation} iniciada ${originSide} y terminada desde ${finish}.${goal}${assist}`;
+  };
+
+  const detectGoalClipPlatform = (url = '') => {
+    const lower = String(url).toLowerCase();
+    if (!lower.trim()) return { label: 'Sin clip', icon: 'CLIP' };
+    if (lower.includes('youtube.com') || lower.includes('youtu.be')) return { label: 'YouTube', icon: 'YT' };
+    if (lower.includes('hudl')) return { label: 'HUDL', icon: 'HD' };
+    if (lower.includes('veo.co') || lower.includes('veo')) return { label: 'Veo', icon: 'VEO' };
+    if (lower.includes('longomatch')) return { label: 'LongoMatch', icon: 'LM' };
+    return { label: 'Enlace externo', icon: 'EXT' };
+  };
+
+  const applyGoalPreset = (preset) => {
+    const presets = {
+      combinativo: { phase: 'Juego combinativo', subphase: 'Dentro del área', attackType: 'Combinativo', situation: 'Organizado', realOrigin: 'por dentro', offensivePattern: 'tercer hombre' },
+      transicion: { phase: 'Transición', subphase: 'Tras robo', attackType: 'Transición', situation: 'Desorganizado', realOrigin: 'tras robo', recoveryType: 'robo alto' },
+      abp: { phase: 'ABP', subphase: 'Córner', attackType: 'ABP', situation: 'Igualdad', offensivePattern: 'balón parado' },
+      directo: { phase: 'Juego directo', subphase: 'Segunda jugada', attackType: 'Juego directo', situation: 'Igualdad', offensivePattern: 'segunda jugada' },
+    };
+    const patch = presets[preset];
+    if (!patch) return;
+    setGoalAnalysisDraft((prev) => {
+      const next = { ...prev, ...patch };
+      return { ...next, summary: !prev.summary || prev.summary === buildGoalDraftSummary(prev) ? buildGoalDraftSummary(next) : next.summary };
+    });
   };
 
   const updateGoalAnalysisDraft = (field, value) => {
@@ -6222,7 +6279,8 @@ function App() {
         summary: !prev.summary || prev.summary === buildGoalDraftSummary(prev) ? buildGoalDraftSummary(next) : next.summary,
       });
       if (field === 'phase') {
-        return withAutoSummary({ ...prev, phase: value, subphase: goalPhaseOptions[value]?.[0] || '', attackType: value === 'Transición' ? 'Transición' : value });
+        const inferredAttackType = value === 'Juego combinativo' ? 'Combinativo' : value;
+        return withAutoSummary({ ...prev, phase: value, subphase: goalPhaseOptions[value]?.[0] || '', attackType: inferredAttackType });
       }
       if (field === 'type' && value === 'Gol en contra') {
         return withAutoSummary({ ...prev, type: value, scorer: '', assistant: '' });
@@ -6259,12 +6317,31 @@ function App() {
     const nextEvents = (goalRows || []).map(normalizeSupabaseGoalEvent);
     const caudalGoals = nextEvents.filter((event) => event.type === 'Gol a favor').length;
     const rivalGoals = nextEvents.filter((event) => event.type === 'Gol en contra').length;
+    const postAnalysis = safeObject(selectedMatch.postAiAnalysis);
+    const nextGoalAnalysisMeta = [
+      ...safeArray(postAnalysis.goalAnalysisMeta),
+      {
+        id: `${Date.now()}-${payloadDraft.minute || 'gol'}`,
+        minute: payloadDraft.minute,
+        type: payloadDraft.type,
+        attackDirection: payloadDraft.attackDirection,
+        offensivePattern: payloadDraft.offensivePattern,
+        recoveryType: payloadDraft.recoveryType,
+        realOrigin: payloadDraft.realOrigin,
+        attackType: payloadDraft.attackType,
+        situation: payloadDraft.situation,
+        assistZone: payloadDraft.assistZone,
+        shotZone: payloadDraft.shotZone,
+        goalZone: payloadDraft.goalZone,
+      },
+    ];
     const scorePayload = {
       goals_for: String(caudalGoals),
       goals_against: String(rivalGoals),
       home_score: selectedMatch.isHome ? String(caudalGoals) : String(rivalGoals),
       away_score: selectedMatch.isHome ? String(rivalGoals) : String(caudalGoals),
       post_notes: [selectedMatch.postNotes, payloadDraft.summary].filter(Boolean).join('\n'),
+      post_ai_analysis: { ...postAnalysis, goalAnalysisMeta: nextGoalAnalysisMeta },
     };
     const { error: matchScoreError } = await supabase.from("partidos").update(scorePayload).eq("id", selectedMatch.id);
     if (matchScoreError) {
@@ -6282,6 +6359,22 @@ function App() {
       }
     }
 
+    setLastGoalAnalysisContext({
+      type: payloadDraft.type,
+      half: payloadDraft.half,
+      phase: payloadDraft.phase,
+      subphase: payloadDraft.subphase,
+      attackType: payloadDraft.attackType,
+      situation: payloadDraft.situation,
+      assistZone: payloadDraft.assistZone,
+      shotZone: payloadDraft.shotZone,
+      goalZone: payloadDraft.goalZone,
+      contact: payloadDraft.contact,
+      attackDirection: payloadDraft.attackDirection,
+      offensivePattern: payloadDraft.offensivePattern,
+      recoveryType: payloadDraft.recoveryType,
+      realOrigin: payloadDraft.realOrigin,
+    });
     setIsGoalAnalysisOpen(false);
     await loadPartidos();
     await refreshStatsFromSupabase(selectedMatch.id, 'análisis de goles y marcador');
@@ -6289,13 +6382,22 @@ function App() {
     window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Gol registrado ✓' ? '' : current)), 2200);
   };
 
-  const renderZoneGrid = ({ value, onChange, zones = pitchZoneOptions, goal = false, compact = false }) => (
-    <div className={`relative w-full overflow-hidden rounded-2xl border-2 border-white/60 ${goal ? `aspect-[4/3] ${compact ? 'min-h-[140px]' : 'min-h-[220px]'} bg-[#111827]` : `aspect-[7/8] ${compact ? 'min-h-[170px]' : 'min-h-[260px]'} bg-[repeating-linear-gradient(90deg,#075f43_0,#075f43_16.6%,#08694a_16.6%,#08694a_33.3%)]`}`}>
+  const renderZoneGrid = ({ value, onChange, zones = pitchZoneOptions, goal = false, compact = false, variant = 'neutral' }) => {
+    const isStart = variant === 'start';
+    const isFinish = variant === 'finish';
+    const fieldTone = isStart
+      ? 'border-cyan-300/35 bg-[radial-gradient(circle_at_50%_18%,rgba(34,211,238,0.16),transparent_34%),repeating-linear-gradient(90deg,#063b3f_0,#063b3f_16.6%,#073640_16.6%,#073640_33.3%)] shadow-[0_0_34px_rgba(34,211,238,0.14)]'
+      : isFinish
+        ? 'border-emerald-300/40 bg-[radial-gradient(circle_at_50%_18%,rgba(74,222,128,0.18),transparent_34%),repeating-linear-gradient(90deg,#07533d_0,#07533d_16.6%,#086146_16.6%,#086146_33.3%)] shadow-[0_0_38px_rgba(74,222,128,0.16)]'
+        : 'border-white/60 bg-[repeating-linear-gradient(90deg,#075f43_0,#075f43_16.6%,#08694a_16.6%,#08694a_33.3%)]';
+    return (
+    <div className={`relative w-full overflow-hidden rounded-2xl border-2 ${goal ? `aspect-[4/3] ${compact ? 'min-h-[158px]' : 'min-h-[220px]'} border-emerald-300/45 bg-[#111827] shadow-[0_0_42px_rgba(74,222,128,0.16)]` : `aspect-[7/8] ${compact ? 'min-h-[170px]' : 'min-h-[260px]'} ${fieldTone}`}`}>
       {goal ? (
         <>
-          <div className="absolute inset-x-6 top-5 bottom-5 rounded-t-2xl border-4 border-white/60 border-b-0" />
-          <div className="absolute inset-x-9 top-8 bottom-6 bg-[linear-gradient(90deg,rgba(255,255,255,0.1)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.1)_1px,transparent_1px)] bg-[size:22px_22px]" />
-          <div className="absolute bottom-5 left-6 right-6 h-1 bg-white/70" />
+          <div className="absolute inset-x-5 top-4 bottom-4 rounded-t-2xl border-4 border-emerald-100/70 border-b-0" />
+          <div className="absolute inset-x-8 top-7 bottom-5 bg-[linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.12)_1px,transparent_1px)] bg-[size:20px_20px]" />
+          <div className="absolute bottom-4 left-5 right-5 h-1 bg-emerald-100/80" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_58%,rgba(74,222,128,0.18),transparent_42%)]" />
         </>
       ) : (
         <>
@@ -6314,7 +6416,7 @@ function App() {
               key={zone}
               type="button"
               onClick={() => onChange(zone)}
-              className={`whitespace-pre-line break-words border border-white/15 px-1 text-center font-black uppercase transition ${goal ? 'text-[8px] leading-none' : 'text-[9px] leading-tight'} ${selected ? 'bg-caudal-electric/85 text-slate-950 shadow-[0_0_35px_rgba(79,140,255,0.45)]' : goal ? 'bg-black/15 text-slate-200 hover:bg-white/10' : 'bg-black/10 text-white hover:bg-emerald-400/20'}`}
+              className={`whitespace-pre-line break-words border border-white/15 px-1 text-center font-black uppercase transition duration-200 ${goal ? 'text-[8px] leading-none hover:scale-[1.03]' : 'text-[9px] leading-tight'} ${selected ? (goal ? 'bg-emerald-300 text-slate-950 shadow-[0_0_34px_rgba(74,222,128,0.58)]' : isStart ? 'bg-cyan-300/90 text-slate-950 shadow-[0_0_30px_rgba(34,211,238,0.42)]' : isFinish ? 'bg-emerald-300/90 text-slate-950 shadow-[0_0_30px_rgba(74,222,128,0.42)]' : 'bg-caudal-electric/85 text-slate-950 shadow-[0_0_35px_rgba(79,140,255,0.45)]') : goal ? 'bg-black/15 text-slate-200 hover:bg-emerald-200/20 hover:text-white' : isStart ? 'bg-black/20 text-cyan-50 hover:bg-cyan-300/20' : isFinish ? 'bg-black/10 text-emerald-50 hover:bg-emerald-300/22' : 'bg-black/10 text-white hover:bg-emerald-400/20'}`}
             >
               {displayZoneLabel(zone)}
             </button>
@@ -6322,7 +6424,8 @@ function App() {
         })}
       </div>
     </div>
-  );
+    );
+  };
 
   const renderDelegatedStatsMode = () => {
     const caudalEvents = delegatedEventDefinitions.filter((definition) => definition.side === 'caudal');
@@ -14010,7 +14113,15 @@ function App() {
 
       {isGoalAnalysisOpen && selectedMatch ? (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 p-3 backdrop-blur-sm sm:p-6">
-          <div className="mx-auto max-w-6xl overflow-hidden rounded-3xl border border-white/10 bg-[#111b2a] shadow-glow">
+          <div
+            className="mx-auto max-w-6xl overflow-hidden rounded-3xl border border-white/10 bg-[#111b2a] shadow-glow"
+            onKeyDown={(event) => {
+              const tagName = event.target?.tagName;
+              if (event.key !== 'Enter' || tagName === 'TEXTAREA' || tagName === 'BUTTON' || tagName === 'SELECT') return;
+              event.preventDefault();
+              saveGoalAnalysisEvent();
+            }}
+          >
             <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
               <div className="flex items-center gap-3">
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500 text-xl font-black text-white">+</span>
@@ -14052,18 +14163,37 @@ function App() {
               </section>
 
               <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Contexto táctico</p>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Contexto táctico</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      ['combinativo', 'Combinativo'],
+                      ['transicion', 'Transición'],
+                      ['abp', 'ABP'],
+                      ['directo', 'Directo'],
+                    ].map(([preset, label]) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => applyGoalPreset(preset)}
+                        className="rounded-xl bg-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300 transition hover:bg-caudal-electric hover:text-slate-950"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="mt-4 grid gap-3 lg:grid-cols-4">
-                  <select value={goalAnalysisDraft.phase} onChange={(event) => updateGoalAnalysisDraft('phase', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
+                  <select value={goalAnalysisDraft.phase} onChange={(event) => updateGoalAnalysisDraft('phase', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-caudal-electric/70 focus:bg-white/10">
                     {Object.keys(goalPhaseOptions).map((phase) => <option key={phase} value={phase}>{phase}</option>)}
                   </select>
-                  <select value={goalAnalysisDraft.subphase} onChange={(event) => updateGoalAnalysisDraft('subphase', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
+                  <select value={goalAnalysisDraft.subphase} onChange={(event) => updateGoalAnalysisDraft('subphase', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-caudal-electric/70 focus:bg-white/10">
                     {(goalPhaseOptions[goalAnalysisDraft.phase] || []).map((subphase) => <option key={subphase} value={subphase}>{subphase}</option>)}
                   </select>
-                  <select value={goalAnalysisDraft.attackType} onChange={(event) => updateGoalAnalysisDraft('attackType', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
+                  <select value={goalAnalysisDraft.attackType} onChange={(event) => updateGoalAnalysisDraft('attackType', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-caudal-electric/70 focus:bg-white/10">
                     {goalAttackTypeOptions.map((option) => <option key={option} value={option}>{option}</option>)}
                   </select>
-                  <select value={goalAnalysisDraft.situation} onChange={(event) => updateGoalAnalysisDraft('situation', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
+                  <select value={goalAnalysisDraft.situation} onChange={(event) => updateGoalAnalysisDraft('situation', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-caudal-electric/70 focus:bg-white/10">
                     {goalSituationOptions.map((option) => <option key={option} value={option}>{option}</option>)}
                   </select>
                 </div>
@@ -14073,15 +14203,15 @@ function App() {
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Mapas</p>
                 <div className="mt-4 grid gap-4 lg:grid-cols-3">
                   <div>
-                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Dónde se genera</p>
-                    {renderZoneGrid({ value: goalAnalysisDraft.assistZone, onChange: (zone) => updateGoalAnalysisDraft('assistZone', zone), compact: true })}
+                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">Dónde se genera</p>
+                    {renderZoneGrid({ value: goalAnalysisDraft.assistZone, onChange: (zone) => updateGoalAnalysisDraft('assistZone', zone), compact: true, variant: 'start' })}
                   </div>
                   <div>
-                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Dónde finaliza</p>
-                    {renderZoneGrid({ value: goalAnalysisDraft.shotZone, onChange: (zone) => updateGoalAnalysisDraft('shotZone', zone), compact: true })}
+                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-emerald-200">Dónde finaliza</p>
+                    {renderZoneGrid({ value: goalAnalysisDraft.shotZone, onChange: (zone) => updateGoalAnalysisDraft('shotZone', zone), compact: true, variant: 'finish' })}
                   </div>
                   <div>
-                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Dónde entra</p>
+                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-white">Dónde entra</p>
                     {renderZoneGrid({ value: goalAnalysisDraft.goalZone, onChange: (zone) => updateGoalAnalysisDraft('goalZone', zone), zones: goalZoneOptions, goal: true, compact: true })}
                   </div>
                 </div>
@@ -14097,8 +14227,24 @@ function App() {
                   </div>
                 </div>
                 <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Clip de vídeo</p>
-                  <input value={goalAnalysisDraft.videoUrl} onChange={(event) => updateGoalAnalysisDraft('videoUrl', event.target.value)} placeholder="LongoMatch / Hudl / YouTube timestamp / vídeo local..." className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Clip relacionado</p>
+                    {(() => {
+                      const platform = detectGoalClipPlatform(goalAnalysisDraft.videoUrl);
+                      return <span className="rounded-xl bg-white/10 px-2.5 py-1 text-[10px] font-black text-slate-200">{platform.icon} · {platform.label}</span>;
+                    })()}
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <input value={goalAnalysisDraft.videoUrl} onChange={(event) => updateGoalAnalysisDraft('videoUrl', event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') saveGoalAnalysisEvent(); }} placeholder="YouTube / HUDL / Veo / LongoMatch / enlace externo..." className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-caudal-electric/70 focus:bg-white/10" />
+                    <button
+                      type="button"
+                      disabled={!goalAnalysisDraft.videoUrl}
+                      onClick={() => window.open(goalAnalysisDraft.videoUrl, '_blank', 'noopener,noreferrer')}
+                      className="rounded-2xl bg-white/10 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-200 transition hover:bg-caudal-electric hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Abrir
+                    </button>
+                  </div>
                 </div>
               </section>
 
