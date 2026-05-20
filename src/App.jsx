@@ -302,6 +302,33 @@ const getTeamTacticalIdentity = (team = {}) => ({
   offensiveFocus: team.offensiveFocus || 'espalda lateral',
   detectedWeakness: team.detectedWeakness || 'espalda lateral',
 });
+const capitalizeText = (value) => {
+  const text = String(value || '').trim();
+  return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : '';
+};
+const mapRivalIdentityToPre = (identity = {}) => {
+  const data = getTeamTacticalIdentity(identity);
+  const block = capitalizeText(data.blockHeight) || 'Medio';
+  const pressure = data.pressureType === 'tras pérdida' || data.pressureType === 'hombre a hombre' ? 'Alta' : data.pressureType === 'repliegue' ? 'Baja' : 'Media';
+  return {
+    preRivalStyle: `${data.offensiveBehavior} · ritmo ${data.attackingRhythm} · foco ${data.offensiveFocus}`,
+    preRivalStrengths: `Lado fuerte ${data.strongSide}; amenaza principal ${data.mainThreat}.`,
+    preRivalWeaknesses: data.detectedWeakness,
+    preRivalBuildUp: data.offensiveBehavior === 'combinativo' ? 'Combinativo' : data.offensiveBehavior === 'directo' ? 'Directo' : 'Mixto',
+    preRivalDefensiveBlock: block,
+    preRivalPressure: pressure,
+    preRivalTransitions: data.mainThreat === 'transición' || data.attackingRhythm === 'vertical' ? 'Directas' : 'Equilibradas',
+    preRivalOffensiveOrganization: data.offensiveBehavior,
+    preRivalBaseSystem: '',
+    preRivalProgression: data.offensiveFocus,
+    preRivalFinishing: data.mainThreat,
+    preRivalOffensiveKeyPlayers: '',
+    preRivalDangerZones: data.offensiveFocus,
+    preRivalPressureType: data.pressureType,
+    preRivalSpacesAllowed: data.detectedWeakness,
+    preRivalAfterRecovery: data.mainThreat === 'transición' ? 'Primer pase vertical; corre tras robo' : '',
+  };
+};
 const readStoredRivalTacticalIdentity = () => {
   if (typeof window === 'undefined') return {};
   try {
@@ -661,6 +688,7 @@ const normalizeSupabaseRivalPlayer = (player) => ({
   yellowRisk: Boolean(player.yellow_risk ?? player.yellowRisk),
   suspended: Boolean(player.suspended),
   injured: Boolean(player.injured),
+  doubtful: Boolean(player.doubtful ?? player.physical_doubt ?? player.physicalDoubt),
 });
 
 const createRivalPlayerPayload = (teamId, player) => ({
@@ -1603,9 +1631,11 @@ const playerStatusBadges = (player) =>
   [
     player.expelled || player.red ? { label: 'EXP', className: 'border border-red-200/25 bg-red-400/[0.14] text-red-100', title: 'Expulsado' } : null,
     player.injured ? { label: 'LES', className: 'border border-red-200/20 bg-red-300/[0.12] text-red-100', title: 'Lesionado' } : null,
-    player.yellowRisk ? { label: 'AM', className: 'border border-amber-200/20 bg-amber-200/[0.12] text-amber-100', title: 'Apercibido / 5 amarillas' } : null,
-    player.suspended ? { label: 'RJR', className: 'border border-red-200/25 bg-slate-200/10 text-red-100', title: 'Riesgo roja' } : null,
-  ].filter(Boolean).slice(0, 1);
+    player.yellowRisk ? { label: 'AM', className: 'border border-amber-200/20 bg-amber-200/[0.12] text-amber-100', title: 'Amonestado / riesgo suspensión' } : null,
+    player.suspended ? { label: 'RJ', className: 'border border-red-200/25 bg-slate-200/10 text-red-100', title: 'Riesgo roja' } : null,
+    player.doubtful || player.physicalDoubt ? { label: 'DUDA', className: 'border border-sky-200/20 bg-sky-200/[0.10] text-sky-100', title: 'Duda física' } : null,
+    player.isKey ? { label: 'DEST', className: 'border border-amber-200/25 bg-amber-200/[0.12] text-amber-100', title: 'Destacado' } : null,
+  ].filter(Boolean);
 
 const getPlayerTacticalBadges = (player) => {
   const position = normalizePlayerIdentityName(player.position || '');
@@ -1622,8 +1652,8 @@ const getPlayerTacticalBadges = (player) => {
 
 const getPlayerFieldStyle = (player) => {
   const badges = getPlayerTacticalBadges(player).map((badge) => badge.short);
-  if (badges.includes('EXP') || badges.includes('LES') || badges.includes('RJR')) return 'border-red-200/45 shadow-[0_0_0_1px_rgba(248,113,113,0.10),0_16px_34px_rgba(0,0,0,0.38)]';
-  if (badges.includes('CLA')) return 'border-amber-200/80 shadow-[0_0_0_1px_rgba(251,191,36,0.16),0_18px_38px_rgba(0,0,0,0.40),0_0_28px_rgba(251,191,36,0.12)]';
+  if (badges.includes('EXP') || badges.includes('LES') || badges.includes('RJ')) return 'border-red-200/45 shadow-[0_0_0_1px_rgba(248,113,113,0.10),0_16px_34px_rgba(0,0,0,0.38)]';
+  if (badges.includes('DEST') || badges.includes('CLA')) return 'border-amber-200/80 shadow-[0_0_0_1px_rgba(251,191,36,0.16),0_18px_38px_rgba(0,0,0,0.40),0_0_28px_rgba(251,191,36,0.12)]';
   if (badges.includes('DIF')) return 'border-emerald-200/55 shadow-[0_16px_34px_rgba(0,0,0,0.36)]';
   if (badges.includes('REF')) return 'border-emerald-200/45 shadow-[0_14px_32px_rgba(0,0,0,0.36)]';
   if (badges.includes('PIV')) return 'border-cyan-200/45 shadow-[0_14px_32px_rgba(0,0,0,0.36)]';
@@ -1646,6 +1676,7 @@ const mergeRivalPlayerData = (base, candidate) => ({
   yellowRisk: Boolean(base?.yellowRisk || candidate?.yellowRisk),
   suspended: Boolean(base?.suspended || candidate?.suspended),
   injured: Boolean(base?.injured || candidate?.injured),
+  doubtful: Boolean(base?.doubtful || candidate?.doubtful || candidate?.physicalDoubt),
 });
 
 const dedupeRivalPlayers = (players) => {
@@ -1704,9 +1735,10 @@ const normalizeSquadEntry = (entry) => {
       role: 'Reserva',
       isKey: false,
       yellowRisk: false,
-      suspended: false,
-      injured: false,
-    };
+    suspended: false,
+    injured: false,
+    doubtful: false,
+  };
   }
 
   const name = entry.name ?? '';
@@ -1723,6 +1755,7 @@ const normalizeSquadEntry = (entry) => {
     yellowRisk: Boolean(entry.yellowRisk),
     suspended: Boolean(entry.suspended),
     injured: Boolean(entry.injured),
+    doubtful: Boolean(entry.doubtful ?? entry.physicalDoubt),
   };
 };
 
@@ -1755,6 +1788,7 @@ const createBlankTeamPlayer = () => ({
   yellowRisk: false,
   suspended: false,
   injured: false,
+  doubtful: false,
 });
 
 const normalizeMatch = (match) => {
@@ -3412,10 +3446,40 @@ function App() {
   );
   const preReportChecklist = selectedPreAiAnalysis?.reportChecklist || {};
   const selectedMatchRivalTeam = useMemo(
-    () => findTeamByDisplayName(teams, selectedMatch?.opponent || ''),
-    [teams, selectedMatch?.opponent]
+    () => teams.find((team) => team.id === selectedMatch?.equipoRivalId) || findTeamByDisplayName(teams, selectedMatch?.opponent || ''),
+    [teams, selectedMatch?.equipoRivalId, selectedMatch?.opponent]
   );
-  const suggestedConsignas = selectedPreAiAnalysis?.suggestedConsignas || createSuggestedConsignas(selectedMatchRivalTeam || {});
+  const liveRivalIdentity = useMemo(
+    () => getTeamTacticalIdentity(selectedMatchRivalTeam || {}),
+    [selectedMatchRivalTeam]
+  );
+  const liveRivalPlayers = useMemo(
+    () => dedupeRivalPlayers(selectedMatchRivalTeam?.squad || []),
+    [selectedMatchRivalTeam]
+  );
+  const liveRivalStarters = useMemo(() => {
+    const savedLineup = safeArray(selectedMatchRivalTeam?.lineup).sort((a, b) => Number(a.slot ?? 0) - Number(b.slot ?? 0));
+    if (savedLineup.length) return savedLineup.map(normalizeSquadEntry);
+    const starters = liveRivalPlayers.filter((player) => player.role === 'Titular');
+    return (starters.length ? starters : liveRivalPlayers).slice(0, 11);
+  }, [liveRivalPlayers, selectedMatchRivalTeam]);
+  const liveRivalMarkedPlayers = useMemo(
+    () => liveRivalPlayers.filter((player) => player.isKey || player.yellowRisk || player.suspended || player.injured || player.doubtful),
+    [liveRivalPlayers]
+  );
+  const liveRivalPreFields = useMemo(() => {
+    const mapped = mapRivalIdentityToPre(liveRivalIdentity);
+    const keyPlayers = liveRivalPlayers.filter((player) => player.isKey).map((player) => player.name);
+    const unavailable = liveRivalPlayers.filter((player) => player.injured || player.suspended || player.doubtful).map((player) => `${player.name} (${playerStatusBadges(player).map((badge) => badge.label).join('/')})`);
+    return {
+      ...mapped,
+      preRivalBaseSystem: selectedMatchRivalTeam?.system || mapped.preRivalBaseSystem,
+      preRivalOffensiveKeyPlayers: keyPlayers.join(', '),
+      preRivalPlayerToWatch: keyPlayers[0] || '',
+      preRivalStyle: [mapped.preRivalStyle, unavailable.length ? `alertas: ${unavailable.join(', ')}` : ''].filter(Boolean).join(' · '),
+    };
+  }, [liveRivalIdentity, liveRivalPlayers, selectedMatchRivalTeam]);
+  const suggestedConsignas = selectedPreAiAnalysis?.suggestedConsignas || createSuggestedConsignas(selectedMatchRivalTeam || liveRivalIdentity);
   const updateSuggestedConsignas = (nextConsignas) => {
     updateSelectedMatchFields({
       preAiAnalysis: {
@@ -4147,17 +4211,18 @@ function App() {
 
   const getRivalBaseTeam = () => {
     if (!selectedMatch?.opponent) return null;
-    return findTeamByDisplayName(teams, selectedMatch.opponent);
+    return selectedMatchRivalTeam || findTeamByDisplayName(teams, selectedMatch.opponent);
   };
 
   const getCurrentRivalLineup = () => {
     if (selectedMatch?.preRivalLineup?.length) return selectedMatch.preRivalLineup;
     if (selectedMatch?.rivalLineupPlayers?.length) return selectedMatch.rivalLineupPlayers.map((player) => player.name);
+    if (liveRivalStarters.length) return liveRivalStarters.map((player) => player.name);
     return [];
   };
 
   const getRivalAvailablePlayers = () => {
-    const linkedPlayers = (getRivalBaseTeam()?.squad || []).map(normalizeSquadEntry);
+    const linkedPlayers = (selectedMatchRivalTeam?.squad || getRivalBaseTeam()?.squad || []).map(normalizeSquadEntry);
     const manualPlayers = (selectedMatch?.preRivalManualPlayers || []).map((player) =>
       typeof player === 'string' ? { ...createBlankTeamPlayer(), name: player } : normalizeSquadEntry(player)
     );
@@ -4174,7 +4239,7 @@ function App() {
     return getRivalAvailablePlayers().find((player) => player.name === playerName) || null;
   };
 
-  const getCurrentRivalSystem = () => selectedMatch?.preRivalSystem || selectedMatch?.rivalLineupSystem || '4-4-2';
+  const getCurrentRivalSystem = () => selectedMatchRivalTeam?.system || selectedMatch?.preRivalSystem || selectedMatch?.rivalLineupSystem || '4-4-2';
 
   const getSystemStructure = (system) => {
     const parts = String(system || '4-4-2').match(/\d+/g)?.map(Number) || [4, 4, 2];
@@ -4184,12 +4249,16 @@ function App() {
     return { defenders, midfielders, attackers };
   };
 
-  const buildSystemTacticalReading = (caudalSystem, rivalSystem) => {
+  const buildSystemTacticalReading = (caudalSystem, rivalSystem, rivalIdentity = liveRivalIdentity, rivalPlayers = liveRivalPlayers) => {
     const caudal = getSystemStructure(caudalSystem);
     const rival = getSystemStructure(rivalSystem);
     const midfieldDiff = caudal.midfielders - rival.midfielders;
     const wingBackRival = rival.defenders >= 5;
     const caudalBackFour = caudal.defenders === 4;
+    const identity = getTeamTacticalIdentity(rivalIdentity);
+    const keyPlayers = safeArray(rivalPlayers).filter((player) => player.isKey);
+    const alertPlayers = safeArray(rivalPlayers).filter((player) => player.yellowRisk || player.suspended || player.injured || player.doubtful);
+    const firstThreat = keyPlayers[0]?.name || identity.mainThreat;
     const reading = {
       advantages: [],
       risks: [],
@@ -4199,14 +4268,14 @@ function App() {
     };
 
     if (midfieldDiff > 0) {
-      reading.advantages.push(`Superioridad interior: ${caudal.midfielders} medios contra ${rival.midfielders}.`);
+      reading.advantages.push(`Superioridad interior ${caudal.midfielders}v${rival.midfielders}: fijar su ${rivalSystem} y encontrar tercer hombre.`);
       reading.attackZones.push('Recibir entre líneas y activar tercer hombre por dentro.');
     } else if (midfieldDiff < 0) {
-      reading.risks.push(`Riesgo de inferioridad por dentro: ${caudal.midfielders} medios contra ${rival.midfielders}.`);
+      reading.risks.push(`Riesgo interior ${caudal.midfielders}v${rival.midfielders}: el rival puede progresar si no cerramos pivote y lado fuerte.`);
       reading.protectZones.push('Cerrar carril central y orientar la presión hacia banda.');
       reading.adjustments.push('Acercar un delantero o extremo al pivote rival cuando progresen por dentro.');
     } else {
-      reading.advantages.push('Igualdad interior: decidir por orientación corporal, apoyos cercanos y ritmo de circulación.');
+      reading.advantages.push(`Igualdad interior ${caudal.midfielders}v${rival.midfielders}: decidir con orientación corporal y ritmo ante su bloque ${identity.blockHeight}.`);
     }
 
     if (rival.attackers >= 3 && caudalBackFour) {
@@ -4216,7 +4285,7 @@ function App() {
     }
 
     if (wingBackRival) {
-      reading.attackZones.push('Espalda de carrileros si saltan alto.');
+      reading.attackZones.push(`Espalda de carrileros si saltan alto, especialmente tras atraer su lado fuerte ${identity.strongSide}.`);
       reading.protectZones.push('Centros laterales y segundo palo.');
       reading.adjustments.push('Atacar rápido tras robo a la espalda del carrilero alejado.');
     }
@@ -4239,9 +4308,14 @@ function App() {
       reading.risks.push('Si perdemos por dentro, sus dos puntas quedan listos para transición.');
       reading.adjustments.push('Pivote siempre por detrás de balón para cortar primera transición.');
     }
+    if (identity.detectedWeakness) reading.advantages.push(`Atacar debilidad detectada: ${identity.detectedWeakness}.`);
+    if (identity.mainThreat) reading.risks.push(`Amenaza principal: ${identity.mainThreat}; vigilancia sobre ${firstThreat}.`);
+    if (identity.offensiveFocus) reading.protectZones.push(`Proteger foco ofensivo rival: ${identity.offensiveFocus}.`);
+    if (identity.pressureType) reading.adjustments.push(`Ajuste sobre presión ${identity.pressureType}: salida con apoyo cercano y lado débil preparado.`);
+    if (alertPlayers.length) reading.advantages.push(`Forzar decisiones sobre jugadores marcados: ${alertPlayers.slice(0, 3).map((player) => `${player.name} ${playerStatusBadges(player).map((badge) => badge.label).join('/')}`).join(', ')}.`);
 
     Object.keys(reading).forEach((key) => {
-      if (!reading[key].length) reading[key].push('Sin lectura específica todavía: completar con comportamiento real del rival.');
+      if (!reading[key].length) reading[key].push(`${caudalSystem} vs ${rivalSystem}: lectura basada en bloque ${identity.blockHeight}, presión ${identity.pressureType} y amenaza ${identity.mainThreat}.`);
     });
     return {
       caudalSystem,
@@ -4251,20 +4325,39 @@ function App() {
     };
   };
 
-  const defaultSystemMatchups = (caudalSystem, rivalSystem) => [
-    {
-      zone: 'Carril central',
-      duel: `${caudalSystem} vs ${rivalSystem}`,
-      reading: 'Controlar superioridades interiores y orientación de la presión.',
-      action: 'Ajustar distancia entre puntas, pivote y centrales.',
-    },
-    {
-      zone: 'Bandas',
-      duel: 'Lateral/extremo vs banda rival',
-      reading: 'Decidir cuándo saltar y cuándo proteger espalda.',
-      action: 'Activar ayudas del extremo y vigilar segundo palo.',
-    },
-  ];
+  const defaultSystemMatchups = (caudalSystem, rivalSystem) => {
+    const caudal = getSystemStructure(caudalSystem);
+    const rival = getSystemStructure(rivalSystem);
+    const identity = liveRivalIdentity;
+    const keyPlayers = liveRivalPlayers.filter((player) => player.isKey);
+    const weakSide = identity.strongSide === 'izquierda' ? 'derecha' : identity.strongSide === 'derecha' ? 'izquierda' : 'lado débil';
+    return [
+      {
+        zone: 'Carril central',
+        duel: `${caudal.midfielders}v${rival.midfielders} por dentro`,
+        reading: caudal.midfielders >= rival.midfielders ? 'Superioridad o igualdad interior para recibir entre líneas.' : 'Riesgo de quedar en inferioridad si no cerramos al mediocentro rival.',
+        action: caudal.midfielders >= rival.midfielders ? 'Fijar con puntas y activar tercer hombre.' : 'Ajuste sobre mediocentro rival y ayudas del extremo hacia dentro.',
+      },
+      {
+        zone: `Banda ${identity.strongSide}`,
+        duel: `Lado fuerte rival vs nuestra cobertura exterior`,
+        reading: `Su foco ${identity.offensiveFocus} y amenaza ${identity.mainThreat} pueden cargar ese carril.`,
+        action: `Orientarles hacia ${weakSide} y proteger espalda del lateral.`,
+      },
+      {
+        zone: 'Transición',
+        duel: `Pérdida Caudal vs ${identity.mainThreat}`,
+        reading: `Riesgo tras pérdida si atacamos con equipo abierto ante ritmo ${identity.attackingRhythm}.`,
+        action: 'Cerrar pase interior, finalizar ataques y sostener vigilancia en lado débil.',
+      },
+      {
+        zone: 'Jugador clave',
+        duel: keyPlayers[0] ? `${keyPlayers[0].name} vs marca cercana` : `Amenaza ${identity.mainThreat}`,
+        reading: keyPlayers[0] ? `${keyPlayers[0].name} llega marcado como DEST desde EQUIPOS.` : `Prioridad sobre su amenaza principal: ${identity.mainThreat}.`,
+        action: 'No permitir recepción de cara; contacto previo y cobertura interior.',
+      },
+    ];
+  };
 
   const generateSystemReading = () => {
     if (!selectedMatch) return;
@@ -4298,20 +4391,23 @@ function App() {
     const caudal = getSystemStructure(caudalSystem);
     const rival = getSystemStructure(rivalSystem);
     const caudalLineup = safeArray(selectedMatch?.preCaudalLineup);
-    const rivalLineup = safeArray(selectedMatch?.preRivalLineup);
+    const rivalLineup = safeArray(getCurrentRivalLineup());
     const hasCaudalNames = caudalLineup.some(Boolean);
     const hasRivalNames = rivalLineup.some(Boolean);
+    const identity = liveRivalIdentity;
+    const keyPlayers = liveRivalPlayers.filter((player) => player.isKey).map((player) => player.name);
+    const alertPlayers = liveRivalMarkedPlayers.map((player) => `${player.name} (${playerStatusBadges(player).map((badge) => badge.label).join('/')})`);
     const safeQuestion = String(question || '');
     const q = safeQuestion.toLowerCase();
 
     if (mode === 'Micro' || /jugador|duelo|vigilar|marca/i.test(safeQuestion)) {
-      const caudalRefs = hasCaudalNames ? caudalLineup.filter(Boolean).slice(0, 3).join(', ') : 'nuestros jugadores de carril central';
-      const rivalRefs = hasRivalNames ? rivalLineup.filter(Boolean).slice(0, 3).join(', ') : 'sus referencias ofensivas';
-      return `Lectura micro: relaciona ${caudalRefs} contra ${rivalRefs}. Prioridad: ganar la primera orientación corporal, cerrar pase interior y activar ayuda cercana tras pérdida. Si el duelo está en banda, que nuestro extremo llegue a tiempo para que el lateral no defienda dos alturas.`;
+      const caudalRefs = hasCaudalNames ? caudalLineup.filter(Boolean).slice(0, 3).join(', ') : 'nuestros jugadores del carril activo';
+      const rivalRefs = keyPlayers.length ? keyPlayers.slice(0, 3).join(', ') : hasRivalNames ? rivalLineup.filter(Boolean).slice(0, 3).join(', ') : `sus referencias de ${identity.mainThreat}`;
+      return `Lectura micro con contexto real: relacionar ${caudalRefs} contra ${rivalRefs}. El rival carga ${identity.strongSide} con foco ${identity.offensiveFocus}; los duelos clave deben negar recepción de cara, cerrar pase interior y activar ayuda cercana tras pérdida. Estados a explotar o vigilar: ${alertPlayers.length ? alertPlayers.slice(0, 4).join(', ') : 'sin alertas individuales marcadas en EQUIPOS'}.`;
     }
 
     if (q.includes('bloque') || q.includes('atacamos')) {
-      return `Para atacar su ${rivalSystem}, mueve el balón hasta fijar su primera línea y acelera cuando el lado débil quede abierto. Contra ${rival.midfielders} medios rivales, necesitamos apoyos cortos por dentro y una amenaza a espalda para que no puedan saltar todos hacia balón.`;
+      return `Para atacar su ${rivalSystem} con bloque ${identity.blockHeight} y presión ${identity.pressureType}, fijar primero su lado fuerte ${identity.strongSide} y acelerar hacia ${identity.detectedWeakness}. Contra ${rival.midfielders} medios rivales, necesitamos apoyos cortos por dentro, amenaza a espalda y cambios de orientación antes de que puedan saltar todos hacia balón.`;
     }
     if (q.includes('superioridad')) {
       const diff = caudal.midfielders - rival.midfielders;
@@ -4320,16 +4416,16 @@ function App() {
         : `No tenemos superioridad natural por dentro: ${caudal.midfielders} contra ${rival.midfielders}. La ventaja debe buscarse por fuera, con cambios de orientación y atacando la espalda del lateral/carrilero.`;
     }
     if (q.includes('pérdida') || q.includes('perdida') || q.includes('transiciones')) {
-      return `Tras pérdida, el riesgo principal es quedar partidos entre nuestra línea de medios y centrales. Primer ajuste: pérdida por dentro exige falta táctica o presión inmediata; pérdida por fuera exige cerrar pase interior y proteger segundo palo.`;
+      return `Tras pérdida, el riesgo real es ${identity.mainThreat} con ritmo ${identity.attackingRhythm}. Primer ajuste: pérdida por dentro exige presión inmediata o falta táctica; pérdida por fuera exige cerrar pase interior, proteger segundo palo y vigilar a ${keyPlayers[0] || 'su primer lanzador'}.`;
     }
     if (q.includes('vigilar')) {
-      return `El jugador rival a vigilar debe ser el que conecte transición y último pase. Si no hay nombre definido, prioriza su punta o extremo del lado fuerte: no permitir que reciba girado ni que ataque la espalda sin contacto previo.`;
+      return `Vigilar primero a ${keyPlayers[0] || `la referencia de ${identity.mainThreat}`}. Si recibe en el lado fuerte ${identity.strongSide}, orientar hacia fuera, negar giro y tener cobertura interior antes de saltar.`;
     }
     if (q.includes('ajuste') || q.includes('progresamos')) {
       return `Si no progresamos, baja un apoyo entre centrales o acerca el mediapunta al pivote para crear una salida de tres más un hombre libre. Si aun así nos fijan, saltar al lado débil antes de conducir por dentro.`;
     }
 
-    return `Lectura macro: ${caudalSystem} contra ${rivalSystem}. Queremos que el partido se juegue donde podamos juntar pases cortos y activar el lado débil. Evitar pérdidas interiores sin cobertura y ajustar la presión para que el rival no encuentre al hombre libre a espalda de nuestra primera línea.`;
+    return `Lectura macro: ${caudalSystem} contra ${rivalSystem}, rival de bloque ${identity.blockHeight}, presión ${identity.pressureType}, foco ${identity.offensiveFocus} y amenaza ${identity.mainThreat}. Queremos jugar hacia su debilidad ${identity.detectedWeakness}, activar lado débil y evitar pérdidas interiores sin cobertura.`;
   };
 
   const askTacticalQuestion = () => {
@@ -4366,33 +4462,89 @@ function App() {
     setTacticalQuestionText('');
   };
 
+  const getAutomaticMicroDuels = () => {
+    const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
+    const rivalSystem = getCurrentRivalSystem();
+    const caudalRoles = getFormationRoles(caudalSystem);
+    const rivalRoles = getFormationRoles(rivalSystem);
+    const caudalLineup = getCaudalPitchNames(selectedMatch?.preCaudalLineup || [], [], caudalRoles);
+    const rivalLineup = getCaudalPitchNames(getCurrentRivalLineup(), rivalRoles, rivalRoles);
+    const identity = liveRivalIdentity;
+    const keyPlayers = liveRivalPlayers.filter((player) => player.isKey);
+    const alertPlayers = liveRivalPlayers.filter((player) => player.yellowRisk || player.suspended || player.injured || player.doubtful);
+    const rows = [];
+    const add = (title, detail, action, tone = 'vigilancia', rivalPlayer = null) => {
+      rows.push({ title, detail, action, tone, rivalPlayer });
+    };
+
+    keyPlayers.slice(0, 3).forEach((player) => {
+      add(
+        `Vigilancia sobre ${player.name}`,
+        `${player.position || 'Jugador clave'} marcado como DEST; encaja con amenaza ${identity.mainThreat}.`,
+        'Contacto previo, orientar hacia fuera y cobertura interior antes del salto.',
+        'alerta',
+        player
+      );
+    });
+    alertPlayers.slice(0, 3).forEach((player) => {
+      add(
+        `Ventaja física/disciplinaria ante ${player.name}`,
+        playerStatusBadges(player).map((badge) => badge.title).join(' · '),
+        'Atacarle con cambios de ritmo, cargas a su zona y decisiones que le obliguen a defender hacia atrás.',
+        'ofensiva',
+        player
+      );
+    });
+    add(
+      `Lado fuerte ${identity.strongSide}`,
+      `El rival carga ${identity.offensiveFocus} con ritmo ${identity.attackingRhythm}.`,
+      'Emparejar lateral-extremo con ayuda cercana y preparar cambio al lado débil tras robo.',
+      'vigilancia'
+    );
+    add(
+      `${caudalSystem} vs ${rivalSystem}`,
+      `Duelos estructurales por dentro: ${getSystemStructure(caudalSystem).midfielders}v${getSystemStructure(rivalSystem).midfielders}.`,
+      getSystemStructure(caudalSystem).midfielders >= getSystemStructure(rivalSystem).midfielders ? 'Activar tercer hombre y recibir perfilado.' : 'Cerrar mediocentro rival con punta o extremo por dentro.',
+      'fortaleza'
+    );
+    if (caudalLineup[1] || rivalLineup[8]) {
+      add(
+        'Riesgo defensivo en espalda lateral',
+        `${rivalLineup[8] || 'Extremo rival'} puede atacar la espalda de ${caudalLineup[1] || 'nuestro lateral'}.`,
+        'No saltar sin cobertura del central y temporizar si el pase llega al espacio.',
+        'alerta'
+      );
+    }
+    return rows.slice(0, 6);
+  };
+
   const getTacticalQuestionnaire = () => ({
-    preRivalStyle: selectedMatch?.preRivalStyle || '',
-    preRivalStrengths: selectedMatch?.preRivalStrengths || '',
-    preRivalWeaknesses: selectedMatch?.preRivalWeaknesses || '',
-    preRivalBuildUp: selectedMatch?.preRivalBuildUp || 'Combinativo',
-    preRivalDefensiveBlock: selectedMatch?.preRivalDefensiveBlock || 'Medio',
-    preRivalPressure: selectedMatch?.preRivalPressure || 'Media',
-    preRivalTransitions: selectedMatch?.preRivalTransitions || 'Equilibradas',
-    preRivalOffensiveOrganization: selectedMatch?.preRivalOffensiveOrganization || '',
-    preRivalBaseSystem: selectedMatch?.preRivalBaseSystem || '',
+    preRivalStyle: selectedMatch?.preRivalStyle || liveRivalPreFields.preRivalStyle || '',
+    preRivalStrengths: selectedMatch?.preRivalStrengths || liveRivalPreFields.preRivalStrengths || '',
+    preRivalWeaknesses: selectedMatch?.preRivalWeaknesses || liveRivalPreFields.preRivalWeaknesses || '',
+    preRivalBuildUp: selectedMatch?.preRivalBuildUp || liveRivalPreFields.preRivalBuildUp || 'Combinativo',
+    preRivalDefensiveBlock: selectedMatch?.preRivalDefensiveBlock || liveRivalPreFields.preRivalDefensiveBlock || 'Medio',
+    preRivalPressure: selectedMatch?.preRivalPressure || liveRivalPreFields.preRivalPressure || 'Media',
+    preRivalTransitions: selectedMatch?.preRivalTransitions || liveRivalPreFields.preRivalTransitions || 'Equilibradas',
+    preRivalOffensiveOrganization: selectedMatch?.preRivalOffensiveOrganization || liveRivalPreFields.preRivalOffensiveOrganization || '',
+    preRivalBaseSystem: selectedMatch?.preRivalBaseSystem || liveRivalPreFields.preRivalBaseSystem || '',
     preRivalStartPlay: selectedMatch?.preRivalStartPlay || '',
-    preRivalProgression: selectedMatch?.preRivalProgression || '',
-    preRivalFinishing: selectedMatch?.preRivalFinishing || '',
-    preRivalOffensiveKeyPlayers: selectedMatch?.preRivalOffensiveKeyPlayers || '',
-    preRivalDangerZones: selectedMatch?.preRivalDangerZones || '',
+    preRivalProgression: selectedMatch?.preRivalProgression || liveRivalPreFields.preRivalProgression || '',
+    preRivalFinishing: selectedMatch?.preRivalFinishing || liveRivalPreFields.preRivalFinishing || '',
+    preRivalOffensiveKeyPlayers: selectedMatch?.preRivalOffensiveKeyPlayers || liveRivalPreFields.preRivalOffensiveKeyPlayers || '',
+    preRivalDangerZones: selectedMatch?.preRivalDangerZones || liveRivalPreFields.preRivalDangerZones || '',
     preRivalWideAttack: selectedMatch?.preRivalWideAttack || '',
     preRivalBoxOccupation: selectedMatch?.preRivalBoxOccupation || '',
     preRivalDefensiveOrganization: selectedMatch?.preRivalDefensiveOrganization || '',
     preRivalDefensiveSystem: selectedMatch?.preRivalDefensiveSystem || '',
     preRivalBlockHeightDetail: selectedMatch?.preRivalBlockHeightDetail || '',
-    preRivalPressureType: selectedMatch?.preRivalPressureType || '',
-    preRivalSpacesAllowed: selectedMatch?.preRivalSpacesAllowed || '',
+    preRivalPressureType: selectedMatch?.preRivalPressureType || liveRivalPreFields.preRivalPressureType || '',
+    preRivalSpacesAllowed: selectedMatch?.preRivalSpacesAllowed || liveRivalPreFields.preRivalSpacesAllowed || '',
     preRivalDefendsCrosses: selectedMatch?.preRivalDefendsCrosses || '',
     preRivalDefendsBack: selectedMatch?.preRivalDefendsBack || '',
     preRivalSecondBallDefense: selectedMatch?.preRivalSecondBallDefense || '',
     preRivalAfterLoss: selectedMatch?.preRivalAfterLoss || '',
-    preRivalAfterRecovery: selectedMatch?.preRivalAfterRecovery || '',
+    preRivalAfterRecovery: selectedMatch?.preRivalAfterRecovery || liveRivalPreFields.preRivalAfterRecovery || '',
     preRivalTransitionLaunchers: selectedMatch?.preRivalTransitionLaunchers || '',
     preRivalBestRunningZones: selectedMatch?.preRivalBestRunningZones || '',
     preRivalCornersFor: selectedMatch?.preRivalCornersFor || '',
@@ -4415,7 +4567,7 @@ function App() {
     preCaudalAfterRecovery: selectedMatch?.preCaudalAfterRecovery || '',
     preKeyMatchups: selectedMatch?.preKeyMatchups || '',
     preCaudalPlayerToBoost: selectedMatch?.preCaudalPlayerToBoost || '',
-    preRivalPlayerToWatch: selectedMatch?.preRivalPlayerToWatch || '',
+    preRivalPlayerToWatch: selectedMatch?.preRivalPlayerToWatch || liveRivalPreFields.preRivalPlayerToWatch || '',
     preImportantDuels: selectedMatch?.preImportantDuels || '',
     preAiSupportNotes: selectedMatch?.preAiSupportNotes || '',
   });
@@ -4428,9 +4580,13 @@ function App() {
     const caudalPlayersWithNotes = Object.entries(caudalNotes).filter(([, value]) => String(value || '').trim());
     const hasRivalReportText = Boolean(String(selectedMatch?.preRivalReportText || '').trim());
     const importantInputs = [
+      ['Rival conectado en EQUIPOS', selectedMatchRivalTeam?.name || ''],
       ['Texto informe rival', hasRivalReportText ? 'Disponible como fuente del cuestionario' : ''],
       ['Sistema Caudal', selectedMatch?.preCaudalSystem || '4-4-2'],
       ['Sistema rival', getCurrentRivalSystem()],
+      ['Lado fuerte EQUIPOS', liveRivalIdentity.strongSide],
+      ['Amenaza EQUIPOS', liveRivalIdentity.mainThreat],
+      ['Ritmo ofensivo EQUIPOS', liveRivalIdentity.attackingRhythm],
       ['Estilo rival', questionnaire.preRivalStyle],
       ['Bloque defensivo rival', questionnaire.preRivalDefensiveBlock],
       ['Presión rival', questionnaire.preRivalPressure],
@@ -4459,6 +4615,8 @@ function App() {
       questionnaire.preCaudalAttackZones ? 'zona a atacar' : null,
       questionnaire.preAiSupportNotes ? 'información adicional' : null,
       hasRivalReportText ? 'texto informe rival' : null,
+      selectedMatchRivalTeam ? 'EQUIPOS conectado' : null,
+      liveRivalMarkedPlayers.length ? `${liveRivalMarkedPlayers.length} estados reales` : null,
       rivalPlayersWithNotes.length ? `${rivalPlayersWithNotes.length} rivales con característica` : null,
       caudalPlayersWithNotes.length ? `${caudalPlayersWithNotes.length} notas Caudal` : null,
     ].filter(Boolean);
@@ -4483,6 +4641,12 @@ function App() {
     const rivalSystem = getCurrentRivalSystem();
     const caudalLineup = selectedMatch.preCaudalLineup?.length ? selectedMatch.preCaudalLineup : players.slice(0, 11).map((player) => player.name);
     const rivalLineup = selectedMatch.preRivalLineup?.length ? selectedMatch.preRivalLineup : getCurrentRivalLineup();
+    const liveRivalNotes = Object.fromEntries(
+      getRivalAvailablePlayers()
+        .filter((player) => player.isKey || player.yellowRisk || player.suspended || player.injured || player.doubtful)
+        .map((player) => [player.name, playerStatusBadges(player).map((badge) => badge.title).join(' · ')])
+    );
+    const rivalNotes = { ...liveRivalNotes, ...(selectedMatch.preRivalPlayerNotes || {}) };
     const prompt = buildTacticalPrompt({
       match: selectedMatch,
       caudalSystem,
@@ -4491,7 +4655,7 @@ function App() {
       rivalLineup,
       questionnaire,
       playerNotes: selectedMatch.prePlayerNotes || {},
-      rivalNotes: selectedMatch.preRivalPlayerNotes || {},
+      rivalNotes,
     });
     const analysis = buildTacticalAnalysis({
       caudalSystem,
@@ -4502,7 +4666,7 @@ function App() {
       playerProfiles: players,
       playerNotes: selectedMatch.prePlayerNotes || {},
       rivalProfiles: getRivalAvailablePlayers(),
-      rivalNotes: selectedMatch.preRivalPlayerNotes || {},
+      rivalNotes,
     });
     updateSelectedMatchFields({
       preAiAnalysis: { ...analysis, prompt, inputSummary },
@@ -7559,7 +7723,8 @@ function App() {
     if (!selectedMatch) return;
     const rivalTeam = getRivalBaseTeam();
     const nextSystem = rivalTeam?.system || getCurrentRivalSystem();
-    const nextLineup = Array.from({ length: 11 }, (_, index) => getRivalAvailablePlayers()[index]?.name || '');
+    const sourceLineup = liveRivalStarters.length ? liveRivalStarters : getRivalAvailablePlayers();
+    const nextLineup = Array.from({ length: 11 }, (_, index) => sourceLineup[index]?.name || '');
     setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? { ...match, preRivalSystem: nextSystem, preRivalLineup: nextLineup } : match)));
     try {
       await updateSelectedMatchFields({ preRivalSystem: nextSystem });
@@ -7779,7 +7944,7 @@ function App() {
     const caudalRoles = getFormationRoles(selectedMatch.preCaudalSystem || '4-4-2');
     const rivalRoles = getFormationRoles(getCurrentRivalSystem());
     const caudalLineup = getCaudalPitchNames(selectedMatch.preCaudalLineup || [], [], caudalRoles);
-    const rivalLineup = getCaudalPitchNames(selectedMatch.preRivalLineup || [], rivalRoles, rivalRoles);
+    const rivalLineup = getCaudalPitchNames(getCurrentRivalLineup(), rivalRoles, rivalRoles);
     const renderPlayer = (position, index, team, lineup) => {
       const isCaudal = team === 'caudal';
       const isRival = team === 'rival';
@@ -7854,9 +8019,33 @@ function App() {
     const caudalRoles = safeArray(getFormationRoles(caudalSystem));
     const rivalRoles = safeArray(getFormationRoles(rivalSystem));
     const caudalLineup = safeArray(selectedMatch.preCaudalLineup);
-    const rivalLineup = safeArray(selectedMatch.preRivalLineup);
+    const rivalLineup = safeArray(getCurrentRivalLineup());
+    const identity = liveRivalIdentity;
+    const sideClass =
+      identity.strongSide === 'izquierda' ? 'left-[8%] top-[8%] h-[42%] w-[24%]' :
+      identity.strongSide === 'derecha' ? 'right-[8%] top-[8%] h-[42%] w-[24%]' :
+      identity.strongSide === 'ambos laterales' ? 'left-[8%] top-[8%] h-[42%] w-[84%]' :
+      identity.strongSide === 'directo' ? 'left-[35%] top-[6%] h-[46%] w-[30%]' :
+      'left-[31%] top-[8%] h-[42%] w-[38%]';
+    const threatClass =
+      identity.mainThreat === 'ABP' ? 'left-[27%] top-[4%] h-[16%] w-[46%]' :
+      identity.mainThreat === 'transición' ? 'left-[18%] top-[38%] h-[28%] w-[64%]' :
+      identity.mainThreat === 'centros laterales' ? 'left-[9%] top-[14%] h-[42%] w-[82%]' :
+      identity.mainThreat === 'segunda jugada' ? 'left-[26%] top-[33%] h-[20%] w-[48%]' :
+      identity.mainThreat === 'delantero referencia' ? 'left-[36%] top-[13%] h-[18%] w-[28%]' :
+      'left-[14%] top-[20%] h-[35%] w-[72%]';
+    const blockTop = identity.blockHeight === 'alto' ? 'top-[38%]' : identity.blockHeight === 'bajo' ? 'top-[18%]' : 'top-[29%]';
     return (
       <div className="relative mx-auto aspect-[7/8.4] min-h-[420px] w-full max-w-3xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner">
+        <div className={`pointer-events-none absolute rounded-[2rem] border border-caudal-electric/[0.16] bg-caudal-electric/[0.06] ${sideClass}`} />
+        <div className={`pointer-events-none absolute rounded-full bg-amber-200/[0.11] blur-[2px] ${threatClass}`} />
+        <div className={`pointer-events-none absolute left-[10%] right-[10%] ${blockTop} h-px bg-rose-100/30`} />
+        <div className={`pointer-events-none absolute left-[50%] ${blockTop} -translate-x-1/2 -translate-y-4 rounded-md border border-white/10 bg-slate-950/35 px-2 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/55`}>
+          bloque {identity.blockHeight} · {identity.pressureType}
+        </div>
+        <div className="pointer-events-none absolute right-5 top-5 z-10 rounded-xl border border-amber-200/15 bg-amber-200/[0.08] px-3 py-2 text-[9px] font-black uppercase tracking-[0.12em] text-amber-100">
+          {identity.mainThreat} · {identity.offensiveFocus}
+        </div>
         <div className="absolute inset-4 rounded-[28px] border-2 border-white/55" />
         <div className="absolute left-4 right-4 top-1/2 h-px bg-white/35" />
         <div className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/35" />
@@ -7868,7 +8057,25 @@ function App() {
         </div>
         {rivalCoordinates.map((slot, index) => (
           <div key={`rival-overview-${index}`} className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
-            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 bg-rose-500/80 text-[10px] font-black text-white shadow-lg">{index === 0 ? 'P' : index}</span>
+            {(() => {
+              const playerName = rivalLineup[index] || '';
+              const statusPlayer = getRivalLineupPlayerForSlot(index, playerName);
+              const badges = statusPlayer ? playerStatusBadges(statusPlayer) : [];
+              return (
+                <span className="relative flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 bg-rose-500/80 text-[10px] font-black text-white shadow-lg">
+                  {index === 0 ? 'P' : index}
+                  {badges.length ? (
+                    <span className="absolute -right-6 -top-2 flex max-w-16 flex-wrap justify-end gap-0.5">
+                      {badges.slice(0, 3).map((badge) => (
+                        <span key={badge.label} title={badge.title} className={`inline-flex h-3 min-w-3 items-center justify-center rounded-sm px-0.5 text-[7px] font-black leading-none ${badge.className}`}>
+                          {badge.label}
+                        </span>
+                      ))}
+                    </span>
+                  ) : null}
+                </span>
+              );
+            })()}
             <span className="max-w-20 truncate rounded-md bg-black/55 px-1.5 py-0.5 text-[8px] font-semibold text-white">
               {rivalLineup[index] || rivalRoles[index] || `R${index + 1}`}
             </span>
@@ -9563,7 +9770,7 @@ function App() {
                                   <span className="min-w-0 flex-1">
                                     <span className="flex items-center gap-1">
                                       <span className="block truncate">{displayPlayerName(player)}</span>
-                                      {playerStatusBadges(player).slice(0, 1).map((badge) => (
+                                      {playerStatusBadges(player).slice(0, 3).map((badge) => (
                                         <span key={badge.title} title={badge.title} className={`inline-flex min-h-4 items-center justify-center rounded-md px-1 text-[8px] font-black ${badge.className}`}>
                                           {badge.label}
                                         </span>
@@ -11060,23 +11267,64 @@ function App() {
                               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-100/80">Rival</p>
                               <p className="mt-2 text-2xl font-black text-white">{getCurrentRivalSystem()}</p>
                               <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                                <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">Bloque: {selectedMatch.preRivalDefensiveBlock || 'medio'}</span>
-                                <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">Presión: {selectedMatch.preRivalPressure || 'media'}</span>
+                                <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">Bloque: {liveRivalIdentity.blockHeight}</span>
+                                <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">Presión: {liveRivalIdentity.pressureType}</span>
+                                <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">Foco: {liveRivalIdentity.offensiveFocus}</span>
+                                <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">Amenaza: {liveRivalIdentity.mainThreat}</span>
                               </div>
                             </div>
                           </div>
                           <div className="mt-4 grid gap-2 md:grid-cols-4">
-                            {[
-                              ['Ventaja', selectedMatch.preSystemReading?.advantages?.[0] || selectedMatch.preCaudalAttackZones || 'Definir superioridad principal'],
-                              ['Riesgo', selectedMatch.preSystemReading?.risks?.[0] || selectedMatch.preCaudalAvoid || 'Definir riesgo principal'],
-                              ['Emparejamiento', selectedMatch.preKeyMatchups || 'Duelos pendientes'],
-                              ['Ajuste', selectedMatch.prePlanAdjustment || 'Ajuste pendiente'],
-                            ].map(([label, value]) => (
+                            {(() => {
+                              const reading = buildSystemTacticalReading(selectedMatch.preCaudalSystem || '4-4-2', getCurrentRivalSystem());
+                              const matchups = defaultSystemMatchups(selectedMatch.preCaudalSystem || '4-4-2', getCurrentRivalSystem());
+                              return [
+                                ['Ventaja', selectedMatch.preSystemReading?.advantages?.[0] || reading.advantages[0]],
+                                ['Riesgo', selectedMatch.preSystemReading?.risks?.[0] || reading.risks[0]],
+                                ['Emparejamiento', selectedMatch.preKeyMatchups || matchups[0]?.duel],
+                                ['Ajuste', selectedMatch.prePlanAdjustment || reading.adjustments[0]],
+                              ];
+                            })().map(([label, value]) => (
                               <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2">
                                 <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
                                 <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-200">{value}</p>
                               </div>
                             ))}
+                          </div>
+                          <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr]">
+                            <div className="rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.055] p-4">
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">Lectura viva desde EQUIPOS</p>
+                              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                {[
+                                  ['Sistema habitual', getCurrentRivalSystem()],
+                                  ['Altura de bloque', liveRivalIdentity.blockHeight],
+                                  ['Tipo presión', liveRivalIdentity.pressureType],
+                                  ['Comportamiento', liveRivalIdentity.offensiveBehavior],
+                                  ['Ritmo ofensivo', liveRivalIdentity.attackingRhythm],
+                                  ['Debilidad', liveRivalIdentity.detectedWeakness],
+                                ].map(([label, value]) => (
+                                  <div key={label} className="rounded-xl bg-white/[0.045] px-3 py-2">
+                                    <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+                                    <p className="mt-1 truncate text-xs font-bold text-slate-100">{value}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Jugadores marcados</p>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {liveRivalMarkedPlayers.length ? liveRivalMarkedPlayers.slice(0, 8).map((player) => (
+                                  <span key={player.name} className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.045] px-2.5 py-1.5 text-xs font-bold text-slate-100">
+                                    {player.name}
+                                    {playerStatusBadges(player).slice(0, 3).map((badge) => (
+                                      <span key={badge.label} title={badge.title} className={`rounded px-1 text-[8px] font-black ${badge.className}`}>{badge.label}</span>
+                                    ))}
+                                  </span>
+                                )) : (
+                                  <span className="rounded-xl border border-dashed border-white/10 px-3 py-2 text-xs text-slate-500">Sin estados individuales marcados en EQUIPOS.</span>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
 
@@ -11128,6 +11376,25 @@ function App() {
                                 </button>
                               ))}
                             </div>
+                            {tacticalQuestionMode === 'Micro' ? (
+                              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Microduelos automáticos</p>
+                                <div className="mt-3 space-y-2">
+                                  {getAutomaticMicroDuels().map((duel) => (
+                                    <div key={`${duel.title}-${duel.action}`} className={`rounded-xl border px-3 py-2 text-xs ${consignaToneClass[duel.tone] || consignaToneClass.vigilancia}`}>
+                                      <div className="flex flex-wrap items-center gap-1.5 font-black text-current">
+                                        <span>{duel.title}</span>
+                                        {duel.rivalPlayer ? playerStatusBadges(duel.rivalPlayer).slice(0, 3).map((badge) => (
+                                          <span key={badge.label} title={badge.title} className={`rounded px-1 text-[8px] ${badge.className}`}>{badge.label}</span>
+                                        )) : null}
+                                      </div>
+                                      <p className="mt-1 leading-5 text-slate-200">{duel.detail}</p>
+                                      <p className="mt-1 font-semibold leading-5 text-white">{duel.action}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
                             <button
                               type="button"
                               onClick={askTacticalQuestion}
@@ -11151,6 +11418,9 @@ function App() {
                                     ['Copiar a plan con balón', 'planConBalon'],
                                     ['Copiar a plan sin balón', 'planSinBalon'],
                                     ['Copiar a transiciones', 'planTransiciones'],
+                                    ['Copiar a ABP ofensiva', 'abpOfensiva'],
+                                    ['Copiar a ABP defensiva', 'abpDefensiva'],
+                                    ['Copiar a charla final', 'planClave'],
                                   ].map(([label, field]) => (
                                     <button
                                       key={field}
@@ -11446,7 +11716,14 @@ function App() {
                                         onClick={() => updateRivalLineupSlot(selectedRivalTacticalPlayerIndex, player.name)}
                                         className={`w-full min-w-0 rounded-2xl px-3 py-3 text-left text-sm transition ${isCurrent ? 'bg-rose-300 text-rose-950' : isAssigned ? 'bg-white/10 text-slate-300' : 'bg-white/5 text-white hover:bg-white/10'}`}
                                       >
-                                        <span className="block truncate font-semibold">{player.name}</span>
+                                        <span className="flex items-center gap-1">
+                                          <span className="block min-w-0 truncate font-semibold">{player.name}</span>
+                                          {playerStatusBadges(player).slice(0, 3).map((badge) => (
+                                            <span key={badge.label} title={badge.title} className={`inline-flex min-h-4 items-center rounded-md px-1 text-[8px] font-black ${badge.className}`}>
+                                              {badge.label}
+                                            </span>
+                                          ))}
+                                        </span>
                                         <span className={`mt-1 block text-xs ${isCurrent ? 'text-rose-900' : 'text-slate-500'}`}>
                                           {[player.position, player.foot].filter(Boolean).join(' · ') || 'Sin perfil'}
                                         </span>
