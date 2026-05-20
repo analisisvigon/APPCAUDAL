@@ -11393,7 +11393,7 @@ function App() {
                           </div>
                         ) : null}
 
-                        <div className={`grid gap-5 ${isPreTalkMode ? 'xl:grid-cols-[0.42fr_0.58fr]' : 'xl:grid-cols-[0.38fr_0.62fr]'}`}>
+                        <div className={`grid gap-5 ${isPreTalkMode ? 'xl:grid-cols-[0.48fr_0.52fr]' : 'xl:grid-cols-[minmax(0,0.54fr)_minmax(360px,0.46fr)]'}`}>
                           <div className="space-y-5">
                             <section className="rounded-[1.45rem] border border-caudal-electric/20 bg-[linear-gradient(135deg,rgba(79,140,255,0.14),rgba(9,20,40,0.88))] p-5 shadow-[0_18px_50px_rgba(79,140,255,0.10)]">
                               <div className="flex items-center justify-between gap-3">
@@ -11563,73 +11563,89 @@ function App() {
                             </section>
                           </div>
 
-                          <section className="overflow-hidden rounded-[1.45rem] border border-white/10 bg-[#091428]/85 shadow-[0_18px_60px_rgba(0,0,0,0.24)]">
-                            <div className={`${isPreTalkMode ? 'hidden' : 'flex'} flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between`}>
+                          <section className={`rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/85 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.22)] ${isPreTalkMode ? 'hidden' : ''}`}>
+                            <div className="flex items-start justify-between gap-3">
                               <div>
-                                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Informe rival</p>
-                                <h4 className="mt-1 text-lg font-black text-white">Enlace de scouting</h4>
-                                <p className="mt-1 text-sm text-slate-400">{selectedMatch.preCanvaLink ? 'Informe cargado' : 'Sin enlace'}{getPreLastReviewLabel() ? ` · ${getPreLastReviewLabel()}` : ''}</p>
+                                <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/75">Información scouting rival</p>
+                                <h4 className="mt-1 text-lg font-black text-white">{selectedMatchRivalTeam?.name || selectedMatch.opponent || 'Rival'}</h4>
                               </div>
-                              <div className="flex flex-wrap gap-2">
+                              <span className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">EQUIPOS</span>
+                            </div>
+
+                            <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                              <div className="flex flex-col gap-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Informe rival</p>
+                                    <p className="mt-1 text-sm font-bold text-white">{selectedMatch.preCanvaLink ? 'Informe cargado' : 'Sin enlace'}</p>
+                                  </div>
+                                  {getPreLastReviewLabel() ? <span className="rounded-lg bg-white/[0.05] px-2 py-1 text-[10px] font-bold text-slate-400">{getPreLastReviewLabel()}</span> : null}
+                                </div>
                                 <input
                                   type="url"
                                   value={selectedMatch.preCanvaLink || ''}
                                   onChange={(event) => updateSelectedMatchFields({ preCanvaLink: event.target.value })}
                                   placeholder="https://www.canva.com/..."
-                                  className="min-w-[260px] rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-2.5 text-sm text-white placeholder:text-slate-500"
+                                  className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-3 py-2.5 text-sm text-white placeholder:text-slate-500"
                                 />
-                                <button
-                                  type="button"
-                                  disabled={!selectedMatch.preCanvaLink}
-                                  onClick={() => openCanvaUrl(selectedMatch.preCanvaLink)}
-                                  className="rounded-2xl bg-caudal-electric px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:bg-slate-600/40"
-                                >
-                                  Abrir informe
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={!selectedMatch.preCanvaLink}
-                                  onClick={() => copyCanvaUrl(selectedMatch.preCanvaLink)}
-                                  className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:text-slate-500"
-                                >
-                                  Copiar
-                                </button>
-                              </div>
-                            </div>
-                          </section>
-                          <section className={`rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/85 p-5 shadow-[0_18px_60px_rgba(0,0,0,0.20)] ${isPreTalkMode ? 'hidden' : ''}`}>
-                            <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/75">Resumen rival</p>
-                                <h4 className="mt-1 text-lg font-black text-white">{selectedMatchRivalTeam?.name || selectedMatch.opponent || 'Rival'}</h4>
-                              </div>
-                              <span className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">EQUIPOS</span>
-                            </div>
-                            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                              {[
-                                ['Sistema', getCurrentRivalSystem()],
-                                ['Bloque', liveRivalIdentity.blockHeight],
-                                ['Presión', liveRivalIdentity.pressureType],
-                                ['Amenaza', liveRivalIdentity.mainThreat],
-                                ['Lado fuerte', liveRivalIdentity.strongSide],
-                                ['Debilidad', liveRivalIdentity.detectedWeakness],
-                                ['Foco ofensivo', liveRivalIdentity.offensiveFocus],
-                              ].map(([label, value]) => (
-                                <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2">
-                                  <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
-                                  <p className="mt-1 truncate text-sm font-black text-white">{value}</p>
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={!selectedMatch.preCanvaLink}
+                                    onClick={() => openCanvaUrl(selectedMatch.preCanvaLink)}
+                                    className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:bg-slate-600/40"
+                                  >
+                                    Abrir informe
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={!selectedMatch.preCanvaLink}
+                                    onClick={() => copyCanvaUrl(selectedMatch.preCanvaLink)}
+                                    className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:text-slate-500"
+                                  >
+                                    Copiar enlace
+                                  </button>
                                 </div>
-                              ))}
+                              </div>
                             </div>
-                            <div className="mt-4 flex flex-wrap gap-2">
-                              {liveRivalMarkedPlayers.slice(0, 8).map((player) => (
-                                <span key={player.name} className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.045] px-2.5 py-1.5 text-xs font-bold text-slate-100">
-                                  {player.name}
-                                  {playerStatusBadges(player).slice(0, 2).map((badge) => (
-                                    <span key={badge.label} title={badge.title} className={`rounded px-1 text-[8px] font-black ${badge.className}`}>{badge.label}</span>
-                                  ))}
-                                </span>
-                              ))}
+
+                            <div className="mt-3 rounded-2xl border border-caudal-electric/10 bg-caudal-electric/[0.035] p-3">
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">Resumen rival</p>
+                              <div className="mt-3 grid grid-cols-2 gap-2">
+                                {[
+                                  ['Sistema', getCurrentRivalSystem()],
+                                  ['Bloque', liveRivalIdentity.blockHeight],
+                                  ['Presión', liveRivalIdentity.pressureType],
+                                  ['Amenaza', liveRivalIdentity.mainThreat],
+                                  ['Lado fuerte', liveRivalIdentity.strongSide],
+                                  ['Debilidad', liveRivalIdentity.detectedWeakness],
+                                ].map(([label, value]) => (
+                                  <div key={label} className="rounded-xl border border-white/10 bg-white/[0.035] px-2.5 py-2">
+                                    <p className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+                                    <p className="mt-1 truncate text-xs font-black text-white">{value}</p>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="mt-2 rounded-xl border border-white/10 bg-white/[0.035] px-2.5 py-2">
+                                <p className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-500">Foco ofensivo</p>
+                                <p className="mt-1 truncate text-xs font-black text-white">{liveRivalIdentity.offensiveFocus}</p>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.025] p-3">
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Jugadores marcados</p>
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {liveRivalMarkedPlayers.length ? liveRivalMarkedPlayers.slice(0, 10).flatMap((player) =>
+                                  playerStatusBadges(player).slice(0, 2).map((badge) => (
+                                    <span key={`${player.name}-${badge.label}`} title={badge.title} className={`inline-flex h-6 items-center gap-1 rounded-lg border px-1.5 text-[10px] font-black ${badge.className}`}>
+                                      <span>{badge.label}</span>
+                                      <span className="max-w-[92px] truncate">{displayPlayerName(player)}</span>
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="rounded-lg border border-dashed border-white/10 px-2 py-1.5 text-xs text-slate-500">Sin jugadores marcados.</span>
+                                )}
+                              </div>
                             </div>
                           </section>
                         </div>
