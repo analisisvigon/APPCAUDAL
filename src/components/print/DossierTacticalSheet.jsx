@@ -16,7 +16,7 @@ const pageLabels = {
   pressure: 'Plan de presion',
   vigilances: 'Vigilancias',
   transitions: 'Transiciones',
-  talk: 'Charla rapida',
+  talk: 'Pizarra de charla',
   halftime: 'Descanso',
   rival: 'Resumen rival',
   staff: 'Notas de staff',
@@ -30,7 +30,7 @@ const sheetProfiles = {
   'Resumen rival': { label: 'Resumen rival', density: 'dense' },
 };
 
-export default function DossierTacticalSheet({ match, pageId, dossierType = 'Staff', keys = [], staffNotes = [] }) {
+export default function DossierTacticalSheet({ match, pageId, dossierType = 'Staff', keys = [], staffNotes = [], pageNumber = 1, totalPages = 1 }) {
   const profile = sheetProfiles[dossierType] || sheetProfiles.Staff;
   const title = pageLabels[pageId] || 'Hoja tactica';
   const rival = match?.opponent || 'Rival';
@@ -52,9 +52,13 @@ export default function DossierTacticalSheet({ match, pageId, dossierType = 'Sta
       { title: 'Banquillo', items: ['Mirar cansancio de extremos', 'Preparar cambio si el equipo se parte', 'Recordar vigilancia tras ABP'] },
     ],
     talk: [
-      { title: 'Claves del partido', items: keys.slice(0, 3) },
-      { title: 'Mensajes cortos', items: splitLines(match?.planObjetivo || match?.planClave || 'Competir segunda jugada.\nAtacar con paciencia.\nNo regalar transiciones.', 4) },
-      { title: 'Ultima frase', items: ['Salir juntos', 'Primer duelo fuerte', 'Comunicar cada ajuste'] },
+      { title: '3 claves partido', items: keys.slice(0, 3) },
+      { title: '2 vigilancias', items: staffNotes.slice(0, 2) },
+      { title: 'Donde atacar', items: splitLines(match?.preRivalWeaknesses || match?.planConBalon || 'Atacar lado debil.\nBuscar espalda lateral.', 2) },
+      { title: 'Donde sufriran', items: splitLines(match?.preRivalWeaknesses || match?.prePlanAdjustment || 'Si movemos rapido.\nSi fijamos primera linea.', 2) },
+      { title: 'Balon parado rival', items: splitLines(match?.abpDefensiva || match?.prePlanAvoid || 'Vigilar segunda jugada.\nCerrar rechace frontal.', 2) },
+      { title: 'Cambios previstos', items: splitLines(match?.postIndividualObservations || 'Min 60: energia bandas.\nPlan B si se parte el equipo.', 2) },
+      { title: 'Frase final', items: splitLines(match?.planObjetivo || 'Juntos, primer duelo fuerte, porteria rival.', 1) },
     ],
     halftime: [
       { title: 'Que funciona', items: ['', '', '', ''] },
@@ -76,10 +80,10 @@ export default function DossierTacticalSheet({ match, pageId, dossierType = 'Sta
   }[pageId] || [];
 
   return (
-    <article className={`lineup-print-sheet print-sheet-a4 operational-print-sheet dossier-${profile.density}`}>
+    <article className={`lineup-print-sheet print-sheet-a4 operational-print-sheet dossier-${profile.density} ${pageId === 'talk' && dossierType === 'Vestuario' ? 'talk-vestuario' : ''}`}>
       <header className="operational-print-header">
         <div>
-          <p className="print-sheet-kicker">DOSSIER · {profile.label}</p>
+          <p className="print-sheet-kicker">DOSSIER - {profile.label}</p>
           <h1>{title}</h1>
         </div>
         <div className="print-sheet-meta">
@@ -111,6 +115,10 @@ export default function DossierTacticalSheet({ match, pageId, dossierType = 'Sta
           </div>
         ))}
       </section>
+      <footer className="operational-print-footer">
+        <span>C.D. Caudal · {rival}</span>
+        <strong>{pageNumber}/{totalPages}</strong>
+      </footer>
     </article>
   );
 }

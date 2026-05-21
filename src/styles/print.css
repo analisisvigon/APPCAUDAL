@@ -6,6 +6,7 @@
 }
 
 .lineup-print-sheet {
+  position: relative;
   width: 210mm;
   height: 297mm;
   box-sizing: border-box;
@@ -463,6 +464,51 @@
 
 .operational-box li.blank-line::before {
   content: "";
+}
+
+.operational-print-footer {
+  position: absolute;
+  right: 7mm;
+  bottom: 4mm;
+  left: 7mm;
+  display: flex;
+  justify-content: space-between;
+  border-top: 0.8pt solid #000;
+  padding-top: 1.5mm;
+  font-size: 7pt;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.lineup-print-footer {
+  right: 5mm;
+  bottom: 3mm;
+  left: 5mm;
+}
+
+.talk-vestuario .operational-print-header h1 {
+  font-size: 31pt;
+}
+
+.talk-vestuario .operational-key-strip p {
+  font-size: 11pt;
+}
+
+.talk-vestuario .operational-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.talk-vestuario .operational-box {
+  min-height: 38mm;
+}
+
+.talk-vestuario .operational-box h2 {
+  font-size: 12pt;
+}
+
+.talk-vestuario .operational-box li {
+  min-height: 9mm;
+  font-size: 11.5pt;
 }
 
 .dossier-large .operational-print-header h1 {

@@ -20,6 +20,8 @@ const quickConsignas = [
   'Zona',
 ];
 
+const quickConsignasStorageKey = 'caudal-print-quick-consignas-v2';
+
 const createElement = (type) => {
   if (type === 'ball') return { id: createId(), type, x: 8, y: 8 };
   if (isArrow({ type })) return { id: createId(), type, x1: 20, y1: 46, x2: 44, y2: 26, dashed: type === 'dashed_arrow' };
@@ -40,7 +42,16 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
   const [history, setHistory] = useState([cloneElements(drawableElements)]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [snapEnabled, setSnapEnabled] = useState(true);
+  const [movementMode, setMovementMode] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [favoriteConsignas, setFavoriteConsignas] = useState(() => {
+    if (typeof window === 'undefined') return ['Atacar primer palo', 'Vigilancia', 'Segunda jugada'];
+    try {
+      return JSON.parse(window.localStorage.getItem(quickConsignasStorageKey) || '[]').slice(0, 8);
+    } catch {
+      return ['Atacar primer palo', 'Vigilancia', 'Segunda jugada'];
+    }
+  });
   const historyChangeRef = useRef(false);
 
   const selectedElement = useMemo(
@@ -53,6 +64,16 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
     const current = String(diagram.consigna || '').trim();
     const next = current ? `${current}.\n${phrase}` : phrase;
     updateDiagram({ consigna: next });
+  };
+
+  const toggleFavoriteConsigna = (phrase) => {
+    setFavoriteConsignas((current) => {
+      const next = current.includes(phrase)
+        ? current.filter((item) => item !== phrase)
+        : [phrase, ...current].slice(0, 8);
+      if (typeof window !== 'undefined') window.localStorage.setItem(quickConsignasStorageKey, JSON.stringify(next));
+      return next;
+    });
   };
 
   const pushHistory = (elements) => {
@@ -143,6 +164,17 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
     setSelectedId(copy.id);
   };
 
+  const addMovementSequence = () => {
+    const sequence = [
+      { id: createId(), type: 'text', x: 24, y: 18, label: '1' },
+      { id: createId(), type: 'arrow', x1: 28, y1: 20, x2: 42, y2: 24 },
+      { id: createId(), type: 'text', x: 46, y: 26, label: '2' },
+      { id: createId(), type: 'arrow', x1: 50, y1: 28, x2: 60, y2: 36, dashed: true },
+      { id: createId(), type: 'text', x: 64, y: 38, label: '3' },
+    ];
+    updateElements([...drawableElements, ...sequence]);
+  };
+
   return (
     <div className="space-y-4">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.7fr)]">
@@ -153,6 +185,8 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
             <button type="button" title="Recupera el paso deshecho" onClick={redo} disabled={historyIndex >= history.length - 1} className="rounded-xl bg-white/10 px-3 py-2 disabled:opacity-40">Rehacer</button>
             <button type="button" onClick={duplicateSelected} disabled={!selectedElement} className="rounded-xl bg-white/10 px-3 py-2 disabled:opacity-40">Duplicar elemento</button>
             <button type="button" title="Ayuda a colocar elementos en líneas o posiciones cercanas" onClick={() => setSnapEnabled((value) => !value)} className={`rounded-xl px-3 py-2 ${snapEnabled ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-white'}`}>Alinear / Imán</button>
+            <button type="button" title="Modo para construir secuencias simples de movimiento" onClick={() => setMovementMode((value) => !value)} className={`rounded-xl px-3 py-2 ${movementMode ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-white'}`}>Modo movimiento</button>
+            <button type="button" onClick={addMovementSequence} className="rounded-xl bg-white/10 px-3 py-2">Secuencia 1-2-3</button>
             <button type="button" onClick={() => setZoom((value) => Math.max(0.75, Number((value - 0.1).toFixed(1))))} className="rounded-xl bg-white/10 px-3 py-2">-</button>
             <span className="px-1 text-slate-300">{Math.round(zoom * 100)}%</span>
             <button type="button" onClick={() => setZoom((value) => Math.min(1.6, Number((value + 0.1).toFixed(1))))} className="rounded-xl bg-white/10 px-3 py-2">+</button>
@@ -191,15 +225,24 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
               />
             </label>
             <div className="flex flex-wrap gap-2">
-              {quickConsignas.map((phrase) => (
-                <button
-                  key={phrase}
-                  type="button"
-                  onClick={() => appendQuickConsigna(phrase)}
-                  className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/15"
-                >
-                  {phrase}
-                </button>
+              {[...new Set([...favoriteConsignas, ...quickConsignas])].map((phrase) => (
+                <div key={phrase} className="inline-flex overflow-hidden rounded-xl bg-white/10">
+                  <button
+                    type="button"
+                    onClick={() => appendQuickConsigna(phrase)}
+                    className="px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/15"
+                  >
+                    {favoriteConsignas.includes(phrase) ? '★ ' : ''}{phrase}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleFavoriteConsigna(phrase)}
+                    className="border-l border-white/10 px-2 py-2 text-xs font-black text-slate-400 hover:text-amber-200"
+                    title="Marcar como favorita"
+                  >
+                    ★
+                  </button>
+                </div>
               ))}
             </div>
           </div>
@@ -250,7 +293,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
                     className="w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
                   />
                   <div className="flex flex-wrap gap-2">
-                    {quickConsignas.map((phrase) => (
+                    {[...new Set([...favoriteConsignas, ...quickConsignas])].map((phrase) => (
                       <button
                         key={`${selectedElement.id}-${phrase}`}
                         type="button"

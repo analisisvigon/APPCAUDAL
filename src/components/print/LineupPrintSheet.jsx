@@ -14,7 +14,7 @@ const getBenchNumber = (player) => {
   return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
 };
 
-export default function LineupPrintSheet({ match, starters = [], bench = [], coordinates = [], system = '4-4-2', kit = 'home', captainPlayerId = null, matchKeys = [], staffNotes = [], dossierType = 'Staff' }) {
+export default function LineupPrintSheet({ match, starters = [], bench = [], coordinates = [], system = '4-4-2', kit = 'home', captainPlayerId = null, matchKeys = [], staffNotes = [], dossierType = 'Staff', pageNumber = 1, totalPages = 1 }) {
   const sortedBench = [...bench].sort((a, b) => getBenchNumber(a) - getBenchNumber(b));
   const keys = (matchKeys.length ? matchKeys : [match?.planClave, match?.planObjetivo, match?.prePlanAdjustment])
     .flatMap((value) => String(value || '').split('\n'))
@@ -69,6 +69,10 @@ export default function LineupPrintSheet({ match, starters = [], bench = [], coo
           </div>
         </aside>
       </section>
+      <footer className="operational-print-footer lineup-print-footer">
+        <span>C.D. Caudal · {match?.opponent || 'Rival'}</span>
+        <strong>{pageNumber}/{totalPages}</strong>
+      </footer>
     </article>
   );
 }

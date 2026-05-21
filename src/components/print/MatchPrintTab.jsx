@@ -63,19 +63,63 @@ const createDefaultOffensiveNote = (type) => createDefaultSetPieceNote(type, off
 const createDefaultDefensiveNote = (type) => createDefaultSetPieceNote(type, defensiveSetPieceTypes, defaultDefensiveRoles);
 
 const dossierPageDefinitions = [
-  { id: 'lineup', label: 'Alineacion', group: 'Vestuario' },
-  { id: 'takers', label: 'Lanzadores', group: 'Banquillo' },
-  { id: 'offensive', label: 'ABP ofensiva', group: 'Staff' },
-  { id: 'defensive', label: 'ABP defensiva', group: 'Staff' },
-  { id: 'kickoff', label: 'Saque inicial', group: 'Vestuario' },
-  { id: 'pressure', label: 'Plan de presion', group: 'Banquillo' },
-  { id: 'vigilances', label: 'Vigilancias', group: 'Staff' },
-  { id: 'transitions', label: 'Transiciones', group: 'Banquillo' },
-  { id: 'talk', label: 'Charlas rapidas', group: 'Charla' },
-  { id: 'halftime', label: 'Descanso', group: 'Banquillo' },
-  { id: 'rival', label: 'Resumen rival', group: 'Resumen rival' },
-  { id: 'staff', label: 'Notas de staff', group: 'Staff' },
+  { id: 'lineup', label: 'Alineacion', group: 'Vestuario', icon: 'XI', use: 'visual y simple' },
+  { id: 'talk', label: 'Charla rapida', group: 'Charla', icon: 'CH', use: 'impacto vestuario' },
+  { id: 'takers', label: 'Lanzadores', group: 'Banquillo', icon: 'LZ', use: 'consulta rapida' },
+  { id: 'offensive', label: 'ABP ofensiva', group: 'Staff', icon: 'AB+', use: 'balon parado' },
+  { id: 'defensive', label: 'ABP defensiva', group: 'Staff', icon: 'AB-', use: 'marcas y zonas' },
+  { id: 'kickoff', label: 'Saque inicial', group: 'Vestuario', icon: 'SI', use: 'primer minuto' },
+  { id: 'pressure', label: 'Plan de presion', group: 'Banquillo', icon: 'PR', use: 'lectura rapida' },
+  { id: 'vigilances', label: 'Vigilancias', group: 'Staff', icon: 'VG', use: 'control rival' },
+  { id: 'transitions', label: 'Transiciones', group: 'Banquillo', icon: 'TR', use: 'ajustes live' },
+  { id: 'halftime', label: 'Descanso', group: 'Banquillo', icon: 'HT', use: 'escribir encima' },
+  { id: 'rival', label: 'Resumen rival', group: 'Resumen rival', icon: 'RV', use: 'scouting rapido' },
+  { id: 'staff', label: 'Notas de staff', group: 'Staff', icon: 'ST', use: 'denso' },
 ];
+
+const dossierPresetStorageKey = 'caudal-print-dossier-preset-v2';
+
+const dossierPresets = {
+  full_staff: {
+    label: 'Dossier staff completo',
+    type: 'Staff',
+    pages: ['lineup', 'talk', 'rival', 'vigilances', 'pressure', 'transitions', 'takers', 'offensive', 'defensive', 'kickoff', 'halftime', 'staff'],
+  },
+  dressing_room: {
+    label: 'Dossier vestuario',
+    type: 'Vestuario',
+    pages: ['lineup', 'talk', 'kickoff', 'rival'],
+  },
+  bench: {
+    label: 'Dossier banquillo',
+    type: 'Banquillo',
+    pages: ['lineup', 'takers', 'pressure', 'transitions', 'vigilances', 'halftime'],
+  },
+  express: {
+    label: 'Dossier express',
+    type: 'Banquillo',
+    pages: ['lineup', 'talk', 'takers'],
+  },
+  set_pieces: {
+    label: 'Solo ABP',
+    type: 'Staff',
+    pages: ['takers', 'offensive', 'defensive', 'kickoff'],
+  },
+  lineup_takers: {
+    label: 'Solo alineacion + lanzadores',
+    type: 'Vestuario',
+    pages: ['lineup', 'takers'],
+  },
+};
+
+const buildDossierPagesFromPreset = (presetKey = 'bench') => {
+  const preset = dossierPresets[presetKey] || dossierPresets.bench;
+  const ordered = [
+    ...preset.pages.map((id) => dossierPageDefinitions.find((page) => page.id === id)).filter(Boolean),
+    ...dossierPageDefinitions.filter((page) => !preset.pages.includes(page.id)),
+  ];
+  return ordered.map((page) => ({ ...page, active: preset.pages.includes(page.id) }));
+};
 
 const createDefaultDiagram = (type, order, definitions) => {
   const definition = definitions.find((item) => item.id === type);
@@ -195,11 +239,13 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
   const [libraryError, setLibraryError] = useState('');
   const [printMode, setPrintMode] = useState('current');
   const [printValidationStatus, setPrintValidationStatus] = useState('');
-  const [dossierType, setDossierType] = useState('Staff');
-  const [dossierPages, setDossierPages] = useState(dossierPageDefinitions.map((page) => ({
-    ...page,
-    active: ['lineup', 'takers', 'offensive', 'defensive', 'pressure', 'vigilances', 'halftime'].includes(page.id),
-  })));
+  const [dossierPreset, setDossierPreset] = useState(() => {
+    if (typeof window === 'undefined') return 'bench';
+    return window.localStorage.getItem(dossierPresetStorageKey) || 'bench';
+  });
+  const [dossierType, setDossierType] = useState(() => (dossierPresets[dossierPreset]?.type || 'Banquillo'));
+  const [dossierPages, setDossierPages] = useState(() => buildDossierPagesFromPreset(dossierPreset));
+  const [draggedDossierPageId, setDraggedDossierPageId] = useState('');
   const [captainPlayerId, setCaptainPlayerId] = useState(match?.captainPlayerId || '');
   const sheetRef = useRef(null);
 
@@ -384,6 +430,28 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     });
   };
 
+  const dropDossierPage = (targetId) => {
+    if (!draggedDossierPageId || draggedDossierPageId === targetId) return;
+    setDossierPages((current) => {
+      const sourceIndex = current.findIndex((page) => page.id === draggedDossierPageId);
+      const targetIndex = current.findIndex((page) => page.id === targetId);
+      if (sourceIndex < 0 || targetIndex < 0) return current;
+      const next = [...current];
+      const [page] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, page);
+      return next;
+    });
+    setDraggedDossierPageId('');
+  };
+
+  const applyDossierPreset = (presetKey) => {
+    const preset = dossierPresets[presetKey] || dossierPresets.bench;
+    setDossierPreset(presetKey);
+    setDossierType(preset.type);
+    setDossierPages(buildDossierPagesFromPreset(presetKey));
+    if (typeof window !== 'undefined') window.localStorage.setItem(dossierPresetStorageKey, presetKey);
+  };
+
   const getShortLines = (value, limit = 6) => String(value || '').split('\n').map((line) => line.trim()).filter(Boolean).slice(0, limit);
 
   const getMatchKeys = () => [
@@ -446,6 +514,21 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
       window.setTimeout(() => setPrintMode('current'), 300);
     }, 80);
   };
+
+  const mirrorDiagramElements = (elements, axis = 'horizontal') =>
+    cleanDiagramElements(elements).map((element) => {
+      if (['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow'].includes(element.type)) {
+        return axis === 'horizontal'
+          ? { ...element, x1: 100 - Number(element.x1 || 0), x2: 100 - Number(element.x2 || 0) }
+          : { ...element, y1: 72 - Number(element.y1 || 0), y2: 72 - Number(element.y2 || 0) };
+      }
+      if (axis === 'horizontal') {
+        const width = ['zone', 'text_box'].includes(element.type) ? Number(element.width || 0) : 0;
+        return { ...element, x: Math.max(0, 100 - Number(element.x || 0) - width) };
+      }
+      const height = ['zone', 'text_box'].includes(element.type) ? Number(element.height || 0) : 0;
+      return { ...element, y: Math.max(0, 72 - Number(element.y || 0) - height) };
+    });
 
   const getTakerEntry = (type, order) =>
     setPieceTakers.find((entry) => entry.tipo === type && Number(entry.orden) === order) || {
@@ -766,6 +849,17 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     }
   };
 
+  const mirrorCurrentDiagram = (mode, axis) => {
+    const current = getCurrentDiagram(mode);
+    if (!current) return;
+    updateCurrentDiagram(mode, {
+      ...current,
+      elements: mirrorDiagramElements(current.elements, axis),
+      consigna: current.consigna || (axis === 'horizontal' ? 'Jugada espejada horizontalmente.' : 'Jugada espejada verticalmente.'),
+    });
+    setDiagramStatus(axis === 'horizontal' ? 'Jugada espejada horizontalmente. Pulsa Guardar jugada para sincronizar.' : 'Jugada espejada verticalmente. Pulsa Guardar jugada para sincronizar.');
+  };
+
   const deleteCurrentDiagram = async (mode) => {
     const source = getCurrentDiagram(mode);
     const type = getDiagramType(mode);
@@ -1064,6 +1158,19 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
   const printTitle = printView === 'alineacion' ? 'Alineación' : printView === 'lanzadores' ? 'Lanzadores' : printView === 'abp_ofensiva' ? 'ABP ofensiva' : 'ABP defensiva';
 
   const dossierContent = getDossierContent();
+  const activeSheetCount = activeDossierPages.reduce((count, page) => {
+    if (page.id === 'offensive') return count + Math.max(1, chunkDiagrams(dossierContent.offensiveDiagrams).length);
+    if (page.id === 'defensive') return count + Math.max(1, chunkDiagrams(dossierContent.defensiveDiagrams).length);
+    if (page.id === 'kickoff') return count + Math.max(1, dossierContent.kickoffDiagrams.length);
+    return count + 1;
+  }, 0);
+  const groupTone = (group) => {
+    if (group === 'Vestuario') return 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100';
+    if (group === 'Banquillo') return 'border-caudal-electric/25 bg-caudal-electric/10 text-caudal-electric';
+    if (group === 'Charla') return 'border-amber-300/20 bg-amber-300/10 text-amber-100';
+    if (group === 'Resumen rival') return 'border-red-300/20 bg-red-300/10 text-red-100';
+    return 'border-white/10 bg-white/[0.055] text-slate-300';
+  };
 
   return (
     <section className={`match-print-tab space-y-6 ${printMode === 'dossier' ? 'printing-dossier' : ''}`}>
@@ -1129,7 +1236,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Constructor de dossier</p>
-              <p className="mt-1 text-sm text-slate-400">Selecciona hojas operativas, ordenalas y adapta la densidad al uso real.</p>
+              <p className="mt-1 text-sm text-slate-400">Selecciona hojas operativas, ordenalas y adapta la densidad al uso real. {activeDossierPages.length} bloques activos · {activeSheetCount} hojas estimadas.</p>
             </div>
             <label className="flex items-center gap-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
               Tipo de hoja
@@ -1140,9 +1247,29 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
               </select>
             </label>
           </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {Object.entries(dossierPresets).map(([key, preset]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => applyDossierPreset(key)}
+                className={`rounded-2xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] transition ${dossierPreset === key ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
           <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {dossierPages.map((page, index) => (
-              <div key={page.id} className={`flex items-center gap-3 rounded-2xl border px-3 py-2 text-xs font-bold ${page.active ? 'border-caudal-electric/30 bg-caudal-electric/10 text-white' : 'border-white/10 bg-white/[0.035] text-slate-400'}`}>
+              <div
+                key={page.id}
+                draggable
+                onDragStart={() => setDraggedDossierPageId(page.id)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => dropDossierPage(page.id)}
+                className={`flex items-center gap-3 rounded-2xl border px-3 py-2 text-xs font-bold transition ${page.active ? 'border-caudal-electric/30 bg-caudal-electric/10 text-white' : 'border-white/10 bg-white/[0.035] text-slate-400'} ${draggedDossierPageId === page.id ? 'opacity-60 ring-2 ring-caudal-electric' : ''}`}
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-black/25 text-[10px] font-black text-white">{index + 1}</span>
                 <input
                   type="checkbox"
                   checked={Boolean(page.active)}
@@ -1151,7 +1278,10 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                 />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-black uppercase tracking-[0.08em]">{page.label}</p>
-                  <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">{page.group}</p>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    <span className={`rounded-lg border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${groupTone(page.group)}`}>{page.icon} · {page.group}</span>
+                    <span className="rounded-lg bg-white/10 px-1.5 py-0.5 text-[9px] font-bold text-slate-400">Uso recomendado: {page.use}</span>
+                  </div>
                 </div>
                 <button type="button" onClick={() => moveDossierPage(page.id, -1)} disabled={index === 0} className="rounded-lg bg-white/10 px-2 py-1 text-[10px] disabled:opacity-30">Subir</button>
                 <button type="button" onClick={() => moveDossierPage(page.id, 1)} disabled={index === dossierPages.length - 1} className="rounded-lg bg-white/10 px-2 py-1 text-[10px] disabled:opacity-30">Bajar</button>
@@ -1247,6 +1377,22 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                 className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Duplicar jugada
+              </button>
+              <button
+                type="button"
+                onClick={() => mirrorCurrentDiagram('offensive', 'horizontal')}
+                disabled={diagramSaving || !getTypeDiagrams('offensive').length}
+                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Espejo H
+              </button>
+              <button
+                type="button"
+                onClick={() => mirrorCurrentDiagram('offensive', 'vertical')}
+                disabled={diagramSaving || !getTypeDiagrams('offensive').length}
+                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Espejo V
               </button>
               <button
                 type="button"
@@ -1349,6 +1495,22 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                 className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Duplicar jugada
+              </button>
+              <button
+                type="button"
+                onClick={() => mirrorCurrentDiagram('defensive', 'horizontal')}
+                disabled={diagramSaving || !getTypeDiagrams('defensive').length}
+                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Espejo H
+              </button>
+              <button
+                type="button"
+                onClick={() => mirrorCurrentDiagram('defensive', 'vertical')}
+                disabled={diagramSaving || !getTypeDiagrams('defensive').length}
+                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Espejo V
               </button>
               <button
                 type="button"
@@ -1512,6 +1674,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
       {printMode === 'dossier' ? (
         <div className="print-dossier">
           {activeDossierPages.flatMap((page) => {
+            const pageNumber = activeDossierPages.findIndex((item) => item.id === page.id) + 1;
             if (page.id === 'lineup') {
               return dossierContent.hasLineup ? [(
                 <LineupPrintSheet
@@ -1526,6 +1689,8 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                   matchKeys={getMatchKeys()}
                   staffNotes={getStaffNotes()}
                   dossierType={dossierType}
+                  pageNumber={pageNumber}
+                  totalPages={activeSheetCount}
                 />
               )] : [];
             }
@@ -1564,6 +1729,8 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                 dossierType={dossierType}
                 keys={getMatchKeys()}
                 staffNotes={getStaffNotes()}
+                pageNumber={pageNumber}
+                totalPages={activeSheetCount}
               />
             )];
           })}

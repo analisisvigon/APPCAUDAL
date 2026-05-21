@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 
 const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, value));
-const snapValue = (value, enabled) => (enabled ? Math.round(value / 2) * 2 : value);
+const snapValue = (value, enabled) => (enabled ? Math.round(value / 4) * 4 : value);
 const isArrow = (element) => ['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow'].includes(element?.type);
 const isResizableBox = (element) => ['zone', 'block', 'text_box'].includes(element?.type);
 
