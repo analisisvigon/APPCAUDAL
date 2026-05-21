@@ -2133,7 +2133,7 @@ const extractBesoccerPlayers = (doc, baseUrl) => {
 
 const cleanImportedName = (value) =>
   value
-    .replace(/【\d+†([^】]+)】/g, '$1')
+    .replace(/\[\d+†([^\]]+)\]/g, '$1')
     .replace(/\[|\]|\*|#/g, '')
     .replace(/Image:\s*/gi, '')
     .replace(/\s{2,}/g, ' ')
@@ -2169,7 +2169,7 @@ const extractBesoccerPlayersFromText = (text) => {
   rosterText.split('\n').forEach((rawLine) => {
     const line = rawLine.trim();
     const indexedMatch = line.match(
-      /^(\d{1,2})?\s*(?:【\d+†\s*】\s*)?【\d+†([^】]+)】.*?(?:Image:\s*[a-z]{2}).*?\s(\d{2}|-)\s(?:\d{2,3}|-)\s(?:[\d.,]+K|-)\s+\d+/i
+      /^(\d{1,2})?\s*(?:\[\d+†\s*)?\[?\d+†([^\]]+)\]?.*?(?:Image:\s*[a-z]{2}).*?\s(\d{2}|-)\s(?:\d{2,3}|-)\s(?:[\d.,]+K|-)\s+\d+/i
     );
     if (indexedMatch) {
       const [, number = '', rawName, rawAge = ''] = indexedMatch;
@@ -2357,15 +2357,15 @@ const renderIndividualTacticalAdvice = (advice) => (
     <div className="rounded-3xl border border-emerald-300/15 bg-emerald-400/5 p-3">
       <p className="px-1 pb-2 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-300">Hacer</p>
       <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-1">
-        {renderIndividualAdviceGroup({ title: '3 acciones ofensivas', items: advice.upAttack, tone: 'up', icon: '↑' })}
-        {renderIndividualAdviceGroup({ title: '3 acciones defensivas', items: advice.upDefense, tone: 'up', icon: '↑' })}
+        {renderIndividualAdviceGroup({ title: '3 acciones ofensivas', items: advice.upAttack, tone: 'up', icon: '?' })}
+        {renderIndividualAdviceGroup({ title: '3 acciones defensivas', items: advice.upDefense, tone: 'up', icon: '?' })}
       </div>
     </div>
     <div className="rounded-3xl border border-rose-300/15 bg-rose-400/5 p-3">
       <p className="px-1 pb-2 text-[10px] font-black uppercase tracking-[0.24em] text-rose-300">Evitar</p>
       <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-1">
-        {renderIndividualAdviceGroup({ title: '3 acciones ofensivas', items: advice.downAttack, tone: 'down', icon: '↓' })}
-        {renderIndividualAdviceGroup({ title: '3 acciones defensivas', items: advice.downDefense, tone: 'down', icon: '↓' })}
+        {renderIndividualAdviceGroup({ title: '3 acciones ofensivas', items: advice.downAttack, tone: 'down', icon: '?' })}
+        {renderIndividualAdviceGroup({ title: '3 acciones defensivas', items: advice.downDefense, tone: 'down', icon: '?' })}
       </div>
     </div>
   </div>
@@ -2387,7 +2387,7 @@ const renderTacticalPoint = (item, tone, index) => {
           isUp ? 'bg-emerald-400 text-slate-950' : 'bg-rose-400 text-white'
         }`}
       >
-        {isUp ? '↑' : '↓'}
+        {isUp ? '?' : '?'}
       </span>
       <span>{item}</span>
     </li>
@@ -2542,7 +2542,7 @@ function App() {
   });
   const [eventTypes, setEventTypes] = useState([]);
   const [selectedEventType, setSelectedEventType] = useState('');
-  const [newEventDraft, setNewEventDraft] = useState({ minute: '', type: '', description: '', player: '' });
+  const [newEventDraft, setNewEventDraft] = useState({ minute: '', type: '', description: '', player: '', keyEvent: false });
   const [newEventTypeDraft, setNewEventTypeDraft] = useState({ name: '', color: 'slate' });
   const [postVideoStartSeconds, setPostVideoStartSeconds] = useState(0);
   const [postCurrentMinute, setPostCurrentMinute] = useState('');
@@ -5224,7 +5224,9 @@ function App() {
       tipo_evento_id: selectedType?.id || null,
       minute,
       type: effectiveType,
-      description: newEventDraft.description,
+      description: newEventDraft.keyEvent && !String(newEventDraft.description || '').startsWith('[Evento clave]')
+        ? `[Evento clave] ${newEventDraft.description}`
+        : newEventDraft.description,
       player: newEventDraft.player,
       video_seconds: nextVideoSeconds,
     };
@@ -5243,8 +5245,88 @@ function App() {
       return;
     }
     setSelectedPostEventId(savedEvent?.id || newEventDraft.id || null);
-    setNewEventDraft({ minute: '', type: selectedEventType, description: '', player: '' });
+    setNewEventDraft({ minute: '', type: selectedEventType, description: '', player: '', keyEvent: false });
     await loadMatchPostData(selectedMatch.id);
+  };
+
+  const buildPostAutoSummary = () => {
+    if (!selectedMatch) return '';
+    const score = getStatsScore();
+    const quick = getQuickEventSummary(selectedMatch.quickEvents || []);
+    const goalEvents = getStatsGoalEvents();
+    const resultText = `${score.caudal === score.rival ? 'Empate' : score.caudal > score.rival ? 'Victoria' : 'Derrota'} ${score.caudal}-${score.rival}.`;
+    const goalContext = goalEvents.length
+      ? goalEvents.slice(0, 2).map((event) => {
+        const action = event.attackType || event.phase || event.subphase || 'acción';
+        return event.type === 'Gol a favor'
+          ? `El equipo encontró gol en ${String(action).toLowerCase()}`
+          : `Concedió tras ${String(action).toLowerCase()}`;
+      }).join('. ')
+      : '';
+    const attackText = quick.shots || quick.boxEntries
+      ? `Generó ${quick.shots} tiros y ${quick.boxEntries} entradas al área.`
+      : 'Pendiente de etiquetar volumen ofensivo.';
+    const riskText = quick.rivalShots || quick.losses
+      ? `Sufrió ${quick.losses} pérdidas peligrosas y concedió ${quick.rivalShots} tiros.`
+      : 'No hay riesgos rápidos relevantes registrados.';
+    return [resultText, goalContext, attackText, riskText].filter(Boolean).join(' ');
+  };
+
+  const getPostReviewState = () => {
+    const analysis = safeObject(selectedMatch?.postAiAnalysis);
+    if (analysis.closedAt || selectedMatch?.status === 'Cerrado' || selectedMatch?.status === 'Revisado') return 'Cerrado';
+    if ((selectedMatch?.quickEvents || []).length && !(selectedMatch.quickEvents || []).some((event) => !event.reviewed)) return 'Revisado';
+    return 'Pendiente';
+  };
+
+  const getPostReviewStateClass = (state = getPostReviewState()) => {
+    if (state === 'Cerrado') return 'border-emerald-200/25 bg-emerald-300/10 text-emerald-100';
+    if (state === 'Revisado') return 'border-caudal-electric/25 bg-caudal-electric/10 text-caudal-electric';
+    return 'border-yellow-200/25 bg-yellow-300/10 text-yellow-100';
+  };
+
+  const getPostQuickClipTypes = () => {
+    const desired = ['Ocasión', 'Pérdida', 'Recuperación', 'Centro lateral', 'Transición', 'Presión alta', 'Error rival', 'Juego directo rival'];
+    return desired.map((name, index) => {
+      const stored = eventTypes.find((eventType) => normalizePlayerIdentityName(eventType.name) === normalizePlayerIdentityName(name));
+      return stored || { id: null, legacyId: `quick-${index}`, name, color: ['emerald', 'red', 'sky', 'violet', 'amber', 'orange', 'slate', 'red'][index] || 'slate' };
+    });
+  };
+
+  const relatePostClipWithAnalysis = async (event) => {
+    if (!event) return;
+    const line = `${event.minute || '-'}' · ${event.type || 'Clip'}${event.description ? `: ${event.description}` : ''}`;
+    await updateSelectedMatchFields({
+      postReality: [selectedMatch.postReality, line].filter(Boolean).join('\n'),
+    });
+  };
+
+  const closePostAnalysis = async () => {
+    if (!selectedMatch) return;
+    const finalSummary = buildPostAutoSummary();
+    const nextPostAiAnalysis = {
+      ...safeObject(selectedMatch.postAiAnalysis),
+      closedAt: new Date().toISOString(),
+      finalSummary,
+    };
+    const { error: closeError } = await supabase
+      .from("partidos")
+      .update({
+        status: 'Revisado',
+        post_ai_analysis: nextPostAiAnalysis,
+        post_notes: selectedMatch.postNotes || finalSummary,
+      })
+      .eq("id", selectedMatch.id);
+    if (closeError) {
+      setPostError(closeError.message || 'No se pudo cerrar el análisis.');
+      return;
+    }
+    setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? {
+      ...match,
+      status: 'Revisado',
+      postAiAnalysis: nextPostAiAnalysis,
+      postNotes: match.postNotes || finalSummary,
+    } : match)));
   };
 
   const addEventType = async () => {
@@ -5348,8 +5430,8 @@ function App() {
     }
     setPendingPostEventDeleteId(null);
     await loadMatchPostData(selectedMatch.id);
-    setPostVideoSaveStatus('Guardado ✓');
-    window.setTimeout(() => setPostVideoSaveStatus((current) => (current === 'Guardado ✓' ? '' : current)), 2200);
+    setPostVideoSaveStatus('Guardado ?');
+    window.setTimeout(() => setPostVideoSaveStatus((current) => (current === 'Guardado ?' ? '' : current)), 2200);
   };
 
   const runPostAiAnalysis = () => {
@@ -5467,8 +5549,8 @@ function App() {
       try {
         await operation();
         const refreshed = await refreshStatsFromSupabase(currentMatchId, reason);
-        setStatsSaveStatus('Guardado ✓');
-        window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Guardado ✓' ? '' : current)), 2200);
+        setStatsSaveStatus('Guardado ?');
+        window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Guardado ?' ? '' : current)), 2200);
         return refreshed;
       } catch (operationError) {
         console.error(`Error guardando estadísticas (${reason}) en Supabase:`, operationError);
@@ -5753,13 +5835,13 @@ function App() {
     const substitutionOut = getStatsReplacementInfo(playerName);
     const substitutionIn = getStatsSubstitutionEvents().find((event) => event.inPlayer === playerName);
     return [
-      stats.goals ? { key: 'goals', label: stats.goals > 1 ? `⚽${stats.goals}` : '⚽', title: `${stats.goals} gol${stats.goals > 1 ? 'es' : ''}`, className: 'bg-white text-slate-950' } : null,
-      stats.assists ? { key: 'assists', label: stats.assists > 1 ? `↗${stats.assists}` : '↗', title: `${stats.assists} asistencia${stats.assists > 1 ? 's' : ''}`, className: 'bg-caudal-electric text-slate-950' } : null,
+      stats.goals ? { key: 'goals', label: stats.goals > 1 ? `?${stats.goals}` : '?', title: `${stats.goals} gol${stats.goals > 1 ? 'es' : ''}`, className: 'bg-white text-slate-950' } : null,
+      stats.assists ? { key: 'assists', label: stats.assists > 1 ? `?${stats.assists}` : '?', title: `${stats.assists} asistencia${stats.assists > 1 ? 's' : ''}`, className: 'bg-caudal-electric text-slate-950' } : null,
       stats.yellow ? { key: 'yellow', label: stats.yellowCount > 1 ? `AM${stats.yellowCount}` : 'AM', title: 'Amarilla', className: 'bg-yellow-300 text-slate-950' } : null,
       stats.red ? { key: 'red', label: 'RJ', title: 'Roja', className: 'bg-red-600 text-white' } : null,
-      stats.injured ? { key: 'injured', label: '✚', title: 'Lesión', className: 'bg-rose-200 text-rose-800' } : null,
-      substitutionOut ? { key: 'sub-out', label: `${substitutionOut.minute}'↓`, title: `Sale por ${substitutionOut.replacementName}`, className: 'bg-emerald-500 text-white' } : null,
-      substitutionIn ? { key: 'sub-in', label: `${substitutionIn.minute}'↑`, title: `Entra por ${substitutionIn.outPlayer}`, className: 'bg-emerald-400 text-slate-950' } : null,
+      stats.injured ? { key: 'injured', label: '?', title: 'Lesión', className: 'bg-rose-200 text-rose-800' } : null,
+      substitutionOut ? { key: 'sub-out', label: `${substitutionOut.minute}'?`, title: `Sale por ${substitutionOut.replacementName}`, className: 'bg-emerald-500 text-white' } : null,
+      substitutionIn ? { key: 'sub-in', label: `${substitutionIn.minute}'?`, title: `Entra por ${substitutionIn.outPlayer}`, className: 'bg-emerald-400 text-slate-950' } : null,
     ].filter(Boolean);
   };
 
@@ -6261,8 +6343,8 @@ function App() {
       return;
     }
     await loadMatchPostData(selectedMatch.id);
-    setQuickEventStatus('Guardado ✓');
-    window.setTimeout(() => setQuickEventStatus((current) => (current === 'Guardado ✓' ? '' : current)), 2200);
+    setQuickEventStatus('Guardado ?');
+    window.setTimeout(() => setQuickEventStatus((current) => (current === 'Guardado ?' ? '' : current)), 2200);
     setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
   };
 
@@ -6280,8 +6362,8 @@ function App() {
     }
     setPendingQuickEventDeleteId(null);
     await loadMatchPostData(selectedMatch.id);
-    setQuickEventStatus('Guardado ✓');
-    window.setTimeout(() => setQuickEventStatus((current) => (current === 'Guardado ✓' ? '' : current)), 2200);
+    setQuickEventStatus('Guardado ?');
+    window.setTimeout(() => setQuickEventStatus((current) => (current === 'Guardado ?' ? '' : current)), 2200);
     setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
   };
 
@@ -6462,8 +6544,8 @@ function App() {
     setIsGoalAnalysisOpen(false);
     await loadPartidos();
     await refreshStatsFromSupabase(selectedMatch.id, 'análisis de goles y marcador');
-    setStatsSaveStatus('Gol registrado ✓');
-    window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Gol registrado ✓' ? '' : current)), 2200);
+    setStatsSaveStatus('Gol registrado ?');
+    window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Gol registrado ?' ? '' : current)), 2200);
   };
 
   const renderZoneGrid = ({ value, onChange, zones = pitchZoneOptions, goal = false, compact = false, variant = 'neutral' }) => {
@@ -6888,13 +6970,356 @@ function App() {
               </div>
               {replacementInfo ? (
                 <div className="max-w-[108px] truncate rounded-xl bg-emerald-500 px-2 py-1 text-[10px] font-black text-white" title={`Entra ${replacementInfo.replacementName}`}>
-                  ↑ {replacementInfo.replacementName} · {replacementInfo.substituteMinutes}'
+                  ? {replacementInfo.replacementName} · {replacementInfo.substituteMinutes}'
                 </div>
               ) : null}
             </div>
           );
         })}
       </div>
+    );
+  };
+
+  const renderPostMatchView = () => {
+    const reviewState = getPostReviewState();
+    const pendingQuick = (selectedMatch.quickEvents || []).filter((event) => !event.reviewed).length;
+    const score = getStatsScore();
+    const postSummary = buildPostAutoSummary();
+    const sortedPostClips = [...(selectedMatch.events || [])].sort((a, b) => Number(a.videoSeconds || 0) - Number(b.videoSeconds || 0));
+    const prePlanItems = [
+      ...(selectedMatch.planClave || '').split('\n'),
+      ...(selectedMatch.planConBalon || '').split('\n'),
+      ...(selectedMatch.planSinBalon || '').split('\n'),
+      ...(selectedMatch.planTransiciones || '').split('\n'),
+    ].map((item) => item.trim()).filter(Boolean).slice(0, 6);
+    const postBlockHeader = (eyebrow, title, subtitle, right = null) => (
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric">{eyebrow}</p>
+          <h3 className="mt-1 text-lg font-black uppercase tracking-[0.12em] text-white">{title}</h3>
+          {subtitle ? <p className="mt-2 text-sm text-slate-400">{subtitle}</p> : null}
+        </div>
+        {right}
+      </div>
+    );
+    const convertQuickToTacticalEvent = (event, definition) => {
+      const playerName = players.find((player) => player.id === event.jugadorId)?.name || '';
+      setNewEventDraft({
+        minute: event.minute || '',
+        type: definition?.label || selectedEventType || '',
+        description: `${definition?.label || event.tipoEvento}${event.equipo === 'rival' ? ' rival' : ''}`,
+        player: playerName,
+        keyEvent: true,
+      });
+      setPostCurrentMinute(event.minute || '');
+    };
+
+    return (
+      <section className="space-y-7">
+        {postLoading ? (
+          <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 text-sm text-slate-400 shadow-glow">
+            Cargando POST desde Supabase...
+          </div>
+        ) : null}
+        {postError ? (
+          <div className="rounded-3xl border border-red-500/20 bg-red-500/10 p-5 text-sm text-red-100 shadow-glow">
+            {postError}
+          </div>
+        ) : null}
+
+        <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+          {postBlockHeader('A · Resumen POST', 'Centro de revisión del partido', 'Primera lectura para orientar la revisión de vídeo y validar lo capturado en directo.', (
+            <span className={`rounded-2xl border px-4 py-2 text-xs font-black uppercase tracking-[0.14em] ${getPostReviewStateClass(reviewState)}`}>
+              {reviewState}
+            </span>
+          ))}
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+            {[
+              ['Resultado', `${score.caudal}-${score.rival}`],
+              ['Rival', selectedMatch.opponent || 'Rival'],
+              ['Sistema rival', getCurrentRivalSystem()],
+              ['Fecha', matchDisplayDate(selectedMatch.date)],
+              ['Competición', selectedMatch.type || 'Partido'],
+              ['Pendientes', pendingQuick],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-2xl border border-white/5 bg-white/[0.045] p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                <p className="mt-2 truncate text-lg font-black text-white">{value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-5 rounded-3xl border border-caudal-electric/15 bg-caudal-electric/[0.055] p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Mini resumen automático</p>
+            <p className="mt-2 text-sm leading-6 text-slate-100">{postSummary}</p>
+          </div>
+        </section>
+
+        <section className="app-card">
+          {postBlockHeader('B · Eventos rápidos del delegado', 'Revisar y validar capturas de directo', 'Apuntes simples del partido: corrige minuto, equipo, jugador y marca qué entra al análisis.', (
+            <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-300">
+              {pendingQuick} pendientes de revisar
+            </span>
+          ))}
+          <StatusMessage status={quickEventStatus} className="mt-4" />
+          <div className="mt-5 space-y-2">
+            {(selectedMatch.quickEvents || []).length ? (
+              [...(selectedMatch.quickEvents || [])]
+                .sort((a, b) => Number(a.minute || 0) - Number(b.minute || 0))
+                .map((event) => {
+                  const definition = delegatedEventDefinitions.find((item) => item.tipoEvento === event.tipoEvento);
+                  const isRival = (event.equipo || definition?.side) === 'rival';
+                  const isSaving = quickEventSavingIds.includes(event.id);
+                  const isConfirmingDelete = pendingQuickEventDeleteId === event.id;
+                  return (
+                    <div key={event.id} className={`rounded-2xl border p-3 transition ${event.reviewed ? 'border-emerald-400/25 bg-emerald-400/10' : 'border-white/10 bg-[#0f1e38]/80'}`}>
+                      <div className="grid gap-2 lg:grid-cols-[70px_170px_110px_1fr_auto] lg:items-center">
+                        <input
+                          type="number"
+                          min="0"
+                          max="130"
+                          defaultValue={event.minute || '0'}
+                          onBlur={(blurEvent) => updateQuickEvent(event.id, { minute: blurEvent.target.value })}
+                          disabled={isSaving}
+                          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-center text-sm font-black text-white"
+                        />
+                        <select
+                          value={event.tipoEvento}
+                          onChange={(changeEvent) => updateQuickEvent(event.id, { tipoEvento: changeEvent.target.value })}
+                          disabled={isSaving}
+                          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white"
+                        >
+                          {delegatedEventDefinitions.map((item) => (
+                            <option key={`${item.tipoEvento}-${item.key}`} value={item.tipoEvento}>{item.label}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={isRival ? 'rival' : 'caudal'}
+                          onChange={(changeEvent) => updateQuickEvent(event.id, { equipo: changeEvent.target.value, jugadorId: changeEvent.target.value === 'rival' ? '' : event.jugadorId })}
+                          disabled={isSaving}
+                          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white"
+                        >
+                          <option value="caudal">Caudal</option>
+                          <option value="rival">Rival</option>
+                        </select>
+                        <select
+                          value={event.jugadorId || ''}
+                          disabled={isRival || isSaving}
+                          onChange={(changeEvent) => updateQuickEvent(event.id, { jugadorId: changeEvent.target.value })}
+                          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white disabled:text-slate-500"
+                        >
+                          <option value="">{isRival ? 'Evento rival' : 'Sin jugador'}</option>
+                          {getStatsCalledPlayers().map((player) => (
+                            <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
+                          ))}
+                        </select>
+                        <div className="flex flex-wrap gap-2 lg:justify-end">
+                          <span className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] ${event.reviewed ? 'bg-emerald-300 text-slate-950' : 'bg-yellow-300 text-slate-950'}`}>
+                            {event.reviewed ? 'Revisado' : 'Pendiente'}
+                          </span>
+                          <button type="button" onClick={() => updateQuickEvent(event.id, { reviewed: !event.reviewed })} disabled={isSaving} className="btn-secondary btn-small">
+                            {event.reviewed ? 'Desmarcar' : 'Validar'}
+                          </button>
+                          <button type="button" onClick={() => convertQuickToTacticalEvent(event, definition)} className="btn-small bg-caudal-electric text-slate-950">
+                            Convertir en evento táctico
+                          </button>
+                          {isConfirmingDelete ? (
+                            <button type="button" onClick={() => deleteQuickEvent(event.id)} disabled={isSaving} className="btn-danger btn-small bg-red-500 text-white">Confirmar</button>
+                          ) : (
+                            <button type="button" onClick={() => setPendingQuickEventDeleteId(event.id)} disabled={isSaving} className="btn-danger btn-small">Borrar</button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+            ) : (
+              <div className="empty-state">
+                <p className="font-bold text-slate-200">No hay eventos rápidos todavía</p>
+                <p className="mt-1">Lo capturado en Modo Delegado aparecerá aquí para validarlo antes del análisis.</p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="grid gap-6 xl:grid-cols-[1.45fr_0.85fr]">
+          <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+            {postBlockHeader('C · Vídeo y clips', 'Vídeo y clips del partido', 'Marca acciones, navega por la timeline y relaciona clips con la lectura táctica.')}
+            <label className="mt-5 block space-y-2 text-sm text-slate-300">
+              <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Enlace YouTube</span>
+              <input
+                value={selectedMatch.postVideoLink || ''}
+                onChange={(event) => handlePostVideoLinkChange(event.target.value)}
+                onBlur={savePostVideoLink}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter') return;
+                  event.currentTarget.blur();
+                }}
+                placeholder="https://www.youtube.com/watch?v=..."
+                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
+              />
+              {postVideoSaveStatus ? <span className="text-xs text-slate-500">{postVideoSaveStatus}</span> : null}
+            </label>
+            <div className="mt-5 rounded-3xl bg-[#0f1e38]/80 p-3">
+              {getYouTubeEmbedUrl(selectedMatch.postVideoLink, postVideoStartSeconds) ? (
+                <>
+                  <div className="relative overflow-hidden rounded-3xl bg-black shadow-inner" style={{ paddingTop: '56.25%' }}>
+                    <iframe
+                      ref={postYoutubeIframeRef}
+                      key={selectedMatch.postVideoLink}
+                      src={getYouTubeEmbedUrl(selectedMatch.postVideoLink, 0)}
+                      title="Post partido video"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      className="absolute inset-0 h-full w-full"
+                    />
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {getPostQuickClipTypes().map((eventType) => (
+                      <button
+                        key={`${eventType.name}-${eventType.id || eventType.legacyId}`}
+                        type="button"
+                        onClick={() => markPostClip(eventType)}
+                        disabled={!postYoutubeReady || postClipSaving}
+                        className={`rounded-2xl px-3 py-2 text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${eventButtonClass(eventType.color || eventType.name)}`}
+                      >
+                        {eventType.name}
+                      </button>
+                    ))}
+                  </div>
+                  {postClipFeedback ? <p className="mt-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm font-semibold text-emerald-200">{postClipFeedback}</p> : null}
+                  <div className="mt-4 rounded-3xl border border-white/10 bg-black/25 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Timeline</p>
+                      <p className="text-xs text-slate-400">{postVideoDuration ? `${Math.round(postVideoDuration / 60)} min` : 'Duración no disponible'}</p>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {sortedPostClips.length ? sortedPostClips.map((event) => (
+                        <button
+                          key={event.id}
+                          type="button"
+                          onClick={() => seekPostVideoToEvent(event)}
+                          className={`rounded-2xl px-3 py-2 text-xs font-bold transition ${selectedPostEventId === event.id ? 'ring-2 ring-caudal-electric' : ''} ${eventButtonClass(event.type)}`}
+                          title={event.description}
+                        >
+                          {event.minute}' · {event.type}
+                        </button>
+                      )) : <p className="text-sm text-slate-500">Marca clips para construir la timeline.</p>}
+                    </div>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {sortedPostClips.length ? sortedPostClips.map((event) => {
+                      const isConfirmingDelete = pendingPostEventDeleteId === event.id;
+                      return (
+                        <div key={event.id} className={`rounded-3xl border p-4 transition ${selectedPostEventId === event.id ? 'border-caudal-electric/60 bg-caudal-electric/10' : 'border-white/5 bg-[#091428]/80'}`}>
+                          <div className="grid gap-3 lg:grid-cols-[80px_145px_1fr_auto] lg:items-center">
+                            <input value={event.minute || ''} onChange={(changeEvent) => updatePostEventLocal(event.id, { minute: changeEvent.target.value })} onBlur={(blurEvent) => savePostEventInline({ ...event, minute: blurEvent.target.value })} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white" />
+                            <select value={event.type || ''} onChange={(changeEvent) => { updatePostEventLocal(event.id, { type: changeEvent.target.value }); const selectedType = eventTypes.find((eventType) => eventType.name === changeEvent.target.value); savePostEventInline({ ...event, type: changeEvent.target.value, tipoEventoId: selectedType?.id || null }); }} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white">
+                              {eventTypes.map((eventType) => <option key={eventType.id} value={eventType.name}>{eventType.name}</option>)}
+                            </select>
+                            <input value={event.description || ''} onChange={(changeEvent) => updatePostEventLocal(event.id, { description: changeEvent.target.value })} onBlur={(blurEvent) => savePostEventInline({ ...event, description: blurEvent.target.value })} placeholder="Descripción / observable" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500" />
+                            <div className="flex flex-wrap gap-2 lg:justify-end">
+                              <button type="button" onClick={() => seekPostVideoToEvent(event)} className={`rounded-xl px-3 py-2 text-xs font-bold ${eventButtonClass(event.type)}`}>Ir al vídeo</button>
+                              <button type="button" onClick={() => relatePostClipWithAnalysis(event)} className="rounded-xl bg-caudal-electric/90 px-3 py-2 text-xs font-bold text-slate-950">Relacionar con análisis táctico</button>
+                              {isConfirmingDelete ? <button type="button" onClick={() => deletePostEvent(event.id)} className="rounded-xl bg-red-500 px-3 py-2 text-xs font-bold text-white">Confirmar</button> : <button type="button" onClick={() => setPendingPostEventDeleteId(event.id)} className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100">Eliminar</button>}
+                            </div>
+                          </div>
+                          <input value={event.player || ''} onChange={(changeEvent) => updatePostEventLocal(event.id, { player: changeEvent.target.value })} onBlur={(blurEvent) => savePostEventInline({ ...event, player: blurEvent.target.value })} placeholder="Jugador asociado" className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500" />
+                        </div>
+                      );
+                    }) : <div className="rounded-3xl bg-[#091428]/80 p-6 text-sm text-slate-400">No se han marcado clips todavía.</div>}
+                  </div>
+                </>
+              ) : (
+                <div className="flex min-h-[360px] items-center justify-center rounded-3xl border border-dashed border-white/10 bg-black/20 text-center text-sm text-slate-400">
+                  Sin vídeo asignado
+                </div>
+              )}
+            </div>
+          </div>
+
+          <aside className="space-y-6">
+            <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+              {postBlockHeader('Registro manual', 'Registrar algo importante', 'Mientras revisas el vídeo, crea un clip táctico sin salir del flujo.')}
+              <div className="mt-5 space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input value={postCurrentMinute} onChange={(event) => { setPostCurrentMinute(event.target.value); handleEventDraftChange('minute', event.target.value); }} placeholder="Minuto" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
+                  <select value={newEventDraft.type || selectedEventType} onChange={(event) => { setSelectedEventType(event.target.value); handleEventDraftChange('type', event.target.value); }} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
+                    <option value="">Tipo</option>
+                    {eventTypes.map((eventType) => <option key={eventType.id} value={eventType.name}>{eventType.name}</option>)}
+                  </select>
+                </div>
+                <input value={newEventDraft.player} onChange={(event) => handleEventDraftChange('player', event.target.value)} placeholder="Jugador" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
+                <textarea value={newEventDraft.description} onChange={(event) => handleEventDraftChange('description', event.target.value)} placeholder="Qué ocurrió y por qué importa..." className="min-h-[120px] w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white placeholder:text-slate-500" />
+                <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-bold text-slate-200">
+                  <input type="checkbox" checked={Boolean(newEventDraft.keyEvent)} onChange={(event) => handleEventDraftChange('keyEvent', event.target.checked)} className="h-4 w-4 accent-caudal-electric" />
+                  Evento clave
+                </label>
+                <button type="button" onClick={addNewEvent} className="w-full rounded-3xl bg-caudal-electric px-5 py-4 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]">
+                  {newEventDraft.id ? 'Actualizar evento' : 'Guardar evento'}
+                </button>
+              </div>
+            </div>
+          </aside>
+        </section>
+
+        <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+          {postBlockHeader('D · Análisis táctico', 'Lectura futbolística', 'Qué ocurrió, qué se cumplió del plan y qué ajustes deja el partido.')}
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            {[
+              { label: 'Qué ocurrió', field: 'postReality' },
+              { label: 'Qué funcionó', field: 'postFulfilled' },
+              { label: 'Qué no funcionó', field: 'postNotFulfilled' },
+              { label: 'Ajustes futuros', field: 'postNextAdjustment' },
+              { label: 'Relación con PRE', field: 'postWhy' },
+              { label: 'Contexto emocional/competitivo', field: 'postNotes' },
+            ].map((item) => (
+              <label key={item.field} className="space-y-2 text-sm text-slate-300">
+                <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{item.label}</span>
+                <textarea value={selectedMatch[item.field] || ''} onChange={(event) => updateSelectedMatchFields({ [item.field]: event.target.value })} className="min-h-[140px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
+              </label>
+            ))}
+          </div>
+          <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Plan prepartido vs realidad</p>
+            <div className="mt-3 grid gap-2">
+              {prePlanItems.length ? prePlanItems.map((item, index) => (
+                <div key={`${item}-${index}`} className="flex flex-col gap-2 rounded-2xl bg-white/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm font-semibold text-white">{item}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {['Cumplido', 'Parcial', 'No cumplido'].map((status) => <span key={status} className="rounded-xl bg-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">{status}</span>)}
+                  </div>
+                </div>
+              )) : <p className="text-sm text-slate-400">No hay consignas PRE para comparar todavía.</p>}
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+          {postBlockHeader('E · Conclusiones finales', 'Cierre de partido', 'Deja claro qué repetir, qué mejorar y qué entrenar.')}
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            {[
+              { label: 'Qué repetir', field: 'postRepeat' },
+              { label: 'Qué mejorar', field: 'postImprove' },
+              { label: 'Qué entrenar esta semana', field: 'postTrainWeek' },
+              { label: 'Observaciones individuales', field: 'postIndividualObservations' },
+            ].map((item) => (
+              <label key={item.field} className="space-y-2 text-sm text-slate-300">
+                <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{item.label}</span>
+                <textarea value={selectedMatch[item.field] || ''} onChange={(event) => updateSelectedMatchFields({ [item.field]: event.target.value })} className="min-h-[130px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
+              </label>
+            ))}
+          </div>
+          <div className="mt-6 flex flex-col gap-3 rounded-3xl border border-caudal-electric/15 bg-caudal-electric/[0.055] p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-black text-white">Resumen final</p>
+              <p className="mt-1 text-sm text-slate-300">{postSummary}</p>
+            </div>
+            <button type="button" onClick={closePostAnalysis} className="rounded-2xl bg-caudal-electric px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-950">
+              Cerrar análisis
+            </button>
+          </div>
+        </section>
+      </section>
     );
   };
 
@@ -9937,16 +10362,16 @@ function App() {
                 regularStarter ? ['Titular habitual', 'border-white/15 bg-white/[0.06] text-slate-200'] : null,
               ].filter(Boolean);
               const profileMetrics = [
-                { label: 'Minutos', value: `${aggregate.minutes}'`, priority: 'alta', kind: 'participacion', trend: aggregate.minutes ? '↑' : '=' },
-                { label: 'Titularidades', value: aggregate.starts, priority: 'alta', kind: 'participacion', trend: regularStarter ? '↑' : '=' },
-                { label: 'Participación', value: `${aggregate.participation}%`, priority: 'alta', kind: 'participacion', trend: Number(aggregate.participation) >= 60 ? '↑' : Number(aggregate.participation) ? '=' : '↓' },
-                { label: 'Goles', value: aggregate.goals, priority: 'alta', kind: 'ofensiva', trend: aggregate.goals ? '↑' : '=' },
-                { label: 'Asistencias', value: aggregate.assists, priority: 'alta', kind: 'ofensiva', trend: aggregate.assists ? '↑' : '=' },
-                { label: 'Suplencias', value: aggregate.subs, priority: 'media', kind: 'participacion', trend: aggregate.subs ? '=' : '↓' },
-                { label: 'Amarillas', value: aggregate.yellow, priority: 'media', kind: 'disciplina', trend: aggregate.yellow ? '↑' : '=' },
-                { label: 'Rojas', value: aggregate.red, priority: 'media', kind: 'disciplina', trend: aggregate.red ? '↑' : '=' },
-                { label: 'Lesiones', value: aggregate.injured, priority: 'media', kind: 'disciplina', trend: aggregate.injured ? '↑' : '=' },
-                { label: 'Partidos', value: aggregate.played, priority: 'baja', kind: 'participacion', trend: aggregate.played ? '=' : '↓' },
+                { label: 'Minutos', value: `${aggregate.minutes}'`, priority: 'alta', kind: 'participacion', trend: aggregate.minutes ? '?' : '=' },
+                { label: 'Titularidades', value: aggregate.starts, priority: 'alta', kind: 'participacion', trend: regularStarter ? '?' : '=' },
+                { label: 'Participación', value: `${aggregate.participation}%`, priority: 'alta', kind: 'participacion', trend: Number(aggregate.participation) >= 60 ? '?' : Number(aggregate.participation) ? '=' : '?' },
+                { label: 'Goles', value: aggregate.goals, priority: 'alta', kind: 'ofensiva', trend: aggregate.goals ? '?' : '=' },
+                { label: 'Asistencias', value: aggregate.assists, priority: 'alta', kind: 'ofensiva', trend: aggregate.assists ? '?' : '=' },
+                { label: 'Suplencias', value: aggregate.subs, priority: 'media', kind: 'participacion', trend: aggregate.subs ? '=' : '?' },
+                { label: 'Amarillas', value: aggregate.yellow, priority: 'media', kind: 'disciplina', trend: aggregate.yellow ? '?' : '=' },
+                { label: 'Rojas', value: aggregate.red, priority: 'media', kind: 'disciplina', trend: aggregate.red ? '?' : '=' },
+                { label: 'Lesiones', value: aggregate.injured, priority: 'media', kind: 'disciplina', trend: aggregate.injured ? '?' : '=' },
+                { label: 'Partidos', value: aggregate.played, priority: 'baja', kind: 'participacion', trend: aggregate.played ? '=' : '?' },
               ];
               const hasInfluenceData = influenceActions.length > 0;
               const hasGoalZoneData = allGoalActions.some((event) => event.goalZone);
@@ -10107,7 +10532,7 @@ function App() {
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{metric.label}</p>
-                                <span className={`text-xs font-black ${metric.trend === '↑' ? 'text-emerald-200' : metric.trend === '↓' ? 'text-slate-500' : 'text-slate-400'}`}>{metric.trend}</span>
+                                <span className={`text-xs font-black ${metric.trend === '?' ? 'text-emerald-200' : metric.trend === '?' ? 'text-slate-500' : 'text-slate-400'}`}>{metric.trend}</span>
                               </div>
                               <p className={`${metric.priority === 'alta' ? 'mt-1.5 text-3xl' : 'mt-1.5 text-2xl'} font-black text-white`}>{metric.value}</p>
                             </div>
@@ -12196,7 +12621,7 @@ function App() {
                         disabled={statsRefreshing}
                         className="mb-3 inline-flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {statsRefreshing ? 'Actualizando...' : '← Volver a partidos'}
+                        {statsRefreshing ? 'Actualizando...' : '? Volver a partidos'}
                       </button>
                       <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{matchView === 'pre_partido' ? 'Pre partido' : matchView === 'estadisticas_partido' ? 'Estadísticas' : matchView === 'impresion_partido' ? 'Impresión' : 'Post partido'}</p>
                       <h2 className="mt-2 text-3xl font-semibold text-white">{matchView === 'pre_partido' ? 'PRE partido' : matchView === 'estadisticas_partido' ? 'Estadísticas del partido' : matchView === 'impresion_partido' ? 'IMPRESIÓN' : 'POST partido'}</h2>
@@ -13388,7 +13813,7 @@ function App() {
                           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Goles Caudal</p>
                           <div className="mt-3 space-y-2 text-sm text-slate-300">
                             {getStatsGoalEvents().filter((event) => event.type === 'Gol a favor').length ? getStatsGoalEvents().filter((event) => event.type === 'Gol a favor').map((event) => (
-                              <p key={event.id}>{event.minute}' ⚽ {event.scorer || 'Sin goleador'} · {event.subphase}{event.assistant ? ` · 👟 ${event.assistant}` : ''}</p>
+                              <p key={event.id}>{event.minute}' ? {event.scorer || 'Sin goleador'} · {event.subphase}{event.assistant ? ` · ?? ${event.assistant}` : ''}</p>
                             )) : <p>Sin goles registrados.</p>}
                           </div>
                         </div>
@@ -13408,7 +13833,7 @@ function App() {
                                 const stats = getStatsPlayerData(player.name);
                                 return (
                                   <p key={player.id}>
-                                    {player.name} {stats.yellow ? `🟨${stats.yellowCount > 1 ? stats.yellowCount : ''}` : ''}{stats.red ? ' 🟥' : ''}{stats.injured ? ' 🚑' : ''}
+                                    {player.name} {stats.yellow ? `??${stats.yellowCount > 1 ? stats.yellowCount : ''}` : ''}{stats.red ? ' ??' : ''}{stats.injured ? ' ??' : ''}
                                   </p>
                                 );
                               })
@@ -13440,7 +13865,7 @@ function App() {
                             return (
                               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                 <div>
-                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Relación PRE ↔ Estadísticas</p>
+                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Relación PRE ? Estadísticas</p>
                                   <p className={`mt-1 text-xs font-black ${compliance.textClass}`}>{compliance.assessed}/{compliance.total} revisadas · {compliance.percentage}% cumplimiento</p>
                                 </div>
                                 <div className="h-2 w-full overflow-hidden rounded-full bg-white/10 sm:max-w-[180px]">
@@ -13742,492 +14167,9 @@ function App() {
                     getFormationCoordinates={getFormationCoordinates}
                   />
                 ) : (
-                  <section className="space-y-6">
-                    {postLoading ? (
-                      <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 text-sm text-slate-400 shadow-glow">
-                        Cargando POST desde Supabase...
-                      </div>
-                    ) : null}
-                    {postError ? (
-                      <div className="rounded-3xl border border-red-500/20 bg-red-500/10 p-5 text-sm text-red-100 shadow-glow">
-                        {postError}
-                      </div>
-                    ) : null}
-                    <div className="grid gap-6 xl:grid-cols-[1.45fr_0.85fr]">
-                      <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                          <div>
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">POST partido</p>
-                            <h3 className="mt-2 text-2xl font-semibold text-white">Vídeo y análisis de partido</h3>
-                            <p className="mt-2 text-sm text-slate-400">Revisa acciones, salta a eventos y compara el plan con lo que ocurrió.</p>
-                          </div>
-                          <label className="w-full space-y-2 text-sm text-slate-300 lg:max-w-md">
-                            <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Enlace YouTube</span>
-                            <input
-                              value={selectedMatch.postVideoLink || ''}
-                              onChange={(event) => handlePostVideoLinkChange(event.target.value)}
-                              onBlur={savePostVideoLink}
-                              onKeyDown={(event) => {
-                                if (event.key !== 'Enter') return;
-                                event.currentTarget.blur();
-                              }}
-                              placeholder="https://www.youtube.com/watch?v=..."
-                              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
-                            />
-                            {postVideoSaveStatus ? <span className="text-xs text-slate-500">{postVideoSaveStatus}</span> : null}
-                          </label>
-                        </div>
-                        <div className="mt-6 rounded-3xl bg-[#0f1e38]/80 p-3">
-                          {getYouTubeEmbedUrl(selectedMatch.postVideoLink, postVideoStartSeconds) ? (
-                            <>
-                              <div className="relative overflow-hidden rounded-3xl bg-black shadow-inner" style={{ paddingTop: '56.25%' }}>
-                                <iframe
-                                  ref={postYoutubeIframeRef}
-                                  key={selectedMatch.postVideoLink}
-                                  src={getYouTubeEmbedUrl(selectedMatch.postVideoLink, 0)}
-                                  title="Post partido video"
-                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                  allowFullScreen
-                                  className="absolute inset-0 h-full w-full"
-                                />
-                              </div>
-                              <div className="mt-4 rounded-3xl border border-white/10 bg-black/25 p-4">
-                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Timeline de clips</p>
-                                  <p className="text-xs text-slate-400">
-                                    {postVideoDuration ? `${Math.round(postVideoDuration / 60)} min` : 'Duración no disponible'}
-                                  </p>
-                                </div>
-                                {postVideoDuration ? (
-                                  <div className="relative mt-4 h-16 rounded-full bg-white/10">
-                                    <div className="absolute left-3 right-3 top-1/2 h-1 -translate-y-1/2 rounded-full bg-white/20" />
-                                    {[...(selectedMatch.events || [])]
-                                      .sort((a, b) => Number(a.videoSeconds || 0) - Number(b.videoSeconds || 0))
-                                      .map((event, index, events) => {
-                                        const position = getPostEventTimelinePosition(event, index, events);
-                                        if (!position) return null;
-                                        const selected = selectedPostEventId === event.id;
-                                        return (
-                                          <button
-                                            key={event.id}
-                                            type="button"
-                                            onClick={() => seekPostVideoToEvent(event)}
-                                            className={`absolute top-1/2 z-10 flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full ring-4 transition hover:scale-110 ${eventColorDotClass(event.type)} ${selected ? 'scale-125 shadow-[0_0_22px_rgba(255,255,255,0.45)]' : ''}`}
-                                            style={{ left: position.left, marginTop: position.top }}
-                                            title={`${event.minute}' · ${event.type}${event.description ? ` · ${event.description}` : ''}`}
-                                          >
-                                            <span className="h-2 w-2 rounded-full bg-white/90" />
-                                          </button>
-                                        );
-                                      })}
-                                  </div>
-                                ) : (
-                                  <div className="mt-4 flex flex-wrap gap-2">
-                                    {(selectedMatch.events || []).length ? (
-                                      [...(selectedMatch.events || [])]
-                                        .sort((a, b) => Number(a.videoSeconds || 0) - Number(b.videoSeconds || 0))
-                                        .map((event) => (
-                                          <button
-                                            key={event.id}
-                                            type="button"
-                                            onClick={() => seekPostVideoToEvent(event)}
-                                            className={`rounded-2xl px-3 py-2 text-xs font-bold transition ${selectedPostEventId === event.id ? 'ring-2 ring-caudal-electric' : ''} ${eventButtonClass(event.type)}`}
-                                            title={event.description}
-                                          >
-                                            {event.minute}' · {event.type}
-                                          </button>
-                                        ))
-                                    ) : (
-                                      <p className="text-sm text-slate-500">Guarda eventos para crear clips del vídeo.</p>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="mt-4 rounded-3xl border border-white/5 bg-[#091428]/80 p-5">
-                                <div className="flex items-center justify-between gap-3">
-                                  <div>
-                                    <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Clips del vídeo</h4>
-                                    <p className="mt-2 text-sm text-slate-400">Edita jugador y descripción, o salta directamente al momento del vídeo.</p>
-                                  </div>
-                                  <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-300">{(selectedMatch.events || []).length} eventos</span>
-                                </div>
-                                <div className="mt-5 space-y-3">
-                                  {(selectedMatch.events || []).length > 0 ? (
-                                    [...(selectedMatch.events || [])]
-                                      .sort((a, b) => Number(a.videoSeconds || 0) - Number(b.videoSeconds || 0))
-                                      .map((event) => {
-                                      const isConfirmingDelete = pendingPostEventDeleteId === event.id;
-                                      return (
-                                      <div key={event.id} className={`rounded-3xl border p-4 transition ${selectedPostEventId === event.id ? 'border-caudal-electric/60 bg-caudal-electric/10' : 'border-white/5 bg-[#0f1e38]/80'}`}>
-                                        <div className="grid gap-3 lg:grid-cols-[90px_150px_1fr_auto] lg:items-center">
-                                          <label className="space-y-1 text-xs text-slate-500">
-                                            <span className="uppercase tracking-[0.14em]">Minuto</span>
-                                            <input
-                                              value={event.minute || ''}
-                                              onChange={(changeEvent) => updatePostEventLocal(event.id, { minute: changeEvent.target.value })}
-                                              onBlur={(blurEvent) => savePostEventInline({ ...event, minute: blurEvent.target.value })}
-                                              className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white"
-                                            />
-                                          </label>
-                                          <label className="space-y-1 text-xs text-slate-500">
-                                            <span className="uppercase tracking-[0.14em]">Tipo</span>
-                                            <select
-                                              value={event.type || ''}
-                                              onChange={(changeEvent) => {
-                                                updatePostEventLocal(event.id, { type: changeEvent.target.value });
-                                                const selectedType = eventTypes.find((eventType) => eventType.name === changeEvent.target.value);
-                                                savePostEventInline({ ...event, type: changeEvent.target.value, tipoEventoId: selectedType?.id || null });
-                                              }}
-                                              className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white"
-                                            >
-                                              {eventTypes.map((eventType) => <option key={eventType.id} value={eventType.name}>{eventType.name}</option>)}
-                                            </select>
-                                          </label>
-                                          <label className="space-y-1 text-xs text-slate-500">
-                                            <span className="uppercase tracking-[0.14em]">Descripción</span>
-                                            <input
-                                              value={event.description || ''}
-                                              onChange={(changeEvent) => updatePostEventLocal(event.id, { description: changeEvent.target.value })}
-                                              onBlur={(blurEvent) => savePostEventInline({ ...event, description: blurEvent.target.value })}
-                                              placeholder="Añadir detalle del clip"
-                                              className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500"
-                                            />
-                                          </label>
-                                          <div className="flex flex-wrap gap-2 lg:justify-end">
-                                            <button type="button" onClick={() => seekPostVideoToEvent(event)} className={`rounded-xl px-3 py-2 text-xs font-bold ${eventButtonClass(event.type)}`}>
-                                              Ir {formatVideoSeconds(event.videoSeconds)}
-                                            </button>
-                                            {isConfirmingDelete ? (
-                                              <>
-                                                <button type="button" onClick={() => deletePostEvent(event.id)} className="rounded-xl bg-red-500 px-3 py-2 text-xs font-bold text-white">
-                                                  Confirmar
-                                                </button>
-                                                <button type="button" onClick={() => setPendingPostEventDeleteId(null)} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-slate-200">
-                                                  Cancelar
-                                                </button>
-                                              </>
-                                            ) : (
-                                              <button type="button" onClick={() => setPendingPostEventDeleteId(event.id)} className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100">
-                                                Eliminar
-                                              </button>
-                                            )}
-                                          </div>
-                                        </div>
-                                        <label className="mt-3 block space-y-1 text-xs text-slate-500">
-                                          <span className="uppercase tracking-[0.14em]">Jugador</span>
-                                          <input
-                                            value={event.player || ''}
-                                            onChange={(changeEvent) => updatePostEventLocal(event.id, { player: changeEvent.target.value })}
-                                            onBlur={(blurEvent) => savePostEventInline({ ...event, player: blurEvent.target.value })}
-                                            placeholder="Opcional"
-                                            className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500"
-                                          />
-                                        </label>
-                                      </div>
-                                      );
-                                    })
-                                  ) : (
-                                    <div className="rounded-3xl bg-[#0f1e38]/80 p-6 text-sm text-slate-400">No se han marcado clips todavía.</div>
-                                  )}
-                                </div>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="flex min-h-[420px] items-center justify-center rounded-3xl border border-dashed border-white/10 bg-black/20 text-center text-sm text-slate-400">
-                              Sin vídeo asignado
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <aside className="space-y-6">
-                        <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Marcar clips</h4>
-                          <p className="mt-2 text-sm text-slate-400">Pulsa un botón mientras ves la acción. Se guarda el clip en el segundo actual.</p>
-                          {postClipFeedback ? (
-                            <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm font-semibold text-emerald-200">
-                              {postClipFeedback}
-                            </div>
-                          ) : null}
-                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                            {eventTypes.length ? eventTypes.map((eventType) => (
-                              <button
-                                key={eventType.id}
-                                type="button"
-                                onClick={() => markPostClip(eventType)}
-                                disabled={!postYoutubeReady || postClipSaving}
-                                className={`rounded-3xl px-4 py-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${eventButtonClass(eventType.color)}`}>
-                                {eventType.name}
-                              </button>
-                            )) : (
-                              <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-slate-400 sm:col-span-2">
-                                Sin tipos cargados desde Supabase.
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Configurar botones</h4>
-                          <p className="mt-2 text-sm text-slate-400">Edita los tipos que aparecen en la botonera de marcado.</p>
-                          <div className="mt-5 space-y-3">
-                            {eventTypes.map((eventType) => (
-                              <div key={`edit-${eventType.id}`} className="grid gap-2 rounded-2xl bg-white/5 p-3 sm:grid-cols-[1fr_110px_auto]">
-                                <input
-                                  value={eventType.name}
-                                  onChange={(event) => updateEventType(eventType.id, { name: event.target.value })}
-                                  className="min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
-                                />
-                                <select
-                                  value={eventType.color}
-                                  onChange={(event) => updateEventType(eventType.id, { color: event.target.value })}
-                                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
-                                >
-                                  {eventColorOptions.map((color) => (
-                                    <option key={color} value={color}>{color}</option>
-                                  ))}
-                                </select>
-                                <button type="button" onClick={() => removeEventType(eventType.id)} className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-semibold text-red-100">
-                                  Eliminar
-                                </button>
-                              </div>
-                            ))}
-                            <div className="grid gap-2 rounded-2xl bg-white/5 p-3 sm:grid-cols-[1fr_110px_auto]">
-                              <input
-                                value={newEventTypeDraft.name}
-                                onChange={(event) => setNewEventTypeDraft((prev) => ({ ...prev, name: event.target.value }))}
-                                placeholder="Nuevo evento"
-                                className="min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white placeholder:text-slate-500"
-                              />
-                              <select
-                                value={newEventTypeDraft.color}
-                                onChange={(event) => setNewEventTypeDraft((prev) => ({ ...prev, color: event.target.value }))}
-                                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
-                              >
-                                {eventColorOptions.map((color) => (
-                                  <option key={color} value={color}>{color}</option>
-                                ))}
-                              </select>
-                              <button type="button" onClick={addEventType} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-semibold text-slate-950">
-                                Añadir
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Registrar evento</h4>
-                          <div className="mt-5 space-y-4">
-                            <div className="grid gap-4 sm:grid-cols-2">
-                              <label className="space-y-2 text-sm text-slate-300">
-                                <span>Minuto actual</span>
-                                <input
-                                  value={postCurrentMinute}
-                                  onChange={(event) => {
-                                    setPostCurrentMinute(event.target.value);
-                                    handleEventDraftChange('minute', event.target.value);
-                                  }}
-                                  placeholder="Ej. 72"
-                                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white"
-                                />
-                              </label>
-                              <label className="space-y-2 text-sm text-slate-300">
-                                <span>Jugador</span>
-                                <input
-                                  value={newEventDraft.player}
-                                  onChange={(event) => handleEventDraftChange('player', event.target.value)}
-                                  placeholder="Opcional"
-                                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white"
-                                />
-                              </label>
-                            </div>
-                            <label className="space-y-2 text-sm text-slate-300">
-                              <span>Descripción breve</span>
-                              <textarea
-                                value={newEventDraft.description}
-                                onChange={(event) => handleEventDraftChange('description', event.target.value)}
-                                placeholder="Qué ocurrió y por qué importa..."
-                                className="min-h-[110px] w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white placeholder:text-slate-500"
-                              />
-                            </label>
-                            <button type="button" onClick={addNewEvent} className="w-full rounded-3xl bg-caudal-electric px-5 py-4 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]">
-                              {newEventDraft.id ? 'Actualizar evento' : 'Guardar evento'}
-                            </button>
-                          </div>
-                        </div>
-                      </aside>
-                    </div>
-
-                    <div className="app-card">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <p className="app-section-eyebrow">POST partido</p>
-                          <h4 className="mt-2 app-section-title">Eventos rápidos del partido</h4>
-                          <p className="app-subtitle">Revisa lo apuntado por el delegado antes de que alimente el análisis grupal y la ficha individual.</p>
-                        </div>
-                        <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-300">
-                          {(selectedMatch.quickEvents || []).filter((event) => event.reviewed).length}/{(selectedMatch.quickEvents || []).length} revisados
-                        </span>
-                      </div>
-                      <StatusMessage status={quickEventStatus} className="mt-4" />
-                      <div className="mt-5 space-y-3">
-                        {(selectedMatch.quickEvents || []).length ? (
-                          [...(selectedMatch.quickEvents || [])]
-                            .sort((a, b) => Number(a.minute || 0) - Number(b.minute || 0))
-                            .map((event) => {
-                              const definition = delegatedEventDefinitions.find((item) => item.tipoEvento === event.tipoEvento);
-                              const isRival = (event.equipo || definition?.side) === 'rival';
-                              const isSaving = quickEventSavingIds.includes(event.id);
-                              const isConfirmingDelete = pendingQuickEventDeleteId === event.id;
-                              return (
-                                <div key={event.id} className={`rounded-2xl border p-4 ${event.reviewed ? 'border-emerald-400/25 bg-emerald-400/10' : 'border-white/10 bg-[#0f1e38]/80'}`}>
-                                  <div className="grid gap-3 lg:grid-cols-[90px_190px_140px_1fr_auto] lg:items-end">
-                                    <label className="app-label">
-                                      <span>Minuto</span>
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        max="130"
-                                        defaultValue={event.minute || '0'}
-                                        onBlur={(blurEvent) => updateQuickEvent(event.id, { minute: blurEvent.target.value })}
-                                        disabled={isSaving}
-                                        className="app-input font-bold"
-                                      />
-                                    </label>
-                                    <label className="app-label">
-                                      <span>Tipo evento</span>
-                                      <select
-                                        value={event.tipoEvento}
-                                        onChange={(changeEvent) => updateQuickEvent(event.id, { tipoEvento: changeEvent.target.value })}
-                                        disabled={isSaving}
-                                        className="app-select font-bold"
-                                      >
-                                        {delegatedEventDefinitions.map((item) => (
-                                          <option key={item.tipoEvento} value={item.tipoEvento}>{item.label}</option>
-                                        ))}
-                                      </select>
-                                    </label>
-                                    <label className="app-label">
-                                      <span>Equipo</span>
-                                      <select
-                                        value={isRival ? 'rival' : 'caudal'}
-                                        onChange={(changeEvent) => updateQuickEvent(event.id, { equipo: changeEvent.target.value, jugadorId: changeEvent.target.value === 'rival' ? '' : event.jugadorId })}
-                                        disabled={isSaving}
-                                        className="app-select font-bold"
-                                      >
-                                        <option value="caudal">Caudal</option>
-                                        <option value="rival">Rival</option>
-                                      </select>
-                                    </label>
-                                    <label className="app-label">
-                                      <span>Jugador asociado</span>
-                                      <select
-                                        value={event.jugadorId || ''}
-                                        disabled={isRival || isSaving}
-                                        onChange={(changeEvent) => updateQuickEvent(event.id, { jugadorId: changeEvent.target.value })}
-                                        className="app-select font-bold disabled:text-slate-500"
-                                      >
-                                        <option value="">{isRival ? 'Evento rival' : 'Sin jugador'}</option>
-                                        {getStatsCalledPlayers().map((player) => (
-                                          <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
-                                        ))}
-                                      </select>
-                                    </label>
-                                    <div className="flex flex-wrap gap-2 lg:justify-end">
-                                      <button
-                                        type="button"
-                                        onClick={() => updateQuickEvent(event.id, { reviewed: !event.reviewed })}
-                                        disabled={isSaving}
-                                        className={`btn-small ${event.reviewed ? 'bg-emerald-300 text-slate-950 hover:bg-emerald-200' : 'btn-secondary'}`}
-                                      >
-                                        {isSaving ? 'Guardando...' : event.reviewed ? 'Revisado' : 'Marcar revisado'}
-                                      </button>
-                                      {isConfirmingDelete ? (
-                                        <>
-                                          <button
-                                            type="button"
-                                            onClick={() => deleteQuickEvent(event.id)}
-                                            disabled={isSaving}
-                                            className="btn-danger btn-small bg-red-500 text-white"
-                                          >
-                                            Confirmar
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => setPendingQuickEventDeleteId(null)}
-                                            className="btn-secondary btn-small"
-                                          >
-                                            Cancelar
-                                          </button>
-                                        </>
-                                      ) : (
-                                        <button
-                                          type="button"
-                                          onClick={() => setPendingQuickEventDeleteId(event.id)}
-                                          disabled={isSaving}
-                                          className="btn-danger btn-small"
-                                        >
-                                          Borrar
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })
-                        ) : (
-                          <div className="empty-state">
-                            <p className="font-bold text-slate-200">No hay datos todavía</p>
-                            <p className="mt-1">Añade el primer registro desde Modo Delegado para revisarlo aquí.</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                      <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Lectura POST del partido</h4>
-                      <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                        {[
-                          { label: 'Qué ocurrió realmente', field: 'postReality' },
-                          { label: 'Qué se cumplió', field: 'postFulfilled' },
-                          { label: 'Qué no se cumplió', field: 'postNotFulfilled' },
-                          { label: 'Por qué', field: 'postWhy' },
-                          { label: 'Ajuste para próximos partidos', field: 'postNextAdjustment' },
-                          { label: 'Notas POST', field: 'postNotes' },
-                        ].map((item) => (
-                          <label key={item.field} className="space-y-2 text-sm text-slate-300">
-                            <span className="text-xs uppercase tracking-[0.18em] text-slate-500">{item.label}</span>
-                            <textarea
-                              value={selectedMatch[item.field] || ''}
-                              onChange={(event) => updateSelectedMatchFields({ [item.field]: event.target.value })}
-                              className="min-h-[110px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
-                            />
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                      <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Conclusiones finales</h4>
-                      <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                        {[
-                          { label: 'Qué repetir', field: 'postRepeat' },
-                          { label: 'Qué mejorar', field: 'postImprove' },
-                          { label: 'Qué entrenar esta semana', field: 'postTrainWeek' },
-                          { label: 'Observaciones individuales', field: 'postIndividualObservations' },
-                        ].map((item) => (
-                          <label key={item.field} className="space-y-2 text-sm text-slate-300">
-                            <span className="text-xs uppercase tracking-[0.18em] text-slate-500">{item.label}</span>
-                            <textarea
-                              value={selectedMatch[item.field] || ''}
-                              onChange={(event) => updateSelectedMatchFields({ [item.field]: event.target.value })}
-                              className="min-h-[120px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
-                            />
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  </section>
+                  <>
+                    {renderPostMatchView()}
+                  </>
                 )}
               </section>
             ) : (
