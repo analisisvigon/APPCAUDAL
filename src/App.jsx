@@ -5338,9 +5338,17 @@ function App() {
 
   const getPostClipPriority = (event) => {
     const text = normalizePlayerIdentityName(`${event?.type || ''} ${event?.description || ''}`);
-    if (/gol|evento clave|ocasion|perdida peligrosa|perdida/.test(text)) return 0;
-    if (/recuper|presion|transicion/.test(text)) return 1;
+    if (/gol|evento clave|ocasion clara|ocasion|perdida peligrosa|transicion peligrosa|gol rival/.test(text)) return 0;
+    if (/recuperacion alta.*tiro|recuper.*tiro/.test(text)) return 0;
+    if (/tiro|entrada area|presion alta|centro|recuper/.test(text)) return 1;
     return 2;
+  };
+
+  const getPostClipPriorityMeta = (event) => {
+    const priority = getPostClipPriority(event);
+    if (priority === 0) return { label: 'Prioridad alta', short: 'Alta', className: 'border-amber-300/25 bg-amber-300/[0.08] text-amber-100' };
+    if (priority === 1) return { label: 'Prioridad media', short: 'Media', className: 'border-sky-300/20 bg-sky-300/[0.07] text-sky-100' };
+    return { label: 'Prioridad baja', short: 'Baja', className: 'border-white/10 bg-white/[0.045] text-slate-400' };
   };
 
   const getPostAnalysisLinks = () => safeArray(safeObject(selectedMatch?.postAiAnalysis).clipAnalysisLinks);
@@ -5468,6 +5476,8 @@ function App() {
         ],
       },
     });
+    setPostClipFeedback(`Clip relacionado con ${targetField === 'postFulfilled' ? 'qué funcionó' : targetField === 'postNotFulfilled' ? 'qué no funcionó' : targetField === 'postNextAdjustment' ? 'ajustes futuros' : 'qué ocurrió'}.`);
+    window.setTimeout(() => setPostClipFeedback((current) => (current.startsWith('Clip relacionado') ? '' : current)), 2200);
   };
 
   const closePostAnalysis = async () => {
@@ -5570,6 +5580,12 @@ function App() {
     setSelectedPostEventId(event.id);
     setPostVideoStartSeconds(seconds);
     setPostCurrentMinute(event.minute || '');
+    setNewEventDraft((current) => ({
+      ...current,
+      minute: event.minute || String(Math.floor(seconds / 60)),
+      videoSeconds: seconds,
+      type: current.type || event.type || selectedEventType,
+    }));
     try {
       if (postYoutubePlayerRef.current?.seekTo) {
         postYoutubePlayerRef.current.seekTo(seconds, true);
@@ -7292,6 +7308,37 @@ function App() {
       acc[link.targetField] = [...(acc[link.targetField] || []), link.eventId];
       return acc;
     }, {});
+    const linkedClipIds = new Set(safeArray(postAiMeta.clipAnalysisLinks).map((link) => link.eventId));
+    const tacticalEventsCreated = safeArray(postAiMeta.tacticalReviewLinks).length;
+    const validatedQuick = safeArray(selectedMatch.quickEvents).filter((event) => event.reviewed).length;
+    const relatedClipsCount = linkedClipIds.size;
+    const priorityClips = sortedPostClips.filter((event) => getPostClipPriority(event) === 0);
+    const readingCompleted = Boolean(selectedMatch.postReality || selectedMatch.postFulfilled || selectedMatch.postNotFulfilled || selectedMatch.postNextAdjustment || selectedMatch.postWhy || selectedMatch.postNotes);
+    const conclusionsCompleted = Boolean(selectedMatch.postRepeat || selectedMatch.postImprove || selectedMatch.postTrainWeek || selectedMatch.postIndividualObservations);
+    const pipelineSteps = [
+      { label: 'Capturas pendientes', value: pendingQuick, done: pendingQuick === 0, tone: pendingQuick ? 'amber' : 'emerald' },
+      { label: 'Eventos validados', value: validatedQuick, done: validatedQuick > 0 || !safeArray(selectedMatch.quickEvents).length, tone: validatedQuick ? 'emerald' : 'slate' },
+      { label: 'Clips relacionados', value: relatedClipsCount, done: relatedClipsCount > 0, tone: relatedClipsCount ? 'sky' : 'slate' },
+      { label: 'Eventos tácticos', value: tacticalEventsCreated, done: tacticalEventsCreated > 0, tone: tacticalEventsCreated ? 'caudal' : 'slate' },
+      { label: 'Lectura completada', value: readingCompleted ? 'OK' : '--', done: readingCompleted, tone: readingCompleted ? 'emerald' : 'slate' },
+      { label: 'Conclusiones', value: conclusionsCompleted ? 'OK' : '--', done: conclusionsCompleted, tone: conclusionsCompleted ? 'emerald' : 'slate' },
+    ];
+    const progressPercent = Math.round((pipelineSteps.filter((step) => step.done).length / pipelineSteps.length) * 100);
+    const pipelineToneClass = (tone, done) => {
+      if (tone === 'emerald') return 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100';
+      if (tone === 'amber') return 'border-amber-300/20 bg-amber-300/10 text-amber-100';
+      if (tone === 'sky') return 'border-sky-300/20 bg-sky-300/10 text-sky-100';
+      if (tone === 'caudal') return 'border-caudal-electric/25 bg-caudal-electric/10 text-caudal-electric';
+      return done ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100' : 'border-white/10 bg-white/[0.04] text-slate-400';
+    };
+    const patternChips = [
+      getQuickEventSummary(selectedMatch.quickEvents || []).recoveries >= 3 ? 'presión alta efectiva' : null,
+      getQuickEventSummary(selectedMatch.quickEvents || []).losses >= 2 ? 'sufrimiento tras pérdida' : null,
+      sortedPostClips.some((event) => /juego directo|directo/i.test(`${event.type || ''} ${event.description || ''}`)) ? 'juego directo rival' : null,
+      sortedPostClips.some((event) => /segunda jugada/i.test(`${event.type || ''} ${event.description || ''}`)) ? 'segunda jugada' : null,
+      getQuickEventSummary(selectedMatch.quickEvents || []).boxEntries > getQuickEventSummary(selectedMatch.quickEvents || []).rivalBoxEntries ? 'transición positiva' : null,
+      getQuickEventSummary(selectedMatch.quickEvents || []).rivalBoxEntries > getQuickEventSummary(selectedMatch.quickEvents || []).boxEntries ? 'sufrimiento lado débil' : null,
+    ].filter(Boolean);
     const closureChecklist = safeObject(postAiMeta.closureChecklist);
     const analysisFieldSuggestions = {
       postReality: postDerivedReading.suggestions,
@@ -7345,6 +7392,28 @@ function App() {
           </div>
         ) : null}
 
+        <section className="sticky top-2 z-20 rounded-3xl border border-white/10 bg-[#071326]/95 p-4 shadow-glow backdrop-blur">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric">Pipeline POST</p>
+              <div className="mt-2 flex items-center gap-3">
+                <div className="h-2 min-w-[140px] flex-1 overflow-hidden rounded-full bg-white/10 xl:w-64 xl:flex-none">
+                  <div className="h-full rounded-full bg-caudal-electric transition-all duration-500" style={{ width: `${progressPercent}%` }} />
+                </div>
+                <span className="text-sm font-black text-white">{progressPercent}%</span>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
+              {pipelineSteps.map((step) => (
+                <div key={step.label} className={`rounded-2xl border px-3 py-2 transition ${pipelineToneClass(step.tone, step.done)}`}>
+                  <p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-70">{step.label}</p>
+                  <p className="mt-1 text-sm font-black">{step.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
           {postBlockHeader('A · Resumen POST', 'Centro de revisión del partido', 'Primera lectura para orientar la revisión de vídeo y validar lo capturado en directo.', (
             <span className={`rounded-2xl border px-4 py-2 text-xs font-black uppercase tracking-[0.14em] ${getPostReviewStateClass(reviewState)}`}>
@@ -7381,6 +7450,13 @@ function App() {
                 <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
                 <p className="mt-2 text-sm font-bold leading-5 text-slate-100">{value}</p>
               </div>
+            ))}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {(patternChips.length ? patternChips : ['validar capturas', 'relacionar clips', 'cerrar lectura']).map((chip) => (
+              <span key={chip} className="rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
+                {chip}
+              </span>
             ))}
           </div>
         </section>
@@ -7561,6 +7637,7 @@ function App() {
                     />
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
+                    <span className="rounded-2xl bg-white/[0.045] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">1 click = clip</span>
                     {getPostQuickClipTypes().map((eventType) => (
                       <button
                         key={`${eventType.name}-${eventType.id || eventType.legacyId}`}
@@ -7608,10 +7685,12 @@ function App() {
                     {sortedPostClips.length ? sortedPostClips.map((event) => {
                       const isConfirmingDelete = pendingPostEventDeleteId === event.id;
                       const isLinked = isPostClipLinked(event.id);
+                      const priorityMeta = getPostClipPriorityMeta(event);
                       const isPriority = getPostClipPriority(event) === 0;
                       return (
                         <div key={event.id} className={`rounded-3xl border p-4 transition ${selectedPostEventId === event.id ? 'border-caudal-electric/60 bg-caudal-electric/10' : isPriority ? 'border-amber-300/25 bg-amber-300/[0.06] shadow-[0_0_26px_rgba(251,191,36,0.08)]' : 'border-white/5 bg-[#091428]/80'}`}>
                           <div className="mb-3 flex flex-wrap items-center gap-2">
+                            <span className={`rounded-xl border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${priorityMeta.className}`}>{priorityMeta.label}</span>
                             {isPriority ? <span className="rounded-xl bg-amber-300/15 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-amber-100">Prioritario</span> : null}
                             {isLinked ? <span className="rounded-xl bg-caudal-electric/15 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-caudal-electric">Usado en lectura táctica</span> : null}
                           </div>
@@ -7623,6 +7702,7 @@ function App() {
                             <input value={event.description || ''} onChange={(changeEvent) => updatePostEventLocal(event.id, { description: changeEvent.target.value })} onBlur={(blurEvent) => savePostEventInline({ ...event, description: blurEvent.target.value })} placeholder="Descripción / observable" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500" />
                             <div className="flex flex-wrap gap-2 lg:justify-end">
                               <button type="button" onClick={() => seekPostVideoToEvent(event)} className={`rounded-xl px-3 py-2 text-xs font-bold ${eventButtonClass(event.type)}`}>Ir al vídeo</button>
+                              <button type="button" onClick={() => { seekPostVideoToEvent(event); handleEventDraftChange('description', event.description || event.type || ''); }} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-slate-200">Usar como base</button>
                               <select onChange={(changeEvent) => { if (changeEvent.target.value) relatePostClipWithAnalysis(event, changeEvent.target.value); changeEvent.target.value = ''; }} defaultValue="" className="rounded-xl border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-xs font-bold text-caudal-electric">
                                 <option value="">Relacionar</option>
                                 <option value="postReality">Qué ocurrió</option>
@@ -7689,6 +7769,16 @@ function App() {
         <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
           {postBlockHeader('D · Análisis táctico', 'Lectura futbolística', 'Qué ocurrió, qué se cumplió del plan y qué ajustes deja el partido.')}
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div className="lg:col-span-2">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Patrones detectados</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(patternChips.length ? patternChips : ['sin patrón validado todavía']).map((chip) => (
+                  <span key={chip} className="rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.06] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">
+                    {chip}
+                  </span>
+                ))}
+              </div>
+            </div>
             {[
               { label: 'Qué ocurrió', field: 'postReality' },
               { label: 'Qué funcionó', field: 'postFulfilled' },
@@ -7700,6 +7790,9 @@ function App() {
               <label key={item.field} className="space-y-2 text-sm text-slate-300">
                 <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{item.label}</span>
                 <textarea value={selectedMatch[item.field] || ''} onChange={(event) => updateSelectedMatchFields({ [item.field]: event.target.value })} className="min-h-[140px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
+                <p className="text-[11px] font-semibold text-slate-500">
+                  {item.field === 'postWhy' ? 'Cruzar consignas PRE con clips y eventos validados.' : item.field === 'postNotes' ? 'Contexto competitivo primero automático, luego corregible por staff.' : 'Usa frases cortas y accionables para que pase a entrenamiento.'}
+                </p>
                 <div className="flex flex-wrap gap-2">
                   {(analysisFieldSuggestions[item.field] || ['Usa clips y eventos validados para concretar esta lectura.']).slice(0, 3).map((suggestion) => (
                     <span key={suggestion} className="rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[10px] font-semibold text-slate-400">
@@ -7717,10 +7810,18 @@ function App() {
                 const relatedEvents = [...safeArray(selectedMatch.quickEvents), ...safeArray(selectedMatch.events)]
                   .filter((event) => normalizePlayerIdentityName(`${event.tipoEvento || event.type || ''} ${event.description || ''}`).split(' ').some((token) => token.length > 4 && normalizePlayerIdentityName(item).includes(token)))
                   .slice(0, 2);
+                const relatedClipIds = safeArray(postAiMeta.clipAnalysisLinks)
+                  .filter((link) => safeArray(selectedMatch.events).some((event) => event.id === link.eventId && normalizePlayerIdentityName(`${event.type || ''} ${event.description || ''}`).split(' ').some((token) => token.length > 4 && normalizePlayerIdentityName(item).includes(token))))
+                  .map((link) => link.eventId);
+                const reviewedRelated = relatedEvents.filter((event) => event.reviewed).length;
                 return (
                 <div key={`${item}-${index}`} className="flex flex-col gap-2 rounded-2xl bg-white/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold text-white">{item}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <span className="rounded-xl bg-white/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">{relatedClipIds.length} clips</span>
+                      <span className="rounded-xl bg-white/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">{reviewedRelated} validados</span>
+                    </div>
                     {relatedEvents.length ? (
                       <p className="mt-1 text-xs text-slate-400">
                         Relacionado: {relatedEvents.map((event) => `${event.minute || '-'}' ${quickEventLabelByType[event.tipoEvento] || event.type || 'evento'}`).join(' · ')}
@@ -7728,6 +7829,18 @@ function App() {
                     ) : <p className="mt-1 text-xs text-slate-500">Sin evento o clip vinculado todavía.</p>}
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    {relatedClipIds.length ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const firstClip = safeArray(selectedMatch.events).find((event) => event.id === relatedClipIds[0]);
+                          if (firstClip) seekPostVideoToEvent(firstClip);
+                        }}
+                        className="rounded-xl bg-caudal-electric/15 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric"
+                      >
+                        Ver clips
+                      </button>
+                    ) : null}
                     {['Cumplido', 'Parcial', 'No cumplido'].map((status) => {
                       const selectedStatus = safeObject(postAiMeta.prePlanReview)[item]?.status;
                       return (
@@ -7780,6 +7893,31 @@ function App() {
                 {done ? 'OK' : '--'} · {label}
               </div>
             ))}
+          </div>
+          <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Resumen staff</p>
+                <h4 className="mt-1 text-lg font-black text-white">Informe ejecutivo rápido</h4>
+              </div>
+              <span className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.14em] ${getPostReviewStateClass(reviewState)}`}>{reviewState}</span>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              {[
+                ['Resultado', `${score.caudal}-${score.rival}`],
+                ['Tendencia', postDerivedReading.trend],
+                ['Momento clave', postDerivedReading.criticalRange],
+                ['Qué funcionó', selectedMatch.postFulfilled || patternChips[0] || 'Pendiente de cerrar'],
+                ['Qué entrenar', selectedMatch.postTrainWeek || postDerivedReading.suggestions[0]],
+                ['Clips importantes', priorityClips.length],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-2xl border border-white/5 bg-black/15 p-3">
+                  <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
+                  <p className="mt-2 text-sm font-bold leading-5 text-slate-100">{value}</p>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-sm leading-6 text-slate-300">{selectedMatch.postNotes || postDerivedReading.trend}</p>
           </div>
           <div className="mt-6 flex flex-col gap-3 rounded-3xl border border-caudal-electric/15 bg-caudal-electric/[0.055] p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
