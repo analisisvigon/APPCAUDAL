@@ -13,74 +13,26 @@ const formatDate = (value) => {
 };
 
 const pageLabels = {
-  pressure: 'Plan de presion',
-  vigilances: 'Vigilancias',
-  transitions: 'Transiciones',
-  talk: 'Pizarra de charla',
-  halftime: 'Descanso',
-  rival: 'Resumen rival',
-  staff: 'Notas de staff',
+  keys: 'Claves del partido',
 };
 
 const sheetProfiles = {
-  Vestuario: { label: 'Vestuario', density: 'large' },
-  Banquillo: { label: 'Banquillo', density: 'compact' },
-  Staff: { label: 'Staff', density: 'dense' },
-  Charla: { label: 'Charla', density: 'large' },
-  'Resumen rival': { label: 'Resumen rival', density: 'dense' },
+  Dossier: { label: 'Partido', density: 'large' },
 };
 
-export default function DossierTacticalSheet({ match, pageId, dossierType = 'Staff', keys = [], staffNotes = [], pageNumber = 1, totalPages = 1 }) {
-  const profile = sheetProfiles[dossierType] || sheetProfiles.Staff;
+export default function DossierTacticalSheet({ match, pageId, dossierType = 'Dossier', keys = [], staffNotes = [], pageNumber = 1, totalPages = 1 }) {
+  const profile = sheetProfiles[dossierType] || sheetProfiles.Dossier;
   const title = pageLabels[pageId] || 'Hoja tactica';
   const rival = match?.opponent || 'Rival';
 
   const pageContent = {
-    pressure: [
-      { title: 'Saltos', items: splitLines(match?.prePlanTrigger || match?.planSinBalon || 'Saltar cuando el rival juegue hacia fuera.\nCerrar pase interior.\nVigilar segunda jugada.', 5) },
-      { title: 'Altura', items: splitLines(match?.preRivalDefensiveBlock || match?.preRivalPressure || 'Ajustar altura segun salida rival.\nNo partir al equipo.', 4) },
-      { title: 'Recordatorios', items: staffNotes.slice(0, 5) },
-    ],
-    vigilances: [
-      { title: 'Emparejamientos', items: splitLines(match?.preKeyMatchupsTable || match?.prePlanAvoid || 'Vigilar jugador diferencial.\nCerrar pase interior.\nControlar segunda jugada.', 6) },
-      { title: 'Riesgos', items: splitLines(match?.preRivalStrengths || match?.preRivalTransitions || match?.prePlanAvoid, 5) },
-      { title: 'Notas staff', items: staffNotes.slice(0, 5) },
-    ],
-    transitions: [
-      { title: 'Tras perdida', items: splitLines(match?.planTransiciones || match?.prePlanAvoid || 'Primer pase hacia fuera.\nCerrar dentro.\nFalta tactica si el equipo queda abierto.', 5) },
-      { title: 'Tras robo', items: splitLines(match?.planConBalon || match?.prePlanTrigger || 'Primer pase vertical si hay ventaja.\nActivar lado debil.', 5) },
-      { title: 'Banquillo', items: ['Mirar cansancio de extremos', 'Preparar cambio si el equipo se parte', 'Recordar vigilancia tras ABP'] },
-    ],
-    talk: [
-      { title: '3 claves partido', items: keys.slice(0, 3) },
-      { title: '2 vigilancias', items: staffNotes.slice(0, 2) },
-      { title: 'Donde atacar', items: splitLines(match?.preRivalWeaknesses || match?.planConBalon || 'Atacar lado debil.\nBuscar espalda lateral.', 2) },
-      { title: 'Donde sufriran', items: splitLines(match?.preRivalWeaknesses || match?.prePlanAdjustment || 'Si movemos rapido.\nSi fijamos primera linea.', 2) },
-      { title: 'Balon parado rival', items: splitLines(match?.abpDefensiva || match?.prePlanAvoid || 'Vigilar segunda jugada.\nCerrar rechace frontal.', 2) },
-      { title: 'Cambios previstos', items: splitLines(match?.postIndividualObservations || 'Min 60: energia bandas.\nPlan B si se parte el equipo.', 2) },
-      { title: 'Frase final', items: splitLines(match?.planObjetivo || 'Juntos, primer duelo fuerte, porteria rival.', 1) },
-    ],
-    halftime: [
-      { title: 'Que funciona', items: ['', '', '', ''] },
-      { title: 'Que corregir', items: ['', '', '', ''] },
-      { title: 'Ajuste ofensivo', items: ['', '', ''] },
-      { title: 'Ajuste defensivo', items: ['', '', ''] },
-      { title: 'Cambios previstos', items: ['', '', ''] },
-    ],
-    rival: [
-      { title: 'Estructura rival', items: [`Sistema: ${match?.preRivalSystem || 'Pendiente'}`, `Bloque: ${match?.preRivalDefensiveBlock || 'Pendiente'}`, `Presion: ${match?.preRivalPressure || 'Pendiente'}`] },
-      { title: 'Amenazas', items: splitLines(match?.preRivalStrengths || match?.preRivalTransitions || 'Pendiente de completar scouting rival.', 5) },
-      { title: 'Donde atacar', items: splitLines(match?.preRivalWeaknesses || match?.prePlanAdjustment || 'Buscar debilidad detectada en PRE.', 5) },
-    ],
-    staff: [
-      { title: 'Vigilancias', items: staffNotes.slice(0, 6) },
-      { title: 'Cambios previstos', items: splitLines(match?.postIndividualObservations || 'Min 60: revisar energia de banda.\nPreparar ajuste si el rival cambia sistema.', 4) },
-      { title: 'Riesgos', items: splitLines(match?.prePlanAvoid || match?.preRivalStrengths, 5) },
+    keys: [
+      { title: 'Claves del partido', items: (keys.length ? keys : splitLines(`${match?.planClave || ''}\n${match?.planObjetivo || ''}\n${match?.planConBalon || ''}\n${match?.planSinBalon || ''}\n${match?.planTransiciones || ''}`, 6)).slice(0, 6) },
     ],
   }[pageId] || [];
 
   return (
-    <article className={`lineup-print-sheet print-sheet-a4 operational-print-sheet dossier-${profile.density} ${pageId === 'talk' && dossierType === 'Vestuario' ? 'talk-vestuario' : ''}`}>
+    <article className={`lineup-print-sheet print-sheet-a4 operational-print-sheet dossier-${profile.density}`}>
       <header className="operational-print-header">
         <div>
           <p className="print-sheet-kicker">DOSSIER - {profile.label}</p>
