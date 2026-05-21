@@ -49,6 +49,39 @@ class SystemsFacingErrorBoundary extends React.Component {
   }
 }
 
+class GroupAnalysisErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error(`Error cargando bloque de Análisis Grupal (${this.props.label || 'bloque'}):`, error, errorInfo);
+  }
+
+  componentDidUpdate(previousProps) {
+    if (previousProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <section className="rounded-3xl border border-amber-300/20 bg-amber-300/10 p-5 text-sm text-amber-100 shadow-glow">
+          <p className="font-black uppercase tracking-[0.16em] text-white">Bloque no disponible</p>
+          <p className="mt-2">Sin datos suficientes o formato de datos inesperado en {this.props.label || 'este bloque'}.</p>
+        </section>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const positions = [
   'Portero',
   'Lateral derecho',
@@ -7980,23 +8013,24 @@ function App() {
   };
 
   const getQuickEventCount = (events, tipoEvento) =>
-    events.filter((event) => event.tipoEvento === tipoEvento).length;
+    safeArray(events).filter((event) => event.tipoEvento === tipoEvento).length;
 
   const getQuickEventRate = (part, total) =>
     total ? `${Math.round((part / total) * 100)}%` : '0%';
 
   const getQuickEventSummary = (events = []) => {
-    const shots = getQuickEventCount(events, 'tiro');
-    const shotsOnTarget = getQuickEventCount(events, 'tiro_puerta');
-    const rivalShots = getQuickEventCount(events, 'tiro_rival');
-    const rivalShotsOnTarget = getQuickEventCount(events, 'tiro_puerta_rival');
-    const recoveries = getQuickEventCount(events, 'recuperacion');
-    const rivalRecoveries = getQuickEventCount(events, 'recuperacion_rival');
-    const losses = getQuickEventCount(events, 'perdida');
-    const rivalLosses = getQuickEventCount(events, 'perdida_rival');
-    const boxEntries = getQuickEventCount(events, 'entrada_area');
-    const rivalBoxEntries = getQuickEventCount(events, 'entrada_area_rival');
-    const maxMinute = Math.max(...events.map((event) => Number(event.minute || 0)), 0) || 1;
+    const rows = safeArray(events);
+    const shots = getQuickEventCount(rows, 'tiro');
+    const shotsOnTarget = getQuickEventCount(rows, 'tiro_puerta');
+    const rivalShots = getQuickEventCount(rows, 'tiro_rival');
+    const rivalShotsOnTarget = getQuickEventCount(rows, 'tiro_puerta_rival');
+    const recoveries = getQuickEventCount(rows, 'recuperacion');
+    const rivalRecoveries = getQuickEventCount(rows, 'recuperacion_rival');
+    const losses = getQuickEventCount(rows, 'perdida');
+    const rivalLosses = getQuickEventCount(rows, 'perdida_rival');
+    const boxEntries = getQuickEventCount(rows, 'entrada_area');
+    const rivalBoxEntries = getQuickEventCount(rows, 'entrada_area_rival');
+    const maxMinute = Math.max(...rows.map((event) => Number(event.minute || 0)), 0) || 1;
     const elapsedTens = Math.max(1, maxMinute / 10);
     return {
       shots,
@@ -8005,20 +8039,20 @@ function App() {
       rivalShotsOnTarget,
       boxEntries,
       rivalBoxEntries,
-      corners: getQuickEventCount(events, 'corner'),
-      rivalCorners: getQuickEventCount(events, 'corner_rival'),
-      fouls: getQuickEventCount(events, 'falta'),
-      rivalFouls: getQuickEventCount(events, 'falta_rival'),
+      corners: getQuickEventCount(rows, 'corner'),
+      rivalCorners: getQuickEventCount(rows, 'corner_rival'),
+      fouls: getQuickEventCount(rows, 'falta'),
+      rivalFouls: getQuickEventCount(rows, 'falta_rival'),
       recoveries,
       rivalRecoveries,
       losses,
       rivalLosses,
       recoveryLossBalance: recoveries - losses,
       rivalRecoveryLossBalance: rivalRecoveries - rivalLosses,
-      momentumEvents: events.filter((event) => String(event.tipoEvento || '').startsWith('momento_')).length,
+      momentumEvents: rows.filter((event) => String(event.tipoEvento || '').startsWith('momento_')).length,
       shotsPer10: (shots / elapsedTens).toFixed(1),
-      firstHalfBoxEntries: events.filter((event) => event.tipoEvento === 'entrada_area' && Number(event.minute || 0) < 45).length,
-      secondHalfBoxEntries: events.filter((event) => event.tipoEvento === 'entrada_area' && Number(event.minute || 0) >= 45).length,
+      firstHalfBoxEntries: rows.filter((event) => event.tipoEvento === 'entrada_area' && Number(event.minute || 0) < 45).length,
+      secondHalfBoxEntries: rows.filter((event) => event.tipoEvento === 'entrada_area' && Number(event.minute || 0) >= 45).length,
       dangerLossRatio: getQuickEventRate(losses, Math.max(1, recoveries + losses)),
       highPressEffectiveness: getQuickEventRate(recoveries, Math.max(1, recoveries + rivalBoxEntries)),
       shotAccuracy: getQuickEventRate(shotsOnTarget, shots),
@@ -8027,11 +8061,12 @@ function App() {
   };
 
   const getQuickEventsByMinuteRange = (events) => {
+    const rows = safeArray(events);
     const ranges = ['0-15', '15-30', '30-45', '45-60', '60-75', '75-90'];
     return ranges.map((range) => {
       const [from, to] = range.split('-').map(Number);
       const isLastRange = to === 90;
-      const scoped = events.filter((event) => Number(event.minute) >= from && (isLastRange ? Number(event.minute) <= to : Number(event.minute) < to));
+      const scoped = rows.filter((event) => Number(event.minute) >= from && (isLastRange ? Number(event.minute) <= to : Number(event.minute) < to));
       return {
         range,
         caudal: scoped.filter((event) => event.equipo === 'caudal').length,
@@ -8276,11 +8311,14 @@ function App() {
   const getGroupAnalysisData = () => {
     const baseScoped = getGroupScopedMatches();
     const unreviewedQuickEvents = baseScoped.flatMap((match) =>
-      (match.quickEvents || []).filter((event) => !event.reviewed).map((event) => ({ ...event, match }))
+      safeArray(match.quickEvents).filter((event) => !event.reviewed).map((event) => ({ ...event, match }))
     );
     const scoped = baseScoped.map((match) => ({
       ...match,
-      quickEvents: groupQuickReviewedOnly ? (match.quickEvents || []).filter((event) => event.reviewed) : (match.quickEvents || []),
+      quickEvents: groupQuickReviewedOnly ? safeArray(match.quickEvents).filter((event) => event.reviewed) : safeArray(match.quickEvents),
+      statsGoalEvents: safeArray(match.statsGoalEvents),
+      statsLineup: safeArray(match.statsLineup),
+      events: safeArray(match.events),
     }));
     const results = scoped.reduce((acc, match) => {
       const score = getMatchScoreData(match);
@@ -8292,8 +8330,8 @@ function App() {
       if (score.rivalGoals === 0) acc.cleanSheets += 1;
       return acc;
     }, { wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, cleanSheets: 0 });
-    const allGoalEvents = scoped.flatMap((match) => (match.statsGoalEvents || []).map((event) => ({ ...event, match })));
-    const quickEvents = scoped.flatMap((match) => (match.quickEvents || []).map((event) => ({ ...event, match })));
+    const allGoalEvents = scoped.flatMap((match) => safeArray(match.statsGoalEvents).map((event) => ({ ...event, match })));
+    const quickEvents = scoped.flatMap((match) => safeArray(match.quickEvents).map((event) => ({ ...event, match })));
     const goalForEvents = allGoalEvents.filter((event) => event.type === 'Gol a favor');
     const goalAgainstEvents = allGoalEvents.filter((event) => event.type === 'Gol en contra');
     const points = results.wins * 3 + results.draws;
@@ -8313,24 +8351,25 @@ function App() {
   };
 
   const groupEventsByMinuteRange = (events) => {
+    const rows = safeArray(events);
     const ranges = ['0-15', '15-30', '30-45', '45-60', '60-75', '75-90'];
     return ranges.map((range) => {
       const [from, to] = range.split('-').map(Number);
       const isLastRange = to === 90;
       return {
         range,
-        count: events.filter((event) => Number(event.minute) >= from && (isLastRange ? Number(event.minute) <= to : Number(event.minute) < to)).length,
+        count: rows.filter((event) => Number(event.minute) >= from && (isLastRange ? Number(event.minute) <= to : Number(event.minute) < to)).length,
       };
     });
   };
 
-  const countPhases = (events) => ['Juego combinativo', 'Juego directo', 'Transición', 'ABP'].map((phase) => ({
+  const countPhases = (events) => safeArray(['Juego combinativo', 'Juego directo', 'Transición', 'ABP']).map((phase) => ({
     phase,
-    count: events.filter((event) => event.phase === phase).length,
+    count: safeArray(events).filter((event) => event.phase === phase).length,
   }));
 
   const getSetPieceSummary = (events) => {
-    const abp = events.filter((event) => event.phase === 'ABP');
+    const abp = safeArray(events).filter((event) => event.phase === 'ABP');
     const get = (subphase) => abp.filter((event) => event.subphase === subphase).length;
     return {
       total: abp.length,
@@ -8343,7 +8382,7 @@ function App() {
   };
 
   const summarizeGroupMatches = (scopedMatches) => {
-    const summary = scopedMatches.reduce((acc, match) => {
+    const summary = safeArray(scopedMatches).reduce((acc, match) => {
       const score = getMatchScoreData(match);
       if (score.caudalGoals > score.rivalGoals) acc.wins += 1;
       else if (score.caudalGoals === score.rivalGoals) acc.draws += 1;
@@ -8363,15 +8402,17 @@ function App() {
   };
 
   const filterAssistEventsByGroupMode = (events) => {
-    if (groupAssistFilter === 'Juego') return events.filter((event) => ['Juego combinativo', 'Juego directo'].includes(event.phase));
-    if (groupAssistFilter === 'Transición') return events.filter((event) => event.phase === 'Transición');
-    if (groupAssistFilter === 'ABP') return events.filter((event) => event.phase === 'ABP');
-    return events;
+    const rows = safeArray(events);
+    if (groupAssistFilter === 'Juego') return rows.filter((event) => ['Juego combinativo', 'Juego directo'].includes(event.phase));
+    if (groupAssistFilter === 'Transición') return rows.filter((event) => event.phase === 'Transición');
+    if (groupAssistFilter === 'ABP') return rows.filter((event) => event.phase === 'ABP');
+    return rows;
   };
 
   const getMatchLineupSource = (match) => {
-    const statsSlots = (match.lineupSlots?.stats || []).filter((slot) => slot.playerName);
-    const preCaudalSlots = (match.lineupSlots?.preCaudal || []).filter((slot) => slot.playerName);
+    const lineupSlots = safeObject(match?.lineupSlots);
+    const statsSlots = safeArray(lineupSlots.stats).filter((slot) => slot?.playerName);
+    const preCaudalSlots = safeArray(lineupSlots.preCaudal).filter((slot) => slot?.playerName);
     if (statsSlots.length) {
       return {
         scope: 'stats',
@@ -8394,9 +8435,9 @@ function App() {
   };
 
   const getMostUsedRealSystem = (scopedMatches) => {
-    const rows = scopedMatches
+    const rows = safeArray(scopedMatches)
       .map((match) => ({ match, source: getMatchLineupSource(match) }))
-      .filter(({ source }) => source.system && source.slots.length);
+      .filter(({ source }) => source.system && safeArray(source.slots).length);
     const counts = rows.reduce((acc, { source }) => {
       acc[source.system] = (acc[source.system] || 0) + 1;
       return acc;
@@ -8411,14 +8452,15 @@ function App() {
         opponent: match.opponent,
         system: source.system,
         scope: source.scope,
-        slots: source.slots.map((slot) => ({ slot: slot.slot, playerName: slot.playerName })),
+        slots: safeArray(source.slots).map((slot) => ({ slot: slot.slot, playerName: slot.playerName })),
       })),
     };
   };
 
   const getGroupRankings = (scopedMatches) => {
-    const possibleMinutes = Math.max(1, scopedMatches.length * 90);
-    const byPlayer = new Map(players.map((player) => [player.name, {
+    const scoped = safeArray(scopedMatches);
+    const possibleMinutes = Math.max(1, scoped.length * 90);
+    const byPlayer = new Map(safeArray(players).map((player) => [player.name, {
       player,
       goals: 0,
       assists: 0,
@@ -8433,22 +8475,23 @@ function App() {
       slotUsage: {},
     }]));
 
-    scopedMatches.forEach((match) => {
+    scoped.forEach((match) => {
       const source = getMatchLineupSource(match);
-      const lineup = source.slots.length
-        ? source.slots.reduce((acc, slot) => {
+      const sourceSlots = safeArray(source.slots);
+      const lineup = sourceSlots.length
+        ? sourceSlots.reduce((acc, slot) => {
           acc[slot.slot] = slot.playerName;
           return acc;
         }, Array.from({ length: 11 }, () => ''))
-        : match.statsLineup || [];
+        : safeArray(match.statsLineup);
       const system = source.system || match.statsSystem || '4-4-2';
       const roles = getFormationRoles(system);
-      (match.statsGoalEvents || []).forEach((event) => {
+      safeArray(match.statsGoalEvents).forEach((event) => {
         if (event.type !== 'Gol a favor') return;
         if (event.scorer && byPlayer.has(event.scorer)) byPlayer.get(event.scorer).goals += 1;
         if (event.assistant && byPlayer.has(event.assistant)) byPlayer.get(event.assistant).assists += 1;
       });
-      players.forEach((player) => {
+      safeArray(players).forEach((player) => {
         const stored = match.statsPlayerData?.[player.name] || {};
         const slotIndex = lineup.indexOf(player.name);
         const isStarter = slotIndex >= 0;
@@ -8622,10 +8665,10 @@ function App() {
   };
 
   const getGroupTendency = (scopedMatches) =>
-    scopedMatches.slice(-5).reverse().map((match) => {
+    safeArray(scopedMatches).slice(-5).reverse().map((match) => {
       const score = getMatchScoreData(match);
       const cards = Object.values(match.statsPlayerData || {}).reduce((sum, row) => sum + (Number(row.yellowCount ?? (row.yellow ? 1 : 0)) || 0) + (row.red ? 1 : 0), 0);
-      const quick = getQuickEventSummary(match.quickEvents || []);
+      const quick = getQuickEventSummary(safeArray(match.quickEvents));
       return {
         match,
         goalsFor: score.caudalGoals,
@@ -8657,12 +8700,12 @@ function App() {
   };
 
   const getGroupSubphaseRanking = (events) =>
-    Object.entries(countValues(events.map((event) => event.subphase)))
+    Object.entries(countValues(safeArray(events).map((event) => event.subphase)))
       .filter(([subphase]) => subphase)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6);
 
-  const getGroupGoalZoneCounts = (events) => countValues(events.map((event) => event.goalZone));
+  const getGroupGoalZoneCounts = (events) => countValues(safeArray(events).map((event) => event.goalZone));
 
   const getGroupAlerts = (groupData, rankings, localSummary, awaySummary) => {
     if (groupData.played < 3) return [{ text: 'Sin datos suficientes para generar alertas fiables.', gravity: 'leve', type: 'contexto', trend: 'estable' }];
@@ -8691,7 +8734,8 @@ function App() {
   };
 
   const getGroupAutomaticReadings = (groupData) => {
-    const quickEvents = groupData.quickEvents || [];
+    const quickEvents = safeArray(groupData?.quickEvents);
+    const scopedMatches = safeArray(groupData?.scoped);
     const quickSummary = groupData.quickSummary || getQuickEventSummary([]);
     if (!quickEvents.length && groupQuickReviewedOnly) return ['No hay eventos revisados suficientes. Revisa los eventos en POST para activar este análisis.'];
     if (!quickEvents.length) return ['No hay suficientes datos de eventos rápidos para generar lecturas avanzadas.'];
@@ -8728,12 +8772,12 @@ function App() {
       readings.push('Buen balance de presión: hay más recuperaciones que pérdidas.');
     }
 
-    const scopedWithQuick = (groupData.scoped || []).filter((match) => (match.quickEvents || []).length);
+    const scopedWithQuick = scopedMatches.filter((match) => safeArray(match.quickEvents).length);
     if (scopedWithQuick.length >= 6) {
       const previous = scopedWithQuick.slice(0, -3);
       const recent = scopedWithQuick.slice(-3);
-      const previousSummary = getQuickEventSummary(previous.flatMap((match) => match.quickEvents || []));
-      const recentSummary = getQuickEventSummary(recent.flatMap((match) => match.quickEvents || []));
+      const previousSummary = getQuickEventSummary(previous.flatMap((match) => safeArray(match.quickEvents)));
+      const recentSummary = getQuickEventSummary(recent.flatMap((match) => safeArray(match.quickEvents)));
       const previousPerMatch = previous.length ? previousSummary.shots / previous.length : 0;
       const recentPerMatch = recent.length ? recentSummary.shots / recent.length : 0;
       const previousLosses = previous.length ? previousSummary.losses / previous.length : 0;
@@ -8770,11 +8814,11 @@ function App() {
     const secondHalfRecoveries = quickEvents.filter((event) => event.tipoEvento === 'recuperacion' && Number(event.minute) >= 45).length;
     if (secondHalfRecoveries > firstHalfRecoveries) readings.push('El equipo recupera más en la segunda parte.');
 
-    const homeMatches = (groupData.scoped || []).filter((match) => match.isHome && (match.quickEvents || []).length);
-    const awayMatches = (groupData.scoped || []).filter((match) => !match.isHome && (match.quickEvents || []).length);
+    const homeMatches = scopedMatches.filter((match) => match.isHome && safeArray(match.quickEvents).length);
+    const awayMatches = scopedMatches.filter((match) => !match.isHome && safeArray(match.quickEvents).length);
     if (homeMatches.length && awayMatches.length) {
-      const homeSummary = getQuickEventSummary(homeMatches.flatMap((match) => match.quickEvents || []));
-      const awaySummary = getQuickEventSummary(awayMatches.flatMap((match) => match.quickEvents || []));
+      const homeSummary = getQuickEventSummary(homeMatches.flatMap((match) => safeArray(match.quickEvents)));
+      const awaySummary = getQuickEventSummary(awayMatches.flatMap((match) => safeArray(match.quickEvents)));
       const homeShots = homeSummary.shots / homeMatches.length;
       const awayShots = awaySummary.shots / awayMatches.length;
       const homeRivalShots = homeSummary.rivalShots / homeMatches.length;
@@ -8787,10 +8831,11 @@ function App() {
   };
 
   const getGroupIdentity = (groupData) => {
-    const goalForEvents = groupData.goalForEvents || [];
-    const goalAgainstEvents = groupData.goalAgainstEvents || [];
-    const quickEvents = groupData.quickEvents || [];
-    const postEvents = (groupData.scoped || []).flatMap((match) => (match.events || []).map((event) => ({ ...event, match })));
+    const goalForEvents = safeArray(groupData?.goalForEvents);
+    const goalAgainstEvents = safeArray(groupData?.goalAgainstEvents);
+    const quickEvents = safeArray(groupData?.quickEvents);
+    const scopedMatches = safeArray(groupData?.scoped);
+    const postEvents = scopedMatches.flatMap((match) => safeArray(match.events).map((event) => ({ ...event, match })));
     const allTextEvents = [
       ...goalForEvents.map((event) => ({ ...event, text: `${event.phase || ''} ${event.subphase || ''} ${event.assistZone || ''} ${event.shotZone || ''}` })),
       ...goalAgainstEvents.map((event) => ({ ...event, text: `${event.phase || ''} ${event.subphase || ''} ${event.assistZone || ''} ${event.shotZone || ''}` })),
@@ -8818,9 +8863,9 @@ function App() {
     }));
     const dominantFor = identityRows.slice().sort((a, b) => b.forCount - a.forCount)[0];
     const dominantAgainst = identityRows.slice().sort((a, b) => b.againstCount - a.againstCount)[0];
-    const recentRows = getGroupTendency(groupData.scoped || []);
-    const homeIdentity = getQuickEventSummary((groupData.scoped || []).filter((match) => match.isHome).flatMap((match) => match.quickEvents || []));
-    const awayIdentity = getQuickEventSummary((groupData.scoped || []).filter((match) => !match.isHome).flatMap((match) => match.quickEvents || []));
+    const recentRows = getGroupTendency(scopedMatches);
+    const homeIdentity = getQuickEventSummary(scopedMatches.filter((match) => match.isHome).flatMap((match) => safeArray(match.quickEvents)));
+    const awayIdentity = getQuickEventSummary(scopedMatches.filter((match) => !match.isHome).flatMap((match) => safeArray(match.quickEvents)));
     return {
       rows: identityRows,
       dominantFor,
@@ -8839,11 +8884,11 @@ function App() {
   };
 
   const getGroupTacticalPatterns = (groupData) => {
-    const matchesWithEvents = (groupData.scoped || []).map((match) => ({
+    const matchesWithEvents = safeArray(groupData?.scoped).map((match) => ({
       match,
-      quick: [...(match.quickEvents || [])].sort((a, b) => Number(a.minute || 0) - Number(b.minute || 0)),
-      goals: match.statsGoalEvents || [],
-      post: match.events || [],
+      quick: [...safeArray(match.quickEvents)].sort((a, b) => Number(a.minute || 0) - Number(b.minute || 0)),
+      goals: safeArray(match.statsGoalEvents),
+      post: safeArray(match.events),
     }));
     const patternDefs = [
       { id: 'high_recovery_shot', label: 'Recuperación alta → tiro', a: ['recuperacion'], b: ['tiro', 'tiro_puerta'], outcome: ['tiro_puerta'] },
@@ -8893,10 +8938,11 @@ function App() {
 
   const getGroupTemporalContext = (groupData) => {
     const ranges = ['0-15', '15-30', '30-45', '45-60', '60-75', '75-90'];
+    const quickEvents = safeArray(groupData?.quickEvents);
     const rows = ranges.map((range) => {
       const [from, to] = range.split('-').map(Number);
       const isLastRange = to === 90;
-      const scoped = (groupData.quickEvents || []).filter((event) => Number(event.minute || 0) >= from && (isLastRange ? Number(event.minute || 0) <= to : Number(event.minute || 0) < to));
+      const scoped = quickEvents.filter((event) => Number(event.minute || 0) >= from && (isLastRange ? Number(event.minute || 0) <= to : Number(event.minute || 0) < to));
       return {
         range,
         shots: scoped.filter((event) => ['tiro', 'tiro_puerta'].includes(event.tipoEvento)).length,
@@ -8922,7 +8968,7 @@ function App() {
     const push = (title, reason, source) => {
       if (!proposals.some((item) => item.title === title)) proposals.push({ title, reason, source });
     };
-    alerts.forEach((alert) => {
+    safeArray(alerts).forEach((alert) => {
       const text = typeof alert === 'string' ? alert : alert.text;
       if (/p[eé]rdida|tras p/i.test(text)) push('Vigilancia tras pérdida', text, 'alerta');
       if (/segunda/i.test(text)) push('Cierre segunda jugada', text, 'alerta');
@@ -8930,13 +8976,13 @@ function App() {
       if (/juego directo/i.test(text)) push('Defensa de juego directo', text, 'alerta');
       if (/centro|lateral|banda/i.test(text)) push('Defensa de centro lateral', text, 'alerta');
     });
-    patterns.forEach((pattern) => {
+    safeArray(patterns).forEach((pattern) => {
       if (/recuperaci/i.test(pattern.label)) push('Presión tras pérdida + finalización', pattern.label, 'patrón');
       if (/centro/i.test(pattern.label)) push('Ocupación de área y remate de centro', pattern.label, 'patrón');
       if (/ABP/i.test(pattern.label)) push('ABP: rechace y segunda acción', pattern.label, 'patrón');
     });
-    if (identity.dominantAgainst?.againstCount) push(`Corregir ${identity.dominantAgainst.label.toLowerCase()}`, 'Identidad defensiva detectada', 'identidad');
-    if (temporal.worst?.losses >= 2) push(`Gestión del tramo ${temporal.worst.range}`, 'Tramo crítico por pérdidas/rival', 'tramo');
+    if (identity?.dominantAgainst?.againstCount) push(`Corregir ${identity.dominantAgainst.label.toLowerCase()}`, 'Identidad defensiva detectada', 'identidad');
+    if (temporal?.worst?.losses >= 2) push(`Gestión del tramo ${temporal.worst.range}`, 'Tramo crítico por pérdidas/rival', 'tramo');
     return proposals.slice(0, 6);
   };
 
@@ -8949,10 +8995,12 @@ function App() {
     const dominantAgainst = identity?.dominantAgainst;
     const shotAccuracy = Number(String(quickSummary?.shotAccuracy || '0').replace('%', '')) || 0;
     const concededDanger = Number(String(quickSummary?.concededDanger || '0').replace('%', '')) || 0;
-    const highRecoveryPattern = patterns.find((pattern) => /Recuperaci/i.test(pattern.label));
-    const lossPattern = patterns.find((pattern) => /Pérdida|perdida/i.test(pattern.label));
-    const directPattern = patterns.find((pattern) => /directo/i.test(pattern.label));
-    const topAlert = alerts.find((alert) => alert.gravity === 'alta') || alerts.find((alert) => alert.gravity === 'media') || alerts[0];
+    const patternRows = safeArray(patterns);
+    const alertRows = safeArray(alerts);
+    const highRecoveryPattern = patternRows.find((pattern) => /Recuperaci/i.test(pattern.label));
+    const lossPattern = patternRows.find((pattern) => /Pérdida|perdida/i.test(pattern.label));
+    const directPattern = patternRows.find((pattern) => /directo/i.test(pattern.label));
+    const topAlert = alertRows.find((alert) => alert.gravity === 'alta') || alertRows.find((alert) => alert.gravity === 'media') || alertRows[0];
 
     if (dominantFor?.forCount) push(`Equipo dominante en ${dominantFor.label.toLowerCase()}.`, 'positive', `${dominantFor.forPct}% de la identidad ofensiva detectada`);
     if (dominantAgainst?.againstCount) push(`Fragilidad recurrente ante ${dominantAgainst.label.toLowerCase()}.`, 'risk', `${dominantAgainst.againstPct}% de los daños detectados`);
@@ -8977,10 +9025,10 @@ function App() {
       ...(match.prePlanAvoid || '').split('\n'),
       ...(match.preKeyMatchupsTable || '').split('\n'),
     ].map((item) => item.trim()).filter(Boolean).slice(0, 5);
-    return scopedMatches.flatMap((match) => {
+    return safeArray(scopedMatches).flatMap((match) => {
       const postText = normalizePlayerIdentityName(`${match.postReality || ''} ${match.postFulfilled || ''} ${match.postNotFulfilled || ''} ${match.postWhy || ''}`);
-      const clips = match.events || [];
-      const quick = match.quickEvents || [];
+      const clips = safeArray(match.events);
+      const quick = safeArray(match.quickEvents);
       return extractPlanItems(match).map((item) => {
         const normalizedItem = normalizePlayerIdentityName(item);
         const tokens = normalizedItem.split(' ').filter((token) => token.length > 4);
@@ -9015,9 +9063,10 @@ function App() {
     const pairCounts = new Map();
     const systemStats = {};
     const lineupsWithGoals = [];
-    scopedMatches.forEach((match) => {
+    safeArray(scopedMatches).forEach((match) => {
       const source = getMatchLineupSource(match);
-      const lineup = source.slots.length ? source.slots.map((slot) => slot.playerName).filter(Boolean) : (match.statsLineup || []).filter(Boolean);
+      const sourceSlots = safeArray(source.slots);
+      const lineup = sourceSlots.length ? sourceSlots.map((slot) => slot.playerName).filter(Boolean) : safeArray(match.statsLineup).filter(Boolean);
       const realSystem = source.system || match.statsSystem || match.preCaudalSystem || 'Sin sistema';
       const score = getMatchScoreData(match);
       const stats = systemStats[realSystem] || { system: realSystem, played: 0, goalsFor: 0, goalsAgainst: 0, points: 0 };
@@ -9036,7 +9085,7 @@ function App() {
     });
     const bestPair = Array.from(pairCounts.entries()).sort((a, b) => b[1] - a[1])[0];
     const bestSystem = Object.values(systemStats).sort((a, b) => (b.points / Math.max(1, b.played)) - (a.points / Math.max(1, a.played)) || b.goalsFor - a.goalsFor)[0];
-    const idealNames = idealRows.map((assignment) => assignment.row?.player?.name).filter(Boolean);
+    const idealNames = safeArray(idealRows).map((assignment) => assignment.row?.player?.name).filter(Boolean);
     const goalConnection = lineupsWithGoals
       .flatMap(({ lineup, goals }) => lineup.filter((name) => idealNames.includes(name)).map((name) => ({ name, goals })))
       .reduce((acc, row) => {
@@ -12643,23 +12692,27 @@ function App() {
         ) : null}
 
         {activeTab === 'Análisis Grupal' ? (() => {
+          try {
           const groupData = getGroupAnalysisData();
-          const scopedMatches = groupData.scoped;
+          const scopedMatches = safeArray(groupData.scoped);
           const hasData = groupData.played > 0;
-          const minuteFor = groupEventsByMinuteRange(groupData.goalForEvents);
-          const minuteAgainst = groupEventsByMinuteRange(groupData.goalAgainstEvents);
+          const goalForRows = safeArray(groupData.goalForEvents);
+          const goalAgainstRows = safeArray(groupData.goalAgainstEvents);
+          const quickRows = safeArray(groupData.quickEvents);
+          const minuteFor = groupEventsByMinuteRange(goalForRows);
+          const minuteAgainst = groupEventsByMinuteRange(goalAgainstRows);
           const maxMinuteGoals = Math.max(1, ...minuteFor.map((row) => row.count), ...minuteAgainst.map((row) => row.count));
-          const phaseFor = countPhases(groupData.goalForEvents);
-          const phaseAgainst = countPhases(groupData.goalAgainstEvents);
-          const assistZoneCounts = countPitchZones(filterAssistEventsByGroupMode(groupData.goalForEvents).map((event) => event.assistZone));
+          const phaseFor = countPhases(goalForRows);
+          const phaseAgainst = countPhases(goalAgainstRows);
+          const assistZoneCounts = countPitchZones(filterAssistEventsByGroupMode(goalForRows).map((event) => event.assistZone));
           const shotSourceEvents = groupShotFilter === 'Goles a favor'
-            ? groupData.goalForEvents
+            ? goalForRows
             : groupShotFilter === 'Goles en contra'
-              ? groupData.goalAgainstEvents
-              : [...groupData.goalForEvents, ...groupData.goalAgainstEvents];
+              ? goalAgainstRows
+              : [...goalForRows, ...goalAgainstRows];
           const shotZoneCounts = countPitchZones(shotSourceEvents.map((event) => event.shotZone));
-          const abpFor = getSetPieceSummary(groupData.goalForEvents);
-          const abpAgainst = getSetPieceSummary(groupData.goalAgainstEvents);
+          const abpFor = getSetPieceSummary(goalForRows);
+          const abpAgainst = getSetPieceSummary(goalAgainstRows);
           const localSummary = summarizeGroupMatches(scopedMatches.filter((match) => match.isHome));
           const awaySummary = summarizeGroupMatches(scopedMatches.filter((match) => !match.isHome));
           const trend = getGroupTendency(scopedMatches);
@@ -12668,18 +12721,18 @@ function App() {
           const effectiveIdealSystem = idealSystem || mostUsedSystem.system || gameSystems[0];
           const idealSystemOptions = Array.from(new Set([mostUsedSystem.system, effectiveIdealSystem, ...gameSystems].filter((system) => system && system !== 'Otro')));
           const idealElevenRows = effectiveIdealSystem ? buildIdealElevenForSystem(rankings.idealRows, effectiveIdealSystem) : [];
-          const subphaseForRows = getGroupSubphaseRanking(groupData.goalForEvents);
-          const subphaseAgainstRows = getGroupSubphaseRanking(groupData.goalAgainstEvents);
-          const goalZoneForCounts = getGroupGoalZoneCounts(groupData.goalForEvents);
-          const goalZoneAgainstCounts = getGroupGoalZoneCounts(groupData.goalAgainstEvents);
+          const subphaseForRows = getGroupSubphaseRanking(goalForRows);
+          const subphaseAgainstRows = getGroupSubphaseRanking(goalAgainstRows);
+          const goalZoneForCounts = getGroupGoalZoneCounts(goalForRows);
+          const goalZoneAgainstCounts = getGroupGoalZoneCounts(goalAgainstRows);
           const quickSummary = groupData.quickSummary || getQuickEventSummary([]);
-          const quickMinuteRanges = getQuickEventsByMinuteRange(groupData.quickEvents || []);
+          const quickMinuteRanges = getQuickEventsByMinuteRange(quickRows);
           const maxQuickRange = Math.max(1, ...quickMinuteRanges.flatMap((row) => [row.caudal, row.rival]));
-          const hasReviewedQuickEvents = (groupData.quickEvents || []).length > 0;
-          const hasUnreviewedQuickEvents = (groupData.unreviewedQuickEvents || []).length > 0;
+          const hasReviewedQuickEvents = quickRows.length > 0;
+          const hasUnreviewedQuickEvents = safeArray(groupData.unreviewedQuickEvents).length > 0;
           const quickEvolution = scopedMatches.map((match) => ({
             match,
-            summary: getQuickEventSummary(match.quickEvents || []),
+            summary: getQuickEventSummary(safeArray(match.quickEvents)),
           }));
           const automaticAlerts = getGroupAlerts(groupData, rankings, localSummary, awaySummary);
           const automaticReadings = getGroupAutomaticReadings(groupData);
@@ -12699,9 +12752,9 @@ function App() {
           };
           const abpGlobalReading = abpReading(abpFor.total, abpAgainst.total);
           const rankingList = (rows, valueKey, empty = 'sin datos suficientes') => (
-            rows.length ? rows.map((row) => (
-              <div key={row.player.name} className="flex items-center justify-between gap-3 rounded-2xl bg-white/5 px-4 py-3">
-                <span className="truncate text-sm font-bold text-white">{row.player.name}</span>
+            safeArray(rows).length ? safeArray(rows).map((row, index) => (
+              <div key={row.player?.name || row.playerName || index} className="flex items-center justify-between gap-3 rounded-2xl bg-white/5 px-4 py-3">
+                <span className="truncate text-sm font-bold text-white">{row.player?.name || row.playerName || 'Jugador'}</span>
                 <strong className="text-caudal-electric">
                   {row[valueKey]}{valueKey === 'minutes' ? ` · ${row.minutePct}%` : ''}
                 </strong>
@@ -12710,6 +12763,7 @@ function App() {
           );
 
           return (
+            <GroupAnalysisErrorBoundary label="Análisis Grupal" resetKey={`${groupCompetitionFilter}-${groupContextFilter}-${groupQuickReviewedOnly}-${scopedMatches.length}`}>
             <main className="space-y-6">
               {groupLoading ? (
                 <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 text-sm text-slate-400 shadow-glow">
@@ -13470,7 +13524,21 @@ function App() {
               </section>
               </AccordionSection>
             </main>
+            </GroupAnalysisErrorBoundary>
           );
+          } catch (error) {
+            console.error('Error renderizando Análisis Grupal:', error);
+            return (
+              <main className="space-y-6">
+                <section className="rounded-3xl border border-red-500/20 bg-red-500/10 p-6 text-red-100 shadow-glow">
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-red-100">Análisis Grupal</p>
+                  <h3 className="mt-2 text-xl font-black text-white">No se pudo cargar el análisis</h3>
+                  <p className="mt-3 text-sm leading-6">Se ha protegido la pantalla para evitar la app en blanco. Revisa que los partidos tengan eventos y alineaciones con formato válido.</p>
+                  <p className="mt-3 break-words text-xs text-red-100/80">{error?.message || String(error)}</p>
+                </section>
+              </main>
+            );
+          }
         })() : null}
 
         {activeTab === 'Partidos' ? (
