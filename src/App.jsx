@@ -12791,7 +12791,7 @@ function App() {
                   <div className="border-b border-white/10 p-6 xl:border-b-0 xl:border-r">
                     <p className="text-xs font-black uppercase tracking-[0.34em] text-caudal-electric">Análisis grupal</p>
                     <h2 className="mt-3 max-w-md text-3xl font-black uppercase leading-tight text-white sm:text-4xl">
-                      Métricas colectivas del equipo
+                      Lectura futbolística del equipo
                     </h2>
                     <div className="mt-5 flex flex-wrap gap-3">
                       <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
@@ -12923,7 +12923,23 @@ function App() {
                 </div>
               </section>
 
-              <AccordionSection title="Resumen" subtitle="Balance general del equipo" defaultOpen>
+              <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                {[
+                  ['Qué hacemos bien', groupIdentity.dominantFor?.label || mainReadings.find((reading) => reading.tone === 'positive')?.text || 'Sin muestra suficiente', 'fortaleza'],
+                  ['Qué sufrimos', groupIdentity.dominantAgainst?.label || automaticAlerts[0]?.text || 'Sin riesgo claro todavía', 'riesgo'],
+                  ['Tramo crítico', temporalContext.worst?.range || 'Pendiente', temporalContext.summary || 'Faltan eventos por minuto'],
+                  ['Patrón repetido', tacticalPatterns[0]?.title || tacticalPatterns[0]?.label || 'Aún no hay patrón estable', tacticalPatterns[0]?.summary || 'Necesita más partidos revisados'],
+                  ['Qué entrenar', trainingProposals[0]?.title || trainingProposals[0]?.text || 'Completar POST', trainingProposals[0]?.reason || 'Se activará con eventos validados'],
+                ].map(([title, value, meta]) => (
+                  <article key={title} className="rounded-3xl border border-white/5 bg-[#091428]/80 p-4 shadow-glow transition hover:border-caudal-electric/20 hover:bg-[#0b1830]">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{title}</p>
+                    <p className="mt-3 text-base font-black leading-snug text-white">{value}</p>
+                    <p className="mt-2 text-xs font-semibold leading-5 text-slate-400">{meta}</p>
+                  </article>
+                ))}
+              </section>
+
+              <AccordionSection title="Resumen" subtitle="Balance general del equipo">
               <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                 <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Resumen competitivo</h3>
                 <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
