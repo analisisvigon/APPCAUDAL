@@ -15119,6 +15119,7 @@ function App() {
                     matches={matches}
                     players={players}
                     getFormationCoordinates={getFormationCoordinates}
+                    onNavigateMatchSection={(section) => openMatchPage(selectedMatch, section)}
                   />
                 ) : (
                   <>

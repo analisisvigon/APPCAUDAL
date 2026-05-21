@@ -200,7 +200,7 @@ const getLineupBench = ({ match, players, starters, playersByName }) => {
   return Array.from(byName.values());
 };
 
-export default function MatchPrintTab({ match, matches = [], players = [], getFormationCoordinates }) {
+export default function MatchPrintTab({ match, matches = [], players = [], getFormationCoordinates, onNavigateMatchSection }) {
   const [printView, setPrintView] = useState('alineacion');
   const [kit, setKit] = useState('home');
   const [setPieceTakers, setSetPieceTakers] = useState([]);
@@ -243,9 +243,12 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     if (typeof window === 'undefined') return 'bench';
     return window.localStorage.getItem(dossierPresetStorageKey) || 'bench';
   });
-  const [dossierType, setDossierType] = useState(() => (dossierPresets[dossierPreset]?.type || 'Banquillo'));
   const [dossierPages, setDossierPages] = useState(() => buildDossierPagesFromPreset(dossierPreset));
   const [draggedDossierPageId, setDraggedDossierPageId] = useState('');
+  const [lastEditedDossierPageId, setLastEditedDossierPageId] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem('caudal-print-last-dossier-block-v2') || '';
+  });
   const [captainPlayerId, setCaptainPlayerId] = useState(match?.captainPlayerId || '');
   const sheetRef = useRef(null);
 
@@ -445,11 +448,14 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
   };
 
   const applyDossierPreset = (presetKey) => {
-    const preset = dossierPresets[presetKey] || dossierPresets.bench;
     setDossierPreset(presetKey);
-    setDossierType(preset.type);
     setDossierPages(buildDossierPagesFromPreset(presetKey));
     if (typeof window !== 'undefined') window.localStorage.setItem(dossierPresetStorageKey, presetKey);
+  };
+
+  const rememberDossierPage = (pageId) => {
+    setLastEditedDossierPageId(pageId);
+    if (typeof window !== 'undefined') window.localStorage.setItem('caudal-print-last-dossier-block-v2', pageId);
   };
 
   const getShortLines = (value, limit = 6) => String(value || '').split('\n').map((line) => line.trim()).filter(Boolean).slice(0, limit);
@@ -1164,12 +1170,122 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     if (page.id === 'kickoff') return count + Math.max(1, dossierContent.kickoffDiagrams.length);
     return count + 1;
   }, 0);
+  const activeReadMinutes = Math.max(1, Math.ceil(activeSheetCount * 1.3));
+  const dossierDensity = activeSheetCount >= 9 ? 'dossier denso' : activeSheetCount >= 5 ? 'dossier operativo' : 'dossier express';
+  const densityAdvice = activeSheetCount >= 9 ? 'lectura rapida no recomendada' : activeSheetCount >= 5 ? 'listo para staff' : 'ideal para charla corta';
+
   const groupTone = (group) => {
     if (group === 'Vestuario') return 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100';
     if (group === 'Banquillo') return 'border-caudal-electric/25 bg-caudal-electric/10 text-caudal-electric';
     if (group === 'Charla') return 'border-amber-300/20 bg-amber-300/10 text-amber-100';
     if (group === 'Resumen rival') return 'border-red-300/20 bg-red-300/10 text-red-100';
     return 'border-white/10 bg-white/[0.055] text-slate-300';
+  };
+
+  const formatLastEdit = (value) => {
+    if (!value) return 'Sin fecha';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Sin fecha';
+    const diffHours = Math.max(0, Math.round((Date.now() - date.getTime()) / 36e5));
+    if (diffHours < 1) return 'editado hace menos de 1h';
+    if (diffHours < 24) return `editado hace ${diffHours}h`;
+    const diffDays = Math.round(diffHours / 24);
+    return diffDays === 1 ? 'editado ayer' : `editado hace ${diffDays} dias`;
+  };
+
+  const latestTimestamp = (items = []) => {
+    const timestamps = items
+      .map((item) => item?.updated_at || item?.created_at || item?.updatedAt || item?.createdAt)
+      .filter(Boolean)
+      .map((value) => new Date(value).getTime())
+      .filter((value) => Number.isFinite(value));
+    if (!timestamps.length) return match?.updated_at || match?.updatedAt || match?.date || '';
+    return new Date(Math.max(...timestamps)).toISOString();
+  };
+
+  const getPageSheetCount = (page) => {
+    if (page.id === 'offensive') return Math.max(1, chunkDiagrams(dossierContent.offensiveDiagrams).length);
+    if (page.id === 'defensive') return Math.max(1, chunkDiagrams(dossierContent.defensiveDiagrams).length);
+    if (page.id === 'kickoff') return Math.max(1, dossierContent.kickoffDiagrams.length);
+    return 1;
+  };
+
+  const getDossierPageStatus = (page) => {
+    const lineCount = (value, limit = 20) => getShortLines(value, limit).length;
+    const realStarters = printData.starters.filter((player) => player?.name && !String(player.name).startsWith('Puesto ')).length;
+    const takers = setPieceTakers.filter((entry) => entry.jugador_id || String(entry.nombre_manual || '').trim()).length;
+    const pressureLines = lineCount(match?.prePlanTrigger) + lineCount(match?.planSinBalon) + lineCount(match?.preRivalPressure);
+    const vigilanceLines = lineCount(match?.preKeyMatchupsTable) + lineCount(match?.prePlanAvoid) + lineCount(match?.preRivalStrengths);
+    const transitionLines = lineCount(match?.planTransiciones) + lineCount(match?.planConBalon);
+    const talkLines = getMatchKeys().length + getStaffNotes().length;
+    const staffLines = getStaffNotes().length;
+    const rivalFields = [match?.preRivalSystem, match?.preRivalDefensiveBlock, match?.preRivalPressure, match?.preRivalStrengths, match?.preRivalWeaknesses].filter(Boolean).length;
+    const kickoffCount = dossierContent.kickoffDiagrams.length;
+    const offensiveCount = dossierContent.offensiveDiagrams.length;
+    const defensiveCount = dossierContent.defensiveDiagrams.length;
+    const config = {
+      lineup: { count: realStarters, target: 11, noun: `${realStarters}/11 jugadores`, last: match?.updated_at || match?.updatedAt || match?.date },
+      talk: { count: talkLines, target: 5, noun: `${Math.min(talkLines, 5)} claves/notas`, last: match?.updated_at || match?.updatedAt || match?.date },
+      takers: { count: takers, target: 4, noun: `${takers} lanzadores`, last: latestTimestamp(setPieceTakers) },
+      offensive: { count: offensiveCount, target: 1, noun: `${offensiveCount} jugadas`, last: latestTimestamp(dossierContent.offensiveDiagrams) },
+      defensive: { count: defensiveCount, target: 1, noun: `${defensiveCount} jugadas`, last: latestTimestamp(dossierContent.defensiveDiagrams) },
+      kickoff: { count: kickoffCount, target: 1, noun: `${kickoffCount} jugadas`, last: latestTimestamp(dossierContent.kickoffDiagrams) },
+      pressure: { count: pressureLines, target: 3, noun: `${pressureLines} apuntes`, last: match?.updated_at || match?.updatedAt || match?.date },
+      vigilances: { count: vigilanceLines, target: 3, noun: `${vigilanceLines} vigilancias`, last: match?.updated_at || match?.updatedAt || match?.date },
+      transitions: { count: transitionLines, target: 2, noun: `${transitionLines} consignas`, last: match?.updated_at || match?.updatedAt || match?.date },
+      halftime: { count: 1, target: 1, noun: 'plantilla preparada', last: match?.updated_at || match?.updatedAt || match?.date },
+      rival: { count: rivalFields, target: 4, noun: `${rivalFields} datos scouting`, last: match?.updated_at || match?.updatedAt || match?.date },
+      staff: { count: staffLines, target: 4, noun: `${staffLines} notas`, last: match?.updated_at || match?.updatedAt || match?.date },
+    }[page.id] || { count: 0, target: 1, noun: 'Sin contenido todavia', last: '' };
+    const completion = Math.max(0, Math.min(100, Math.round((config.count / Math.max(1, config.target)) * 100)));
+    const empty = config.count <= 0;
+    return {
+      ...config,
+      completion,
+      empty,
+      label: empty ? 'Sin contenido todavia' : config.noun,
+      status: empty ? 'Pendiente' : completion >= 100 ? 'Listo' : 'Parcial',
+      pages: getPageSheetCount(page),
+      lastEdited: formatLastEdit(config.last),
+    };
+  };
+
+  const getPageTargetView = (pageId) => {
+    if (pageId === 'takers') return 'lanzadores';
+    if (pageId === 'offensive' || pageId === 'kickoff') return 'abp_ofensiva';
+    if (pageId === 'defensive') return 'abp_defensiva';
+    return 'alineacion';
+  };
+
+  const scrollToPrintWorkspace = () => {
+    window.setTimeout(() => {
+      document.querySelector('[data-print-workspace="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  };
+
+  const handleDossierPageAction = (page, action) => {
+    updateDossierPage(page.id, { active: true });
+    if (action === 'preview') {
+      handlePreview();
+      return;
+    }
+    rememberDossierPage(page.id);
+    if (page.id === 'kickoff') setOffensiveType('saque_inicio_ofensivo');
+    if (['lineup', 'takers', 'offensive', 'defensive', 'kickoff'].includes(page.id)) {
+      setPrintView(getPageTargetView(page.id));
+      scrollToPrintWorkspace();
+      return;
+    }
+    if (page.id === 'halftime') {
+      onNavigateMatchSection?.('POST');
+      return;
+    }
+    onNavigateMatchSection?.('PRE');
+  };
+
+  const editLastDossierPage = () => {
+    const page = dossierPages.find((item) => item.id === lastEditedDossierPageId) || activeDossierPages[0] || dossierPages[0];
+    if (page) handleDossierPageAction(page, 'edit');
   };
 
   return (
@@ -1236,16 +1352,29 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Constructor de dossier</p>
-              <p className="mt-1 text-sm text-slate-400">Selecciona hojas operativas, ordenalas y adapta la densidad al uso real. {activeDossierPages.length} bloques activos · {activeSheetCount} hojas estimadas.</p>
+              <p className="mt-1 text-sm text-slate-400">Centro operativo de partido: configura, revisa y entra directo a cada bloque. {activeDossierPages.length} bloques activos · {activeSheetCount} hojas · {activeReadMinutes} min lectura.</p>
             </div>
-            <label className="flex items-center gap-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
-              Tipo de hoja
-              <select value={dossierType} onChange={(event) => setDossierType(event.target.value)} className="rounded-2xl border border-white/10 bg-white px-4 py-2 text-sm font-black text-slate-950">
-                {['Vestuario', 'Banquillo', 'Staff', 'Charla', 'Resumen rival'].map((type) => (
-                  <option key={type} value={type}>{type}</option>
-                ))}
-              </select>
-            </label>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-right">
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-white">{activeSheetCount} hojas · {dossierDensity}</p>
+              <p className={`mt-1 text-xs font-semibold ${activeSheetCount >= 9 ? 'text-amber-100' : 'text-slate-400'}`}>{densityAdvice}</p>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-2 lg:grid-cols-5">
+            <button type="button" onClick={editLastDossierPage} className="rounded-2xl border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-3 text-left text-xs font-black uppercase tracking-[0.1em] text-caudal-electric transition hover:bg-caudal-electric/15">
+              Editar ultimo bloque
+            </button>
+            <button type="button" onClick={() => onNavigateMatchSection?.('PRE')} className="rounded-2xl bg-white/10 px-3 py-3 text-left text-xs font-black uppercase tracking-[0.1em] text-white transition hover:bg-white/15">
+              Abrir PRE partido
+            </button>
+            <button type="button" onClick={() => onNavigateMatchSection?.('POST')} className="rounded-2xl bg-white/10 px-3 py-3 text-left text-xs font-black uppercase tracking-[0.1em] text-white transition hover:bg-white/15">
+              Abrir POST partido
+            </button>
+            <button type="button" onClick={() => openDuplicateModal('all')} className="rounded-2xl bg-white/10 px-3 py-3 text-left text-xs font-black uppercase tracking-[0.1em] text-white transition hover:bg-white/15">
+              Duplicar dossier anterior
+            </button>
+            <button type="button" onClick={handlePreview} className="rounded-2xl bg-white/10 px-3 py-3 text-left text-xs font-black uppercase tracking-[0.1em] text-white transition hover:bg-white/15">
+              Vista rapida impresion
+            </button>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             {Object.entries(dossierPresets).map(([key, preset]) => (
@@ -1259,15 +1388,27 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
               </button>
             ))}
           </div>
-          <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-            {dossierPages.map((page, index) => (
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+            <span className="text-caudal-electric">Orden real de uso</span>
+            <span>Alineacion</span>
+            <span>Charla</span>
+            <span>Vigilancias</span>
+            <span>Lanzadores</span>
+            <span>ABP</span>
+            <span>Descanso</span>
+            <span>Notas</span>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {dossierPages.map((page, index) => {
+              const pageStatus = getDossierPageStatus(page);
+              return (
               <div
                 key={page.id}
                 draggable
                 onDragStart={() => setDraggedDossierPageId(page.id)}
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={() => dropDossierPage(page.id)}
-                className={`flex items-center gap-3 rounded-2xl border px-3 py-2 text-xs font-bold transition ${page.active ? 'border-caudal-electric/30 bg-caudal-electric/10 text-white' : 'border-white/10 bg-white/[0.035] text-slate-400'} ${draggedDossierPageId === page.id ? 'opacity-60 ring-2 ring-caudal-electric' : ''}`}
+                className={`rounded-2xl border p-3 text-xs font-bold transition ${page.active ? 'border-caudal-electric/30 bg-caudal-electric/10 text-white' : 'border-white/10 bg-white/[0.035] text-slate-400'} ${draggedDossierPageId === page.id ? 'opacity-60 ring-2 ring-caudal-electric' : ''}`}
               >
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-black/25 text-[10px] font-black text-white">{index + 1}</span>
                 <input
@@ -1285,8 +1426,32 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                 </div>
                 <button type="button" onClick={() => moveDossierPage(page.id, -1)} disabled={index === 0} className="rounded-lg bg-white/10 px-2 py-1 text-[10px] disabled:opacity-30">Subir</button>
                 <button type="button" onClick={() => moveDossierPage(page.id, 1)} disabled={index === dossierPages.length - 1} className="rounded-lg bg-white/10 px-2 py-1 text-[10px] disabled:opacity-30">Bajar</button>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[10px]">
+                  <div className="rounded-xl bg-black/20 px-2 py-2">
+                    <p className="font-black text-white">{pageStatus.pages}</p>
+                    <p className="mt-0.5 text-slate-500">paginas</p>
+                  </div>
+                  <div className="rounded-xl bg-black/20 px-2 py-2">
+                    <p className="font-black text-white">{pageStatus.completion}%</p>
+                    <p className="mt-0.5 text-slate-500">completo</p>
+                  </div>
+                  <div className="rounded-xl bg-black/20 px-2 py-2">
+                    <p className="truncate font-black text-white">{pageStatus.lastEdited}</p>
+                    <p className="mt-0.5 text-slate-500">edicion</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span className={`rounded-lg px-2 py-1 text-[9px] font-black uppercase ${pageStatus.empty ? 'bg-amber-300/10 text-amber-100' : 'bg-emerald-300/10 text-emerald-100'}`}>{pageStatus.status}</span>
+                  <span className="rounded-lg border border-white/5 bg-white/[0.035] px-2 py-1 text-[11px] text-slate-300">{pageStatus.empty ? 'Sin contenido todavia' : pageStatus.label}</span>
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <button type="button" onClick={() => handleDossierPageAction(page, 'edit')} className="rounded-xl bg-caudal-electric px-2 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-slate-950 transition hover:bg-[#7aacff]">Editar</button>
+                  <button type="button" onClick={() => handleDossierPageAction(page, 'preview')} className="rounded-xl bg-white/10 px-2 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-white transition hover:bg-white/15">Vista previa</button>
+                  <button type="button" onClick={() => handleDossierPageAction(page, 'module')} className="rounded-xl bg-white/10 px-2 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-white transition hover:bg-white/15">Ir al modulo</button>
+                </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
         {printValidationStatus ? (
@@ -1297,7 +1462,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
       </div>
 
       {printView === 'lanzadores' ? (
-        <div className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+        <div data-print-workspace="true" className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Configurar lanzadores</h4>
@@ -1355,7 +1520,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
       ) : null}
 
       {printView === 'abp_ofensiva' ? (
-        <div className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+        <div data-print-workspace="true" className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Editor visual ABP ofensiva</h4>
@@ -1473,7 +1638,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
       ) : null}
 
       {printView === 'abp_defensiva' ? (
-        <div className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+        <div data-print-workspace="true" className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Editor visual ABP defensiva</h4>
@@ -1688,7 +1853,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                   captainPlayerId={captainPlayerId}
                   matchKeys={getMatchKeys()}
                   staffNotes={getStaffNotes()}
-                  dossierType={dossierType}
+                  dossierType={page.group}
                   pageNumber={pageNumber}
                   totalPages={activeSheetCount}
                 />
@@ -1726,7 +1891,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                 key={`${page.id}-dossier`}
                 match={match}
                 pageId={page.id}
-                dossierType={dossierType}
+                dossierType={page.group}
                 keys={getMatchKeys()}
                 staffNotes={getStaffNotes()}
                 pageNumber={pageNumber}
