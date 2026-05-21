@@ -614,25 +614,36 @@ const normalizeSupabasePostEvent = (event) => ({
 });
 
 const delegatedEventDefinitions = [
-  { key: 'tiro', tipoEvento: 'tiro', label: 'Tiro', side: 'caudal', needsPlayer: true },
-  { key: 'tiro_puerta', tipoEvento: 'tiro_puerta', label: 'Tiro a puerta', side: 'caudal', needsPlayer: true },
-  { key: 'corner', tipoEvento: 'corner', label: 'Córner', side: 'caudal', needsPlayer: true },
-  { key: 'falta', tipoEvento: 'falta', label: 'Falta', side: 'caudal', needsPlayer: true },
-  { key: 'recuperacion', tipoEvento: 'recuperacion', label: 'Recuperación', side: 'caudal', needsPlayer: true },
-  { key: 'perdida', tipoEvento: 'perdida', label: 'Pérdida', side: 'caudal', needsPlayer: true },
-  { key: 'tiro_rival', tipoEvento: 'tiro_rival', label: 'Tiro rival', side: 'rival', needsPlayer: false },
-  { key: 'tiro_puerta_rival', tipoEvento: 'tiro_puerta_rival', label: 'Tiro a puerta rival', side: 'rival', needsPlayer: false },
-  { key: 'corner_rival', tipoEvento: 'corner_rival', label: 'Córner rival', side: 'rival', needsPlayer: false },
-  { key: 'falta_rival', tipoEvento: 'falta_rival', label: 'Falta rival', side: 'rival', needsPlayer: false },
+  { key: 'recuperacion_alta', tipoEvento: 'recuperacion', label: 'Recuperación alta', short: 'REC', side: 'caudal', category: 'principal', tone: 'defensive' },
+  { key: 'entrada_area', tipoEvento: 'entrada_area', label: 'Entrada área rival', short: 'AREA', side: 'caudal', category: 'principal', tone: 'offensive' },
+  { key: 'tiro', tipoEvento: 'tiro', label: 'Tiro', short: 'TIR', side: 'caudal', category: 'principal', tone: 'offensive' },
+  { key: 'tiro_puerta', tipoEvento: 'tiro_puerta', label: 'Tiro a puerta', short: 'TP', side: 'caudal', category: 'principal', tone: 'offensive' },
+  { key: 'perdida_peligrosa', tipoEvento: 'perdida', label: 'Pérdida peligrosa', short: 'PER', side: 'caudal', category: 'principal', tone: 'danger' },
+  { key: 'corner', tipoEvento: 'corner', label: 'Córner', short: 'COR', side: 'caudal', category: 'principal', tone: 'offensive' },
+  { key: 'recuperacion_alta_rival', tipoEvento: 'recuperacion_rival', label: 'Recuperación alta', short: 'REC', side: 'rival', category: 'principal', tone: 'rival' },
+  { key: 'entrada_area_rival', tipoEvento: 'entrada_area_rival', label: 'Entrada área', short: 'AREA', side: 'rival', category: 'principal', tone: 'rival' },
+  { key: 'tiro_rival', tipoEvento: 'tiro_rival', label: 'Tiro', short: 'TIR', side: 'rival', category: 'principal', tone: 'rival' },
+  { key: 'tiro_puerta_rival', tipoEvento: 'tiro_puerta_rival', label: 'Tiro a puerta', short: 'TP', side: 'rival', category: 'principal', tone: 'rival' },
+  { key: 'perdida_peligrosa_rival', tipoEvento: 'perdida_rival', label: 'Pérdida peligrosa', short: 'PER', side: 'rival', category: 'principal', tone: 'rivalPositive' },
+  { key: 'corner_rival', tipoEvento: 'corner_rival', label: 'Córner', short: 'COR', side: 'rival', category: 'principal', tone: 'rival' },
+  { key: 'amarilla', tipoEvento: 'amarilla', label: 'Amarilla', short: 'AM', side: 'caudal', category: 'secondary', tone: 'incident' },
+  { key: 'roja', tipoEvento: 'roja', label: 'Roja', short: 'RJ', side: 'caudal', category: 'secondary', tone: 'incident' },
+  { key: 'lesion', tipoEvento: 'lesion', label: 'Lesión', short: 'LES', side: 'caudal', category: 'secondary', tone: 'incident' },
+  { key: 'cambio', tipoEvento: 'cambio', label: 'Cambio', short: 'CAM', side: 'caudal', category: 'secondary', tone: 'change' },
+  { key: 'momento_dominamos', tipoEvento: 'momento_dominamos', label: 'Dominamos', short: 'DOM', side: 'caudal', category: 'momentum', tone: 'momentumPositive' },
+  { key: 'momento_igualado', tipoEvento: 'momento_igualado', label: 'Igualado', short: 'EQ', side: 'neutral', category: 'momentum', tone: 'momentumNeutral' },
+  { key: 'momento_sufriendo', tipoEvento: 'momento_sufriendo', label: 'Sufriendo', short: 'SUF', side: 'rival', category: 'momentum', tone: 'danger' },
+  { key: 'momento_empujando', tipoEvento: 'momento_empujando', label: 'Empujando arriba', short: 'UP', side: 'caudal', category: 'momentum', tone: 'offensive' },
+  { key: 'momento_replegados', tipoEvento: 'momento_replegados', label: 'Replegados', short: 'REP', side: 'caudal', category: 'momentum', tone: 'defensive' },
 ];
 
 const delegatedCounterPairs = [
   { label: 'Tiros', caudal: 'tiro', rival: 'tiro_rival' },
   { label: 'Tiros puerta', caudal: 'tiro_puerta', rival: 'tiro_puerta_rival' },
+  { label: 'Entradas área', caudal: 'entrada_area', rival: 'entrada_area_rival' },
   { label: 'Córners', caudal: 'corner', rival: 'corner_rival' },
-  { label: 'Faltas', caudal: 'falta', rival: 'falta_rival' },
-  { label: 'Recuperaciones', caudal: 'recuperacion', rival: null },
-  { label: 'Pérdidas', caudal: 'perdida', rival: null },
+  { label: 'Rec. altas', caudal: 'recuperacion', rival: 'recuperacion_rival' },
+  { label: 'Pérd. peligrosas', caudal: 'perdida', rival: 'perdida_rival' },
 ];
 
 const quickEventLabelByType = Object.fromEntries(delegatedEventDefinitions.map((definition) => [definition.tipoEvento, definition.label]));
@@ -2491,6 +2502,8 @@ function App() {
   const [delegatedMinute, setDelegatedMinute] = useState('0');
   const [delegatedElapsedSeconds, setDelegatedElapsedSeconds] = useState(0);
   const [delegatedTimerRunning, setDelegatedTimerRunning] = useState(false);
+  const [delegatedMatchState, setDelegatedMatchState] = useState('EN JUEGO');
+  const [delegatedAddedTime, setDelegatedAddedTime] = useState('');
   const [delegatedSide, setDelegatedSide] = useState('caudal');
   const [showAllDelegatedEvents, setShowAllDelegatedEvents] = useState(false);
   const [delegatedEventDraft, setDelegatedEventDraft] = useState(null);
@@ -6105,16 +6118,29 @@ function App() {
 
   const resetDelegatedTimer = () => {
     setDelegatedTimerRunning(false);
+    setDelegatedMatchState('EN JUEGO');
     updateDelegatedMinute(0);
   };
 
   const pauseDelegatedTimerForHalftime = () => {
     setDelegatedTimerRunning(false);
+    setDelegatedMatchState('DESCANSO');
     updateDelegatedMinute(45);
   };
 
   const startDelegatedSecondHalf = () => {
     updateDelegatedMinute(45);
+    setDelegatedMatchState('EN JUEGO');
+    setDelegatedTimerRunning(true);
+  };
+
+  const finishDelegatedMatch = () => {
+    setDelegatedTimerRunning(false);
+    setDelegatedMatchState('FINALIZADO');
+  };
+
+  const startDelegatedMatch = () => {
+    setDelegatedMatchState('EN JUEGO');
     setDelegatedTimerRunning(true);
   };
 
@@ -6149,6 +6175,64 @@ function App() {
     } finally {
       setDelegatedEventSaving(false);
     }
+  };
+
+  const saveDelegatedEventDirect = async (definition) => {
+    if (!selectedMatch || !definition || delegatedEventSaving) return;
+    setDelegatedEventSaving(true);
+    setStatsError('');
+    setDelegatedEventFeedback('');
+    try {
+      const minute = Math.max(0, Math.min(130, Number(delegatedMinute) || 0));
+      const payload = {
+        partido_id: selectedMatch.id,
+        jugador_id: null,
+        equipo: definition.side === 'neutral' ? 'caudal' : definition.side,
+        tipo_evento: definition.tipoEvento,
+        minuto: minute,
+        reviewed: false,
+      };
+      const { data, error } = await supabase.from("match_quick_events").insert(payload).select("*").single();
+      if (error) throw error;
+      const savedEvent = normalizeSupabaseQuickEvent(data || payload);
+      setMatches((current) => current.map((match) => (
+        match.id === selectedMatch.id
+          ? { ...match, quickEvents: [...(match.quickEvents || []), savedEvent] }
+          : match
+      )));
+      setDelegatedEventFeedback(`${definition.label} · ${minute}'`);
+      window.setTimeout(() => setDelegatedEventFeedback((current) => (current === `${definition.label} · ${minute}'` ? '' : current)), 1200);
+    } catch (error) {
+      console.error('Error guardando evento directo de Modo Delegado:', { definition, error });
+      setStatsError(error.message || 'No se pudo guardar el evento del Modo Delegado.');
+    } finally {
+      setDelegatedEventSaving(false);
+    }
+  };
+
+  const undoLastDelegatedEvent = async () => {
+    if (!selectedMatch) return;
+    const lastEvent = [...getDelegatedEvents()].sort((a, b) => {
+      const createdDiff = String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+      return createdDiff || Number(b.minute || 0) - Number(a.minute || 0);
+    })[0];
+    if (!lastEvent) return;
+    setDelegatedEventSaving(true);
+    const { error } = await supabase.from("match_quick_events").delete().eq("id", lastEvent.id);
+    if (error) {
+      console.error('Error deshaciendo último evento de Modo Delegado:', { lastEvent, error });
+      setStatsError(error.message || 'No se pudo deshacer el último evento.');
+      setDelegatedEventSaving(false);
+      return;
+    }
+    setMatches((current) => current.map((match) => (
+      match.id === selectedMatch.id
+        ? { ...match, quickEvents: (match.quickEvents || []).filter((event) => event.id !== lastEvent.id) }
+        : match
+    )));
+    setDelegatedEventFeedback(`Deshecho: ${quickEventLabelByType[lastEvent.tipoEvento] || lastEvent.tipoEvento}`);
+    window.setTimeout(() => setDelegatedEventFeedback((current) => (current.startsWith('Deshecho:') ? '' : current)), 1600);
+    setDelegatedEventSaving(false);
   };
 
   const updateQuickEvent = async (eventId, fields) => {
@@ -6428,86 +6512,106 @@ function App() {
   };
 
   const renderDelegatedStatsMode = () => {
-    const caudalEvents = delegatedEventDefinitions.filter((definition) => definition.side === 'caudal');
-    const rivalEvents = delegatedEventDefinitions.filter((definition) => definition.side === 'rival');
-    const activeDelegatedEvents = delegatedSide === 'rival' ? rivalEvents : caudalEvents;
+    const caudalEvents = delegatedEventDefinitions.filter((definition) => definition.category === 'principal' && definition.side === 'caudal');
+    const rivalEvents = delegatedEventDefinitions.filter((definition) => definition.category === 'principal' && definition.side === 'rival');
+    const secondaryEvents = delegatedEventDefinitions.filter((definition) => definition.category === 'secondary');
+    const momentumEvents = delegatedEventDefinitions.filter((definition) => definition.category === 'momentum');
     const calledPlayers = getStatsCalledPlayers();
     const orderedDelegatedEvents = getDelegatedEvents()
       .slice()
-      .sort((a, b) => Number(b.minute || 0) - Number(a.minute || 0));
-    const recentEvents = orderedDelegatedEvents.slice(0, showAllDelegatedEvents ? 50 : 5);
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')) || Number(b.minute || 0) - Number(a.minute || 0));
+    const recentEvents = orderedDelegatedEvents.slice(0, showAllDelegatedEvents ? 60 : 20);
     const playersById = new Map(players.map((player) => [player.id, player]));
+    const liveSummary = getQuickEventSummary(getDelegatedEvents());
+    const clockMinutes = Math.floor(Number(delegatedElapsedSeconds || 0) / 60);
+    const clockSeconds = String(Number(delegatedElapsedSeconds || 0) % 60).padStart(2, '0');
+    const addedTimeLabel = delegatedAddedTime ? `+${delegatedAddedTime}` : '';
+    const stateClass = delegatedMatchState === 'FINALIZADO'
+      ? 'border-slate-300/20 bg-slate-400/10 text-slate-200'
+      : delegatedMatchState === 'DESCANSO'
+        ? 'border-yellow-200/25 bg-yellow-300/[0.12] text-yellow-100'
+        : delegatedTimerRunning
+          ? 'border-emerald-200/25 bg-emerald-300/[0.12] text-emerald-100'
+          : 'border-caudal-electric/25 bg-caudal-electric/10 text-caudal-electric';
+    const getDelegatedToneClass = (tone) => ({
+      offensive: 'border-caudal-electric/20 bg-caudal-electric text-slate-950 shadow-[0_0_26px_rgba(79,140,255,0.18)]',
+      defensive: 'border-cyan-200/20 bg-cyan-300 text-slate-950 shadow-[0_0_26px_rgba(34,211,238,0.15)]',
+      danger: 'border-red-200/20 bg-red-500 text-white shadow-[0_0_26px_rgba(239,68,68,0.18)]',
+      rival: 'border-red-200/20 bg-red-500 text-white shadow-[0_0_26px_rgba(239,68,68,0.18)]',
+      rivalPositive: 'border-emerald-200/20 bg-emerald-500 text-slate-950 shadow-[0_0_26px_rgba(16,185,129,0.16)]',
+      incident: 'border-yellow-200/20 bg-yellow-300 text-slate-950',
+      change: 'border-emerald-200/20 bg-emerald-400 text-slate-950',
+      momentumPositive: 'border-emerald-200/20 bg-emerald-300 text-slate-950',
+      momentumNeutral: 'border-white/10 bg-white/[0.12] text-slate-100',
+    }[tone] || 'border-white/10 bg-white/10 text-white');
+    const getTimelineToneClass = (tipoEvento) => {
+      const definition = delegatedEventDefinitions.find((item) => item.tipoEvento === tipoEvento);
+      if (definition?.category === 'momentum') return 'border-violet-200/15 bg-violet-400/10 text-violet-100';
+      if (definition?.tone === 'incident') return 'border-yellow-200/15 bg-yellow-300/10 text-yellow-100';
+      if (definition?.tone === 'danger' || definition?.side === 'rival') return 'border-red-200/15 bg-red-500/10 text-red-100';
+      return 'border-caudal-electric/15 bg-caudal-electric/10 text-caudal-electric';
+    };
+    const getTimelineIcon = (tipoEvento) => ({
+      recuperacion: 'REC',
+      recuperacion_rival: 'REC',
+      entrada_area: 'AREA',
+      entrada_area_rival: 'AREA',
+      tiro: 'TIR',
+      tiro_rival: 'TIR',
+      tiro_puerta: 'TP',
+      tiro_puerta_rival: 'TP',
+      perdida: 'PER',
+      perdida_rival: 'PER',
+      corner: 'COR',
+      corner_rival: 'COR',
+      amarilla: 'AM',
+      roja: 'RJ',
+      lesion: 'LES',
+      cambio: 'CAM',
+      momento_dominamos: 'DOM',
+      momento_igualado: 'EQ',
+      momento_sufriendo: 'SUF',
+      momento_empujando: 'UP',
+      momento_replegados: 'REP',
+    }[tipoEvento] || 'EV');
 
     return (
       <div className="space-y-4">
-        <div className="sticky top-2 z-30 rounded-3xl border border-white/5 bg-[#091428]/95 p-4 shadow-glow backdrop-blur-md sm:p-6">
-          <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
+        <div className="sticky top-2 z-30 rounded-3xl border border-white/5 bg-[#091428]/95 p-4 shadow-glow backdrop-blur-md sm:p-5">
+          <div className="grid gap-4 xl:grid-cols-[1fr_auto] xl:items-center">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-caudal-electric">Modo Delegado</p>
               <h3 className="mt-1 text-xl font-black text-white">{getStatsScore().home} - {getStatsScore().away} · {selectedMatch?.opponent || 'Rival'}</h3>
-              <p className="mt-2 text-sm text-slate-400">El evento se guardará con el minuto actual del cronómetro.</p>
+              <p className="mt-2 text-sm text-slate-400">1 clic registra el evento con el minuto actual. Jugador opcional después.</p>
             </div>
-            <div className="rounded-3xl border border-white/10 bg-black/25 p-3">
-              <div className="grid grid-cols-[52px_1fr_52px] items-center gap-2">
-                <button type="button" onClick={() => updateDelegatedMinute(Number(delegatedMinute || 0) - 1)} className="flex h-14 w-full items-center justify-center rounded-2xl bg-white/10 text-3xl font-black text-white transition hover:bg-white/15">-</button>
-                <label className="flex flex-col items-center rounded-3xl bg-white px-4 py-3">
-                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Minuto</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max="130"
-                    value={delegatedMinute}
-                    onChange={(event) => updateDelegatedMinute(event.target.value)}
-                    className="w-24 bg-transparent text-center text-5xl font-black leading-none text-slate-950"
-                    aria-label="Minuto actual del cronómetro"
-                  />
-                  <span className="text-lg font-black text-slate-950">'</span>
-                </label>
-                <button type="button" onClick={() => updateDelegatedMinute(Number(delegatedMinute || 0) + 1)} className="flex h-14 w-full items-center justify-center rounded-2xl bg-caudal-electric text-3xl font-black text-slate-950 transition hover:bg-[#7aacff]">+</button>
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDelegatedTimerRunning((current) => !current)}
-                  className={`min-h-12 rounded-2xl px-4 py-3 text-sm font-black uppercase tracking-[0.12em] transition ${delegatedTimerRunning ? 'bg-amber-300 text-slate-950' : 'bg-emerald-300 text-slate-950'}`}
-                >
-                  {delegatedTimerRunning ? 'Pausar' : Number(delegatedElapsedSeconds) > 0 ? 'Reanudar' : 'Iniciar partido'}
-                </button>
-                <button type="button" onClick={resetDelegatedTimer} className="min-h-12 rounded-2xl bg-white/10 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-200 transition hover:bg-white/15">
-                  Reiniciar
-                </button>
-                <button type="button" onClick={pauseDelegatedTimerForHalftime} className="min-h-12 rounded-2xl bg-white/10 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-200 transition hover:bg-white/15">
-                  Descanso
-                </button>
-                <button type="button" onClick={startDelegatedSecondHalf} className="min-h-12 rounded-2xl bg-caudal-electric px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-[#7aacff]">
-                  Segunda parte
-                </button>
+            <div className={`rounded-3xl border p-3 ${stateClass}`}>
+              <div className="grid gap-3 sm:grid-cols-[auto_1fr] sm:items-center">
+                <div className="rounded-3xl bg-black/30 px-5 py-4 text-center">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] opacity-70">{delegatedMatchState}</p>
+                  <p className="mt-1 font-mono text-5xl font-black leading-none text-white">{clockMinutes}<span className="text-3xl">:{clockSeconds}</span></p>
+                  <div className="mt-2 flex items-center justify-center gap-2">
+                    <button type="button" onClick={() => updateDelegatedMinute(Number(delegatedMinute || 0) - 1)} className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/10 text-lg font-black text-white">-</button>
+                    <span className="rounded-xl bg-white/10 px-3 py-1 text-sm font-black text-white">{delegatedMinute}' {addedTimeLabel}</span>
+                    <button type="button" onClick={() => updateDelegatedMinute(Number(delegatedMinute || 0) + 1)} className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/10 text-lg font-black text-white">+</button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:min-w-[360px]">
+                  <button type="button" onClick={startDelegatedMatch} className="min-h-11 rounded-2xl bg-emerald-300 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">
+                    {Number(delegatedElapsedSeconds) > 0 ? 'Reanudar' : 'Iniciar partido'}
+                  </button>
+                  <button type="button" onClick={pauseDelegatedTimerForHalftime} className="min-h-11 rounded-2xl bg-yellow-300 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Descanso</button>
+                  <button type="button" onClick={startDelegatedSecondHalf} className="min-h-11 rounded-2xl bg-caudal-electric px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Segunda parte</button>
+                  <button type="button" onClick={finishDelegatedMatch} className="min-h-11 rounded-2xl bg-slate-500 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-white">Finalizar</button>
+                  <button type="button" onClick={resetDelegatedTimer} className="min-h-11 rounded-2xl bg-white/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-200">Reiniciar</button>
+                  <label className="flex min-h-11 items-center gap-2 rounded-2xl bg-white/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-300">
+                    +
+                    <input value={delegatedAddedTime} onChange={(event) => setDelegatedAddedTime(event.target.value.replace(/\D/g, '').slice(0, 2))} placeholder="Añ." className="w-10 bg-transparent text-center text-sm font-black text-white outline-none" />
+                  </label>
+                </div>
               </div>
             </div>
           </div>
-
-          {delegatedEventFeedback ? (
-            <StatusMessage status={delegatedEventFeedback} className="mt-4" />
-          ) : null}
-          {delegatedEventSaving ? <StatusMessage status="Guardando..." className="mt-4" /> : null}
-
-          <div className="mt-4 grid grid-cols-2 gap-2 rounded-3xl bg-black/20 p-2">
-            {[
-              ['caudal', 'Nuestro equipo'],
-              ['rival', 'Rival'],
-            ].map(([side, label]) => (
-              <button
-                key={side}
-                type="button"
-                onClick={() => setDelegatedSide(side)}
-                className={`min-h-[48px] rounded-2xl px-4 py-3 text-sm font-black uppercase tracking-[0.12em] transition ${delegatedSide === side ? side === 'caudal' ? 'bg-caudal-electric text-slate-950' : 'bg-red-500 text-white' : 'bg-white/10 text-slate-300'}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
             {delegatedCounterPairs.map((counter) => (
               <div key={counter.label} className="rounded-2xl bg-white/5 p-3 text-center">
                 <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{counter.label}</p>
@@ -6518,44 +6622,155 @@ function App() {
               </div>
             ))}
           </div>
-        </div>
-
-        <div className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-6">
-          <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">{delegatedSide === 'caudal' ? 'Nuestro equipo' : 'Rival'}</h4>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            {activeDelegatedEvents.map((definition) => (
-              <button
-                key={definition.key}
-                type="button"
-                onClick={() => openDelegatedEventModal(definition)}
-                disabled={delegatedEventSaving}
-                className={`min-h-[86px] rounded-3xl px-4 py-5 text-left text-lg font-black shadow-glow transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${delegatedSide === 'caudal' ? 'bg-caudal-electric text-slate-950' : 'bg-red-500 text-white'}`}
-              >
-                {definition.label}
-              </button>
-            ))}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={undoLastDelegatedEvent} disabled={!orderedDelegatedEvents.length || delegatedEventSaving} className="rounded-2xl bg-red-500/15 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-red-100 transition hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-40">
+              Deshacer último evento
+            </button>
+            {delegatedEventFeedback ? <span className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-bold text-slate-200">{delegatedEventFeedback}</span> : null}
+            {delegatedEventSaving ? <span className="rounded-2xl bg-caudal-electric/15 px-4 py-2 text-xs font-bold text-caudal-electric">Guardando...</span> : null}
           </div>
         </div>
 
-        <div className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-6">
-          <div className="flex items-center justify-between gap-3">
-            <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">Últimos eventos</h4>
-            {orderedDelegatedEvents.length > 5 ? (
-              <button type="button" onClick={() => setShowAllDelegatedEvents((current) => !current)} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-slate-200">
-                {showAllDelegatedEvents ? 'Ver menos' : 'Ver todos'}
-              </button>
-            ) : null}
-          </div>
-          <div className="mt-4 space-y-2">
-            {recentEvents.length ? recentEvents.map((event) => (
-              <div key={event.id} className="flex items-center justify-between gap-3 rounded-2xl bg-white/5 px-4 py-3 text-sm">
-                <span className="font-black text-white">{event.minute}' · {quickEventLabelByType[event.tipoEvento] || event.tipoEvento}</span>
-                <span className="truncate text-right text-slate-400">{playersById.get(event.jugadorId)?.name || selectedMatch?.opponent || 'Rival'}</span>
+        <div className="grid gap-4 xl:grid-cols-[1fr_0.92fr]">
+          <div className="space-y-4">
+            <div className="grid gap-4 lg:grid-cols-2">
+              {[
+                ['Nuestro equipo', caudalEvents, 'text-caudal-electric'],
+                ['Rival', rivalEvents, 'text-red-200'],
+              ].map(([title, events, titleClass]) => (
+                <section key={title} className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-5">
+                  <h4 className={`text-sm font-black uppercase tracking-[0.18em] ${titleClass}`}>{title}</h4>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    {events.map((definition) => (
+                      <button
+                        key={definition.key}
+                        type="button"
+                        onClick={() => saveDelegatedEventDirect(definition)}
+                        disabled={delegatedEventSaving}
+                        className={`min-h-[82px] rounded-3xl border px-3 py-4 text-left transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${getDelegatedToneClass(definition.tone)}`}
+                      >
+                        <span className="block text-[10px] font-black uppercase tracking-[0.14em] opacity-70">{definition.short}</span>
+                        <span className="mt-1 block text-base font-black leading-tight">{definition.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+
+            <section className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-5">
+              <div className="flex items-center justify-between gap-3">
+                <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">Eventos secundarios</h4>
+                <span className="text-xs font-bold text-slate-500">opcional</span>
               </div>
-            )) : (
-              <p className="rounded-2xl bg-white/5 px-4 py-4 text-sm text-slate-400">Todavía no hay eventos rápidos registrados.</p>
-            )}
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {secondaryEvents.map((definition) => (
+                  <button
+                    key={definition.key}
+                    type="button"
+                    onClick={() => saveDelegatedEventDirect(definition)}
+                    disabled={delegatedEventSaving}
+                    className={`min-h-[54px] rounded-2xl border px-3 py-3 text-left transition active:scale-[0.98] disabled:opacity-60 ${getDelegatedToneClass(definition.tone)}`}
+                  >
+                    <span className="text-[10px] font-black uppercase tracking-[0.12em] opacity-70">{definition.short}</span>
+                    <span className="ml-2 text-sm font-black">{definition.label}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-5">
+              <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">Momento del partido</h4>
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                {momentumEvents.map((definition) => (
+                  <button
+                    key={definition.key}
+                    type="button"
+                    onClick={() => saveDelegatedEventDirect(definition)}
+                    disabled={delegatedEventSaving}
+                    className={`min-h-[58px] rounded-2xl border px-3 py-3 text-center text-xs font-black uppercase tracking-[0.08em] transition active:scale-[0.98] disabled:opacity-60 ${getDelegatedToneClass(definition.tone)}`}
+                  >
+                    {definition.label}
+                  </button>
+                ))}
+              </div>
+            </section>
           </div>
+
+          <aside className="space-y-4">
+            <section className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-5">
+              <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">Estadísticas en directo</h4>
+              <div className="mt-4 overflow-hidden rounded-2xl border border-white/10">
+                {[
+                  ['Tiros', liveSummary.shots, liveSummary.rivalShots],
+                  ['Tiros puerta', liveSummary.shotsOnTarget, liveSummary.rivalShotsOnTarget],
+                  ['Entradas área', liveSummary.boxEntries, liveSummary.rivalBoxEntries],
+                  ['Rec. altas', liveSummary.recoveries, liveSummary.rivalRecoveries],
+                  ['Pérd. peligrosas', liveSummary.losses, liveSummary.rivalLosses],
+                  ['Córners', liveSummary.corners, liveSummary.rivalCorners],
+                ].map(([label, caudal, rival]) => (
+                  <div key={label} className="grid grid-cols-[1fr_54px_54px] items-center border-b border-white/10 px-3 py-2 last:border-b-0">
+                    <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">{label}</span>
+                    <span className="text-center text-lg font-black text-caudal-electric">{caudal}</span>
+                    <span className="text-center text-lg font-black text-red-200">{rival}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="rounded-2xl bg-white/5 p-3 text-center">
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Precisión tiro</p>
+                  <p className="mt-1 text-xl font-black text-white">{liveSummary.shotAccuracy}</p>
+                </div>
+                <div className="rounded-2xl bg-white/5 p-3 text-center">
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Momentos</p>
+                  <p className="mt-1 text-xl font-black text-white">{liveSummary.momentumEvents}</p>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-5">
+              <div className="flex items-center justify-between gap-3">
+                <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">Timeline en directo</h4>
+                {orderedDelegatedEvents.length > 20 ? (
+                  <button type="button" onClick={() => setShowAllDelegatedEvents((current) => !current)} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-slate-200">
+                    {showAllDelegatedEvents ? '20' : 'Todos'}
+                  </button>
+                ) : null}
+              </div>
+              <div className="mt-4 max-h-[560px] space-y-2 overflow-y-auto pr-1">
+                {recentEvents.length ? recentEvents.map((event) => {
+                  const definition = delegatedEventDefinitions.find((item) => item.tipoEvento === event.tipoEvento);
+                  return (
+                    <div key={event.id} className={`rounded-2xl border px-3 py-3 ${getTimelineToneClass(event.tipoEvento)}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-white"><span className="text-caudal-electric">{event.minute}'</span> · {quickEventLabelByType[event.tipoEvento] || event.tipoEvento}</p>
+                          <p className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{definition?.side === 'rival' ? selectedMatch?.opponent || 'Rival' : definition?.side === 'neutral' ? 'Contexto' : 'Caudal'}</p>
+                        </div>
+                        <span className="rounded-lg bg-white/10 px-2 py-1 text-[10px] font-black">{getTimelineIcon(event.tipoEvento)}</span>
+                      </div>
+                      {definition?.side === 'caudal' && calledPlayers.length ? (
+                        <select
+                          value={event.jugadorId || ''}
+                          onChange={(changeEvent) => updateQuickEvent(event.id, { jugadorId: changeEvent.target.value })}
+                          className="mt-2 w-full rounded-xl bg-white px-2 py-1.5 text-xs font-bold text-slate-950"
+                        >
+                          <option value="">Añadir jugador</option>
+                          {calledPlayers.map((player) => (
+                            <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
+                          ))}
+                        </select>
+                      ) : event.jugadorId ? (
+                        <p className="mt-2 truncate text-xs text-slate-400">{playersById.get(event.jugadorId)?.name}</p>
+                      ) : null}
+                    </div>
+                  );
+                }) : (
+                  <p className="rounded-2xl bg-white/5 px-4 py-4 text-sm text-slate-400">Todavía no hay eventos rápidos registrados.</p>
+                )}
+              </div>
+            </section>
+          </aside>
         </div>
 
         {delegatedEventDraft ? (
@@ -6563,7 +6778,7 @@ function App() {
             <div className="max-h-[86vh] w-full max-w-md overflow-y-auto rounded-t-[2rem] border border-white/10 bg-caudal-950 p-5 shadow-glow sm:rounded-3xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Guardar evento</p>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Editar evento</p>
                   <h3 className="mt-1 text-2xl font-black text-white">{delegatedEventDraft.label}</h3>
                 </div>
                 <button type="button" onClick={() => setDelegatedEventDraft(null)} className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-bold text-white">Cerrar</button>
@@ -6579,22 +6794,19 @@ function App() {
                   className="w-full rounded-2xl bg-white px-4 py-4 text-xl font-black text-slate-950"
                 />
               </label>
-              {delegatedEventDraft.needsPlayer ? (
-                <label className="mt-4 block space-y-2">
-                  <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Jugador</span>
-                  <select
-                    value={delegatedEventDraft.jugadorId}
-                    onChange={(event) => setDelegatedEventDraft((current) => ({ ...current, jugadorId: event.target.value }))}
-                    className="w-full rounded-2xl bg-white px-4 py-4 text-base font-black text-slate-950"
-                  >
-                    <option value="">Sin jugador</option>
-                    {calledPlayers.map((player) => (
-                      <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
-                    ))}
-                  </select>
-                  {!calledPlayers.length ? <p className="text-xs text-amber-100">Añade convocados para poder asociar jugadores rápido.</p> : null}
-                </label>
-              ) : null}
+              <label className="mt-4 block space-y-2">
+                <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Jugador opcional</span>
+                <select
+                  value={delegatedEventDraft.jugadorId}
+                  onChange={(event) => setDelegatedEventDraft((current) => ({ ...current, jugadorId: event.target.value }))}
+                  className="w-full rounded-2xl bg-white px-4 py-4 text-base font-black text-slate-950"
+                >
+                  <option value="">Sin jugador</option>
+                  {calledPlayers.map((player) => (
+                    <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
+                  ))}
+                </select>
+              </label>
               <button
                 type="button"
                 onClick={saveDelegatedEvent}
@@ -6737,19 +6949,29 @@ function App() {
     const rivalShots = getQuickEventCount(events, 'tiro_rival');
     const rivalShotsOnTarget = getQuickEventCount(events, 'tiro_puerta_rival');
     const recoveries = getQuickEventCount(events, 'recuperacion');
+    const rivalRecoveries = getQuickEventCount(events, 'recuperacion_rival');
     const losses = getQuickEventCount(events, 'perdida');
+    const rivalLosses = getQuickEventCount(events, 'perdida_rival');
+    const boxEntries = getQuickEventCount(events, 'entrada_area');
+    const rivalBoxEntries = getQuickEventCount(events, 'entrada_area_rival');
     return {
       shots,
       shotsOnTarget,
       rivalShots,
       rivalShotsOnTarget,
+      boxEntries,
+      rivalBoxEntries,
       corners: getQuickEventCount(events, 'corner'),
       rivalCorners: getQuickEventCount(events, 'corner_rival'),
       fouls: getQuickEventCount(events, 'falta'),
       rivalFouls: getQuickEventCount(events, 'falta_rival'),
       recoveries,
+      rivalRecoveries,
       losses,
+      rivalLosses,
       recoveryLossBalance: recoveries - losses,
+      rivalRecoveryLossBalance: rivalRecoveries - rivalLosses,
+      momentumEvents: events.filter((event) => String(event.tipoEvento || '').startsWith('momento_')).length,
       shotAccuracy: getQuickEventRate(shotsOnTarget, shots),
       concededDanger: getQuickEventRate(rivalShotsOnTarget, rivalShots),
     };
