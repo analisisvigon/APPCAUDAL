@@ -2546,6 +2546,7 @@ function App() {
   const [postVideoSaveStatus, setPostVideoSaveStatus] = useState('');
   const [postVideoDuration, setPostVideoDuration] = useState(0);
   const [selectedPostEventId, setSelectedPostEventId] = useState(null);
+  const [postTacticalPanel, setPostTacticalPanel] = useState(null);
   const [postYoutubeReady, setPostYoutubeReady] = useState(false);
   const [postClipSaving, setPostClipSaving] = useState(false);
   const [postClipFeedback, setPostClipFeedback] = useState('');
@@ -5250,6 +5251,7 @@ function App() {
     if (!selectedMatch) return '';
     const score = getStatsScore();
     const quick = getQuickEventSummary(selectedMatch.quickEvents || []);
+    const derived = buildPostDerivedReading();
     const goalEvents = getStatsGoalEvents();
     const resultText = `${score.caudal === score.rival ? 'Empate' : score.caudal > score.rival ? 'Victoria' : 'Derrota'} ${score.caudal}-${score.rival}.`;
     const goalContext = goalEvents.length
@@ -5266,7 +5268,169 @@ function App() {
     const riskText = quick.rivalShots || quick.losses
       ? `Sufrió ${quick.losses} pérdidas peligrosas y concedió ${quick.rivalShots} tiros.`
       : 'No hay riesgos rápidos relevantes registrados.';
-    return [resultText, goalContext, attackText, riskText].filter(Boolean).join(' ');
+    return [resultText, derived.trend, goalContext, attackText, riskText].filter(Boolean).join(' ');
+  };
+
+  const buildPostDerivedReading = () => {
+    const events = safeArray(selectedMatch?.quickEvents);
+    const clips = safeArray(selectedMatch?.events);
+    const goals = getStatsGoalEvents();
+    const quick = getQuickEventSummary(events);
+    const ranges = getQuickEventsByMinuteRange(events);
+    const dominantRange = ranges.reduce((best, range) => {
+      const balance = Number(range.caudal || 0) - Number(range.rival || 0);
+      const bestBalance = Number(best?.caudal || 0) - Number(best?.rival || 0);
+      return balance > bestBalance ? range : best;
+    }, ranges[0] || { range: '0-15', caudal: 0, rival: 0 });
+    const criticalRange = ranges.reduce((best, range) => {
+      const pressure = Number(range.rival || 0) - Number(range.caudal || 0);
+      const bestPressure = Number(best?.rival || 0) - Number(best?.caudal || 0);
+      return pressure > bestPressure ? range : best;
+    }, ranges[0] || { range: '0-15', caudal: 0, rival: 0 });
+    const momentumSegments = getDelegatedMomentumSegments();
+    const dominantMoment = momentumSegments[0]?.state
+      ? momentumSegments[0].state
+      : quick.recoveries > quick.rivalRecoveries
+        ? 'presión alta Caudal'
+        : quick.rivalBoxEntries > quick.boxEntries
+          ? 'empuje rival'
+          : 'partido igualado';
+    const caudalActivity = quick.shots + quick.boxEntries + quick.recoveries + quick.corners;
+    const rivalActivity = quick.rivalShots + quick.rivalBoxEntries + quick.rivalRecoveries + quick.rivalCorners;
+    const emotionalPossession = caudalActivity + rivalActivity
+      ? Math.round((caudalActivity / Math.max(1, caudalActivity + rivalActivity)) * 100)
+      : 50;
+    const tendency = quick.losses >= 3
+      ? `Caudal tuvo volumen, pero el partido se abrió por pérdidas peligrosas.`
+      : quick.recoveries >= quick.rivalRecoveries + 2
+        ? `Caudal sostuvo el partido desde presión y recuperación alta.`
+        : quick.rivalShotsOnTarget > quick.shotsOnTarget
+          ? `El rival generó menos volumen, pero encontró más amenaza real.`
+          : goals.some((goal) => goal.type === 'Gol en contra')
+            ? `El rival castigó una acción puntual que conviene aislar en vídeo.`
+            : `Partido pendiente de matizar con vídeo y clips tácticos.`;
+    const suggestions = [
+      quick.losses >= 2 ? 'Revisar pérdidas peligrosas y cobertura tras pérdida.' : null,
+      quick.shots > quick.shotsOnTarget + 2 ? 'Mucho tiro sin precisión: revisar calidad de finalización.' : null,
+      quick.rivalBoxEntries > quick.boxEntries ? 'El rival pisó más área: revisar altura y cierres laterales.' : null,
+      quick.recoveries >= 3 ? 'Presión alta con señales útiles para repetir.' : null,
+      clips.some((event) => /juego directo|directo/i.test(event.type || event.description || '')) ? 'Cruzar clips de juego directo con duelos y segundas jugadas.' : null,
+    ].filter(Boolean);
+    return {
+      emotionalPossession,
+      dominantMoment,
+      criticalRange: criticalRange?.range || 'Sin tramo claro',
+      dominantRange: dominantRange?.range || 'Sin tramo claro',
+      trend: tendency,
+      suggestions: suggestions.length ? suggestions : ['Validar primero eventos rápidos y clips para afinar la lectura.'],
+    };
+  };
+
+  const getPostEventTone = (type = '') => {
+    const value = normalizePlayerIdentityName(type);
+    if (/perdida|error|gol en contra/.test(value)) return 'red';
+    if (/recuper|presion/.test(value)) return 'emerald';
+    if (/ocasion|tiro|gol|entrada area/.test(value)) return 'sky';
+    if (/transicion|directo/.test(value)) return 'violet';
+    if (/corner|centro/.test(value)) return 'amber';
+    return 'slate';
+  };
+
+  const getPostClipPriority = (event) => {
+    const text = normalizePlayerIdentityName(`${event?.type || ''} ${event?.description || ''}`);
+    if (/gol|evento clave|ocasion|perdida peligrosa|perdida/.test(text)) return 0;
+    if (/recuper|presion|transicion/.test(text)) return 1;
+    return 2;
+  };
+
+  const getPostAnalysisLinks = () => safeArray(safeObject(selectedMatch?.postAiAnalysis).clipAnalysisLinks);
+
+  const isPostClipLinked = (eventId) => getPostAnalysisLinks().some((link) => link.eventId === eventId);
+
+  const openQuickTacticalPanel = (event, definition) => {
+    const playerName = players.find((player) => player.id === event.jugadorId)?.name || '';
+    setPostTacticalPanel({
+      source: 'quick',
+      quickEventId: event.id,
+      minute: event.minute || '',
+      type: definition?.label || quickEventLabelByType[event.tipoEvento] || event.tipoEvento || selectedEventType,
+      player: playerName,
+      description: `${definition?.label || event.tipoEvento || 'Evento'}${event.equipo === 'rival' ? ' rival' : ''}`,
+      tags: [definition?.tone, event.equipo === 'rival' ? 'rival' : 'caudal'].filter(Boolean).join(', '),
+      importance: event.reviewed ? 'Media' : 'Alta',
+      clipId: '',
+      targetField: 'postReality',
+    });
+  };
+
+  const saveTacticalReviewPanel = async () => {
+    if (!selectedMatch || !postTacticalPanel) return;
+    const selectedType = eventTypes.find((eventType) => eventType.name === postTacticalPanel.type);
+    const payload = {
+      partido_id: selectedMatch.id,
+      tipo_evento_id: selectedType?.id || null,
+      minute: postTacticalPanel.minute || '0',
+      type: postTacticalPanel.type || selectedType?.name || selectedEventType || 'Evento táctico',
+      description: [
+        postTacticalPanel.description,
+        postTacticalPanel.tags ? `Tags: ${postTacticalPanel.tags}` : '',
+        postTacticalPanel.importance ? `Importancia: ${postTacticalPanel.importance}` : '',
+      ].filter(Boolean).join(' · '),
+      player: postTacticalPanel.player || '',
+      video_seconds: Math.max(0, Math.round(Number(postTacticalPanel.minute || 0) * 60)),
+    };
+    const { data: savedEvent, error: eventError } = await supabase.from("partido_eventos_post").insert(payload).select("id").single();
+    if (eventError) {
+      setPostError(eventError.message || 'No se pudo convertir en evento táctico.');
+      return;
+    }
+    if (postTacticalPanel.quickEventId) {
+      await updateQuickEvent(postTacticalPanel.quickEventId, { reviewed: true });
+    }
+    const line = `${payload.minute}' · ${payload.type}${payload.player ? ` · ${payload.player}` : ''}: ${postTacticalPanel.description || ''}`;
+    await updateSelectedMatchFields({
+      [postTacticalPanel.targetField || 'postReality']: [selectedMatch[postTacticalPanel.targetField || 'postReality'], line].filter(Boolean).join('\n'),
+      postAiAnalysis: {
+        ...safeObject(selectedMatch.postAiAnalysis),
+        clipAnalysisLinks: postTacticalPanel.clipId
+          ? [
+              ...safeArray(safeObject(selectedMatch.postAiAnalysis).clipAnalysisLinks).filter((link) => !(link.eventId === postTacticalPanel.clipId && link.targetField === (postTacticalPanel.targetField || 'postReality'))),
+              { eventId: postTacticalPanel.clipId, targetField: postTacticalPanel.targetField || 'postReality', source: 'quick-review', createdAt: new Date().toISOString() },
+            ]
+          : safeArray(safeObject(selectedMatch.postAiAnalysis).clipAnalysisLinks),
+        tacticalReviewLinks: [
+          ...safeArray(safeObject(selectedMatch.postAiAnalysis).tacticalReviewLinks),
+          {
+            quickEventId: postTacticalPanel.quickEventId || null,
+            eventId: savedEvent?.id || null,
+            clipId: postTacticalPanel.clipId || null,
+            targetField: postTacticalPanel.targetField || 'postReality',
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      },
+    });
+    setSelectedPostEventId(savedEvent?.id || null);
+    setPostTacticalPanel(null);
+    await loadMatchPostData(selectedMatch.id);
+  };
+
+  const updatePostPrePlanStatus = async (item, status) => {
+    if (!selectedMatch) return;
+    const currentAnalysis = safeObject(selectedMatch.postAiAnalysis);
+    const nextReview = {
+      ...safeObject(currentAnalysis.prePlanReview),
+      [item]: {
+        status,
+        updatedAt: new Date().toISOString(),
+      },
+    };
+    await updateSelectedMatchFields({
+      postAiAnalysis: {
+        ...currentAnalysis,
+        prePlanReview: nextReview,
+      },
+    });
   };
 
   const getPostReviewState = () => {
@@ -5290,11 +5454,19 @@ function App() {
     });
   };
 
-  const relatePostClipWithAnalysis = async (event) => {
+  const relatePostClipWithAnalysis = async (event, targetField = 'postReality') => {
     if (!event) return;
     const line = `${event.minute || '-'}' · ${event.type || 'Clip'}${event.description ? `: ${event.description}` : ''}`;
+    const currentAnalysis = safeObject(selectedMatch.postAiAnalysis);
     await updateSelectedMatchFields({
-      postReality: [selectedMatch.postReality, line].filter(Boolean).join('\n'),
+      [targetField]: [selectedMatch[targetField], line].filter(Boolean).join('\n'),
+      postAiAnalysis: {
+        ...currentAnalysis,
+        clipAnalysisLinks: [
+          ...safeArray(currentAnalysis.clipAnalysisLinks).filter((link) => !(link.eventId === event.id && link.targetField === targetField)),
+          { eventId: event.id, targetField, createdAt: new Date().toISOString() },
+        ],
+      },
     });
   };
 
@@ -5305,6 +5477,12 @@ function App() {
       ...safeObject(selectedMatch.postAiAnalysis),
       closedAt: new Date().toISOString(),
       finalSummary,
+      closureChecklist: {
+        videoReviewed: Boolean(selectedMatch.postVideoLink),
+        eventsValidated: !(selectedMatch.quickEvents || []).some((event) => !event.reviewed),
+        tacticalReadingCompleted: Boolean(selectedMatch.postReality || selectedMatch.postFulfilled || selectedMatch.postNotFulfilled),
+        conclusionsAdded: Boolean(selectedMatch.postRepeat || selectedMatch.postImprove || selectedMatch.postTrainWeek),
+      },
     };
     const { error: closeError } = await supabase
       .from("partidos")
@@ -7096,14 +7274,42 @@ function App() {
     const reviewState = getPostReviewState();
     const pendingQuick = (selectedMatch.quickEvents || []).filter((event) => !event.reviewed).length;
     const score = getStatsScore();
+    const postDerivedReading = buildPostDerivedReading();
+    const postAiMeta = safeObject(selectedMatch.postAiAnalysis);
     const postSummary = buildPostAutoSummary();
-    const sortedPostClips = [...(selectedMatch.events || [])].sort((a, b) => Number(a.videoSeconds || 0) - Number(b.videoSeconds || 0));
+    const sortedPostClips = [...(selectedMatch.events || [])].sort((a, b) => {
+      const priority = getPostClipPriority(a) - getPostClipPriority(b);
+      return priority || Number(a.videoSeconds || 0) - Number(b.videoSeconds || 0);
+    });
+    const chronologicalPostClips = [...(selectedMatch.events || [])].sort((a, b) => Number(a.videoSeconds || 0) - Number(b.videoSeconds || 0));
     const prePlanItems = [
       ...(selectedMatch.planClave || '').split('\n'),
       ...(selectedMatch.planConBalon || '').split('\n'),
       ...(selectedMatch.planSinBalon || '').split('\n'),
       ...(selectedMatch.planTransiciones || '').split('\n'),
     ].map((item) => item.trim()).filter(Boolean).slice(0, 6);
+    const linkedClipByField = safeArray(postAiMeta.clipAnalysisLinks).reduce((acc, link) => {
+      acc[link.targetField] = [...(acc[link.targetField] || []), link.eventId];
+      return acc;
+    }, {});
+    const closureChecklist = safeObject(postAiMeta.closureChecklist);
+    const analysisFieldSuggestions = {
+      postReality: postDerivedReading.suggestions,
+      postFulfilled: [
+        getQuickEventSummary(selectedMatch.quickEvents || []).recoveries >= 3 ? 'Presión alta con recuperaciones suficientes para repetir.' : null,
+        getQuickEventSummary(selectedMatch.quickEvents || []).boxEntries >= 4 ? 'Buena llegada a área: buscar clips de progresión.' : null,
+      ].filter(Boolean),
+      postNotFulfilled: [
+        getQuickEventSummary(selectedMatch.quickEvents || []).losses >= 2 ? 'Problemas tras pérdida: revisar apoyos cercanos.' : null,
+        getQuickEventSummary(selectedMatch.quickEvents || []).rivalBoxEntries > getQuickEventSummary(selectedMatch.quickEvents || []).boxEntries ? 'El rival pisó más área que Caudal.' : null,
+      ].filter(Boolean),
+      postNextAdjustment: [
+        'Convertir los clips clave en tareas de entrenamiento.',
+        getQuickEventSummary(selectedMatch.quickEvents || []).shots > getQuickEventSummary(selectedMatch.quickEvents || []).shotsOnTarget ? 'Trabajar selección de tiro y llegada con ventaja.' : null,
+      ].filter(Boolean),
+      postWhy: ['Cruzar consignas PRE con clips y eventos validados.'],
+      postNotes: [`Base automática: ${postDerivedReading.trend}`],
+    };
     const postBlockHeader = (eyebrow, title, subtitle, right = null) => (
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -7164,6 +7370,19 @@ function App() {
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Mini resumen automático</p>
             <p className="mt-2 text-sm leading-6 text-slate-100">{postSummary}</p>
           </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            {[
+              ['Posesión emocional', `${postDerivedReading.emotionalPossession}% Caudal`],
+              ['Momento dominante', postDerivedReading.dominantMoment],
+              ['Tramo crítico', postDerivedReading.criticalRange],
+              ['Tendencia partido', postDerivedReading.trend],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-2xl border border-white/5 bg-black/15 p-3">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                <p className="mt-2 text-sm font-bold leading-5 text-slate-100">{value}</p>
+              </div>
+            ))}
+          </div>
         </section>
 
         <section className="app-card">
@@ -7182,9 +7401,30 @@ function App() {
                   const isRival = (event.equipo || definition?.side) === 'rival';
                   const isSaving = quickEventSavingIds.includes(event.id);
                   const isConfirmingDelete = pendingQuickEventDeleteId === event.id;
+                  const tone = getPostEventTone(definition?.label || event.tipoEvento);
+                  const playerName = players.find((player) => player.id === event.jugadorId)?.name || '';
                   return (
-                    <div key={event.id} className={`rounded-2xl border p-3 transition ${event.reviewed ? 'border-emerald-400/25 bg-emerald-400/10' : 'border-white/10 bg-[#0f1e38]/80'}`}>
-                      <div className="grid gap-2 lg:grid-cols-[70px_170px_110px_1fr_auto] lg:items-center">
+                    <div key={event.id} className={`rounded-3xl border p-4 transition ${event.reviewed ? 'border-emerald-400/25 bg-emerald-400/10 shadow-[0_0_28px_rgba(16,185,129,0.08)]' : 'border-white/10 bg-[#0f1e38]/85 hover:border-caudal-electric/25'}`}>
+                      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-xs font-black ${eventButtonClass(tone)}`}>
+                            {definition?.short || 'EV'}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-lg font-black text-white">{event.minute || 0}'</p>
+                              <p className="text-sm font-black text-slate-100">{definition?.label || event.tipoEvento}</p>
+                              <span className={`rounded-xl px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${isRival ? 'bg-red-500/15 text-red-200' : 'bg-caudal-electric/15 text-caudal-electric'}`}>
+                                {isRival ? 'Rival' : 'Caudal'}
+                              </span>
+                              <span className={`rounded-xl px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${event.reviewed ? 'bg-emerald-300 text-slate-950' : 'bg-yellow-300 text-slate-950'}`}>
+                                {event.reviewed ? 'Validado' : 'Pendiente'}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-xs text-slate-400">Jugador: {playerName || (isRival ? 'Rival / sin asignar' : 'Sin jugador')}</p>
+                          </div>
+                        </div>
+                        <div className="grid gap-2 lg:grid-cols-[70px_170px_110px_1fr] xl:min-w-[620px] xl:flex-1 xl:items-center">
                         <input
                           type="number"
                           min="0"
@@ -7224,14 +7464,12 @@ function App() {
                             <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
                           ))}
                         </select>
-                        <div className="flex flex-wrap gap-2 lg:justify-end">
-                          <span className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] ${event.reviewed ? 'bg-emerald-300 text-slate-950' : 'bg-yellow-300 text-slate-950'}`}>
-                            {event.reviewed ? 'Revisado' : 'Pendiente'}
-                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-2 xl:justify-end">
                           <button type="button" onClick={() => updateQuickEvent(event.id, { reviewed: !event.reviewed })} disabled={isSaving} className="btn-secondary btn-small">
                             {event.reviewed ? 'Desmarcar' : 'Validar'}
                           </button>
-                          <button type="button" onClick={() => convertQuickToTacticalEvent(event, definition)} className="btn-small bg-caudal-electric text-slate-950">
+                          <button type="button" onClick={() => openQuickTacticalPanel(event, definition)} className="btn-small bg-caudal-electric text-slate-950">
                             Convertir en evento táctico
                           </button>
                           {isConfirmingDelete ? (
@@ -7251,6 +7489,43 @@ function App() {
               </div>
             )}
           </div>
+          {postTacticalPanel ? (
+            <div className="mt-5 rounded-3xl border border-caudal-electric/25 bg-caudal-electric/[0.055] p-4 shadow-glow">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Panel rápido</p>
+                  <h4 className="mt-1 text-base font-black text-white">Convertir en evento táctico</h4>
+                </div>
+                <button type="button" onClick={() => setPostTacticalPanel(null)} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-slate-300">Cerrar</button>
+              </div>
+              <div className="mt-4 grid gap-3 lg:grid-cols-[70px_150px_1fr_160px]">
+                <input value={postTacticalPanel.minute || ''} onChange={(event) => setPostTacticalPanel((current) => ({ ...current, minute: event.target.value }))} placeholder="Min." className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white" />
+                <input value={postTacticalPanel.player || ''} onChange={(event) => setPostTacticalPanel((current) => ({ ...current, player: event.target.value }))} placeholder="Jugador" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
+                <input value={postTacticalPanel.description || ''} onChange={(event) => setPostTacticalPanel((current) => ({ ...current, description: event.target.value }))} placeholder="Descripción táctica corta" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
+                <select value={postTacticalPanel.importance || 'Media'} onChange={(event) => setPostTacticalPanel((current) => ({ ...current, importance: event.target.value }))} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white">
+                  <option>Alta</option>
+                  <option>Media</option>
+                  <option>Baja</option>
+                </select>
+              </div>
+              <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_220px_180px]">
+                <input value={postTacticalPanel.tags || ''} onChange={(event) => setPostTacticalPanel((current) => ({ ...current, tags: event.target.value }))} placeholder="Tags tácticos: presión, transición, lado débil..." className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
+                <select value={postTacticalPanel.clipId || ''} onChange={(event) => setPostTacticalPanel((current) => ({ ...current, clipId: event.target.value }))} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white">
+                  <option value="">Sin clip relacionado</option>
+                  {chronologicalPostClips.map((clip) => <option key={clip.id} value={clip.id}>{clip.minute}' · {clip.type}</option>)}
+                </select>
+                <select value={postTacticalPanel.targetField || 'postReality'} onChange={(event) => setPostTacticalPanel((current) => ({ ...current, targetField: event.target.value }))} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white">
+                  <option value="postReality">Qué ocurrió</option>
+                  <option value="postFulfilled">Qué funcionó</option>
+                  <option value="postNotFulfilled">Qué no funcionó</option>
+                  <option value="postNextAdjustment">Ajustes futuros</option>
+                </select>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <button type="button" onClick={saveTacticalReviewPanel} className="rounded-2xl bg-caudal-electric px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-950">Guardar lectura</button>
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[1.45fr_0.85fr]">
@@ -7301,28 +7576,45 @@ function App() {
                   {postClipFeedback ? <p className="mt-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm font-semibold text-emerald-200">{postClipFeedback}</p> : null}
                   <div className="mt-4 rounded-3xl border border-white/10 bg-black/25 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Timeline</p>
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Timeline real</p>
                       <p className="text-xs text-slate-400">{postVideoDuration ? `${Math.round(postVideoDuration / 60)} min` : 'Duración no disponible'}</p>
                     </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {sortedPostClips.length ? sortedPostClips.map((event) => (
-                        <button
-                          key={event.id}
-                          type="button"
-                          onClick={() => seekPostVideoToEvent(event)}
-                          className={`rounded-2xl px-3 py-2 text-xs font-bold transition ${selectedPostEventId === event.id ? 'ring-2 ring-caudal-electric' : ''} ${eventButtonClass(event.type)}`}
-                          title={event.description}
-                        >
-                          {event.minute}' · {event.type}
-                        </button>
-                      )) : <p className="text-sm text-slate-500">Marca clips para construir la timeline.</p>}
-                    </div>
+                    {chronologicalPostClips.length ? (
+                      <div className="mt-5 overflow-x-auto pb-3">
+                        <div className="relative min-w-[620px] pt-9">
+                          <div className="absolute left-0 right-0 top-11 h-px bg-white/15" />
+                          {chronologicalPostClips.map((event) => {
+                            const duration = postVideoDuration || Math.max(90, ...chronologicalPostClips.map((clip) => Number(clip.videoSeconds || 0)));
+                            const left = Math.min(98, Math.max(1, (Number(event.videoSeconds || Number(event.minute || 0) * 60) / Math.max(1, duration)) * 100));
+                            return (
+                              <button
+                                key={event.id}
+                                type="button"
+                                onClick={() => seekPostVideoToEvent(event)}
+                                className={`absolute top-6 flex -translate-x-1/2 flex-col items-center gap-1 transition ${selectedPostEventId === event.id ? 'scale-110' : 'hover:scale-105'}`}
+                                style={{ left: `${left}%` }}
+                                title={`${event.minute}' · ${event.type}${event.description ? ` · ${event.description}` : ''}`}
+                              >
+                                <span className={`h-4 w-4 rounded-full border border-white/30 ${eventButtonClass(getPostEventTone(event.type))}`} />
+                                <span className="max-w-[72px] truncate rounded-xl bg-[#091428] px-2 py-1 text-[10px] font-black text-slate-200">{event.minute}'</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : <p className="mt-4 text-sm text-slate-500">Marca clips para construir la timeline.</p>}
                   </div>
                   <div className="mt-4 space-y-3">
                     {sortedPostClips.length ? sortedPostClips.map((event) => {
                       const isConfirmingDelete = pendingPostEventDeleteId === event.id;
+                      const isLinked = isPostClipLinked(event.id);
+                      const isPriority = getPostClipPriority(event) === 0;
                       return (
-                        <div key={event.id} className={`rounded-3xl border p-4 transition ${selectedPostEventId === event.id ? 'border-caudal-electric/60 bg-caudal-electric/10' : 'border-white/5 bg-[#091428]/80'}`}>
+                        <div key={event.id} className={`rounded-3xl border p-4 transition ${selectedPostEventId === event.id ? 'border-caudal-electric/60 bg-caudal-electric/10' : isPriority ? 'border-amber-300/25 bg-amber-300/[0.06] shadow-[0_0_26px_rgba(251,191,36,0.08)]' : 'border-white/5 bg-[#091428]/80'}`}>
+                          <div className="mb-3 flex flex-wrap items-center gap-2">
+                            {isPriority ? <span className="rounded-xl bg-amber-300/15 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-amber-100">Prioritario</span> : null}
+                            {isLinked ? <span className="rounded-xl bg-caudal-electric/15 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-caudal-electric">Usado en lectura táctica</span> : null}
+                          </div>
                           <div className="grid gap-3 lg:grid-cols-[80px_145px_1fr_auto] lg:items-center">
                             <input value={event.minute || ''} onChange={(changeEvent) => updatePostEventLocal(event.id, { minute: changeEvent.target.value })} onBlur={(blurEvent) => savePostEventInline({ ...event, minute: blurEvent.target.value })} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white" />
                             <select value={event.type || ''} onChange={(changeEvent) => { updatePostEventLocal(event.id, { type: changeEvent.target.value }); const selectedType = eventTypes.find((eventType) => eventType.name === changeEvent.target.value); savePostEventInline({ ...event, type: changeEvent.target.value, tipoEventoId: selectedType?.id || null }); }} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white">
@@ -7331,7 +7623,13 @@ function App() {
                             <input value={event.description || ''} onChange={(changeEvent) => updatePostEventLocal(event.id, { description: changeEvent.target.value })} onBlur={(blurEvent) => savePostEventInline({ ...event, description: blurEvent.target.value })} placeholder="Descripción / observable" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500" />
                             <div className="flex flex-wrap gap-2 lg:justify-end">
                               <button type="button" onClick={() => seekPostVideoToEvent(event)} className={`rounded-xl px-3 py-2 text-xs font-bold ${eventButtonClass(event.type)}`}>Ir al vídeo</button>
-                              <button type="button" onClick={() => relatePostClipWithAnalysis(event)} className="rounded-xl bg-caudal-electric/90 px-3 py-2 text-xs font-bold text-slate-950">Relacionar con análisis táctico</button>
+                              <select onChange={(changeEvent) => { if (changeEvent.target.value) relatePostClipWithAnalysis(event, changeEvent.target.value); changeEvent.target.value = ''; }} defaultValue="" className="rounded-xl border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-xs font-bold text-caudal-electric">
+                                <option value="">Relacionar</option>
+                                <option value="postReality">Qué ocurrió</option>
+                                <option value="postFulfilled">Qué funcionó</option>
+                                <option value="postNotFulfilled">Qué no funcionó</option>
+                                <option value="postNextAdjustment">Ajustes futuros</option>
+                              </select>
                               {isConfirmingDelete ? <button type="button" onClick={() => deletePostEvent(event.id)} className="rounded-xl bg-red-500 px-3 py-2 text-xs font-bold text-white">Confirmar</button> : <button type="button" onClick={() => setPendingPostEventDeleteId(event.id)} className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100">Eliminar</button>}
                             </div>
                           </div>
@@ -7350,23 +7648,37 @@ function App() {
           </div>
 
           <aside className="space-y-6">
-            <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+            <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
               {postBlockHeader('Registro manual', 'Registrar algo importante', 'Mientras revisas el vídeo, crea un clip táctico sin salir del flujo.')}
-              <div className="mt-5 space-y-4">
+              <div className="mt-4 flex flex-wrap gap-2">
+                {getPostQuickClipTypes().slice(0, 6).map((eventType) => (
+                  <button key={`draft-${eventType.name}`} type="button" onClick={() => { setSelectedEventType(eventType.name); handleEventDraftChange('type', eventType.name); }} className={`rounded-xl px-2.5 py-1.5 text-[10px] font-black ${eventButtonClass(eventType.color || eventType.name)}`}>
+                    {eventType.name}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 space-y-3">
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <input value={postCurrentMinute} onChange={(event) => { setPostCurrentMinute(event.target.value); handleEventDraftChange('minute', event.target.value); }} placeholder="Minuto" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
-                  <select value={newEventDraft.type || selectedEventType} onChange={(event) => { setSelectedEventType(event.target.value); handleEventDraftChange('type', event.target.value); }} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
+                  <input value={postCurrentMinute} onChange={(event) => { setPostCurrentMinute(event.target.value); handleEventDraftChange('minute', event.target.value); }} placeholder="Minuto" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
+                  <select value={newEventDraft.type || selectedEventType} onChange={(event) => { setSelectedEventType(event.target.value); handleEventDraftChange('type', event.target.value); }} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white">
                     <option value="">Tipo</option>
                     {eventTypes.map((eventType) => <option key={eventType.id} value={eventType.name}>{eventType.name}</option>)}
                   </select>
                 </div>
-                <input value={newEventDraft.player} onChange={(event) => handleEventDraftChange('player', event.target.value)} placeholder="Jugador" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
-                <textarea value={newEventDraft.description} onChange={(event) => handleEventDraftChange('description', event.target.value)} placeholder="Qué ocurrió y por qué importa..." className="min-h-[120px] w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white placeholder:text-slate-500" />
-                <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-bold text-slate-200">
+                <input value={newEventDraft.player} onChange={(event) => handleEventDraftChange('player', event.target.value)} placeholder="Jugador" className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
+                <textarea value={newEventDraft.description} onChange={(event) => handleEventDraftChange('description', event.target.value)} placeholder="Qué ocurrió y por qué importa..." className="min-h-[92px] w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm text-white placeholder:text-slate-500" />
+                <div className="flex flex-wrap gap-2">
+                  {['tras pérdida', 'lado débil', 'juego directo', 'segunda jugada', 'área rival'].map((tag) => (
+                    <button key={tag} type="button" onClick={() => handleEventDraftChange('description', [newEventDraft.description, tag].filter(Boolean).join(' · '))} className="rounded-xl bg-white/10 px-2.5 py-1.5 text-[10px] font-bold text-slate-300">
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+                <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-bold text-slate-200">
                   <input type="checkbox" checked={Boolean(newEventDraft.keyEvent)} onChange={(event) => handleEventDraftChange('keyEvent', event.target.checked)} className="h-4 w-4 accent-caudal-electric" />
                   Evento clave
                 </label>
-                <button type="button" onClick={addNewEvent} className="w-full rounded-3xl bg-caudal-electric px-5 py-4 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]">
+                <button type="button" onClick={addNewEvent} className="w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]">
                   {newEventDraft.id ? 'Actualizar evento' : 'Guardar evento'}
                 </button>
               </div>
@@ -7388,20 +7700,51 @@ function App() {
               <label key={item.field} className="space-y-2 text-sm text-slate-300">
                 <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{item.label}</span>
                 <textarea value={selectedMatch[item.field] || ''} onChange={(event) => updateSelectedMatchFields({ [item.field]: event.target.value })} className="min-h-[140px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
+                <div className="flex flex-wrap gap-2">
+                  {(analysisFieldSuggestions[item.field] || ['Usa clips y eventos validados para concretar esta lectura.']).slice(0, 3).map((suggestion) => (
+                    <span key={suggestion} className="rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[10px] font-semibold text-slate-400">
+                      {suggestion}
+                    </span>
+                  ))}
+                </div>
               </label>
             ))}
           </div>
           <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.035] p-4">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Plan prepartido vs realidad</p>
             <div className="mt-3 grid gap-2">
-              {prePlanItems.length ? prePlanItems.map((item, index) => (
+              {prePlanItems.length ? prePlanItems.map((item, index) => {
+                const relatedEvents = [...safeArray(selectedMatch.quickEvents), ...safeArray(selectedMatch.events)]
+                  .filter((event) => normalizePlayerIdentityName(`${event.tipoEvento || event.type || ''} ${event.description || ''}`).split(' ').some((token) => token.length > 4 && normalizePlayerIdentityName(item).includes(token)))
+                  .slice(0, 2);
+                return (
                 <div key={`${item}-${index}`} className="flex flex-col gap-2 rounded-2xl bg-white/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm font-semibold text-white">{item}</p>
+                  <div>
+                    <p className="text-sm font-semibold text-white">{item}</p>
+                    {relatedEvents.length ? (
+                      <p className="mt-1 text-xs text-slate-400">
+                        Relacionado: {relatedEvents.map((event) => `${event.minute || '-'}' ${quickEventLabelByType[event.tipoEvento] || event.type || 'evento'}`).join(' · ')}
+                      </p>
+                    ) : <p className="mt-1 text-xs text-slate-500">Sin evento o clip vinculado todavía.</p>}
+                  </div>
                   <div className="flex flex-wrap gap-2">
-                    {['Cumplido', 'Parcial', 'No cumplido'].map((status) => <span key={status} className="rounded-xl bg-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">{status}</span>)}
+                    {['Cumplido', 'Parcial', 'No cumplido'].map((status) => {
+                      const selectedStatus = safeObject(postAiMeta.prePlanReview)[item]?.status;
+                      return (
+                        <button
+                          key={status}
+                          type="button"
+                          onClick={() => updatePostPrePlanStatus(item, status)}
+                          className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition ${selectedStatus === status ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-caudal-electric/15 hover:text-caudal-electric'}`}
+                        >
+                          {status}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-              )) : <p className="text-sm text-slate-400">No hay consignas PRE para comparar todavía.</p>}
+                );
+              }) : <p className="text-sm text-slate-400">No hay consignas PRE para comparar todavía.</p>}
             </div>
           </div>
         </section>
@@ -7410,15 +7753,32 @@ function App() {
           {postBlockHeader('E · Conclusiones finales', 'Cierre de partido', 'Deja claro qué repetir, qué mejorar y qué entrenar.')}
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
             {[
-              { label: 'Qué repetir', field: 'postRepeat' },
-              { label: 'Qué mejorar', field: 'postImprove' },
-              { label: 'Qué entrenar esta semana', field: 'postTrainWeek' },
-              { label: 'Observaciones individuales', field: 'postIndividualObservations' },
+              { label: 'Qué repetir', field: 'postRepeat', hints: ['Presión alta efectiva', 'Llegada por fuera', 'Ataques tras robo'] },
+              { label: 'Qué mejorar', field: 'postImprove', hints: ['Vigilancia tras pérdida', 'Defensa juego directo', 'Cierre segunda jugada'] },
+              { label: 'Qué entrenar esta semana', field: 'postTrainWeek', hints: postDerivedReading.suggestions },
+              { label: 'Observaciones individuales', field: 'postIndividualObservations', hints: ['Duelos clave', 'Cambios de rol', 'Jugadores en tramo crítico'] },
             ].map((item) => (
               <label key={item.field} className="space-y-2 text-sm text-slate-300">
                 <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{item.label}</span>
                 <textarea value={selectedMatch[item.field] || ''} onChange={(event) => updateSelectedMatchFields({ [item.field]: event.target.value })} className="min-h-[130px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
+                <div className="flex flex-wrap gap-2">
+                  {safeArray(item.hints).slice(0, 3).map((hint) => (
+                    <span key={hint} className="rounded-xl bg-white/10 px-2.5 py-1.5 text-[10px] font-bold text-slate-400">{hint}</span>
+                  ))}
+                </div>
               </label>
+            ))}
+          </div>
+          <div className="mt-5 grid gap-2 sm:grid-cols-4">
+            {[
+              ['vídeo revisado', closureChecklist.videoReviewed],
+              ['eventos validados', closureChecklist.eventsValidated],
+              ['lectura táctica', closureChecklist.tacticalReadingCompleted],
+              ['conclusiones', closureChecklist.conclusionsAdded],
+            ].map(([label, done]) => (
+              <div key={label} className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] ${done ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100' : 'border-white/10 bg-white/[0.035] text-slate-500'}`}>
+                {done ? 'OK' : '--'} · {label}
+              </div>
             ))}
           </div>
           <div className="mt-6 flex flex-col gap-3 rounded-3xl border border-caudal-electric/15 bg-caudal-electric/[0.055] p-4 sm:flex-row sm:items-center sm:justify-between">
