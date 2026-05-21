@@ -3587,8 +3587,6 @@ function App() {
     const mapped = mapRivalIdentityToPre(liveRivalIdentity);
     const keyPlayers = liveRivalPlayers.filter((player) => player.isKey).map((player) => player.name);
     const unavailable = liveRivalPlayers.filter((player) => player.injured || player.suspended || player.doubtful).map((player) => `${player.name} (${playerStatusBadges(player).map((badge) => badge.label).join('/')})`);
-    const maxMinute = Math.max(...events.map((event) => Number(event.minute || 0)), 0) || 1;
-    const elapsedTens = Math.max(1, maxMinute / 10);
     return {
       ...mapped,
       preRivalBaseSystem: selectedMatchRivalTeam?.system || mapped.preRivalBaseSystem,
@@ -7493,6 +7491,8 @@ function App() {
     const rivalLosses = getQuickEventCount(events, 'perdida_rival');
     const boxEntries = getQuickEventCount(events, 'entrada_area');
     const rivalBoxEntries = getQuickEventCount(events, 'entrada_area_rival');
+    const maxMinute = Math.max(...events.map((event) => Number(event.minute || 0)), 0) || 1;
+    const elapsedTens = Math.max(1, maxMinute / 10);
     return {
       shots,
       shotsOnTarget,
