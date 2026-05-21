@@ -8133,29 +8133,29 @@ function App() {
     }, {});
 
   const renderReadOnlyZoneGrid = ({ counts, zones = pitchZoneOptions, goal = false }) => (
-    <div className={`relative overflow-hidden rounded-3xl border-4 border-white/70 ${goal ? 'aspect-[16/9] min-h-[180px] bg-[#111827]' : 'aspect-[7/10] bg-[repeating-linear-gradient(90deg,#075f43_0,#075f43_16.6%,#08694a_16.6%,#08694a_33.3%)]'}`}>
+    <div className={`relative overflow-hidden rounded-3xl border border-white/18 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_24px_70px_rgba(0,0,0,0.28)] ${goal ? 'aspect-[16/9] min-h-[180px] bg-[radial-gradient(circle_at_50%_12%,rgba(79,140,255,0.16),transparent_34%),linear-gradient(180deg,#172033,#0a101d)]' : 'aspect-[7/10] bg-[radial-gradient(circle_at_50%_45%,rgba(118,255,210,0.14),transparent_26%),linear-gradient(180deg,#0b5a42,#064432_48%,#073a30)]'}`}>
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.028)_1px,transparent_1px)] bg-[size:28px_28px] opacity-60" />
       {goal ? (
         <>
-          <div className="absolute inset-x-6 top-5 bottom-5 rounded-t-2xl border-4 border-white/60 border-b-0" />
-          <div className="absolute inset-x-10 top-9 bottom-5 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:24px_24px]" />
-          <div className="absolute bottom-5 left-6 right-6 h-1 bg-white/70" />
+          <div className="absolute inset-x-6 top-5 bottom-5 rounded-t-2xl border-2 border-white/45 border-b-0" />
+          <div className="absolute bottom-5 left-6 right-6 h-px bg-white/55" />
         </>
       ) : (
         <>
-          <div className="absolute inset-4 rounded-[1.4rem] border-2 border-white/60" />
-          <div className="absolute left-4 right-4 top-1/2 h-px bg-white/40" />
-          <div className="absolute left-1/2 top-1/2 h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/35" />
-          <div className="absolute left-1/2 top-4 h-20 w-40 -translate-x-1/2 rounded-b-3xl border-x-2 border-b-2 border-white/45" />
-          <div className="absolute bottom-4 left-1/2 h-20 w-40 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/45" />
-          <div className="absolute left-1/2 top-[11%] h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-white/70" />
-          <div className="absolute bottom-[11%] left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-white/70" />
+          <div className="absolute inset-4 rounded-[1.4rem] border border-white/38" />
+          <div className="absolute left-4 right-4 top-1/2 h-px bg-white/24" />
+          <div className="absolute left-1/2 top-1/2 h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/24" />
+          <div className="absolute left-1/2 top-4 h-20 w-40 -translate-x-1/2 rounded-b-3xl border-x border-b border-white/28" />
+          <div className="absolute bottom-4 left-1/2 h-20 w-40 -translate-x-1/2 rounded-t-3xl border-x border-t border-white/28" />
+          <div className="absolute left-1/2 top-[11%] h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-white/45" />
+          <div className="absolute bottom-[11%] left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-white/45" />
         </>
       )}
       <div className="absolute inset-4 grid grid-cols-3 grid-rows-3">
         {zones.map((zone) => {
           const count = counts[zone] || 0;
           return (
-          <div key={zone} className={`flex flex-col items-center justify-center border border-white/10 px-1 text-center transition ${count ? 'bg-caudal-electric/55 text-white shadow-[inset_0_0_24px_rgba(61,217,255,0.22),0_0_24px_rgba(61,217,255,0.18)]' : 'bg-black/5 text-transparent'}`}>
+          <div key={zone} className={`flex flex-col items-center justify-center border border-white/8 px-1 text-center transition duration-300 hover:bg-white/10 ${count ? 'bg-caudal-electric/35 text-white shadow-[inset_0_0_24px_rgba(79,140,255,0.20),0_0_26px_rgba(79,140,255,0.14)]' : 'bg-black/0 text-transparent'}`}>
             <span className={`${goal ? 'text-[8px]' : 'text-[9px]'} whitespace-pre-line font-black uppercase leading-tight ${count ? 'text-white/90' : 'text-transparent'}`}>{count ? displayZoneLabel(zone) : ''}</span>
             <strong className={`${goal ? 'mt-0 text-sm' : 'mt-0.5 text-base'} ${count ? 'text-white' : 'text-transparent'}`}>{count || ''}</strong>
           </div>
@@ -8938,6 +8938,118 @@ function App() {
     if (identity.dominantAgainst?.againstCount) push(`Corregir ${identity.dominantAgainst.label.toLowerCase()}`, 'Identidad defensiva detectada', 'identidad');
     if (temporal.worst?.losses >= 2) push(`Gestión del tramo ${temporal.worst.range}`, 'Tramo crítico por pérdidas/rival', 'tramo');
     return proposals.slice(0, 6);
+  };
+
+  const getGroupMainReading = ({ groupData, identity, patterns, alerts, temporal, quickSummary }) => {
+    const readings = [];
+    const push = (text, tone = 'neutral', evidence = '') => {
+      if (text && !readings.some((item) => item.text === text)) readings.push({ text, tone, evidence });
+    };
+    const dominantFor = identity?.dominantFor;
+    const dominantAgainst = identity?.dominantAgainst;
+    const shotAccuracy = Number(String(quickSummary?.shotAccuracy || '0').replace('%', '')) || 0;
+    const concededDanger = Number(String(quickSummary?.concededDanger || '0').replace('%', '')) || 0;
+    const highRecoveryPattern = patterns.find((pattern) => /Recuperaci/i.test(pattern.label));
+    const lossPattern = patterns.find((pattern) => /Pérdida|perdida/i.test(pattern.label));
+    const directPattern = patterns.find((pattern) => /directo/i.test(pattern.label));
+    const topAlert = alerts.find((alert) => alert.gravity === 'alta') || alerts.find((alert) => alert.gravity === 'media') || alerts[0];
+
+    if (dominantFor?.forCount) push(`Equipo dominante en ${dominantFor.label.toLowerCase()}.`, 'positive', `${dominantFor.forPct}% de la identidad ofensiva detectada`);
+    if (dominantAgainst?.againstCount) push(`Fragilidad recurrente ante ${dominantAgainst.label.toLowerCase()}.`, 'risk', `${dominantAgainst.againstPct}% de los daños detectados`);
+    if (highRecoveryPattern?.frequency) push('Mejor rendimiento tras recuperación alta.', 'positive', `${highRecoveryPattern.frequency} secuencias · ${highRecoveryPattern.efficiency}% eficacia`);
+    if (lossPattern?.frequency) push('Problemas recurrentes en transición defensiva.', 'risk', `${lossPattern.frequency} secuencias detectadas`);
+    if (directPattern?.frequency || /juego directo/i.test(topAlert?.text || '')) push('El juego directo rival aparece como foco de corrección.', 'risk', directPattern ? `${directPattern.frequency} patrones` : topAlert.text);
+    if ((quickSummary?.boxEntries || 0) > (quickSummary?.rivalBoxEntries || 0) && shotAccuracy < 35) push('Caudal llega, pero necesita convertir mejor el volumen ofensivo.', 'warning', `Precisión tiro ${quickSummary.shotAccuracy}`);
+    if (concededDanger >= 45) push('El rival convierte demasiado sus ataques en amenaza real.', 'risk', `Peligro concedido ${quickSummary.concededDanger}`);
+    if (temporal?.best?.range) push(`Equipo fuerte en el tramo ${temporal.best.range}.`, 'positive', 'Mejor balance de tiros, presión y entradas al área');
+    if (temporal?.worst?.range) push(`Tramo crítico: ${temporal.worst.range}.`, 'warning', 'Más tiros rivales, pérdidas o presión negativa');
+    if (topAlert?.text && !/Sin alertas/i.test(topAlert.text)) push(topAlert.text, topAlert.gravity === 'alta' ? 'risk' : 'warning', `${topAlert.type || 'alerta'} · ${topAlert.trend || 'estable'}`);
+
+    return readings.length ? readings.slice(0, 5) : [{ text: 'Sin lectura principal fiable todavía: faltan eventos, goles o clips revisados.', tone: 'neutral', evidence: 'Completa ESTADÍSTICAS y POST para activar la interpretación.' }];
+  };
+
+  const getGroupPrePostReality = (scopedMatches) => {
+    const extractPlanItems = (match) => [
+      ...(match.planClave || '').split('\n'),
+      ...(match.planConBalon || '').split('\n'),
+      ...(match.planSinBalon || '').split('\n'),
+      ...(match.planTransiciones || '').split('\n'),
+      ...(match.prePlanAvoid || '').split('\n'),
+      ...(match.preKeyMatchupsTable || '').split('\n'),
+    ].map((item) => item.trim()).filter(Boolean).slice(0, 5);
+    return scopedMatches.flatMap((match) => {
+      const postText = normalizePlayerIdentityName(`${match.postReality || ''} ${match.postFulfilled || ''} ${match.postNotFulfilled || ''} ${match.postWhy || ''}`);
+      const clips = match.events || [];
+      const quick = match.quickEvents || [];
+      return extractPlanItems(match).map((item) => {
+        const normalizedItem = normalizePlayerIdentityName(item);
+        const tokens = normalizedItem.split(' ').filter((token) => token.length > 4);
+        const relatedClips = clips.filter((clip) => {
+          const clipText = normalizePlayerIdentityName(`${clip.type || ''} ${clip.description || ''} ${clip.tags || ''}`);
+          return tokens.some((token) => clipText.includes(token));
+        });
+        const relatedQuickEvents = quick.filter((event) => {
+          const type = normalizePlayerIdentityName(event.tipoEvento || event.type || '');
+          if (/perd|interior/.test(normalizedItem)) return /perdida/.test(type);
+          if (/recuper|presi/.test(normalizedItem)) return /recuperacion/.test(type);
+          if (/area|ocas|tiro/.test(normalizedItem)) return /entrada_area|tiro/.test(type);
+          if (/corner|abp|balon parado/.test(normalizedItem)) return /corner/.test(type);
+          return false;
+        });
+        const hasPositive = postText.includes('cumpl') && !postText.includes('no cumpl');
+        const hasNegative = postText.includes('no cumpl') || postText.includes('problema') || postText.includes('sufr');
+        const status = hasNegative || relatedQuickEvents.length >= 3 ? 'NO cumplida' : hasPositive || relatedClips.length ? 'Cumplida/parcial' : 'Sin validar';
+        return {
+          match,
+          item,
+          relatedClips,
+          relatedQuickEvents,
+          status,
+          severity: status === 'NO cumplida' ? 'risk' : status === 'Cumplida/parcial' ? 'ok' : 'neutral',
+        };
+      });
+    }).filter((link) => link.relatedClips.length || link.relatedQuickEvents.length || link.status !== 'Sin validar').slice(0, 10);
+  };
+
+  const getIdealElevenIntelligence = (scopedMatches, idealRows, system) => {
+    const pairCounts = new Map();
+    const systemStats = {};
+    const lineupsWithGoals = [];
+    scopedMatches.forEach((match) => {
+      const source = getMatchLineupSource(match);
+      const lineup = source.slots.length ? source.slots.map((slot) => slot.playerName).filter(Boolean) : (match.statsLineup || []).filter(Boolean);
+      const realSystem = source.system || match.statsSystem || match.preCaudalSystem || 'Sin sistema';
+      const score = getMatchScoreData(match);
+      const stats = systemStats[realSystem] || { system: realSystem, played: 0, goalsFor: 0, goalsAgainst: 0, points: 0 };
+      stats.played += 1;
+      stats.goalsFor += score.caudalGoals;
+      stats.goalsAgainst += score.rivalGoals;
+      stats.points += score.caudalGoals > score.rivalGoals ? 3 : score.caudalGoals === score.rivalGoals ? 1 : 0;
+      systemStats[realSystem] = stats;
+      lineup.forEach((name, index) => {
+        lineup.slice(index + 1).forEach((other) => {
+          const key = [name, other].sort().join(' + ');
+          pairCounts.set(key, (pairCounts.get(key) || 0) + 1);
+        });
+      });
+      if (score.caudalGoals > 0) lineupsWithGoals.push({ match, lineup, goals: score.caudalGoals });
+    });
+    const bestPair = Array.from(pairCounts.entries()).sort((a, b) => b[1] - a[1])[0];
+    const bestSystem = Object.values(systemStats).sort((a, b) => (b.points / Math.max(1, b.played)) - (a.points / Math.max(1, a.played)) || b.goalsFor - a.goalsFor)[0];
+    const idealNames = idealRows.map((assignment) => assignment.row?.player?.name).filter(Boolean);
+    const goalConnection = lineupsWithGoals
+      .flatMap(({ lineup, goals }) => lineup.filter((name) => idealNames.includes(name)).map((name) => ({ name, goals })))
+      .reduce((acc, row) => {
+        acc[row.name] = (acc[row.name] || 0) + row.goals;
+        return acc;
+      }, {});
+    const topConnection = Object.entries(goalConnection).sort((a, b) => b[1] - a[1])[0];
+    return [
+      bestSystem ? `Sistema más efectivo: ${bestSystem.system} (${(bestSystem.points / Math.max(1, bestSystem.played)).toFixed(2)} pts/partido).` : null,
+      bestPair ? `Pareja más repetida: ${bestPair[0]} (${bestPair[1]} partidos).` : null,
+      topConnection ? `Conexión ofensiva más productiva en XI ideal: ${topConnection[0]} (${topConnection[1]} goles del equipo con él en once).` : null,
+      system ? `Estructura analizada: ${system}.` : null,
+    ].filter(Boolean).slice(0, 4);
   };
 
   const renderGroupMiniPitch = ({ counts, title }) => (
@@ -12575,22 +12687,9 @@ function App() {
           const tacticalPatterns = getGroupTacticalPatterns(groupData);
           const temporalContext = getGroupTemporalContext(groupData);
           const trainingProposals = getGroupTrainingProposals(tacticalPatterns, automaticAlerts, groupIdentity, temporalContext);
-          const prePostLinks = scopedMatches.flatMap((match) => {
-            const planItems = [
-              ...(match.planClave || '').split('\n'),
-              ...(match.planConBalon || '').split('\n'),
-              ...(match.planSinBalon || '').split('\n'),
-              ...(match.planTransiciones || '').split('\n'),
-            ].map((item) => item.trim()).filter(Boolean).slice(0, 4);
-            const postText = `${match.postReality || ''} ${match.postFulfilled || ''} ${match.postNotFulfilled || ''} ${match.postWhy || ''}`;
-            const clips = match.events || [];
-            return planItems.map((item) => {
-              const normalizedItem = normalizePlayerIdentityName(item);
-              const relatedClips = clips.filter((clip) => normalizePlayerIdentityName(`${clip.type || ''} ${clip.description || ''}`).split(' ').some((token) => token.length > 4 && normalizedItem.includes(token)));
-              const fulfilled = normalizePlayerIdentityName(postText).includes('cumpl') && !normalizePlayerIdentityName(postText).includes('no cumpl');
-              return { match, item, relatedClips, fulfilled };
-            });
-          }).filter((link) => link.relatedClips.length || link.fulfilled).slice(0, 8);
+          const mainReadings = getGroupMainReading({ groupData, identity: groupIdentity, patterns: tacticalPatterns, alerts: automaticAlerts, temporal: temporalContext, quickSummary });
+          const prePostLinks = getGroupPrePostReality(scopedMatches);
+          const idealIntelligence = getIdealElevenIntelligence(scopedMatches, idealElevenRows, effectiveIdealSystem);
           const resultDonut = `conic-gradient(#34d399 0 ${groupData.played ? (groupData.wins / groupData.played) * 100 : 0}%, #facc15 ${groupData.played ? (groupData.wins / groupData.played) * 100 : 0}% ${groupData.played ? ((groupData.wins + groupData.draws) / groupData.played) * 100 : 0}%, #f87171 ${groupData.played ? ((groupData.wins + groupData.draws) / groupData.played) * 100 : 0}% 100%)`;
           const abpReading = (forGoals, againstGoals) => {
             if (!forGoals && !againstGoals) return 'neutro';
@@ -12709,6 +12808,52 @@ function App() {
                         {groupQuickReviewedOnly ? 'Solo eventos revisados' : 'Todos los eventos'}
                       </button>
                     </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="relative overflow-hidden rounded-[2rem] border border-caudal-electric/20 bg-[radial-gradient(circle_at_18%_18%,rgba(79,140,255,0.24),transparent_34%),linear-gradient(135deg,rgba(9,20,40,0.96),rgba(6,13,26,0.92))] p-6 shadow-[0_26px_90px_rgba(0,0,0,0.34)]">
+                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.026)_1px,transparent_1px)] bg-[size:34px_34px] opacity-45" />
+                <div className="relative grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.32em] text-caudal-electric">Lectura principal del equipo</p>
+                    <h3 className="mt-4 max-w-4xl text-3xl font-black leading-tight text-white sm:text-4xl">
+                      {mainReadings[0]?.text || 'Sin lectura principal suficiente todavía.'}
+                    </h3>
+                    <p className="mt-4 max-w-3xl text-sm font-semibold leading-6 text-slate-300">
+                      {mainReadings[0]?.evidence || 'Cruza goles, eventos rápidos, clips POST, zonas y consignas PRE para convertir datos en lectura futbolística.'}
+                    </p>
+                    <div className="mt-6 flex flex-wrap gap-2">
+                      {mainReadings.slice(1).map((reading) => (
+                        <span
+                          key={reading.text}
+                          className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.1em] ${
+                            reading.tone === 'risk'
+                              ? 'border-red-300/20 bg-red-400/10 text-red-100'
+                              : reading.tone === 'warning'
+                                ? 'border-amber-300/20 bg-amber-300/10 text-amber-100'
+                                : reading.tone === 'positive'
+                                  ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100'
+                                  : 'border-white/10 bg-white/10 text-slate-200'
+                          }`}
+                        >
+                          {reading.text}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                    {[
+                      ['Identidad', groupIdentity.dominantFor?.label || 'Pendiente', groupIdentity.dominantFor?.forPct ? `${groupIdentity.dominantFor.forPct}%` : ''],
+                      ['Riesgo', groupIdentity.dominantAgainst?.label || 'Pendiente', groupIdentity.dominantAgainst?.againstPct ? `${groupIdentity.dominantAgainst.againstPct}%` : ''],
+                      ['Tramo crítico', temporalContext.worst?.range || 'Pendiente', temporalContext.best?.range ? `mejor ${temporalContext.best.range}` : ''],
+                    ].map(([label, value, meta]) => (
+                      <div key={label} className="rounded-3xl border border-white/10 bg-white/[0.055] p-4 backdrop-blur-sm transition hover:border-caudal-electric/25 hover:bg-white/[0.075]">
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
+                        <p className="mt-2 text-lg font-black text-white">{value}</p>
+                        {meta ? <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-caudal-electric">{meta}</p> : null}
+                      </div>
+                    ))}
                   </div>
                 </div>
               </section>
@@ -12942,17 +13087,31 @@ function App() {
                   </div>
                   <div className="mt-5 grid gap-3 md:grid-cols-2">
                     {prePostLinks.length ? prePostLinks.map((link, index) => (
-                      <div key={`${link.match.id}-${link.item}-${index}`} className="rounded-3xl border border-white/10 bg-white/[0.04] p-4">
+                      <div key={`${link.match.id}-${link.item}-${index}`} className={`rounded-3xl border p-4 transition hover:-translate-y-0.5 ${
+                        link.severity === 'risk'
+                          ? 'border-red-300/20 bg-red-400/[0.075]'
+                          : link.severity === 'ok'
+                            ? 'border-emerald-300/20 bg-emerald-300/[0.07]'
+                            : 'border-white/10 bg-white/[0.04]'
+                      }`}>
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="text-sm font-black text-white">{link.item}</p>
                             <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">{link.match.opponent} · {matchDisplayDate(link.match.date)}</p>
                           </div>
-                          <span className={`rounded-xl px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${link.fulfilled ? 'bg-emerald-300/15 text-emerald-100' : 'bg-caudal-electric/15 text-caudal-electric'}`}>
-                            {link.fulfilled ? 'cumplida' : 'revisar'}
+                          <span className={`rounded-xl px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${
+                            link.severity === 'risk'
+                              ? 'bg-red-300/15 text-red-100'
+                              : link.severity === 'ok'
+                                ? 'bg-emerald-300/15 text-emerald-100'
+                                : 'bg-caudal-electric/15 text-caudal-electric'
+                          }`}>
+                            {link.status}
                           </span>
                         </div>
-                        <p className="mt-3 text-xs font-bold text-slate-400">{link.relatedClips.length} clips relacionados · {link.relatedClips.slice(0, 2).map((clip) => `${clip.minute || '-'}' ${clip.type || 'clip'}`).join(' · ') || 'sin clip directo'}</p>
+                        <p className="mt-3 text-xs font-bold text-slate-400">
+                          {link.relatedClips.length} clips · {link.relatedQuickEvents.length} eventos · {link.relatedClips.slice(0, 2).map((clip) => `${clip.minute || '-'}' ${clip.type || 'clip'}`).join(' · ') || 'sin clip directo'}
+                        </p>
                       </div>
                     )) : <p className="rounded-2xl bg-white/5 p-4 text-sm italic text-slate-500 md:col-span-2">Sin relaciones suficientes. Completa PRE y relaciona clips en POST para activar este bloque.</p>}
                   </div>
@@ -13278,6 +13437,13 @@ function App() {
                 </div>
                 <div className="mt-6">
                   {mostUsedSystem.system && rankings.idealRows.length ? renderIdealElevenPitch(idealElevenRows, effectiveIdealSystem) : <p className="rounded-2xl bg-white/5 p-6 text-center text-sm italic text-slate-500">sin datos suficientes</p>}
+                </div>
+                <div className="mt-6 grid gap-3 md:grid-cols-2">
+                  {(idealIntelligence.length ? idealIntelligence : ['Sin química suficiente todavía: faltan alineaciones, sistemas o resultados validados.']).map((line) => (
+                    <div key={line} className="rounded-3xl border border-caudal-electric/15 bg-caudal-electric/[0.055] p-4 text-sm font-semibold leading-6 text-slate-100">
+                      {line}
+                    </div>
+                  ))}
                 </div>
               </section>
 
