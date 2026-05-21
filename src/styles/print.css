@@ -2,7 +2,13 @@
   display: flex;
   justify-content: center;
   overflow-x: auto;
-  padding: 16px 0;
+  padding: 20px 0 28px;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(79, 140, 255, 0.10), transparent 34%),
+    rgba(255, 255, 255, 0.025);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(79, 140, 255, 0.55) rgba(255, 255, 255, 0.08);
 }
 
 .lineup-print-sheet {
@@ -15,7 +21,8 @@
   color: #000;
   padding: 5mm;
   font-family: Arial, Helvetica, sans-serif;
-  box-shadow: none;
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.30);
+  flex: 0 0 auto;
 }
 
 .print-sheet-a4 {
@@ -630,6 +637,13 @@
 
 .print-dossier {
   display: none;
+}
+
+.operational-print-sheet,
+.diagram-print-sheet,
+.lineup-print-sheet {
+  page-break-inside: avoid;
+  break-inside: avoid;
 }
 
 .diagram-print-sheet {

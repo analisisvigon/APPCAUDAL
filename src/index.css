@@ -13,6 +13,7 @@ html {
 body {
   @apply bg-caudal-950 text-slate-100 antialiased;
   font-family: 'Inter', system-ui, sans-serif;
+  overflow-x: hidden;
 }
 
 button,
@@ -36,10 +37,12 @@ select option {
 @layer components {
   .app-card {
     @apply rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow;
+    min-width: 0;
   }
 
   .app-card-soft {
     @apply rounded-2xl border border-white/10 bg-white/5 p-4;
+    min-width: 0;
   }
 
   .app-section-eyebrow {
@@ -126,10 +129,14 @@ select option {
 
   .app-table-shell {
     @apply overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.03];
+    scrollbar-width: thin;
+    scrollbar-color: rgba(79, 140, 255, 0.55) rgba(255, 255, 255, 0.06);
   }
 
   .app-table {
     @apply min-w-full text-left text-sm;
+    border-collapse: separate;
+    border-spacing: 0;
   }
 
   .app-table th {
@@ -138,5 +145,105 @@ select option {
 
   .app-table td {
     @apply border-t border-white/5 px-3 py-3 text-slate-200;
+    vertical-align: middle;
+  }
+}
+
+@layer utilities {
+  .min-w-0 {
+    min-width: 0;
+  }
+}
+
+/* Global polish: containment, scroll and tactical surfaces */
+#root {
+  min-height: 100vh;
+  overflow-x: clip;
+}
+
+main,
+section,
+article,
+.app-card,
+.app-card-soft {
+  min-width: 0;
+}
+
+img,
+svg,
+canvas,
+video,
+iframe {
+  max-width: 100%;
+}
+
+button {
+  white-space: normal;
+}
+
+table {
+  font-variant-numeric: tabular-nums;
+}
+
+.match-print-tab,
+.match-print-tab * {
+  min-width: 0;
+}
+
+.match-print-tab .print-hidden.rounded-3xl,
+.match-print-tab .rounded-3xl.border {
+  overflow-wrap: anywhere;
+}
+
+.set-piece-diagram-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: min(72vh, 760px);
+  color: #111827;
+  touch-action: none;
+}
+
+.set-piece-diagram-canvas text {
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.58);
+  stroke-width: 0.18px;
+  stroke-linejoin: round;
+}
+
+.set-piece-diagram-canvas .diagram-draggable {
+  transition: opacity 160ms ease, filter 160ms ease;
+}
+
+.set-piece-diagram-canvas .diagram-draggable:hover {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.22));
+}
+
+.match-print-tab [data-print-workspace='true'] {
+  overflow: hidden;
+}
+
+.match-print-tab [data-print-workspace='true'] textarea,
+.match-print-tab [data-print-workspace='true'] input,
+.match-print-tab [data-print-workspace='true'] select {
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .app-card {
+    @apply p-4;
+  }
+
+  .app-table th,
+  .app-table td {
+    @apply px-2 py-2;
+  }
+
+  .match-print-tab {
+    @apply space-y-4;
+  }
+
+  .set-piece-diagram-canvas {
+    min-width: 620px;
   }
 }
