@@ -1239,7 +1239,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Impresión</p>
             <h3 className="mt-2 text-2xl font-semibold text-white">Dossier de partido</h3>
-            <p className="mt-2 text-sm text-slate-400">Activa solo las hojas útiles y genera un PDF limpio en 30 segundos.</p>
+            <p className="mt-2 text-sm text-slate-400">Selecciona lo importante y genera un PDF limpio en 30 segundos.</p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <button type="button" onClick={() => openDuplicateModal('all')} className="rounded-2xl bg-white/10 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-white/15">
@@ -1308,9 +1308,8 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                   <span className={`rounded-lg px-2 py-1 text-[9px] font-black uppercase ${pageStatus.empty ? 'bg-amber-300/10 text-amber-100' : 'bg-emerald-300/10 text-emerald-100'}`}>{pageStatus.status}</span>
                   <span className="rounded-lg border border-white/5 bg-white/[0.035] px-2 py-1 text-[11px] text-slate-300">{pageStatus.empty ? 'Sin contenido todavia' : pageStatus.label}</span>
                 </div>
-                <div className="mt-3 grid grid-cols-[1fr_auto_auto_auto] gap-2">
+                <div className="mt-3 grid grid-cols-[1fr_auto_auto] gap-2">
                   <button type="button" onClick={() => handleDossierPageAction(page, 'edit')} className="rounded-xl bg-caudal-electric px-3 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-slate-950 transition hover:bg-[#7aacff]">Editar</button>
-                  <button type="button" onClick={() => handleDossierPageAction(page, 'preview')} className="rounded-xl bg-white/10 px-2 py-2 text-[10px] font-black uppercase text-white transition hover:bg-white/15">Vista</button>
                   <button type="button" onClick={() => moveDossierPage(page.id, -1)} disabled={index === 0} className="rounded-xl bg-white/10 px-2 py-2 text-[10px] font-black uppercase text-white disabled:opacity-30">Subir</button>
                   <button type="button" onClick={() => moveDossierPage(page.id, 1)} disabled={index === dossierPages.length - 1} className="rounded-xl bg-white/10 px-2 py-2 text-[10px] font-black uppercase text-white disabled:opacity-30">Bajar</button>
                 </div>
