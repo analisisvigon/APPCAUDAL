@@ -3251,14 +3251,15 @@ function App() {
     setGroupError('');
 
     try {
-      const [partidosResponse, statsResponse, goalsResponse, slotsResponse] = await Promise.all([
+      const [partidosResponse, statsResponse, goalsResponse, slotsResponse, postEventsResponse] = await Promise.all([
         supabase.from("partidos").select("*").order("date", { ascending: true, nullsFirst: false }),
         supabase.from("partido_estadisticas_jugador").select("*"),
         supabase.from("partido_eventos_gol").select("*"),
         supabase.from("partido_alineacion_slots").select("*").in("scope", ["stats", "pre_caudal"]).order("slot", { ascending: true }),
+        supabase.from("partido_eventos_post").select("*"),
       ]);
 
-      const failed = [partidosResponse, statsResponse, goalsResponse, slotsResponse].find((response) => response.error);
+      const failed = [partidosResponse, statsResponse, goalsResponse, slotsResponse, postEventsResponse].find((response) => response.error);
       if (failed) throw failed.error;
 
       let quickEventsRows = [];
@@ -3310,6 +3311,11 @@ function App() {
         return acc;
       }, {});
 
+      const postEventsByMatch = (postEventsResponse.data || []).reduce((acc, event) => {
+        acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabasePostEvent(event)];
+        return acc;
+      }, {});
+
       setMatches((partidosResponse.data || []).map((match) => {
         const normalized = normalizeSupabasePartido(match);
         const lineupSlots = slotsByMatch[match.id] || { stats: [], preCaudal: [] };
@@ -3322,6 +3328,7 @@ function App() {
           statsSystemRaw: match.stats_system || '',
           preCaudalSystemRaw: match.pre_caudal_system || '',
           statsGoalEvents: eventsByMatch[match.id] || [],
+          events: postEventsByMatch[match.id] || [],
           quickEvents: quickEventsByMatch[match.id] || [],
           statsPlayerData: statsByMatch[match.id] || {},
           lineupSlots,
@@ -8658,8 +8665,9 @@ function App() {
   const getGroupGoalZoneCounts = (events) => countValues(events.map((event) => event.goalZone));
 
   const getGroupAlerts = (groupData, rankings, localSummary, awaySummary) => {
-    if (groupData.played < 3) return ['sin datos suficientes'];
+    if (groupData.played < 3) return [{ text: 'Sin datos suficientes para generar alertas fiables.', gravity: 'leve', type: 'contexto', trend: 'estable' }];
     const alerts = [];
+    const addAlert = (text, gravity = 'media', type = 'mixta', trend = 'estable') => alerts.push({ text, gravity, type, trend });
     const quickSummary = groupData.quickSummary || getQuickEventSummary([]);
     const secondHalfAgainst = groupData.goalAgainstEvents.filter((event) => Number(event.minute) >= 45).length;
     const firstHalfAgainst = groupData.goalAgainstEvents.length - secondHalfAgainst;
@@ -8667,17 +8675,19 @@ function App() {
     const cardsLast = getGroupTendency(groupData.scoped).reduce((sum, row) => sum + row.cards, 0);
     const topMinutes = rankings.minutes[0];
 
-    if (secondHalfAgainst > firstHalfAgainst) alerts.push('Encajamos más en la segunda parte');
-    if (abpFor >= Math.max(2, groupData.goalsFor * 0.35)) alerts.push('Marcamos más en ABP');
-    if (awaySummary.played >= 2 && Number(awaySummary.pointsPerGame) < Number(localSummary.pointsPerGame)) alerts.push('Sufrimos más como visitantes');
-    if (topMinutes && topMinutes.minutePct >= 80) alerts.push(`Alta carga de minutos en ${topMinutes.player.name}`);
-    if (cardsLast >= 8) alerts.push('Muchas tarjetas en últimos partidos');
-    if (quickSummary.rivalShots >= 10 && Number(quickSummary.concededDanger.replace('%', '')) >= 45) alerts.push('Equipo concede muchos tiros a puerta');
-    if (quickSummary.shots >= 10 && Number(quickSummary.shotAccuracy.replace('%', '')) < 35) alerts.push('Baja eficacia de tiro a puerta');
-    if (quickSummary.losses > quickSummary.recoveries) alerts.push('Aumentan las pérdidas: revisar salida y apoyos cercanos');
-    if (quickSummary.recoveries >= quickSummary.losses + 5) alerts.push('Mejora la presión: más recuperaciones que pérdidas');
+    if (secondHalfAgainst > firstHalfAgainst) addAlert('Caída defensiva en segunda parte.', 'media', 'defensiva', 'creciente');
+    if (abpFor >= Math.max(2, groupData.goalsFor * 0.35)) addAlert('La ABP ofensiva está dando goles.', 'leve', 'ofensiva', 'creciente');
+    if (awaySummary.played >= 2 && Number(awaySummary.pointsPerGame) < Number(localSummary.pointsPerGame)) addAlert('El equipo baja rendimiento fuera de casa.', 'media', 'competitiva', 'estable');
+    if (topMinutes && topMinutes.minutePct >= 80) addAlert(`Alta carga de minutos en ${topMinutes.player.name}.`, 'leve', 'gestión', 'creciente');
+    if (cardsLast >= 8) addAlert('Demasiadas tarjetas recientes.', 'media', 'competitiva', 'creciente');
+    if (quickSummary.rivalShots >= 10 && Number(quickSummary.concededDanger.replace('%', '')) >= 45) addAlert('Concede demasiado tiro a puerta.', 'alta', 'defensiva', 'creciente');
+    if (quickSummary.shots >= 10 && Number(quickSummary.shotAccuracy.replace('%', '')) < 35) addAlert('Pocas entradas claras respecto al volumen ofensivo.', 'media', 'ofensiva', 'estable');
+    if (quickSummary.losses > quickSummary.recoveries) addAlert('Fragilidad tras pérdida interior.', 'alta', 'defensiva', 'creciente');
+    if (quickSummary.recoveries >= quickSummary.losses + 5) addAlert('La presión alta genera ventaja.', 'leve', 'ofensiva', 'creciente');
+    if (quickSummary.rivalBoxEntries > quickSummary.boxEntries) addAlert('El rival pisa demasiadas veces el área.', 'alta', 'defensiva', 'creciente');
+    if (quickSummary.rivalCorners >= quickSummary.corners + 3) addAlert('El rival encuentra centro lateral/córner con facilidad.', 'media', 'defensiva', 'creciente');
 
-    return alerts.length ? alerts : ['sin datos suficientes'];
+    return alerts.length ? alerts : [{ text: 'Sin alertas críticas con los datos actuales.', gravity: 'leve', type: 'contexto', trend: 'estable' }];
   };
 
   const getGroupAutomaticReadings = (groupData) => {
@@ -8774,6 +8784,160 @@ function App() {
     }
 
     return readings.slice(0, 8);
+  };
+
+  const getGroupIdentity = (groupData) => {
+    const goalForEvents = groupData.goalForEvents || [];
+    const goalAgainstEvents = groupData.goalAgainstEvents || [];
+    const quickEvents = groupData.quickEvents || [];
+    const postEvents = (groupData.scoped || []).flatMap((match) => (match.events || []).map((event) => ({ ...event, match })));
+    const allTextEvents = [
+      ...goalForEvents.map((event) => ({ ...event, text: `${event.phase || ''} ${event.subphase || ''} ${event.assistZone || ''} ${event.shotZone || ''}` })),
+      ...goalAgainstEvents.map((event) => ({ ...event, text: `${event.phase || ''} ${event.subphase || ''} ${event.assistZone || ''} ${event.shotZone || ''}` })),
+      ...postEvents.map((event) => ({ ...event, text: `${event.type || ''} ${event.description || ''}` })),
+    ];
+    const countByRules = (events, rules) => events.filter((event) => rules.some((rule) => rule.test(stripAccents(String(event.text || '')).toLowerCase()))).length;
+    const zoneCount = (events, rules) => countByRules(events, rules);
+    const totalFor = Math.max(1, goalForEvents.length);
+    const totalAgainst = Math.max(1, goalAgainstEvents.length);
+    const identityRows = [
+      { key: 'combinativo', label: 'Juego combinativo', forCount: goalForEvents.filter((event) => event.phase === 'Juego combinativo').length, againstCount: goalAgainstEvents.filter((event) => event.phase === 'Juego combinativo').length },
+      { key: 'directo', label: 'Juego directo', forCount: goalForEvents.filter((event) => event.phase === 'Juego directo').length, againstCount: goalAgainstEvents.filter((event) => event.phase === 'Juego directo').length },
+      { key: 'transicion', label: 'Transición', forCount: goalForEvents.filter((event) => event.phase === 'Transición').length, againstCount: goalAgainstEvents.filter((event) => event.phase === 'Transición').length },
+      { key: 'recuperacion', label: 'Recuperación alta', forCount: quickEvents.filter((event) => event.tipoEvento === 'recuperacion').length, againstCount: quickEvents.filter((event) => event.tipoEvento === 'recuperacion_rival').length },
+      { key: 'centro', label: 'Centro lateral', forCount: zoneCount(goalForEvents.map((event) => ({ text: `${event.subphase} ${event.assistZone} ${event.description}` })), [/centro|lateral|banda|derecha|izquierda/]), againstCount: zoneCount(goalAgainstEvents.map((event) => ({ text: `${event.subphase} ${event.assistZone} ${event.description}` })), [/centro|lateral|banda|derecha|izquierda/]) },
+      { key: 'abp', label: 'ABP', forCount: goalForEvents.filter((event) => event.phase === 'ABP').length, againstCount: goalAgainstEvents.filter((event) => event.phase === 'ABP').length },
+      { key: 'izquierda', label: 'Lado izquierdo', forCount: zoneCount(goalForEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/izquierda|izquierdo/]), againstCount: zoneCount(goalAgainstEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/izquierda|izquierdo/]) },
+      { key: 'derecha', label: 'Lado derecho', forCount: zoneCount(goalForEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/derecha|derecho/]), againstCount: zoneCount(goalAgainstEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/derecha|derecho/]) },
+      { key: 'central', label: 'Carril central', forCount: zoneCount(goalForEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/centro|central|dentro/]), againstCount: zoneCount(goalAgainstEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/centro|central|dentro/]) },
+      { key: 'segunda', label: 'Segunda jugada', forCount: goalForEvents.filter((event) => /segunda/i.test(`${event.phase} ${event.subphase} ${event.description}`)).length, againstCount: goalAgainstEvents.filter((event) => /segunda/i.test(`${event.phase} ${event.subphase} ${event.description}`)).length },
+    ].map((row) => ({
+      ...row,
+      forPct: Math.round((row.forCount / totalFor) * 100),
+      againstPct: Math.round((row.againstCount / totalAgainst) * 100),
+    }));
+    const dominantFor = identityRows.slice().sort((a, b) => b.forCount - a.forCount)[0];
+    const dominantAgainst = identityRows.slice().sort((a, b) => b.againstCount - a.againstCount)[0];
+    const recentRows = getGroupTendency(groupData.scoped || []);
+    const homeIdentity = getQuickEventSummary((groupData.scoped || []).filter((match) => match.isHome).flatMap((match) => match.quickEvents || []));
+    const awayIdentity = getQuickEventSummary((groupData.scoped || []).filter((match) => !match.isHome).flatMap((match) => match.quickEvents || []));
+    return {
+      rows: identityRows,
+      dominantFor,
+      dominantAgainst,
+      evolution: recentRows.map((row) => ({ opponent: row.match.opponent, shots: row.quick.shots, recoveries: row.quick.recoveries, losses: row.quick.losses })),
+      homeAway: {
+        home: homeIdentity,
+        away: awayIdentity,
+      },
+      dna: [
+        dominantFor?.forCount ? `Equipo más eficaz en ${dominantFor.label.toLowerCase()}.` : null,
+        dominantAgainst?.againstCount ? `Fragilidad defensiva: ${dominantAgainst.label.toLowerCase()}.` : null,
+        homeIdentity.recoveries > awayIdentity.recoveries ? 'Más sólido/activo en casa.' : awayIdentity.rivalShots > homeIdentity.rivalShots ? 'Fuera concede más amenaza.' : null,
+      ].filter(Boolean),
+    };
+  };
+
+  const getGroupTacticalPatterns = (groupData) => {
+    const matchesWithEvents = (groupData.scoped || []).map((match) => ({
+      match,
+      quick: [...(match.quickEvents || [])].sort((a, b) => Number(a.minute || 0) - Number(b.minute || 0)),
+      goals: match.statsGoalEvents || [],
+      post: match.events || [],
+    }));
+    const patternDefs = [
+      { id: 'high_recovery_shot', label: 'Recuperación alta → tiro', a: ['recuperacion'], b: ['tiro', 'tiro_puerta'], outcome: ['tiro_puerta'] },
+      { id: 'loss_rival_chance', label: 'Pérdida interior → ocasión rival', a: ['perdida'], b: ['tiro_rival', 'tiro_puerta_rival', 'entrada_area_rival'], outcome: ['tiro_puerta_rival'] },
+      { id: 'direct_second', label: 'Juego directo → segunda jugada', text: [/juego directo/i, /segunda/i] },
+      { id: 'cross_finish', label: 'Centro lateral → remate', text: [/centro|lateral|banda/i, /remate|finaliza|tiro|gol/i] },
+      { id: 'transition_finish', label: 'Transición → finalización rápida', text: [/transici/i, /tiro|finaliza|gol|ocas/i] },
+      { id: 'abp_second', label: 'ABP → segunda acción', text: [/abp|corner|falta/i, /segunda|rechace/i] },
+    ];
+    return patternDefs.map((pattern) => {
+      let frequency = 0;
+      let success = 0;
+      const appeared = [];
+      matchesWithEvents.forEach(({ match, quick, goals, post }) => {
+        let matchFrequency = 0;
+        if (pattern.a) {
+          quick.forEach((event, index) => {
+            if (!pattern.a.includes(event.tipoEvento)) return;
+            const next = quick.slice(index + 1).find((candidate) => Number(candidate.minute || 0) - Number(event.minute || 0) <= 5);
+            if (next && pattern.b.includes(next.tipoEvento)) {
+              frequency += 1;
+              matchFrequency += 1;
+              if (pattern.outcome.includes(next.tipoEvento)) success += 1;
+            }
+          });
+        }
+        if (pattern.text) {
+          const textPool = [
+            ...goals.map((event) => `${event.phase || ''} ${event.subphase || ''} ${event.description || ''}`),
+            ...post.map((event) => `${event.type || ''} ${event.description || ''}`),
+          ];
+          matchFrequency += textPool.filter((text) => pattern.text.every((rule) => rule.test(text))).length;
+          frequency += textPool.filter((text) => pattern.text.every((rule) => rule.test(text))).length;
+          success += textPool.filter((text) => /gol|tiro puerta|ocas/i.test(text) && pattern.text.every((rule) => rule.test(text))).length;
+        }
+        if (matchFrequency) appeared.push(match);
+      });
+      return {
+        ...pattern,
+        frequency,
+        success,
+        efficiency: frequency ? Math.round((success / frequency) * 100) : 0,
+        matches: appeared.slice(-3).map((match) => match.opponent || 'Rival'),
+      };
+    }).filter((pattern) => pattern.frequency > 0).sort((a, b) => b.frequency - a.frequency || b.efficiency - a.efficiency);
+  };
+
+  const getGroupTemporalContext = (groupData) => {
+    const ranges = ['0-15', '15-30', '30-45', '45-60', '60-75', '75-90'];
+    const rows = ranges.map((range) => {
+      const [from, to] = range.split('-').map(Number);
+      const isLastRange = to === 90;
+      const scoped = (groupData.quickEvents || []).filter((event) => Number(event.minute || 0) >= from && (isLastRange ? Number(event.minute || 0) <= to : Number(event.minute || 0) < to));
+      return {
+        range,
+        shots: scoped.filter((event) => ['tiro', 'tiro_puerta'].includes(event.tipoEvento)).length,
+        rivalShots: scoped.filter((event) => ['tiro_rival', 'tiro_puerta_rival'].includes(event.tipoEvento)).length,
+        recoveries: scoped.filter((event) => event.tipoEvento === 'recuperacion').length,
+        losses: scoped.filter((event) => event.tipoEvento === 'perdida').length,
+        boxEntries: scoped.filter((event) => event.tipoEvento === 'entrada_area').length,
+        pressure: scoped.filter((event) => event.tipoEvento === 'recuperacion').length - scoped.filter((event) => event.tipoEvento === 'perdida').length,
+      };
+    });
+    const best = rows.slice().sort((a, b) => (b.shots + b.recoveries + b.boxEntries) - (a.shots + a.recoveries + a.boxEntries))[0];
+    const worst = rows.slice().sort((a, b) => (b.rivalShots + b.losses) - (a.rivalShots + a.losses))[0];
+    return {
+      rows,
+      best,
+      worst,
+      summary: best && worst ? `Mejor tramo ${best.range}; tramo crítico ${worst.range}.` : 'Sin eventos suficientes por tramos.',
+    };
+  };
+
+  const getGroupTrainingProposals = (patterns, alerts, identity, temporal) => {
+    const proposals = [];
+    const push = (title, reason, source) => {
+      if (!proposals.some((item) => item.title === title)) proposals.push({ title, reason, source });
+    };
+    alerts.forEach((alert) => {
+      const text = typeof alert === 'string' ? alert : alert.text;
+      if (/p[eé]rdida|tras p/i.test(text)) push('Vigilancia tras pérdida', text, 'alerta');
+      if (/segunda/i.test(text)) push('Cierre segunda jugada', text, 'alerta');
+      if (/tiro|puerta|precisi/i.test(text)) push('Finalización y selección de tiro', text, 'alerta');
+      if (/juego directo/i.test(text)) push('Defensa de juego directo', text, 'alerta');
+      if (/centro|lateral|banda/i.test(text)) push('Defensa de centro lateral', text, 'alerta');
+    });
+    patterns.forEach((pattern) => {
+      if (/recuperaci/i.test(pattern.label)) push('Presión tras pérdida + finalización', pattern.label, 'patrón');
+      if (/centro/i.test(pattern.label)) push('Ocupación de área y remate de centro', pattern.label, 'patrón');
+      if (/ABP/i.test(pattern.label)) push('ABP: rechace y segunda acción', pattern.label, 'patrón');
+    });
+    if (identity.dominantAgainst?.againstCount) push(`Corregir ${identity.dominantAgainst.label.toLowerCase()}`, 'Identidad defensiva detectada', 'identidad');
+    if (temporal.worst?.losses >= 2) push(`Gestión del tramo ${temporal.worst.range}`, 'Tramo crítico por pérdidas/rival', 'tramo');
+    return proposals.slice(0, 6);
   };
 
   const renderGroupMiniPitch = ({ counts, title }) => (
@@ -12407,6 +12571,26 @@ function App() {
           }));
           const automaticAlerts = getGroupAlerts(groupData, rankings, localSummary, awaySummary);
           const automaticReadings = getGroupAutomaticReadings(groupData);
+          const groupIdentity = getGroupIdentity(groupData);
+          const tacticalPatterns = getGroupTacticalPatterns(groupData);
+          const temporalContext = getGroupTemporalContext(groupData);
+          const trainingProposals = getGroupTrainingProposals(tacticalPatterns, automaticAlerts, groupIdentity, temporalContext);
+          const prePostLinks = scopedMatches.flatMap((match) => {
+            const planItems = [
+              ...(match.planClave || '').split('\n'),
+              ...(match.planConBalon || '').split('\n'),
+              ...(match.planSinBalon || '').split('\n'),
+              ...(match.planTransiciones || '').split('\n'),
+            ].map((item) => item.trim()).filter(Boolean).slice(0, 4);
+            const postText = `${match.postReality || ''} ${match.postFulfilled || ''} ${match.postNotFulfilled || ''} ${match.postWhy || ''}`;
+            const clips = match.events || [];
+            return planItems.map((item) => {
+              const normalizedItem = normalizePlayerIdentityName(item);
+              const relatedClips = clips.filter((clip) => normalizePlayerIdentityName(`${clip.type || ''} ${clip.description || ''}`).split(' ').some((token) => token.length > 4 && normalizedItem.includes(token)));
+              const fulfilled = normalizePlayerIdentityName(postText).includes('cumpl') && !normalizePlayerIdentityName(postText).includes('no cumpl');
+              return { match, item, relatedClips, fulfilled };
+            });
+          }).filter((link) => link.relatedClips.length || link.fulfilled).slice(0, 8);
           const resultDonut = `conic-gradient(#34d399 0 ${groupData.played ? (groupData.wins / groupData.played) * 100 : 0}%, #facc15 ${groupData.played ? (groupData.wins / groupData.played) * 100 : 0}% ${groupData.played ? ((groupData.wins + groupData.draws) / groupData.played) * 100 : 0}%, #f87171 ${groupData.played ? ((groupData.wins + groupData.draws) / groupData.played) * 100 : 0}% 100%)`;
           const abpReading = (forGoals, againstGoals) => {
             if (!forGoals && !againstGoals) return 'neutro';
@@ -12553,6 +12737,98 @@ function App() {
               </section>
               </AccordionSection>
 
+              <AccordionSection title="Identidad de juego" subtitle="ADN ofensivo, defensivo y competitivo" defaultOpen>
+                <section className="grid gap-6 xl:grid-cols-[1.25fr_0.9fr]">
+                  <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Identidad ofensiva y defensiva</h3>
+                        <p className="mt-2 text-sm text-slate-400">Cómo marcamos y cómo encajamos, cruzando goles y eventos del delegado.</p>
+                      </div>
+                      <span className="rounded-2xl bg-caudal-electric/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-caudal-electric">
+                        Dominante: {groupIdentity.dominantFor?.label || 'sin datos'}
+                      </span>
+                    </div>
+                    <div className="mt-5 space-y-3">
+                      {groupIdentity.rows.map((row) => (
+                        <div key={row.key} className="rounded-2xl border border-white/5 bg-white/[0.035] p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-black text-white">{row.label}</p>
+                            <p className="text-xs font-bold text-slate-400">Marcamos {row.forPct}% · Encajamos {row.againstPct}%</p>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                              <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${Math.min(100, row.forPct)}%` }} />
+                            </div>
+                            <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                              <div className="h-full rounded-full bg-red-400" style={{ width: `${Math.min(100, row.againstPct)}%` }} />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-6">
+                    <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">ADN competitivo</h3>
+                      <div className="mt-4 space-y-3">
+                        {(groupIdentity.dna.length ? groupIdentity.dna : ['Sin ADN competitivo suficiente todavía.']).map((line) => (
+                          <p key={line} className="rounded-2xl bg-white/5 p-3 text-sm font-semibold leading-6 text-slate-100">{line}</p>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Local / visitante</h3>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                        {[
+                          ['Local', groupIdentity.homeAway.home],
+                          ['Visitante', groupIdentity.homeAway.away],
+                        ].map(([label, summary]) => (
+                          <div key={label} className="rounded-2xl bg-white/5 p-4">
+                            <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
+                            <p className="mt-2 text-sm font-bold text-white">Tiros {summary.shots}-{summary.rivalShots} · Rec/Pér {summary.recoveryLossBalance}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </AccordionSection>
+
+              <AccordionSection title="Patrones y qué entrenar" subtitle="Secuencias repetidas, alertas y propuestas entrenables" defaultOpen>
+                <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+                  <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Patrones detectados</h3>
+                    <div className="mt-5 grid gap-3 md:grid-cols-2">
+                      {tacticalPatterns.length ? tacticalPatterns.map((pattern) => (
+                        <div key={pattern.id} className="rounded-3xl border border-caudal-electric/15 bg-caudal-electric/[0.055] p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="text-sm font-black text-white">{pattern.label}</p>
+                            <span className="rounded-xl bg-white/10 px-2.5 py-1 text-xs font-black text-caudal-electric">{pattern.frequency}x</span>
+                          </div>
+                          <p className="mt-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Eficacia {pattern.efficiency}%</p>
+                          <p className="mt-3 text-xs leading-5 text-slate-400">Últimos: {pattern.matches.join(' · ') || 'sin partidos recientes'}</p>
+                        </div>
+                      )) : <p className="rounded-2xl bg-white/5 p-4 text-sm italic text-slate-500 md:col-span-2">Sin patrones repetidos suficientes todavía.</p>}
+                    </div>
+                  </div>
+                  <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Qué entrenar</h3>
+                    <div className="mt-5 space-y-3">
+                      {trainingProposals.length ? trainingProposals.map((proposal) => (
+                        <div key={proposal.title} className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-black text-white">{proposal.title}</p>
+                            <span className="rounded-xl bg-white/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">{proposal.source}</span>
+                          </div>
+                          <p className="mt-2 text-xs leading-5 text-slate-400">{proposal.reason}</p>
+                        </div>
+                      )) : <p className="rounded-2xl bg-white/5 p-4 text-sm italic text-slate-500">Sin propuestas automáticas todavía.</p>}
+                    </div>
+                  </div>
+                </section>
+              </AccordionSection>
+
               <AccordionSection title="Eventos rápidos" subtitle="Modo Delegado agregado por partido">
               <section className="app-card">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -12655,6 +12931,34 @@ function App() {
               </section>
               </AccordionSection>
 
+              <AccordionSection title="PRE + POST conectado" subtitle="Consignas, clips y revisión táctica">
+                <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Plan preparado vs realidad acumulada</h3>
+                      <p className="mt-2 text-sm text-slate-400">Relación automática entre consignas PRE, clips POST y lecturas del partido.</p>
+                    </div>
+                    <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-300">{prePostLinks.length} vínculos</span>
+                  </div>
+                  <div className="mt-5 grid gap-3 md:grid-cols-2">
+                    {prePostLinks.length ? prePostLinks.map((link, index) => (
+                      <div key={`${link.match.id}-${link.item}-${index}`} className="rounded-3xl border border-white/10 bg-white/[0.04] p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-black text-white">{link.item}</p>
+                            <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">{link.match.opponent} · {matchDisplayDate(link.match.date)}</p>
+                          </div>
+                          <span className={`rounded-xl px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${link.fulfilled ? 'bg-emerald-300/15 text-emerald-100' : 'bg-caudal-electric/15 text-caudal-electric'}`}>
+                            {link.fulfilled ? 'cumplida' : 'revisar'}
+                          </span>
+                        </div>
+                        <p className="mt-3 text-xs font-bold text-slate-400">{link.relatedClips.length} clips relacionados · {link.relatedClips.slice(0, 2).map((clip) => `${clip.minute || '-'}' ${clip.type || 'clip'}`).join(' · ') || 'sin clip directo'}</p>
+                      </div>
+                    )) : <p className="rounded-2xl bg-white/5 p-4 text-sm italic text-slate-500 md:col-span-2">Sin relaciones suficientes. Completa PRE y relaciona clips en POST para activar este bloque.</p>}
+                  </div>
+                </section>
+              </AccordionSection>
+
               <AccordionSection title="Tendencias" subtitle="Resultados, tramos y evolución">
               <section className="grid gap-6 xl:grid-cols-[0.85fr_1.4fr]">
                 <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
@@ -12697,6 +13001,28 @@ function App() {
                       </div>
                     ))}
                   </div>
+                </div>
+              </section>
+              <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Contexto temporal del partido</h3>
+                    <p className="mt-2 text-sm text-slate-400">{temporalContext.summary}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <span className="rounded-2xl bg-emerald-400/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-emerald-200">Mejor {temporalContext.best?.range}</span>
+                    <span className="rounded-2xl bg-red-400/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-red-200">Crítico {temporalContext.worst?.range}</span>
+                  </div>
+                </div>
+                <div className="mt-5 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+                  {temporalContext.rows.map((row) => (
+                    <div key={row.range} className="rounded-2xl border border-white/5 bg-white/[0.04] p-3">
+                      <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">{row.range}'</p>
+                      <p className="mt-2 text-sm font-bold text-white">T {row.shots}-{row.rivalShots}</p>
+                      <p className={`mt-1 text-xs font-bold ${row.pressure >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>Presión {row.pressure}</p>
+                      <p className="mt-1 text-xs text-slate-400">Área {row.boxEntries} · Pér {row.losses}</p>
+                    </div>
+                  ))}
                 </div>
               </section>
               </AccordionSection>
@@ -12959,8 +13285,19 @@ function App() {
                 <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Alertas automáticas</h3>
                 <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                   {automaticAlerts.map((alert) => (
-                    <div key={alert} className="rounded-3xl border border-caudal-electric/15 bg-caudal-electric/10 p-4 text-sm font-bold text-white">
-                      {alert}
+                    <div key={alert.text || alert} className={`rounded-3xl border p-4 text-sm font-bold text-white ${
+                      alert.gravity === 'alta'
+                        ? 'border-red-300/25 bg-red-400/10'
+                        : alert.gravity === 'media'
+                          ? 'border-amber-300/25 bg-amber-300/10'
+                          : 'border-caudal-electric/15 bg-caudal-electric/10'
+                    }`}>
+                      <div className="mb-2 flex flex-wrap gap-1.5">
+                        <span className="rounded-lg bg-white/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-300">{alert.gravity || 'leve'}</span>
+                        <span className="rounded-lg bg-white/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-300">{alert.type || 'mixta'}</span>
+                        <span className="rounded-lg bg-white/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-300">{alert.trend || 'estable'}</span>
+                      </div>
+                      {alert.text || alert}
                     </div>
                   ))}
                 </div>
