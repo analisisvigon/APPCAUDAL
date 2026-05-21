@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
+import DossierTacticalSheet from './DossierTacticalSheet';
 import LineupPrintSheet from './LineupPrintSheet';
 import SetPieceDiagramCanvas from './SetPieceDiagramCanvas';
 import SetPieceDiagramEditor from './SetPieceDiagramEditor';
@@ -60,6 +61,21 @@ const createDefaultSetPieceNote = (type, definitions, roles) => {
 
 const createDefaultOffensiveNote = (type) => createDefaultSetPieceNote(type, offensiveSetPieceTypes, defaultOffensiveRoles);
 const createDefaultDefensiveNote = (type) => createDefaultSetPieceNote(type, defensiveSetPieceTypes, defaultDefensiveRoles);
+
+const dossierPageDefinitions = [
+  { id: 'lineup', label: 'Alineacion', group: 'Vestuario' },
+  { id: 'takers', label: 'Lanzadores', group: 'Banquillo' },
+  { id: 'offensive', label: 'ABP ofensiva', group: 'Staff' },
+  { id: 'defensive', label: 'ABP defensiva', group: 'Staff' },
+  { id: 'kickoff', label: 'Saque inicial', group: 'Vestuario' },
+  { id: 'pressure', label: 'Plan de presion', group: 'Banquillo' },
+  { id: 'vigilances', label: 'Vigilancias', group: 'Staff' },
+  { id: 'transitions', label: 'Transiciones', group: 'Banquillo' },
+  { id: 'talk', label: 'Charlas rapidas', group: 'Charla' },
+  { id: 'halftime', label: 'Descanso', group: 'Banquillo' },
+  { id: 'rival', label: 'Resumen rival', group: 'Resumen rival' },
+  { id: 'staff', label: 'Notas de staff', group: 'Staff' },
+];
 
 const createDefaultDiagram = (type, order, definitions) => {
   const definition = definitions.find((item) => item.id === type);
@@ -179,13 +195,11 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
   const [libraryError, setLibraryError] = useState('');
   const [printMode, setPrintMode] = useState('current');
   const [printValidationStatus, setPrintValidationStatus] = useState('');
-  const [dossierOptions, setDossierOptions] = useState({
-    lineup: true,
-    takers: true,
-    offensive: true,
-    defensive: true,
-    kickoff: true,
-  });
+  const [dossierType, setDossierType] = useState('Staff');
+  const [dossierPages, setDossierPages] = useState(dossierPageDefinitions.map((page) => ({
+    ...page,
+    active: ['lineup', 'takers', 'offensive', 'defensive', 'pressure', 'vigilances', 'halftime'].includes(page.id),
+  })));
   const [captainPlayerId, setCaptainPlayerId] = useState(match?.captainPlayerId || '');
   const sheetRef = useRef(null);
 
@@ -350,6 +364,41 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     window.print();
   };
 
+  const getDossierPage = (id) => dossierPages.find((page) => page.id === id);
+  const isDossierPageActive = (id) => Boolean(getDossierPage(id)?.active);
+  const activeDossierPages = dossierPages.filter((page) => page.active);
+
+  const updateDossierPage = (id, fields) => {
+    setDossierPages((current) => current.map((page) => (page.id === id ? { ...page, ...fields } : page)));
+  };
+
+  const moveDossierPage = (id, direction) => {
+    setDossierPages((current) => {
+      const index = current.findIndex((page) => page.id === id);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= current.length) return current;
+      const next = [...current];
+      const [page] = next.splice(index, 1);
+      next.splice(nextIndex, 0, page);
+      return next;
+    });
+  };
+
+  const getShortLines = (value, limit = 6) => String(value || '').split('\n').map((line) => line.trim()).filter(Boolean).slice(0, limit);
+
+  const getMatchKeys = () => [
+    ...getShortLines(match?.planClave, 3),
+    ...getShortLines(match?.planObjetivo, 2),
+    ...getShortLines(match?.prePlanAdjustment, 2),
+  ].filter(Boolean).slice(0, 3);
+
+  const getStaffNotes = () => [
+    ...getShortLines(match?.prePlanAvoid, 4),
+    ...getShortLines(match?.preKeyMatchupsTable, 4),
+    ...getShortLines(match?.planTransiciones, 4),
+    ...getShortLines(match?.abpDefensiva, 3),
+  ].filter(Boolean).slice(0, 10);
+
   const getDossierContent = () => {
     const hasLineup = printData.starters.some((player) => player?.name && !String(player.name).startsWith('Puesto '));
     const hasTakers = setPieceTakers.some((entry) => entry.jugador_id || String(entry.nombre_manual || '').trim());
@@ -357,11 +406,11 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     const defensiveDiagrams = getDiagramsByTypes(defensiveSetPieceTypes.map((type) => type.id));
     const kickoffDiagrams = getKickoffDiagrams();
     const warnings = [];
-    if (dossierOptions.lineup && !hasLineup) warnings.push('Alineación está vacía.');
-    if (dossierOptions.takers && !hasTakers) warnings.push('Lanzadores está vacío.');
-    if (dossierOptions.offensive && !offensiveDiagrams.length) warnings.push('ABP Ofensiva no tiene jugadas.');
-    if (dossierOptions.defensive && !defensiveDiagrams.length) warnings.push('ABP Defensiva no tiene jugadas.');
-    if (dossierOptions.kickoff && !kickoffDiagrams.length) warnings.push('Saque de inicio está marcado pero no existe diagrama.');
+    if (isDossierPageActive('lineup') && !hasLineup) warnings.push('Alineacion esta vacia.');
+    if (isDossierPageActive('takers') && !hasTakers) warnings.push('Lanzadores esta vacio.');
+    if (isDossierPageActive('offensive') && !offensiveDiagrams.length) warnings.push('ABP Ofensiva no tiene jugadas.');
+    if (isDossierPageActive('defensive') && !defensiveDiagrams.length) warnings.push('ABP Defensiva no tiene jugadas.');
+    if (isDossierPageActive('kickoff') && !kickoffDiagrams.length) warnings.push('Saque de inicio esta marcado pero no existe diagrama.');
     return {
       hasLineup,
       hasTakers,
@@ -374,13 +423,14 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
 
   const handlePrintDossier = () => {
     const dossierContent = getDossierContent();
-    const printableSections = [
-      dossierOptions.lineup && dossierContent.hasLineup,
-      dossierOptions.takers && dossierContent.hasTakers,
-      dossierOptions.offensive && dossierContent.offensiveDiagrams.length,
-      dossierOptions.defensive && dossierContent.defensiveDiagrams.length,
-      dossierOptions.kickoff && dossierContent.kickoffDiagrams.length,
-    ].filter(Boolean).length;
+    const printableSections = activeDossierPages.filter((page) => {
+      if (page.id === 'lineup') return dossierContent.hasLineup;
+      if (page.id === 'takers') return dossierContent.hasTakers;
+      if (page.id === 'offensive') return dossierContent.offensiveDiagrams.length;
+      if (page.id === 'defensive') return dossierContent.defensiveDiagrams.length;
+      if (page.id === 'kickoff') return dossierContent.kickoffDiagrams.length;
+      return true;
+    }).length;
     if (dossierContent.warnings.length) {
       setPrintValidationStatus(dossierContent.warnings.join(' '));
     } else {
@@ -1075,24 +1125,39 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
             </button> : null}
           </div>
         </div>
-        <div className="mt-5 flex flex-wrap gap-3 rounded-2xl bg-black/20 p-3 text-xs font-bold text-slate-200">
-          <span className="uppercase tracking-[0.18em] text-slate-500">Incluir en dossier</span>
-          {[
-            ['lineup', 'Alineación'],
-            ['takers', 'Lanzadores'],
-            ['offensive', 'ABP Ofensiva'],
-            ['defensive', 'ABP Defensiva'],
-            ['kickoff', 'Saque de inicio'],
-          ].map(([key, label]) => (
-            <label key={key} className="inline-flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={Boolean(dossierOptions[key])}
-                onChange={(event) => setDossierOptions((current) => ({ ...current, [key]: event.target.checked }))}
-              />
-              {label}
+        <div className="mt-5 rounded-3xl border border-white/5 bg-black/20 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Constructor de dossier</p>
+              <p className="mt-1 text-sm text-slate-400">Selecciona hojas operativas, ordenalas y adapta la densidad al uso real.</p>
+            </div>
+            <label className="flex items-center gap-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+              Tipo de hoja
+              <select value={dossierType} onChange={(event) => setDossierType(event.target.value)} className="rounded-2xl border border-white/10 bg-white px-4 py-2 text-sm font-black text-slate-950">
+                {['Vestuario', 'Banquillo', 'Staff', 'Charla', 'Resumen rival'].map((type) => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
             </label>
-          ))}
+          </div>
+          <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {dossierPages.map((page, index) => (
+              <div key={page.id} className={`flex items-center gap-3 rounded-2xl border px-3 py-2 text-xs font-bold ${page.active ? 'border-caudal-electric/30 bg-caudal-electric/10 text-white' : 'border-white/10 bg-white/[0.035] text-slate-400'}`}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(page.active)}
+                  onChange={(event) => updateDossierPage(page.id, { active: event.target.checked })}
+                  className="h-4 w-4 accent-caudal-electric"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-black uppercase tracking-[0.08em]">{page.label}</p>
+                  <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">{page.group}</p>
+                </div>
+                <button type="button" onClick={() => moveDossierPage(page.id, -1)} disabled={index === 0} className="rounded-lg bg-white/10 px-2 py-1 text-[10px] disabled:opacity-30">Subir</button>
+                <button type="button" onClick={() => moveDossierPage(page.id, 1)} disabled={index === dossierPages.length - 1} className="rounded-lg bg-white/10 px-2 py-1 text-[10px] disabled:opacity-30">Bajar</button>
+              </div>
+            ))}
+          </div>
         </div>
         {printValidationStatus ? (
           <p className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm font-semibold text-amber-100">
@@ -1446,36 +1511,62 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
 
       {printMode === 'dossier' ? (
         <div className="print-dossier">
-          {dossierOptions.lineup && dossierContent.hasLineup ? (
-            <LineupPrintSheet
-              match={match}
-              starters={printData.starters}
-              bench={printData.bench}
-              coordinates={printData.coordinates}
-              system={printData.system}
-              kit={kit}
-              captainPlayerId={captainPlayerId}
-            />
-          ) : null}
-          {dossierOptions.takers && dossierContent.hasTakers ? (
-            <SetPieceTakersPrintSheet match={match} sections={setPieceSections} takers={setPieceTakers} players={players} />
-          ) : null}
-          {dossierOptions.offensive ? chunkDiagrams(dossierContent.offensiveDiagrams).map((diagrams, index) => (
-            <SetPieceDiagramPrintSheet key={`offensive-dossier-${index}`} match={match} title="ABP ofensiva" diagrams={diagrams} players={players} />
-          )) : null}
-          {dossierOptions.defensive ? chunkDiagrams(dossierContent.defensiveDiagrams).map((diagrams, index) => (
-            <SetPieceDiagramPrintSheet key={`defensive-dossier-${index}`} match={match} title="ABP defensiva" diagrams={diagrams} players={players} />
-          )) : null}
-          {dossierOptions.kickoff ? dossierContent.kickoffDiagrams.map((diagram) => (
-            <SetPieceDiagramPrintSheet
-              key={`kickoff-dossier-${diagram.id || diagram.orden}`}
-              match={match}
-              title="Saque de inicio"
-              diagrams={[diagram]}
-              players={players}
-              layout="landscape"
-            />
-          )) : null}
+          {activeDossierPages.flatMap((page) => {
+            if (page.id === 'lineup') {
+              return dossierContent.hasLineup ? [(
+                <LineupPrintSheet
+                  key="lineup-dossier"
+                  match={match}
+                  starters={printData.starters}
+                  bench={printData.bench}
+                  coordinates={printData.coordinates}
+                  system={printData.system}
+                  kit={kit}
+                  captainPlayerId={captainPlayerId}
+                  matchKeys={getMatchKeys()}
+                  staffNotes={getStaffNotes()}
+                  dossierType={dossierType}
+                />
+              )] : [];
+            }
+            if (page.id === 'takers') {
+              return dossierContent.hasTakers ? [(
+                <SetPieceTakersPrintSheet key="takers-dossier" match={match} sections={setPieceSections} takers={setPieceTakers} players={players} />
+              )] : [];
+            }
+            if (page.id === 'offensive') {
+              return chunkDiagrams(dossierContent.offensiveDiagrams).map((diagrams, index) => (
+                <SetPieceDiagramPrintSheet key={`offensive-dossier-${index}`} match={match} title="ABP ofensiva" diagrams={diagrams} players={players} />
+              ));
+            }
+            if (page.id === 'defensive') {
+              return chunkDiagrams(dossierContent.defensiveDiagrams).map((diagrams, index) => (
+                <SetPieceDiagramPrintSheet key={`defensive-dossier-${index}`} match={match} title="ABP defensiva" diagrams={diagrams} players={players} />
+              ));
+            }
+            if (page.id === 'kickoff') {
+              return dossierContent.kickoffDiagrams.map((diagram) => (
+                <SetPieceDiagramPrintSheet
+                  key={`kickoff-dossier-${diagram.id || diagram.orden}`}
+                  match={match}
+                  title="Saque de inicio"
+                  diagrams={[diagram]}
+                  players={players}
+                  layout="landscape"
+                />
+              ));
+            }
+            return [(
+              <DossierTacticalSheet
+                key={`${page.id}-dossier`}
+                match={match}
+                pageId={page.id}
+                dossierType={dossierType}
+                keys={getMatchKeys()}
+                staffNotes={getStaffNotes()}
+              />
+            )];
+          })}
         </div>
       ) : null}
 

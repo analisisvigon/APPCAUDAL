@@ -75,6 +75,57 @@
   break-inside: avoid;
 }
 
+.lineup-print-keys {
+  display: grid;
+  grid-template-columns: 34mm 1fr;
+  gap: 3mm;
+  min-height: 16mm;
+  margin-top: 2mm;
+  border: 1pt solid #000;
+  padding: 1.5mm 2mm;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.lineup-print-keys h2,
+.lineup-staff-notes h2 {
+  margin: 0;
+  font-size: 8pt;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.lineup-print-keys p {
+  margin: 0 0 0.8mm;
+  font-size: 8.4pt;
+  line-height: 1.15;
+  font-weight: 700;
+}
+
+.lineup-print-keys + .print-lineup-layout {
+  height: 248mm;
+}
+
+.lineup-print-keys + .print-lineup-layout .print-pitch,
+.lineup-print-keys + .print-lineup-layout .print-bench {
+  height: 248mm;
+}
+
+.lineup-staff-notes {
+  margin-top: 2mm;
+  border-top: 1pt solid #000;
+  padding-top: 2mm;
+}
+
+.lineup-staff-notes p {
+  margin: 0 0 1mm;
+  border-bottom: 0.5pt solid #999;
+  padding-bottom: 1mm;
+  font-size: 7.2pt;
+  line-height: 1.15;
+  font-weight: 700;
+}
+
 .print-pitch {
   position: relative;
   width: 100%;
@@ -304,6 +355,142 @@
 
 .set-piece-print-sheet {
   padding: 10mm;
+}
+
+.operational-print-sheet {
+  padding: 7mm;
+  background: #fff;
+  color: #000;
+}
+
+.operational-print-header {
+  display: grid;
+  grid-template-columns: 1fr 62mm;
+  gap: 5mm;
+  border-bottom: 1.5pt solid #000;
+  padding-bottom: 3mm;
+}
+
+.operational-print-header h1 {
+  margin: 0;
+  font-size: 24pt;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.operational-key-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2mm;
+  margin-top: 4mm;
+}
+
+.operational-key-strip div {
+  min-height: 18mm;
+  border: 1pt solid #000;
+  padding: 2mm;
+  box-sizing: border-box;
+}
+
+.operational-key-strip span {
+  display: inline-flex;
+  width: 5mm;
+  height: 5mm;
+  align-items: center;
+  justify-content: center;
+  border: 1pt solid #000;
+  border-radius: 50%;
+  font-size: 7pt;
+  font-weight: 900;
+}
+
+.operational-key-strip p {
+  margin: 1mm 0 0;
+  font-size: 9pt;
+  line-height: 1.15;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.operational-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 3mm;
+  margin-top: 4mm;
+}
+
+.operational-box {
+  min-height: 52mm;
+  border: 1pt solid #000;
+  padding: 3mm;
+  box-sizing: border-box;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.operational-grid-halftime .operational-box {
+  min-height: 68mm;
+}
+
+.operational-box h2 {
+  margin: 0 0 3mm;
+  border-bottom: 1pt solid #000;
+  padding-bottom: 1.2mm;
+  font-size: 11pt;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.operational-box ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.operational-box li {
+  min-height: 8mm;
+  margin: 0 0 2mm;
+  border-bottom: 0.6pt solid #aaa;
+  font-size: 10pt;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+.operational-box li::before {
+  content: "□ ";
+  font-weight: 900;
+}
+
+.operational-box li.blank-line::before {
+  content: "";
+}
+
+.dossier-large .operational-print-header h1 {
+  font-size: 28pt;
+}
+
+.dossier-large .operational-box li {
+  min-height: 11mm;
+  font-size: 12pt;
+}
+
+.dossier-compact .operational-box {
+  min-height: 42mm;
+  padding: 2mm;
+}
+
+.dossier-compact .operational-box li {
+  min-height: 6.5mm;
+  font-size: 8.5pt;
+}
+
+.dossier-dense .operational-grid {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.dossier-dense .operational-box {
+  min-height: 44mm;
+  padding: 2.2mm;
 }
 
 .set-piece-header {
@@ -1042,6 +1229,9 @@
   .diagram-print-header,
   .diagram-print-grid,
   .diagram-print-card,
+  .operational-print-header,
+  .operational-key-strip,
+  .operational-box,
   .offensive-abp-header,
   .offensive-abp-layout,
   .offensive-abp-zone,
