@@ -9017,13 +9017,24 @@ function App() {
   };
 
   const getGroupPrePostReality = (scopedMatches) => {
+    const toPlanLines = (value) => {
+      if (Array.isArray(value)) {
+        return value.flatMap((item) => {
+          if (typeof item === 'string') return item.split('\n');
+          if (isPlainObject(item)) return [Object.values(item).filter(Boolean).join(' · ')];
+          return [];
+        });
+      }
+      if (isPlainObject(value)) return [Object.values(value).filter(Boolean).join(' · ')];
+      return String(value || '').split('\n');
+    };
     const extractPlanItems = (match) => [
-      ...(match.planClave || '').split('\n'),
-      ...(match.planConBalon || '').split('\n'),
-      ...(match.planSinBalon || '').split('\n'),
-      ...(match.planTransiciones || '').split('\n'),
-      ...(match.prePlanAvoid || '').split('\n'),
-      ...(match.preKeyMatchupsTable || '').split('\n'),
+      ...toPlanLines(match.planClave),
+      ...toPlanLines(match.planConBalon),
+      ...toPlanLines(match.planSinBalon),
+      ...toPlanLines(match.planTransiciones),
+      ...toPlanLines(match.prePlanAvoid),
+      ...toPlanLines(match.preKeyMatchupsTable),
     ].map((item) => item.trim()).filter(Boolean).slice(0, 5);
     return safeArray(scopedMatches).flatMap((match) => {
       const postText = normalizePlayerIdentityName(`${match.postReality || ''} ${match.postFulfilled || ''} ${match.postNotFulfilled || ''} ${match.postWhy || ''}`);
