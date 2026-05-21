@@ -19,6 +19,13 @@ const getPlayerName = (element, playersById) => {
 };
 
 const splitLines = (value) => String(value || '').split('\n').slice(0, 12);
+const compactDiagramLabel = (value, max = 14) => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (text.length <= max) return text;
+  const parts = text.split(' ').filter(Boolean);
+  const compact = parts.length > 1 ? `${parts[0][0]}. ${parts.slice(-1)[0]}` : text;
+  return compact.length <= max ? compact : `${compact.slice(0, Math.max(3, max - 1))}.`;
+};
 
 const BallIcon = ({ x, y, selected }) => (
   <g>
@@ -179,7 +186,8 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
         if (isResizableBox(element)) {
           const width = element.width || (element.type === 'text_box' ? 30 : 18);
           const height = element.height || (element.type === 'text_box' ? 18 : 10);
-          const lines = splitLines(element.label || (element.type === 'block' ? 'BLOQUEO' : ''));
+          const lines = splitLines(element.label || (element.type === 'block' ? 'BLOQUEO' : ''))
+            .map((line) => (readOnly ? compactDiagramLabel(line, element.type === 'text_box' ? 24 : 18) : line));
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
               <rect x={element.x} y={element.y} width={width} height={height} fill="white" stroke="currentColor" strokeWidth={selected ? 1.2 : 0.85} strokeDasharray={element.type === 'zone' ? '3 2' : ''} />
@@ -211,7 +219,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           );
         }
         const isOpponent = element.type === 'opponent';
-        const name = getPlayerName(element, playersById);
+        const name = compactDiagramLabel(getPlayerName(element, playersById), readOnly ? 12 : 18);
         return (
           <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
             <circle cx={element.x} cy={element.y} r={selected ? 2.8 : 2.45} fill={isOpponent ? 'white' : 'currentColor'} stroke="currentColor" strokeWidth="0.65" />
@@ -219,8 +227,8 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
               {element.label || ''}
             </text>
             {name ? (
-              <text x={element.x} y={element.y + 5.8} textAnchor="middle" fontSize="1.75" fontWeight="800" fill="currentColor">
-                {name.split(' ').slice(0, 2).join(' ').toUpperCase()}
+              <text x={element.x} y={element.y + 5.9} textAnchor="middle" fontSize={readOnly ? '1.45' : '1.75'} fontWeight="800" fill="currentColor">
+                {name.toUpperCase()}
               </text>
             ) : null}
             {element.locked && !readOnly ? <text x={element.x + 4.2} y={element.y - 3.5} fontSize="2.6" fontWeight="900">L</text> : null}

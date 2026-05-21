@@ -8168,7 +8168,7 @@ function App() {
     }, {});
 
   const renderReadOnlyZoneGrid = ({ counts, zones = pitchZoneOptions, goal = false }) => (
-    <div className={`relative overflow-hidden rounded-3xl border border-white/18 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_24px_70px_rgba(0,0,0,0.28)] ${goal ? 'aspect-[16/9] min-h-[180px] bg-[radial-gradient(circle_at_50%_12%,rgba(79,140,255,0.16),transparent_34%),linear-gradient(180deg,#172033,#0a101d)]' : 'aspect-[7/10] bg-[radial-gradient(circle_at_50%_45%,rgba(118,255,210,0.14),transparent_26%),linear-gradient(180deg,#0b5a42,#064432_48%,#073a30)]'}`}>
+    <div className={`relative w-full max-w-full min-w-0 overflow-hidden rounded-3xl border border-white/18 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_24px_70px_rgba(0,0,0,0.28)] ${goal ? 'aspect-[16/9] min-h-[160px] bg-[radial-gradient(circle_at_50%_12%,rgba(79,140,255,0.16),transparent_34%),linear-gradient(180deg,#172033,#0a101d)] sm:min-h-[180px]' : 'aspect-[7/10] bg-[radial-gradient(circle_at_50%_45%,rgba(118,255,210,0.14),transparent_26%),linear-gradient(180deg,#0b5a42,#064432_48%,#073a30)]'}`}>
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.028)_1px,transparent_1px)] bg-[size:28px_28px] opacity-60" />
       {goal ? (
         <>
@@ -13328,12 +13328,12 @@ function App() {
 
                 <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                   <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Portería 3x3</h3>
-                  <div className="mt-5 grid gap-4 md:grid-cols-2">
-                    <div>
+                  <div className="goal-3x3-pair mt-5 grid gap-5 lg:grid-cols-2">
+                    <div className="min-w-0">
                       <p className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500">Goles marcados</p>
                       {renderReadOnlyZoneGrid({ counts: goalZoneForCounts, zones: goalZoneOptions, goal: true })}
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500">Goles encajados</p>
                       {renderReadOnlyZoneGrid({ counts: goalZoneAgainstCounts, zones: goalZoneOptions, goal: true })}
                     </div>

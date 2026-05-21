@@ -683,7 +683,7 @@
 
 .diagram-print-grid {
   display: grid;
-  gap: 2mm;
+  gap: 3mm;
   height: 277mm;
   margin-top: 2mm;
   overflow: hidden;
@@ -697,6 +697,9 @@
   overflow: hidden;
   page-break-inside: avoid;
   break-inside: avoid;
+  display: grid;
+  grid-template-rows: 7mm minmax(0, 1fr) auto;
+  row-gap: 1.2mm;
 }
 
 .diagram-print-card-head {
@@ -705,7 +708,7 @@
   justify-content: space-between;
   height: 7mm;
   border-bottom: 1pt solid #000;
-  margin-bottom: 1.2mm;
+  margin-bottom: 0;
   overflow: hidden;
 }
 
@@ -729,24 +732,28 @@
 }
 
 .diagram-print-card .set-piece-diagram-canvas {
-  height: 116mm;
+  height: 108mm;
+  min-height: 0;
   aspect-ratio: auto;
   border: 1pt solid #000;
 }
 
 .diagram-print-consigna {
-  margin: 1mm 0 0;
+  margin: 0;
   min-height: 0;
-  max-height: 10mm;
+  max-height: 15mm;
   overflow: hidden;
+  border-top: 0.8pt solid #000;
+  padding-top: 1mm;
   white-space: pre-wrap;
   font-size: 6.8pt;
   line-height: 1.18;
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .diagram-print-consigna p {
-  margin: 0;
+  margin: 0 0 0.7mm;
 }
 
 .diagram-print-landscape {
@@ -767,14 +774,15 @@
 .diagram-print-landscape .diagram-print-card {
   height: 189mm;
   padding: 1.5mm;
+  grid-template-rows: 7mm minmax(0, 1fr) auto;
 }
 
 .diagram-print-landscape .diagram-print-card .set-piece-diagram-canvas {
-  height: 169mm;
+  height: 158mm;
 }
 
 .diagram-print-landscape .diagram-print-consigna {
-  max-height: 8mm;
+  max-height: 17mm;
   font-size: 7pt;
 }
 
