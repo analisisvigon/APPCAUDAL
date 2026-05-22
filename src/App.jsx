@@ -572,7 +572,7 @@ const normalizeSupabasePartido = (match) =>
 const createPartidoPayload = (matchFormState, teams = []) => {
   const selectedTeam = findTeamByDisplayName(teams, matchFormState.opponent);
   const equipoRivalId = isUuid(selectedTeam?.id) ? selectedTeam.id : null;
-  return {
+  const basePayload = {
     date: matchFormState.date || null,
     time: matchFormState.time || '',
     type: matchFormState.type || 'Liga',
@@ -590,6 +590,12 @@ const createPartidoPayload = (matchFormState, teams = []) => {
     goals_against: matchFormState.goalsAgainst || '',
     equipo_rival_id: equipoRivalId,
   };
+  const prepPayload = Object.fromEntries(
+    Object.entries(matchFormState)
+      .filter(([field]) => partidoWritableFieldMap[field])
+      .map(([field, value]) => [partidoWritableFieldMap[field], value])
+  );
+  return { ...basePayload, ...prepPayload };
 };
 
 const normalizeSupabaseGoalEvent = (event) => ({
@@ -2548,6 +2554,7 @@ function App() {
   const [editingId, setEditingId] = useState(null);
   const [editingTeamId, setEditingTeamId] = useState(null);
   const [editingMatchId, setEditingMatchId] = useState(null);
+  const [matchFormAutoStatus, setMatchFormAutoStatus] = useState('');
   const [matchFilter, setMatchFilter] = useState('Todos');
   const [matchSections, setMatchSections] = useState({});
   const [matchView, setMatchView] = useState('lista_partidos');
@@ -3636,7 +3643,48 @@ function App() {
       preRivalStyle: [mapped.preRivalStyle, unavailable.length ? `alertas: ${unavailable.join(', ')}` : ''].filter(Boolean).join(' · '),
     };
   }, [liveRivalIdentity, liveRivalPlayers, selectedMatchRivalTeam]);
-  const suggestedConsignas = selectedPreAiAnalysis?.suggestedConsignas || createSuggestedConsignas(selectedMatchRivalTeam || liveRivalIdentity);
+  const createAutoVestuarioBullets = (match = selectedMatch, rivalTeam = selectedMatchRivalTeam) => {
+    const identity = getTeamTacticalIdentity(rivalTeam || liveRivalIdentity);
+    const reviewedQuick = safeArray(match?.quickEvents).filter((event) => event.reviewed);
+    const countQuick = (tipoEvento) => reviewedQuick.filter((event) => event.tipoEvento === tipoEvento).length;
+    const quick = {
+      losses: countQuick('perdida'),
+      recoveries: countQuick('recuperacion'),
+      boxEntries: countQuick('entrada_area'),
+      rivalBoxEntries: countQuick('entrada_area_rival'),
+    };
+    const textPool = normalizePlayerIdentityName([
+      match?.preRivalStyle,
+      match?.preRivalStrengths,
+      match?.preRivalWeaknesses,
+      match?.preRivalDangerZones,
+      match?.preRivalAfterRecovery,
+      match?.preRivalCornersFor,
+      match?.preRivalCornersAgainst,
+      match?.planClave,
+      match?.prePlanAvoid,
+      safeArray(match?.events).map((event) => `${event.type || ''} ${event.description || ''}`).join(' '),
+    ].filter(Boolean).join(' '));
+    const keyPlayers = safeArray(rivalTeam?.squad).filter((player) => player.isKey).map((player) => player.name).slice(0, 2);
+    const add = (items, text, tone = 'vigilancia', source = 'scouting') => {
+      if (text && !items.some((item) => item.text === text)) items.push({ text, tone, source });
+    };
+    const bullets = [];
+
+    createSuggestedConsignas(identity).forEach((item) => add(bullets, item.text, item.tone, 'identidad rival'));
+    if (identity.mainThreat === 'segunda jugada' || /segunda jugada|rechace/.test(textPool)) add(bullets, 'Rival fuerte en segunda jugada.', 'alerta', 'scouting/PRE');
+    if (identity.detectedWeakness === 'pérdida interior' || /perdida interior|perdidas interiores/.test(textPool) || quick.losses >= 2) add(bullets, 'Evitar pérdidas interiores.', 'vigilancia', 'eventos/PRE');
+    if (identity.pressureType === 'tras pérdida' || /presion tras perdida|tras perdida agresiva/.test(textPool)) add(bullets, 'Presión tras pérdida agresiva.', 'alerta', 'scouting');
+    if (identity.mainThreat === 'centros laterales' || /centro|lateral|segundo palo/.test(textPool)) add(bullets, 'Tapar centro y proteger segundo palo.', 'alerta', 'patrón');
+    if (identity.mainThreat === 'ABP' || /abp|corner|falta lateral/.test(textPool)) add(bullets, 'Evitar faltas laterales y vigilar bloqueos.', 'abp', 'ABP');
+    if (identity.offensiveFocus === 'espalda lateral' || /espalda lateral|intervalo/.test(textPool)) add(bullets, 'Extremo busca intervalo a espalda lateral.', 'vigilancia', 'scouting');
+    if (quick.rivalBoxEntries > quick.boxEntries) add(bullets, 'Cerrar área antes de saltar fuera.', 'alerta', 'eventos repetidos');
+    if (quick.recoveries >= 3) add(bullets, 'Nuestra presión alta puede dar ventaja.', 'ofensiva', 'eventos repetidos');
+    keyPlayers.forEach((name) => add(bullets, `Vigilar a ${name}.`, 'vigilancia', 'jugador clave'));
+
+    return bullets.slice(0, 8);
+  };
+  const suggestedConsignas = selectedPreAiAnalysis?.suggestedConsignas || createAutoVestuarioBullets(selectedMatch, selectedMatchRivalTeam);
   const activeConsignas = (selectedMatch?.planClave || '').split('\n').map((item) => item.trim()).filter(Boolean);
   const saveActiveConsignas = (items) => {
     updateSelectedMatchFields({ planClave: items.map((item) => item.trim()).filter(Boolean).join('\n') });
@@ -5506,6 +5554,16 @@ function App() {
     if (!event) return;
     const line = `${event.minute || '-'}' · ${event.type || 'Clip'}${event.description ? `: ${event.description}` : ''}`;
     const currentAnalysis = safeObject(selectedMatch.postAiAnalysis);
+    const clipText = normalizePlayerIdentityName(`${event.type || ''} ${event.description || ''}`);
+    const concepts = [
+      /perdida/.test(clipText) ? 'pérdidas interiores' : null,
+      /recuper|presion/.test(clipText) ? 'presión alta' : null,
+      /directo/.test(clipText) ? 'juego directo' : null,
+      /segunda/.test(clipText) ? 'segunda jugada' : null,
+      /centro|lateral/.test(clipText) ? 'centros laterales' : null,
+      /corner|abp|falta/.test(clipText) ? 'ABP' : null,
+      /transicion/.test(clipText) ? 'transición' : null,
+    ].filter(Boolean);
     await updateSelectedMatchFields({
       [targetField]: [selectedMatch[targetField], line].filter(Boolean).join('\n'),
       postAiAnalysis: {
@@ -5514,19 +5572,74 @@ function App() {
           ...safeArray(currentAnalysis.clipAnalysisLinks).filter((link) => !(link.eventId === event.id && link.targetField === targetField)),
           { eventId: event.id, targetField, createdAt: new Date().toISOString() },
         ],
+        tacticalMemoryClips: [
+          ...safeArray(currentAnalysis.tacticalMemoryClips).filter((clip) => clip.eventId !== event.id),
+          {
+            eventId: event.id,
+            matchId: selectedMatch.id,
+            minute: event.minute || '',
+            type: event.type || 'Clip',
+            player: event.player || '',
+            concepts,
+            futureTraining: concepts.slice(0, 3),
+            createdAt: new Date().toISOString(),
+          },
+        ],
       },
     });
     setPostClipFeedback(`Clip relacionado con ${targetField === 'postFulfilled' ? 'qué funcionó' : targetField === 'postNotFulfilled' ? 'qué no funcionó' : targetField === 'postNextAdjustment' ? 'ajustes futuros' : 'qué ocurrió'}.`);
     window.setTimeout(() => setPostClipFeedback((current) => (current.startsWith('Clip relacionado') ? '' : current)), 2200);
   };
 
+  const buildMondayAutoFlow = () => {
+    const derived = buildPostDerivedReading();
+    const quick = getQuickEventSummary(safeArray(selectedMatch?.quickEvents).filter((event) => event.reviewed));
+    const clips = safeArray(selectedMatch?.events).slice().sort((a, b) => getPostClipPriority(a) - getPostClipPriority(b));
+    const training = [
+      quick.losses >= 2 ? 'Pérdidas interiores y cobertura tras pérdida.' : null,
+      quick.rivalBoxEntries > quick.boxEntries ? 'Defensa de área y cierres laterales.' : null,
+      quick.rivalCorners >= quick.corners + 2 ? 'ABP defensiva y despeje a zona segura.' : null,
+      quick.recoveries >= 3 ? 'Presión alta + primera decisión tras robo.' : null,
+      quick.shots > quick.shotsOnTarget + 2 ? 'Finalización con mejor selección de tiro.' : null,
+      ...derived.suggestions,
+    ].filter(Boolean);
+    const repeatedErrors = [
+      quick.losses >= 2 ? `Pérdidas peligrosas: ${quick.losses}` : null,
+      quick.rivalBoxEntries > quick.boxEntries ? `Entradas área rival: ${quick.rivalBoxEntries}` : null,
+      quick.rivalShotsOnTarget >= 3 ? `Tiros a puerta rival: ${quick.rivalShotsOnTarget}` : null,
+      derived.criticalRange ? `Tramo crítico: ${derived.criticalRange}` : null,
+    ].filter(Boolean);
+    const keyClips = clips.slice(0, 5).map((event) => `${event.minute || '-'}' · ${event.type || 'Clip'}${event.player ? ` · ${event.player}` : ''}`);
+    return {
+      generatedAt: new Date().toISOString(),
+      summary: buildPostAutoSummary(),
+      training: Array.from(new Set(training)).slice(0, 6),
+      vigilances: Array.from(new Set([
+        quick.losses >= 2 ? 'Equipo corto tras pérdida.' : null,
+        quick.rivalBoxEntries > quick.boxEntries ? 'Cerrar lado débil antes de saltar.' : null,
+        quick.rivalCorners >= quick.corners + 2 ? 'Evitar faltas laterales y córners evitables.' : null,
+        derived.criticalRange ? `Gestionar ${derived.criticalRange}.` : null,
+      ].filter(Boolean))).slice(0, 5),
+      keyClips,
+      repeatedErrors,
+      trends: [derived.trend, `Posesión emocional: ${derived.emotionalPossession}%`, `Momento dominante: ${derived.dominantMoment}`].filter(Boolean),
+      shortDossier: [
+        `Resumen: ${buildPostAutoSummary()}`,
+        `Qué entrenar: ${Array.from(new Set(training)).slice(0, 3).join(' | ') || 'validar clips'}`,
+        `Vigilancias: ${repeatedErrors.slice(0, 3).join(' | ') || 'sin alertas fuertes'}`,
+      ].join('\n'),
+    };
+  };
+
   const closePostAnalysis = async () => {
     if (!selectedMatch) return;
     const finalSummary = buildPostAutoSummary();
+    const mondayFlow = buildMondayAutoFlow();
     const nextPostAiAnalysis = {
       ...safeObject(selectedMatch.postAiAnalysis),
       closedAt: new Date().toISOString(),
       finalSummary,
+      mondayFlow,
       closureChecklist: {
         videoReviewed: Boolean(selectedMatch.postVideoLink),
         eventsValidated: !(selectedMatch.quickEvents || []).some((event) => !event.reviewed),
@@ -5540,6 +5653,9 @@ function App() {
         status: 'Revisado',
         post_ai_analysis: nextPostAiAnalysis,
         post_notes: selectedMatch.postNotes || finalSummary,
+        post_train_week: selectedMatch.postTrainWeek || mondayFlow.training.join('\n'),
+        post_repeat: selectedMatch.postRepeat || mondayFlow.trends.join('\n'),
+        post_improve: selectedMatch.postImprove || mondayFlow.repeatedErrors.join('\n'),
       })
       .eq("id", selectedMatch.id);
     if (closeError) {
@@ -5551,6 +5667,9 @@ function App() {
       status: 'Revisado',
       postAiAnalysis: nextPostAiAnalysis,
       postNotes: match.postNotes || finalSummary,
+      postTrainWeek: match.postTrainWeek || mondayFlow.training.join('\n'),
+      postRepeat: match.postRepeat || mondayFlow.trends.join('\n'),
+      postImprove: match.postImprove || mondayFlow.repeatedErrors.join('\n'),
     } : match)));
   };
 
@@ -7332,6 +7451,7 @@ function App() {
     const score = getStatsScore();
     const postDerivedReading = buildPostDerivedReading();
     const postAiMeta = safeObject(selectedMatch.postAiAnalysis);
+    const mondayFlow = safeObject(postAiMeta.mondayFlow);
     const postSummary = buildPostAutoSummary();
     const sortedPostClips = [...(selectedMatch.events || [])].sort((a, b) => {
       const priority = getPostClipPriority(a) - getPostClipPriority(b);
@@ -7499,6 +7619,27 @@ function App() {
               </span>
             ))}
           </div>
+          {mondayFlow.generatedAt ? (
+            <div className="mt-5 rounded-3xl border border-emerald-300/15 bg-emerald-300/[0.055] p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-100">Lunes preparado</p>
+              <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                {[
+                  ['Qué entrenar', safeArray(mondayFlow.training)],
+                  ['Vigilancias', safeArray(mondayFlow.vigilances)],
+                  ['Clips clave', safeArray(mondayFlow.keyClips)],
+                ].map(([title, items]) => (
+                  <div key={title} className="rounded-2xl border border-white/10 bg-black/15 p-3">
+                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">{title}</p>
+                    <div className="mt-2 space-y-1.5">
+                      {(items.length ? items : ['Pendiente']).slice(0, 4).map((item) => (
+                        <p key={item} className="text-xs font-bold leading-5 text-slate-100">{item}</p>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <section className="app-card">
@@ -8710,7 +8851,7 @@ function App() {
   const getGroupAlerts = (groupData, rankings, localSummary, awaySummary) => {
     if (groupData.played < 3) return [{ text: 'Sin datos suficientes para generar alertas fiables.', gravity: 'leve', type: 'contexto', trend: 'estable' }];
     const alerts = [];
-    const addAlert = (text, gravity = 'media', type = 'mixta', trend = 'estable') => alerts.push({ text, gravity, type, trend });
+    const addAlert = (text, gravity = 'media', type = 'mixta', trend = 'estable', frequency = 0) => alerts.push({ text, gravity, type, trend, frequency });
     const quickSummary = groupData.quickSummary || getQuickEventSummary([]);
     const secondHalfAgainst = groupData.goalAgainstEvents.filter((event) => Number(event.minute) >= 45).length;
     const firstHalfAgainst = groupData.goalAgainstEvents.length - secondHalfAgainst;
@@ -8718,17 +8859,17 @@ function App() {
     const cardsLast = getGroupTendency(groupData.scoped).reduce((sum, row) => sum + row.cards, 0);
     const topMinutes = rankings.minutes[0];
 
-    if (secondHalfAgainst > firstHalfAgainst) addAlert('Caída defensiva en segunda parte.', 'media', 'defensiva', 'creciente');
-    if (abpFor >= Math.max(2, groupData.goalsFor * 0.35)) addAlert('La ABP ofensiva está dando goles.', 'leve', 'ofensiva', 'creciente');
-    if (awaySummary.played >= 2 && Number(awaySummary.pointsPerGame) < Number(localSummary.pointsPerGame)) addAlert('El equipo baja rendimiento fuera de casa.', 'media', 'competitiva', 'estable');
-    if (topMinutes && topMinutes.minutePct >= 80) addAlert(`Alta carga de minutos en ${topMinutes.player.name}.`, 'leve', 'gestión', 'creciente');
-    if (cardsLast >= 8) addAlert('Demasiadas tarjetas recientes.', 'media', 'competitiva', 'creciente');
-    if (quickSummary.rivalShots >= 10 && Number(quickSummary.concededDanger.replace('%', '')) >= 45) addAlert('Concede demasiado tiro a puerta.', 'alta', 'defensiva', 'creciente');
-    if (quickSummary.shots >= 10 && Number(quickSummary.shotAccuracy.replace('%', '')) < 35) addAlert('Pocas entradas claras respecto al volumen ofensivo.', 'media', 'ofensiva', 'estable');
-    if (quickSummary.losses > quickSummary.recoveries) addAlert('Fragilidad tras pérdida interior.', 'alta', 'defensiva', 'creciente');
-    if (quickSummary.recoveries >= quickSummary.losses + 5) addAlert('La presión alta genera ventaja.', 'leve', 'ofensiva', 'creciente');
-    if (quickSummary.rivalBoxEntries > quickSummary.boxEntries) addAlert('El rival pisa demasiadas veces el área.', 'alta', 'defensiva', 'creciente');
-    if (quickSummary.rivalCorners >= quickSummary.corners + 3) addAlert('El rival encuentra centro lateral/córner con facilidad.', 'media', 'defensiva', 'creciente');
+    if (secondHalfAgainst > firstHalfAgainst) addAlert('Caída defensiva en segunda parte.', 'media', 'defensiva', 'creciente', secondHalfAgainst);
+    if (abpFor >= Math.max(2, groupData.goalsFor * 0.35)) addAlert('La ABP ofensiva está dando goles.', 'leve', 'ofensiva', 'creciente', abpFor);
+    if (awaySummary.played >= 2 && Number(awaySummary.pointsPerGame) < Number(localSummary.pointsPerGame)) addAlert('El equipo baja rendimiento fuera de casa.', 'media', 'competitiva', 'estable', awaySummary.played);
+    if (topMinutes && topMinutes.minutePct >= 80) addAlert(`Alta carga de minutos en ${topMinutes.player.name}.`, 'leve', 'gestión', 'creciente', topMinutes.minutePct);
+    if (cardsLast >= 8) addAlert('Demasiadas tarjetas recientes.', 'media', 'competitiva', 'creciente', cardsLast);
+    if (quickSummary.rivalShots >= 10 && Number(quickSummary.concededDanger.replace('%', '')) >= 45) addAlert('Concedemos mucho tiro a puerta.', 'alta', 'defensiva', 'creciente', quickSummary.rivalShotsOnTarget);
+    if (quickSummary.shots >= 10 && Number(quickSummary.shotAccuracy.replace('%', '')) < 35) addAlert('Baja eficacia de tiro.', 'media', 'ofensiva', 'estable', `${quickSummary.shotAccuracy}`);
+    if (quickSummary.losses > quickSummary.recoveries) addAlert('Pérdidas interiores repetidas.', 'alta', 'defensiva', 'creciente', quickSummary.losses);
+    if (quickSummary.recoveries >= quickSummary.losses + 5) addAlert('Buena eficacia tras recuperación alta.', 'leve', 'ofensiva', 'creciente', quickSummary.recoveries);
+    if (quickSummary.rivalBoxEntries > quickSummary.boxEntries) addAlert('Sufrimos entradas al área rival.', 'alta', 'defensiva', 'creciente', quickSummary.rivalBoxEntries);
+    if (quickSummary.rivalCorners >= quickSummary.corners + 3) addAlert('Sufrimos centros laterales y córners.', 'media', 'defensiva', 'creciente', quickSummary.rivalCorners);
 
     return alerts.length ? alerts : [{ text: 'Sin alertas críticas con los datos actuales.', gravity: 'leve', type: 'contexto', trend: 'estable' }];
   };
@@ -9692,18 +9833,69 @@ function App() {
   const closeMatchForm = () => {
     setIsMatchPanelOpen(false);
     setEditingMatchId(null);
+    setMatchFormAutoStatus('');
+  };
+
+  const buildAutomountedPreFromTeam = (team, previous = {}) => {
+    if (!team) return {};
+    const identity = getTeamTacticalIdentity(team);
+    const mapped = mapRivalIdentityToPre(identity);
+    const squad = dedupeRivalPlayers(team.squad || []);
+    const keyPlayers = squad.filter((player) => player.isKey).map((player) => player.name);
+    const unavailable = squad
+      .filter((player) => player.injured || player.suspended || player.doubtful)
+      .map((player) => `${player.name} (${playerStatusBadges(player).map((badge) => badge.label).join('/')})`);
+    const lineup = safeArray(team.lineup)
+      .sort((a, b) => Number(a.slot ?? 0) - Number(b.slot ?? 0))
+      .map((entry) => normalizeSquadEntry(entry).name)
+      .filter(Boolean)
+      .slice(0, 11);
+    const fallbackLineup = squad.filter((player) => player.role === 'Titular' && !isUnavailableRivalPlayer(player)).map((player) => player.name).slice(0, 11);
+    const nextLineup = lineup.length ? lineup : fallbackLineup;
+    return {
+      ...mapped,
+      preRivalSystem: previous.preRivalSystem || team.system || mapped.preRivalBaseSystem || '',
+      preRivalBaseSystem: team.system || mapped.preRivalBaseSystem || '',
+      preRivalOffensiveKeyPlayers: keyPlayers.join(', '),
+      preRivalPlayerToWatch: keyPlayers[0] || '',
+      preRivalStyle: [mapped.preRivalStyle, unavailable.length ? `Bajas/dudas: ${unavailable.join(', ')}` : ''].filter(Boolean).join(' · '),
+      preRivalSetPieceTakers: previous.preRivalSetPieceTakers || keyPlayers.join(', '),
+      preRivalMainHeaders: previous.preRivalMainHeaders || keyPlayers.join(', '),
+      preRivalLineup: nextLineup,
+      preAiAnalysis: {
+        ...safeObject(previous.preAiAnalysis),
+        automountedFromTeam: {
+          teamId: team.id,
+          teamName: team.name,
+          createdAt: new Date().toISOString(),
+          filled: [
+            'sistema',
+            'bloque',
+            'presión',
+            'amenazas',
+            'debilidades',
+            nextLineup.length ? 'XI rival' : '',
+            unavailable.length ? 'bajas' : '',
+            keyPlayers.length ? 'vigilancias frecuentes' : '',
+            'ABP relevante',
+          ].filter(Boolean),
+        },
+      },
+    };
   };
 
   const handleMatchChange = (event) => {
     const { name, value, type, checked } = event.target;
     if (name === 'opponent') {
       const selectedTeam = findTeamByDisplayName(teams, value);
+      const automountedPre = buildAutomountedPreFromTeam(selectedTeam, matchFormState);
       setMatchFormState((prev) => ({
         ...prev,
         opponent: cleanTeamDisplayName(selectedTeam?.name || value),
         opponentCrest: selectedTeam?.crest ?? prev.opponentCrest,
-        preRivalSystem: prev.preRivalSystem || selectedTeam?.system || '',
+        ...automountedPre,
       }));
+      setMatchFormAutoStatus(selectedTeam ? `PRE automontado desde EQUIPOS: ${automountedPre.preRivalSystem || selectedTeam.system || 'sin sistema'} · ${(automountedPre.preRivalLineup || []).length}/11 XI rival.` : '');
       return;
     }
     setMatchFormState((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
@@ -9715,10 +9907,18 @@ function App() {
     try {
       const payload = createPartidoPayload(matchFormState, teams);
       const request = editingMatchId
-        ? supabase.from("partidos").update(payload).eq("id", editingMatchId)
-        : supabase.from("partidos").insert(payload);
-      const { error: saveError } = await request;
+        ? supabase.from("partidos").update(payload).eq("id", editingMatchId).select("id").single()
+        : supabase.from("partidos").insert(payload).select("id").single();
+      const { data: savedMatch, error: saveError } = await request;
       if (saveError) throw saveError;
+      const savedMatchId = editingMatchId || savedMatch?.id;
+      const rivalLineup = safeArray(matchFormState.preRivalLineup).filter(Boolean);
+      if (savedMatchId && rivalLineup.length) {
+        await supabase.from("partido_alineacion_slots").delete().eq("partido_id", savedMatchId).eq("scope", "pre_rival");
+        for (const [slotIndex, playerName] of rivalLineup.entries()) {
+          if (playerName) await saveMatchLineupSlot({ matchId: savedMatchId, scope: 'pre_rival', slotIndex, playerName });
+        }
+      }
 
       await loadPartidos();
       closeMatchForm();
@@ -13527,6 +13727,7 @@ function App() {
                         <span className="rounded-lg bg-white/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-300">{alert.gravity || 'leve'}</span>
                         <span className="rounded-lg bg-white/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-300">{alert.type || 'mixta'}</span>
                         <span className="rounded-lg bg-white/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-300">{alert.trend || 'estable'}</span>
+                        <span className="rounded-lg bg-white/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-300">freq {alert.frequency || 0}</span>
                       </div>
                       {alert.text || alert}
                     </div>
@@ -13946,7 +14147,7 @@ function App() {
                                     <button
                                       type="button"
                                       title="Regenera solo sugerencias pendientes."
-                                      onClick={() => updateSuggestedConsignas(createSuggestedConsignas(selectedMatchRivalTeam || liveRivalIdentity).filter((item) => !activeConsignas.includes(item.text)))}
+                                      onClick={() => updateSuggestedConsignas(createAutoVestuarioBullets(selectedMatch, selectedMatchRivalTeam).filter((item) => !activeConsignas.includes(item.text)))}
                                       className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-400 hover:bg-white/[0.08] hover:text-white"
                                     >
                                       Regenerar
@@ -16263,6 +16464,11 @@ function App() {
                       <option key={team.id} value={cleanTeamDisplayName(team.name)} />
                     ))}
                   </datalist>
+                  {matchFormAutoStatus ? (
+                    <span className="block rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-3 py-2 text-xs font-bold text-caudal-electric">
+                      {matchFormAutoStatus}
+                    </span>
+                  ) : null}
                 </label>
                 <label className="space-y-2 text-sm text-slate-300">
                   <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Competición</span>
