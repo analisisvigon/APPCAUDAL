@@ -2502,6 +2502,7 @@ function App() {
   const [playerFormError, setPlayerFormError] = useState('');
   const [playerSearchTerm, setPlayerSearchTerm] = useState('');
   const [playerQuickFilter, setPlayerQuickFilter] = useState('Todos');
+  const [playerRosterView, setPlayerRosterView] = useState('Tarjetas');
   const [teams, setTeams] = useState([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [teamsError, setTeamsError] = useState('');
@@ -9400,6 +9401,45 @@ function App() {
       suspended: statuses.filter((status) => status.suspended).length,
     };
   }, [players, staffStatusByPlayerId]);
+  const rosterDashboard = useMemo(() => {
+    const hasPlayedData = (match) => {
+      const score = getMatchScoreData(match);
+      return match.status === 'Finalizado' || safeArray(match.statsGoalEvents).length > 0 || score.caudalGoals > 0 || score.rivalGoals > 0;
+    };
+    const finished = safeArray(matches).filter(hasPlayedData);
+    const rankings = getGroupRankings(finished);
+    const rows = rankings.rows || [];
+    const rowByPlayerId = new Map(rows.map((row) => [row.player.id, row]));
+    const mostUsedSystem = getMostUsedRealSystem(finished).system || '4-4-2';
+    const baseEleven = buildIdealElevenForSystem(rankings.idealRows || [], mostUsedSystem)
+      .filter((assignment) => assignment.row)
+      .slice(0, 11)
+      .map((assignment) => ({
+        role: normalizeIdealRole(assignment.row.primaryRole || assignment.slot?.visualLabel || assignment.slot?.role || ''),
+        player: assignment.row.player,
+        minutes: assignment.row.minutes,
+        starts: assignment.row.starts,
+      }));
+    const topMinutes = rankings.minutes?.[0] || null;
+    const topScorer = rankings.scorers?.[0] || null;
+    const topAssistant = rankings.assistants?.[0] || null;
+    const mainGoalkeeper = rows
+      .filter((row) => normalizeIdealRole(row.player.position) === 'POR')
+      .sort((a, b) => b.minutes - a.minutes || b.starts - a.starts)[0] || null;
+    const captain = players.find((player) => staffStatusByPlayerId.get(player.id)?.captain) || null;
+    return {
+      rowByPlayerId,
+      baseEleven,
+      mostUsedSystem,
+      keyPlayers: [
+        { label: 'Más minutos', row: topMinutes, value: topMinutes ? `${topMinutes.minutes}'` : '-' },
+        { label: 'Máximo goleador', row: topScorer, value: topScorer ? topScorer.goals : '-' },
+        { label: 'Más asistencias', row: topAssistant, value: topAssistant ? topAssistant.assists : '-' },
+        { label: 'Portero principal', row: mainGoalkeeper, value: mainGoalkeeper ? `${mainGoalkeeper.minutes}'` : '-' },
+        { label: 'Capitán', player: captain, value: captain ? `#${displayDorsal(captain.number)}` : '-' },
+      ],
+    };
+  }, [matches, players, staffStatusByPlayerId]);
   const visiblePlayers = useMemo(() => {
     const search = normalizePlayerIdentityName(playerSearchTerm);
     return players.filter((player) => {
@@ -12261,22 +12301,22 @@ function App() {
               );
             })() : (
             <>
-            <section className="rounded-[1.65rem] border border-white/10 bg-white/[0.045] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.18)] backdrop-blur-md">
+            <section className="rounded-[1.35rem] border border-white/10 bg-white/[0.04] p-4 shadow-[0_16px_48px_rgba(0,0,0,0.16)] backdrop-blur-md sm:p-5">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div>
                   <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">Plantilla</p>
-                  <h2 className="mt-1.5 text-2xl font-black text-white">Gestión de jugadores</h2>
+                  <h2 className="mt-1 text-2xl font-black text-white">Panel competitivo</h2>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-4 xl:min-w-[420px]">
+                <div className="grid gap-2 sm:grid-cols-4 xl:min-w-[560px]">
                   {[
-                    ['Total', squadSummary.total],
-                    ['Disponibles', squadSummary.available],
-                    ['Lesionados', squadSummary.injured],
-                    ['Sancionados', squadSummary.suspended],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-2xl border border-white/10 bg-black/15 px-3 py-2">
-                      <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
-                      <p className="mt-0.5 text-lg font-black text-white">{value}</p>
+                    ['Jugadores', squadSummary.total, 'border-white/10 bg-white/[0.05] text-white'],
+                    ['Disponibles', squadSummary.available, 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100'],
+                    ['Lesionados', squadSummary.injured, 'border-red-200/20 bg-red-300/10 text-red-100'],
+                    ['Sancionados', squadSummary.suspended, 'border-slate-200/20 bg-slate-200/10 text-slate-200'],
+                  ].map(([label, value, tone]) => (
+                    <div key={label} className={`rounded-2xl border px-3 py-2 ${tone}`}>
+                      <p className="text-[9px] font-black uppercase tracking-[0.14em] opacity-65">{label}</p>
+                      <p className="mt-0.5 text-lg font-black">{value}</p>
                     </div>
                   ))}
                 </div>
@@ -12287,6 +12327,56 @@ function App() {
                   Nuevo jugador
                 </button>
               </div>
+
+              <div className="mt-4 grid gap-3 xl:grid-cols-[1.05fr_0.95fr]">
+                <div className="rounded-[1.15rem] border border-white/10 bg-black/15 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-xs font-black uppercase tracking-[0.18em] text-white">Once base actual</h3>
+                      <p className="mt-1 text-xs text-slate-500">Sistema más usado: {rosterDashboard.mostUsedSystem}</p>
+                    </div>
+                    <span className="rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-2.5 py-1 text-xs font-black text-caudal-electric">{rosterDashboard.baseEleven.length}/11</span>
+                  </div>
+                  <div className="mt-3 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                    {rosterDashboard.baseEleven.length ? rosterDashboard.baseEleven.map((item) => (
+                      <button
+                        key={`${item.role}-${item.player.id}`}
+                        type="button"
+                        onClick={() => setSelectedPlayerProfileId(item.player.id)}
+                        className="grid grid-cols-[42px_1fr] items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-2 text-left transition hover:border-caudal-electric/25 hover:bg-white/[0.07]"
+                      >
+                        <span className="text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{item.role}</span>
+                        <span className="truncate text-xs font-bold text-white">{item.player.shirtName || item.player.name}</span>
+                      </button>
+                    )) : (
+                      <p className="rounded-xl border border-dashed border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-400 sm:col-span-2 lg:col-span-3">Sin partidos suficientes para calcular once base.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-[1.15rem] border border-white/10 bg-black/15 p-3">
+                  <h3 className="text-xs font-black uppercase tracking-[0.18em] text-white">Jugadores clave</h3>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {rosterDashboard.keyPlayers.map((item) => {
+                      const player = item.player || item.row?.player;
+                      return (
+                        <button
+                          key={item.label}
+                          type="button"
+                          disabled={!player}
+                          onClick={() => player && setSelectedPlayerProfileId(player.id)}
+                          className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-left transition enabled:hover:border-caudal-electric/25 enabled:hover:bg-white/[0.07] disabled:cursor-default"
+                        >
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{item.label}</p>
+                          <p className="mt-1 truncate text-sm font-black text-white">{player?.shirtName || player?.name || 'Sin datos'}</p>
+                          <p className="text-xs font-bold text-caudal-electric">{item.value}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
               <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-center">
                 <input
                   type="search"
@@ -12310,6 +12400,18 @@ function App() {
                       {filter}
                     </button>
                   ))}
+                  <div className="flex rounded-2xl border border-white/10 bg-black/20 p-1">
+                    {['Tarjetas', 'Lista'].map((view) => (
+                      <button
+                        key={view}
+                        type="button"
+                        onClick={() => setPlayerRosterView(view)}
+                        className={`rounded-xl px-3 py-1.5 text-xs font-black uppercase tracking-[0.12em] transition ${playerRosterView === view ? 'bg-white text-slate-950' : 'text-slate-400 hover:text-white'}`}
+                      >
+                        {view}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </section>
@@ -12328,7 +12430,50 @@ function App() {
               </div>
             ) : (
             <div className="space-y-5">
-              {groupedPlayers.some((group) => group.players.length) ? groupedPlayers.filter((group) => group.players.length).map((group) => (
+              {playerRosterView === 'Lista' ? (
+                <section className="overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#091428]/78 shadow-[0_14px_42px_rgba(0,0,0,0.16)]">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[760px] text-left text-sm">
+                      <thead className="bg-white/[0.04] text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                        <tr>{['#', 'Jugador', 'Posición', 'Edad', 'Estado', 'Rol', 'Min'].map((head) => <th key={head} className="px-4 py-3">{head}</th>)}</tr>
+                      </thead>
+                      <tbody>
+                        {visiblePlayers.map((player) => {
+                          const staffStatus = staffStatusByPlayerId.get(player.id) || {};
+                          const rosterRow = rosterDashboard.rowByPlayerId.get(player.id) || {};
+                          const inBaseEleven = rosterDashboard.baseEleven.some((item) => item.player.id === player.id);
+                          const statusLabel = staffStatus.suspended ? 'Sancionado' : staffStatus.injured ? 'Lesionado' : staffStatus.touched || staffStatus.highLoad ? 'Duda' : 'Disponible';
+                          const statusClass = statusLabel === 'Disponible' ? 'bg-emerald-300 text-slate-950' : statusLabel === 'Duda' ? 'bg-amber-200 text-slate-950' : statusLabel === 'Lesionado' ? 'bg-red-300 text-slate-950' : 'bg-slate-300 text-slate-950';
+                          return (
+                            <tr key={player.id} onClick={() => setSelectedPlayerProfileId(player.id)} className="cursor-pointer border-t border-white/10 transition hover:bg-white/[0.06]">
+                              <td className="px-4 py-3 font-black text-caudal-electric">#{displayDorsal(player.number)}</td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-3">
+                                  <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/[0.06] text-xs font-black text-white">
+                                    {player.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
+                                  </span>
+                                  <span className="font-black text-white">{player.name}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-slate-300">{player.position || '-'}</td>
+                              <td className="px-4 py-3 text-slate-300">{calculateAge(player.dob)} años</td>
+                              <td className="px-4 py-3"><span className={`rounded-xl px-2.5 py-1 text-xs font-black ${statusClass}`}>{statusLabel}</span></td>
+                              <td className="px-4 py-3">
+                                <div className="flex flex-wrap gap-1.5">
+                                  {staffStatus.captain ? <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">Capitán</span> : null}
+                                  {staffStatus.sub23 ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">Sub 23</span> : null}
+                                  {inBaseEleven ? <span className="rounded-lg border border-white/10 bg-white/[0.06] px-2 py-1 text-[10px] font-bold text-white">Titular</span> : null}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 font-bold text-white">{rosterRow.minutes ? `${rosterRow.minutes}'` : '-'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              ) : groupedPlayers.some((group) => group.players.length) ? groupedPlayers.filter((group) => group.players.length).map((group) => (
                 <section key={group.title} className="space-y-3">
                   <div className="flex items-end justify-between border-b border-white/10 pb-2.5">
                     <div>
@@ -12344,70 +12489,50 @@ function App() {
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 min-[1800px]:grid-cols-5">
                       {group.players.map((player) => {
                         const staffStatus = staffStatusByPlayerId.get(player.id) || {};
-                        const indicators = [
+                        const rosterRow = rosterDashboard.rowByPlayerId.get(player.id) || {};
+                        const inBaseEleven = rosterDashboard.baseEleven.some((item) => item.player.id === player.id);
+                        const statusLabel = staffStatus.suspended ? 'Sancionado' : staffStatus.injured ? 'Lesionado' : staffStatus.touched || staffStatus.highLoad ? 'Duda' : 'Disponible';
+                        const statusClass = statusLabel === 'Disponible'
+                          ? 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100'
+                          : statusLabel === 'Duda'
+                            ? 'border-yellow-100/20 bg-yellow-100/10 text-yellow-100'
+                            : statusLabel === 'Lesionado'
+                              ? 'border-red-200/20 bg-red-300/10 text-red-100'
+                              : 'border-slate-200/20 bg-slate-200/10 text-slate-200';
+                        const tacticalChips = [
                           staffStatus.captain ? ['Capitán', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
-                          staffStatus.injured ? ['Lesionado', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
-                          staffStatus.suspended ? ['Sancionado', 'border-slate-200/20 bg-slate-200/10 text-slate-200'] : null,
-                          staffStatus.sub23 ? ['Sub-23', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
-                          staffStatus.highLoad ? ['Alta carga', 'border-orange-200/20 bg-orange-200/10 text-orange-100'] : null,
-                          staffStatus.touched ? ['Tocado', 'border-yellow-100/20 bg-yellow-100/10 text-yellow-100'] : null,
-                          staffStatus.available ? ['Disponible', 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100'] : null,
-                        ].filter(Boolean).slice(0, 3);
+                          staffStatus.sub23 ? ['Sub 23', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
+                          inBaseEleven || rosterRow.starts >= 2 ? ['Titular', 'border-white/12 bg-white/[0.06] text-white'] : null,
+                        ].filter(Boolean);
                         return (
-                        <article key={player.id} onClick={() => setSelectedPlayerProfileId(player.id)} className="group cursor-pointer rounded-[1.35rem] border border-white/10 bg-[#0a1425]/86 p-4 shadow-[0_12px_34px_rgba(0,0,0,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/35 hover:bg-[#0d192c] hover:shadow-[0_16px_42px_rgba(0,0,0,0.22)] focus-within:border-caudal-electric/40">
-                  <div className="flex items-start gap-3.5">
-                    <div className="flex h-[60px] w-[60px] shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.16),rgba(255,255,255,0.055)_42%,rgba(212,0,0,0.12))] text-base font-black text-slate-100 shadow-[0_12px_28px_rgba(0,0,0,0.22)] transition duration-200 group-hover:scale-[1.02] group-hover:border-white/[0.18]">
-                      {player.image ? (
-                        <img src={player.image} alt={player.name} className="h-full w-full object-cover" />
-                      ) : (
-                        <span>{player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="mt-1 flex items-center gap-2">
-                        <p className="rounded-xl border border-white/10 bg-white/[0.055] px-2 py-0.5 text-[10px] font-black text-slate-300">#{displayDorsal(player.number)}</p>
-                      </div>
-                      <h3 className="mt-2 line-clamp-2 text-[15px] font-black leading-snug text-white">{player.name}</h3>
-                      <p className="mt-1 text-xs font-semibold leading-snug text-slate-300/90">{player.position || 'Sin demarcación'} · {player.foot || 'Sin pierna'}</p>
-                    </div>
-                  </div>
-                  <div className="mt-3.5 flex flex-wrap gap-1.5">
-                    {indicators.map(([label, className]) => (
-                      <span key={label} className={`rounded-xl border px-2 py-1 text-[10px] font-bold leading-none ${className}`}>
-                        {label}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="mt-3.5 grid grid-cols-2 gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-3 text-xs text-slate-400">
-                    <div>
-                      <span className="block text-[10px] uppercase tracking-[0.14em] text-slate-500">Camiseta</span>
-                      <strong className="mt-0.5 block truncate text-white">{player.shirtName || player.name}</strong>
-                    </div>
-                    <div>
-                      <span className="block text-[10px] uppercase tracking-[0.14em] text-slate-500">Edad</span>
-                      <strong className="mt-0.5 block text-white">{calculateAge(player.dob)} años</strong>
-                    </div>
-                  </div>
-                  <div className="mt-3.5 flex flex-wrap items-center gap-2">
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openForm(player);
-                      }}
-                      className="rounded-xl border border-white/10 bg-white/[0.075] px-3 py-1.5 text-xs font-bold text-white transition hover:border-white/20 hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-caudal-electric/30"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleDelete(player);
-                      }}
-                      className="rounded-xl border border-red-300/10 bg-transparent px-3 py-1.5 text-xs font-semibold text-red-200/60 transition hover:bg-red-500/10 hover:text-red-100 focus:outline-none focus:ring-2 focus:ring-red-300/20"
-                    >
-                      Eliminar
-                    </button>
-                  </div>
+                        <article key={player.id} onClick={() => setSelectedPlayerProfileId(player.id)} className="group relative cursor-pointer rounded-[1.15rem] border border-white/10 bg-[#0a1425]/86 p-3 shadow-[0_10px_28px_rgba(0,0,0,0.14)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c] hover:shadow-[0_16px_38px_rgba(0,0,0,0.20)] focus-within:border-caudal-electric/40">
+                          <details className="absolute right-2.5 top-2.5 z-20" onClick={(event) => event.stopPropagation()}>
+                            <summary className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-xl border border-white/10 bg-black/25 text-lg font-black leading-none text-slate-300 transition hover:bg-white/10 hover:text-white">⋮</summary>
+                            <div className="absolute right-0 mt-2 w-32 overflow-hidden rounded-xl border border-white/10 bg-[#07111f] p-1 shadow-[0_18px_45px_rgba(0,0,0,0.36)]">
+                              <button type="button" onClick={() => openForm(player)} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-white transition hover:bg-white/10">Editar</button>
+                              <button type="button" onClick={() => handleDelete(player)} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar</button>
+                            </div>
+                          </details>
+                          <div className="grid grid-cols-[52px_1fr_auto] items-center gap-3 pr-8">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.16),rgba(255,255,255,0.055)_42%,rgba(212,0,0,0.12))] text-sm font-black text-slate-100 shadow-[0_10px_22px_rgba(0,0,0,0.20)] transition duration-200 group-hover:scale-[1.02]">
+                              {player.image ? <img src={player.image} alt={player.name} className="h-full w-full object-cover" /> : <span>{player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>}
+                            </div>
+                            <div className="min-w-0">
+                              <h3 className="truncate text-[15px] font-black leading-tight text-white">{player.name}</h3>
+                              <p className="mt-1 truncate text-xs font-semibold text-slate-400">{player.position || 'Sin demarcación'} · {calculateAge(player.dob)} años</p>
+                            </div>
+                            <p className="rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-2.5 py-1 text-xs font-black text-caudal-electric">#{displayDorsal(player.number)}</p>
+                          </div>
+                          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                            <span className={`rounded-xl border px-2 py-1 text-[10px] font-bold leading-none ${statusClass}`}>{statusLabel}</span>
+                            {tacticalChips.map(([label, className]) => (
+                              <span key={label} className={`rounded-xl border px-2 py-1 text-[10px] font-bold leading-none ${className}`}>{label}</span>
+                            ))}
+                          </div>
+                          <div className="mt-2 flex items-center justify-between gap-2 text-[11px] font-semibold text-slate-500">
+                            <span>{rosterRow.minutes ? `${rosterRow.minutes}'` : 'Sin minutos'} · {rosterRow.starts || 0} titularidades</span>
+                            <span>{player.foot || 'Pie no indicado'}</span>
+                          </div>
                         </article>
                         );
                       })}
