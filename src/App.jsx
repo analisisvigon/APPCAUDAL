@@ -16252,173 +16252,167 @@ function App() {
         </div>
       ) : null}
 
-      {isPanelOpen ? (
-        <div className="fixed inset-0 z-50 overflow-hidden bg-black/50 px-4 py-6 backdrop-blur-sm sm:px-6">
-          <div className="mx-auto flex h-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-caudal-950 shadow-glow">
-            <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
+      {isPanelOpen ? (() => {
+        const positionGroups = {
+          Portería: ['Portero'],
+          Defensa: ['Defensa central', 'Central derecho', 'Central izquierdo', 'Lateral derecho', 'Lateral izquierdo'],
+          Mediocentro: ['Pivote', 'Mediocentro', 'Mediocentro ofensivo', 'Mediapunta'],
+          Ataque: ['Extremo derecho', 'Extremo izquierdo', 'Delantero centro', 'Delantero'],
+        };
+        const selectedGroup = Object.entries(positionGroups).find(([, items]) => items.includes(formState.position))?.[0] || 'Defensa';
+        const currentPlayer = players.find((player) => player.id === editingId);
+        const currentStatus = currentPlayer ? staffStatusByPlayerId.get(currentPlayer.id) || {} : {};
+        const statusOptions = [
+          ['Disponible', !currentStatus.injured && !currentStatus.suspended, 'border-emerald-200/20 bg-emerald-200/10 text-emerald-100'],
+          ['Lesionado', Boolean(currentStatus.injured), 'border-red-200/20 bg-red-300/10 text-red-100'],
+          ['Sancionado', Boolean(currentStatus.suspended), 'border-slate-200/20 bg-slate-200/10 text-slate-200'],
+        ];
+        const initials = (formState.name || 'Jugador').split(' ').map((part) => part[0]).join('').slice(0, 2);
+        return (
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 px-4 py-5 backdrop-blur-sm sm:px-6">
+          <div className="mx-auto flex h-full max-w-5xl flex-col overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#07111f] shadow-[0_28px_90px_rgba(0,0,0,0.42)]">
+            <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
               <div>
-                <p className="text-sm uppercase tracking-[0.3em] text-slate-400">{editingId ? 'Editar jugador' : 'Nuevo jugador'}</p>
-                <h3 className="mt-2 text-xl font-semibold text-white">Formulario de jugador</h3>
+                <p className="text-xs font-black uppercase tracking-[0.24em] text-caudal-electric/80">{editingId ? 'Editar jugador' : 'Nuevo jugador'}</p>
+                <h3 className="mt-1 text-xl font-black text-white">Ficha deportiva</h3>
               </div>
-              <button onClick={closeForm} disabled={isSavingPlayer} className="rounded-full bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60">
+              <button onClick={closeForm} disabled={isSavingPlayer} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60">
                 Cerrar
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="min-h-0 space-y-5 overflow-y-auto px-6 py-6 sm:px-8">
+            <form onSubmit={handleSubmit} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
               {playerFormError ? (
-                <div className="rounded-3xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
                   {playerFormError}
                 </div>
               ) : null}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="space-y-2 text-sm text-slate-300">
-                  <span>Nombre completo</span>
-                  <input
-                    required
-                    name="name"
-                    value={formState.name}
-                    onChange={handleChange}
-                    className="w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white shadow-inner placeholder:text-slate-500"
-                    placeholder="Ej. Pablo Núñez"
-                  />
-                </label>
-                <label className="space-y-2 text-sm text-slate-300">
-                  <span>Nombre camiseta</span>
-                  <input
-                    name="shirtName"
-                    value={formState.shirtName}
-                    onChange={handleChange}
-                    className="w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm uppercase text-white shadow-inner placeholder:text-slate-500"
-                    placeholder="Ej. PABLO NÚÑEZ"
-                  />
-                </label>
-                <label className="space-y-2 text-sm text-slate-300">
-                  <span>Fecha de nacimiento</span>
-                  <input
-                    required
-                    type="date"
-                    name="dob"
-                    value={formState.dob}
-                    onChange={handleChange}
-                    className="w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white shadow-inner"
-                  />
-                </label>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-3">
-                <label className="space-y-2 text-sm text-slate-300">
-                  <span>Dorsal</span>
-                  <input
-                    required
-                    type="number"
-                    name="number"
-                    min="1"
-                    value={formState.number}
-                    onChange={handleChange}
-                    className="w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white shadow-inner"
-                    placeholder="7"
-                  />
-                </label>
-                <label className="space-y-2 text-sm text-slate-300">
-                  <span>Posición</span>
-                  <select
-                    required
-                    name="position"
-                    value={formState.position}
-                    onChange={handleChange}
-                    className="w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white shadow-inner"
-                  >
-                    {positions.map((position) => (
-                      <option key={position} value={position}>
-                        {position}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="space-y-2 text-sm text-slate-300">
-                  <span>Pierna hábil</span>
-                  <select
-                    required
-                    name="foot"
-                    value={formState.foot}
-                    onChange={handleChange}
-                    className="w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white shadow-inner"
-                  >
-                    {footOptions.map((foot) => (
-                      <option key={foot} value={foot}>
-                        {foot}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <label className="space-y-2 text-sm text-slate-300">
-                <span>URL de imagen</span>
-                <input
-                  name="image"
-                  type="url"
-                  value={formState.image}
-                  onChange={handleChange}
-                  className="w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white shadow-inner"
-                  placeholder="https://..."
-                />
-              </label>
-              <div className="space-y-2 text-sm text-slate-300">
-                <span>Subir imagen</span>
-                <input
-                  ref={playerImageInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handlePlayerImageFileChange}
-                  disabled={isUploadingPlayerImage || isSavingPlayer}
-                  className="hidden"
-                />
-                <div className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:flex-row sm:items-center">
-                  <button
-                    type="button"
-                    onClick={() => playerImageInputRef.current?.click()}
-                    disabled={isUploadingPlayerImage || isSavingPlayer}
-                    className="inline-flex w-fit items-center justify-center rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isUploadingPlayerImage ? 'Subiendo...' : 'Subir imagen'}
-                  </button>
-                  {formState.image ? (
-                    <div className="flex items-center gap-3">
-                      <div className="h-14 w-14 overflow-hidden rounded-2xl bg-white/10">
-                        <img src={formState.image} alt="" className="h-full w-full object-cover" />
-                      </div>
-                      <span className="text-xs text-slate-400">Preview actualizada</span>
+              <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
+                <div className="space-y-4">
+                  <section className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Identidad</p>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                        <span>Nombre completo</span>
+                        <input required name="name" value={formState.name} onChange={handleChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white outline-none transition placeholder:text-slate-500 focus:border-caudal-electric/60" placeholder="Ej. Pablo Núñez" />
+                      </label>
+                      <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                        <span>Nombre camiseta</span>
+                        <input name="shirtName" value={formState.shirtName} onChange={handleChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm uppercase tracking-normal text-white outline-none transition placeholder:text-slate-500 focus:border-caudal-electric/60" placeholder="Ej. PABLO" />
+                      </label>
+                      <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                        <span>Fecha nacimiento</span>
+                        <input required type="date" name="dob" value={formState.dob} onChange={handleChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white outline-none transition focus:border-caudal-electric/60" />
+                      </label>
+                      <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                        <span>URL foto</span>
+                        <input name="image" type="url" value={formState.image} onChange={handleChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white outline-none transition placeholder:text-slate-500 focus:border-caudal-electric/60" placeholder="https://..." />
+                      </label>
                     </div>
-                  ) : null}
+                    <input ref={playerImageInputRef} type="file" accept="image/*" onChange={handlePlayerImageFileChange} disabled={isUploadingPlayerImage || isSavingPlayer} className="hidden" />
+                    <div
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        handlePlayerImageFileChange({ target: { files: event.dataTransfer.files, value: '' } });
+                      }}
+                      className="mt-3 flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-caudal-electric/25 bg-caudal-electric/[0.045] p-3 transition hover:border-caudal-electric/45 hover:bg-caudal-electric/[0.07]"
+                      onClick={() => playerImageInputRef.current?.click()}
+                    >
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/[0.06] text-xs font-black text-white">
+                        {formState.image ? <img src={formState.image} alt="" className="h-full w-full object-cover" /> : initials}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-black text-white">{isUploadingPlayerImage ? 'Subiendo foto...' : 'Arrastra una foto o pulsa para cambiarla'}</p>
+                        <p className="truncate text-xs text-slate-500">{formState.image || 'JPG, PNG o WebP'}</p>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Fútbol</p>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                        <span>Dorsal</span>
+                        <input required type="number" name="number" min="1" value={formState.number} onChange={handleChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white outline-none transition focus:border-caudal-electric/60" placeholder="7" />
+                      </label>
+                      <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                        <span>Posición</span>
+                        <select value={selectedGroup} onChange={(event) => setFormState((current) => ({ ...current, position: positionGroups[event.target.value][0] }))} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white outline-none transition focus:border-caudal-electric/60">
+                          {Object.keys(positionGroups).map((group) => <option key={group} value={group}>{group}</option>)}
+                        </select>
+                      </label>
+                      <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                        <span>Posición específica</span>
+                        <select required name="position" value={formState.position} onChange={handleChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white outline-none transition focus:border-caudal-electric/60">
+                          {(positionGroups[selectedGroup] || positions).map((position) => <option key={position} value={position}>{position}</option>)}
+                        </select>
+                      </label>
+                      <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                        <span>Pierna hábil</span>
+                        <select required name="foot" value={formState.foot} onChange={handleChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white outline-none transition focus:border-caudal-electric/60">
+                          {footOptions.map((foot) => <option key={foot} value={foot}>{foot}</option>)}
+                        </select>
+                      </label>
+                    </div>
+                  </section>
+
+                  <section className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Estado</p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      {statusOptions.map(([label, active, className]) => (
+                        <div key={label} className={`rounded-2xl border px-4 py-3 text-sm font-black ${active ? className : 'border-white/10 bg-black/15 text-slate-500'}`}>
+                          {label}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
                 </div>
-                {isUploadingPlayerImage ? <span className="text-xs text-caudal-electric">Subiendo foto...</span> : null}
+
+                <aside className="space-y-3">
+                  <div className="sticky top-0 rounded-[1.35rem] border border-caudal-electric/18 bg-[#091428]/95 p-4 shadow-[0_18px_48px_rgba(0,0,0,0.22)]">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Previsualización</p>
+                    <div className="mt-4 overflow-hidden rounded-[1.25rem] border border-white/10 bg-white/[0.04]">
+                      <div className="flex aspect-[4/3] items-center justify-center bg-[linear-gradient(135deg,rgba(61,217,255,0.18),rgba(255,255,255,0.05),rgba(212,0,0,0.10))] text-4xl font-black text-white">
+                        {formState.image ? <img src={formState.image} alt="" className="h-full w-full object-cover" /> : initials}
+                      </div>
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-xl font-black text-white">{formState.name || 'Nombre jugador'}</p>
+                            <p className="mt-1 truncate text-xs font-bold uppercase tracking-[0.14em] text-slate-500">{formState.shirtName || 'Nombre camiseta'}</p>
+                          </div>
+                          <span className="rounded-xl border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-1 text-sm font-black text-caudal-electric">#{formState.number || '-'}</span>
+                        </div>
+                        <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                          <div className="rounded-xl bg-black/20 px-3 py-2">
+                            <span className="block uppercase tracking-[0.14em] text-slate-500">Posición</span>
+                            <strong className="mt-1 block truncate text-white">{formState.position || 'No definida'}</strong>
+                          </div>
+                          <div className="rounded-xl bg-black/20 px-3 py-2">
+                            <span className="block uppercase tracking-[0.14em] text-slate-500">Pie</span>
+                            <strong className="mt-1 block truncate text-white">{formState.foot || 'No indicado'}</strong>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </aside>
               </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-                <button
-                  type="button"
-                  onClick={closeForm}
-                  disabled={isSavingPlayer}
-                  className="inline-flex items-center justify-center rounded-3xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-                >
+              <div className="mt-5 flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-end">
+                <button type="button" onClick={closeForm} disabled={isSavingPlayer} className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60">
                   Cancelar
                 </button>
-                <button
-                  type="submit"
-                  disabled={isSavingPlayer}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-caudal-electric px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {isSavingPlayer ? (
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-950/30 border-t-slate-950" />
-                  ) : null}
+                <button type="submit" disabled={isSavingPlayer} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-caudal-electric px-6 py-3 text-sm font-black text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-70">
+                  {isSavingPlayer ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-950/30 border-t-slate-950" /> : null}
                   {isSavingPlayer ? 'Guardando...' : 'Guardar jugador'}
                 </button>
               </div>
             </form>
           </div>
         </div>
-      ) : null}
+        );
+      })() : null}
 
       {isTeamPanelOpen ? (() => {
         const formSquad = dedupeRivalPlayers(teamFormState.squad.map(normalizeSquadEntry));
