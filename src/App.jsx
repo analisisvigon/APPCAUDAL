@@ -9471,6 +9471,7 @@ function App() {
         id: match.id,
         label: score.caudalGoals > score.rivalGoals ? 'V' : score.caudalGoals < score.rivalGoals ? 'D' : 'E',
         match,
+        score,
       };
     });
     const weeklyMatches = finished.slice(-5);
@@ -9496,6 +9497,68 @@ function App() {
             : 'A corregir';
     const nextOpponentTeam = nextMatch ? findTeamByDisplayName(teams, nextMatch.opponent) : null;
     const pendingQuickMatches = sortedMatches.filter(hasPendingQuickEvents);
+    const nextLineupCount = Math.max(
+      safeArray(nextMatch?.preCaudalLineup).filter(Boolean).length,
+      safeArray(nextMatch?.lineupSlots?.preCaudal).filter((slot) => slot?.playerName).length
+    );
+    const hasNextRival = Boolean(
+      nextOpponentTeam?.system ||
+      nextOpponentTeam?.squad?.length ||
+      nextMatch?.preRivalReportText ||
+      nextMatch?.preRivalStyle ||
+      nextMatch?.preRivalStrengths ||
+      nextMatch?.preRivalWeaknesses
+    );
+    const prepChecklist = [
+      { key: 'lineup', label: 'Alineación', done: nextLineupCount >= 11 },
+      { key: 'launchers', label: 'Lanzadores', done: Boolean(nextMatch?.preRivalSetPieceTakers || nextMatch?.preRivalTransitionLaunchers || nextMatch?.preCaudalPlayersToActivate) },
+      { key: 'start', label: 'Saque inicial', done: Boolean(nextMatch?.preCaudalStartPlay || nextMatch?.preCaudalBuildPlan || nextMatch?.preCaudalIntent) },
+      { key: 'keys', label: 'Claves del partido', done: Boolean(nextMatch?.prePlanTrigger || nextMatch?.preKeyMatchups || nextMatch?.preRivalStrengths || nextMatch?.preRivalWeaknesses) },
+      { key: 'abp_for', label: 'ABP ofensiva', done: Boolean(nextMatch?.abpOfensiva || nextMatch?.preRivalCornersAgainst) },
+      { key: 'abp_against', label: 'ABP defensiva', done: Boolean(nextMatch?.abpDefensiva || nextMatch?.preRivalCornersFor) },
+    ];
+    const prepCompleted = prepChecklist.filter((item) => item.done).length;
+    const prepPercent = prepChecklist.length ? Math.round((prepCompleted / prepChecklist.length) * 100) : 0;
+    const prepStatus = !nextMatch
+      ? 'Sin partido'
+      : prepPercent >= 85
+        ? 'Listo para imprimir'
+        : prepPercent >= 50
+          ? 'En preparación'
+          : 'Crítico';
+    const currentStatuses = players.map((player) => staffStatusByPlayerId.get(player.id) || {});
+    const disciplinaryByPlayer = players.map((player) => {
+      const yellowCount = weeklyMatches.reduce((sum, match) => {
+        const stats = match.statsPlayerData?.[player.name];
+        return sum + (Number(stats?.yellowCount ?? (stats?.yellow ? 1 : 0)) || 0);
+      }, 0);
+      return { player, yellowCount };
+    });
+    const squad = {
+      available: currentStatuses.filter((status) => status.available).length,
+      injured: currentStatuses.filter((status) => status.injured).length,
+      suspended: currentStatuses.filter((status) => status.suspended).length,
+      yellow: disciplinaryByPlayer.filter((row) => row.yellowCount > 0).length,
+      yellowRisk: disciplinaryByPlayer.filter((row) => row.yellowCount >= 4).length,
+    };
+    const taskCandidates = [
+      pendingQuickMatches.length ? { label: 'Revisar eventos rápidos', detail: `${pendingQuickMatches.length} partido${pendingQuickMatches.length === 1 ? '' : 's'}` } : null,
+      nextMatch && !hasNextRival ? { label: 'Completar rival', detail: nextMatch.opponent || 'Próximo partido' } : null,
+      squad.injured ? { label: `${squad.injured} jugador${squad.injured === 1 ? '' : 'es'} lesionado${squad.injured === 1 ? '' : 's'}`, detail: 'Revisar disponibilidad' } : null,
+      squad.yellowRisk ? { label: 'Riesgo sanción', detail: `${squad.yellowRisk} jugador${squad.yellowRisk === 1 ? '' : 'es'}` } : null,
+      nextMatch && !prepChecklist.find((item) => item.key === 'abp_for')?.done ? { label: 'Completar ABP ofensiva', detail: nextMatch.opponent || 'PRE' } : null,
+      nextMatch && !prepChecklist.find((item) => item.key === 'abp_against')?.done ? { label: 'Completar ABP defensiva', detail: nextMatch.opponent || 'PRE' } : null,
+      nextMatch && !nextMatch.preNotes && !nextMatch.preAiSupportNotes ? { label: 'Charla rápida vacía', detail: 'Añadir mensaje de partido' } : null,
+      nextMatch && !prepChecklist.find((item) => item.key === 'launchers')?.done ? { label: 'Lanzadores incompletos', detail: 'ABP/transición' } : null,
+    ].filter(Boolean).slice(0, 5);
+    const activityCandidates = [
+      nextMatch && hasNextRival ? { label: 'Rival disponible', detail: nextMatch.opponent || 'Próximo partido' } : null,
+      nextMatch && prepChecklist.find((item) => item.key === 'lineup')?.done ? { label: 'Alineación preparada', detail: `${nextLineupCount} jugadores` } : null,
+      nextMatch && prepChecklist.find((item) => item.key === 'abp_for')?.done ? { label: 'ABP ofensiva cargada', detail: nextMatch.opponent || 'PRE' } : null,
+      nextMatch && prepChecklist.find((item) => item.key === 'abp_against')?.done ? { label: 'ABP defensiva cargada', detail: nextMatch.opponent || 'PRE' } : null,
+      lastMatch && safeArray(lastMatch.quickEvents).length && !hasPendingQuickEvents(lastMatch) ? { label: 'Eventos rápidos revisados', detail: lastMatch.opponent } : null,
+      lastMatch ? { label: 'Último resultado guardado', detail: getMatchScoreLabel(lastMatch) } : null,
+    ].filter(Boolean).slice(0, 5);
 
     return {
       scopedMatches,
@@ -9503,6 +9566,12 @@ function App() {
       nextOpponentTeam,
       lastMatch,
       pendingQuickMatches,
+      prepChecklist,
+      prepPercent,
+      prepStatus,
+      tasks: taskCandidates,
+      activity: activityCandidates,
+      squad,
       balance,
       recent,
       weeklyStats,
@@ -9511,7 +9580,7 @@ function App() {
       sub23Count: players.filter((player) => calculateAge(player.dob) < 23).length,
       rivalCount: teams.length,
     };
-  }, [matches, players, teams, matchFilter]);
+  }, [matches, players, teams, matchFilter, staffStatusByPlayerId]);
 
   const openForm = (player = null) => {
     setPlayerFormError('');
@@ -11150,32 +11219,32 @@ function App() {
         </nav>
 
         {activeTab === 'Inicio' ? (
-          <main className="space-y-4 pb-8 sm:space-y-5">
-            <section className="relative overflow-hidden rounded-[1.65rem] border border-white/10 bg-[#0b1220] shadow-[0_18px_60px_rgba(0,0,0,0.26)]">
+          <main className="space-y-3 pb-8 sm:space-y-4">
+            <section className="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0b1220] shadow-[0_16px_48px_rgba(0,0,0,0.24)]">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(212,0,0,0.10),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.045),transparent_46%)]" />
-              <div className="relative grid gap-5 p-4 sm:p-5 lg:grid-cols-[auto_1fr_auto] lg:items-center">
-                <div className="mx-auto flex h-20 w-20 items-center justify-center overflow-hidden rounded-[1.35rem] bg-white p-2.5 shadow-[0_14px_35px_rgba(0,0,0,0.24)] sm:mx-0 sm:h-24 sm:w-24">
+              <div className="relative grid gap-4 p-3.5 sm:p-4 lg:grid-cols-[auto_1fr_auto] lg:items-center">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center overflow-hidden rounded-[1.15rem] bg-white p-2 shadow-[0_12px_28px_rgba(0,0,0,0.22)] sm:mx-0 sm:h-20 sm:w-20">
                   <img src={clubCrest} alt="Escudo del C.D. Caudal" className="h-full w-full object-contain" />
                 </div>
                 <div className="text-center sm:text-left">
-                  <p className="text-[11px] font-black uppercase tracking-[0.24em] text-red-200/80">Cuerpo técnico</p>
-                  <h2 className="mt-1.5 text-2xl font-black text-white sm:text-4xl">C.D. Caudal de Mieres</h2>
-                  <div className="mt-3 max-w-3xl">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-red-200/80">Cuerpo técnico</p>
+                  <h2 className="mt-1 text-xl font-black text-white sm:text-3xl">C.D. Caudal de Mieres</h2>
+                  <div className="mt-2 max-w-3xl">
                     {isEditingHomePhrase ? (
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         <textarea
                           value={homePhraseDraft}
                           onChange={(event) => setHomePhraseDraft(event.target.value)}
                           rows={2}
                           maxLength={180}
-                          className="w-full resize-none rounded-2xl border border-white/15 bg-black/25 px-4 py-3 text-sm text-white outline-none transition focus:border-red-300 focus:bg-black/35"
+                          className="w-full resize-none rounded-2xl border border-white/15 bg-black/25 px-3 py-2 text-sm text-white outline-none transition focus:border-red-300 focus:bg-black/35"
                         />
                         <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
                           <button
                             type="button"
                             onClick={handleSaveHomePhrase}
                             disabled={homePhraseSaving}
-                            className="rounded-2xl bg-red-500/90 px-4 py-2 text-sm font-black text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="rounded-xl bg-red-500/90 px-3 py-2 text-xs font-black text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {homePhraseSaving ? 'Guardando...' : 'Guardar frase'}
                           </button>
@@ -11186,7 +11255,7 @@ function App() {
                               setIsEditingHomePhrase(false);
                               setHomePhraseStatus('');
                             }}
-                            className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/15"
+                            className="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:bg-white/15"
                           >
                             Cancelar
                           </button>
@@ -11194,7 +11263,7 @@ function App() {
                       </div>
                     ) : (
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                        <p className="text-sm font-medium leading-relaxed text-slate-300 sm:text-base">{homePhrase}</p>
+                        <p className="text-sm font-medium leading-relaxed text-slate-300">{homePhrase}</p>
                         <button
                           type="button"
                           onClick={() => {
@@ -11202,7 +11271,7 @@ function App() {
                             setIsEditingHomePhrase(true);
                             setHomePhraseStatus('');
                           }}
-                          className="mx-auto inline-flex shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-3.5 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/10 sm:mx-0"
+                          className="mx-auto inline-flex shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:bg-white/10 sm:mx-0"
                         >
                           Editar
                         </button>
@@ -11211,17 +11280,17 @@ function App() {
                     {homePhraseStatus ? <p className="mt-2 text-xs text-slate-300">{homePhraseStatus}</p> : null}
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2 rounded-[1.35rem] border border-white/10 bg-black/20 p-2.5 text-center">
+                <div className="grid grid-cols-3 gap-2 rounded-[1.15rem] border border-white/10 bg-black/20 p-2 text-center">
                   <div>
-                    <p className="text-xl font-black text-white">{homeDashboard.playerCount}</p>
+                    <p className="text-lg font-black text-white">{homeDashboard.playerCount}</p>
                     <p className="text-[9px] uppercase tracking-[0.14em] text-slate-500">Plantilla</p>
                   </div>
                   <div>
-                    <p className="text-xl font-black text-white">{homeDashboard.rivalCount}</p>
+                    <p className="text-lg font-black text-white">{homeDashboard.rivalCount}</p>
                     <p className="text-[9px] uppercase tracking-[0.14em] text-slate-500">Rivales</p>
                   </div>
                   <div>
-                    <p className="text-xl font-black text-white">{homeDashboard.balance.pointsPerGame}</p>
+                    <p className="text-lg font-black text-white">{homeDashboard.balance.pointsPerGame}</p>
                     <p className="text-[9px] uppercase tracking-[0.14em] text-slate-500">Pts/part</p>
                   </div>
                 </div>
@@ -11238,13 +11307,96 @@ function App() {
                 {homeError}
               </div>
             ) : null}
-            {homeDashboard.pendingQuickMatches.length ? (
-              <div className="rounded-2xl border border-amber-300/20 bg-amber-300/10 px-5 py-4 text-sm font-semibold text-amber-100">
-                {pendingQuickEventsMessage}
+            <section className="grid gap-4 xl:grid-cols-[1.28fr_0.72fr]">
+              <div className="relative overflow-hidden rounded-[1.55rem] border border-caudal-electric/20 bg-[#091428]/95 p-4 shadow-[0_20px_58px_rgba(0,0,0,0.24)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/35 hover:shadow-[0_26px_70px_rgba(0,0,0,0.30)] sm:p-5">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(79,140,255,0.18),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.05),transparent_48%)]" />
+                <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric/85">Partido en preparación</p>
+                    <h3 className="mt-2 truncate text-2xl font-black text-white sm:text-3xl">{homeDashboard.nextMatch?.opponent || 'Sin partido programado'}</h3>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-black uppercase tracking-[0.12em]">
+                      <span className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1.5 text-slate-200">{homeDashboard.nextMatch ? matchDisplayDate(homeDashboard.nextMatch.date) : 'Fecha pendiente'}</span>
+                      <span className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1.5 text-slate-200">{homeDashboard.nextMatch?.time || 'Hora pendiente'}</span>
+                      <span className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1.5 text-slate-200">{homeDashboard.nextMatch ? (homeDashboard.nextMatch.isHome ? 'Local' : 'Visitante') : 'Condición pendiente'}</span>
+                      <span className={`rounded-xl border px-3 py-1.5 ${homeDashboard.prepPercent >= 85 ? 'border-emerald-200/25 bg-emerald-300/10 text-emerald-100' : homeDashboard.prepPercent >= 50 ? 'border-amber-200/25 bg-amber-200/10 text-amber-100' : 'border-red-200/25 bg-red-400/10 text-red-100'}`}>{homeDashboard.prepStatus}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="text-4xl font-black text-white">{homeDashboard.prepPercent}%</p>
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">completado</p>
+                    </div>
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.15rem] bg-white p-2 shadow-[0_14px_32px_rgba(0,0,0,0.18)]">
+                      <img
+                        src={homeDashboard.nextMatch?.opponentCrest || homeDashboard.nextOpponentTeam?.crest || clubCrest}
+                        alt={homeDashboard.nextMatch?.opponent || 'Escudo rival'}
+                        className="h-full w-full object-contain"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="relative mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+                  <div className="h-full rounded-full bg-caudal-electric transition-all duration-500" style={{ width: `${homeDashboard.prepPercent}%` }} />
+                </div>
+                <div className="relative mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {homeDashboard.prepChecklist.map((item) => (
+                    <div key={item.key} className={`flex items-center gap-2 rounded-2xl border px-3 py-2.5 text-sm font-bold transition ${item.done ? 'border-emerald-200/18 bg-emerald-300/[0.08] text-emerald-100' : 'border-amber-200/18 bg-amber-200/[0.07] text-amber-100'}`}>
+                      <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-black ${item.done ? 'bg-emerald-300 text-slate-950' : 'bg-amber-200 text-slate-950'}`}>{item.done ? '✓' : '!'}</span>
+                      <span className="truncate">{item.label}</span>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (homeDashboard.nextMatch) openMatchPage(homeDashboard.nextMatch, 'PRE');
+                    setActiveTab('Partidos');
+                  }}
+                  className="relative mt-4 w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 transition duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_18px_40px_rgba(79,140,255,0.20)] active:translate-y-0 sm:w-auto"
+                >
+                  Abrir PRE
+                </button>
               </div>
-            ) : null}
 
-            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+              <div className="grid gap-3">
+                <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.045] p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Tareas pendientes</h3>
+                    <span className="rounded-xl bg-white/10 px-2.5 py-1 text-xs font-black text-slate-300">{homeDashboard.tasks.length}</span>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {homeDashboard.tasks.length ? homeDashboard.tasks.map((task) => (
+                      <div key={`${task.label}-${task.detail}`} className="flex items-start gap-2 rounded-2xl border border-amber-200/14 bg-amber-200/[0.07] px-3 py-2.5 text-sm">
+                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-200 text-xs font-black text-slate-950">!</span>
+                        <div className="min-w-0">
+                          <p className="font-bold text-amber-100">{task.label}</p>
+                          <p className="truncate text-xs text-amber-100/65">{task.detail}</p>
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="rounded-2xl border border-emerald-200/16 bg-emerald-300/[0.08] px-3 py-3 text-sm font-bold text-emerald-100">✓ Todo actualizado</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]">
+                  <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Actividad reciente</h3>
+                  <div className="mt-3 space-y-2">
+                    {homeDashboard.activity.length ? homeDashboard.activity.map((item) => (
+                      <div key={`${item.label}-${item.detail}`} className="flex items-start gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm transition hover:bg-white/[0.07]">
+                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-caudal-electric text-xs font-black text-slate-950">✓</span>
+                        <div className="min-w-0">
+                          <p className="font-bold text-white">{item.label}</p>
+                          <p className="truncate text-xs text-slate-500">{item.detail}</p>
+                        </div>
+                      </div>
+                    )) : <p className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-sm text-slate-400">Sin actividad reciente guardada.</p>}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
               {[
                 {
                   tab: 'Plantilla',
@@ -11334,112 +11486,91 @@ function App() {
                   key={item.tab}
                   type="button"
                   onClick={() => setActiveTab(item.tab)}
-                  className={`group min-h-28 rounded-[1.35rem] border border-white/10 ${item.accent} p-4 text-left shadow-[0_12px_35px_rgba(0,0,0,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.07] active:translate-y-0`}
+                  className={`group rounded-[1.35rem] border p-4 text-left transition duration-200 hover:-translate-y-0.5 active:translate-y-0 ${
+                    item.tab === 'Partidos'
+                      ? 'min-h-32 border-caudal-electric/28 bg-caudal-electric/[0.09] shadow-[0_18px_46px_rgba(79,140,255,0.14)] hover:border-caudal-electric/55 hover:bg-caudal-electric/[0.13] hover:shadow-[0_24px_58px_rgba(79,140,255,0.18)] xl:col-span-2'
+                      : `min-h-28 border-white/10 ${item.accent} shadow-[0_12px_35px_rgba(0,0,0,0.16)] hover:border-white/20 hover:bg-white/[0.07]`
+                  }`}
                 >
-                  <span className={`inline-flex ${item.iconColor} opacity-90 transition duration-200 group-hover:text-white group-hover:opacity-100`}>
+                  <span className={`inline-flex ${item.tab === 'Partidos' ? 'text-caudal-electric' : item.iconColor} opacity-90 transition duration-200 group-hover:text-white group-hover:opacity-100`}>
                     {item.icon}
                   </span>
-                  <p className="mt-4 text-base font-black text-white">{item.title}</p>
+                  <p className={`${item.tab === 'Partidos' ? 'mt-5 text-xl' : 'mt-4 text-base'} font-black text-white`}>{item.title}</p>
                   <p className="mt-1 text-sm text-slate-400">{item.copy}</p>
                 </button>
               ))}
             </section>
 
-            <section className="grid gap-4 xl:grid-cols-[1.18fr_0.82fr]">
-              <div className="rounded-[1.65rem] border border-white/10 bg-white/[0.055] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.20)] sm:p-6">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-red-200/80">Próximo partido</p>
-                    <h3 className="mt-2 text-2xl font-black text-white sm:text-3xl">
-                      {homeDashboard.nextMatch?.opponent || 'Sin partido programado'}
-                    </h3>
-                  </div>
-                  <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[1.35rem] bg-white p-2 shadow-[0_14px_35px_rgba(0,0,0,0.18)] sm:h-24 sm:w-24">
-                    <img
-                      src={homeDashboard.nextMatch?.opponentCrest || homeDashboard.nextOpponentTeam?.crest || clubCrest}
-                      alt={homeDashboard.nextMatch?.opponent || 'Escudo rival'}
-                      className="h-full w-full object-contain"
-                    />
-                  </div>
-                </div>
-                <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-2xl border border-white/[0.08] bg-black/20 p-4">
-                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Fecha</p>
-                    <p className="mt-2 text-sm font-bold text-white">{homeDashboard.nextMatch ? matchDisplayDate(homeDashboard.nextMatch.date) : 'Pendiente'}</p>
-                  </div>
-                  <div className="rounded-2xl border border-white/[0.08] bg-black/20 p-4">
-                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Hora</p>
-                    <p className="mt-2 text-sm font-bold text-white">{homeDashboard.nextMatch?.time || 'Pendiente'}</p>
-                  </div>
-                  <div className="rounded-2xl border border-white/[0.08] bg-black/20 p-4">
-                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Condición</p>
-                    <p className="mt-2 text-sm font-bold text-white">{homeDashboard.nextMatch ? (homeDashboard.nextMatch.isHome ? 'Local' : 'Visitante') : 'Pendiente'}</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('Partidos')}
-                  className="mt-5 w-full rounded-2xl bg-red-500/90 px-5 py-3 text-sm font-black text-white transition hover:bg-red-500 sm:w-auto"
-                >
-                  Ir a partidos
-                </button>
-              </div>
-
-              <div className="rounded-[1.65rem] border border-white/10 bg-[#0b1424]/92 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">Estado semanal</p>
-                    <h3 className="mt-1.5 text-xl font-black text-white">{homeDashboard.tendency}</h3>
-                  </div>
-                  <span className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-300">
-                    Últimos 5
-                  </span>
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl border border-white/[0.08] bg-white/[0.04] p-3.5">
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Lesionados</p>
-                    <p className="mt-1.5 text-2xl font-black text-white">{homeDashboard.weeklyStats.injured}</p>
-                  </div>
-                  <div className="rounded-2xl border border-white/[0.08] bg-white/[0.04] p-3.5">
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Amonest.</p>
-                    <p className="mt-1.5 text-2xl font-black text-white">{homeDashboard.weeklyStats.yellow}</p>
-                  </div>
-                </div>
-                <div className="mt-4 rounded-2xl border border-white/[0.08] bg-black/[0.18] p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Últimos resultados</p>
-                    <p className="text-xs font-semibold text-slate-300">
-                      {homeDashboard.balance.wins}-{homeDashboard.balance.draws}-{homeDashboard.balance.losses}
-                    </p>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {homeDashboard.recent.length ? homeDashboard.recent.map((result) => (
-                      <span
-                        key={`${result.id}-${result.label}`}
-                        className={`flex h-10 w-10 items-center justify-center rounded-2xl text-sm font-black ${
-                          result.label === 'V' ? 'bg-emerald-300/85 text-slate-950' : result.label === 'D' ? 'bg-red-300/85 text-slate-950' : 'bg-amber-200/90 text-slate-950'
-                        }`}
-                        title={`${result.match.opponent} · ${matchDisplayDate(result.match.date)}`}
-                      >
-                        {result.label}
-                      </span>
-                    )) : <span className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-400">Sin partidos finalizados</span>}
-                  </div>
+            <section className="grid gap-4 xl:grid-cols-[0.95fr_1.25fr_0.8fr]">
+              <div className="rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]">
+                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Estado de plantilla</h3>
+                <div className="mt-4 grid gap-2">
+                  {[
+                    ['Disponibles', homeDashboard.squad.available, 'bg-emerald-300 text-slate-950'],
+                    ['Lesionados', homeDashboard.squad.injured, 'bg-red-300 text-slate-950'],
+                    ['Riesgo sanción', homeDashboard.squad.yellowRisk, 'bg-orange-300 text-slate-950'],
+                    ['Amonestados', homeDashboard.squad.yellow, 'bg-amber-200 text-slate-950'],
+                  ].map(([label, value, tone]) => (
+                    <div key={label} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 transition hover:bg-white/[0.07]">
+                      <span className="text-sm font-bold text-slate-200">{label}</span>
+                      <span className={`rounded-xl px-3 py-1 text-xs font-black ${tone}`}>{value}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-            </section>
 
-            <section className="grid gap-3 sm:grid-cols-3">
-              {[
-                ['Goles', `${homeDashboard.balance.goalsFor}-${homeDashboard.balance.goalsAgainst}`],
-                ['Porterías a cero', homeDashboard.balance.cleanSheets],
-                ['Sub-23', homeDashboard.sub23Count],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-[1.35rem] border border-white/10 bg-white/[0.035] p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
-                  <p className="mt-1.5 text-2xl font-black text-white">{value}</p>
+              <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.045] p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Últimos resultados</h3>
+                    <p className="mt-1 text-xs text-slate-500">Últimos 5 partidos finalizados</p>
+                  </div>
+                  <span className="rounded-xl border border-white/10 bg-white/[0.06] px-2.5 py-1 text-xs font-black text-slate-300">{homeDashboard.tendency}</span>
                 </div>
-              ))}
+                <div className="mt-4 grid gap-2">
+                  {homeDashboard.recent.length ? [...homeDashboard.recent].reverse().map((result) => {
+                    const scoreLabel = `${result.score.caudalGoals}-${result.score.rivalGoals}`;
+                    return (
+                      <div key={`${result.id}-${result.label}`} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-2xl border border-white/10 bg-black/15 px-3 py-2.5 transition hover:-translate-y-0.5 hover:bg-white/[0.06]">
+                        <span className={`flex h-8 w-8 items-center justify-center rounded-xl text-xs font-black ${
+                          result.label === 'V' ? 'bg-emerald-300 text-slate-950' : result.label === 'D' ? 'bg-red-300 text-slate-950' : 'bg-amber-200 text-slate-950'
+                        }`}>{result.label}</span>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black text-white">{scoreLabel} {result.match.opponent}</p>
+                          <p className="text-xs text-slate-500">{matchDisplayDate(result.match.date)}</p>
+                        </div>
+                        <span className="text-xs font-bold uppercase text-slate-500">{result.match.isHome ? 'Local' : 'Visit.'}</span>
+                      </div>
+                    );
+                  }) : <p className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-sm text-slate-400">Sin partidos finalizados.</p>}
+                </div>
+              </div>
+
+              <div className="rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]">
+                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Último partido</h3>
+                {homeDashboard.lastMatch ? (
+                  <div className="mt-4">
+                    <p className="truncate text-2xl font-black text-white">{homeDashboard.lastMatch.opponent}</p>
+                    <p className="mt-2 text-4xl font-black text-caudal-electric">{getMatchScoreData(homeDashboard.lastMatch).caudalGoals}-{getMatchScoreData(homeDashboard.lastMatch).rivalGoals}</p>
+                    <div className="mt-3 space-y-1 text-sm text-slate-400">
+                      <p>{homeDashboard.lastMatch.type || 'Competición'}</p>
+                      <p>{matchDisplayDate(homeDashboard.lastMatch.date)}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        openMatchPage(homeDashboard.lastMatch, 'POST');
+                        setActiveTab('Partidos');
+                      }}
+                      className="mt-4 w-full rounded-2xl border border-caudal-electric/25 bg-caudal-electric/10 px-4 py-3 text-sm font-black text-caudal-electric transition duration-200 hover:-translate-y-0.5 hover:bg-caudal-electric hover:text-slate-950"
+                    >
+                      Ver POST
+                    </button>
+                  </div>
+                ) : (
+                  <p className="mt-4 rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-sm text-slate-400">Sin último partido guardado.</p>
+                )}
+              </div>
             </section>
           </main>
         ) : null}
