@@ -9388,17 +9388,21 @@ function App() {
         sub23: playerLabel(player.dob) === 'Sub-23',
         highLoad,
         touched,
-        available: !injured && !suspended && !touched,
+        available: !injured && !suspended,
       }];
     }));
   }, [matches, performancePlayerRows, performanceRowByPlayerId, players]);
   const squadSummary = useMemo(() => {
     const statuses = players.map((player) => staffStatusByPlayerId.get(player.id) || {});
+    const injured = statuses.filter((status) => status.injured).length;
+    const suspended = statuses.filter((status) => status.suspended).length;
     return {
       total: players.length,
-      available: statuses.filter((status) => status.available).length,
-      injured: statuses.filter((status) => status.injured).length,
-      suspended: statuses.filter((status) => status.suspended).length,
+      available: Math.max(0, players.length - injured - suspended),
+      injured,
+      suspended,
+      doubtful: statuses.filter((status) => (status.touched || status.highLoad) && !status.injured && !status.suspended).length,
+      sub23: statuses.filter((status) => status.sub23).length,
     };
   }, [players, staffStatusByPlayerId]);
   const rosterDashboard = useMemo(() => {
@@ -9411,11 +9415,35 @@ function App() {
     const rows = rankings.rows || [];
     const rowByPlayerId = new Map(rows.map((row) => [row.player.id, row]));
     const mostUsedSystem = getMostUsedRealSystem(finished).system || '4-4-2';
+    const nextMatchForLaunchers = safeArray(matches)
+      .filter((match) => !hasPlayedData(match))
+      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.time || '').localeCompare(String(b.time || '')))[0] || null;
+    const launcherText = normalizePlayerIdentityName([
+      nextMatchForLaunchers?.abpOfensiva,
+      nextMatchForLaunchers?.abpDefensiva,
+      nextMatchForLaunchers?.preCaudalPlayersToActivate,
+      nextMatchForLaunchers?.preAiSupportNotes,
+    ].filter(Boolean).join(' '));
+    const launcherPlayerIds = new Set(players
+      .filter((player) => {
+        const name = normalizePlayerIdentityName(player.name);
+        const shirt = normalizePlayerIdentityName(player.shirtName);
+        return launcherText && ((name.length > 3 && launcherText.includes(name)) || (shirt.length > 3 && launcherText.includes(shirt)));
+      })
+      .map((player) => player.id));
+    const getBaseLine = (role) => {
+      const normalized = normalizeIdealRole(role);
+      if (normalized === 'POR') return 'POR';
+      if (['LD', 'LI', 'CAD', 'CAI'].includes(normalized) || normalized.startsWith('DFC')) return 'DEF';
+      if (['MCD', 'MC', 'MP'].includes(normalized)) return 'MED';
+      return 'DEL';
+    };
     const baseEleven = buildIdealElevenForSystem(rankings.idealRows || [], mostUsedSystem)
       .filter((assignment) => assignment.row)
       .slice(0, 11)
       .map((assignment) => ({
         role: normalizeIdealRole(assignment.row.primaryRole || assignment.slot?.visualLabel || assignment.slot?.role || ''),
+        line: getBaseLine(assignment.row.primaryRole || assignment.slot?.visualLabel || assignment.slot?.role || ''),
         player: assignment.row.player,
         minutes: assignment.row.minutes,
         starts: assignment.row.starts,
@@ -9430,6 +9458,8 @@ function App() {
     return {
       rowByPlayerId,
       baseEleven,
+      baseLines: ['POR', 'DEF', 'MED', 'DEL'].map((line) => ({ line, players: baseEleven.filter((item) => item.line === line) })),
+      launcherPlayerIds,
       mostUsedSystem,
       keyPlayers: [
         { label: 'Más minutos', row: topMinutes, value: topMinutes ? `${topMinutes.minutes}'` : '-' },
@@ -12301,21 +12331,21 @@ function App() {
               );
             })() : (
             <>
-            <section className="rounded-[1.35rem] border border-white/10 bg-white/[0.04] p-4 shadow-[0_16px_48px_rgba(0,0,0,0.16)] backdrop-blur-md sm:p-5">
-              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <section className="rounded-[1.25rem] border border-white/10 bg-white/[0.04] p-3.5 shadow-[0_16px_48px_rgba(0,0,0,0.16)] backdrop-blur-md sm:p-4">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                 <div>
                   <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">Plantilla</p>
                   <h2 className="mt-1 text-2xl font-black text-white">Panel competitivo</h2>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-4 xl:min-w-[560px]">
                   {[
-                    ['Jugadores', squadSummary.total, 'border-white/10 bg-white/[0.05] text-white'],
-                    ['Disponibles', squadSummary.available, 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100'],
-                    ['Lesionados', squadSummary.injured, 'border-red-200/20 bg-red-300/10 text-red-100'],
-                    ['Sancionados', squadSummary.suspended, 'border-slate-200/20 bg-slate-200/10 text-slate-200'],
-                  ].map(([label, value, tone]) => (
+                    ['👥', 'Total plantilla', squadSummary.total, 'border-white/10 bg-white/[0.05] text-white'],
+                    ['●', 'Disponibles reales', squadSummary.available, 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100'],
+                    ['●', 'Lesionados', squadSummary.injured, 'border-red-200/20 bg-red-300/10 text-red-100'],
+                    ['●', 'Sancionados', squadSummary.suspended, 'border-slate-200/20 bg-slate-200/10 text-slate-200'],
+                  ].map(([icon, label, value, tone]) => (
                     <div key={label} className={`rounded-2xl border px-3 py-2 ${tone}`}>
-                      <p className="text-[9px] font-black uppercase tracking-[0.14em] opacity-65">{label}</p>
+                      <p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-65">{icon} {label}</p>
                       <p className="mt-0.5 text-lg font-black">{value}</p>
                     </div>
                   ))}
@@ -12328,7 +12358,24 @@ function App() {
                 </button>
               </div>
 
-              <div className="mt-4 grid gap-3 xl:grid-cols-[1.05fr_0.95fr]">
+              <div className="mt-3 rounded-[1.05rem] border border-white/10 bg-black/15 p-2.5">
+                <p className="mb-2 px-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Disponibilidad semanal</p>
+                <div className="grid gap-2 sm:grid-cols-4">
+                  {[
+                    ['Disponibles', squadSummary.available, 'text-emerald-100'],
+                    ['Lesionados', squadSummary.injured, 'text-red-100'],
+                    ['Sancionados', squadSummary.suspended, 'text-slate-200'],
+                    ['Sub-23', squadSummary.sub23, 'text-caudal-electric'],
+                  ].map(([label, value, textClass]) => (
+                    <div key={label} className="flex items-center justify-between gap-2 rounded-xl bg-white/[0.035] px-3 py-2">
+                      <span className="truncate text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</span>
+                      <span className={`text-sm font-black ${textClass}`}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-3 grid gap-3 xl:grid-cols-[1.05fr_0.95fr]">
                 <div className="rounded-[1.15rem] border border-white/10 bg-black/15 p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -12337,19 +12384,25 @@ function App() {
                     </div>
                     <span className="rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-2.5 py-1 text-xs font-black text-caudal-electric">{rosterDashboard.baseEleven.length}/11</span>
                   </div>
-                  <div className="mt-3 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
-                    {rosterDashboard.baseEleven.length ? rosterDashboard.baseEleven.map((item) => (
-                      <button
-                        key={`${item.role}-${item.player.id}`}
-                        type="button"
-                        onClick={() => setSelectedPlayerProfileId(item.player.id)}
-                        className="grid grid-cols-[42px_1fr] items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-2 text-left transition hover:border-caudal-electric/25 hover:bg-white/[0.07]"
-                      >
-                        <span className="text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{item.role}</span>
-                        <span className="truncate text-xs font-bold text-white">{item.player.shirtName || item.player.name}</span>
-                      </button>
+                  <div className="mt-3 space-y-1.5">
+                    {rosterDashboard.baseEleven.length ? rosterDashboard.baseLines.map((line) => (
+                      <div key={line.line} className="grid grid-cols-[42px_1fr] items-start gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-2.5 py-2">
+                        <span className="pt-1 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{line.line}</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {line.players.length ? line.players.map((item) => (
+                            <button
+                              key={`${item.role}-${item.player.id}`}
+                              type="button"
+                              onClick={() => setSelectedPlayerProfileId(item.player.id)}
+                              className="rounded-lg bg-white/[0.055] px-2 py-1 text-left text-xs font-bold text-white transition hover:bg-white/[0.10]"
+                            >
+                              <span className="mr-1 text-caudal-electric">{item.role}</span>{item.player.shirtName || item.player.name}
+                            </button>
+                          )) : <span className="px-2 py-1 text-xs text-slate-600">Sin jugador</span>}
+                        </div>
+                      </div>
                     )) : (
-                      <p className="rounded-xl border border-dashed border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-400 sm:col-span-2 lg:col-span-3">Sin partidos suficientes para calcular once base.</p>
+                      <p className="rounded-xl border border-dashed border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-400">Sin partidos suficientes para calcular once base.</p>
                     )}
                   </div>
                 </div>
@@ -12460,9 +12513,12 @@ function App() {
                               <td className="px-4 py-3"><span className={`rounded-xl px-2.5 py-1 text-xs font-black ${statusClass}`}>{statusLabel}</span></td>
                               <td className="px-4 py-3">
                                 <div className="flex flex-wrap gap-1.5">
-                                  {staffStatus.captain ? <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">Capitán</span> : null}
-                                  {staffStatus.sub23 ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">Sub 23</span> : null}
-                                  {inBaseEleven ? <span className="rounded-lg border border-white/10 bg-white/[0.06] px-2 py-1 text-[10px] font-bold text-white">Titular</span> : null}
+                                  {inBaseEleven ? <span className="rounded-lg border border-white/10 bg-white/[0.06] px-2 py-1 text-[10px] font-bold text-white">⭐ Titular habitual</span> : null}
+                                  {staffStatus.captain ? <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">👑 Capitán</span> : null}
+                                  {rosterDashboard.launcherPlayerIds.has(player.id) ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">🎯 Lanzador</span> : null}
+                                  {rosterRow.yellow ? <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">🟨 Amonestado</span> : null}
+                                  {staffStatus.injured ? <span className="rounded-lg border border-red-200/20 bg-red-300/10 px-2 py-1 text-[10px] font-bold text-red-100">🚑 Lesionado</span> : null}
+                                  {staffStatus.sub23 ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">🔵 Sub-23</span> : null}
                                 </div>
                               </td>
                               <td className="px-4 py-3 font-bold text-white">{rosterRow.minutes ? `${rosterRow.minutes}'` : '-'}</td>
@@ -12474,15 +12530,10 @@ function App() {
                   </div>
                 </section>
               ) : groupedPlayers.some((group) => group.players.length) ? groupedPlayers.filter((group) => group.players.length).map((group) => (
-                <section key={group.title} className="space-y-3">
-                  <div className="flex items-end justify-between border-b border-white/10 pb-2.5">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Demarcación</p>
-                      <h3 className="mt-1 text-lg font-black text-white">{group.title}</h3>
-                    </div>
-                    <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-1 text-xs font-black text-slate-300">
-                      {group.players.length}
-                    </span>
+                <section key={group.title} className="space-y-2.5">
+                  <div className="flex items-center justify-between rounded-[1rem] border border-white/10 bg-white/[0.035] px-3.5 py-2">
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">{group.title} <span className="text-slate-500">· {group.players.length}</span></h3>
+                    <span className="h-px flex-1 bg-white/10 ml-4" />
                   </div>
 
                   {group.players.length > 0 ? (
@@ -12499,39 +12550,45 @@ function App() {
                             : statusLabel === 'Lesionado'
                               ? 'border-red-200/20 bg-red-300/10 text-red-100'
                               : 'border-slate-200/20 bg-slate-200/10 text-slate-200';
+                        const minutesLabel = `${Number(rosterRow.minutes || 0)}'`;
+                        const startsLabel = rosterRow.starts ? `${rosterRow.starts} TIT` : 'Sin participar';
+                        const footLabel = player.foot || 'No disponible';
                         const tacticalChips = [
-                          staffStatus.captain ? ['Capitán', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
-                          staffStatus.sub23 ? ['Sub 23', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
-                          inBaseEleven || rosterRow.starts >= 2 ? ['Titular', 'border-white/12 bg-white/[0.06] text-white'] : null,
+                          inBaseEleven || rosterRow.starts >= 2 ? ['⭐ Titular habitual', 'border-white/12 bg-white/[0.06] text-white'] : null,
+                          staffStatus.captain ? ['👑 Capitán', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
+                          rosterDashboard.launcherPlayerIds.has(player.id) ? ['🎯 Lanzador', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
+                          rosterRow.yellow ? ['🟨 Amonestado', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
+                          staffStatus.injured ? ['🚑 Lesionado', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
+                          staffStatus.sub23 ? ['🔵 Sub-23', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
                         ].filter(Boolean);
                         return (
-                        <article key={player.id} onClick={() => setSelectedPlayerProfileId(player.id)} className="group relative cursor-pointer rounded-[1.15rem] border border-white/10 bg-[#0a1425]/86 p-3 shadow-[0_10px_28px_rgba(0,0,0,0.14)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c] hover:shadow-[0_16px_38px_rgba(0,0,0,0.20)] focus-within:border-caudal-electric/40">
-                          <details className="absolute right-2.5 top-2.5 z-20" onClick={(event) => event.stopPropagation()}>
-                            <summary className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-xl border border-white/10 bg-black/25 text-lg font-black leading-none text-slate-300 transition hover:bg-white/10 hover:text-white">⋮</summary>
+                        <article key={player.id} onClick={() => setSelectedPlayerProfileId(player.id)} className="group relative min-h-[124px] cursor-pointer rounded-[1rem] border border-white/10 bg-[#0a1425]/86 p-2.5 shadow-[0_10px_24px_rgba(0,0,0,0.13)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c] hover:shadow-[0_14px_34px_rgba(0,0,0,0.20)] focus-within:border-caudal-electric/40">
+                          <details className="absolute right-2 top-2 z-20" onClick={(event) => event.stopPropagation()}>
+                            <summary className="flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded-lg border border-white/10 bg-black/25 text-base font-black leading-none text-slate-300 transition hover:bg-white/10 hover:text-white">⋮</summary>
                             <div className="absolute right-0 mt-2 w-32 overflow-hidden rounded-xl border border-white/10 bg-[#07111f] p-1 shadow-[0_18px_45px_rgba(0,0,0,0.36)]">
                               <button type="button" onClick={() => openForm(player)} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-white transition hover:bg-white/10">Editar</button>
                               <button type="button" onClick={() => handleDelete(player)} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar</button>
                             </div>
                           </details>
-                          <div className="grid grid-cols-[52px_1fr_auto] items-center gap-3 pr-8">
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.16),rgba(255,255,255,0.055)_42%,rgba(212,0,0,0.12))] text-sm font-black text-slate-100 shadow-[0_10px_22px_rgba(0,0,0,0.20)] transition duration-200 group-hover:scale-[1.02]">
+                          <div className="grid grid-cols-[44px_1fr_auto] items-center gap-2.5 pr-7">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.16),rgba(255,255,255,0.055)_42%,rgba(212,0,0,0.12))] text-xs font-black text-slate-100 shadow-[0_8px_18px_rgba(0,0,0,0.18)] transition duration-200 group-hover:scale-[1.02]">
                               {player.image ? <img src={player.image} alt={player.name} className="h-full w-full object-cover" /> : <span>{player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>}
                             </div>
                             <div className="min-w-0">
                               <h3 className="truncate text-[15px] font-black leading-tight text-white">{player.name}</h3>
-                              <p className="mt-1 truncate text-xs font-semibold text-slate-400">{player.position || 'Sin demarcación'} · {calculateAge(player.dob)} años</p>
+                              <p className="mt-0.5 truncate text-[11px] font-semibold text-slate-400">{player.position || 'Sin demarcación'} · {calculateAge(player.dob)} años</p>
                             </div>
-                            <p className="rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-2.5 py-1 text-xs font-black text-caudal-electric">#{displayDorsal(player.number)}</p>
+                            <p className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-0.5 text-[11px] font-black text-caudal-electric">#{displayDorsal(player.number)}</p>
                           </div>
-                          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                            <span className={`rounded-xl border px-2 py-1 text-[10px] font-bold leading-none ${statusClass}`}>{statusLabel}</span>
+                          <div className="mt-2 flex min-h-6 flex-wrap items-center gap-1">
+                            <span className={`rounded-lg border px-1.5 py-0.5 text-[9px] font-bold leading-none ${statusClass}`}>{statusLabel}</span>
                             {tacticalChips.map(([label, className]) => (
-                              <span key={label} className={`rounded-xl border px-2 py-1 text-[10px] font-bold leading-none ${className}`}>{label}</span>
+                              <span key={label} className={`rounded-lg border px-1.5 py-0.5 text-[9px] font-bold leading-none ${className}`}>{label}</span>
                             ))}
                           </div>
-                          <div className="mt-2 flex items-center justify-between gap-2 text-[11px] font-semibold text-slate-500">
-                            <span>{rosterRow.minutes ? `${rosterRow.minutes}'` : 'Sin minutos'} · {rosterRow.starts || 0} titularidades</span>
-                            <span>{player.foot || 'Pie no indicado'}</span>
+                          <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] font-semibold text-slate-500">
+                            <span>{minutesLabel} · {startsLabel}</span>
+                            <span>Pie {footLabel}</span>
                           </div>
                         </article>
                         );
