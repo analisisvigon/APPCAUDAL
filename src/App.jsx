@@ -11700,12 +11700,6 @@ function App() {
               const assistedRows = Object.entries(assistedByPlayer).filter(([name]) => name);
               const maxSocietyCount = Math.max(1, ...assistantRows.map(([, count]) => count), ...assistedRows.map(([, count]) => count));
               const videoActions = [...allGoalActions, ...allAssistActions].filter((event) => event.videoUrl);
-              const selectedStaffStatus = staffStatusByPlayerId.get(selectedPlayerProfile.id) || {};
-              const availability = selectedStaffStatus.injured || selectedStaffStatus.suspended
-                ? 'Baja'
-                : selectedStaffStatus.touched || selectedStaffStatus.highLoad
-                  ? 'Duda'
-                  : 'Disponible';
               const regularStarter = aggregate.played > 0 && aggregate.starts / aggregate.played >= 0.6;
               const profilePosition = String(selectedPlayerProfile.position || '').toLowerCase();
               const isFullBack = /lateral|carrilero|li|ld/.test(profilePosition);
@@ -11719,14 +11713,6 @@ function App() {
                 isMidfielder || aggregate.participation >= 55 ? 'Participa en fase de creación.' : isDefender ? 'Aporta estabilidad en estructura defensiva.' : isForward ? 'Prioriza amenaza y finalización.' : aggregate.played ? 'Aporta minutos en el plan competitivo.' : 'Pendiente de muestra competitiva.',
                 aggregate.assists || isWide && quick.corners ? 'Genera peligro desde centros y último pase.' : aggregate.goals ? 'Tiene impacto directo en área rival.' : quick.recoveries > quick.losses ? 'Suma valor tras pérdida y recuperación.' : quick.shots ? 'Busca finalización cuando aparece en campo.' : null,
               ].filter(Boolean).slice(0, 3);
-              const profileBadges = [
-                selectedStaffStatus.captain ? ['Capitán', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
-                selectedStaffStatus.sub23 ? ['Sub-23', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
-                selectedStaffStatus.injured ? ['Lesionado', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
-                selectedStaffStatus.suspended ? ['Sancionado', 'border-slate-200/20 bg-slate-200/10 text-slate-200'] : null,
-                selectedStaffStatus.highLoad ? ['Alta carga', 'border-orange-200/20 bg-orange-200/10 text-orange-100'] : null,
-                regularStarter ? ['Titular habitual', 'border-white/15 bg-white/[0.06] text-slate-200'] : null,
-              ].filter(Boolean);
               const primaryMetrics = [
                 { label: 'Minutos', value: `${aggregate.minutes}'`, detail: aggregate.played ? `${Math.round(aggregate.minutes / Math.max(1, aggregate.played))}'/partido` : 'Sin partidos' },
                 { label: 'Partidos', value: aggregate.played, detail: `${aggregate.starts} titularidades` },
@@ -11771,25 +11757,6 @@ function App() {
                     : formPoints >= 4
                       ? 'Irregular'
                       : aggregate.played ? 'Baja participación' : 'Sin muestra';
-              const playerSubtitle = regularStarter ? 'Titular habitual' : selectedStaffStatus.sub23 ? 'Juvenil' : aggregate.participation < 30 ? 'Poca participación' : 'Rotación';
-              const roleLabel = selectedStaffStatus.sub23
-                ? 'Sub-23'
-                : selectedStaffStatus.captain || aggregate.participation >= 75 || aggregate.directGoalParticipation >= 5
-                  ? 'Jugador clave'
-                  : regularStarter
-                    ? 'Titular habitual'
-                    : aggregate.participation >= 30 || aggregate.starts
-                      ? 'Rotación'
-                      : 'Suplente habitual';
-              const roleClass = roleLabel === 'Jugador clave'
-                ? 'border-caudal-electric/35 bg-caudal-electric/15 text-caudal-electric'
-                : roleLabel === 'Titular habitual'
-                  ? 'border-emerald-200/25 bg-emerald-200/10 text-emerald-100'
-                  : roleLabel === 'Rotación'
-                    ? 'border-amber-200/25 bg-amber-200/10 text-amber-100'
-                    : roleLabel === 'Sub-23'
-                      ? 'border-sky-200/25 bg-sky-200/10 text-sky-100'
-                      : 'border-white/10 bg-white/[0.055] text-slate-300';
               const formDots = recentFormRows.length
                 ? recentFormRows.map((row) => {
                   const impact = row.goals.length + row.assists.length;
@@ -11797,45 +11764,6 @@ function App() {
                   return rating >= 7 || impact ? 'bg-emerald-300' : rating >= 5 || row.minutes >= 60 ? 'bg-amber-200' : row.minutes > 0 ? 'bg-white/40' : rating ? 'bg-red-300' : 'bg-white/20';
                 })
                 : ['bg-white/15', 'bg-white/15', 'bg-white/15', 'bg-white/15', 'bg-white/15'];
-              const orderedRows = aggregate.rows.slice().sort((a, b) => new Date(b.match.date || 0) - new Date(a.match.date || 0));
-              const lastMatchRow = orderedRows[0] || null;
-              const lastStartRow = orderedRows.find((row) => row.role === 'Titular') || null;
-              const recentRun = orderedRows.slice(0, 5).map((row) => row.minutes >= 60 ? 'T' : row.minutes > 0 ? 'S' : '-').join(' ');
-              const sanctionRisk = aggregate.red || aggregate.yellow >= 4 ? 'Alto' : aggregate.yellow >= 2 ? 'Medio' : 'Bajo';
-              const samePositionPlayers = players.filter((player) => (player.position || 'Sin demarcación') === (selectedPlayerProfile.position || 'Sin demarcación'));
-              const positionalRows = samePositionPlayers.map((player) => {
-                const scopedMatches = matches
-                  .filter((match) =>
-                    playerCompetitionFilter === 'Todos' ||
-                    match.type === playerCompetitionFilter ||
-                    (playerCompetitionFilter === 'Playoff' && match.type === 'Play off')
-                  )
-                  .filter((match) => playerVenueFilter === 'Todos' || (playerVenueFilter === 'Local' ? match.isHome : !match.isHome));
-                const playerStatsRows = scopedMatches
-                  .map((match) => ({ match, stats: match.statsPlayerData?.[player.name] }))
-                  .filter(({ stats }) => stats);
-                const minutes = playerStatsRows.reduce((sum, item) => sum + (Number(item.stats.minutes || 0) || 0), 0);
-                const possibleMinutes = playerStatsRows.length * 90;
-                const assists = scopedMatches.reduce((sum, match) =>
-                  sum + safeArray(match.statsGoalEvents).filter((event) => event.assistant === player.name).length
-                , 0);
-                return {
-                  id: player.id,
-                  minutes,
-                  assists,
-                  participation: possibleMinutes ? Math.round((minutes / possibleMinutes) * 100) : 0,
-                };
-              });
-              const getPositionRank = (metric) => {
-                const sorted = positionalRows.slice().sort((a, b) => b[metric] - a[metric]);
-                const index = sorted.findIndex((row) => row.id === selectedPlayerProfile.id);
-                return index >= 0 ? `${index + 1}º ${selectedPlayerProfile.position || 'POS'}` : '-';
-              };
-              const positionalComparisonRows = [
-                ['Minutos', getPositionRank('minutes')],
-                ['Asistencias', getPositionRank('assists')],
-                ['Participación', getPositionRank('participation')],
-              ];
               const prePostRows = aggregate.rows
                 .map((row) => {
                   const preNote = row.match.prePlayerNotes?.[selectedPlayerProfile.name] || '';
@@ -11850,6 +11778,50 @@ function App() {
                 quick.recoveries >= 4 ? ['Buena activación tras pérdida', 'Guardar clips de presión efectiva'] : null,
                 aggregate.yellow + aggregate.red >= 2 ? ['Riesgo disciplinario', 'Revisar entradas, perfiles y duelos'] : null,
               ].filter(Boolean);
+              const playerProfileIntro = [
+                `${footballProfileLines[0] || `${positionLabel}.`}`,
+                aggregate.played
+                  ? `Ha participado en ${aggregate.played} partidos y acumula ${aggregate.minutes}' durante el periodo analizado, con ${aggregate.starts} titularidades y una participación global del ${aggregate.participation}%.`
+                  : 'Todavía no hay muestra competitiva suficiente para construir una lectura completa de temporada.',
+                aggregate.directGoalParticipation
+                  ? `Aporta ${aggregate.directGoalParticipation} acciones directas de gol entre tantos y asistencias.`
+                  : quick.recoveries || quick.losses
+                    ? `Su impacto se aprecia especialmente en acciones de ritmo: ${quick.recoveries} recuperaciones y ${quick.losses} pérdidas registradas.`
+                    : 'El informe se irá enriqueciendo a medida que se registren partidos, valoraciones y acciones revisadas.',
+              ];
+              const strengthRows = [
+                aggregate.participation >= 60 ? 'Continuidad competitiva y presencia sostenida durante la temporada.' : null,
+                regularStarter ? 'Capacidad para sostener partidos desde el inicio.' : null,
+                aggregate.directGoalParticipation >= 3 ? 'Impacto directo en goles y asistencias.' : null,
+                aggregate.assists ? 'Generación de ventajas mediante último pase y asistencia.' : null,
+                quick.recoveries > quick.losses && quick.recoveries >= 3 ? 'Buen balance en recuperación tras pérdida.' : null,
+                avgRecentRating >= 7 ? 'Valoraciones recientes por encima del estándar del grupo.' : null,
+              ].filter(Boolean).slice(0, 3);
+              const improvementRows = [
+                quick.losses >= 4 ? 'Reducir pérdidas y mejorar la seguridad de la siguiente acción.' : null,
+                aggregate.yellow + aggregate.red >= 2 ? 'Gestionar mejor los duelos para evitar sanciones y acciones de riesgo.' : null,
+                aggregate.participation < 30 && aggregate.played ? 'Aumentar continuidad competitiva y minutos de calidad.' : null,
+                aggregate.goals === 0 && (isForward || isWide) && aggregate.played ? 'Incrementar presencia en zonas de finalización.' : null,
+                avgRecentRating && avgRecentRating < 5 ? 'Elevar regularidad de rendimiento en los próximos partidos.' : null,
+                !aggregate.directGoalParticipation && aggregate.played ? 'Transformar participación en acciones más determinantes.' : null,
+              ].filter(Boolean).slice(0, 3);
+              const orderedSeasonRows = aggregate.rows.slice().sort((a, b) => new Date(a.match.date || 0) - new Date(b.match.date || 0));
+              const seasonStageRows = ['Inicio temporada', 'Mitad temporada', 'Final temporada'].map((label, index) => {
+                const from = Math.floor((orderedSeasonRows.length * index) / 3);
+                const to = Math.floor((orderedSeasonRows.length * (index + 1)) / 3);
+                const scopedRows = orderedSeasonRows.slice(from, Math.max(from + 1, to));
+                const ratings = scopedRows.map((row) => Number(row.rating)).filter(Boolean);
+                const minutes = scopedRows.reduce((sum, row) => sum + row.minutes, 0);
+                const impact = scopedRows.reduce((sum, row) => sum + row.goals.length + row.assists.length, 0);
+                return {
+                  label,
+                  matches: scopedRows.length,
+                  rating: ratings.length ? (ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length).toFixed(1) : '-',
+                  minutes,
+                  impact,
+                };
+              });
+              const maxSeasonMinutes = Math.max(1, ...seasonStageRows.map((row) => row.minutes));
               const openPlayerMatchSection = (match, section) => {
                 setSelectedMatchId(match.id);
                 setSelectedPlayerProfileId(null);
@@ -11905,22 +11877,13 @@ function App() {
               };
               return (
                 <>
-                  <AccordionSection title="Datos del jugador" subtitle="Ficha, dorsal, edad y resumen base" defaultOpen>
+                  <AccordionSection title="Dossier individual" subtitle="Ficha base del jugador" defaultOpen>
                   <section className="rounded-[1.65rem] border border-white/10 bg-[#07111f] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.20)] sm:p-5">
                     <button onClick={() => setSelectedPlayerProfileId(null)} className="mb-4 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10">Volver a plantilla</button>
                     <div className="grid gap-4 lg:grid-cols-[150px_1fr]">
                       <div className="space-y-2">
                         <div className="flex h-36 w-36 items-center justify-center overflow-hidden rounded-[1.35rem] border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.14),rgba(255,255,255,0.05),rgba(212,0,0,0.12))] text-3xl font-black text-white shadow-[0_20px_48px_rgba(0,0,0,0.28)]">
                           {selectedPlayerProfile.image ? <img src={selectedPlayerProfile.image} alt={selectedPlayerProfile.name} className="h-full w-full object-cover" /> : selectedPlayerProfile.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
-                        </div>
-                        <div className={`w-36 rounded-xl border px-3 py-2 text-center text-[10px] font-black uppercase tracking-[0.12em] ${
-                          availability === 'Disponible'
-                            ? 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100'
-                            : availability === 'Duda'
-                              ? 'border-yellow-100/20 bg-yellow-100/10 text-yellow-100'
-                              : 'border-red-200/20 bg-red-300/10 text-red-100'
-                        }`}>
-                          {availability}
                         </div>
                       </div>
                       <div>
@@ -11929,91 +11892,106 @@ function App() {
                           <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">#{displayDorsal(selectedPlayerProfile.number)}</span>
                           <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">{calculateAge(selectedPlayerProfile.dob)} años</span>
                           <span className="rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-xs font-bold text-slate-400">Pie {selectedPlayerProfile.foot || 'no indicado'}</span>
-                          <span className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] ${roleClass}`}>{roleLabel}</span>
                         </div>
                         <h2 className="mt-2 text-3xl font-black uppercase tracking-tight text-white sm:text-4xl">{selectedPlayerProfile.name}</h2>
-                        <p className="mt-1 text-sm font-bold uppercase tracking-[0.16em] text-slate-400">{playerSubtitle}</p>
-                        <div className="mt-3 rounded-[1.15rem] border border-caudal-electric/15 bg-caudal-electric/[0.055] px-4 py-3">
-                          {footballProfileLines.map((line) => (
-                            <p key={line} className="text-sm font-semibold leading-5 text-slate-100">{line}</p>
-                          ))}
-                        </div>
-                        {profileBadges.length ? (
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {profileBadges.map(([label, className]) => (
-                              <span key={label} className={`rounded-2xl border px-3 py-1.5 text-xs font-bold ${className}`}>{label}</span>
-                            ))}
-                          </div>
-                        ) : null}
-                        <div className="mt-4 rounded-[1.35rem] border border-white/10 bg-white/[0.035] p-3">
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Forma reciente</p>
-                              <p className="mt-1 text-lg font-black text-white">{formLabel}</p>
-                              <p className="mt-0.5 text-xs text-slate-500">{recentRatings.length ? `Nota media últimos partidos: ${avgRecentRating.toFixed(1)}` : 'Sin notas suficientes todavía'}</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {formDots.map((dotClass, index) => <span key={`${dotClass}-${index}`} className={`h-4 w-4 rounded-full border border-white/10 ${dotClass}`} />)}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mt-4 grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
-                          <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-3">
-                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Principales</p>
-                            <div className="mt-3 grid gap-2 sm:grid-cols-4">
-                              {primaryMetrics.map((metric) => (
-                                <div key={metric.label} className="rounded-xl border border-white/[0.08] bg-white/[0.045] p-3">
-                                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{metric.label}</p>
-                                  <p className="mt-1 text-2xl font-black text-white">{metric.value}</p>
-                                  <p className="mt-0.5 text-[11px] font-semibold text-slate-500">{metric.detail}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.025] p-3">
-                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Secundarias</p>
-                            <div className="mt-3 grid grid-cols-5 gap-2">
-                              {secondaryMetrics.map(([label, value, className]) => (
-                                <div key={label} className="rounded-xl bg-white/[0.045] px-2 py-2 text-center">
-                                  <p className={`text-xl font-black ${className}`}>{value}</p>
-                                  <p className="mt-0.5 truncate text-[9px] font-black uppercase tracking-[0.08em] text-slate-500">{label}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
+                        <p className="mt-2 max-w-3xl text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">Informe individual de temporada</p>
+                        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">Resumen preparado para lectura del jugador, con foco en rendimiento, evolución y acciones que explican su temporada.</p>
                       </div>
                     </div>
-                    <div className="mt-4 grid gap-3 xl:grid-cols-3">
-                      <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4">
-                        <h3 className="text-xs font-black uppercase tracking-[0.18em] text-white">Estado actual</h3>
-                        <div className="mt-3 grid gap-2 text-sm">
-                          {[
-                            ['Disponibilidad', availability],
-                            ['Último partido', lastMatchRow ? `${matchDisplayDate(lastMatchRow.match.date)} · ${lastMatchRow.minutes}'` : 'Sin registro'],
-                            ['Última titularidad', lastStartRow ? matchDisplayDate(lastStartRow.match.date) : 'Sin titularidad'],
-                            ['Riesgo sanción', sanctionRisk],
-                            ['Racha reciente', recentRun || 'Sin muestra'],
-                          ].map(([label, value]) => (
-                            <div key={label} className="flex items-center justify-between gap-3 border-b border-white/[0.06] py-1.5 last:border-b-0">
-                              <span className="text-slate-500">{label}</span>
-                              <strong className="text-right text-slate-100">{value}</strong>
+                  </section>
+                  </AccordionSection>
+
+                  <AccordionSection title="Perfil del jugador" subtitle="Lectura individual de temporada" defaultOpen>
+                  <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+                    <div className="rounded-[1.5rem] border border-caudal-electric/15 bg-[linear-gradient(135deg,rgba(61,217,255,0.10),rgba(255,255,255,0.035))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
+                      <p className="text-xs font-black uppercase tracking-[0.22em] text-caudal-electric">Perfil del jugador</p>
+                      <div className="mt-4 space-y-4 text-base leading-7 text-slate-100">
+                        {playerProfileIntro.map((line) => (
+                          <p key={line}>{line}</p>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-5">
+                      <p className="text-xs font-black uppercase tracking-[0.22em] text-white">Forma reciente</p>
+                      <p className="mt-3 text-2xl font-black text-white">{formLabel}</p>
+                      <p className="mt-1 text-sm text-slate-400">{recentRatings.length ? `Nota media últimos partidos: ${avgRecentRating.toFixed(1)}` : 'Sin notas suficientes todavía'}</p>
+                      <div className="mt-5 flex items-center gap-2">
+                        {formDots.map((dotClass, index) => <span key={`${dotClass}-${index}`} className={`h-5 w-5 rounded-full border border-white/10 ${dotClass}`} />)}
+                      </div>
+                    </div>
+                  </section>
+                  </AccordionSection>
+
+                  <AccordionSection title="Fortalezas y mejora" subtitle="Conclusiones principales del informe" defaultOpen>
+                  <section className="grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-[1.5rem] border border-emerald-200/15 bg-emerald-200/[0.055] p-5">
+                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-emerald-100">Fortalezas principales</h3>
+                      {strengthRows.length ? (
+                        <div className="mt-5 space-y-3">
+                          {strengthRows.map((text) => (
+                            <div key={text} className="flex gap-3 rounded-2xl border border-emerald-200/10 bg-black/10 p-3 text-sm leading-6 text-slate-100">
+                              <span className="font-black text-emerald-200">✓</span>
+                              <p>{text}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-5">{renderProfileEmptyState('Fortalezas en construcción.', 'Se necesitan más partidos, notas o acciones revisadas para fijar conclusiones fiables.', 'horizontal')}</div>
+                      )}
+                    </div>
+                    <div className="rounded-[1.5rem] border border-amber-200/15 bg-amber-200/[0.055] p-5">
+                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-amber-100">Áreas de mejora</h3>
+                      {improvementRows.length ? (
+                        <div className="mt-5 space-y-3">
+                          {improvementRows.map((text) => (
+                            <div key={text} className="flex gap-3 rounded-2xl border border-amber-200/10 bg-black/10 p-3 text-sm leading-6 text-slate-100">
+                              <span className="font-black text-amber-200">→</span>
+                              <p>{text}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-5">{renderProfileEmptyState('Sin áreas críticas detectadas.', 'Con más muestra competitiva el informe podrá señalar focos de mejora más concretos.', 'horizontal')}</div>
+                      )}
+                    </div>
+                  </section>
+                  </AccordionSection>
+
+                  <AccordionSection title="Estadísticas principales" subtitle="Datos base del periodo analizado" defaultOpen>
+                  <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-5 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
+                    <div className="flex flex-col gap-3 border-b border-white/10 pb-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="flex flex-wrap gap-2">
+                        {['Todos', 'Liga', 'Copa RFEF', 'Playoff', 'Amistoso'].map((filter) => (
+                          <button key={filter} onClick={() => setPlayerCompetitionFilter(filter)} className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${playerCompetitionFilter === filter ? 'border-caudal-electric/30 bg-caudal-electric/90 text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.07]'}`}>{filter}</button>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {['Todos', 'Local', 'Visitante'].map((filter) => (
+                          <button key={filter} onClick={() => setPlayerVenueFilter(filter)} className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${playerVenueFilter === filter ? 'border-caudal-electric/30 bg-caudal-electric/90 text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.07]'}`}>{filter}</button>
+                        ))}
+                        <button onClick={() => generatePlayerReport(selectedPlayerProfile, aggregate)} className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-white/10">Generar reporte</button>
+                      </div>
+                    </div>
+                    <div className="mt-5 grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Principales</p>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                          {primaryMetrics.map((metric) => (
+                            <div key={metric.label} className="rounded-[1.1rem] border border-white/[0.08] bg-white/[0.045] p-4">
+                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{metric.label}</p>
+                              <p className="mt-2 text-3xl font-black text-white">{metric.value}</p>
+                              <p className="mt-1 text-xs font-semibold text-slate-500">{metric.detail}</p>
                             </div>
                           ))}
                         </div>
                       </div>
-                      <div className={`rounded-[1.25rem] border p-4 ${roleClass}`}>
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] opacity-70">Rol en plantilla</p>
-                        <p className="mt-2 text-2xl font-black">{roleLabel}</p>
-                        <p className="mt-2 text-xs font-semibold opacity-75">{aggregate.starts} titularidades · {aggregate.participation}% participación</p>
-                      </div>
-                      <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4">
-                        <h3 className="text-xs font-black uppercase tracking-[0.18em] text-white">Comparación posicional</h3>
-                        <div className="mt-3 grid gap-2">
-                          {positionalComparisonRows.map(([label, value]) => (
-                            <div key={label} className="flex items-center justify-between rounded-xl bg-white/[0.045] px-3 py-2">
-                              <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">{label}</span>
-                              <strong className="text-sm text-caudal-electric">{value}</strong>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Complementarias</p>
+                        <div className="mt-3 grid grid-cols-5 gap-2">
+                          {secondaryMetrics.map(([label, value, className]) => (
+                            <div key={label} className="rounded-[1rem] bg-white/[0.045] px-2 py-3 text-center">
+                              <p className={`text-2xl font-black ${className}`}>{value}</p>
+                              <p className="mt-1 truncate text-[9px] font-black uppercase tracking-[0.08em] text-slate-500">{label}</p>
                             </div>
                           ))}
                         </div>
@@ -12022,28 +12000,45 @@ function App() {
                   </section>
                   </AccordionSection>
 
-                  <AccordionSection title="Acciones" subtitle="Filtros de ficha y generación de reporte">
-                  <section className="flex flex-col gap-3 border-b border-white/10 pb-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex flex-wrap gap-2">
-                      {['Todos', 'Liga', 'Copa RFEF', 'Playoff', 'Amistoso'].map((filter) => (
-                        <button key={filter} onClick={() => setPlayerCompetitionFilter(filter)} className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${playerCompetitionFilter === filter ? 'border-caudal-electric/30 bg-caudal-electric/90 text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.07]'}`}>{filter}</button>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {['Todos', 'Local', 'Visitante'].map((filter) => (
-                        <button key={filter} onClick={() => setPlayerVenueFilter(filter)} className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${playerVenueFilter === filter ? 'border-caudal-electric/30 bg-caudal-electric/90 text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.07]'}`}>{filter}</button>
-                      ))}
-                      <button onClick={() => generatePlayerReport(selectedPlayerProfile, aggregate)} className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-white/10">Generar reporte</button>
-                    </div>
+                  <AccordionSection title="Evolución temporada" subtitle="Progresión por tramos" defaultOpen>
+                  <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-5 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
+                    {orderedSeasonRows.length ? (
+                      <div className="grid gap-4 lg:grid-cols-3">
+                        {seasonStageRows.map((stage) => (
+                          <div key={stage.label} className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4">
+                            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{stage.label}</p>
+                            <div className="mt-4 h-2 rounded-full bg-white/10">
+                              <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${(stage.minutes / maxSeasonMinutes) * 100}%` }} />
+                            </div>
+                            <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                              <div>
+                                <p className="text-xl font-black text-white">{stage.minutes}'</p>
+                                <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">Min</p>
+                              </div>
+                              <div>
+                                <p className="text-xl font-black text-white">{stage.rating}</p>
+                                <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">Nota</p>
+                              </div>
+                              <div>
+                                <p className="text-xl font-black text-white">{stage.impact}</p>
+                                <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">Impacto</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      renderProfileEmptyState('Evolución pendiente.', 'Cuando haya partidos y valoraciones se mostrará la progresión por tramos de temporada.', 'horizontal')
+                    )}
                   </section>
                   </AccordionSection>
 
-                  <AccordionSection title="Resumen competitivo" subtitle="Eventos rápidos revisados" defaultOpen>
+                  <AccordionSection title="Acciones revisadas" subtitle="Registro de acciones destacadas">
                   <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)] sm:p-5">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Resumen competitivo</h3>
-                        <p className="mt-1 text-sm text-slate-400">Solo eventos revisados en POST y vinculados a este jugador.</p>
+                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Acciones revisadas</h3>
+                        <p className="mt-1 text-sm text-slate-400">Acciones vinculadas al jugador durante el periodo analizado.</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {['Últimos 3 partidos', 'Últimos 5 partidos', 'Temporada completa'].map((filter) => (
@@ -12091,7 +12086,7 @@ function App() {
                       <div className="mt-4">
                         {renderProfileEmptyState(
                           'Todavía no hay suficientes eventos revisados.',
-                          'Revisa POST para alimentar el análisis individual y convertir esta ficha en una lectura útil para el cuerpo técnico.',
+                          'Cuando se registren más acciones, este apartado mostrará patrones de participación y momentos destacados.',
                           'horizontal'
                         )}
                       </div>
@@ -12100,12 +12095,12 @@ function App() {
                   </AccordionSection>
 
                   {prePostRows.length || tacticalTrendRows.length ? (
-                  <AccordionSection title="Plan vs Partido" subtitle="Relación PRE, POST y biblioteca">
+                  <AccordionSection title="Objetivos de partido" subtitle="Relación entre consignas y rendimiento">
                   <section className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
                     {prePostRows.length ? (
                     <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
                       <div className="flex items-center justify-between gap-3">
-                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Consignas cumplidas</h3>
+                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Objetivos trabajados</h3>
                         <span className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-black text-slate-300">{prePostRows.length}</span>
                       </div>
                       <div className="mt-4 space-y-3">
@@ -12124,7 +12119,7 @@ function App() {
                     ) : null}
                     {tacticalTrendRows.length ? (
                     <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.025] p-4">
-                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Biblioteca conectada</h3>
+                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Focos de trabajo</h3>
                       <div className="mt-4 space-y-2">
                         {tacticalTrendRows.map(([title, copy]) => (
                           <div key={title} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
@@ -12139,11 +12134,11 @@ function App() {
                   </AccordionSection>
                   ) : null}
 
-                  <AccordionSection title="Estadísticas" subtitle="Influencia táctica, finalización y sociedades">
+                  <AccordionSection title="Mapa de influencia y sociedades" subtitle="Dónde aparece y con quién conecta">
                   <section className="grid gap-4 xl:grid-cols-[1.18fr_0.82fr]">
                     <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)] sm:p-5">
                       <div className="flex items-center justify-between gap-3">
-                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Análisis de influencia táctica</h3>
+                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Mapa de influencia</h3>
                         <div className="flex flex-wrap gap-2">
                           {['Todos', 'Goles', 'Asistencias'].map((filter) => (
                             <button key={filter} onClick={() => setPlayerInfluenceFilter(filter)} className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${playerInfluenceFilter === filter ? 'border-caudal-electric/30 bg-caudal-electric/90 text-slate-950' : 'border-white/10 bg-white/[0.05] text-slate-300 hover:bg-white/[0.08]'}`}>{filter}</button>
@@ -12162,7 +12157,7 @@ function App() {
                         )}
                         <div className="space-y-4">
                           <div className="rounded-[1.25rem] border border-caudal-electric/15 bg-[#0f1e38]/70 p-4 text-slate-100">
-                            <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Análisis ofensivo</p>
+                            <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Producción ofensiva</p>
                             <div className="mt-3 grid gap-2.5">
                               {[
                                 ['Goles/90', aggregate.goalsPer90, 'text-emerald-300'],
@@ -12287,7 +12282,7 @@ function App() {
                   </section>
                   </AccordionSection>
 
-                  <AccordionSection title="Historial" subtitle="Timeline e historial partido a partido">
+                  <AccordionSection title="Impacto temporal e historial" subtitle="Momentos destacados y partido a partido">
                   <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)] sm:p-5">
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Impacto en el tiempo (0' - 90')</h3>
                         {timelineGroups.length ? (
