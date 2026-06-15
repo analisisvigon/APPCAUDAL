@@ -2668,6 +2668,14 @@ function App() {
   const [playerDossierEditing, setPlayerDossierEditing] = useState({ profile: false, strengths: false, improvements: false });
   const [newStrengthDraft, setNewStrengthDraft] = useState('');
   const [newImprovementDraft, setNewImprovementDraft] = useState('');
+  const [rivalScoutingDrafts, setRivalScoutingDrafts] = useState(() => {
+    try {
+      if (typeof window === 'undefined') return {};
+      return JSON.parse(window.localStorage.getItem('caudal-rival-scouting-drafts-v1') || '{}');
+    } catch {
+      return {};
+    }
+  });
   const [playerProfileData, setPlayerProfileData] = useState(null);
   const [playerProfileLoading, setPlayerProfileLoading] = useState(false);
   const [playerProfileError, setPlayerProfileError] = useState('');
@@ -3578,6 +3586,15 @@ function App() {
       console.warn('No se pudo guardar el dossier local del jugador:', storageError);
     }
   }, [playerDossierDrafts]);
+
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      window.localStorage.setItem('caudal-rival-scouting-drafts-v1', JSON.stringify(rivalScoutingDrafts));
+    } catch (storageError) {
+      console.warn('No se pudo guardar el scouting local del rival:', storageError);
+    }
+  }, [rivalScoutingDrafts]);
 
   useEffect(() => {
     if (activeTab !== 'Inicio') return;
@@ -10012,6 +10029,12 @@ function App() {
       if (teamError) throw teamError;
       const teamId = editingTeamId || data.id;
       saveStoredRivalTacticalIdentity(teamId, teamFormState);
+      if (!editingTeamId && rivalScoutingDrafts.__new) {
+        setRivalScoutingDrafts((current) => {
+          const { __new, ...rest } = current;
+          return { ...rest, [teamId]: __new };
+        });
+      }
 
       const { error: deletePlayersError } = await supabase.from("jugadores_rivales").delete().eq("equipo_rival_id", teamId);
       if (deletePlayersError) throw deletePlayersError;
@@ -10042,13 +10065,6 @@ function App() {
     }
     await loadTeams();
     if (selectedTeamId === team.id) setSelectedTeamId(null);
-  };
-
-  const handleSaveTeams = () => {
-    loadTeams().catch((loadError) => {
-      console.error('Error refrescando equipos rivales desde Supabase:', loadError);
-      setSaveStatus(loadError.message || 'No se pudieron cargar los equipos.');
-    });
   };
 
   const openMatchForm = (match = null, section = 'PRE') => {
@@ -16767,10 +16783,7 @@ function App() {
 
       {isTeamPanelOpen ? (() => {
         const formSquad = dedupeRivalPlayers(teamFormState.squad.map(normalizeSquadEntry));
-        const starterCount = formSquad.filter((player) => player.role === 'Titular').length;
-        const reserveCount = formSquad.filter((player) => player.role !== 'Titular').length;
         const keyCount = formSquad.filter((player) => player.isKey).length;
-        const alertCount = formSquad.filter((player) => player.yellowRisk || player.suspended || player.injured).length;
         const currentTeamForForm = teams.find((team) => team.id === editingTeamId) || null;
         const formTeamName = cleanTeamDisplayName(teamFormState.name || currentTeamForForm?.name || 'Rival sin nombre');
         const relatedMatches = matches.filter((match) => normalizePlayerIdentityName(match.opponent) === normalizePlayerIdentityName(formTeamName));
@@ -16778,13 +16791,50 @@ function App() {
         const hasSquad = formSquad.length > 0;
         const hasSystem = Boolean(teamFormState.system);
         const hasHistory = relatedMatches.length > 0;
-        const formCompletionCount = [hasIdentity, hasSquad, hasSystem, hasHistory].filter(Boolean).length;
-        const formCompletion = formCompletionCount >= 4 ? 'COMPLETO' : formCompletionCount >= 2 ? 'PARCIAL' : 'SIN ANALIZAR';
+        const formScoutingKey = editingTeamId || '__new';
+        const formScoutingDraft = rivalScoutingDrafts[formScoutingKey] || {};
+        const updateRivalScoutingDraft = (fields) => {
+          setRivalScoutingDrafts((current) => ({
+            ...current,
+            [formScoutingKey]: {
+              ...(current[formScoutingKey] || {}),
+              ...fields,
+              updatedAt: new Date().toISOString(),
+            },
+          }));
+        };
+        const matchKeys = Array.isArray(formScoutingDraft.matchKeys) && formScoutingDraft.matchKeys.length
+          ? formScoutingDraft.matchKeys
+          : [
+            `Controlar ${teamFormState.mainThreat}.`,
+            `Atacar ${teamFormState.detectedWeakness}.`,
+            `Evitar pérdidas ante presión de ${teamFormState.pressureType}.`,
+          ];
+        const abpOptions = ['Muy fuerte', 'Fuerte', 'Normal', 'Débil'];
+        const offensiveSetPieceLevel = formScoutingDraft.offensiveSetPieceLevel || 'Normal';
+        const defensiveSetPieceLevel = formScoutingDraft.defensiveSetPieceLevel || 'Normal';
+        const planVsRival = formScoutingDraft.planVsRival || '';
+        const abpSpecialists = formSquad.filter((player) => player.isKey && /central|delantero|medio|lateral|extremo/i.test(player.position || '')).length;
+        const threatPlayers = formSquad.filter((player) => player.isKey).slice(0, 4);
+        const formCompletionItems = [
+          hasIdentity,
+          hasSquad,
+          hasSystem,
+          hasHistory,
+          Boolean(teamFormState.strongSide && teamFormState.mainThreat && teamFormState.detectedWeakness),
+          matchKeys.some((item) => String(item || '').trim()),
+          Boolean(planVsRival.trim()),
+          Boolean(offensiveSetPieceLevel && defensiveSetPieceLevel),
+        ];
+        const formCompletionCount = formCompletionItems.filter(Boolean).length;
+        const formCompletionPercent = Math.round((formCompletionCount / formCompletionItems.length) * 100);
+        const formCompletion = formCompletionPercent >= 75 ? 'COMPLETO' : formCompletionPercent >= 40 ? 'PARCIAL' : 'SIN ANALIZAR';
         const formCompletionClass = formCompletion === 'COMPLETO'
           ? 'border-emerald-200/20 bg-emerald-200/10 text-emerald-100'
           : formCompletion === 'PARCIAL'
             ? 'border-amber-200/20 bg-amber-200/10 text-amber-100'
-            : 'border-white/10 bg-white/[0.05] text-slate-300';
+            : 'border-red-200/20 bg-red-300/10 text-red-100';
+        const rivalAutoSummary = `Equipo que prioriza ataques por ${teamFormState.strongSide}, bloque ${teamFormState.blockHeight} y presión de ${teamFormState.pressureType}. Su principal amenaza son ${teamFormState.mainThreat}. Ritmo ofensivo ${teamFormState.attackingRhythm}, con foco en ${teamFormState.offensiveFocus}. Presenta vulnerabilidad en ${teamFormState.detectedWeakness}.`;
         return (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black/50 px-4 py-6 backdrop-blur-sm sm:px-6">
           <div className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-caudal-950 shadow-[0_24px_90px_rgba(0,0,0,0.45)]">
@@ -16807,7 +16857,7 @@ function App() {
 
             <form onSubmit={handleTeamSubmit} noValidate className="min-h-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
               <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/74 p-4 shadow-[0_16px_50px_rgba(0,0,0,0.18)]">
-                <div className="grid gap-4 lg:grid-cols-[180px_1fr_auto] lg:items-center">
+                <div className="grid gap-4 lg:grid-cols-[180px_1fr_220px] lg:items-center">
                   <div className="flex h-36 w-36 items-center justify-center rounded-[1.5rem] border border-white/10 bg-white/[0.07] p-3 shadow-[0_16px_40px_rgba(0,0,0,0.22)]">
                     <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl bg-white p-3 text-lg font-black text-caudal-950">
                       {teamFormState.crest ? <img src={teamFormState.crest} alt="" className="h-full w-full object-contain" /> : formTeamName.split(' ').map((part) => part[0]).join('').slice(0, 3)}
@@ -16818,22 +16868,75 @@ function App() {
                     <h2 className="mt-3 truncate text-3xl font-black uppercase text-white">{formTeamName}</h2>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-300">
                       <span className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-1.5">{teamFormState.stadium || 'Estadio pendiente'}</span>
-                      <span className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-1.5">Sistema {teamFormState.system || 'pendiente'}</span>
                       <span className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-1.5">{relatedMatches.length} partidos registrados</span>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4 lg:grid-cols-2">
-                    {[
-                      ['Jugadores', formSquad.length],
-                      ['Titulares', starterCount],
-                      ['Reservas', reserveCount],
-                      ['Alertas', alertCount],
-                    ].map(([label, value]) => (
-                      <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2">
-                        <p className="text-lg font-black text-white">{value}</p>
-                        <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+                  <div className="rounded-[1.25rem] border border-caudal-electric/20 bg-caudal-electric/[0.075] p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric/80">Sistema</p>
+                    <p className="mt-1 text-5xl font-black leading-none text-white">{teamFormState.system || '---'}</p>
+                    <div className="mt-4 flex items-center justify-between gap-3">
+                      <span className={`rounded-lg border px-2 py-1 text-[10px] font-black ${formCompletionClass}`}>{formCompletionPercent}%</span>
+                      <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Scouting</span>
+                    </div>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+                      <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${formCompletionPercent}%` }} />
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
+                <div className="rounded-[1.35rem] border border-caudal-electric/15 bg-caudal-electric/[0.055] p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Resumen automático del rival</p>
+                  <p className="mt-3 text-sm leading-7 text-slate-100">{rivalAutoSummary}</p>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    {Object.keys(tacticalIdentityOptions).map((field) => (
+                      <div key={field} className="rounded-2xl border border-white/10 bg-black/15 px-3 py-2">
+                        <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{tacticalIdentityLabels[field]}</p>
+                        <p className="mt-1 text-sm font-black text-white">{teamFormState[field]}</p>
                       </div>
                     ))}
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Claves del partido</p>
+                    <div className="mt-3 space-y-2">
+                      {[0, 1, 2].map((index) => (
+                        <input
+                          key={index}
+                          value={matchKeys[index] || ''}
+                          onChange={(event) => updateRivalScoutingDraft({ matchKeys: [0, 1, 2].map((itemIndex) => itemIndex === index ? event.target.value : (matchKeys[itemIndex] || '')) })}
+                          className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                          placeholder={`Clave ${index + 1}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Plan vs rival</p>
+                    <textarea
+                      value={planVsRival}
+                      onChange={(event) => updateRivalScoutingDraft({ planVsRival: event.target.value })}
+                      className="mt-3 min-h-[96px] w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm leading-6 text-white placeholder:text-slate-500"
+                      placeholder="Atraer por dentro, atacar espalda lateral, evitar pérdidas interiores..."
+                    />
+                  </div>
+                  <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Evaluación ABP</p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      {[
+                        ['offensiveSetPieceLevel', 'ABP ofensiva', offensiveSetPieceLevel],
+                        ['defensiveSetPieceLevel', 'ABP defensiva', defensiveSetPieceLevel],
+                      ].map(([field, label, value]) => (
+                        <label key={field} className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                          <span>{label}</span>
+                          <select value={value} onChange={(event) => updateRivalScoutingDraft({ [field]: event.target.value })} className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm normal-case tracking-normal text-white">
+                            {abpOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+                          </select>
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </section>
@@ -16949,23 +17052,26 @@ function App() {
                     ))}
                   </div>
                 ) : (
-                  <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     {Object.keys(tacticalIdentityOptions).map((field) => (
-                      <div key={field} className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2">
+                      <div key={field} className="rounded-[1.1rem] border border-white/10 bg-white/[0.045] px-4 py-3">
                         <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{tacticalIdentityLabels[field]}</p>
-                        <p className="mt-1 truncate text-sm font-bold text-slate-200">{teamFormState[field]}</p>
+                        <p className="mt-2 truncate text-lg font-black text-white">{teamFormState[field]}</p>
                       </div>
                     ))}
                   </div>
                 )}
-                <div className="mt-4 flex flex-wrap gap-1.5">
+                <div className="mt-4 flex flex-wrap gap-2">
                   {[
                     ['Lado', teamFormState.strongSide],
                     ['Amenaza', teamFormState.mainThreat],
                     ['Bloque', teamFormState.blockHeight],
                     ['Presión', teamFormState.pressureType],
+                    ['Ritmo', teamFormState.attackingRhythm],
+                    ['Foco', teamFormState.offensiveFocus],
+                    ['Debilidad', teamFormState.detectedWeakness],
                   ].map(([label, value]) => (
-                    <span key={label} className="rounded-xl border border-white/10 bg-white/[0.045] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-300">
+                    <span key={label} className="rounded-xl border border-white/10 bg-white/[0.045] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] text-slate-300">
                       {label}: <span className="text-caudal-electric/85">{value}</span>
                     </span>
                   ))}
@@ -16982,6 +17088,29 @@ function App() {
                     Añadir jugador
                   </button>
                 </div>
+
+                <div className="grid gap-2 md:grid-cols-4">
+                  {[
+                    ['Jugadores', formSquad.length],
+                    ['Destacados', keyCount],
+                    ['Especialistas ABP', abpSpecialists],
+                    ['Amenazas', threatPlayers.length],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2">
+                      <p className="text-xl font-black text-white">{value}</p>
+                      <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+                    </div>
+                  ))}
+                </div>
+                {threatPlayers.length ? (
+                  <div className="flex flex-wrap gap-2">
+                    {threatPlayers.map((player) => (
+                      <span key={player.id || player.name} className="rounded-xl border border-red-200/15 bg-red-300/[0.08] px-3 py-1.5 text-xs font-bold text-red-100">
+                        {displayPlayerName(player)}{player.position ? ` · ${player.position}` : ''}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
 
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {teamFormState.squad.length > 0 ? (
