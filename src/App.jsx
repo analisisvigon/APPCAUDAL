@@ -8388,6 +8388,25 @@ function App() {
       .filter((match) => normalizePlayerIdentityName(match.opponent) === teamName)
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
     const playedMatches = relatedMatches.filter((match) => match.status === 'Finalizado' || (match.statsGoalEvents || []).length || match.homeScore || match.awayScore);
+    const latestScoutingMatch = relatedMatches.find((match) =>
+      match.preRivalReportText ||
+      match.preRivalStyle ||
+      match.preRivalStrengths ||
+      match.preRivalWeaknesses ||
+      match.preRivalOffensiveKeyPlayers ||
+      match.preRivalDangerZones ||
+      match.preRivalCornersFor ||
+      match.preRivalCornersAgainst
+    ) || relatedMatches[0] || {};
+    const firstMatchValue = (...fields) => {
+      for (const match of relatedMatches) {
+        for (const field of fields) {
+          const value = match?.[field];
+          if (Array.isArray(value) ? value.length : String(value || '').trim()) return value;
+        }
+      }
+      return '';
+    };
     const balance = playedMatches.reduce((acc, match) => {
       const score = getMatchScoreData(match);
       acc.goalsFor += score.caudalGoals;
@@ -8401,18 +8420,51 @@ function App() {
     const daysAgo = latestMatch?.date
       ? Math.max(0, Math.round((Date.now() - new Date(latestMatch.date).getTime()) / 86400000))
       : null;
+    const rivalPlayers = dedupeRivalPlayers(team.squad || []);
+    const keyPlayers = rivalPlayers.filter((player) => player.isKey);
     const hasSystem = Boolean(team.system);
-    const hasPlayers = dedupeRivalPlayers(team.squad || []).length > 0;
+    const hasIdentity = Boolean(team.name && (team.crest || team.stadium || team.sourceUrl));
+    const hasPlayers = rivalPlayers.length > 0;
+    const hasLineup = safeArray(team.lineup).some((player) => player?.name) || rivalPlayers.some((player) => player.role === 'Titular');
+    const hasKeyPlayers = keyPlayers.length > 0;
     const hasSetPieces = relatedMatches.some((match) => match.preRivalCornersFor || match.preRivalCornersAgainst || match.preRivalWideFreeKicks || match.preRivalSetPieceTakers);
     const hasReport = relatedMatches.some((match) => match.preRivalReportText || match.preRivalStyle || match.preRivalStrengths || match.preRivalWeaknesses);
-    const completedItems = [hasSystem, hasPlayers, hasSetPieces, hasReport].filter(Boolean).length;
-    const completion = completedItems >= 4 ? 'COMPLETO' : completedItems >= 2 ? 'PARCIAL' : 'SIN ANALIZAR';
-    const completionClass = completion === 'COMPLETO'
+    const hasHistory = playedMatches.length > 0;
+    const completionItems = [
+      ['Identidad', hasIdentity],
+      ['Sistema', hasSystem],
+      ['Plantilla', hasPlayers],
+      ['Once / roles', hasLineup],
+      ['Amenazas', hasKeyPlayers || Boolean(team.mainThreat) || Boolean(firstMatchValue('preRivalOffensiveKeyPlayers'))],
+      ['Informe', hasReport],
+      ['ABP', hasSetPieces],
+      ['Historial', hasHistory],
+    ];
+    const completedItems = completionItems.filter(([, ok]) => ok).length;
+    const completionPercent = Math.round((completedItems / completionItems.length) * 100);
+    const completion = completionPercent >= 75 ? 'COMPLETADO' : completionPercent >= 40 ? 'PARCIAL' : 'PENDIENTE';
+    const completionClass = completion === 'COMPLETADO'
       ? 'border-emerald-200/20 bg-emerald-200/10 text-emerald-100'
       : completion === 'PARCIAL'
         ? 'border-amber-200/20 bg-amber-200/10 text-amber-100'
-        : 'border-white/10 bg-white/[0.05] text-slate-300';
-    const scoutingSource = latestMatch || {};
+        : 'border-red-200/20 bg-red-300/10 text-red-100';
+    const trafficClass = completionPercent >= 75
+      ? 'border-emerald-200/20 bg-emerald-200/10 text-emerald-100'
+      : completionPercent >= 40
+        ? 'border-amber-200/20 bg-amber-200/10 text-amber-100'
+        : 'border-red-200/20 bg-red-300/10 text-red-100';
+    const trafficIcon = completionPercent >= 75 ? '●' : completionPercent >= 40 ? '●' : '●';
+    const scoutingSource = latestScoutingMatch || {};
+    const strengthsText = firstMatchValue('preRivalStrengths') || `Amenaza principal: ${team.mainThreat || 'por definir'}`;
+    const weaknessesText = firstMatchValue('preRivalWeaknesses', 'preRivalSpacesAllowed') || `Espacio a atacar: ${team.detectedWeakness || 'por definir'}`;
+    const patternText = firstMatchValue('preRivalStyle', 'preRivalProgression', 'preRivalAfterRecovery') || `${team.offensiveBehavior || 'directo'} · ritmo ${team.attackingRhythm || 'medio'} · foco ${team.offensiveFocus || 'espalda lateral'}`;
+    const threatRows = [
+      ...keyPlayers.slice(0, 2).map((player) => player.position ? `${displayPlayerName(player)} · ${player.position}` : displayPlayerName(player)),
+      firstMatchValue('preRivalOffensiveKeyPlayers'),
+      team.mainThreat ? `Amenaza: ${team.mainThreat}` : null,
+      firstMatchValue('preRivalDangerZones') ? `Zona: ${firstMatchValue('preRivalDangerZones')}` : null,
+      hasSetPieces ? 'ABP registrada' : null,
+    ].filter(Boolean).slice(0, 3);
     const tacticalLines = [
       team.system ? `Sistema: ${team.system}` : 'Sistema pendiente',
       scoutingSource.preRivalDefensiveBlock ? `Bloque ${String(scoutingSource.preRivalDefensiveBlock).toLowerCase()}` : 'Bloque por definir',
@@ -8423,6 +8475,22 @@ function App() {
       const score = getMatchScoreData(match);
       return score.caudalGoals > score.rivalGoals ? 'V' : score.caudalGoals < score.rivalGoals ? 'D' : 'E';
     });
+    const recentMatches = playedMatches.slice(0, 3).map((match) => {
+      const score = getMatchScoreData(match);
+      return {
+        id: match.id,
+        label: `${matchDisplayDate(match.date)} · ${score.caudalGoals}-${score.rivalGoals}`,
+        result: score.caudalGoals > score.rivalGoals ? 'V' : score.caudalGoals < score.rivalGoals ? 'D' : 'E',
+      };
+    });
+    const trend = recentResults.length
+      ? recentResults.filter((result) => result === 'V').length >= 2
+        ? 'Caudal domina el cruce reciente'
+        : recentResults.filter((result) => result === 'D').length >= 2
+          ? 'Rival llega con tendencia favorable'
+          : 'Cruce equilibrado'
+      : 'Sin tendencia';
+    const missingItems = completionItems.filter(([, ok]) => !ok).map(([label]) => label).slice(0, 3);
     return {
       relatedMatches,
       playedMatches,
@@ -8431,14 +8499,21 @@ function App() {
       lastAnalysisLabel: daysAgo === null ? 'Sin análisis reciente' : daysAgo === 0 ? 'Último análisis: hoy' : `Último análisis: hace ${daysAgo} días`,
       completion,
       completionClass,
-      checks: [
-        ['Sistema cargado', hasSystem],
-        ['Jugadores cargados', hasPlayers],
-        ['ABP registrada', hasSetPieces],
-        ['Informe rival preparado', hasReport],
+      completionPercent,
+      trafficClass,
+      trafficIcon,
+      checks: completionItems,
+      missingItems,
+      threatRows,
+      quickRead: [
+        ['Fortalezas', strengthsText],
+        ['Debilidades', weaknessesText],
+        ['Patrones', patternText],
       ],
       tacticalLines,
       recentResults,
+      recentMatches,
+      trend,
     };
   };
 
@@ -12833,12 +12908,6 @@ function App() {
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   <button
-                    onClick={handleSaveTeams}
-                    className="inline-flex min-h-[40px] items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10"
-                  >
-                    Guardar equipos
-                  </button>
-                  <button
                     onClick={() => openTeamForm(null)}
                     className="inline-flex min-h-[40px] items-center justify-center rounded-2xl bg-caudal-electric/90 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-caudal-electric"
                   >
@@ -12850,6 +12919,41 @@ function App() {
               {teamsLoading ? <p className="mt-3 text-sm text-slate-400">Cargando equipos...</p> : null}
               {teamsError ? <p className="mt-3 text-sm text-red-200">{teamsError}</p> : null}
             </section>
+
+            {!selectedTeam && teams.length ? (() => {
+              const rivalProfiles = teams.map((team) => getRivalCardProfile(team));
+              const averageCompletion = Math.round(rivalProfiles.reduce((sum, profile) => sum + profile.completionPercent, 0) / Math.max(1, rivalProfiles.length));
+              const completed = rivalProfiles.filter((profile) => profile.completionPercent >= 75).length;
+              const partial = rivalProfiles.filter((profile) => profile.completionPercent >= 40 && profile.completionPercent < 75).length;
+              const pending = rivalProfiles.filter((profile) => profile.completionPercent < 40).length;
+              const nextMissing = rivalProfiles.flatMap((profile) => profile.missingItems).slice(0, 4);
+              return (
+                <section className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]">
+                  <div className="rounded-[1.25rem] border border-caudal-electric/15 bg-caudal-electric/[0.06] p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Scouting global</p>
+                    <div className="mt-3 flex items-end justify-between gap-3">
+                      <p className="text-4xl font-black text-white">{averageCompletion}%</p>
+                      <div className="flex gap-1.5 text-[10px] font-black">
+                        <span className="rounded-lg border border-emerald-200/20 bg-emerald-200/10 px-2 py-1 text-emerald-100">● {completed}</span>
+                        <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-amber-100">● {partial}</span>
+                        <span className="rounded-lg border border-red-200/20 bg-red-300/10 px-2 py-1 text-red-100">● {pending}</span>
+                      </div>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+                      <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${averageCompletion}%` }} />
+                    </div>
+                  </div>
+                  <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Siguiente trabajo pendiente</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {nextMissing.length ? nextMissing.map((item, index) => (
+                        <span key={`${item}-${index}`} className="rounded-xl border border-white/10 bg-white/[0.045] px-3 py-2 text-xs font-bold text-slate-300">{item}</span>
+                      )) : <span className="rounded-xl border border-emerald-200/20 bg-emerald-200/10 px-3 py-2 text-xs font-bold text-emerald-100">Scouting principal completo</span>}
+                    </div>
+                  </div>
+                </section>
+              );
+            })() : null}
 
             {selectedTeam ? (
               <section className="space-y-5">
@@ -13331,7 +13435,7 @@ function App() {
                     <article
                       key={team.id}
                       onClick={() => setSelectedTeamId(team.id)}
-                      className="group relative flex h-full min-h-[318px] cursor-pointer flex-col overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.82] p-4 shadow-[0_14px_40px_rgba(0,0,0,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c]"
+                      className="group relative flex h-full min-h-[500px] cursor-pointer flex-col overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.84] p-4 shadow-[0_14px_40px_rgba(0,0,0,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c]"
                     >
                       <div className="pointer-events-none absolute inset-0 opacity-70" style={{ background: `radial-gradient(circle at 18% 10%, ${accent}24, transparent 30%), linear-gradient(135deg, rgba(255,255,255,0.045), transparent 46%)` }} />
                       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:42px_42px] opacity-25" />
@@ -13339,65 +13443,102 @@ function App() {
                       <div className="relative flex gap-3 border-b border-white/10 pb-3">
                         <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[1.25rem] border border-white/10 bg-white/[0.07] p-2 shadow-[0_12px_28px_rgba(0,0,0,0.20)]">
                           <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-white p-2 text-sm font-black text-caudal-950">
-                            {team.crest ? (
-                              <img src={team.crest} alt={`Escudo de ${team.name}`} className="h-full w-full object-contain" />
-                            ) : (
-                              <span>{team.name.split(' ').map((part) => part[0]).join('').slice(0, 3)}</span>
-                            )}
+                            {team.crest ? <img src={team.crest} alt={`Escudo de ${team.name}`} className="h-full w-full object-contain" /> : <span>{team.name.split(' ').map((part) => part[0]).join('').slice(0, 3)}</span>}
                           </div>
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <h3 className="truncate text-lg font-black uppercase text-white">{cleanTeamDisplayName(team.name)}</h3>
-                              <p className="mt-1 truncate text-xs font-bold uppercase tracking-[0.12em] text-slate-400">{team.stadium || 'Competición por definir'}</p>
+                              <p className="mt-1 truncate text-xs font-bold uppercase tracking-[0.12em] text-slate-400">{team.stadium || 'Estadio por definir'}</p>
                             </div>
-                            <span className={`shrink-0 rounded-lg border px-2 py-0.5 text-[9px] font-black tracking-[0.08em] ${profile.completionClass}`}>
-                              {profile.completion}
+                            <span className={`shrink-0 rounded-lg border px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] ${profile.trafficClass}`}>
+                              {profile.completionPercent}% scouting
                             </span>
                           </div>
+                          <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+                            <div className={`h-full rounded-full ${profile.completionPercent >= 75 ? 'bg-emerald-300' : profile.completionPercent >= 40 ? 'bg-amber-200' : 'bg-red-300'}`} style={{ width: `${profile.completionPercent}%` }} />
+                          </div>
                           <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-bold text-slate-300">
-                            <span className="rounded-xl border border-white/10 bg-white/[0.05] px-2 py-1">{profile.playedMatches.length} partidos analizados</span>
+                            <span className={`rounded-xl border px-2 py-1 ${profile.completionClass}`}>{profile.trafficIcon} {profile.completion}</span>
                             <span className="rounded-xl border border-white/10 bg-white/[0.05] px-2 py-1">{profile.lastAnalysisLabel}</span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="relative mt-3 space-y-2">
-                        {profile.tacticalLines.map((line, index) => {
-                          const [label, value = ''] = line.includes(':') ? line.split(/:\s*/) : [index === 0 ? 'Sistema' : index === 1 ? 'Bloque' : 'Salida', line];
-                          const icon = index === 0 ? 'SYS' : index === 1 ? 'ALT' : 'SAL';
-                          return (
-                            <div key={line} className="flex items-center gap-2 text-sm">
-                              <span className="w-8 shrink-0 rounded-lg border border-white/10 bg-white/[0.04] px-1.5 py-1 text-center text-[9px] font-black text-slate-500">{icon}</span>
-                              <span className="shrink-0 text-xs font-black uppercase tracking-[0.12em] text-slate-500">{label}</span>
-                              <span className="min-w-0 truncate font-semibold text-slate-200">{value}</span>
-                            </div>
-                          );
-                        })}
+                      <div className="relative mt-3 grid grid-cols-[1fr_0.9fr] gap-3">
+                        <div className="rounded-[1.15rem] border border-caudal-electric/20 bg-caudal-electric/[0.075] p-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric/80">Sistema principal</p>
+                          <p className="mt-1 text-4xl font-black leading-none text-white">{team.system || '---'}</p>
+                        </div>
+                        <div className="rounded-[1.15rem] border border-white/10 bg-white/[0.035] p-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Historial vs Caudal</p>
+                          <p className="mt-1 text-xl font-black text-white">{profile.balance.wins}V · {profile.balance.draws}E · {profile.balance.losses}D</p>
+                          <p className="mt-1 text-xs font-bold text-slate-400">GF {profile.balance.goalsFor} · GC {profile.balance.goalsAgainst}</p>
+                          <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-caudal-electric">{profile.trend}</p>
+                        </div>
                       </div>
 
                       <div className="relative mt-3 grid grid-cols-4 gap-1.5 border-y border-white/10 py-2">
                         {profile.checks.map(([label, ok]) => (
-                          <span key={label} className="text-center text-[10px] font-bold text-slate-400">
-                            <span className={`block text-xs font-black ${ok ? 'text-emerald-100' : 'text-slate-600'}`}>{ok ? 'OK' : '--'}</span>
-                            <span className="mt-0.5 block truncate">{label.replace(' cargado', '').replace(' registrada', '').replace(' preparado', '')}</span>
+                          <span key={label} className="text-center text-[10px] font-bold text-slate-400" title={ok ? 'Completado' : 'Pendiente'}>
+                            <span className={`block text-base font-black leading-none ${ok ? 'text-emerald-100' : 'text-red-200'}`}>●</span>
+                            <span className="mt-0.5 block truncate">{label}</span>
                           </span>
                         ))}
                       </div>
 
-                      <div className="relative mt-3 rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.055] px-3 py-2.5 shadow-[inset_0_0_24px_rgba(61,217,255,0.045)]">
+                      <div className="relative mt-3 rounded-2xl border border-red-200/15 bg-red-300/[0.055] p-3">
                         <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-caudal-electric/80">vs Caudal</p>
-                            <p className="mt-1 text-lg font-black text-white">{profile.balance.wins}V · {profile.balance.draws}E · {profile.balance.losses}D</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xs font-bold text-slate-300">{profile.balance.goalsFor}-{profile.balance.goalsAgainst} goles</p>
-                            <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">{lastResult ? `Último: ${lastResult}` : 'Sin historial'}</p>
-                          </div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-red-100">Amenazas principales</p>
+                          <span className="rounded-lg bg-white/[0.06] px-2 py-0.5 text-[10px] font-black text-slate-300">{profile.threatRows.length || 0}</span>
+                        </div>
+                        <div className="mt-2 space-y-1.5">
+                          {profile.threatRows.length ? profile.threatRows.map((threat) => (
+                            <p key={threat} className="line-clamp-1 rounded-xl bg-black/12 px-2 py-1.5 text-xs font-bold text-slate-100">{threat}</p>
+                          )) : (
+                            <p className="rounded-xl border border-dashed border-white/10 px-2 py-2 text-xs text-slate-500">Pendiente marcar jugadores clave, zonas o amenaza principal.</p>
+                          )}
                         </div>
                       </div>
+
+                      <div className="relative mt-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Lectura rápida</p>
+                        <div className="mt-2 space-y-1.5">
+                          {profile.quickRead.map(([label, value]) => (
+                            <div key={label} className="grid grid-cols-[74px_1fr] gap-2 text-xs">
+                              <span className="font-black uppercase tracking-[0.1em] text-slate-500">{label}</span>
+                              <span className="line-clamp-1 font-semibold text-slate-200">{value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="relative mt-3 grid grid-cols-[1fr_auto] gap-3 rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.055] px-3 py-2.5">
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-caudal-electric/80">Últimos resultados</p>
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {profile.recentMatches.length ? profile.recentMatches.map((match) => (
+                              <span key={match.id} className={`rounded-lg px-2 py-1 text-[10px] font-black ${match.result === 'V' ? 'bg-emerald-200/15 text-emerald-100' : match.result === 'D' ? 'bg-red-200/15 text-red-100' : 'bg-amber-200/15 text-amber-100'}`}>
+                                {match.label}
+                              </span>
+                            )) : <span className="text-xs text-slate-500">Sin partidos registrados</span>}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-bold text-slate-300">{lastResult ? `Último: ${lastResult}` : 'Sin historial'}</p>
+                          <p className="mt-1 text-[10px] text-slate-500">{profile.playedMatches.length} partidos</p>
+                        </div>
+                      </div>
+
+                      {profile.missingItems.length ? (
+                        <div className="relative mt-3 flex flex-wrap gap-1.5">
+                          <span className="rounded-lg border border-amber-200/15 bg-amber-200/[0.08] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-amber-100">Falta</span>
+                          {profile.missingItems.map((item) => (
+                            <span key={item} className="rounded-lg border border-white/10 bg-white/[0.035] px-2 py-1 text-[10px] font-bold text-slate-400">{item}</span>
+                          ))}
+                        </div>
+                      ) : null}
 
                       <div className="relative mt-auto grid grid-cols-2 gap-1.5 pt-3 sm:grid-cols-4">
                         <button type="button" onClick={(event) => { event.stopPropagation(); setSelectedTeamId(team.id); }} className="min-h-[34px] rounded-xl border border-white/10 bg-white/[0.065] px-2 py-1.5 text-xs font-bold text-white transition hover:bg-white/[0.12]">Ver rival</button>
