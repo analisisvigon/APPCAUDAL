@@ -748,6 +748,7 @@ const normalizeSupabaseRivalPlayer = (player) => ({
   yellowRisk: Boolean(player.yellow_risk ?? player.yellowRisk),
   suspended: Boolean(player.suspended),
   injured: Boolean(player.injured),
+  captain: Boolean(player.captain),
   doubtful: Boolean(player.doubtful ?? player.physical_doubt ?? player.physicalDoubt),
 });
 
@@ -1860,8 +1861,9 @@ const normalizeSquadEntry = (entry) => {
       position: '',
       age: '',
       role: 'Reserva',
-      isKey: false,
-      yellowRisk: false,
+    isKey: false,
+    yellowRisk: false,
+    captain: false,
     suspended: false,
     injured: false,
     doubtful: false,
@@ -1880,6 +1882,7 @@ const normalizeSquadEntry = (entry) => {
     role: entry.role ?? 'Reserva',
     isKey: Boolean(entry.isKey),
     yellowRisk: Boolean(entry.yellowRisk),
+    captain: Boolean(entry.captain),
     suspended: Boolean(entry.suspended),
     injured: Boolean(entry.injured),
     doubtful: Boolean(entry.doubtful ?? entry.physicalDoubt),
@@ -1913,6 +1916,7 @@ const createBlankTeamPlayer = () => ({
   role: 'Reserva',
   isKey: false,
   yellowRisk: false,
+  captain: false,
   suspended: false,
   injured: false,
   doubtful: false,
@@ -2673,6 +2677,14 @@ function App() {
     try {
       if (typeof window === 'undefined') return {};
       return JSON.parse(window.localStorage.getItem('caudal-rival-scouting-drafts-v1') || '{}');
+    } catch {
+      return {};
+    }
+  });
+  const [rivalPlayerFlags, setRivalPlayerFlags] = useState(() => {
+    try {
+      if (typeof window === 'undefined') return {};
+      return JSON.parse(window.localStorage.getItem('caudal-rival-player-flags-v1') || '{}');
     } catch {
       return {};
     }
@@ -3596,6 +3608,15 @@ function App() {
       console.warn('No se pudo guardar el scouting local del rival:', storageError);
     }
   }, [rivalScoutingDrafts]);
+
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      window.localStorage.setItem('caudal-rival-player-flags-v1', JSON.stringify(rivalPlayerFlags));
+    } catch (storageError) {
+      console.warn('No se pudieron guardar marcas locales de rival:', storageError);
+    }
+  }, [rivalPlayerFlags]);
 
   useEffect(() => {
     if (activeTab !== 'Inicio') return;
@@ -9811,7 +9832,10 @@ function App() {
         kitColor: team.kitColor ?? '#ef233c',
         system: team.system,
         ...getTeamTacticalIdentity(team),
-        squad: team.squad.map(normalizeSquadEntry),
+        squad: team.squad.map((entry) => {
+          const player = normalizeSquadEntry(entry);
+          return { ...player, captain: Boolean(getRivalPlayerFlags(team.id, player.name).captain || player.captain) };
+        }),
       });
     } else {
       setEditingTeamId(null);
@@ -9917,7 +9941,7 @@ function App() {
 
   const handleSelectedTeamPlayerDelete = async (player) => {
     if (!selectedTeam || !player?.name) return;
-    const confirmed = window.confirm('¿Seguro que quieres eliminar este jugador?');
+    const confirmed = window.confirm('¿Eliminar este jugador rival?');
     if (!confirmed) return;
     const { error: deleteError } = await supabase
       .from("jugadores_rivales")
@@ -9929,7 +9953,28 @@ function App() {
       setSaveStatus(deleteError.message || 'No se pudo eliminar el jugador rival.');
       return;
     }
+    setRivalPlayerFlags((current) => {
+      const { [getRivalPlayerFlagKey(selectedTeam.id, player.name)]: _removed, ...rest } = current;
+      return rest;
+    });
     await loadTeams();
+  };
+
+  const getRivalPlayerFlagKey = (teamId, playerName) => `${teamId || 'team'}::${normalizePlayerIdentityName(playerName)}`;
+  const getRivalPlayerFlags = (teamId, playerName) => rivalPlayerFlags[getRivalPlayerFlagKey(teamId, playerName)] || {};
+  const updateRivalPlayerFlags = (teamId, playerName, patch) => {
+    const key = getRivalPlayerFlagKey(teamId, playerName);
+    setRivalPlayerFlags((current) => ({ ...current, [key]: { ...(current[key] || {}), ...patch } }));
+  };
+  const getRivalPlayerStatusIcons = (teamId, player) => {
+    const flags = getRivalPlayerFlags(teamId, player.name);
+    return [
+      player.isKey ? ['⭐', 'Jugador estrella', 'bg-amber-200 text-slate-950'] : null,
+      flags.captain || player.captain ? ['©', 'Capitán', 'bg-white text-slate-950'] : null,
+      player.injured ? ['🚑', 'Lesionado', 'bg-red-200 text-slate-950'] : null,
+      player.suspended ? ['🟥', 'Sancionado / expulsado', 'bg-red-500 text-white'] : null,
+      player.yellowRisk ? ['🟨', '5 amarillas / riesgo sanción', 'bg-yellow-200 text-slate-950'] : null,
+    ].filter(Boolean);
   };
 
   const handleAddTeamPlayer = () => {
@@ -10048,6 +10093,9 @@ function App() {
       if (teamError) throw teamError;
       const teamId = editingTeamId || data.id;
       saveStoredRivalTacticalIdentity(teamId, teamFormState);
+      squad.forEach((player) => {
+        if (player.name) updateRivalPlayerFlags(teamId, player.name, { captain: Boolean(player.captain) });
+      });
       if (!editingTeamId && rivalScoutingDrafts.__new) {
         setRivalScoutingDrafts((current) => {
           const { __new, ...rest } = current;
@@ -10347,10 +10395,13 @@ function App() {
 
   const arrangeSelectedTeam = () => {
     if (!selectedTeam) return;
+    const hasManualLineup = safeArray(selectedTeam.lineup).length > 0;
+    if (hasManualLineup && !window.confirm('¿Sobrescribir la disposición actual de titulares?')) return;
     const squad = selectedTeam.squad.map(normalizeSquadEntry);
     const starters = squad.filter((player) => player.role === 'Titular');
     const prioritized = starters.length > 0 ? starters : squad.slice(0, 11);
-    const fieldCoordinates = getFormationCoordinates(selectedTeam.system);
+    const system = selectedTeam.system || '4-4-2';
+    const fieldCoordinates = getFormationCoordinates(system);
     const lineup = prioritized.slice(0, 11).map((player, index) => ({ ...player, role: 'Titular', slot: index, ...fieldCoordinates[index] }));
 
     updateTeamLineup(selectedTeam.id, () => lineup);
@@ -12968,6 +13019,37 @@ function App() {
                 const lastScore = lastMatch ? getMatchScoreData(lastMatch) : null;
                 const lastMatchLabel = lastScore ? `${matchDisplayDate(lastMatch.date)} · ${lastScore.caudalGoals}-${lastScore.rivalGoals}` : 'Sin enfrentamientos';
                 const rivalPlayers = dedupeRivalPlayers(selectedTeam.squad || []);
+                const starterNames = new Set(selectedTeamFieldLineup.map((player) => normalizePlayerIdentityName(player.name)));
+                const reservePlayers = rivalPlayers.filter((player) => !starterNames.has(normalizePlayerIdentityName(player.name)) && player.role !== 'Titular');
+                const positionMatchesSlot = (position, role) => {
+                  const p = normalizePlayerIdentityName(position);
+                  const r = normalizePlayerIdentityName(role);
+                  if (!p) return false;
+                  if (/portero|por|gk/.test(p)) return /portero/.test(r);
+                  if (/lateral|carrilero|li|ld/.test(p)) return /lateral|carrilero/.test(r);
+                  if (/central|dfc/.test(p)) return /central/.test(r);
+                  if (/pivote|mediocentro|medio|interior|mc|mcd/.test(p)) return /pivote|medio|interior|mediocentro/.test(r);
+                  if (/extremo|banda|ed|ei/.test(p)) return /extremo/.test(r);
+                  if (/media punta|mediapunta|mp/.test(p)) return /mediapunta/.test(r);
+                  if (/delantero|punta|dc/.test(p)) return /delantero/.test(r);
+                  return r.includes(p) || p.includes(r);
+                };
+                const reserveFieldPlayers = reservePlayers.map((player, index) => {
+                  const slots = getFormationSlots(selectedTeam.system || '4-4-2');
+                  const slotIndex = Math.max(0, slots.findIndex((slot) => positionMatchesSlot(player.position, slot.role)));
+                  const slot = slots[slotIndex >= 0 ? slotIndex : index % Math.max(1, slots.length)] || { x: 50, y: 50 };
+                  const clusterIndex = reservePlayers.slice(0, index).filter((item) => {
+                    const previousSlotIndex = Math.max(0, slots.findIndex((slotItem) => positionMatchesSlot(item.position, slotItem.role)));
+                    return previousSlotIndex === slotIndex;
+                  }).length;
+                  const offsets = [[-7, 8], [7, 8], [-10, 14], [10, 14], [0, 16]];
+                  const [dx, dy] = offsets[clusterIndex % offsets.length];
+                  return {
+                    ...player,
+                    x: Math.max(8, Math.min(92, Number(slot.x || 50) + dx)),
+                    y: Math.max(8, Math.min(94, Number(slot.y || 50) + dy)),
+                  };
+                });
                 return (
                   <section className="space-y-4">
                     <div className="flex flex-col gap-3 rounded-[1.35rem] border border-white/10 bg-[#091428]/85 p-4 shadow-[0_16px_48px_rgba(0,0,0,0.18)] sm:flex-row sm:items-center sm:justify-between">
@@ -13053,6 +13135,8 @@ function App() {
                                   if (selectedTeamPlacementPlayerName) {
                                     setTeamFieldEditMode(true);
                                     assignSelectedTeamPlayerToSlot(slotIndex);
+                                  } else if (slotPlayer) {
+                                    handleSelectedTeamPlayerChange(slotPlayer.name, 'isKey', !slotPlayer.isKey);
                                   }
                                 }}
                                 onKeyDown={(event) => {
@@ -13065,18 +13149,22 @@ function App() {
                                   handleDropOnLineupSlot(slotIndex);
                                 }}
                                 className={`absolute flex min-h-12 min-w-20 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-2xl border px-2 py-1 text-center transition ${
-                                  slotPlayer ? 'border-caudal-electric/20 bg-slate-950/40 text-white shadow-[0_10px_26px_rgba(0,0,0,0.28)]' : 'border-dashed border-white/20 bg-white/[0.035] text-white/45'
+                                  slotPlayer ? `${slotPlayer.isKey ? 'border-amber-200/70 bg-amber-200/[0.10]' : 'border-caudal-electric/20 bg-slate-950/40'} text-white shadow-[0_10px_26px_rgba(0,0,0,0.28)]` : 'border-dashed border-white/20 bg-white/[0.035] text-white/45'
                                 }`}
                                 style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
                                 title={slotPlayer ? `${slotRole}: ${slotPlayer.name}` : slotRole}
                               >
                                 {slotPlayer ? (
                                   <>
+                                    <span className="absolute -top-2 left-1/2 flex -translate-x-1/2 gap-0.5">
+                                      {getRivalPlayerStatusIcons(selectedTeam.id, slotPlayer).map(([icon, title, className]) => (
+                                        <span key={title} title={title} className={`flex h-4 min-w-4 items-center justify-center rounded px-1 text-[9px] font-black leading-none ${className}`}>{icon}</span>
+                                      ))}
+                                    </span>
                                     <span className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/[0.08] text-xs font-black">
                                       {slotPlayer.image ? <img src={slotPlayer.image} alt={slotPlayer.name} className="h-full w-full object-cover" /> : slotPlayer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
                                     </span>
                                     <span className="mt-1 max-w-24 truncate text-[10px] font-black">{displayPlayerName(slotPlayer)}</span>
-                                    {slotPlayer.captain ? <span className="mt-0.5 rounded-md bg-amber-200 px-1.5 py-0.5 text-[8px] font-black text-slate-950">CAP</span> : null}
                                   </>
                                 ) : (
                                   <>
@@ -13087,6 +13175,35 @@ function App() {
                               </div>
                             );
                           })}
+                          {reserveFieldPlayers.map((player) => (
+                            <button
+                              key={`reserve-${player.jugadorRivalId || player.id || player.name}`}
+                              type="button"
+                              draggable
+                              onDragStart={() => {
+                                setTeamFieldEditMode(true);
+                                setDraggedPlayer(player);
+                              }}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setSelectedTeamPlacementPlayerName(player.name);
+                                setTeamFieldEditMode(true);
+                              }}
+                              className={`absolute z-20 flex min-h-10 min-w-16 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-xl border px-1.5 py-1 text-center opacity-80 transition hover:opacity-100 ${player.isKey ? 'border-amber-200/50 bg-amber-200/[0.08]' : 'border-white/15 bg-slate-950/45'}`}
+                              style={{ left: `${player.x}%`, top: `${player.y}%` }}
+                              title={`Reserva: ${player.name}`}
+                            >
+                              <span className="absolute -top-2 left-1/2 flex -translate-x-1/2 gap-0.5">
+                                {getRivalPlayerStatusIcons(selectedTeam.id, player).slice(0, 3).map(([icon, title, className]) => (
+                                  <span key={title} title={title} className={`flex h-3.5 min-w-3.5 items-center justify-center rounded px-0.5 text-[8px] font-black leading-none ${className}`}>{icon}</span>
+                                ))}
+                              </span>
+                              <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/[0.08] text-[10px] font-black text-white">
+                                {player.image ? <img src={player.image} alt={player.name} className="h-full w-full object-cover" /> : player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
+                              </span>
+                              <span className="mt-0.5 max-w-20 truncate text-[9px] font-bold text-slate-200">{displayPlayerName(player)}</span>
+                            </button>
+                          ))}
                         </div>
                       </div>
 
@@ -13152,6 +13269,12 @@ function App() {
                               <span className="block truncate text-sm font-black text-white">{displayPlayerName(player)}</span>
                               <span className="block truncate text-xs font-semibold text-slate-500">
                                 {player.number ? `#${player.number} · ` : ''}{player.age ? `${player.age} años · ` : ''}{player.position || 'Sin posición'}
+                              </span>
+                              <span className="mt-1 flex flex-wrap items-center gap-1">
+                                <span className="rounded-md border border-white/10 bg-white/[0.05] px-1.5 py-0.5 text-[9px] font-black uppercase text-slate-300">{player.role || 'Reserva'}</span>
+                                {getRivalPlayerStatusIcons(selectedTeam.id, player).map(([icon, title, className]) => (
+                                  <span key={title} title={title} className={`flex h-4 min-w-4 items-center justify-center rounded px-1 text-[9px] font-black leading-none ${className}`}>{icon}</span>
+                                ))}
                               </span>
                             </span>
                             <span className="flex shrink-0 gap-1">
@@ -17370,9 +17493,9 @@ function App() {
                 <div className="grid gap-2 md:grid-cols-4">
                   {[
                     ['Jugadores', formSquad.length],
-                    ['Destacados', keyCount],
-                    ['Especialistas ABP', abpSpecialists],
-                    ['Amenazas', threatPlayers.length],
+                    ['Titulares', formSquad.filter((player) => player.role === 'Titular').length],
+                    ['Reservas', formSquad.filter((player) => player.role !== 'Titular').length],
+                    ['Estrella', keyCount],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2">
                       <p className="text-xl font-black text-white">{value}</p>
@@ -17380,29 +17503,17 @@ function App() {
                     </div>
                   ))}
                 </div>
-                {threatPlayers.length ? (
-                  <div className="flex flex-wrap gap-2">
-                    {threatPlayers.map((player) => (
-                      <span key={player.id || player.name} className="rounded-xl border border-red-200/15 bg-red-300/[0.08] px-3 py-1.5 text-xs font-bold text-red-100">
-                        {displayPlayerName(player)}{player.position ? ` · ${player.position}` : ''}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {teamFormState.squad.length > 0 ? (
                     teamFormState.squad.map((entry, index) => {
                       const player = normalizeSquadEntry(entry);
                       const isEditingPlayer = teamEditMode && editingTeamPlayerIndex === index;
-                      const isAttackingThreat = player.isKey || /delantero|extremo|mediapunta|punta/i.test(player.position || '');
-                      const isSetPieceSpecialist = player.isKey && /central|delantero|medio|lateral/i.test(player.position || '');
-                      const scoutingBadges = [
-                        player.isKey ? ['Clave', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
-                        isAttackingThreat ? ['Amenaza', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
-                        isSetPieceSpecialist ? ['Especialista ABP', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
-                        player.yellowRisk ? ['Amonestado', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
-                        player.suspended ? ['Riesgo roja', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
+                      const playerFlags = getRivalPlayerFlags(formScoutingKey, player.name);
+                      const playerStatusChips = [
+                        player.isKey ? ['Estrella', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
+                        player.captain || playerFlags.captain ? ['Capitán', 'border-white/15 bg-white/[0.08] text-white'] : null,
+                        player.yellowRisk ? ['5 amarillas', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
+                        player.suspended ? ['Sancionado', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
                         player.injured ? ['Lesionado', 'border-white/10 bg-white/[0.06] text-slate-100'] : null,
                       ].filter(Boolean);
                       return (
@@ -17442,25 +17553,26 @@ function App() {
                           </div> : null}
                           <div className="mt-3 flex flex-wrap gap-1.5">
                             {isEditingPlayer ? [
-                              ['isKey', 'Destacado', 'text-amber-100 border-amber-200/20 bg-amber-200/10'],
-                              ['yellowRisk', 'Amonestado', 'text-amber-100 border-amber-200/20 bg-amber-200/10'],
-                              ['suspended', 'Riesgo roja', 'text-red-100 border-red-200/20 bg-red-300/10'],
+                              ['isKey', 'Jugador estrella', 'text-amber-100 border-amber-200/20 bg-amber-200/10'],
+                              ['captain', 'Capitán', 'text-white border-white/15 bg-white/[0.08]'],
+                              ['yellowRisk', '5 amarillas', 'text-amber-100 border-amber-200/20 bg-amber-200/10'],
+                              ['suspended', 'Sancionado', 'text-red-100 border-red-200/20 bg-red-300/10'],
                               ['injured', 'Lesionado', 'text-slate-100 border-white/10 bg-white/[0.06]'],
                             ].map(([field, label, className]) => (
                               <label key={field} className={`inline-flex items-center gap-1.5 rounded-xl border px-2 py-1 text-[10px] font-bold ${className}`}>
                                 <input type="checkbox" checked={Boolean(player[field])} onChange={(event) => handleTeamPlayerChange(index, field, event.target.checked)} className="h-3 w-3 accent-[#4f8cff]" />
                                 {label}
                               </label>
-                            )) : scoutingBadges.length ? scoutingBadges.map(([label, className]) => (
+                            )) : playerStatusChips.length ? playerStatusChips.map(([label, className]) => (
                               <span key={label} className={`rounded-xl border px-2 py-1 text-[10px] font-bold ${className}`}>{label}</span>
                             )) : <span className="rounded-xl border border-white/10 bg-white/[0.035] px-2 py-1 text-[10px] font-bold text-slate-500">Sin alertas</span>}
                           </div>
                           {!isEditingPlayer ? (
                             <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
                               <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{player.role || 'Reserva'}</span>
-                              <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{isAttackingThreat ? 'Amenaza' : 'Seguimiento'}</span>
-                              <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{isSetPieceSpecialist ? 'ABP' : 'ABP pendiente'}</span>
-                              <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{player.yellowRisk || player.suspended || player.injured ? 'Riesgo' : 'Sin riesgo'}</span>
+                              <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{player.position || 'Sin posición'}</span>
+                              <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{player.number ? `#${player.number}` : 'Sin dorsal'}</span>
+                              <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{player.yellowRisk || player.suspended || player.injured ? 'No disponible' : 'Disponible'}</span>
                             </div>
                           ) : null}
                           <div className="mt-3 flex justify-end gap-2">
