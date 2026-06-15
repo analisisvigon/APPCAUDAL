@@ -299,7 +299,7 @@ const emptyTeamForm = {
   crest: '',
   stadium: '',
   kitColor: '#ef233c',
-  system: '4-4-2',
+  system: '',
   strongSide: 'interior',
   mainThreat: 'transición',
   blockHeight: 'medio',
@@ -772,7 +772,7 @@ const createRivalTeamPayload = (teamFormState, importedData) => ({
   crest: importedData?.crest || teamFormState.crest || '',
   stadium: importedData?.stadium || teamFormState.stadium.trim(),
   kit_color: importedData?.kitColor || teamFormState.kitColor || '#ef233c',
-  system: teamFormState.system || '4-4-2',
+  system: teamFormState.system || '',
 });
 
 const sanitizeStorageName = (value) =>
@@ -2550,6 +2550,7 @@ function App() {
   const [quickEventSavingIds, setQuickEventSavingIds] = useState([]);
   const [pendingQuickEventDeleteId, setPendingQuickEventDeleteId] = useState(null);
   const [pendingPostEventDeleteId, setPendingPostEventDeleteId] = useState(null);
+  const [pendingTeamDelete, setPendingTeamDelete] = useState(null);
   const [postLoading, setPostLoading] = useState(false);
   const [postError, setPostError] = useState('');
   const [editingId, setEditingId] = useState(null);
@@ -9827,6 +9828,7 @@ function App() {
     setEditingTeamId(null);
     setTeamEditMode(false);
     setEditingTeamPlayerIndex(null);
+    setPendingTeamDelete(null);
     setImportStatus('');
   };
 
@@ -10055,8 +10057,6 @@ function App() {
   };
 
   const handleTeamDelete = async (team) => {
-    const confirmed = window.confirm(`¿Eliminar a ${team.name}? Esta acción no se puede deshacer.`);
-    if (!confirmed) return;
     const { error: deleteError } = await supabase.from("equipos_rivales").delete().eq("id", team.id);
     if (deleteError) {
       console.error('Error eliminando equipo rival en Supabase:', deleteError);
@@ -10065,6 +10065,12 @@ function App() {
     }
     await loadTeams();
     if (selectedTeamId === team.id) setSelectedTeamId(null);
+    setRivalScoutingDrafts((current) => {
+      const { [team.id]: _removed, ...rest } = current;
+      return rest;
+    });
+    setPendingTeamDelete(null);
+    closeTeamForm();
   };
 
   const openMatchForm = (match = null, section = 'PRE') => {
@@ -16846,6 +16852,11 @@ function App() {
               </div>
               <div className="flex items-center gap-2">
                 {editingTeamId ? (
+                  <button type="button" onClick={() => currentTeamForForm ? setPendingTeamDelete(currentTeamForForm) : null} className="rounded-2xl border border-red-300/15 bg-red-500/10 px-4 py-2 text-sm font-bold text-red-100 transition hover:bg-red-500/18">
+                    Eliminar rival
+                  </button>
+                ) : null}
+                {editingTeamId ? (
                   <button type="button" onClick={() => { setTeamEditMode((current) => !current); setEditingTeamPlayerIndex(null); }} className={`rounded-2xl border px-4 py-2 text-sm font-bold transition ${teamEditMode ? 'border-caudal-electric/30 bg-caudal-electric/90 text-slate-950' : 'border-white/10 bg-white/[0.06] text-white hover:bg-white/10'}`}>
                     {teamEditMode ? 'Modo visual' : 'Editar ficha'}
                   </button>
@@ -16856,56 +16867,98 @@ function App() {
               </div>
             </div>
 
+            {pendingTeamDelete ? (
+              <div className="border-b border-red-300/15 bg-red-500/[0.08] px-5 py-4 sm:px-6">
+                <div className="flex flex-col gap-3 rounded-2xl border border-red-300/15 bg-[#120b12]/80 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-black text-red-100">¿Seguro que quieres eliminar este rival?</p>
+                    <p className="mt-1 text-xs font-semibold text-red-100/60">Se eliminará la ficha rival, su plantilla asociada y el scouting guardado para este rival.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setPendingTeamDelete(null)} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-slate-100 transition hover:bg-white/10">
+                      Cancelar
+                    </button>
+                    <button type="button" onClick={() => handleTeamDelete(pendingTeamDelete)} className="rounded-2xl bg-red-400 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-red-300">
+                      Eliminar rival
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             <form onSubmit={handleTeamSubmit} noValidate className="min-h-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
               {isQuickCreateTeam ? (
                 <>
-                  <section className="grid gap-4 xl:grid-cols-[1fr_0.86fr]">
+                  <section className="grid gap-4 xl:grid-cols-[1fr_0.74fr]">
                     <div className="rounded-[1.5rem] border border-caudal-electric/15 bg-[#091428]/88 p-5 shadow-[0_22px_70px_rgba(0,0,0,0.32)]">
-                      <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
-                        <div className="flex h-36 w-36 shrink-0 items-center justify-center rounded-[1.5rem] border border-white/10 bg-white/[0.07] p-3 shadow-[0_16px_40px_rgba(0,0,0,0.22)]">
-                          <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl bg-white p-3 text-lg font-black text-caudal-950">
-                            {teamFormState.crest ? <img src={teamFormState.crest} alt="" className="h-full w-full object-contain" /> : formTeamName.split(' ').map((part) => part[0]).join('').slice(0, 3)}
-                          </div>
-                        </div>
-                        <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
-                          <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 sm:col-span-2">
+                      <div className="grid gap-5 lg:grid-cols-[1fr_220px] lg:items-start">
+                        <div className="space-y-4">
+                          <label className="space-y-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                             <span>Nombre rival</span>
-                            <input required name="name" value={teamFormState.name} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-base font-black normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Ej. Real Avilés" />
+                            <input required name="name" value={teamFormState.name} onChange={handleTeamChange} className="w-full rounded-2xl border border-caudal-electric/20 bg-white/[0.06] px-5 py-4 text-xl font-black normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Ej. Club Siero" />
                           </label>
-                          <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
-                            <span>Sistema opcional</span>
+                          <label className="space-y-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                            <span>Sistema</span>
                             <select name="system" value={teamFormState.system} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner">
-                              <option value="">Sin definir</option>
+                              <option value="">Seleccionar sistema (opcional)</option>
                               {gameSystems.map((system) => <option key={system} value={system}>{system}</option>)}
                             </select>
                           </label>
-                          <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
-                            <span>Escudo</span>
-                            <input name="crest" type="password" value={teamFormState.crest} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="URL de imagen" />
-                          </label>
-                          <div className="sm:col-span-2">
-                            <input ref={teamCrestInputRef} type="file" accept="image/*" onChange={handleTeamCrestFileChange} disabled={isUploadingTeamCrest} className="hidden" />
-                            <button type="button" onClick={() => teamCrestInputRef.current?.click()} disabled={isUploadingTeamCrest} className="inline-flex min-h-[40px] items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60">
-                              {isUploadingTeamCrest ? 'Subiendo escudo...' : 'Subir escudo'}
-                            </button>
+                          <div className="rounded-2xl border border-white/10 bg-black/15 p-4">
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Vista previa del rival</p>
+                            <div className="mt-3 flex items-center gap-3">
+                              <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-white p-2 text-sm font-black text-caudal-950">
+                                {teamFormState.crest ? <img src={teamFormState.crest} alt="" className="h-full w-full object-contain" /> : 'CLUB'}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="truncate text-base font-black uppercase text-white">{teamFormState.name || 'Rival sin nombre'}</p>
+                                <p className="mt-1 text-xs font-bold text-slate-500">{teamFormState.system || 'Sistema pendiente'} · Sin analizar</p>
+                              </div>
+                            </div>
                           </div>
+                        </div>
+
+                        <div>
+                          <p className="mb-2 text-xs font-black uppercase tracking-[0.16em] text-slate-500">Escudo del rival</p>
+                          <input ref={teamCrestInputRef} type="file" accept="image/*" onChange={handleTeamCrestFileChange} disabled={isUploadingTeamCrest} className="hidden" />
+                          <button type="button" onClick={() => teamCrestInputRef.current?.click()} disabled={isUploadingTeamCrest} className="group flex min-h-[220px] w-full flex-col items-center justify-center rounded-[1.5rem] border border-dashed border-caudal-electric/35 bg-caudal-electric/[0.055] p-4 text-center transition hover:border-caudal-electric/70 hover:bg-caudal-electric/[0.09] disabled:cursor-not-allowed disabled:opacity-60">
+                            {teamFormState.crest ? (
+                              <>
+                                <span className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl bg-white p-3 shadow-[0_16px_38px_rgba(0,0,0,0.28)]">
+                                  <img src={teamFormState.crest} alt="" className="h-full w-full object-contain" />
+                                </span>
+                                <span className="mt-3 text-sm font-black text-white">{isUploadingTeamCrest ? 'Subiendo...' : 'Cambiar escudo'}</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.08] text-3xl font-black text-caudal-electric">+</span>
+                                <span className="mt-3 text-sm font-black text-white">{isUploadingTeamCrest ? 'Subiendo...' : 'Subir escudo'}</span>
+                                <span className="mt-1 text-xs font-bold text-slate-500">Sin escudo</span>
+                              </>
+                            )}
+                          </button>
+                          <label className="mt-3 block space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                            <span>O pegar URL de imagen</span>
+                            <input name="crest" type="password" value={teamFormState.crest} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="URL del escudo" />
+                          </label>
                         </div>
                       </div>
                     </div>
 
-                    <aside className="rounded-[1.5rem] border border-white/10 bg-white/[0.035] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.24)]">
-                      <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Importar rival</p>
+                    <aside className="rounded-[1.5rem] border border-white/10 bg-white/[0.026] p-5 shadow-[0_14px_42px_rgba(0,0,0,0.2)]">
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-300">Importar datos del rival <span className="text-slate-600">(opcional)</span></p>
+                      <p className="mt-2 text-sm leading-5 text-slate-500">Si pegas una URL válida se intentarán importar automáticamente datos del rival.</p>
                       <div className="mt-4 space-y-3">
                         <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                           <span>URL Besoccer</span>
-                          <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? '' : teamFormState.sourceUrl} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquí el enlace" />
+                          <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? '' : teamFormState.sourceUrl} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquí el enlace del rival" />
                         </label>
                         <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                           <span>URL Transfermarkt</span>
-                          <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? teamFormState.sourceUrl : ''} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquí el enlace" />
+                          <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? teamFormState.sourceUrl : ''} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquí el enlace del rival" />
                         </label>
-                        <button type="button" onClick={handleImportSquad} className="inline-flex w-full min-h-[46px] items-center justify-center rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-[#7aacff]">
-                          Importar
+                        <button type="button" onClick={handleImportSquad} className="inline-flex w-full min-h-[44px] items-center justify-center rounded-2xl border border-caudal-electric/20 bg-caudal-electric/[0.12] px-5 py-3 text-xs font-black uppercase tracking-[0.12em] text-caudal-electric transition hover:bg-caudal-electric/20">
+                          Importar datos
                         </button>
                         {importStatus ? <p className="rounded-2xl border border-caudal-electric/20 bg-caudal-electric/10 px-3 py-2 text-sm text-caudal-electric">{importStatus}</p> : null}
                       </div>
