@@ -12925,8 +12925,8 @@ function App() {
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">Equipos / Rivales</p>
-                  <h2 className="mt-1 text-xl font-black text-white sm:text-2xl">Scouting competitivo</h2>
-                  <p className="mt-0.5 text-sm leading-5 text-slate-400">Perfiles reutilizables para PRE, partido y análisis rival.</p>
+                  <h2 className="mt-1 text-xl font-black text-white sm:text-2xl">Base de datos de rivales</h2>
+                  <p className="mt-0.5 text-sm leading-5 text-slate-400">Agenda rápida de equipos para consultar historial y crear partidos.</p>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   <button
@@ -12942,43 +12942,82 @@ function App() {
               {teamsError ? <p className="mt-3 text-sm text-red-200">{teamsError}</p> : null}
             </section>
 
-            {!selectedTeam && teams.length ? (() => {
-              const rivalProfiles = teams.map((team) => getRivalCardProfile(team));
-              const averageCompletion = Math.round(rivalProfiles.reduce((sum, profile) => sum + profile.completionPercent, 0) / Math.max(1, rivalProfiles.length));
-              const completed = rivalProfiles.filter((profile) => profile.completionPercent >= 75).length;
-              const partial = rivalProfiles.filter((profile) => profile.completionPercent >= 40 && profile.completionPercent < 75).length;
-              const pending = rivalProfiles.filter((profile) => profile.completionPercent < 40).length;
-              const nextMissing = rivalProfiles.flatMap((profile) => profile.missingItems).slice(0, 4);
-              return (
-                <section className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]">
-                  <div className="rounded-[1.25rem] border border-caudal-electric/15 bg-caudal-electric/[0.06] p-4">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Scouting global</p>
-                    <div className="mt-3 flex items-end justify-between gap-3">
-                      <p className="text-4xl font-black text-white">{averageCompletion}%</p>
-                      <div className="flex gap-1.5 text-[10px] font-black">
-                        <span className="rounded-lg border border-emerald-200/20 bg-emerald-200/10 px-2 py-1 text-emerald-100">● {completed}</span>
-                        <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-amber-100">● {partial}</span>
-                        <span className="rounded-lg border border-red-200/20 bg-red-300/10 px-2 py-1 text-red-100">● {pending}</span>
+            {selectedTeam ? (
+              <>
+              {(() => {
+                const profile = getRivalCardProfile(selectedTeam);
+                const lastResult = profile.recentResults[0] || null;
+                const lastMatch = profile.playedMatches[0] || profile.latestMatch || null;
+                const lastScore = lastMatch ? getMatchScoreData(lastMatch) : null;
+                const lastMatchLabel = lastScore ? `${matchDisplayDate(lastMatch.date)} · ${lastScore.caudalGoals}-${lastScore.rivalGoals}` : 'Sin enfrentamientos';
+                const rivalPlayers = dedupeRivalPlayers(selectedTeam.squad || []);
+                return (
+                  <section className="space-y-4">
+                    <div className="flex flex-col gap-3 rounded-[1.35rem] border border-white/10 bg-[#091428]/85 p-4 shadow-[0_16px_48px_rgba(0,0,0,0.18)] sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-center gap-4">
+                        <button type="button" onClick={() => setSelectedTeamId(null)} className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-2 text-sm font-bold text-slate-200 transition hover:bg-white/10">
+                          Volver
+                        </button>
+                        <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white p-2 text-base font-black text-caudal-950">
+                          {selectedTeam.crest ? <img src={selectedTeam.crest} alt={`Escudo de ${selectedTeam.name}`} className="h-full w-full object-contain" /> : selectedTeam.name.split(' ').map((part) => part[0]).join('').slice(0, 3)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Rival</p>
+                          <h3 className="truncate text-2xl font-black uppercase text-white">{cleanTeamDisplayName(selectedTeam.name)}</h3>
+                          <p className="mt-1 text-sm font-bold text-slate-400">{selectedTeam.system || 'Sistema pendiente'}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => openTeamForm(selectedTeam)} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10">Editar</button>
+                        <button type="button" onClick={() => setActiveTab('Partidos')} className="rounded-2xl border border-caudal-electric/20 bg-caudal-electric/10 px-4 py-2 text-sm font-bold text-caudal-electric transition hover:bg-caudal-electric/15">Crear PRE</button>
+                        <button type="button" onClick={() => { if (window.confirm('¿Seguro que quieres eliminar este rival?')) handleTeamDelete(selectedTeam); }} className="rounded-2xl border border-red-300/15 bg-red-500/10 px-4 py-2 text-sm font-bold text-red-100 transition hover:bg-red-500/15">Eliminar rival</button>
                       </div>
                     </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-                      <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${averageCompletion}%` }} />
-                    </div>
-                  </div>
-                  <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Siguiente trabajo pendiente</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {nextMissing.length ? nextMissing.map((item, index) => (
-                        <span key={`${item}-${index}`} className="rounded-xl border border-white/10 bg-white/[0.045] px-3 py-2 text-xs font-bold text-slate-300">{item}</span>
-                      )) : <span className="rounded-xl border border-emerald-200/20 bg-emerald-200/10 px-3 py-2 text-xs font-bold text-emerald-100">Scouting principal completo</span>}
-                    </div>
-                  </div>
-                </section>
-              );
-            })() : null}
 
-            {selectedTeam ? (
-              <section className="space-y-5">
+                    <div className="grid gap-3 md:grid-cols-4">
+                      {[
+                        ['Sistema habitual', selectedTeam.system || 'Pendiente'],
+                        ['Historial vs Caudal', `${profile.balance.wins}V · ${profile.balance.draws}E · ${profile.balance.losses}D`],
+                        ['Último enfrentamiento', lastMatchLabel],
+                        ['Última fecha analizada', profile.lastAnalysisLabel],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded-[1.15rem] border border-white/10 bg-white/[0.035] p-4">
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                          <p className="mt-2 truncate text-lg font-black text-white">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <section className="rounded-[1.35rem] border border-white/10 bg-[#091428]/72 p-4">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Plantilla registrada</p>
+                          <h4 className="mt-1 text-lg font-black text-white">{rivalPlayers.length} jugadores</h4>
+                        </div>
+                        <p className="text-sm font-bold text-slate-500">GF {profile.balance.goalsFor} · GC {profile.balance.goalsAgainst}{lastResult ? ` · Último ${lastResult}` : ''}</p>
+                      </div>
+                      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {rivalPlayers.length ? rivalPlayers.map((player) => (
+                          <div key={player.jugadorRivalId || player.id || player.name} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/[0.07] text-xs font-black text-white">
+                              {player.image ? <img src={player.image} alt={player.name} className="h-full w-full object-cover" /> : player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-black text-white">{displayPlayerName(player)}</span>
+                              <span className="block truncate text-xs font-semibold text-slate-500">{player.position || 'Sin posición'}{player.number ? ` · #${player.number}` : ''}</span>
+                            </span>
+                          </div>
+                        )) : (
+                          <div className="rounded-2xl border border-dashed border-white/10 px-4 py-5 text-sm text-slate-500">
+                            Sin plantilla registrada.
+                          </div>
+                        )}
+                      </div>
+                    </section>
+                  </section>
+                );
+              })()}
+              <section className="hidden">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <button
                     onClick={() => setSelectedTeamId(null)}
@@ -13447,126 +13486,74 @@ function App() {
                   </div>
                 </div>
               </section>
+              </>
             ) : teams.length > 0 ? (
               <div className="grid auto-rows-fr gap-3 md:grid-cols-2 xl:grid-cols-3 min-[1700px]:grid-cols-4">
                 {teams.map((team) => {
                   const profile = getRivalCardProfile(team);
                   const accent = team.kitColor || '#4f8cff';
                   const lastResult = profile.recentResults[0] || null;
+                  const lastMatch = profile.playedMatches[0] || profile.latestMatch || null;
+                  const lastScore = lastMatch ? getMatchScoreData(lastMatch) : null;
+                  const lastMatchLabel = lastScore ? `${matchDisplayDate(lastMatch.date)} · ${lastScore.caudalGoals}-${lastScore.rivalGoals}` : 'Sin enfrentamientos';
                   return (
                     <article
                       key={team.id}
                       onClick={() => setSelectedTeamId(team.id)}
-                      className="group relative flex h-full min-h-[500px] cursor-pointer flex-col overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.84] p-4 shadow-[0_14px_40px_rgba(0,0,0,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c]"
+                      className="group relative flex h-full min-h-[310px] cursor-pointer flex-col overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.84] p-4 shadow-[0_14px_40px_rgba(0,0,0,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c]"
                     >
-                      <div className="pointer-events-none absolute inset-0 opacity-70" style={{ background: `radial-gradient(circle at 18% 10%, ${accent}24, transparent 30%), linear-gradient(135deg, rgba(255,255,255,0.045), transparent 46%)` }} />
-                      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:42px_42px] opacity-25" />
+                      <div className="pointer-events-none absolute inset-0 opacity-60" style={{ background: `radial-gradient(circle at 18% 8%, ${accent}22, transparent 32%), linear-gradient(135deg, rgba(255,255,255,0.04), transparent 48%)` }} />
                       <div className="pointer-events-none absolute inset-x-4 bottom-0 h-px bg-caudal-electric/25" />
-                      <div className="relative flex gap-3 border-b border-white/10 pb-3">
-                        <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[1.25rem] border border-white/10 bg-white/[0.07] p-2 shadow-[0_12px_28px_rgba(0,0,0,0.20)]">
-                          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-white p-2 text-sm font-black text-caudal-950">
+                      <div className="relative flex gap-4 border-b border-white/10 pb-4">
+                        <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-[1.25rem] border border-white/10 bg-white/[0.07] p-2 shadow-[0_12px_28px_rgba(0,0,0,0.20)]">
+                          <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl bg-white p-2 text-base font-black text-caudal-950">
                             {team.crest ? <img src={team.crest} alt={`Escudo de ${team.name}`} className="h-full w-full object-contain" /> : <span>{team.name.split(' ').map((part) => part[0]).join('').slice(0, 3)}</span>}
                           </div>
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <h3 className="truncate text-lg font-black uppercase text-white">{cleanTeamDisplayName(team.name)}</h3>
-                              <p className="mt-1 truncate text-xs font-bold uppercase tracking-[0.12em] text-slate-400">{team.stadium || 'Estadio por definir'}</p>
-                            </div>
-                            <span className={`shrink-0 rounded-lg border px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] ${profile.trafficClass}`}>
-                              {profile.completionPercent}% scouting
-                            </span>
-                          </div>
-                          <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
-                            <div className={`h-full rounded-full ${profile.completionPercent >= 75 ? 'bg-emerald-300' : profile.completionPercent >= 40 ? 'bg-amber-200' : 'bg-red-300'}`} style={{ width: `${profile.completionPercent}%` }} />
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-bold text-slate-300">
-                            <span className={`rounded-xl border px-2 py-1 ${profile.completionClass}`}>{profile.trafficIcon} {profile.completion}</span>
-                            <span className="rounded-xl border border-white/10 bg-white/[0.05] px-2 py-1">{profile.lastAnalysisLabel}</span>
+                          <h3 className="truncate text-xl font-black uppercase text-white">{cleanTeamDisplayName(team.name)}</h3>
+                          <p className="mt-1 truncate text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{team.stadium || 'Sede no registrada'}</p>
+                          <div className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-caudal-electric/20 bg-caudal-electric/[0.08] px-3 py-2">
+                            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric/80">Sistema</span>
+                            <span className="text-2xl font-black leading-none text-white">{team.system || 'Pendiente'}</span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="relative mt-3 grid grid-cols-[1fr_0.9fr] gap-3">
-                        <div className="rounded-[1.15rem] border border-caudal-electric/20 bg-caudal-electric/[0.075] p-3">
-                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric/80">Sistema principal</p>
-                          <p className="mt-1 text-4xl font-black leading-none text-white">{team.system || '---'}</p>
-                        </div>
+                      <div className="relative mt-4 grid gap-3 sm:grid-cols-2">
                         <div className="rounded-[1.15rem] border border-white/10 bg-white/[0.035] p-3">
                           <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Historial vs Caudal</p>
                           <p className="mt-1 text-xl font-black text-white">{profile.balance.wins}V · {profile.balance.draws}E · {profile.balance.losses}D</p>
                           <p className="mt-1 text-xs font-bold text-slate-400">GF {profile.balance.goalsFor} · GC {profile.balance.goalsAgainst}</p>
-                          <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-caudal-electric">{profile.trend}</p>
+                        </div>
+                        <div className="rounded-[1.15rem] border border-white/10 bg-white/[0.035] p-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Último enfrentamiento</p>
+                          <p className="mt-1 truncate text-sm font-black text-white">{lastMatchLabel}</p>
+                          <p className="mt-1 text-xs font-bold text-slate-400">{lastResult ? `Resultado: ${lastResult}` : `${profile.playedMatches.length} partidos registrados`}</p>
                         </div>
                       </div>
 
-                      <div className="relative mt-3 grid grid-cols-4 gap-1.5 border-y border-white/10 py-2">
-                        {profile.checks.map(([label, ok]) => (
-                          <span key={label} className="text-center text-[10px] font-bold text-slate-400" title={ok ? 'Completado' : 'Pendiente'}>
-                            <span className={`block text-base font-black leading-none ${ok ? 'text-emerald-100' : 'text-red-200'}`}>●</span>
-                            <span className="mt-0.5 block truncate">{label}</span>
-                          </span>
-                        ))}
-                      </div>
-
-                      <div className="relative mt-3 rounded-2xl border border-red-200/15 bg-red-300/[0.055] p-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-red-100">Amenazas principales</p>
-                          <span className="rounded-lg bg-white/[0.06] px-2 py-0.5 text-[10px] font-black text-slate-300">{profile.threatRows.length || 0}</span>
-                        </div>
-                        <div className="mt-2 space-y-1.5">
-                          {profile.threatRows.length ? profile.threatRows.map((threat) => (
-                            <p key={threat} className="line-clamp-1 rounded-xl bg-black/12 px-2 py-1.5 text-xs font-bold text-slate-100">{threat}</p>
-                          )) : (
-                            <p className="rounded-xl border border-dashed border-white/10 px-2 py-2 text-xs text-slate-500">Pendiente marcar jugadores clave, zonas o amenaza principal.</p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="relative mt-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Lectura rápida</p>
-                        <div className="mt-2 space-y-1.5">
-                          {profile.quickRead.map(([label, value]) => (
-                            <div key={label} className="grid grid-cols-[74px_1fr] gap-2 text-xs">
-                              <span className="font-black uppercase tracking-[0.1em] text-slate-500">{label}</span>
-                              <span className="line-clamp-1 font-semibold text-slate-200">{value}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="relative mt-3 grid grid-cols-[1fr_auto] gap-3 rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.055] px-3 py-2.5">
-                        <div className="min-w-0">
-                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-caudal-electric/80">Últimos resultados</p>
-                          <div className="mt-1 flex flex-wrap gap-1.5">
+                      <div className="relative mt-3 rounded-2xl border border-white/10 bg-white/[0.025] px-3 py-2.5">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Última fecha analizada</p>
+                            <p className="mt-1 text-sm font-bold text-slate-200">{profile.lastAnalysisLabel}</p>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
                             {profile.recentMatches.length ? profile.recentMatches.map((match) => (
-                              <span key={match.id} className={`rounded-lg px-2 py-1 text-[10px] font-black ${match.result === 'V' ? 'bg-emerald-200/15 text-emerald-100' : match.result === 'D' ? 'bg-red-200/15 text-red-100' : 'bg-amber-200/15 text-amber-100'}`}>
+                              <span key={match.id} className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black text-slate-300">
                                 {match.label}
                               </span>
-                            )) : <span className="text-xs text-slate-500">Sin partidos registrados</span>}
+                            )) : <span className="text-xs text-slate-500">Sin historial reciente</span>}
                           </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs font-bold text-slate-300">{lastResult ? `Último: ${lastResult}` : 'Sin historial'}</p>
-                          <p className="mt-1 text-[10px] text-slate-500">{profile.playedMatches.length} partidos</p>
                         </div>
                       </div>
 
-                      {profile.missingItems.length ? (
-                        <div className="relative mt-3 flex flex-wrap gap-1.5">
-                          <span className="rounded-lg border border-amber-200/15 bg-amber-200/[0.08] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-amber-100">Falta</span>
-                          {profile.missingItems.map((item) => (
-                            <span key={item} className="rounded-lg border border-white/10 bg-white/[0.035] px-2 py-1 text-[10px] font-bold text-slate-400">{item}</span>
-                          ))}
-                        </div>
-                      ) : null}
-
-                      <div className="relative mt-auto grid grid-cols-2 gap-1.5 pt-3 sm:grid-cols-4">
+                      <div className="relative mt-auto grid grid-cols-2 gap-1.5 pt-4 sm:grid-cols-4">
                         <button type="button" onClick={(event) => { event.stopPropagation(); setSelectedTeamId(team.id); }} className="min-h-[34px] rounded-xl border border-white/10 bg-white/[0.065] px-2 py-1.5 text-xs font-bold text-white transition hover:bg-white/[0.12]">Ver rival</button>
                         <button type="button" onClick={(event) => { event.stopPropagation(); openTeamForm(team); }} className="min-h-[34px] rounded-xl border border-white/10 bg-white/[0.045] px-2 py-1.5 text-xs font-bold text-slate-200 transition hover:bg-white/10">Editar</button>
                         <button type="button" onClick={(event) => { event.stopPropagation(); setActiveTab('Partidos'); }} className="min-h-[34px] rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1.5 text-xs font-bold text-caudal-electric transition hover:bg-caudal-electric/15">Crear PRE</button>
-                        <button type="button" onClick={(event) => { event.stopPropagation(); setActiveTab('Partidos'); }} className="min-h-[34px] rounded-xl border border-white/10 bg-transparent px-2 py-1.5 text-xs font-bold text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-200">Partidos</button>
+                        <button type="button" onClick={(event) => { event.stopPropagation(); if (window.confirm('¿Seguro que quieres eliminar este rival?')) handleTeamDelete(team); }} className="min-h-[34px] rounded-xl border border-red-300/15 bg-red-500/10 px-2 py-1.5 text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar</button>
                       </div>
                     </article>
                   );
