@@ -13263,6 +13263,7 @@ function App() {
                         && !assignedFieldKeys.has(getRivalPlayerUniqueKey(player));
                     }) || null
                   );
+                  placed.filter(Boolean).forEach((player) => assignedFieldKeys.add(getRivalPlayerUniqueKey(player)));
                   const automatic = rivalPlayers
                     .filter((player) => !assignedFieldKeys.has(getRivalPlayerUniqueKey(player)))
                     .filter((player) => player.role !== 'Titular' && !getRivalPlayerFlags(selectedTeam.id, player.name).hiddenFromField)
@@ -13286,16 +13287,48 @@ function App() {
                   if (normalized.includes('delantero')) return 'DC';
                   return String(role || 'POS').slice(0, 3).toUpperCase();
                 };
+                const positionOrderValue = (position) => {
+                  const normalized = normalizePlayerIdentityName(position);
+                  if (normalized.includes('portero')) return 0;
+                  if (normalized.includes('lateral derecho') || normalized.includes('carrilero derecho') || normalized === 'ld') return 1;
+                  if (normalized.includes('central') || normalized.includes('dfc')) return 2;
+                  if (normalized.includes('lateral izquierdo') || normalized.includes('carrilero izquierdo') || normalized === 'li') return 3;
+                  if (normalized.includes('mediocentro') || normalized.includes('pivote') || normalized.includes('interior') || normalized === 'mc') return 4;
+                  if (normalized.includes('mediapunta') || normalized.includes('mco')) return 5;
+                  if (normalized.includes('extremo derecho') || normalized === 'ed') return 6;
+                  if (normalized.includes('extremo izquierdo') || normalized === 'ei') return 7;
+                  if (normalized.includes('delantero') || normalized.includes('punta') || normalized === 'dc') return 8;
+                  return 99;
+                };
+                const getRosterRoleLabel = (player) => {
+                  const flags = getRivalPlayerFlags(selectedTeam.id, player.name);
+                  if (isPlayerPlaced(player) || flags.fieldRole === 'Titular') return 'Titular';
+                  if (flags.fieldRole === 'Reserva') return 'Reserva';
+                  if (flags.hiddenFromField) return 'Sin colocar';
+                  return player.role || 'Reserva';
+                };
+                const rosterGroupValue = (player) => {
+                  if (player.injured || player.suspended) return 4;
+                  const role = getRosterRoleLabel(player);
+                  if (role === 'Titular') return 1;
+                  if (role === 'Reserva' && getRivalPlayerFlags(selectedTeam.id, player.name).fieldRole === 'Reserva') return 2;
+                  return 3;
+                };
                 const visibleRivalPlayers = rivalPlayers.filter((player) => {
                   const search = normalizePlayerIdentityName(rivalRosterSearch);
                   const matchesSearch = !search || normalizePlayerIdentityName(`${player.name} ${player.position} ${player.number}`).includes(search);
                   if (!matchesSearch) return false;
-                  if (rivalRosterFilter === 'Titulares') return player.role === 'Titular' || isPlayerPlaced(player);
-                  if (rivalRosterFilter === 'Reservas') return player.role !== 'Titular' && !isPlayerPlaced(player);
+                  if (rivalRosterFilter === 'Titulares') return getRosterRoleLabel(player) === 'Titular';
+                  if (rivalRosterFilter === 'Reservas') return getRosterRoleLabel(player) === 'Reserva';
                   if (rivalRosterFilter === 'Sin colocar') return getRivalPlayerFlags(selectedTeam.id, player.name).hiddenFromField || (!isPlayerPlaced(player) && !player.position);
                   if (rivalRosterFilter === 'Bajas') return player.injured || player.suspended;
                   return true;
-                });
+                }).sort((a, b) =>
+                  rosterGroupValue(a) - rosterGroupValue(b)
+                  || positionOrderValue(a.position) - positionOrderValue(b.position)
+                  || Number(a.number || 999) - Number(b.number || 999)
+                  || String(a.name || '').localeCompare(String(b.name || ''))
+                );
                 return (
                   <section className="space-y-4">
                     <div className="flex flex-col gap-3 rounded-[1.35rem] border border-white/10 bg-[#091428]/85 p-4 shadow-[0_16px_48px_rgba(0,0,0,0.18)] sm:flex-row sm:items-center sm:justify-between">
@@ -13549,7 +13582,8 @@ function App() {
                         </div>
                         <div className="mt-4 max-h-[560px] space-y-2 overflow-y-auto pr-1">
                           {visibleRivalPlayers.map((player) => {
-                            const placed = isPlayerPlaced(player);
+                            const rosterRole = getRosterRoleLabel(player);
+                            const placed = rosterRole === 'Titular' || getRivalPlayerFlags(selectedTeam.id, player.name).fieldRole === 'Reserva';
                             return (
                               <div
                                 key={player.jugadorRivalId || player.id || player.name}
@@ -13570,12 +13604,15 @@ function App() {
                                   </span>
                                   <span className="min-w-0 flex-1">
                                     <span className="block truncate text-sm font-black text-white">{displayPlayerName(player)}</span>
-                                    <span className="block truncate text-[11px] font-semibold text-slate-500">
-                                      {player.position || 'Sin posición'}{player.number ? ` · #${player.number}` : ''}
+                                    <span className="block text-[11px] font-semibold leading-4 text-slate-400">
+                                      {player.position || 'Sin posición'}
+                                    </span>
+                                    <span className="block text-[10px] font-bold text-slate-600">
+                                      {player.number ? `#${player.number}` : 'Sin dorsal'}
                                     </span>
                                     <span className="mt-1 flex flex-wrap items-center gap-1">
                                       <span className={`rounded-md border px-1.5 py-0.5 text-[8px] font-black uppercase ${placed ? 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric' : 'border-white/10 bg-white/[0.04] text-slate-400'}`}>
-                                        {placed ? 'Campo' : player.role || 'Reserva'}
+                                        {rosterRole}
                                       </span>
                                       {getRivalPlayerStatusIcons(selectedTeam.id, player).map(([icon, title, className]) => (
                                         <span key={title} title={title} className={`flex h-4 min-w-4 items-center justify-center rounded px-1 text-[9px] font-black leading-none ${className}`}>{icon}</span>
