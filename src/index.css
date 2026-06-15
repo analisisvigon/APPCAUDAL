@@ -239,6 +239,21 @@ table {
   min-width: 0;
 }
 
+.player-history-table {
+  max-width: 100%;
+  overflow: visible;
+}
+
+.player-history-table table {
+  table-layout: fixed;
+}
+
+.player-history-table th,
+.player-history-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .match-print-tab .print-hidden.rounded-3xl,
 .match-print-tab .rounded-3xl.border {
   overflow-wrap: anywhere;

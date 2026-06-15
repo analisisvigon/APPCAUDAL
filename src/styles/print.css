@@ -216,6 +216,117 @@
   flex: 0 0 auto;
 }
 
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .player-dossier-report,
+  .player-dossier-report * {
+    visibility: visible;
+  }
+
+  .player-dossier-report {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+
+  .player-dossier-report .no-print,
+  .player-dossier-report .no-print * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  .player-dossier-report .hidden {
+    display: block !important;
+  }
+
+  .player-dossier-report section,
+  .player-dossier-report article,
+  .player-dossier-report div {
+    box-shadow: none !important;
+  }
+
+  .player-dossier-report > section,
+  .player-dossier-report section > section,
+  .player-dossier-report .rounded-\[1\.5rem\],
+  .player-dossier-report .rounded-\[1\.65rem\] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border-color: #d8dee9 !important;
+    background: #ffffff !important;
+  }
+
+  .player-dossier-report h2,
+  .player-dossier-report h3,
+  .player-dossier-report p,
+  .player-dossier-report span,
+  .player-dossier-report strong,
+  .player-dossier-report td,
+  .player-dossier-report th {
+    color: #0f172a !important;
+    text-shadow: none !important;
+  }
+
+  .player-dossier-report h2 {
+    font-size: 22pt !important;
+  }
+
+  .player-dossier-report h3,
+  .player-dossier-report .text-caudal-electric,
+  .player-dossier-report .text-emerald-100,
+  .player-dossier-report .text-amber-100 {
+    color: #164f8f !important;
+  }
+
+  .player-dossier-report button,
+  .player-dossier-report input,
+  .player-dossier-report textarea,
+  .player-dossier-report select {
+    display: none !important;
+  }
+
+  .player-dossier-report .overflow-x-auto,
+  .player-dossier-report .player-history-table {
+    overflow: visible !important;
+    max-width: none !important;
+  }
+
+  .player-dossier-report table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: 7.8pt;
+  }
+
+  .player-dossier-report th,
+  .player-dossier-report td {
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    border-color: #d8dee9 !important;
+    padding: 4pt 3pt !important;
+  }
+
+  .player-dossier-report thead {
+    display: table-header-group;
+  }
+
+  .player-dossier-report img {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
+
 .print-shirt-shape {
   display: block;
   width: 100%;

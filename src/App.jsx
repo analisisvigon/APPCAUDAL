@@ -2656,8 +2656,18 @@ function App() {
   const [playerQuickScope, setPlayerQuickScope] = useState('Últimos 5 partidos');
   const [playerInfluenceFilter, setPlayerInfluenceFilter] = useState('Todos');
   const [selectedTimelineAction, setSelectedTimelineAction] = useState(null);
-  const [expandedPlayerMatchId, setExpandedPlayerMatchId] = useState(null);
   const [playerReport, setPlayerReport] = useState(null);
+  const [playerDossierDrafts, setPlayerDossierDrafts] = useState(() => {
+    try {
+      if (typeof window === 'undefined') return {};
+      return JSON.parse(window.localStorage.getItem('caudal-player-dossier-drafts-v1') || '{}');
+    } catch {
+      return {};
+    }
+  });
+  const [playerDossierEditing, setPlayerDossierEditing] = useState({ profile: false, strengths: false, improvements: false });
+  const [newStrengthDraft, setNewStrengthDraft] = useState('');
+  const [newImprovementDraft, setNewImprovementDraft] = useState('');
   const [playerProfileData, setPlayerProfileData] = useState(null);
   const [playerProfileLoading, setPlayerProfileLoading] = useState(false);
   const [playerProfileError, setPlayerProfileError] = useState('');
@@ -3559,6 +3569,15 @@ function App() {
   useEffect(() => {
     loadTeams();
   }, []);
+
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      window.localStorage.setItem('caudal-player-dossier-drafts-v1', JSON.stringify(playerDossierDrafts));
+    } catch (storageError) {
+      console.warn('No se pudo guardar el dossier local del jugador:', storageError);
+    }
+  }, [playerDossierDrafts]);
 
   useEffect(() => {
     if (activeTab !== 'Inicio') return;
@@ -11805,6 +11824,35 @@ function App() {
                 avgRecentRating && avgRecentRating < 5 ? 'Elevar regularidad de rendimiento en los próximos partidos.' : null,
                 !aggregate.directGoalParticipation && aggregate.played ? 'Transformar participación en acciones más determinantes.' : null,
               ].filter(Boolean).slice(0, 3);
+              const dossierDraft = playerDossierDrafts[selectedPlayerProfile.id] || {};
+              const autoProfileText = playerProfileIntro.join('\n\n');
+              const activeProfileText = typeof dossierDraft.profileText === 'string' && dossierDraft.profileText.trim()
+                ? dossierDraft.profileText
+                : autoProfileText;
+              const activeStrengthRows = Array.isArray(dossierDraft.strengths) && dossierDraft.strengths.length
+                ? dossierDraft.strengths.filter((item) => String(item || '').trim())
+                : strengthRows;
+              const activeImprovementRows = Array.isArray(dossierDraft.improvements) && dossierDraft.improvements.length
+                ? dossierDraft.improvements.filter((item) => String(item || '').trim())
+                : improvementRows;
+              const updateDossierDraft = (fields) => {
+                setPlayerDossierDrafts((current) => ({
+                  ...current,
+                  [selectedPlayerProfile.id]: {
+                    ...(current[selectedPlayerProfile.id] || {}),
+                    ...fields,
+                    updatedAt: new Date().toISOString(),
+                  },
+                }));
+              };
+              const updateDossierListItem = (field, index, value) => {
+                const sourceRows = field === 'strengths' ? activeStrengthRows : activeImprovementRows;
+                updateDossierDraft({ [field]: sourceRows.map((item, itemIndex) => (itemIndex === index ? value : item)) });
+              };
+              const removeDossierListItem = (field, index) => {
+                const sourceRows = field === 'strengths' ? activeStrengthRows : activeImprovementRows;
+                updateDossierDraft({ [field]: sourceRows.filter((_, itemIndex) => itemIndex !== index) });
+              };
               const orderedSeasonRows = aggregate.rows.slice().sort((a, b) => new Date(a.match.date || 0) - new Date(b.match.date || 0));
               const seasonStageRows = ['Inicio temporada', 'Mitad temporada', 'Final temporada'].map((label, index) => {
                 const from = Math.floor((orderedSeasonRows.length * index) / 3);
@@ -11822,12 +11870,6 @@ function App() {
                 };
               });
               const maxSeasonMinutes = Math.max(1, ...seasonStageRows.map((row) => row.minutes));
-              const openPlayerMatchSection = (match, section) => {
-                setSelectedMatchId(match.id);
-                setSelectedPlayerProfileId(null);
-                setActiveTab('Partidos');
-                openMatchPage(match, section);
-              };
               const renderProfileEmptyState = (title, copy, variant = 'compact') => {
                 if (variant === 'lines') {
                   return (
@@ -11876,10 +11918,19 @@ function App() {
                 );
               };
               return (
-                <>
+                <div className="player-dossier-report space-y-5">
                   <AccordionSection title="Dossier individual" subtitle="Ficha base del jugador" defaultOpen>
                   <section className="rounded-[1.65rem] border border-white/10 bg-[#07111f] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.20)] sm:p-5">
-                    <button onClick={() => setSelectedPlayerProfileId(null)} className="mb-4 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10">Volver a plantilla</button>
+                    <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-2">
+                      <button onClick={() => setSelectedPlayerProfileId(null)} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10">Volver a plantilla</button>
+                      <button
+                        type="button"
+                        onClick={() => window.print()}
+                        className="rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-[#7aacff]"
+                      >
+                        Exportar PDF
+                      </button>
+                    </div>
                     <div className="grid gap-4 lg:grid-cols-[150px_1fr]">
                       <div className="space-y-2">
                         <div className="flex h-36 w-36 items-center justify-center overflow-hidden rounded-[1.35rem] border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.14),rgba(255,255,255,0.05),rgba(212,0,0,0.12))] text-3xl font-black text-white shadow-[0_20px_48px_rgba(0,0,0,0.28)]">
@@ -11904,9 +11955,32 @@ function App() {
                   <AccordionSection title="Perfil del jugador" subtitle="Lectura individual de temporada" defaultOpen>
                   <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
                     <div className="rounded-[1.5rem] border border-caudal-electric/15 bg-[linear-gradient(135deg,rgba(61,217,255,0.10),rgba(255,255,255,0.035))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
-                      <p className="text-xs font-black uppercase tracking-[0.22em] text-caudal-electric">Perfil del jugador</p>
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-xs font-black uppercase tracking-[0.22em] text-caudal-electric">Perfil del jugador</p>
+                        <div className="no-print flex flex-wrap gap-2">
+                          <button type="button" onClick={() => setPlayerDossierEditing((current) => ({ ...current, profile: !current.profile }))} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-white transition hover:bg-white/10">
+                            {playerDossierEditing.profile ? 'Cerrar edición' : 'Editar perfil'}
+                          </button>
+                          <button type="button" onClick={() => updateDossierDraft({ profileText: '' })} className="rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-caudal-electric transition hover:bg-caudal-electric hover:text-slate-950">
+                            Regenerar automático
+                          </button>
+                        </div>
+                      </div>
+                      {playerDossierEditing.profile ? (
+                        <div className="no-print mt-4">
+                          <textarea
+                            value={activeProfileText}
+                            onChange={(event) => updateDossierDraft({ profileText: event.target.value })}
+                            className="min-h-[190px] w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm leading-6 text-white placeholder:text-slate-500"
+                          />
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <button type="button" onClick={() => updateDossierDraft({ profileText: '' })} className="rounded-xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/10">Borrar manual</button>
+                            <button type="button" onClick={() => updateDossierDraft({ profileText: autoProfileText })} className="rounded-xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/10">Restaurar texto automático</button>
+                          </div>
+                        </div>
+                      ) : null}
                       <div className="mt-4 space-y-4 text-base leading-7 text-slate-100">
-                        {playerProfileIntro.map((line) => (
+                        {activeProfileText.split('\n').filter((line) => line.trim()).map((line) => (
                           <p key={line}>{line}</p>
                         ))}
                       </div>
@@ -11925,41 +11999,101 @@ function App() {
                   <AccordionSection title="Fortalezas y mejora" subtitle="Conclusiones principales del informe" defaultOpen>
                   <section className="grid gap-4 lg:grid-cols-2">
                     <div className="rounded-[1.5rem] border border-emerald-200/15 bg-emerald-200/[0.055] p-5">
-                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-emerald-100">Fortalezas principales</h3>
-                      {strengthRows.length ? (
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-emerald-100">Fortalezas principales</h3>
+                        <div className="no-print flex flex-wrap gap-2">
+                          <button type="button" onClick={() => setPlayerDossierEditing((current) => ({ ...current, strengths: !current.strengths }))} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-white transition hover:bg-white/10">
+                            {playerDossierEditing.strengths ? 'Cerrar edición' : 'Editar'}
+                          </button>
+                          <button type="button" onClick={() => updateDossierDraft({ strengths: [] })} className="rounded-xl border border-emerald-200/20 bg-emerald-200/10 px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-emerald-100 transition hover:bg-emerald-200 hover:text-slate-950">Restaurar automático</button>
+                        </div>
+                      </div>
+                      {activeStrengthRows.length ? (
                         <div className="mt-5 space-y-3">
-                          {strengthRows.map((text) => (
+                          {activeStrengthRows.map((text, index) => (
                             <div key={text} className="flex gap-3 rounded-2xl border border-emerald-200/10 bg-black/10 p-3 text-sm leading-6 text-slate-100">
                               <span className="font-black text-emerald-200">✓</span>
-                              <p>{text}</p>
+                              {playerDossierEditing.strengths ? (
+                                <div className="no-print flex flex-1 gap-2">
+                                  <input value={text} onChange={(event) => updateDossierListItem('strengths', index, event.target.value)} className="min-h-10 flex-1 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white" />
+                                  <button type="button" onClick={() => removeDossierListItem('strengths', index)} className="rounded-xl border border-red-200/20 bg-red-300/10 px-3 py-2 text-xs font-bold text-red-100">Eliminar</button>
+                                </div>
+                              ) : <p>{text}</p>}
                             </div>
                           ))}
                         </div>
                       ) : (
                         <div className="mt-5">{renderProfileEmptyState('Fortalezas en construcción.', 'Se necesitan más partidos, notas o acciones revisadas para fijar conclusiones fiables.', 'horizontal')}</div>
                       )}
+                      {playerDossierEditing.strengths ? (
+                        <div className="no-print mt-4 flex flex-col gap-2 sm:flex-row">
+                          <input value={newStrengthDraft} onChange={(event) => setNewStrengthDraft(event.target.value)} placeholder="Añadir fortaleza..." className="min-h-11 flex-1 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-slate-500" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = newStrengthDraft.trim();
+                              if (!next) return;
+                              updateDossierDraft({ strengths: [...activeStrengthRows, next].slice(0, 5) });
+                              setNewStrengthDraft('');
+                            }}
+                            className="rounded-xl bg-emerald-200 px-4 py-2 text-xs font-black uppercase tracking-[0.1em] text-slate-950"
+                          >
+                            Añadir
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                     <div className="rounded-[1.5rem] border border-amber-200/15 bg-amber-200/[0.055] p-5">
-                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-amber-100">Áreas de mejora</h3>
-                      {improvementRows.length ? (
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-amber-100">Áreas de mejora</h3>
+                        <div className="no-print flex flex-wrap gap-2">
+                          <button type="button" onClick={() => setPlayerDossierEditing((current) => ({ ...current, improvements: !current.improvements }))} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-white transition hover:bg-white/10">
+                            {playerDossierEditing.improvements ? 'Cerrar edición' : 'Editar'}
+                          </button>
+                          <button type="button" onClick={() => updateDossierDraft({ improvements: [] })} className="rounded-xl border border-amber-200/20 bg-amber-200/10 px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-amber-100 transition hover:bg-amber-200 hover:text-slate-950">Restaurar automático</button>
+                        </div>
+                      </div>
+                      {activeImprovementRows.length ? (
                         <div className="mt-5 space-y-3">
-                          {improvementRows.map((text) => (
+                          {activeImprovementRows.map((text, index) => (
                             <div key={text} className="flex gap-3 rounded-2xl border border-amber-200/10 bg-black/10 p-3 text-sm leading-6 text-slate-100">
                               <span className="font-black text-amber-200">→</span>
-                              <p>{text}</p>
+                              {playerDossierEditing.improvements ? (
+                                <div className="no-print flex flex-1 gap-2">
+                                  <input value={text} onChange={(event) => updateDossierListItem('improvements', index, event.target.value)} className="min-h-10 flex-1 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white" />
+                                  <button type="button" onClick={() => removeDossierListItem('improvements', index)} className="rounded-xl border border-red-200/20 bg-red-300/10 px-3 py-2 text-xs font-bold text-red-100">Eliminar</button>
+                                </div>
+                              ) : <p>{text}</p>}
                             </div>
                           ))}
                         </div>
                       ) : (
                         <div className="mt-5">{renderProfileEmptyState('Sin áreas críticas detectadas.', 'Con más muestra competitiva el informe podrá señalar focos de mejora más concretos.', 'horizontal')}</div>
                       )}
+                      {playerDossierEditing.improvements ? (
+                        <div className="no-print mt-4 flex flex-col gap-2 sm:flex-row">
+                          <input value={newImprovementDraft} onChange={(event) => setNewImprovementDraft(event.target.value)} placeholder="Añadir área de mejora..." className="min-h-11 flex-1 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-slate-500" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = newImprovementDraft.trim();
+                              if (!next) return;
+                              updateDossierDraft({ improvements: [...activeImprovementRows, next].slice(0, 5) });
+                              setNewImprovementDraft('');
+                            }}
+                            className="rounded-xl bg-amber-200 px-4 py-2 text-xs font-black uppercase tracking-[0.1em] text-slate-950"
+                          >
+                            Añadir
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   </section>
                   </AccordionSection>
 
                   <AccordionSection title="Estadísticas principales" subtitle="Datos base del periodo analizado" defaultOpen>
                   <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-5 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
-                    <div className="flex flex-col gap-3 border-b border-white/10 pb-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="no-print flex flex-col gap-3 border-b border-white/10 pb-4 lg:flex-row lg:items-center lg:justify-between">
                       <div className="flex flex-wrap gap-2">
                         {['Todos', 'Liga', 'Copa RFEF', 'Playoff', 'Amistoso'].map((filter) => (
                           <button key={filter} onClick={() => setPlayerCompetitionFilter(filter)} className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${playerCompetitionFilter === filter ? 'border-caudal-electric/30 bg-caudal-electric/90 text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.07]'}`}>{filter}</button>
@@ -12095,7 +12229,7 @@ function App() {
                   </AccordionSection>
 
                   {prePostRows.length || tacticalTrendRows.length ? (
-                  <AccordionSection title="Objetivos de partido" subtitle="Relación entre consignas y rendimiento">
+                  <AccordionSection title="Objetivos de partido" subtitle="Relación entre consignas y rendimiento" className="no-print">
                   <section className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
                     {prePostRows.length ? (
                     <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
@@ -12342,36 +12476,21 @@ function App() {
                       <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Historial partido a partido</h3>
                       <span className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-black text-slate-300">{aggregate.rows.length} registros</span>
                     </div>
-                    <div className="mt-4 overflow-x-auto">
-                      <table className="w-full min-w-[1080px] text-left text-sm">
+                    <div className="mt-4 player-history-table">
+                      <table className="w-full text-left text-sm">
                         <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
-                          <tr>{['Fecha', 'Resultado', 'Rival', 'L/V', 'Competición', 'Rol', 'Min', 'Nota', 'Impacto', 'TA', 'TR', 'Les.', 'Acciones'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}</tr>
+                          <tr>{['Fecha', 'Rival', 'Resultado', 'Competición', 'L/V', 'Rol', 'Min', 'Nota', 'Goles', 'Asist.', 'Tarjetas', 'Lesión'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}</tr>
                         </thead>
                         <tbody>
                           {aggregate.rows.length ? aggregate.rows.map((row) => {
                             const matchRating = row.rating || '-';
                             const ratingValue = Number(row.rating) || 0;
-                            const impactScore = row.goals.length * 2 + row.assists.length + Number(row.minutes >= 60 ? 1 : 0);
                             const score = getMatchScoreData(row.match);
                             const resultLabel = score.caudalGoals > score.rivalGoals ? 'V' : score.caudalGoals < score.rivalGoals ? 'D' : 'E';
-                            const matchReviewedEvents = quick.events.filter((event) => event.partidoId === row.match.id);
-                            const preNote = row.match.prePlayerNotes?.[selectedPlayerProfile.name] || '';
-                            const rowBadges = [
-                              row.role === 'Titular' ? 'Titular' : 'Suplente',
-                              impactScore >= 4 ? 'MVP' : null,
-                              row.goals.length ? `Gol ${row.goals.length}` : null,
-                              row.assists.length ? `Asist ${row.assists.length}` : null,
-                              row.match.captainPlayerId === selectedPlayerProfile.id ? 'Capitán' : null,
-                            ].filter(Boolean);
+                            const cardLabel = [row.yellow ? `${row.yellow} TA` : null, row.red ? '1 TR' : null].filter(Boolean).join(' · ') || '-';
                             return (
-                            <React.Fragment key={row.match.id}>
-                            <tr onClick={() => setExpandedPlayerMatchId((current) => current === row.match.id ? null : row.match.id)} className={`cursor-pointer border-t border-white/10 transition hover:bg-white/[0.08] hover:shadow-[inset_3px_0_0_rgba(61,217,255,0.55)] ${ratingValue >= 7 || impactScore >= 3 ? 'bg-emerald-200/[0.04]' : ratingValue && ratingValue < 5 || row.red || row.injured ? 'bg-red-200/[0.03]' : ''}`}>
+                            <tr key={row.match.id} className={`border-t border-white/10 ${ratingValue >= 7 || row.goals.length || row.assists.length ? 'bg-emerald-200/[0.04]' : ratingValue && ratingValue < 5 || row.red || row.injured ? 'bg-red-200/[0.03]' : ''}`}>
                               <td className="px-3 py-4 text-slate-300">{matchDisplayDate(row.match.date)}</td>
-                              <td className="px-3 py-4">
-                                <span className={`rounded-xl px-2 py-1 text-xs font-black ${resultLabel === 'V' ? 'bg-emerald-200/15 text-emerald-100' : resultLabel === 'D' ? 'bg-red-200/15 text-red-100' : 'bg-amber-200/15 text-amber-100'}`}>
-                                  {resultLabel} · {score.caudalGoals}-{score.rivalGoals}
-                                </span>
-                              </td>
                               <td className="px-3 py-4">
                                 <div className="flex items-center gap-3">
                                   <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 text-[10px] font-black text-slate-950">
@@ -12380,75 +12499,25 @@ function App() {
                                   <span className="truncate font-bold text-white">{row.match.opponent}</span>
                                 </div>
                               </td>
-                              <td className="px-3 py-4 text-slate-300">{row.match.isHome ? 'Local' : 'Visitante'}</td>
+                              <td className="px-3 py-4">
+                                <span className={`rounded-xl px-2 py-1 text-xs font-black ${resultLabel === 'V' ? 'bg-emerald-200/15 text-emerald-100' : resultLabel === 'D' ? 'bg-red-200/15 text-red-100' : 'bg-amber-200/15 text-amber-100'}`}>
+                                  {resultLabel} · {score.caudalGoals}-{score.rivalGoals}
+                                </span>
+                              </td>
                               <td className="px-3 py-4 text-slate-300">{row.match.type}</td>
+                              <td className="px-3 py-4 text-slate-300">{row.match.isHome ? 'Local' : 'Visitante'}</td>
                               <td className="px-3 py-4"><span className={`rounded-xl px-2 py-1 text-xs font-black ${row.role === 'Titular' ? 'bg-caudal-electric/15 text-caudal-electric' : 'bg-white/[0.06] text-slate-300'}`}>{row.role}</span></td>
                               <td className="px-3 py-4 font-black text-white">{row.minutes}'</td>
                               <td className="px-3 py-4">
                                 <span className={`rounded-xl px-2 py-1 text-xs font-black ${ratingValue >= 7 ? 'bg-emerald-200/15 text-emerald-100' : ratingValue >= 5 ? 'bg-amber-200/15 text-amber-100' : ratingValue ? 'bg-red-200/15 text-red-100' : 'text-slate-500'}`}>{matchRating}</span>
                               </td>
-                              <td className="px-3 py-4">
-                                <div className="flex flex-wrap gap-1.5">
-                                  {rowBadges.map((badge) => <span key={badge} className="rounded-xl border border-white/10 bg-white/[0.055] px-2 py-1 text-[10px] font-black text-slate-200">{badge}</span>)}
-                                </div>
-                              </td>
-                              <td className="px-3 py-4 text-amber-100">{row.yellow || '-'}</td>
-                              <td className="px-3 py-4 text-red-100">{row.red ? '1' : '-'}</td>
+                              <td className="px-3 py-4 text-emerald-100">{row.goals.length || '-'}</td>
+                              <td className="px-3 py-4 text-caudal-electric">{row.assists.length || '-'}</td>
+                              <td className="px-3 py-4 text-amber-100">{cardLabel}</td>
                               <td className="px-3 py-4 text-red-100">{row.injured ? 'Sí' : '-'}</td>
-                              <td className="px-3 py-4">
-                                <div className="flex gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      openPlayerMatchSection(row.match, 'PRE');
-                                    }}
-                                    className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-caudal-electric transition hover:bg-caudal-electric hover:text-slate-950"
-                                  >
-                                    Ver PRE
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      openPlayerMatchSection(row.match, 'POST');
-                                    }}
-                                    className="rounded-lg border border-white/10 bg-white/[0.055] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-200 transition hover:bg-white/10"
-                                  >
-                                    Ver POST
-                                  </button>
-                                </div>
-                              </td>
                             </tr>
-                            {expandedPlayerMatchId === row.match.id ? (
-                              <tr className="border-t border-white/5 bg-black/15">
-                                <td colSpan="13" className="px-3 py-4">
-                                  <div className="grid gap-3 lg:grid-cols-3">
-                                    <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Consigna PRE</p>
-                                      <p className="mt-2 text-sm leading-6 text-slate-300">{preNote || 'Sin consigna individual registrada.'}</p>
-                                    </div>
-                                    <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Eventos destacados</p>
-                                      <p className="mt-2 text-sm leading-6 text-slate-300">
-                                        {matchReviewedEvents.length
-                                          ? matchReviewedEvents.slice(0, 4).map((event) => `${event.minute}' ${quickEventLabelByType[event.tipoEvento] || event.tipoEvento}`).join(' · ')
-                                          : 'Sin eventos rápidos revisados vinculados.'}
-                                      </p>
-                                    </div>
-                                    <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Lectura competitiva</p>
-                                      <p className="mt-2 text-sm leading-6 text-slate-300">
-                                        {ratingValue >= 7 ? 'Buen rendimiento competitivo.' : ratingValue >= 5 ? 'Partido correcto con margen de mejora.' : ratingValue ? 'Partido a revisar.' : 'Añade nota individual para activar tendencia.'}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </td>
-                              </tr>
-                            ) : null}
-                            </React.Fragment>
                           );
-                          }) : <tr><td colSpan="13" className="px-3 py-6 text-center text-slate-500">Sin datos registrados</td></tr>}
+                          }) : <tr><td colSpan="12" className="px-3 py-6 text-center text-slate-500">Sin datos registrados</td></tr>}
                         </tbody>
                       </table>
                     </div>
@@ -12456,7 +12525,7 @@ function App() {
                   </AccordionSection>
 
                   {playerReport ? (
-                    <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+                    <section className="no-print rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                       <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Informe automático</h3>
                       <div className="mt-5 grid gap-4 lg:grid-cols-2">
                         {Object.entries(playerReport).map(([title, text]) => (
@@ -12468,7 +12537,7 @@ function App() {
                       </div>
                     </section>
                   ) : null}
-                </>
+                </div>
               );
             })() : (
             <>
