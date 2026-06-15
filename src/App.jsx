@@ -16785,6 +16785,7 @@ function App() {
         const formSquad = dedupeRivalPlayers(teamFormState.squad.map(normalizeSquadEntry));
         const keyCount = formSquad.filter((player) => player.isKey).length;
         const currentTeamForForm = teams.find((team) => team.id === editingTeamId) || null;
+        const isQuickCreateTeam = !editingTeamId;
         const formTeamName = cleanTeamDisplayName(teamFormState.name || currentTeamForForm?.name || 'Rival sin nombre');
         const relatedMatches = matches.filter((match) => normalizePlayerIdentityName(match.opponent) === normalizePlayerIdentityName(formTeamName));
         const hasIdentity = Boolean(teamFormState.name && teamFormState.crest);
@@ -16840,8 +16841,8 @@ function App() {
           <div className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-caudal-950 shadow-[0_24px_90px_rgba(0,0,0,0.45)]">
             <div className="flex items-center justify-between border-b border-white/10 px-5 py-4 sm:px-6">
               <div>
-                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">{editingTeamId ? 'Editar rival' : 'Nuevo rival'}</p>
-                <h3 className="mt-1 text-xl font-black text-white">Ficha profesional de scouting</h3>
+                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">{isQuickCreateTeam ? 'Fase 1 · Alta rápida' : 'Fase 2 · Scouting avanzado'}</p>
+                <h3 className="mt-1 text-xl font-black text-white">{isQuickCreateTeam ? 'Crear rival' : 'Ficha profesional de scouting'}</h3>
               </div>
               <div className="flex items-center gap-2">
                 {editingTeamId ? (
@@ -16856,6 +16857,63 @@ function App() {
             </div>
 
             <form onSubmit={handleTeamSubmit} noValidate className="min-h-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
+              {isQuickCreateTeam ? (
+                <>
+                  <section className="grid gap-4 xl:grid-cols-[1fr_0.86fr]">
+                    <div className="rounded-[1.5rem] border border-caudal-electric/15 bg-[#091428]/88 p-5 shadow-[0_22px_70px_rgba(0,0,0,0.32)]">
+                      <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
+                        <div className="flex h-36 w-36 shrink-0 items-center justify-center rounded-[1.5rem] border border-white/10 bg-white/[0.07] p-3 shadow-[0_16px_40px_rgba(0,0,0,0.22)]">
+                          <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl bg-white p-3 text-lg font-black text-caudal-950">
+                            {teamFormState.crest ? <img src={teamFormState.crest} alt="" className="h-full w-full object-contain" /> : formTeamName.split(' ').map((part) => part[0]).join('').slice(0, 3)}
+                          </div>
+                        </div>
+                        <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
+                          <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 sm:col-span-2">
+                            <span>Nombre rival</span>
+                            <input required name="name" value={teamFormState.name} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-base font-black normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Ej. Real Avilés" />
+                          </label>
+                          <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                            <span>Sistema opcional</span>
+                            <select name="system" value={teamFormState.system} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner">
+                              <option value="">Sin definir</option>
+                              {gameSystems.map((system) => <option key={system} value={system}>{system}</option>)}
+                            </select>
+                          </label>
+                          <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                            <span>Escudo</span>
+                            <input name="crest" type="password" value={teamFormState.crest} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="URL de imagen" />
+                          </label>
+                          <div className="sm:col-span-2">
+                            <input ref={teamCrestInputRef} type="file" accept="image/*" onChange={handleTeamCrestFileChange} disabled={isUploadingTeamCrest} className="hidden" />
+                            <button type="button" onClick={() => teamCrestInputRef.current?.click()} disabled={isUploadingTeamCrest} className="inline-flex min-h-[40px] items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60">
+                              {isUploadingTeamCrest ? 'Subiendo escudo...' : 'Subir escudo'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <aside className="rounded-[1.5rem] border border-white/10 bg-white/[0.035] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.24)]">
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Importar rival</p>
+                      <div className="mt-4 space-y-3">
+                        <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                          <span>URL Besoccer</span>
+                          <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? '' : teamFormState.sourceUrl} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquí el enlace" />
+                        </label>
+                        <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                          <span>URL Transfermarkt</span>
+                          <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? teamFormState.sourceUrl : ''} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquí el enlace" />
+                        </label>
+                        <button type="button" onClick={handleImportSquad} className="inline-flex w-full min-h-[46px] items-center justify-center rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-[#7aacff]">
+                          Importar
+                        </button>
+                        {importStatus ? <p className="rounded-2xl border border-caudal-electric/20 bg-caudal-electric/10 px-3 py-2 text-sm text-caudal-electric">{importStatus}</p> : null}
+                      </div>
+                    </aside>
+                  </section>
+                </>
+              ) : (
+                <>
               <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/74 p-4 shadow-[0_16px_50px_rgba(0,0,0,0.18)]">
                 <div className="grid gap-4 lg:grid-cols-[180px_1fr_220px] lg:items-center">
                   <div className="flex h-36 w-36 items-center justify-center rounded-[1.5rem] border border-white/10 bg-white/[0.07] p-3 shadow-[0_16px_40px_rgba(0,0,0,0.22)]">
@@ -16903,22 +16961,25 @@ function App() {
                     <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Claves del partido</p>
                     <div className="mt-3 space-y-2">
                       {[0, 1, 2].map((index) => (
-                        <input
-                          key={index}
-                          value={matchKeys[index] || ''}
-                          onChange={(event) => updateRivalScoutingDraft({ matchKeys: [0, 1, 2].map((itemIndex) => itemIndex === index ? event.target.value : (matchKeys[itemIndex] || '')) })}
-                          className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-slate-500"
-                          placeholder={`Clave ${index + 1}`}
-                        />
+                        <label key={index} className="flex gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-caudal-electric/25 bg-caudal-electric/10 text-xs font-black text-caudal-electric">{index + 1}</span>
+                          <input
+                            value={matchKeys[index] || ''}
+                            onChange={(event) => updateRivalScoutingDraft({ matchKeys: [0, 1, 2].map((itemIndex) => itemIndex === index ? event.target.value : (matchKeys[itemIndex] || '')) })}
+                            className="min-w-0 flex-1 border-none bg-transparent pt-1 text-sm font-bold text-white outline-none placeholder:text-slate-500"
+                            placeholder={`Consigna táctica ${index + 1}`}
+                          />
+                        </label>
                       ))}
                     </div>
                   </div>
-                  <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.03] p-4">
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Plan vs rival</p>
+                  <div className="rounded-[1.35rem] border border-caudal-electric/20 bg-caudal-electric/[0.07] p-4 shadow-[0_18px_50px_rgba(79,140,255,0.08)]">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Plan vs rival</p>
+                    <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Briefing técnico</p>
                     <textarea
                       value={planVsRival}
                       onChange={(event) => updateRivalScoutingDraft({ planVsRival: event.target.value })}
-                      className="mt-3 min-h-[96px] w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm leading-6 text-white placeholder:text-slate-500"
+                      className="mt-3 min-h-[110px] w-full rounded-2xl border border-caudal-electric/20 bg-black/25 px-3 py-2 text-sm font-semibold leading-6 text-white placeholder:text-slate-500"
                       placeholder="Atraer por dentro, atacar espalda lateral, evitar pérdidas interiores..."
                     />
                   </div>
@@ -16992,16 +17053,25 @@ function App() {
 
                 <div className="space-y-4">
                   <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.025] p-4">
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Importador</p>
-                    <p className="mt-2 text-sm leading-5 text-slate-400">{teamFormState.sourceUrl ? 'Fuente vinculada para refrescar identidad y plantilla.' : 'Añade una fuente en edición para importar datos del rival.'}</p>
-                    {teamEditMode ? <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <button type="button" onClick={handleImportSquad} className="inline-flex min-h-[38px] items-center justify-center rounded-2xl bg-caudal-electric/90 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-caudal-electric">
-                        Importar datos
-                      </button>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Importar rival</p>
+                    {teamEditMode ? <div className="mt-3 space-y-3">
+                      <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                        <span>URL Besoccer</span>
+                        <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? '' : teamFormState.sourceUrl} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquí el enlace" />
+                      </label>
+                      <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                        <span>URL Transfermarkt</span>
+                        <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? teamFormState.sourceUrl : ''} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquí el enlace" />
+                      </label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button type="button" onClick={handleImportSquad} className="inline-flex min-h-[40px] items-center justify-center rounded-2xl bg-caudal-electric/90 px-4 py-2 text-sm font-black uppercase tracking-[0.08em] text-slate-950 transition hover:bg-caudal-electric">
+                          Importar
+                        </button>
                       <input ref={teamCrestInputRef} type="file" accept="image/*" onChange={handleTeamCrestFileChange} disabled={isUploadingTeamCrest} className="hidden" />
                       <button type="button" onClick={() => teamCrestInputRef.current?.click()} disabled={isUploadingTeamCrest} className="inline-flex min-h-[38px] items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60">
                         {isUploadingTeamCrest ? 'Subiendo...' : 'Subir escudo'}
                       </button>
+                      </div>
                     </div> : (
                       <div className="mt-3 flex flex-wrap gap-2">
                         <span className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-bold text-slate-300">{teamFormState.sourceUrl ? 'Fuente vinculada' : 'Fuente pendiente'}</span>
@@ -17117,8 +17187,12 @@ function App() {
                     teamFormState.squad.map((entry, index) => {
                       const player = normalizeSquadEntry(entry);
                       const isEditingPlayer = teamEditMode && editingTeamPlayerIndex === index;
+                      const isAttackingThreat = player.isKey || /delantero|extremo|mediapunta|punta/i.test(player.position || '');
+                      const isSetPieceSpecialist = player.isKey && /central|delantero|medio|lateral/i.test(player.position || '');
                       const scoutingBadges = [
                         player.isKey ? ['Clave', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
+                        isAttackingThreat ? ['Amenaza', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
+                        isSetPieceSpecialist ? ['Especialista ABP', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
                         player.yellowRisk ? ['Amonestado', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
                         player.suspended ? ['Riesgo roja', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
                         player.injured ? ['Lesionado', 'border-white/10 bg-white/[0.06] text-slate-100'] : null,
@@ -17174,11 +17248,11 @@ function App() {
                             )) : <span className="rounded-xl border border-white/10 bg-white/[0.035] px-2 py-1 text-[10px] font-bold text-slate-500">Sin alertas</span>}
                           </div>
                           {!isEditingPlayer ? (
-                            <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-slate-500">
-                              <span>Perfil táctico pendiente</span>
-                              <span>Pie dominante pendiente</span>
-                              <span>Amenaza ofensiva pendiente</span>
-                              <span>Especialista ABP pendiente</span>
+                            <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                              <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{player.role || 'Reserva'}</span>
+                              <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{isAttackingThreat ? 'Amenaza' : 'Seguimiento'}</span>
+                              <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{isSetPieceSpecialist ? 'ABP' : 'ABP pendiente'}</span>
+                              <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{player.yellowRisk || player.suspended || player.injured ? 'Riesgo' : 'Sin riesgo'}</span>
                             </div>
                           ) : null}
                           <div className="mt-3 flex justify-end gap-2">
@@ -17199,6 +17273,8 @@ function App() {
                   )}
                 </div>
               </section>
+                </>
+              )}
 
               <div className="flex flex-col gap-3 rounded-[1.35rem] border border-white/10 bg-white/[0.025] p-4 sm:flex-row sm:items-center sm:justify-end">
                 <button
@@ -17212,7 +17288,7 @@ function App() {
                   type="submit"
                   className="inline-flex items-center justify-center rounded-2xl bg-caudal-electric px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]"
                 >
-                  Guardar equipo
+                  {isQuickCreateTeam ? 'Crear rival' : 'Guardar scouting'}
                 </button>
               </div>
             </form>
