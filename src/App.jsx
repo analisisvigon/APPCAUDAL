@@ -2536,6 +2536,7 @@ function App() {
   const [rivalRosterSearch, setRivalRosterSearch] = useState('');
   const [rivalRosterFilter, setRivalRosterFilter] = useState('Todos');
   const [activeRivalDropSlot, setActiveRivalDropSlot] = useState('');
+  const [rivalQuickPlacement, setRivalQuickPlacement] = useState({ playerName: '', mode: '', slotIndex: 0, reserveIndex: 0 });
   const [isMatchPanelOpen, setIsMatchPanelOpen] = useState(false);
   const [preLoading, setPreLoading] = useState(false);
   const [preError, setPreError] = useState('');
@@ -13436,6 +13437,27 @@ function App() {
                 const captainPlayer = rivalPlayers.find((player) => getRivalPlayerFlags(selectedTeam.id, player.name).captain || player.captain) || null;
                 const unavailablePlayers = rivalPlayers.filter((player) => player.injured || player.suspended);
                 const yellowRiskPlayers = rivalPlayers.filter((player) => player.yellowRisk);
+                const formationRoleOptions = getFormationRoles(selectedTeam.system || '4-4-2').map((role, index) => ({
+                  index,
+                  role,
+                  label: `${shortRoleLabel(role)} · ${role}`,
+                }));
+                const getReserveStackClass = (slot) => {
+                  if (slot.y >= 76) return 'bottom-full mb-2';
+                  return 'top-full mt-2';
+                };
+                const getReserveStackNudgeClass = (slot) => {
+                  if (slot.x <= 18) return 'left-[70%]';
+                  if (slot.x >= 82) return 'left-[30%]';
+                  return 'left-1/2';
+                };
+                const placeQuickRivalPlayer = (player) => {
+                  if (!player?.name) return;
+                  const slotIndex = Number(rivalQuickPlacement.slotIndex || 0);
+                  if (rivalQuickPlacement.mode === 'Titular') placePlayer(player, { type: 'Titular', slotIndex });
+                  if (rivalQuickPlacement.mode === 'Reserva') placePlayer(player, { type: 'Reserva', slotIndex, reserveIndex: Number(rivalQuickPlacement.reserveIndex || 0) });
+                  setRivalQuickPlacement({ playerName: '', mode: '', slotIndex: 0, reserveIndex: 0 });
+                };
                 return (
                   <section className="space-y-4">
                     <div className="flex flex-col gap-4 rounded-[1.35rem] border border-white/10 bg-[#091428]/85 p-4 shadow-[0_16px_48px_rgba(0,0,0,0.18)] lg:flex-row lg:items-center lg:justify-between">
@@ -13609,7 +13631,7 @@ function App() {
                                     <span className="mt-0.5 max-w-24 truncate text-[7px] font-bold normal-case tracking-normal text-white/25">{slotRole}</span>
                                   </>
                                 )}
-                                {teamFieldEditMode ? <span className="absolute left-1/2 top-full mt-0.5 grid w-[70px] -translate-x-1/2 gap-px">
+                                {(teamFieldEditMode || reservePlayersBySlot[slotIndex]?.some(Boolean)) ? <span className={`absolute ${getReserveStackNudgeClass(slot)} ${getReserveStackClass(slot)} grid w-[112px] -translate-x-1/2 gap-1`}>
                                   {[0, 1].map((reserveIndex) => {
                                     const reservePlayer = reservePlayersBySlot[slotIndex]?.[reserveIndex] || null;
                                     return (
@@ -13635,12 +13657,12 @@ function App() {
                                           setActiveRivalDropSlot('');
                                           assignRivalPlayerAsReserveAtSlot(slotIndex, reserveIndex);
                                         }}
-                                        className={`flex min-h-3.5 items-center gap-0.5 rounded-md border px-0.5 py-px text-left text-[6.5px] transition ${reservePlayer ? 'border-white/10 bg-slate-950/30 text-slate-300 opacity-70' : 'border-dashed border-white/[0.06] bg-white/[0.006] text-white/12 opacity-0 group-hover:opacity-100'} ${activeRivalDropSlot === `reserve-${slotIndex}-${reserveIndex}` ? 'border-caudal-electric/70 bg-caudal-electric/15 text-white opacity-100 ring-1 ring-caudal-electric/70' : ''}`}
+                                        className={`flex min-h-7 items-center gap-1 rounded-lg border px-1.5 py-1 text-left text-[8px] transition ${reservePlayer ? 'border-white/12 bg-slate-950/45 text-slate-200' : 'border-dashed border-white/18 bg-slate-950/20 text-white/45'} ${activeRivalDropSlot === `reserve-${slotIndex}-${reserveIndex}` ? 'border-caudal-electric/80 bg-caudal-electric/20 text-white opacity-100 ring-2 ring-caudal-electric/60' : ''}`}
                                         title={reservePlayer ? `Reserva: ${reservePlayer.name}` : `Reserva ${reserveIndex + 1} · ${slotRole}`}
                                       >
                                         {reservePlayer ? (
                                           <>
-                                            <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/[0.08] text-[5px] font-black">
+                                            <span className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/[0.08] text-[6px] font-black">
                                               <span className="absolute inset-0 flex items-center justify-center">{reservePlayer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                                               {reservePlayer.image ? <img src={reservePlayer.image} alt={reservePlayer.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="relative h-full w-full object-cover" /> : null}
                                             </span>
@@ -13654,7 +13676,7 @@ function App() {
                                             </span>
                                           </>
                                         ) : (
-                                          <span className="truncate">Reserva {reserveIndex + 1}</span>
+                                          <span className="truncate font-black uppercase">Reserva {reserveIndex + 1}</span>
                                         )}
                                       </span>
                                     );
@@ -13790,8 +13812,56 @@ function App() {
                                     </button>
                                     <details className="relative shrink-0">
                                       <summary className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-sm font-black text-slate-300 transition hover:bg-white/10">⋮</summary>
-                                      <div className="absolute right-0 z-30 mt-2 w-40 overflow-hidden rounded-xl border border-white/10 bg-[#07111f] p-1 shadow-[0_18px_45px_rgba(0,0,0,0.36)]">
+                                      <div className="absolute right-0 z-30 mt-2 w-64 overflow-hidden rounded-xl border border-white/10 bg-[#07111f] p-1 shadow-[0_18px_45px_rgba(0,0,0,0.36)]">
                                         <button type="button" onClick={() => openRivalPlayerModal(player)} className="block w-full rounded-lg px-3 py-2.5 text-left text-xs font-bold text-white transition hover:bg-white/10">✏️ Editar</button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setRivalQuickPlacement({ playerName: player.name, mode: 'Titular', slotIndex: 0, reserveIndex: 0 })}
+                                          className="block w-full rounded-lg px-3 py-2.5 text-left text-xs font-bold text-caudal-electric transition hover:bg-caudal-electric/10"
+                                        >
+                                          Colocar como titular
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setRivalQuickPlacement({ playerName: player.name, mode: 'Reserva', slotIndex: 0, reserveIndex: 0 })}
+                                          className="block w-full rounded-lg px-3 py-2.5 text-left text-xs font-bold text-slate-100 transition hover:bg-white/10"
+                                        >
+                                          Colocar como reserva
+                                        </button>
+                                        {rivalQuickPlacement.playerName === player.name ? (
+                                          <div className="m-1 rounded-xl border border-white/10 bg-white/[0.04] p-2">
+                                            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">{rivalQuickPlacement.mode}</p>
+                                            <label className="mt-2 block text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
+                                              Posición
+                                              <select
+                                                value={rivalQuickPlacement.slotIndex}
+                                                onChange={(event) => setRivalQuickPlacement((current) => ({ ...current, slotIndex: Number(event.target.value) }))}
+                                                className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-2 py-1.5 text-xs font-bold text-white"
+                                              >
+                                                {formationRoleOptions.map((option) => (
+                                                  <option key={option.index} value={option.index}>{option.label}</option>
+                                                ))}
+                                              </select>
+                                            </label>
+                                            {rivalQuickPlacement.mode === 'Reserva' ? (
+                                              <label className="mt-2 block text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
+                                                Hueco
+                                                <select
+                                                  value={rivalQuickPlacement.reserveIndex}
+                                                  onChange={(event) => setRivalQuickPlacement((current) => ({ ...current, reserveIndex: Number(event.target.value) }))}
+                                                  className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-2 py-1.5 text-xs font-bold text-white"
+                                                >
+                                                  <option value={0}>Reserva 1</option>
+                                                  <option value={1}>Reserva 2</option>
+                                                </select>
+                                              </label>
+                                            ) : null}
+                                            <div className="mt-2 flex gap-2">
+                                              <button type="button" onClick={() => placeQuickRivalPlayer(player)} className="flex-1 rounded-lg bg-caudal-electric px-2 py-1.5 text-[10px] font-black text-slate-950">Colocar</button>
+                                              <button type="button" onClick={() => setRivalQuickPlacement({ playerName: '', mode: '', slotIndex: 0, reserveIndex: 0 })} className="rounded-lg border border-white/10 px-2 py-1.5 text-[10px] font-bold text-slate-300">Cancelar</button>
+                                            </div>
+                                          </div>
+                                        ) : null}
                                         <button type="button" onClick={() => removeFromLineup(player.name)} className="block w-full rounded-lg px-3 py-2.5 text-left text-xs font-bold text-slate-200 transition hover:bg-white/10">🚫 Quitar del campo</button>
                                         <button type="button" onClick={() => requestSelectedTeamPlayerDelete(player)} className="block w-full rounded-lg px-3 py-2.5 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">🗑️ Eliminar jugador</button>
                                       </div>
