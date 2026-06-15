@@ -2533,6 +2533,8 @@ function App() {
   const [editingTeamPlayerIndex, setEditingTeamPlayerIndex] = useState(null);
   const [rivalPlayerModal, setRivalPlayerModal] = useState({ open: false, mode: 'create', originalName: '', draft: null });
   const [pendingRivalPlayerDelete, setPendingRivalPlayerDelete] = useState(null);
+  const [rivalRosterSearch, setRivalRosterSearch] = useState('');
+  const [rivalRosterFilter, setRivalRosterFilter] = useState('Todos');
   const [isMatchPanelOpen, setIsMatchPanelOpen] = useState(false);
   const [preLoading, setPreLoading] = useState(false);
   const [preError, setPreError] = useState('');
@@ -10428,12 +10430,14 @@ function App() {
           : team
       )
     );
+    updateRivalPlayerFlags(selectedTeam.id, draggedPlayer.name, { hiddenFromField: false });
     setDraggedPlayer(null);
     setSelectedTeamPlacementPlayerName('');
   };
 
   const removeFromLineup = (playerName) => {
     if (!selectedTeam) return;
+    updateRivalPlayerFlags(selectedTeam.id, playerName, { hiddenFromField: true });
     updateTeamLineup(selectedTeam.id, (lineup) => lineup.filter((item) => item.name !== playerName), { demoteNames: [playerName] });
     setTeams((current) =>
       current.map((team) =>
@@ -10460,6 +10464,7 @@ function App() {
     const system = selectedTeam.system || '4-4-2';
     const fieldCoordinates = getFormationCoordinates(system);
     const lineup = prioritized.slice(0, 11).map((player, index) => ({ ...player, role: 'Titular', slot: index, ...fieldCoordinates[index] }));
+    prioritized.slice(0, 11).forEach((player) => updateRivalPlayerFlags(selectedTeam.id, player.name, { hiddenFromField: false }));
 
     updateTeamLineup(selectedTeam.id, () => lineup);
   };
@@ -10493,6 +10498,7 @@ function App() {
           : team
       )
     );
+    updateRivalPlayerFlags(selectedTeam.id, droppedPlayer.name, { hiddenFromField: false });
     setDraggedPlayer(null);
     setSelectedTeamPlacementPlayerName('');
   };
@@ -10514,6 +10520,7 @@ function App() {
         : null;
       return [...withoutMoved, ...(swappedPlayer ? [swappedPlayer] : []), droppedPlayer];
     });
+    updateRivalPlayerFlags(selectedTeam.id, droppedPlayer.name, { hiddenFromField: false });
     setSelectedTeamPlacementPlayerName('');
   };
 
@@ -10530,6 +10537,7 @@ function App() {
       setSaveStatus(updateError.message || 'No se pudo recolocar el reserva.');
       return;
     }
+    updateRivalPlayerFlags(selectedTeam.id, player.name, { hiddenFromField: false });
     if (safeArray(selectedTeam.lineup).some((item) => normalizePlayerIdentityName(item.name) === normalizePlayerIdentityName(player.name))) {
       await persistTeamLineup(selectedTeam.id, safeArray(selectedTeam.lineup).filter((item) => normalizePlayerIdentityName(item.name) !== normalizePlayerIdentityName(player.name)));
     }
@@ -11160,6 +11168,39 @@ function App() {
         )) : null}
       </div>
     );
+  };
+
+  const clearSelectedTeamField = async () => {
+    if (!selectedTeam) return;
+    if (safeArray(selectedTeam.lineup).length && !window.confirm('¿Quitar todos los jugadores del campo?')) return;
+    try {
+      await persistTeamLineup(selectedTeam.id, []);
+      await supabase.from("jugadores_rivales").update({ role: 'Reserva' }).eq("equipo_rival_id", selectedTeam.id);
+      dedupeRivalPlayers(selectedTeam.squad || []).forEach((player) => updateRivalPlayerFlags(selectedTeam.id, player.name, { hiddenFromField: true }));
+      await loadTeams();
+      setDraggedPlayer(null);
+      setSelectedTeamPlacementPlayerName('');
+    } catch (clearError) {
+      setSaveStatus(clearError.message || 'No se pudo limpiar el campo.');
+    }
+  };
+
+  const saveSelectedTeamField = async () => {
+    if (!selectedTeam) return;
+    try {
+      const currentLineup = safeArray(selectedTeam.lineup);
+      const fallbackLineup = currentLineup.length
+        ? currentLineup
+        : dedupeRivalPlayers(selectedTeam.squad || [])
+            .filter((player) => player.role === 'Titular')
+            .slice(0, 11)
+            .map((player, index) => ({ ...player, slot: index, ...getFormationCoordinates(selectedTeam.system || '4-4-2')[index] }));
+      await persistTeamLineup(selectedTeam.id, fallbackLineup);
+      setSaveStatus('Disposición guardada.');
+      await loadTeams();
+    } catch (saveLineupError) {
+      setSaveStatus(saveLineupError.message || 'No se pudo guardar la disposición.');
+    }
   };
 
   const renderPerformanceSection = () => {
@@ -13106,7 +13147,7 @@ function App() {
                       .slice(0, 11)
                       .map((player, index) => ({ ...player, role: 'Titular', slot: index, ...getFormationCoordinates(selectedTeam.system || '4-4-2')[index] }));
                 const starterNames = new Set(visualFieldLineup.map((player) => normalizePlayerIdentityName(player.name)));
-                const reservePlayers = rivalPlayers.filter((player) => !starterNames.has(normalizePlayerIdentityName(player.name)) && player.role !== 'Titular');
+                const reservePlayers = rivalPlayers.filter((player) => !starterNames.has(normalizePlayerIdentityName(player.name)) && player.role !== 'Titular' && !getRivalPlayerFlags(selectedTeam.id, player.name).hiddenFromField);
                 const positionMatchesSlot = (position, role) => {
                   const p = normalizePlayerIdentityName(position);
                   const r = normalizePlayerIdentityName(role);
@@ -13125,6 +13166,17 @@ function App() {
                     .filter((player) => positionMatchesSlot(player.position, slot.role))
                     .slice(0, 2)
                 );
+                const isPlayerPlaced = (player) => starterNames.has(normalizePlayerIdentityName(player.name));
+                const visibleRivalPlayers = rivalPlayers.filter((player) => {
+                  const search = normalizePlayerIdentityName(rivalRosterSearch);
+                  const matchesSearch = !search || normalizePlayerIdentityName(`${player.name} ${player.position} ${player.number}`).includes(search);
+                  if (!matchesSearch) return false;
+                  if (rivalRosterFilter === 'Titulares') return player.role === 'Titular' || isPlayerPlaced(player);
+                  if (rivalRosterFilter === 'Reservas') return player.role !== 'Titular' && !isPlayerPlaced(player);
+                  if (rivalRosterFilter === 'Sin colocar') return getRivalPlayerFlags(selectedTeam.id, player.name).hiddenFromField || (!isPlayerPlaced(player) && !player.position);
+                  if (rivalRosterFilter === 'Bajas') return player.injured || player.suspended;
+                  return true;
+                });
                 return (
                   <section className="space-y-4">
                     <div className="flex flex-col gap-3 rounded-[1.35rem] border border-white/10 bg-[#091428]/85 p-4 shadow-[0_16px_48px_rgba(0,0,0,0.18)] sm:flex-row sm:items-center sm:justify-between">
@@ -13178,7 +13230,7 @@ function App() {
                       ))}
                     </div>
 
-                    <section className="grid gap-4 xl:grid-cols-[1fr_280px]">
+                    <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
                       <div className="rounded-[1.35rem] border border-white/10 bg-[#091428]/80 p-4 shadow-[0_18px_52px_rgba(0,0,0,0.22)]">
                         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div>
@@ -13199,6 +13251,12 @@ function App() {
                             <button type="button" onClick={arrangeSelectedTeam} className="rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-[#7aacff]">
                               Colocar por sistema
                             </button>
+                            <button type="button" onClick={clearSelectedTeamField} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-slate-100 transition hover:bg-white/10">
+                              Limpiar campo
+                            </button>
+                            <button type="button" onClick={saveSelectedTeamField} className="rounded-2xl border border-caudal-electric/20 bg-caudal-electric/10 px-4 py-2 text-sm font-bold text-caudal-electric transition hover:bg-caudal-electric/15">
+                              Guardar disposición
+                            </button>
                           </div>
                         </div>
                         <div
@@ -13206,7 +13264,7 @@ function App() {
                             if (teamFieldEditMode) event.preventDefault();
                           }}
                           onDrop={teamFieldEditMode ? handleDropOnField : undefined}
-                          className="relative mx-auto aspect-[7/8.9] min-h-[520px] w-full max-w-[820px] overflow-hidden rounded-[1.8rem] border border-white/10 bg-[radial-gradient(circle_at_50%_44%,rgba(255,255,255,0.115),transparent_24%),radial-gradient(circle_at_50%_74%,rgba(0,0,0,0.22),transparent_38%),repeating-linear-gradient(90deg,rgba(17,86,63,0.78)_0,rgba(17,86,63,0.78)_12.5%,rgba(13,72,55,0.82)_12.5%,rgba(13,72,55,0.82)_25%),linear-gradient(180deg,#104735_0%,#0b3b31_44%,#082c27_100%)] shadow-[0_24px_76px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]"
+                          className="relative mx-auto aspect-[7/8.2] min-h-[440px] w-full max-w-[740px] overflow-hidden rounded-[1.8rem] border border-white/10 bg-[radial-gradient(circle_at_50%_44%,rgba(255,255,255,0.105),transparent_21%),radial-gradient(circle_at_50%_74%,rgba(0,0,0,0.20),transparent_34%),repeating-linear-gradient(90deg,rgba(17,86,63,0.78)_0,rgba(17,86,63,0.78)_12.5%,rgba(13,72,55,0.82)_12.5%,rgba(13,72,55,0.82)_25%),linear-gradient(180deg,#104735_0%,#0b3b31_44%,#082c27_100%)] shadow-[0_24px_76px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]"
                         >
                           <div className="absolute inset-4 rounded-[28px] border border-white/22" />
                           <div className="absolute left-4 right-4 top-1/2 h-px bg-white/18" />
@@ -13221,6 +13279,11 @@ function App() {
                                 key={`${selectedTeam.system || 'base'}-${slotIndex}`}
                                 role="button"
                                 tabIndex={0}
+                                draggable={Boolean(slotPlayer)}
+                                onDragStart={() => {
+                                  if (!slotPlayer) return;
+                                  setDraggedPlayer(slotPlayer);
+                                }}
                                 onClick={() => {
                                   if (selectedTeamPlacementPlayerName) {
                                     setTeamFieldEditMode(true);
@@ -13246,6 +13309,17 @@ function App() {
                               >
                                 {slotPlayer ? (
                                   <>
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        removeFromLineup(slotPlayer.name);
+                                      }}
+                                      className="absolute -right-2 -top-2 z-20 flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-slate-950/85 text-[11px] font-black text-slate-300 transition hover:bg-red-500/20 hover:text-red-100"
+                                      title="Quitar del campo"
+                                    >
+                                      ×
+                                    </button>
                                     <span className="absolute -top-2 left-1/2 flex -translate-x-1/2 gap-0.5">
                                       {getRivalPlayerStatusIcons(selectedTeam.id, slotPlayer).map(([icon, title, className]) => (
                                         <span key={title} title={title} className={`flex h-4 min-w-4 items-center justify-center rounded px-1 text-[9px] font-black leading-none ${className}`}>{icon}</span>
@@ -13262,7 +13336,7 @@ function App() {
                                     <span className="mt-0.5 text-[8px] font-bold text-white/35">Vacío</span>
                                   </>
                                 )}
-                                <span className="absolute left-1/2 top-full mt-1 grid w-24 -translate-x-1/2 gap-1">
+                                <span className="absolute left-1/2 top-full mt-0.5 grid w-20 -translate-x-1/2 gap-0.5">
                                   {[0, 1].map((reserveIndex) => {
                                     const reservePlayer = reservePlayersBySlot[slotIndex]?.[reserveIndex] || null;
                                     return (
@@ -13285,19 +13359,19 @@ function App() {
                                           event.stopPropagation();
                                           assignRivalPlayerAsReserveAtSlot(slotIndex);
                                         }}
-                                        className={`flex min-h-8 items-center gap-1.5 rounded-xl border px-1.5 py-1 text-left text-[9px] transition ${reservePlayer ? 'border-white/15 bg-slate-950/55 text-slate-200 opacity-85' : 'border-dashed border-white/15 bg-white/[0.025] text-white/32'}`}
+                                        className={`flex min-h-6 items-center gap-1 rounded-lg border px-1 py-0.5 text-left text-[8px] transition ${reservePlayer ? 'border-white/15 bg-slate-950/50 text-slate-200 opacity-80' : 'border-dashed border-white/10 bg-white/[0.018] text-white/25'}`}
                                         title={reservePlayer ? `Reserva: ${reservePlayer.name}` : `Reserva ${reserveIndex + 1} · ${slotRole}`}
                                       >
                                         {reservePlayer ? (
                                           <>
-                                            <span className="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/[0.08] text-[8px] font-black">
+                                            <span className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/[0.08] text-[7px] font-black">
                                               {reservePlayer.image ? <img src={reservePlayer.image} alt={reservePlayer.name} className="h-full w-full object-cover" /> : reservePlayer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
                                             </span>
                                             <span className="min-w-0 flex-1">
                                               <span className="block truncate font-black">{displayPlayerName(reservePlayer)}</span>
                                               <span className="mt-0.5 flex gap-0.5">
                                                 {getRivalPlayerStatusIcons(selectedTeam.id, reservePlayer).slice(0, 3).map(([icon, title, className]) => (
-                                                  <span key={title} title={title} className={`flex h-3.5 min-w-3.5 items-center justify-center rounded px-0.5 text-[7px] font-black leading-none ${className}`}>{icon}</span>
+                                                  <span key={title} title={title} className={`flex h-3 min-w-3 items-center justify-center rounded px-0.5 text-[6px] font-black leading-none ${className}`}>{icon}</span>
                                                 ))}
                                               </span>
                                             </span>
@@ -13315,99 +13389,98 @@ function App() {
                         </div>
                       </div>
 
-                      <aside className="rounded-[1.35rem] border border-white/10 bg-white/[0.03] p-4">
+                      <aside
+                        className="rounded-[1.35rem] border border-white/10 bg-white/[0.03] p-4"
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          if (draggedPlayer?.name) removeFromLineup(draggedPlayer.name);
+                          setDraggedPlayer(null);
+                        }}
+                      >
                         <div className="flex items-center justify-between gap-2">
                           <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Reservas</p>
-                            <h4 className="mt-1 text-lg font-black text-white">{rivalPlayers.filter((player) => player.role !== 'Titular').length}</h4>
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Plantilla rival</p>
+                            <h4 className="mt-1 text-lg font-black text-white">{rivalPlayers.length} jugadores</h4>
                           </div>
                           <button type="button" onClick={() => openRivalPlayerModal()} className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-bold text-white transition hover:bg-white/10">
                             Añadir jugador
                           </button>
                         </div>
-                        <div className="mt-4 space-y-2">
-                          {rivalPlayers.filter((player) => player.role !== 'Titular').map((player) => (
+                        <input
+                          type="search"
+                          value={rivalRosterSearch}
+                          onChange={(event) => setRivalRosterSearch(event.target.value)}
+                          placeholder="Buscar jugador..."
+                          className="mt-4 w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white outline-none placeholder:text-slate-500 focus:border-caudal-electric/60"
+                        />
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {['Todos', 'Titulares', 'Reservas', 'Sin colocar', 'Bajas'].map((filter) => (
                             <button
-                              key={player.jugadorRivalId || player.id || player.name}
+                              key={filter}
                               type="button"
-                              draggable
-                              onDragStart={() => {
-                                setTeamFieldEditMode(true);
-                                setDraggedPlayer(player);
-                              }}
-                              onClick={() => {
-                                setSelectedTeamPlacementPlayerName(player.name);
-                                setTeamFieldEditMode(true);
-                              }}
-                              className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-2 text-left transition ${selectedTeamPlacementPlayerName === player.name ? 'border-caudal-electric/30 bg-caudal-electric/10' : 'border-white/10 bg-white/[0.035] hover:bg-white/[0.06]'}`}
+                              onClick={() => setRivalRosterFilter(filter)}
+                              className={`rounded-xl border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.08em] transition ${rivalRosterFilter === filter ? 'border-caudal-electric/40 bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-400 hover:text-white'}`}
                             >
-                              <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/[0.07] text-xs font-black text-white">
-                                {player.image ? <img src={player.image} alt={player.name} className="h-full w-full object-cover" /> : player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
-                              </span>
-                              <span className="min-w-0">
-                                <span className="block truncate text-sm font-black text-white">{displayPlayerName(player)}</span>
-                                <span className="block truncate text-xs font-semibold text-slate-500">{player.position || 'Sin posición'}</span>
-                              </span>
+                              {filter}
                             </button>
                           ))}
-                          {!rivalPlayers.filter((player) => player.role !== 'Titular').length ? (
-                            <p className="rounded-2xl border border-dashed border-white/10 px-3 py-5 text-sm text-slate-500">Sin reservas registradas.</p>
+                        </div>
+                        <div className="mt-4 max-h-[560px] space-y-2 overflow-y-auto pr-1">
+                          {visibleRivalPlayers.map((player) => {
+                            const placed = isPlayerPlaced(player);
+                            return (
+                              <div
+                                key={player.jugadorRivalId || player.id || player.name}
+                                draggable
+                                onDragStart={() => {
+                                  setTeamFieldEditMode(true);
+                                  setDraggedPlayer(player);
+                                }}
+                                className={`group flex items-center gap-2 rounded-2xl border p-2 transition ${selectedTeamPlacementPlayerName === player.name ? 'border-caudal-electric/30 bg-caudal-electric/10' : 'border-white/10 bg-white/[0.035] hover:bg-white/[0.06]'}`}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedTeamPlacementPlayerName(player.name);
+                                    setTeamFieldEditMode(true);
+                                  }}
+                                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                >
+                                  <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/[0.07] text-xs font-black text-white">
+                                    {player.image ? <img src={player.image} alt={player.name} className="h-full w-full object-cover" /> : player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
+                                  </span>
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-sm font-black text-white">{displayPlayerName(player)}</span>
+                                    <span className="block truncate text-[11px] font-semibold text-slate-500">
+                                      {player.position || 'Sin posición'}{player.number ? ` · #${player.number}` : ''}
+                                    </span>
+                                    <span className="mt-1 flex flex-wrap items-center gap-1">
+                                      <span className={`rounded-md border px-1.5 py-0.5 text-[8px] font-black uppercase ${placed ? 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric' : 'border-white/10 bg-white/[0.04] text-slate-400'}`}>
+                                        {placed ? 'Campo' : player.role || 'Reserva'}
+                                      </span>
+                                      {getRivalPlayerStatusIcons(selectedTeam.id, player).map(([icon, title, className]) => (
+                                        <span key={title} title={title} className={`flex h-4 min-w-4 items-center justify-center rounded px-1 text-[9px] font-black leading-none ${className}`}>{icon}</span>
+                                      ))}
+                                    </span>
+                                  </span>
+                                </button>
+                                <details className="relative shrink-0">
+                                  <summary className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-sm font-black text-slate-300 transition hover:bg-white/10">⋮</summary>
+                                  <div className="absolute right-0 z-30 mt-2 w-40 overflow-hidden rounded-xl border border-white/10 bg-[#07111f] p-1 shadow-[0_18px_45px_rgba(0,0,0,0.36)]">
+                                    <button type="button" onClick={() => openRivalPlayerModal(player)} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-white transition hover:bg-white/10">Editar</button>
+                                    <button type="button" onClick={() => removeFromLineup(player.name)} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-200 transition hover:bg-white/10">Quitar del campo</button>
+                                    <button type="button" onClick={() => requestSelectedTeamPlayerDelete(player)} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar jugador</button>
+                                  </div>
+                                </details>
+                              </div>
+                            );
+                          })}
+                          {!visibleRivalPlayers.length ? (
+                            <p className="rounded-2xl border border-dashed border-white/10 px-3 py-5 text-sm text-slate-500">No hay jugadores con ese filtro.</p>
                           ) : null}
                         </div>
                       </aside>
-                    </section>
-
-                    <section className="rounded-[1.35rem] border border-white/10 bg-[#091428]/72 p-4">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Plantilla registrada</p>
-                          <h4 className="mt-1 text-lg font-black text-white">{rivalPlayers.length} jugadores</h4>
-                        </div>
-                        <button type="button" onClick={() => openRivalPlayerModal()} className="w-fit rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10">
-                          Añadir jugador
-                        </button>
-                      </div>
-                      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {rivalPlayers.length ? rivalPlayers.map((player, playerIndex) => (
-                          <div key={player.jugadorRivalId || player.id || player.name} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                            <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/[0.07] text-xs font-black text-white">
-                              {player.image ? <img src={player.image} alt={player.name} className="h-full w-full object-cover" /> : player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-black text-white">{displayPlayerName(player)}</span>
-                              <span className="block truncate text-xs font-semibold text-slate-500">
-                                {player.number ? `#${player.number} · ` : ''}{player.age ? `${player.age} años · ` : ''}{player.position || 'Sin posición'}
-                              </span>
-                              <span className="mt-1 flex flex-wrap items-center gap-1">
-                                <span className="rounded-md border border-white/10 bg-white/[0.05] px-1.5 py-0.5 text-[9px] font-black uppercase text-slate-300">{player.role || 'Reserva'}</span>
-                                {getRivalPlayerStatusIcons(selectedTeam.id, player).map(([icon, title, className]) => (
-                                  <span key={title} title={title} className={`flex h-4 min-w-4 items-center justify-center rounded px-1 text-[9px] font-black leading-none ${className}`}>{icon}</span>
-                                ))}
-                              </span>
-                            </span>
-                            <span className="flex shrink-0 gap-1">
-                              <button
-                                type="button"
-                                onClick={() => openRivalPlayerModal(player)}
-                                className="rounded-xl border border-white/10 bg-white/[0.06] px-2 py-1 text-[10px] font-bold text-slate-200 transition hover:bg-white/10"
-                              >
-                                Editar
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => requestSelectedTeamPlayerDelete(player)}
-                                className="rounded-xl border border-red-300/15 bg-red-500/10 px-2 py-1 text-[10px] font-bold text-red-100 transition hover:bg-red-500/15"
-                              >
-                                Eliminar
-                              </button>
-                            </span>
-                          </div>
-                        )) : (
-                          <div className="rounded-2xl border border-dashed border-white/10 px-4 py-5 text-sm text-slate-500">
-                            Sin plantilla registrada.
-                          </div>
-                        )}
-                      </div>
                     </section>
                   </section>
                 );
