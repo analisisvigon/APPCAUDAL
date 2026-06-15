@@ -9915,6 +9915,23 @@ function App() {
     await loadTeams();
   };
 
+  const handleSelectedTeamPlayerDelete = async (player) => {
+    if (!selectedTeam || !player?.name) return;
+    const confirmed = window.confirm('¿Seguro que quieres eliminar este jugador?');
+    if (!confirmed) return;
+    const { error: deleteError } = await supabase
+      .from("jugadores_rivales")
+      .delete()
+      .eq("equipo_rival_id", selectedTeam.id)
+      .eq("name", player.name);
+    if (deleteError) {
+      console.error('Error eliminando jugador rival en Supabase:', deleteError);
+      setSaveStatus(deleteError.message || 'No se pudo eliminar el jugador rival.');
+      return;
+    }
+    await loadTeams();
+  };
+
   const handleAddTeamPlayer = () => {
     setTeamFormState((prev) => ({ ...prev, squad: [...prev.squad.map(normalizeSquadEntry), createBlankTeamPlayer()] }));
   };
@@ -12977,6 +12994,7 @@ function App() {
                     <div className="grid gap-3 md:grid-cols-4">
                       {[
                         ['Sistema habitual', selectedTeam.system || 'Pendiente'],
+                        ['Estadio', selectedTeam.stadium || 'Pendiente'],
                         ['Historial vs Caudal', `${profile.balance.wins}V · ${profile.balance.draws}E · ${profile.balance.losses}D`],
                         ['Último enfrentamiento', lastMatchLabel],
                         ['Última fecha analizada', profile.lastAnalysisLabel],
@@ -12988,23 +13006,173 @@ function App() {
                       ))}
                     </div>
 
+                    <section className="grid gap-4 xl:grid-cols-[1fr_280px]">
+                      <div className="rounded-[1.35rem] border border-white/10 bg-[#091428]/80 p-4 shadow-[0_18px_52px_rgba(0,0,0,0.22)]">
+                        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Sistema y plantilla</p>
+                            <h4 className="mt-1 text-lg font-black text-white">Campo principal</h4>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <select
+                              value={selectedTeam.system || ''}
+                              onChange={(event) => updateSelectedTeamSystem(event.target.value)}
+                              className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-sm font-bold text-slate-100"
+                            >
+                              <option value="">Sistema pendiente</option>
+                              {gameSystems.map((system) => (
+                                <option key={system} value={system}>{system}</option>
+                              ))}
+                            </select>
+                            <button type="button" onClick={arrangeSelectedTeam} className="rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-[#7aacff]">
+                              Colocar por sistema
+                            </button>
+                          </div>
+                        </div>
+                        <div
+                          onDragOver={(event) => {
+                            if (teamFieldEditMode) event.preventDefault();
+                          }}
+                          onDrop={teamFieldEditMode ? handleDropOnField : undefined}
+                          className="relative mx-auto aspect-[7/8.9] min-h-[520px] w-full max-w-[820px] overflow-hidden rounded-[1.8rem] border border-white/10 bg-[radial-gradient(circle_at_50%_44%,rgba(255,255,255,0.115),transparent_24%),radial-gradient(circle_at_50%_74%,rgba(0,0,0,0.22),transparent_38%),repeating-linear-gradient(90deg,rgba(17,86,63,0.78)_0,rgba(17,86,63,0.78)_12.5%,rgba(13,72,55,0.82)_12.5%,rgba(13,72,55,0.82)_25%),linear-gradient(180deg,#104735_0%,#0b3b31_44%,#082c27_100%)] shadow-[0_24px_76px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]"
+                        >
+                          <div className="absolute inset-4 rounded-[28px] border border-white/22" />
+                          <div className="absolute left-4 right-4 top-1/2 h-px bg-white/18" />
+                          <div className="absolute left-1/2 top-1/2 h-32 w-32 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/16" />
+                          <div className="absolute left-1/2 top-4 h-24 w-56 -translate-x-1/2 rounded-b-3xl border-x border-b border-white/18" />
+                          <div className="absolute bottom-4 left-1/2 h-24 w-56 -translate-x-1/2 rounded-t-3xl border-x border-t border-white/18" />
+                          {getFormationCoordinates(selectedTeam.system || '4-4-2').map((slot, slotIndex) => {
+                            const slotPlayer = getLineupSlotMap(selectedTeamFieldLineup).get(slotIndex);
+                            const slotRole = getFormationRoles(selectedTeam.system || '4-4-2')[slotIndex] || `Posición ${slotIndex + 1}`;
+                            return (
+                              <div
+                                key={`${selectedTeam.system || 'base'}-${slotIndex}`}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => {
+                                  if (selectedTeamPlacementPlayerName) {
+                                    setTeamFieldEditMode(true);
+                                    assignSelectedTeamPlayerToSlot(slotIndex);
+                                  }
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter' && selectedTeamPlacementPlayerName) assignSelectedTeamPlayerToSlot(slotIndex);
+                                }}
+                                onDragOver={(event) => event.preventDefault()}
+                                onDrop={(event) => {
+                                  event.stopPropagation();
+                                  setTeamFieldEditMode(true);
+                                  handleDropOnLineupSlot(slotIndex);
+                                }}
+                                className={`absolute flex min-h-12 min-w-20 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-2xl border px-2 py-1 text-center transition ${
+                                  slotPlayer ? 'border-caudal-electric/20 bg-slate-950/40 text-white shadow-[0_10px_26px_rgba(0,0,0,0.28)]' : 'border-dashed border-white/20 bg-white/[0.035] text-white/45'
+                                }`}
+                                style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
+                                title={slotPlayer ? `${slotRole}: ${slotPlayer.name}` : slotRole}
+                              >
+                                {slotPlayer ? (
+                                  <>
+                                    <span className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/[0.08] text-xs font-black">
+                                      {slotPlayer.image ? <img src={slotPlayer.image} alt={slotPlayer.name} className="h-full w-full object-cover" /> : slotPlayer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
+                                    </span>
+                                    <span className="mt-1 max-w-24 truncate text-[10px] font-black">{displayPlayerName(slotPlayer)}</span>
+                                    {slotPlayer.captain ? <span className="mt-0.5 rounded-md bg-amber-200 px-1.5 py-0.5 text-[8px] font-black text-slate-950">CAP</span> : null}
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="text-[10px] font-black uppercase tracking-[0.1em]">{slotRole}</span>
+                                    <span className="mt-0.5 text-[8px] font-bold text-white/35">Vacío</span>
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <aside className="rounded-[1.35rem] border border-white/10 bg-white/[0.03] p-4">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Reservas</p>
+                            <h4 className="mt-1 text-lg font-black text-white">{rivalPlayers.filter((player) => player.role !== 'Titular').length}</h4>
+                          </div>
+                          <button type="button" onClick={() => { openTeamForm(selectedTeam); setTeamEditMode(true); }} className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-bold text-white transition hover:bg-white/10">
+                            Añadir jugador
+                          </button>
+                        </div>
+                        <div className="mt-4 space-y-2">
+                          {rivalPlayers.filter((player) => player.role !== 'Titular').map((player) => (
+                            <button
+                              key={player.jugadorRivalId || player.id || player.name}
+                              type="button"
+                              draggable
+                              onDragStart={() => {
+                                setTeamFieldEditMode(true);
+                                setDraggedPlayer(player);
+                              }}
+                              onClick={() => {
+                                setSelectedTeamPlacementPlayerName(player.name);
+                                setTeamFieldEditMode(true);
+                              }}
+                              className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-2 text-left transition ${selectedTeamPlacementPlayerName === player.name ? 'border-caudal-electric/30 bg-caudal-electric/10' : 'border-white/10 bg-white/[0.035] hover:bg-white/[0.06]'}`}
+                            >
+                              <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/[0.07] text-xs font-black text-white">
+                                {player.image ? <img src={player.image} alt={player.name} className="h-full w-full object-cover" /> : player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm font-black text-white">{displayPlayerName(player)}</span>
+                                <span className="block truncate text-xs font-semibold text-slate-500">{player.position || 'Sin posición'}</span>
+                              </span>
+                            </button>
+                          ))}
+                          {!rivalPlayers.filter((player) => player.role !== 'Titular').length ? (
+                            <p className="rounded-2xl border border-dashed border-white/10 px-3 py-5 text-sm text-slate-500">Sin reservas registradas.</p>
+                          ) : null}
+                        </div>
+                      </aside>
+                    </section>
+
                     <section className="rounded-[1.35rem] border border-white/10 bg-[#091428]/72 p-4">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Plantilla registrada</p>
                           <h4 className="mt-1 text-lg font-black text-white">{rivalPlayers.length} jugadores</h4>
                         </div>
-                        <p className="text-sm font-bold text-slate-500">GF {profile.balance.goalsFor} · GC {profile.balance.goalsAgainst}{lastResult ? ` · Último ${lastResult}` : ''}</p>
+                        <button type="button" onClick={() => { openTeamForm(selectedTeam); setTeamEditMode(true); }} className="w-fit rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10">
+                          Añadir jugador
+                        </button>
                       </div>
                       <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {rivalPlayers.length ? rivalPlayers.map((player) => (
+                        {rivalPlayers.length ? rivalPlayers.map((player, playerIndex) => (
                           <div key={player.jugadorRivalId || player.id || player.name} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                            <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/[0.07] text-xs font-black text-white">
+                            <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/[0.07] text-xs font-black text-white">
                               {player.image ? <img src={player.image} alt={player.name} className="h-full w-full object-cover" /> : player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
                             </span>
-                            <span className="min-w-0">
+                            <span className="min-w-0 flex-1">
                               <span className="block truncate text-sm font-black text-white">{displayPlayerName(player)}</span>
-                              <span className="block truncate text-xs font-semibold text-slate-500">{player.position || 'Sin posición'}{player.number ? ` · #${player.number}` : ''}</span>
+                              <span className="block truncate text-xs font-semibold text-slate-500">
+                                {player.number ? `#${player.number} · ` : ''}{player.age ? `${player.age} años · ` : ''}{player.position || 'Sin posición'}
+                              </span>
+                            </span>
+                            <span className="flex shrink-0 gap-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  openTeamForm(selectedTeam);
+                                  setTeamEditMode(true);
+                                  setEditingTeamPlayerIndex(playerIndex);
+                                }}
+                                className="rounded-xl border border-white/10 bg-white/[0.06] px-2 py-1 text-[10px] font-bold text-slate-200 transition hover:bg-white/10"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSelectedTeamPlayerDelete(player)}
+                                className="rounded-xl border border-red-300/15 bg-red-500/10 px-2 py-1 text-[10px] font-bold text-red-100 transition hover:bg-red-500/15"
+                              >
+                                Eliminar
+                              </button>
                             </span>
                           </div>
                         )) : (
@@ -16834,8 +17002,8 @@ function App() {
           <div className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-caudal-950 shadow-[0_24px_90px_rgba(0,0,0,0.45)]">
             <div className="flex items-center justify-between border-b border-white/10 px-5 py-4 sm:px-6">
               <div>
-                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">{isQuickCreateTeam ? 'Fase 1 · Alta rápida' : 'Fase 2 · Scouting avanzado'}</p>
-                <h3 className="mt-1 text-xl font-black text-white">{isQuickCreateTeam ? 'Crear rival' : 'Ficha profesional de scouting'}</h3>
+                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">{isQuickCreateTeam ? 'Alta rápida' : 'Base de datos del rival'}</p>
+                <h3 className="mt-1 text-xl font-black text-white">{isQuickCreateTeam ? 'Crear rival' : 'Editar rival'}</h3>
               </div>
               <div className="flex items-center gap-2">
                 {editingTeamId ? (
@@ -16983,7 +17151,7 @@ function App() {
                 </div>
               </section>
 
-              <section className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
+              <section className="hidden">
                 <div className="rounded-[1.35rem] border border-caudal-electric/15 bg-caudal-electric/[0.055] p-4">
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Resumen automático del rival</p>
                   <p className="mt-3 text-sm leading-7 text-slate-100">{rivalAutoSummary}</p>
@@ -17137,7 +17305,7 @@ function App() {
                 </div>
               </section>
 
-              <section className="rounded-[1.35rem] border border-caudal-electric/[0.12] bg-[#091428]/62 p-4">
+              <section className="hidden">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/70">Identidad táctica</p>
@@ -17328,7 +17496,7 @@ function App() {
                   type="submit"
                   className="inline-flex items-center justify-center rounded-2xl bg-caudal-electric px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]"
                 >
-                  {isQuickCreateTeam ? 'Crear rival' : 'Guardar scouting'}
+                  {isQuickCreateTeam ? 'Crear rival' : 'Guardar rival'}
                 </button>
               </div>
             </form>
