@@ -2537,6 +2537,7 @@ function App() {
   const [rivalRosterFilter, setRivalRosterFilter] = useState('Todos');
   const [activeRivalDropSlot, setActiveRivalDropSlot] = useState('');
   const [rivalQuickPlacement, setRivalQuickPlacement] = useState({ playerName: '', mode: '', slotIndex: 0, reserveIndex: 0 });
+  const [selectedRivalReserveSlot, setSelectedRivalReserveSlot] = useState(null);
   const [isMatchPanelOpen, setIsMatchPanelOpen] = useState(false);
   const [preLoading, setPreLoading] = useState(false);
   const [preError, setPreError] = useState('');
@@ -13424,7 +13425,7 @@ function App() {
                   return groups;
                 }, []).sort((a, b) => positionLineOrder(a.label) - positionLineOrder(b.label));
                 const isPresentationMode = !teamFieldEditMode;
-                const playerNumberLabel = (player) => player?.number ? `#${player.number}` : '#--';
+                const playerNumberLabel = (player) => player?.number ? String(player.number) : '--';
                 const presentationBenchPlayers = rivalPlayers
                   .filter((player) => !starterNames.has(normalizePlayerIdentityName(player.name)))
                   .sort((a, b) =>
@@ -13433,6 +13434,13 @@ function App() {
                     || Number(a.number || 999) - Number(b.number || 999)
                     || String(a.name || '').localeCompare(String(b.name || ''))
                   );
+                const groupedBenchPlayers = presentationBenchPlayers.reduce((groups, player) => {
+                  const label = positionGroupLabel(player.position);
+                  const existing = groups.find((group) => group.label === label);
+                  if (existing) existing.players.push(player);
+                  else groups.push({ label, players: [player] });
+                  return groups;
+                }, []).sort((a, b) => positionLineOrder(a.label) - positionLineOrder(b.label));
                 const keyPlayer = rivalPlayers.find((player) => player.isKey) || null;
                 const captainPlayer = rivalPlayers.find((player) => getRivalPlayerFlags(selectedTeam.id, player.name).captain || player.captain) || null;
                 const unavailablePlayers = rivalPlayers.filter((player) => player.injured || player.suspended);
@@ -13442,15 +13450,6 @@ function App() {
                   role,
                   label: `${shortRoleLabel(role)} · ${role}`,
                 }));
-                const getReserveStackClass = (slot) => {
-                  if (slot.y >= 76) return 'bottom-full mb-2';
-                  return 'top-full mt-2';
-                };
-                const getReserveStackNudgeClass = (slot) => {
-                  if (slot.x <= 18) return 'left-[70%]';
-                  if (slot.x >= 82) return 'left-[30%]';
-                  return 'left-1/2';
-                };
                 const placeQuickRivalPlayer = (player) => {
                   if (!player?.name) return;
                   const slotIndex = Number(rivalQuickPlacement.slotIndex || 0);
@@ -13514,7 +13513,20 @@ function App() {
                       </div>
                     ) : null}
 
-                    <section className={`grid gap-4 ${teamFieldEditMode ? 'xl:grid-cols-[minmax(0,1fr)_340px]' : 'xl:grid-cols-1'}`}>
+                    <div className="rounded-[1.15rem] border border-white/10 bg-white/[0.035] p-4">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Resumen rival</p>
+                      <div className="mt-3 grid gap-2 text-sm font-bold text-slate-200 sm:grid-cols-2 xl:grid-cols-7">
+                        <span>⭐ <strong className="text-white">{keyPlayer ? displayPlayerName(keyPlayer) : '-'}</strong></span>
+                        <span>© <strong className="text-white">{captainPlayer ? displayPlayerName(captainPlayer) : '-'}</strong></span>
+                        <span>🏥 <strong className="text-white">{rivalPlayers.filter((player) => player.injured).length ? rivalPlayers.filter((player) => player.injured).map(displayPlayerName).join(', ') : '-'}</strong></span>
+                        <span>🚫 <strong className="text-white">{rivalPlayers.filter((player) => player.suspended).length ? rivalPlayers.filter((player) => player.suspended).map(displayPlayerName).join(', ') : '-'}</strong></span>
+                        <span>🟨 <strong className="text-white">{yellowRiskPlayers.length ? yellowRiskPlayers.map(displayPlayerName).join(', ') : '-'}</strong></span>
+                        <span>Reservas: <strong className="text-white">{presentationBenchPlayers.length}</strong></span>
+                        <span>Sistema: <strong className="text-white">{selectedTeam.system || 'Pendiente'}</strong></span>
+                      </div>
+                    </div>
+
+                    <section className={`grid gap-4 ${teamFieldEditMode ? 'xl:grid-cols-[minmax(0,3fr)_minmax(260px,1fr)]' : 'xl:grid-cols-1'}`}>
                       <div className={`rounded-[1.35rem] bg-[#091428]/80 p-4 shadow-[0_18px_52px_rgba(0,0,0,0.22)] ${teamFieldEditMode ? 'border border-white/10' : 'border border-white/[0.06]'}`}>
                         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div>
@@ -13552,7 +13564,7 @@ function App() {
                           }}
                           onDrop={teamFieldEditMode ? handleDropOnField : undefined}
                           onDragLeave={() => setActiveRivalDropSlot('')}
-                          className="relative mx-auto aspect-[7/8.2] min-h-[440px] w-full max-w-[800px] overflow-hidden rounded-[1.8rem] border border-white/[0.08] bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.07),transparent_17%),repeating-linear-gradient(90deg,rgba(17,86,63,0.72)_0,rgba(17,86,63,0.72)_12.5%,rgba(13,72,55,0.76)_12.5%,rgba(13,72,55,0.76)_25%),linear-gradient(180deg,#104735_0%,#0b3b31_48%,#082c27_100%)] shadow-[0_24px_76px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.05)]"
+                          className="relative mx-auto aspect-[7/8.2] min-h-[440px] w-full max-w-[900px] overflow-visible rounded-[1.8rem] border border-white/[0.08] bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.07),transparent_17%),repeating-linear-gradient(90deg,rgba(17,86,63,0.72)_0,rgba(17,86,63,0.72)_12.5%,rgba(13,72,55,0.76)_12.5%,rgba(13,72,55,0.76)_25%),linear-gradient(180deg,#104735_0%,#0b3b31_48%,#082c27_100%)] shadow-[0_24px_76px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.05)]"
                         >
                           <div className="absolute inset-4 rounded-[28px] border border-white/22" />
                           <div className="absolute left-4 right-4 top-1/2 h-px bg-white/18" />
@@ -13562,6 +13574,9 @@ function App() {
                           {getFormationCoordinates(selectedTeam.system || '4-4-2').map((slot, slotIndex) => {
                             const slotPlayer = getLineupSlotMap(visualFieldLineup).get(slotIndex);
                             const slotRole = getFormationRoles(selectedTeam.system || '4-4-2')[slotIndex] || `Posición ${slotIndex + 1}`;
+                            const slotReservePlayers = reservePlayersBySlot[slotIndex] || [];
+                            const occupiedReserveCount = slotReservePlayers.filter(Boolean).length;
+                            const reservePanelOpen = teamFieldEditMode && selectedRivalReserveSlot === slotIndex;
                             return (
                               <div
                                 key={`${selectedTeam.system || 'base'}-${slotIndex}`}
@@ -13594,7 +13609,7 @@ function App() {
                                   handleDropOnLineupSlot(slotIndex);
                                 }}
                                 className={`group absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-2xl border px-2.5 py-1.5 text-center transition ${
-                                  slotPlayer ? `min-h-24 min-w-36 ${slotPlayer.isKey ? 'border-amber-200 bg-amber-200/[0.14] shadow-[0_0_32px_rgba(251,191,36,0.42),0_14px_34px_rgba(0,0,0,0.32)]' : 'border-white/10 bg-slate-950/30 shadow-[0_10px_26px_rgba(0,0,0,0.22)]'} text-white` : `${teamFieldEditMode ? 'min-h-9 min-w-20 border-dashed border-white/12 bg-white/[0.012] text-white/30' : 'pointer-events-none hidden'}`
+                                  slotPlayer ? `min-h-20 min-w-32 ${slotPlayer.isKey ? 'border-amber-200/70 bg-amber-200/[0.10] shadow-[0_0_22px_rgba(251,191,36,0.28),0_12px_28px_rgba(0,0,0,0.28)]' : 'border-white/10 bg-slate-950/28 shadow-[0_10px_24px_rgba(0,0,0,0.20)]'} text-white` : `${teamFieldEditMode ? 'min-h-9 min-w-20 border-dashed border-white/12 bg-white/[0.012] text-white/30' : 'pointer-events-none hidden'}`
                                 } ${activeRivalDropSlot === `starter-${slotIndex}` ? 'ring-2 ring-caudal-electric/80 ring-offset-2 ring-offset-slate-950' : ''}`}
                                 style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
                                 title={slotPlayer ? `${slotRole}: ${slotPlayer.name}` : slotRole}
@@ -13619,11 +13634,11 @@ function App() {
                                       ))}
                                     </span>
                                     <span className="absolute left-2 top-2 rounded-lg bg-slate-950/80 px-2 py-1 text-base font-black leading-none text-white">{playerNumberLabel(slotPlayer)}</span>
-                                    <span className="relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.08] text-lg font-black">
+                                    <span className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.08] text-lg font-black">
                                       <span className="absolute inset-0 flex items-center justify-center">{slotPlayer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                                       {slotPlayer.image ? <img src={slotPlayer.image} alt={slotPlayer.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="relative h-full w-full object-cover" /> : null}
                                     </span>
-                                    <span className="mt-2 max-w-36 truncate text-sm font-black uppercase">{displayPlayerName(slotPlayer)}</span>
+                                    <span className="mt-1.5 max-w-32 truncate text-[13px] font-black uppercase">{displayPlayerName(slotPlayer)}</span>
                                   </>
                                 ) : (
                                   <>
@@ -13631,57 +13646,88 @@ function App() {
                                     <span className="mt-0.5 max-w-24 truncate text-[7px] font-bold normal-case tracking-normal text-white/25">{slotRole}</span>
                                   </>
                                 )}
-                                {(teamFieldEditMode || reservePlayersBySlot[slotIndex]?.some(Boolean)) ? <span className={`absolute ${getReserveStackNudgeClass(slot)} ${getReserveStackClass(slot)} grid w-[112px] -translate-x-1/2 gap-1`}>
-                                  {[0, 1].map((reserveIndex) => {
-                                    const reservePlayer = reservePlayersBySlot[slotIndex]?.[reserveIndex] || null;
-                                    return (
-                                      <span
-                                        key={`${slotIndex}-reserve-${reserveIndex}`}
-                                        role="button"
-                                        tabIndex={0}
-                                        draggable={teamFieldEditMode && Boolean(reservePlayer)}
-                                        onDragStart={() => {
-                                          if (!teamFieldEditMode || !reservePlayer) return;
-                                          setDraggedPlayer(reservePlayer);
-                                        }}
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          if (reservePlayer) openRivalPlayerModal(reservePlayer);
-                                        }}
-                                        onDragOver={(event) => { if (teamFieldEditMode) event.preventDefault(); }}
-                                        onDragEnter={() => { if (teamFieldEditMode) setActiveRivalDropSlot(`reserve-${slotIndex}-${reserveIndex}`); }}
-                                        onDragLeave={() => { if (teamFieldEditMode) setActiveRivalDropSlot(''); }}
-                                        onDrop={(event) => {
-                                          if (!teamFieldEditMode) return;
-                                          event.stopPropagation();
-                                          setActiveRivalDropSlot('');
-                                          assignRivalPlayerAsReserveAtSlot(slotIndex, reserveIndex);
-                                        }}
-                                        className={`flex min-h-7 items-center gap-1 rounded-lg border px-1.5 py-1 text-left text-[8px] transition ${reservePlayer ? 'border-white/12 bg-slate-950/45 text-slate-200' : 'border-dashed border-white/18 bg-slate-950/20 text-white/45'} ${activeRivalDropSlot === `reserve-${slotIndex}-${reserveIndex}` ? 'border-caudal-electric/80 bg-caudal-electric/20 text-white opacity-100 ring-2 ring-caudal-electric/60' : ''}`}
-                                        title={reservePlayer ? `Reserva: ${reservePlayer.name}` : `Reserva ${reserveIndex + 1} · ${slotRole}`}
-                                      >
-                                        {reservePlayer ? (
-                                          <>
-                                            <span className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/[0.08] text-[6px] font-black">
-                                              <span className="absolute inset-0 flex items-center justify-center">{reservePlayer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
-                                              {reservePlayer.image ? <img src={reservePlayer.image} alt={reservePlayer.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="relative h-full w-full object-cover" /> : null}
-                                            </span>
-                                            <span className="min-w-0 flex-1">
-                                              <span className="block truncate font-black">{playerNumberLabel(reservePlayer)} {getShortSurname(reservePlayer)}</span>
-                                              <span className="mt-0.5 flex gap-0.5">
-                                                {getRivalPlayerStatusIcons(selectedTeam.id, reservePlayer).slice(0, 2).map(([icon, title, className]) => (
-                                                  <span key={title} title={title} className={`flex h-2.5 min-w-2.5 items-center justify-center rounded px-0.5 text-[5px] font-black leading-none ${className}`}>{icon}</span>
-                                                ))}
+                                {teamFieldEditMode ? (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setSelectedRivalReserveSlot((current) => (current === slotIndex ? null : slotIndex));
+                                    }}
+                                    onDragEnter={(event) => {
+                                      event.stopPropagation();
+                                      setSelectedRivalReserveSlot(slotIndex);
+                                      setActiveRivalDropSlot(`reserve-${slotIndex}-${slotReservePlayers[0] ? 1 : 0}`);
+                                    }}
+                                    onDragOver={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                    }}
+                                    onDrop={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      const targetReserveIndex = slotReservePlayers[0] ? 1 : 0;
+                                      setSelectedRivalReserveSlot(slotIndex);
+                                      setActiveRivalDropSlot('');
+                                      assignRivalPlayerAsReserveAtSlot(slotIndex, targetReserveIndex);
+                                    }}
+                                    className={`absolute -bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-full border px-2 py-0.5 text-[10px] font-black shadow-[0_8px_18px_rgba(0,0,0,0.28)] ${String(activeRivalDropSlot).startsWith(`reserve-${slotIndex}-`) ? 'border-caudal-electric/70 bg-caudal-electric text-slate-950' : 'border-white/10 bg-slate-950/90 text-caudal-electric'}`}
+                                    title={`Reservas de ${slotRole}`}
+                                  >
+                                    R({occupiedReserveCount})
+                                  </button>
+                                ) : null}
+                                {reservePanelOpen ? (
+                                  <div className="absolute left-1/2 top-full z-30 mt-4 grid w-44 -translate-x-1/2 gap-1 rounded-2xl border border-white/10 bg-[#07111f]/95 p-2 shadow-[0_18px_38px_rgba(0,0,0,0.42)]">
+                                    <p className="px-1 text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">{shortRoleLabel(slotRole)} · reservas</p>
+                                    {[0, 1].map((reserveIndex) => {
+                                      const reservePlayer = slotReservePlayers[reserveIndex] || null;
+                                      return (
+                                        <button
+                                          key={`${slotIndex}-reserve-panel-${reserveIndex}`}
+                                          type="button"
+                                          draggable={Boolean(reservePlayer)}
+                                          onDragStart={() => {
+                                            if (!reservePlayer) return;
+                                            setDraggedPlayer(reservePlayer);
+                                          }}
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            if (reservePlayer) openRivalPlayerModal(reservePlayer);
+                                          }}
+                                          onDragOver={(event) => event.preventDefault()}
+                                          onDragEnter={() => setActiveRivalDropSlot(`reserve-${slotIndex}-${reserveIndex}`)}
+                                          onDragLeave={() => setActiveRivalDropSlot('')}
+                                          onDrop={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            setActiveRivalDropSlot('');
+                                            assignRivalPlayerAsReserveAtSlot(slotIndex, reserveIndex);
+                                          }}
+                                          className={`flex min-h-9 items-center gap-2 rounded-xl border px-2 py-1.5 text-left text-xs transition ${reservePlayer ? 'border-white/12 bg-white/[0.06] text-slate-100' : 'border-dashed border-white/18 bg-white/[0.025] text-slate-500'} ${activeRivalDropSlot === `reserve-${slotIndex}-${reserveIndex}` ? 'border-caudal-electric/80 bg-caudal-electric/20 text-white ring-2 ring-caudal-electric/50' : ''}`}
+                                        >
+                                          {reservePlayer ? (
+                                            <>
+                                              <span className="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/[0.08] text-[9px] font-black">
+                                                <span className="absolute inset-0 flex items-center justify-center">{reservePlayer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
+                                                {reservePlayer.image ? <img src={reservePlayer.image} alt={reservePlayer.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="relative h-full w-full object-cover" /> : null}
                                               </span>
-                                            </span>
-                                          </>
-                                        ) : (
-                                          <span className="truncate font-black uppercase">Reserva {reserveIndex + 1}</span>
-                                        )}
-                                      </span>
-                                    );
-                                  })}
-                                </span> : null}
+                                              <span className="min-w-0">
+                                                <span className="block truncate font-black">{playerNumberLabel(reservePlayer)} {getShortSurname(reservePlayer)}</span>
+                                                <span className="mt-0.5 flex gap-0.5">
+                                                  {getRivalPlayerStatusIcons(selectedTeam.id, reservePlayer).slice(0, 3).map(([icon, title, className]) => (
+                                                    <span key={title} title={title} className={`flex h-3.5 min-w-3.5 items-center justify-center rounded px-0.5 text-[7px] font-black leading-none ${className}`}>{icon}</span>
+                                                  ))}
+                                                </span>
+                                              </span>
+                                            </>
+                                          ) : (
+                                            <span className="font-black uppercase">Reserva {reserveIndex + 1}</span>
+                                          )}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                ) : null}
                               </div>
                             );
                           })}
@@ -13690,29 +13736,25 @@ function App() {
                           <div className="mx-auto mt-4 w-full max-w-[800px] space-y-3">
                             <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3">
                               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Banquillo</p>
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {presentationBenchPlayers.length ? presentationBenchPlayers.slice(0, 14).map((player) => (
-                                  <span key={player.jugadorRivalId || player.id || player.name} className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-slate-950/35 px-2.5 py-1.5 text-xs font-black text-slate-100">
-                                    <span className="text-caudal-electric">{playerNumberLabel(player)}</span>
-                                    <span className="max-w-28 truncate uppercase">{displayPlayerName(player)}</span>
-                                    {getRivalPlayerStatusIcons(selectedTeam.id, player).map(([icon, title, className]) => (
-                                      <span key={title} title={title} className={`flex h-4 min-w-4 items-center justify-center rounded px-1 text-[8px] font-black leading-none ${className}`}>{icon}</span>
-                                    ))}
-                                  </span>
+                              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                {groupedBenchPlayers.length ? groupedBenchPlayers.map((group) => (
+                                  <div key={group.label} className="rounded-xl border border-white/[0.06] bg-slate-950/25 p-2">
+                                    <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">{group.label}</p>
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                      {group.players.map((player) => (
+                                        <span key={player.jugadorRivalId || player.id || player.name} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] font-black text-slate-100">
+                                          <span className="text-caudal-electric">{playerNumberLabel(player)}</span>
+                                          <span className="max-w-24 truncate uppercase">{displayPlayerName(player)}</span>
+                                          {getRivalPlayerStatusIcons(selectedTeam.id, player).slice(0, 2).map(([icon, title, className]) => (
+                                            <span key={title} title={title} className={`flex h-3.5 min-w-3.5 items-center justify-center rounded px-0.5 text-[7px] font-black leading-none ${className}`}>{icon}</span>
+                                          ))}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
                                 )) : (
                                   <span className="text-sm font-semibold text-slate-500">Sin banquillo registrado.</span>
                                 )}
-                              </div>
-                            </div>
-                            <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3">
-                              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Resumen rápido</p>
-                              <div className="mt-3 grid gap-2 text-sm font-bold text-slate-200 sm:grid-cols-2 lg:grid-cols-3">
-                                <span>Sistema: <strong className="text-white">{selectedTeam.system || 'Pendiente'}</strong></span>
-                                <span>⭐ Jugador clave: <strong className="text-white">{keyPlayer ? displayPlayerName(keyPlayer) : '-'}</strong></span>
-                                <span>© Capitán: <strong className="text-white">{captainPlayer ? displayPlayerName(captainPlayer) : '-'}</strong></span>
-                                <span>🚫 Bajas: <strong className="text-white">{unavailablePlayers.length ? unavailablePlayers.map(displayPlayerName).join(', ') : '-'}</strong></span>
-                                <span>🟨 Apercibidos: <strong className="text-white">{yellowRiskPlayers.length ? yellowRiskPlayers.map(displayPlayerName).join(', ') : '-'}</strong></span>
-                                <span>Banquillo: <strong className="text-white">{presentationBenchPlayers.length}</strong></span>
                               </div>
                             </div>
                           </div>
