@@ -11707,6 +11707,18 @@ function App() {
                   ? 'Duda'
                   : 'Disponible';
               const regularStarter = aggregate.played > 0 && aggregate.starts / aggregate.played >= 0.6;
+              const profilePosition = String(selectedPlayerProfile.position || '').toLowerCase();
+              const isFullBack = /lateral|carrilero|li|ld/.test(profilePosition);
+              const isWide = isFullBack || /extremo|banda|interior/.test(profilePosition);
+              const isForward = /delantero|punta|9|atacante/.test(profilePosition);
+              const isMidfielder = /medio|mediocentro|pivote|volante|interior/.test(profilePosition);
+              const isDefender = /central|defensa|lateral|carrilero/.test(profilePosition);
+              const positionLabel = selectedPlayerProfile.position || 'Jugador';
+              const footballProfileLines = [
+                `${positionLabel}${isFullBack && aggregate.assists + quick.corners + quick.boxEntries > 0 ? ' ofensivo' : regularStarter ? ' de continuidad' : ' de plantilla'}.`,
+                isMidfielder || aggregate.participation >= 55 ? 'Participa en fase de creación.' : isDefender ? 'Aporta estabilidad en estructura defensiva.' : isForward ? 'Prioriza amenaza y finalización.' : aggregate.played ? 'Aporta minutos en el plan competitivo.' : 'Pendiente de muestra competitiva.',
+                aggregate.assists || isWide && quick.corners ? 'Genera peligro desde centros y último pase.' : aggregate.goals ? 'Tiene impacto directo en área rival.' : quick.recoveries > quick.losses ? 'Suma valor tras pérdida y recuperación.' : quick.shots ? 'Busca finalización cuando aparece en campo.' : null,
+              ].filter(Boolean).slice(0, 3);
               const profileBadges = [
                 selectedStaffStatus.captain ? ['Capitán', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
                 selectedStaffStatus.sub23 ? ['Sub-23', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
@@ -11715,17 +11727,18 @@ function App() {
                 selectedStaffStatus.highLoad ? ['Alta carga', 'border-orange-200/20 bg-orange-200/10 text-orange-100'] : null,
                 regularStarter ? ['Titular habitual', 'border-white/15 bg-white/[0.06] text-slate-200'] : null,
               ].filter(Boolean);
-              const profileMetrics = [
-                { label: 'Minutos', value: `${aggregate.minutes}'`, priority: 'alta', kind: 'participacion', trend: aggregate.minutes ? '?' : '=' },
-                { label: 'Titularidades', value: aggregate.starts, priority: 'alta', kind: 'participacion', trend: regularStarter ? '?' : '=' },
-                { label: 'Participación', value: `${aggregate.participation}%`, priority: 'alta', kind: 'participacion', trend: Number(aggregate.participation) >= 60 ? '?' : Number(aggregate.participation) ? '=' : '?' },
-                { label: 'Goles', value: aggregate.goals, priority: 'alta', kind: 'ofensiva', trend: aggregate.goals ? '?' : '=' },
-                { label: 'Asistencias', value: aggregate.assists, priority: 'alta', kind: 'ofensiva', trend: aggregate.assists ? '?' : '=' },
-                { label: 'Suplencias', value: aggregate.subs, priority: 'media', kind: 'participacion', trend: aggregate.subs ? '=' : '?' },
-                { label: 'Amarillas', value: aggregate.yellow, priority: 'media', kind: 'disciplina', trend: aggregate.yellow ? '?' : '=' },
-                { label: 'Rojas', value: aggregate.red, priority: 'media', kind: 'disciplina', trend: aggregate.red ? '?' : '=' },
-                { label: 'Lesiones', value: aggregate.injured, priority: 'media', kind: 'disciplina', trend: aggregate.injured ? '?' : '=' },
-                { label: 'Partidos', value: aggregate.played, priority: 'baja', kind: 'participacion', trend: aggregate.played ? '=' : '?' },
+              const primaryMetrics = [
+                { label: 'Minutos', value: `${aggregate.minutes}'`, detail: aggregate.played ? `${Math.round(aggregate.minutes / Math.max(1, aggregate.played))}'/partido` : 'Sin partidos' },
+                { label: 'Partidos', value: aggregate.played, detail: `${aggregate.starts} titularidades` },
+                { label: 'Titularidades', value: aggregate.starts, detail: regularStarter ? 'Base once' : `${aggregate.subs} desde banquillo` },
+                { label: 'Participación', value: `${aggregate.participation}%`, detail: aggregate.participation >= 60 ? 'Alta' : aggregate.participation >= 30 ? 'Media' : 'Baja' },
+              ];
+              const secondaryMetrics = [
+                ['Goles', aggregate.goals, 'text-emerald-200'],
+                ['Asistencias', aggregate.assists, 'text-caudal-electric'],
+                ['Amarillas', aggregate.yellow, 'text-amber-100'],
+                ['Rojas', aggregate.red, 'text-red-100'],
+                ['Lesiones', aggregate.injured, 'text-red-100'],
               ];
               const hasInfluenceData = influenceActions.length > 0;
               const hasGoalZoneData = allGoalActions.some((event) => event.goalZone);
@@ -11759,6 +11772,24 @@ function App() {
                       ? 'Irregular'
                       : aggregate.played ? 'Baja participación' : 'Sin muestra';
               const playerSubtitle = regularStarter ? 'Titular habitual' : selectedStaffStatus.sub23 ? 'Juvenil' : aggregate.participation < 30 ? 'Poca participación' : 'Rotación';
+              const roleLabel = selectedStaffStatus.sub23
+                ? 'Sub-23'
+                : selectedStaffStatus.captain || aggregate.participation >= 75 || aggregate.directGoalParticipation >= 5
+                  ? 'Jugador clave'
+                  : regularStarter
+                    ? 'Titular habitual'
+                    : aggregate.participation >= 30 || aggregate.starts
+                      ? 'Rotación'
+                      : 'Suplente habitual';
+              const roleClass = roleLabel === 'Jugador clave'
+                ? 'border-caudal-electric/35 bg-caudal-electric/15 text-caudal-electric'
+                : roleLabel === 'Titular habitual'
+                  ? 'border-emerald-200/25 bg-emerald-200/10 text-emerald-100'
+                  : roleLabel === 'Rotación'
+                    ? 'border-amber-200/25 bg-amber-200/10 text-amber-100'
+                    : roleLabel === 'Sub-23'
+                      ? 'border-sky-200/25 bg-sky-200/10 text-sky-100'
+                      : 'border-white/10 bg-white/[0.055] text-slate-300';
               const formDots = recentFormRows.length
                 ? recentFormRows.map((row) => {
                   const impact = row.goals.length + row.assists.length;
@@ -11766,6 +11797,45 @@ function App() {
                   return rating >= 7 || impact ? 'bg-emerald-300' : rating >= 5 || row.minutes >= 60 ? 'bg-amber-200' : row.minutes > 0 ? 'bg-white/40' : rating ? 'bg-red-300' : 'bg-white/20';
                 })
                 : ['bg-white/15', 'bg-white/15', 'bg-white/15', 'bg-white/15', 'bg-white/15'];
+              const orderedRows = aggregate.rows.slice().sort((a, b) => new Date(b.match.date || 0) - new Date(a.match.date || 0));
+              const lastMatchRow = orderedRows[0] || null;
+              const lastStartRow = orderedRows.find((row) => row.role === 'Titular') || null;
+              const recentRun = orderedRows.slice(0, 5).map((row) => row.minutes >= 60 ? 'T' : row.minutes > 0 ? 'S' : '-').join(' ');
+              const sanctionRisk = aggregate.red || aggregate.yellow >= 4 ? 'Alto' : aggregate.yellow >= 2 ? 'Medio' : 'Bajo';
+              const samePositionPlayers = players.filter((player) => (player.position || 'Sin demarcación') === (selectedPlayerProfile.position || 'Sin demarcación'));
+              const positionalRows = samePositionPlayers.map((player) => {
+                const scopedMatches = matches
+                  .filter((match) =>
+                    playerCompetitionFilter === 'Todos' ||
+                    match.type === playerCompetitionFilter ||
+                    (playerCompetitionFilter === 'Playoff' && match.type === 'Play off')
+                  )
+                  .filter((match) => playerVenueFilter === 'Todos' || (playerVenueFilter === 'Local' ? match.isHome : !match.isHome));
+                const playerStatsRows = scopedMatches
+                  .map((match) => ({ match, stats: match.statsPlayerData?.[player.name] }))
+                  .filter(({ stats }) => stats);
+                const minutes = playerStatsRows.reduce((sum, item) => sum + (Number(item.stats.minutes || 0) || 0), 0);
+                const possibleMinutes = playerStatsRows.length * 90;
+                const assists = scopedMatches.reduce((sum, match) =>
+                  sum + safeArray(match.statsGoalEvents).filter((event) => event.assistant === player.name).length
+                , 0);
+                return {
+                  id: player.id,
+                  minutes,
+                  assists,
+                  participation: possibleMinutes ? Math.round((minutes / possibleMinutes) * 100) : 0,
+                };
+              });
+              const getPositionRank = (metric) => {
+                const sorted = positionalRows.slice().sort((a, b) => b[metric] - a[metric]);
+                const index = sorted.findIndex((row) => row.id === selectedPlayerProfile.id);
+                return index >= 0 ? `${index + 1}º ${selectedPlayerProfile.position || 'POS'}` : '-';
+              };
+              const positionalComparisonRows = [
+                ['Minutos', getPositionRank('minutes')],
+                ['Asistencias', getPositionRank('assists')],
+                ['Participación', getPositionRank('participation')],
+              ];
               const prePostRows = aggregate.rows
                 .map((row) => {
                   const preNote = row.match.prePlayerNotes?.[selectedPlayerProfile.name] || '';
@@ -11780,6 +11850,12 @@ function App() {
                 quick.recoveries >= 4 ? ['Buena activación tras pérdida', 'Guardar clips de presión efectiva'] : null,
                 aggregate.yellow + aggregate.red >= 2 ? ['Riesgo disciplinario', 'Revisar entradas, perfiles y duelos'] : null,
               ].filter(Boolean);
+              const openPlayerMatchSection = (match, section) => {
+                setSelectedMatchId(match.id);
+                setSelectedPlayerProfileId(null);
+                setActiveTab('Partidos');
+                openMatchPage(match, section);
+              };
               const renderProfileEmptyState = (title, copy, variant = 'compact') => {
                 if (variant === 'lines') {
                   return (
@@ -11832,12 +11908,12 @@ function App() {
                   <AccordionSection title="Datos del jugador" subtitle="Ficha, dorsal, edad y resumen base" defaultOpen>
                   <section className="rounded-[1.65rem] border border-white/10 bg-[#07111f] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.20)] sm:p-5">
                     <button onClick={() => setSelectedPlayerProfileId(null)} className="mb-4 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10">Volver a plantilla</button>
-                    <div className="grid gap-5 lg:grid-cols-[210px_1fr]">
-                      <div className="space-y-2.5">
-                        <div className="flex h-48 w-48 items-center justify-center overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.14),rgba(255,255,255,0.05),rgba(212,0,0,0.12))] text-4xl font-black text-white shadow-[0_20px_48px_rgba(0,0,0,0.28)]">
+                    <div className="grid gap-4 lg:grid-cols-[150px_1fr]">
+                      <div className="space-y-2">
+                        <div className="flex h-36 w-36 items-center justify-center overflow-hidden rounded-[1.35rem] border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.14),rgba(255,255,255,0.05),rgba(212,0,0,0.12))] text-3xl font-black text-white shadow-[0_20px_48px_rgba(0,0,0,0.28)]">
                           {selectedPlayerProfile.image ? <img src={selectedPlayerProfile.image} alt={selectedPlayerProfile.name} className="h-full w-full object-cover" /> : selectedPlayerProfile.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
                         </div>
-                        <div className={`w-48 rounded-2xl border px-4 py-2.5 text-center text-xs font-black uppercase tracking-[0.12em] ${
+                        <div className={`w-36 rounded-xl border px-3 py-2 text-center text-[10px] font-black uppercase tracking-[0.12em] ${
                           availability === 'Disponible'
                             ? 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100'
                             : availability === 'Duda'
@@ -11853,10 +11929,15 @@ function App() {
                           <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">#{displayDorsal(selectedPlayerProfile.number)}</span>
                           <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">{calculateAge(selectedPlayerProfile.dob)} años</span>
                           <span className="rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-xs font-bold text-slate-400">Pie {selectedPlayerProfile.foot || 'no indicado'}</span>
-                          <span className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2 text-xs font-bold text-slate-500">Altura/peso pendiente</span>
+                          <span className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] ${roleClass}`}>{roleLabel}</span>
                         </div>
-                        <h2 className="mt-3 text-4xl font-black uppercase tracking-tight text-white sm:text-5xl">{selectedPlayerProfile.name}</h2>
+                        <h2 className="mt-2 text-3xl font-black uppercase tracking-tight text-white sm:text-4xl">{selectedPlayerProfile.name}</h2>
                         <p className="mt-1 text-sm font-bold uppercase tracking-[0.16em] text-slate-400">{playerSubtitle}</p>
+                        <div className="mt-3 rounded-[1.15rem] border border-caudal-electric/15 bg-caudal-electric/[0.055] px-4 py-3">
+                          {footballProfileLines.map((line) => (
+                            <p key={line} className="text-sm font-semibold leading-5 text-slate-100">{line}</p>
+                          ))}
+                        </div>
                         {profileBadges.length ? (
                           <div className="mt-3 flex flex-wrap gap-2">
                             {profileBadges.map(([label, className]) => (
@@ -11876,19 +11957,63 @@ function App() {
                             </div>
                           </div>
                         </div>
-                        <div className="mt-4 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-5">
-                          {profileMetrics.map((metric) => (
-                            <div
-                              key={metric.label}
-                              className={`group rounded-[1.25rem] border p-3.5 transition duration-200 hover:-translate-y-0.5 ${
-                                metric.priority === 'alta' ? 'border-white/[0.12] bg-white/[0.065] shadow-[0_12px_34px_rgba(0,0,0,0.16)]' : 'border-white/[0.08] bg-white/[0.035]'
-                              } ${metric.kind === 'ofensiva' ? 'hover:border-emerald-200/25' : metric.kind === 'disciplina' ? 'hover:border-amber-200/20' : 'hover:border-caudal-electric/25'}`}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{metric.label}</p>
-                                <span className={`text-xs font-black ${metric.trend === '?' ? 'text-emerald-200' : metric.trend === '?' ? 'text-slate-500' : 'text-slate-400'}`}>{metric.trend}</span>
-                              </div>
-                              <p className={`${metric.priority === 'alta' ? 'mt-1.5 text-3xl' : 'mt-1.5 text-2xl'} font-black text-white`}>{metric.value}</p>
+                        <div className="mt-4 grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
+                          <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Principales</p>
+                            <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                              {primaryMetrics.map((metric) => (
+                                <div key={metric.label} className="rounded-xl border border-white/[0.08] bg-white/[0.045] p-3">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{metric.label}</p>
+                                  <p className="mt-1 text-2xl font-black text-white">{metric.value}</p>
+                                  <p className="mt-0.5 text-[11px] font-semibold text-slate-500">{metric.detail}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.025] p-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Secundarias</p>
+                            <div className="mt-3 grid grid-cols-5 gap-2">
+                              {secondaryMetrics.map(([label, value, className]) => (
+                                <div key={label} className="rounded-xl bg-white/[0.045] px-2 py-2 text-center">
+                                  <p className={`text-xl font-black ${className}`}>{value}</p>
+                                  <p className="mt-0.5 truncate text-[9px] font-black uppercase tracking-[0.08em] text-slate-500">{label}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-3 xl:grid-cols-3">
+                      <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4">
+                        <h3 className="text-xs font-black uppercase tracking-[0.18em] text-white">Estado actual</h3>
+                        <div className="mt-3 grid gap-2 text-sm">
+                          {[
+                            ['Disponibilidad', availability],
+                            ['Último partido', lastMatchRow ? `${matchDisplayDate(lastMatchRow.match.date)} · ${lastMatchRow.minutes}'` : 'Sin registro'],
+                            ['Última titularidad', lastStartRow ? matchDisplayDate(lastStartRow.match.date) : 'Sin titularidad'],
+                            ['Riesgo sanción', sanctionRisk],
+                            ['Racha reciente', recentRun || 'Sin muestra'],
+                          ].map(([label, value]) => (
+                            <div key={label} className="flex items-center justify-between gap-3 border-b border-white/[0.06] py-1.5 last:border-b-0">
+                              <span className="text-slate-500">{label}</span>
+                              <strong className="text-right text-slate-100">{value}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className={`rounded-[1.25rem] border p-4 ${roleClass}`}>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] opacity-70">Rol en plantilla</p>
+                        <p className="mt-2 text-2xl font-black">{roleLabel}</p>
+                        <p className="mt-2 text-xs font-semibold opacity-75">{aggregate.starts} titularidades · {aggregate.participation}% participación</p>
+                      </div>
+                      <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4">
+                        <h3 className="text-xs font-black uppercase tracking-[0.18em] text-white">Comparación posicional</h3>
+                        <div className="mt-3 grid gap-2">
+                          {positionalComparisonRows.map(([label, value]) => (
+                            <div key={label} className="flex items-center justify-between rounded-xl bg-white/[0.045] px-3 py-2">
+                              <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">{label}</span>
+                              <strong className="text-sm text-caudal-electric">{value}</strong>
                             </div>
                           ))}
                         </div>
@@ -11974,50 +12099,45 @@ function App() {
                   </section>
                   </AccordionSection>
 
+                  {prePostRows.length || tacticalTrendRows.length ? (
                   <AccordionSection title="Plan vs Partido" subtitle="Relación PRE, POST y biblioteca">
                   <section className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
+                    {prePostRows.length ? (
                     <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
                       <div className="flex items-center justify-between gap-3">
                         <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Consignas cumplidas</h3>
                         <span className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-black text-slate-300">{prePostRows.length}</span>
                       </div>
-                      {prePostRows.length ? (
-                        <div className="mt-4 space-y-3">
-                          {prePostRows.slice(0, 5).map(({ row, preNote, reviewedEvents, achieved }) => (
-                            <div key={row.match.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <p className="truncate text-sm font-black text-white">{row.match.opponent}</p>
-                                <span className={`rounded-xl px-2 py-1 text-[10px] font-black ${achieved === 'Cumplido' ? 'bg-emerald-200/15 text-emerald-100' : achieved === 'Parcialmente' ? 'bg-amber-200/15 text-amber-100' : achieved === 'No cumplido' ? 'bg-red-200/15 text-red-100' : 'bg-white/[0.06] text-slate-300'}`}>{achieved}</span>
-                              </div>
-                              <p className="mt-2 line-clamp-2 text-sm text-slate-300">{preNote || 'Sin objetivo individual PRE registrado.'}</p>
-                              <p className="mt-2 text-xs text-slate-500">{reviewedEvents.length} eventos revisados · Nota {row.rating || '-'}</p>
+                      <div className="mt-4 space-y-3">
+                        {prePostRows.slice(0, 5).map(({ row, preNote, reviewedEvents, achieved }) => (
+                          <div key={row.match.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="truncate text-sm font-black text-white">{row.match.opponent}</p>
+                              <span className={`rounded-xl px-2 py-1 text-[10px] font-black ${achieved === 'Cumplido' ? 'bg-emerald-200/15 text-emerald-100' : achieved === 'Parcialmente' ? 'bg-amber-200/15 text-amber-100' : achieved === 'No cumplido' ? 'bg-red-200/15 text-red-100' : 'bg-white/[0.06] text-slate-300'}`}>{achieved}</span>
                             </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="mt-4">{renderProfileEmptyState('Sin relación PRE-POST todavía.', 'Añade consignas individuales en PRE y revisa eventos en POST para medir cumplimiento táctico.', 'horizontal')}</div>
-                      )}
+                            <p className="mt-2 line-clamp-2 text-sm text-slate-300">{preNote || 'Sin objetivo individual PRE registrado.'}</p>
+                            <p className="mt-2 text-xs text-slate-500">{reviewedEvents.length} eventos revisados · Nota {row.rating || '-'}</p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
+                    ) : null}
+                    {tacticalTrendRows.length ? (
                     <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.025] p-4">
                       <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Biblioteca conectada</h3>
-                      <p className="mt-2 text-sm leading-6 text-slate-400">Base preparada para asociar tareas, clips y recursos cuando aparezcan patrones repetidos.</p>
                       <div className="mt-4 space-y-2">
-                        {tacticalTrendRows.length ? tacticalTrendRows.map(([title, copy]) => (
+                        {tacticalTrendRows.map(([title, copy]) => (
                           <div key={title} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
                             <p className="text-sm font-black text-white">{title}</p>
                             <p className="mt-1 text-xs text-slate-400">{copy}</p>
                           </div>
-                        )) : (
-                          <>
-                            <span className="block h-2 rounded-full bg-white/10" />
-                            <span className="block h-2 w-2/3 rounded-full bg-white/10" />
-                            <p className="pt-2 text-sm text-slate-500">Sin patrones repetidos suficientes para proponer recursos.</p>
-                          </>
-                        )}
+                        ))}
                       </div>
                     </div>
+                    ) : null}
                   </section>
                   </AccordionSection>
+                  ) : null}
 
                   <AccordionSection title="Estadísticas" subtitle="Influencia táctica, finalización y sociedades">
                   <section className="grid gap-4 xl:grid-cols-[1.18fr_0.82fr]">
@@ -12146,10 +12266,11 @@ function App() {
                           </div>
                         </div> : <div className="mt-4">{renderProfileEmptyState('Sin sociedades ofensivas registradas.', 'Cuando haya goles y asistencias revisadas, se verán conexiones, participaciones compartidas y compañeros más asociados.', 'lines')}</div>}
                       </div>
+                      {videoActions.length ? (
                       <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
                         <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Videoteca de acciones</h3>
                         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                          {videoActions.length ? videoActions.map((event) => (
+                          {videoActions.map((event) => (
                             <div key={`${event.id}-${event.action}`} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] text-sm text-slate-300">
                               <div className="flex aspect-video items-center justify-center bg-[linear-gradient(135deg,rgba(61,217,255,0.12),rgba(255,255,255,0.04))] text-xs font-black uppercase tracking-[0.18em] text-slate-400">Clip</div>
                               <div className="p-4">
@@ -12158,9 +12279,10 @@ function App() {
                               <button type="button" onClick={() => window.open(event.videoUrl, '_blank')} className="mt-3 rounded-xl bg-caudal-electric/90 px-3 py-2 text-xs font-bold text-slate-950 transition hover:bg-caudal-electric">Ver análisis</button>
                               </div>
                             </div>
-                          )) : <div className="sm:col-span-2">{renderProfileEmptyState('Sin clips guardados.', 'Los clips recientes y acciones destacadas aparecerán aquí cuando el POST tenga vídeo asociado.', 'horizontal')}</div>}
+                          ))}
                         </div>
                       </div>
+                      ) : null}
                     </div>
                   </section>
                   </AccordionSection>
@@ -12226,9 +12348,9 @@ function App() {
                       <span className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-black text-slate-300">{aggregate.rows.length} registros</span>
                     </div>
                     <div className="mt-4 overflow-x-auto">
-                      <table className="w-full min-w-[980px] text-left text-sm">
+                      <table className="w-full min-w-[1080px] text-left text-sm">
                         <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
-                          <tr>{['Fecha', 'Resultado', 'Rival', 'L/V', 'Competición', 'Rol', 'Min', 'Nota', 'Impacto', 'TA', 'TR', 'Les.'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}</tr>
+                          <tr>{['Fecha', 'Resultado', 'Rival', 'L/V', 'Competición', 'Rol', 'Min', 'Nota', 'Impacto', 'TA', 'TR', 'Les.', 'Acciones'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}</tr>
                         </thead>
                         <tbody>
                           {aggregate.rows.length ? aggregate.rows.map((row) => {
@@ -12278,10 +12400,34 @@ function App() {
                               <td className="px-3 py-4 text-amber-100">{row.yellow || '-'}</td>
                               <td className="px-3 py-4 text-red-100">{row.red ? '1' : '-'}</td>
                               <td className="px-3 py-4 text-red-100">{row.injured ? 'Sí' : '-'}</td>
+                              <td className="px-3 py-4">
+                                <div className="flex gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      openPlayerMatchSection(row.match, 'PRE');
+                                    }}
+                                    className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-caudal-electric transition hover:bg-caudal-electric hover:text-slate-950"
+                                  >
+                                    Ver PRE
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      openPlayerMatchSection(row.match, 'POST');
+                                    }}
+                                    className="rounded-lg border border-white/10 bg-white/[0.055] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-200 transition hover:bg-white/10"
+                                  >
+                                    Ver POST
+                                  </button>
+                                </div>
+                              </td>
                             </tr>
                             {expandedPlayerMatchId === row.match.id ? (
                               <tr className="border-t border-white/5 bg-black/15">
-                                <td colSpan="12" className="px-3 py-4">
+                                <td colSpan="13" className="px-3 py-4">
                                   <div className="grid gap-3 lg:grid-cols-3">
                                     <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
                                       <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Consigna PRE</p>
@@ -12307,7 +12453,7 @@ function App() {
                             ) : null}
                             </React.Fragment>
                           );
-                          }) : <tr><td colSpan="12" className="px-3 py-6 text-center text-slate-500">Sin datos registrados</td></tr>}
+                          }) : <tr><td colSpan="13" className="px-3 py-6 text-center text-slate-500">Sin datos registrados</td></tr>}
                         </tbody>
                       </table>
                     </div>
