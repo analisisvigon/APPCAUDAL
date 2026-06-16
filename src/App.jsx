@@ -13610,7 +13610,7 @@ function App() {
                                   handleDropOnLineupSlot(slotIndex);
                                 }}
                                 className={`group absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-2xl border px-2.5 py-1.5 text-center transition ${
-                                  slotPlayer ? `${isPresentationMode ? 'min-h-16 min-w-28 px-2 py-1' : 'min-h-20 min-w-32'} ${slotPlayer.isKey ? 'border-amber-200/70 bg-amber-200/[0.10] shadow-[0_0_18px_rgba(251,191,36,0.24),0_10px_22px_rgba(0,0,0,0.24)]' : 'border-white/10 bg-slate-950/26 shadow-[0_8px_20px_rgba(0,0,0,0.18)]'} text-white` : `${teamFieldEditMode ? 'min-h-9 min-w-20 border-dashed border-white/12 bg-white/[0.012] text-white/30' : 'pointer-events-none hidden'}`
+                                  slotPlayer ? `${isPresentationMode ? 'min-h-[5.7rem] w-[6.6rem] px-1.5 py-1' : 'min-h-20 min-w-32'} ${slotPlayer.isKey ? 'border-amber-200/80 bg-amber-200/[0.11] shadow-[0_0_0_1px_rgba(251,191,36,0.32),0_0_24px_rgba(250,204,21,0.30),0_10px_22px_rgba(0,0,0,0.24)]' : 'border-white/10 bg-slate-950/26 shadow-[0_8px_20px_rgba(0,0,0,0.18)]'} text-white` : `${teamFieldEditMode ? 'min-h-9 min-w-20 border-dashed border-white/12 bg-white/[0.012] text-white/30' : 'pointer-events-none hidden'}`
                                 } ${activeRivalDropSlot === `starter-${slotIndex}` ? 'ring-2 ring-caudal-electric/80 ring-offset-2 ring-offset-slate-950' : ''}`}
                                 style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
                                 title={slotPlayer ? `${slotRole}: ${slotPlayer.name}` : slotRole}
@@ -13628,19 +13628,22 @@ function App() {
                                     >
                                       ×
                                     </button> : null}
-                                    {slotPlayer.isKey ? <span className={`absolute left-1/2 flex -translate-x-1/2 items-center justify-center rounded-full border border-amber-200/70 bg-amber-200 font-black text-slate-950 shadow-[0_0_14px_rgba(251,191,36,0.28)] ${isPresentationMode ? '-top-3 h-5 w-5 text-[10px]' : '-top-5 h-7 w-7 text-sm'}`}>⭐</span> : null}
+                                    {slotPlayer.isKey ? <span className={`absolute left-1/2 flex -translate-x-1/2 items-center justify-center rounded-full border border-amber-200/70 bg-amber-200 font-black text-slate-950 shadow-[0_0_16px_rgba(250,204,21,0.42)] ${isPresentationMode ? '-top-3 h-5 w-5 text-[10px]' : '-top-5 h-7 w-7 text-sm'}`}>⭐</span> : null}
                                     <span className={`absolute flex flex-col gap-0.5 ${isPresentationMode ? '-right-1 top-1' : '-right-2 top-2'}`}>
-                                      {getRivalPlayerStatusIcons(selectedTeam.id, slotPlayer).map(([icon, title, className]) => (
+                                      {getRivalPlayerStatusIcons(selectedTeam.id, slotPlayer).filter(([, title]) => title !== 'Capitán').map(([icon, title, className]) => (
                                         <span key={title} title={title} className={`flex items-center justify-center rounded-md px-1 font-black leading-none ${isPresentationMode ? 'h-4 min-w-4 text-[8px]' : 'h-5 min-w-5 text-[10px]'} ${className}`}>{icon}</span>
                                       ))}
                                     </span>
-                                    {isPresentationMode ? <span className="mb-1 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{shortRoleLabel(slotRole)}</span> : null}
-                                    {playerNumberLabel(slotPlayer) ? <span className={`${isPresentationMode ? 'text-base' : 'absolute left-2 top-2 rounded-lg bg-slate-950/80 px-2 py-1 text-base'} font-black leading-none text-white`}>{playerNumberLabel(slotPlayer)}</span> : null}
-                                    <span className={`relative items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.08] font-black ${isPresentationMode ? 'hidden' : 'flex h-16 w-16 text-lg'}`}>
+                                    {isPresentationMode ? <span className="mb-0.5 max-w-[5.8rem] truncate text-[9px] font-black uppercase tracking-[0.10em] text-caudal-electric">{shortRoleLabel(slotRole)}</span> : null}
+                                    <span className={`relative items-center justify-center overflow-hidden border bg-white/[0.08] font-black ${isPresentationMode ? `flex h-11 w-11 rounded-xl text-sm ${slotPlayer.isKey ? 'border-amber-200/70 shadow-[0_0_18px_rgba(250,204,21,0.28)]' : 'border-white/10'}` : 'flex h-16 w-16 rounded-2xl border-white/10 text-lg'}`}>
                                       <span className="absolute inset-0 flex items-center justify-center">{slotPlayer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                                       {slotPlayer.image ? <img src={slotPlayer.image} alt={slotPlayer.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="relative h-full w-full object-cover" /> : null}
+                                      {playerNumberLabel(slotPlayer) ? <span className={`absolute left-0.5 top-0.5 z-10 rounded-md bg-slate-950/82 px-1 py-0.5 font-black leading-none text-white ${isPresentationMode ? 'text-[8px]' : 'text-[10px]'}`}>{playerNumberLabel(slotPlayer)}</span> : null}
                                     </span>
-                                    <span className={`max-w-28 truncate font-black uppercase ${isPresentationMode ? 'mt-1 text-[11px]' : 'mt-1.5 text-[13px]'}`}>{displayPlayerName(slotPlayer)}</span>
+                                    <span className={`flex max-w-28 items-center justify-center gap-1 truncate font-black uppercase ${isPresentationMode ? 'mt-0.5 text-[10px]' : 'mt-1.5 text-[13px]'}`}>
+                                      <span className="truncate">{displayPlayerName(slotPlayer)}</span>
+                                      {getRivalPlayerFlags(selectedTeam.id, slotPlayer.name).captain || slotPlayer.captain ? <span title="Capitán" className="shrink-0 text-[10px] leading-none text-blue-200">©</span> : null}
+                                    </span>
                                     {isPresentationMode && slotReservePlayers.filter(Boolean).length ? (
                                       <span className="mt-0.5 flex max-w-28 flex-col gap-0.5 text-[8px] font-bold uppercase leading-tight text-slate-300/80">
                                         {slotReservePlayers.filter(Boolean).slice(0, 2).map((reservePlayer) => (
