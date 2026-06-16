@@ -3829,7 +3829,7 @@ function App() {
     lines[index] = value;
     saveKeyBlockLines(block, lines);
   };
-  const addKeyBlockLine = (block) => saveKeyBlockLines(block, [...getKeyBlockLines(block), '']);
+  const addKeyBlockLine = (block) => saveKeyBlockLines(block, [...getKeyBlockLines(block), 'Nueva clave']);
   const removeKeyBlockLine = (block, index) => saveKeyBlockLines(block, getKeyBlockLines(block).filter((_, itemIndex) => itemIndex !== index));
   const moveKeyBlockLine = (block, index, direction) => {
     const lines = getKeyBlockLines(block);
@@ -3861,6 +3861,43 @@ function App() {
   const handleDropOnPreCaudalSlot = (slotIndex) => {
     if (!draggedPlayer?.name) return;
     updateCaudalLineupSlot(slotIndex, draggedPlayer.name);
+    setDraggedPlayer(null);
+  };
+  const clearPreCaudalLineup = async () => {
+    if (!selectedMatch) return;
+    const nextLineup = Array.from({ length: 11 }, () => '');
+    setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? { ...match, preCaudalLineup: nextLineup } : match)));
+    try {
+      await supabase.from("partido_alineacion_slots").delete().eq("partido_id", selectedMatch.id).eq("scope", "pre_caudal");
+      await loadMatchPreData(selectedMatch.id);
+    } catch (slotError) {
+      console.error('Error limpiando once PRE Caudal en Supabase:', slotError);
+      setPreError(slotError.message || 'No se pudo limpiar la alineación PRE.');
+    }
+  };
+  const getPrePlayerPositionGroup = (position) => {
+    const value = normalizePlayerIdentityName(position || '');
+    if (/portero|^por$|^pt$|^gk$/.test(value)) return 'Porteros';
+    if (/defensa|central|lateral|carrilero|^df|^li$|^ld$|^dcf$|^dfc$|^cad$|^cai$/.test(value)) return 'Defensas';
+    if (/medio|mediocentro|interior|pivote|volante|mediapunta|^mc|^mcd|^mp/.test(value)) return 'Centrocampistas';
+    return 'Delanteros';
+  };
+  const prePositionGroupOrder = ['Porteros', 'Defensas', 'Centrocampistas', 'Delanteros'];
+  const getGroupedPrePlayers = (status) => {
+    const grouped = players
+      .filter((player) => getPrePlayerStatus(player) === status)
+      .reduce((groups, player) => {
+        const group = getPrePlayerPositionGroup(player.position);
+        groups[group] = [...(groups[group] || []), player];
+        return groups;
+      }, {});
+    return prePositionGroupOrder.map((group) => ({ group, players: (grouped[group] || []).sort((a, b) => Number(a.number || 999) - Number(b.number || 999) || String(a.name).localeCompare(String(b.name))) }));
+  };
+  const handleDropOnPreSquadZone = (status) => {
+    if (!draggedPlayer?.name) return;
+    if (status === 'Titular') updateCaudalLineupSlot(selectedTacticalPlayerIndex, draggedPlayer.name);
+    if (status === 'Suplente') setPrePlayerAsSubstitute(draggedPlayer.name);
+    if (status === 'Fuera convocatoria') setPrePlayerOut(draggedPlayer.name);
     setDraggedPlayer(null);
   };
   const savePreLineupAsFinalLineup = async () => {
@@ -15952,15 +15989,25 @@ function App() {
                                   <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/75">Mi alineación</p>
                                   <h4 className="mt-1 text-xl font-black text-white">Once semanal y convocatoria</h4>
                                 </div>
-                                <div className="flex flex-wrap gap-2">
-                                  <button type="button" onClick={loadSuggestedCaudalLineup} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-white hover:bg-white/10">Auto once</button>
-                                  <button type="button" onClick={() => clearCaudalLineupSlot(selectedTacticalPlayerIndex)} className="rounded-xl border border-red-200/15 bg-red-500/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-red-100 hover:bg-red-500/15">Limpiar puesto</button>
-                                  <button type="button" onClick={savePreLineupAsFinalLineup} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Guardar definitivo</button>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-300">
+                                    <span>Sistema:</span>
+                                    <select
+                                      value={selectedMatch.preCaudalSystem || '4-4-2'}
+                                      onChange={(event) => updateSelectedMatchFields({ preCaudalSystem: event.target.value })}
+                                      className="bg-transparent text-white outline-none"
+                                    >
+                                      {gameSystems.map((system) => <option key={system} value={system}>{system}</option>)}
+                                    </select>
+                                  </label>
+                                  <button type="button" onClick={loadSuggestedCaudalLineup} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-white hover:bg-white/10">Generar XI</button>
+                                  <button type="button" onClick={clearPreCaudalLineup} className="rounded-xl border border-red-200/15 bg-red-500/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-red-100 hover:bg-red-500/15">Limpiar</button>
+                                  <button type="button" onClick={savePreLineupAsFinalLineup} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Guardar alineación</button>
                                 </div>
                               </div>
-                              <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px]">
+                              <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(260px,3fr)]">
                                 <div className="rounded-3xl border border-white/10 bg-[#0b5b3f] p-3">
-                                  <div className="relative mx-auto aspect-[7/9] min-h-[480px] max-w-[520px] overflow-hidden rounded-2xl border-2 border-white/55 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_50%,transparent_50%),linear-gradient(0deg,rgba(255,255,255,0.05)_50%,transparent_50%)] bg-[length:20%_100%,100%_14.2%]">
+                                  <div className="relative mx-auto aspect-[7/8.4] min-h-[560px] max-w-[760px] overflow-hidden rounded-2xl border-2 border-white/55 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_50%,transparent_50%),linear-gradient(0deg,rgba(255,255,255,0.05)_50%,transparent_50%)] bg-[length:20%_100%,100%_14.2%]">
                                     <div className="absolute left-0 right-0 top-1/2 h-px bg-white/55" />
                                     <div className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/55" />
                                     <div className="absolute bottom-0 left-1/2 h-24 w-48 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/55" />
@@ -15975,15 +16022,17 @@ function App() {
                                           onClick={() => setSelectedTacticalPlayerIndex(index)}
                                           onDragOver={(event) => event.preventDefault()}
                                           onDrop={() => handleDropOnPreCaudalSlot(index)}
-                                          className={`absolute flex w-20 -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center text-caudal-electric ${selectedTacticalPlayerIndex === index ? 'z-20' : 'z-10'}`}
+                                          className={`absolute flex w-28 -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center text-caudal-electric ${selectedTacticalPlayerIndex === index ? 'z-20' : 'z-10'}`}
                                           style={{ left: `${position.x}%`, top: `${position.y}%` }}
                                         >
-                                          <span className={`relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border bg-caudal-950 text-[10px] font-black shadow-lg ${selectedTacticalPlayerIndex === index ? 'border-caudal-electric ring-4 ring-caudal-electric/25' : 'border-caudal-electric/60'}`}>
-                                            {player?.image ? <img src={player.image} alt="" className="h-full w-full object-cover object-center" /> : (index === 0 ? 'P' : index)}
+                                          <span className={`relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border bg-caudal-950 text-[11px] font-black shadow-lg ${selectedTacticalPlayerIndex === index ? 'border-caudal-electric ring-4 ring-caudal-electric/25' : 'border-caudal-electric/60'}`}>
+                                            {player?.image ? <img src={player.image} alt="" className="h-full w-full object-cover object-center" /> : (playerName ? playerName.split(' ').map((part) => part[0]).join('').slice(0, 2) : shortRoleLabel(getFormationRoles(selectedMatch.preCaudalSystem || '4-4-2')[index]))}
+                                            {player?.number ? <span className="absolute left-1 top-1 rounded-md bg-slate-950/85 px-1 py-0.5 text-[9px] leading-none text-white">#{player.number}</span> : null}
                                             {isCaptain ? <span className="absolute -right-1 -top-1 rounded-full bg-blue-200 px-1 text-[9px] font-black text-slate-950">©</span> : null}
                                           </span>
-                                          <span className="max-w-20 truncate rounded-md bg-black/58 px-1 py-0.5 text-[9px] font-bold leading-none text-white">
-                                            {playerName || getFormationRoles(selectedMatch.preCaudalSystem || '4-4-2')[index]}
+                                          <span className="max-w-28 rounded-lg bg-black/62 px-1.5 py-1 text-white">
+                                            <span className="block truncate text-[10px] font-black leading-none">{playerName || getFormationRoles(selectedMatch.preCaudalSystem || '4-4-2')[index]}</span>
+                                            <span className="mt-0.5 block truncate text-[8px] font-bold uppercase leading-none text-slate-300">{player?.position || getFormationRoles(selectedMatch.preCaudalSystem || '4-4-2')[index]}</span>
                                           </span>
                                         </button>
                                       );
@@ -15991,30 +16040,54 @@ function App() {
                                   </div>
                                 </div>
                                 <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-3">
-                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Plantilla Caudal</p>
-                                  <p className="mt-1 text-xs font-semibold text-slate-400">Arrastra al campo o usa los estados.</p>
-                                  <div className="mt-3 max-h-[560px] space-y-2 overflow-y-auto pr-1">
-                                    {players.map((player) => {
-                                      const status = getPrePlayerStatus(player);
-                                      const isCurrent = getSelectedLineupName() === player.name;
-                                      const isCaptain = selectedMatch.captainPlayerId === player.id;
-                                      return (
-                                        <div key={player.id} draggable onDragStart={() => setDraggedPlayer(player)} className={`rounded-2xl border px-3 py-2 text-sm ${isCurrent ? 'border-caudal-electric/40 bg-caudal-electric/15' : 'border-white/10 bg-white/[0.04]'}`}>
-                                          <div className="flex items-center justify-between gap-2">
-                                            <button type="button" onClick={() => updateCaudalLineupSlot(selectedTacticalPlayerIndex, player.name)} className="min-w-0 flex-1 text-left">
-                                              <span className="block truncate font-black text-white">{player.name}{isCaptain ? ' ©' : ''}</span>
-                                              <span className="mt-0.5 block truncate text-[10px] font-bold uppercase tracking-[0.10em] text-slate-500">{status} · {player.position || 'Sin posición'}</span>
-                                            </button>
-                                            <button type="button" onClick={() => updateMatchCaptain(isCaptain ? '' : player.id)} className={`rounded-lg px-2 py-1 text-[10px] font-black ${isCaptain ? 'bg-blue-200 text-slate-950' : 'bg-white/10 text-slate-300'}`}>©</button>
-                                          </div>
-                                          <div className="mt-2 grid grid-cols-3 gap-1">
-                                            <button type="button" onClick={() => updateCaudalLineupSlot(selectedTacticalPlayerIndex, player.name)} className={`rounded-lg px-1.5 py-1 text-[9px] font-black uppercase ${status === 'Titular' ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.08] text-slate-300'}`}>Titular</button>
-                                            <button type="button" onClick={() => setPrePlayerAsSubstitute(player.name)} className={`rounded-lg px-1.5 py-1 text-[9px] font-black uppercase ${status === 'Suplente' ? 'bg-emerald-300 text-slate-950' : 'bg-white/[0.08] text-slate-300'}`}>Suplente</button>
-                                            <button type="button" onClick={() => setPrePlayerOut(player.name)} className={`rounded-lg px-1.5 py-1 text-[9px] font-black uppercase ${status === 'Fuera convocatoria' ? 'bg-slate-700 text-slate-200' : 'bg-white/[0.08] text-slate-300'}`}>Fuera</button>
-                                          </div>
+                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Convocatoria</p>
+                                  <p className="mt-1 text-xs font-semibold text-slate-400">Arrastra entre zonas o al campo.</p>
+                                  <div className="mt-3 max-h-[640px] space-y-3 overflow-y-auto pr-1">
+                                    {['Titular', 'Suplente', 'Fuera convocatoria'].map((status) => (
+                                      <div
+                                        key={status}
+                                        onDragOver={(event) => event.preventDefault()}
+                                        onDrop={() => handleDropOnPreSquadZone(status)}
+                                        className="rounded-2xl border border-white/10 bg-slate-950/18 p-2"
+                                      >
+                                        <div className="flex items-center justify-between gap-2">
+                                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white">{status === 'Titular' ? 'Titulares' : status === 'Suplente' ? 'Suplentes' : 'Fuera convocatoria'}</p>
+                                          <span className="rounded-md bg-white/[0.08] px-1.5 py-0.5 text-[9px] font-black text-slate-300">{players.filter((player) => getPrePlayerStatus(player) === status).length}</span>
                                         </div>
-                                      );
-                                    })}
+                                        <div className="mt-2 grid gap-2">
+                                          {getGroupedPrePlayers(status).map(({ group, players: groupPlayers }) => groupPlayers.length ? (
+                                            <div key={`${status}-${group}`}>
+                                              <p className="mb-1 text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">{group}</p>
+                                              <div className="grid gap-1">
+                                                {groupPlayers.map((player) => {
+                                                  const isCurrent = getSelectedLineupName() === player.name;
+                                                  const isCaptain = selectedMatch.captainPlayerId === player.id;
+                                                  return (
+                                                    <div key={player.id} draggable onDragStart={() => setDraggedPlayer(player)} className={`group rounded-xl border px-2 py-1.5 text-xs ${isCurrent ? 'border-caudal-electric/40 bg-caudal-electric/15' : 'border-white/10 bg-white/[0.04]'}`}>
+                                                      <div className="flex items-center gap-2">
+                                                        <button type="button" onClick={() => updateCaudalLineupSlot(selectedTacticalPlayerIndex, player.name)} className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-caudal-950 text-[9px] font-black text-caudal-electric">
+                                                          {player.image ? <img src={player.image} alt="" className="h-full w-full object-cover object-center" /> : (player.number ? `#${player.number}` : player.name.split(' ').map((part) => part[0]).join('').slice(0, 2))}
+                                                        </button>
+                                                        <button type="button" onClick={() => updateCaudalLineupSlot(selectedTacticalPlayerIndex, player.name)} className="min-w-0 flex-1 text-left">
+                                                          <span className="block truncate font-black text-white">{player.number ? `#${player.number} ` : ''}{player.name}{isCaptain ? ' ©' : ''}</span>
+                                                          <span className="mt-0.5 block truncate text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">{player.position || 'Sin posición'}</span>
+                                                        </button>
+                                                        <button type="button" onClick={() => updateMatchCaptain(isCaptain ? '' : player.id)} className={`rounded-md px-1.5 py-1 text-[9px] font-black ${isCaptain ? 'bg-blue-200 text-slate-950' : 'bg-white/10 text-slate-300 opacity-70 group-hover:opacity-100'}`}>©</button>
+                                                      </div>
+                                                      <div className="mt-1.5 grid grid-cols-3 gap-1">
+                                                        <button type="button" onClick={() => updateCaudalLineupSlot(selectedTacticalPlayerIndex, player.name)} className={`rounded-md px-1 py-0.5 text-[8px] font-black uppercase ${status === 'Titular' ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.08] text-slate-300'}`}>Titular</button>
+                                                        <button type="button" onClick={() => setPrePlayerAsSubstitute(player.name)} className={`rounded-md px-1 py-0.5 text-[8px] font-black uppercase ${status === 'Suplente' ? 'bg-emerald-300 text-slate-950' : 'bg-white/[0.08] text-slate-300'}`}>Suplente</button>
+                                                        <button type="button" onClick={() => setPrePlayerOut(player.name)} className={`rounded-md px-1 py-0.5 text-[8px] font-black uppercase ${status === 'Fuera convocatoria' ? 'bg-slate-700 text-slate-200' : 'bg-white/[0.08] text-slate-300'}`}>Fuera</button>
+                                                      </div>
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
+                                            </div>
+                                          ) : null)}
+                                        </div>
+                                      </div>
+                                    ))}
                                   </div>
                                 </div>
                               </div>
