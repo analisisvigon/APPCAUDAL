@@ -2573,7 +2573,7 @@ function App() {
   const [matchView, setMatchView] = useState('lista_partidos');
   const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [matchViewSection, setMatchViewSection] = useState('PRE');
-  const [preSubTab, setPreSubTab] = useState('Informe rival');
+  const [preSubTab, setPreSubTab] = useState('Plan cuerpo técnico');
   const [isPreTalkMode, setIsPreTalkMode] = useState(false);
   const [manualConsignaDraft, setManualConsignaDraft] = useState('');
   const [isTacticalZonesEditorOpen, setIsTacticalZonesEditorOpen] = useState(false);
@@ -3805,6 +3805,76 @@ function App() {
     const next = [...activeConsignas];
     [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
     saveActiveConsignas(next);
+  };
+  const splitPlanLines = (value) => String(value || '').split('\n').map((item) => item.trim()).filter(Boolean);
+  const savePlanLines = (field, items) => updateSelectedMatchFields({ [field]: items.map((item) => item.trim()).filter(Boolean).join('\n') });
+  const preKeyBlocks = [
+    { title: 'Ofensivas', field: 'planClave', tone: 'border-caudal-electric/15 bg-caudal-electric/[0.045]', placeholder: 'Atacar espalda lateral.' },
+    { title: 'Defensivas', field: 'preCaudalDefendStrengths', tone: 'border-rose-200/15 bg-rose-300/[0.045]', placeholder: 'Cerrar pase interior.' },
+    { title: 'ABP', field: 'abpOfensiva', secondaryField: 'abpDefensiva', tone: 'border-amber-200/15 bg-amber-300/[0.055]', placeholder: 'Defender primer palo.' },
+  ];
+  const getKeyBlockLines = (block) => [
+    ...splitPlanLines(selectedMatch?.[block.field]),
+    ...(block.secondaryField ? splitPlanLines(selectedMatch?.[block.secondaryField]) : []),
+  ];
+  const saveKeyBlockLines = (block, items) => {
+    if (!block.secondaryField) {
+      savePlanLines(block.field, items);
+      return;
+    }
+    savePlanLines(block.field, items);
+  };
+  const updateKeyBlockLine = (block, index, value) => {
+    const lines = getKeyBlockLines(block);
+    lines[index] = value;
+    saveKeyBlockLines(block, lines);
+  };
+  const addKeyBlockLine = (block) => saveKeyBlockLines(block, [...getKeyBlockLines(block), '']);
+  const removeKeyBlockLine = (block, index) => saveKeyBlockLines(block, getKeyBlockLines(block).filter((_, itemIndex) => itemIndex !== index));
+  const moveKeyBlockLine = (block, index, direction) => {
+    const lines = getKeyBlockLines(block);
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= lines.length) return;
+    [lines[index], lines[nextIndex]] = [lines[nextIndex], lines[index]];
+    saveKeyBlockLines(block, lines);
+  };
+  const getPrePlayerStatus = (player) => {
+    const isStarter = safeArray(selectedMatch?.preCaudalLineup).includes(player.name);
+    if (isStarter) return 'Titular';
+    if (getStatsCalledPlayerNames().includes(player.name)) return 'Suplente';
+    return 'Fuera convocatoria';
+  };
+  const setPrePlayerAsSubstitute = async (playerName) => {
+    if (!selectedMatch || !playerName) return;
+    const currentLineup = Array.from({ length: 11 }, (_, index) => selectedMatch.preCaudalLineup?.[index] || '');
+    const slotIndex = currentLineup.findIndex((name) => name === playerName);
+    if (slotIndex >= 0) await clearCaudalLineupSlot(slotIndex);
+    await addStatsCalledPlayer(playerName);
+  };
+  const setPrePlayerOut = async (playerName) => {
+    if (!selectedMatch || !playerName) return;
+    const currentLineup = Array.from({ length: 11 }, (_, index) => selectedMatch.preCaudalLineup?.[index] || '');
+    const slotIndex = currentLineup.findIndex((name) => name === playerName);
+    if (slotIndex >= 0) await clearCaudalLineupSlot(slotIndex);
+    await removeStatsCalledPlayer(playerName);
+  };
+  const handleDropOnPreCaudalSlot = (slotIndex) => {
+    if (!draggedPlayer?.name) return;
+    updateCaudalLineupSlot(slotIndex, draggedPlayer.name);
+    setDraggedPlayer(null);
+  };
+  const savePreLineupAsFinalLineup = async () => {
+    if (!selectedMatch) return;
+    const lineup = Array.from({ length: 11 }, (_, index) => selectedMatch.preCaudalLineup?.[index] || '');
+    try {
+      await updateStatsSystem(selectedMatch.preCaudalSystem || '4-4-2');
+      for (const [slotIndex, playerName] of lineup.entries()) {
+        if (playerName) await updateStatsLineupSlot(slotIndex, playerName);
+      }
+    } catch (lineupError) {
+      console.error('Error guardando once definitivo desde PRE:', lineupError);
+      setPreError(lineupError.message || 'No se pudo guardar el once definitivo.');
+    }
   };
   const togglePreReportChecklist = (key) => {
     updateSelectedMatchFields({
@@ -9460,7 +9530,7 @@ function App() {
     setMatchView(section === 'PRE' ? 'pre_partido' : section === 'ESTADÍSTICAS' ? 'estadisticas_partido' : section === 'IMPRESIÓN' ? 'impresion_partido' : 'post_partido');
     setMatchViewSection(section);
     if (section === 'PRE') {
-      setPreSubTab('Informe rival');
+      setPreSubTab('Plan cuerpo técnico');
       await loadMatchPreData(match.id);
     }
     if (section === 'ESTADÍSTICAS') {
@@ -15697,8 +15767,8 @@ function App() {
                       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                         <div>
                           <p className="text-xs uppercase tracking-[0.3em] text-slate-400">PRE partido</p>
-                          <h3 className="mt-2 text-2xl font-semibold text-white">Preparación táctica</h3>
-                          <p className="mt-2 text-sm text-slate-400">Gestiona el informe rival y los sistemas enfrentados.</p>
+                          <h3 className="mt-2 text-2xl font-semibold text-white">Plan de partido y alineación</h3>
+                          <p className="mt-2 text-sm text-slate-400">Qué hará el rival, qué haremos nosotros y con qué once.</p>
                         </div>
                         <div className="flex flex-wrap gap-3">
                           <button
@@ -15708,11 +15778,11 @@ function App() {
                           >
                             Modo charla
                           </button>
-                          {['Informe rival', 'Sistemas enfrentados'].map((tab) => (
+                          {['Plan cuerpo técnico', 'Sistemas enfrentados'].map((tab) => (
                             <button
                               key={tab}
                               onClick={() => setPreSubTab(tab)}
-                              className={`rounded-2xl px-4 py-3 text-sm font-semibold uppercase tracking-[0.12em] ${preSubTab === tab ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}>
+                              className={`rounded-2xl px-4 py-3 text-sm font-semibold uppercase tracking-[0.12em] ${(preSubTab === tab || (preSubTab === 'Informe rival' && tab === 'Plan cuerpo técnico')) ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}>
                               {tab}
                             </button>
                           ))}
@@ -15720,7 +15790,7 @@ function App() {
                       </div>
                     </div>
 
-                    {preSubTab === 'Informe rival' ? (
+                    {(preSubTab === 'Informe rival' || preSubTab === 'Plan cuerpo técnico') ? (
                       <div className={isPreTalkMode ? 'space-y-4' : 'space-y-5'}>
                         {isPreTalkMode ? (
                           <div className="sticky top-3 z-30 flex items-center justify-between rounded-2xl border border-caudal-electric/20 bg-caudal-950/95 px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.30)] backdrop-blur">
@@ -15758,95 +15828,54 @@ function App() {
                               <div className="flex items-start justify-between gap-3">
                                 <div>
                                   <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/75">Claves del partido</p>
-                                  <h4 className="mt-1 text-xl font-black text-white">Consignas del partido</h4>
+                                  <h4 className="mt-1 text-xl font-black text-white">Decisiones del cuerpo técnico</h4>
                                 </div>
-                                <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{activeConsignas.length} ACTIVAS</span>
+                                <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">
+                                  {preKeyBlocks.reduce((sum, block) => sum + getKeyBlockLines(block).length, 0)} CLAVES
+                                </span>
                               </div>
-                              <div className={`${isPreTalkMode ? 'hidden' : 'mt-4'} rounded-2xl border border-white/10 bg-white/[0.025] p-3`}>
-                                <div className="flex items-center justify-between gap-3">
-                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Sugeridas automáticamente</p>
-                                  {!isPreTalkMode ? (
-                                    <button
-                                      type="button"
-                                      title="Regenera solo sugerencias pendientes."
-                                      onClick={() => updateSuggestedConsignas(createAutoVestuarioBullets(selectedMatch, selectedMatchRivalTeam).filter((item) => !activeConsignas.includes(item.text)))}
-                                      className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-400 hover:bg-white/[0.08] hover:text-white"
-                                    >
-                                      Regenerar
-                                    </button>
-                                  ) : null}
-                                </div>
-                                <div className="mt-3 space-y-2">
-                                  {suggestedConsignas.length ? suggestedConsignas.map((item, index) => (
-                                    <div key={`${item.text}-${index}`} className={`rounded-xl border px-3 py-2 ${consignaToneClass[item.tone] || consignaToneClass.ofensiva}`}>
-                                      {isPreTalkMode ? (
-                                        <div className="flex gap-2 text-sm font-bold leading-5">
-                                          <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
-                                          <span>{item.text}</span>
-                                        </div>
-                                      ) : (
-                                        <div className="grid gap-2">
-                                          <input
-                                            value={item.text}
-                                            onChange={(event) => editSuggestedConsigna(index, event.target.value)}
-                                            className="w-full bg-transparent text-sm font-bold leading-5 text-current outline-none"
-                                          />
-                                          <div className="flex flex-wrap gap-1.5">
-                                            <span className="rounded-md border border-current/20 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.1em]">{item.tone}</span>
-                                            <button type="button" onClick={() => acceptSuggestedConsigna(index)} className="rounded-md bg-white/[0.12] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] hover:bg-white/[0.18]">Aceptar</button>
-                                            <button type="button" onClick={() => addSuggestedConsignaToManual(item.text)} className="rounded-md bg-caudal-electric/15 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] text-caudal-electric hover:bg-caudal-electric/25">Fijar</button>
-                                            <button type="button" onClick={() => moveSuggestedConsigna(index, -1)} className="rounded-md bg-white/[0.10] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] hover:bg-white/[0.16]">Subir</button>
-                                            <button type="button" onClick={() => moveSuggestedConsigna(index, 1)} className="rounded-md bg-white/[0.10] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] hover:bg-white/[0.16]">Bajar</button>
-                                            <button type="button" onClick={() => removeSuggestedConsigna(index)} className="rounded-md bg-red-500/[0.12] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] hover:bg-red-500/[0.18]">Eliminar</button>
+                              <div className="mt-4 grid gap-3">
+                                {preKeyBlocks.map((block) => {
+                                  const lines = getKeyBlockLines(block);
+                                  return (
+                                    <div key={block.title} className={`rounded-2xl border p-3 ${block.tone}`}>
+                                      <div className="flex items-center justify-between gap-3">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white">{block.title}</p>
+                                        {!isPreTalkMode ? (
+                                          <button type="button" onClick={() => addKeyBlockLine(block)} className="rounded-lg border border-white/10 bg-white/[0.06] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-200 hover:bg-white/10">
+                                            Añadir
+                                          </button>
+                                        ) : null}
+                                      </div>
+                                      <div className="mt-3 grid gap-2">
+                                        {lines.length ? lines.map((line, index) => (
+                                          <div key={`${block.title}-${index}`} className="group flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/20 px-2.5 py-2">
+                                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current text-caudal-electric" />
+                                            {isPreTalkMode ? (
+                                              <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-100">{line}</span>
+                                            ) : (
+                                              <input
+                                                value={line}
+                                                onChange={(event) => updateKeyBlockLine(block, index, event.target.value)}
+                                                placeholder={block.placeholder}
+                                                className="min-w-0 flex-1 bg-transparent text-sm font-bold text-white outline-none placeholder:text-slate-500"
+                                              />
+                                            )}
+                                            {!isPreTalkMode ? (
+                                              <span className="flex items-center gap-0.5 opacity-70 transition group-hover:opacity-100">
+                                                <button type="button" onClick={() => moveKeyBlockLine(block, index, -1)} className="rounded-md px-1 text-[10px] text-slate-400 hover:bg-white/10 hover:text-white">^</button>
+                                                <button type="button" onClick={() => moveKeyBlockLine(block, index, 1)} className="rounded-md px-1 text-[10px] text-slate-400 hover:bg-white/10 hover:text-white">v</button>
+                                                <button type="button" onClick={() => removeKeyBlockLine(block, index)} className="rounded-md px-1 text-[10px] text-red-200 hover:bg-red-500/15">x</button>
+                                              </span>
+                                            ) : null}
                                           </div>
-                                        </div>
-                                      )}
+                                        )) : (
+                                          <p className="rounded-xl border border-dashed border-white/10 px-3 py-3 text-sm text-slate-500">{block.placeholder}</p>
+                                        )}
+                                      </div>
                                     </div>
-                                  )) : (
-                                    <p className="rounded-xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-3 text-sm text-slate-500">Define la identidad táctica del rival para generar sugerencias.</p>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="mt-4 rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.045] p-3">
-                                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Consignas activas</p>
-                                {!isPreTalkMode ? (
-                                  <div className="mt-3 flex gap-2">
-                                    <input
-                                      value={manualConsignaDraft}
-                                      onChange={(event) => setManualConsignaDraft(event.target.value)}
-                                      onKeyDown={(event) => {
-                                        if (event.key === 'Enter') {
-                                          event.preventDefault();
-                                          addManualConsigna();
-                                        }
-                                      }}
-                                      placeholder="Añadir consigna..."
-                                      className="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2 text-sm font-semibold text-white placeholder:text-slate-500"
-                                    />
-                                    <button type="button" onClick={addManualConsigna} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Añadir</button>
-                                  </div>
-                                ) : null}
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                  {activeConsignas.length ? activeConsignas.map((item, index) => (
-                                    <div key={`${item}-${index}`} className="group flex max-w-full animate-[pulse_0.35s_ease-out_1] items-center gap-1.5 rounded-xl border border-caudal-electric/25 bg-caudal-electric/[0.085] px-2.5 py-2 text-sm font-bold text-slate-100 shadow-[0_0_22px_rgba(79,140,255,0.08)]">
-                                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-caudal-electric text-[8px] font-black text-slate-950">OK</span>
-                                      {isPreTalkMode ? (
-                                        <span className="max-w-[260px] truncate">{item}</span>
-                                      ) : (
-                                        <input value={item} onChange={(event) => editActiveConsigna(index, event.target.value)} className="min-w-[130px] max-w-[260px] bg-transparent outline-none" />
-                                      )}
-                                      {!isPreTalkMode ? (
-                                        <span className="flex items-center gap-0.5 opacity-70 transition group-hover:opacity-100">
-                                          <button type="button" onClick={() => moveActiveConsigna(index, -1)} className="rounded-md px-1 text-[10px] text-slate-400 hover:bg-white/10 hover:text-white">^</button>
-                                          <button type="button" onClick={() => moveActiveConsigna(index, 1)} className="rounded-md px-1 text-[10px] text-slate-400 hover:bg-white/10 hover:text-white">v</button>
-                                          <button type="button" onClick={() => removeActiveConsigna(index)} className="rounded-md px-1 text-[10px] text-red-200 hover:bg-red-500/15">x</button>
-                                        </span>
-                                      ) : null}
-                                    </div>
-                                  )) : (
-                                    <p className="rounded-xl border border-dashed border-white/10 px-3 py-3 text-sm text-slate-500">Acepta una sugerida o añade una consigna manual.</p>
-                                  )}
-                                </div>
+                                  );
+                                })}
                               </div>
                               {isPreTalkMode ? (
                                 <div className="mt-4 rounded-2xl border border-amber-200/15 bg-amber-200/[0.07] p-3">
@@ -15858,6 +15887,142 @@ function App() {
                                   </div>
                                 </div>
                               ) : null}
+                            </section>
+
+                            <section className={`rounded-[1.45rem] border border-white/10 bg-white/[0.025] p-5 ${isPreTalkMode ? 'hidden' : ''}`}>
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/75">Plan de partido</p>
+                                  <h4 className="mt-1 text-xl font-black text-white">Qué vamos a hacer nosotros</h4>
+                                </div>
+                              </div>
+                              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                                <label className="grid gap-2 text-sm font-bold text-slate-300">
+                                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Sistema propio</span>
+                                  <select
+                                    value={selectedMatch.preCaudalSystem || '4-4-2'}
+                                    onChange={(event) => updateSelectedMatchFields({ preCaudalSystem: event.target.value })}
+                                    className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-3 text-sm text-white"
+                                  >
+                                    {gameSystems.map((system) => <option key={system} value={system}>{system}</option>)}
+                                  </select>
+                                </label>
+                                <label className="grid gap-2 text-sm font-bold text-slate-300">
+                                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Tipo de presión</span>
+                                  <input
+                                    value={selectedMatch.preCaudalPressPlan || ''}
+                                    onChange={(event) => updateSelectedMatchFields({ preCaudalPressPlan: event.target.value })}
+                                    placeholder="Alta, media, orientar a banda..."
+                                    className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-3 text-sm text-white placeholder:text-slate-500"
+                                  />
+                                </label>
+                                <label className="grid gap-2 text-sm font-bold text-slate-300">
+                                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Tipo de salida</span>
+                                  <input
+                                    value={selectedMatch.preCaudalStartPlay || ''}
+                                    onChange={(event) => updateSelectedMatchFields({ preCaudalStartPlay: event.target.value })}
+                                    placeholder="Salida corta, directa, atraer y saltar..."
+                                    className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-3 text-sm text-white placeholder:text-slate-500"
+                                  />
+                                </label>
+                                <label className="grid gap-2 text-sm font-bold text-slate-300">
+                                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Objetivo principal</span>
+                                  <input
+                                    value={selectedMatch.preCaudalIntent || ''}
+                                    onChange={(event) => updateSelectedMatchFields({ preCaudalIntent: event.target.value })}
+                                    placeholder="Atacar espalda, proteger área, dominar ritmo..."
+                                    className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-3 text-sm text-white placeholder:text-slate-500"
+                                  />
+                                </label>
+                                <label className="grid gap-2 text-sm font-bold text-slate-300 md:col-span-2">
+                                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Comentario técnico</span>
+                                  <textarea
+                                    value={selectedMatch.preNotes || ''}
+                                    onChange={(event) => updateSelectedMatchFields({ preNotes: event.target.value })}
+                                    placeholder="Matiz del cuerpo técnico para la semana..."
+                                    className="min-h-[92px] rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-3 text-sm text-white placeholder:text-slate-500"
+                                  />
+                                </label>
+                              </div>
+                            </section>
+
+                            <section className={`rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.20)] ${isPreTalkMode ? 'hidden' : ''}`}>
+                              <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                                <div>
+                                  <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/75">Mi alineación</p>
+                                  <h4 className="mt-1 text-xl font-black text-white">Once semanal y convocatoria</h4>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <button type="button" onClick={loadSuggestedCaudalLineup} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-white hover:bg-white/10">Auto once</button>
+                                  <button type="button" onClick={() => clearCaudalLineupSlot(selectedTacticalPlayerIndex)} className="rounded-xl border border-red-200/15 bg-red-500/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-red-100 hover:bg-red-500/15">Limpiar puesto</button>
+                                  <button type="button" onClick={savePreLineupAsFinalLineup} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Guardar definitivo</button>
+                                </div>
+                              </div>
+                              <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px]">
+                                <div className="rounded-3xl border border-white/10 bg-[#0b5b3f] p-3">
+                                  <div className="relative mx-auto aspect-[7/9] min-h-[480px] max-w-[520px] overflow-hidden rounded-2xl border-2 border-white/55 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_50%,transparent_50%),linear-gradient(0deg,rgba(255,255,255,0.05)_50%,transparent_50%)] bg-[length:20%_100%,100%_14.2%]">
+                                    <div className="absolute left-0 right-0 top-1/2 h-px bg-white/55" />
+                                    <div className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/55" />
+                                    <div className="absolute bottom-0 left-1/2 h-24 w-48 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/55" />
+                                    {getFormationCoordinates(selectedMatch.preCaudalSystem || '4-4-2').map((position, index) => {
+                                      const playerName = selectedMatch.preCaudalLineup?.[index] || '';
+                                      const player = players.find((item) => item.name === playerName);
+                                      const isCaptain = Boolean(player?.id && selectedMatch.captainPlayerId === player.id);
+                                      return (
+                                        <button
+                                          key={`${selectedMatch.preCaudalSystem || '4-4-2'}-${index}`}
+                                          type="button"
+                                          onClick={() => setSelectedTacticalPlayerIndex(index)}
+                                          onDragOver={(event) => event.preventDefault()}
+                                          onDrop={() => handleDropOnPreCaudalSlot(index)}
+                                          className={`absolute flex w-20 -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center text-caudal-electric ${selectedTacticalPlayerIndex === index ? 'z-20' : 'z-10'}`}
+                                          style={{ left: `${position.x}%`, top: `${position.y}%` }}
+                                        >
+                                          <span className={`relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border bg-caudal-950 text-[10px] font-black shadow-lg ${selectedTacticalPlayerIndex === index ? 'border-caudal-electric ring-4 ring-caudal-electric/25' : 'border-caudal-electric/60'}`}>
+                                            {player?.image ? <img src={player.image} alt="" className="h-full w-full object-cover object-center" /> : (index === 0 ? 'P' : index)}
+                                            {isCaptain ? <span className="absolute -right-1 -top-1 rounded-full bg-blue-200 px-1 text-[9px] font-black text-slate-950">©</span> : null}
+                                          </span>
+                                          <span className="max-w-20 truncate rounded-md bg-black/58 px-1 py-0.5 text-[9px] font-bold leading-none text-white">
+                                            {playerName || getFormationRoles(selectedMatch.preCaudalSystem || '4-4-2')[index]}
+                                          </span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                                <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-3">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Plantilla Caudal</p>
+                                  <p className="mt-1 text-xs font-semibold text-slate-400">Arrastra al campo o usa los estados.</p>
+                                  <div className="mt-3 max-h-[560px] space-y-2 overflow-y-auto pr-1">
+                                    {players.map((player) => {
+                                      const status = getPrePlayerStatus(player);
+                                      const isCurrent = getSelectedLineupName() === player.name;
+                                      const isCaptain = selectedMatch.captainPlayerId === player.id;
+                                      return (
+                                        <div key={player.id} draggable onDragStart={() => setDraggedPlayer(player)} className={`rounded-2xl border px-3 py-2 text-sm ${isCurrent ? 'border-caudal-electric/40 bg-caudal-electric/15' : 'border-white/10 bg-white/[0.04]'}`}>
+                                          <div className="flex items-center justify-between gap-2">
+                                            <button type="button" onClick={() => updateCaudalLineupSlot(selectedTacticalPlayerIndex, player.name)} className="min-w-0 flex-1 text-left">
+                                              <span className="block truncate font-black text-white">{player.name}{isCaptain ? ' ©' : ''}</span>
+                                              <span className="mt-0.5 block truncate text-[10px] font-bold uppercase tracking-[0.10em] text-slate-500">{status} · {player.position || 'Sin posición'}</span>
+                                            </button>
+                                            <button type="button" onClick={() => updateMatchCaptain(isCaptain ? '' : player.id)} className={`rounded-lg px-2 py-1 text-[10px] font-black ${isCaptain ? 'bg-blue-200 text-slate-950' : 'bg-white/10 text-slate-300'}`}>©</button>
+                                          </div>
+                                          <div className="mt-2 grid grid-cols-3 gap-1">
+                                            <button type="button" onClick={() => updateCaudalLineupSlot(selectedTacticalPlayerIndex, player.name)} className={`rounded-lg px-1.5 py-1 text-[9px] font-black uppercase ${status === 'Titular' ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.08] text-slate-300'}`}>Titular</button>
+                                            <button type="button" onClick={() => setPrePlayerAsSubstitute(player.name)} className={`rounded-lg px-1.5 py-1 text-[9px] font-black uppercase ${status === 'Suplente' ? 'bg-emerald-300 text-slate-950' : 'bg-white/[0.08] text-slate-300'}`}>Suplente</button>
+                                            <button type="button" onClick={() => setPrePlayerOut(player.name)} className={`rounded-lg px-1.5 py-1 text-[9px] font-black uppercase ${status === 'Fuera convocatoria' ? 'bg-slate-700 text-slate-200' : 'bg-white/[0.08] text-slate-300'}`}>Fuera</button>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                                <span className="rounded-xl bg-white/[0.045] px-2 py-1">Once probable: {safeArray(selectedMatch.preCaudalLineup).filter(Boolean).length}/11</span>
+                                <span className="rounded-xl bg-white/[0.045] px-2 py-1">Convocatoria: {getStatsCalledPlayerNames().length}</span>
+                                <span className="rounded-xl bg-white/[0.045] px-2 py-1">Capitán: {players.find((player) => player.id === selectedMatch.captainPlayerId)?.name || '-'}</span>
+                              </div>
                             </section>
 
                             <section className={`rounded-[1.45rem] border border-white/10 bg-white/[0.025] p-5 ${isPreTalkMode ? 'hidden xl:block' : ''}`}>
