@@ -15444,53 +15444,91 @@ function App() {
                     const score = getMatchScoreValues(match);
                     const statsEvents = score.statsEvents;
                     const played = isMatchPlayedForUi(match);
-                    const operationalStatus = getMatchOperationalStatus(match);
                     const opponentTeam = findTeamByDisplayName(teams, match.opponent);
-                    const cardPlayerRows = Object.entries(match.statsPlayerData || {})
-                      .filter(([, stats]) => stats.yellow || stats.red || stats.injured)
-                      .map(([name, stats]) => ({ name, stats }));
                     const hasRivalReport = Boolean(match.preRivalReportText || match.preRivalReportExtraction);
-                    const hasCallup = Boolean((match.statsCalledPlayers || []).length || (match.preCaudalLineup || []).length);
-                    const hasSetPieces = Boolean(match.abpOfensiva || match.abpDefensiva || match.preRivalCornersFor || match.preRivalCornersAgainst);
-                    const tacticalFocus =
-                      match.planClave ||
-                      match.preCaudalIntent ||
-                      match.preRivalStrengths ||
-                      opponentTeam?.style ||
-                      opponentTeam?.system ||
-                      'Foco táctico pendiente';
-                    const futureTacticalItems = [
-                      ['Sistema', match.preRivalBaseSystem || opponentTeam?.system || match.preRivalSystem || 'Por definir'],
-                      ['Foco', tacticalFocus],
-                      ['PRE', hasRivalReport || hasCallup || hasSetPieces ? 'En marcha' : 'Pendiente'],
+                    const callupCount = Math.max(safeArray(match.statsCalledPlayers).length, safeArray(match.preCaudalLineup).filter(Boolean).length);
+                    const hasCallup = callupCount > 0;
+                    const hasSetPiecesFor = Boolean(match.abpOfensiva || match.preRivalCornersAgainst);
+                    const hasSetPiecesAgainst = Boolean(match.abpDefensiva || match.preRivalCornersFor);
+                    const preFields = [
+                      match.preCaudalIntent,
+                      match.planClave,
+                      match.preRivalStyle,
+                      match.preRivalStrengths,
+                      match.preRivalWeaknesses,
+                      match.preRivalReportText,
+                      match.preRivalReportExtraction,
+                      match.preCanvaLink,
                     ];
-                    const microcycleItems = [
-                      { label: 'MD-4', ready: hasRivalReport },
-                      { label: 'MD-3', ready: Boolean(opponentTeam) },
-                      { label: 'PRE listo', ready: hasRivalReport && hasCallup },
-                      { label: 'Vídeo', ready: Boolean(match.preCanvaLink || match.postVideoLink) },
+                    const preProgress = preFields.filter(Boolean).length;
+                    const getPrepStatus = (done, partial) => done ? 'done' : partial ? 'partial' : 'pending';
+                    const getPrepChipClass = (status) =>
+                      status === 'done'
+                        ? 'border-emerald-200/25 bg-emerald-300/[0.12] text-emerald-100'
+                        : status === 'partial'
+                          ? 'border-amber-200/25 bg-amber-300/[0.12] text-amber-100'
+                          : 'border-red-200/25 bg-red-400/[0.10] text-red-100';
+                    const getPrepChipIcon = (status) => status === 'done' ? '✅' : status === 'partial' ? '⚠️' : '❌';
+                    const futurePrepChips = [
+                      { label: 'PRE', status: getPrepStatus(preProgress >= 4, preProgress > 0) },
+                      { label: 'RIVAL', status: getPrepStatus(Boolean(opponentTeam && hasRivalReport), Boolean(opponentTeam || hasRivalReport)) },
+                      { label: 'ABP', status: getPrepStatus(hasSetPiecesFor && hasSetPiecesAgainst, hasSetPiecesFor || hasSetPiecesAgainst) },
+                      { label: 'CONVOCATORIA', status: getPrepStatus(callupCount >= 18, hasCallup) },
                     ];
-                    const futurePrepItems = [
-                      { label: 'PREPARANDO', ready: !played },
-                      { label: hasRivalReport ? 'INFORME LISTO' : 'INFORME PENDIENTE', ready: hasRivalReport },
-                      { label: opponentTeam ? 'RIVAL ANALIZADO' : 'RIVAL SIN ANALIZAR', ready: Boolean(opponentTeam) },
-                      { label: hasCallup ? 'CONVOCATORIA LISTA' : 'CONVOCATORIA PENDIENTE', ready: hasCallup },
-                      { label: hasSetPieces ? 'ABP CARGADA' : 'ABP PENDIENTE', ready: hasSetPieces },
-                    ];
-                    const timelineEvents = [
+                    const getMatchMdLabel = () => {
+                      if (!match.date) return 'MD';
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      const matchDate = new Date(match.date);
+                      matchDate.setHours(0, 0, 0, 0);
+                      const diffDays = Math.round((matchDate - today) / 86400000);
+                      if (diffDays > 0) return `MD-${diffDays}`;
+                      if (diffDays === 0) return 'MD';
+                      return `MD+${Math.abs(diffDays)}`;
+                    };
+                    const matchEventRows = [
                       ...statsEvents.map((event) => ({
-                        minute: event.minute,
+                        minute: Number(event.minute) || 999,
+                        minuteLabel: event.minute ? `${event.minute}'` : '',
+                        icon: '⚽',
                         side: event.type === 'Gol a favor' ? 'caudal' : 'rival',
                         label: event.type === 'Gol a favor' ? (event.scorer || 'Caudal') : (match.opponent || 'Rival'),
-                        detail: event.assistant ? `Asist. ${event.assistant}` : 'Gol',
+                        assist: event.assistant || '',
                       })),
-                      ...cardPlayerRows.map(({ name, stats }) => ({
-                        minute: '',
+                      ...Object.entries(match.statsPlayerData || {}).flatMap(([name, stats]) => [
+                        stats.yellow ? {
+                          minute: 999,
+                          minuteLabel: '',
+                          icon: '🟨',
+                          side: 'staff',
+                          label: name,
+                          detail: Number(stats.yellowCount || 1) > 1 ? `x${Number(stats.yellowCount || 1)}` : '',
+                        } : null,
+                        stats.red ? {
+                          minute: 999,
+                          minuteLabel: '',
+                          icon: '🟥',
+                          side: 'staff',
+                          label: name,
+                          detail: '',
+                        } : null,
+                        stats.injured ? {
+                          minute: 999,
+                          minuteLabel: '',
+                          icon: '🤕',
+                          side: 'staff',
+                          label: name,
+                          detail: '',
+                        } : null,
+                      ].filter(Boolean)),
+                    ].sort((a, b) => a.minute - b.minute || String(a.label).localeCompare(String(b.label)));
+                    const visibleMatchEventRows = matchEventRows.slice(0, 4);
+                    const hiddenMatchEventCount = Math.max(0, matchEventRows.length - visibleMatchEventRows.length);
+                    const timelineEvents = visibleMatchEventRows.map((event) => ({
+                        minute: event.minuteLabel,
                         side: 'staff',
-                        label: name,
-                        detail: [stats.yellow ? 'AM' : null, stats.red ? 'RJ' : null, stats.injured ? 'LES' : null].filter(Boolean).join(' · '),
-                      })),
-                    ].slice(0, 6);
+                        ...event,
+                      }));
                     const resultStripeClass = !played
                       ? 'bg-slate-400'
                       : score.caudal > score.rival
@@ -15521,10 +15559,8 @@ function App() {
                             <p className={`${played ? 'mt-3 text-6xl text-white drop-shadow-[0_8px_18px_rgba(0,0,0,0.35)]' : 'mt-3 text-3xl text-slate-400'} font-black leading-none tracking-normal`}>
                               {played ? `${score.home} - ${score.away}` : 'VS'}
                             </p>
-                            <span className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${operationalStatus.className}`}>
-                              {operationalStatus.label}
-                            </span>
                             <p className="mt-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{match.type} {match.round}</p>
+                            {!played ? <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">{getMatchMdLabel()}</p> : null}
                             {match.stadium ? <p className="mt-1 text-xs font-semibold text-slate-400">{match.stadium}</p> : null}
                           </div>
                           <div className="text-center">
@@ -15539,38 +15575,32 @@ function App() {
                             timelineEvents.length ? (
                               <div className="grid gap-1 rounded-2xl border border-white/10 bg-slate-950/[0.18] p-2">
                                 {timelineEvents.map((event, index) => (
-                                  <div key={`${event.label}-${event.minute}-${index}`} className="grid grid-cols-[38px_1fr_auto] items-center gap-2 border-b border-white/[0.055] px-1.5 py-1.5 text-xs last:border-b-0">
-                                    <span className="font-black tabular-nums text-slate-500">{event.minute ? `${event.minute}'` : '--'}</span>
-                                    <span className={`truncate font-semibold ${event.side === 'caudal' ? 'text-emerald-100' : event.side === 'rival' ? 'text-red-100' : 'text-slate-200'}`}>{event.label}</span>
-                                    <span className={`rounded-md border px-1.5 py-0.5 text-[9px] font-black uppercase ${event.detail === 'LES' ? 'border-cyan-200/20 bg-cyan-200/[0.08] text-cyan-100' : event.detail.includes('AM') ? 'border-amber-200/25 bg-amber-200/[0.10] text-amber-100' : event.detail.includes('RJ') ? 'border-red-200/25 bg-red-400/[0.12] text-red-100' : 'border-white/10 bg-white/[0.04] text-slate-400'}`}>{event.detail}</span>
+                                  <div key={`${event.label}-${event.icon}-${event.minute}-${index}`} className="grid grid-cols-[34px_22px_1fr] items-start gap-2 border-b border-white/[0.055] px-1.5 py-1.5 text-xs last:border-b-0">
+                                    <span className="font-black tabular-nums text-slate-500">{event.minute || ''}</span>
+                                    <span className="leading-none">{event.icon}</span>
+                                    <span className={`min-w-0 font-semibold ${event.side === 'caudal' ? 'text-emerald-100' : event.side === 'rival' ? 'text-red-100' : 'text-slate-200'}`}>
+                                      <span className="block truncate">{event.label}{event.detail ? ` ${event.detail}` : ''}</span>
+                                      {event.assist ? <span className="mt-0.5 block truncate text-[11px] font-bold text-caudal-electric">↳ {event.assist}</span> : null}
+                                    </span>
                                   </div>
                                 ))}
+                                {hiddenMatchEventCount ? (
+                                  <p className="px-1.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">+{hiddenMatchEventCount} eventos más</p>
+                                ) : null}
                               </div>
-                            ) : null
+                            ) : (
+                              <div className="rounded-2xl border border-white/10 bg-slate-950/[0.18] px-3 py-3 text-xs font-semibold text-slate-500">
+                                Sin eventos registrados.
+                              </div>
+                            )
                           ) : (
-                            <div className="space-y-2">
-                              <div className="grid gap-1.5 rounded-2xl border border-caudal-electric/[0.12] bg-white/[0.025] p-2">
-                                {futureTacticalItems.map(([label, value]) => (
-                                  <div key={label} className="grid grid-cols-[64px_1fr] items-center gap-2 text-xs">
-                                    <span className="font-black uppercase tracking-[0.12em] text-slate-500">{label}</span>
-                                    <span className="truncate font-semibold text-slate-200">{value}</span>
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="flex flex-wrap gap-1.5">
-                                {futurePrepItems.slice(1).map((item) => (
-                                  <span key={item.label} className={`rounded-lg border px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] ${item.ready ? 'border-emerald-200/20 bg-emerald-200/[0.08] text-emerald-100' : 'border-amber-200/[0.18] bg-amber-200/[0.07] text-amber-100'}`}>
-                                    {item.label}
-                                  </span>
-                                ))}
-                              </div>
-                              <div className="flex flex-wrap gap-1.5 border-t border-white/[0.06] pt-2">
-                                {microcycleItems.map((item) => (
-                                  <span key={item.label} className={`text-[9px] font-black uppercase tracking-[0.1em] ${item.ready ? 'text-caudal-electric/80' : 'text-slate-500'}`}>
-                                    {item.label}
-                                  </span>
-                                ))}
-                              </div>
+                            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                              {futurePrepChips.map((item) => (
+                                <span key={item.label} className={`inline-flex items-center justify-center gap-1 rounded-xl border px-2 py-2 text-[10px] font-black uppercase tracking-[0.08em] ${getPrepChipClass(item.status)}`}>
+                                  <span>{getPrepChipIcon(item.status)}</span>
+                                  <span>{item.label}</span>
+                                </span>
+                              ))}
                             </div>
                           )}
                           {hasPendingQuickEvents(match) ? (
