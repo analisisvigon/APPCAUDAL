@@ -723,7 +723,6 @@ const createCompatibleGoalEventPayload = (partidoId, draft) => ({
   assistant: draft.assistant,
   phase: draft.phase,
   subphase: draft.subphase,
-  description: draft.summary || '',
 });
 
 const normalizeSupabasePostEventType = (eventType) => ({
