@@ -7452,11 +7452,19 @@ function App() {
   };
 
   const getStatsTimelineIcon = (event) => {
-    if (event.category === 'Goles') return event.type === 'Gol a favor' ? 'GOL' : 'GC';
-    if (event.category === 'Tarjetas') return event.type === 'Roja' ? 'RJ' : 'AM';
-    if (event.category === 'Cambios') return 'CAM';
-    if (event.category === 'Lesiones') return 'LES';
+    if (event.category === 'Goles') return '⚽';
+    if (event.category === 'Tarjetas') return event.type === 'Roja' ? '🔴' : '🟨';
+    if (event.category === 'Cambios') return '🔄';
+    if (event.category === 'Lesiones') return '🚑';
     return 'EV';
+  };
+
+  const getStatsTimelineTone = (event) => {
+    if (event.category === 'Goles') return event.type === 'Gol a favor' ? 'border-emerald-300/20 bg-emerald-300/[0.08]' : 'border-red-300/20 bg-red-400/[0.08]';
+    if (event.category === 'Tarjetas') return event.type === 'Roja' ? 'border-red-300/25 bg-red-500/[0.10]' : 'border-yellow-300/20 bg-yellow-300/[0.08]';
+    if (event.category === 'Cambios') return 'border-sky-300/20 bg-sky-300/[0.08]';
+    if (event.category === 'Lesiones') return 'border-rose-300/25 bg-rose-300/[0.10]';
+    return 'border-white/10 bg-white/[0.035]';
   };
 
   const getStatsParticipationSummary = () => {
@@ -8617,7 +8625,7 @@ function App() {
     const coordinates = getFormationCoordinates(selectedMatch.statsSystem || '4-4-2');
     return (
       <div
-        className="relative aspect-[7/8.9] min-h-[560px] overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner"
+        className="relative aspect-[7/8.9] min-h-[640px] overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner"
         onDragOver={(event) => event.preventDefault()}
         onDrop={() => {
           if (!draggedPlayer) return;
@@ -8635,6 +8643,13 @@ function App() {
           const player = players.find((item) => item.name === playerName);
           const shortName = player ? displayPlayerName(player) : playerName.split(' ').slice(-1)[0] || '';
           const stats = playerName ? getStatsPlayerData(playerName) : null;
+          const isCaptain = player?.id && selectedMatch.captainPlayerId === player.id;
+          const statusBadges = [
+            stats?.yellow ? { key: 'yellow', label: '🟨', title: 'Amarilla' } : null,
+            stats?.red ? { key: 'red', label: '🔴', title: 'Roja' } : null,
+            stats?.injured ? { key: 'injured', label: '🚑', title: 'Lesión' } : null,
+            isCaptain ? { key: 'captain', label: '⭐', title: 'Capitán' } : null,
+          ].filter(Boolean);
           const replacementInfo = playerName ? getStatsReplacementInfo(playerName) : null;
           const playerStateClass = stats?.red
             ? 'border-red-300 bg-red-950/80 opacity-70'
@@ -8656,34 +8671,29 @@ function App() {
               className={`absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center ${player ? 'cursor-grab' : ''}`}
               style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
             >
-              <div className={`relative flex h-14 w-14 items-center justify-center rounded-full border-2 text-sm font-black shadow-glow ${playerName ? playerStateClass : 'border-dashed border-white/40 bg-white/10 text-white/70'}`}>
+              <div className={`relative flex h-16 w-16 items-center justify-center rounded-full border-2 text-sm font-black shadow-glow ${playerName ? playerStateClass : 'border-dashed border-white/40 bg-white/10 text-white/70'}`}>
                 {player?.image ? (
                   <img src={player.image} alt="" className="h-full w-full rounded-full object-cover" />
                 ) : (
-                  <span>{player?.number || playerName?.slice(0, 2).toUpperCase() || slotIndex + 1}</span>
+                  <span>{playerName ? playerName.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase() : slotIndex + 1}</span>
                 )}
-                {playerName ? (
-                  <span className="absolute -bottom-2 left-1/2 flex h-6 min-w-6 -translate-x-1/2 items-center justify-center rounded-md bg-black px-1 text-xs font-black text-white">
-                    {player?.number || slotIndex + 1}
-                  </span>
-                ) : null}
                 {stats?.rating ? (
                   <span className="absolute -right-3 top-0 rounded-full bg-caudal-electric px-1.5 py-0.5 text-[10px] font-black text-white">
                     {stats.rating}
                   </span>
                 ) : null}
-                {playerName ? (
-                  <div className="absolute -right-4 bottom-1 flex max-w-[54px] flex-wrap justify-end gap-0.5">
-                    {getStatsPlayerVisualEvents(playerName).map((event) => (
-                      <span key={event.key} title={event.title} className={`flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-[9px] font-black shadow-lg ${event.className}`}>
-                        {event.label}
+                {statusBadges.length ? (
+                  <div className="absolute -right-4 -top-3 flex max-w-[62px] flex-wrap justify-end gap-0.5">
+                    {statusBadges.map((badge) => (
+                      <span key={badge.key} title={badge.title} className="flex h-5 min-w-5 items-center justify-center rounded-md bg-black/80 px-1 text-[10px] font-black shadow-lg">
+                        {badge.label}
                       </span>
                     ))}
                   </div>
                 ) : null}
               </div>
-              <div className="max-w-[92px] truncate rounded-lg bg-black/65 px-2 py-1 text-[10px] font-black uppercase tracking-[0.04em] text-white">
-                {shortName || getFormationRoles(selectedMatch.statsSystem || '4-4-2')[slotIndex]}
+              <div className="max-w-[112px] truncate rounded-lg bg-black/70 px-2 py-1 text-[10px] font-black uppercase tracking-[0.04em] text-white">
+                {playerName ? `${player?.number || slotIndex + 1} ${shortName}` : getFormationRoles(selectedMatch.statsSystem || '4-4-2')[slotIndex]}
               </div>
               {replacementInfo ? (
                 <div className="max-w-[108px] truncate rounded-xl bg-emerald-500 px-2 py-1 text-[10px] font-black text-white" title={`Entra ${replacementInfo.replacementName}`}>
@@ -8720,23 +8730,23 @@ function App() {
         key={`${status}-${player.id || player.name}`}
         draggable
         onDragStart={() => setDraggedPlayer(player)}
-        className="border border-white/10 bg-white/[0.035] px-3 py-2"
+        className="border border-white/10 bg-white/[0.035] px-3 py-2.5"
       >
-        <div className="flex items-center gap-2">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/10 text-[10px] font-black text-white">
+        <div className="flex items-center gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/10 text-[11px] font-black text-white">
             {player.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : (player.number || displayPlayerName(player).slice(0, 2).toUpperCase())}
           </span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-black text-white">{displayPlayerName(player) || player.name}</p>
-            <p className="truncate text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{player.number ? `#${player.number}` : 'Sin dorsal'} · {player.position || 'Sin posición'}</p>
+            <p className="truncate text-sm font-black text-white">{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</p>
+            <p className="truncate text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{player.position || 'Sin posición'}</p>
           </div>
-        </div>
-        <div className="mt-2 grid grid-cols-5 gap-1">
-          <button type="button" onClick={() => saveStatsPlayerRole(player.name, 'Titular')} className={`px-1.5 py-1 text-[8px] font-black uppercase ${status === 'Titular' ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>Titular</button>
-          <button type="button" onClick={() => saveStatsPlayerRole(player.name, 'Suplente')} className={`px-1.5 py-1 text-[8px] font-black uppercase ${status === 'Suplente' ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-slate-300'}`}>Supl.</button>
-          <button type="button" onClick={() => saveStatsPlayerRole(player.name, 'Fuera')} className={`px-1.5 py-1 text-[8px] font-black uppercase ${status === 'Fuera' ? 'bg-red-400 text-white' : 'bg-white/10 text-slate-300'}`}>Fuera</button>
-          <button type="button" onClick={() => openForm(player)} className="px-1.5 py-1 text-[8px] font-black uppercase text-slate-300 bg-white/10">Editar</button>
-          <button type="button" onClick={() => saveStatsPlayerRole(player.name, 'Fuera')} className="px-1.5 py-1 text-[8px] font-black uppercase text-red-100 bg-red-500/15">Quitar</button>
+          <select
+            value={status}
+            onChange={(event) => saveStatsPlayerRole(player.name, event.target.value)}
+            className="shrink-0 rounded-lg border border-white/10 bg-black/25 px-2 py-1.5 text-[10px] font-black uppercase text-white"
+          >
+            {['Titular', 'Suplente', 'Fuera'].map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
         </div>
       </div>
     );
@@ -8790,9 +8800,22 @@ function App() {
               </div>
             </div>
           </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-4">
+            {[
+              ['Titulares', participation.starters],
+              ['Utilizados', participation.used],
+              ['Cambios', participation.substitutions],
+              ['Sin participar', participation.unusedSubs],
+            ].map(([label, value]) => (
+              <div key={label} className="border border-white/8 bg-white/[0.035] px-3 py-2">
+                <p className="text-xl font-black text-white">{value}</p>
+                <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(280px,0.31fr)_minmax(0,0.44fr)_minmax(260px,0.25fr)]">
+        <div className="grid gap-5 xl:grid-cols-[minmax(260px,0.25fr)_minmax(0,0.5fr)_minmax(260px,0.25fr)]">
           <div className="space-y-5">
             <section className="border border-white/10 bg-[#091428]/82 p-4 shadow-glow">
               <div className="flex items-center justify-between gap-3">
@@ -8818,10 +8841,10 @@ function App() {
               </div>
               <div className="mt-4 max-h-[470px] space-y-2 overflow-y-auto pr-1">
                 {timelineEvents.length ? timelineEvents.map((event) => (
-                  <div key={event.id} className={`border px-3 py-2.5 ${event.tone}`}>
+                  <div key={event.id} className={`border px-3 py-3 ${getStatsTimelineTone(event)}`}>
                     <div className="flex items-center gap-3">
                       <span className="w-11 shrink-0 text-right text-lg font-black text-white">{event.minute || '-'}'</span>
-                      <span className="flex h-8 min-w-8 items-center justify-center rounded-lg bg-white/10 px-1.5 text-[10px] font-black uppercase text-caudal-electric">{getStatsTimelineIcon(event)}</span>
+                      <span className="flex h-9 min-w-9 items-center justify-center rounded-xl bg-black/25 px-1.5 text-base font-black">{getStatsTimelineIcon(event)}</span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-black text-white">{event.title}</p>
                         <p className="truncate text-xs font-semibold text-slate-400">{event.subtitle}</p>
@@ -8834,7 +8857,7 @@ function App() {
               </div>
             </section>
 
-            <section className="border border-white/10 bg-[#091428]/82 p-4 shadow-glow">
+            <section className="hidden border border-white/10 bg-[#091428]/82 p-4 shadow-glow">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Resumen de participación</p>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 {[
