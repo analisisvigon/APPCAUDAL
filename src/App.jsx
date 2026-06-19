@@ -2691,6 +2691,7 @@ function App() {
   const [lastGoalAnalysisContext, setLastGoalAnalysisContext] = useState(null);
   const [isStatsCallupPanelOpen, setIsStatsCallupPanelOpen] = useState(false);
   const [selectedStatsCallups, setSelectedStatsCallups] = useState([]);
+  const [statsCallupFilter, setStatsCallupFilter] = useState('TODOS');
   const [statsCallupSaving, setStatsCallupSaving] = useState(false);
   const [statsCallupError, setStatsCallupError] = useState('');
   const [selectedPlayerProfileId, setSelectedPlayerProfileId] = useState(null);
@@ -6969,14 +6970,39 @@ function App() {
   };
 
   const getAvailableStatsCallupPlayers = () => {
-    const calledNames = new Set(getStatsCalledPlayerNames());
-    return players.filter((player) => !calledNames.has(player.name));
+    const calledNames = new Set(getStatsCalledPlayerNames().map(normalizePlayerIdentityName));
+    return players.filter((player) => player?.name && !calledNames.has(normalizePlayerIdentityName(player.name)));
+  };
+
+  const getStatsCallupPositionGroup = (player) => {
+    const position = normalizePlayerIdentityName(player?.position || '');
+    if (position.includes('portero')) return 'POR';
+    if (position.includes('defensa') || position.includes('central') || position.includes('lateral') || position.includes('carrilero')) return 'DEF';
+    if (position.includes('medio') || position.includes('pivote') || position.includes('interior') || position.includes('mediapunta')) return 'MC';
+    if (position.includes('extremo') || position.includes('delantero') || position.includes('punta')) return 'ATA';
+    return 'TODOS';
+  };
+
+  const getFilteredAvailableStatsCallupPlayers = () => {
+    const available = getAvailableStatsCallupPlayers();
+    if (statsCallupFilter === 'TODOS') return available;
+    return available.filter((player) => getStatsCallupPositionGroup(player) === statsCallupFilter);
+  };
+
+  const getStatsCallupCounts = () => {
+    const called = getStatsCalledPlayers();
+    return {
+      called: getStatsCalledPlayerNames().length,
+      starters: called.filter((player) => getStatsPlayerData(player.name).role === 'Titular').length,
+      substitutes: called.filter((player) => getStatsPlayerData(player.name).role !== 'Titular').length,
+    };
   };
 
   const openStatsCallupPanel = async () => {
     if (!selectedMatch) return;
     setStatsCallupError('');
     setSelectedStatsCallups([]);
+    setStatsCallupFilter('TODOS');
     try {
       const jugadores = await getJugadores();
       setPlayers(jugadores);
@@ -7879,13 +7905,14 @@ function App() {
 
   const openGoalAnalysisModal = () => {
     const remembered = lastGoalAnalysisContext || {};
+    const goalPlayerOptions = getStatsCalledPlayers().length ? getStatsCalledPlayers() : players;
     setGoalAnalysisDraft({
       ...defaultGoalAnalysisDraft,
       ...remembered,
       minute: '',
       summary: '',
       videoUrl: '',
-      scorer: players[0]?.name || '',
+      scorer: goalPlayerOptions[0]?.name || '',
       assistant: '',
     });
     setIsGoalAnalysisOpen(true);
@@ -7921,6 +7948,20 @@ function App() {
     const scorer = draft.scorer || 'Jugador Caudal';
     const assist = draft.assistant ? ` Asistencia de ${draft.assistant}.` : '';
     return `${minute}${scorer} finaliza una ${action}${situation} iniciada ${originSide} y terminada desde ${finish}.${goal}${assist}`;
+  };
+
+  const getGoalDraftPartialScore = (draft = goalAnalysisDraft) => {
+    const score = getStatsScore();
+    if (draft.type === 'Gol en contra') return { caudal: score.caudal, rival: score.rival + 1 };
+    return { caudal: score.caudal + 1, rival: score.rival };
+  };
+
+  const getGoalDraftPlayerOptions = () => (getStatsCalledPlayers().length ? getStatsCalledPlayers() : players);
+
+  const getGoalDraftChain = (draft = goalAnalysisDraft) => {
+    const origin = getGoalZonePhrase(draft.assistZone);
+    if (draft.type === 'Gol en contra') return [selectedMatch?.opponent || 'Rival', origin, 'Gol'];
+    return [origin, draft.assistant, draft.scorer || 'Goleador'].filter(Boolean);
   };
 
   const detectGoalClipPlatform = (url = '') => {
@@ -18858,6 +18899,36 @@ function App() {
               <button type="button" onClick={() => setIsGoalAnalysisOpen(false)} className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-slate-200">Cerrar</button>
             </div>
             <div className="max-h-[calc(100vh-150px)] space-y-4 overflow-y-auto px-6 py-5 pb-24">
+              {(() => {
+                const partialScore = getGoalDraftPartialScore(goalAnalysisDraft);
+                const chain = getGoalDraftChain(goalAnalysisDraft);
+                return (
+                  <section className="rounded-3xl border border-caudal-electric/20 bg-caudal-electric/[0.08] p-4">
+                    <div className="grid gap-4 lg:grid-cols-[0.75fr_1fr_0.75fr] lg:items-center">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">{goalAnalysisDraft.type === 'Gol a favor' ? 'Gol Caudal' : 'Gol rival'}</p>
+                        <p className="mt-1 text-4xl font-black text-white">{goalAnalysisDraft.minute || '--'}'</p>
+                      </div>
+                      <div>
+                        <p className="text-xl font-black text-white">{goalAnalysisDraft.type === 'Gol a favor' ? (goalAnalysisDraft.scorer || 'Goleador') : (selectedMatch.opponent || 'Rival')}</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-300">Asistencia: {goalAnalysisDraft.assistant || 'Sin asistencia'}</p>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          {chain.map((item, index) => (
+                            <span key={`${item}-${index}`} className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.1em] text-slate-200">
+                              {index ? <span className="text-caudal-electric">→</span> : null}
+                              <span className="rounded-lg bg-white/10 px-2 py-1">{item}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="text-left lg:text-right">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Resultado parcial</p>
+                        <p className="mt-1 text-4xl font-black text-white">{partialScore.caudal}-{partialScore.rival}</p>
+                      </div>
+                    </div>
+                  </section>
+                );
+              })()}
               <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Evento</p>
                 <div className="mt-4 grid gap-3 lg:grid-cols-5">
@@ -18876,11 +18947,11 @@ function App() {
                     <>
                       <select value={goalAnalysisDraft.scorer} onChange={(event) => updateGoalAnalysisDraft('scorer', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white lg:col-span-2">
                         <option value="">Goleador...</option>
-                        {players.map((player) => <option key={player.id} value={player.name}>{player.name}</option>)}
+                        {getGoalDraftPlayerOptions().map((player) => <option key={player.id || player.name} value={player.name}>{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</option>)}
                       </select>
                       <select value={goalAnalysisDraft.assistant} onChange={(event) => updateGoalAnalysisDraft('assistant', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white lg:col-span-2">
                         <option value="">Sin asistencia</option>
-                        {players.map((player) => <option key={player.id} value={player.name}>{player.name}</option>)}
+                        {getGoalDraftPlayerOptions().map((player) => <option key={player.id || player.name} value={player.name}>{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</option>)}
                       </select>
                     </>
                   ) : null}
@@ -18974,7 +19045,17 @@ function App() {
               </section>
 
               <section className="rounded-3xl border border-caudal-electric/15 bg-caudal-electric/[0.055] p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Autoresumen editable</p>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Autoresumen del gol</p>
+                    <div className="mt-3 grid gap-1.5 text-sm font-semibold text-slate-100">
+                      <p><span className="text-caudal-electric">{goalAnalysisDraft.minute || '--'}'</span> {goalAnalysisDraft.type === 'Gol a favor' ? `${goalAnalysisDraft.scorer || 'Goleador'} marca.` : `${selectedMatch.opponent || 'Rival'} marca.`}</p>
+                      <p>{goalAnalysisDraft.attackType || goalAnalysisDraft.phase}. {getGoalZonePhrase(goalAnalysisDraft.assistZone)}. Finalización: {getGoalZonePhrase(goalAnalysisDraft.shotZone)}.</p>
+                      <p>Pie/contacto: {goalAnalysisDraft.contact}. {goalAnalysisDraft.assistant ? `Asistencia de ${goalAnalysisDraft.assistant}.` : 'Sin asistencia registrada.'}</p>
+                    </div>
+                  </div>
+                  <span className="shrink-0 rounded-xl bg-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">Editable</span>
+                </div>
                 <textarea value={goalAnalysisDraft.summary || buildGoalDraftSummary(goalAnalysisDraft)} onChange={(event) => updateGoalAnalysisDraft('summary', event.target.value)} className="mt-3 min-h-[76px] w-full resize-none rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3 text-sm leading-6 text-white" />
               </section>
             </div>
@@ -19010,10 +19091,20 @@ function App() {
               </button>
             </div>
             <div className="flex flex-wrap gap-2 border-b border-white/10 px-6 py-4">
+              {(() => {
+                const counts = getStatsCallupCounts();
+                return (
+                  <div className="mr-auto flex flex-wrap gap-2">
+                    <span className="rounded-2xl bg-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-200">Convocados: {counts.called}</span>
+                    <span className="rounded-2xl bg-caudal-electric/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">Titulares: {counts.starters}</span>
+                    <span className="rounded-2xl bg-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-200">Suplentes: {counts.substitutes}</span>
+                  </div>
+                );
+              })()}
               <button
                 type="button"
-                onClick={() => setSelectedStatsCallups(getAvailableStatsCallupPlayers().map((player) => player.name))}
-                disabled={!getAvailableStatsCallupPlayers().length || statsCallupSaving}
+                onClick={() => setSelectedStatsCallups(getFilteredAvailableStatsCallupPlayers().map((player) => player.name))}
+                disabled={!getFilteredAvailableStatsCallupPlayers().length || statsCallupSaving}
                 className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Seleccionar todos
@@ -19030,15 +19121,27 @@ function App() {
                 {selectedStatsCallups.length} seleccionados
               </span>
             </div>
+            <div className="flex flex-wrap gap-2 border-b border-white/10 px-6 py-3">
+              {['TODOS', 'POR', 'DEF', 'MC', 'ATA'].map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => setStatsCallupFilter(filter)}
+                  className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] ${statsCallupFilter === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
               {statsCallupError ? (
                 <div className="mb-4 rounded-3xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
                   {statsCallupError}
                 </div>
               ) : null}
-              {getAvailableStatsCallupPlayers().length ? (
+              {getFilteredAvailableStatsCallupPlayers().length ? (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {getAvailableStatsCallupPlayers().map((player) => {
+                  {getFilteredAvailableStatsCallupPlayers().map((player) => {
                     const checked = selectedStatsCallups.includes(player.name);
                     return (
                       <label
