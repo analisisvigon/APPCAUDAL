@@ -3991,8 +3991,30 @@ function App() {
     saveActiveConsignas(next);
   };
   const splitPlanLines = (value) => String(value || '').split('\n').map((item) => String(item || '').trim()).filter(Boolean);
+  const normalizeKeyText = (value) => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const normalizeKeyBlockLines = (items) => {
+    const seen = new Set();
+    return safeArray(items).map((item) => String(item || '').trim()).filter((item) => {
+      const key = normalizeKeyText(item);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+  const createUniqueKeyText = (items, baseText = 'Nueva clave') => {
+    const normalized = new Set(normalizeKeyBlockLines(items).map(normalizeKeyText));
+    const cleanBase = String(baseText || 'Nueva clave').trim() || 'Nueva clave';
+    if (!normalized.has(normalizeKeyText(cleanBase))) return cleanBase;
+    let copyIndex = 2;
+    let nextText = `${cleanBase} ${copyIndex}`;
+    while (normalized.has(normalizeKeyText(nextText))) {
+      copyIndex += 1;
+      nextText = `${cleanBase} ${copyIndex}`;
+    }
+    return nextText;
+  };
   const savePlanLines = (field, items) => {
-    const cleanItems = safeArray(items).map((item) => String(item || '').trim()).filter(Boolean);
+    const cleanItems = normalizeKeyBlockLines(items);
     updateSelectedMatchFields({ [field]: cleanItems.join('\n') });
   };
   const preKeyBlocks = [
@@ -4000,23 +4022,37 @@ function App() {
     { title: 'Defensivas', field: 'preCaudalDefendStrengths', tone: 'border-rose-200/15 bg-rose-300/[0.045]', placeholder: 'Cerrar pase interior.' },
     { title: 'ABP', field: 'abpOfensiva', secondaryField: 'abpDefensiva', tone: 'border-amber-200/15 bg-amber-300/[0.055]', placeholder: 'Defender primer palo.' },
   ];
-  const getKeyBlockLines = (block) => [
+  const getKeyBlockLines = (block) => normalizeKeyBlockLines([
     ...splitPlanLines(selectedMatch?.[block.field]),
     ...(block.secondaryField ? splitPlanLines(selectedMatch?.[block.secondaryField]) : []),
-  ];
+  ]);
   const saveKeyBlockLines = (block, items) => {
+    const cleanItems = normalizeKeyBlockLines(items);
     if (!block.secondaryField) {
-      savePlanLines(block.field, items);
+      savePlanLines(block.field, cleanItems);
       return;
     }
-    savePlanLines(block.field, items);
+    updateSelectedMatchFields({ [block.field]: cleanItems.join('\n'), [block.secondaryField]: '' });
   };
   const updateKeyBlockLine = (block, index, value) => {
     const lines = getKeyBlockLines(block);
+    const cleanValue = String(value || '').trim();
+    if (cleanValue && lines.some((line, itemIndex) => itemIndex !== index && normalizeKeyText(line) === normalizeKeyText(cleanValue))) return;
     lines[index] = value;
     saveKeyBlockLines(block, lines);
   };
-  const addKeyBlockLine = (block) => saveKeyBlockLines(block, [...getKeyBlockLines(block), 'Nueva clave']);
+  const addKeyBlockLine = (block) => {
+    const lines = getKeyBlockLines(block);
+    saveKeyBlockLines(block, [...lines, createUniqueKeyText(lines)]);
+  };
+  const duplicateKeyBlockLine = (block, index) => {
+    const lines = getKeyBlockLines(block);
+    const source = lines[index] || block.placeholder || 'Nueva clave';
+    saveKeyBlockLines(block, [...lines, createUniqueKeyText(lines, `${source} copia`)]);
+  };
+  const focusKeyBlockLine = (block, index) => {
+    document.getElementById(`pre-key-${block.field}-${index}`)?.focus();
+  };
   const removeKeyBlockLine = (block, index) => saveKeyBlockLines(block, getKeyBlockLines(block).filter((_, itemIndex) => itemIndex !== index));
   const moveKeyBlockLine = (block, index, direction) => {
     const lines = getKeyBlockLines(block);
@@ -4025,6 +4061,19 @@ function App() {
     [lines[index], lines[nextIndex]] = [lines[nextIndex], lines[index]];
     saveKeyBlockLines(block, lines);
   };
+  useEffect(() => {
+    if (!selectedMatch?.id) return;
+    const updates = {};
+    preKeyBlocks.forEach((block) => {
+      const primaryLines = splitPlanLines(selectedMatch?.[block.field]);
+      const secondaryLines = block.secondaryField ? splitPlanLines(selectedMatch?.[block.secondaryField]) : [];
+      const cleanLines = normalizeKeyBlockLines([...primaryLines, ...secondaryLines]);
+      const cleanValue = cleanLines.join('\n');
+      if (primaryLines.join('\n') !== cleanValue) updates[block.field] = cleanValue;
+      if (block.secondaryField && secondaryLines.length) updates[block.secondaryField] = '';
+    });
+    if (Object.keys(updates).length) updateSelectedMatchFields(updates);
+  }, [selectedMatch?.id, selectedMatch?.planClave, selectedMatch?.preCaudalDefendStrengths, selectedMatch?.abpOfensiva, selectedMatch?.abpDefensiva]);
   const getPrePlayerStatus = (player) => {
     const isStarter = safeArray(selectedMatch?.preCaudalLineup).includes(player.name);
     if (isStarter) return 'Titular';
@@ -5537,9 +5586,9 @@ function App() {
           </div>
         </div>
 
-        <div className={`grid gap-4 ${isPreTalkMode ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(360px,0.42fr)_minmax(0,0.58fr)]'}`}>
-          <div className="flex flex-col gap-4">
-            <section className="order-1 border border-caudal-electric/15 bg-[#091428]/90 p-4">
+        <div className={`grid gap-4 ${isPreTalkMode ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(340px,0.36fr)_minmax(0,0.64fr)]'}`}>
+          <div className="grid gap-4 xl:contents">
+            <section className="order-1 border border-caudal-electric/15 bg-[#091428]/90 p-4 xl:col-start-1">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Resumen ejecutivo</p>
@@ -5568,7 +5617,7 @@ function App() {
                 Prioridad semanal: {weeklyPriority}
               </p>
             </section>
-            <section className="order-8 border border-white/10 bg-[#091428]/82 p-4">
+            <section className="order-11 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Perfil colectivo</p>
@@ -5615,7 +5664,7 @@ function App() {
               </div>
             </section>
 
-            <section className="order-9 border border-white/10 bg-[#091428]/82 p-4">
+            <section className="order-12 border border-white/10 bg-[#091428]/82 p-4">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Scouting individual</p>
               <div className="mt-3 max-h-[300px] space-y-2 overflow-y-auto pr-1">
                 {(liveRivalPlayers.length ? liveRivalPlayers : [{ id: 'sin-jugador', name: 'Sin jugadores rivales' }]).slice(0, 8).map((player) => {
@@ -5671,7 +5720,7 @@ function App() {
               </div>
             </section>
 
-            <section className="order-10 border border-white/10 bg-[#091428]/82 p-4">
+            <section className="order-13 border border-white/10 bg-[#091428]/82 p-4">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Evidencias observadas</p>
               <div className="mt-3 grid grid-cols-4 gap-1.5 text-center text-[10px] font-black uppercase text-slate-300">
                 {['Ataque', 'Defensa', 'Transición', 'ABP'].map((type) => (
@@ -5702,7 +5751,7 @@ function App() {
               </div>
             </section>
 
-            <section className="order-2 border border-white/10 bg-[#091428]/82 p-4">
+            <section className="order-2 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1">
               <div className="flex items-end justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Comparador</p>
@@ -5724,7 +5773,7 @@ function App() {
               </div>
             </section>
 
-            <section className="order-3 border border-white/10 bg-[#091428]/82 p-4">
+            <section className="order-3 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Duelos críticos</p>
               <div className="mt-4 space-y-2">
                 {(duelRows.length ? duelRows : [{ caudalName: 'Caudal', rivalName: liveRivalIdentity.mainThreat || 'Rival', tone: 'amber' }]).map((duel) => (
@@ -5738,7 +5787,7 @@ function App() {
               </div>
             </section>
 
-            <section className="order-6 border border-white/10 bg-[#091428]/82 p-4">
+            <section className="order-10 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Mapa del partido</p>
               <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                 <div>
@@ -5762,7 +5811,7 @@ function App() {
               </div>
             </section>
 
-            <section className="order-4 border border-caudal-electric/15 bg-[#091428]/90 p-4">
+            <section className="order-5 border border-caudal-electric/15 bg-[#091428]/90 p-4">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Plan de partido</p>
               <div className="mt-4 grid gap-5 md:grid-cols-2">
                 {renderPlanList('Con balón', attackPlan)}
@@ -5793,7 +5842,7 @@ function App() {
               </div>
             </section>
 
-            <section className="order-5 border border-white/10 bg-[#091428]/82 p-4">
+            <section className="order-6 border border-white/10 bg-[#091428]/82 p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Pregunta táctica IA</p>
                 <div className="flex bg-white/[0.045] p-1">
@@ -5834,8 +5883,8 @@ function App() {
             </section>
           </div>
 
-          <div className="space-y-3">
-            <section className="border border-white/10 bg-[#091428]/82 p-3">
+          <div className="grid gap-4 xl:contents">
+            <section className="order-4 border border-white/10 bg-[#091428]/82 p-3 xl:col-start-2 xl:row-span-3 xl:row-start-1">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Campo táctico</p>
@@ -5863,7 +5912,7 @@ function App() {
               {renderFacingSystemsOverview()}
             </section>
 
-            <section className="border border-white/10 bg-[#091428]/82 p-3">
+            <section className="order-8 border border-white/10 bg-[#091428]/82 p-3">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Zonas activas</p>
                 <button type="button" onClick={() => setIsTacticalZonesEditorOpen(true)} className="border border-white/10 bg-white/[0.045] px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] text-slate-200 hover:bg-white/[0.08]">
@@ -16616,6 +16665,7 @@ function App() {
                                               <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-100">{line}</span>
                                             ) : (
                                               <input
+                                                id={`pre-key-${block.field}-${index}`}
                                                 value={line}
                                                 onChange={(event) => updateKeyBlockLine(block, index, event.target.value)}
                                                 placeholder={block.placeholder}
@@ -16623,10 +16673,12 @@ function App() {
                                               />
                                             )}
                                             {!isPreTalkMode ? (
-                                              <span className="flex items-center gap-0.5 opacity-70 transition group-hover:opacity-100">
-                                                <button type="button" onClick={() => moveKeyBlockLine(block, index, -1)} className="rounded-md px-1 text-[10px] text-slate-400 hover:bg-white/10 hover:text-white">^</button>
-                                                <button type="button" onClick={() => moveKeyBlockLine(block, index, 1)} className="rounded-md px-1 text-[10px] text-slate-400 hover:bg-white/10 hover:text-white">v</button>
-                                                <button type="button" onClick={() => removeKeyBlockLine(block, index)} className="rounded-md px-1 text-[10px] text-red-200 hover:bg-red-500/15">x</button>
+                                              <span className="flex shrink-0 flex-wrap items-center justify-end gap-1 opacity-80 transition group-hover:opacity-100">
+                                                <button type="button" onClick={() => focusKeyBlockLine(block, index)} className="rounded-md px-1.5 py-1 text-[10px] font-black uppercase text-slate-300 hover:bg-white/10 hover:text-white">Editar</button>
+                                                <button type="button" onClick={() => duplicateKeyBlockLine(block, index)} className="rounded-md px-1.5 py-1 text-[10px] font-black uppercase text-slate-300 hover:bg-white/10 hover:text-white">Duplicar</button>
+                                                <button type="button" onClick={() => moveKeyBlockLine(block, index, -1)} className="rounded-md px-1.5 py-1 text-[10px] font-black uppercase text-slate-400 hover:bg-white/10 hover:text-white">Subir</button>
+                                                <button type="button" onClick={() => moveKeyBlockLine(block, index, 1)} className="rounded-md px-1.5 py-1 text-[10px] font-black uppercase text-slate-400 hover:bg-white/10 hover:text-white">Bajar</button>
+                                                <button type="button" onClick={() => removeKeyBlockLine(block, index)} className="rounded-md px-1.5 py-1 text-[10px] font-black uppercase text-red-200 hover:bg-red-500/15">Eliminar</button>
                                               </span>
                                             ) : null}
                                           </div>
