@@ -347,6 +347,43 @@ const emptyTeamForm = {
 const emptyLineup = [];
 const emptyDepthChart = {};
 const rivalTacticalIdentityKey = 'caudal_rival_tactical_identity_v1';
+const rivalObservedScoutingKey = 'caudal-rival-observed-scouting-v1';
+const collectiveProfileOptions = {
+  buildUp: ['Muy elaborada', 'Elaborada', 'Mixta', 'Directa', 'Muy directa'],
+  blockHeight: ['Muy alta', 'Alta', 'Media', 'Baja', 'Muy baja'],
+  pressureType: ['Alta', 'Media', 'Repliegue'],
+  attackingRhythm: ['Posicional', 'Mixto', 'Vertical'],
+  preferredAttack: ['Izquierda', 'Centro', 'Derecha', 'Equilibrado'],
+  strengths: ['Juego interior', 'Centros', 'ABP', 'Transiciones', 'Juego directo', 'Duelos', 'Contraataque', 'Segunda jugada'],
+  weaknesses: ['Espalda lateral', 'Pérdida interior', 'Defensa área', 'ABP defensiva', 'Transición defensiva', 'Juego aéreo', 'Vigilancias', 'Salida de balón'],
+};
+const playerScoutingTraits = ['Ataca espacio', 'Rematador', 'Referencia aérea', 'Organizador', 'Conductor', 'Regateador', 'Intensidad defensiva', 'Especialista ABP', 'Llega al área', 'Defiende área'];
+const evidenceTypeOptions = ['Ataque', 'Defensa', 'ABP', 'Transición', 'Jugador'];
+const emptyObservedCollectiveProfile = {
+  buildUp: '',
+  blockHeight: '',
+  pressureType: '',
+  attackingRhythm: '',
+  preferredAttack: '',
+  strengths: [],
+  weaknesses: [],
+};
+const emptyObservedPlayerProfile = {
+  speed: 0,
+  technique: 0,
+  aerial: 0,
+  oneVsOne: 0,
+  defensiveWork: 0,
+  foot: '',
+  traits: [],
+  notes: '',
+};
+const emptyEvidenceDraft = {
+  match: '',
+  date: '',
+  type: 'Ataque',
+  observation: '',
+};
 const tacticalIdentityOptions = {
   strongSide: ['izquierda', 'derecha', 'interior', 'ambos laterales', 'directo'],
   mainThreat: ['transición', 'ABP', 'espalda lateral', 'delantero referencia', 'centros laterales', 'segunda jugada'],
@@ -2731,6 +2768,15 @@ function App() {
       return {};
     }
   });
+  const [rivalObservedScouting, setRivalObservedScouting] = useState(() => {
+    try {
+      if (typeof window === 'undefined') return {};
+      return JSON.parse(window.localStorage.getItem(rivalObservedScoutingKey) || '{}');
+    } catch {
+      return {};
+    }
+  });
+  const [evidenceDraft, setEvidenceDraft] = useState(emptyEvidenceDraft);
   const [playerProfileData, setPlayerProfileData] = useState(null);
   const [playerProfileLoading, setPlayerProfileLoading] = useState(false);
   const [playerProfileError, setPlayerProfileError] = useState('');
@@ -3661,6 +3707,15 @@ function App() {
   }, [rivalPlayerFlags]);
 
   useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      window.localStorage.setItem(rivalObservedScoutingKey, JSON.stringify(rivalObservedScouting));
+    } catch (storageError) {
+      console.warn('No se pudo guardar el scouting observado del rival:', storageError);
+    }
+  }, [rivalObservedScouting]);
+
+  useEffect(() => {
     if (activeTab !== 'Inicio') return;
     loadHomeDashboardData();
     loadHomePhrase();
@@ -3703,6 +3758,94 @@ function App() {
     () => teams.find((team) => team.id === selectedMatch?.equipoRivalId) || findTeamByDisplayName(teams, selectedMatch?.opponent || ''),
     [teams, selectedMatch?.equipoRivalId, selectedMatch?.opponent]
   );
+  const selectedRivalObservedKey = selectedMatchRivalTeam?.id || comparableTeamName(selectedMatch?.opponent || '') || '__sin_rival__';
+  const selectedRivalObservedScouting = {
+    collective: emptyObservedCollectiveProfile,
+    playerProfiles: {},
+    evidences: [],
+    ...(rivalObservedScouting[selectedRivalObservedKey] || {}),
+  };
+  selectedRivalObservedScouting.collective = {
+    ...emptyObservedCollectiveProfile,
+    ...(selectedRivalObservedScouting.collective || {}),
+    strengths: safeArray(selectedRivalObservedScouting.collective?.strengths),
+    weaknesses: safeArray(selectedRivalObservedScouting.collective?.weaknesses),
+  };
+  selectedRivalObservedScouting.playerProfiles = safeObject(selectedRivalObservedScouting.playerProfiles);
+  selectedRivalObservedScouting.evidences = safeArray(selectedRivalObservedScouting.evidences);
+  const updateSelectedRivalObservedScouting = (patch) => {
+    setRivalObservedScouting((current) => ({
+      ...current,
+      [selectedRivalObservedKey]: {
+        collective: emptyObservedCollectiveProfile,
+        playerProfiles: {},
+        evidences: [],
+        ...(current[selectedRivalObservedKey] || {}),
+        ...patch,
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+  };
+  const updateObservedCollectiveProfile = (field, value) => {
+    updateSelectedRivalObservedScouting({
+      collective: {
+        ...selectedRivalObservedScouting.collective,
+        [field]: value,
+      },
+    });
+  };
+  const toggleObservedCollectiveListValue = (field, value) => {
+    const current = safeArray(selectedRivalObservedScouting.collective[field]);
+    updateObservedCollectiveProfile(field, current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
+  };
+  const getObservedPlayerKey = (player) => String(player?.jugadorRivalId || player?.id || player?.name || '');
+  const getObservedPlayerProfile = (player) => ({
+    ...emptyObservedPlayerProfile,
+    ...(selectedRivalObservedScouting.playerProfiles[getObservedPlayerKey(player)] || {}),
+    traits: safeArray(selectedRivalObservedScouting.playerProfiles[getObservedPlayerKey(player)]?.traits),
+  });
+  const updateObservedPlayerProfile = (player, patch) => {
+    const playerKey = getObservedPlayerKey(player);
+    if (!playerKey) return;
+    updateSelectedRivalObservedScouting({
+      playerProfiles: {
+        ...selectedRivalObservedScouting.playerProfiles,
+        [playerKey]: {
+          ...getObservedPlayerProfile(player),
+          ...patch,
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    });
+  };
+  const toggleObservedPlayerTrait = (player, trait) => {
+    const profile = getObservedPlayerProfile(player);
+    updateObservedPlayerProfile(player, {
+      traits: profile.traits.includes(trait) ? profile.traits.filter((item) => item !== trait) : [...profile.traits, trait],
+    });
+  };
+  const addObservedEvidence = () => {
+    const observation = String(evidenceDraft.observation || '').trim();
+    if (!observation) return;
+    updateSelectedRivalObservedScouting({
+      evidences: [
+        {
+          id: `evidence-${Date.now()}`,
+          match: String(evidenceDraft.match || '').trim(),
+          date: evidenceDraft.date || '',
+          type: evidenceDraft.type || 'Ataque',
+          observation,
+        },
+        ...selectedRivalObservedScouting.evidences,
+      ].slice(0, 60),
+    });
+    setEvidenceDraft(emptyEvidenceDraft);
+  };
+  const removeObservedEvidence = (evidenceId) => {
+    updateSelectedRivalObservedScouting({
+      evidences: selectedRivalObservedScouting.evidences.filter((item) => item.id !== evidenceId),
+    });
+  };
   const liveRivalIdentity = useMemo(
     () => getTeamTacticalIdentity(selectedMatchRivalTeam || {}),
     [selectedMatchRivalTeam]
@@ -5073,44 +5216,63 @@ function App() {
     const rivalSystem = getCurrentRivalSystem();
     const caudal = getSystemStructure(caudalSystem);
     const rival = getSystemStructure(rivalSystem);
-    const caudalLineup = safeArray(selectedMatch?.preCaudalLineup);
-    const rivalLineup = safeArray(getCurrentRivalLineup());
-    const hasCaudalNames = caudalLineup.some(Boolean);
-    const hasRivalNames = rivalLineup.some(Boolean);
-    const identity = liveRivalIdentity;
-    const keyPlayers = liveRivalPlayers.filter((player) => player.isKey && !isUnavailableRivalPlayer(player)).map((player) => player.name);
-    const alertPlayers = liveRivalMarkedPlayers
-      .filter((player) => !isUnavailableRivalPlayer(player))
-      .map((player) => `${player.name} (${playerStatusBadges(player).map((badge) => badge.label).join('/')})`);
     const safeQuestion = String(question || '');
     const q = safeQuestion.toLowerCase();
+    const collective = selectedRivalObservedScouting.collective;
+    const evidences = selectedRivalObservedScouting.evidences;
+    const profiledPlayers = liveRivalPlayers
+      .map((player) => ({ player, profile: getObservedPlayerProfile(player) }))
+      .filter(({ profile }) => profile.speed || profile.technique || profile.aerial || profile.oneVsOne || profile.defensiveWork || profile.foot || profile.traits.length || profile.notes);
+    const sources = [
+      Object.values(collective).some((value) => Array.isArray(value) ? value.length : Boolean(value)) ? 'Perfil colectivo' : null,
+      profiledPlayers.length ? 'Perfil jugador' : null,
+      evidences.length ? 'Evidencias observadas' : null,
+      caudalSystem && rivalSystem ? 'Sistema enfrentado' : null,
+    ].filter(Boolean);
+    const confidence = evidences.length >= 3 && sources.length >= 3 ? 'Alta' : evidences.length || sources.length >= 2 ? 'Media' : 'Baja';
+    const evidenceText = evidences.slice(0, 3).map((item) => `- ${item.observation}${item.match ? ` (${item.match})` : ''}`).join('\n');
+    const sourceText = sources.map((source) => `✓ ${source}`).join('\n');
+    const insufficient = () => 'Información insuficiente para emitir una conclusión fiable.\n\nFUENTES:\nSin datos observados suficientes.';
+
+    if (sources.length <= 1 && !q.includes('superioridad')) return insufficient();
 
     if (mode === 'Micro' || /jugador|duelo|vigilar|marca/i.test(safeQuestion)) {
-      const caudalRefs = hasCaudalNames ? caudalLineup.filter(Boolean).slice(0, 3).join(', ') : 'nuestros jugadores del carril activo';
-      const rivalRefs = keyPlayers.length ? keyPlayers.slice(0, 3).join(', ') : hasRivalNames ? rivalLineup.filter(Boolean).slice(0, 3).join(', ') : `sus referencias de ${identity.mainThreat}`;
-      return `Micro: ${caudalRefs} contra ${rivalRefs}. Negar giro, cerrar dentro y saltar con cobertura. Cargar ${identity.strongSide}; atacar ${identity.detectedWeakness}. ${alertPlayers.length ? `Estados: ${alertPlayers.slice(0, 3).join(', ')}.` : ''}`;
+      if (!profiledPlayers.length) return insufficient();
+      const playerLine = profiledPlayers.slice(0, 2).map(({ player, profile }) => {
+        const metrics = [
+          profile.speed ? `velocidad ${profile.speed}` : '',
+          profile.aerial ? `juego aéreo ${profile.aerial}` : '',
+          profile.oneVsOne ? `1v1 ${profile.oneVsOne}` : '',
+          profile.traits.length ? profile.traits.slice(0, 2).join(', ') : '',
+        ].filter(Boolean).join(' · ');
+        return `${displayPlayerName(player)}: ${metrics}`;
+      }).join('\n');
+      return `Confianza ${confidence}: duelos definidos por perfiles observados.\n${playerLine}\n\nRecomendación:\nAjustar marcas y ayudas según el atributo dominante registrado.\n\nFUENTES:\n${sourceText}`;
     }
 
     if (q.includes('bloque') || q.includes('atacamos')) {
-      return `Fijar su ${rivalSystem}. Atraer presión ${identity.pressureType}. Cambiar a lado débil y atacar ${identity.detectedWeakness}.`;
+      if (!collective.blockHeight && !collective.weaknesses.length && !evidences.length) return insufficient();
+      return `Confianza ${confidence}: ${collective.blockHeight ? `bloque ${collective.blockHeight.toLowerCase()} registrado.` : 'altura de bloque no registrada.'}\n${collective.buildUp ? `Salida: ${collective.buildUp}.` : 'Salida: sin dato.'}\n${collective.weaknesses.length ? `Debilidad registrada: ${collective.weaknesses.slice(0, 2).join(', ')}.` : 'Debilidad: sin dato.'}\n\nRecomendación:\nAtacar únicamente las zonas respaldadas por perfil o evidencias.\n\nFUENTES:\n${sourceText}${evidenceText ? `\n\nEVIDENCIAS:\n${evidenceText}` : ''}`;
     }
     if (q.includes('superioridad')) {
       const diff = caudal.midfielders - rival.midfielders;
-      return diff >= 0
-        ? `La superioridad más clara puede estar por dentro: ${caudal.midfielders} medios nuestros contra ${rival.midfielders} rivales. Hay que atraer a un medio rival y encontrar tercer hombre entre líneas.`
-        : `No tenemos superioridad natural por dentro: ${caudal.midfielders} contra ${rival.midfielders}. La ventaja debe buscarse por fuera, con cambios de orientación y atacando la espalda del lateral/carrilero.`;
+      return `Confianza Media: conclusión estructural por sistema enfrentado.\n${diff >= 0 ? `Superioridad o igualdad interior: ${caudal.midfielders}v${rival.midfielders}.` : `No hay superioridad interior: ${caudal.midfielders}v${rival.midfielders}.`}\n\nRecomendación:\nConfirmar con evidencias antes de convertirlo en consigna principal.\n\nFUENTES:\n✓ Sistema enfrentado`;
     }
     if (q.includes('pérdida') || q.includes('perdida') || q.includes('transiciones')) {
-      return `Pérdida interior prohibida. Presión inmediata o falta táctica. Cerrar pase a ${keyPlayers[0] || 'primer lanzador'} y proteger segundo palo.`;
+      if (!collective.strengths.includes('Transiciones') && !collective.strengths.includes('Contraataque') && !evidences.length) return insufficient();
+      return `Confianza ${confidence}: riesgo de transición respaldado por ${evidences.length ? `${evidences.length} evidencias` : 'perfil colectivo'}.\n${collective.strengths.length ? `Fortalezas registradas: ${collective.strengths.join(', ')}.` : ''}\n\nRecomendación:\nFinalizar ataques, asegurar vigilancia y cortar primera recepción tras pérdida.\n\nFUENTES:\n${sourceText}`;
     }
     if (q.includes('vigilar')) {
-      return `Prioridad: ${keyPlayers[0] || identity.mainThreat}. Contacto previo, negar giro y orientar fuera. Saltar solo con cobertura.`;
+      if (!profiledPlayers.length && !evidences.length) return insufficient();
+      const watched = profiledPlayers[0]?.player ? displayPlayerName(profiledPlayers[0].player) : 'Jugador observado';
+      return `Confianza ${confidence}: vigilancia sobre ${watched}.\nBasado en perfil individual y evidencias disponibles.\n\nRecomendación:\nNegar su acción dominante registrada y ajustar cobertura cercana.\n\nFUENTES:\n${sourceText}`;
     }
     if (q.includes('ajuste') || q.includes('progresamos')) {
-      return `Salida de tres. Mediapunta cerca del pivote. Fijar primera línea y atacar lado débil tras salto.`;
+      if (!sources.length) return insufficient();
+      return `Confianza ${confidence}: ajuste condicionado por datos observados.\n${collective.pressureType ? `Presión rival registrada: ${collective.pressureType}.` : 'Presión rival sin registrar.'}\n${collective.weaknesses.length ? `Atacar: ${collective.weaknesses[0]}.` : 'Sin debilidad validada.'}\n\nFUENTES:\n${sourceText}`;
     }
 
-    return `${caudalSystem} vs ${rivalSystem}. Atacar ${identity.detectedWeakness}. Controlar ${identity.mainThreat}. Equipo corto tras pérdida.`;
+    return insufficient();
   };
 
   const askTacticalQuestion = () => {
@@ -5237,41 +5399,54 @@ function App() {
     if (!selectedMatch) return null;
     const caudalSystem = selectedMatch.preCaudalSystem || '4-4-2';
     const rivalSystem = getCurrentRivalSystem();
-    const reading = selectedMatch.preSystemReading || buildSystemTacticalReading(caudalSystem, rivalSystem);
-    const matchups = safeArray(selectedMatch.preKeyMatchupsTable).length
-      ? safeArray(selectedMatch.preKeyMatchupsTable)
-      : defaultSystemMatchups(caudalSystem, rivalSystem);
+    const collective = selectedRivalObservedScouting.collective;
+    const evidences = selectedRivalObservedScouting.evidences;
+    const systemMidfieldAdvantage = getSystemStructure(caudalSystem).midfielders >= getSystemStructure(rivalSystem).midfielders;
+    const observedPlayerRows = liveRivalPlayers
+      .map((player) => ({ player, profile: getObservedPlayerProfile(player) }))
+      .filter(({ profile }) => profile.speed || profile.technique || profile.aerial || profile.oneVsOne || profile.defensiveWork || profile.foot || profile.traits.length || String(profile.notes || '').trim());
+    const hasCollectiveData = Object.values(collective).some((value) => Array.isArray(value) ? value.length : Boolean(value));
+    const hasObservedData = hasCollectiveData || observedPlayerRows.length || evidences.length;
     const splitLines = (value) => String(value || '').split(/\r?\n|•/).map((item) => String(item || '').trim()).filter(Boolean);
     const uniq = (items) => [...new Set(safeArray(items).map((item) => String(item || '').trim()).filter(Boolean))];
     const firstSentence = (value) => String(value || '').split(/[.;]\s/)[0].replace(/[.;]$/, '').trim();
     const activeZones = getTacticalZones().filter((zone) => zone.active);
-    const keyPlayers = liveRivalMarkedPlayers.filter((player) => player.isKey && !isUnavailableRivalPlayer(player));
+    const keyPlayers = observedPlayerRows.filter(({ profile }) => profile.traits.includes('Rematador') || profile.traits.includes('Ataca espacio') || profile.traits.includes('Especialista ABP')).map(({ player }) => player);
     const unavailablePlayers = getUnavailableRivalPlayers();
-    const weaknessPlayers = liveRivalMarkedPlayers.filter((player) => player.doubtful || player.yellowRisk || player.suspended || player.injured);
-    const watchedPlayers = liveRivalMarkedPlayers.filter((player) => !player.isKey && !weaknessPlayers.includes(player) && !isUnavailableRivalPlayer(player));
+    const weaknessPlayers = observedPlayerRows.filter(({ profile }) => profile.speed && Number(profile.speed) <= 2 || profile.defensiveWork && Number(profile.defensiveWork) <= 2).map(({ player }) => player);
+    const watchedPlayers = observedPlayerRows.map(({ player }) => player).filter((player) => !keyPlayers.includes(player) && !weaknessPlayers.includes(player) && !isUnavailableRivalPlayer(player));
+    const sourceCount = [hasCollectiveData, observedPlayerRows.length > 0, evidences.length > 0].filter(Boolean).length;
+    const confidence = evidences.length >= 3 && sourceCount >= 2 ? 'Alta' : sourceCount >= 2 || evidences.length ? 'Media' : 'Baja';
+    const sourceLabel = [
+      hasCollectiveData ? 'Perfil colectivo' : null,
+      observedPlayerRows.length ? 'Perfil jugador' : null,
+      evidences.length ? `${evidences.length} evidencias` : null,
+    ].filter(Boolean).join(' · ') || 'Sin fuente observada';
     const attackPlan = uniq([
       ...splitLines(selectedMatch.planConBalon),
       ...splitLines(selectedMatch.prePlanTrigger),
-      firstSentence(safeArray(reading.advantages)[0]),
-      firstSentence(safeArray(reading.attackZones)[0]),
+      collective.weaknesses.includes('Espalda lateral') ? 'Atacar espalda lateral registrada' : '',
+      collective.weaknesses.includes('Pérdida interior') ? 'Forzar recepción interior' : '',
+      systemMidfieldAdvantage ? `Superioridad interior ${getSystemStructure(caudalSystem).midfielders}v${getSystemStructure(rivalSystem).midfielders}` : '',
     ]).slice(0, 3);
     const defensePlan = uniq([
       ...splitLines(selectedMatch.planSinBalon),
       ...splitLines(selectedMatch.preCaudalDefendStrengths),
-      firstSentence(safeArray(reading.protectZones)[0]),
-      `Cerrar ${liveRivalIdentity.offensiveFocus || 'pase interior'}`,
+      collective.strengths.includes('Juego interior') ? 'Cerrar pase interior' : '',
+      collective.strengths.includes('Centros') ? 'Proteger segundo palo' : '',
+      collective.strengths.includes('Juego directo') ? 'Disputar segunda jugada' : '',
     ]).slice(0, 3);
     const transitionPlan = uniq([
       ...splitLines(selectedMatch.planTransiciones),
       ...splitLines(selectedMatch.prePlanAvoid),
-      'Falta táctica si la pérdida es interior',
-      'Repliegue inmediato',
+      collective.strengths.includes('Transiciones') || collective.strengths.includes('Contraataque') ? 'Falta táctica si la pérdida es interior' : '',
+      collective.strengths.includes('Transiciones') || collective.strengths.includes('Contraataque') ? 'Repliegue inmediato' : '',
     ]).slice(0, 3);
     const abpPlan = uniq([
       ...splitLines(selectedMatch.abpOfensiva),
       ...splitLines(selectedMatch.abpDefensiva),
       keyPlayers[0] ? `Vigilar ${displayPlayerName(keyPlayers[0])}` : '',
-      'Proteger segundo palo',
+      collective.strengths.includes('ABP') ? 'Proteger segundo palo' : '',
     ]).slice(0, 3);
     const semitoneClass = {
       green: 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100',
@@ -5280,17 +5455,24 @@ function App() {
       cyan: 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric',
     };
     const executiveItems = [
-      { label: safeArray(reading.advantages)[0] || `Superioridad interior ${getSystemStructure(caudalSystem).midfielders}v${getSystemStructure(rivalSystem).midfielders}`, tone: 'green' },
-      { label: safeArray(reading.attackZones)[0] || `Espalda del lateral`, tone: 'green' },
-      { label: `Transición rival: ${liveRivalIdentity.mainThreat || 'vigilar'}`, tone: 'amber' },
-      { label: keyPlayers[0] ? displayPlayerName(keyPlayers[0]) : liveRivalIdentity.mainThreat || 'Jugador clave', tone: 'red' },
-      { label: selectedMatch.abpDefensiva || selectedMatch.preRivalCornersFor || 'ABP lateral', tone: 'red' },
-    ].map((item) => ({ ...item, label: firstSentence(item.label) }));
-    const duelRows = getAutomaticMicroDuels().slice(0, 5).map((duel, index) => {
-      const rivalName = duel.rivalPlayer ? displayPlayerName(duel.rivalPlayer) : firstSentence(duel.title).replace(/^Vigilancia sobre\s+/i, '');
+      systemMidfieldAdvantage ? { label: `Superioridad interior ${getSystemStructure(caudalSystem).midfielders}v${getSystemStructure(rivalSystem).midfielders}`, tone: 'green' } : null,
+      collective.weaknesses[0] ? { label: collective.weaknesses[0], tone: 'green' } : null,
+      collective.strengths.includes('Transiciones') || collective.strengths.includes('Contraataque') ? { label: 'Transición rival observada', tone: 'amber' } : null,
+      keyPlayers[0] ? { label: displayPlayerName(keyPlayers[0]), tone: 'red' } : null,
+      collective.strengths.includes('ABP') ? { label: 'ABP registrada', tone: 'red' } : null,
+      !hasObservedData ? { label: 'Sin información suficiente', tone: 'amber' } : null,
+    ].filter(Boolean).map((item) => ({ ...item, label: firstSentence(item.label) }));
+    const duelRows = observedPlayerRows.slice(0, 5).map(({ player, profile }, index) => {
+      const rivalName = displayPlayerName(player);
       const caudalName = safeArray(selectedMatch.preCaudalLineup).filter(Boolean)[index] || getFormationRoles(caudalSystem)[index] || 'Caudal';
-      const tone = duel.tone === 'alerta' ? 'red' : duel.tone === 'ofensiva' || duel.tone === 'fortaleza' ? 'green' : 'amber';
-      return { caudalName, rivalName, tone };
+      const bestMetric = [
+        ['velocidad', Number(profile.speed || 0)],
+        ['juego aéreo', Number(profile.aerial || 0)],
+        ['1v1', Number(profile.oneVsOne || 0)],
+        ['técnica', Number(profile.technique || 0)],
+      ].sort((a, b) => b[1] - a[1])[0];
+      const tone = bestMetric?.[1] >= 4 ? 'red' : bestMetric?.[1] <= 2 ? 'green' : 'amber';
+      return { caudalName, rivalName, tone, reason: bestMetric?.[1] ? `${bestMetric[0]} ${bestMetric[1]}` : 'perfil registrado' };
     });
     const tacticalAnswer = selectedPreAiAnalysis?.tacticalQuestion?.answer || '';
     const tacticalAnswerLines = splitLines(tacticalAnswer.replace(/\. /g, '.\n'));
@@ -5311,7 +5493,7 @@ function App() {
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{title}</p>
         <ul className="mt-2 space-y-1.5 text-sm font-semibold leading-5 text-slate-100">
-          {(items.length ? items : ['Pendiente de definir.']).map((item) => (
+          {(items.length ? items : ['Información insuficiente para emitir una conclusión fiable.']).map((item) => (
             <li key={`${title}-${item}`} className="flex gap-2">
               <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-caudal-electric" />
               <span>{item}</span>
@@ -5337,6 +5519,123 @@ function App() {
         <div className={`grid gap-5 ${isPreTalkMode ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(320px,0.4fr)_minmax(0,0.6fr)]'}`}>
           <div className="space-y-5">
             <section className="border border-white/10 bg-[#091428]/82 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Perfil colectivo</p>
+                  <p className="mt-1 text-xs font-bold text-slate-500">{confidence} · {sourceLabel}</p>
+                </div>
+                {!hasObservedData ? <span className="rounded-lg border border-amber-300/20 bg-amber-300/10 px-2 py-1 text-[10px] font-black uppercase text-amber-100">Sin datos reales</span> : null}
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {[
+                  ['Salida de balón', 'buildUp', collectiveProfileOptions.buildUp],
+                  ['Altura del bloque', 'blockHeight', collectiveProfileOptions.blockHeight],
+                  ['Tipo de presión', 'pressureType', collectiveProfileOptions.pressureType],
+                  ['Ritmo ofensivo', 'attackingRhythm', collectiveProfileOptions.attackingRhythm],
+                  ['Ataque preferente', 'preferredAttack', collectiveProfileOptions.preferredAttack],
+                ].map(([label, field, options]) => (
+                  <label key={field} className="grid gap-1.5 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                    <span>{label}</span>
+                    <select value={collective[field] || ''} onChange={(event) => updateObservedCollectiveProfile(field, event.target.value)} className="border border-white/10 bg-black/20 px-3 py-2 text-sm font-bold normal-case tracking-normal text-white">
+                      <option value="">Sin información suficiente</option>
+                      {options.map((option) => <option key={option} value={option}>{option}</option>)}
+                    </select>
+                  </label>
+                ))}
+              </div>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                {[
+                  ['Fortalezas', 'strengths', collectiveProfileOptions.strengths, 'green'],
+                  ['Debilidades', 'weaknesses', collectiveProfileOptions.weaknesses, 'red'],
+                ].map(([label, field, options, tone]) => (
+                  <div key={field}>
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {options.map((option) => {
+                        const active = safeArray(collective[field]).includes(option);
+                        return (
+                          <button key={option} type="button" onClick={() => toggleObservedCollectiveListValue(field, option)} className={`rounded-lg border px-2 py-1.5 text-[10px] font-black uppercase ${active ? semitoneClass[tone] : 'border-white/10 bg-white/[0.035] text-slate-500'}`}>
+                            {option}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="border border-white/10 bg-[#091428]/82 p-5">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Scouting individual</p>
+              <div className="mt-4 max-h-[420px] space-y-3 overflow-y-auto pr-1">
+                {(liveRivalPlayers.length ? liveRivalPlayers : [{ id: 'sin-jugador', name: 'Sin jugadores rivales' }]).slice(0, 8).map((player) => {
+                  const profile = getObservedPlayerProfile(player);
+                  return (
+                    <div key={getObservedPlayerKey(player) || player.name} className="border border-white/10 bg-white/[0.035] p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="min-w-0 truncate text-sm font-black text-white">{displayPlayerName(player) || player.name}</p>
+                        <select value={profile.foot || ''} onChange={(event) => updateObservedPlayerProfile(player, { foot: event.target.value })} className="border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold text-white">
+                          <option value="">Pie</option>
+                          {['Derecho', 'Izquierdo', 'Ambos'].map((foot) => <option key={foot} value={foot}>{foot}</option>)}
+                        </select>
+                      </div>
+                      <div className="mt-3 grid grid-cols-5 gap-2">
+                        {[
+                          ['VEL', 'speed'],
+                          ['TEC', 'technique'],
+                          ['AÉR', 'aerial'],
+                          ['1V1', 'oneVsOne'],
+                          ['DEF', 'defensiveWork'],
+                        ].map(([label, field]) => (
+                          <label key={field} className="grid gap-1 text-center text-[9px] font-black uppercase text-slate-500">
+                            <span>{label}</span>
+                            <select value={profile[field] || 0} onChange={(event) => updateObservedPlayerProfile(player, { [field]: Number(event.target.value) })} className="border border-white/10 bg-black/20 px-1 py-1.5 text-xs font-black text-white">
+                              {[0, 1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value || '-'}</option>)}
+                            </select>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {playerScoutingTraits.map((trait) => {
+                          const active = profile.traits.includes(trait);
+                          return (
+                            <button key={trait} type="button" onClick={() => toggleObservedPlayerTrait(player, trait)} className={`rounded-lg border px-2 py-1 text-[9px] font-black uppercase ${active ? semitoneClass.cyan : 'border-white/10 bg-white/[0.035] text-slate-500'}`}>
+                              {trait}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <input value={profile.notes || ''} onChange={(event) => updateObservedPlayerProfile(player, { notes: event.target.value })} placeholder="Observaciones..." className="mt-3 w-full border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none placeholder:text-slate-500" />
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="border border-white/10 bg-[#091428]/82 p-5">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Evidencias observadas</p>
+              <div className="mt-4 grid gap-2 md:grid-cols-[1fr_120px_120px]">
+                <input value={evidenceDraft.match} onChange={(event) => setEvidenceDraft((current) => ({ ...current, match: event.target.value }))} placeholder="Partido" className="border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500" />
+                <input type="date" value={evidenceDraft.date} onChange={(event) => setEvidenceDraft((current) => ({ ...current, date: event.target.value }))} className="border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none" />
+                <select value={evidenceDraft.type} onChange={(event) => setEvidenceDraft((current) => ({ ...current, type: event.target.value }))} className="border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none">
+                  {evidenceTypeOptions.map((type) => <option key={type} value={type}>{type}</option>)}
+                </select>
+              </div>
+              <div className="mt-2 flex gap-2">
+                <input value={evidenceDraft.observation} onChange={(event) => setEvidenceDraft((current) => ({ ...current, observation: event.target.value }))} placeholder="Ej. 14 de 18 saques de portería fueron largos." className="min-w-0 flex-1 border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500" />
+                <button type="button" onClick={addObservedEvidence} className="bg-caudal-electric px-4 py-2 text-xs font-black uppercase text-slate-950">Añadir</button>
+              </div>
+              <div className="mt-3 space-y-2">
+                {evidences.length ? evidences.slice(0, 5).map((item) => (
+                  <div key={item.id} className="flex items-start justify-between gap-3 border-b border-white/8 pb-2">
+                    <p className="text-xs font-semibold leading-5 text-slate-200"><span className="font-black text-white">{item.type}</span>{item.match ? ` · ${item.match}` : ''}{item.date ? ` · ${item.date}` : ''}: {item.observation}</p>
+                    <button type="button" onClick={() => removeObservedEvidence(item.id)} className="text-[10px] font-black uppercase text-red-200">Borrar</button>
+                  </div>
+                )) : <p className="text-sm font-semibold text-slate-500">Sin evidencias observadas. La IA no emitirá conclusiones fiables.</p>}
+              </div>
+            </section>
+
+            <section className="border border-white/10 bg-[#091428]/82 p-5">
               <div className="flex items-end justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Comparador</p>
@@ -5351,10 +5650,10 @@ function App() {
                 </select>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-2 text-xs font-bold text-slate-200">
-                <span className="bg-white/[0.045] px-3 py-2">Bloque rival: {liveRivalIdentity.blockHeight}</span>
-                <span className="bg-white/[0.045] px-3 py-2">Presión: {liveRivalIdentity.pressureType}</span>
-                <span className="bg-white/[0.045] px-3 py-2">Foco: {liveRivalIdentity.offensiveFocus}</span>
-                <span className="bg-white/[0.045] px-3 py-2">Amenaza: {liveRivalIdentity.mainThreat}</span>
+                <span className="bg-white/[0.045] px-3 py-2">Salida: {collective.buildUp || 'Sin información suficiente'}</span>
+                <span className="bg-white/[0.045] px-3 py-2">Bloque: {collective.blockHeight || 'Sin información suficiente'}</span>
+                <span className="bg-white/[0.045] px-3 py-2">Presión: {collective.pressureType || 'Sin información suficiente'}</span>
+                <span className="bg-white/[0.045] px-3 py-2">Confianza: {confidence}</span>
               </div>
             </section>
 
@@ -5365,7 +5664,7 @@ function App() {
                   <div key={`${duel.caudalName}-${duel.rivalName}`} className="flex items-center justify-between gap-3 border-b border-white/8 pb-2 text-sm">
                     <span className="min-w-0 truncate font-black text-white">{duel.caudalName} vs {duel.rivalName}</span>
                     <span className={`shrink-0 rounded-md border px-2 py-1 text-[10px] font-black uppercase ${semitoneClass[duel.tone]}`}>
-                      {duel.tone === 'green' ? 'Favorable' : duel.tone === 'red' ? 'Riesgo' : 'Igualado'}
+                      {duel.tone === 'green' ? 'Favorable' : duel.tone === 'red' ? 'Riesgo' : 'Igualado'} · {duel.reason}
                     </span>
                   </div>
                 ))}
@@ -5378,17 +5677,19 @@ function App() {
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-200">Ataque</p>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {uniq([`Interior ${getSystemStructure(caudalSystem).midfielders}v${getSystemStructure(rivalSystem).midfielders}`, safeArray(reading.attackZones)[0], liveRivalIdentity.detectedWeakness]).slice(0, 3).map((item, index) => (
+                    {uniq([systemMidfieldAdvantage ? `Interior ${getSystemStructure(caudalSystem).midfielders}v${getSystemStructure(rivalSystem).midfielders}` : '', ...collective.weaknesses]).slice(0, 3).map((item, index) => (
                       <span key={`attack-${item}`} className={`rounded-lg border px-2.5 py-1.5 text-xs font-black ${index < 2 ? semitoneClass.green : semitoneClass.amber}`}>{item}</span>
                     ))}
+                    {!systemMidfieldAdvantage && !collective.weaknesses.length ? <span className={`rounded-lg border px-2.5 py-1.5 text-xs font-black ${semitoneClass.amber}`}>Sin información suficiente</span> : null}
                   </div>
                 </div>
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-red-100">Defensa</p>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {uniq(['Segundo palo', selectedMatch.abpDefensiva || 'ABP lateral', `Transición ${liveRivalIdentity.mainThreat}`]).slice(0, 3).map((item, index) => (
+                    {uniq([collective.strengths.includes('Centros') ? 'Segundo palo' : '', collective.strengths.includes('ABP') ? 'ABP lateral' : '', collective.strengths.includes('Transiciones') || collective.strengths.includes('Contraataque') ? 'Transición rival' : '']).slice(0, 3).map((item, index) => (
                       <span key={`defense-${item}`} className={`rounded-lg border px-2.5 py-1.5 text-xs font-black ${index < 2 ? semitoneClass.red : semitoneClass.amber}`}>{item}</span>
                     ))}
+                    {!collective.strengths.length ? <span className={`rounded-lg border px-2.5 py-1.5 text-xs font-black ${semitoneClass.amber}`}>Sin información suficiente</span> : null}
                   </div>
                 </div>
               </div>
