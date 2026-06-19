@@ -714,6 +714,18 @@ const createGoalEventPayload = (partidoId, draft) => ({
   video_url: draft.videoUrl,
 });
 
+const createCompatibleGoalEventPayload = (partidoId, draft) => ({
+  partido_id: partidoId,
+  type: draft.type,
+  half: draft.half,
+  minute: draft.minute,
+  scorer: draft.scorer,
+  assistant: draft.assistant,
+  phase: draft.phase,
+  subphase: draft.subphase,
+  description: draft.summary || '',
+});
+
 const normalizeSupabasePostEventType = (eventType) => ({
   id: eventType.id,
   legacyId: eventType.legacy_id || null,
@@ -6989,6 +7001,12 @@ function App() {
     return available.filter((player) => getStatsCallupPositionGroup(player) === statsCallupFilter);
   };
 
+  const getFilteredStatsSquadRowsForCallup = () => {
+    const rows = getStatsSquadRows();
+    if (statsCallupFilter === 'TODOS') return rows;
+    return rows.filter((row) => getStatsCallupPositionGroup(row.player) === statsCallupFilter);
+  };
+
   const getStatsCallupCounts = () => {
     const called = getStatsCalledPlayers();
     return {
@@ -7208,7 +7226,7 @@ function App() {
     const totals = getStatsPlayerTotals(playerName);
     const yellowCount = Number(stored.yellowCount ?? (stored.yellow ? 1 : 0)) || 0;
     return {
-      role: isStarter ? 'Titular' : 'Suplente',
+      role: isStarter ? 'Titular' : stored.role || 'Suplente',
       minutes: stored.minutes ?? (isStarter ? 90 : 0),
       yellow: yellowCount > 0,
       yellowCount,
@@ -7498,6 +7516,75 @@ function App() {
     const substitution = getStatsSubstitutionEvents().find((event) => event.inPlayer === playerName);
     if (substitution) return `Cambio por ${substitution.outPlayer}`;
     return 'Sin posición';
+  };
+
+  const getStatsSquadRows = () => {
+    const calledNames = new Set(getStatsCalledPlayerNames().map(normalizePlayerIdentityName));
+    return players.map((player) => {
+      const called = calledNames.has(normalizePlayerIdentityName(player.name));
+      const stats = called ? getStatsPlayerData(player.name) : null;
+      return {
+        player,
+        status: called ? stats.role || 'Suplente' : 'Fuera',
+        stats,
+      };
+    });
+  };
+
+  const getStatsSquadRowsByStatus = (status) => getStatsSquadRows().filter((row) => row.status === status);
+
+  const saveStatsPlayerRole = async (playerName, role) => {
+    if (!selectedMatch || !playerName) return;
+    if (role === 'Fuera') {
+      await removeStatsCalledPlayer(playerName);
+      return;
+    }
+    const player = players.find((item) => item.name === playerName);
+    const current = getStatsPlayerData(playerName);
+    const jugadorId = isUuid(player?.id) ? player.id : null;
+    await runStatsOperation(`rol ${role}`, async () => {
+      await supabase.from("partido_convocados").upsert(
+        { partido_id: selectedMatch.id, jugador_id: jugadorId, player_name: playerName },
+        { onConflict: "partido_id,player_name" }
+      );
+      const { error: statsError } = await supabase.from("partido_estadisticas_jugador").upsert(
+        {
+          partido_id: selectedMatch.id,
+          jugador_id: jugadorId,
+          player_name: playerName,
+          role,
+          minutes: String(current.minutes ?? (role === 'Titular' ? 90 : 0)),
+          yellow: Boolean(current.yellow),
+          yellow_count: Number(current.yellowCount || 0),
+          red: Boolean(current.red),
+          injured: Boolean(current.injured),
+          rating: String(current.rating || ''),
+          replacement_name: current.replacementName || '',
+        },
+        { onConflict: "partido_id,player_name" }
+      );
+      if (statsError) throw statsError;
+    });
+  };
+
+  const autoPlaceStatsStarters = async () => {
+    if (!selectedMatch) return;
+    const starters = getStatsSquadRowsByStatus('Titular').slice(0, 11).map((row) => row.player);
+    if (!starters.length) return;
+    await runStatsOperation('auto colocar titulares', async () => {
+      await supabase.from("partido_alineacion_slots").delete().eq("partido_id", selectedMatch.id).eq("scope", "stats");
+      const rows = starters.map((player, index) => ({
+        partido_id: selectedMatch.id,
+        scope: 'stats',
+        slot: index,
+        player_name: player.name,
+        jugador_id: isUuid(player.id) ? player.id : null,
+      }));
+      if (rows.length) {
+        const { error: slotsError } = await supabase.from("partido_alineacion_slots").upsert(rows, { onConflict: "partido_id,scope,slot" });
+        if (slotsError) throw slotsError;
+      }
+    });
   };
 
   const updateStatsPlayerData = async (playerName, fields) => {
@@ -8008,17 +8095,34 @@ function App() {
 
   const saveGoalAnalysisEvent = async () => {
     if (!selectedMatch || !goalAnalysisDraft.minute) return;
+    const minute = Number(goalAnalysisDraft.minute);
+    if (!Number.isFinite(minute) || minute < 0 || minute > 120) {
+      setStatsSaveStatus('No se pudo guardar gol: minuto inválido');
+      setStatsError('No se pudo guardar gol: el minuto debe estar entre 0 y 120.');
+      return;
+    }
     setStatsSaveStatus('Guardando gol...');
+    setStatsError('');
     const payloadDraft = {
       ...goalAnalysisDraft,
+      minute: String(minute),
       summary: goalAnalysisDraft.summary || buildGoalDraftSummary(goalAnalysisDraft),
     };
-    const { error: goalError } = await supabase
+    const fullGoalPayload = createGoalEventPayload(selectedMatch.id, payloadDraft);
+    let { error: goalError } = await supabase
       .from("partido_eventos_gol")
-      .insert(createGoalEventPayload(selectedMatch.id, payloadDraft));
+      .insert(fullGoalPayload);
+    if (goalError && /column|schema|cache|goal_zone|assist_zone|shot_zone|video_url|contact/i.test(goalError.message || '')) {
+      console.warn('Reintentando guardado de gol con payload compatible:', { fullGoalPayload, error: goalError });
+      const retry = await supabase
+        .from("partido_eventos_gol")
+        .insert(createCompatibleGoalEventPayload(selectedMatch.id, payloadDraft));
+      goalError = retry.error;
+    }
     if (goalError) {
-      console.error('Error guardando análisis de gol en Supabase:', goalError);
-      setStatsSaveStatus('Error al guardar gol');
+      console.error('Error guardando análisis de gol en Supabase:', { payload: fullGoalPayload, error: goalError });
+      setStatsSaveStatus(`No se pudo guardar gol: ${goalError.message || 'error desconocido'}`);
+      setStatsError(`No se pudo guardar gol: ${goalError.message || 'error desconocido'}`);
       return;
     }
 
@@ -8028,6 +8132,7 @@ function App() {
       .eq("partido_id", selectedMatch.id);
     if (goalsFetchError) {
       console.error('Error recalculando marcador desde Supabase:', goalsFetchError);
+      setStatsError(`Gol guardado, pero no se pudo recalcular marcador: ${goalsFetchError.message || 'error desconocido'}`);
       return;
     }
 
@@ -8063,6 +8168,7 @@ function App() {
     const { error: matchScoreError } = await supabase.from("partidos").update(scorePayload).eq("id", selectedMatch.id);
     if (matchScoreError) {
       console.error('Error actualizando marcador del partido en Supabase:', matchScoreError);
+      setStatsError(`Gol guardado, pero no se pudo actualizar marcador: ${matchScoreError.message || 'error desconocido'}`);
       return;
     }
 
@@ -8511,7 +8617,15 @@ function App() {
     if (!selectedMatch) return null;
     const coordinates = getFormationCoordinates(selectedMatch.statsSystem || '4-4-2');
     return (
-      <div className="relative aspect-[7/8.9] min-h-[560px] overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner">
+      <div
+        className="relative aspect-[7/8.9] min-h-[560px] overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={() => {
+          if (!draggedPlayer) return;
+          saveStatsPlayerRole(normalizeSquadEntry(draggedPlayer).name, 'Suplente');
+          setDraggedPlayer(null);
+        }}
+      >
         <div className="absolute inset-4 rounded-[28px] border-2 border-white/60" />
         <div className="absolute left-4 right-4 top-1/2 h-px bg-white/45" />
         <div className="absolute left-1/2 top-1/2 h-32 w-32 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/45" />
@@ -8601,6 +8715,54 @@ function App() {
       const roleDiff = (getStatsPlayerData(a.name).role === 'Titular' ? -1 : 1) - (getStatsPlayerData(b.name).role === 'Titular' ? -1 : 1);
       return roleDiff || displayPlayerName(a).localeCompare(displayPlayerName(b));
     });
+    const callupCounts = getStatsCallupCounts();
+    const renderStatsSquadCard = ({ player, status }) => (
+      <div
+        key={`${status}-${player.id || player.name}`}
+        draggable
+        onDragStart={() => setDraggedPlayer(player)}
+        className="border border-white/10 bg-white/[0.035] px-3 py-2"
+      >
+        <div className="flex items-center gap-2">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/10 text-[10px] font-black text-white">
+            {player.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : (player.number || displayPlayerName(player).slice(0, 2).toUpperCase())}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-black text-white">{displayPlayerName(player) || player.name}</p>
+            <p className="truncate text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{player.number ? `#${player.number}` : 'Sin dorsal'} · {player.position || 'Sin posición'}</p>
+          </div>
+        </div>
+        <div className="mt-2 grid grid-cols-5 gap-1">
+          <button type="button" onClick={() => saveStatsPlayerRole(player.name, 'Titular')} className={`px-1.5 py-1 text-[8px] font-black uppercase ${status === 'Titular' ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>Titular</button>
+          <button type="button" onClick={() => saveStatsPlayerRole(player.name, 'Suplente')} className={`px-1.5 py-1 text-[8px] font-black uppercase ${status === 'Suplente' ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-slate-300'}`}>Supl.</button>
+          <button type="button" onClick={() => saveStatsPlayerRole(player.name, 'Fuera')} className={`px-1.5 py-1 text-[8px] font-black uppercase ${status === 'Fuera' ? 'bg-red-400 text-white' : 'bg-white/10 text-slate-300'}`}>Fuera</button>
+          <button type="button" onClick={() => openForm(player)} className="px-1.5 py-1 text-[8px] font-black uppercase text-slate-300 bg-white/10">Editar</button>
+          <button type="button" onClick={() => saveStatsPlayerRole(player.name, 'Fuera')} className="px-1.5 py-1 text-[8px] font-black uppercase text-red-100 bg-red-500/15">Quitar</button>
+        </div>
+      </div>
+    );
+    const renderStatsSquadGroup = (title, status, maxHeight = 'max-h-48') => {
+      const rows = getStatsSquadRowsByStatus(status);
+      return (
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">{title}</p>
+            <span className="text-[10px] font-black text-caudal-electric">{rows.length}</span>
+          </div>
+          <div
+            className={`${maxHeight} space-y-2 overflow-y-auto pr-1`}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={() => {
+              if (!draggedPlayer) return;
+              saveStatsPlayerRole(normalizeSquadEntry(draggedPlayer).name, status);
+              setDraggedPlayer(null);
+            }}
+          >
+            {rows.length ? rows.map(renderStatsSquadCard) : <p className="border border-dashed border-white/10 px-3 py-3 text-xs text-slate-500">Sin jugadores.</p>}
+          </div>
+        </div>
+      );
+    };
 
     return (
       <div className="space-y-5">
@@ -8631,7 +8793,7 @@ function App() {
           </div>
         </div>
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(320px,0.42fr)_minmax(0,0.58fr)]">
+        <div className="grid gap-5 xl:grid-cols-[minmax(280px,0.31fr)_minmax(0,0.44fr)_minmax(260px,0.25fr)]">
           <div className="space-y-5">
             <section className="border border-white/10 bg-[#091428]/82 p-4 shadow-glow">
               <div className="flex items-center justify-between gap-3">
@@ -8735,12 +8897,34 @@ function App() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <select value={selectedMatch.statsSystem || '4-4-2'} onChange={(event) => updateStatsSystem(event.target.value)} className="border border-white/10 bg-white px-4 py-2 text-sm font-black text-slate-950">
-                  {gameSystems.map((system) => <option key={system} value={system}>{system}</option>)}
+                  {['4-4-2', '4-2-3-1', '4-3-3', '3-5-2', '5-3-2', '3-4-3'].map((system) => <option key={system} value={system}>{system}</option>)}
                 </select>
+                <button type="button" onClick={autoPlaceStatsStarters} className="bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-200">Auto colocar titulares</button>
                 <button type="button" onClick={openStatsCallupPanel} className="bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Añadir convocados</button>
               </div>
             </div>
             <div className="mt-4">{renderStatsPitch()}</div>
+          </section>
+
+          <section className="border border-white/10 bg-[#091428]/82 p-4 shadow-glow">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Convocatoria</p>
+                <p className="mt-1 text-sm font-semibold text-slate-400">Titulares, suplentes y fuera</p>
+              </div>
+              <button type="button" onClick={openStatsCallupPanel} className="bg-white/10 px-3 py-2 text-[10px] font-black uppercase text-slate-200">Gestionar</button>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <span className="bg-white/[0.045] px-2 py-2 text-[10px] font-black uppercase text-slate-300">Convocados {callupCounts.called}</span>
+              <span className="bg-white/[0.045] px-2 py-2 text-[10px] font-black uppercase text-caudal-electric">Titulares {callupCounts.starters}/11</span>
+              <span className="bg-white/[0.045] px-2 py-2 text-[10px] font-black uppercase text-slate-300">Suplentes {callupCounts.substitutes}</span>
+              <span className="bg-white/[0.045] px-2 py-2 text-[10px] font-black uppercase text-slate-300">Fuera {getStatsSquadRowsByStatus('Fuera').length}</span>
+            </div>
+            <div className="mt-4 space-y-4">
+              {renderStatsSquadGroup('Titulares', 'Titular', 'max-h-56')}
+              {renderStatsSquadGroup('Suplentes', 'Suplente', 'max-h-48')}
+              {renderStatsSquadGroup('Fuera', 'Fuera', 'max-h-48')}
+            </div>
           </section>
         </div>
 
@@ -18954,7 +19138,14 @@ function App() {
                         {getGoalDraftPlayerOptions().map((player) => <option key={player.id || player.name} value={player.name}>{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</option>)}
                       </select>
                     </>
-                  ) : null}
+                  ) : (
+                    <input
+                      value={goalAnalysisDraft.scorer}
+                      onChange={(event) => updateGoalAnalysisDraft('scorer', event.target.value)}
+                      placeholder="Goleador rival o descripción libre..."
+                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white lg:col-span-4"
+                    />
+                  )}
                 </div>
               </section>
 
@@ -19103,11 +19294,11 @@ function App() {
               })()}
               <button
                 type="button"
-                onClick={() => setSelectedStatsCallups(getFilteredAvailableStatsCallupPlayers().map((player) => player.name))}
-                disabled={!getFilteredAvailableStatsCallupPlayers().length || statsCallupSaving}
+                onClick={() => setSelectedStatsCallups(getFilteredStatsSquadRowsForCallup().filter((row) => row.status === 'Fuera').map((row) => row.player.name))}
+                disabled={!getFilteredStatsSquadRowsForCallup().some((row) => row.status === 'Fuera') || statsCallupSaving}
                 className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Seleccionar todos
+                Seleccionar fuera visibles
               </button>
               <button
                 type="button"
@@ -19139,39 +19330,46 @@ function App() {
                   {statsCallupError}
                 </div>
               ) : null}
-              {getFilteredAvailableStatsCallupPlayers().length ? (
+              {getFilteredStatsSquadRowsForCallup().length ? (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {getFilteredAvailableStatsCallupPlayers().map((player) => {
+                  {getFilteredStatsSquadRowsForCallup().map(({ player, status }) => {
                     const checked = selectedStatsCallups.includes(player.name);
                     return (
-                      <label
+                      <div
                         key={player.id}
-                        className={`flex cursor-pointer items-center gap-3 rounded-3xl border px-4 py-3 transition ${
+                        className={`rounded-3xl border px-4 py-3 transition ${
                           checked ? 'border-caudal-electric/60 bg-caudal-electric/15 text-white' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.07]'
                         }`}
                       >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleStatsCallupSelection(player.name)}
-                          disabled={statsCallupSaving}
-                          className="h-5 w-5 accent-caudal-electric"
-                        />
-                        <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/10 text-xs font-black text-white">
-                          {player.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : player.number || '-'}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-bold">{player.name}</span>
-                          <span className="mt-0.5 block truncate text-xs text-slate-500">{player.position || 'Sin posición'}</span>
-                        </span>
-                      </label>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleStatsCallupSelection(player.name)}
+                            disabled={statsCallupSaving || status !== 'Fuera'}
+                            className="h-5 w-5 accent-caudal-electric disabled:opacity-30"
+                          />
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/10 text-xs font-black text-white">
+                            {player.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : player.number || '-'}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-bold">{player.name}</span>
+                            <span className="mt-0.5 block truncate text-xs text-slate-500">{player.position || 'Sin posición'} · {status}</span>
+                          </span>
+                        </div>
+                        <div className="mt-3 grid grid-cols-3 gap-1.5">
+                          <button type="button" onClick={() => saveStatsPlayerRole(player.name, 'Titular')} className={`rounded-lg px-2 py-1.5 text-[10px] font-black uppercase ${status === 'Titular' ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>Titular</button>
+                          <button type="button" onClick={() => saveStatsPlayerRole(player.name, 'Suplente')} className={`rounded-lg px-2 py-1.5 text-[10px] font-black uppercase ${status === 'Suplente' ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-slate-300'}`}>Suplente</button>
+                          <button type="button" onClick={() => saveStatsPlayerRole(player.name, 'Fuera')} className={`rounded-lg px-2 py-1.5 text-[10px] font-black uppercase ${status === 'Fuera' ? 'bg-red-400 text-white' : 'bg-white/10 text-slate-300'}`}>Fuera</button>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
               ) : (
                 <div className="rounded-3xl border border-dashed border-white/10 bg-black/20 p-8 text-center">
-                  <p className="text-sm font-semibold text-white">No quedan jugadores sin convocar.</p>
-                  <p className="mt-2 text-sm text-slate-400">Todos los jugadores de plantilla ya están en este partido.</p>
+                  <p className="text-sm font-semibold text-white">Todos los jugadores están añadidos.</p>
+                  <p className="mt-2 text-sm text-slate-400">Gestiona aquí titulares, suplentes y fuera convocatoria.</p>
                 </div>
               )}
             </div>
