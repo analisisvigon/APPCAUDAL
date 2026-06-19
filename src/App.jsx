@@ -12,6 +12,7 @@ const clubCrest =
   'https://tmssl.akamaized.net//images/wappen/head/13226.png?lm=1747769013';
 const defaultHomePhrase = 'Trabajo, identidad y detalle competitivo para preparar cada partido.';
 const homePhraseConfigKey = 'home_hero_phrase';
+const ENABLE_PRE_OWN_LINEUP = false;
 
 class SystemsFacingErrorBoundary extends React.Component {
   constructor(props) {
@@ -106,7 +107,7 @@ class PreBlockErrorBoundary extends React.Component {
     if (this.state.error) {
       return (
         <section className="rounded-[1.45rem] border border-amber-200/15 bg-amber-200/[0.07] p-5 text-sm text-amber-100">
-          Bloque PRE no disponible temporalmente
+          {this.props.fallbackText || 'Bloque PRE no disponible temporalmente'}
         </section>
       );
     }
@@ -15885,7 +15886,6 @@ function App() {
 
                         <div className={`grid gap-5 ${isPreTalkMode ? 'xl:grid-cols-[0.48fr_0.52fr]' : 'xl:grid-cols-[minmax(0,0.54fr)_minmax(360px,0.46fr)]'}`}>
                           <div className="space-y-5">
-                            <PreBlockErrorBoundary label="bloque clave partido" resetKey={`${selectedMatch?.id || 'sin-partido'}-clave-partido`}>
                             <section className="rounded-[1.45rem] border border-caudal-electric/20 bg-[linear-gradient(135deg,rgba(79,140,255,0.14),rgba(9,20,40,0.88))] p-5 shadow-[0_18px_50px_rgba(79,140,255,0.10)]">
                               <div className="flex items-center justify-between gap-3">
                                 <div>
@@ -15904,8 +15904,6 @@ function App() {
                                 <span className="hidden rounded-2xl border border-white/10 bg-white/[0.08] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white sm:inline-flex">Briefing</span>
                               </div>
                             </section>
-                            </PreBlockErrorBoundary>
-                            <PreBlockErrorBoundary label="claves ofensivas defensivas ABP" resetKey={`${selectedMatch?.id || 'sin-partido'}-claves-abp`}>
                             <section className="rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.20)]">
                               <div className="flex items-start justify-between gap-3">
                                 <div>
@@ -15970,7 +15968,6 @@ function App() {
                                 </div>
                               ) : null}
                             </section>
-                            </PreBlockErrorBoundary>
 
                             <section className={`rounded-[1.45rem] border border-white/10 bg-white/[0.025] p-5 ${isPreTalkMode ? 'hidden' : ''}`}>
                               <div className="flex items-start justify-between gap-3">
@@ -16029,7 +16026,10 @@ function App() {
                               </div>
                             </section>
 
-                            <PreBlockErrorBoundary label="mi alineacion" resetKey={`${selectedMatch?.id || 'sin-partido'}-mi-alineacion`}>
+                            {ENABLE_PRE_OWN_LINEUP ? (
+                            <PreBlockErrorBoundary label="mi alineacion" resetKey={`${selectedMatch?.id || 'sin-partido'}-mi-alineacion`} fallbackText="Alineación semanal no disponible temporalmente">
+                            {(() => {
+                              const PreOwnLineupBlock = () => (
                             <section className={`rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.20)] ${isPreTalkMode ? 'hidden' : ''}`}>
                               <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                                 <div>
@@ -16144,9 +16144,12 @@ function App() {
                                 <span className="rounded-xl bg-white/[0.045] px-2 py-1">Capitán: {players.find((player) => player.id === selectedMatch.captainPlayerId)?.name || '-'}</span>
                               </div>
                             </section>
+                              );
+                              return <PreOwnLineupBlock />;
+                            })()}
                             </PreBlockErrorBoundary>
+                            ) : null}
 
-                            <PreBlockErrorBoundary label="estado informe" resetKey={`${selectedMatch?.id || 'sin-partido'}-estado-informe`}>
                             <section className={`rounded-[1.45rem] border border-white/10 bg-white/[0.025] p-5 ${isPreTalkMode ? 'hidden xl:block' : ''}`}>
                               <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Estado del informe</p>
                               <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
@@ -16189,10 +16192,8 @@ function App() {
                                 </div>
                               </div>
                             </section>
-                            </PreBlockErrorBoundary>
                           </div>
 
-                          <PreBlockErrorBoundary label="resumen rival" resetKey={`${selectedMatch?.id || 'sin-partido'}-resumen-rival`}>
                           <section className={`rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/85 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.22)] ${isPreTalkMode ? 'hidden' : ''}`}>
                             <div className="flex items-start justify-between gap-3">
                               <div>
@@ -16278,7 +16279,6 @@ function App() {
                               </div>
                             </div>
                           </section>
-                          </PreBlockErrorBoundary>
                         </div>
                       </div>
                     ) : (
