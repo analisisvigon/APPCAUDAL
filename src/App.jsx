@@ -8549,7 +8549,13 @@ function App() {
     const timelineEvents = getStatsKeyEvents();
     const participation = getStatsParticipationSummary();
     const mvp = getStatsMvp();
-    const matchMeta = [selectedMatch.competition, formatDate(selectedMatch.date)].filter(Boolean).join(' · ');
+    const formatStatsMatchDate = (dateValue) => {
+      if (!dateValue) return '';
+      const date = new Date(`${dateValue}T00:00:00`);
+      if (Number.isNaN(date.getTime())) return String(dateValue || '');
+      return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    };
+    const matchMeta = [selectedMatch.competition, formatStatsMatchDate(selectedMatch.date)].filter(Boolean).join(' · ');
     const statRows = [...getStatsCalledPlayers()].sort((a, b) => {
       const roleDiff = (getStatsPlayerData(a.name).role === 'Titular' ? -1 : 1) - (getStatsPlayerData(b.name).role === 'Titular' ? -1 : 1);
       return roleDiff || displayPlayerName(a).localeCompare(displayPlayerName(b));
