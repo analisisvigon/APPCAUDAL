@@ -359,6 +359,16 @@ const collectiveProfileOptions = {
 };
 const playerScoutingTraits = ['Ataca espacio', 'Rematador', 'Referencia aérea', 'Organizador', 'Conductor', 'Regateador', 'Intensidad defensiva', 'Especialista ABP', 'Llega al área', 'Defiende área'];
 const evidenceTypeOptions = ['Ataque', 'Defensa', 'ABP', 'Transición', 'Jugador'];
+const tacticalConnectionTypes = ['Pase habitual', 'Pase largo', 'Centro', 'Descarga', 'Segunda jugada', 'ABP'];
+const tacticalConnectionFilters = ['Todas', 'Pases', 'Centros', 'Pases largos', 'ABP', 'Transiciones'];
+const emptyTacticalConnectionDraft = {
+  team: 'rival',
+  origin: '',
+  destination: '',
+  type: 'Pase habitual',
+  intensity: 'Media',
+  comment: '',
+};
 const emptyObservedCollectiveProfile = {
   buildUp: '',
   blockHeight: '',
@@ -2778,6 +2788,9 @@ function App() {
     }
   });
   const [evidenceDraft, setEvidenceDraft] = useState(emptyEvidenceDraft);
+  const [tacticalConnectionDraft, setTacticalConnectionDraft] = useState(emptyTacticalConnectionDraft);
+  const [selectedTacticalConnectionId, setSelectedTacticalConnectionId] = useState('');
+  const [tacticalConnectionFilter, setTacticalConnectionFilter] = useState('Todas');
   const [expandedObservedPlayerKey, setExpandedObservedPlayerKey] = useState('');
   const [playerProfileData, setPlayerProfileData] = useState(null);
   const [playerProfileLoading, setPlayerProfileLoading] = useState(false);
@@ -3765,6 +3778,7 @@ function App() {
     collective: emptyObservedCollectiveProfile,
     playerProfiles: {},
     evidences: [],
+    tacticalConnections: [],
     ...(rivalObservedScouting[selectedRivalObservedKey] || {}),
   };
   selectedRivalObservedScouting.collective = {
@@ -3775,6 +3789,7 @@ function App() {
   };
   selectedRivalObservedScouting.playerProfiles = safeObject(selectedRivalObservedScouting.playerProfiles);
   selectedRivalObservedScouting.evidences = safeArray(selectedRivalObservedScouting.evidences);
+  selectedRivalObservedScouting.tacticalConnections = safeArray(selectedRivalObservedScouting.tacticalConnections);
   const updateSelectedRivalObservedScouting = (patch) => {
     setRivalObservedScouting((current) => ({
       ...current,
@@ -3782,6 +3797,7 @@ function App() {
         collective: emptyObservedCollectiveProfile,
         playerProfiles: {},
         evidences: [],
+        tacticalConnections: [],
         ...(current[selectedRivalObservedKey] || {}),
         ...patch,
         updatedAt: new Date().toISOString(),
@@ -3848,6 +3864,40 @@ function App() {
     updateSelectedRivalObservedScouting({
       evidences: selectedRivalObservedScouting.evidences.filter((item) => item.id !== evidenceId),
     });
+  };
+  const normalizeConnectionPlayerKey = (value) => String(value || '').trim();
+  const updateTacticalConnectionDraft = (patch) => {
+    setTacticalConnectionDraft((current) => ({ ...current, ...patch }));
+  };
+  const addTacticalConnection = () => {
+    const origin = normalizeConnectionPlayerKey(tacticalConnectionDraft.origin);
+    const destination = normalizeConnectionPlayerKey(tacticalConnectionDraft.destination);
+    if (!origin || !destination || origin === destination) return;
+    const type = tacticalConnectionTypes.includes(tacticalConnectionDraft.type) ? tacticalConnectionDraft.type : 'Pase habitual';
+    const intensity = ['Baja', 'Media', 'Alta'].includes(tacticalConnectionDraft.intensity) ? tacticalConnectionDraft.intensity : 'Media';
+    const team = tacticalConnectionDraft.team === 'caudal' ? 'caudal' : 'rival';
+    updateSelectedRivalObservedScouting({
+      tacticalConnections: [
+        {
+          id: `connection-${Date.now()}`,
+          team,
+          origin,
+          destination,
+          type,
+          intensity,
+          comment: String(tacticalConnectionDraft.comment || '').trim(),
+          createdAt: new Date().toISOString(),
+        },
+        ...selectedRivalObservedScouting.tacticalConnections,
+      ].slice(0, 80),
+    });
+    setTacticalConnectionDraft({ ...emptyTacticalConnectionDraft, team });
+  };
+  const removeTacticalConnection = (connectionId) => {
+    updateSelectedRivalObservedScouting({
+      tacticalConnections: selectedRivalObservedScouting.tacticalConnections.filter((item) => item.id !== connectionId),
+    });
+    if (selectedTacticalConnectionId === connectionId) setSelectedTacticalConnectionId('');
   };
   const liveRivalIdentity = useMemo(
     () => getTeamTacticalIdentity(selectedMatchRivalTeam || {}),
@@ -5227,6 +5277,7 @@ function App() {
       badges: selectedPreAiAnalysis?.fieldView?.layers?.badges ?? true,
       rival: selectedPreAiAnalysis?.fieldView?.layers?.rival ?? true,
       caudal: selectedPreAiAnalysis?.fieldView?.layers?.caudal ?? true,
+      connections: selectedPreAiAnalysis?.fieldView?.layers?.connections ?? true,
       microduels: selectedPreAiAnalysis?.fieldView?.layers?.microduels ?? true,
     },
   });
@@ -5472,6 +5523,18 @@ function App() {
     const uniq = (items) => [...new Set(safeArray(items).map((item) => String(item || '').trim()).filter(Boolean))];
     const firstSentence = (value) => String(value || '').split(/[.;]\s/)[0].replace(/[.;]$/, '').trim();
     const activeZones = getTacticalZones().filter((zone) => zone.active);
+    const rivalConnectionOptions = getRivalFormationSlots().map((slot) => slot.player?.name || slot.role || `R${Number(slot.slot || 0) + 1}`).filter(Boolean);
+    const caudalConnectionOptions = Array.from({ length: 11 }, (_, index) => safeArray(selectedMatch.preCaudalLineup)[index] || getFormationRoles(caudalSystem)[index] || `C${index + 1}`);
+    const connectionPlayerOptions = tacticalConnectionDraft.team === 'caudal' ? caudalConnectionOptions : rivalConnectionOptions;
+    const visibleTacticalConnections = selectedRivalObservedScouting.tacticalConnections.filter((connection) => {
+      if (tacticalConnectionFilter === 'Todas') return true;
+      if (tacticalConnectionFilter === 'Pases') return ['Pase habitual', 'Descarga', 'Segunda jugada'].includes(connection.type);
+      if (tacticalConnectionFilter === 'Centros') return connection.type === 'Centro';
+      if (tacticalConnectionFilter === 'Pases largos') return connection.type === 'Pase largo';
+      if (tacticalConnectionFilter === 'ABP') return connection.type === 'ABP';
+      if (tacticalConnectionFilter === 'Transiciones') return ['Pase largo', 'Descarga', 'Segunda jugada'].includes(connection.type);
+      return true;
+    });
     const keyPlayers = observedPlayerRows.filter(({ profile }) => profile.traits.includes('Rematador') || profile.traits.includes('Ataca espacio') || profile.traits.includes('Especialista ABP')).map(({ player }) => player);
     const unavailablePlayers = getUnavailableRivalPlayers();
     const weaknessPlayers = observedPlayerRows.filter(({ profile }) => profile.speed && Number(profile.speed) <= 2 || profile.defensiveWork && Number(profile.defensiveWork) <= 2).map(({ player }) => player);
@@ -5897,6 +5960,7 @@ function App() {
                     ['badges', 'Alertas'],
                     ['rival', 'Rival'],
                     ['caudal', 'Caudal'],
+                    ['connections', 'Conexiones'],
                   ].map(([key, label]) => (
                     <button
                       key={key}
@@ -5910,6 +5974,54 @@ function App() {
                 </div>
               </div>
               {renderFacingSystemsOverview()}
+              <div className="mt-3 border-t border-white/10 pt-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Conexiones tácticas</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {tacticalConnectionFilters.map((filter) => (
+                      <button key={filter} type="button" onClick={() => setTacticalConnectionFilter(filter)} className={`border px-2 py-1 text-[9px] font-black uppercase ${tacticalConnectionFilter === filter ? 'border-caudal-electric/25 bg-caudal-electric/10 text-caudal-electric' : 'border-white/10 bg-white/[0.035] text-slate-500'}`}>
+                        {filter}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-2 md:grid-cols-[90px_1fr_1fr_130px_100px]">
+                  <select value={tacticalConnectionDraft.team} onChange={(event) => updateTacticalConnectionDraft({ team: event.target.value, origin: '', destination: '' })} className="border border-white/10 bg-black/20 px-2 py-2 text-xs font-bold text-white">
+                    <option value="rival">Rival</option>
+                    <option value="caudal">Caudal</option>
+                  </select>
+                  <select value={tacticalConnectionDraft.origin} onChange={(event) => updateTacticalConnectionDraft({ origin: event.target.value })} className="border border-white/10 bg-black/20 px-2 py-2 text-xs font-bold text-white">
+                    <option value="">Origen</option>
+                    {connectionPlayerOptions.map((playerName) => <option key={`origin-${playerName}`} value={playerName}>{playerName}</option>)}
+                  </select>
+                  <select value={tacticalConnectionDraft.destination} onChange={(event) => updateTacticalConnectionDraft({ destination: event.target.value })} className="border border-white/10 bg-black/20 px-2 py-2 text-xs font-bold text-white">
+                    <option value="">Destino</option>
+                    {connectionPlayerOptions.map((playerName) => <option key={`destination-${playerName}`} value={playerName}>{playerName}</option>)}
+                  </select>
+                  <select value={tacticalConnectionDraft.type} onChange={(event) => updateTacticalConnectionDraft({ type: event.target.value })} className="border border-white/10 bg-black/20 px-2 py-2 text-xs font-bold text-white">
+                    {tacticalConnectionTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                  <select value={tacticalConnectionDraft.intensity} onChange={(event) => updateTacticalConnectionDraft({ intensity: event.target.value })} className="border border-white/10 bg-black/20 px-2 py-2 text-xs font-bold text-white">
+                    {['Baja', 'Media', 'Alta'].map((intensity) => <option key={intensity} value={intensity}>{intensity}</option>)}
+                  </select>
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <input value={tacticalConnectionDraft.comment} onChange={(event) => updateTacticalConnectionDraft({ comment: event.target.value })} placeholder="Observación opcional: cuándo aparece esta conexión..." className="min-w-0 flex-1 border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none placeholder:text-slate-500" />
+                  <button type="button" onClick={addTacticalConnection} className="bg-caudal-electric px-4 py-2 text-[10px] font-black uppercase text-slate-950">Añadir</button>
+                </div>
+                <div className="mt-3 max-h-32 space-y-1.5 overflow-y-auto pr-1">
+                  {visibleTacticalConnections.length ? visibleTacticalConnections.slice(0, 8).map((connection) => (
+                    <div key={connection.id} className={`flex items-center justify-between gap-3 border px-2.5 py-2 text-xs ${selectedTacticalConnectionId === connection.id ? 'border-caudal-electric/35 bg-caudal-electric/10' : 'border-white/10 bg-white/[0.035]'}`}>
+                      <button type="button" onClick={() => setSelectedTacticalConnectionId(selectedTacticalConnectionId === connection.id ? '' : connection.id)} className="min-w-0 flex-1 truncate text-left font-black text-white">
+                        {connection.origin} → {connection.destination} · {connection.type} · {connection.intensity}
+                      </button>
+                      <button type="button" onClick={() => removeTacticalConnection(connection.id)} className="shrink-0 text-[10px] font-black uppercase text-red-200">Eliminar</button>
+                    </div>
+                  )) : (
+                    <p className="border border-dashed border-white/10 px-3 py-3 text-xs font-semibold text-slate-500">Sin conexiones observadas registradas.</p>
+                  )}
+                </div>
+              </div>
             </section>
 
             <section className="order-8 border border-white/10 bg-[#091428]/82 p-3">
@@ -12065,6 +12177,84 @@ function App() {
       ['Debilidad', identity.detectedWeakness],
       ['Espalda', identity.detectedWeakness === 'espalda lateral' ? 'lateral' : identity.strongSide],
     ].filter(([, value]) => value);
+    const connectionTypeMatchesFilter = (connection) => {
+      if (tacticalConnectionFilter === 'Todas') return true;
+      if (tacticalConnectionFilter === 'Pases') return ['Pase habitual', 'Descarga', 'Segunda jugada'].includes(connection.type);
+      if (tacticalConnectionFilter === 'Centros') return connection.type === 'Centro';
+      if (tacticalConnectionFilter === 'Pases largos') return connection.type === 'Pase largo';
+      if (tacticalConnectionFilter === 'ABP') return connection.type === 'ABP';
+      if (tacticalConnectionFilter === 'Transiciones') return ['Pase largo', 'Descarga', 'Segunda jugada'].includes(connection.type);
+      return true;
+    };
+    const caudalPlayerPositions = new Map(caudalCoordinates.map((slot, index) => [
+      normalizePlayerIdentityName(caudalLineup[index] || caudalRoles[index] || `C${index + 1}`),
+      { ...slot, label: caudalLineup[index] || caudalRoles[index] || `C${index + 1}`, team: 'caudal' },
+    ]));
+    const rivalPlayerPositions = new Map(rivalSlots.map((rivalSlot) => {
+      const slot = mapFormationSlotToFacingPitch(rivalSlot.coordinates || { x: 50, y: 50 }, 'rival', 0.42);
+      const label = rivalSlot.player?.name || rivalSlot.role || `R${rivalSlot.slot + 1}`;
+      return [normalizePlayerIdentityName(label), { ...slot, label, team: 'rival' }];
+    }));
+    const connectionColorClass = { rival: '#fb7185', caudal: '#4f8cff' };
+    const connectionStroke = { Baja: 1.7, Media: 3.2, Alta: 5 };
+    const connectionDash = { 'Pase largo': '8 6', Centro: '5 4', ABP: '2 5', 'Segunda jugada': '10 4 2 4' };
+    const rawConnections = selectedRivalObservedScouting.tacticalConnections
+      .filter(connectionTypeMatchesFilter)
+      .map((connection) => {
+        const sourceMap = connection.team === 'caudal' ? caudalPlayerPositions : rivalPlayerPositions;
+        const origin = sourceMap.get(normalizePlayerIdentityName(connection.origin));
+        const destination = sourceMap.get(normalizePlayerIdentityName(connection.destination));
+        return origin && destination ? { ...connection, originPoint: origin, destinationPoint: destination } : null;
+      })
+      .filter(Boolean);
+    const selectedConnection = rawConnections.find((connection) => connection.id === selectedTacticalConnectionId)
+      || selectedRivalObservedScouting.tacticalConnections.find((connection) => connection.id === selectedTacticalConnectionId)
+      || null;
+    const renderConnectionLayer = () => {
+      if (!layers.connections || !rawConnections.length) return null;
+      return (
+        <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <defs>
+            {['rival', 'caudal'].map((team) => (
+              <marker key={team} id={`connection-arrow-${team}`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L8,4 L0,8 Z" fill={connectionColorClass[team]} />
+              </marker>
+            ))}
+          </defs>
+          {rawConnections.map((connection) => {
+            const selected = selectedTacticalConnectionId === connection.id;
+            const muted = selectedTacticalConnectionId && !selected;
+            const color = connectionColorClass[connection.team] || connectionColorClass.rival;
+            const midX = (connection.originPoint.x + connection.destinationPoint.x) / 2;
+            const midY = (connection.originPoint.y + connection.destinationPoint.y) / 2;
+            const curve = connection.team === 'caudal' ? 5 : -5;
+            return (
+              <g key={connection.id} className="pointer-events-auto cursor-pointer" onClick={() => setSelectedTacticalConnectionId(selected ? '' : connection.id)}>
+                <path
+                  d={`M ${connection.originPoint.x} ${connection.originPoint.y} Q ${midX + curve} ${midY} ${connection.destinationPoint.x} ${connection.destinationPoint.y}`}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={connectionStroke[connection.intensity] || 3}
+                  strokeDasharray={connectionDash[connection.type] || ''}
+                  strokeLinecap="round"
+                  opacity={muted ? 0.18 : selected ? 1 : 0.72}
+                  markerEnd={`url(#connection-arrow-${connection.team})`}
+                  vectorEffect="non-scaling-stroke"
+                />
+                <path
+                  d={`M ${connection.originPoint.x} ${connection.originPoint.y} Q ${midX + curve} ${midY} ${connection.destinationPoint.x} ${connection.destinationPoint.y}`}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth="9"
+                  strokeLinecap="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+            );
+          })}
+        </svg>
+      );
+    };
     const renderHudGroup = (items, className) => (
       <div className={`absolute z-10 flex gap-1.5 ${className}`}>
         {items.map(([label, value]) => (
@@ -12090,6 +12280,24 @@ function App() {
           <span>Rival {rivalSystem}</span>
           <span>Caudal {caudalSystem}</span>
         </div>
+        {renderConnectionLayer()}
+        {layers.connections && selectedConnection ? (
+          <div className={`absolute right-4 top-4 z-40 w-64 border px-3 py-3 text-xs shadow-2xl backdrop-blur ${selectedConnection.team === 'caudal' ? 'border-caudal-electric/35 bg-caudal-950/90 text-caudal-electric' : 'border-rose-300/35 bg-rose-950/90 text-rose-100'}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] opacity-70">Conexión táctica</p>
+                <p className="mt-1 text-sm font-black text-white">{selectedConnection.origin} → {selectedConnection.destination}</p>
+              </div>
+              <button type="button" onClick={() => setSelectedTacticalConnectionId('')} className="text-[10px] font-black uppercase text-white/70">Cerrar</button>
+            </div>
+            <div className="mt-3 grid gap-1.5 font-bold text-white/85">
+              <p>Tipo: {selectedConnection.type}</p>
+              <p>Frecuencia: {selectedConnection.intensity}</p>
+              <p>Confianza: {selectedConnection.comment ? 'Media' : 'Baja'}</p>
+              <p>Observación: {selectedConnection.comment || 'Sin comentario registrado.'}</p>
+            </div>
+          </div>
+        ) : null}
         {layers.rival ? rivalSlots.map((rivalSlot) => {
           const slot = mapFormationSlotToFacingPitch(rivalSlot.coordinates || { x: 50, y: 50 }, 'rival', 0.42);
           return (
