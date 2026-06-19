@@ -82,6 +82,38 @@ class GroupAnalysisErrorBoundary extends React.Component {
   }
 }
 
+class PreBlockErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error(`Error renderizando bloque PRE (${this.props.label || 'bloque'}):`, error, errorInfo);
+  }
+
+  componentDidUpdate(previousProps) {
+    if (previousProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <section className="rounded-[1.45rem] border border-amber-200/15 bg-amber-200/[0.07] p-5 text-sm text-amber-100">
+          Bloque PRE no disponible temporalmente
+        </section>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const positions = [
   'Portero',
   'Lateral derecho',
@@ -3751,10 +3783,13 @@ function App() {
 
     return bullets.slice(0, 8);
   };
-  const suggestedConsignas = selectedPreAiAnalysis?.suggestedConsignas || createAutoVestuarioBullets(selectedMatch, selectedMatchRivalTeam);
-  const activeConsignas = (selectedMatch?.planClave || '').split('\n').map((item) => item.trim()).filter(Boolean);
+  const suggestedConsignas = safeArray(selectedPreAiAnalysis?.suggestedConsignas).length
+    ? safeArray(selectedPreAiAnalysis?.suggestedConsignas)
+    : createAutoVestuarioBullets(selectedMatch, selectedMatchRivalTeam);
+  const activeConsignas = String(selectedMatch?.planClave || '').split('\n').map((item) => String(item || '').trim()).filter(Boolean);
   const saveActiveConsignas = (items) => {
-    updateSelectedMatchFields({ planClave: items.map((item) => item.trim()).filter(Boolean).join('\n') });
+    const cleanItems = safeArray(items).map((item) => String(item || '').trim()).filter(Boolean);
+    updateSelectedMatchFields({ planClave: cleanItems.join('\n') });
   };
   const updateSuggestedConsignas = (nextConsignas) => {
     updateSelectedMatchFields({
@@ -3789,7 +3824,7 @@ function App() {
     removeSuggestedConsigna(index);
   };
   const addManualConsigna = () => {
-    const cleanText = manualConsignaDraft.trim();
+    const cleanText = String(manualConsignaDraft || '').trim();
     if (!cleanText) return;
     saveActiveConsignas(activeConsignas.includes(cleanText) ? activeConsignas : [...activeConsignas, cleanText]);
     setManualConsignaDraft('');
@@ -3807,8 +3842,11 @@ function App() {
     [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
     saveActiveConsignas(next);
   };
-  const splitPlanLines = (value) => String(value || '').split('\n').map((item) => item.trim()).filter(Boolean);
-  const savePlanLines = (field, items) => updateSelectedMatchFields({ [field]: items.map((item) => item.trim()).filter(Boolean).join('\n') });
+  const splitPlanLines = (value) => String(value || '').split('\n').map((item) => String(item || '').trim()).filter(Boolean);
+  const savePlanLines = (field, items) => {
+    const cleanItems = safeArray(items).map((item) => String(item || '').trim()).filter(Boolean);
+    updateSelectedMatchFields({ [field]: cleanItems.join('\n') });
+  };
   const preKeyBlocks = [
     { title: 'Ofensivas', field: 'planClave', tone: 'border-caudal-electric/15 bg-caudal-electric/[0.045]', placeholder: 'Atacar espalda lateral.' },
     { title: 'Defensivas', field: 'preCaudalDefendStrengths', tone: 'border-rose-200/15 bg-rose-300/[0.045]', placeholder: 'Cerrar pase interior.' },
@@ -11082,15 +11120,17 @@ function App() {
   };
 
   const renderQuestionnaireField = ({ label, field, placeholder, type = 'textarea', options = [], multiple = false, wide = false }) => {
-    const selectedValues = String(selectedMatch[field] || '')
+    const optionItems = safeArray(options);
+    const fieldValue = selectedMatch?.[field] ?? '';
+    const selectedValues = String(fieldValue || '')
       .split(',')
-      .map((value) => value.trim())
+      .map((value) => String(value || '').trim())
       .filter(Boolean);
     const optionValue = (option) => (typeof option === 'string' ? option : option.value);
     const optionLabel = (option) => (typeof option === 'string' ? option : option.label);
     const toggleChip = (value) => {
       if (!multiple) {
-        updateSelectedMatchFields({ [field]: selectedMatch[field] === value ? '' : value });
+        updateSelectedMatchFields({ [field]: fieldValue === value ? '' : value });
         return;
       }
       const nextValues = selectedValues.includes(value)
@@ -11104,9 +11144,9 @@ function App() {
       <span className="text-xs uppercase tracking-[0.18em] text-slate-500">{label}</span>
       {type === 'chips' ? (
         <div className="flex flex-wrap gap-2">
-          {options.map((option) => {
+          {optionItems.map((option) => {
             const value = optionValue(option);
-            const isSelected = multiple ? selectedValues.includes(value) : selectedMatch[field] === value;
+            const isSelected = multiple ? selectedValues.includes(value) : fieldValue === value;
             return (
               <button
                 key={value}
@@ -11125,17 +11165,17 @@ function App() {
         </div>
       ) : type === 'select' ? (
         <select
-          value={selectedMatch[field] || options[0] || ''}
+          value={fieldValue || optionItems[0] || ''}
           onChange={(event) => updateSelectedMatchFields({ [field]: event.target.value })}
           className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white"
         >
-          {options.map((option) => (
+          {optionItems.map((option) => (
             <option key={option} value={option}>{option}</option>
           ))}
         </select>
       ) : (
         <textarea
-          value={selectedMatch[field] || ''}
+          value={fieldValue || ''}
           onChange={(event) => updateSelectedMatchFields({ [field]: event.target.value })}
           placeholder={placeholder}
           className="min-h-[86px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
@@ -11147,7 +11187,8 @@ function App() {
 
   const renderQuestionnaireSection = ({ id, title, description, fields }) => {
     const isOpen = openQuestionnaireSections[id];
-    const completed = fields.filter((field) => selectedMatch[field.field]).length;
+    const fieldItems = safeArray(fields);
+    const completed = fieldItems.filter((field) => selectedMatch?.[field.field]).length;
     return (
       <div key={id} className="overflow-hidden rounded-3xl border border-white/10 bg-[#0f1e38]/80">
         <button
@@ -11160,12 +11201,12 @@ function App() {
             <span className="mt-1 block text-sm text-slate-400">{description}</span>
           </span>
           <span className="shrink-0 rounded-2xl bg-white/10 px-3 py-2 text-xs font-semibold text-slate-300">
-            {completed}/{fields.length} {isOpen ? 'Cerrar' : 'Abrir'}
+            {completed}/{fieldItems.length} {isOpen ? 'Cerrar' : 'Abrir'}
           </span>
         </button>
         {isOpen ? (
           <div className="grid gap-4 border-t border-white/10 px-5 py-5 md:grid-cols-2">
-            {fields.map(renderQuestionnaireField)}
+            {fieldItems.map(renderQuestionnaireField)}
           </div>
         ) : null}
       </div>
@@ -15844,6 +15885,7 @@ function App() {
 
                         <div className={`grid gap-5 ${isPreTalkMode ? 'xl:grid-cols-[0.48fr_0.52fr]' : 'xl:grid-cols-[minmax(0,0.54fr)_minmax(360px,0.46fr)]'}`}>
                           <div className="space-y-5">
+                            <PreBlockErrorBoundary label="bloque clave partido" resetKey={`${selectedMatch?.id || 'sin-partido'}-clave-partido`}>
                             <section className="rounded-[1.45rem] border border-caudal-electric/20 bg-[linear-gradient(135deg,rgba(79,140,255,0.14),rgba(9,20,40,0.88))] p-5 shadow-[0_18px_50px_rgba(79,140,255,0.10)]">
                               <div className="flex items-center justify-between gap-3">
                                 <div>
@@ -15862,6 +15904,8 @@ function App() {
                                 <span className="hidden rounded-2xl border border-white/10 bg-white/[0.08] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white sm:inline-flex">Briefing</span>
                               </div>
                             </section>
+                            </PreBlockErrorBoundary>
+                            <PreBlockErrorBoundary label="claves ofensivas defensivas ABP" resetKey={`${selectedMatch?.id || 'sin-partido'}-claves-abp`}>
                             <section className="rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.20)]">
                               <div className="flex items-start justify-between gap-3">
                                 <div>
@@ -15926,6 +15970,7 @@ function App() {
                                 </div>
                               ) : null}
                             </section>
+                            </PreBlockErrorBoundary>
 
                             <section className={`rounded-[1.45rem] border border-white/10 bg-white/[0.025] p-5 ${isPreTalkMode ? 'hidden' : ''}`}>
                               <div className="flex items-start justify-between gap-3">
@@ -15984,6 +16029,7 @@ function App() {
                               </div>
                             </section>
 
+                            <PreBlockErrorBoundary label="mi alineacion" resetKey={`${selectedMatch?.id || 'sin-partido'}-mi-alineacion`}>
                             <section className={`rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.20)] ${isPreTalkMode ? 'hidden' : ''}`}>
                               <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                                 <div>
@@ -16098,7 +16144,9 @@ function App() {
                                 <span className="rounded-xl bg-white/[0.045] px-2 py-1">Capitán: {players.find((player) => player.id === selectedMatch.captainPlayerId)?.name || '-'}</span>
                               </div>
                             </section>
+                            </PreBlockErrorBoundary>
 
+                            <PreBlockErrorBoundary label="estado informe" resetKey={`${selectedMatch?.id || 'sin-partido'}-estado-informe`}>
                             <section className={`rounded-[1.45rem] border border-white/10 bg-white/[0.025] p-5 ${isPreTalkMode ? 'hidden xl:block' : ''}`}>
                               <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Estado del informe</p>
                               <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
@@ -16141,8 +16189,10 @@ function App() {
                                 </div>
                               </div>
                             </section>
+                            </PreBlockErrorBoundary>
                           </div>
 
+                          <PreBlockErrorBoundary label="resumen rival" resetKey={`${selectedMatch?.id || 'sin-partido'}-resumen-rival`}>
                           <section className={`rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/85 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.22)] ${isPreTalkMode ? 'hidden' : ''}`}>
                             <div className="flex items-start justify-between gap-3">
                               <div>
@@ -16228,6 +16278,7 @@ function App() {
                               </div>
                             </div>
                           </section>
+                          </PreBlockErrorBoundary>
                         </div>
                       </div>
                     ) : (
@@ -16624,7 +16675,7 @@ function App() {
                             <label key={field} className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 text-sm text-slate-300 shadow-glow">
                               <span className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">{label}</span>
                               <textarea
-                                value={selectedMatch[field] || ''}
+                                value={selectedMatch?.[field] || ''}
                                 onChange={(event) => updateSelectedMatchFields({ [field]: event.target.value })}
                                 placeholder={placeholder}
                                 className="mt-3 min-h-[130px] w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
@@ -16767,7 +16818,7 @@ function App() {
                               </p>
                               <div className="mt-4 max-h-[420px] space-y-2 overflow-y-auto pr-1">
                                 {players.map((player) => {
-                                  const isAssigned = selectedMatch.preCaudalLineup?.includes(player.name);
+                                  const isAssigned = safeArray(selectedMatch?.preCaudalLineup).includes(player.name);
                                   const isCurrent = getSelectedLineupName() === player.name;
                                   return (
                                     <button
@@ -16809,7 +16860,7 @@ function App() {
                               <div className="mt-4 max-h-[360px] space-y-2 overflow-y-auto pr-1">
                                 {getRivalAvailablePlayers().length ? (
                                   getRivalAvailablePlayers().map((player) => {
-                                    const isAssigned = selectedMatch.preRivalLineup?.includes(player.name);
+                                    const isAssigned = safeArray(selectedMatch?.preRivalLineup).includes(player.name);
                                     const isCurrent = getSelectedRivalLineupName() === player.name;
                                     return (
                                       <button
