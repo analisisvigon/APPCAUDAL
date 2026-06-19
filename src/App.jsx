@@ -9165,6 +9165,15 @@ function App() {
       ...(selectedMatch.planSinBalon || '').split('\n'),
       ...(selectedMatch.planTransiciones || '').split('\n'),
     ].map((item) => item.trim()).filter(Boolean).slice(0, 6);
+    const prePlanReview = safeObject(postAiMeta.prePlanReview);
+    const prePlanReviewRows = prePlanItems.map((item) => ({
+      item,
+      status: prePlanReview[item]?.status || 'Sin validar',
+    }));
+    const fulfilledPrePlanRows = prePlanReviewRows.filter((row) => row.status === 'Cumplido' || row.status === 'Parcial');
+    const prePlanCompletionPercent = prePlanReviewRows.length
+      ? Math.round((fulfilledPrePlanRows.length / prePlanReviewRows.length) * 100)
+      : 0;
     const linkedClipByField = safeArray(postAiMeta.clipAnalysisLinks).reduce((acc, link) => {
       acc[link.targetField] = [...(acc[link.targetField] || []), link.eventId];
       return acc;
@@ -9174,14 +9183,26 @@ function App() {
     const validatedQuick = safeArray(selectedMatch.quickEvents).filter((event) => event.reviewed).length;
     const relatedClipsCount = linkedClipIds.size;
     const priorityClips = sortedPostClips.filter((event) => getPostClipPriority(event) === 0);
+    const mainClip = priorityClips[0] || sortedPostClips[0] || null;
+    const statsCalledPlayersForPost = getStatsCalledPlayers();
+    const ratedPlayersForPost = statsCalledPlayersForPost
+      .map((player) => ({ player, stats: getStatsPlayerData(player.name) }))
+      .filter((row) => Number(row.stats?.rating || 0) > 0)
+      .sort((a, b) => Number(b.stats?.rating || 0) - Number(a.stats?.rating || 0));
+    const decisivePlayerForPost = statsCalledPlayersForPost.find((player) => Number(getStatsPlayerData(player.name)?.goals || 0) > 0 || Number(getStatsPlayerData(player.name)?.assists || 0) > 0);
+    const individualCards = [
+      ['Jugador destacado', ratedPlayersForPost[0]?.player?.name || 'Pendiente'],
+      ['Jugador a corregir', selectedMatch.postIndividualObservations ? selectedMatch.postIndividualObservations.split('\n')[0] : 'Pendiente'],
+      ['Jugador revelación', ratedPlayersForPost[1]?.player?.name || 'Pendiente'],
+      ['Jugador decisivo', decisivePlayerForPost?.name || mainClip?.player || 'Pendiente'],
+    ];
     const readingCompleted = Boolean(selectedMatch.postReality || selectedMatch.postFulfilled || selectedMatch.postNotFulfilled || selectedMatch.postNextAdjustment || selectedMatch.postWhy || selectedMatch.postNotes);
     const conclusionsCompleted = Boolean(selectedMatch.postRepeat || selectedMatch.postImprove || selectedMatch.postTrainWeek || selectedMatch.postIndividualObservations);
     const pipelineSteps = [
-      { label: 'Capturas pendientes', value: pendingQuick, done: pendingQuick === 0, tone: pendingQuick ? 'amber' : 'emerald' },
-      { label: 'Eventos validados', value: validatedQuick, done: validatedQuick > 0 || !safeArray(selectedMatch.quickEvents).length, tone: validatedQuick ? 'emerald' : 'slate' },
-      { label: 'Clips relacionados', value: relatedClipsCount, done: relatedClipsCount > 0, tone: relatedClipsCount ? 'sky' : 'slate' },
-      { label: 'Eventos tácticos', value: tacticalEventsCreated, done: tacticalEventsCreated > 0, tone: tacticalEventsCreated ? 'caudal' : 'slate' },
-      { label: 'Lectura completada', value: readingCompleted ? 'OK' : '--', done: readingCompleted, tone: readingCompleted ? 'emerald' : 'slate' },
+      { label: 'Eventos', value: pendingQuick ? `${pendingQuick} pendientes` : 'OK', done: pendingQuick === 0, tone: pendingQuick ? 'amber' : 'emerald' },
+      { label: 'Clips', value: priorityClips.length || sortedPostClips.length || '--', done: sortedPostClips.length > 0, tone: sortedPostClips.length ? 'sky' : 'slate' },
+      { label: 'Plan PRE', value: prePlanReviewRows.length ? `${prePlanCompletionPercent}%` : '--', done: prePlanCompletionPercent >= 70, tone: prePlanCompletionPercent >= 70 ? 'emerald' : prePlanReviewRows.length ? 'amber' : 'slate' },
+      { label: 'Lectura', value: readingCompleted ? 'OK' : '--', done: readingCompleted, tone: readingCompleted ? 'emerald' : 'slate' },
       { label: 'Conclusiones', value: conclusionsCompleted ? 'OK' : '--', done: conclusionsCompleted, tone: conclusionsCompleted ? 'emerald' : 'slate' },
     ];
     const progressPercent = Math.round((pipelineSteps.filter((step) => step.done).length / pipelineSteps.length) * 100);
@@ -9350,7 +9371,11 @@ function App() {
             </span>
           ))}
           <StatusMessage status={quickEventStatus} className="mt-4" />
-          <div className="mt-5 space-y-2">
+          <details className="mt-4 rounded-3xl border border-white/10 bg-white/[0.035]">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white">
+              {pendingQuick ? `${pendingQuick} eventos pendientes` : `${validatedQuick} eventos validados`} · Abrir revisión
+            </summary>
+            <div className="space-y-2 border-t border-white/10 p-4">
             {(selectedMatch.quickEvents || []).length ? (
               [...(selectedMatch.quickEvents || [])]
                 .sort((a, b) => Number(a.minute || 0) - Number(b.minute || 0))
@@ -9446,7 +9471,8 @@ function App() {
                 <p className="mt-1">Lo capturado en Modo Delegado aparecerá aquí para validarlo antes del análisis.</p>
               </div>
             )}
-          </div>
+            </div>
+          </details>
           {postTacticalPanel ? (
             <div className="mt-5 rounded-3xl border border-caudal-electric/25 bg-caudal-electric/[0.055] p-4 shadow-glow">
               <div className="flex items-start justify-between gap-3">
@@ -9486,6 +9512,41 @@ function App() {
           ) : null}
         </section>
 
+        <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
+          {postBlockHeader('D · Cumplimiento del plan', 'PRE vs POST', 'Qué consignas se cumplieron, cuáles quedaron pendientes y qué exige la semana.', (
+            <div className="rounded-2xl border border-caudal-electric/25 bg-caudal-electric/10 px-4 py-2 text-right">
+              <p className="text-xl font-black text-white">{fulfilledPrePlanRows.length}/{prePlanReviewRows.length || 0}</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-caudal-electric">{prePlanCompletionPercent}% cumplido</p>
+            </div>
+          ))}
+          <div className="mt-4 grid gap-2 lg:grid-cols-2">
+            {prePlanReviewRows.length ? prePlanReviewRows.map(({ item, status }, index) => (
+              <div key={`${item}-${index}`} className="flex items-center justify-between gap-3 rounded-2xl border border-white/5 bg-white/[0.04] px-3 py-2">
+                <p className="min-w-0 truncate text-sm font-semibold text-white">
+                  <span className={status === 'Cumplido' || status === 'Parcial' ? 'text-emerald-200' : status === 'No cumplido' ? 'text-red-200' : 'text-slate-500'}>
+                    {status === 'Cumplido' || status === 'Parcial' ? '✓' : status === 'No cumplido' ? '✕' : '·'}
+                  </span>{' '}
+                  {item}
+                </p>
+                <div className="flex shrink-0 gap-1">
+                  {['Cumplido', 'Parcial', 'No cumplido'].map((nextStatus) => (
+                    <button
+                      key={nextStatus}
+                      type="button"
+                      onClick={() => updatePostPrePlanStatus(item, nextStatus)}
+                      className={`rounded-xl px-2 py-1 text-[9px] font-black uppercase tracking-[0.10em] transition ${status === nextStatus ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-400 hover:bg-caudal-electric/15 hover:text-caudal-electric'}`}
+                    >
+                      {nextStatus === 'Cumplido' ? 'OK' : nextStatus === 'Parcial' ? 'PAR' : 'NO'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )) : (
+              <p className="rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm text-slate-400 lg:col-span-2">No hay consignas PRE para comparar todavía.</p>
+            )}
+          </div>
+        </section>
+
         <section className="grid gap-6 xl:grid-cols-[1.45fr_0.85fr]">
           <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
             {postBlockHeader('C · Vídeo y clips', 'Vídeo y clips del partido', 'Marca acciones, navega por la timeline y relaciona clips con la lectura táctica.')}
@@ -9504,7 +9565,37 @@ function App() {
               />
               {postVideoSaveStatus ? <span className="text-xs text-slate-500">{postVideoSaveStatus}</span> : null}
             </label>
-            <div className="mt-5 rounded-3xl bg-[#0f1e38]/80 p-3">
+            <div className="mt-4 rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Video del partido</p>
+                  <p className="mt-1 text-sm font-bold text-white">{selectedMatch.postVideoLink ? 'Enlace cargado' : 'Sin vídeo asignado'}</p>
+                </div>
+                {selectedMatch.postVideoLink ? (
+                  <button type="button" onClick={() => window.open(selectedMatch.postVideoLink, '_blank', 'noopener,noreferrer')} className="rounded-2xl bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">
+                    Abrir vídeo
+                  </button>
+                ) : null}
+              </div>
+              <div className="mt-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Clips importantes</p>
+                <div className="mt-2 grid gap-2">
+                  {(priorityClips.length ? priorityClips : sortedPostClips).slice(0, 6).map((event) => (
+                    <button
+                      key={event.id}
+                      type="button"
+                      onClick={() => seekPostVideoToEvent(event)}
+                      className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/15 px-3 py-2 text-left transition hover:border-caudal-electric/30 hover:bg-caudal-electric/10"
+                    >
+                      <span className="min-w-0 truncate text-sm font-bold text-white">{event.type || 'Clip'} · {event.minute || '-'}'</span>
+                      <span className="shrink-0 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{event.player || 'Ver'}</span>
+                    </button>
+                  ))}
+                  {!sortedPostClips.length ? <p className="rounded-2xl bg-black/15 px-3 py-3 text-sm text-slate-400">No se han marcado clips importantes todavía.</p> : null}
+                </div>
+              </div>
+            </div>
+            <div className="hidden">
               {getYouTubeEmbedUrl(selectedMatch.postVideoLink, postVideoStartSeconds) ? (
                 <>
                   <div className="relative overflow-hidden rounded-3xl bg-black shadow-inner" style={{ paddingTop: '56.25%' }}>
@@ -9648,115 +9739,25 @@ function App() {
           </aside>
         </section>
 
-        <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-          {postBlockHeader('D · Análisis táctico', 'Lectura futbolística', 'Qué ocurrió, qué se cumplió del plan y qué ajustes deja el partido.')}
-          <div className="mt-5 grid gap-4 lg:grid-cols-2">
-            <div className="lg:col-span-2">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Patrones detectados</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {(patternChips.length ? patternChips : ['sin patrón validado todavía']).map((chip) => (
-                  <span key={chip} className="rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.06] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">
-                    {chip}
-                  </span>
-                ))}
-              </div>
-            </div>
-            {[
-              { label: 'Qué ocurrió', field: 'postReality' },
-              { label: 'Qué funcionó', field: 'postFulfilled' },
-              { label: 'Qué no funcionó', field: 'postNotFulfilled' },
-              { label: 'Ajustes futuros', field: 'postNextAdjustment' },
-              { label: 'Relación con PRE', field: 'postWhy' },
-              { label: 'Contexto emocional/competitivo', field: 'postNotes' },
-            ].map((item) => (
-              <label key={item.field} className="space-y-2 text-sm text-slate-300">
-                <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{item.label}</span>
-                <textarea value={selectedMatch[item.field] || ''} onChange={(event) => updateSelectedMatchFields({ [item.field]: event.target.value })} className="min-h-[140px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
-                <p className="text-[11px] font-semibold text-slate-500">
-                  {item.field === 'postWhy' ? 'Cruzar consignas PRE con clips y eventos validados.' : item.field === 'postNotes' ? 'Contexto competitivo primero automático, luego corregible por staff.' : 'Usa frases cortas y accionables para que pase a entrenamiento.'}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {(analysisFieldSuggestions[item.field] || ['Usa clips y eventos validados para concretar esta lectura.']).slice(0, 3).map((suggestion) => (
-                    <span key={suggestion} className="rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[10px] font-semibold text-slate-400">
-                      {suggestion}
-                    </span>
-                  ))}
-                </div>
-              </label>
+        <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
+          {postBlockHeader('E · Lectura táctica', 'Repetir · Corregir · Entrenar', 'Tres decisiones accionables para convertir el partido en semana de trabajo.')}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {(patternChips.length ? patternChips : ['sin patrón validado todavía']).map((chip) => (
+              <span key={chip} className="rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.06] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">
+                {chip}
+              </span>
             ))}
           </div>
-          <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.035] p-4">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Plan prepartido vs realidad</p>
-            <div className="mt-3 grid gap-2">
-              {prePlanItems.length ? prePlanItems.map((item, index) => {
-                const relatedEvents = [...safeArray(selectedMatch.quickEvents), ...safeArray(selectedMatch.events)]
-                  .filter((event) => normalizePlayerIdentityName(`${event.tipoEvento || event.type || ''} ${event.description || ''}`).split(' ').some((token) => token.length > 4 && normalizePlayerIdentityName(item).includes(token)))
-                  .slice(0, 2);
-                const relatedClipIds = safeArray(postAiMeta.clipAnalysisLinks)
-                  .filter((link) => safeArray(selectedMatch.events).some((event) => event.id === link.eventId && normalizePlayerIdentityName(`${event.type || ''} ${event.description || ''}`).split(' ').some((token) => token.length > 4 && normalizePlayerIdentityName(item).includes(token))))
-                  .map((link) => link.eventId);
-                const reviewedRelated = relatedEvents.filter((event) => event.reviewed).length;
-                return (
-                <div key={`${item}-${index}`} className="flex flex-col gap-2 rounded-2xl bg-white/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-white">{item}</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <span className="rounded-xl bg-white/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">{relatedClipIds.length} clips</span>
-                      <span className="rounded-xl bg-white/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">{reviewedRelated} validados</span>
-                    </div>
-                    {relatedEvents.length ? (
-                      <p className="mt-1 text-xs text-slate-400">
-                        Relacionado: {relatedEvents.map((event) => `${event.minute || '-'}' ${quickEventLabelByType[event.tipoEvento] || event.type || 'evento'}`).join(' · ')}
-                      </p>
-                    ) : <p className="mt-1 text-xs text-slate-500">Sin evento o clip vinculado todavía.</p>}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {relatedClipIds.length ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const firstClip = safeArray(selectedMatch.events).find((event) => event.id === relatedClipIds[0]);
-                          if (firstClip) seekPostVideoToEvent(firstClip);
-                        }}
-                        className="rounded-xl bg-caudal-electric/15 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric"
-                      >
-                        Ver clips
-                      </button>
-                    ) : null}
-                    {['Cumplido', 'Parcial', 'No cumplido'].map((status) => {
-                      const selectedStatus = safeObject(postAiMeta.prePlanReview)[item]?.status;
-                      return (
-                        <button
-                          key={status}
-                          type="button"
-                          onClick={() => updatePostPrePlanStatus(item, status)}
-                          className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition ${selectedStatus === status ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-caudal-electric/15 hover:text-caudal-electric'}`}
-                        >
-                          {status}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                );
-              }) : <p className="text-sm text-slate-400">No hay consignas PRE para comparar todavía.</p>}
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-          {postBlockHeader('E · Conclusiones finales', 'Cierre de partido', 'Deja claro qué repetir, qué mejorar y qué entrenar.')}
-          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <div className="mt-4 grid gap-4 lg:grid-cols-3">
             {[
-              { label: 'Qué repetir', field: 'postRepeat', hints: ['Presión alta efectiva', 'Llegada por fuera', 'Ataques tras robo'] },
-              { label: 'Qué mejorar', field: 'postImprove', hints: ['Vigilancia tras pérdida', 'Defensa juego directo', 'Cierre segunda jugada'] },
-              { label: 'Qué entrenar esta semana', field: 'postTrainWeek', hints: postDerivedReading.suggestions },
-              { label: 'Observaciones individuales', field: 'postIndividualObservations', hints: ['Duelos clave', 'Cambios de rol', 'Jugadores en tramo crítico'] },
+              { label: 'REPETIR', field: 'postRepeat', hints: ['Presión alta', 'Llegada por fuera', 'Ataques tras robo'] },
+              { label: 'CORREGIR', field: 'postImprove', hints: ['Vigilancias', 'Segundo palo', 'Pérdida interior'] },
+              { label: 'ENTRENAR', field: 'postTrainWeek', hints: postDerivedReading.suggestions },
             ].map((item) => (
-              <label key={item.field} className="space-y-2 text-sm text-slate-300">
-                <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{item.label}</span>
-                <textarea value={selectedMatch[item.field] || ''} onChange={(event) => updateSelectedMatchFields({ [item.field]: event.target.value })} className="min-h-[130px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
-                <div className="flex flex-wrap gap-2">
+              <label key={item.field} className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+                <span className="text-xs font-black uppercase tracking-[0.18em] text-white">{item.label}</span>
+                <textarea value={selectedMatch[item.field] || ''} onChange={(event) => updateSelectedMatchFields({ [item.field]: event.target.value })} className="mt-3 min-h-[120px] w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
+                <div className="mt-3 flex flex-wrap gap-2">
                   {safeArray(item.hints).slice(0, 3).map((hint) => (
                     <span key={hint} className="rounded-xl bg-white/10 px-2.5 py-1.5 text-[10px] font-bold text-slate-400">{hint}</span>
                   ))}
@@ -9764,6 +9765,43 @@ function App() {
               </label>
             ))}
           </div>
+          <details className="mt-4 rounded-2xl border border-white/10 bg-black/15">
+            <summary className="cursor-pointer px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400">Lectura ampliada</summary>
+            <div className="grid gap-3 border-t border-white/10 p-4 lg:grid-cols-3">
+              {[
+                ['Qué ocurrió', selectedMatch.postReality || postDerivedReading.trend],
+                ['Relación con PRE', selectedMatch.postWhy || 'Cruzar consignas PRE con clips y eventos validados.'],
+                ['Contexto', selectedMatch.postNotes || 'Pendiente de cierre del staff.'],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-2xl bg-white/[0.04] p-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-200">{value}</p>
+                </div>
+              ))}
+            </div>
+          </details>
+        </section>
+
+        <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
+          {postBlockHeader('F · Observaciones individuales', 'Impacto de jugadores', 'Lectura compacta para detectar quién decide, quién necesita corrección y quién emerge.')}
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            {individualCards.map(([label, value]) => (
+              <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
+                <p className="mt-2 truncate text-base font-black text-white">{value}</p>
+              </div>
+            ))}
+          </div>
+          <details className="mt-4 rounded-2xl border border-white/10 bg-black/15">
+            <summary className="cursor-pointer px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400">Editar observaciones individuales</summary>
+            <textarea value={selectedMatch.postIndividualObservations || ''} onChange={(event) => updateSelectedMatchFields({ postIndividualObservations: event.target.value })} className="min-h-[110px] w-full border-t border-white/10 bg-transparent px-4 py-3 text-sm text-white placeholder:text-slate-500" placeholder="Jugador destacado, a corregir, revelación, decisivo..." />
+          </details>
+        </section>
+
+        <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
+          {postBlockHeader('G · Informe ejecutivo final', 'Cierre de partido', 'Qué pasó, por qué pasó y qué hacemos ahora.', (
+            <span className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.14em] ${getPostReviewStateClass(reviewState)}`}>{reviewState}</span>
+          ))}
           <div className="mt-5 grid gap-2 sm:grid-cols-4">
             {[
               ['vídeo revisado', closureChecklist.videoReviewed],
@@ -9782,16 +9820,15 @@ function App() {
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Resumen staff</p>
                 <h4 className="mt-1 text-lg font-black text-white">Informe ejecutivo rápido</h4>
               </div>
-              <span className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.14em] ${getPostReviewStateClass(reviewState)}`}>{reviewState}</span>
             </div>
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               {[
                 ['Resultado', `${score.caudal}-${score.rival}`],
-                ['Tendencia', postDerivedReading.trend],
-                ['Momento clave', postDerivedReading.criticalRange],
-                ['Qué funcionó', selectedMatch.postFulfilled || patternChips[0] || 'Pendiente de cerrar'],
+                ['Qué repetir', selectedMatch.postRepeat || patternChips[0] || 'Pendiente de cerrar'],
+                ['Qué corregir', selectedMatch.postImprove || 'Pendiente de cerrar'],
                 ['Qué entrenar', selectedMatch.postTrainWeek || postDerivedReading.suggestions[0]],
-                ['Clips importantes', priorityClips.length],
+                ['Clip principal', mainClip ? `${mainClip.minute || '-'}' · ${mainClip.type || 'Clip'}` : 'Pendiente'],
+                ['Conclusión IA', postDerivedReading.trend],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-2xl border border-white/5 bg-black/15 p-3">
                   <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
