@@ -382,6 +382,7 @@ const emptyEvidenceDraft = {
   match: '',
   date: '',
   type: 'Ataque',
+  importance: 'Media',
   observation: '',
 };
 const tacticalIdentityOptions = {
@@ -2777,6 +2778,7 @@ function App() {
     }
   });
   const [evidenceDraft, setEvidenceDraft] = useState(emptyEvidenceDraft);
+  const [expandedObservedPlayerKey, setExpandedObservedPlayerKey] = useState('');
   const [playerProfileData, setPlayerProfileData] = useState(null);
   const [playerProfileLoading, setPlayerProfileLoading] = useState(false);
   const [playerProfileError, setPlayerProfileError] = useState('');
@@ -3834,6 +3836,7 @@ function App() {
           match: String(evidenceDraft.match || '').trim(),
           date: evidenceDraft.date || '',
           type: evidenceDraft.type || 'Ataque',
+          importance: evidenceDraft.importance || 'Media',
           observation,
         },
         ...selectedRivalObservedScouting.evidences,
@@ -5229,8 +5232,9 @@ function App() {
       evidences.length ? 'Evidencias observadas' : null,
       caudalSystem && rivalSystem ? 'Sistema enfrentado' : null,
     ].filter(Boolean);
-    const confidence = evidences.length >= 3 && sources.length >= 3 ? 'Alta' : evidences.length || sources.length >= 2 ? 'Media' : 'Baja';
-    const evidenceText = evidences.slice(0, 3).map((item) => `- ${item.observation}${item.match ? ` (${item.match})` : ''}`).join('\n');
+    const evidenceWeight = evidences.reduce((sum, item) => sum + (item.importance === 'Alta' ? 3 : item.importance === 'Baja' ? 1 : 2), 0);
+    const confidence = evidenceWeight >= 7 && sources.length >= 3 ? 'Alta' : evidenceWeight || sources.length >= 2 ? 'Media' : 'Baja';
+    const evidenceText = evidences.slice(0, 3).map((item) => `- ${item.observation}${item.importance ? ` (${item.importance})` : ''}${item.match ? ` · ${item.match}` : ''}`).join('\n');
     const sourceText = sources.map((source) => `✓ ${source}`).join('\n');
     const insufficient = () => 'Información insuficiente para emitir una conclusión fiable.\n\nFUENTES:\nSin datos observados suficientes.';
 
@@ -5407,6 +5411,14 @@ function App() {
       .filter(({ profile }) => profile.speed || profile.technique || profile.aerial || profile.oneVsOne || profile.defensiveWork || profile.foot || profile.traits.length || String(profile.notes || '').trim());
     const hasCollectiveData = Object.values(collective).some((value) => Array.isArray(value) ? value.length : Boolean(value));
     const hasObservedData = hasCollectiveData || observedPlayerRows.length || evidences.length;
+    const collectiveFieldsDone = ['buildUp', 'blockHeight', 'pressureType', 'attackingRhythm', 'preferredAttack'].filter((field) => Boolean(collective[field])).length;
+    const collectiveListsDone = Number(Boolean(collective.strengths.length)) + Number(Boolean(collective.weaknesses.length));
+    const collectiveCompletion = Math.round(((collectiveFieldsDone + collectiveListsDone) / 7) * 100);
+    const playerCompletion = Math.min(100, Math.round((observedPlayerRows.length / Math.max(1, Math.min(8, liveRivalPlayers.length || 8))) * 100));
+    const evidenceCompletion = Math.min(100, evidences.length * 20);
+    const scoutingCompletion = Math.round((collectiveCompletion * 0.45) + (playerCompletion * 0.3) + (evidenceCompletion * 0.25));
+    const evidenceWeight = evidences.reduce((sum, item) => sum + (item.importance === 'Alta' ? 3 : item.importance === 'Baja' ? 1 : 2), 0);
+    const evidenceCounts = evidenceTypeOptions.reduce((acc, type) => ({ ...acc, [type]: evidences.filter((item) => item.type === type).length }), {});
     const splitLines = (value) => String(value || '').split(/\r?\n|•/).map((item) => String(item || '').trim()).filter(Boolean);
     const uniq = (items) => [...new Set(safeArray(items).map((item) => String(item || '').trim()).filter(Boolean))];
     const firstSentence = (value) => String(value || '').split(/[.;]\s/)[0].replace(/[.;]$/, '').trim();
@@ -5416,7 +5428,7 @@ function App() {
     const weaknessPlayers = observedPlayerRows.filter(({ profile }) => profile.speed && Number(profile.speed) <= 2 || profile.defensiveWork && Number(profile.defensiveWork) <= 2).map(({ player }) => player);
     const watchedPlayers = observedPlayerRows.map(({ player }) => player).filter((player) => !keyPlayers.includes(player) && !weaknessPlayers.includes(player) && !isUnavailableRivalPlayer(player));
     const sourceCount = [hasCollectiveData, observedPlayerRows.length > 0, evidences.length > 0].filter(Boolean).length;
-    const confidence = evidences.length >= 3 && sourceCount >= 2 ? 'Alta' : sourceCount >= 2 || evidences.length ? 'Media' : 'Baja';
+    const confidence = evidenceWeight >= 7 && sourceCount >= 2 ? 'Alta' : sourceCount >= 2 || evidenceWeight >= 2 ? 'Media' : 'Baja';
     const sourceLabel = [
       hasCollectiveData ? 'Perfil colectivo' : null,
       observedPlayerRows.length ? 'Perfil jugador' : null,
@@ -5489,6 +5501,12 @@ function App() {
       emerald: 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100',
       red: 'border-red-300/25 bg-red-400/10 text-red-100',
     };
+    const weeklyPriority = uniq([
+      collective.weaknesses.includes('Pérdida interior') ? 'Proteger pérdida interior' : '',
+      collective.strengths.includes('Centros') || collective.strengths.includes('ABP') ? 'cerrar segundo palo' : '',
+      collective.strengths.includes('Transiciones') || collective.strengths.includes('Contraataque') ? 'controlar transición tras pérdida' : '',
+      keyPlayers[0] ? `vigilar ${displayPlayerName(keyPlayers[0])}` : '',
+    ]).slice(0, 2).join(' y ') || 'Información insuficiente para emitir una conclusión fiable.';
     const renderPlanList = (title, items) => (
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{title}</p>
@@ -5505,20 +5523,52 @@ function App() {
 
     return (
       <div className={isPreTalkMode ? 'space-y-4' : 'space-y-5'}>
-        <div className="sticky top-2 z-20 border border-white/10 bg-[#081327]/95 px-4 py-3 backdrop-blur">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="mr-2 text-lg font-black text-white">{caudalSystem} vs {rivalSystem}</div>
+        <div className="sticky top-2 z-20 border border-white/10 bg-[#081327]/95 px-3 py-2 backdrop-blur">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="mr-1 text-base font-black text-white">{caudalSystem} vs {rivalSystem}</div>
+            <div className="rounded-lg border border-caudal-electric/30 bg-caudal-electric/12 px-3 py-1.5 text-xs font-black uppercase tracking-[0.12em] text-caudal-electric">
+              Scouting {scoutingCompletion}%
+            </div>
             {executiveItems.map((item) => (
-              <span key={`${item.tone}-${item.label}`} className={`rounded-lg border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.1em] ${semitoneClass[item.tone]}`}>
+              <span key={`${item.tone}-${item.label}`} className={`rounded-md border px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] ${semitoneClass[item.tone]}`}>
                 {item.tone === 'green' ? 'OK' : item.tone === 'amber' ? '!' : '!!'} {item.label}
               </span>
             ))}
           </div>
         </div>
 
-        <div className={`grid gap-5 ${isPreTalkMode ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(320px,0.4fr)_minmax(0,0.6fr)]'}`}>
-          <div className="space-y-5">
-            <section className="border border-white/10 bg-[#091428]/82 p-5">
+        <div className={`grid gap-4 ${isPreTalkMode ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(360px,0.42fr)_minmax(0,0.58fr)]'}`}>
+          <div className="flex flex-col gap-4">
+            <section className="order-1 border border-caudal-electric/15 bg-[#091428]/90 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Resumen ejecutivo</p>
+                  <h4 className="mt-1 text-xl font-black text-white">{selectedMatchRivalTeam?.name || selectedMatch.opponent || 'Rival'}</h4>
+                </div>
+                <span className={`rounded-lg border px-2.5 py-1 text-[10px] font-black uppercase ${confidence === 'Alta' ? semitoneClass.green : confidence === 'Media' ? semitoneClass.amber : semitoneClass.red}`}>
+                  Confianza {confidence}
+                </span>
+              </div>
+              <div className="mt-3 grid gap-2 text-xs font-bold text-slate-200 sm:grid-cols-2">
+                {[
+                  ['Sistema', rivalSystem],
+                  ['Salida', collective.buildUp || 'Sin información suficiente'],
+                  ['Fortaleza', collective.strengths[0] || 'Sin información suficiente'],
+                  ['Debilidad', collective.weaknesses[0] || 'Sin información suficiente'],
+                  ['Jugador a vigilar', keyPlayers[0] ? displayPlayerName(keyPlayers[0]) : 'Sin información suficiente'],
+                  ['Ausencias', unavailablePlayers[0] ? displayPlayerName(unavailablePlayers[0]) : 'Sin información suficiente'],
+                ].map(([label, value]) => (
+                  <div key={label} className="bg-white/[0.045] px-3 py-2">
+                    <span className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</span>
+                    <p className="mt-0.5 truncate text-white">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 border-l-2 border-caudal-electric bg-caudal-electric/[0.055] px-3 py-2 text-sm font-black text-white">
+                Prioridad semanal: {weeklyPriority}
+              </p>
+            </section>
+            <section className="order-8 border border-white/10 bg-[#091428]/82 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Perfil colectivo</p>
@@ -5565,21 +5615,28 @@ function App() {
               </div>
             </section>
 
-            <section className="border border-white/10 bg-[#091428]/82 p-5">
+            <section className="order-9 border border-white/10 bg-[#091428]/82 p-4">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Scouting individual</p>
-              <div className="mt-4 max-h-[420px] space-y-3 overflow-y-auto pr-1">
+              <div className="mt-3 max-h-[300px] space-y-2 overflow-y-auto pr-1">
                 {(liveRivalPlayers.length ? liveRivalPlayers : [{ id: 'sin-jugador', name: 'Sin jugadores rivales' }]).slice(0, 8).map((player) => {
                   const profile = getObservedPlayerProfile(player);
+                  const playerKey = getObservedPlayerKey(player) || player.name;
+                  const expanded = expandedObservedPlayerKey === playerKey;
                   return (
-                    <div key={getObservedPlayerKey(player) || player.name} className="border border-white/10 bg-white/[0.035] p-3">
+                    <div key={playerKey} className="border border-white/10 bg-white/[0.035] p-2.5">
                       <div className="flex items-center justify-between gap-3">
                         <p className="min-w-0 truncate text-sm font-black text-white">{displayPlayerName(player) || player.name}</p>
-                        <select value={profile.foot || ''} onChange={(event) => updateObservedPlayerProfile(player, { foot: event.target.value })} className="border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold text-white">
-                          <option value="">Pie</option>
-                          {['Derecho', 'Izquierdo', 'Ambos'].map((foot) => <option key={foot} value={foot}>{foot}</option>)}
-                        </select>
+                        <div className="flex items-center gap-1.5">
+                          <select value={profile.foot || ''} onChange={(event) => updateObservedPlayerProfile(player, { foot: event.target.value })} className="border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-bold text-white">
+                            <option value="">Pie</option>
+                            {['Derecho', 'Izquierdo', 'Ambos'].map((foot) => <option key={foot} value={foot}>{foot}</option>)}
+                          </select>
+                          <button type="button" onClick={() => setExpandedObservedPlayerKey(expanded ? '' : playerKey)} className="border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black uppercase text-slate-300">
+                            {expanded ? 'Cerrar' : 'Obs.'}
+                          </button>
+                        </div>
                       </div>
-                      <div className="mt-3 grid grid-cols-5 gap-2">
+                      <div className="mt-2 grid grid-cols-5 gap-1.5">
                         {[
                           ['VEL', 'speed'],
                           ['TEC', 'technique'],
@@ -5587,15 +5644,15 @@ function App() {
                           ['1V1', 'oneVsOne'],
                           ['DEF', 'defensiveWork'],
                         ].map(([label, field]) => (
-                          <label key={field} className="grid gap-1 text-center text-[9px] font-black uppercase text-slate-500">
+                          <label key={field} className="grid gap-1 text-center text-[8px] font-black uppercase text-slate-500">
                             <span>{label}</span>
-                            <select value={profile[field] || 0} onChange={(event) => updateObservedPlayerProfile(player, { [field]: Number(event.target.value) })} className="border border-white/10 bg-black/20 px-1 py-1.5 text-xs font-black text-white">
+                            <select value={profile[field] || 0} onChange={(event) => updateObservedPlayerProfile(player, { [field]: Number(event.target.value) })} className="border border-white/10 bg-black/20 px-1 py-1 text-[10px] font-black text-white">
                               {[0, 1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value || '-'}</option>)}
                             </select>
                           </label>
                         ))}
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-1.5">
+                      <div className="mt-2 flex flex-wrap gap-1">
                         {playerScoutingTraits.map((trait) => {
                           const active = profile.traits.includes(trait);
                           return (
@@ -5605,20 +5662,30 @@ function App() {
                           );
                         })}
                       </div>
-                      <input value={profile.notes || ''} onChange={(event) => updateObservedPlayerProfile(player, { notes: event.target.value })} placeholder="Observaciones..." className="mt-3 w-full border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none placeholder:text-slate-500" />
+                      {expanded ? (
+                        <input value={profile.notes || ''} onChange={(event) => updateObservedPlayerProfile(player, { notes: event.target.value })} placeholder="Observaciones..." className="mt-2 w-full border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none placeholder:text-slate-500" />
+                      ) : null}
                     </div>
                   );
                 })}
               </div>
             </section>
 
-            <section className="border border-white/10 bg-[#091428]/82 p-5">
+            <section className="order-10 border border-white/10 bg-[#091428]/82 p-4">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Evidencias observadas</p>
-              <div className="mt-4 grid gap-2 md:grid-cols-[1fr_120px_120px]">
+              <div className="mt-3 grid grid-cols-4 gap-1.5 text-center text-[10px] font-black uppercase text-slate-300">
+                {['Ataque', 'Defensa', 'Transición', 'ABP'].map((type) => (
+                  <span key={type} className="bg-white/[0.045] px-2 py-1.5">{type}: {evidenceCounts[type] || 0}</span>
+                ))}
+              </div>
+              <div className="mt-3 grid gap-2 md:grid-cols-[1fr_116px_110px_104px]">
                 <input value={evidenceDraft.match} onChange={(event) => setEvidenceDraft((current) => ({ ...current, match: event.target.value }))} placeholder="Partido" className="border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500" />
                 <input type="date" value={evidenceDraft.date} onChange={(event) => setEvidenceDraft((current) => ({ ...current, date: event.target.value }))} className="border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none" />
                 <select value={evidenceDraft.type} onChange={(event) => setEvidenceDraft((current) => ({ ...current, type: event.target.value }))} className="border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none">
                   {evidenceTypeOptions.map((type) => <option key={type} value={type}>{type}</option>)}
+                </select>
+                <select value={evidenceDraft.importance} onChange={(event) => setEvidenceDraft((current) => ({ ...current, importance: event.target.value }))} className="border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none">
+                  {['Alta', 'Media', 'Baja'].map((importance) => <option key={importance} value={importance}>{importance}</option>)}
                 </select>
               </div>
               <div className="mt-2 flex gap-2">
@@ -5628,14 +5695,14 @@ function App() {
               <div className="mt-3 space-y-2">
                 {evidences.length ? evidences.slice(0, 5).map((item) => (
                   <div key={item.id} className="flex items-start justify-between gap-3 border-b border-white/8 pb-2">
-                    <p className="text-xs font-semibold leading-5 text-slate-200"><span className="font-black text-white">{item.type}</span>{item.match ? ` · ${item.match}` : ''}{item.date ? ` · ${item.date}` : ''}: {item.observation}</p>
+                    <p className="text-xs font-semibold leading-5 text-slate-200"><span className="font-black text-white">{item.type}</span> <span className="text-amber-100">({item.importance || 'Media'})</span>{item.match ? ` · ${item.match}` : ''}{item.date ? ` · ${item.date}` : ''}: {item.observation}</p>
                     <button type="button" onClick={() => removeObservedEvidence(item.id)} className="text-[10px] font-black uppercase text-red-200">Borrar</button>
                   </div>
                 )) : <p className="text-sm font-semibold text-slate-500">Sin evidencias observadas. La IA no emitirá conclusiones fiables.</p>}
               </div>
             </section>
 
-            <section className="border border-white/10 bg-[#091428]/82 p-5">
+            <section className="order-2 border border-white/10 bg-[#091428]/82 p-4">
               <div className="flex items-end justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Comparador</p>
@@ -5657,7 +5724,7 @@ function App() {
               </div>
             </section>
 
-            <section className="border border-white/10 bg-[#091428]/82 p-5">
+            <section className="order-3 border border-white/10 bg-[#091428]/82 p-4">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Duelos críticos</p>
               <div className="mt-4 space-y-2">
                 {(duelRows.length ? duelRows : [{ caudalName: 'Caudal', rivalName: liveRivalIdentity.mainThreat || 'Rival', tone: 'amber' }]).map((duel) => (
@@ -5671,7 +5738,7 @@ function App() {
               </div>
             </section>
 
-            <section className="border border-white/10 bg-[#091428]/82 p-5">
+            <section className="order-6 border border-white/10 bg-[#091428]/82 p-4">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Mapa del partido</p>
               <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                 <div>
@@ -5695,7 +5762,7 @@ function App() {
               </div>
             </section>
 
-            <section className="border border-caudal-electric/15 bg-[#091428]/90 p-5">
+            <section className="order-4 border border-caudal-electric/15 bg-[#091428]/90 p-4">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Plan de partido</p>
               <div className="mt-4 grid gap-5 md:grid-cols-2">
                 {renderPlanList('Con balón', attackPlan)}
@@ -5705,7 +5772,7 @@ function App() {
               </div>
             </section>
 
-            <section className="border border-white/10 bg-[#091428]/82 p-5">
+            <section className="order-7 border border-white/10 bg-[#091428]/82 p-4">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Jugadores marcados</p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {[
@@ -5726,7 +5793,7 @@ function App() {
               </div>
             </section>
 
-            <section className="border border-white/10 bg-[#091428]/82 p-5">
+            <section className="order-5 border border-white/10 bg-[#091428]/82 p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Pregunta táctica IA</p>
                 <div className="flex bg-white/[0.045] p-1">
@@ -5767,9 +5834,9 @@ function App() {
             </section>
           </div>
 
-          <div className="space-y-4">
-            <section className="border border-white/10 bg-[#091428]/82 p-5">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-3">
+            <section className="border border-white/10 bg-[#091428]/82 p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Campo táctico</p>
                   <h4 className="mt-1 text-2xl font-black text-white">Pizarra de partido</h4>
@@ -5796,7 +5863,7 @@ function App() {
               {renderFacingSystemsOverview()}
             </section>
 
-            <section className="border border-white/10 bg-[#091428]/82 p-5">
+            <section className="border border-white/10 bg-[#091428]/82 p-3">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Zonas activas</p>
                 <button type="button" onClick={() => setIsTacticalZonesEditorOpen(true)} className="border border-white/10 bg-white/[0.045] px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] text-slate-200 hover:bg-white/[0.08]">
@@ -11960,7 +12027,7 @@ function App() {
       </div>
     );
     return (
-      <div className="relative mx-auto aspect-[7/8.4] min-h-[420px] w-full max-w-3xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner">
+      <div className="relative mx-auto aspect-[7/8.4] min-h-[560px] w-full max-w-4xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner">
         {layers.zones && showStaffDetails ? renderHudGroup(leftHud, 'left-4 top-1/2 -translate-y-1/2 flex-col items-start') : null}
         {layers.zones && showStaffDetails ? renderHudGroup(rightHud, 'right-4 top-1/2 -translate-y-1/2 flex-col items-end') : null}
         {layers.zones && showStaffDetails ? renderHudGroup(topHud, 'left-1/2 top-4 -translate-x-1/2 flex-row justify-center') : null}
