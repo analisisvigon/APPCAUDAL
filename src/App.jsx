@@ -1932,6 +1932,7 @@ const normalizeMatch = (match) => {
   return {
     ...merged,
     preAiAnalysis: normalizePreAiAnalysis(merged.preAiAnalysis),
+    statsCalledPlayers: safeArray(merged.statsCalledPlayers),
     preCaudalLineup: safeArray(merged.preCaudalLineup),
     preRivalLineup: safeArray(merged.preRivalLineup),
     preRivalLineupPlayers: safeArray(merged.preRivalLineupPlayers),
@@ -6002,7 +6003,7 @@ function App() {
   };
 
   const getStatsCalledPlayerNames = () => {
-    return selectedMatch?.statsCalledPlayers || [];
+    return safeArray(selectedMatch?.statsCalledPlayers);
   };
 
   const getStatsCalledPlayers = () => {
