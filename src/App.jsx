@@ -7405,7 +7405,49 @@ function App() {
     });
     return [...goalEvents, ...playerIncidents, ...substitutions]
       .filter((event) => statsEventFilter === 'Todos' || event.category === statsEventFilter)
-      .sort((a, b) => (a.priority - b.priority) || (a.minute - b.minute));
+      .sort((a, b) => (a.minute - b.minute) || (a.priority - b.priority));
+  };
+
+  const getStatsTimelineIcon = (event) => {
+    if (event.category === 'Goles') return event.type === 'Gol a favor' ? 'GOL' : 'GC';
+    if (event.category === 'Tarjetas') return event.type === 'Roja' ? 'RJ' : 'AM';
+    if (event.category === 'Cambios') return 'CAM';
+    if (event.category === 'Lesiones') return 'LES';
+    return 'EV';
+  };
+
+  const getStatsParticipationSummary = () => {
+    const called = getStatsCalledPlayers();
+    const starters = called.filter((player) => getStatsPlayerData(player.name).role === 'Titular');
+    const used = called.filter((player) => {
+      const stats = getStatsPlayerData(player.name);
+      return Number(stats.minutes || 0) > 0 || getStatsSubstituteMinutes(player.name) > 0 || stats.role === 'Titular';
+    });
+    const unusedSubs = called.filter((player) => {
+      const stats = getStatsPlayerData(player.name);
+      return stats.role !== 'Titular' && !getStatsSubstituteMinutes(player.name) && Number(stats.minutes || 0) <= 0;
+    });
+    return {
+      starters: starters.length,
+      used: used.length,
+      unusedSubs: unusedSubs.length,
+      substitutions: getStatsSubstitutionEvents().length,
+    };
+  };
+
+  const getStatsMvp = () => {
+    const called = getStatsCalledPlayers();
+    if (!called.length) return null;
+    const ranked = called
+      .map((player) => {
+        const stats = getStatsPlayerData(player.name);
+        const minutes = Number(getStatsSubstituteMinutes(player.name) || stats.minutes || 0);
+        const rating = Number(stats.rating || 0);
+        const score = (rating * 10) + (stats.goals * 6) + (stats.assists * 4) + Math.min(minutes, 90) / 18 - (stats.red ? 8 : 0) - (stats.injured ? 2 : 0);
+        return { player, stats, minutes, rating, score };
+      })
+      .sort((a, b) => b.score - a.score);
+    return ranked[0] || null;
   };
 
   const updatePreStatsLink = (consignaId, patch) => {
@@ -8437,6 +8479,7 @@ function App() {
         {coordinates.map((slot, slotIndex) => {
           const playerName = selectedMatch.statsLineup?.[slotIndex] || '';
           const player = players.find((item) => item.name === playerName);
+          const shortName = player ? displayPlayerName(player) : playerName.split(' ').slice(-1)[0] || '';
           const stats = playerName ? getStatsPlayerData(playerName) : null;
           const replacementInfo = playerName ? getStatsReplacementInfo(playerName) : null;
           const playerStateClass = stats?.red
@@ -8459,14 +8502,14 @@ function App() {
               className={`absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center ${player ? 'cursor-grab' : ''}`}
               style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
             >
-              <div className={`relative flex h-16 w-16 items-center justify-center rounded-full border-2 text-sm font-black shadow-glow ${playerName ? playerStateClass : 'border-dashed border-white/40 bg-white/10 text-white/70'}`}>
+              <div className={`relative flex h-14 w-14 items-center justify-center rounded-full border-2 text-sm font-black shadow-glow ${playerName ? playerStateClass : 'border-dashed border-white/40 bg-white/10 text-white/70'}`}>
                 {player?.image ? (
                   <img src={player.image} alt="" className="h-full w-full rounded-full object-cover" />
                 ) : (
                   <span>{player?.number || playerName?.slice(0, 2).toUpperCase() || slotIndex + 1}</span>
                 )}
                 {playerName ? (
-                  <span className="absolute -bottom-2 left-1/2 flex h-6 min-w-6 -translate-x-1/2 items-center justify-center rounded-full bg-black px-1 text-xs font-black text-white">
+                  <span className="absolute -bottom-2 left-1/2 flex h-6 min-w-6 -translate-x-1/2 items-center justify-center rounded-md bg-black px-1 text-xs font-black text-white">
                     {player?.number || slotIndex + 1}
                   </span>
                 ) : null}
@@ -8485,8 +8528,8 @@ function App() {
                   </div>
                 ) : null}
               </div>
-              <div className="max-w-[92px] truncate rounded-xl bg-black/60 px-2 py-1 text-[10px] font-bold text-white">
-                {playerName || getFormationRoles(selectedMatch.statsSystem || '4-4-2')[slotIndex]}
+              <div className="max-w-[92px] truncate rounded-lg bg-black/65 px-2 py-1 text-[10px] font-black uppercase tracking-[0.04em] text-white">
+                {shortName || getFormationRoles(selectedMatch.statsSystem || '4-4-2')[slotIndex]}
               </div>
               {replacementInfo ? (
                 <div className="max-w-[108px] truncate rounded-xl bg-emerald-500 px-2 py-1 text-[10px] font-black text-white" title={`Entra ${replacementInfo.replacementName}`}>
@@ -8496,6 +8539,253 @@ function App() {
             </div>
           );
         })}
+      </div>
+    );
+  };
+
+  const renderCompleteStatsView = () => {
+    if (!selectedMatch) return null;
+    const score = getStatsScore();
+    const timelineEvents = getStatsKeyEvents();
+    const participation = getStatsParticipationSummary();
+    const mvp = getStatsMvp();
+    const matchMeta = [selectedMatch.competition, formatDate(selectedMatch.date)].filter(Boolean).join(' · ');
+    const statRows = [...getStatsCalledPlayers()].sort((a, b) => {
+      const roleDiff = (getStatsPlayerData(a.name).role === 'Titular' ? -1 : 1) - (getStatsPlayerData(b.name).role === 'Titular' ? -1 : 1);
+      return roleDiff || displayPlayerName(a).localeCompare(displayPlayerName(b));
+    });
+
+    return (
+      <div className="space-y-5">
+        <div className="border border-white/10 bg-[#091428]/85 p-4 shadow-glow">
+          <div className="grid items-center gap-4 lg:grid-cols-[1fr_auto_1fr]">
+            <div className="flex items-center gap-3">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-2">
+                <img src={clubCrest} alt="" className="h-full w-full object-contain" />
+              </div>
+              <div>
+                <p className="text-sm font-black text-white">C.D. Caudal</p>
+                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{selectedMatch.isHome ? 'Local' : 'Visitante'}</p>
+              </div>
+            </div>
+            <div className="text-center">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">{matchMeta || 'Partido'}</p>
+              <p className="mt-1 text-5xl font-black leading-none text-white">{score.home} - {score.away}</p>
+            </div>
+            <div className="flex items-center justify-start gap-3 lg:justify-end">
+              <div className="text-left lg:text-right">
+                <p className="text-sm font-black text-white">{selectedMatch.opponent || 'Rival'}</p>
+                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{selectedMatch.isHome ? 'Visitante' : 'Local'}</p>
+              </div>
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 p-2">
+                {selectedMatch.opponentCrest ? <img src={selectedMatch.opponentCrest} alt="" className="h-full w-full object-contain" /> : <span className="text-lg font-black text-white">{selectedMatch.opponent?.slice(0, 2).toUpperCase()}</span>}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-5 xl:grid-cols-[minmax(320px,0.42fr)_minmax(0,0.58fr)]">
+          <div className="space-y-5">
+            <section className="border border-white/10 bg-[#091428]/82 p-4 shadow-glow">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Timeline de partido</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-400">Eventos cronológicos registrados</p>
+                </div>
+                <button type="button" onClick={openGoalAnalysisModal} className="bg-red-500 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white">
+                  Registrar gol
+                </button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {['Todos', 'Goles', 'Tarjetas', 'Cambios', 'Lesiones'].map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => setStatsEventFilter(filter)}
+                    className={`px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] ${statsEventFilter === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 max-h-[470px] space-y-2 overflow-y-auto pr-1">
+                {timelineEvents.length ? timelineEvents.map((event) => (
+                  <div key={event.id} className={`border px-3 py-2.5 ${event.tone}`}>
+                    <div className="flex items-center gap-3">
+                      <span className="w-11 shrink-0 text-right text-lg font-black text-white">{event.minute || '-'}'</span>
+                      <span className="flex h-8 min-w-8 items-center justify-center rounded-lg bg-white/10 px-1.5 text-[10px] font-black uppercase text-caudal-electric">{getStatsTimelineIcon(event)}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-black text-white">{event.title}</p>
+                        <p className="truncate text-xs font-semibold text-slate-400">{event.subtitle}</p>
+                      </div>
+                    </div>
+                  </div>
+                )) : (
+                  <div className="border border-dashed border-white/10 bg-white/[0.025] p-5 text-sm text-slate-500">No hay eventos para este filtro.</div>
+                )}
+              </div>
+            </section>
+
+            <section className="border border-white/10 bg-[#091428]/82 p-4 shadow-glow">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Resumen de participación</p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {[
+                  ['Titulares', participation.starters],
+                  ['Utilizados', participation.used],
+                  ['Suplentes sin jugar', participation.unusedSubs],
+                  ['Cambios realizados', participation.substitutions],
+                ].map(([label, value]) => (
+                  <div key={label} className="bg-white/[0.045] px-3 py-3">
+                    <p className="text-2xl font-black text-white">{value}</p>
+                    <p className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="border border-caudal-electric/20 bg-caudal-electric/[0.07] p-4 shadow-glow">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">MVP partido</p>
+              {mvp ? (
+                <div className="mt-3 flex items-center gap-3">
+                  <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-white/10 text-sm font-black text-white">
+                    {mvp.player.image ? <img src={mvp.player.image} alt="" className="h-full w-full object-cover" /> : (mvp.player.number || displayPlayerName(mvp.player).slice(0, 2).toUpperCase())}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xl font-black text-white">{displayPlayerName(mvp.player)}</p>
+                    <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Nota {mvp.stats.rating || '-'} · Goles {mvp.stats.goals} · Asistencias {mvp.stats.assists}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm font-semibold text-slate-400">Añade convocados y notas para activar el MVP.</p>
+              )}
+            </section>
+
+            {getPreStatsLinks().length ? (
+              <section className="border border-white/10 bg-[#091428]/82 p-4 shadow-glow">
+                {(() => {
+                  const compliance = getPreStatsCompliance();
+                  return (
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Relación PRE - Estadísticas</p>
+                        <p className={`mt-1 text-xs font-black ${compliance.textClass}`}>{compliance.assessed}/{compliance.total} revisadas · {compliance.percentage}% cumplimiento</p>
+                      </div>
+                      <div className="h-2 w-32 overflow-hidden rounded-full bg-white/10">
+                        <div className={`h-full ${compliance.colorClass}`} style={{ width: `${compliance.percentage}%` }} />
+                      </div>
+                    </div>
+                  );
+                })()}
+              </section>
+            ) : null}
+          </div>
+
+          <section className="border border-white/10 bg-[#091428]/82 p-4 shadow-glow">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Disposición táctica</p>
+                <p className="mt-1 text-sm font-semibold text-slate-400">Dorsal, nombre corto y foto si existe</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <select value={selectedMatch.statsSystem || '4-4-2'} onChange={(event) => updateStatsSystem(event.target.value)} className="border border-white/10 bg-white px-4 py-2 text-sm font-black text-slate-950">
+                  {gameSystems.map((system) => <option key={system} value={system}>{system}</option>)}
+                </select>
+                <button type="button" onClick={openStatsCallupPanel} className="bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Añadir convocados</button>
+              </div>
+            </div>
+            <div className="mt-4">{renderStatsPitch()}</div>
+          </section>
+        </div>
+
+        <section className="border border-white/10 bg-[#091428]/82 p-4 shadow-glow">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Rendimiento individual</p>
+              <p className="mt-1 text-sm font-semibold text-slate-400">La nota es el dato principal; minutos e incidencias siguen siendo editables.</p>
+            </div>
+            {getStatsCalledPlayers().length ? (
+              <button type="button" onClick={markAllStatsCalledAsSubstitutes} className="bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/15">Todos suplentes</button>
+            ) : null}
+          </div>
+          {statRows.length ? (
+            <div className="mt-4 overflow-auto border border-white/10 bg-[#071123]/80">
+              <table className="w-full min-w-[980px] border-separate border-spacing-0 text-left text-xs">
+                <thead className="sticky top-0 z-20 bg-[#091428] text-[10px] uppercase tracking-[0.14em] text-slate-500">
+                  <tr>
+                    <th className="sticky left-0 z-30 min-w-[220px] bg-[#091428] px-3 py-3 text-left">Jugador</th>
+                    <th className="px-2 py-3 text-center">Nota</th>
+                    <th className="px-2 py-3 text-center">Min</th>
+                    <th className="px-2 py-3 text-center">Rol</th>
+                    <th className="px-2 py-3 text-center">Cambio</th>
+                    {['G', 'A', 'AM', 'RJ', 'LES'].map((head) => <th key={head} className="px-2 py-3 text-center">{head}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {statRows.map((player) => {
+                    const stats = getStatsPlayerData(player.name);
+                    const minutes = Number(stats.minutes || 0);
+                    const canReplace = stats.role === 'Titular' && minutes > 0 && minutes < 90;
+                    const substituteMinutes = stats.role === 'Suplente' ? getStatsSubstituteMinutes(player.name) : 0;
+                    const displayedMinutes = substituteMinutes || stats.minutes;
+                    const enteredAsSub = substituteMinutes > 0;
+                    return (
+                      <tr key={player.id} className={`group transition hover:bg-white/[0.07] ${stats.red ? 'bg-red-500/[0.06]' : stats.injured ? 'bg-rose-500/[0.06]' : enteredAsSub ? 'bg-emerald-400/[0.05]' : stats.role === 'Titular' ? 'bg-caudal-electric/10' : 'bg-white/[0.02]'}`}>
+                        <td className={`sticky left-0 z-10 border-t border-white/10 px-3 py-2 font-bold text-white shadow-[8px_0_18px_rgba(0,0,0,0.22)] transition group-hover:bg-[#10213f] ${stats.red ? 'bg-[#1c1220]' : stats.injured ? 'bg-[#171525]' : stats.role === 'Titular' ? 'bg-[#0d1f3b]' : 'bg-[#091428]'}`}>
+                          <div className="flex items-center gap-3">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/10 text-[11px] font-black text-white">
+                              {player.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : (player.number || displayPlayerName(player).slice(0, 2).toUpperCase())}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-black">{displayPlayerName(player)}</p>
+                              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">{player.number ? `#${player.number}` : 'Sin dorsal'} · {getStatsPlayedPosition(player.name)}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="border-t border-white/10 px-2 py-2 text-center">
+                          <select value={stats.rating} onChange={(event) => updateStatsPlayerData(player.name, { rating: event.target.value })} className={`h-10 w-14 text-center text-lg font-black outline-none ${stats.rating ? 'bg-emerald-300 text-slate-950' : 'bg-white text-slate-400'}`}>
+                            <option value="">-</option>
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((rating) => <option key={rating} value={rating}>{rating}</option>)}
+                          </select>
+                        </td>
+                        <td className="border-t border-white/10 px-2 py-2 text-center"><input type="number" min="0" max="90" value={displayedMinutes} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value, replacementName: Number(event.target.value) >= 90 ? '' : stats.replacementName })} className="w-14 bg-white px-2 py-2 text-center font-black text-slate-950" /></td>
+                        <td className="border-t border-white/10 px-2 py-2 text-center text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{enteredAsSub ? 'Entrado' : stats.role}</td>
+                        <td className="border-t border-white/10 px-2 py-2 text-center">
+                          <select value={stats.replacementName} disabled={!canReplace} onChange={(event) => updateStatsPlayerData(player.name, { replacementName: event.target.value })} className="w-44 bg-white px-2 py-2 text-[11px] font-bold text-slate-950 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500">
+                            <option value="">{canReplace ? `Sale ${minutes}' · entra...` : enteredAsSub ? `Entra · ${displayedMinutes}'` : 'Sin cambio'}</option>
+                            {getStatsReplacementOptions(player.name).map((replacement) => <option key={replacement.id} value={replacement.name}>{replacement.name}</option>)}
+                          </select>
+                        </td>
+                        <td className="border-t border-white/10 px-2 py-2 text-center font-black text-white">{stats.goals}</td>
+                        <td className="border-t border-white/10 px-2 py-2 text-center font-black text-white">{stats.assists}</td>
+                        <td className="border-t border-white/10 px-2 py-2">
+                          <div className="flex justify-center gap-1">
+                            {[1, 2].map((cardNumber) => {
+                              const active = stats.yellowCount >= cardNumber;
+                              return (
+                                <button key={cardNumber} type="button" onClick={() => {
+                                  const nextCount = active && stats.yellowCount === cardNumber ? cardNumber - 1 : cardNumber;
+                                  updateStatsPlayerData(player.name, { yellowCount: nextCount, yellow: nextCount > 0 });
+                                }} className={`flex h-7 w-7 items-center justify-center border text-[10px] font-black ${active ? 'border-yellow-200 bg-yellow-300 text-slate-950' : 'border-white/20 bg-white/10 text-slate-500 hover:bg-white/15'}`}>
+                                  {cardNumber}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </td>
+                        <td className="border-t border-white/10 px-2 py-2">
+                          <button type="button" onClick={() => updateStatsPlayerData(player.name, { red: !stats.red })} className={`mx-auto flex h-7 w-7 items-center justify-center border text-xs font-black ${stats.red ? 'border-red-200 bg-red-600 text-white' : 'border-white/20 bg-white/10 text-slate-500 hover:bg-white/15'}`}>R</button>
+                        </td>
+                        <td className="border-t border-white/10 px-2 py-2 text-center"><button type="button" onClick={() => updateStatsPlayerData(player.name, { injured: !stats.injured })} className={`mx-auto flex h-7 min-w-7 items-center justify-center px-1.5 text-xs font-black ${stats.injured ? 'bg-rose-200 text-rose-800' : 'bg-white/10 text-slate-300'}`}>+</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="mt-4 border border-dashed border-white/10 bg-black/20 p-6 text-center text-sm text-slate-400">La tabla aparecerá cuando añadas convocados.</div>
+          )}
+        </section>
       </div>
     );
   };
@@ -18046,6 +18336,9 @@ function App() {
                     </AccordionSection>
                     ) : (
                     <>
+                    {renderCompleteStatsView()}
+                    {false && (
+                    <>
                     <AccordionSection title="Resumen rápido" subtitle="Marcador, goles, tarjetas y lesiones" defaultOpen>
                     <div className={`rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow ${isPreTalkMode ? 'hidden' : ''}`}>
                       <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Resumen de marcador</h3>
@@ -18415,6 +18708,8 @@ function App() {
                       )}
                     </div>
                     </AccordionSection>
+                    </>
+                    )}
                     </>
                     )}
                   </section>
