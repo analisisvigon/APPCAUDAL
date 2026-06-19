@@ -2616,6 +2616,7 @@ function App() {
   const [newRivalManualPlayerName, setNewRivalManualPlayerName] = useState('');
   const [tacticalQuestionMode, setTacticalQuestionMode] = useState('Macro');
   const [tacticalQuestionText, setTacticalQuestionText] = useState('');
+  const [showFullTacticalAnswer, setShowFullTacticalAnswer] = useState(false);
   const [openQuestionnaireSections, setOpenQuestionnaireSections] = useState({
     rivalProfile: true,
     rivalAttack: true,
@@ -5230,6 +5231,318 @@ function App() {
       );
     }
     return rows.slice(0, 6);
+  };
+
+  const renderProfessionalSystemsPrep = () => {
+    if (!selectedMatch) return null;
+    const caudalSystem = selectedMatch.preCaudalSystem || '4-4-2';
+    const rivalSystem = getCurrentRivalSystem();
+    const reading = selectedMatch.preSystemReading || buildSystemTacticalReading(caudalSystem, rivalSystem);
+    const matchups = safeArray(selectedMatch.preKeyMatchupsTable).length
+      ? safeArray(selectedMatch.preKeyMatchupsTable)
+      : defaultSystemMatchups(caudalSystem, rivalSystem);
+    const splitLines = (value) => String(value || '').split(/\r?\n|•/).map((item) => String(item || '').trim()).filter(Boolean);
+    const uniq = (items) => [...new Set(safeArray(items).map((item) => String(item || '').trim()).filter(Boolean))];
+    const firstSentence = (value) => String(value || '').split(/[.;]\s/)[0].replace(/[.;]$/, '').trim();
+    const activeZones = getTacticalZones().filter((zone) => zone.active);
+    const keyPlayers = liveRivalMarkedPlayers.filter((player) => player.isKey && !isUnavailableRivalPlayer(player));
+    const unavailablePlayers = getUnavailableRivalPlayers();
+    const weaknessPlayers = liveRivalMarkedPlayers.filter((player) => player.doubtful || player.yellowRisk || player.suspended || player.injured);
+    const watchedPlayers = liveRivalMarkedPlayers.filter((player) => !player.isKey && !weaknessPlayers.includes(player) && !isUnavailableRivalPlayer(player));
+    const attackPlan = uniq([
+      ...splitLines(selectedMatch.planConBalon),
+      ...splitLines(selectedMatch.prePlanTrigger),
+      firstSentence(safeArray(reading.advantages)[0]),
+      firstSentence(safeArray(reading.attackZones)[0]),
+    ]).slice(0, 3);
+    const defensePlan = uniq([
+      ...splitLines(selectedMatch.planSinBalon),
+      ...splitLines(selectedMatch.preCaudalDefendStrengths),
+      firstSentence(safeArray(reading.protectZones)[0]),
+      `Cerrar ${liveRivalIdentity.offensiveFocus || 'pase interior'}`,
+    ]).slice(0, 3);
+    const transitionPlan = uniq([
+      ...splitLines(selectedMatch.planTransiciones),
+      ...splitLines(selectedMatch.prePlanAvoid),
+      'Falta táctica si la pérdida es interior',
+      'Repliegue inmediato',
+    ]).slice(0, 3);
+    const abpPlan = uniq([
+      ...splitLines(selectedMatch.abpOfensiva),
+      ...splitLines(selectedMatch.abpDefensiva),
+      keyPlayers[0] ? `Vigilar ${displayPlayerName(keyPlayers[0])}` : '',
+      'Proteger segundo palo',
+    ]).slice(0, 3);
+    const semitoneClass = {
+      green: 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100',
+      amber: 'border-amber-300/20 bg-amber-300/10 text-amber-100',
+      red: 'border-red-300/25 bg-red-400/10 text-red-100',
+      cyan: 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric',
+    };
+    const executiveItems = [
+      { label: safeArray(reading.advantages)[0] || `Superioridad interior ${getSystemStructure(caudalSystem).midfielders}v${getSystemStructure(rivalSystem).midfielders}`, tone: 'green' },
+      { label: safeArray(reading.attackZones)[0] || `Espalda del lateral`, tone: 'green' },
+      { label: `Transición rival: ${liveRivalIdentity.mainThreat || 'vigilar'}`, tone: 'amber' },
+      { label: keyPlayers[0] ? displayPlayerName(keyPlayers[0]) : liveRivalIdentity.mainThreat || 'Jugador clave', tone: 'red' },
+      { label: selectedMatch.abpDefensiva || selectedMatch.preRivalCornersFor || 'ABP lateral', tone: 'red' },
+    ].map((item) => ({ ...item, label: firstSentence(item.label) }));
+    const duelRows = getAutomaticMicroDuels().slice(0, 5).map((duel, index) => {
+      const rivalName = duel.rivalPlayer ? displayPlayerName(duel.rivalPlayer) : firstSentence(duel.title).replace(/^Vigilancia sobre\s+/i, '');
+      const caudalName = safeArray(selectedMatch.preCaudalLineup).filter(Boolean)[index] || getFormationRoles(caudalSystem)[index] || 'Caudal';
+      const tone = duel.tone === 'alerta' ? 'red' : duel.tone === 'ofensiva' || duel.tone === 'fortaleza' ? 'green' : 'amber';
+      return { caudalName, rivalName, tone };
+    });
+    const tacticalAnswer = selectedPreAiAnalysis?.tacticalQuestion?.answer || '';
+    const tacticalAnswerLines = splitLines(tacticalAnswer.replace(/\. /g, '.\n'));
+    const quickQuestions = [
+      '¿Cómo atacamos su bloque?',
+      '¿Cómo defendemos sus transiciones?',
+      '¿Dónde tenemos superioridad?',
+      '¿Qué cambios harías al descanso?',
+      '¿Qué riesgo tiene nuestro sistema?',
+    ];
+    const zoneTone = {
+      cyan: 'border-sky-300/20 bg-sky-300/10 text-sky-100',
+      amber: 'border-amber-300/20 bg-amber-300/10 text-amber-100',
+      emerald: 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100',
+      red: 'border-red-300/25 bg-red-400/10 text-red-100',
+    };
+    const renderPlanList = (title, items) => (
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{title}</p>
+        <ul className="mt-2 space-y-1.5 text-sm font-semibold leading-5 text-slate-100">
+          {(items.length ? items : ['Pendiente de definir.']).map((item) => (
+            <li key={`${title}-${item}`} className="flex gap-2">
+              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-caudal-electric" />
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+
+    return (
+      <div className={isPreTalkMode ? 'space-y-4' : 'space-y-5'}>
+        <div className="sticky top-2 z-20 border border-white/10 bg-[#081327]/95 px-4 py-3 backdrop-blur">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="mr-2 text-lg font-black text-white">{caudalSystem} vs {rivalSystem}</div>
+            {executiveItems.map((item) => (
+              <span key={`${item.tone}-${item.label}`} className={`rounded-lg border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.1em] ${semitoneClass[item.tone]}`}>
+                {item.tone === 'green' ? 'OK' : item.tone === 'amber' ? '!' : '!!'} {item.label}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className={`grid gap-5 ${isPreTalkMode ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(320px,0.4fr)_minmax(0,0.6fr)]'}`}>
+          <div className="space-y-5">
+            <section className="border border-white/10 bg-[#091428]/82 p-5">
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Comparador</p>
+                  <h4 className="mt-1 text-2xl font-black text-white">{caudalSystem} <span className="text-slate-500">vs</span> {rivalSystem}</h4>
+                </div>
+                <select
+                  value={caudalSystem}
+                  onChange={(event) => updateCaudalPreSystem(event.target.value)}
+                  className="max-w-[150px] border border-white/10 bg-slate-950/70 px-3 py-2 text-sm font-black text-white outline-none"
+                >
+                  {gameSystems.filter((system) => system !== 'Otro').map((system) => <option key={system} value={system}>{system}</option>)}
+                </select>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2 text-xs font-bold text-slate-200">
+                <span className="bg-white/[0.045] px-3 py-2">Bloque rival: {liveRivalIdentity.blockHeight}</span>
+                <span className="bg-white/[0.045] px-3 py-2">Presión: {liveRivalIdentity.pressureType}</span>
+                <span className="bg-white/[0.045] px-3 py-2">Foco: {liveRivalIdentity.offensiveFocus}</span>
+                <span className="bg-white/[0.045] px-3 py-2">Amenaza: {liveRivalIdentity.mainThreat}</span>
+              </div>
+            </section>
+
+            <section className="border border-white/10 bg-[#091428]/82 p-5">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Duelos críticos</p>
+              <div className="mt-4 space-y-2">
+                {(duelRows.length ? duelRows : [{ caudalName: 'Caudal', rivalName: liveRivalIdentity.mainThreat || 'Rival', tone: 'amber' }]).map((duel) => (
+                  <div key={`${duel.caudalName}-${duel.rivalName}`} className="flex items-center justify-between gap-3 border-b border-white/8 pb-2 text-sm">
+                    <span className="min-w-0 truncate font-black text-white">{duel.caudalName} vs {duel.rivalName}</span>
+                    <span className={`shrink-0 rounded-md border px-2 py-1 text-[10px] font-black uppercase ${semitoneClass[duel.tone]}`}>
+                      {duel.tone === 'green' ? 'Favorable' : duel.tone === 'red' ? 'Riesgo' : 'Igualado'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="border border-white/10 bg-[#091428]/82 p-5">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Mapa del partido</p>
+              <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-200">Ataque</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {uniq([`Interior ${getSystemStructure(caudalSystem).midfielders}v${getSystemStructure(rivalSystem).midfielders}`, safeArray(reading.attackZones)[0], liveRivalIdentity.detectedWeakness]).slice(0, 3).map((item, index) => (
+                      <span key={`attack-${item}`} className={`rounded-lg border px-2.5 py-1.5 text-xs font-black ${index < 2 ? semitoneClass.green : semitoneClass.amber}`}>{item}</span>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-red-100">Defensa</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {uniq(['Segundo palo', selectedMatch.abpDefensiva || 'ABP lateral', `Transición ${liveRivalIdentity.mainThreat}`]).slice(0, 3).map((item, index) => (
+                      <span key={`defense-${item}`} className={`rounded-lg border px-2.5 py-1.5 text-xs font-black ${index < 2 ? semitoneClass.red : semitoneClass.amber}`}>{item}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="border border-caudal-electric/15 bg-[#091428]/90 p-5">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Plan de partido</p>
+              <div className="mt-4 grid gap-5 md:grid-cols-2">
+                {renderPlanList('Con balón', attackPlan)}
+                {renderPlanList('Sin balón', defensePlan)}
+                {renderPlanList('Transición', transitionPlan)}
+                {renderPlanList('ABP', abpPlan)}
+              </div>
+            </section>
+
+            <section className="border border-white/10 bg-[#091428]/82 p-5">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Jugadores marcados</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {[
+                  ['Amenazas', keyPlayers, 'DEST'],
+                  ['Debilidades', weaknessPlayers, 'ALERTA'],
+                  ['Ausencias', unavailablePlayers, 'NO DISP.'],
+                  ['Vigilancia', watchedPlayers, 'VIG'],
+                ].map(([title, list, fallback]) => (
+                  <div key={title} className="bg-white/[0.035] p-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{title}</p>
+                    <div className="mt-2 space-y-1.5">
+                      {safeArray(list).slice(0, 3).length ? safeArray(list).slice(0, 3).map((player) => (
+                        <p key={`${title}-${player.name}`} className="truncate text-sm font-black text-white">{displayPlayerName(player)}</p>
+                      )) : <p className="text-sm font-semibold text-slate-500">{fallback}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="border border-white/10 bg-[#091428]/82 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Pregunta táctica IA</p>
+                <div className="flex bg-white/[0.045] p-1">
+                  {['Macro', 'Micro'].map((mode) => (
+                    <button key={mode} type="button" onClick={() => setTacticalQuestionMode(mode)} className={`px-3 py-1.5 text-[10px] font-black uppercase ${tacticalQuestionMode === mode ? 'bg-caudal-electric text-slate-950' : 'text-slate-400'}`}>{mode}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-3 grid gap-2">
+                {quickQuestions.map((question) => (
+                  <button key={question} type="button" onClick={() => setTacticalQuestionText(question)} className="bg-white/[0.045] px-3 py-2 text-left text-xs font-bold text-slate-200 hover:bg-white/[0.08]">
+                    {question}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-3 flex gap-2">
+                <input
+                  value={tacticalQuestionText}
+                  onChange={(event) => setTacticalQuestionText(event.target.value)}
+                  placeholder="Pregunta rápida..."
+                  className="min-w-0 flex-1 border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500"
+                />
+                <button type="button" onClick={askTacticalQuestion} className="bg-caudal-electric px-4 py-2 text-xs font-black uppercase text-slate-950">Preguntar</button>
+              </div>
+              {tacticalAnswer ? (
+                <div className="mt-4 border-l-2 border-caudal-electric bg-caudal-electric/[0.06] px-4 py-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">{selectedPreAiAnalysis.tacticalQuestion?.mode || 'Macro'} · respuesta</p>
+                  <div className="mt-2 space-y-1 text-sm font-semibold leading-5 text-slate-100">
+                    {(showFullTacticalAnswer ? tacticalAnswerLines : tacticalAnswerLines.slice(0, 4)).map((line) => <p key={line}>{line}</p>)}
+                  </div>
+                  {tacticalAnswerLines.length > 4 ? (
+                    <button type="button" onClick={() => setShowFullTacticalAnswer((current) => !current)} className="mt-3 text-xs font-black uppercase tracking-[0.12em] text-caudal-electric">
+                      {showFullTacticalAnswer ? 'Ocultar análisis completo' : 'Ver análisis completo'}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </section>
+          </div>
+
+          <div className="space-y-4">
+            <section className="border border-white/10 bg-[#091428]/82 p-5">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Campo táctico</p>
+                  <h4 className="mt-1 text-2xl font-black text-white">Pizarra de partido</h4>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    ['names', 'Nombres'],
+                    ['zones', 'Zonas'],
+                    ['badges', 'Alertas'],
+                    ['rival', 'Rival'],
+                    ['caudal', 'Caudal'],
+                  ].map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => updateFieldViewSettings({ layers: { [key]: !getFieldViewSettings().layers[key] } })}
+                      className={`border px-2.5 py-1.5 text-[10px] font-black uppercase ${getFieldViewSettings().layers[key] ? 'border-caudal-electric/25 bg-caudal-electric/10 text-caudal-electric' : 'border-white/10 bg-white/[0.035] text-slate-500'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {renderFacingSystemsOverview()}
+            </section>
+
+            <section className="border border-white/10 bg-[#091428]/82 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Zonas activas</p>
+                <button type="button" onClick={() => setIsTacticalZonesEditorOpen(true)} className="border border-white/10 bg-white/[0.045] px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] text-slate-200 hover:bg-white/[0.08]">
+                  Editar zonas tácticas
+                </button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(activeZones.length ? activeZones : defaultTacticalZones()).slice(0, 6).map((zone) => (
+                  <span key={zone.id} className={`rounded-lg border px-3 py-2 text-xs font-black uppercase tracking-[0.08em] ${zoneTone[zone.color] || zoneTone.cyan}`}>{zone.label}</span>
+                ))}
+              </div>
+            </section>
+          </div>
+        </div>
+
+        {isTacticalZonesEditorOpen ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
+            <div className="max-h-[88vh] w-full max-w-4xl overflow-y-auto border border-white/10 bg-[#091428] p-5 shadow-2xl">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Editor</p>
+                  <h4 className="text-xl font-black text-white">Editar zonas tácticas</h4>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={addTacticalZone} className="bg-caudal-electric px-3 py-2 text-xs font-black uppercase text-slate-950">Añadir zona</button>
+                  <button type="button" onClick={() => setIsTacticalZonesEditorOpen(false)} className="border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase text-white">Cerrar</button>
+                </div>
+              </div>
+              <div className="mt-5 grid gap-2">
+                {getTacticalZones().map((zone) => (
+                  <div key={zone.id} className="grid gap-2 border border-white/10 bg-white/[0.035] p-3 md:grid-cols-[auto_1fr_92px_92px_110px_auto] md:items-center">
+                    <button type="button" onClick={() => updateTacticalZone(zone.id, { active: !zone.active })} className={`h-9 px-3 text-[10px] font-black uppercase ${zone.active ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-400'}`}>{zone.active ? 'ON' : 'OFF'}</button>
+                    <input value={zone.label || ''} onChange={(event) => updateTacticalZone(zone.id, { label: event.target.value.toUpperCase() })} className="min-w-0 border border-white/10 bg-black/20 px-3 py-2 text-xs font-black uppercase tracking-[0.08em] text-white" />
+                    <input type="number" min="5" max="95" value={zone.x || 50} onChange={(event) => updateTacticalZone(zone.id, { x: Number(event.target.value) })} className="border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold text-white" />
+                    <input type="number" min="5" max="95" value={zone.y || 50} onChange={(event) => updateTacticalZone(zone.id, { y: Number(event.target.value) })} className="border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold text-white" />
+                    <select value={zone.color || 'cyan'} onChange={(event) => updateTacticalZone(zone.id, { color: event.target.value })} className="border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold text-white">
+                      {['cyan', 'amber', 'emerald', 'red'].map((color) => <option key={color} value={color}>{color}</option>)}
+                    </select>
+                    <button type="button" onClick={() => removeTacticalZone(zone.id)} className="bg-red-500/15 px-3 py-2 text-[10px] font-black uppercase text-red-100">Borrar</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
   };
 
   const getTacticalQuestionnaire = () => ({
@@ -16295,6 +16608,9 @@ function App() {
                             </button>
                           </div>
                         ) : null}
+                        {renderProfessionalSystemsPrep()}
+                        {false ? (
+                        <>
                         <div className={`rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/80 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.20)] ${isPreTalkMode ? 'hidden' : ''}`}>
                           <div className="grid gap-4 xl:grid-cols-[1fr_auto_1fr] xl:items-center">
                             <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
@@ -16589,6 +16905,9 @@ function App() {
                             ) : null}
                           </div>
                         </div>
+
+                        </>
+                        ) : null}
 
                         {false ? (
                         <>
