@@ -16236,27 +16236,27 @@ function App() {
                     const lastResult = profile.recentResults[0] || null;
                     const lastMatch = profile.playedMatches[0] || profile.latestMatch || null;
                     const lastScore = lastMatch ? getMatchScoreData(lastMatch) : null;
-                    const lastMatchLabel = lastScore ? `${matchDisplayDate(lastMatch.date)} · ${lastScore.caudalGoals}-${lastScore.rivalGoals}` : 'Sin enfrentamientos';
-                    const strengths = String(profile.quickRead.find(([label]) => label === 'Fortalezas')?.[1] || '').split(/[,\n·]/).map((item) => item.trim()).filter(Boolean).slice(0, 3);
-                    const weaknesses = String(profile.quickRead.find(([label]) => label === 'Debilidades')?.[1] || '').split(/[,\n·]/).map((item) => item.trim()).filter(Boolean).slice(0, 3);
+                    const lastScoreLabel = lastScore ? `${lastScore.caudalGoals}-${lastScore.rivalGoals}` : '';
+                    const lastMatchDateLabel = lastMatch ? matchDisplayDate(lastMatch.date) : 'Sin fecha';
+                    const threatText = team.mainThreat || profile.threatRows[0]?.replace(/^Amenaza:\s*/i, '') || profile.quickRead.find(([label]) => label === 'Patrones')?.[1] || 'Sin amenaza definida';
                     return (
                       <article
                         key={team.id}
                         onClick={() => setSelectedTeamId(team.id)}
-                        className="group relative flex h-full min-h-[360px] cursor-pointer flex-col overflow-hidden rounded-[1.45rem] border border-white/10 bg-[#091428]/[0.88] p-4 shadow-[0_14px_40px_rgba(0,0,0,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c]"
+                        className="group relative flex h-full min-h-[390px] cursor-pointer flex-col overflow-hidden rounded-[1.45rem] border border-white/10 bg-[#091428]/[0.88] p-4 shadow-[0_14px_40px_rgba(0,0,0,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c]"
                       >
                         <div className="pointer-events-none absolute inset-0 opacity-70" style={{ background: `radial-gradient(circle at 18% 8%, ${accent}28, transparent 34%), linear-gradient(135deg, rgba(255,255,255,0.045), transparent 52%)` }} />
-                        <div className="relative flex items-start gap-4">
-                          <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-[1.35rem] border border-white/10 bg-white/[0.07] p-2 shadow-[0_12px_28px_rgba(0,0,0,0.20)]">
-                            <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl bg-white p-2 text-lg font-black text-caudal-950">
+                        <div className="relative flex items-start gap-3">
+                          <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-[1.25rem] border border-white/10 bg-white/[0.07] p-2 shadow-[0_12px_28px_rgba(0,0,0,0.20)]">
+                            <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl bg-white p-2 text-lg font-black text-caudal-950">
                               {team.crest ? <img src={team.crest} alt={`Escudo de ${team.name}`} className="h-full w-full object-contain" /> : <span>{team.name.split(' ').map((part) => part[0]).join('').slice(0, 3)}</span>}
                             </div>
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-start justify-between gap-2">
-                              <h3 className="line-clamp-2 text-2xl font-black uppercase leading-tight text-white">{cleanTeamDisplayName(team.name)}</h3>
+                            <div className="flex items-start justify-between gap-1.5">
+                              <h3 className="break-words text-[1.35rem] font-black uppercase leading-[1.05] text-white">{cleanTeamDisplayName(team.name)}</h3>
                               <details onClick={(event) => event.stopPropagation()} className="relative shrink-0">
-                                <summary className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-xl border border-white/10 bg-white/[0.055] text-lg font-black text-slate-300 transition hover:bg-white/10">⋯</summary>
+                                <summary className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-xl border border-white/10 bg-white/[0.055] text-base font-black text-slate-300 transition hover:bg-white/10">⋯</summary>
                                 <div className="absolute right-0 z-20 mt-2 w-40 rounded-2xl border border-white/10 bg-[#081326] p-2 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
                                   <button type="button" onClick={() => openTeamForm(team)} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-slate-200 transition hover:bg-white/10">Editar</button>
                                   <button type="button" onClick={() => setActiveTab('Partidos')} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-caudal-electric transition hover:bg-caudal-electric/10">Crear PRE</button>
@@ -16264,48 +16264,44 @@ function App() {
                                 </div>
                               </details>
                             </div>
-                            <p className="mt-1 truncate text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{team.stadium || 'Sede no registrada'}</p>
-                            <div className="mt-3 inline-flex items-center gap-2 rounded-2xl border border-caudal-electric/20 bg-caudal-electric/[0.08] px-3 py-2">
-                              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric/80">Sistema</span>
-                              <span className="text-lg font-black leading-none text-white">{team.system || 'Pendiente'}</span>
+                            <p className="mt-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{team.stadium || 'Sede no registrada'}</p>
+                          </div>
+                        </div>
+
+                        <div className="relative mt-5 flex flex-wrap gap-2">
+                          <span className="inline-flex items-center gap-2 rounded-2xl border border-caudal-electric/25 bg-caudal-electric/[0.10] px-4 py-2 text-lg font-black text-white">
+                            <span className="text-base">⚽</span>{team.system || 'Sistema pendiente'}
+                          </span>
+                          <span className="inline-flex max-w-full items-center gap-2 rounded-2xl border border-amber-200/20 bg-amber-300/[0.10] px-3 py-2 text-sm font-black text-amber-100">
+                            <span>⚠</span><span className="truncate">{threatText}</span>
+                          </span>
+                        </div>
+
+                        <div className="relative mt-5 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Último enfrentamiento</p>
+                              <p className="mt-1 text-sm font-bold text-slate-300">{lastMatch ? lastMatchDateLabel : 'Sin enfrentamientos'}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className={`text-xl font-black ${lastResult === 'V' ? 'text-emerald-200' : lastResult === 'D' ? 'text-red-200' : 'text-white'}`}>
+                                {lastResult ? `${lastResult} ${lastScoreLabel}` : '--'}
+                              </p>
+                              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Caudal</p>
                             </div>
                           </div>
                         </div>
 
-                        <div className="relative mt-4 space-y-3">
+                        <div className="relative mt-auto space-y-4 pt-5">
                           <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-200">Fortalezas</p>
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              {(strengths.length ? strengths : ['Sin datos']).map((item) => (
-                                <span key={`str-${team.id}-${item}`} className="rounded-xl border border-emerald-200/15 bg-emerald-300/[0.08] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-emerald-100">{item}</span>
-                              ))}
+                            <div className="flex items-center justify-between gap-3">
+                              <span className={`rounded-2xl border px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] ${profile.completionClass}`}>{profile.completionPercent}% scouting</span>
+                            </div>
+                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                              <div className={`h-full rounded-full ${profile.completionPercent >= 80 ? 'bg-emerald-300' : profile.completionPercent >= 50 ? 'bg-amber-300' : 'bg-red-300'}`} style={{ width: `${profile.completionPercent}%` }} />
                             </div>
                           </div>
-                          <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-red-200">Debilidades</p>
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              {(weaknesses.length ? weaknesses : ['Sin datos']).map((item) => (
-                                <span key={`weak-${team.id}-${item}`} className="rounded-xl border border-red-200/15 bg-red-400/[0.08] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-red-100">{item}</span>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="relative mt-4 grid gap-2">
-                          <div className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2.5">
-                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Última revisión</p>
-                            <p className="mt-1 text-sm font-black text-slate-100">{profile.lastAnalysisLabel}</p>
-                          </div>
-                          <div className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2.5">
-                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Último enfrentamiento</p>
-                            <p className="mt-1 truncate text-sm font-black text-white">{lastMatchLabel}</p>
-                            <p className="mt-1 text-xs font-bold text-slate-400">{lastResult ? `Resultado: ${lastResult}` : `${profile.playedMatches.length} partidos registrados`}</p>
-                          </div>
-                        </div>
-
-                        <div className="relative mt-auto flex items-center justify-between gap-3 pt-4">
-                          <span className={`rounded-2xl border px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] ${profile.completionClass}`}>{profile.completionPercent}% scouting</span>
-                          <button type="button" onClick={(event) => { event.stopPropagation(); setSelectedTeamId(team.id); }} className="min-h-[42px] rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-[#7aacff]">Ver rival</button>
+                          <button type="button" onClick={(event) => { event.stopPropagation(); setSelectedTeamId(team.id); }} className="min-h-[42px] w-full rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-[#7aacff]">Ver rival</button>
                         </div>
                       </article>
                     );
