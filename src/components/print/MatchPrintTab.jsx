@@ -139,7 +139,7 @@ const getLineupStarters = ({ match, playersByName }) => {
 
   const starters = Array.from({ length: 11 }, (_, index) => {
     const name = lineupNames[index] || '';
-    if (!name) return toPrintPlayer(null, `Puesto ${index + 1}`);
+    if (!name) return toPrintPlayer(null, 'Sin jugador asignado');
     return normalizePrintPlayerEntry(name, playersByName);
   });
 
@@ -150,7 +150,7 @@ const getLineupBench = ({ match, players, starters, playersByName }) => {
   const starterNames = new Set(
     starters
       .map((player) => normalizeText(player.name))
-      .filter((name) => name && !name.startsWith('puesto '))
+      .filter((name) => name && !name.startsWith('puesto ') && name !== 'sin jugador asignado')
   );
   const rawCalledPlayers = match?.statsCalledPlayers?.length ? match.statsCalledPlayers : players;
   const calledPlayers = rawCalledPlayers

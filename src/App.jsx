@@ -179,24 +179,24 @@ const goalAttackTypeOptions = ['Combinativo', 'Transición', 'ABP', 'Juego direc
 const goalSituationOptions = ['Organizado', 'Desorganizado', 'Superioridad', 'Igualdad', 'Inferioridad'];
 const defaultGoalAnalysisDraft = {
   type: 'Gol a favor',
-  half: '1ª parte',
+  half: '',
   minute: '',
   scorer: '',
   assistant: '',
-  phase: 'Juego combinativo',
-  subphase: 'Dentro del área',
-  shotZone: 'F.Creación centro',
-  assistZone: 'F.Creación centro',
-  goalZone: 'Media centro',
-  contact: 'Pie derecho',
-  attackType: 'Combinativo',
-  situation: 'Organizado',
+  phase: '',
+  subphase: '',
+  shotZone: '',
+  assistZone: '',
+  goalZone: '',
+  contact: '',
+  attackType: '',
+  situation: '',
   summary: '',
   videoUrl: '',
   attackDirection: 'derecha',
-  offensivePattern: 'acción combinativa',
-  recoveryType: 'no especificada',
-  realOrigin: 'por dentro',
+  offensivePattern: '',
+  recoveryType: '',
+  realOrigin: '',
 };
 
 const emptyMatchForm = {
@@ -333,14 +333,14 @@ const emptyTeamForm = {
   stadium: '',
   kitColor: '#ef233c',
   system: '',
-  strongSide: 'interior',
-  mainThreat: 'transición',
-  blockHeight: 'medio',
-  pressureType: 'espera',
-  attackingRhythm: 'medio',
-  offensiveBehavior: 'directo',
-  offensiveFocus: 'espalda lateral',
-  detectedWeakness: 'espalda lateral',
+  strongSide: '',
+  mainThreat: '',
+  blockHeight: '',
+  pressureType: '',
+  attackingRhythm: '',
+  offensiveBehavior: '',
+  offensiveFocus: '',
+  detectedWeakness: '',
   squad: [],
 };
 
@@ -416,14 +416,14 @@ const tacticalIdentityLabels = {
   detectedWeakness: 'Debilidad detectada',
 };
 const getTeamTacticalIdentity = (team = {}) => ({
-  strongSide: team.strongSide || 'interior',
-  mainThreat: team.mainThreat || 'transición',
-  blockHeight: team.blockHeight || 'medio',
-  pressureType: team.pressureType || 'espera',
-  attackingRhythm: team.attackingRhythm || 'medio',
-  offensiveBehavior: team.offensiveBehavior || 'directo',
-  offensiveFocus: team.offensiveFocus || 'espalda lateral',
-  detectedWeakness: team.detectedWeakness || 'espalda lateral',
+  strongSide: hasRealValue(team.strongSide) ? team.strongSide : '',
+  mainThreat: hasRealValue(team.mainThreat) ? team.mainThreat : '',
+  blockHeight: hasRealValue(team.blockHeight) ? team.blockHeight : '',
+  pressureType: hasRealValue(team.pressureType) ? team.pressureType : '',
+  attackingRhythm: hasRealValue(team.attackingRhythm) ? team.attackingRhythm : '',
+  offensiveBehavior: hasRealValue(team.offensiveBehavior) ? team.offensiveBehavior : '',
+  offensiveFocus: hasRealValue(team.offensiveFocus) ? team.offensiveFocus : '',
+  detectedWeakness: hasRealValue(team.detectedWeakness) ? team.detectedWeakness : '',
 });
 const capitalizeText = (value) => {
   const text = String(value || '').trim();
@@ -431,11 +431,11 @@ const capitalizeText = (value) => {
 };
 const mapRivalIdentityToPre = (identity = {}) => {
   const data = getTeamTacticalIdentity(identity);
-  const block = capitalizeText(data.blockHeight) || 'Medio';
-  const pressure = data.pressureType === 'tras pérdida' || data.pressureType === 'hombre a hombre' ? 'Alta' : data.pressureType === 'repliegue' ? 'Baja' : 'Media';
+  const block = capitalizeText(data.blockHeight);
+  const pressure = data.pressureType === 'tras pérdida' || data.pressureType === 'hombre a hombre' ? 'Alta' : data.pressureType === 'repliegue' ? 'Baja' : data.pressureType ? 'Media' : '';
   return {
-    preRivalStyle: `${data.offensiveBehavior} · ritmo ${data.attackingRhythm} · foco ${data.offensiveFocus}`,
-    preRivalStrengths: `Lado fuerte ${data.strongSide}; amenaza principal ${data.mainThreat}.`,
+    preRivalStyle: [data.offensiveBehavior, data.attackingRhythm ? `ritmo ${data.attackingRhythm}` : '', data.offensiveFocus ? `foco ${data.offensiveFocus}` : ''].filter(Boolean).join(' · '),
+    preRivalStrengths: [data.strongSide ? `Lado fuerte ${data.strongSide}` : '', data.mainThreat ? `amenaza principal ${data.mainThreat}` : ''].filter(Boolean).join('; '),
     preRivalWeaknesses: data.detectedWeakness,
     preRivalBuildUp: data.offensiveBehavior === 'combinativo' ? 'Combinativo' : data.offensiveBehavior === 'directo' ? 'Directo' : 'Mixto',
     preRivalDefensiveBlock: block,
@@ -557,6 +557,15 @@ const mapSnakeRowToCamel = (row) =>
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const safeArray = (value) => (Array.isArray(value) ? value : []);
 const safeObject = (value) => (isPlainObject(value) ? value : {});
+const hasRealValue = (value) => {
+  if (value === null || value === undefined) return false;
+  if (Array.isArray(value)) return value.some(hasRealValue);
+  if (isPlainObject(value)) return Object.values(value).some(hasRealValue);
+  return String(value).trim() !== '';
+};
+const hasObservedSource = (...values) => values.some(hasRealValue);
+const getInsufficientLabel = (fallback = 'Información insuficiente') => fallback;
+const getMissingDataLabel = (fallback = 'Sin dato registrado') => fallback;
 const normalizePreAiAnalysis = (value) => {
   if (isPlainObject(value)) return value;
   if (typeof value === 'string' && value.trim()) {
@@ -682,37 +691,44 @@ const createPartidoPayload = (matchFormState, teams = []) => {
 const normalizeSupabaseGoalEvent = (event) => ({
   id: event.id,
   partidoId: event.partido_id,
-  type: event.type || 'Gol a favor',
-  half: event.half || '1ª parte',
+  type: event.type || '',
+  half: event.half || '',
   minute: event.minute || '',
   scorer: event.scorer || '',
+  scorerId: event.scorer_id || event.scorerId || null,
   assistant: event.assistant || '',
-  phase: event.phase || 'Juego combinativo',
-  subphase: event.subphase || 'Dentro del área',
-  shotZone: event.shot_zone || 'F.Creación centro',
-  assistZone: event.assist_zone || 'F.Creación centro',
-  goalZone: event.goal_zone || 'Media centro',
-  contact: event.contact || 'Pie derecho',
+  assistantId: event.assistant_id || event.assistantId || null,
+  phase: event.phase || '',
+  subphase: event.subphase || '',
+  shotZone: event.shot_zone || '',
+  assistZone: event.assist_zone || '',
+  goalZone: event.goal_zone || '',
+  contact: event.contact || '',
   videoUrl: event.video_url || '',
   description: event.description || '',
 });
 
-const createGoalEventPayload = (partidoId, draft) => ({
-  partido_id: partidoId,
-  type: draft.type,
-  half: draft.half,
-  minute: draft.minute,
-  scorer: draft.scorer,
-  assistant: draft.assistant,
-  phase: draft.phase,
-  subphase: draft.subphase,
-  shot_zone: draft.shotZone,
-  assist_zone: draft.assistZone,
-  goal_zone: draft.goalZone,
-  contact: draft.contact,
-  description: draft.summary || '',
-  video_url: draft.videoUrl,
-});
+const createGoalEventPayload = (partidoId, draft) => {
+  const payload = {
+    partido_id: partidoId,
+    type: draft.type,
+    half: draft.half,
+    minute: draft.minute,
+    scorer: draft.scorer,
+    assistant: draft.assistant,
+    phase: draft.phase,
+    subphase: draft.subphase,
+    shot_zone: draft.shotZone,
+    assist_zone: draft.assistZone,
+    goal_zone: draft.goalZone,
+    contact: draft.contact,
+    description: draft.summary || '',
+    video_url: draft.videoUrl,
+  };
+  if (draft.scorerId) payload.scorer_id = draft.scorerId;
+  if (draft.assistantId) payload.assistant_id = draft.assistantId;
+  return payload;
+};
 
 const createCompatibleGoalEventPayload = (partidoId, draft) => ({
   partido_id: partidoId,
@@ -3043,7 +3059,7 @@ function App() {
           return acc;
         }, {});
     if (quickEventsResponse.error) {
-      console.warn('No se pudieron cargar eventos rápidos para Partidos; se continúa sin avisos:', quickEventsResponse.error);
+      console.warn('No se pudieron cargar eventos rápidos para Partidos; se continúa marcando esos datos como no cargados:', quickEventsResponse.error);
     }
     const nextMatches = (data || []).map((match) => ({
       ...normalizeSupabasePartido(match),
@@ -3387,6 +3403,7 @@ function App() {
           partidoId,
           error: quickEventsResponse.error,
         });
+        setPostError(`No se pudieron cargar los eventos rápidos: ${quickEventsResponse.error.message || 'error desconocido'}`);
       } else {
         quickEvents = (quickEventsResponse.data || []).map(normalizeSupabaseQuickEvent);
       }
@@ -3459,6 +3476,7 @@ function App() {
       const quickEventsResponse = await supabase.from("match_quick_events").select("*");
       if (quickEventsResponse.error) {
         console.warn('No se pudieron cargar eventos rápidos para Análisis Grupal; se continúa sin ellos:', quickEventsResponse.error);
+        setGroupError(`No se pudieron cargar los eventos rápidos: ${quickEventsResponse.error.message || 'error desconocido'}`);
       } else {
         quickEventsRows = quickEventsResponse.data || [];
       }
@@ -6883,6 +6901,23 @@ function App() {
   };
 
   const getStatsGoalEvents = () => selectedMatch?.statsGoalEvents || [];
+  const goalEventMatchesPlayer = (event, player) => {
+    if (!event || !player) return false;
+    if (event.scorerId || event.assistantId) {
+      return event.scorerId === player.id || event.assistantId === player.id;
+    }
+    return event.scorer === player.name || event.assistant === player.name;
+  };
+  const isGoalScoredByPlayer = (event, player) => {
+    if (!event || !player) return false;
+    if (event.scorerId) return event.scorerId === player.id;
+    return event.scorer === player.name;
+  };
+  const isGoalAssistedByPlayer = (event, player) => {
+    if (!event || !player) return false;
+    if (event.assistantId) return event.assistantId === player.id;
+    return event.assistant === player.name;
+  };
   const getStatsScore = () => {
     const eventCaudalGoals = getStatsGoalEvents().filter((event) => event.type === 'Gol a favor').length;
     const eventRivalGoals = getStatsGoalEvents().filter((event) => event.type === 'Gol en contra').length;
@@ -6895,9 +6930,10 @@ function App() {
 
   const getStatsPlayerTotals = (playerName) => {
     const events = getStatsGoalEvents();
+    const player = players.find((item) => item.name === playerName);
     return {
-      goals: events.filter((event) => event.type === 'Gol a favor' && event.scorer === playerName).length,
-      assists: events.filter((event) => event.type === 'Gol a favor' && event.assistant === playerName).length,
+      goals: events.filter((event) => event.type === 'Gol a favor' && isGoalScoredByPlayer(event, player || { name: playerName })).length,
+      assists: events.filter((event) => event.type === 'Gol a favor' && isGoalAssistedByPlayer(event, player || { name: playerName })).length,
     };
   };
 
@@ -7207,7 +7243,7 @@ function App() {
         jugador_id: isUuid(player?.id) ? player.id : null,
         player_name: playerName,
         role: 'Titular',
-        minutes: String(current.minutes && current.minutes !== '0' ? current.minutes : '90'),
+        minutes: hasRealValue(current.minutes) ? String(current.minutes) : '',
         yellow: Boolean(current.yellow),
         yellow_count: Number(current.yellowCount || 0),
         red: Boolean(current.red),
@@ -7230,9 +7266,14 @@ function App() {
     const isStarter = lineup.includes(playerName);
     const totals = getStatsPlayerTotals(playerName);
     const yellowCount = Number(stored.yellowCount ?? (stored.yellow ? 1 : 0)) || 0;
+    const hasStoredMinutes = hasRealValue(stored.minutes);
+    const minutesReal = hasStoredMinutes ? Number(stored.minutes || 0) : null;
     return {
       role: isStarter ? 'Titular' : stored.role || 'Suplente',
-      minutes: stored.minutes ?? (isStarter ? 90 : 0),
+      minutes: hasStoredMinutes ? stored.minutes : '',
+      minutesReal,
+      minutesEstimated: !hasStoredMinutes && isStarter ? 90 : 0,
+      minutesPending: !hasStoredMinutes && isStarter,
       yellow: yellowCount > 0,
       yellowCount,
       red: stored.red || false,
@@ -7395,8 +7436,8 @@ function App() {
       tone: event.type === 'Gol a favor' ? 'border-emerald-200/10 bg-emerald-400/[0.07]' : 'border-red-200/10 bg-red-500/[0.07]',
       title: event.type === 'Gol a favor' ? event.scorer || 'Gol Caudal' : selectedMatch.opponent || 'Gol rival',
       subtitle: event.assistant ? `Asist. ${event.assistant}` : `Tramo ${getStatsMomentRange(event.minute)}`,
-      detail: event.description || `${event.phase || 'Fase'} · ${event.subphase || 'Subfase'}`,
-      meta: `Finaliza: ${normalizePitchZone(event.shotZone)} · Genera: ${normalizePitchZone(event.assistZone)} · Entra: ${event.goalZone || '-'}`,
+      detail: event.description || `${event.phase || 'Sin fase registrada'} · ${event.subphase || 'Sin subfase registrada'}`,
+      meta: `Finaliza: ${event.shotZone ? normalizePitchZone(event.shotZone) : 'Sin zona registrada'} · Genera: ${event.assistZone ? normalizePitchZone(event.assistZone) : 'Sin zona registrada'} · Entra: ${event.goalZone || 'Sin zona registrada'}`,
     }));
     const substitutions = getStatsSubstitutionEvents().map((event) => ({
       id: `sub-${event.outPlayer}-${event.inPlayer}-${event.minute}`,
@@ -7412,7 +7453,7 @@ function App() {
     }));
     const playerIncidents = getStatsCalledPlayers().flatMap((player) => {
       const stats = getStatsPlayerData(player.name);
-      const minute = Number(stats.minutes || 90) || 90;
+      const minute = Number(stats.minutes || 0) || 0;
       return [
         stats.red ? {
           id: `red-${player.name}`,
@@ -7422,7 +7463,7 @@ function App() {
           priority: 2,
           tone: 'border-red-200/10 bg-red-500/[0.08]',
           title: player.name,
-          subtitle: `${minute}' · expulsión`,
+          subtitle: `${minute ? `${minute}'` : 'Minuto pendiente'} · expulsión`,
           detail: 'Condiciona estructura y minutos.',
           meta: '',
         } : null,
@@ -7434,7 +7475,7 @@ function App() {
           priority: 3,
           tone: 'border-rose-200/10 bg-rose-400/[0.08]',
           title: player.name,
-          subtitle: `${minute}' · lesión`,
+          subtitle: `${minute ? `${minute}'` : 'Minuto pendiente'} · lesión`,
           detail: 'Incidencia médica registrada.',
           meta: '',
         } : null,
@@ -7478,7 +7519,7 @@ function App() {
     const starters = called.filter((player) => getStatsPlayerData(player.name).role === 'Titular');
     const used = called.filter((player) => {
       const stats = getStatsPlayerData(player.name);
-      return Number(stats.minutes || 0) > 0 || getStatsSubstituteMinutes(player.name) > 0 || stats.role === 'Titular';
+      return Number(stats.minutes || 0) > 0 || getStatsSubstituteMinutes(player.name) > 0;
     });
     const unusedSubs = called.filter((player) => {
       const stats = getStatsPlayerData(player.name);
@@ -7501,7 +7542,8 @@ function App() {
         const minutes = Number(getStatsSubstituteMinutes(player.name) || stats.minutes || 0);
         const rating = Number(stats.rating || 0);
         const score = (rating * 10) + (stats.goals * 6) + (stats.assists * 4) + Math.min(minutes, 90) / 18 - (stats.red ? 8 : 0) - (stats.injured ? 2 : 0);
-        return { player, stats, minutes, rating, score };
+        const confidence = hasRealValue(stats.rating) && hasRealValue(stats.minutes) ? 'Alta' : hasRealValue(stats.rating) || hasRealValue(stats.minutes) || stats.goals || stats.assists ? 'Media' : 'Baja';
+        return { player, stats, minutes, rating, score, confidence };
       })
       .sort((a, b) => b.score - a.score);
     return ranked[0] || null;
@@ -7566,7 +7608,7 @@ function App() {
           jugador_id: jugadorId,
           player_name: playerName,
           role,
-          minutes: String(current.minutes ?? (role === 'Titular' ? 90 : 0)),
+          minutes: hasRealValue(current.minutes) ? String(current.minutes) : '',
           yellow: Boolean(current.yellow),
           yellow_count: Number(current.yellowCount || 0),
           red: Boolean(current.red),
@@ -7607,9 +7649,7 @@ function App() {
       const player = players.find((item) => item.name === playerName);
       const jugadorId = isUuid(player?.id) ? player.id : null;
       const next = { ...current, ...fields };
-      const hasPlayedEvent = Boolean(next.yellow || next.red || next.injured || next.goals || next.assists || next.replacementName);
       const replacementMinute = Number(next.minutes || 0);
-      if (hasPlayedEvent && Number(next.minutes || 0) <= 0) next.minutes = next.role === 'Titular' ? '90' : '1';
       const payload = {
         partido_id: selectedMatch.id,
         jugador_id: jugadorId,
@@ -7696,14 +7736,14 @@ function App() {
       return;
     }
 
-    const nextStats = { ...getStatsPlayerData(playerName), role: 'Titular', minutes: String(getStatsPlayerData(playerName).minutes || '90') };
+    const nextStats = { ...getStatsPlayerData(playerName), role: 'Titular', minutes: hasRealValue(getStatsPlayerData(playerName).minutes) ? String(getStatsPlayerData(playerName).minutes) : '' };
     await supabase.from("partido_estadisticas_jugador").upsert(
       {
         partido_id: selectedMatch.id,
         jugador_id: jugadorId,
         player_name: playerName,
         role: 'Titular',
-        minutes: nextStats.minutes === '0' ? '90' : nextStats.minutes,
+        minutes: nextStats.minutes,
         yellow: Boolean(nextStats.yellow),
         yellow_count: Number(nextStats.yellowCount || 0),
         red: Boolean(nextStats.red),
@@ -8019,6 +8059,7 @@ function App() {
   };
 
   const getGoalZonePhrase = (zone) => {
+    if (!hasRealValue(zone)) return getMissingDataLabel('sin zona registrada');
     const normalized = normalizePitchZone(zone).toLowerCase();
     if (normalized.includes('inicio')) return normalized.replace('f.', 'zona de ');
     if (normalized.includes('creación')) return normalized.replace('f.', 'zona de ');
@@ -8031,12 +8072,12 @@ function App() {
     if (normalized.includes('izquierda')) return 'por izquierda';
     if (normalized.includes('derecha')) return 'por derecha';
     if (normalized.includes('centro')) return 'por dentro';
-    return 'por dentro';
+    return getMissingDataLabel('sin lado registrado');
   };
 
   const buildGoalDraftSummary = (draft = goalAnalysisDraft) => {
     const minute = draft.minute ? `${draft.minute}': ` : '';
-    const action = String(draft.attackType || draft.phase || 'acción').toLowerCase();
+    const action = String(draft.attackType || draft.phase || getMissingDataLabel('acción sin fase registrada')).toLowerCase();
     const situation = draft.situation ? ` ${String(draft.situation).toLowerCase()}` : '';
     const originSide = getGoalSidePhrase(draft.assistZone);
     const origin = getGoalZonePhrase(draft.assistZone);
@@ -8121,11 +8162,15 @@ function App() {
       minute: String(minute),
       summary: goalAnalysisDraft.summary || buildGoalDraftSummary(goalAnalysisDraft),
     };
+    const scorerPlayer = players.find((player) => player.name === payloadDraft.scorer);
+    const assistantPlayer = players.find((player) => player.name === payloadDraft.assistant);
+    payloadDraft.scorerId = isUuid(scorerPlayer?.id) ? scorerPlayer.id : null;
+    payloadDraft.assistantId = isUuid(assistantPlayer?.id) ? assistantPlayer.id : null;
     const fullGoalPayload = createGoalEventPayload(selectedMatch.id, payloadDraft);
     let { error: goalError } = await supabase
       .from("partido_eventos_gol")
       .insert(fullGoalPayload);
-    if (goalError && /column|schema|cache|goal_zone|assist_zone|shot_zone|video_url|contact/i.test(goalError.message || '')) {
+    if (goalError && /column|schema|cache|goal_zone|assist_zone|shot_zone|video_url|contact|scorer_id|assistant_id/i.test(goalError.message || '')) {
       console.warn('Reintentando guardado de gol con payload compatible:', { fullGoalPayload, error: goalError });
       const retry = await supabase
         .from("partido_eventos_gol")
@@ -8183,16 +8228,6 @@ function App() {
       console.error('Error actualizando marcador del partido en Supabase:', matchScoreError);
       setStatsError(`Gol guardado, pero no se pudo actualizar marcador: ${matchScoreError.message || 'error desconocido'}`);
       return;
-    }
-
-    if (payloadDraft.type === 'Gol a favor') {
-      const involvedPlayers = [payloadDraft.scorer, payloadDraft.assistant].filter(Boolean);
-      for (const playerName of involvedPlayers) {
-        const current = getStatsPlayerData(playerName);
-        await updateStatsPlayerData(playerName, {
-          minutes: Number(current.minutes || 0) > 0 ? current.minutes : current.role === 'Titular' ? '90' : '1',
-        });
-      }
     }
 
     setLastGoalAnalysisContext({
@@ -8981,7 +9016,7 @@ function App() {
             </section>
 
             <section className="border border-caudal-electric/20 bg-caudal-electric/[0.07] p-4 shadow-glow">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">MVP partido</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Jugador destacado por datos registrados</p>
               {mvp ? (
                 <div className="mt-3 flex items-center gap-3">
                   <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-white/10 text-sm font-black text-white">
@@ -8989,11 +9024,11 @@ function App() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xl font-black text-white">{displayPlayerName(mvp.player)}</p>
-                    <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Nota {mvp.stats.rating || '-'} · Goles {mvp.stats.goals} · Asistencias {mvp.stats.assists}</p>
+                    <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Nota {mvp.stats.rating || '-'} · Goles {mvp.stats.goals} · Asistencias {mvp.stats.assists} · Confianza {mvp.confidence}</p>
                   </div>
                 </div>
               ) : (
-                <p className="mt-3 text-sm font-semibold text-slate-400">Añade convocados y notas para activar el MVP.</p>
+                <p className="mt-3 text-sm font-semibold text-slate-400">Añade convocados y datos registrados para activar este cálculo.</p>
               )}
             </section>
 
@@ -9868,16 +9903,16 @@ function App() {
         const matchEvents = goalEvents.filter((event) => event.partidoId === stats.partido_id);
         const yellowCount = Number(stats.yellow_count || 0) || (stats.yellow ? 1 : 0);
         const cardActions = [
-          ...Array.from({ length: yellowCount }, (_, index) => ({ minute: stats.minutes || 90, type: `Tarjeta amarilla${yellowCount > 1 ? ` ${index + 1}` : ''}` })),
-          ...(stats.red ? [{ minute: stats.minutes || 90, type: 'Tarjeta roja' }] : []),
+          ...Array.from({ length: yellowCount }, (_, index) => ({ minute: stats.minutes || '', type: `Tarjeta amarilla${yellowCount > 1 ? ` ${index + 1}` : ''}` })),
+          ...(stats.red ? [{ minute: stats.minutes || '', type: 'Tarjeta roja' }] : []),
         ];
         return {
           match,
           isCalled: true,
           role: stats.role || 'Suplente',
           minutes: Number(stats.minutes || 0) || 0,
-          goals: matchEvents.filter((event) => event.scorer === player.name),
-          assists: matchEvents.filter((event) => event.assistant === player.name),
+          goals: matchEvents.filter((event) => isGoalScoredByPlayer(event, player)),
+          assists: matchEvents.filter((event) => isGoalAssistedByPlayer(event, player)),
           yellow: yellowCount,
           red: Boolean(stats.red),
           injured: Boolean(stats.injured),
@@ -10156,7 +10191,7 @@ function App() {
       ['Sistema', hasSystem],
       ['Plantilla', hasPlayers],
       ['Once / roles', hasLineup],
-      ['Amenazas', hasKeyPlayers || Boolean(team.mainThreat) || Boolean(firstMatchValue('preRivalOffensiveKeyPlayers'))],
+      ['Amenazas', hasKeyPlayers || hasRealValue(team.mainThreat) || Boolean(firstMatchValue('preRivalOffensiveKeyPlayers'))],
       ['Informe', hasReport],
       ['ABP', hasSetPieces],
       ['Historial', hasHistory],
@@ -10176,13 +10211,13 @@ function App() {
         : 'border-red-200/20 bg-red-300/10 text-red-100';
     const trafficIcon = completionPercent >= 75 ? '●' : completionPercent >= 40 ? '●' : '●';
     const scoutingSource = latestScoutingMatch || {};
-    const strengthsText = firstMatchValue('preRivalStrengths') || `Amenaza principal: ${team.mainThreat || 'por definir'}`;
-    const weaknessesText = firstMatchValue('preRivalWeaknesses', 'preRivalSpacesAllowed') || `Espacio a atacar: ${team.detectedWeakness || 'por definir'}`;
-    const patternText = firstMatchValue('preRivalStyle', 'preRivalProgression', 'preRivalAfterRecovery') || `${team.offensiveBehavior || 'directo'} · ritmo ${team.attackingRhythm || 'medio'} · foco ${team.offensiveFocus || 'espalda lateral'}`;
+    const strengthsText = firstMatchValue('preRivalStrengths') || (hasRealValue(team.mainThreat) ? `Amenaza principal: ${team.mainThreat}` : '');
+    const weaknessesText = firstMatchValue('preRivalWeaknesses', 'preRivalSpacesAllowed') || (hasRealValue(team.detectedWeakness) ? `Espacio a atacar: ${team.detectedWeakness}` : '');
+    const patternText = firstMatchValue('preRivalStyle', 'preRivalProgression', 'preRivalAfterRecovery') || [team.offensiveBehavior, team.attackingRhythm ? `ritmo ${team.attackingRhythm}` : '', team.offensiveFocus ? `foco ${team.offensiveFocus}` : ''].filter(hasRealValue).join(' · ');
     const threatRows = [
       ...keyPlayers.slice(0, 2).map((player) => player.position ? `${displayPlayerName(player)} · ${player.position}` : displayPlayerName(player)),
       firstMatchValue('preRivalOffensiveKeyPlayers'),
-      team.mainThreat ? `Amenaza: ${team.mainThreat}` : null,
+      hasRealValue(team.mainThreat) ? `Amenaza: ${team.mainThreat}` : null,
       firstMatchValue('preRivalDangerZones') ? `Zona: ${firstMatchValue('preRivalDangerZones')}` : null,
       hasSetPieces ? 'ABP registrada' : null,
     ].filter(Boolean).slice(0, 3);
@@ -10227,10 +10262,10 @@ function App() {
       missingItems,
       threatRows,
       quickRead: [
-        ['Fortalezas', strengthsText],
-        ['Debilidades', weaknessesText],
-        ['Patrones', patternText],
-      ],
+      ['Fortalezas', strengthsText],
+      ['Debilidades', weaknessesText],
+      ['Patrones', patternText],
+      ].filter(([, value]) => hasRealValue(value)),
       tacticalLines,
       recentResults,
       recentMatches,
@@ -10445,14 +10480,16 @@ function App() {
       const roles = getFormationRoles(system);
       safeArray(match.statsGoalEvents).forEach((event) => {
         if (event.type !== 'Gol a favor') return;
-        if (event.scorer && byPlayer.has(event.scorer)) byPlayer.get(event.scorer).goals += 1;
-        if (event.assistant && byPlayer.has(event.assistant)) byPlayer.get(event.assistant).assists += 1;
+        const scorerPlayer = safeArray(players).find((player) => isGoalScoredByPlayer(event, player));
+        const assistantPlayer = safeArray(players).find((player) => isGoalAssistedByPlayer(event, player));
+        if (scorerPlayer && byPlayer.has(scorerPlayer.name)) byPlayer.get(scorerPlayer.name).goals += 1;
+        if (assistantPlayer && byPlayer.has(assistantPlayer.name)) byPlayer.get(assistantPlayer.name).assists += 1;
       });
       safeArray(players).forEach((player) => {
         const stored = match.statsPlayerData?.[player.name] || {};
         const slotIndex = lineup.indexOf(player.name);
         const isStarter = slotIndex >= 0;
-        const minutes = Number(stored.minutes ?? (isStarter ? 90 : 0)) || 0;
+        const minutes = hasRealValue(stored.minutes) ? Number(stored.minutes || 0) : 0;
         const row = byPlayer.get(player.name);
         row.minutes += minutes;
         row.starts += isStarter ? 1 : 0;
@@ -10492,7 +10529,7 @@ function App() {
       lineup.forEach((starterName, slotIndex) => {
         if (!starterName) return;
         const stored = match.statsPlayerData?.[starterName] || {};
-        const starterMinutes = Number(stored.minutes ?? 90) || 0;
+        const starterMinutes = hasRealValue(stored.minutes) ? Number(stored.minutes || 0) : 0;
         if (starterMinutes <= 0 || starterMinutes >= 90 || !stored.replacementName || !byPlayer.has(stored.replacementName)) return;
         const replacementStored = match.statsPlayerData?.[stored.replacementName] || {};
         if (Number(replacementStored.minutes || 0) > 0) return;
@@ -10641,9 +10678,10 @@ function App() {
       const events = match.statsGoalEvents || [];
       const stored = match.statsPlayerData?.[playerName] || {};
       const isStarter = (match.statsLineup || []).includes(playerName);
-      const minutes = Number(stored.minutes ?? (isStarter ? 90 : 0)) || 0;
-      const goals = events.filter((event) => event.type === 'Gol a favor' && event.scorer === playerName).length;
-      const assists = events.filter((event) => event.type === 'Gol a favor' && event.assistant === playerName).length;
+      const minutes = hasRealValue(stored.minutes) ? Number(stored.minutes || 0) : 0;
+      const player = players.find((item) => item.name === playerName) || { name: playerName };
+      const goals = events.filter((event) => event.type === 'Gol a favor' && isGoalScoredByPlayer(event, player)).length;
+      const assists = events.filter((event) => event.type === 'Gol a favor' && isGoalAssistedByPlayer(event, player)).length;
       acc.minutes += minutes;
       acc.starts += isStarter ? 1 : 0;
       acc.goals += goals;
@@ -10792,34 +10830,38 @@ function App() {
     const goalAgainstEvents = safeArray(groupData?.goalAgainstEvents);
     const quickEvents = safeArray(groupData?.quickEvents);
     const scopedMatches = safeArray(groupData?.scoped);
+    const reviewedSample = quickEvents.length + goalForEvents.filter((event) => hasObservedSource(event.phase, event.subphase, event.assistZone, event.shotZone)).length + goalAgainstEvents.filter((event) => hasObservedSource(event.phase, event.subphase, event.assistZone, event.shotZone)).length;
+    const hasMinimumSample = reviewedSample >= 3 || scopedMatches.length >= 2;
+    const realGoalForEvents = goalForEvents.filter((event) => hasObservedSource(event.phase, event.subphase, event.assistZone, event.shotZone, event.description));
+    const realGoalAgainstEvents = goalAgainstEvents.filter((event) => hasObservedSource(event.phase, event.subphase, event.assistZone, event.shotZone, event.description));
     const postEvents = scopedMatches.flatMap((match) => safeArray(match.events).map((event) => ({ ...event, match })));
     const allTextEvents = [
-      ...goalForEvents.map((event) => ({ ...event, text: `${event.phase || ''} ${event.subphase || ''} ${event.assistZone || ''} ${event.shotZone || ''}` })),
-      ...goalAgainstEvents.map((event) => ({ ...event, text: `${event.phase || ''} ${event.subphase || ''} ${event.assistZone || ''} ${event.shotZone || ''}` })),
+      ...realGoalForEvents.map((event) => ({ ...event, text: `${event.phase || ''} ${event.subphase || ''} ${event.assistZone || ''} ${event.shotZone || ''}` })),
+      ...realGoalAgainstEvents.map((event) => ({ ...event, text: `${event.phase || ''} ${event.subphase || ''} ${event.assistZone || ''} ${event.shotZone || ''}` })),
       ...postEvents.map((event) => ({ ...event, text: `${event.type || ''} ${event.description || ''}` })),
     ];
     const countByRules = (events, rules) => events.filter((event) => rules.some((rule) => rule.test(stripAccents(String(event.text || '')).toLowerCase()))).length;
     const zoneCount = (events, rules) => countByRules(events, rules);
-    const totalFor = Math.max(1, goalForEvents.length);
-    const totalAgainst = Math.max(1, goalAgainstEvents.length);
+    const totalFor = Math.max(1, realGoalForEvents.length);
+    const totalAgainst = Math.max(1, realGoalAgainstEvents.length);
     const identityRows = [
-      { key: 'combinativo', label: 'Juego combinativo', forCount: goalForEvents.filter((event) => event.phase === 'Juego combinativo').length, againstCount: goalAgainstEvents.filter((event) => event.phase === 'Juego combinativo').length },
-      { key: 'directo', label: 'Juego directo', forCount: goalForEvents.filter((event) => event.phase === 'Juego directo').length, againstCount: goalAgainstEvents.filter((event) => event.phase === 'Juego directo').length },
-      { key: 'transicion', label: 'Transición', forCount: goalForEvents.filter((event) => event.phase === 'Transición').length, againstCount: goalAgainstEvents.filter((event) => event.phase === 'Transición').length },
+      { key: 'combinativo', label: 'Juego combinativo', forCount: realGoalForEvents.filter((event) => event.phase === 'Juego combinativo').length, againstCount: realGoalAgainstEvents.filter((event) => event.phase === 'Juego combinativo').length },
+      { key: 'directo', label: 'Juego directo', forCount: realGoalForEvents.filter((event) => event.phase === 'Juego directo').length, againstCount: realGoalAgainstEvents.filter((event) => event.phase === 'Juego directo').length },
+      { key: 'transicion', label: 'Transición', forCount: realGoalForEvents.filter((event) => event.phase === 'Transición').length, againstCount: realGoalAgainstEvents.filter((event) => event.phase === 'Transición').length },
       { key: 'recuperacion', label: 'Recuperación alta', forCount: quickEvents.filter((event) => event.tipoEvento === 'recuperacion').length, againstCount: quickEvents.filter((event) => event.tipoEvento === 'recuperacion_rival').length },
-      { key: 'centro', label: 'Centro lateral', forCount: zoneCount(goalForEvents.map((event) => ({ text: `${event.subphase} ${event.assistZone} ${event.description}` })), [/centro|lateral|banda|derecha|izquierda/]), againstCount: zoneCount(goalAgainstEvents.map((event) => ({ text: `${event.subphase} ${event.assistZone} ${event.description}` })), [/centro|lateral|banda|derecha|izquierda/]) },
-      { key: 'abp', label: 'ABP', forCount: goalForEvents.filter((event) => event.phase === 'ABP').length, againstCount: goalAgainstEvents.filter((event) => event.phase === 'ABP').length },
-      { key: 'izquierda', label: 'Lado izquierdo', forCount: zoneCount(goalForEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/izquierda|izquierdo/]), againstCount: zoneCount(goalAgainstEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/izquierda|izquierdo/]) },
-      { key: 'derecha', label: 'Lado derecho', forCount: zoneCount(goalForEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/derecha|derecho/]), againstCount: zoneCount(goalAgainstEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/derecha|derecho/]) },
-      { key: 'central', label: 'Carril central', forCount: zoneCount(goalForEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/centro|central|dentro/]), againstCount: zoneCount(goalAgainstEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/centro|central|dentro/]) },
-      { key: 'segunda', label: 'Segunda jugada', forCount: goalForEvents.filter((event) => /segunda/i.test(`${event.phase} ${event.subphase} ${event.description}`)).length, againstCount: goalAgainstEvents.filter((event) => /segunda/i.test(`${event.phase} ${event.subphase} ${event.description}`)).length },
+      { key: 'centro', label: 'Centro lateral', forCount: zoneCount(realGoalForEvents.map((event) => ({ text: `${event.subphase} ${event.assistZone} ${event.description}` })), [/centro|lateral|banda|derecha|izquierda/]), againstCount: zoneCount(realGoalAgainstEvents.map((event) => ({ text: `${event.subphase} ${event.assistZone} ${event.description}` })), [/centro|lateral|banda|derecha|izquierda/]) },
+      { key: 'abp', label: 'ABP', forCount: realGoalForEvents.filter((event) => event.phase === 'ABP').length, againstCount: realGoalAgainstEvents.filter((event) => event.phase === 'ABP').length },
+      { key: 'izquierda', label: 'Lado izquierdo', forCount: zoneCount(realGoalForEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/izquierda|izquierdo/]), againstCount: zoneCount(realGoalAgainstEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/izquierda|izquierdo/]) },
+      { key: 'derecha', label: 'Lado derecho', forCount: zoneCount(realGoalForEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/derecha|derecho/]), againstCount: zoneCount(realGoalAgainstEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/derecha|derecho/]) },
+      { key: 'central', label: 'Carril central', forCount: zoneCount(realGoalForEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/centro|central|dentro/]), againstCount: zoneCount(realGoalAgainstEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/centro|central|dentro/]) },
+      { key: 'segunda', label: 'Segunda jugada', forCount: realGoalForEvents.filter((event) => /segunda/i.test(`${event.phase} ${event.subphase} ${event.description}`)).length, againstCount: realGoalAgainstEvents.filter((event) => /segunda/i.test(`${event.phase} ${event.subphase} ${event.description}`)).length },
     ].map((row) => ({
       ...row,
       forPct: Math.round((row.forCount / totalFor) * 100),
       againstPct: Math.round((row.againstCount / totalAgainst) * 100),
     }));
-    const dominantFor = identityRows.slice().sort((a, b) => b.forCount - a.forCount)[0];
-    const dominantAgainst = identityRows.slice().sort((a, b) => b.againstCount - a.againstCount)[0];
+    const dominantFor = hasMinimumSample ? identityRows.slice().sort((a, b) => b.forCount - a.forCount)[0] : null;
+    const dominantAgainst = hasMinimumSample ? identityRows.slice().sort((a, b) => b.againstCount - a.againstCount)[0] : null;
     const recentRows = getGroupTendency(scopedMatches);
     const homeIdentity = getQuickEventSummary(scopedMatches.filter((match) => match.isHome).flatMap((match) => safeArray(match.quickEvents)));
     const awayIdentity = getQuickEventSummary(scopedMatches.filter((match) => !match.isHome).flatMap((match) => safeArray(match.quickEvents)));
@@ -10833,6 +10875,7 @@ function App() {
         away: awayIdentity,
       },
       dna: [
+        !hasMinimumSample ? 'Sin muestra suficiente.' : null,
         dominantFor?.forCount ? `Equipo más eficaz en ${dominantFor.label.toLowerCase()}.` : null,
         dominantAgainst?.againstCount ? `Fragilidad defensiva: ${dominantAgainst.label.toLowerCase()}.` : null,
         homeIdentity.recoveries > awayIdentity.recoveries ? 'Más sólido/activo en casa.' : awayIdentity.rivalShots > homeIdentity.rivalShots ? 'Fuera concede más amenaza.' : null,
@@ -13838,11 +13881,11 @@ function App() {
               const quick = aggregate.quick;
               const visibleMatchIds = new Set(aggregate.rows.map((row) => row.match.id));
               const allGoalActions = (playerProfileData?.goalEvents || [])
-                .filter((event) => event.scorer === selectedPlayerProfile.name && visibleMatchIds.has(event.partidoId))
+                .filter((event) => isGoalScoredByPlayer(event, selectedPlayerProfile) && visibleMatchIds.has(event.partidoId))
                 .map((event) => ({ ...event, match: playerProfileData.partidosById[event.partidoId], action: 'Gol' }))
                 .filter((event) => event.match);
               const allAssistActions = (playerProfileData?.goalEvents || [])
-                .filter((event) => event.assistant === selectedPlayerProfile.name && visibleMatchIds.has(event.partidoId))
+                .filter((event) => isGoalAssistedByPlayer(event, selectedPlayerProfile) && visibleMatchIds.has(event.partidoId))
                 .map((event) => ({ ...event, match: playerProfileData.partidosById[event.partidoId], action: 'Asistencia' }))
                 .filter((event) => event.match);
               const influenceActions = playerInfluenceFilter === 'Goles' ? allGoalActions : playerInfluenceFilter === 'Asistencias' ? allAssistActions : [...allGoalActions, ...allAssistActions];
@@ -13857,7 +13900,7 @@ function App() {
                 ...aggregate.rows.flatMap((row) => [
                   ...row.cardActions.map((event, cardIndex) => ({ minute: event.minute, label: event.type.includes('roja') ? 'TR' : 'TA', icon: event.type.includes('roja') ? 'TR' : 'TA', type: event.type, tone: event.type.includes('roja') ? 'red' : 'yellow', match: row.match, actionKey: `card-${row.match.id}-${cardIndex}`, title: `${event.type} · ${getMatchScoreLabel(row.match)}` })),
                   row.role === 'Suplente' && row.minutes > 0 ? { minute: Math.max(0, 90 - Number(row.minutes || 0)), label: 'CAM', icon: 'CAM', type: 'Cambio', tone: 'sub', match: row.match, actionKey: `sub-${row.match.id}`, title: `Entrada al partido · ${getMatchScoreLabel(row.match)}` } : null,
-                  row.injured ? { minute: row.minutes || 90, label: 'LES', icon: 'LES', type: 'Lesión', tone: 'injury', match: row.match, actionKey: `injury-${row.match.id}`, title: `Lesión · ${getMatchScoreLabel(row.match)}` } : null,
+                  row.injured ? { minute: row.minutes || '', label: 'LES', icon: 'LES', type: 'Lesión', tone: 'injury', match: row.match, actionKey: `injury-${row.match.id}`, title: `Lesión · ${getMatchScoreLabel(row.match)}` } : null,
                 ].filter(Boolean)),
               ].filter((event) => event.minute !== '');
               const timelineGroups = Object.values(timelineActions.reduce((acc, event) => {
@@ -16012,13 +16055,13 @@ function App() {
                     <div className="absolute left-[16%] top-[59%] h-[28%] w-px bg-white/[0.035]" />
                     <div className="absolute right-[16%] top-[59%] h-[28%] w-px bg-white/[0.035]" />
                     {teamFieldViewMode === 'STAFF' ? <div className="absolute bottom-[29%] left-[10%] rounded-lg border border-dashed border-white/[0.06] bg-slate-950/15 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.14em] text-white/30">
-                      {getTeamTacticalIdentity(selectedTeam).strongSide}
+                      {getTeamTacticalIdentity(selectedTeam).strongSide || getInsufficientLabel('sin lado registrado')}
                     </div> : null}
                     {teamFieldViewMode === 'STAFF' ? <div className="absolute bottom-[29%] right-[10%] rounded-lg border border-dashed border-white/[0.06] bg-slate-950/15 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.14em] text-white/30">
-                      {getTeamTacticalIdentity(selectedTeam).mainThreat}
+                      {getTeamTacticalIdentity(selectedTeam).mainThreat || getInsufficientLabel('sin amenaza registrada')}
                     </div> : null}
                     {teamFieldViewMode === 'STAFF' ? <div className="absolute left-1/2 top-[57%] -translate-x-1/2 rounded-lg border border-dashed border-white/[0.06] bg-slate-950/15 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.14em] text-white/30">
-                      bloque {getTeamTacticalIdentity(selectedTeam).blockHeight}
+                      {getTeamTacticalIdentity(selectedTeam).blockHeight ? `bloque ${getTeamTacticalIdentity(selectedTeam).blockHeight}` : getInsufficientLabel('sin bloque registrado')}
                     </div> : null}
                     {(() => {
                       const identity = getTeamTacticalIdentity(selectedTeam);
@@ -16040,14 +16083,14 @@ function App() {
                       const showStaff = teamFieldViewMode === 'STAFF';
                       return (
                         <>
-                          <div className={`pointer-events-none absolute rounded-[2rem] border border-dashed border-caudal-electric/[0.12] bg-caudal-electric/[0.035] blur-[0.4px] ${sideClass}`} />
-                          {showStaff ? <div className={`pointer-events-none absolute rounded-full border border-dashed border-amber-100/[0.10] bg-amber-200/[0.045] blur-[1px] ${threatClass}`} /> : null}
-                          <div className={`pointer-events-none absolute left-[10%] right-[10%] ${blockTop} h-px bg-white/[0.10]`} />
-                          {showStaff ? <div className={`pointer-events-none absolute left-[10%] right-[10%] ${blockTop} -translate-y-3 text-center text-[7px] font-black uppercase tracking-[0.16em] text-white/28`}>
+                          {identity.strongSide ? <div className={`pointer-events-none absolute rounded-[2rem] border border-dashed border-caudal-electric/[0.12] bg-caudal-electric/[0.035] blur-[0.4px] ${sideClass}`} /> : null}
+                          {showStaff && identity.mainThreat ? <div className={`pointer-events-none absolute rounded-full border border-dashed border-amber-100/[0.10] bg-amber-200/[0.045] blur-[1px] ${threatClass}`} /> : null}
+                          {identity.blockHeight ? <div className={`pointer-events-none absolute left-[10%] right-[10%] ${blockTop} h-px bg-white/[0.10]`} /> : null}
+                          {showStaff && identity.pressureType ? <div className={`pointer-events-none absolute left-[10%] right-[10%] ${blockTop} -translate-y-3 text-center text-[7px] font-black uppercase tracking-[0.16em] text-white/28`}>
                             {pressureLabel}
                           </div> : null}
                           {showStaff ? <div className="pointer-events-none absolute left-1/2 top-[42%] h-12 w-px -translate-x-1/2 bg-gradient-to-b from-caudal-electric/0 via-caudal-electric/14 to-caudal-electric/0" /> : null}
-                          {showStaff ? <div className="pointer-events-none absolute left-1/2 top-[36%] -translate-x-1/2 rounded-lg border border-dashed border-caudal-electric/[0.10] bg-slate-950/15 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.12em] text-caudal-electric/42">
+                          {showStaff && identity.offensiveFocus ? <div className="pointer-events-none absolute left-1/2 top-[36%] -translate-x-1/2 rounded-lg border border-dashed border-caudal-electric/[0.10] bg-slate-950/15 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.12em] text-caudal-electric/42">
                             foco {identity.offensiveFocus}
                           </div> : null}
                         </>

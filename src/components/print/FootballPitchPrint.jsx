@@ -10,7 +10,7 @@ export default function FootballPitchPrint({ players = [], coordinates = [], kit
       <div className="print-pitch-box top small" />
       <div className="print-pitch-box bottom small" />
       {coordinates.map((slot, index) => {
-        const player = players[index] || { number: index === 0 ? 1 : index + 1, name: `Puesto ${index + 1}` };
+        const player = players[index] || { number: '', name: 'Sin jugador asignado' };
         const goalkeeper = index === 0 || String(player.position || '').toLowerCase().includes('portero');
         return (
           <div
