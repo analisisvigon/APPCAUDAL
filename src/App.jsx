@@ -2786,17 +2786,6 @@ function App() {
   const [playerInfluenceFilter, setPlayerInfluenceFilter] = useState('Todos');
   const [selectedTimelineAction, setSelectedTimelineAction] = useState(null);
   const [playerReport, setPlayerReport] = useState(null);
-  const [playerDossierDrafts, setPlayerDossierDrafts] = useState(() => {
-    try {
-      if (typeof window === 'undefined') return {};
-      return JSON.parse(window.localStorage.getItem('caudal-player-dossier-drafts-v1') || '{}');
-    } catch {
-      return {};
-    }
-  });
-  const [playerDossierEditing, setPlayerDossierEditing] = useState({ profile: false, strengths: false, improvements: false });
-  const [newStrengthDraft, setNewStrengthDraft] = useState('');
-  const [newImprovementDraft, setNewImprovementDraft] = useState('');
   const [rivalScoutingDrafts, setRivalScoutingDrafts] = useState(() => {
     try {
       if (typeof window === 'undefined') return {};
@@ -3729,15 +3718,6 @@ function App() {
   useEffect(() => {
     loadTeams();
   }, []);
-
-  useEffect(() => {
-    try {
-      if (typeof window === 'undefined') return;
-      window.localStorage.setItem('caudal-player-dossier-drafts-v1', JSON.stringify(playerDossierDrafts));
-    } catch (storageError) {
-      console.warn('No se pudo guardar el dossier local del jugador:', storageError);
-    }
-  }, [playerDossierDrafts]);
 
   useEffect(() => {
     try {
@@ -13916,18 +13896,6 @@ function App() {
               const maxSocietyCount = Math.max(1, ...assistantRows.map(([, count]) => count), ...assistedRows.map(([, count]) => count));
               const videoActions = [...allGoalActions, ...allAssistActions].filter((event) => event.videoUrl);
               const regularStarter = aggregate.played > 0 && aggregate.starts / aggregate.played >= 0.6;
-              const profilePosition = String(selectedPlayerProfile.position || '').toLowerCase();
-              const isFullBack = /lateral|carrilero|li|ld/.test(profilePosition);
-              const isWide = isFullBack || /extremo|banda|interior/.test(profilePosition);
-              const isForward = /delantero|punta|9|atacante/.test(profilePosition);
-              const isMidfielder = /medio|mediocentro|pivote|volante|interior/.test(profilePosition);
-              const isDefender = /central|defensa|lateral|carrilero/.test(profilePosition);
-              const positionLabel = selectedPlayerProfile.position || 'Jugador';
-              const footballProfileLines = [
-                `${positionLabel}${isFullBack && aggregate.assists + quick.corners + quick.boxEntries > 0 ? ' ofensivo' : regularStarter ? ' de continuidad' : ' de plantilla'}.`,
-                isMidfielder || aggregate.participation >= 55 ? 'Participa en fase de creación.' : isDefender ? 'Aporta estabilidad en estructura defensiva.' : isForward ? 'Prioriza amenaza y finalización.' : aggregate.played ? 'Aporta minutos en el plan competitivo.' : 'Pendiente de muestra competitiva.',
-                aggregate.assists || isWide && quick.corners ? 'Genera peligro desde centros y último pase.' : aggregate.goals ? 'Tiene impacto directo en área rival.' : quick.recoveries > quick.losses ? 'Suma valor tras pérdida y recuperación.' : quick.shots ? 'Busca finalización cuando aparece en campo.' : null,
-              ].filter(Boolean).slice(0, 3);
               const primaryMetrics = [
                 { label: 'Minutos', value: `${aggregate.minutes}'`, detail: aggregate.played ? `${Math.round(aggregate.minutes / Math.max(1, aggregate.played))}'/partido` : 'Sin partidos' },
                 { label: 'Partidos', value: aggregate.played, detail: `${aggregate.starts} titularidades` },
@@ -13955,30 +13923,6 @@ function App() {
                 .sort((a, b) => b.total - a.total);
               const topAssistant = assistantRows.length ? [...assistantRows].sort((a, b) => b[1] - a[1])[0] : null;
               const topAssociation = societyRows[0] || null;
-              const recentFormRows = aggregate.rows.slice(-5);
-              const recentRatings = recentFormRows.map((row) => Number(row.rating)).filter(Boolean);
-              const avgRecentRating = recentRatings.length ? recentRatings.reduce((sum, rating) => sum + rating, 0) / recentRatings.length : 0;
-              const formPoints = recentFormRows.reduce((sum, row) => sum + Number(row.minutes >= 60 ? 2 : row.minutes > 0 ? 1 : 0) + row.goals.length * 2 + row.assists.length + (Number(row.rating) >= 7 ? 2 : Number(row.rating) >= 5 ? 1 : 0), 0) + Math.min(4, quick.recent.length);
-              const formLabel = regularStarter
-                ? 'Titular consolidado'
-                : aggregate.directGoalParticipation >= 3
-                  ? 'Impacto ofensivo alto'
-                  : avgRecentRating >= 7
-                    ? 'Buena dinámica'
-                    : avgRecentRating && avgRecentRating < 5
-                      ? 'Momento delicado'
-                  : formPoints >= 8
-                    ? 'En crecimiento'
-                    : formPoints >= 4
-                      ? 'Irregular'
-                      : aggregate.played ? 'Baja participación' : 'Sin muestra';
-              const formDots = recentFormRows.length
-                ? recentFormRows.map((row) => {
-                  const impact = row.goals.length + row.assists.length;
-                  const rating = Number(row.rating) || 0;
-                  return rating >= 7 || impact ? 'bg-emerald-300' : rating >= 5 || row.minutes >= 60 ? 'bg-amber-200' : row.minutes > 0 ? 'bg-white/40' : rating ? 'bg-red-300' : 'bg-white/20';
-                })
-                : ['bg-white/15', 'bg-white/15', 'bg-white/15', 'bg-white/15', 'bg-white/15'];
               const prePostRows = aggregate.rows
                 .map((row) => {
                   const preNote = row.match.prePlayerNotes?.[selectedPlayerProfile.name] || '';
@@ -13993,62 +13937,6 @@ function App() {
                 quick.recoveries >= 4 ? ['Buena activación tras pérdida', 'Guardar clips de presión efectiva'] : null,
                 aggregate.yellow + aggregate.red >= 2 ? ['Riesgo disciplinario', 'Revisar entradas, perfiles y duelos'] : null,
               ].filter(Boolean);
-              const playerProfileIntro = [
-                `${footballProfileLines[0] || `${positionLabel}.`}`,
-                aggregate.played
-                  ? `Ha participado en ${aggregate.played} partidos y acumula ${aggregate.minutes}' durante el periodo analizado, con ${aggregate.starts} titularidades y una participación global del ${aggregate.participation}%.`
-                  : 'Todavía no hay muestra competitiva suficiente para construir una lectura completa de temporada.',
-                aggregate.directGoalParticipation
-                  ? `Aporta ${aggregate.directGoalParticipation} acciones directas de gol entre tantos y asistencias.`
-                  : quick.recoveries || quick.losses
-                    ? `Su impacto se aprecia especialmente en acciones de ritmo: ${quick.recoveries} recuperaciones y ${quick.losses} pérdidas registradas.`
-                    : 'El informe se irá enriqueciendo a medida que se registren partidos, valoraciones y acciones revisadas.',
-              ];
-              const strengthRows = [
-                aggregate.participation >= 60 ? 'Continuidad competitiva y presencia sostenida durante la temporada.' : null,
-                regularStarter ? 'Capacidad para sostener partidos desde el inicio.' : null,
-                aggregate.directGoalParticipation >= 3 ? 'Impacto directo en goles y asistencias.' : null,
-                aggregate.assists ? 'Generación de ventajas mediante último pase y asistencia.' : null,
-                quick.recoveries > quick.losses && quick.recoveries >= 3 ? 'Buen balance en recuperación tras pérdida.' : null,
-                avgRecentRating >= 7 ? 'Valoraciones recientes por encima del estándar del grupo.' : null,
-              ].filter(Boolean).slice(0, 3);
-              const improvementRows = [
-                quick.losses >= 4 ? 'Reducir pérdidas y mejorar la seguridad de la siguiente acción.' : null,
-                aggregate.yellow + aggregate.red >= 2 ? 'Gestionar mejor los duelos para evitar sanciones y acciones de riesgo.' : null,
-                aggregate.participation < 30 && aggregate.played ? 'Aumentar continuidad competitiva y minutos de calidad.' : null,
-                aggregate.goals === 0 && (isForward || isWide) && aggregate.played ? 'Incrementar presencia en zonas de finalización.' : null,
-                avgRecentRating && avgRecentRating < 5 ? 'Elevar regularidad de rendimiento en los próximos partidos.' : null,
-                !aggregate.directGoalParticipation && aggregate.played ? 'Transformar participación en acciones más determinantes.' : null,
-              ].filter(Boolean).slice(0, 3);
-              const dossierDraft = playerDossierDrafts[selectedPlayerProfile.id] || {};
-              const autoProfileText = playerProfileIntro.join('\n\n');
-              const activeProfileText = typeof dossierDraft.profileText === 'string' && dossierDraft.profileText.trim()
-                ? dossierDraft.profileText
-                : autoProfileText;
-              const activeStrengthRows = Array.isArray(dossierDraft.strengths) && dossierDraft.strengths.length
-                ? dossierDraft.strengths.filter((item) => String(item || '').trim())
-                : strengthRows;
-              const activeImprovementRows = Array.isArray(dossierDraft.improvements) && dossierDraft.improvements.length
-                ? dossierDraft.improvements.filter((item) => String(item || '').trim())
-                : improvementRows;
-              const updateDossierDraft = (fields) => {
-                setPlayerDossierDrafts((current) => ({
-                  ...current,
-                  [selectedPlayerProfile.id]: {
-                    ...(current[selectedPlayerProfile.id] || {}),
-                    ...fields,
-                    updatedAt: new Date().toISOString(),
-                  },
-                }));
-              };
-              const updateDossierListItem = (field, index, value) => {
-                const sourceRows = field === 'strengths' ? activeStrengthRows : activeImprovementRows;
-                updateDossierDraft({ [field]: sourceRows.map((item, itemIndex) => (itemIndex === index ? value : item)) });
-              };
-              const removeDossierListItem = (field, index) => {
-                const sourceRows = field === 'strengths' ? activeStrengthRows : activeImprovementRows;
-                updateDossierDraft({ [field]: sourceRows.filter((_, itemIndex) => itemIndex !== index) });
-              };
               const orderedSeasonRows = aggregate.rows.slice().sort((a, b) => new Date(a.match.date || 0) - new Date(b.match.date || 0));
               const seasonStageRows = ['Inicio temporada', 'Mitad temporada', 'Final temporada'].map((label, index) => {
                 const from = Math.floor((orderedSeasonRows.length * index) / 3);
@@ -14115,177 +14003,34 @@ function App() {
               };
               return (
                 <div className="player-dossier-report space-y-5">
-                  <AccordionSection title="Dossier individual" subtitle="Ficha base del jugador" defaultOpen>
-                  <section className="rounded-[1.65rem] border border-white/10 bg-[#07111f] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.20)] sm:p-5">
-                    <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-2">
-                      <button onClick={() => setSelectedPlayerProfileId(null)} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10">Volver a plantilla</button>
-                      <button
-                        type="button"
-                        onClick={() => window.print()}
-                        className="rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-[#7aacff]"
-                      >
-                        Exportar PDF
-                      </button>
-                    </div>
-                    <div className="grid gap-4 lg:grid-cols-[150px_1fr]">
-                      <div className="space-y-2">
-                        <div className="flex h-36 w-36 items-center justify-center overflow-hidden rounded-[1.35rem] border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.14),rgba(255,255,255,0.05),rgba(212,0,0,0.12))] text-3xl font-black text-white shadow-[0_20px_48px_rgba(0,0,0,0.28)]">
+                  <section className="rounded-[1.35rem] border border-white/10 bg-[#07111f] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.20)] sm:p-5">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="grid min-w-0 gap-4 sm:grid-cols-[136px_minmax(0,1fr)] sm:items-center">
+                        <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-[1.15rem] border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.14),rgba(255,255,255,0.05),rgba(212,0,0,0.12))] text-3xl font-black text-white shadow-[0_20px_48px_rgba(0,0,0,0.28)]">
                           {selectedPlayerProfile.image ? <img src={selectedPlayerProfile.image} alt={selectedPlayerProfile.name} className="h-full w-full object-cover" /> : selectedPlayerProfile.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
                         </div>
-                      </div>
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-2xl border border-caudal-electric/30 bg-caudal-electric/90 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-950">{selectedPlayerProfile.position || 'Sin demarcación'}</span>
-                          <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">#{displayDorsal(selectedPlayerProfile.number)}</span>
-                          <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">{calculateAge(selectedPlayerProfile.dob)} años</span>
-                          <span className="rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-xs font-bold text-slate-400">Pie {selectedPlayerProfile.foot || 'no indicado'}</span>
-                        </div>
-                        <h2 className="mt-2 text-3xl font-black uppercase tracking-tight text-white sm:text-4xl">{selectedPlayerProfile.name}</h2>
-                        <p className="mt-2 max-w-3xl text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">Informe individual de temporada</p>
-                        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">Resumen preparado para lectura del jugador, con foco en rendimiento, evolución y acciones que explican su temporada.</p>
-                      </div>
-                    </div>
-                  </section>
-                  </AccordionSection>
-
-                  <AccordionSection title="Perfil del jugador" subtitle="Lectura individual de temporada" defaultOpen>
-                  <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-                    <div className="rounded-[1.5rem] border border-caudal-electric/15 bg-[linear-gradient(135deg,rgba(61,217,255,0.10),rgba(255,255,255,0.035))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <p className="text-xs font-black uppercase tracking-[0.22em] text-caudal-electric">Perfil del jugador</p>
-                        <div className="no-print flex flex-wrap gap-2">
-                          <button type="button" onClick={() => setPlayerDossierEditing((current) => ({ ...current, profile: !current.profile }))} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-white transition hover:bg-white/10">
-                            {playerDossierEditing.profile ? 'Cerrar edición' : 'Editar perfil'}
-                          </button>
-                          <button type="button" onClick={() => updateDossierDraft({ profileText: '' })} className="rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-caudal-electric transition hover:bg-caudal-electric hover:text-slate-950">
-                            Regenerar automático
-                          </button>
-                        </div>
-                      </div>
-                      {playerDossierEditing.profile ? (
-                        <div className="no-print mt-4">
-                          <textarea
-                            value={activeProfileText}
-                            onChange={(event) => updateDossierDraft({ profileText: event.target.value })}
-                            className="min-h-[190px] w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm leading-6 text-white placeholder:text-slate-500"
-                          />
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <button type="button" onClick={() => updateDossierDraft({ profileText: '' })} className="rounded-xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/10">Borrar manual</button>
-                            <button type="button" onClick={() => updateDossierDraft({ profileText: autoProfileText })} className="rounded-xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/10">Restaurar texto automático</button>
+                        <div className="min-w-0">
+                          <h2 className="text-3xl font-black uppercase tracking-tight text-white sm:text-4xl">{selectedPlayerProfile.name}</h2>
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <span className="rounded-2xl border border-caudal-electric/30 bg-caudal-electric/90 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-950">{selectedPlayerProfile.position || 'Sin demarcación'}</span>
+                            <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">#{displayDorsal(selectedPlayerProfile.number)}</span>
+                            <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">{calculateAge(selectedPlayerProfile.dob)} años</span>
+                            <span className="rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-xs font-bold text-slate-400">Pie {selectedPlayerProfile.foot || 'no indicado'}</span>
                           </div>
                         </div>
-                      ) : null}
-                      <div className="mt-4 space-y-4 text-base leading-7 text-slate-100">
-                        {activeProfileText.split('\n').filter((line) => line.trim()).map((line) => (
-                          <p key={line}>{line}</p>
-                        ))}
                       </div>
-                    </div>
-                    <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-5">
-                      <p className="text-xs font-black uppercase tracking-[0.22em] text-white">Forma reciente</p>
-                      <p className="mt-3 text-2xl font-black text-white">{formLabel}</p>
-                      <p className="mt-1 text-sm text-slate-400">{recentRatings.length ? `Nota media últimos partidos: ${avgRecentRating.toFixed(1)}` : 'Sin notas suficientes todavía'}</p>
-                      <div className="mt-5 flex items-center gap-2">
-                        {formDots.map((dotClass, index) => <span key={`${dotClass}-${index}`} className={`h-5 w-5 rounded-full border border-white/10 ${dotClass}`} />)}
+                      <div className="no-print flex flex-wrap gap-2 lg:justify-end">
+                        <button
+                          type="button"
+                          onClick={() => window.print()}
+                          className="rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-[#7aacff]"
+                        >
+                          Exportar PDF
+                        </button>
+                        <button onClick={() => setSelectedPlayerProfileId(null)} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10">Volver a plantilla</button>
                       </div>
                     </div>
                   </section>
-                  </AccordionSection>
-
-                  <AccordionSection title="Fortalezas y mejora" subtitle="Conclusiones principales del informe" defaultOpen>
-                  <section className="grid gap-4 lg:grid-cols-2">
-                    <div className="rounded-[1.5rem] border border-emerald-200/15 bg-emerald-200/[0.055] p-5">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-emerald-100">Fortalezas principales</h3>
-                        <div className="no-print flex flex-wrap gap-2">
-                          <button type="button" onClick={() => setPlayerDossierEditing((current) => ({ ...current, strengths: !current.strengths }))} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-white transition hover:bg-white/10">
-                            {playerDossierEditing.strengths ? 'Cerrar edición' : 'Editar'}
-                          </button>
-                          <button type="button" onClick={() => updateDossierDraft({ strengths: [] })} className="rounded-xl border border-emerald-200/20 bg-emerald-200/10 px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-emerald-100 transition hover:bg-emerald-200 hover:text-slate-950">Restaurar automático</button>
-                        </div>
-                      </div>
-                      {activeStrengthRows.length ? (
-                        <div className="mt-5 space-y-3">
-                          {activeStrengthRows.map((text, index) => (
-                            <div key={text} className="flex gap-3 rounded-2xl border border-emerald-200/10 bg-black/10 p-3 text-sm leading-6 text-slate-100">
-                              <span className="font-black text-emerald-200">✓</span>
-                              {playerDossierEditing.strengths ? (
-                                <div className="no-print flex flex-1 gap-2">
-                                  <input value={text} onChange={(event) => updateDossierListItem('strengths', index, event.target.value)} className="min-h-10 flex-1 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white" />
-                                  <button type="button" onClick={() => removeDossierListItem('strengths', index)} className="rounded-xl border border-red-200/20 bg-red-300/10 px-3 py-2 text-xs font-bold text-red-100">Eliminar</button>
-                                </div>
-                              ) : <p>{text}</p>}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="mt-5">{renderProfileEmptyState('Fortalezas en construcción.', 'Se necesitan más partidos, notas o acciones revisadas para fijar conclusiones fiables.', 'horizontal')}</div>
-                      )}
-                      {playerDossierEditing.strengths ? (
-                        <div className="no-print mt-4 flex flex-col gap-2 sm:flex-row">
-                          <input value={newStrengthDraft} onChange={(event) => setNewStrengthDraft(event.target.value)} placeholder="Añadir fortaleza..." className="min-h-11 flex-1 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-slate-500" />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const next = newStrengthDraft.trim();
-                              if (!next) return;
-                              updateDossierDraft({ strengths: [...activeStrengthRows, next].slice(0, 5) });
-                              setNewStrengthDraft('');
-                            }}
-                            className="rounded-xl bg-emerald-200 px-4 py-2 text-xs font-black uppercase tracking-[0.1em] text-slate-950"
-                          >
-                            Añadir
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className="rounded-[1.5rem] border border-amber-200/15 bg-amber-200/[0.055] p-5">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-amber-100">Áreas de mejora</h3>
-                        <div className="no-print flex flex-wrap gap-2">
-                          <button type="button" onClick={() => setPlayerDossierEditing((current) => ({ ...current, improvements: !current.improvements }))} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-white transition hover:bg-white/10">
-                            {playerDossierEditing.improvements ? 'Cerrar edición' : 'Editar'}
-                          </button>
-                          <button type="button" onClick={() => updateDossierDraft({ improvements: [] })} className="rounded-xl border border-amber-200/20 bg-amber-200/10 px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-amber-100 transition hover:bg-amber-200 hover:text-slate-950">Restaurar automático</button>
-                        </div>
-                      </div>
-                      {activeImprovementRows.length ? (
-                        <div className="mt-5 space-y-3">
-                          {activeImprovementRows.map((text, index) => (
-                            <div key={text} className="flex gap-3 rounded-2xl border border-amber-200/10 bg-black/10 p-3 text-sm leading-6 text-slate-100">
-                              <span className="font-black text-amber-200">→</span>
-                              {playerDossierEditing.improvements ? (
-                                <div className="no-print flex flex-1 gap-2">
-                                  <input value={text} onChange={(event) => updateDossierListItem('improvements', index, event.target.value)} className="min-h-10 flex-1 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white" />
-                                  <button type="button" onClick={() => removeDossierListItem('improvements', index)} className="rounded-xl border border-red-200/20 bg-red-300/10 px-3 py-2 text-xs font-bold text-red-100">Eliminar</button>
-                                </div>
-                              ) : <p>{text}</p>}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="mt-5">{renderProfileEmptyState('Sin áreas críticas detectadas.', 'Con más muestra competitiva el informe podrá señalar focos de mejora más concretos.', 'horizontal')}</div>
-                      )}
-                      {playerDossierEditing.improvements ? (
-                        <div className="no-print mt-4 flex flex-col gap-2 sm:flex-row">
-                          <input value={newImprovementDraft} onChange={(event) => setNewImprovementDraft(event.target.value)} placeholder="Añadir área de mejora..." className="min-h-11 flex-1 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-slate-500" />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const next = newImprovementDraft.trim();
-                              if (!next) return;
-                              updateDossierDraft({ improvements: [...activeImprovementRows, next].slice(0, 5) });
-                              setNewImprovementDraft('');
-                            }}
-                            className="rounded-xl bg-amber-200 px-4 py-2 text-xs font-black uppercase tracking-[0.1em] text-slate-950"
-                          >
-                            Añadir
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                  </section>
-                  </AccordionSection>
 
                   <AccordionSection title="Estadísticas principales" subtitle="Datos base del periodo analizado" defaultOpen>
                   <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-5 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
@@ -14330,38 +14075,36 @@ function App() {
                   </section>
                   </AccordionSection>
 
+                  {orderedSeasonRows.length ? (
                   <AccordionSection title="Evolución temporada" subtitle="Progresión por tramos" defaultOpen>
                   <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-5 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
-                    {orderedSeasonRows.length ? (
-                      <div className="grid gap-4 lg:grid-cols-3">
-                        {seasonStageRows.map((stage) => (
-                          <div key={stage.label} className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4">
-                            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{stage.label}</p>
-                            <div className="mt-4 h-2 rounded-full bg-white/10">
-                              <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${(stage.minutes / maxSeasonMinutes) * 100}%` }} />
+                    <div className="grid gap-4 lg:grid-cols-3">
+                      {seasonStageRows.map((stage) => (
+                        <div key={stage.label} className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4">
+                          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{stage.label}</p>
+                          <div className="mt-4 h-2 rounded-full bg-white/10">
+                            <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${(stage.minutes / maxSeasonMinutes) * 100}%` }} />
+                          </div>
+                          <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                            <div>
+                              <p className="text-xl font-black text-white">{stage.minutes}'</p>
+                              <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">Min</p>
                             </div>
-                            <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                              <div>
-                                <p className="text-xl font-black text-white">{stage.minutes}'</p>
-                                <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">Min</p>
-                              </div>
-                              <div>
-                                <p className="text-xl font-black text-white">{stage.rating}</p>
-                                <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">Nota</p>
-                              </div>
-                              <div>
-                                <p className="text-xl font-black text-white">{stage.impact}</p>
-                                <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">Impacto</p>
-                              </div>
+                            <div>
+                              <p className="text-xl font-black text-white">{stage.rating}</p>
+                              <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">Nota</p>
+                            </div>
+                            <div>
+                              <p className="text-xl font-black text-white">{stage.impact}</p>
+                              <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">Impacto</p>
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    ) : (
-                      renderProfileEmptyState('Evolución pendiente.', 'Cuando haya partidos y valoraciones se mostrará la progresión por tramos de temporada.', 'horizontal')
-                    )}
+                        </div>
+                      ))}
+                    </div>
                   </section>
                   </AccordionSection>
+                  ) : null}
 
                   <AccordionSection title="Acciones revisadas" subtitle="Registro de acciones destacadas">
                   <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)] sm:p-5">
