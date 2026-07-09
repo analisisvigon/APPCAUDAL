@@ -14945,7 +14945,7 @@ function App() {
                   </div>
 
                   {group.players.length > 0 ? (
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 min-[1800px]:grid-cols-5">
+                    <div className="grid gap-3 xl:grid-cols-2 min-[1700px]:grid-cols-3">
                       {group.players.map((player) => {
                         const staffStatus = staffStatusByPlayerId.get(player.id) || {};
                         const rosterRow = rosterDashboard.rowByPlayerId.get(player.id) || {};
@@ -14966,7 +14966,7 @@ function App() {
                           staffStatus.sub23 ? ['🔵 Sub-23', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
                         ].filter(Boolean);
                         return (
-                        <article key={player.id} onClick={() => setSelectedPlayerProfileId(player.id)} className="group relative min-h-[142px] cursor-pointer rounded-[1rem] border border-white/10 bg-[#0a1425]/86 p-3 shadow-[0_10px_24px_rgba(0,0,0,0.13)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c] hover:shadow-[0_14px_34px_rgba(0,0,0,0.20)] focus-within:border-caudal-electric/40">
+                        <article key={player.id} onClick={() => setSelectedPlayerProfileId(player.id)} className="group relative min-h-[112px] cursor-pointer rounded-[1rem] border border-white/10 bg-[#0a1425]/86 p-3 shadow-[0_10px_24px_rgba(0,0,0,0.13)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c] hover:shadow-[0_14px_34px_rgba(0,0,0,0.20)] focus-within:border-caudal-electric/40">
                           <details className="absolute right-2 top-2 z-20" onClick={(event) => event.stopPropagation()}>
                             <summary className="flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded-lg border border-white/10 bg-black/25 text-base font-black leading-none text-slate-300 transition hover:bg-white/10 hover:text-white">⋮</summary>
                             <div className="absolute right-0 mt-2 w-32 overflow-hidden rounded-xl border border-white/10 bg-[#07111f] p-1 shadow-[0_18px_45px_rgba(0,0,0,0.36)]">
@@ -14974,24 +14974,24 @@ function App() {
                               <button type="button" onClick={() => handleDelete(player)} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar</button>
                             </div>
                           </details>
-                          <div className="grid grid-cols-[52px_minmax(0,1fr)_auto] items-start gap-3 pr-7">
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.16),rgba(255,255,255,0.055)_42%,rgba(212,0,0,0.12))] text-sm font-black text-slate-100 shadow-[0_8px_18px_rgba(0,0,0,0.18)] transition duration-200 group-hover:scale-[1.02]">
+                          <div className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-start gap-3 pr-8">
+                            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.16),rgba(255,255,255,0.055)_42%,rgba(212,0,0,0.12))] text-sm font-black text-slate-100 shadow-[0_8px_18px_rgba(0,0,0,0.18)] transition duration-200 group-hover:scale-[1.02]">
                               {player.image ? <img src={player.image} alt={player.name} className="h-full w-full object-cover" /> : <span>{player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>}
                             </div>
-                            <div className="min-w-0">
-                              <h3 className="break-words text-[16px] font-black leading-[1.08] text-white">{player.name}</h3>
-                              <p className="mt-1 break-words text-[12px] font-bold leading-snug text-slate-300">{player.position || 'Sin demarcación'}</p>
+                            <div className="min-w-0 pr-1">
+                              <h3 className="line-clamp-2 [overflow-wrap:normal] [word-break:normal] text-[17px] font-black leading-[1.12] text-white">{player.name}</h3>
+                              <p className="mt-1 line-clamp-1 [overflow-wrap:normal] [word-break:normal] text-[12px] font-bold leading-snug text-slate-300">{player.position || 'Sin demarcación'}</p>
                               <p className="mt-0.5 text-[10px] font-semibold text-slate-500">{calculateAge(player.dob)} años</p>
                             </div>
-                            <p className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2.5 py-1 text-[12px] font-black text-caudal-electric">#{displayDorsal(player.number)}</p>
+                            <p className="mt-0.5 rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2.5 py-1 text-[12px] font-black text-caudal-electric">#{displayDorsal(player.number)}</p>
                           </div>
-                          <div className="mt-3 flex min-h-6 flex-wrap items-center gap-1">
+                          <div className="mt-2 flex min-h-5 flex-wrap items-center gap-1">
                             {statusLabel ? <span className={`rounded-lg border px-1.5 py-0.5 text-[9px] font-bold leading-none ${statusClass}`}>{statusLabel}</span> : null}
                             {tacticalChips.map(([label, className]) => (
                               <span key={label} className={`rounded-lg border px-1.5 py-0.5 text-[9px] font-bold leading-none ${className}`}>{label}</span>
                             ))}
                           </div>
-                          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-semibold text-slate-500">
+                          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-2 text-[11px] font-semibold text-slate-500">
                             <span>{minutesLabel} · {startsLabel}</span>
                             <span>Pie {footLabel}</span>
                           </div>
