@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import React from 'react';
+import { createPortal } from 'react-dom';
 
 import { supabase } from './lib/supabase';
 import LibrarySection from './components/library/LibrarySection';
@@ -13,6 +14,62 @@ const clubCrest =
 const defaultHomePhrase = 'Trabajo, identidad y detalle competitivo para preparar cada partido.';
 const homePhraseConfigKey = 'home_hero_phrase';
 const ENABLE_PRE_OWN_LINEUP = false;
+
+function FloatingActionMenu({ anchorRect, width = 224, onClose, children }) {
+  const menuRef = useRef(null);
+  const [position, setPosition] = useState({ left: 12, top: 12 });
+
+  useEffect(() => {
+    if (!anchorRect || typeof window === 'undefined') return undefined;
+    const margin = 12;
+    const menuWidth = width;
+    const estimatedHeight = menuRef.current?.offsetHeight || 260;
+    const opensUp = anchorRect.bottom + estimatedHeight + margin > window.innerHeight;
+    const left = Math.min(
+      window.innerWidth - menuWidth - margin,
+      Math.max(margin, anchorRect.right - menuWidth)
+    );
+    const top = opensUp
+      ? Math.max(margin, anchorRect.top - estimatedHeight - 8)
+      : Math.min(window.innerHeight - estimatedHeight - margin, anchorRect.bottom + 8);
+    setPosition({ left, top: Math.max(margin, top) });
+    return undefined;
+  }, [anchorRect, width, children]);
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      if (!menuRef.current || menuRef.current.contains(event.target)) return;
+      onClose();
+    };
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+    const handleScroll = () => onClose();
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+    window.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('resize', handleScroll);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, [onClose]);
+
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="fixed z-[9999] overflow-hidden rounded-xl border border-white/10 bg-[#07111f] p-1 shadow-[0_18px_55px_rgba(0,0,0,0.46)]"
+      style={{ left: position.left, top: position.top, width }}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {children}
+    </div>,
+    document.body
+  );
+}
 
 class SystemsFacingErrorBoundary extends React.Component {
   constructor(props) {
@@ -2635,6 +2692,7 @@ function App() {
   const [teamSearchTerm, setTeamSearchTerm] = useState('');
   const [teamSortMode, setTeamSortMode] = useState('Nombre');
   const [teamQuickFilter, setTeamQuickFilter] = useState('Todos');
+  const [floatingMenu, setFloatingMenu] = useState(null);
   const [isUploadingPlayerImage, setIsUploadingPlayerImage] = useState(false);
   const [isUploadingTeamCrest, setIsUploadingTeamCrest] = useState(false);
   const [homeLoading, setHomeLoading] = useState(false);
@@ -2902,6 +2960,25 @@ function App() {
       return;
     }
     setSession(null);
+  };
+
+  const closeFloatingMenu = () => {
+    setFloatingMenu(null);
+    setRivalQuickPlacement({ playerName: '', mode: '', slotIndex: 0, reserveIndex: 0 });
+  };
+
+  const openFloatingMenu = (event, menu) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const anchorRect = event.currentTarget.getBoundingClientRect();
+    setFloatingMenu((current) =>
+      current?.id === menu.id ? null : { ...menu, anchorRect }
+    );
+  };
+
+  const runMenuAction = (action) => {
+    closeFloatingMenu();
+    action();
   };
 
   const handleInstallApp = async () => {
@@ -14814,13 +14891,19 @@ function App() {
                         ].filter(Boolean);
                         return (
                         <article key={player.id} onClick={() => setSelectedPlayerProfileId(player.id)} className="group relative min-h-[112px] cursor-pointer rounded-[1rem] border border-white/10 bg-[#0a1425]/86 p-3 shadow-[0_10px_24px_rgba(0,0,0,0.13)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c] hover:shadow-[0_14px_34px_rgba(0,0,0,0.20)] focus-within:border-caudal-electric/40">
-                          <details className="absolute right-2 top-2 z-20" onClick={(event) => event.stopPropagation()}>
-                            <summary className="flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded-lg border border-white/10 bg-black/25 text-base font-black leading-none text-slate-300 transition hover:bg-white/10 hover:text-white">⋮</summary>
-                            <div className="absolute right-0 mt-2 w-32 overflow-hidden rounded-xl border border-white/10 bg-[#07111f] p-1 shadow-[0_18px_45px_rgba(0,0,0,0.36)]">
-                              <button type="button" onClick={() => openForm(player)} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-white transition hover:bg-white/10">Editar</button>
-                              <button type="button" onClick={() => handleDelete(player)} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar</button>
-                            </div>
-                          </details>
+                          <button
+                            type="button"
+                            onClick={(event) => openFloatingMenu(event, { id: `player-card-${player.id}`, type: 'player-card' })}
+                            className="absolute right-2 top-2 z-20 flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-black/25 text-base font-black leading-none text-slate-300 transition hover:bg-white/10 hover:text-white"
+                          >
+                            ⋮
+                          </button>
+                          {floatingMenu?.id === `player-card-${player.id}` ? (
+                            <FloatingActionMenu anchorRect={floatingMenu.anchorRect} width={144} onClose={closeFloatingMenu}>
+                              <button type="button" onClick={() => runMenuAction(() => openForm(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-white transition hover:bg-white/10">Editar</button>
+                              <button type="button" onClick={() => runMenuAction(() => handleDelete(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar</button>
+                            </FloatingActionMenu>
+                          ) : null}
                           <div className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-start gap-3 pr-8">
                             <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.16),rgba(255,255,255,0.055)_42%,rgba(212,0,0,0.12))] text-sm font-black text-slate-100 shadow-[0_8px_18px_rgba(0,0,0,0.18)] transition duration-200 group-hover:scale-[1.02]">
                               {player.image ? <img src={player.image} alt={player.name} className="h-full w-full object-cover" /> : <span>{player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>}
@@ -14874,17 +14957,9 @@ function App() {
                   <p className="mt-0.5 text-sm leading-5 text-slate-400">Consulta rápida de rivales antes de preparar el PRE.</p>
                 </div>
                 {!selectedTeam ? (
-                  <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[520px]">
-                    {[
-                      ['Rivales', teams.length],
-                      ['Scouting medio', `${Math.round(teams.reduce((sum, team) => sum + Number(getRivalCardProfile(team).completionPercent || 0), 0) / Math.max(1, teams.length))}%`],
-                      ['Último análisis', cleanTeamDisplayName(teams.map((team) => ({ team, profile: getRivalCardProfile(team) })).sort((a, b) => String(b.profile.latestMatch?.date || '').localeCompare(String(a.profile.latestMatch?.date || '')))[0]?.team?.name || 'Sin datos')],
-                    ].map(([label, value]) => (
-                      <div key={label} className="rounded-2xl border border-white/10 bg-black/15 px-3 py-2">
-                        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
-                        <p className="mt-1 truncate text-sm font-black text-white">{value}</p>
-                      </div>
-                    ))}
+                  <div className="rounded-2xl border border-white/10 bg-black/15 px-4 py-2">
+                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Rivales</p>
+                    <p className="mt-1 text-sm font-black text-white">{teams.length}</p>
                   </div>
                 ) : null}
                 <div className="flex shrink-0 flex-wrap gap-2">
@@ -14913,12 +14988,15 @@ function App() {
                     className="min-h-[42px] rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-black text-white outline-none"
                   >
                     <option>Nombre</option>
-                    <option>Última revisión</option>
+                    <option>Último enfrentamiento</option>
                     <option>Más reciente</option>
-                    <option>Más analizado</option>
                   </select>
                   <div className="flex flex-wrap gap-1.5 lg:col-span-2">
-                    {['Todos', '4-4-2', '4-3-3', '3-5-2', 'Scouting alto', 'Sin revisar'].map((filter) => (
+                    {['Todos', '4-4-2', '4-3-3', '3-5-2', 'Otros sistemas'].filter((filter) => {
+                      if (filter === 'Todos') return true;
+                      if (filter === 'Otros sistemas') return teams.some((team) => team.system && !['4-4-2', '4-3-3', '3-5-2'].includes(team.system));
+                      return teams.some((team) => team.system === filter);
+                    }).map((filter) => (
                       <button
                         key={filter}
                         type="button"
@@ -15571,10 +15649,17 @@ function App() {
                                         ) : null}
                                       </span>
                                     </button>
-                                    <details className="relative shrink-0">
-                                      <summary className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-sm font-black text-slate-300 transition hover:bg-white/10">⋮</summary>
-                                      <div className="absolute right-0 z-30 mt-2 w-64 overflow-hidden rounded-xl border border-white/10 bg-[#07111f] p-1 shadow-[0_18px_45px_rgba(0,0,0,0.36)]">
-                                        <button type="button" onClick={() => openRivalPlayerModal(player)} className="block w-full rounded-lg px-3 py-2.5 text-left text-xs font-bold text-white transition hover:bg-white/10">Editar jugador</button>
+                                    <div className="relative shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={(event) => openFloatingMenu(event, { id: `rival-player-${getRivalPlayerUniqueKey(player)}`, type: 'rival-player' })}
+                                        className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-sm font-black text-slate-300 transition hover:bg-white/10"
+                                      >
+                                        ⋮
+                                      </button>
+                                      {floatingMenu?.id === `rival-player-${getRivalPlayerUniqueKey(player)}` ? (
+                                        <FloatingActionMenu anchorRect={floatingMenu.anchorRect} width={256} onClose={closeFloatingMenu}>
+                                        <button type="button" onClick={() => runMenuAction(() => openRivalPlayerModal(player))} className="block w-full rounded-lg px-3 py-2.5 text-left text-xs font-bold text-white transition hover:bg-white/10">Editar jugador</button>
                                         <button
                                           type="button"
                                           onClick={() => setRivalQuickPlacement({ playerName: player.name, mode: 'Titular', slotIndex: 0, reserveIndex: 0 })}
@@ -15618,15 +15703,16 @@ function App() {
                                               </label>
                                             ) : null}
                                             <div className="mt-2 flex gap-2">
-                                              <button type="button" onClick={() => placeQuickRivalPlayer(player)} className="flex-1 rounded-lg bg-caudal-electric px-2 py-1.5 text-[10px] font-black text-slate-950">Colocar</button>
+                                              <button type="button" onClick={() => { placeQuickRivalPlayer(player); closeFloatingMenu(); }} className="flex-1 rounded-lg bg-caudal-electric px-2 py-1.5 text-[10px] font-black text-slate-950">Colocar</button>
                                               <button type="button" onClick={() => setRivalQuickPlacement({ playerName: '', mode: '', slotIndex: 0, reserveIndex: 0 })} className="rounded-lg border border-white/10 px-2 py-1.5 text-[10px] font-bold text-slate-300">Cancelar</button>
                                             </div>
                                           </div>
                                         ) : null}
-                                        <button type="button" onClick={() => removeFromLineup(player.name)} className="block w-full rounded-lg px-3 py-2.5 text-left text-xs font-bold text-slate-200 transition hover:bg-white/10">Quitar del campo</button>
-                                        <button type="button" onClick={() => requestSelectedTeamPlayerDelete(player)} className="block w-full rounded-lg px-3 py-2.5 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar jugador</button>
-                                      </div>
-                                    </details>
+                                        <button type="button" onClick={() => runMenuAction(() => removeFromLineup(player.name))} className="block w-full rounded-lg px-3 py-2.5 text-left text-xs font-bold text-slate-200 transition hover:bg-white/10">Quitar del campo</button>
+                                        <button type="button" onClick={() => runMenuAction(() => requestSelectedTeamPlayerDelete(player))} className="block w-full rounded-lg px-3 py-2.5 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar jugador</button>
+                                        </FloatingActionMenu>
+                                      ) : null}
+                                    </div>
                                   </div>
                                 );
                               })}
@@ -16127,98 +16213,75 @@ function App() {
                   ].join(' ')).includes(search);
                 })
                 .filter((team) => {
-                  const profile = getRivalCardProfile(team);
                   if (teamQuickFilter === 'Todos') return true;
                   if (['4-4-2', '4-3-3', '3-5-2'].includes(teamQuickFilter)) return team.system === teamQuickFilter;
-                  if (teamQuickFilter === 'Scouting alto') return Number(profile.completionPercent || 0) >= 80;
-                  if (teamQuickFilter === 'Sin revisar') return Number(profile.completionPercent || 0) < 50;
+                  if (teamQuickFilter === 'Otros sistemas') return team.system && !['4-4-2', '4-3-3', '3-5-2'].includes(team.system);
                   return true;
                 })
                 .sort((a, b) => {
                   const profileA = getRivalCardProfile(a);
                   const profileB = getRivalCardProfile(b);
-                  if (teamSortMode === 'Última revisión') return String(profileB.latestMatch?.date || '').localeCompare(String(profileA.latestMatch?.date || '')) || String(a.name).localeCompare(String(b.name));
+                  if (teamSortMode === 'Último enfrentamiento') return String(profileB.latestMatch?.date || '').localeCompare(String(profileA.latestMatch?.date || '')) || String(a.name).localeCompare(String(b.name));
                   if (teamSortMode === 'Más reciente') return String(profileB.latestMatch?.date || '').localeCompare(String(profileA.latestMatch?.date || '')) || String(a.name).localeCompare(String(b.name));
-                  if (teamSortMode === 'Más analizado') return Number(profileB.completionPercent || 0) - Number(profileA.completionPercent || 0) || profileB.relatedMatches.length - profileA.relatedMatches.length;
                   return cleanTeamDisplayName(a.name).localeCompare(cleanTeamDisplayName(b.name));
                 });
               return visibleTeams.length ? (
-                <div className="grid w-full auto-rows-fr gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-3.5">
                   {visibleTeams.map((team) => {
                     const profile = getRivalCardProfile(team);
                     const accent = team.kitColor || '#4f8cff';
-                    const lastResult = profile.recentResults[0] || null;
                     const lastMatch = profile.playedMatches[0] || profile.latestMatch || null;
                     const lastScore = lastMatch ? getMatchScoreData(lastMatch) : null;
-                    const lastScoreLabel = lastScore ? `${lastScore.caudalGoals}-${lastScore.rivalGoals}` : '';
                     const lastMatchDateLabel = lastMatch ? matchDisplayDate(lastMatch.date) : 'Sin fecha';
-                    const threatText = team.mainThreat || profile.threatRows[0]?.replace(/^Amenaza:\s*/i, '') || profile.quickRead.find(([label]) => label === 'Patrones')?.[1] || 'Sin amenaza definida';
-                    const scoutingCoverage = profile.completionPercent >= 80 ? 'Cobertura alta' : profile.completionPercent >= 50 ? 'Cobertura media' : 'Sin revisar';
-                    const resultWord = lastResult === 'V' ? 'Victoria' : lastResult === 'D' ? 'Derrota' : lastResult === 'E' ? 'Empate' : 'Sin partido';
+                    const lastMatchLine = lastScore
+                      ? `${lastMatchDateLabel} · Caudal ${lastScore.caudalGoals}-${lastScore.rivalGoals} ${cleanTeamDisplayName(team.name)}`
+                      : 'Sin enfrentamientos registrados';
                     return (
                       <article
                         key={team.id}
                         onClick={() => setSelectedTeamId(team.id)}
-                        className="group relative flex h-full min-h-[325px] cursor-pointer flex-col overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.88] p-3.5 shadow-[0_12px_34px_rgba(0,0,0,0.15)] transition duration-200 hover:-translate-y-1 hover:border-caudal-electric/30 hover:bg-[#0d192c] hover:shadow-[0_18px_46px_rgba(0,0,0,0.22)] active:scale-[0.995]"
+                        className="group relative flex h-full min-h-[190px] cursor-pointer flex-col overflow-hidden rounded-[1.1rem] border border-white/10 bg-[#091428]/[0.88] p-3.5 shadow-[0_12px_30px_rgba(0,0,0,0.14)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c] hover:shadow-[0_16px_40px_rgba(0,0,0,0.20)] active:scale-[0.995]"
                       >
                         <div className="pointer-events-none absolute inset-0 opacity-70" style={{ background: `radial-gradient(circle at 18% 8%, ${accent}28, transparent 34%), linear-gradient(135deg, rgba(255,255,255,0.045), transparent 52%)` }} />
                         <div className="relative flex items-start gap-3">
-                          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[1.15rem] border border-white/10 bg-white/[0.07] p-1.5 shadow-[0_10px_22px_rgba(0,0,0,0.18)]">
-                            <div className="flex h-[68px] w-[68px] items-center justify-center overflow-hidden rounded-2xl bg-white p-1.5 text-base font-black text-caudal-950">
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.07] p-1 shadow-[0_8px_18px_rgba(0,0,0,0.16)]">
+                            <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg bg-white p-1 text-sm font-black text-caudal-950">
                               {team.crest ? <img src={team.crest} alt={`Escudo de ${team.name}`} className="h-full w-full object-contain" /> : <span>{team.name.split(' ').map((part) => part[0]).join('').slice(0, 3)}</span>}
                             </div>
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-start justify-between gap-1.5">
-                              <h3 className="break-words text-[1.18rem] font-black uppercase leading-[1.08] text-white">{cleanTeamDisplayName(team.name)}</h3>
-                              <details onClick={(event) => event.stopPropagation()} className="relative shrink-0">
-                                <summary className="flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded-lg border border-white/10 bg-white/[0.045] text-sm font-black text-slate-300 transition hover:bg-white/10">⋯</summary>
-                                <div className="absolute right-0 z-20 mt-2 w-40 rounded-2xl border border-white/10 bg-[#081326] p-2 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
-                                  <button type="button" onClick={() => openTeamForm(team)} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-slate-200 transition hover:bg-white/10">Editar</button>
-                                  <button type="button" onClick={() => setActiveTab('Partidos')} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-caudal-electric transition hover:bg-caudal-electric/10">Crear PRE</button>
-                                  <button type="button" onClick={() => { if (window.confirm('¿Seguro que quieres eliminar este rival?')) handleTeamDelete(team); }} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar</button>
-                                </div>
-                              </details>
+                              <h3 className="break-words pr-1 text-[1rem] font-black uppercase leading-[1.12] text-white">{cleanTeamDisplayName(team.name)}</h3>
+                              <button
+                                type="button"
+                                onClick={(event) => openFloatingMenu(event, { id: `team-card-${team.id}`, type: 'team-card' })}
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.045] text-sm font-black text-slate-300 transition hover:bg-white/10"
+                              >
+                                ⋯
+                              </button>
+                              {floatingMenu?.id === `team-card-${team.id}` ? (
+                                <FloatingActionMenu anchorRect={floatingMenu.anchorRect} width={176} onClose={closeFloatingMenu}>
+                                  <button type="button" onClick={() => runMenuAction(() => openTeamForm(team))} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-slate-200 transition hover:bg-white/10">Editar equipo</button>
+                                  <button type="button" onClick={() => runMenuAction(() => setActiveTab('Partidos'))} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-caudal-electric transition hover:bg-caudal-electric/10">Crear PRE</button>
+                                  <button type="button" onClick={() => runMenuAction(() => { if (window.confirm('¿Seguro que quieres eliminar este rival?')) handleTeamDelete(team); })} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar equipo</button>
+                                </FloatingActionMenu>
+                              ) : null}
                             </div>
-                            <p className="mt-1.5 text-[11px] font-bold uppercase tracking-[0.10em] text-slate-500">{team.stadium || 'Sede no registrada'}</p>
+                            {team.stadium ? <p className="mt-1 text-xs font-semibold text-slate-400">{team.stadium}</p> : null}
                           </div>
                         </div>
 
-                        <div className="relative mt-4 flex flex-wrap gap-2">
-                          <span className="inline-flex items-baseline gap-2 rounded-xl bg-caudal-electric/[0.08] px-3 py-1.5 text-white">
-                            <span className="text-sm">⚽</span><span className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric/75">Sistema</span><span className="text-lg font-black">{team.system || 'Pendiente'}</span>
-                          </span>
-                          <span className="inline-flex max-w-full items-center gap-2 rounded-xl bg-amber-300/[0.09] px-3 py-1.5 text-xs font-black text-amber-100">
-                            <span>⚠</span><span className="truncate">{threatText}</span>
-                          </span>
+                        <div className="relative mt-3 text-sm font-bold text-slate-300">
+                          <span className="text-slate-500">Sistema:</span> <span className="text-white">{team.system || 'Sin registrar'}</span>
                         </div>
 
-                        <div className="relative mt-4 rounded-2xl border border-white/10 bg-white/[0.035] px-3.5 py-2.5">
-                          <div className="grid grid-cols-[1fr_auto] items-center gap-3">
-                            <div>
-                              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Último partido</p>
-                              <p className="mt-1 text-xs font-bold text-slate-400">{lastMatch ? lastMatchDateLabel : 'Sin enfrentamientos'}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className={`text-base font-black uppercase ${lastResult === 'V' ? 'text-emerald-200' : lastResult === 'D' ? 'text-red-200' : 'text-white'}`}>
-                                {lastResult ? `${resultWord} ${lastScoreLabel}` : '--'}
-                              </p>
-                              <p className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">vs Caudal · {profile.balance.wins}V {profile.balance.draws}E {profile.balance.losses}D</p>
-                            </div>
-                          </div>
+                        <div className="relative mt-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Último enfrentamiento</p>
+                          <p className="mt-1 text-xs font-bold leading-5 text-slate-300">{lastMatchLine}</p>
                         </div>
 
-                        <div className="relative mt-auto space-y-3 pt-4">
-                          <div>
-                            <div className="flex items-center justify-between gap-3">
-                              <span className={`rounded-xl border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] ${profile.completionClass}`}>{profile.completionPercent}% scouting</span>
-                              <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{scoutingCoverage}</span>
-                            </div>
-                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
-                              <div className={`h-full rounded-full transition-all duration-500 ${profile.completionPercent >= 80 ? 'bg-emerald-300' : profile.completionPercent >= 50 ? 'bg-amber-300' : 'bg-red-300'}`} style={{ width: `${profile.completionPercent}%` }} />
-                            </div>
-                          </div>
-                          <button type="button" onClick={(event) => { event.stopPropagation(); setSelectedTeamId(team.id); }} className="min-h-[34px] w-full rounded-xl bg-caudal-electric/90 px-3 py-1.5 text-xs font-black uppercase tracking-[0.10em] text-slate-950 transition hover:bg-caudal-electric active:scale-[0.98]">Ver rival</button>
+                        <div className="relative mt-auto pt-3">
+                          <button type="button" onClick={(event) => { event.stopPropagation(); setSelectedTeamId(team.id); }} className="min-h-[30px] w-full rounded-lg bg-caudal-electric/90 px-3 py-1.5 text-xs font-black uppercase tracking-[0.10em] text-slate-950 transition hover:bg-caudal-electric active:scale-[0.98]">Ver rival</button>
                         </div>
                       </article>
                     );
