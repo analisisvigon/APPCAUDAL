@@ -3532,9 +3532,12 @@ function App() {
   };
 
   const saveMatchLineupSlot = async ({ matchId, scope, slotIndex, playerName, jugadorRivalId = null }) => {
+    const rivalPlayersForSlot = selectedMatch
+      ? getRivalAvailablePlayers()
+      : dedupeRivalPlayers(getMatchRivalTeam(matchFormState)?.squad || []);
     const player = scope === 'pre_caudal'
       ? players.find((item) => item.name === playerName)
-      : getRivalAvailablePlayers().find((item) => item.name === playerName);
+      : rivalPlayersForSlot.find((item) => normalizePlayerIdentityName(item.name) === normalizePlayerIdentityName(playerName));
     const payload = {
       partido_id: matchId,
       scope,
@@ -3543,7 +3546,6 @@ function App() {
       jugador_id: scope === 'pre_caudal' && isUuid(player?.id) ? player.id : null,
       jugador_rival_id: scope === 'pre_rival' ? (isUuid(jugadorRivalId) ? jugadorRivalId : isUuid(player?.id) ? player.id : null) : null,
     };
-    if (scope === 'pre_rival') payload.player_snapshot = player ? normalizeSquadEntry(player) : {};
     const { error: slotError } = await supabase
       .from("partido_alineacion_slots")
       .upsert(payload, { onConflict: "partido_id,scope,slot" });
@@ -12321,15 +12323,28 @@ function App() {
       const { data: savedMatch, error: saveError } = await request;
       if (saveError) {
         console.error("[CREATE_MATCH_ERROR]", saveError);
-        setMatchSubmitError(saveError.message || 'No se ha podido guardar el encuentro.');
+        setMatchSubmitError('No se ha podido crear el encuentro.');
         return;
       }
       const savedMatchId = editingMatchId || savedMatch?.id;
-      const rivalLineup = safeArray(matchFormState.preRivalLineup).filter(Boolean);
-      if (savedMatchId && rivalLineup.length) {
-        await supabase.from("partido_alineacion_slots").delete().eq("partido_id", savedMatchId).eq("scope", "pre_rival");
-        for (const [slotIndex, playerName] of rivalLineup.entries()) {
-          if (playerName) await saveMatchLineupSlot({ matchId: savedMatchId, scope: 'pre_rival', slotIndex, playerName });
+      const rivalLineup = safeArray(matchFormState.preRivalLineup);
+      if (savedMatchId && rivalLineup.some(Boolean)) {
+        try {
+          await supabase.from("partido_alineacion_slots").delete().eq("partido_id", savedMatchId).eq("scope", "pre_rival");
+          for (const [slotIndex, playerName] of rivalLineup.entries()) {
+            if (playerName) await saveMatchLineupSlot({ matchId: savedMatchId, scope: 'pre_rival', slotIndex, playerName });
+          }
+        } catch (lineupError) {
+          console.error('[CREATE_MATCH_LINEUP_ERROR]', lineupError);
+          if (!editingMatchId) {
+            const { error: rollbackError } = await supabase.from("partidos").delete().eq("id", savedMatchId);
+            if (rollbackError) console.error('[CREATE_MATCH_ROLLBACK_ERROR]', rollbackError);
+            setMatchSubmitError('No se ha podido crear el encuentro.');
+            return;
+          }
+          await loadPartidos();
+          setMatchSubmitError('El encuentro se ha guardado, pero no se pudo generar la alineación inicial.');
+          return;
         }
       }
 
@@ -12339,7 +12354,7 @@ function App() {
       closeMatchForm();
     } catch (saveError) {
       console.error('[CREATE_MATCH_ERROR]', saveError);
-      setMatchSubmitError(saveError.message || 'No se ha podido guardar el encuentro.');
+      setMatchSubmitError('No se ha podido crear el encuentro.');
     } finally {
       setIsSavingMatch(false);
     }

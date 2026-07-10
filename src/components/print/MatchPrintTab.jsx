@@ -1070,7 +1070,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
       table: 'partido_alineacion_slots',
       sourceId,
       targetId,
-      columns: ['scope', 'slot', 'player_name', 'jugador_id', 'jugador_rival_id', 'player_snapshot'],
+      columns: ['scope', 'slot', 'player_name', 'jugador_id', 'jugador_rival_id'],
       conflict: 'partido_id,scope,slot',
       replace,
       filter: (query) => query.in('scope', ['pre_caudal', 'stats']),
