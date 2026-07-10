@@ -344,6 +344,11 @@ const emptyTeamForm = {
   squad: [],
 };
 
+const createEmptyTeamForm = () => ({
+  ...emptyTeamForm,
+  squad: [],
+});
+
 const emptyLineup = [];
 const emptyDepthChart = {};
 const rivalTacticalIdentityKey = 'caudal_rival_tactical_identity_v1';
@@ -878,7 +883,7 @@ const createRivalPlayerPayload = (teamId, player) => ({
 });
 
 const createRivalTeamPayload = (teamFormState, importedData) => ({
-  name: cleanTeamDisplayName(teamFormState.name.trim() || importedData?.name || 'Equipo sin nombre'),
+  name: getSafeRivalNameInput(teamFormState.name) || getSafeRivalNameInput(importedData?.name) || 'Equipo sin nombre',
   source_url: normalizeSourceUrl(teamFormState.sourceUrl) || '',
   crest: importedData?.crest || teamFormState.crest || '',
   stadium: importedData?.stadium || teamFormState.stadium.trim(),
@@ -2053,6 +2058,12 @@ const normalizeMatch = (match) => {
 };
 
 const cleanTeamDisplayName = (name) => name.replace(/^Plantilla\s+/i, '').trim();
+const isEmailLikeValue = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+const getSafeRivalNameInput = (value) => {
+  const cleanName = cleanTeamDisplayName(String(value || ''));
+  return isEmailLikeValue(cleanName) ? '' : cleanName;
+};
+const getRivalFormDisplayName = (value) => getSafeRivalNameInput(value) || 'Rival sin nombre';
 const comparableTeamName = (name) =>
   cleanTeamDisplayName(name || '')
     .normalize('NFD')
@@ -2836,7 +2847,7 @@ function App() {
     foot: 'Derecha',
     image: '',
   });
-  const [teamFormState, setTeamFormState] = useState(emptyTeamForm);
+  const [teamFormState, setTeamFormState] = useState(createEmptyTeamForm);
   const [matchFormState, setMatchFormState] = useState(emptyMatchForm);
   const [matchFormSection, setMatchFormSection] = useState('PRE');
   const playerImageInputRef = useRef(null);
@@ -11544,7 +11555,11 @@ function App() {
       });
     } else {
       setEditingTeamId(null);
-      setTeamFormState(emptyTeamForm);
+      setTeamFormState(createEmptyTeamForm());
+      setRivalScoutingDrafts((current) => {
+        const { __new, ...rest } = current;
+        return rest;
+      });
     }
     setTeamEditMode(!team);
     setEditingTeamPlayerIndex(null);
@@ -11558,6 +11573,11 @@ function App() {
     setTeamEditMode(false);
     setEditingTeamPlayerIndex(null);
     setPendingTeamDelete(null);
+    setTeamFormState(createEmptyTeamForm());
+    setRivalScoutingDrafts((current) => {
+      const { __new, ...rest } = current;
+      return rest;
+    });
     setImportStatus('');
   };
 
@@ -11592,7 +11612,7 @@ function App() {
 
   const handleTeamChange = (event) => {
     const { name, value } = event.target;
-    setTeamFormState((prev) => ({ ...prev, [name]: value }));
+    setTeamFormState((prev) => ({ ...prev, [name]: name === 'name' ? getSafeRivalNameInput(value) : value }));
   };
 
   const handleTeamCrestFileChange = async (event) => {
@@ -11846,7 +11866,7 @@ function App() {
         const { doc, players } = extractPlayersFromHtml(text, sourceUrl);
         if (players.length === 0) throw new Error('No se detectaron jugadores.');
         imported = {
-          name: extractTeamName(doc, teamFormState.name),
+          name: extractTeamName(doc, getSafeRivalNameInput(teamFormState.name)),
           crest: extractCrest(doc, sourceUrl),
           stadium: extractStadium(doc),
           kitColor: extractKitColor(doc),
@@ -12082,7 +12102,7 @@ function App() {
 
       setTeamFormState((prev) => ({
         ...prev,
-        name: cleanTeamDisplayName(imported.name || prev.name),
+        name: getSafeRivalNameInput(imported.name) || getSafeRivalNameInput(prev.name),
         sourceUrl,
         crest: imported.crest || prev.crest,
         stadium: imported.stadium || prev.stadium,
@@ -19811,9 +19831,10 @@ function App() {
         const keyCount = formSquad.filter((player) => player.isKey).length;
         const currentTeamForForm = teams.find((team) => team.id === editingTeamId) || null;
         const isQuickCreateTeam = !editingTeamId;
-        const formTeamName = cleanTeamDisplayName(teamFormState.name || currentTeamForForm?.name || 'Rival sin nombre');
-        const relatedMatches = matches.filter((match) => normalizePlayerIdentityName(match.opponent) === normalizePlayerIdentityName(formTeamName));
-        const hasIdentity = Boolean(teamFormState.name && teamFormState.crest);
+        const safeTeamFormName = getSafeRivalNameInput(teamFormState.name);
+        const formTeamName = isQuickCreateTeam ? getRivalFormDisplayName(safeTeamFormName) : getRivalFormDisplayName(safeTeamFormName || currentTeamForForm?.name);
+        const relatedMatches = safeTeamFormName ? matches.filter((match) => normalizePlayerIdentityName(match.opponent) === normalizePlayerIdentityName(safeTeamFormName)) : [];
+        const hasIdentity = Boolean(safeTeamFormName && teamFormState.crest);
         const hasSquad = formSquad.length > 0;
         const hasSystem = Boolean(teamFormState.system);
         const hasHistory = relatedMatches.length > 0;
@@ -19905,7 +19926,7 @@ function App() {
               </div>
             ) : null}
 
-            <form onSubmit={handleTeamSubmit} noValidate className="min-h-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
+            <form onSubmit={handleTeamSubmit} noValidate autoComplete="off" className="min-h-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
               {isQuickCreateTeam ? (
                 <>
                   <section className="grid gap-4 xl:grid-cols-[1fr_0.74fr]">
@@ -19914,7 +19935,7 @@ function App() {
                         <div className="space-y-4">
                           <label className="space-y-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                             <span>Nombre rival</span>
-                            <input required name="name" value={teamFormState.name} onChange={handleTeamChange} className="w-full rounded-2xl border border-caudal-electric/20 bg-white/[0.06] px-5 py-4 text-xl font-black normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Ej. Club Siero" />
+                            <input name="name" value={safeTeamFormName} onChange={handleTeamChange} autoComplete="new-password" autoCorrect="off" autoCapitalize="words" spellCheck="false" className="w-full rounded-2xl border border-caudal-electric/20 bg-white/[0.06] px-5 py-4 text-xl font-black normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Ej. Club Siero" />
                           </label>
                           <label className="space-y-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                             <span>Sistema</span>
@@ -19927,11 +19948,11 @@ function App() {
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Vista previa del rival</p>
                             <div className="mt-3 flex items-center gap-3">
                               <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-white p-2 text-sm font-black text-caudal-950">
-                                {teamFormState.crest ? <img src={teamFormState.crest} alt="" className="h-full w-full object-contain" /> : 'CLUB'}
+                                {teamFormState.crest ? <img src={teamFormState.crest} alt="" className="h-full w-full object-contain" /> : <span className="text-center text-[10px] font-black uppercase leading-tight text-caudal-950">Sin escudo</span>}
                               </div>
                               <div className="min-w-0">
-                                <p className="truncate text-base font-black uppercase text-white">{teamFormState.name || 'Rival sin nombre'}</p>
-                                <p className="mt-1 text-xs font-bold text-slate-500">{teamFormState.system || 'Sistema pendiente'} · Sin analizar</p>
+                                <p className="truncate text-base font-black uppercase text-white">{formTeamName}</p>
+                                <p className="mt-1 text-xs font-bold text-slate-500">{teamFormState.system || 'Seleccionar sistema (opcional)'} · Sin analizar</p>
                               </div>
                             </div>
                           </div>
@@ -19958,7 +19979,7 @@ function App() {
                           </button>
                           <label className="mt-3 block space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                             <span>O pegar URL de imagen</span>
-                            <input name="crest" type="password" value={teamFormState.crest} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="URL del escudo" />
+                            <input name="crest" type="password" value={teamFormState.crest} onChange={handleTeamChange} autoComplete="new-password" className="w-full rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="URL del escudo" />
                           </label>
                         </div>
                       </div>
@@ -19970,11 +19991,11 @@ function App() {
                       <div className="mt-4 space-y-3">
                         <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                           <span>URL Besoccer</span>
-                          <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? '' : teamFormState.sourceUrl} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquí el enlace del rival" />
+                          <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? '' : teamFormState.sourceUrl} onChange={handleTeamChange} autoComplete="new-password" className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquí el enlace del rival" />
                         </label>
                         <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                           <span>URL Transfermarkt</span>
-                          <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? teamFormState.sourceUrl : ''} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquí el enlace del rival" />
+                          <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? teamFormState.sourceUrl : ''} onChange={handleTeamChange} autoComplete="new-password" className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquí el enlace del rival" />
                         </label>
                         <button type="button" onClick={handleImportSquad} className="inline-flex w-full min-h-[44px] items-center justify-center rounded-2xl border border-caudal-electric/20 bg-caudal-electric/[0.12] px-5 py-3 text-xs font-black uppercase tracking-[0.12em] text-caudal-electric transition hover:bg-caudal-electric/20">
                           Importar datos
