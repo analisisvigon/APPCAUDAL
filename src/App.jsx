@@ -13,6 +13,7 @@ const clubCrest =
   'https://tmssl.akamaized.net//images/wappen/head/13226.png?lm=1747769013';
 const defaultHomePhrase = 'Trabajo, identidad y detalle competitivo para preparar cada partido.';
 const homePhraseConfigKey = 'home_hero_phrase';
+const ownClubStadiumConfigKeys = ['own_club_stadium', 'club_stadium', 'caudal_stadium', 'home_stadium'];
 const ENABLE_PRE_OWN_LINEUP = false;
 
 function FloatingActionMenu({ anchorRect, width = 224, onClose, children }) {
@@ -724,18 +725,19 @@ const normalizeSupabasePartido = (match) =>
 const createPartidoPayload = (matchFormState, teams = []) => {
   const selectedTeam = findTeamByDisplayName(teams, matchFormState.opponent);
   const equipoRivalId = isUuid(selectedTeam?.id) ? selectedTeam.id : null;
+  const roundValue = String(matchFormState.round || '').trim();
   const basePayload = {
     date: matchFormState.date || null,
     time: matchFormState.time || '',
     type: matchFormState.type || 'Liga',
-    round: matchFormState.round || '',
+    round: roundValue || null,
     stadium: matchFormState.stadium || '',
-    opponent: matchFormState.opponent || '',
-    opponent_crest: matchFormState.opponentCrest || '',
+    opponent: selectedTeam ? cleanTeamDisplayName(selectedTeam.name) : matchFormState.opponent || '',
+    opponent_crest: selectedTeam?.crest || matchFormState.opponentCrest || '',
     is_home: Boolean(matchFormState.isHome),
     status: matchFormState.status || 'Previa',
-    home_team: matchFormState.isHome ? 'C.D. Caudal' : matchFormState.opponent,
-    away_team: matchFormState.isHome ? matchFormState.opponent : 'C.D. Caudal',
+    home_team: matchFormState.isHome ? 'C.D. Caudal' : (selectedTeam ? cleanTeamDisplayName(selectedTeam.name) : matchFormState.opponent),
+    away_team: matchFormState.isHome ? (selectedTeam ? cleanTeamDisplayName(selectedTeam.name) : matchFormState.opponent) : 'C.D. Caudal',
     home_score: matchFormState.homeScore || '',
     away_score: matchFormState.awayScore || '',
     goals_for: matchFormState.goalsFor || '',
@@ -2693,6 +2695,12 @@ function App() {
   const [teamSortMode, setTeamSortMode] = useState('Nombre');
   const [teamQuickFilter, setTeamQuickFilter] = useState('Todos');
   const [floatingMenu, setFloatingMenu] = useState(null);
+  const [matchSubmitError, setMatchSubmitError] = useState('');
+  const [matchSubmitSuccess, setMatchSubmitSuccess] = useState('');
+  const [matchFieldErrors, setMatchFieldErrors] = useState({});
+  const [isSavingMatch, setIsSavingMatch] = useState(false);
+  const [ownClubStadium, setOwnClubStadium] = useState('');
+  const [matchStadiumManuallyEdited, setMatchStadiumManuallyEdited] = useState(false);
   const [isUploadingPlayerImage, setIsUploadingPlayerImage] = useState(false);
   const [isUploadingTeamCrest, setIsUploadingTeamCrest] = useState(false);
   const [homeLoading, setHomeLoading] = useState(false);
@@ -3164,6 +3172,25 @@ function App() {
     setHomePhrase(nextPhrase);
     setHomePhraseDraft(nextPhrase);
     return nextPhrase;
+  };
+
+  const loadOwnClubStadium = async () => {
+    const { data, error: configError } = await supabase
+      .from("app_config")
+      .select("key,value")
+      .in("key", ownClubStadiumConfigKeys);
+
+    if (configError) {
+      console.warn('No se pudo cargar el estadio propio desde app_config:', configError);
+      setOwnClubStadium('');
+      return '';
+    }
+
+    const nextStadium = ownClubStadiumConfigKeys
+      .map((key) => (data || []).find((row) => row.key === key)?.value)
+      .find((value) => String(value || '').trim()) || '';
+    setOwnClubStadium(String(nextStadium || '').trim());
+    return String(nextStadium || '').trim();
   };
 
   const loadHomeDashboardData = async () => {
@@ -3808,6 +3835,10 @@ function App() {
   }, []);
 
   useEffect(() => {
+    loadOwnClubStadium();
+  }, []);
+
+  useEffect(() => {
     try {
       if (typeof window === 'undefined') return;
       window.localStorage.setItem('caudal-rival-scouting-drafts-v1', JSON.stringify(rivalScoutingDrafts));
@@ -3849,6 +3880,11 @@ function App() {
     if (activeTab !== 'Rendimiento') return;
     loadPerformanceData();
   }, [activeTab, performanceWeekStart]);
+
+  useEffect(() => {
+    if (!isMatchPanelOpen || editingMatchId || matchStadiumManuallyEdited || !matchFormState.isHome || matchFormState.stadium || !ownClubStadium) return;
+    setMatchFormState((prev) => ({ ...prev, stadium: ownClubStadium }));
+  }, [editingMatchId, isMatchPanelOpen, matchFormState.isHome, matchFormState.stadium, matchStadiumManuallyEdited, ownClubStadium]);
 
   const selectedTeam = useMemo(
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
@@ -12122,13 +12158,41 @@ function App() {
     closeTeamForm();
   };
 
+  const getMatchRivalTeam = (formState = matchFormState) =>
+    findTeamByDisplayName(teams, formState.opponent);
+
+  const getSuggestedMatchStadium = (formState = matchFormState) => {
+    if (formState.isHome) return ownClubStadium || '';
+    return getMatchRivalTeam(formState)?.stadium || '';
+  };
+
+  const getMatchStadiumHelp = (formState = matchFormState) => {
+    if (formState.stadium) return '';
+    if (formState.isHome && !ownClubStadium) return 'El club propio no tiene un estadio registrado.';
+    if (!formState.isHome && formState.opponent && !getMatchRivalTeam(formState)?.stadium) return 'El equipo no tiene un estadio registrado.';
+    return '';
+  };
+
+  const validateMatchForm = (formState = matchFormState) => {
+    const errors = {};
+    if (!String(formState.opponent || '').trim()) errors.opponent = 'Selecciona o escribe un rival.';
+    if (!String(formState.type || '').trim()) errors.type = 'Selecciona la competición.';
+    if (!String(formState.date || '').trim()) errors.date = 'Indica la fecha del encuentro.';
+    if (formState.isHome !== true && formState.isHome !== false) errors.isHome = 'Indica si el partido es local o visitante.';
+    return errors;
+  };
+
   const openMatchForm = (match = null, section = 'PRE') => {
+    setMatchSubmitError('');
+    setMatchSubmitSuccess('');
+    setMatchFieldErrors({});
+    setMatchStadiumManuallyEdited(Boolean(match?.stadium));
     if (match) {
       setEditingMatchId(match.id);
       setMatchFormState(normalizeMatch(match));
     } else {
       setEditingMatchId(null);
-      setMatchFormState(emptyMatchForm);
+      setMatchFormState({ ...emptyMatchForm, stadium: ownClubStadium || '' });
     }
     setMatchFormSection(section);
     setIsMatchPanelOpen(true);
@@ -12138,6 +12202,11 @@ function App() {
     setIsMatchPanelOpen(false);
     setEditingMatchId(null);
     setMatchFormAutoStatus('');
+    setMatchSubmitError('');
+    setMatchSubmitSuccess('');
+    setMatchFieldErrors({});
+    setIsSavingMatch(false);
+    setMatchStadiumManuallyEdited(false);
   };
 
   const buildAutomountedPreFromTeam = (team, previous = {}) => {
@@ -12190,31 +12259,71 @@ function App() {
 
   const handleMatchChange = (event) => {
     const { name, value, type, checked } = event.target;
+    setMatchSubmitError('');
+    setMatchSubmitSuccess('');
+    setMatchFieldErrors((current) => ({ ...current, [name]: '' }));
     if (name === 'opponent') {
       const selectedTeam = findTeamByDisplayName(teams, value);
       const automountedPre = buildAutomountedPreFromTeam(selectedTeam, matchFormState);
+      const nextBase = {
+        ...matchFormState,
+        opponent: cleanTeamDisplayName(selectedTeam?.name || value),
+        opponentCrest: selectedTeam?.crest ?? matchFormState.opponentCrest,
+        ...automountedPre,
+      };
+      const nextStadium = matchStadiumManuallyEdited ? matchFormState.stadium : getSuggestedMatchStadium(nextBase);
       setMatchFormState((prev) => ({
         ...prev,
-        opponent: cleanTeamDisplayName(selectedTeam?.name || value),
-        opponentCrest: selectedTeam?.crest ?? prev.opponentCrest,
+        opponent: nextBase.opponent,
+        opponentCrest: nextBase.opponentCrest,
+        stadium: nextStadium,
         ...automountedPre,
       }));
       setMatchFormAutoStatus(selectedTeam ? `PRE automontado desde EQUIPOS: ${automountedPre.preRivalSystem || selectedTeam.system || 'sin sistema'} · ${(automountedPre.preRivalLineup || []).length}/11 XI rival.` : '');
       return;
+    }
+    if (name === 'isHome') {
+      const nextIsHome = value === 'true';
+      const nextBase = { ...matchFormState, isHome: nextIsHome };
+      setMatchStadiumManuallyEdited(false);
+      setMatchFormState((prev) => ({
+        ...prev,
+        isHome: nextIsHome,
+        stadium: getSuggestedMatchStadium(nextBase),
+      }));
+      return;
+    }
+    if (name === 'stadium') {
+      setMatchStadiumManuallyEdited(true);
     }
     setMatchFormState((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
   const handleMatchSubmit = async (event) => {
     event.preventDefault();
+    if (isSavingMatch) return;
+    setMatchSubmitError('');
+    setMatchSubmitSuccess('');
+    setSaveStatus('');
+    const validationErrors = validateMatchForm();
+    setMatchFieldErrors(validationErrors);
+    if (Object.values(validationErrors).some(Boolean)) {
+      setMatchSubmitError('Revisa los campos obligatorios antes de guardar el encuentro.');
+      return;
+    }
 
     try {
+      setIsSavingMatch(true);
       const payload = createPartidoPayload(matchFormState, teams);
       const request = editingMatchId
         ? supabase.from("partidos").update(payload).eq("id", editingMatchId).select("id").single()
         : supabase.from("partidos").insert(payload).select("id").single();
       const { data: savedMatch, error: saveError } = await request;
-      if (saveError) throw saveError;
+      if (saveError) {
+        console.error("[CREATE_MATCH_ERROR]", saveError);
+        setMatchSubmitError(saveError.message || 'No se ha podido guardar el encuentro.');
+        return;
+      }
       const savedMatchId = editingMatchId || savedMatch?.id;
       const rivalLineup = safeArray(matchFormState.preRivalLineup).filter(Boolean);
       if (savedMatchId && rivalLineup.length) {
@@ -12225,10 +12334,14 @@ function App() {
       }
 
       await loadPartidos();
+      setMatchSubmitSuccess('Encuentro guardado correctamente.');
+      setSaveStatus('Encuentro guardado correctamente.');
       closeMatchForm();
     } catch (saveError) {
-      console.error('Error guardando partido en Supabase:', saveError);
-      setSaveStatus(saveError.message || 'No se pudo guardar el partido.');
+      console.error('[CREATE_MATCH_ERROR]', saveError);
+      setMatchSubmitError(saveError.message || 'No se ha podido guardar el encuentro.');
+    } finally {
+      setIsSavingMatch(false);
     }
   };
 
@@ -20539,19 +20652,19 @@ function App() {
               </button>
             </div>
 
-            <form onSubmit={handleMatchSubmit} className="min-h-0 space-y-5 overflow-y-auto px-6 py-6 sm:px-8">
+            <form noValidate onSubmit={handleMatchSubmit} className="min-h-0 space-y-5 overflow-y-auto px-6 py-6 sm:px-8">
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="space-y-2 text-sm text-slate-300">
                   <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Rival</span>
                   <input
-                    required
                     list="opponent-teams"
                     name="opponent"
                     value={matchFormState.opponent}
                     onChange={handleMatchChange}
                     placeholder="Escribe o selecciona..."
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
+                    className={`w-full rounded-2xl border bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 ${matchFieldErrors.opponent ? 'border-red-300/50' : 'border-white/10'}`}
                   />
+                  {matchFieldErrors.opponent ? <span className="block text-xs font-semibold text-red-200">{matchFieldErrors.opponent}</span> : null}
                   <datalist id="opponent-teams">
                     {teams.map((team) => (
                       <option key={team.id} value={cleanTeamDisplayName(team.name)} />
@@ -20565,24 +20678,27 @@ function App() {
                 </label>
                 <label className="space-y-2 text-sm text-slate-300">
                   <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Competición</span>
-                  <select name="type" value={matchFormState.type} onChange={handleMatchChange} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white">
+                  <select name="type" value={matchFormState.type} onChange={handleMatchChange} className={`w-full rounded-2xl border bg-white/5 px-4 py-3 text-sm font-semibold text-white ${matchFieldErrors.type ? 'border-red-300/50' : 'border-white/10'}`}>
                     {matchTypes.map((type) => <option key={type} value={type}>{type}</option>)}
                   </select>
+                  {matchFieldErrors.type ? <span className="block text-xs font-semibold text-red-200">{matchFieldErrors.type}</span> : null}
                 </label>
                 <label className="space-y-2 text-sm text-slate-300">
                   <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Jornada</span>
-                  <input name="round" value={matchFormState.round} onChange={handleMatchChange} placeholder="0" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
+                  <input name="round" value={matchFormState.round} onChange={handleMatchChange} placeholder="Opcional" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
                 </label>
                 <label className="space-y-2 text-sm text-slate-300">
                   <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Fecha</span>
-                  <input type="date" name="date" value={matchFormState.date} onChange={handleMatchChange} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white" />
+                  <input type="date" name="date" value={matchFormState.date} onChange={handleMatchChange} className={`w-full rounded-2xl border bg-white/5 px-4 py-3 text-sm font-semibold text-white ${matchFieldErrors.date ? 'border-red-300/50' : 'border-white/10'}`} />
+                  {matchFieldErrors.date ? <span className="block text-xs font-semibold text-red-200">{matchFieldErrors.date}</span> : null}
                 </label>
                 <label className="space-y-2 text-sm text-slate-300">
                   <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Condición</span>
-                  <select name="isHome" value={matchFormState.isHome ? 'true' : 'false'} onChange={(event) => setMatchFormState((prev) => ({ ...prev, isHome: event.target.value === 'true' }))} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white">
+                  <select name="isHome" value={matchFormState.isHome ? 'true' : 'false'} onChange={handleMatchChange} className={`w-full rounded-2xl border bg-white/5 px-4 py-3 text-sm font-semibold text-white ${matchFieldErrors.isHome ? 'border-red-300/50' : 'border-white/10'}`}>
                     <option value="true">Local</option>
                     <option value="false">Visitante</option>
                   </select>
+                  {matchFieldErrors.isHome ? <span className="block text-xs font-semibold text-red-200">{matchFieldErrors.isHome}</span> : null}
                 </label>
                 <label className="space-y-2 text-sm text-slate-300">
                   <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Jugado</span>
@@ -20601,12 +20717,26 @@ function App() {
 
               <label className="space-y-2 text-sm text-slate-300">
                 <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Estadio</span>
-                <input name="stadium" value={matchFormState.stadium} onChange={handleMatchChange} placeholder="Ej. Hermanos Antuña" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
+                <input name="stadium" value={matchFormState.stadium} onChange={handleMatchChange} placeholder="Campo del encuentro" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
+                {getMatchStadiumHelp() ? <span className="block text-xs font-semibold text-slate-500">{getMatchStadiumHelp()}</span> : null}
               </label>
 
+              {matchSubmitError ? (
+                <div className="rounded-2xl border border-red-300/20 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-100">
+                  {matchSubmitError}
+                </div>
+              ) : null}
+              {matchSubmitSuccess ? (
+                <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm font-semibold text-emerald-100">
+                  {matchSubmitSuccess}
+                </div>
+              ) : null}
+
               <div className="flex justify-end gap-3">
-                <button type="button" onClick={closeMatchForm} className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200">Cancelar</button>
-                <button type="submit" className="rounded-2xl bg-caudal-electric px-6 py-3 text-sm font-semibold text-slate-950">Guardar encuentro</button>
+                <button type="button" onClick={closeMatchForm} disabled={isSavingMatch} className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 disabled:cursor-not-allowed disabled:opacity-60">Cancelar</button>
+                <button type="submit" disabled={isSavingMatch} className="rounded-2xl bg-caudal-electric px-6 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-70">
+                  {isSavingMatch ? 'Guardando...' : 'Guardar encuentro'}
+                </button>
               </div>
             </form>
           </div>
