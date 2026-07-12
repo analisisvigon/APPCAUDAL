@@ -11985,11 +11985,6 @@ function App() {
             ? 'Estable'
             : 'A corregir';
     const nextOpponentTeam = nextMatch ? findTeamByDisplayName(teams, nextMatch.opponent) : null;
-    const pendingQuickMatches = sortedMatches.filter(hasPendingQuickEvents);
-    const nextLineupCount = Math.max(
-      safeArray(nextMatch?.preCaudalLineup).filter(Boolean).length,
-      safeArray(nextMatch?.lineupSlots?.preCaudal).filter((slot) => slot?.playerName).length
-    );
     const hasNextRival = Boolean(
       nextOpponentTeam?.system ||
       nextOpponentTeam?.squad?.length ||
@@ -11998,23 +11993,6 @@ function App() {
       nextMatch?.preRivalStrengths ||
       nextMatch?.preRivalWeaknesses
     );
-    const prepChecklist = [
-      { key: 'lineup', label: 'Alineación', done: nextLineupCount >= 11 },
-      { key: 'launchers', label: 'Lanzadores', done: Boolean(nextMatch?.preRivalSetPieceTakers || nextMatch?.preRivalTransitionLaunchers || nextMatch?.preCaudalPlayersToActivate) },
-      { key: 'start', label: 'Saque inicial', done: Boolean(nextMatch?.preCaudalStartPlay || nextMatch?.preCaudalBuildPlan || nextMatch?.preCaudalIntent) },
-      { key: 'keys', label: 'Claves del partido', done: Boolean(nextMatch?.prePlanTrigger || nextMatch?.preKeyMatchups || nextMatch?.preRivalStrengths || nextMatch?.preRivalWeaknesses) },
-      { key: 'abp_for', label: 'ABP ofensiva', done: Boolean(nextMatch?.abpOfensiva || nextMatch?.preRivalCornersAgainst) },
-      { key: 'abp_against', label: 'ABP defensiva', done: Boolean(nextMatch?.abpDefensiva || nextMatch?.preRivalCornersFor) },
-    ];
-    const prepCompleted = prepChecklist.filter((item) => item.done).length;
-    const prepPercent = prepChecklist.length ? Math.round((prepCompleted / prepChecklist.length) * 100) : 0;
-    const prepStatus = !nextMatch
-      ? 'Sin partido'
-      : prepPercent >= 85
-        ? 'Listo para imprimir'
-        : prepPercent >= 50
-          ? 'En preparación'
-          : 'Crítico';
     const currentStatuses = players.map((player) => staffStatusByPlayerId.get(player.id) || {});
     const disciplinaryByPlayer = players.map((player) => {
       const yellowCount = weeklyMatches.reduce((sum, match) => {
@@ -12030,23 +12008,12 @@ function App() {
       yellow: disciplinaryByPlayer.filter((row) => row.yellowCount > 0).length,
       yellowRisk: disciplinaryByPlayer.filter((row) => row.yellowCount >= 4).length,
     };
-    const taskCandidates = [
-      pendingQuickMatches.length ? { label: 'Revisar eventos rápidos', detail: `${pendingQuickMatches.length} partido${pendingQuickMatches.length === 1 ? '' : 's'}` } : null,
-      nextMatch && !hasNextRival ? { label: 'Completar rival', detail: nextMatch.opponent || 'Próximo partido' } : null,
-      squad.injured ? { label: `${squad.injured} jugador${squad.injured === 1 ? '' : 'es'} lesionado${squad.injured === 1 ? '' : 's'}`, detail: 'Revisar disponibilidad' } : null,
-      squad.yellowRisk ? { label: 'Riesgo sanción', detail: `${squad.yellowRisk} jugador${squad.yellowRisk === 1 ? '' : 'es'}` } : null,
-      nextMatch && !prepChecklist.find((item) => item.key === 'abp_for')?.done ? { label: 'Completar ABP ofensiva', detail: nextMatch.opponent || 'PRE' } : null,
-      nextMatch && !prepChecklist.find((item) => item.key === 'abp_against')?.done ? { label: 'Completar ABP defensiva', detail: nextMatch.opponent || 'PRE' } : null,
-      nextMatch && !nextMatch.preNotes && !nextMatch.preAiSupportNotes ? { label: 'Charla rápida vacía', detail: 'Añadir mensaje de partido' } : null,
-      nextMatch && !prepChecklist.find((item) => item.key === 'launchers')?.done ? { label: 'Lanzadores incompletos', detail: 'ABP/transición' } : null,
-    ].filter(Boolean).slice(0, 5);
     const activityCandidates = [
-      nextMatch && hasNextRival ? { label: 'Rival disponible', detail: nextMatch.opponent || 'Próximo partido' } : null,
-      nextMatch && prepChecklist.find((item) => item.key === 'lineup')?.done ? { label: 'Alineación preparada', detail: `${nextLineupCount} jugadores` } : null,
-      nextMatch && prepChecklist.find((item) => item.key === 'abp_for')?.done ? { label: 'ABP ofensiva cargada', detail: nextMatch.opponent || 'PRE' } : null,
-      nextMatch && prepChecklist.find((item) => item.key === 'abp_against')?.done ? { label: 'ABP defensiva cargada', detail: nextMatch.opponent || 'PRE' } : null,
-      lastMatch && safeArray(lastMatch.quickEvents).length && !hasPendingQuickEvents(lastMatch) ? { label: 'Eventos rápidos revisados', detail: lastMatch.opponent } : null,
+      nextMatch ? { label: 'Partido creado', detail: `${nextMatch.opponent || 'Rival'} · ${matchDisplayDate(nextMatch.date)}` } : null,
+      nextMatch && hasNextRival ? { label: 'Rival actualizado', detail: nextMatch.opponent || 'Próximo partido' } : null,
+      nextMatch?.postVideoLink ? { label: 'Vídeo añadido', detail: nextMatch.opponent || 'Próximo partido' } : null,
       lastMatch ? { label: 'Último resultado guardado', detail: getMatchScoreLabel(lastMatch) } : null,
+      nextPlayers.length ? { label: 'Jugador añadido', detail: displayPlayerName(nextPlayers[nextPlayers.length - 1]) || nextPlayers[nextPlayers.length - 1].name } : null,
     ].filter(Boolean).slice(0, 5);
 
     return {
@@ -12054,11 +12021,6 @@ function App() {
       nextMatch,
       nextOpponentTeam,
       lastMatch,
-      pendingQuickMatches,
-      prepChecklist,
-      prepPercent,
-      prepStatus,
-      tasks: taskCandidates,
       activity: activityCandidates,
       squad,
       balance,
@@ -14336,91 +14298,53 @@ function App() {
                 {homeError}
               </div>
             ) : null}
-            <section className="grid gap-4 xl:grid-cols-[1.28fr_0.72fr]">
-              <div className="relative overflow-hidden rounded-[1.55rem] border border-caudal-electric/20 bg-[#091428]/95 p-4 shadow-[0_20px_58px_rgba(0,0,0,0.24)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/35 hover:shadow-[0_26px_70px_rgba(0,0,0,0.30)] sm:p-5">
+            <section className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
+              <div className="relative overflow-hidden rounded-[1.55rem] border border-caudal-electric/20 bg-[#091428]/95 p-5 shadow-[0_20px_58px_rgba(0,0,0,0.24)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/35 hover:shadow-[0_26px_70px_rgba(0,0,0,0.30)] sm:p-6">
                 <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(79,140,255,0.18),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.05),transparent_48%)]" />
-                <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="relative grid gap-6 lg:grid-cols-[auto_1fr_auto] lg:items-center">
+                  <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[1.35rem] bg-white p-3 shadow-[0_18px_42px_rgba(0,0,0,0.22)] sm:h-28 sm:w-28">
+                    <img
+                      src={homeDashboard.nextMatch?.opponentCrest || homeDashboard.nextOpponentTeam?.crest || clubCrest}
+                      alt={homeDashboard.nextMatch?.opponent || 'Escudo rival'}
+                      className="h-full w-full object-contain"
+                    />
+                  </div>
                   <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric/85">Partido en preparación</p>
-                    <h3 className="mt-2 truncate text-2xl font-black text-white sm:text-3xl">{homeDashboard.nextMatch?.opponent || 'Sin partido programado'}</h3>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-black uppercase tracking-[0.12em]">
-                      <span className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1.5 text-slate-200">{homeDashboard.nextMatch ? matchDisplayDate(homeDashboard.nextMatch.date) : 'Fecha pendiente'}</span>
-                      <span className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1.5 text-slate-200">{homeDashboard.nextMatch?.time || 'Hora pendiente'}</span>
-                      <span className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1.5 text-slate-200">{homeDashboard.nextMatch ? (homeDashboard.nextMatch.isHome ? 'Local' : 'Visitante') : 'Condición pendiente'}</span>
-                      <span className={`rounded-xl border px-3 py-1.5 ${homeDashboard.prepPercent >= 85 ? 'border-emerald-200/25 bg-emerald-300/10 text-emerald-100' : homeDashboard.prepPercent >= 50 ? 'border-amber-200/25 bg-amber-200/10 text-amber-100' : 'border-red-200/25 bg-red-400/10 text-red-100'}`}>{homeDashboard.prepStatus}</span>
+                    <h3 className="mt-2 truncate text-3xl font-black text-white sm:text-5xl">{homeDashboard.nextMatch?.opponent || 'Sin partido programado'}</h3>
+                    <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm font-bold text-slate-200">
+                      <span>{homeDashboard.nextMatch ? matchDisplayDate(homeDashboard.nextMatch.date) : 'Fecha pendiente'}</span>
+                      <span>{homeDashboard.nextMatch?.time || 'Hora pendiente'}</span>
+                      <span>{homeDashboard.nextMatch ? (homeDashboard.nextMatch.isHome ? 'Local' : 'Visitante') : 'Condición pendiente'}</span>
+                      <span>{homeDashboard.nextMatch?.stadium || homeDashboard.nextOpponentTeam?.stadium || 'Estadio pendiente'}</span>
+                      {homeDashboard.nextMatch?.type ? <span>{homeDashboard.nextMatch.type}{homeDashboard.nextMatch.round ? ` · ${homeDashboard.nextMatch.round}` : ''}</span> : null}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <p className="text-4xl font-black text-white">{homeDashboard.prepPercent}%</p>
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">completado</p>
-                    </div>
-                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.15rem] bg-white p-2 shadow-[0_14px_32px_rgba(0,0,0,0.18)]">
-                      <img
-                        src={homeDashboard.nextMatch?.opponentCrest || homeDashboard.nextOpponentTeam?.crest || clubCrest}
-                        alt={homeDashboard.nextMatch?.opponent || 'Escudo rival'}
-                        className="h-full w-full object-contain"
-                      />
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (homeDashboard.nextMatch) openMatchPage(homeDashboard.nextMatch, 'PRE');
+                      setActiveTab('Partidos');
+                    }}
+                    className="w-full rounded-2xl bg-caudal-electric px-6 py-4 text-sm font-black uppercase tracking-[0.14em] text-slate-950 transition duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_18px_40px_rgba(79,140,255,0.20)] active:translate-y-0 lg:w-auto"
+                  >
+                    Abrir PRE
+                  </button>
                 </div>
-                <div className="relative mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-                  <div className="h-full rounded-full bg-caudal-electric transition-all duration-500" style={{ width: `${homeDashboard.prepPercent}%` }} />
-                </div>
-                <div className="relative mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {homeDashboard.prepChecklist.map((item) => (
-                    <div key={item.key} className={`flex items-center gap-2 rounded-2xl border px-3 py-2.5 text-sm font-bold transition ${item.done ? 'border-emerald-200/18 bg-emerald-300/[0.08] text-emerald-100' : 'border-amber-200/18 bg-amber-200/[0.07] text-amber-100'}`}>
-                      <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-black ${item.done ? 'bg-emerald-300 text-slate-950' : 'bg-amber-200 text-slate-950'}`}>{item.done ? '✓' : '!'}</span>
-                      <span className="truncate">{item.label}</span>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (homeDashboard.nextMatch) openMatchPage(homeDashboard.nextMatch, 'PRE');
-                    setActiveTab('Partidos');
-                  }}
-                  className="relative mt-4 w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 transition duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_18px_40px_rgba(79,140,255,0.20)] active:translate-y-0 sm:w-auto"
-                >
-                  Abrir PRE
-                </button>
               </div>
 
-              <div className="grid gap-3">
-                <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.045] p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Tareas pendientes</h3>
-                    <span className="rounded-xl bg-white/10 px-2.5 py-1 text-xs font-black text-slate-300">{homeDashboard.tasks.length}</span>
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {homeDashboard.tasks.length ? homeDashboard.tasks.map((task) => (
-                      <div key={`${task.label}-${task.detail}`} className="flex items-start gap-2 rounded-2xl border border-amber-200/14 bg-amber-200/[0.07] px-3 py-2.5 text-sm">
-                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-200 text-xs font-black text-slate-950">!</span>
-                        <div className="min-w-0">
-                          <p className="font-bold text-amber-100">{task.label}</p>
-                          <p className="truncate text-xs text-amber-100/65">{task.detail}</p>
-                        </div>
+              <div className="rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]">
+                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Actividad reciente</h3>
+                <div className="mt-3 space-y-2">
+                  {homeDashboard.activity.length ? homeDashboard.activity.map((item) => (
+                    <div key={`${item.label}-${item.detail}`} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm transition hover:bg-white/[0.07]">
+                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-caudal-electric" />
+                      <div className="min-w-0">
+                        <p className="font-bold text-white">{item.label}</p>
+                        <p className="truncate text-xs text-slate-500">{item.detail}</p>
                       </div>
-                    )) : (
-                      <div className="rounded-2xl border border-emerald-200/16 bg-emerald-300/[0.08] px-3 py-3 text-sm font-bold text-emerald-100">✓ Todo actualizado</div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]">
-                  <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Actividad reciente</h3>
-                  <div className="mt-3 space-y-2">
-                    {homeDashboard.activity.length ? homeDashboard.activity.map((item) => (
-                      <div key={`${item.label}-${item.detail}`} className="flex items-start gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm transition hover:bg-white/[0.07]">
-                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-caudal-electric text-xs font-black text-slate-950">✓</span>
-                        <div className="min-w-0">
-                          <p className="font-bold text-white">{item.label}</p>
-                          <p className="truncate text-xs text-slate-500">{item.detail}</p>
-                        </div>
-                      </div>
-                    )) : <p className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-sm text-slate-400">Sin actividad reciente guardada.</p>}
-                  </div>
+                    </div>
+                  )) : <p className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-sm text-slate-400">Sin actividad reciente guardada.</p>}
                 </div>
               </div>
             </section>
