@@ -17968,37 +17968,6 @@ function App() {
                     const score = getMatchScoreValues(match);
                     const statsEvents = score.statsEvents;
                     const played = isMatchPlayedForUi(match);
-                    const opponentTeam = findTeamByDisplayName(teams, match.opponent);
-                    const hasRivalReport = Boolean(match.preRivalReportText || match.preRivalReportExtraction);
-                    const callupCount = Math.max(safeArray(match.statsCalledPlayers).length, safeArray(match.preCaudalLineup).filter(Boolean).length);
-                    const hasCallup = callupCount > 0;
-                    const hasSetPiecesFor = Boolean(match.abpOfensiva || match.preRivalCornersAgainst);
-                    const hasSetPiecesAgainst = Boolean(match.abpDefensiva || match.preRivalCornersFor);
-                    const preFields = [
-                      match.preCaudalIntent,
-                      match.planClave,
-                      match.preRivalStyle,
-                      match.preRivalStrengths,
-                      match.preRivalWeaknesses,
-                      match.preRivalReportText,
-                      match.preRivalReportExtraction,
-                      match.preCanvaLink,
-                    ];
-                    const preProgress = preFields.filter(Boolean).length;
-                    const getPrepStatus = (done, partial) => done ? 'done' : partial ? 'partial' : 'pending';
-                    const getPrepChipClass = (status) =>
-                      status === 'done'
-                        ? 'border-emerald-200/25 bg-emerald-300/[0.12] text-emerald-100'
-                        : status === 'partial'
-                          ? 'border-amber-200/25 bg-amber-300/[0.12] text-amber-100'
-                          : 'border-red-200/25 bg-red-400/[0.10] text-red-100';
-                    const getPrepChipIcon = (status) => status === 'done' ? '✅' : status === 'partial' ? '⚠️' : '❌';
-                    const futurePrepChips = [
-                      { label: 'PRE', status: getPrepStatus(preProgress >= 4, preProgress > 0) },
-                      { label: 'RIVAL', status: getPrepStatus(Boolean(opponentTeam && hasRivalReport), Boolean(opponentTeam || hasRivalReport)) },
-                      { label: 'ABP', status: getPrepStatus(hasSetPiecesFor && hasSetPiecesAgainst, hasSetPiecesFor || hasSetPiecesAgainst) },
-                      { label: 'CONVOCATORIA', status: getPrepStatus(callupCount >= 18, hasCallup) },
-                    ];
                     const getMatchMdLabel = () => {
                       if (!match.date) return 'MD';
                       const today = new Date();
@@ -18094,45 +18063,38 @@ function App() {
                             <p className="mt-2 line-clamp-1 text-sm font-bold text-white">{caudalIsHome ? match.opponent : 'C.D. Caudal'}</p>
                           </div>
                         </div>
-                        <div className="relative px-4 pb-3">
-                          {played ? (
-                            timelineEvents.length ? (
-                              <div className="grid gap-1 rounded-2xl border border-white/10 bg-slate-950/[0.18] p-2">
-                                {timelineEvents.map((event, index) => (
-                                  <div key={`${event.label}-${event.icon}-${event.minute}-${index}`} className="grid grid-cols-[34px_22px_1fr] items-start gap-2 border-b border-white/[0.055] px-1.5 py-1.5 text-xs last:border-b-0">
-                                    <span className="font-black tabular-nums text-slate-500">{event.minute || ''}</span>
-                                    <span className="leading-none">{event.icon}</span>
-                                    <span className={`min-w-0 font-semibold ${event.side === 'caudal' ? 'text-emerald-100' : event.side === 'rival' ? 'text-red-100' : 'text-slate-200'}`}>
-                                      <span className="block truncate">{event.label}{event.detail ? ` ${event.detail}` : ''}</span>
-                                      {event.assist ? <span className="mt-0.5 block truncate text-[11px] font-bold text-caudal-electric">↳ {event.assist}</span> : null}
-                                    </span>
-                                  </div>
-                                ))}
-                                {hiddenMatchEventCount ? (
-                                  <p className="px-1.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">+{hiddenMatchEventCount} eventos más</p>
-                                ) : null}
-                              </div>
-                            ) : (
-                              <div className="rounded-2xl border border-white/10 bg-slate-950/[0.18] px-3 py-3 text-xs font-semibold text-slate-500">
-                                Sin eventos registrados.
-                              </div>
-                            )
-                          ) : (
-                            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-                              {futurePrepChips.map((item) => (
-                                <span key={item.label} className={`inline-flex items-center justify-center gap-1 rounded-xl border px-2 py-2 text-[10px] font-black uppercase tracking-[0.08em] ${getPrepChipClass(item.status)}`}>
-                                  <span>{getPrepChipIcon(item.status)}</span>
-                                  <span>{item.label}</span>
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                          {hasPendingQuickEvents(match) ? (
-                            <p className="mt-2 rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs font-bold text-amber-100">
-                              {pendingQuickEventsMessage}
-                            </p>
-                          ) : null}
-                        </div>
+                        {(played || hasPendingQuickEvents(match)) ? (
+                          <div className="relative px-4 pb-3">
+                            {played ? (
+                              timelineEvents.length ? (
+                                <div className="grid gap-1 rounded-2xl border border-white/10 bg-slate-950/[0.18] p-2">
+                                  {timelineEvents.map((event, index) => (
+                                    <div key={`${event.label}-${event.icon}-${event.minute}-${index}`} className="grid grid-cols-[34px_22px_1fr] items-start gap-2 border-b border-white/[0.055] px-1.5 py-1.5 text-xs last:border-b-0">
+                                      <span className="font-black tabular-nums text-slate-500">{event.minute || ''}</span>
+                                      <span className="leading-none">{event.icon}</span>
+                                      <span className={`min-w-0 font-semibold ${event.side === 'caudal' ? 'text-emerald-100' : event.side === 'rival' ? 'text-red-100' : 'text-slate-200'}`}>
+                                        <span className="block truncate">{event.label}{event.detail ? ` ${event.detail}` : ''}</span>
+                                        {event.assist ? <span className="mt-0.5 block truncate text-[11px] font-bold text-caudal-electric">↳ {event.assist}</span> : null}
+                                      </span>
+                                    </div>
+                                  ))}
+                                  {hiddenMatchEventCount ? (
+                                    <p className="px-1.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">+{hiddenMatchEventCount} eventos más</p>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <div className="rounded-2xl border border-white/10 bg-slate-950/[0.18] px-3 py-3 text-xs font-semibold text-slate-500">
+                                  Sin eventos registrados.
+                                </div>
+                              )
+                            ) : null}
+                            {hasPendingQuickEvents(match) ? (
+                              <p className={`${played ? 'mt-2' : ''} rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs font-bold text-amber-100`}>
+                                {pendingQuickEventsMessage}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : null}
                         <div className="grid grid-cols-4 border-t border-white/10">
                           {['PRE', 'ESTADÍSTICAS', 'POST', 'IMPRESIÓN'].map((section) => (
                             <button
@@ -18147,7 +18109,6 @@ function App() {
                             </button>
                           ))}
                         </div>
-                        <div className="p-3 text-sm text-slate-300"></div>
                       </article>
                     );
                   })}
