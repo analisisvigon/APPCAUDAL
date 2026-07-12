@@ -8,6 +8,13 @@ import MatchVideoPlayer from './components/matches/MatchVideoPlayer';
 import MatchPrintTab from './components/print/MatchPrintTab';
 import AccordionSection from './components/shared/AccordionSection';
 import StatusMessage from './components/shared/StatusMessage';
+import {
+  POST_EVENT_TYPES,
+  buildPostEventTypesFromCatalog,
+  getPostEventTypeColor,
+  getPostEventTypeLabel,
+  getPostEventTypeValue,
+} from './constants/postEventTypes';
 import './styles/print.css';
 
 const clubCrest =
@@ -819,9 +826,11 @@ const normalizeSupabasePostEvent = (event) => ({
   legacyId: event.legacy_id || null,
   tipoEventoId: event.tipo_evento_id || null,
   minute: event.minute || '',
-  type: event.type || '',
+  type: getPostEventTypeValue(event.type || ''),
+  typeLabel: getPostEventTypeLabel(event.type || ''),
   description: event.description || '',
   player: event.player || '',
+  jugadorId: event.jugador_id || null,
   videoSeconds: Number(event.video_seconds || 0),
 });
 
@@ -2786,7 +2795,7 @@ function App() {
   });
   const [eventTypes, setEventTypes] = useState([]);
   const [selectedEventType, setSelectedEventType] = useState('');
-  const [newEventDraft, setNewEventDraft] = useState({ minute: '', type: '', description: '', player: '', keyEvent: false });
+  const [newEventDraft, setNewEventDraft] = useState({ minute: '', type: POST_EVENT_TYPES[0]?.value || '', description: '', player: '', playerId: '', keyEvent: false });
   const [newEventTypeDraft, setNewEventTypeDraft] = useState({ name: '', color: 'slate' });
   const [postVideoStartSeconds, setPostVideoStartSeconds] = useState(0);
   const [postCurrentMinute, setPostCurrentMinute] = useState('');
@@ -2797,6 +2806,8 @@ function App() {
   const [postYoutubeReady, setPostYoutubeReady] = useState(false);
   const [postClipSaving, setPostClipSaving] = useState(false);
   const [postClipFeedback, setPostClipFeedback] = useState('');
+  const [postEventSaving, setPostEventSaving] = useState(false);
+  const [postEventFeedback, setPostEventFeedback] = useState('');
   const [isGoalAnalysisOpen, setIsGoalAnalysisOpen] = useState(false);
   const [goalAnalysisDraft, setGoalAnalysisDraft] = useState(defaultGoalAnalysisDraft);
   const [lastGoalAnalysisContext, setLastGoalAnalysisContext] = useState(null);
@@ -3467,7 +3478,7 @@ function App() {
     try {
       const [partidoResponse, postEventsResponse, eventTypesResponse, statsResponse, goalsResponse] = await Promise.all([
         supabase.from("partidos").select("*").eq("id", partidoId).single(),
-        supabase.from("partido_eventos_post").select("*").eq("partido_id", partidoId).order("minute", { ascending: true }),
+        supabase.from("partido_eventos_post").select("*").eq("partido_id", partidoId).order("video_seconds", { ascending: true }),
         supabase.from("tipos_evento_post").select("*").order("name", { ascending: true }),
         supabase.from("partido_estadisticas_jugador").select("*").eq("partido_id", partidoId),
         supabase.from("partido_eventos_gol").select("*").eq("partido_id", partidoId).order("minute", { ascending: true }),
@@ -3476,12 +3487,12 @@ function App() {
       const failed = [partidoResponse, postEventsResponse, eventTypesResponse, statsResponse, goalsResponse].find((response) => response.error);
       if (failed) throw failed.error;
 
-      const nextEventTypes = (eventTypesResponse.data || []).map(normalizeSupabasePostEventType);
+      const nextEventTypes = buildPostEventTypesFromCatalog((eventTypesResponse.data || []).map(normalizeSupabasePostEventType));
       setEventTypes(nextEventTypes);
-      setSelectedEventType((current) => nextEventTypes.some((eventType) => eventType.name === current) ? current : nextEventTypes[0]?.name || '');
+      setSelectedEventType((current) => nextEventTypes.some((eventType) => eventType.name === getPostEventTypeValue(current)) ? getPostEventTypeValue(current) : nextEventTypes[0]?.name || '');
       setNewEventDraft((current) => ({
         ...current,
-        type: nextEventTypes.some((eventType) => eventType.name === current.type) ? current.type : nextEventTypes[0]?.name || '',
+        type: nextEventTypes.some((eventType) => eventType.name === getPostEventTypeValue(current.type)) ? getPostEventTypeValue(current.type) : nextEventTypes[0]?.name || '',
       }));
 
       const statsPlayerData = {};
@@ -5103,7 +5114,7 @@ function App() {
   const eventButtonClass = (typeOrColor) => {
     const color = eventColorOptions.includes(typeOrColor)
       ? typeOrColor
-      : eventTypes.find((eventType) => eventType.name === typeOrColor)?.color || 'slate';
+      : eventTypes.find((eventType) => eventType.name === typeOrColor)?.color || getPostEventTypeColor(typeOrColor) || 'slate';
     switch (color) {
       case 'emerald':
         return 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30';
@@ -5117,6 +5128,14 @@ function App() {
         return 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30';
       case 'orange':
         return 'bg-amber-700/20 text-amber-200 hover:bg-amber-700/30';
+      case 'indigo':
+        return 'bg-indigo-500/20 text-indigo-200 hover:bg-indigo-500/30';
+      case 'cyan':
+        return 'bg-cyan-500/20 text-cyan-200 hover:bg-cyan-500/30';
+      case 'purple':
+        return 'bg-purple-500/20 text-purple-200 hover:bg-purple-500/30';
+      case 'rose':
+        return 'bg-rose-600/25 text-rose-100 hover:bg-rose-600/35';
       default:
         return 'bg-white/10 text-slate-200 hover:bg-white/15';
     }
@@ -6459,15 +6478,21 @@ function App() {
 
   const savePostEventInline = async (event) => {
     if (!selectedMatch || !event?.id) return;
-    const selectedType = eventTypes.find((eventType) => eventType.name === event.type);
+    const eventTypeValue = getPostEventTypeValue(event.type);
+    const selectedType = eventTypes.find((eventType) => eventType.name === eventTypeValue);
+    const inlineSeconds = Number.isFinite(Number(event.videoSeconds))
+      ? Math.max(0, Math.round(Number(event.videoSeconds || 0)))
+      : parsePostEventTimeInput(event.minute);
+    const selectedPlayer = players.find((player) => player.id === event.jugadorId || player.name === event.player);
     const payload = {
       tipo_evento_id: selectedType?.id || event.tipoEventoId || null,
-      minute: event.minute || String(Math.floor(Number(event.videoSeconds || 0) / 60)),
-      type: event.type || selectedType?.name || '',
+      minute: String(Math.floor(Number(inlineSeconds || 0) / 60)),
+      type: eventTypeValue || selectedType?.name || '',
       description: event.description || '',
-      player: event.player || '',
-      video_seconds: Math.max(0, Math.round(Number(event.videoSeconds || 0))),
+      player: selectedPlayer?.name || event.player || '',
+      video_seconds: Math.max(0, Math.round(Number(inlineSeconds || 0))),
     };
+    if (isUuid(selectedPlayer?.id)) payload.jugador_id = selectedPlayer.id;
     const { error: eventError } = await supabase.from("partido_eventos_post").update(payload).eq("id", event.id);
     if (eventError) {
       console.error('Error actualizando clip POST en Supabase:', { eventId: event.id, payload, error: eventError });
@@ -6485,21 +6510,38 @@ function App() {
   const syncDraftWithCurrentVideoTime = () => {
     const currentSeconds = getPostVideoCurrentSeconds();
     if (currentSeconds === null) return null;
-    const currentMinute = String(Math.floor(currentSeconds / 60));
-    setPostCurrentMinute(currentMinute);
-    setNewEventDraft((prev) => ({ ...prev, minute: currentMinute, videoSeconds: currentSeconds }));
+    const currentTimeLabel = formatVideoSeconds(currentSeconds);
+    setPostCurrentMinute(currentTimeLabel);
+    setNewEventDraft((prev) => ({ ...prev, minute: currentTimeLabel, videoSeconds: currentSeconds }));
     return currentSeconds;
+  };
+
+  const parsePostEventTimeInput = (value) => {
+    const rawValue = String(value || '').trim();
+    if (!rawValue) return null;
+    if (/^\d+:\d{1,2}$/.test(rawValue)) {
+      const [minutes, seconds] = rawValue.split(':').map((part) => Number(part));
+      return Math.max(0, Math.round((minutes * 60) + seconds));
+    }
+    const numericValue = Number(rawValue.replace(',', '.'));
+    if (!Number.isFinite(numericValue)) return null;
+    return Math.max(0, Math.round(numericValue * 60));
   };
 
   const addNewEvent = async () => {
     if (!selectedMatch) return;
+    if (postEventSaving) return;
+    setPostEventSaving(true);
+    setPostEventFeedback('Guardando...');
+    setPostError('');
     const currentVideoSeconds = getPostVideoCurrentSeconds();
-    const minute = newEventDraft.minute || postCurrentMinute || (currentVideoSeconds !== null ? String(Math.floor(currentVideoSeconds / 60)) : '');
-    if (!minute || !newEventDraft.description) return;
-    const effectiveType = newEventDraft.type || selectedEventType;
+    const manualSeconds = parsePostEventTimeInput(newEventDraft.minute || postCurrentMinute);
+    const effectiveType = getPostEventTypeValue(newEventDraft.type || selectedEventType);
     const selectedType = eventTypes.find((eventType) => eventType.name === effectiveType);
     if (!effectiveType) {
-      setPostError('Carga o crea un tipo de evento POST antes de guardar.');
+      setPostError('Selecciona una tipología antes de guardar.');
+      setPostEventFeedback('');
+      setPostEventSaving(false);
       return;
     }
     const nextVideoSeconds = currentVideoSeconds !== null
@@ -6508,35 +6550,62 @@ function App() {
       ? Math.max(0, Math.round(Number(newEventDraft.videoSeconds)))
       : postVideoStartSeconds > 0
         ? Math.max(0, Math.round(Number(postVideoStartSeconds)))
-        : Math.max(0, Math.round(Number(minute) * 60));
+        : manualSeconds;
+    if (!Number.isFinite(Number(nextVideoSeconds)) || Number(nextVideoSeconds) < 0) {
+      setPostError('No se ha podido guardar el evento. El tiempo del vídeo no está disponible.');
+      setPostEventFeedback('');
+      setPostEventSaving(false);
+      return;
+    }
+    const selectedPlayer = players.find((player) => player.id === newEventDraft.playerId || player.name === newEventDraft.player);
+    const playerName = selectedPlayer?.name || newEventDraft.player || '';
+    const description = newEventDraft.keyEvent && newEventDraft.description && !String(newEventDraft.description || '').startsWith('[Evento clave]')
+      ? `[Evento clave] ${newEventDraft.description}`
+      : newEventDraft.description || '';
     const payload = {
       partido_id: selectedMatch.id,
       tipo_evento_id: selectedType?.id || null,
-      minute,
+      minute: String(Math.floor(Number(nextVideoSeconds) / 60)),
       type: effectiveType,
-      description: newEventDraft.keyEvent && !String(newEventDraft.description || '').startsWith('[Evento clave]')
-        ? `[Evento clave] ${newEventDraft.description}`
-        : newEventDraft.description,
-      player: newEventDraft.player,
-      video_seconds: nextVideoSeconds,
+      description,
+      player: playerName,
+      video_seconds: Math.max(0, Math.round(Number(nextVideoSeconds))),
     };
-    const request = newEventDraft.id
-      ? supabase.from("partido_eventos_post").update(payload).eq("id", newEventDraft.id).select("id").single()
-      : supabase.from("partido_eventos_post").insert(payload).select("id").single();
-    const { data: savedEvent, error: eventError } = await request;
-    if (eventError) {
-      console.error('Error guardando evento POST en Supabase:', {
-        matchId: selectedMatch.id,
-        eventId: newEventDraft.id || null,
-        payload,
-        error: eventError,
+    if (isUuid(selectedPlayer?.id)) payload.jugador_id = selectedPlayer.id;
+    try {
+      const request = newEventDraft.id
+        ? supabase.from("partido_eventos_post").update(payload).eq("id", newEventDraft.id).select("*").single()
+        : supabase.from("partido_eventos_post").insert(payload).select("*").single();
+      const { data: savedEvent, error: eventError } = await request;
+      if (eventError) throw eventError;
+      const normalizedEvent = normalizeSupabasePostEvent(savedEvent);
+      setSelectedPostEventId(normalizedEvent.id || newEventDraft.id || null);
+      setMatches((current) => current.map((match) => {
+        if (match.id !== selectedMatch.id) return match;
+        const withoutExisting = (match.events || []).filter((event) => event.id !== normalizedEvent.id);
+        return {
+          ...match,
+          events: [...withoutExisting, normalizedEvent].sort((a, b) => Number(a.videoSeconds || 0) - Number(b.videoSeconds || 0)),
+        };
+      }));
+      setNewEventDraft({
+        minute: formatVideoSeconds(nextVideoSeconds),
+        type: selectedEventType || POST_EVENT_TYPES[0]?.value || '',
+        description: '',
+        player: '',
+        playerId: '',
+        keyEvent: false,
+        videoSeconds: nextVideoSeconds,
       });
-      setPostError(eventError.message || 'No se pudo guardar el evento POST.');
-      return;
+      setPostEventFeedback(`Evento guardado ${formatVideoSeconds(nextVideoSeconds)} · ${getPostEventTypeLabel(effectiveType)}`);
+      await loadMatchPostData(selectedMatch.id);
+    } catch (eventError) {
+      console.error('[POST_EVENT_SAVE_ERROR]', eventError);
+      setPostError('No se ha podido guardar el evento.');
+      setPostEventFeedback('');
+    } finally {
+      setPostEventSaving(false);
     }
-    setSelectedPostEventId(savedEvent?.id || newEventDraft.id || null);
-    setNewEventDraft({ minute: '', type: selectedEventType, description: '', player: '', keyEvent: false });
-    await loadMatchPostData(selectedMatch.id);
   };
 
   const buildPostAutoSummary = () => {
@@ -6747,11 +6816,7 @@ function App() {
   };
 
   const getPostQuickClipTypes = () => {
-    const desired = ['Ocasión', 'Pérdida', 'Recuperación', 'Centro lateral', 'Transición', 'Presión alta', 'Error rival', 'Juego directo rival'];
-    return desired.map((name, index) => {
-      const stored = eventTypes.find((eventType) => normalizePlayerIdentityName(eventType.name) === normalizePlayerIdentityName(name));
-      return stored || { id: null, legacyId: `quick-${index}`, name, color: ['emerald', 'red', 'sky', 'violet', 'amber', 'orange', 'slate', 'red'][index] || 'slate' };
-    });
+    return buildPostEventTypesFromCatalog(eventTypes);
   };
 
   const relatePostClipWithAnalysis = async (event, targetField = 'postReality') => {
@@ -6940,12 +7005,13 @@ function App() {
 
   const seekPostVideoToEvent = (event) => {
     const seconds = Number(event.videoSeconds) || Math.max(0, Math.round(Number(event.minute || 0) * 60));
+    const timeLabel = formatVideoSeconds(seconds);
     setSelectedPostEventId(event.id);
     setPostVideoStartSeconds(seconds);
-    setPostCurrentMinute(event.minute || '');
+    setPostCurrentMinute(timeLabel);
     setNewEventDraft((current) => ({
       ...current,
-      minute: event.minute || String(Math.floor(seconds / 60)),
+      minute: timeLabel,
       videoSeconds: seconds,
       type: current.type || event.type || selectedEventType,
     }));
@@ -6962,14 +7028,16 @@ function App() {
 
   const editPostEvent = (event) => {
     setSelectedEventType(event.type);
-    setPostCurrentMinute(event.minute || '');
+    const seconds = Number(event.videoSeconds || 0);
+    setPostCurrentMinute(formatVideoSeconds(seconds));
     setNewEventDraft({
       id: event.id,
-      minute: event.minute || '',
+      minute: formatVideoSeconds(seconds),
       type: event.type || selectedEventType,
       description: event.description || '',
       player: event.player || '',
-      videoSeconds: Number(event.videoSeconds || 0),
+      playerId: event.jugadorId || '',
+      videoSeconds: seconds,
     });
   };
 
@@ -9765,21 +9833,23 @@ function App() {
                 selectedEventId={selectedPostEventId}
                 onDurationChange={(duration) => setPostVideoDuration(duration)}
                 onTimeUpdate={(seconds) => {
+                  const timeLabel = formatVideoSeconds(seconds);
                   setPostVideoStartSeconds(seconds);
-                  setPostCurrentMinute(String(Math.floor(Number(seconds || 0) / 60)));
+                  setPostCurrentMinute(timeLabel);
                   setNewEventDraft((current) => (
-                    current.videoSeconds === seconds && current.minute === String(Math.floor(Number(seconds || 0) / 60))
+                    current.videoSeconds === seconds && current.minute === timeLabel
                       ? current
-                      : { ...current, videoSeconds: seconds, minute: String(Math.floor(Number(seconds || 0) / 60)) }
+                      : { ...current, videoSeconds: seconds, minute: timeLabel }
                   ));
                 }}
                 onEventSelect={(event, seconds) => {
+                  const timeLabel = formatVideoSeconds(seconds);
                   setSelectedPostEventId(event.id);
                   setPostVideoStartSeconds(seconds);
-                  setPostCurrentMinute(event.minute || String(Math.floor(Number(seconds || 0) / 60)));
+                  setPostCurrentMinute(timeLabel);
                   setNewEventDraft((current) => ({
                     ...current,
-                    minute: event.minute || String(Math.floor(Number(seconds || 0) / 60)),
+                    minute: timeLabel,
                     videoSeconds: seconds,
                     type: current.type || event.type || selectedEventType,
                   }));
@@ -9895,24 +9965,37 @@ function App() {
             <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
               {postBlockHeader('Registro manual', 'Registrar algo importante', 'Mientras revisas el vídeo, crea un clip táctico sin salir del flujo.')}
               <div className="mt-4 flex flex-wrap gap-2">
-                {getPostQuickClipTypes().slice(0, 6).map((eventType) => (
+                {getPostQuickClipTypes().map((eventType) => (
                   <button key={`draft-${eventType.name}`} type="button" onClick={() => { setSelectedEventType(eventType.name); handleEventDraftChange('type', eventType.name); }} className={`rounded-xl px-2.5 py-1.5 text-[10px] font-black ${eventButtonClass(eventType.color || eventType.name)}`}>
-                    {eventType.name}
+                    {eventType.label || getPostEventTypeLabel(eventType.name)}
                   </button>
                 ))}
               </div>
               <div className="mt-4 space-y-3">
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <input value={postCurrentMinute} onChange={(event) => { setPostCurrentMinute(event.target.value); handleEventDraftChange('minute', event.target.value); }} placeholder="Minuto" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
+                  <input value={postCurrentMinute} onChange={(event) => { setPostCurrentMinute(event.target.value); handleEventDraftChange('minute', event.target.value); }} placeholder="Tiempo 29:45" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
                   <select value={newEventDraft.type || selectedEventType} onChange={(event) => { setSelectedEventType(event.target.value); handleEventDraftChange('type', event.target.value); }} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white">
                     <option value="">Tipo</option>
-                    {eventTypes.map((eventType) => <option key={eventType.id} value={eventType.name}>{eventType.name}</option>)}
+                    {eventTypes.map((eventType) => <option key={eventType.name} value={eventType.name}>{eventType.label || getPostEventTypeLabel(eventType.name)}</option>)}
                   </select>
                 </div>
-                <input value={newEventDraft.player} onChange={(event) => handleEventDraftChange('player', event.target.value)} placeholder="Jugador" className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
+                <select
+                  value={newEventDraft.playerId || ''}
+                  onChange={(event) => {
+                    const selectedPlayer = players.find((player) => player.id === event.target.value);
+                    handleEventDraftChange('playerId', event.target.value);
+                    handleEventDraftChange('player', selectedPlayer?.name || '');
+                  }}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                >
+                  <option value="">Sin jugador asociado</option>
+                  {players.map((player) => (
+                    <option key={player.id || player.name} value={player.id}>{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</option>
+                  ))}
+                </select>
                 <textarea value={newEventDraft.description} onChange={(event) => handleEventDraftChange('description', event.target.value)} placeholder="Qué ocurrió y por qué importa..." className="min-h-[92px] w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm text-white placeholder:text-slate-500" />
                 <div className="flex flex-wrap gap-2">
-                  {['tras pérdida', 'lado débil', 'juego directo', 'segunda jugada', 'área rival'].map((tag) => (
+                  {['tras pérdida', 'lado débil', 'segunda jugada', 'área rival'].map((tag) => (
                     <button key={tag} type="button" onClick={() => handleEventDraftChange('description', [newEventDraft.description, tag].filter(Boolean).join(' · '))} className="rounded-xl bg-white/10 px-2.5 py-1.5 text-[10px] font-bold text-slate-300">
                       {tag}
                     </button>
@@ -9922,8 +10005,9 @@ function App() {
                   <input type="checkbox" checked={Boolean(newEventDraft.keyEvent)} onChange={(event) => handleEventDraftChange('keyEvent', event.target.checked)} className="h-4 w-4 accent-caudal-electric" />
                   Evento clave
                 </label>
-                <button type="button" onClick={addNewEvent} className="w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]">
-                  {newEventDraft.id ? 'Actualizar evento' : 'Guardar evento'}
+                {postEventFeedback ? <p className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm font-semibold text-emerald-200">{postEventFeedback}</p> : null}
+                <button type="button" onClick={addNewEvent} disabled={postEventSaving} className="w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-60">
+                  {postEventSaving ? 'Guardando...' : newEventDraft.id ? 'Actualizar evento' : 'Guardar evento'}
                 </button>
               </div>
             </div>

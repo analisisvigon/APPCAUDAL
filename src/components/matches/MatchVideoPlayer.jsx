@@ -1,4 +1,10 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import {
+  POST_EVENT_TYPES,
+  getPostEventTypeLabel,
+  getPostEventTypeMarkerClass,
+  getPostEventTypeValue,
+} from '../../constants/postEventTypes';
 
 const IFRAME_PROVIDERS = {
   youtube: ['www.youtube-nocookie.com'],
@@ -10,21 +16,12 @@ const SUPABASE_STORAGE_HOST_PATTERN = /(?:^|\.)supabase\.co$/;
 
 const TIMELINE_FILTERS = [
   { id: 'all', label: 'Todos', match: () => true },
-  { id: 'chances', label: 'Ocasiones', match: (event) => /ocas|tiro|remate|gol|final/i.test(event.type || '') },
-  { id: 'losses', label: 'Perdidas', match: (event) => /perd|perdid|perdida/i.test(event.type || '') },
-  { id: 'recoveries', label: 'Recuperaciones', match: (event) => /recup|robo/i.test(event.type || '') },
-  { id: 'crosses', label: 'Centros', match: (event) => /centro|lateral/i.test(event.type || '') },
-  { id: 'transitions', label: 'Transiciones', match: (event) => /transici|contra|ataque/i.test(event.type || '') },
+  ...POST_EVENT_TYPES.map((eventType) => ({
+    id: eventType.value,
+    label: eventType.label,
+    match: (event) => getPostEventTypeValue(event.type) === eventType.value,
+  })),
 ];
-
-const EVENT_TONE_CLASSES = {
-  chances: 'bg-red-400',
-  losses: 'bg-amber-300',
-  recoveries: 'bg-sky-400',
-  crosses: 'bg-violet-400',
-  transitions: 'bg-orange-400',
-  default: 'bg-slate-400',
-};
 
 const normalizeHost = (hostname) => hostname.replace(/^www\./, '').toLowerCase();
 
@@ -90,20 +87,14 @@ const getEventSeconds = (event) => {
   return Number.isFinite(minute) ? Math.max(0, Math.round(minute * 60)) : null;
 };
 
-const getEventTone = (event) => {
-  const type = String(event?.type || '').toLowerCase();
-  if (/ocas|tiro|remate|gol|final/.test(type)) return 'chances';
-  if (/perd|perdid|perdida/.test(type)) return 'losses';
-  if (/recup|robo/.test(type)) return 'recoveries';
-  if (/centro|lateral/.test(type)) return 'crosses';
-  if (/transici|contra|ataque/.test(type)) return 'transitions';
-  return 'default';
-};
-
 const getFilteredEvents = (events, activeFilter) => {
   const filter = TIMELINE_FILTERS.find((item) => item.id === activeFilter) || TIMELINE_FILTERS[0];
   return events.filter((event) => filter.match(event));
 };
+
+const isKeyEvent = (event) => /^\[Evento clave\]/i.test(String(event?.description || ''));
+
+const cleanEventDescription = (event) => String(event?.description || '').replace(/^\[Evento clave\]\s*/i, '');
 
 export function detectMatchVideoProvider(videoUrl) {
   const rawUrl = String(videoUrl || '').trim();
@@ -241,21 +232,24 @@ function MatchTimeline({ duration, events, selectedEventId, onJump }) {
           <div className="relative h-2 rounded-full bg-white/10">
             {visibleEvents.map((event) => {
               const left = Math.max(0, Math.min(100, (event.timelineSeconds / duration) * 100));
-              const tone = getEventTone(event);
+              const markerClass = getPostEventTypeMarkerClass(event.type);
+              const typeLabel = getPostEventTypeLabel(event.type);
+              const description = cleanEventDescription(event);
               return (
                 <button
                   key={event.id}
                   type="button"
                   onClick={() => onJump(event)}
-                  className={`group absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-black/40 shadow-[0_0_0_2px_rgba(255,255,255,0.12)] transition hover:scale-125 ${EVENT_TONE_CLASSES[tone]} ${selectedEventId === event.id ? 'ring-2 ring-caudal-electric' : ''}`}
+                  className={`group absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-black/40 shadow-[0_0_0_2px_rgba(255,255,255,0.12)] transition hover:scale-125 ${markerClass} ${selectedEventId === event.id ? 'ring-2 ring-caudal-electric' : ''}`}
                   style={{ left: `${left}%` }}
-                  aria-label={`${formatTimelineTime(event.timelineSeconds)} ${event.type || 'Clip'}`}
+                  aria-label={`${formatTimelineTime(event.timelineSeconds)} ${typeLabel}`}
                 >
                   <span className="pointer-events-none absolute bottom-5 left-1/2 z-20 hidden w-64 -translate-x-1/2 rounded-xl border border-white/10 bg-[#071326] p-3 text-left shadow-glow group-hover:block">
                     <span className="block text-xs font-black text-white">{formatTimelineTime(event.timelineSeconds)}</span>
-                    <span className="mt-1 block text-xs font-bold text-caudal-electric">{event.type || 'Clip'}</span>
+                    <span className="mt-1 block text-xs font-bold text-caudal-electric">{typeLabel}</span>
                     {event.player ? <span className="mt-1 block truncate text-xs text-slate-300">{event.player}</span> : null}
-                    {event.description ? <span className="mt-1 block line-clamp-2 text-xs leading-5 text-slate-400">{event.description}</span> : null}
+                    {isKeyEvent(event) ? <span className="mt-1 inline-flex rounded-lg bg-amber-300/15 px-2 py-1 text-[10px] font-black uppercase tracking-[0.10em] text-amber-100">Evento clave</span> : null}
+                    {description ? <span className="mt-1 block line-clamp-2 text-xs leading-5 text-slate-400">{description}</span> : null}
                   </span>
                 </button>
               );
@@ -271,7 +265,9 @@ function MatchTimeline({ duration, events, selectedEventId, onJump }) {
       {visibleEvents.length ? (
         <div className="mt-4 divide-y divide-white/10 overflow-hidden rounded-2xl bg-white/[0.035]">
           {visibleEvents.map((event) => {
-            const tone = getEventTone(event);
+            const markerClass = getPostEventTypeMarkerClass(event.type);
+            const typeLabel = getPostEventTypeLabel(event.type);
+            const description = cleanEventDescription(event);
             return (
               <button
                 key={`row-${event.id}`}
@@ -280,12 +276,12 @@ function MatchTimeline({ duration, events, selectedEventId, onJump }) {
                 className={`grid w-full gap-2 px-3 py-3 text-left transition hover:bg-white/[0.06] sm:grid-cols-[82px_1fr] ${selectedEventId === event.id ? 'bg-caudal-electric/10' : ''}`}
               >
                 <span className="flex items-center gap-2 text-xs font-black text-white">
-                  <span className={`h-2.5 w-2.5 rounded-full ${EVENT_TONE_CLASSES[tone]}`} />
+                  <span className={`h-2.5 w-2.5 rounded-full ${markerClass}`} />
                   {formatTimelineTime(event.timelineSeconds)}
                 </span>
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-black text-white">{event.type || 'Clip'}{event.player ? ` · ${event.player}` : ''}</span>
-                  {event.description ? <span className="mt-0.5 block truncate text-xs text-slate-400">{event.description}</span> : null}
+                  <span className="block truncate text-sm font-black text-white">{typeLabel}{event.player ? ` · ${event.player}` : ''}{isKeyEvent(event) ? ' · Evento clave' : ''}</span>
+                  {description ? <span className="mt-0.5 block truncate text-xs text-slate-400">{description}</span> : null}
                 </span>
               </button>
             );
