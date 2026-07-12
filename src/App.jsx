@@ -887,18 +887,48 @@ const normalizeSupabasePostEvent = (event) => ({
   videoSeconds: Number(event.video_seconds || 0),
 });
 
+const EVENT_STAT_EFFECTS = {
+  gol: { team: { goals: 1, shots: 1, shotsOnTarget: 1 }, player: { goals: 1, shots: 1, shotsOnTarget: 1 } },
+  tiro: { team: { shots: 1 }, player: { shots: 1 } },
+  tiro_puerta: { team: { shots: 1, shotsOnTarget: 1 }, player: { shots: 1, shotsOnTarget: 1 } },
+  regate: { team: { dribbles: 1 }, player: { dribbles: 1 } },
+  centro: { team: { crosses: 1 }, player: { crosses: 1 } },
+  perdida: { team: { turnovers: 1 }, player: { turnovers: 1 } },
+  robo: { team: { steals: 1 }, player: { steals: 1 } },
+  recuperacion: { team: { recoveries: 1 }, player: { recoveries: 1 } },
+  falta_realizada: { team: { foulsCommitted: 1 }, player: { foulsCommitted: 1 } },
+  falta_recibida: { team: { foulsReceived: 1 }, player: { foulsReceived: 1 } },
+  corner: { team: { corners: 1 }, player: {} },
+};
+
+const EVENT_STAT_FIELDS = [
+  { key: 'goals', label: 'Goles', individualLabel: 'Gol', group: 'Producción ofensiva' },
+  { key: 'shots', label: 'Tiros', group: 'Producción ofensiva' },
+  { key: 'shotsOnTarget', label: 'Tiros a puerta', group: 'Producción ofensiva' },
+  { key: 'dribbles', label: 'Regates', group: 'Producción ofensiva' },
+  { key: 'crosses', label: 'Centros', group: 'Producción ofensiva' },
+  { key: 'corners', label: 'Córners', group: 'Producción ofensiva', teamOnly: true },
+  { key: 'turnovers', label: 'Pérdidas', group: 'Seguridad con balón' },
+  { key: 'steals', label: 'Robos', group: 'Seguridad con balón' },
+  { key: 'recoveries', label: 'Recuperaciones', group: 'Seguridad con balón' },
+  { key: 'foulsCommitted', label: 'Faltas realizadas', group: 'Disciplina y duelos' },
+  { key: 'foulsReceived', label: 'Faltas recibidas', group: 'Disciplina y duelos' },
+];
+
+const createEmptyEventStats = () => EVENT_STAT_FIELDS.reduce((acc, field) => ({ ...acc, [field.key]: 0 }), {});
+
 const delegatedStatEventCatalog = [
-  { tipoEvento: 'gol', label: 'Gol', short: 'GOL', group: 'Finalización', tone: 'goal', requiresPlayer: true, effects: { goals: 1, shots: 1, shotsOnTarget: 1 } },
-  { tipoEvento: 'tiro', label: 'Tiro', short: 'TIR', group: 'Finalización', tone: 'offensive', requiresPlayer: true, effects: { shots: 1 } },
-  { tipoEvento: 'tiro_puerta', label: 'Tiro a puerta', short: 'TP', group: 'Finalización', tone: 'offensive', requiresPlayer: true, effects: { shots: 1, shotsOnTarget: 1 } },
-  { tipoEvento: 'regate', label: 'Regate', short: 'REG', group: 'Ataque', tone: 'offensive', requiresPlayer: true, effects: { dribbles: 1 } },
-  { tipoEvento: 'centro', label: 'Centro', short: 'CEN', group: 'Ataque', tone: 'offensive', requiresPlayer: true, effects: { crosses: 1 } },
-  { tipoEvento: 'perdida', label: 'Pérdida', short: 'PER', group: 'Posesión', tone: 'danger', requiresPlayer: true, effects: { turnovers: 1 } },
-  { tipoEvento: 'robo', label: 'Robo', short: 'ROB', group: 'Posesión', tone: 'defensive', requiresPlayer: true, effects: { steals: 1 } },
-  { tipoEvento: 'recuperacion', label: 'Recuperación', short: 'REC', group: 'Posesión', tone: 'defensive', requiresPlayer: true, effects: { recoveries: 1 } },
-  { tipoEvento: 'falta_realizada', label: 'Falta realizada', short: 'FR', group: 'Faltas', tone: 'danger', requiresPlayer: true, effects: { foulsCommitted: 1 } },
-  { tipoEvento: 'falta_recibida', label: 'Falta recibida', short: 'FREC', group: 'Faltas', tone: 'defensive', requiresPlayer: true, effects: { foulsReceived: 1 } },
-  { tipoEvento: 'corner', label: 'Córner', short: 'COR', group: 'Ataque', tone: 'offensive', requiresPlayer: false, effects: { corners: 1 } },
+  { tipoEvento: 'gol', label: 'Gol', short: 'GOL', group: 'Finalización', tone: 'goal', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.gol.team },
+  { tipoEvento: 'tiro', label: 'Tiro', short: 'TIR', group: 'Finalización', tone: 'offensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.tiro.team },
+  { tipoEvento: 'tiro_puerta', label: 'Tiro a puerta', short: 'TP', group: 'Finalización', tone: 'offensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.tiro_puerta.team },
+  { tipoEvento: 'regate', label: 'Regate', short: 'REG', group: 'Ataque', tone: 'offensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.regate.team },
+  { tipoEvento: 'centro', label: 'Centro', short: 'CEN', group: 'Ataque', tone: 'offensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.centro.team },
+  { tipoEvento: 'perdida', label: 'Pérdida', short: 'PER', group: 'Posesión', tone: 'danger', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.perdida.team },
+  { tipoEvento: 'robo', label: 'Robo', short: 'ROB', group: 'Posesión', tone: 'defensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.robo.team },
+  { tipoEvento: 'recuperacion', label: 'Recuperación', short: 'REC', group: 'Posesión', tone: 'defensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.recuperacion.team },
+  { tipoEvento: 'falta_realizada', label: 'Falta realizada', short: 'FR', group: 'Faltas', tone: 'danger', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.falta_realizada.team },
+  { tipoEvento: 'falta_recibida', label: 'Falta recibida', short: 'FREC', group: 'Faltas', tone: 'defensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.falta_recibida.team },
+  { tipoEvento: 'corner', label: 'Córner', short: 'COR', group: 'Ataque', tone: 'offensive', requiresPlayer: false, effects: EVENT_STAT_EFFECTS.corner.team },
 ];
 const delegatedEventDefinitions = [
   ...['caudal', 'rival'].flatMap((side) => delegatedStatEventCatalog.map((event) => ({
@@ -937,6 +967,26 @@ const getDelegatedDefinitionForEvent = (event = {}) =>
     definition.side === getQuickEventSide(event)
   )) || delegatedEventDefinitions.find((definition) => definition.tipoEvento === getQuickEventBaseType(event.tipoEvento));
 const getQuickEventLabel = (tipoEvento = '') => quickEventLabelByType[getQuickEventBaseType(tipoEvento)] || tipoEvento || 'Evento';
+const applyEventEffects = (stats, effects = {}) => {
+  Object.entries(effects).forEach(([key, value]) => {
+    stats[key] = (Number(stats[key]) || 0) + Number(value || 0);
+  });
+  return stats;
+};
+const aggregateQuickEventStats = (events = [], { side = 'caudal', playerId = '', scope = 'team' } = {}) => {
+  const stats = createEmptyEventStats();
+  const sourceEvents = safeArray(events).filter((event) => {
+    if (side && getQuickEventSide(event) !== side) return false;
+    if (scope === 'player' && (!playerId || event.jugadorId !== playerId)) return false;
+    return true;
+  });
+  sourceEvents.forEach((event) => {
+    const effects = EVENT_STAT_EFFECTS[getQuickEventBaseType(event.tipoEvento)]?.[scope] || {};
+    applyEventEffects(stats, effects);
+  });
+  return { ...stats, events: sourceEvents, hasEvents: sourceEvents.length > 0 };
+};
+const getStatRate = (part, total) => (total > 0 ? `${Math.round((part / total) * 100)}%` : 'No disponible');
 const hasPendingQuickEvents = (match) => (match?.quickEvents || []).some((event) => !event.reviewed);
 const pendingQuickEventsMessage = 'Este partido tiene eventos rápidos pendientes de revisar.';
 
@@ -7216,7 +7266,7 @@ function App() {
       ? `Generó ${quick.shots} tiros y ${quick.boxEntries} entradas al área.`
       : 'Pendiente de etiquetar volumen ofensivo.';
     const riskText = quick.rivalShots || quick.losses
-      ? `Sufrió ${quick.losses} pérdidas peligrosas y concedió ${quick.rivalShots} tiros.`
+      ? `Registró ${quick.losses} pérdidas y concedió ${quick.rivalShots} tiros.`
       : 'No hay riesgos rápidos relevantes registrados.';
     return [resultText, derived.trend, goalContext, attackText, riskText].filter(Boolean).join(' ');
   };
@@ -7251,7 +7301,7 @@ function App() {
       ? Math.round((caudalActivity / Math.max(1, caudalActivity + rivalActivity)) * 100)
       : 50;
     const tendency = quick.losses >= 3
-      ? `Caudal tuvo volumen, pero el partido se abrió por pérdidas peligrosas.`
+      ? `Caudal tuvo volumen, pero el partido se abrió por pérdidas.`
       : quick.recoveries >= quick.rivalRecoveries + 2
         ? `Caudal sostuvo el partido desde presión y recuperación alta.`
         : quick.rivalShotsOnTarget > quick.shotsOnTarget
@@ -7260,7 +7310,7 @@ function App() {
             ? `El rival castigó una acción puntual que conviene aislar en vídeo.`
             : `Partido pendiente de matizar con vídeo y clips tácticos.`;
     const suggestions = [
-      quick.losses >= 2 ? 'Revisar pérdidas peligrosas y cobertura tras pérdida.' : null,
+      quick.losses >= 2 ? 'Revisar pérdidas y cobertura tras pérdida.' : null,
       quick.shots > quick.shotsOnTarget + 2 ? 'Mucho tiro sin precisión: revisar calidad de finalización.' : null,
       quick.rivalBoxEntries > quick.boxEntries ? 'El rival pisó más área: revisar altura y cierres laterales.' : null,
       quick.recoveries >= 3 ? 'Presión alta con señales útiles para repetir.' : null,
@@ -7462,7 +7512,7 @@ function App() {
       ...derived.suggestions,
     ].filter(Boolean);
     const repeatedErrors = [
-      quick.losses >= 2 ? `Pérdidas peligrosas: ${quick.losses}` : null,
+      quick.losses >= 2 ? `Pérdidas: ${quick.losses}` : null,
       quick.rivalBoxEntries > quick.boxEntries ? `Entradas área rival: ${quick.rivalBoxEntries}` : null,
       quick.rivalShotsOnTarget >= 3 ? `Tiros a puerta rival: ${quick.rivalShotsOnTarget}` : null,
       derived.criticalRange ? `Tramo crítico: ${derived.criticalRange}` : null,
@@ -9193,7 +9243,7 @@ function App() {
       if (liveSummary.shots >= liveSummary.rivalShots + 3 && Number(liveSummary.shotAccuracy.replace('%', '')) < 35) {
         return 'Caudal está llegando más, pero con poca precisión.';
       }
-      if (liveSummary.losses >= 3) return 'Hay demasiadas pérdidas peligrosas: vigilar la primera salida tras robo rival.';
+      if (liveSummary.losses >= 3) return 'Hay demasiadas pérdidas: vigilar la primera salida tras robo rival.';
       if (liveSummary.recoveries >= liveSummary.rivalRecoveries + 3) return 'La presión alta está dando recuperaciones útiles.';
       if (liveSummary.rivalBoxEntries > liveSummary.boxEntries) return 'El rival pisa más área: proteger mejor la frontal y los retornos.';
       if (liveSummary.shotsOnTarget > liveSummary.rivalShotsOnTarget) return 'Caudal está generando más amenaza real a portería.';
@@ -11067,26 +11117,33 @@ function App() {
   const getQuickEventCount = (events, tipoEvento, side = 'caudal') =>
     safeArray(events).filter((event) => quickEventMatches(event, tipoEvento, side)).length;
 
-  const getQuickEventRate = (part, total) =>
-    total ? `${Math.round((part / total) * 100)}%` : '0%';
-
   const getQuickEventSummary = (events = []) => {
     const rows = safeArray(events);
-    const goals = getQuickEventCount(rows, 'gol');
-    const rivalGoals = getQuickEventCount(rows, 'gol', 'rival');
-    const shots = getQuickEventCount(rows, 'tiro') + getQuickEventCount(rows, 'tiro_puerta') + goals;
-    const shotsOnTarget = getQuickEventCount(rows, 'tiro_puerta') + goals;
-    const rivalShots = getQuickEventCount(rows, 'tiro', 'rival') + getQuickEventCount(rows, 'tiro_puerta', 'rival') + rivalGoals;
-    const rivalShotsOnTarget = getQuickEventCount(rows, 'tiro_puerta', 'rival') + rivalGoals;
-    const recoveries = getQuickEventCount(rows, 'recuperacion');
-    const rivalRecoveries = getQuickEventCount(rows, 'recuperacion', 'rival');
-    const losses = getQuickEventCount(rows, 'perdida');
-    const rivalLosses = getQuickEventCount(rows, 'perdida', 'rival');
-    const boxEntries = getQuickEventCount(rows, 'centro') + getQuickEventCount(rows, 'regate');
-    const rivalBoxEntries = getQuickEventCount(rows, 'centro', 'rival') + getQuickEventCount(rows, 'regate', 'rival');
+    const caudalStats = aggregateQuickEventStats(rows, { side: 'caudal', scope: 'team' });
+    const rivalStats = aggregateQuickEventStats(rows, { side: 'rival', scope: 'team' });
+    const goals = caudalStats.goals;
+    const rivalGoals = rivalStats.goals;
+    const shots = caudalStats.shots;
+    const shotsOnTarget = caudalStats.shotsOnTarget;
+    const rivalShots = rivalStats.shots;
+    const rivalShotsOnTarget = rivalStats.shotsOnTarget;
+    const recoveries = caudalStats.recoveries;
+    const rivalRecoveries = rivalStats.recoveries;
+    const losses = caudalStats.turnovers;
+    const rivalLosses = rivalStats.turnovers;
+    const boxEntries = caudalStats.crosses + caudalStats.dribbles;
+    const rivalBoxEntries = rivalStats.crosses + rivalStats.dribbles;
     const maxMinute = Math.max(...rows.map((event) => Number(event.minute || 0)), 0) || 1;
     const elapsedTens = Math.max(1, maxMinute / 10);
     return {
+      stats: caudalStats,
+      rivalStats,
+      statRows: EVENT_STAT_FIELDS.map((field) => ({
+        ...field,
+        caudal: caudalStats[field.key] || 0,
+        rival: rivalStats[field.key] || 0,
+      })),
+      hasRegisteredEvents: rows.length > 0,
       shots,
       shotsOnTarget,
       rivalShots,
@@ -11095,18 +11152,18 @@ function App() {
       rivalGoals,
       boxEntries,
       rivalBoxEntries,
-      corners: getQuickEventCount(rows, 'corner'),
-      rivalCorners: getQuickEventCount(rows, 'corner', 'rival'),
-      fouls: getQuickEventCount(rows, 'falta_realizada'),
-      rivalFouls: getQuickEventCount(rows, 'falta_realizada', 'rival'),
-      foulsReceived: getQuickEventCount(rows, 'falta_recibida'),
-      rivalFoulsReceived: getQuickEventCount(rows, 'falta_recibida', 'rival'),
-      dribbles: getQuickEventCount(rows, 'regate'),
-      rivalDribbles: getQuickEventCount(rows, 'regate', 'rival'),
-      crosses: getQuickEventCount(rows, 'centro'),
-      rivalCrosses: getQuickEventCount(rows, 'centro', 'rival'),
-      steals: getQuickEventCount(rows, 'robo'),
-      rivalSteals: getQuickEventCount(rows, 'robo', 'rival'),
+      corners: caudalStats.corners,
+      rivalCorners: rivalStats.corners,
+      fouls: caudalStats.foulsCommitted,
+      rivalFouls: rivalStats.foulsCommitted,
+      foulsReceived: caudalStats.foulsReceived,
+      rivalFoulsReceived: rivalStats.foulsReceived,
+      dribbles: caudalStats.dribbles,
+      rivalDribbles: rivalStats.dribbles,
+      crosses: caudalStats.crosses,
+      rivalCrosses: rivalStats.crosses,
+      steals: caudalStats.steals,
+      rivalSteals: rivalStats.steals,
       recoveries,
       rivalRecoveries,
       losses,
@@ -11117,10 +11174,12 @@ function App() {
       shotsPer10: (shots / elapsedTens).toFixed(1),
       firstHalfBoxEntries: rows.filter((event) => ['centro', 'regate'].includes(getQuickEventBaseType(event.tipoEvento)) && getQuickEventSide(event) === 'caudal' && Number(event.minute || 0) < 45).length,
       secondHalfBoxEntries: rows.filter((event) => ['centro', 'regate'].includes(getQuickEventBaseType(event.tipoEvento)) && getQuickEventSide(event) === 'caudal' && Number(event.minute || 0) >= 45).length,
-      dangerLossRatio: getQuickEventRate(losses, Math.max(1, recoveries + losses)),
-      highPressEffectiveness: getQuickEventRate(recoveries, Math.max(1, recoveries + rivalBoxEntries)),
-      shotAccuracy: getQuickEventRate(shotsOnTarget, shots),
-      concededDanger: getQuickEventRate(rivalShotsOnTarget, rivalShots),
+      dangerLossRatio: getStatRate(losses, recoveries + losses),
+      highPressEffectiveness: getStatRate(recoveries, recoveries + rivalBoxEntries),
+      shotAccuracy: getStatRate(shotsOnTarget, shots),
+      concededDanger: getStatRate(rivalShotsOnTarget, rivalShots),
+      recoveryBalance: recoveries + caudalStats.steals - losses,
+      rivalRecoveryBalance: rivalRecoveries + rivalStats.steals - rivalLosses,
     };
   };
 
@@ -11140,10 +11199,27 @@ function App() {
   };
 
   const getPlayerQuickSummary = (player) => {
+    if (!player?.id) {
+      const emptyStats = aggregateQuickEventStats([], { scope: 'player' });
+      return {
+        ...emptyStats,
+        losses: 0,
+        fouls: 0,
+        shotAccuracy: 'No disponible',
+        recoveryLossBalance: 0,
+        events: [],
+        recent: [],
+        matchesWithEvents: 0,
+        readings: [],
+        alerts: [],
+        per90: {},
+      };
+    }
     const scopedReviewedEvents = (playerProfileData?.quickEvents || [])
       .map((event) => ({ ...event, match: playerProfileData?.partidosById?.[event.partidoId] }))
       .filter((event) => event.match)
       .filter((event) => event.reviewed)
+      .filter((event) => event.jugadorId === player.id && getQuickEventSide(event) === 'caudal')
       .filter((event) =>
         playerCompetitionFilter === 'Todos' ||
         event.match.type === playerCompetitionFilter ||
@@ -11161,21 +11237,26 @@ function App() {
     const quickEvents = visibleMatchIds
       ? scopedReviewedEvents.filter((event) => visibleMatchIds.has(event.partidoId))
       : scopedReviewedEvents;
-    const summary = getQuickEventSummary(quickEvents);
+    const summary = aggregateQuickEventStats(quickEvents, { side: 'caudal', playerId: player.id, scope: 'player' });
     const recent = quickEvents
       .slice()
       .sort((a, b) => new Date(b.match.date || 0) - new Date(a.match.date || 0) || Number(b.minute || 0) - Number(a.minute || 0));
     const matchCount = new Set(quickEvents.map((event) => event.partidoId)).size;
-    const shotAccuracyValue = Number(String(summary.shotAccuracy).replace('%', '')) || 0;
+    const shotAccuracy = getStatRate(summary.shotsOnTarget, summary.shots);
+    const shotAccuracyValue = Number(String(shotAccuracy).replace('%', '')) || 0;
     const readings = [
       summary.recoveries >= 5 ? 'Alto volumen de recuperaciones' : null,
-      summary.losses > summary.recoveries && summary.losses >= 3 ? 'Muchas pérdidas respecto a recuperaciones' : null,
-      summary.shots + summary.shotsOnTarget >= 3 ? 'Participa en finalización' : null,
+      summary.turnovers > summary.recoveries && summary.turnovers >= 3 ? 'Muchas pérdidas respecto a recuperaciones' : null,
+      summary.shots >= 3 ? 'Participa en finalización' : null,
       summary.shots >= 3 && shotAccuracyValue >= 50 ? 'Buena precisión de tiro' : null,
       quickScopeLimit && quickEvents.length <= 2 ? 'Poca participación reciente' : null,
     ].filter(Boolean);
     return {
       ...summary,
+      losses: summary.turnovers,
+      fouls: summary.foulsCommitted,
+      shotAccuracy,
+      recoveryLossBalance: summary.recoveries + summary.steals - summary.turnovers,
       events: quickEvents,
       recent,
       matchesWithEvents: matchCount,
@@ -11197,6 +11278,12 @@ function App() {
     const injured = rows.filter((row) => row.injured).length;
     const possibleMinutes = rows.length * 90;
     const quick = getPlayerQuickSummary(player);
+    const quickPer90 = EVENT_STAT_FIELDS
+      .filter((field) => !field.teamOnly)
+      .reduce((acc, field) => ({
+        ...acc,
+        [field.key]: minutes > 0 ? ((Number(quick[field.key] || 0) / minutes) * 90).toFixed(2) : 'No disponible',
+      }), {});
     return {
       rows,
       played,
@@ -11212,7 +11299,7 @@ function App() {
       goalsPer90: minutes ? (goals / minutes * 90).toFixed(2) : '0.00',
       assistsPer90: minutes ? (assists / minutes * 90).toFixed(2) : '0.00',
       directGoalParticipation: goals + assists,
-      quick,
+      quick: { ...quick, per90: quickPer90 },
     };
   };
 
@@ -15405,14 +15492,18 @@ function App() {
                         <div className="mt-4 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
                           {[
                             ['Partidos con eventos', quick.matchesWithEvents],
+                            ['Goles', quick.goals],
                             ['Tiros', quick.shots],
                             ['Tiros a puerta', quick.shotsOnTarget],
                             ['% tiros a puerta', quick.shotAccuracy],
-                            ['Recuperaciones', quick.recoveries],
+                            ['Regates', quick.dribbles],
+                            ['Centros', quick.crosses],
                             ['Pérdidas', quick.losses],
+                            ['Robos', quick.steals],
+                            ['Recuperaciones', quick.recoveries],
                             ['Balance rec/pérd', quick.recoveryLossBalance],
-                            ['Faltas', quick.fouls],
-                            ['Córners provocados', quick.corners],
+                            ['Faltas realizadas', quick.foulsCommitted],
+                            ['Faltas recibidas', quick.foulsReceived],
                           ].map(([label, value]) => (
                             <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
                               <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{label}</p>
@@ -17460,6 +17551,10 @@ function App() {
             match,
             summary: getQuickEventSummary(safeArray(match.quickEvents)),
           }));
+          const quickStatGroups = ['Producción ofensiva', 'Seguridad con balón', 'Disciplina y duelos'].map((group) => ({
+            group,
+            rows: safeArray(quickSummary.statRows).filter((row) => row.group === group),
+          }));
           const automaticAlerts = getGroupAlerts(groupData, rankings, localSummary, awaySummary);
           const automaticReadings = getGroupAutomaticReadings(groupData);
           const groupIdentity = getGroupIdentity(groupData);
@@ -17847,21 +17942,44 @@ function App() {
                     </p>
                   </div>
                 ) : null}
-                <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-                  {[
-                    ['Tiros', `${quickSummary.shots} - ${quickSummary.rivalShots}`],
-                    ['Tiros puerta', `${quickSummary.shotsOnTarget} - ${quickSummary.rivalShotsOnTarget}`],
-                    ['Córners', `${quickSummary.corners} - ${quickSummary.rivalCorners}`],
-                    ['Faltas', `${quickSummary.fouls} - ${quickSummary.rivalFouls}`],
-                    ['Eficacia tiro', quickSummary.shotAccuracy],
-                    ['Peligro concedido', quickSummary.concededDanger],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-3xl border border-white/5 bg-white/5 p-5">
-                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
-                      <p className="mt-3 text-3xl font-black text-white">{value}</p>
+                {quickSummary.hasRegisteredEvents ? (
+                  <>
+                    <div className="mt-5 grid gap-4 xl:grid-cols-3">
+                      {quickStatGroups.map((group) => (
+                        <div key={group.group} className="rounded-3xl border border-white/5 bg-white/[0.045] p-5">
+                          <p className="text-xs font-black uppercase tracking-[0.16em] text-caudal-electric">{group.group}</p>
+                          <div className="mt-4 space-y-2">
+                            {group.rows.map((row) => (
+                              <div key={row.key} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-2xl bg-black/15 px-3 py-2">
+                                <span className="text-sm font-bold text-slate-300">{row.label}</span>
+                                <span className="text-sm font-black text-white">{row.caudal}</span>
+                                <span className="text-sm font-black text-red-200">{row.rival}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      {[
+                        ['Precisión de tiro', quickSummary.shotAccuracy],
+                        ['Precisión rival', quickSummary.concededDanger],
+                        ['Balance recuperación', `${quickSummary.recoveryBalance} - ${quickSummary.rivalRecoveryBalance}`],
+                        ['Eventos registrados', quickRows.length],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded-2xl border border-white/5 bg-white/[0.035] p-4">
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                          <p className="mt-2 text-xl font-black text-white">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="empty-state mt-5">
+                    <p className="font-bold text-slate-200">Sin datos registrados.</p>
+                    <p className="mt-1">Cuando el Modo Delegado registre eventos reales, aparecerán aquí las estadísticas colectivas de Caudal y rival.</p>
+                  </div>
+                )}
                 <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_1.15fr]">
                   <div className="rounded-3xl bg-[#0f1e38]/80 p-5">
                     <h4 className="text-xs font-black uppercase tracking-[0.18em] text-white">Tramos de partido</h4>
