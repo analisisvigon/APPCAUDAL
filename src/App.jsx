@@ -2786,7 +2786,6 @@ function App() {
   const [newRivalManualPlayerName, setNewRivalManualPlayerName] = useState('');
   const [tacticalQuestionMode, setTacticalQuestionMode] = useState('Macro');
   const [tacticalQuestionText, setTacticalQuestionText] = useState('');
-  const [showFullTacticalAnswer, setShowFullTacticalAnswer] = useState(false);
   const [openQuestionnaireSections, setOpenQuestionnaireSections] = useState({
     rivalProfile: true,
     rivalAttack: true,
@@ -5477,15 +5476,80 @@ function App() {
       caudalSystem && rivalSystem ? 'Sistema enfrentado' : null,
     ].filter(Boolean);
     const evidenceWeight = evidences.reduce((sum, item) => sum + (item.importance === 'Alta' ? 3 : item.importance === 'Baja' ? 1 : 2), 0);
-    const confidence = evidenceWeight >= 7 && sources.length >= 3 ? 'Alta' : evidenceWeight || sources.length >= 2 ? 'Media' : 'Baja';
+    const hasSpecificScouting = sources.some((source) => source !== 'Sistema enfrentado');
+    const confidence = hasSpecificScouting
+      ? evidenceWeight >= 7 && sources.length >= 3 ? 'Alta' : evidenceWeight >= 3 || sources.length >= 3 ? 'Media' : 'Baja'
+      : 'General';
     const evidenceText = evidences.slice(0, 3).map((item) => `- ${item.observation}${item.importance ? ` (${item.importance})` : ''}${item.match ? ` · ${item.match}` : ''}`).join('\n');
     const sourceText = sources.map((source) => `✓ ${source}`).join('\n');
-    const insufficient = () => 'Información insuficiente para emitir una conclusión fiable.\n\nFUENTES:\nSin datos observados suficientes.';
+    const formatAnswer = ({ title, analysis, proposals, sourceLabel, sourceText: answerSourceText = sourceText, confidenceLabel = confidence }) => ({
+      answer: [
+        title,
+        `Confianza: ${confidenceLabel}`,
+        '',
+        'ANÁLISIS',
+        analysis,
+        '',
+        'PROPUESTA DEL STAFF',
+        ...safeArray(proposals).map((item) => `• ${item}`),
+        '',
+        'FUENTE',
+        answerSourceText,
+      ].join('\n'),
+      confidence: confidenceLabel,
+      sourceType: sourceLabel,
+    });
+    const generalPrinciplesByQuestion = () => {
+      if (/presión|presion|iniciar/.test(q)) return [
+        'Definir una primera altura de presión coherente con nuestro sistema antes de saltar.',
+        'Orientar la salida hacia una zona donde podamos cerrar pase interior y pase atrás.',
+        'Activar el salto solo con señal común: mal control, pase horizontal o recepción de espaldas.',
+      ];
+      if (/vigilancias|proteger|zonas/.test(q)) return [
+        'Asegurar vigilancia preventiva por detrás de la línea de balón.',
+        'Proteger carril central antes de perseguir fuera de zona.',
+        'Mantener coberturas cortas cuando el lateral o el central exterior salten.',
+      ];
+      if (/pérdida|perdida|tras pérdida|transición/.test(q)) return [
+        'Tras pérdida, cerrar primero pase interior y receptor de cara.',
+        'Si no hay opción de robo inmediato, temporizar y reorganizar el bloque.',
+        'Evitar que la primera presión se convierta en saltos individuales sin cobertura.',
+      ];
+      if (/recuperación|recuperacion|castigamos/.test(q)) return [
+        'Buscar primer pase hacia delante si hay receptor perfilado.',
+        'Atacar el intervalo más cercano antes de que el rival vuelva a organizarse.',
+        'Si no hay ventaja clara, asegurar posesión y cambiar orientación.',
+      ];
+      if (/estrategia|abp/.test(q)) return [
+        'Asignar responsabilidades claras: zona, marca y rechace frontal.',
+        'Proteger segundo palo y zona de caída tras despeje.',
+        'En ataque, bloquear legalmente para liberar un rematador o una segunda jugada.',
+      ];
+      if (/superioridades|espacios|progresamos|estructura|balón|balon/.test(q)) return [
+        `Como principio general frente a un ${rivalSystem}, mover rápido para obligar a bascular.`,
+        'Fijar una línea antes de atacar el siguiente intervalo.',
+        'Buscar tercer hombre o recepción entre líneas cuando el pase directo esté tapado.',
+        'Evitar pérdidas interiores si no hay vigilancia preparada.',
+      ];
+      return [
+        `Aplicar principios generales contra ${rivalSystem} sin atribuir comportamientos concretos al rival.`,
+        'Priorizar decisiones simples, coberturas cercanas y ocupación racional de espacios.',
+        'Validar la propuesta con vídeo o evidencias antes de convertirla en consigna específica.',
+      ];
+    };
+    const generalAnswer = () => formatAnswer({
+      title: 'RECOMENDACIÓN TÁCTICA GENERAL',
+      confidenceLabel: 'General',
+      sourceLabel: 'general',
+      analysis: `No existen suficientes evidencias para describir cómo actúa específicamente este rival. La orientación siguiente usa principios tácticos generales frente a un ${rivalSystem}, no conclusiones del scouting.`,
+      proposals: generalPrinciplesByQuestion(),
+      answerSourceText: '✓ Recomendación táctica general',
+    });
 
-    if (sources.length <= 1 && !q.includes('superioridad')) return insufficient();
+    if (!hasSpecificScouting) return generalAnswer();
 
     if (mode === 'Micro' || /jugador|duelo|vigilar|marca/i.test(safeQuestion)) {
-      if (!profiledPlayers.length) return insufficient();
+      if (!profiledPlayers.length) return generalAnswer();
       const playerLine = profiledPlayers.slice(0, 2).map(({ player, profile }) => {
         const metrics = [
           profile.speed ? `velocidad ${profile.speed}` : '',
@@ -5495,45 +5559,109 @@ function App() {
         ].filter(Boolean).join(' · ');
         return `${displayPlayerName(player)}: ${metrics}`;
       }).join('\n');
-      return `Confianza ${confidence}: duelos definidos por perfiles observados.\n${playerLine}\n\nRecomendación:\nAjustar marcas y ayudas según el atributo dominante registrado.\n\nFUENTES:\n${sourceText}`;
+      return formatAnswer({
+        title: 'ANÁLISIS BASADO EN EL SCOUTING',
+        sourceLabel: 'scouting',
+        analysis: `Duelos definidos por perfiles observados.\n${playerLine}`,
+        proposals: [
+          'Ajustar marcas y ayudas según el atributo dominante registrado.',
+          'No asignar una vigilancia especial a jugadores sin evidencia individual.',
+          'Confirmar en vídeo si el comportamiento se repite antes del partido.',
+        ],
+        answerSourceText: `${sourceText}${evidenceText ? `\n${evidenceText}` : ''}`,
+      });
     }
 
     if (q.includes('bloque') || q.includes('atacamos')) {
-      if (!collective.blockHeight && !collective.weaknesses.length && !evidences.length) return insufficient();
-      return `Confianza ${confidence}: ${collective.blockHeight ? `bloque ${collective.blockHeight.toLowerCase()} registrado.` : 'altura de bloque no registrada.'}\n${collective.buildUp ? `Salida: ${collective.buildUp}.` : 'Salida: sin dato.'}\n${collective.weaknesses.length ? `Debilidad registrada: ${collective.weaknesses.slice(0, 2).join(', ')}.` : 'Debilidad: sin dato.'}\n\nRecomendación:\nAtacar únicamente las zonas respaldadas por perfil o evidencias.\n\nFUENTES:\n${sourceText}${evidenceText ? `\n\nEVIDENCIAS:\n${evidenceText}` : ''}`;
+      if (!collective.blockHeight && !collective.weaknesses.length && !evidences.length) return generalAnswer();
+      return formatAnswer({
+        title: 'ANÁLISIS BASADO EN EL SCOUTING',
+        sourceLabel: 'scouting',
+        analysis: [
+          collective.blockHeight ? `Bloque registrado: ${collective.blockHeight}.` : 'Altura de bloque no registrada.',
+          collective.buildUp ? `Salida registrada: ${collective.buildUp}.` : 'Salida sin dato registrado.',
+          collective.weaknesses.length ? `Debilidades registradas: ${collective.weaknesses.slice(0, 2).join(', ')}.` : 'Sin debilidad registrada.',
+        ].join('\n'),
+        proposals: [
+          'Atacar únicamente las zonas respaldadas por perfil o evidencias.',
+          'Evitar convertir una lectura estructural en conclusión si no hay observación real.',
+          'Usar el primer tramo del partido para validar si el patrón se repite.',
+        ],
+        answerSourceText: `${sourceText}${evidenceText ? `\n${evidenceText}` : ''}`,
+      });
     }
     if (q.includes('superioridad')) {
       const diff = caudal.midfielders - rival.midfielders;
-      return `Confianza Media: conclusión estructural por sistema enfrentado.\n${diff >= 0 ? `Superioridad o igualdad interior: ${caudal.midfielders}v${rival.midfielders}.` : `No hay superioridad interior: ${caudal.midfielders}v${rival.midfielders}.`}\n\nRecomendación:\nConfirmar con evidencias antes de convertirlo en consigna principal.\n\nFUENTES:\n✓ Sistema enfrentado`;
+      return hasSpecificScouting ? formatAnswer({
+        title: 'ANÁLISIS BASADO EN EL SCOUTING',
+        sourceLabel: 'scouting',
+        analysis: `La estructura base da una referencia numérica (${caudal.midfielders}v${rival.midfielders}), pero la ventaja solo debe validarse con evidencias observadas.`,
+        proposals: [
+          diff >= 0 ? 'Buscar recepción del tercer hombre si el rival protege solo la primera línea interior.' : 'Compensar inferioridad interior acercando extremo o punta a zona de mediocentro.',
+          'Confirmar con vídeo o evidencia antes de convertirlo en consigna principal.',
+          'No llamar superioridad a una coincidencia posicional sin comportamiento observado.',
+        ],
+        answerSourceText: sourceText,
+      }) : generalAnswer();
     }
     if (q.includes('pérdida') || q.includes('perdida') || q.includes('transiciones')) {
-      if (!collective.strengths.includes('Transiciones') && !collective.strengths.includes('Contraataque') && !evidences.length) return insufficient();
-      return `Confianza ${confidence}: riesgo de transición respaldado por ${evidences.length ? `${evidences.length} evidencias` : 'perfil colectivo'}.\n${collective.strengths.length ? `Fortalezas registradas: ${collective.strengths.join(', ')}.` : ''}\n\nRecomendación:\nFinalizar ataques, asegurar vigilancia y cortar primera recepción tras pérdida.\n\nFUENTES:\n${sourceText}`;
+      if (!collective.strengths.includes('Transiciones') && !collective.strengths.includes('Contraataque') && !evidences.length) return generalAnswer();
+      return formatAnswer({
+        title: 'ANÁLISIS BASADO EN EL SCOUTING',
+        sourceLabel: 'scouting',
+        analysis: `Riesgo de transición respaldado por ${evidences.length ? `${evidences.length} evidencias` : 'perfil colectivo registrado'}.\n${collective.strengths.length ? `Fortalezas registradas: ${collective.strengths.join(', ')}.` : ''}`,
+        proposals: [
+          'Finalizar ataques o asegurar vigilancia antes de perder por dentro.',
+          'Cerrar primera recepción hacia delante tras pérdida.',
+          'Si no hay robo inmediato, temporizar y reorganizar.',
+        ],
+        answerSourceText: `${sourceText}${evidenceText ? `\n${evidenceText}` : ''}`,
+      });
     }
     if (q.includes('vigilar')) {
-      if (!profiledPlayers.length && !evidences.length) return insufficient();
+      if (!profiledPlayers.length && !evidences.length) return generalAnswer();
       const watched = profiledPlayers[0]?.player ? displayPlayerName(profiledPlayers[0].player) : 'Jugador observado';
-      return `Confianza ${confidence}: vigilancia sobre ${watched}.\nBasado en perfil individual y evidencias disponibles.\n\nRecomendación:\nNegar su acción dominante registrada y ajustar cobertura cercana.\n\nFUENTES:\n${sourceText}`;
+      return formatAnswer({
+        title: 'ANÁLISIS BASADO EN EL SCOUTING',
+        sourceLabel: 'scouting',
+        analysis: `Vigilancia sobre ${watched}, basada en perfil individual y evidencias disponibles.`,
+        proposals: [
+          'Negar su acción dominante registrada.',
+          'Ajustar cobertura cercana antes de saltar.',
+          'No extender esa vigilancia a otros jugadores sin dato registrado.',
+        ],
+        answerSourceText: `${sourceText}${evidenceText ? `\n${evidenceText}` : ''}`,
+      });
     }
     if (q.includes('ajuste') || q.includes('progresamos')) {
-      if (!sources.length) return insufficient();
-      return `Confianza ${confidence}: ajuste condicionado por datos observados.\n${collective.pressureType ? `Presión rival registrada: ${collective.pressureType}.` : 'Presión rival sin registrar.'}\n${collective.weaknesses.length ? `Atacar: ${collective.weaknesses[0]}.` : 'Sin debilidad validada.'}\n\nFUENTES:\n${sourceText}`;
+      return formatAnswer({
+        title: 'ANÁLISIS BASADO EN EL SCOUTING',
+        sourceLabel: 'scouting',
+        analysis: `Ajuste condicionado por datos observados.\n${collective.pressureType ? `Presión registrada: ${collective.pressureType}.` : 'Presión sin registrar.'}\n${collective.weaknesses.length ? `Atacar: ${collective.weaknesses[0]}.` : 'Sin debilidad validada.'}`,
+        proposals: [
+          'Progresar por el espacio realmente observado, no por una hipótesis.',
+          'Preparar alternativa si el patrón no aparece en los primeros minutos.',
+          'Validar con evidencia antes de fijarlo como plan principal.',
+        ],
+        answerSourceText: sourceText,
+      });
     }
 
-    return insufficient();
+    return generalAnswer();
   };
 
-  const askTacticalQuestion = () => {
+  const answerTacticalQuestion = (question, mode = tacticalQuestionMode) => {
     if (!selectedMatch) return;
-    const question = tacticalQuestionText.trim() || '¿Dónde tenemos superioridad?';
-    const answer = buildTacticalQuestionAnswer(tacticalQuestionMode, question);
+    const result = buildTacticalQuestionAnswer(mode, question);
     updateSelectedMatchFields({
       preAiAnalysis: {
         ...(selectedPreAiAnalysis || {}),
         tacticalQuestion: {
-          mode: tacticalQuestionMode,
+          mode,
           question,
-          answer,
+          answer: result.answer,
+          confidence: result.confidence,
+          sourceType: result.sourceType,
           createdAt: new Date().toISOString(),
           context: {
             caudalSystem: selectedMatch.preCaudalSystem || '4-4-2',
@@ -5544,6 +5672,10 @@ function App() {
         },
       },
     });
+  };
+  const askTacticalQuestion = () => {
+    const question = tacticalQuestionText.trim() || '¿Dónde podemos generar superioridades?';
+    answerTacticalQuestion(question, tacticalQuestionMode);
   };
 
   const clearTacticalQuestion = () => {
@@ -5720,13 +5852,26 @@ function App() {
       return { caudalName, rivalName, tone, reason: bestMetric?.[1] ? `${bestMetric[0]} ${bestMetric[1]}` : 'perfil registrado' };
     });
     const tacticalAnswer = selectedPreAiAnalysis?.tacticalQuestion?.answer || '';
-    const tacticalAnswerLines = splitLines(tacticalAnswer.replace(/\. /g, '.\n'));
-    const quickQuestions = [
-      '¿Cómo atacamos su bloque?',
-      '¿Cómo defendemos sus transiciones?',
-      '¿Dónde tenemos superioridad?',
-      '¿Qué cambios harías al descanso?',
-      '¿Qué riesgo tiene nuestro sistema?',
+    const tacticalQuestionGroups = [
+      ['Con balón', 'Macro', [
+        '¿Cómo progresamos contra su estructura?',
+        '¿Qué espacios debemos atacar?',
+        '¿Dónde podemos generar superioridades?',
+        '¿Qué riesgos debemos evitar con balón?',
+      ]],
+      ['Sin balón', 'Macro', [
+        '¿Dónde debemos iniciar la presión?',
+        '¿Qué vigilancias son prioritarias?',
+        '¿Qué zonas debemos proteger?',
+      ]],
+      ['Transiciones', 'Macro', [
+        '¿Qué hacemos tras pérdida?',
+        '¿Cómo castigamos tras recuperación?',
+      ]],
+      ['ABP', 'Macro', [
+        '¿Qué debemos vigilar en estrategia?',
+        '¿Dónde podemos generar ventaja?',
+      ]],
     ];
     const renderPlanList = (title, items) => (
       <div>
@@ -5967,41 +6112,60 @@ function App() {
             <section className="order-6 border border-white/10 bg-[#091428]/82 p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Pregunta táctica IA</p>
-                <div className="flex bg-white/[0.045] p-1">
-                  {['Macro', 'Micro'].map((mode) => (
-                    <button key={mode} type="button" onClick={() => setTacticalQuestionMode(mode)} className={`px-3 py-1.5 text-[10px] font-black uppercase ${tacticalQuestionMode === mode ? 'bg-caudal-electric text-slate-950' : 'text-slate-400'}`}>{mode}</button>
-                  ))}
-                </div>
+                {selectedPreAiAnalysis?.tacticalQuestion?.confidence ? (
+                  <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">
+                    {selectedPreAiAnalysis.tacticalQuestion.confidence}
+                  </span>
+                ) : null}
               </div>
-              <div className="mt-3 grid gap-2">
-                {quickQuestions.map((question) => (
-                  <button key={question} type="button" onClick={() => setTacticalQuestionText(question)} className="bg-white/[0.045] px-3 py-2 text-left text-xs font-bold text-slate-200 hover:bg-white/[0.08]">
-                    {question}
-                  </button>
+              <div className="mt-4 grid gap-3">
+                {tacticalQuestionGroups.map(([group, mode, questions]) => (
+                  <div key={group} className="border border-white/10 bg-white/[0.025] p-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{group}</p>
+                    <div className="mt-2 grid gap-2">
+                      {questions.map((question) => {
+                        const active = selectedPreAiAnalysis?.tacticalQuestion?.question === question;
+                        const sourceType = selectedPreAiAnalysis?.tacticalQuestion?.sourceType;
+                        return (
+                          <div key={question} className={`border ${active ? 'border-caudal-electric/25 bg-caudal-electric/[0.06]' : 'border-white/10 bg-white/[0.035]'}`}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (active) {
+                                  clearTacticalQuestion();
+                                } else {
+                                  setTacticalQuestionMode(mode);
+                                  setTacticalQuestionText(question);
+                                  answerTacticalQuestion(question, mode);
+                                }
+                              }}
+                              className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-xs font-black text-slate-100 transition hover:bg-white/[0.045]"
+                            >
+                              <span>{question}</span>
+                              <span className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-caudal-electric">{active ? 'Abierta' : 'Ver'}</span>
+                            </button>
+                            {active && tacticalAnswer ? (
+                              <div className="border-t border-white/10 px-3 py-3">
+                                <div className="mb-3 flex flex-wrap gap-2">
+                                  <span className="rounded-lg border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
+                                    {selectedPreAiAnalysis.tacticalQuestion?.confidence || 'General'}
+                                  </span>
+                                  <span className={`rounded-lg border px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${sourceType === 'scouting' ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100' : 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'}`}>
+                                    {sourceType === 'scouting' ? 'Scouting real' : 'Principio general'}
+                                  </span>
+                                </div>
+                                <div className="whitespace-pre-line text-sm font-semibold leading-6 text-slate-100">
+                                  {tacticalAnswer}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 ))}
               </div>
-              <div className="mt-3 flex gap-2">
-                <input
-                  value={tacticalQuestionText}
-                  onChange={(event) => setTacticalQuestionText(event.target.value)}
-                  placeholder="Pregunta rápida..."
-                  className="min-w-0 flex-1 border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500"
-                />
-                <button type="button" onClick={askTacticalQuestion} className="bg-caudal-electric px-4 py-2 text-xs font-black uppercase text-slate-950">Preguntar</button>
-              </div>
-              {tacticalAnswer ? (
-                <div className="mt-4 border-l-2 border-caudal-electric bg-caudal-electric/[0.06] px-4 py-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">{selectedPreAiAnalysis.tacticalQuestion?.mode || 'Macro'} · respuesta</p>
-                  <div className="mt-2 space-y-1 text-sm font-semibold leading-5 text-slate-100">
-                    {(showFullTacticalAnswer ? tacticalAnswerLines : tacticalAnswerLines.slice(0, 4)).map((line) => <p key={line}>{line}</p>)}
-                  </div>
-                  {tacticalAnswerLines.length > 4 ? (
-                    <button type="button" onClick={() => setShowFullTacticalAnswer((current) => !current)} className="mt-3 text-xs font-black uppercase tracking-[0.12em] text-caudal-electric">
-                      {showFullTacticalAnswer ? 'Ocultar análisis completo' : 'Ver análisis completo'}
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
             </section>
           </div>
 
@@ -18534,13 +18698,6 @@ function App() {
                                 ) : null}
                               </div>
                             ) : null}
-                            <button
-                              type="button"
-                              onClick={askTacticalQuestion}
-                              className="mt-4 w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 hover:bg-[#7aacff]"
-                            >
-                              Preguntar
-                            </button>
                             {selectedPreAiAnalysis?.tacticalQuestion?.answer ? (
                               <div className="mt-5 rounded-3xl border border-caudal-electric/20 bg-caudal-electric/10 p-5">
                                 <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">{selectedPreAiAnalysis.tacticalQuestion.mode || 'Macro'} · respuesta guardada</p>
