@@ -3370,8 +3370,42 @@ function App() {
       if (Number.isInteger(slot.slot) && slot.slot >= 0 && slot.slot < 11) statsLineup[slot.slot] = slot.player_name || '';
     });
 
+    const statsRowsByName = new Map((statsResponse.data || []).map((row) => [row.player_name, row]));
+    const starterNamesMissingMinutes = Array.from(new Set(statsLineup.filter(Boolean))).filter((playerName) => {
+      const row = statsRowsByName.get(playerName);
+      return !hasRealValue(row?.minutes);
+    });
+    if (starterNamesMissingMinutes.length) {
+      const playersByName = new Map(players.map((player) => [player.name, player]));
+      const starterRows = starterNamesMissingMinutes.map((playerName) => {
+        const player = playersByName.get(playerName);
+        const row = statsRowsByName.get(playerName) || {};
+        return {
+          partido_id: partidoId,
+          jugador_id: isUuid(player?.id) ? player.id : row.jugador_id || null,
+          player_name: playerName,
+          role: 'Titular',
+          minutes: '90',
+          yellow: Boolean(row.yellow),
+          yellow_count: Number(row.yellow_count || 0),
+          red: Boolean(row.red),
+          injured: Boolean(row.injured),
+          rating: row.rating || '',
+          replacement_name: row.replacement_name || '',
+        };
+      });
+      const { error: starterMinutesError } = await supabase
+        .from("partido_estadisticas_jugador")
+        .upsert(starterRows, { onConflict: "partido_id,player_name" });
+      if (starterMinutesError) {
+        console.error('Error inicializando minutos de titulares en Supabase:', { partidoId, starterRows, error: starterMinutesError });
+        throw starterMinutesError;
+      }
+      starterRows.forEach((row) => statsRowsByName.set(row.player_name, row));
+    }
+
     const statsPlayerData = {};
-    (statsResponse.data || []).forEach((row) => {
+    Array.from(statsRowsByName.values()).forEach((row) => {
       statsPlayerData[row.player_name] = {
         role: row.role || 'Suplente',
         minutes: row.minutes ?? '',
@@ -7124,8 +7158,15 @@ function App() {
   };
 
   const getStatsCalledPlayers = () => {
-    const calledNames = getStatsCalledPlayerNames();
-    return players.filter((player) => calledNames.includes(player.name));
+    const calledNames = new Set([
+      ...getStatsCalledPlayerNames(),
+      ...Object.keys(safeObject(selectedMatch?.statsPlayerData)),
+      ...safeArray(selectedMatch?.statsLineup).filter(Boolean),
+    ]);
+    const playersByName = new Map(players.map((player) => [player.name, player]));
+    return Array.from(calledNames)
+      .map((name) => playersByName.get(name) || { id: name, name, number: '', position: '', image: '' })
+      .filter((player) => player?.name);
   };
 
   const refreshStatsFromSupabase = async (partidoId, reason = 'estadísticas') => {
@@ -7302,7 +7343,7 @@ function App() {
         jugador_id: isUuid(player?.id) ? player.id : null,
         player_name: playerName,
         role: 'Suplente',
-        minutes: '0',
+        minutes: '',
         yellow: false,
         yellow_count: 0,
         red: false,
@@ -7362,7 +7403,7 @@ function App() {
         jugador_id: jugadorId,
         player_name: playerName,
         role: 'Suplente',
-        minutes: '0',
+        minutes: '',
         yellow: false,
         yellow_count: 0,
         red: false,
@@ -7390,7 +7431,7 @@ function App() {
         jugador_id: isUuid(player.id) ? player.id : null,
         player_name: player.name,
         role: 'Suplente',
-        minutes: '0',
+        minutes: hasRealValue(current.minutes) ? String(current.minutes) : '',
         yellow: Boolean(current.yellow),
         yellow_count: Number(current.yellowCount || 0),
         red: Boolean(current.red),
@@ -7425,7 +7466,7 @@ function App() {
         jugador_id: isUuid(player?.id) ? player.id : null,
         player_name: playerName,
         role: 'Titular',
-        minutes: hasRealValue(current.minutes) ? String(current.minutes) : '',
+        minutes: hasRealValue(current.minutes) ? String(current.minutes) : '90',
         yellow: Boolean(current.yellow),
         yellow_count: Number(current.yellowCount || 0),
         red: Boolean(current.red),
@@ -7790,7 +7831,7 @@ function App() {
           jugador_id: jugadorId,
           player_name: playerName,
           role,
-          minutes: hasRealValue(current.minutes) ? String(current.minutes) : '',
+          minutes: hasRealValue(current.minutes) ? String(current.minutes) : role === 'Titular' ? '90' : '',
           yellow: Boolean(current.yellow),
           yellow_count: Number(current.yellowCount || 0),
           red: Boolean(current.red),
@@ -7918,7 +7959,8 @@ function App() {
       return;
     }
 
-    const nextStats = { ...getStatsPlayerData(playerName), role: 'Titular', minutes: hasRealValue(getStatsPlayerData(playerName).minutes) ? String(getStatsPlayerData(playerName).minutes) : '' };
+    const currentStats = getStatsPlayerData(playerName);
+    const nextStats = { ...currentStats, role: 'Titular', minutes: hasRealValue(currentStats.minutes) ? String(currentStats.minutes) : '90' };
     await supabase.from("partido_estadisticas_jugador").upsert(
       {
         partido_id: selectedMatch.id,
@@ -10131,7 +10173,7 @@ function App() {
                   </div>
                 ) : (
                   <div className="flex h-[82px] items-center">
-                    <p className="text-sm font-bold text-slate-500">{playedStatsPlayersForPost.length ? 'Sin seleccionar' : 'Añade minutos en estadísticas'}</p>
+                    <p className="text-sm font-bold text-slate-500">{playedStatsPlayersForPost.length ? 'Sin seleccionar' : postLoading || statsRefreshing ? 'Cargando minutos...' : 'Registra los minutos jugados para poder seleccionar jugadores.'}</p>
                   </div>
                 )}
               </div>
