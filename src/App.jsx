@@ -2796,6 +2796,8 @@ function App() {
   const [newRivalManualPlayerName, setNewRivalManualPlayerName] = useState('');
   const [tacticalQuestionMode, setTacticalQuestionMode] = useState('Macro');
   const [tacticalQuestionText, setTacticalQuestionText] = useState('');
+  const [microPlayerFilter, setMicroPlayerFilter] = useState('Todos');
+  const [selectedMicroPlayerKey, setSelectedMicroPlayerKey] = useState('');
   const [openQuestionnaireSections, setOpenQuestionnaireSections] = useState({
     rivalProfile: true,
     rivalAttack: true,
@@ -5879,6 +5881,24 @@ function App() {
     if (group === 'winger') return ['¿Cómo defendemos su banda?', '¿Le orientamos dentro o fuera?', '¿Cuándo salta la ayuda?', '¿Cómo protegemos la espalda del lateral?'];
     return ['¿Qué perfil debemos confirmar?', '¿Qué vigilancia individual necesita?', '¿Cómo ajustamos el duelo?', '¿Qué dato falta validar?'];
   };
+  const getMicroPositionGroupLabel = (player) => {
+    const group = getMicroPositionGroup(player);
+    if (group === 'goalkeeper') return 'PORTEROS';
+    if (group === 'centerback' || group === 'fullback') return 'DEFENSAS';
+    if (group === 'midfielder') return 'MEDIOS';
+    if (group === 'winger' || group === 'forward') return 'DELANTEROS';
+    return 'SIN DEMARCACIÓN';
+  };
+  const getMicroPlayerTags = (player) => {
+    const profile = getObservedPlayerProfile(player);
+    const tags = [];
+    if (keyPlayersIncludesProfile(profile) || player?.isKey) tags.push('Amenaza');
+    if ((profile.speed && Number(profile.speed) <= 2) || (profile.defensiveWork && Number(profile.defensiveWork) <= 2)) tags.push('Debilidad');
+    if (getMicroProfileCertainty(profile) === 'PERFIL NO IDENTIFICADO') tags.push('Perfil pendiente');
+    if (!tags.length && (profile.traits.length || profile.mainProfile || profile.notes || profile.foot)) tags.push('Vigilancia');
+    return tags;
+  };
+  const keyPlayersIncludesProfile = (profile) => profile.traits.includes('Rematador') || profile.traits.includes('Ataca espacio') || profile.traits.includes('Especialista ABP');
 
   const getUnavailableRivalPlayers = () => liveRivalPlayers.filter(isUnavailableRivalPlayer);
 
@@ -5994,15 +6014,32 @@ function App() {
     const unavailablePlayers = getUnavailableRivalPlayers();
     const weaknessPlayers = observedPlayerRows.filter(({ profile }) => profile.speed && Number(profile.speed) <= 2 || profile.defensiveWork && Number(profile.defensiveWork) <= 2).map(({ player }) => player);
     const watchedPlayers = observedPlayerRows.map(({ player }) => player).filter((player) => !keyPlayers.includes(player) && !weaknessPlayers.includes(player) && !isUnavailableRivalPlayer(player));
-    const microTargets = dedupeRivalPlayers([
+    const microPlayers = dedupeRivalPlayers([
       ...keyPlayers,
       ...weaknessPlayers,
       ...watchedPlayers,
       ...observedPlayerRows.map(({ player }) => player),
       ...liveRivalMarkedPlayers,
       ...liveRivalPlayers.filter((player) => player.isKey),
-      ...liveRivalPlayers.slice(0, 4),
-    ]).filter((player) => !isUnavailableRivalPlayer(player)).slice(0, 4);
+      ...liveRivalPlayers,
+    ]).filter((player) => !isUnavailableRivalPlayer(player));
+    const filteredMicroPlayers = microPlayers.filter((player) => {
+      const tags = getMicroPlayerTags(player);
+      if (microPlayerFilter === 'Todos') return true;
+      if (microPlayerFilter === 'Amenazas') return tags.includes('Amenaza');
+      if (microPlayerFilter === 'Vigilancias') return tags.includes('Vigilancia');
+      if (microPlayerFilter === 'Debilidades') return tags.includes('Debilidad');
+      if (microPlayerFilter === 'Perfil pendiente') return tags.includes('Perfil pendiente');
+      return true;
+    });
+    const selectedMicroPlayer = filteredMicroPlayers.find((player) => getObservedPlayerKey(player) === selectedMicroPlayerKey) || filteredMicroPlayers[0] || null;
+    const selectedMicroProfile = selectedMicroPlayer ? getObservedPlayerProfile(selectedMicroPlayer) : emptyObservedPlayerProfile;
+    const selectedMicroKey = selectedMicroPlayer ? getObservedPlayerKey(selectedMicroPlayer) : '';
+    const selectedMicroTags = selectedMicroPlayer ? getMicroPlayerTags(selectedMicroPlayer) : [];
+    const microPlayersByGroup = ['PORTEROS', 'DEFENSAS', 'MEDIOS', 'DELANTEROS', 'SIN DEMARCACIÓN'].map((group) => ({
+      group,
+      players: filteredMicroPlayers.filter((player) => getMicroPositionGroupLabel(player) === group),
+    })).filter((group) => group.players.length);
     const sourceLabel = [
       hasCollectiveData ? 'Perfil colectivo' : null,
       observedPlayerRows.length ? 'Perfil jugador' : null,
@@ -6072,12 +6109,8 @@ function App() {
         '¿Qué debemos vigilar en estrategia?',
         '¿Dónde podemos generar ventaja?',
       ]],
-      ...microTargets.map((player) => {
-        const profile = getObservedPlayerProfile(player);
-        const profileLabel = profile.mainProfile || profile.traits[0] || player.position || 'perfil por identificar';
-        return [`Micro · ${displayPlayerName(player) || player.name} · ${profileLabel}`, 'Micro', buildMicroQuestionSet(player, profile), getObservedPlayerKey(player), displayPlayerName(player) || player.name];
-      }),
     ];
+    const selectedMicroQuestions = selectedMicroPlayer ? buildMicroQuestionSet(selectedMicroPlayer, selectedMicroProfile) : ['¿Qué perfil debemos confirmar?', '¿Qué dato debemos observar?', '¿Cómo ajustamos el duelo?'];
     const renderPlanList = (title, items) => (
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{title}</p>
@@ -6328,12 +6361,123 @@ function App() {
                 ) : null}
               </div>
               <div className="mt-4 grid gap-3">
-                {tacticalQuestionGroups.map(([group, mode, questions, playerKey = '', playerName = '']) => (
+                <div className="border border-caudal-electric/15 bg-caudal-electric/[0.035] p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Micro</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {['Todos', 'Amenazas', 'Vigilancias', 'Debilidades', 'Perfil pendiente'].map((filter) => (
+                        <button
+                          key={filter}
+                          type="button"
+                          onClick={() => setMicroPlayerFilter(filter)}
+                          className={`rounded-lg border px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] ${microPlayerFilter === filter ? 'border-caudal-electric/30 bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-400 hover:text-white'}`}
+                        >
+                          {filter}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <label className="mt-3 grid gap-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                    <span>Seleccionar jugador</span>
+                    <select
+                      value={selectedMicroKey}
+                      onChange={(event) => {
+                        setSelectedMicroPlayerKey(event.target.value);
+                        clearTacticalQuestion();
+                      }}
+                      className="h-11 w-full border border-white/10 bg-black/20 px-3 text-sm font-black normal-case tracking-normal text-white outline-none"
+                    >
+                      {microPlayersByGroup.length ? microPlayersByGroup.map(({ group, players: groupPlayers }) => (
+                        <optgroup key={group} label={group}>
+                          {groupPlayers.map((player) => {
+                            const tags = getMicroPlayerTags(player);
+                            return (
+                              <option key={getObservedPlayerKey(player)} value={getObservedPlayerKey(player)}>
+                                {displayPlayerName(player) || player.name}{tags.length ? ` · ${tags.join(' / ')}` : ''}
+                              </option>
+                            );
+                          })}
+                        </optgroup>
+                      )) : <option value="">Sin jugadores disponibles</option>}
+                    </select>
+                  </label>
+                  {selectedMicroPlayer ? (
+                    <div className="mt-3 border border-white/10 bg-black/15 p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-base font-black text-white">{displayPlayerName(selectedMicroPlayer) || selectedMicroPlayer.name}</p>
+                          <p className="mt-1 text-xs font-bold text-slate-400">{selectedMicroPlayer.position || 'Sin posición registrada'}</p>
+                        </div>
+                        <span className="rounded-lg border border-white/10 bg-white/[0.05] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-300">
+                          {getMicroProfileCertainty(selectedMicroProfile).replace('PERFIL ', 'Perfil ').toLowerCase()}
+                        </span>
+                      </div>
+                      <div className="mt-3 grid gap-2 text-xs font-semibold text-slate-200 sm:grid-cols-2">
+                        <div className="bg-white/[0.035] px-2.5 py-2"><span className="text-slate-500">Perfil: </span>{selectedMicroProfile.mainProfile || 'Por identificar'}</div>
+                        <div className="bg-white/[0.035] px-2.5 py-2"><span className="text-slate-500">Pie: </span>{selectedMicroProfile.foot || 'Sin dato'}</div>
+                        <div className="bg-white/[0.035] px-2.5 py-2"><span className="text-slate-500">Rasgos: </span>{selectedMicroProfile.traits.length ? selectedMicroProfile.traits.join(', ') : 'Sin rasgos'}</div>
+                        <div className="bg-white/[0.035] px-2.5 py-2"><span className="text-slate-500">Marcas: </span>{selectedMicroTags.length ? selectedMicroTags.join(', ') : 'Sin marca'}</div>
+                      </div>
+                      {selectedMicroProfile.notes ? <p className="mt-2 bg-white/[0.035] px-2.5 py-2 text-xs font-semibold leading-5 text-slate-200">{selectedMicroProfile.notes}</p> : null}
+                      <div className="mt-3 grid gap-2">
+                        {selectedMicroQuestions.map((question) => {
+                          const active = selectedPreAiAnalysis?.tacticalQuestion?.question === question && selectedPreAiAnalysis?.tacticalQuestion?.playerKey === selectedMicroKey;
+                          const sourceType = selectedPreAiAnalysis?.tacticalQuestion?.sourceType;
+                          return (
+                            <div key={question} className={`border ${active ? 'border-caudal-electric/25 bg-caudal-electric/[0.06]' : 'border-white/10 bg-white/[0.035]'}`}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (active) {
+                                    clearTacticalQuestion();
+                                  } else {
+                                    setTacticalQuestionMode('Micro');
+                                    setTacticalQuestionText(question);
+                                    answerTacticalQuestion(question, 'Micro', { playerKey: selectedMicroKey, playerName: displayPlayerName(selectedMicroPlayer) || selectedMicroPlayer.name });
+                                  }
+                                }}
+                                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-xs font-black text-slate-100 transition hover:bg-white/[0.045]"
+                              >
+                                <span>{question}</span>
+                                <span className="shrink-0 text-sm font-black text-caudal-electric">{active ? '−' : '+'}</span>
+                              </button>
+                              {active && tacticalAnswer ? (
+                                <div className="border-t border-white/10 px-3 py-3">
+                                  <div className="mb-3 flex flex-wrap gap-2">
+                                    <span className="rounded-lg border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
+                                      {selectedPreAiAnalysis.tacticalQuestion?.confidence || 'General'}
+                                    </span>
+                                    <span className={`rounded-lg border px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${sourceType === 'scouting' ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100' : 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'}`}>
+                                      {sourceType === 'scouting' ? 'Scouting individual' : 'Principio general'}
+                                    </span>
+                                  </div>
+                                  <div className="whitespace-pre-line text-sm font-semibold leading-6 text-slate-100">{tacticalAnswer}</div>
+                                  {sourceType !== 'scouting' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setExpandedObservedPlayerKey(selectedMicroKey)}
+                                      className="mt-3 rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric hover:bg-caudal-electric/15"
+                                    >
+                                      Completar perfil del jugador
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="mt-3 border border-dashed border-white/10 px-3 py-3 text-sm font-semibold text-slate-500">Sin jugadores disponibles para análisis Micro.</p>
+                  )}
+                </div>
+                {tacticalQuestionGroups.map(([group, mode, questions]) => (
                   <div key={group} className="border border-white/10 bg-white/[0.025] p-3">
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{group}</p>
                     <div className="mt-2 grid gap-2">
                       {questions.map((question) => {
-                        const active = selectedPreAiAnalysis?.tacticalQuestion?.question === question && (!playerKey || selectedPreAiAnalysis?.tacticalQuestion?.playerKey === playerKey);
+                        const active = selectedPreAiAnalysis?.tacticalQuestion?.question === question && !selectedPreAiAnalysis?.tacticalQuestion?.playerKey;
                         const sourceType = selectedPreAiAnalysis?.tacticalQuestion?.sourceType;
                         return (
                           <div key={question} className={`border ${active ? 'border-caudal-electric/25 bg-caudal-electric/[0.06]' : 'border-white/10 bg-white/[0.035]'}`}>
@@ -6345,13 +6489,13 @@ function App() {
                                 } else {
                                   setTacticalQuestionMode(mode);
                                   setTacticalQuestionText(question);
-                                  answerTacticalQuestion(question, mode, { playerKey, playerName });
+                                  answerTacticalQuestion(question, mode);
                                 }
                               }}
                               className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-xs font-black text-slate-100 transition hover:bg-white/[0.045]"
                             >
                               <span>{question}</span>
-                              <span className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-caudal-electric">{active ? 'Abierta' : 'Ver'}</span>
+                              <span className="shrink-0 text-sm font-black text-caudal-electric">{active ? '−' : '+'}</span>
                             </button>
                             {active && tacticalAnswer ? (
                               <div className="border-t border-white/10 px-3 py-3">
@@ -6366,15 +6510,6 @@ function App() {
                                 <div className="whitespace-pre-line text-sm font-semibold leading-6 text-slate-100">
                                   {tacticalAnswer}
                                 </div>
-                                {mode === 'Micro' && sourceType !== 'scouting' && playerKey ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => setExpandedObservedPlayerKey(playerKey)}
-                                    className="mt-3 rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric hover:bg-caudal-electric/15"
-                                  >
-                                    Completar perfil del jugador
-                                  </button>
-                                ) : null}
                               </div>
                             ) : null}
                           </div>
