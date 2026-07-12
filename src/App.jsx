@@ -428,7 +428,16 @@ const collectiveProfileOptions = {
   strengths: ['Juego interior', 'Centros', 'ABP', 'Transiciones', 'Juego directo', 'Duelos', 'Contraataque', 'Segunda jugada'],
   weaknesses: ['Espalda lateral', 'Pérdida interior', 'Defensa área', 'ABP defensiva', 'Transición defensiva', 'Juego aéreo', 'Vigilancias', 'Salida de balón'],
 };
-const playerScoutingTraits = ['Ataca espacio', 'Rematador', 'Referencia aérea', 'Organizador', 'Conductor', 'Regateador', 'Intensidad defensiva', 'Especialista ABP', 'Llega al área', 'Defiende área'];
+const playerScoutingTraits = ['Ataca espacio', 'Rematador', 'Referencia aérea', 'Organizador', 'Conductor', 'Regateador', 'Intensidad defensiva', 'Especialista ABP', 'Llega al área', 'Defiende área', 'Ataca primer palo', 'Juego de espaldas', 'Buen juego largo', 'Vulnerable presionado', 'Agresivo al salto'];
+const microProfileCatalog = {
+  forward: ['Físico / fijador', 'Rápido al espacio', 'Móvil', 'Rematador', 'Asociativo', 'Juego aéreo', 'Falso nueve'],
+  winger: ['Desbordador', 'Interior', 'Profundo', 'Asociativo', 'Finalizador', 'Ataca espalda', 'Pie natural', 'Pie cambiado'],
+  midfielder: ['Organizador', 'Pivote defensivo', 'Box to box', 'Llegador', 'Presionable', 'Dominante físicamente', 'Especialista en juego largo'],
+  fullback: ['Profundo', 'Interior', 'Defensivo', 'Asociativo', 'Agresivo en presión', 'Débil a su espalda'],
+  centerback: ['Dominante aéreo', 'Rápido al espacio', 'Agresivo al salto', 'Corrector', 'Constructor', 'Vulnerable presionado'],
+  goalkeeper: ['Juego corto', 'Juego largo', 'Portero adelantado', 'Dominante aéreo', 'Débil bajo presión', 'Buen iniciador'],
+  general: ['Rápido al espacio', 'Físico / fijador', 'Rematador', 'Asociativo', 'Desbordador', 'Organizador', 'Presionable', 'Vulnerable presionado'],
+};
 const evidenceTypeOptions = ['Ataque', 'Defensa', 'ABP', 'Transición', 'Jugador'];
 const tacticalConnectionTypes = ['Pase habitual', 'Pase largo', 'Centro', 'Descarga', 'Segunda jugada', 'ABP'];
 const tacticalConnectionFilters = ['Todas', 'Pases', 'Centros', 'Pases largos', 'ABP', 'Transiciones'];
@@ -456,6 +465,7 @@ const emptyObservedPlayerProfile = {
   oneVsOne: 0,
   defensiveWork: 0,
   foot: '',
+  mainProfile: '',
   traits: [],
   notes: '',
 };
@@ -4013,6 +4023,7 @@ function App() {
   const getObservedPlayerProfile = (player) => ({
     ...emptyObservedPlayerProfile,
     ...(selectedRivalObservedScouting.playerProfiles[getObservedPlayerKey(player)] || {}),
+    mainProfile: selectedRivalObservedScouting.playerProfiles[getObservedPlayerKey(player)]?.mainProfile || '',
     traits: safeArray(selectedRivalObservedScouting.playerProfiles[getObservedPlayerKey(player)]?.traits),
   });
   const updateObservedPlayerProfile = (player, patch) => {
@@ -5457,7 +5468,7 @@ function App() {
     });
   };
 
-  const buildTacticalQuestionAnswer = (mode, question) => {
+  const buildTacticalQuestionAnswer = (mode, question, context = {}) => {
     const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
     const rivalSystem = getCurrentRivalSystem();
     const caudal = getSystemStructure(caudalSystem);
@@ -5549,26 +5560,56 @@ function App() {
     if (!hasSpecificScouting) return generalAnswer();
 
     if (mode === 'Micro' || /jugador|duelo|vigilar|marca/i.test(safeQuestion)) {
-      if (!profiledPlayers.length) return generalAnswer();
-      const playerLine = profiledPlayers.slice(0, 2).map(({ player, profile }) => {
-        const metrics = [
-          profile.speed ? `velocidad ${profile.speed}` : '',
-          profile.aerial ? `juego aéreo ${profile.aerial}` : '',
-          profile.oneVsOne ? `1v1 ${profile.oneVsOne}` : '',
-          profile.traits.length ? profile.traits.slice(0, 2).join(', ') : '',
-        ].filter(Boolean).join(' · ');
-        return `${displayPlayerName(player)}: ${metrics}`;
-      }).join('\n');
+      const targetPlayer = liveRivalPlayers.find((player) => getObservedPlayerKey(player) === context.playerKey)
+        || liveRivalPlayers.find((player) => normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(context.playerName || ''))
+        || profiledPlayers[0]?.player
+        || null;
+      if (!targetPlayer) {
+        return formatAnswer({
+          title: 'PERFIL NO IDENTIFICADO',
+          confidenceLabel: 'General',
+          sourceLabel: 'general',
+          analysis: 'Sin información individual registrada.',
+          proposals: ['Seleccionar o registrar un jugador rival antes de preparar el duelo Micro.', ...getMicroGeneralScenarios(null)],
+          answerSourceText: '✓ Recomendación táctica general',
+        });
+      }
+      const profile = getObservedPlayerProfile(targetPlayer);
+      const certainty = getMicroProfileCertainty(profile);
+      const facts = getMicroObservedFacts(targetPlayer, profile);
+      if (certainty === 'PERFIL NO IDENTIFICADO') {
+        return formatAnswer({
+          title: certainty,
+          confidenceLabel: 'General',
+          sourceLabel: 'general',
+          analysis: [
+            'DATOS OBSERVADOS',
+            'Sin información individual registrada.',
+            '',
+            'LECTURA TÁCTICA',
+            `No existe información suficiente para determinar el perfil concreto de ${displayPlayerName(targetPlayer) || targetPlayer.name}.`,
+            '',
+            'POSIBLES ESCENARIOS',
+            ...getMicroGeneralScenarios(targetPlayer).map((item) => `• ${item}`),
+          ].join('\n'),
+          proposals: ['Completar el perfil individual para convertir estas opciones en un plan específico.'],
+          answerSourceText: '✓ Recomendación táctica general',
+        });
+      }
+      const plan = getMicroPlanForProfile(targetPlayer, profile);
       return formatAnswer({
-        title: 'ANÁLISIS BASADO EN EL SCOUTING',
+        title: certainty,
+        confidenceLabel: certainty === 'PERFIL CONFIRMADO' ? 'Alta' : 'Baja',
         sourceLabel: 'scouting',
-        analysis: `Duelos definidos por perfiles observados.\n${playerLine}`,
-        proposals: [
-          'Ajustar marcas y ayudas según el atributo dominante registrado.',
-          'No asignar una vigilancia especial a jugadores sin evidencia individual.',
-          'Confirmar en vídeo si el comportamiento se repite antes del partido.',
-        ],
-        answerSourceText: `${sourceText}${evidenceText ? `\n${evidenceText}` : ''}`,
+        analysis: [
+          'DATOS OBSERVADOS',
+          facts.join('\n'),
+          '',
+          'LECTURA TÁCTICA',
+          plan.reading,
+        ].join('\n'),
+        proposals: plan.proposals,
+        answerSourceText: '✓ Scouting individual del rival',
       });
     }
 
@@ -5650,9 +5691,9 @@ function App() {
     return generalAnswer();
   };
 
-  const answerTacticalQuestion = (question, mode = tacticalQuestionMode) => {
+  const answerTacticalQuestion = (question, mode = tacticalQuestionMode, context = {}) => {
     if (!selectedMatch) return;
-    const result = buildTacticalQuestionAnswer(mode, question);
+    const result = buildTacticalQuestionAnswer(mode, question, context);
     updateSelectedMatchFields({
       preAiAnalysis: {
         ...(selectedPreAiAnalysis || {}),
@@ -5662,6 +5703,8 @@ function App() {
           answer: result.answer,
           confidence: result.confidence,
           sourceType: result.sourceType,
+          playerKey: context.playerKey || '',
+          playerName: context.playerName || '',
           createdAt: new Date().toISOString(),
           context: {
             caudalSystem: selectedMatch.preCaudalSystem || '4-4-2',
@@ -5687,6 +5730,154 @@ function App() {
       },
     });
     setTacticalQuestionText('');
+  };
+
+  const getMicroPositionGroup = (player) => {
+    const text = `${player?.position || ''} ${player?.role || ''}`.toLowerCase();
+    if (/port|gk/.test(text)) return 'goalkeeper';
+    if (/central|defensa central|dfc|cb/.test(text)) return 'centerback';
+    if (/lateral|carrilero|li|ld|lb|rb/.test(text)) return 'fullback';
+    if (/extremo|banda|wing|ei|ed/.test(text)) return 'winger';
+    if (/medio|mediocentro|pivote|interior|volante|mc|mcd|mp/.test(text)) return 'midfielder';
+    if (/delantero|punta|dc|nueve|9/.test(text)) return 'forward';
+    return 'general';
+  };
+  const getMicroProfileOptions = (player) => microProfileCatalog[getMicroPositionGroup(player)] || microProfileCatalog.general;
+  const getMicroProfileCertainty = (profile) => {
+    if (profile.mainProfile) return 'PERFIL CONFIRMADO';
+    if (profile.foot || profile.notes || profile.traits.length || [profile.speed, profile.technique, profile.aerial, profile.oneVsOne, profile.defensiveWork].some((value) => Number(value) > 0)) return 'PERFIL PARCIAL';
+    return 'PERFIL NO IDENTIFICADO';
+  };
+  const getMicroObservedFacts = (player, profile) => {
+    const facts = [];
+    if (player?.position) facts.push(`Posición registrada: ${player.position}.`);
+    if (profile.mainProfile) facts.push(`Perfil principal: ${profile.mainProfile}.`);
+    if (profile.traits.length) facts.push(`Rasgos registrados: ${profile.traits.join(', ')}.`);
+    if (profile.foot) facts.push(`Pie dominante: ${profile.foot}.`);
+    const metrics = [
+      profile.speed ? `velocidad ${profile.speed}` : '',
+      profile.technique ? `técnica ${profile.technique}` : '',
+      profile.aerial ? `juego aéreo ${profile.aerial}` : '',
+      profile.oneVsOne ? `1v1 ${profile.oneVsOne}` : '',
+      profile.defensiveWork ? `trabajo defensivo ${profile.defensiveWork}` : '',
+    ].filter(Boolean);
+    if (metrics.length) facts.push(`Valoraciones registradas: ${metrics.join(' · ')}.`);
+    if (profile.notes) facts.push(`Observación: ${profile.notes}`);
+    return facts;
+  };
+  const getMicroPlanForProfile = (player, profile) => {
+    const label = `${profile.mainProfile} ${profile.traits.join(' ')}`.toLowerCase();
+    if (/rápido|espacio|ataca espalda|profundo/.test(label)) return {
+      reading: 'Su amenaza registrada apunta a atacar profundidad o recibir con ventaja corriendo hacia adelante.',
+      proposals: [
+        'Reducir el espacio a la espalda de la línea cuando el pasador pueda jugar de cara.',
+        'Orientar la presión para dificultar el pase vertical.',
+        'Asegurar cobertura del defensor que salta.',
+        'Controlar el momento del pase, no perseguir tarde la carrera.',
+      ],
+    };
+    if (/físico|fijador|referencia|espaldas|juego aéreo|dominante aéreo/.test(label)) return {
+      reading: 'Su perfil registrado prioriza contacto, apoyo, descarga o disputa aérea.',
+      proposals: [
+        'Evitar que reciba cómodo de espaldas.',
+        'Anticipar solo con cobertura preparada.',
+        'Controlar segundas jugadas alrededor del duelo.',
+        'No entrar al choque si el receptor posterior queda libre.',
+      ],
+    };
+    if (/rematador|primer palo|finalizador|llega al área/.test(label)) return {
+      reading: 'Su perfil registrado le da valor en zonas de remate.',
+      proposals: [
+        'Controlar orientación corporal dentro del área.',
+        'Defender primer contacto y rechace.',
+        'Evitar centros cómodos desde el lado fuerte.',
+        'Asignar referencia clara en ABP y centros laterales.',
+      ],
+    };
+    if (/desbordador|regateador|1v1/.test(label)) return {
+      reading: 'Su perfil registrado amenaza en duelo individual.',
+      proposals: [
+        'Decidir antes si se orienta hacia dentro o hacia fuera.',
+        'Activar ayuda cuando reciba perfilado.',
+        'No saltar de frente sin cobertura lateral.',
+        'Proteger la espalda del lateral tras el primer duelo.',
+      ],
+    };
+    if (/organizador|asociativo|constructor|juego largo|buen iniciador/.test(label)) return {
+      reading: 'Su perfil registrado puede condicionar la salida o la continuidad del juego.',
+      proposals: [
+        'Tapar línea de pase interior antes de saltar.',
+        'Forzar recepción de espaldas o hacia zona menos peligrosa.',
+        'Cerrar apoyos cercanos para impedir descarga limpia.',
+        'Presionar al receptor siguiente, no solo al poseedor.',
+      ],
+    };
+    if (/presionable|vulnerable|débil/.test(label)) return {
+      reading: 'El scouting registra una posible debilidad explotable.',
+      proposals: [
+        'Orientar la presión hacia su perfil menos cómodo.',
+        'Saltar con apoyo cercano para impedir salida limpia.',
+        'Atacar su zona tras recuperación si queda abierto.',
+        'Validar rápido si esa debilidad aparece en partido.',
+      ],
+    };
+    return {
+      reading: `Existe información parcial de ${displayPlayerName(player) || player?.name || 'este jugador'}, pero no suficiente para definir una respuesta específica de perfil.`,
+      proposals: [
+        'Usar los rasgos registrados como alerta, no como conclusión completa.',
+        'Observar sus primeras acciones para confirmar tendencia.',
+        'Preparar cobertura y comunicación antes de modificar el plan individual.',
+      ],
+    };
+  };
+  const getMicroGeneralScenarios = (player) => {
+    const group = getMicroPositionGroup(player);
+    if (group === 'forward') return [
+      'Si busca apoyos y contacto: anticipar con cobertura y controlar segunda jugada.',
+      'Si amenaza el espacio: ajustar altura de línea y presionar al pasador.',
+      'Si se mueve fuera de zona: comunicar intercambios y no romper estructura sin relevo.',
+    ];
+    if (group === 'winger') return [
+      'Si es desbordador: decidir orientación y preparar ayuda.',
+      'Si ataca espalda: proteger al lateral y controlar pase exterior-interior.',
+      'Si juega a pie cambiado: cerrar conducción interior y tiro.',
+    ];
+    if (group === 'fullback') return [
+      'Si es profundo: vigilar su carrera tras pase atrás o cambio de orientación.',
+      'Si es interior: ajustar marcas por dentro y no liberar mediocentro.',
+      'Si es defensivo: valorar atacar su espalda solo si su extremo no compensa.',
+    ];
+    if (group === 'midfielder') return [
+      'Si es organizador: impedir que reciba de cara.',
+      'Si es llegador: controlar segunda línea y rechace frontal.',
+      'Si es presionable: orientar la presión hacia su primer control.',
+    ];
+    if (group === 'centerback') return [
+      'Si es constructor: tapar pase interior y forzar lado menos cómodo.',
+      'Si es agresivo al salto: atacar su espalda cuando abandone línea.',
+      'Si domina por arriba: preparar segunda jugada y evitar duelo frontal sin apoyo.',
+    ];
+    if (group === 'goalkeeper') return [
+      'Si juega corto: coordinar saltos sobre centrales y pivote.',
+      'Si juega largo: preparar duelo y segunda jugada.',
+      'Si es adelantado: valorar ataque a espalda si hay robo y campo abierto.',
+    ];
+    return [
+      'Identificar primero si amenaza espacio, apoyo, duelo o asociación.',
+      'No cambiar el plan individual hasta registrar una tendencia real.',
+      'Preparar ayudas cercanas y comunicación entre líneas.',
+    ];
+  };
+  const buildMicroQuestionSet = (player, profile) => {
+    const label = `${profile.mainProfile} ${profile.traits.join(' ')}`.toLowerCase();
+    if (/rápido|espacio|ataca espalda|profundo/.test(label)) return ['¿Cómo protegemos la espalda de la línea?', '¿Quién controla su desmarque?', '¿Cómo condicionamos al pasador?', '¿Qué altura defensiva nos conviene?'];
+    if (/físico|fijador|referencia|espaldas|juego aéreo|dominante aéreo/.test(label)) return ['¿Quién disputa el primer duelo?', '¿Quién recoge la segunda jugada?', '¿Cómo evitamos que descargue de cara?', '¿Qué central debe anticipar?'];
+    if (/desbordador|regateador|1v1/.test(label)) return ['¿Le orientamos hacia dentro o hacia fuera?', '¿Cuándo doblamos la ayuda?', '¿Cómo protegemos la espalda del lateral?', '¿Qué hacemos si recibe perfilado?'];
+    if (/rematador|primer palo|finalizador|llega al área/.test(label)) return ['¿Quién lo toma en área?', '¿Cómo defendemos primer palo?', '¿Qué vigilancia requiere en centros?', '¿Cómo protegemos el rechace?'];
+    const group = getMicroPositionGroup(player);
+    if (group === 'forward') return ['¿Cómo defendemos al delantero centro?', '¿Qué escenario debemos preparar?', '¿Quién cubre si fija centrales?', '¿Cómo ajustamos la altura?'];
+    if (group === 'winger') return ['¿Cómo defendemos su banda?', '¿Le orientamos dentro o fuera?', '¿Cuándo salta la ayuda?', '¿Cómo protegemos la espalda del lateral?'];
+    return ['¿Qué perfil debemos confirmar?', '¿Qué vigilancia individual necesita?', '¿Cómo ajustamos el duelo?', '¿Qué dato falta validar?'];
   };
 
   const getUnavailableRivalPlayers = () => liveRivalPlayers.filter(isUnavailableRivalPlayer);
@@ -5803,6 +5994,15 @@ function App() {
     const unavailablePlayers = getUnavailableRivalPlayers();
     const weaknessPlayers = observedPlayerRows.filter(({ profile }) => profile.speed && Number(profile.speed) <= 2 || profile.defensiveWork && Number(profile.defensiveWork) <= 2).map(({ player }) => player);
     const watchedPlayers = observedPlayerRows.map(({ player }) => player).filter((player) => !keyPlayers.includes(player) && !weaknessPlayers.includes(player) && !isUnavailableRivalPlayer(player));
+    const microTargets = dedupeRivalPlayers([
+      ...keyPlayers,
+      ...weaknessPlayers,
+      ...watchedPlayers,
+      ...observedPlayerRows.map(({ player }) => player),
+      ...liveRivalMarkedPlayers,
+      ...liveRivalPlayers.filter((player) => player.isKey),
+      ...liveRivalPlayers.slice(0, 4),
+    ]).filter((player) => !isUnavailableRivalPlayer(player)).slice(0, 4);
     const sourceLabel = [
       hasCollectiveData ? 'Perfil colectivo' : null,
       observedPlayerRows.length ? 'Perfil jugador' : null,
@@ -5872,6 +6072,11 @@ function App() {
         '¿Qué debemos vigilar en estrategia?',
         '¿Dónde podemos generar ventaja?',
       ]],
+      ...microTargets.map((player) => {
+        const profile = getObservedPlayerProfile(player);
+        const profileLabel = profile.mainProfile || profile.traits[0] || player.position || 'perfil por identificar';
+        return [`Micro · ${displayPlayerName(player) || player.name} · ${profileLabel}`, 'Micro', buildMicroQuestionSet(player, profile), getObservedPlayerKey(player), displayPlayerName(player) || player.name];
+      }),
     ];
     const renderPlanList = (title, items) => (
       <div>
@@ -5976,6 +6181,10 @@ function App() {
                       <div className="flex items-center justify-between gap-3">
                         <p className="min-w-0 truncate text-sm font-black text-white">{displayPlayerName(player) || player.name}</p>
                         <div className="flex items-center gap-1.5">
+                          <select value={profile.mainProfile || ''} onChange={(event) => updateObservedPlayerProfile(player, { mainProfile: event.target.value })} className="max-w-[150px] border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-bold text-white">
+                            <option value="">Perfil</option>
+                            {getMicroProfileOptions(player).map((option) => <option key={option} value={option}>{option}</option>)}
+                          </select>
                           <select value={profile.foot || ''} onChange={(event) => updateObservedPlayerProfile(player, { foot: event.target.value })} className="border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-bold text-white">
                             <option value="">Pie</option>
                             {['Derecho', 'Izquierdo', 'Ambos'].map((foot) => <option key={foot} value={foot}>{foot}</option>)}
@@ -6119,12 +6328,12 @@ function App() {
                 ) : null}
               </div>
               <div className="mt-4 grid gap-3">
-                {tacticalQuestionGroups.map(([group, mode, questions]) => (
+                {tacticalQuestionGroups.map(([group, mode, questions, playerKey = '', playerName = '']) => (
                   <div key={group} className="border border-white/10 bg-white/[0.025] p-3">
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{group}</p>
                     <div className="mt-2 grid gap-2">
                       {questions.map((question) => {
-                        const active = selectedPreAiAnalysis?.tacticalQuestion?.question === question;
+                        const active = selectedPreAiAnalysis?.tacticalQuestion?.question === question && (!playerKey || selectedPreAiAnalysis?.tacticalQuestion?.playerKey === playerKey);
                         const sourceType = selectedPreAiAnalysis?.tacticalQuestion?.sourceType;
                         return (
                           <div key={question} className={`border ${active ? 'border-caudal-electric/25 bg-caudal-electric/[0.06]' : 'border-white/10 bg-white/[0.035]'}`}>
@@ -6136,7 +6345,7 @@ function App() {
                                 } else {
                                   setTacticalQuestionMode(mode);
                                   setTacticalQuestionText(question);
-                                  answerTacticalQuestion(question, mode);
+                                  answerTacticalQuestion(question, mode, { playerKey, playerName });
                                 }
                               }}
                               className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-xs font-black text-slate-100 transition hover:bg-white/[0.045]"
@@ -6157,6 +6366,15 @@ function App() {
                                 <div className="whitespace-pre-line text-sm font-semibold leading-6 text-slate-100">
                                   {tacticalAnswer}
                                 </div>
+                                {mode === 'Micro' && sourceType !== 'scouting' && playerKey ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedObservedPlayerKey(playerKey)}
+                                    className="mt-3 rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric hover:bg-caudal-electric/15"
+                                  >
+                                    Completar perfil del jugador
+                                  </button>
+                                ) : null}
                               </div>
                             ) : null}
                           </div>
