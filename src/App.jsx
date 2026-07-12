@@ -9334,12 +9334,50 @@ function App() {
       .map((player) => ({ player, stats: getStatsPlayerData(player.name) }))
       .filter((row) => Number(row.stats?.rating || 0) > 0)
       .sort((a, b) => Number(b.stats?.rating || 0) - Number(a.stats?.rating || 0));
-    const decisivePlayerForPost = statsCalledPlayersForPost.find((player) => Number(getStatsPlayerData(player.name)?.goals || 0) > 0 || Number(getStatsPlayerData(player.name)?.assists || 0) > 0);
+    const decisivePlayersForPost = statsCalledPlayersForPost
+      .map((player) => ({ player, stats: getStatsPlayerData(player.name) }))
+      .filter((row) => Number(row.stats?.goals || 0) + Number(row.stats?.assists || 0) > 0)
+      .sort((a, b) => (Number(b.stats?.goals || 0) + Number(b.stats?.assists || 0)) - (Number(a.stats?.goals || 0) + Number(a.stats?.assists || 0)));
+    const revelationPlayersForPost = ratedPlayersForPost
+      .filter((row) => Number(row.stats?.minutes || 0) > 0 && Number(row.stats?.minutes || 0) < 70)
+      .sort((a, b) => Number(b.stats?.rating || 0) - Number(a.stats?.rating || 0));
+    const correctionPlayersForPost = [...ratedPlayersForPost].reverse();
+    const buildPlayerEvidence = (stats = {}, mode = 'rating') => {
+      const rows = [];
+      const rating = Number(stats.rating || 0);
+      const minutes = Number(stats.minutes || 0);
+      const goals = Number(stats.goals || 0);
+      const assists = Number(stats.assists || 0);
+      if (mode === 'decisive') {
+        if (goals) rows.push(`${goals} gol${goals === 1 ? '' : 'es'}`);
+        if (assists) rows.push(`${assists} asistencia${assists === 1 ? '' : 's'}`);
+      } else {
+        if (minutes) rows.push(`${minutes}' jugados`);
+        if (goals) rows.push(`${goals} gol${goals === 1 ? '' : 'es'}`);
+        if (assists) rows.push(`${assists} asistencia${assists === 1 ? '' : 's'}`);
+      }
+      return rows.slice(0, 2);
+    };
+    const buildImpactCard = ({ label, accent, candidate, mode = 'rating' }) => {
+      const player = candidate?.player || null;
+      const stats = candidate?.stats || {};
+      const playedPosition = player ? getStatsPlayedPosition(player.name) : '';
+      const positionLabel = playedPosition && playedPosition !== 'Sin posición' ? playedPosition : player?.position || '';
+      return {
+        label,
+        accent,
+        player,
+        stats,
+        positionLabel,
+        score: Number(stats.rating || 0) > 0 ? Number(stats.rating || 0).toFixed(1) : '',
+        evidence: player ? buildPlayerEvidence(stats, mode) : [],
+      };
+    };
     const individualCards = [
-      ['Jugador destacado', ratedPlayersForPost[0]?.player?.name || 'Pendiente'],
-      ['Jugador a corregir', selectedMatch.postIndividualObservations ? selectedMatch.postIndividualObservations.split('\n')[0] : 'Pendiente'],
-      ['Jugador revelación', ratedPlayersForPost[1]?.player?.name || 'Pendiente'],
-      ['Jugador decisivo', decisivePlayerForPost?.name || mainClip?.player || 'Pendiente'],
+      buildImpactCard({ label: 'Destacado', accent: 'border-emerald-300/25 bg-emerald-300/[0.08] text-emerald-100', candidate: ratedPlayersForPost[0] }),
+      buildImpactCard({ label: 'A corregir', accent: 'border-amber-300/25 bg-amber-300/[0.08] text-amber-100', candidate: correctionPlayersForPost.length > 1 ? correctionPlayersForPost[0] : null }),
+      buildImpactCard({ label: 'Revelación', accent: 'border-sky-300/25 bg-sky-300/[0.08] text-sky-100', candidate: revelationPlayersForPost[0] }),
+      buildImpactCard({ label: 'Decisivo', accent: 'border-caudal-electric/25 bg-caudal-electric/[0.10] text-caudal-electric', candidate: decisivePlayersForPost[0], mode: 'decisive' }),
     ];
     const readingCompleted = Boolean(selectedMatch.postReality || selectedMatch.postFulfilled || selectedMatch.postNotFulfilled || selectedMatch.postNextAdjustment || selectedMatch.postWhy || selectedMatch.postNotes);
     const conclusionsCompleted = Boolean(selectedMatch.postRepeat || selectedMatch.postImprove || selectedMatch.postTrainWeek || selectedMatch.postIndividualObservations);
@@ -9920,17 +9958,43 @@ function App() {
 
         <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
           {postBlockHeader('F · Observaciones individuales', 'Impacto de jugadores', 'Lectura compacta para detectar quién decide, quién necesita corrección y quién emerge.')}
-          <div className="mt-4 grid gap-3 md:grid-cols-4">
-            {individualCards.map(([label, value]) => (
-              <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
-                <p className="mt-2 truncate text-base font-black text-white">{value}</p>
+          <div className="mt-5 grid gap-3 md:grid-cols-4">
+            {individualCards.map((card) => (
+              <div key={card.label} className={`min-h-[168px] rounded-3xl border p-4 ${card.player ? card.accent : 'border-white/10 bg-white/[0.025] text-slate-400'}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em]">{card.label}</p>
+                  {card.player && card.score ? <span className="text-xl font-black text-white">{card.score}</span> : null}
+                </div>
+                {card.player ? (
+                  <div className="mt-5 flex items-start gap-3">
+                    <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-black/25 text-sm font-black text-white">
+                      {card.player.image ? <img src={card.player.image} alt="" className="h-full w-full object-cover" /> : (card.player.number || displayPlayerName(card.player).slice(0, 2).toUpperCase())}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-base font-black text-white">{displayPlayerName(card.player)}</p>
+                      <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                        {[card.player.number ? `#${card.player.number}` : null, card.positionLabel].filter(Boolean).join(' · ')}
+                      </p>
+                      {card.evidence.length ? (
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {card.evidence.map((item) => (
+                            <span key={item} className="rounded-xl bg-black/20 px-2 py-1 text-[10px] font-bold text-slate-200">{item}</span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex h-[104px] items-center">
+                    <p className="text-sm font-bold text-slate-500">Sin seleccionar</p>
+                  </div>
+                )}
               </div>
             ))}
           </div>
-          <details className="mt-4 rounded-2xl border border-white/10 bg-black/15">
-            <summary className="cursor-pointer px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400">Editar observaciones individuales</summary>
-            <textarea value={selectedMatch.postIndividualObservations || ''} onChange={(event) => updateSelectedMatchFields({ postIndividualObservations: event.target.value })} className="min-h-[110px] w-full border-t border-white/10 bg-transparent px-4 py-3 text-sm text-white placeholder:text-slate-500" placeholder="Jugador destacado, a corregir, revelación, decisivo..." />
+          <details className="mt-4 rounded-2xl bg-black/15">
+            <summary className="cursor-pointer px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400">Validación del entrenador</summary>
+            <textarea value={selectedMatch.postIndividualObservations || ''} onChange={(event) => updateSelectedMatchFields({ postIndividualObservations: event.target.value })} className="min-h-[76px] w-full border-t border-white/10 bg-transparent px-4 py-3 text-sm text-white placeholder:text-slate-500" placeholder="Ej. Vicente: sostener como MC. Claudio: ajustar presión tras pérdida." />
           </details>
         </section>
 
@@ -9938,47 +10002,52 @@ function App() {
           {postBlockHeader('G · Informe ejecutivo final', 'Cierre de partido', 'Qué pasó, por qué pasó y qué hacemos ahora.', (
             <span className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.14em] ${getPostReviewStateClass(reviewState)}`}>{reviewState}</span>
           ))}
-          <div className="mt-5 grid gap-2 sm:grid-cols-4">
+          <div className="mt-5 flex flex-wrap gap-2">
             {[
-              ['vídeo revisado', closureChecklist.videoReviewed],
-              ['eventos validados', closureChecklist.eventsValidated],
-              ['lectura táctica', closureChecklist.tacticalReadingCompleted],
-              ['conclusiones', closureChecklist.conclusionsAdded],
+              ['Vídeo revisado', closureChecklist.videoReviewed],
+              ['Eventos validados', closureChecklist.eventsValidated],
+              ['Lectura táctica', closureChecklist.tacticalReadingCompleted],
+              ['Conclusión cerrada', closureChecklist.conclusionsAdded],
             ].map(([label, done]) => (
-              <div key={label} className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] ${done ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100' : 'border-white/10 bg-white/[0.035] text-slate-500'}`}>
-                {done ? 'OK' : '--'} · {label}
+              <div key={label} className={`rounded-2xl px-3 py-2 text-xs font-black uppercase tracking-[0.12em] ${done ? 'bg-emerald-300/10 text-emerald-100' : 'bg-white/[0.035] text-slate-500'}`}>
+                {done ? '✓' : '○'} {label}
               </div>
             ))}
           </div>
-          <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.035] p-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="mt-5 rounded-3xl bg-white/[0.035] p-5">
+            <div className="grid gap-5 lg:grid-cols-[0.72fr_1.28fr]">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Resumen staff</p>
-                <h4 className="mt-1 text-lg font-black text-white">Informe ejecutivo rápido</h4>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Resultado</p>
+                <p className="mt-2 text-5xl font-black text-white">{score.caudal}-{score.rival}</p>
+                <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Clip principal</p>
+                <p className="mt-2 text-sm font-bold text-slate-200">{mainClip ? `${mainClip.minute || '-'}' · ${mainClip.type || 'Clip'}${mainClip.player ? ` · ${mainClip.player}` : ''}` : 'Sin clip validado'}</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  ['Resumen', selectedMatch.postNotes],
+                  ['Fortalezas', selectedMatch.postRepeat],
+                  ['Aspectos a corregir', selectedMatch.postImprove],
+                  ['Entrenamiento recomendado', selectedMatch.postTrainWeek],
+                ].map(([label, value]) => (
+                  <div key={label} className="border-t border-white/10 pt-3">
+                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
+                    <p className="mt-2 text-sm font-bold leading-5 text-slate-100">{value || 'Solicitar validación del entrenador'}</p>
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              {[
-                ['Resultado', `${score.caudal}-${score.rival}`],
-                ['Qué repetir', selectedMatch.postRepeat || patternChips[0] || 'Pendiente de cerrar'],
-                ['Qué corregir', selectedMatch.postImprove || 'Pendiente de cerrar'],
-                ['Qué entrenar', selectedMatch.postTrainWeek || postDerivedReading.suggestions[0]],
-                ['Clip principal', mainClip ? `${mainClip.minute || '-'}' · ${mainClip.type || 'Clip'}` : 'Pendiente'],
-                ['Conclusión IA', postDerivedReading.trend],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-2xl border border-white/5 bg-black/15 p-3">
-                  <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
-                  <p className="mt-2 text-sm font-bold leading-5 text-slate-100">{value}</p>
-                </div>
-              ))}
-            </div>
-            <p className="mt-3 text-sm leading-6 text-slate-300">{selectedMatch.postNotes || postDerivedReading.trend}</p>
           </div>
-          <div className="mt-6 flex flex-col gap-3 rounded-3xl border border-caudal-electric/15 bg-caudal-electric/[0.055] p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-black text-white">Resumen final</p>
-              <p className="mt-1 text-sm text-slate-300">{postSummary}</p>
-            </div>
+          <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto]">
+            {[
+              ['Continuar haciendo', selectedMatch.postRepeat],
+              ['Corregir', selectedMatch.postImprove],
+              ['Próximo entrenamiento', selectedMatch.postTrainWeek],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-3xl bg-caudal-electric/[0.055] p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">{label}</p>
+                <p className="mt-2 text-sm font-bold leading-5 text-white">{value || 'Definir con staff'}</p>
+              </div>
+            ))}
             <button type="button" onClick={closePostAnalysis} className="rounded-2xl bg-caudal-electric px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-950">
               Cerrar análisis
             </button>
