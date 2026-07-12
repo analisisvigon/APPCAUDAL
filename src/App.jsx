@@ -887,21 +887,27 @@ const normalizeSupabasePostEvent = (event) => ({
   videoSeconds: Number(event.video_seconds || 0),
 });
 
+const delegatedStatEventCatalog = [
+  { tipoEvento: 'gol', label: 'Gol', short: 'GOL', group: 'Finalización', tone: 'goal', requiresPlayer: true, effects: { goals: 1, shots: 1, shotsOnTarget: 1 } },
+  { tipoEvento: 'tiro', label: 'Tiro', short: 'TIR', group: 'Finalización', tone: 'offensive', requiresPlayer: true, effects: { shots: 1 } },
+  { tipoEvento: 'tiro_puerta', label: 'Tiro a puerta', short: 'TP', group: 'Finalización', tone: 'offensive', requiresPlayer: true, effects: { shots: 1, shotsOnTarget: 1 } },
+  { tipoEvento: 'regate', label: 'Regate', short: 'REG', group: 'Ataque', tone: 'offensive', requiresPlayer: true, effects: { dribbles: 1 } },
+  { tipoEvento: 'centro', label: 'Centro', short: 'CEN', group: 'Ataque', tone: 'offensive', requiresPlayer: true, effects: { crosses: 1 } },
+  { tipoEvento: 'perdida', label: 'Pérdida', short: 'PER', group: 'Posesión', tone: 'danger', requiresPlayer: true, effects: { turnovers: 1 } },
+  { tipoEvento: 'robo', label: 'Robo', short: 'ROB', group: 'Posesión', tone: 'defensive', requiresPlayer: true, effects: { steals: 1 } },
+  { tipoEvento: 'recuperacion', label: 'Recuperación', short: 'REC', group: 'Posesión', tone: 'defensive', requiresPlayer: true, effects: { recoveries: 1 } },
+  { tipoEvento: 'falta_realizada', label: 'Falta realizada', short: 'FR', group: 'Faltas', tone: 'danger', requiresPlayer: true, effects: { foulsCommitted: 1 } },
+  { tipoEvento: 'falta_recibida', label: 'Falta recibida', short: 'FREC', group: 'Faltas', tone: 'defensive', requiresPlayer: true, effects: { foulsReceived: 1 } },
+  { tipoEvento: 'corner', label: 'Córner', short: 'COR', group: 'Ataque', tone: 'offensive', requiresPlayer: false, effects: { corners: 1 } },
+];
 const delegatedEventDefinitions = [
-  { key: 'gol', tipoEvento: 'gol', label: 'Gol', short: '⚽', side: 'caudal', category: 'principal', tone: 'goal' },
-  { key: 'recuperacion_alta', tipoEvento: 'recuperacion', label: 'Recuperación alta', short: 'REC', side: 'caudal', category: 'principal', tone: 'defensive' },
-  { key: 'entrada_area', tipoEvento: 'entrada_area', label: 'Entrada área', short: 'AREA', side: 'caudal', category: 'principal', tone: 'offensive' },
-  { key: 'tiro', tipoEvento: 'tiro', label: 'Tiro', short: 'TIR', side: 'caudal', category: 'principal', tone: 'offensive' },
-  { key: 'tiro_puerta', tipoEvento: 'tiro_puerta', label: 'Tiro a puerta', short: 'TP', side: 'caudal', category: 'principal', tone: 'offensive' },
-  { key: 'perdida_peligrosa', tipoEvento: 'perdida', label: 'Pérdida peligrosa', short: 'PER', side: 'caudal', category: 'principal', tone: 'danger' },
-  { key: 'corner', tipoEvento: 'corner', label: 'Córner', short: 'COR', side: 'caudal', category: 'principal', tone: 'offensive' },
-  { key: 'gol_rival', tipoEvento: 'gol_rival', label: 'Gol', short: '⚽', side: 'rival', category: 'principal', tone: 'rivalGoal' },
-  { key: 'recuperacion_alta_rival', tipoEvento: 'recuperacion_rival', label: 'Recuperación alta', short: 'REC', side: 'rival', category: 'principal', tone: 'rival' },
-  { key: 'entrada_area_rival', tipoEvento: 'entrada_area_rival', label: 'Entrada área', short: 'AREA', side: 'rival', category: 'principal', tone: 'rival' },
-  { key: 'tiro_rival', tipoEvento: 'tiro_rival', label: 'Tiro', short: 'TIR', side: 'rival', category: 'principal', tone: 'rival' },
-  { key: 'tiro_puerta_rival', tipoEvento: 'tiro_puerta_rival', label: 'Tiro a puerta', short: 'TP', side: 'rival', category: 'principal', tone: 'rival' },
-  { key: 'perdida_peligrosa_rival', tipoEvento: 'perdida_rival', label: 'Pérdida peligrosa', short: 'PER', side: 'rival', category: 'principal', tone: 'rivalPositive' },
-  { key: 'corner_rival', tipoEvento: 'corner_rival', label: 'Córner', short: 'COR', side: 'rival', category: 'principal', tone: 'rival' },
+  ...['caudal', 'rival'].flatMap((side) => delegatedStatEventCatalog.map((event) => ({
+    ...event,
+    key: `${event.tipoEvento}_${side}`,
+    side,
+    category: 'principal',
+    tone: side === 'rival' ? (event.tipoEvento === 'gol' ? 'rivalGoal' : event.tipoEvento === 'perdida' ? 'rivalPositive' : 'rival') : event.tone,
+  }))),
   { key: 'momento_dominamos', tipoEvento: 'momento_dominamos', label: 'Dominamos', short: 'DOM', side: 'caudal', category: 'momentum', tone: 'momentumPositive' },
   { key: 'momento_igualado', tipoEvento: 'momento_igualado', label: 'Igualado', short: 'EQ', side: 'neutral', category: 'momentum', tone: 'momentumNeutral' },
   { key: 'momento_sufriendo', tipoEvento: 'momento_sufriendo', label: 'Sufriendo', short: 'SUF', side: 'rival', category: 'momentum', tone: 'danger' },
@@ -910,15 +916,27 @@ const delegatedEventDefinitions = [
 ];
 
 const delegatedCounterPairs = [
-  { label: 'Tiros', caudal: 'tiro', rival: 'tiro_rival' },
-  { label: 'Tiros puerta', caudal: 'tiro_puerta', rival: 'tiro_puerta_rival' },
-  { label: 'Entradas área', caudal: 'entrada_area', rival: 'entrada_area_rival' },
-  { label: 'Córners', caudal: 'corner', rival: 'corner_rival' },
-  { label: 'Rec. altas', caudal: 'recuperacion', rival: 'recuperacion_rival' },
-  { label: 'Pérd. peligrosas', caudal: 'perdida', rival: 'perdida_rival' },
+  { label: 'Tiros', caudal: 'tiro', rival: 'tiro' },
+  { label: 'Tiros puerta', caudal: 'tiro_puerta', rival: 'tiro_puerta' },
+  { label: 'Regates', caudal: 'regate', rival: 'regate' },
+  { label: 'Córners', caudal: 'corner', rival: 'corner' },
+  { label: 'Recuperaciones', caudal: 'recuperacion', rival: 'recuperacion' },
+  { label: 'Pérdidas', caudal: 'perdida', rival: 'perdida' },
 ];
 
 const quickEventLabelByType = Object.fromEntries(delegatedEventDefinitions.map((definition) => [definition.tipoEvento, definition.label]));
+const getQuickEventBaseType = (tipoEvento = '') => String(tipoEvento || '').replace(/_rival$/i, '');
+const getQuickEventSide = (event = {}) => (
+  event.equipo === 'rival' || /_rival$/i.test(String(event.tipoEvento || '')) ? 'rival' : 'caudal'
+);
+const quickEventMatches = (event, tipoEvento, side = 'caudal') =>
+  getQuickEventBaseType(event?.tipoEvento) === tipoEvento && getQuickEventSide(event) === side;
+const getDelegatedDefinitionForEvent = (event = {}) =>
+  delegatedEventDefinitions.find((definition) => (
+    definition.tipoEvento === getQuickEventBaseType(event.tipoEvento) &&
+    definition.side === getQuickEventSide(event)
+  )) || delegatedEventDefinitions.find((definition) => definition.tipoEvento === getQuickEventBaseType(event.tipoEvento));
+const getQuickEventLabel = (tipoEvento = '') => quickEventLabelByType[getQuickEventBaseType(tipoEvento)] || tipoEvento || 'Evento';
 const hasPendingQuickEvents = (match) => (match?.quickEvents || []).some((event) => !event.reviewed);
 const pendingQuickEventsMessage = 'Este partido tiene eventos rápidos pendientes de revisar.';
 
@@ -4196,12 +4214,12 @@ function App() {
   const createAutoVestuarioBullets = (match = selectedMatch, rivalTeam = selectedMatchRivalTeam) => {
     const identity = getTeamTacticalIdentity(rivalTeam || liveRivalIdentity);
     const reviewedQuick = safeArray(match?.quickEvents).filter((event) => event.reviewed);
-    const countQuick = (tipoEvento) => reviewedQuick.filter((event) => event.tipoEvento === tipoEvento).length;
+    const countQuick = (tipoEvento, side = 'caudal') => reviewedQuick.filter((event) => quickEventMatches(event, tipoEvento, side)).length;
     const quick = {
       losses: countQuick('perdida'),
       recoveries: countQuick('recuperacion'),
-      boxEntries: countQuick('entrada_area'),
-      rivalBoxEntries: countQuick('entrada_area_rival'),
+      boxEntries: countQuick('centro') + countQuick('regate'),
+      rivalBoxEntries: countQuick('centro', 'rival') + countQuick('regate', 'rival'),
     };
     const textPool = normalizePlayerIdentityName([
       match?.preRivalStyle,
@@ -7293,9 +7311,9 @@ function App() {
       source: 'quick',
       quickEventId: event.id,
       minute: event.minute || '',
-      type: definition?.label || quickEventLabelByType[event.tipoEvento] || event.tipoEvento || selectedEventType,
+      type: definition?.label || getQuickEventLabel(event.tipoEvento) || selectedEventType,
       player: playerName,
-      description: `${definition?.label || event.tipoEvento || 'Evento'}${event.equipo === 'rival' ? ' rival' : ''}`,
+      description: `${definition?.label || getQuickEventLabel(event.tipoEvento)}${getQuickEventSide(event) === 'rival' ? ' rival' : ''}`,
       tags: [definition?.tone, event.equipo === 'rival' ? 'rival' : 'caudal'].filter(Boolean).join(', '),
       importance: event.reviewed ? 'Media' : 'Alta',
       clipId: '',
@@ -8554,17 +8572,13 @@ function App() {
 
   const getDelegatedEvents = () => selectedMatch?.quickEvents || [];
 
-  const getDelegatedCount = (tipoEvento) => {
-    if (!tipoEvento) return 0;
-    return getDelegatedEvents().filter((event) => event.tipoEvento === tipoEvento).length;
-  };
-
   const openDelegatedEventModal = (definition) => {
     setStatsError('');
     setDelegatedEventFeedback('');
     setDelegatedEventDraft({
       ...definition,
-      minute: delegatedMinute || '0',
+      minute: String(Math.floor(Number(delegatedElapsedSeconds || 0) / 60)),
+      eventSecond: Number(delegatedElapsedSeconds || 0),
       jugadorId: '',
     });
   };
@@ -8610,13 +8624,19 @@ function App() {
     setStatsError('');
     setDelegatedEventFeedback('');
     try {
-      const minute = Math.max(0, Math.min(130, Number(delegatedEventDraft.minute) || 0));
+      const calledPlayers = getStatsCalledPlayers();
+      if (delegatedEventDraft.requiresPlayer && delegatedEventDraft.side === 'caudal' && calledPlayers.length && !delegatedEventDraft.jugadorId) {
+        setStatsError('Selecciona un jugador de Caudal para guardar este evento.');
+        setDelegatedEventSaving(false);
+        return;
+      }
+      const minute = Math.max(0, Math.min(130, Number(delegatedEventDraft.minute) || Math.floor(Number(delegatedElapsedSeconds || 0) / 60)));
       const selectedPlayer = players.find((player) => player.id === delegatedEventDraft.jugadorId);
       const payload = {
         partido_id: selectedMatch.id,
         jugador_id: delegatedEventDraft.side === 'caudal' && isUuid(delegatedEventDraft.jugadorId) ? delegatedEventDraft.jugadorId : null,
-        equipo: delegatedEventDraft.side,
-        tipo_evento: delegatedEventDraft.tipoEvento,
+        equipo: delegatedEventDraft.side === 'neutral' ? 'caudal' : delegatedEventDraft.side,
+        tipo_evento: getQuickEventBaseType(delegatedEventDraft.tipoEvento),
         minuto: minute,
         reviewed: false,
       };
@@ -8626,7 +8646,7 @@ function App() {
       const { error } = await request;
       if (error) throw error;
       setDelegatedEventDraft(null);
-      setDelegatedEventFeedback(`${delegatedEventDraft.label} guardado en el ${minute}'${selectedPlayer ? ` · ${selectedPlayer.name}` : ''}`);
+      setDelegatedEventFeedback(`${delegatedEventDraft.label} guardado en ${String(minute).padStart(2, '0')}:00${selectedPlayer ? ` · ${selectedPlayer.name}` : delegatedEventDraft.side === 'rival' && delegatedEventDraft.requiresPlayer ? ' · Jugador no identificado' : ''}`);
       await refreshStatsFromSupabase(selectedMatch.id, 'evento de Modo Delegado');
     } catch (error) {
       console.error('Error guardando evento de Modo Delegado en Supabase:', {
@@ -8642,16 +8662,20 @@ function App() {
 
   const saveDelegatedEventDirect = async (definition) => {
     if (!selectedMatch || !definition || delegatedEventSaving) return;
+    if (definition.requiresPlayer) {
+      openDelegatedEventModal(definition);
+      return;
+    }
     setDelegatedEventSaving(true);
     setStatsError('');
     setDelegatedEventFeedback('');
     try {
-      const minute = Math.max(0, Math.min(130, Number(delegatedMinute) || 0));
+      const minute = Math.max(0, Math.min(130, Math.floor(Number(delegatedElapsedSeconds || 0) / 60)));
       const payload = {
         partido_id: selectedMatch.id,
         jugador_id: null,
         equipo: definition.side === 'neutral' ? 'caudal' : definition.side,
-        tipo_evento: definition.tipoEvento,
+        tipo_evento: getQuickEventBaseType(definition.tipoEvento),
         minuto: minute,
         reviewed: false,
       };
@@ -8663,8 +8687,8 @@ function App() {
           ? { ...match, quickEvents: [...(match.quickEvents || []), savedEvent] }
           : match
       )));
-      setDelegatedEventFeedback(`${definition.label} · ${minute}'`);
-      window.setTimeout(() => setDelegatedEventFeedback((current) => (current === `${definition.label} · ${minute}'` ? '' : current)), 1200);
+      setDelegatedEventFeedback(`${definition.label} · ${String(minute).padStart(2, '0')}:00`);
+      window.setTimeout(() => setDelegatedEventFeedback((current) => (current === `${definition.label} · ${String(minute).padStart(2, '0')}:00` ? '' : current)), 1200);
     } catch (error) {
       console.error('Error guardando evento directo de Modo Delegado:', { definition, error });
       setStatsError(error.message || 'No se pudo guardar el evento del Modo Delegado.');
@@ -8753,7 +8777,7 @@ function App() {
         ? { ...match, quickEvents: (match.quickEvents || []).filter((event) => event.id !== lastEvent.id) }
         : match
     )));
-    setDelegatedEventFeedback(`Deshecho: ${quickEventLabelByType[lastEvent.tipoEvento] || lastEvent.tipoEvento}`);
+    setDelegatedEventFeedback(`Deshecho: ${getQuickEventLabel(lastEvent.tipoEvento)}`);
     window.setTimeout(() => setDelegatedEventFeedback((current) => (current.startsWith('Deshecho:') ? '' : current)), 1600);
     setDelegatedEventSaving(false);
   };
@@ -8765,8 +8789,8 @@ function App() {
     setQuickEventSavingIds((current) => (current.includes(eventId) ? current : [...current, eventId]));
     const payload = {};
     if (fields.tipoEvento !== undefined) {
-      const definition = delegatedEventDefinitions.find((item) => item.tipoEvento === fields.tipoEvento);
-      payload.tipo_evento = fields.tipoEvento;
+      const definition = delegatedEventDefinitions.find((item) => item.tipoEvento === getQuickEventBaseType(fields.tipoEvento) && item.side === (fields.equipo || getQuickEventSide(fields)));
+      payload.tipo_evento = getQuickEventBaseType(fields.tipoEvento);
       payload.equipo = definition?.side || fields.equipo || 'caudal';
       if (payload.equipo === 'rival') payload.jugador_id = null;
     }
@@ -9064,15 +9088,16 @@ function App() {
   };
 
   const renderDelegatedStatsMode = () => {
-    const eventOrder = ['gol', 'tiro_puerta', 'entrada_area', 'recuperacion', 'perdida', 'corner'];
+    const eventOrder = ['gol', 'tiro', 'tiro_puerta', 'regate', 'centro', 'corner', 'perdida', 'robo', 'recuperacion', 'falta_realizada', 'falta_recibida'];
+    const delegatedEventGroups = ['Finalización', 'Ataque', 'Posesión', 'Faltas'];
     const caudalEvents = delegatedEventDefinitions
       .filter((definition) => definition.category === 'principal' && definition.side === 'caudal')
       .filter((definition) => eventOrder.includes(definition.tipoEvento))
       .sort((a, b) => eventOrder.indexOf(a.tipoEvento) - eventOrder.indexOf(b.tipoEvento));
     const rivalEvents = delegatedEventDefinitions
       .filter((definition) => definition.category === 'principal' && definition.side === 'rival')
-      .filter((definition) => eventOrder.includes(definition.tipoEvento.replace('_rival', '')))
-      .sort((a, b) => eventOrder.indexOf(a.tipoEvento.replace('_rival', '')) - eventOrder.indexOf(b.tipoEvento.replace('_rival', '')));
+      .filter((definition) => eventOrder.includes(definition.tipoEvento))
+      .sort((a, b) => eventOrder.indexOf(a.tipoEvento) - eventOrder.indexOf(b.tipoEvento));
     const momentumEvents = delegatedEventDefinitions.filter((definition) => ['momento_dominamos', 'momento_igualado', 'momento_sufriendo'].includes(definition.tipoEvento));
     const calledPlayers = getStatsCalledPlayers();
     const orderedDelegatedEvents = getDelegatedEvents()
@@ -9087,12 +9112,16 @@ function App() {
     const liveSummary = getQuickEventSummary(getDelegatedEvents());
     const momentumSegments = getDelegatedMomentumSegments();
     const baseScore = getStatsScore();
-    const delegatedCaudalGoals = getDelegatedCount('gol');
-    const delegatedRivalGoals = getDelegatedCount('gol_rival');
+    const delegatedCaudalGoals = liveSummary.goals;
+    const delegatedRivalGoals = liveSummary.rivalGoals;
     const liveCaudalScore = Number(baseScore.caudal || 0) + delegatedCaudalGoals;
     const liveRivalScore = Number(baseScore.rival || 0) + delegatedRivalGoals;
     const clockMinutes = Math.floor(Number(delegatedElapsedSeconds || 0) / 60);
     const clockSeconds = String(Number(delegatedElapsedSeconds || 0) % 60).padStart(2, '0');
+    const getDelegatedTimeLabel = (event) => {
+      const minute = Math.max(0, Number(event?.minute || 0));
+      return `${String(Math.floor(minute)).padStart(2, '0')}:00`;
+    };
     const addedTimeLabel = delegatedAddedTime ? `+${delegatedAddedTime}` : '';
     const stateClass = delegatedMatchState === 'FINALIZADO'
       ? 'border-slate-300/20 bg-slate-400/10 text-slate-200'
@@ -9112,54 +9141,47 @@ function App() {
       momentumPositive: 'border-emerald-200/20 bg-emerald-300/14 text-emerald-100',
       momentumNeutral: 'border-white/10 bg-white/[0.08] text-slate-100',
     }[tone] || 'border-white/10 bg-white/10 text-white');
-    const getTimelineToneClass = (tipoEvento) => {
-      const definition = delegatedEventDefinitions.find((item) => item.tipoEvento === tipoEvento);
-      if (tipoEvento === 'gol') return 'border-emerald-200/20 bg-emerald-300/10 text-emerald-100';
-      if (tipoEvento === 'gol_rival') return 'border-red-200/20 bg-red-500/12 text-red-100';
+    const getTimelineToneClass = (event) => {
+      const definition = getDelegatedDefinitionForEvent(event);
+      const baseType = getQuickEventBaseType(event?.tipoEvento);
+      const side = getQuickEventSide(event);
+      if (baseType === 'gol') return side === 'rival' ? 'border-red-200/20 bg-red-500/12 text-red-100' : 'border-emerald-200/20 bg-emerald-300/10 text-emerald-100';
       if (definition?.category === 'momentum') return 'border-violet-200/15 bg-violet-400/10 text-violet-100';
       if (definition?.tone === 'incident') return 'border-yellow-200/15 bg-yellow-300/10 text-yellow-100';
       if (definition?.tone === 'danger' || definition?.side === 'rival') return 'border-red-200/15 bg-red-500/10 text-red-100';
       return 'border-caudal-electric/15 bg-caudal-electric/10 text-caudal-electric';
     };
     const getTimelineIcon = (tipoEvento) => ({
-      gol: '⚽',
-      gol_rival: '⚽',
-      recuperacion: '🔄',
-      recuperacion_rival: '🔄',
-      entrada_area: '🥅',
-      entrada_area_rival: '🥅',
-      tiro: '🎯',
-      tiro_rival: '🎯',
-      tiro_puerta: '🎯',
-      tiro_puerta_rival: '🎯',
-      perdida: '⚠️',
-      perdida_rival: '⚠️',
-      corner: '🚩',
-      corner_rival: '🚩',
-      amarilla: 'AM',
-      roja: 'RJ',
-      lesion: 'LES',
-      cambio: 'CAM',
+      gol: 'GOL',
+      tiro: 'TIR',
+      tiro_puerta: 'TP',
+      regate: 'REG',
+      centro: 'CEN',
+      perdida: 'PER',
+      robo: 'ROB',
+      recuperacion: 'REC',
+      falta_realizada: 'FR',
+      falta_recibida: 'FREC',
+      corner: 'COR',
       momento_dominamos: 'DOM',
       momento_igualado: 'EQ',
       momento_sufriendo: 'SUF',
       momento_empujando: 'UP',
       momento_replegados: 'REP',
-    }[tipoEvento] || 'EV');
+    }[getQuickEventBaseType(tipoEvento)] || 'EV');
     const getActionIcon = (tipoEvento) => ({
-      gol: '⚽',
-      gol_rival: '⚽',
-      tiro_puerta: '🎯',
-      tiro_puerta_rival: '🎯',
-      entrada_area: '🥅',
-      entrada_area_rival: '🥅',
-      recuperacion: '🔄',
-      recuperacion_rival: '🔄',
-      perdida: '⚠️',
-      perdida_rival: '⚠️',
-      corner: '🚩',
-      corner_rival: '🚩',
-    }[tipoEvento] || '●');
+      gol: 'GOL',
+      tiro: 'TIR',
+      tiro_puerta: 'TP',
+      regate: 'REG',
+      centro: 'CEN',
+      perdida: 'PER',
+      robo: 'ROB',
+      recuperacion: 'REC',
+      falta_realizada: 'FR',
+      falta_recibida: 'FREC',
+      corner: 'COR',
+    }[getQuickEventBaseType(tipoEvento)] || 'EV');
     const getMomentumIcon = (tipoEvento) => ({
       momento_dominamos: '🟢',
       momento_igualado: '🟡',
@@ -9196,14 +9218,15 @@ function App() {
     const standoutRows = [
       ['Más tiros', getTopPlayerByEvent('tiro_puerta')],
       ['Más recuperaciones', getTopPlayerByEvent('recuperacion')],
-      ['Más entradas área', getTopPlayerByEvent('entrada_area')],
+      ['Más regates', getTopPlayerByEvent('regate')],
     ];
     const liveBars = [
-      ['Tiros', liveSummary.shots + liveSummary.shotsOnTarget, liveSummary.rivalShots + liveSummary.rivalShotsOnTarget],
+      ['Tiros', liveSummary.shots, liveSummary.rivalShots],
       ['Tiros puerta', liveSummary.shotsOnTarget, liveSummary.rivalShotsOnTarget],
-      ['Entradas área', liveSummary.boxEntries, liveSummary.rivalBoxEntries],
-      ['Recuperaciones altas', liveSummary.recoveries, liveSummary.rivalRecoveries],
-      ['Pérdidas peligrosas', liveSummary.losses, liveSummary.rivalLosses],
+      ['Regates + centros', liveSummary.boxEntries, liveSummary.rivalBoxEntries],
+      ['Robos', liveSummary.steals, liveSummary.rivalSteals],
+      ['Recuperaciones', liveSummary.recoveries, liveSummary.rivalRecoveries],
+      ['Pérdidas', liveSummary.losses, liveSummary.rivalLosses],
       ['Córners', liveSummary.corners, liveSummary.rivalCorners],
     ];
     const momentumTimeline = getQuickEventsByMinuteRange(getDelegatedEvents());
@@ -9264,19 +9287,30 @@ function App() {
               ].map(([title, events, titleClass]) => (
                 <section key={title} className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-5">
                   <h4 className={`text-sm font-black uppercase tracking-[0.18em] ${titleClass}`}>{title}</h4>
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                    {events.map((definition) => (
-                      <button
-                        key={definition.key}
-                        type="button"
-                        onClick={() => saveDelegatedEventDirect(definition)}
-                        disabled={delegatedEventSaving}
-                        className={`min-h-[86px] rounded-2xl border px-3 py-3 text-left transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${getDelegatedToneClass(definition.tone)}`}
-                      >
-                        <span className="block text-2xl leading-none">{getActionIcon(definition.tipoEvento)}</span>
-                        <span className="mt-2 block text-base font-black leading-tight">{definition.label}</span>
-                      </button>
-                    ))}
+                  <div className="mt-4 space-y-3">
+                    {delegatedEventGroups.map((group) => {
+                      const groupEvents = events.filter((definition) => definition.group === group);
+                      if (!groupEvents.length) return null;
+                      return (
+                        <div key={`${title}-${group}`}>
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{group}</p>
+                          <div className="mt-1.5 grid grid-cols-2 gap-2">
+                            {groupEvents.map((definition) => (
+                              <button
+                                key={definition.key}
+                                type="button"
+                                onClick={() => saveDelegatedEventDirect(definition)}
+                                disabled={delegatedEventSaving}
+                                className={`min-h-[64px] rounded-2xl border px-3 py-2 text-left transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${getDelegatedToneClass(definition.tone)}`}
+                              >
+                                <span className="block text-[10px] font-black uppercase tracking-[0.12em] opacity-70">{getActionIcon(definition.tipoEvento)}</span>
+                                <span className="mt-1 block text-sm font-black leading-tight">{definition.label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </section>
               ))}
@@ -9408,20 +9442,21 @@ function App() {
               </div>
               <div className="mt-4 max-h-[560px] space-y-2 overflow-y-auto pr-1">
                 {recentEvents.length ? recentEvents.map((event) => {
-                  const definition = delegatedEventDefinitions.find((item) => item.tipoEvento === event.tipoEvento);
+                  const definition = getDelegatedDefinitionForEvent(event);
                   const playerName = playersById.get(event.jugadorId)?.name || '';
                   const important = importantEventIds.includes(event.id);
                   const isConfirmingDelete = pendingQuickEventDeleteId === event.id;
+                  const eventSide = getQuickEventSide(event);
                   return (
-                    <div key={event.id} className={`rounded-2xl border px-3 py-2.5 ${important ? 'ring-1 ring-yellow-200/40' : ''} ${getTimelineToneClass(event.tipoEvento)}`}>
+                    <div key={event.id} className={`rounded-2xl border px-3 py-2.5 ${important ? 'ring-1 ring-yellow-200/40' : ''} ${getTimelineToneClass(event)}`}>
                       <div className="grid grid-cols-[42px_46px_1fr_auto] items-center gap-2">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-lg font-black">{getTimelineIcon(event.tipoEvento)}</span>
-                        <span className="font-mono text-sm font-black text-caudal-electric">{event.minute}'</span>
+                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-[10px] font-black">{getTimelineIcon(event.tipoEvento)}</span>
+                        <span className="font-mono text-xs font-black text-caudal-electric">{getDelegatedTimeLabel(event)}</span>
                         <div className="min-w-0">
                           <p className="truncate text-sm font-black text-white">
-                            {playerName || (definition?.side === 'rival' ? selectedMatch?.opponent || 'Rival' : 'Sin jugador')}
+                            <span className="text-slate-500">{eventSide === 'rival' ? 'RIV' : 'CAU'} · </span>{getQuickEventLabel(event.tipoEvento)}{playerName ? ` · ${playerName}` : ''}
                           </p>
-                          <p className="truncate text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{quickEventLabelByType[event.tipoEvento] || event.tipoEvento}</p>
+                          <p className="truncate text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{playerName || (eventSide === 'rival' && definition?.requiresPlayer ? 'Jugador no identificado' : 'Evento colectivo')}</p>
                         </div>
                         <div className="flex items-center gap-1">
                           {important ? <span className="rounded-lg bg-yellow-300 px-2 py-1 text-[10px] font-black text-slate-950">★</span> : null}
@@ -9448,11 +9483,11 @@ function App() {
                           <button
                             type="button"
                             onClick={() => setDelegatedEventDraft({
-                              ...(definition || {}),
+                              ...(definition || getDelegatedDefinitionForEvent(event) || {}),
                               eventId: event.id,
-                              tipoEvento: event.tipoEvento,
-                              label: quickEventLabelByType[event.tipoEvento] || event.tipoEvento,
-                              side: event.equipo,
+                              tipoEvento: getQuickEventBaseType(event.tipoEvento),
+                              label: getQuickEventLabel(event.tipoEvento),
+                              side: getQuickEventSide(event),
                               minute: event.minute || delegatedMinute || '0',
                               jugadorId: event.jugadorId || '',
                             })}
@@ -9499,17 +9534,23 @@ function App() {
                 />
               </label>
               <label className="mt-4 block space-y-2">
-                <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Jugador opcional</span>
-                <select
-                  value={delegatedEventDraft.jugadorId}
-                  onChange={(event) => setDelegatedEventDraft((current) => ({ ...current, jugadorId: event.target.value }))}
-                  className="w-full rounded-2xl bg-white px-4 py-4 text-base font-black text-slate-950"
-                >
-                  <option value="">Sin jugador</option>
-                  {calledPlayers.map((player) => (
-                    <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
-                  ))}
-                </select>
+                <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{delegatedEventDraft.requiresPlayer ? 'Jugador' : 'Evento colectivo'}</span>
+                {delegatedEventDraft.side === 'caudal' && delegatedEventDraft.requiresPlayer ? (
+                  <select
+                    value={delegatedEventDraft.jugadorId}
+                    onChange={(event) => setDelegatedEventDraft((current) => ({ ...current, jugadorId: event.target.value }))}
+                    className="w-full rounded-2xl bg-white px-4 py-4 text-base font-black text-slate-950"
+                  >
+                    <option value="">{calledPlayers.length ? 'Seleccionar jugador' : 'Sin convocatoria cargada'}</option>
+                    {calledPlayers.map((player) => (
+                      <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-4 text-sm font-bold text-slate-300">
+                    {delegatedEventDraft.requiresPlayer ? 'Jugador no identificado' : 'Córner colectivo: no solicita jugador.'}
+                  </p>
+                )}
               </label>
               <button
                 type="button"
@@ -10390,11 +10431,11 @@ function App() {
               [...(selectedMatch.quickEvents || [])]
                 .sort((a, b) => Number(a.minute || 0) - Number(b.minute || 0))
                 .map((event) => {
-                  const definition = delegatedEventDefinitions.find((item) => item.tipoEvento === event.tipoEvento);
-                  const isRival = (event.equipo || definition?.side) === 'rival';
+                  const definition = getDelegatedDefinitionForEvent(event);
+                  const isRival = getQuickEventSide(event) === 'rival';
                   const isSaving = quickEventSavingIds.includes(event.id);
                   const isConfirmingDelete = pendingQuickEventDeleteId === event.id;
-                  const tone = getPostEventTone(definition?.label || event.tipoEvento);
+                  const tone = getPostEventTone(definition?.label || getQuickEventLabel(event.tipoEvento));
                   const playerName = players.find((player) => player.id === event.jugadorId)?.name || '';
                   return (
                     <div key={event.id} className={`rounded-3xl border p-4 transition ${event.reviewed ? 'border-emerald-400/25 bg-emerald-400/10 shadow-[0_0_28px_rgba(16,185,129,0.08)]' : 'border-white/10 bg-[#0f1e38]/85 hover:border-caudal-electric/25'}`}>
@@ -10406,7 +10447,7 @@ function App() {
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="text-lg font-black text-white">{event.minute || 0}'</p>
-                              <p className="text-sm font-black text-slate-100">{definition?.label || event.tipoEvento}</p>
+                              <p className="text-sm font-black text-slate-100">{definition?.label || getQuickEventLabel(event.tipoEvento)}</p>
                               <span className={`rounded-xl px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${isRival ? 'bg-red-500/15 text-red-200' : 'bg-caudal-electric/15 text-caudal-electric'}`}>
                                 {isRival ? 'Rival' : 'Caudal'}
                               </span>
@@ -11023,24 +11064,26 @@ function App() {
       .filter((row) => playerVenueFilter === 'Todos' || (playerVenueFilter === 'Local' ? row.match.isHome : !row.match.isHome));
   };
 
-  const getQuickEventCount = (events, tipoEvento) =>
-    safeArray(events).filter((event) => event.tipoEvento === tipoEvento).length;
+  const getQuickEventCount = (events, tipoEvento, side = 'caudal') =>
+    safeArray(events).filter((event) => quickEventMatches(event, tipoEvento, side)).length;
 
   const getQuickEventRate = (part, total) =>
     total ? `${Math.round((part / total) * 100)}%` : '0%';
 
   const getQuickEventSummary = (events = []) => {
     const rows = safeArray(events);
-    const shots = getQuickEventCount(rows, 'tiro');
-    const shotsOnTarget = getQuickEventCount(rows, 'tiro_puerta');
-    const rivalShots = getQuickEventCount(rows, 'tiro_rival');
-    const rivalShotsOnTarget = getQuickEventCount(rows, 'tiro_puerta_rival');
+    const goals = getQuickEventCount(rows, 'gol');
+    const rivalGoals = getQuickEventCount(rows, 'gol', 'rival');
+    const shots = getQuickEventCount(rows, 'tiro') + getQuickEventCount(rows, 'tiro_puerta') + goals;
+    const shotsOnTarget = getQuickEventCount(rows, 'tiro_puerta') + goals;
+    const rivalShots = getQuickEventCount(rows, 'tiro', 'rival') + getQuickEventCount(rows, 'tiro_puerta', 'rival') + rivalGoals;
+    const rivalShotsOnTarget = getQuickEventCount(rows, 'tiro_puerta', 'rival') + rivalGoals;
     const recoveries = getQuickEventCount(rows, 'recuperacion');
-    const rivalRecoveries = getQuickEventCount(rows, 'recuperacion_rival');
+    const rivalRecoveries = getQuickEventCount(rows, 'recuperacion', 'rival');
     const losses = getQuickEventCount(rows, 'perdida');
-    const rivalLosses = getQuickEventCount(rows, 'perdida_rival');
-    const boxEntries = getQuickEventCount(rows, 'entrada_area');
-    const rivalBoxEntries = getQuickEventCount(rows, 'entrada_area_rival');
+    const rivalLosses = getQuickEventCount(rows, 'perdida', 'rival');
+    const boxEntries = getQuickEventCount(rows, 'centro') + getQuickEventCount(rows, 'regate');
+    const rivalBoxEntries = getQuickEventCount(rows, 'centro', 'rival') + getQuickEventCount(rows, 'regate', 'rival');
     const maxMinute = Math.max(...rows.map((event) => Number(event.minute || 0)), 0) || 1;
     const elapsedTens = Math.max(1, maxMinute / 10);
     return {
@@ -11048,12 +11091,22 @@ function App() {
       shotsOnTarget,
       rivalShots,
       rivalShotsOnTarget,
+      goals,
+      rivalGoals,
       boxEntries,
       rivalBoxEntries,
       corners: getQuickEventCount(rows, 'corner'),
-      rivalCorners: getQuickEventCount(rows, 'corner_rival'),
-      fouls: getQuickEventCount(rows, 'falta'),
-      rivalFouls: getQuickEventCount(rows, 'falta_rival'),
+      rivalCorners: getQuickEventCount(rows, 'corner', 'rival'),
+      fouls: getQuickEventCount(rows, 'falta_realizada'),
+      rivalFouls: getQuickEventCount(rows, 'falta_realizada', 'rival'),
+      foulsReceived: getQuickEventCount(rows, 'falta_recibida'),
+      rivalFoulsReceived: getQuickEventCount(rows, 'falta_recibida', 'rival'),
+      dribbles: getQuickEventCount(rows, 'regate'),
+      rivalDribbles: getQuickEventCount(rows, 'regate', 'rival'),
+      crosses: getQuickEventCount(rows, 'centro'),
+      rivalCrosses: getQuickEventCount(rows, 'centro', 'rival'),
+      steals: getQuickEventCount(rows, 'robo'),
+      rivalSteals: getQuickEventCount(rows, 'robo', 'rival'),
       recoveries,
       rivalRecoveries,
       losses,
@@ -11062,8 +11115,8 @@ function App() {
       rivalRecoveryLossBalance: rivalRecoveries - rivalLosses,
       momentumEvents: rows.filter((event) => String(event.tipoEvento || '').startsWith('momento_')).length,
       shotsPer10: (shots / elapsedTens).toFixed(1),
-      firstHalfBoxEntries: rows.filter((event) => event.tipoEvento === 'entrada_area' && Number(event.minute || 0) < 45).length,
-      secondHalfBoxEntries: rows.filter((event) => event.tipoEvento === 'entrada_area' && Number(event.minute || 0) >= 45).length,
+      firstHalfBoxEntries: rows.filter((event) => ['centro', 'regate'].includes(getQuickEventBaseType(event.tipoEvento)) && getQuickEventSide(event) === 'caudal' && Number(event.minute || 0) < 45).length,
+      secondHalfBoxEntries: rows.filter((event) => ['centro', 'regate'].includes(getQuickEventBaseType(event.tipoEvento)) && getQuickEventSide(event) === 'caudal' && Number(event.minute || 0) >= 45).length,
       dangerLossRatio: getQuickEventRate(losses, Math.max(1, recoveries + losses)),
       highPressEffectiveness: getQuickEventRate(recoveries, Math.max(1, recoveries + rivalBoxEntries)),
       shotAccuracy: getQuickEventRate(shotsOnTarget, shots),
@@ -11216,7 +11269,7 @@ function App() {
       general: `${player.name} acumula ${aggregate.played} partidos, ${aggregate.minutes}' y ${aggregate.directGoalParticipation} participaciones directas de gol en el filtro actual. En eventos rápidos: ${aggregate.quick.shots} tiros, ${aggregate.quick.recoveries} recuperaciones y ${aggregate.quick.losses} pérdidas.`,
       strengths: aggregate.quick.recoveries > aggregate.quick.losses ? 'Buen balance presión/pérdida: recupera más de lo que pierde en los eventos registrados.' : aggregate.goals || aggregate.assists ? 'Aporta producción ofensiva medible: revisar sus acciones de gol/asistencia para repetir zonas y sociedades.' : 'Sin producción ofensiva registrada: valorar influencia sin balón, continuidad y ocupación de zonas.',
       improve: aggregate.quick.losses >= 5 ? 'Acumula pérdidas: revisar zonas, apoyos y perfil corporal en últimos partidos.' : aggregate.yellow || aggregate.red ? 'Controlar acciones disciplinarias y momentos de riesgo competitivo.' : 'Aumentar presencia en acciones decisivas si su rol lo permite.',
-      trend: aggregate.quick.recent.slice(0, 3).length ? `Últimos eventos rápidos: ${aggregate.quick.recent.slice(0, 3).map((event) => `${quickEventLabelByType[event.tipoEvento] || event.tipoEvento} vs ${event.match.opponent}`).join(', ')}.` : aggregate.rows.slice(-3).length ? `Últimos ${aggregate.rows.slice(-3).length} partidos registrados: ${aggregate.rows.slice(-3).reduce((sum, row) => sum + row.minutes, 0)} minutos.` : 'Sin tendencia reciente registrada.',
+      trend: aggregate.quick.recent.slice(0, 3).length ? `Últimos eventos rápidos: ${aggregate.quick.recent.slice(0, 3).map((event) => `${getQuickEventLabel(event.tipoEvento)} vs ${event.match.opponent}`).join(', ')}.` : aggregate.rows.slice(-3).length ? `Últimos ${aggregate.rows.slice(-3).length} partidos registrados: ${aggregate.rows.slice(-3).reduce((sum, row) => sum + row.minutes, 0)} minutos.` : 'Sin tendencia reciente registrada.',
     });
   };
 
@@ -11880,17 +11933,15 @@ function App() {
     }
 
     const ranges = getQuickEventsByMinuteRange(quickEvents);
-    const ownShotTypes = new Set(['tiro', 'tiro_puerta']);
-    const rivalShotTypes = new Set(['tiro_rival', 'tiro_puerta_rival']);
     const rangeDetails = ranges.map((range) => {
       const [from, to] = range.range.split('-').map(Number);
       const isLastRange = to === 90;
       const scoped = quickEvents.filter((event) => Number(event.minute) >= from && (isLastRange ? Number(event.minute) <= to : Number(event.minute) < to));
       return {
         range: range.range,
-        ownShots: scoped.filter((event) => ownShotTypes.has(event.tipoEvento)).length,
-        rivalShots: scoped.filter((event) => rivalShotTypes.has(event.tipoEvento)).length,
-        losses: scoped.filter((event) => event.tipoEvento === 'perdida').length,
+        ownShots: scoped.filter((event) => ['tiro', 'tiro_puerta', 'gol'].includes(getQuickEventBaseType(event.tipoEvento)) && getQuickEventSide(event) === 'caudal').length,
+        rivalShots: scoped.filter((event) => ['tiro', 'tiro_puerta', 'gol'].includes(getQuickEventBaseType(event.tipoEvento)) && getQuickEventSide(event) === 'rival').length,
+        losses: scoped.filter((event) => getQuickEventBaseType(event.tipoEvento) === 'perdida' && getQuickEventSide(event) === 'caudal').length,
       };
     });
     const topOwnShotRange = rangeDetails.slice().sort((a, b) => b.ownShots - a.ownShots)[0];
@@ -11899,8 +11950,8 @@ function App() {
     if (topOwnShotRange?.ownShots > 0) readings.push(`El tramo con más tiros propios es ${topOwnShotRange.range}'.`);
     if (topRivalShotRange?.rivalShots > 0) readings.push(`El tramo con más tiros rivales es ${topRivalShotRange.range}': controlar ese momento del partido.`);
     if (topLossRange?.losses >= 2) readings.push(`El tramo con más pérdidas es ${topLossRange.range}': revisar gestión de balón en esa fase.`);
-    const firstHalfRecoveries = quickEvents.filter((event) => event.tipoEvento === 'recuperacion' && Number(event.minute) < 45).length;
-    const secondHalfRecoveries = quickEvents.filter((event) => event.tipoEvento === 'recuperacion' && Number(event.minute) >= 45).length;
+    const firstHalfRecoveries = quickEvents.filter((event) => getQuickEventBaseType(event.tipoEvento) === 'recuperacion' && getQuickEventSide(event) === 'caudal' && Number(event.minute) < 45).length;
+    const secondHalfRecoveries = quickEvents.filter((event) => getQuickEventBaseType(event.tipoEvento) === 'recuperacion' && getQuickEventSide(event) === 'caudal' && Number(event.minute) >= 45).length;
     if (secondHalfRecoveries > firstHalfRecoveries) readings.push('El equipo recupera más en la segunda parte.');
 
     const homeMatches = scopedMatches.filter((match) => match.isHome && safeArray(match.quickEvents).length);
@@ -11942,7 +11993,7 @@ function App() {
       { key: 'combinativo', label: 'Juego combinativo', forCount: realGoalForEvents.filter((event) => event.phase === 'Juego combinativo').length, againstCount: realGoalAgainstEvents.filter((event) => event.phase === 'Juego combinativo').length },
       { key: 'directo', label: 'Juego directo', forCount: realGoalForEvents.filter((event) => event.phase === 'Juego directo').length, againstCount: realGoalAgainstEvents.filter((event) => event.phase === 'Juego directo').length },
       { key: 'transicion', label: 'Transición', forCount: realGoalForEvents.filter((event) => event.phase === 'Transición').length, againstCount: realGoalAgainstEvents.filter((event) => event.phase === 'Transición').length },
-      { key: 'recuperacion', label: 'Recuperación alta', forCount: quickEvents.filter((event) => event.tipoEvento === 'recuperacion').length, againstCount: quickEvents.filter((event) => event.tipoEvento === 'recuperacion_rival').length },
+      { key: 'recuperacion', label: 'Recuperación', forCount: quickEvents.filter((event) => getQuickEventBaseType(event.tipoEvento) === 'recuperacion' && getQuickEventSide(event) === 'caudal').length, againstCount: quickEvents.filter((event) => getQuickEventBaseType(event.tipoEvento) === 'recuperacion' && getQuickEventSide(event) === 'rival').length },
       { key: 'centro', label: 'Centro lateral', forCount: zoneCount(realGoalForEvents.map((event) => ({ text: `${event.subphase} ${event.assistZone} ${event.description}` })), [/centro|lateral|banda|derecha|izquierda/]), againstCount: zoneCount(realGoalAgainstEvents.map((event) => ({ text: `${event.subphase} ${event.assistZone} ${event.description}` })), [/centro|lateral|banda|derecha|izquierda/]) },
       { key: 'abp', label: 'ABP', forCount: realGoalForEvents.filter((event) => event.phase === 'ABP').length, againstCount: realGoalAgainstEvents.filter((event) => event.phase === 'ABP').length },
       { key: 'izquierda', label: 'Lado izquierdo', forCount: zoneCount(realGoalForEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/izquierda|izquierdo/]), againstCount: zoneCount(realGoalAgainstEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/izquierda|izquierdo/]) },
@@ -11985,8 +12036,8 @@ function App() {
       post: safeArray(match.events),
     }));
     const patternDefs = [
-      { id: 'high_recovery_shot', label: 'Recuperación alta → tiro', a: ['recuperacion'], b: ['tiro', 'tiro_puerta'], outcome: ['tiro_puerta'] },
-      { id: 'loss_rival_chance', label: 'Pérdida interior → ocasión rival', a: ['perdida'], b: ['tiro_rival', 'tiro_puerta_rival', 'entrada_area_rival'], outcome: ['tiro_puerta_rival'] },
+      { id: 'high_recovery_shot', label: 'Recuperación → tiro', a: ['recuperacion'], aSide: 'caudal', b: ['tiro', 'tiro_puerta', 'gol'], bSide: 'caudal', outcome: ['tiro_puerta', 'gol'] },
+      { id: 'loss_rival_chance', label: 'Pérdida interior → ocasión rival', a: ['perdida'], aSide: 'caudal', b: ['tiro', 'tiro_puerta', 'gol', 'centro', 'regate'], bSide: 'rival', outcome: ['tiro_puerta', 'gol'] },
       { id: 'direct_second', label: 'Juego directo → segunda jugada', text: [/juego directo/i, /segunda/i] },
       { id: 'cross_finish', label: 'Centro lateral → remate', text: [/centro|lateral|banda/i, /remate|finaliza|tiro|gol/i] },
       { id: 'transition_finish', label: 'Transición → finalización rápida', text: [/transici/i, /tiro|finaliza|gol|ocas/i] },
@@ -12000,12 +12051,14 @@ function App() {
         let matchFrequency = 0;
         if (pattern.a) {
           quick.forEach((event, index) => {
-            if (!pattern.a.includes(event.tipoEvento)) return;
+            const eventMatchesPattern = (candidate, types = [], side = '') =>
+              types.includes(getQuickEventBaseType(candidate?.tipoEvento)) && (!side || getQuickEventSide(candidate) === side);
+            if (!eventMatchesPattern(event, pattern.a, pattern.aSide)) return;
             const next = quick.slice(index + 1).find((candidate) => Number(candidate.minute || 0) - Number(event.minute || 0) <= 5);
-            if (next && pattern.b.includes(next.tipoEvento)) {
+            if (next && eventMatchesPattern(next, pattern.b, pattern.bSide)) {
               frequency += 1;
               matchFrequency += 1;
-              if (pattern.outcome.includes(next.tipoEvento)) success += 1;
+              if (eventMatchesPattern(next, pattern.outcome, pattern.bSide)) success += 1;
             }
           });
         }
@@ -12039,12 +12092,12 @@ function App() {
       const scoped = quickEvents.filter((event) => Number(event.minute || 0) >= from && (isLastRange ? Number(event.minute || 0) <= to : Number(event.minute || 0) < to));
       return {
         range,
-        shots: scoped.filter((event) => ['tiro', 'tiro_puerta'].includes(event.tipoEvento)).length,
-        rivalShots: scoped.filter((event) => ['tiro_rival', 'tiro_puerta_rival'].includes(event.tipoEvento)).length,
-        recoveries: scoped.filter((event) => event.tipoEvento === 'recuperacion').length,
-        losses: scoped.filter((event) => event.tipoEvento === 'perdida').length,
-        boxEntries: scoped.filter((event) => event.tipoEvento === 'entrada_area').length,
-        pressure: scoped.filter((event) => event.tipoEvento === 'recuperacion').length - scoped.filter((event) => event.tipoEvento === 'perdida').length,
+        shots: scoped.filter((event) => ['tiro', 'tiro_puerta', 'gol'].includes(getQuickEventBaseType(event.tipoEvento)) && getQuickEventSide(event) === 'caudal').length,
+        rivalShots: scoped.filter((event) => ['tiro', 'tiro_puerta', 'gol'].includes(getQuickEventBaseType(event.tipoEvento)) && getQuickEventSide(event) === 'rival').length,
+        recoveries: scoped.filter((event) => getQuickEventBaseType(event.tipoEvento) === 'recuperacion' && getQuickEventSide(event) === 'caudal').length,
+        losses: scoped.filter((event) => getQuickEventBaseType(event.tipoEvento) === 'perdida' && getQuickEventSide(event) === 'caudal').length,
+        boxEntries: scoped.filter((event) => ['centro', 'regate'].includes(getQuickEventBaseType(event.tipoEvento)) && getQuickEventSide(event) === 'caudal').length,
+        pressure: scoped.filter((event) => getQuickEventBaseType(event.tipoEvento) === 'recuperacion' && getQuickEventSide(event) === 'caudal').length - scoped.filter((event) => getQuickEventBaseType(event.tipoEvento) === 'perdida' && getQuickEventSide(event) === 'caudal').length,
       };
     });
     const best = rows.slice().sort((a, b) => (b.shots + b.recoveries + b.boxEntries) - (a.shots + a.recoveries + a.boxEntries))[0];
@@ -12145,7 +12198,7 @@ function App() {
           const type = normalizePlayerIdentityName(event.tipoEvento || event.type || '');
           if (/perd|interior/.test(normalizedItem)) return /perdida/.test(type);
           if (/recuper|presi/.test(normalizedItem)) return /recuperacion/.test(type);
-          if (/area|ocas|tiro/.test(normalizedItem)) return /entrada_area|tiro/.test(type);
+          if (/area|ocas|tiro/.test(normalizedItem)) return /centro|regate|tiro|gol/.test(type);
           if (/corner|abp|balon parado/.test(normalizedItem)) return /corner/.test(type);
           return false;
         });
@@ -15101,7 +15154,10 @@ function App() {
               const timelineActions = [
                 ...allGoalActions.map((event) => ({ minute: event.minute, label: 'G', icon: 'Gol', type: 'Gol', tone: 'goal', match: event.match, videoUrl: event.videoUrl, actionKey: `goal-${event.match.id}-${event.id}`, title: `Gol · ${getMatchScoreLabel(event.match)}` })),
                 ...allAssistActions.map((event) => ({ minute: event.minute, label: 'A', icon: 'Asis', type: 'Asistencia', tone: 'assist', match: event.match, videoUrl: event.videoUrl, actionKey: `assist-${event.match.id}-${event.id}`, title: `Asistencia · ${getMatchScoreLabel(event.match)}` })),
-                ...quick.events.map((event) => ({ minute: event.minute, label: (quickEventLabelByType[event.tipoEvento] || event.tipoEvento).slice(0, 3), icon: (quickEventLabelByType[event.tipoEvento] || event.tipoEvento).slice(0, 3), type: quickEventLabelByType[event.tipoEvento] || event.tipoEvento, tone: 'quick', match: event.match, actionKey: `quick-${event.match.id}-${event.id}`, title: `${quickEventLabelByType[event.tipoEvento] || event.tipoEvento} · ${getMatchScoreLabel(event.match)}` })),
+                ...quick.events.map((event) => {
+                  const eventLabel = getQuickEventLabel(event.tipoEvento);
+                  return { minute: event.minute, label: eventLabel.slice(0, 3), icon: eventLabel.slice(0, 3), type: eventLabel, tone: 'quick', match: event.match, actionKey: `quick-${event.match.id}-${event.id}`, title: `${eventLabel} · ${getMatchScoreLabel(event.match)}` };
+                }),
                 ...aggregate.rows.flatMap((row) => [
                   ...row.cardActions.map((event, cardIndex) => ({ minute: event.minute, label: event.type.includes('roja') ? 'TR' : 'TA', icon: event.type.includes('roja') ? 'TR' : 'TA', type: event.type, tone: event.type.includes('roja') ? 'red' : 'yellow', match: row.match, actionKey: `card-${row.match.id}-${cardIndex}`, title: `${event.type} · ${getMatchScoreLabel(row.match)}` })),
                   row.role === 'Suplente' && row.minutes > 0 ? { minute: Math.max(0, 90 - Number(row.minutes || 0)), label: 'CAM', icon: 'CAM', type: 'Cambio', tone: 'sub', match: row.match, actionKey: `sub-${row.match.id}`, title: `Entrada al partido · ${getMatchScoreLabel(row.match)}` } : null,
@@ -15374,7 +15430,7 @@ function App() {
                         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                           {quick.recent.slice(0, 4).map((event) => (
                             <div key={event.id} className="rounded-2xl bg-white/5 p-4 text-sm">
-                              <p className="font-black text-white">{event.minute}' · {quickEventLabelByType[event.tipoEvento] || event.tipoEvento}</p>
+                              <p className="font-black text-white">{event.minute}' · {getQuickEventLabel(event.tipoEvento)}</p>
                               <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">{event.match.opponent} · {matchDisplayDate(event.match.date)}</p>
                             </div>
                           ))}
