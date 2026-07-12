@@ -2808,6 +2808,10 @@ function App() {
   const [postClipFeedback, setPostClipFeedback] = useState('');
   const [postEventSaving, setPostEventSaving] = useState(false);
   const [postEventFeedback, setPostEventFeedback] = useState('');
+  const [isEditingClosure, setIsEditingClosure] = useState(false);
+  const [closureDraft, setClosureDraft] = useState({});
+  const [closureSaving, setClosureSaving] = useState(false);
+  const [closureSaveError, setClosureSaveError] = useState('');
   const [isGoalAnalysisOpen, setIsGoalAnalysisOpen] = useState(false);
   const [goalAnalysisDraft, setGoalAnalysisDraft] = useState(defaultGoalAnalysisDraft);
   const [lastGoalAnalysisContext, setLastGoalAnalysisContext] = useState(null);
@@ -6938,6 +6942,19 @@ function App() {
     if (!selectedMatch) return;
     const finalSummary = buildPostAutoSummary();
     const mondayFlow = buildMondayAutoFlow();
+    const closureValidated = safeObject(safeObject(selectedMatch.postAiAnalysis).closureValidated);
+    const readValidatedClosure = (field, fallback = '') => {
+      const value = safeObject(closureValidated[field]).validatedValue;
+      return typeof value === 'string' ? value.trim() : String(value || fallback || '').trim();
+    };
+    const finalClosureSummary = readValidatedClosure('summary', selectedMatch.postNotes);
+    const finalContinue = readValidatedClosure('continueDoing', selectedMatch.postRepeat);
+    const finalCorrect = readValidatedClosure('correct', selectedMatch.postImprove);
+    const finalNextTraining = readValidatedClosure('nextTraining', selectedMatch.postTrainWeek);
+    if (!finalClosureSummary && !finalContinue && !finalCorrect && !finalNextTraining) {
+      setPostError('Antes de cerrar, guarda un resumen final o al menos una de las tres decisiones finales.');
+      return;
+    }
     const nextPostAiAnalysis = {
       ...safeObject(selectedMatch.postAiAnalysis),
       closedAt: new Date().toISOString(),
@@ -6947,7 +6964,7 @@ function App() {
         videoReviewed: Boolean(selectedMatch.postVideoLink),
         eventsValidated: !(selectedMatch.quickEvents || []).some((event) => !event.reviewed),
         tacticalReadingCompleted: Boolean(selectedMatch.postReality || selectedMatch.postFulfilled || selectedMatch.postNotFulfilled),
-        conclusionsAdded: Boolean(selectedMatch.postRepeat || selectedMatch.postImprove || selectedMatch.postTrainWeek),
+        conclusionsAdded: Boolean(finalClosureSummary || finalContinue || finalCorrect || finalNextTraining),
       },
     };
     const { error: closeError } = await supabase
@@ -6955,10 +6972,6 @@ function App() {
       .update({
         status: 'Revisado',
         post_ai_analysis: nextPostAiAnalysis,
-        post_notes: selectedMatch.postNotes || finalSummary,
-        post_train_week: selectedMatch.postTrainWeek || mondayFlow.training.join('\n'),
-        post_repeat: selectedMatch.postRepeat || mondayFlow.trends.join('\n'),
-        post_improve: selectedMatch.postImprove || mondayFlow.repeatedErrors.join('\n'),
       })
       .eq("id", selectedMatch.id);
     if (closeError) {
@@ -6969,10 +6982,6 @@ function App() {
       ...match,
       status: 'Revisado',
       postAiAnalysis: nextPostAiAnalysis,
-      postNotes: match.postNotes || finalSummary,
-      postTrainWeek: match.postTrainWeek || mondayFlow.training.join('\n'),
-      postRepeat: match.postRepeat || mondayFlow.trends.join('\n'),
-      postImprove: match.postImprove || mondayFlow.repeatedErrors.join('\n'),
     } : match)));
   };
 
@@ -9445,7 +9454,119 @@ function App() {
     const validatedQuick = safeArray(selectedMatch.quickEvents).filter((event) => event.reviewed).length;
     const relatedClipsCount = linkedClipIds.size;
     const priorityClips = sortedPostClips.filter((event) => getPostClipPriority(event) === 0);
-    const mainClip = priorityClips[0] || sortedPostClips[0] || null;
+    const closureValidated = safeObject(postAiMeta.closureValidated);
+    const closureFlow = buildMondayAutoFlow();
+    const cleanClosureProposal = (value) => {
+      const text = String(value || '').trim();
+      if (!text) return '';
+      return /pendiente|solicitar validaci[oó]n|definir con staff|validar primero/i.test(text) ? '' : text;
+    };
+    const generatedClosure = {
+      summary: cleanClosureProposal(postSummary),
+      strengths: cleanClosureProposal(safeArray(closureFlow.trends).join('\n')),
+      corrections: cleanClosureProposal(safeArray(closureFlow.repeatedErrors).join('\n')),
+      training: cleanClosureProposal(safeArray(closureFlow.training).join('\n')),
+      continueDoing: cleanClosureProposal(safeArray(closureFlow.trends).join('\n')),
+      correct: cleanClosureProposal(safeArray(closureFlow.repeatedErrors).join('\n')),
+      nextTraining: cleanClosureProposal(safeArray(closureFlow.training).join('\n')),
+    };
+    const legacyClosureValue = {
+      summary: selectedMatch.postNotes || '',
+      strengths: selectedMatch.postRepeat || '',
+      corrections: selectedMatch.postImprove || '',
+      training: selectedMatch.postTrainWeek || '',
+      continueDoing: selectedMatch.postRepeat || '',
+      correct: selectedMatch.postImprove || '',
+      nextTraining: selectedMatch.postTrainWeek || '',
+    };
+    const getClosureValidatedValue = (field) => {
+      const stored = safeObject(closureValidated[field]);
+      if (typeof stored.validatedValue === 'string') return stored.validatedValue;
+      return legacyClosureValue[field] || '';
+    };
+    const getClosureDisplayValue = (field) =>
+      getClosureValidatedValue(field) || generatedClosure[field] || '';
+    const getClosureSource = (field) =>
+      getClosureValidatedValue(field) ? 'Validado' : generatedClosure[field] ? 'Propuesta' : 'Vacío';
+    const selectedMainClipId = safeObject(closureValidated.mainClip).clipId || postAiMeta.mainClipId || '';
+    const autoMainClip = priorityClips[0] || sortedPostClips[0] || null;
+    const mainClip = sortedPostClips.find((clip) => clip.id === selectedMainClipId) || autoMainClip;
+    const startClosureEditing = () => {
+      setClosureSaveError('');
+      setClosureDraft({
+        summary: getClosureDisplayValue('summary'),
+        strengths: getClosureDisplayValue('strengths'),
+        corrections: getClosureDisplayValue('corrections'),
+        training: getClosureDisplayValue('training'),
+        continueDoing: getClosureDisplayValue('continueDoing'),
+        correct: getClosureDisplayValue('correct'),
+        nextTraining: getClosureDisplayValue('nextTraining'),
+        mainClipId: mainClip?.id || '',
+      });
+      setIsEditingClosure(true);
+    };
+    const updateClosureDraft = (field, value) => {
+      setClosureDraft((current) => ({ ...current, [field]: value }));
+    };
+    const useClosureProposal = (field) => {
+      const proposed = generatedClosure[field] || '';
+      const current = closureDraft[field] || '';
+      if (current.trim() && current.trim() !== proposed.trim()) {
+        const confirmed = window.confirm('Esto sustituirá el texto escrito por la propuesta automática. ¿Continuar?');
+        if (!confirmed) return;
+      }
+      updateClosureDraft(field, proposed);
+    };
+    const saveClosureDraft = async () => {
+      if (!selectedMatch) return;
+      setClosureSaving(true);
+      setClosureSaveError('');
+      const now = new Date().toISOString();
+      const nextClosureValidated = {
+        summary: { generatedValue: generatedClosure.summary, validatedValue: (closureDraft.summary || '').trim(), source: 'manual', updatedAt: now },
+        strengths: { generatedValue: generatedClosure.strengths, validatedValue: (closureDraft.strengths || '').trim(), source: 'manual', updatedAt: now },
+        corrections: { generatedValue: generatedClosure.corrections, validatedValue: (closureDraft.corrections || '').trim(), source: 'manual', updatedAt: now },
+        training: { generatedValue: generatedClosure.training, validatedValue: (closureDraft.training || '').trim(), source: 'manual', updatedAt: now },
+        continueDoing: { generatedValue: generatedClosure.continueDoing, validatedValue: (closureDraft.continueDoing || '').trim(), source: 'manual', updatedAt: now },
+        correct: { generatedValue: generatedClosure.correct, validatedValue: (closureDraft.correct || '').trim(), source: 'manual', updatedAt: now },
+        nextTraining: { generatedValue: generatedClosure.nextTraining, validatedValue: (closureDraft.nextTraining || '').trim(), source: 'manual', updatedAt: now },
+        mainClip: {
+          generatedValue: autoMainClip?.id || '',
+          clipId: closureDraft.mainClipId || '',
+          source: closureDraft.mainClipId === autoMainClip?.id ? 'generated' : 'manual',
+          updatedAt: now,
+        },
+      };
+      const nextPostAiAnalysis = {
+        ...postAiMeta,
+        closureValidated: nextClosureValidated,
+        mainClipId: closureDraft.mainClipId || '',
+      };
+      const payload = {
+        post_ai_analysis: nextPostAiAnalysis,
+        post_notes: nextClosureValidated.summary.validatedValue,
+        post_repeat: nextClosureValidated.continueDoing.validatedValue || nextClosureValidated.strengths.validatedValue,
+        post_improve: nextClosureValidated.correct.validatedValue || nextClosureValidated.corrections.validatedValue,
+        post_train_week: nextClosureValidated.nextTraining.validatedValue || nextClosureValidated.training.validatedValue,
+      };
+      const { error: saveError } = await supabase.from("partidos").update(payload).eq("id", selectedMatch.id);
+      if (saveError) {
+        setClosureSaveError(saveError.message || 'No se pudo guardar el cierre.');
+        setClosureSaving(false);
+        return;
+      }
+      setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? {
+        ...match,
+        postAiAnalysis: nextPostAiAnalysis,
+        postNotes: payload.post_notes,
+        postRepeat: payload.post_repeat,
+        postImprove: payload.post_improve,
+        postTrainWeek: payload.post_train_week,
+      } : match)));
+      setIsEditingClosure(false);
+      setClosureSaving(false);
+      await loadMatchPostData(selectedMatch.id);
+    };
     const statsCalledPlayersForPost = getStatsCalledPlayers();
     const playedStatsPlayersForPost = statsCalledPlayersForPost
       .map((player) => ({ player, stats: getStatsPlayerData(player.name) }))
@@ -9588,7 +9709,18 @@ function App() {
       getQuickEventSummary(selectedMatch.quickEvents || []).boxEntries > getQuickEventSummary(selectedMatch.quickEvents || []).rivalBoxEntries ? 'transición positiva' : null,
       getQuickEventSummary(selectedMatch.quickEvents || []).rivalBoxEntries > getQuickEventSummary(selectedMatch.quickEvents || []).boxEntries ? 'sufrimiento lado débil' : null,
     ].filter(Boolean);
-    const closureChecklist = safeObject(postAiMeta.closureChecklist);
+    const closureChecklist = {
+      ...safeObject(postAiMeta.closureChecklist),
+      videoReviewed: Boolean(selectedMatch.postVideoLink),
+      eventsValidated: !(selectedMatch.quickEvents || []).some((event) => !event.reviewed),
+      tacticalReadingCompleted: Boolean(selectedMatch.postReality || selectedMatch.postFulfilled || selectedMatch.postNotFulfilled),
+      conclusionsAdded: Boolean(
+        getClosureValidatedValue('summary') ||
+        getClosureValidatedValue('continueDoing') ||
+        getClosureValidatedValue('correct') ||
+        getClosureValidatedValue('nextTraining')
+      ),
+    };
     const analysisFieldSuggestions = {
       postReality: postDerivedReading.suggestions,
       postFulfilled: [
@@ -10265,7 +10397,12 @@ function App() {
 
         <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
           {postBlockHeader('G · Informe ejecutivo final', 'Cierre de partido', 'Qué pasó, por qué pasó y qué hacemos ahora.', (
-            <span className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.14em] ${getPostReviewStateClass(reviewState)}`}>{reviewState}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={startClosureEditing} className="rounded-2xl border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-caudal-electric">
+                Editar cierre
+              </button>
+              <span className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.14em] ${getPostReviewStateClass(reviewState)}`}>{reviewState}</span>
+            </div>
           ))}
           <div className="mt-5 flex flex-wrap gap-2">
             {[
@@ -10279,24 +10416,48 @@ function App() {
               </div>
             ))}
           </div>
+          {closureSaveError ? <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-100">{closureSaveError}</div> : null}
           <div className="mt-5 rounded-3xl bg-white/[0.035] p-5">
             <div className="grid gap-5 lg:grid-cols-[0.72fr_1.28fr]">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Resultado</p>
                 <p className="mt-2 text-5xl font-black text-white">{score.caudal}-{score.rival}</p>
                 <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Clip principal</p>
-                <p className="mt-2 text-sm font-bold text-slate-200">{mainClip ? `${mainClip.minute || '-'}' · ${mainClip.type || 'Clip'}${mainClip.player ? ` · ${mainClip.player}` : ''}` : 'Sin clip validado'}</p>
+                {isEditingClosure ? (
+                  <select value={closureDraft.mainClipId || ''} onChange={(event) => updateClosureDraft('mainClipId', event.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-bold text-white outline-none focus:border-caudal-electric/50">
+                    <option value="">Sin clip principal</option>
+                    {chronologicalPostClips.map((clip) => (
+                      <option key={clip.id} value={clip.id}>{clip.minute || '-'}' · {clip.type || 'Clip'}{clip.player ? ` · ${clip.player}` : ''}</option>
+                    ))}
+                  </select>
+                ) : mainClip ? (
+                  <button type="button" onClick={() => seekPostVideoToEvent(mainClip)} className="mt-2 text-left text-sm font-bold text-slate-200 transition hover:text-caudal-electric">
+                    {mainClip.minute || '-'}' · {mainClip.type || 'Clip'}{mainClip.player ? ` · ${mainClip.player}` : ''}
+                  </button>
+                ) : (
+                  <p className="mt-2 text-sm font-bold text-slate-500">Sin clip principal</p>
+                )}
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {[
-                  ['Resumen', selectedMatch.postNotes],
-                  ['Fortalezas', selectedMatch.postRepeat],
-                  ['Aspectos a corregir', selectedMatch.postImprove],
-                  ['Entrenamiento recomendado', selectedMatch.postTrainWeek],
-                ].map(([label, value]) => (
+                  ['Resumen', 'summary', 'Resume qué ocurrió en el partido y por qué.'],
+                  ['Fortalezas', 'strengths', 'Una fortaleza por línea.'],
+                  ['Aspectos a corregir', 'corrections', 'Un aspecto concreto por línea.'],
+                  ['Entrenamiento recomendado', 'training', 'Qué contenido debería trabajarse durante la semana.'],
+                ].map(([label, field, placeholder]) => (
                   <div key={label} className="border-t border-white/10 pt-3">
-                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
-                    <p className="mt-2 text-sm font-bold leading-5 text-slate-100">{value || 'Solicitar validación del entrenador'}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
+                      <span className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-600">{getClosureSource(field)}</span>
+                    </div>
+                    {isEditingClosure ? (
+                      <div className="mt-2">
+                        <textarea value={closureDraft[field] || ''} onChange={(event) => updateClosureDraft(field, event.target.value)} placeholder={placeholder} className="min-h-[78px] w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-bold leading-5 text-white placeholder:text-slate-600 outline-none focus:border-caudal-electric/50" />
+                        {generatedClosure[field] ? <button type="button" onClick={() => useClosureProposal(field)} className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">Usar propuesta automática</button> : null}
+                      </div>
+                    ) : (
+                      <p className="mt-2 whitespace-pre-line text-sm font-bold leading-5 text-slate-100">{getClosureDisplayValue(field) || <span className="text-slate-500">{placeholder}</span>}</p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -10304,18 +10465,39 @@ function App() {
           </div>
           <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto]">
             {[
-              ['Continuar haciendo', selectedMatch.postRepeat],
-              ['Corregir', selectedMatch.postImprove],
-              ['Próximo entrenamiento', selectedMatch.postTrainWeek],
-            ].map(([label, value]) => (
+              ['Continuar haciendo', 'continueDoing', 'Frase breve sobre qué sostener.'],
+              ['Corregir', 'correct', 'Frase breve sobre qué ajustar.'],
+              ['Próximo entrenamiento', 'nextTraining', 'Frase breve sobre la tarea semanal.'],
+            ].map(([label, field, placeholder]) => (
               <div key={label} className="rounded-3xl bg-caudal-electric/[0.055] p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">{label}</p>
-                <p className="mt-2 text-sm font-bold leading-5 text-white">{value || 'Definir con staff'}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">{label}</p>
+                  <span className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-600">{getClosureSource(field)}</span>
+                </div>
+                {isEditingClosure ? (
+                  <div className="mt-2">
+                    <textarea value={closureDraft[field] || ''} onChange={(event) => updateClosureDraft(field, event.target.value)} placeholder={placeholder} className="min-h-[72px] w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-bold leading-5 text-white placeholder:text-slate-600 outline-none focus:border-caudal-electric/50" />
+                    {generatedClosure[field] ? <button type="button" onClick={() => useClosureProposal(field)} className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">Usar propuesta automática</button> : null}
+                  </div>
+                ) : (
+                  <p className="mt-2 whitespace-pre-line text-sm font-bold leading-5 text-white">{getClosureDisplayValue(field) || <span className="text-slate-500">{placeholder}</span>}</p>
+                )}
               </div>
             ))}
-            <button type="button" onClick={closePostAnalysis} className="rounded-2xl bg-caudal-electric px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-950">
-              Cerrar análisis
-            </button>
+            {isEditingClosure ? (
+              <div className="flex flex-col gap-2">
+                <button type="button" onClick={saveClosureDraft} disabled={closureSaving} className="rounded-2xl bg-caudal-electric px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-950 disabled:opacity-60">
+                  {closureSaving ? 'Guardando...' : 'Guardar cambios'}
+                </button>
+                <button type="button" onClick={() => { setIsEditingClosure(false); setClosureSaveError(''); }} disabled={closureSaving} className="rounded-2xl border border-white/10 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-300 disabled:opacity-60">
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={closePostAnalysis} className="rounded-2xl bg-caudal-electric px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-950">
+                Cerrar análisis
+              </button>
+            )}
           </div>
         </section>
       </section>
