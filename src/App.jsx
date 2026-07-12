@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 
 import { supabase } from './lib/supabase';
 import LibrarySection from './components/library/LibrarySection';
+import MatchVideoPlayer from './components/matches/MatchVideoPlayer';
 import MatchPrintTab from './components/print/MatchPrintTab';
 import AccordionSection from './components/shared/AccordionSection';
 import StatusMessage from './components/shared/StatusMessage';
@@ -9695,7 +9696,7 @@ function App() {
           <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
             {postBlockHeader('C · Vídeo y clips', 'Vídeo y clips del partido', 'Marca acciones, navega por la timeline y relaciona clips con la lectura táctica.')}
             <label className="mt-5 block space-y-2 text-sm text-slate-300">
-              <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Enlace YouTube</span>
+              <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Enlace del vídeo</span>
               <input
                 value={selectedMatch.postVideoLink || ''}
                 onChange={(event) => handlePostVideoLinkChange(event.target.value)}
@@ -9704,23 +9705,14 @@ function App() {
                   if (event.key !== 'Enter') return;
                   event.currentTarget.blur();
                 }}
-                placeholder="https://www.youtube.com/watch?v=..."
+                placeholder="https://..."
                 className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
               />
+              <span className="text-xs text-slate-500">YouTube, Vimeo, AsturFútbol o enlace directo compatible</span>
               {postVideoSaveStatus ? <span className="text-xs text-slate-500">{postVideoSaveStatus}</span> : null}
             </label>
             <div className="mt-4 rounded-3xl border border-white/10 bg-white/[0.035] p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Video del partido</p>
-                  <p className="mt-1 text-sm font-bold text-white">{selectedMatch.postVideoLink ? 'Enlace cargado' : 'Sin vídeo asignado'}</p>
-                </div>
-                {selectedMatch.postVideoLink ? (
-                  <button type="button" onClick={() => window.open(selectedMatch.postVideoLink, '_blank', 'noopener,noreferrer')} className="rounded-2xl bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">
-                    Abrir vídeo
-                  </button>
-                ) : null}
-              </div>
+              <MatchVideoPlayer videoUrl={selectedMatch.postVideoLink} isSaving={postVideoSaveStatus === 'Guardando vídeo...'} />
               <div className="mt-4">
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Clips importantes</p>
                 <div className="mt-2 grid gap-2">
