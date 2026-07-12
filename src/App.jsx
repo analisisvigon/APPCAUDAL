@@ -12013,7 +12013,7 @@ function App() {
       nextMatch && hasNextRival ? { label: 'Rival actualizado', detail: nextMatch.opponent || 'Próximo partido' } : null,
       nextMatch?.postVideoLink ? { label: 'Vídeo añadido', detail: nextMatch.opponent || 'Próximo partido' } : null,
       lastMatch ? { label: 'Último resultado guardado', detail: getMatchScoreLabel(lastMatch) } : null,
-      nextPlayers.length ? { label: 'Jugador añadido', detail: displayPlayerName(nextPlayers[nextPlayers.length - 1]) || nextPlayers[nextPlayers.length - 1].name } : null,
+      players.length ? { label: 'Jugador añadido', detail: displayPlayerName(players[players.length - 1]) || players[players.length - 1].name } : null,
     ].filter(Boolean).slice(0, 5);
 
     return {
@@ -14311,14 +14311,18 @@ function App() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric/85">Partido en preparación</p>
-                    <h3 className="mt-2 truncate text-3xl font-black text-white sm:text-5xl">{homeDashboard.nextMatch?.opponent || 'Sin partido programado'}</h3>
-                    <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm font-bold text-slate-200">
-                      <span>{homeDashboard.nextMatch ? matchDisplayDate(homeDashboard.nextMatch.date) : 'Fecha pendiente'}</span>
-                      <span>{homeDashboard.nextMatch?.time || 'Hora pendiente'}</span>
-                      <span>{homeDashboard.nextMatch ? (homeDashboard.nextMatch.isHome ? 'Local' : 'Visitante') : 'Condición pendiente'}</span>
-                      <span>{homeDashboard.nextMatch?.stadium || homeDashboard.nextOpponentTeam?.stadium || 'Estadio pendiente'}</span>
-                      {homeDashboard.nextMatch?.type ? <span>{homeDashboard.nextMatch.type}{homeDashboard.nextMatch.round ? ` · ${homeDashboard.nextMatch.round}` : ''}</span> : null}
-                    </div>
+                    <h3 className="mt-2 truncate text-3xl font-black text-white sm:text-5xl">{homeDashboard.nextMatch?.opponent || 'No hay ningún partido próximo programado.'}</h3>
+                    {homeDashboard.nextMatch ? (
+                      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm font-bold text-slate-200">
+                        <span>{matchDisplayDate(homeDashboard.nextMatch.date)}</span>
+                        <span>{homeDashboard.nextMatch.time || 'Hora pendiente'}</span>
+                        <span>{homeDashboard.nextMatch.isHome ? 'Local' : 'Visitante'}</span>
+                        <span>{homeDashboard.nextMatch.stadium || homeDashboard.nextOpponentTeam?.stadium || 'Estadio pendiente'}</span>
+                        {homeDashboard.nextMatch.type ? <span>{homeDashboard.nextMatch.type}{homeDashboard.nextMatch.round ? ` · ${homeDashboard.nextMatch.round}` : ''}</span> : null}
+                      </div>
+                    ) : (
+                      <p className="mt-4 max-w-2xl text-sm font-semibold leading-6 text-slate-400">Crea o programa el siguiente partido desde la pestaña Partidos.</p>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -14328,7 +14332,7 @@ function App() {
                     }}
                     className="w-full rounded-2xl bg-caudal-electric px-6 py-4 text-sm font-black uppercase tracking-[0.14em] text-slate-950 transition duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_18px_40px_rgba(79,140,255,0.20)] active:translate-y-0 lg:w-auto"
                   >
-                    Abrir PRE
+                    {homeDashboard.nextMatch ? 'Abrir PRE' : 'Ir a Partidos'}
                   </button>
                 </div>
               </div>
@@ -14336,7 +14340,7 @@ function App() {
               <div className="rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]">
                 <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Actividad reciente</h3>
                 <div className="mt-3 space-y-2">
-                  {homeDashboard.activity.length ? homeDashboard.activity.map((item) => (
+                  {safeArray(homeDashboard.activity).length ? safeArray(homeDashboard.activity).map((item) => (
                     <div key={`${item.label}-${item.detail}`} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm transition hover:bg-white/[0.07]">
                       <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-caudal-electric" />
                       <div className="min-w-0">
