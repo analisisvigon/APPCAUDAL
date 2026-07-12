@@ -6287,7 +6287,7 @@ function App() {
 
         <div className={`grid gap-4 ${isPreTalkMode ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(320px,0.32fr)_minmax(0,0.68fr)]'}`}>
           <div className="grid gap-4 xl:contents">
-            <section className="order-1 border border-caudal-electric/15 bg-[#091428]/90 p-4 xl:col-start-1">
+            <section className="order-1 border border-caudal-electric/15 bg-[#091428]/90 p-4 xl:col-span-2">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Resumen ejecutivo</p>
@@ -6310,7 +6310,7 @@ function App() {
                 ))}
               </div>
             </section>
-            <section className="order-11 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2">
+            <section className="order-3 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Perfil colectivo</p>
@@ -6379,7 +6379,7 @@ function App() {
               </div>
             </section>
 
-            <section className="order-2 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1">
+            <section className="order-4 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1">
               <div className="flex items-end justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Comparador</p>
@@ -6400,7 +6400,7 @@ function App() {
               </div>
             </section>
 
-            <section className="order-3 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1">
+            <section className="order-5 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Duelos críticos</p>
               <div className="mt-4 space-y-2">
                 {(duelRows.length ? duelRows : [{ caudalName: 'Caudal', rivalName: liveRivalIdentity.mainThreat || 'Rival', tone: 'amber' }]).map((duel) => (
@@ -6414,7 +6414,7 @@ function App() {
               </div>
             </section>
 
-            <section className="order-5 border border-caudal-electric/15 bg-[#091428]/90 p-4">
+            <section className="order-6 border border-caudal-electric/15 bg-[#091428]/90 p-4">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Plan de partido</p>
               <div className="mt-4 grid gap-5 md:grid-cols-2">
                 {renderPlanList('Con balón', attackPlan)}
@@ -6424,28 +6424,7 @@ function App() {
               </div>
             </section>
 
-            <section className="order-7 border border-white/10 bg-[#091428]/82 p-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Jugadores marcados</p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {[
-                  ['Amenazas', keyPlayers, 'DEST'],
-                  ['Debilidades', weaknessPlayers, 'ALERTA'],
-                  ['Ausencias', unavailablePlayers, 'NO DISP.'],
-                  ['Vigilancia', watchedPlayers, 'VIG'],
-                ].map(([title, list, fallback]) => (
-                  <div key={title} className="bg-white/[0.035] p-3">
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{title}</p>
-                    <div className="mt-2 space-y-1.5">
-                      {safeArray(list).slice(0, 3).length ? safeArray(list).slice(0, 3).map((player) => (
-                        <p key={`${title}-${player.name}`} className="truncate text-sm font-black text-white">{displayPlayerName(player)}</p>
-                      )) : <p className="text-sm font-semibold text-slate-500">{fallback}</p>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="order-6 border border-white/10 bg-[#091428]/82 p-4">
+            <section className="order-2 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Pregunta táctica IA</p>
                 {selectedPreAiAnalysis?.tacticalQuestion?.confidence ? (
@@ -6470,6 +6449,18 @@ function App() {
                         </button>
                       ))}
                     </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {[
+                      ['Amenazas', keyPlayers, 'DEST'],
+                      ['Debilidades', weaknessPlayers, 'ALERTA'],
+                      ['Ausencias', unavailablePlayers, 'NO DISP.'],
+                      ['Vigilancia', watchedPlayers, 'VIG'],
+                    ].map(([title, list, fallback]) => (
+                      <span key={title} className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+                        {title}: {safeArray(list).length ? safeArray(list).slice(0, 2).map((player) => displayPlayerName(player)).join(', ') : fallback}
+                      </span>
+                    ))}
                   </div>
                   <label className="mt-3 grid gap-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
                     <span>Seleccionar jugador</span>
@@ -6514,8 +6505,9 @@ function App() {
                         </div>
                       </div>
 
-                      <div className="mt-4 grid min-w-0 gap-3">
-                        <div className="border border-caudal-electric/15 bg-caudal-electric/[0.045] p-3">
+                      <div className="mt-4 grid min-w-0 gap-4 2xl:grid-cols-[minmax(360px,0.95fr)_minmax(380px,1.05fr)] 2xl:items-start">
+                        <div className="grid min-w-0 gap-3">
+                          <div className="border border-caudal-electric/15 bg-caudal-electric/[0.045] p-3">
                           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Perfil detectado</p>
                           <div className="mt-3 space-y-1.5">
                             {selectedMicroDetectedProfile.map((line) => (
@@ -6624,12 +6616,12 @@ function App() {
                           </div>
                         </div>
 
-                        <label className="grid gap-2 border border-white/10 bg-white/[0.03] p-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                          <span>Observaciones</span>
-                          <textarea value={selectedMicroProfile.notes || ''} onChange={(event) => updateObservedPlayerProfile(selectedMicroPlayer, { notes: event.target.value })} placeholder="Solo detalles útiles para preparar el duelo individual." rows={3} className="min-h-[76px] w-full resize-none border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold normal-case leading-5 tracking-normal text-white outline-none placeholder:text-slate-600" />
-                        </label>
-                      </div>
-                      <div className="mt-4 grid gap-2">
+                          <label className="grid gap-2 border border-white/10 bg-white/[0.03] p-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                            <span>Observaciones</span>
+                            <textarea value={selectedMicroProfile.notes || ''} onChange={(event) => updateObservedPlayerProfile(selectedMicroPlayer, { notes: event.target.value })} placeholder="Solo detalles útiles para preparar el duelo individual." rows={3} className="min-h-[76px] w-full resize-none border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold normal-case leading-5 tracking-normal text-white outline-none placeholder:text-slate-600" />
+                          </label>
+                        </div>
+                        <div className="grid min-w-0 gap-2">
                         {selectedMicroQuestions.map((question) => {
                           const active = selectedPreAiAnalysis?.tacticalQuestion?.question === question && selectedPreAiAnalysis?.tacticalQuestion?.playerKey === selectedMicroKey;
                           const sourceType = selectedPreAiAnalysis?.tacticalQuestion?.sourceType;
@@ -6677,6 +6669,7 @@ function App() {
                           );
                         })}
                       </div>
+                    </div>
                     </div>
                   ) : (
                     <p className="mt-3 border border-dashed border-white/10 px-3 py-3 text-sm font-semibold text-slate-500">Sin jugadores disponibles para análisis Micro.</p>
