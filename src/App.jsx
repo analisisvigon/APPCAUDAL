@@ -779,6 +779,7 @@ const normalizeSupabasePartido = (match) =>
     goalsFor: match.goals_for || '',
     goalsAgainst: match.goals_against || '',
     statsSystem: match.stats_system || '4-4-2',
+    delegatedDataStatus: match.delegated_data_status || match.delegatedDataStatus || '',
     captainPlayerId: match.captain_player_id || null,
     equipoRivalId: match.equipo_rival_id || null,
   });
@@ -916,6 +917,22 @@ const EVENT_STAT_FIELDS = [
 ];
 
 const createEmptyEventStats = () => EVENT_STAT_FIELDS.reduce((acc, field) => ({ ...acc, [field.key]: 0 }), {});
+const DELEGATED_DATA_STATUSES = ['Sin revisar', 'Revisado', 'Validado', 'Descartado'];
+const DELEGATED_DATA_FILTERS = ['Todos', 'Sin revisar', 'Revisado', 'Validado', 'Descartado'];
+const getDelegatedDataStatus = (match = {}) => {
+  const quickEvents = safeArray(match.quickEvents);
+  if (!quickEvents.length) return 'Sin registro';
+  if (DELEGATED_DATA_STATUSES.includes(match.delegatedDataStatus)) return match.delegatedDataStatus;
+  return quickEvents.some((event) => !event.reviewed) ? 'Sin revisar' : 'Revisado';
+};
+const isDelegatedDataValidated = (match = {}) => getDelegatedDataStatus(match) === 'Validado';
+const getDelegatedStatusTone = (status) => ({
+  Validado: 'border-emerald-300/25 bg-emerald-300/12 text-emerald-100',
+  Revisado: 'border-caudal-electric/25 bg-caudal-electric/12 text-caudal-electric',
+  'Sin revisar': 'border-yellow-300/25 bg-yellow-300/12 text-yellow-100',
+  Descartado: 'border-red-300/25 bg-red-400/12 text-red-100',
+  'Sin registro': 'border-white/10 bg-white/[0.04] text-slate-400',
+}[status] || 'border-white/10 bg-white/[0.04] text-slate-300');
 
 const delegatedStatEventCatalog = [
   { tipoEvento: 'gol', label: 'Gol', short: 'GOL', group: 'Finalización', tone: 'goal', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.gol.team },
@@ -3000,6 +3017,7 @@ function App() {
   ]);
   const [playerVenueFilter, setPlayerVenueFilter] = useState('Todos');
   const [playerQuickScope, setPlayerQuickScope] = useState('Últimos 5 partidos');
+  const [playerDelegatedScope, setPlayerDelegatedScope] = useState('Solo validados');
   const [playerInfluenceFilter, setPlayerInfluenceFilter] = useState('Todos');
   const [selectedTimelineAction, setSelectedTimelineAction] = useState(null);
   const [playerReport, setPlayerReport] = useState(null);
@@ -3038,6 +3056,9 @@ function App() {
   const [groupCompetitionFilter, setGroupCompetitionFilter] = useState('Todos');
   const [groupContextFilter, setGroupContextFilter] = useState('Todos');
   const [groupQuickReviewedOnly, setGroupQuickReviewedOnly] = useState(true);
+  const [delegatedStatusFilter, setDelegatedStatusFilter] = useState('Todos');
+  const [delegatedRankingScope, setDelegatedRankingScope] = useState('Solo validados');
+  const [delegatedStatusSavingId, setDelegatedStatusSavingId] = useState('');
   const [groupAssistFilter, setGroupAssistFilter] = useState('Todas');
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [groupShotFilter, setGroupShotFilter] = useState('Ambos');
@@ -3849,7 +3870,7 @@ function App() {
       }
 
       const quickEventRequest = isUuid(player.id)
-        ? supabase.from("match_quick_events").select("*").eq("jugador_id", player.id).eq("reviewed", true)
+        ? supabase.from("match_quick_events").select("*").eq("jugador_id", player.id)
         : Promise.resolve({ data: [], error: null });
 
       const [scoredResponse, assistedResponse, quickEventsResponse, ...statsResponses] = await Promise.all([
@@ -8697,6 +8718,7 @@ function App() {
       if (error) throw error;
       setDelegatedEventDraft(null);
       setDelegatedEventFeedback(`${delegatedEventDraft.label} guardado en ${String(minute).padStart(2, '0')}:00${selectedPlayer ? ` · ${selectedPlayer.name}` : delegatedEventDraft.side === 'rival' && delegatedEventDraft.requiresPlayer ? ' · Jugador no identificado' : ''}`);
+      await markDelegatedDataDirty(selectedMatch.id);
       await refreshStatsFromSupabase(selectedMatch.id, 'evento de Modo Delegado');
     } catch (error) {
       console.error('Error guardando evento de Modo Delegado en Supabase:', {
@@ -8734,9 +8756,10 @@ function App() {
       const savedEvent = normalizeSupabaseQuickEvent(data || payload);
       setMatches((current) => current.map((match) => (
         match.id === selectedMatch.id
-          ? { ...match, quickEvents: [...(match.quickEvents || []), savedEvent] }
+          ? { ...match, delegatedDataStatus: 'Sin revisar', quickEvents: [...(match.quickEvents || []), savedEvent] }
           : match
       )));
+      await markDelegatedDataDirty(selectedMatch.id);
       setDelegatedEventFeedback(`${definition.label} · ${String(minute).padStart(2, '0')}:00`);
       window.setTimeout(() => setDelegatedEventFeedback((current) => (current === `${definition.label} · ${String(minute).padStart(2, '0')}:00` ? '' : current)), 1200);
     } catch (error) {
@@ -8824,9 +8847,10 @@ function App() {
     }
     setMatches((current) => current.map((match) => (
       match.id === selectedMatch.id
-        ? { ...match, quickEvents: (match.quickEvents || []).filter((event) => event.id !== lastEvent.id) }
+        ? { ...match, delegatedDataStatus: 'Sin revisar', quickEvents: (match.quickEvents || []).filter((event) => event.id !== lastEvent.id) }
         : match
     )));
+    await markDelegatedDataDirty(selectedMatch.id);
     setDelegatedEventFeedback(`Deshecho: ${getQuickEventLabel(lastEvent.tipoEvento)}`);
     window.setTimeout(() => setDelegatedEventFeedback((current) => (current.startsWith('Deshecho:') ? '' : current)), 1600);
     setDelegatedEventSaving(false);
@@ -8857,6 +8881,7 @@ function App() {
       setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
       return;
     }
+    await markDelegatedDataDirty(selectedMatch.id);
     await loadMatchPostData(selectedMatch.id);
     setQuickEventStatus('Guardado ?');
     window.setTimeout(() => setQuickEventStatus((current) => (current === 'Guardado ?' ? '' : current)), 2200);
@@ -8876,10 +8901,42 @@ function App() {
       return;
     }
     setPendingQuickEventDeleteId(null);
+    await markDelegatedDataDirty(selectedMatch.id);
     await loadMatchPostData(selectedMatch.id);
     setQuickEventStatus('Guardado ?');
     window.setTimeout(() => setQuickEventStatus((current) => (current === 'Guardado ?' ? '' : current)), 2200);
     setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
+  };
+
+  const updateDelegatedDataStatus = async (matchId, status) => {
+    if (!matchId || !DELEGATED_DATA_STATUSES.includes(status)) return;
+    setDelegatedStatusSavingId(matchId);
+    const { error } = await supabase.from("partidos").update({ delegated_data_status: status }).eq("id", matchId);
+    if (error) {
+      console.error('Error actualizando estado del Registro Delegado:', { matchId, status, error });
+      setPostError(error.message || 'No se pudo actualizar el estado del Registro Delegado.');
+      setDelegatedStatusSavingId('');
+      return;
+    }
+    setMatches((current) => current.map((match) => (
+      match.id === matchId ? { ...match, delegatedDataStatus: status } : match
+    )));
+    setSelectedMatch((current) => (
+      current?.id === matchId ? { ...current, delegatedDataStatus: status } : current
+    ));
+    setDelegatedStatusSavingId('');
+  };
+
+  const markDelegatedDataDirty = async (matchId) => {
+    if (!matchId) return;
+    setMatches((current) => current.map((match) => (
+      match.id === matchId ? { ...match, delegatedDataStatus: 'Sin revisar' } : match
+    )));
+    setSelectedMatch((current) => (
+      current?.id === matchId ? { ...current, delegatedDataStatus: 'Sin revisar' } : current
+    ));
+    const { error } = await supabase.from("partidos").update({ delegated_data_status: 'Sin revisar' }).eq("id", matchId);
+    if (error) console.warn('No se pudo marcar el Registro Delegado como Sin revisar:', error);
   };
 
   const openGoalAnalysisModal = () => {
@@ -11218,7 +11275,7 @@ function App() {
     const scopedReviewedEvents = (playerProfileData?.quickEvents || [])
       .map((event) => ({ ...event, match: playerProfileData?.partidosById?.[event.partidoId] }))
       .filter((event) => event.match)
-      .filter((event) => event.reviewed)
+      .filter((event) => playerDelegatedScope === 'Todos los registros' || isDelegatedDataValidated(event.match))
       .filter((event) => event.jugadorId === player.id && getQuickEventSide(event) === 'caudal')
       .filter((event) =>
         playerCompetitionFilter === 'Todos' ||
@@ -11541,7 +11598,9 @@ function App() {
     );
     const scoped = baseScoped.map((match) => ({
       ...match,
-      quickEvents: groupQuickReviewedOnly ? safeArray(match.quickEvents).filter((event) => event.reviewed) : safeArray(match.quickEvents),
+      quickEvents: isDelegatedDataValidated(match)
+        ? (groupQuickReviewedOnly ? safeArray(match.quickEvents).filter((event) => event.reviewed) : safeArray(match.quickEvents))
+        : [],
       statsGoalEvents: safeArray(match.statsGoalEvents),
       statsLineup: safeArray(match.statsLineup),
       events: safeArray(match.events),
@@ -11966,8 +12025,8 @@ function App() {
     const quickEvents = safeArray(groupData?.quickEvents);
     const scopedMatches = safeArray(groupData?.scoped);
     const quickSummary = groupData.quickSummary || getQuickEventSummary([]);
-    if (!quickEvents.length && groupQuickReviewedOnly) return ['No hay eventos revisados suficientes. Revisa los eventos en POST para activar este análisis.'];
-    if (!quickEvents.length) return ['No hay suficientes datos de eventos rápidos para generar lecturas avanzadas.'];
+    if (!quickEvents.length && groupQuickReviewedOnly) return ['No hay datos en vivo validados suficientes para activar esta lectura secundaria.'];
+    if (!quickEvents.length) return ['No hay datos en vivo validados suficientes para generar lecturas avanzadas.'];
 
     const readings = [];
     const shotAccuracyValue = Number(quickSummary.shotAccuracy.replace('%', '')) || 0;
@@ -14703,12 +14762,213 @@ function App() {
     );
   };
 
+  const renderDelegatedRegistrySection = () => {
+    const matchesWithDelegatedEvents = matches.filter((match) => safeArray(match.quickEvents).length);
+    const statusCounts = matchesWithDelegatedEvents.reduce((acc, match) => {
+      const status = getDelegatedDataStatus(match);
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {});
+    const visibleMatches = matchesWithDelegatedEvents
+      .filter((match) => delegatedStatusFilter === 'Todos' || getDelegatedDataStatus(match) === delegatedStatusFilter)
+      .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    const rankingMatches = matchesWithDelegatedEvents.filter((match) => (
+      delegatedRankingScope === 'Todos los registros'
+        ? getDelegatedDataStatus(match) !== 'Descartado'
+        : isDelegatedDataValidated(match)
+    ));
+    const rankingEvents = rankingMatches.flatMap((match) => safeArray(match.quickEvents).map((event) => ({ ...event, match })));
+    const collectiveSummary = getQuickEventSummary(rankingEvents);
+    const playerRows = players
+      .map((player) => {
+        const events = rankingEvents.filter((event) => event.jugadorId === player.id && getQuickEventSide(event) === 'caudal');
+        const stats = aggregateQuickEventStats(events, { side: 'caudal', playerId: player.id, scope: 'player' });
+        const total = EVENT_STAT_FIELDS.filter((field) => !field.teamOnly).reduce((sum, field) => sum + Number(stats[field.key] || 0), 0);
+        return { player, stats, total, matches: new Set(events.map((event) => event.partidoId)).size };
+      })
+      .filter((row) => row.total)
+      .sort((a, b) => b.total - a.total || b.stats.goals - a.stats.goals || b.stats.shots - a.stats.shots);
+    const auditMatch = (match) => {
+      const events = safeArray(match.quickEvents);
+      const individualEvents = events.filter((event) => Object.keys(EVENT_STAT_EFFECTS[getQuickEventBaseType(event.tipoEvento)]?.player || {}).length);
+      const unidentified = individualEvents.filter((event) => !event.jugadorId).length;
+      const caudalUnidentified = individualEvents.filter((event) => getQuickEventSide(event) === 'caudal' && !event.jugadorId).length;
+      const invalidTypes = events.filter((event) => !EVENT_STAT_EFFECTS[getQuickEventBaseType(event.tipoEvento)]).length;
+      const unreviewed = events.filter((event) => !event.reviewed).length;
+      const minutes = events.map((event) => Number(event.minute || 0)).filter((minute) => Number.isFinite(minute));
+      const quickScore = getQuickEventSummary(events);
+      const officialScore = getMatchScoreData(match);
+      const checks = [
+        unreviewed ? `${unreviewed} eventos sin revisar` : null,
+        caudalUnidentified ? `${caudalUnidentified} eventos de Caudal sin jugador` : null,
+        unidentified && !caudalUnidentified ? `${unidentified} eventos sin jugador identificado` : null,
+        invalidTypes ? `${invalidTypes} tipos fuera del catálogo` : null,
+        quickScore.goals !== officialScore.caudalGoals ? `Goles Caudal delegado ${quickScore.goals} / oficial ${officialScore.caudalGoals}` : null,
+        quickScore.rivalGoals !== officialScore.rivalGoals ? `Goles rival delegado ${quickScore.rivalGoals} / oficial ${officialScore.rivalGoals}` : null,
+      ].filter(Boolean);
+      return {
+        events,
+        unidentified,
+        duration: minutes.length ? `${Math.min(...minutes)}'-${Math.max(...minutes)}'` : 'Sin minutos',
+        periods: [
+          events.some((event) => Number(event.minute || 0) < 45) ? '1T' : null,
+          events.some((event) => Number(event.minute || 0) >= 45) ? '2T' : null,
+        ].filter(Boolean).join(' · ') || 'Sin periodo',
+        checks,
+      };
+    };
+    const groupedStats = ['Producción ofensiva', 'Seguridad con balón', 'Disciplina y duelos'].map((group) => ({
+      group,
+      rows: safeArray(collectiveSummary.statRows).filter((row) => row.group === group),
+    }));
+
+    return (
+      <main className="space-y-6">
+        <section className="rounded-3xl border border-white/5 bg-[#091428]/90 p-6 shadow-glow">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-caudal-electric">Registro Delegado</p>
+              <h2 className="mt-2 text-3xl font-black uppercase tracking-[0.08em] text-white">Datos en vivo</h2>
+              <p className="mt-2 max-w-3xl text-sm text-slate-400">Capa independiente de eventos rápidos. No alimenta rankings oficiales salvo partidos marcados como Validados.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {DELEGATED_DATA_FILTERS.map((filter) => (
+                <button key={filter} type="button" onClick={() => setDelegatedStatusFilter(filter)} className={`rounded-2xl px-3 py-2 text-xs font-black uppercase tracking-[0.12em] ${delegatedStatusFilter === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}>{filter}</button>
+              ))}
+            </div>
+          </div>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            {[
+              ['Registro delegado', `${matchesWithDelegatedEvents.length} de ${matches.length} partidos`],
+              ['Validados', statusCounts.Validado || 0],
+              ['Revisados', statusCounts.Revisado || 0],
+              ['Sin revisar', statusCounts['Sin revisar'] || 0],
+              ['Descartados', statusCounts.Descartado || 0],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-2xl border border-white/5 bg-white/[0.045] p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                <p className="mt-2 text-2xl font-black text-white">{value}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Acumulados del Registro Delegado</p>
+              <p className="mt-1 text-sm text-slate-400">Por defecto solo partidos validados. No son rankings oficiales de temporada.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {['Solo validados', 'Todos los registros'].map((scope) => (
+                <button key={scope} type="button" onClick={() => setDelegatedRankingScope(scope)} className={`rounded-2xl px-3 py-2 text-xs font-black uppercase tracking-[0.12em] ${delegatedRankingScope === scope ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}>{scope}</button>
+              ))}
+            </div>
+          </div>
+          {rankingEvents.length ? (
+            <div className="mt-5 grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+              <div className="grid gap-4">
+                {groupedStats.map((group) => (
+                  <div key={group.group} className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-white">{group.group}</p>
+                    <div className="mt-4 space-y-2">
+                      {group.rows.map((row) => (
+                        <div key={row.key} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-2xl bg-black/15 px-3 py-2">
+                          <span className="text-sm font-bold text-slate-300">{row.label}</span>
+                          <span className="text-sm font-black text-white">{row.caudal}</span>
+                          <span className="text-sm font-black text-red-200">{row.rival}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Ranking individual delegado</p>
+                <div className="mt-4 space-y-2">
+                  {playerRows.slice(0, 10).map((row) => (
+                    <div key={row.player.id} className="rounded-2xl bg-black/15 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="truncate text-sm font-black text-white">{row.player.number ? `${row.player.number} · ` : ''}{displayPlayerName(row.player) || row.player.name}</p>
+                        <span className="text-sm font-black text-caudal-electric">{row.total}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">PJ {row.matches} · G {row.stats.goals} · T {row.stats.shots} · REC {row.stats.recoveries} · PER {row.stats.turnovers}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="empty-state mt-5">
+              <p className="font-bold text-slate-200">Sin datos registrados para este filtro.</p>
+              <p className="mt-1">Valida algún partido o cambia a Todos los registros para consultar el histórico delegado.</p>
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Validación por partido</p>
+          <div className="mt-5 grid gap-4">
+            {visibleMatches.length ? visibleMatches.map((match) => {
+              const status = getDelegatedDataStatus(match);
+              const audit = auditMatch(match);
+              return (
+                <div key={match.id} className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-lg font-black text-white">{match.opponent || 'Rival'}</p>
+                        <span className={`rounded-2xl border px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${getDelegatedStatusTone(status)}`}>{status}</span>
+                      </div>
+                      <p className="mt-1 text-sm text-slate-500">{matchDisplayDate(match.date)} · {match.type || 'Partido'} · {getMatchScoreLabel(match)}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {DELEGATED_DATA_STATUSES.map((nextStatus) => (
+                        <button key={nextStatus} type="button" disabled={delegatedStatusSavingId === match.id} onClick={() => updateDelegatedDataStatus(match.id, nextStatus)} className={`rounded-2xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] transition ${status === nextStatus ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'} disabled:opacity-50`}>{nextStatus}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    {[
+                      ['Eventos', audit.events.length],
+                      ['Sin identificar', audit.unidentified],
+                      ['Duración cubierta', audit.duration],
+                      ['Periodos', audit.periods],
+                      ['Comprobaciones', audit.checks.length || 'Sin alertas'],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-2xl bg-black/15 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                        <p className="mt-1 text-sm font-black text-white">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {audit.checks.length ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {audit.checks.map((check) => (
+                        <span key={check} className="rounded-2xl border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-xs font-bold text-yellow-100">{check}</span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }) : (
+              <div className="empty-state">
+                <p className="font-bold text-slate-200">No hay partidos con Registro Delegado en este filtro.</p>
+              </div>
+            )}
+          </div>
+        </section>
+      </main>
+    );
+  };
+
   const authUser = session?.user ?? null;
-  const desktopTabs = ['Inicio', 'Plantilla', 'Equipos', 'Partidos', 'Biblioteca', 'Rendimiento', 'Análisis Grupal'];
+  const desktopTabs = ['Inicio', 'Plantilla', 'Equipos', 'Partidos', 'Biblioteca', 'Rendimiento', 'Registro Delegado', 'Análisis Grupal'];
   const mobilePrimaryTabs = [
     ['Inicio', 'Inicio'],
     ['Partidos', 'Partidos'],
     ['Plantilla', 'Plant.'],
+    ['Registro Delegado', 'Deleg.'],
     ['Análisis Grupal', 'Análisis'],
   ];
   const mobileMoreTabs = ['Equipos', 'Rendimiento', 'Biblioteca'];
@@ -15474,16 +15734,19 @@ function App() {
                   </AccordionSection>
                   ) : null}
 
-                  <AccordionSection title="Acciones revisadas" subtitle="Registro de acciones destacadas">
+                  <AccordionSection title="Registro en vivo" subtitle="Datos del Modo Delegado separados de la estadística oficial">
                   <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)] sm:p-5">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Acciones revisadas</h3>
-                        <p className="mt-1 text-sm text-slate-400">Acciones vinculadas al jugador durante el periodo analizado.</p>
+                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Registro en vivo</h3>
+                        <p className="mt-1 text-sm text-slate-400">Eventos del Modo Delegado. No forman parte de la estadística oficial salvo partidos validados.</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {['Últimos 3 partidos', 'Últimos 5 partidos', 'Temporada completa'].map((filter) => (
                           <button key={filter} onClick={() => setPlayerQuickScope(filter)} className={`rounded-2xl px-3 py-2 text-xs font-black uppercase tracking-[0.12em] ${playerQuickScope === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>{filter}</button>
+                        ))}
+                        {['Solo validados', 'Todos los registros'].map((filter) => (
+                          <button key={filter} onClick={() => setPlayerDelegatedScope(filter)} className={`rounded-2xl px-3 py-2 text-xs font-black uppercase tracking-[0.12em] ${playerDelegatedScope === filter ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-slate-300'}`}>{filter}</button>
                         ))}
                       </div>
                     </div>
@@ -17508,6 +17771,8 @@ function App() {
           <main>{renderPerformanceSection()}</main>
         ) : null}
 
+        {activeTab === 'Registro Delegado' ? renderDelegatedRegistrySection() : null}
+
         {activeTab === 'Análisis Grupal' ? (() => {
           try {
           const groupData = getGroupAnalysisData();
@@ -17730,7 +17995,7 @@ function App() {
                             : 'bg-white/8 text-slate-300 ring-1 ring-white/10 hover:bg-white/15 hover:text-white'
                         }`}
                       >
-                        {groupQuickReviewedOnly ? 'Solo eventos revisados' : 'Todos los eventos'}
+                        {groupQuickReviewedOnly ? 'Solo eventos revisados de partidos validados' : 'Todos los eventos de partidos validados'}
                       </button>
                     </div>
                   </div>
@@ -17920,12 +18185,12 @@ function App() {
                 </section>
               </AccordionSection>
 
-              <AccordionSection title="Eventos rápidos" subtitle="Modo Delegado agregado por partido">
+              <AccordionSection title="Datos en vivo validados" subtitle="Modo Delegado separado de la estadística oficial">
               <section className="app-card">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <h3 className="app-section-title">Eventos rápidos del Modo Delegado</h3>
-                    <p className="app-subtitle">Agregado desde match_quick_events con eventos revisados en POST como fuente principal.</p>
+                    <h3 className="app-section-title">Datos en vivo validados</h3>
+                    <p className="app-subtitle">Agregado desde match_quick_events solo cuando el partido está marcado como Validado.</p>
                   </div>
                   <div className="rounded-2xl bg-white/5 px-4 py-3 text-right">
                     <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Balance rec/pérd</p>
@@ -17934,11 +18199,11 @@ function App() {
                 </div>
                 {groupQuickReviewedOnly && !hasReviewedQuickEvents ? (
                   <div className="empty-state mt-5">
-                    <p className="font-bold text-slate-200">No hay eventos revisados suficientes.</p>
+                    <p className="font-bold text-slate-200">No hay datos en vivo validados suficientes.</p>
                     <p className="mt-1">
                       {hasUnreviewedQuickEvents
-                        ? 'Hay eventos sin revisar en POST. Revisa el partido para que entren en el análisis.'
-                        : 'Marca eventos como revisados en POST para activar tiros, tiros a puerta, córners, faltas, recuperaciones, pérdidas y lecturas automáticas.'}
+                        ? 'Hay eventos sin revisar o partidos sin validar. Usa Registro Delegado para decidir si entran en análisis.'
+                        : 'Valida partidos en Registro Delegado para activar tiros, tiros a puerta, córners, faltas, recuperaciones, pérdidas y lecturas automáticas.'}
                     </p>
                   </div>
                 ) : null}
@@ -17977,7 +18242,7 @@ function App() {
                 ) : (
                   <div className="empty-state mt-5">
                     <p className="font-bold text-slate-200">Sin datos registrados.</p>
-                    <p className="mt-1">Cuando el Modo Delegado registre eventos reales, aparecerán aquí las estadísticas colectivas de Caudal y rival.</p>
+                    <p className="mt-1">Cuando haya partidos validados en Registro Delegado, aparecerán aquí las estadísticas colectivas de Caudal y rival.</p>
                   </div>
                 )}
                 <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_1.15fr]">
@@ -18029,7 +18294,7 @@ function App() {
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Lecturas automáticas</h3>
-                    <p className="mt-2 text-sm text-slate-400">Interpretación rápida basada en partidos, goles, estadísticas y eventos del Modo Delegado.</p>
+                    <p className="mt-2 text-sm text-slate-400">Interpretación rápida basada en partidos, goles, estadísticas oficiales y datos en vivo validados.</p>
                   </div>
                   <span className="rounded-2xl bg-white/5 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
                     Máx. 8 lecturas

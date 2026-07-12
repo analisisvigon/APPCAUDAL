@@ -5,12 +5,18 @@ create table if not exists public.match_quick_events (
   equipo text not null check (equipo in ('caudal', 'rival')),
   tipo_evento text not null check (
     tipo_evento in (
+      'gol',
       'tiro',
       'tiro_puerta',
+      'regate',
+      'centro',
+      'perdida',
+      'robo',
+      'recuperacion',
+      'falta_realizada',
+      'falta_recibida',
       'corner',
       'falta',
-      'recuperacion',
-      'perdida',
       'tiro_rival',
       'tiro_puerta_rival',
       'corner_rival',
@@ -24,6 +30,41 @@ create table if not exists public.match_quick_events (
 
 alter table public.match_quick_events
 add column if not exists reviewed boolean not null default false;
+
+do $$
+begin
+  if exists (
+    select 1
+    from pg_constraint
+    where conname = 'match_quick_events_tipo_evento_check'
+      and conrelid = 'public.match_quick_events'::regclass
+  ) then
+    alter table public.match_quick_events drop constraint match_quick_events_tipo_evento_check;
+  end if;
+end $$;
+
+alter table public.match_quick_events
+add constraint match_quick_events_tipo_evento_check
+check (
+  tipo_evento in (
+    'gol',
+    'tiro',
+    'tiro_puerta',
+    'regate',
+    'centro',
+    'perdida',
+    'robo',
+    'recuperacion',
+    'falta_realizada',
+    'falta_recibida',
+    'corner',
+    'falta',
+    'tiro_rival',
+    'tiro_puerta_rival',
+    'corner_rival',
+    'falta_rival'
+  )
+);
 
 create index if not exists match_quick_events_partido_idx on public.match_quick_events(partido_id);
 create index if not exists match_quick_events_jugador_idx on public.match_quick_events(jugador_id);
