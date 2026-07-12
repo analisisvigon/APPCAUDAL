@@ -9450,49 +9450,100 @@ function App() {
     const playedStatsPlayersForPost = statsCalledPlayersForPost
       .map((player) => ({ player, stats: getStatsPlayerData(player.name) }))
       .filter((row) => Number(row.stats?.minutes || 0) > 0);
-    const individualImpactSelections = safeObject(postAiMeta.individualImpactSelections);
-    const getManualImpactCandidate = (key) => {
-      const selection = safeObject(individualImpactSelections[key]);
-      if (!selection.playerId && !selection.playerName) return null;
+    const normalizeIndividualImpactSelections = (rawSelections) => {
+      if (Array.isArray(rawSelections)) {
+        return rawSelections
+          .map((selection) => {
+            const row = safeObject(selection);
+            const playerId = row.player_id || row.playerId;
+            if (!row.category || (!playerId && !row.playerName)) return null;
+            return {
+              category: row.category,
+              player_id: playerId,
+              playerName: row.playerName || row.player_name || '',
+              comment: row.comment || '',
+              updatedAt: row.updatedAt || row.updated_at || '',
+            };
+          })
+          .filter(Boolean);
+      }
+      return Object.entries(safeObject(rawSelections)).flatMap(([category, value]) => {
+        const rows = Array.isArray(value) ? value : [value];
+        return rows
+          .map((selection) => {
+            const row = safeObject(selection);
+            const playerId = row.player_id || row.playerId;
+            if (!playerId && !row.playerName) return null;
+            return {
+              category,
+              player_id: playerId,
+              playerName: row.playerName || row.player_name || '',
+              comment: row.comment || row.observation || '',
+              updatedAt: row.updatedAt || row.updated_at || '',
+            };
+          })
+          .filter(Boolean);
+      });
+    };
+    const individualImpactSelections = normalizeIndividualImpactSelections(postAiMeta.individualImpactSelections);
+    const getImpactEntryPlayerId = (entry = {}) => entry.player_id || entry.playerId || '';
+    const getImpactEntryKey = (entry = {}) => getImpactEntryPlayerId(entry) || entry.playerName || entry.player_name || '';
+    const findImpactPlayerRow = (entry = {}) => {
+      const playerId = getImpactEntryPlayerId(entry);
       return playedStatsPlayersForPost.find((row) => (
-        row.player.id === selection.playerId ||
-        row.player.name === selection.playerName
+        (playerId && row.player.id === playerId) ||
+        (!playerId && entry.playerName && row.player.name === entry.playerName)
       )) || null;
     };
-    const updateIndividualImpactSelection = async (key, playerId) => {
-      const selectedRow = playedStatsPlayersForPost.find((row) => row.player.id === playerId);
-      const nextSelections = { ...individualImpactSelections };
-      if (selectedRow) {
-        nextSelections[key] = {
-          playerId: selectedRow.player.id,
-          playerName: selectedRow.player.name,
-          updatedAt: new Date().toISOString(),
-        };
-      } else {
-        delete nextSelections[key];
-      }
+    const getImpactEntriesForCategory = (category) =>
+      individualImpactSelections.filter((entry) => entry.category === category);
+    const saveIndividualImpactSelections = async (nextSelections) => {
       await updateSelectedMatchFields({
         postAiAnalysis: {
           ...postAiMeta,
-          individualImpactSelections: nextSelections,
+          individualImpactSelections: nextSelections.map((entry) => ({
+            category: entry.category,
+            player_id: getImpactEntryPlayerId(entry),
+            ...(getImpactEntryPlayerId(entry) ? {} : { playerName: entry.playerName || '' }),
+            comment: entry.comment || '',
+            updatedAt: entry.updatedAt || new Date().toISOString(),
+          })),
         },
       });
     };
-    const ratedPlayersForPost = statsCalledPlayersForPost
-      .map((player) => ({ player, stats: getStatsPlayerData(player.name) }))
-      .filter((row) => Number(row.stats?.rating || 0) > 0)
-      .sort((a, b) => Number(b.stats?.rating || 0) - Number(a.stats?.rating || 0));
-    const decisivePlayersForPost = statsCalledPlayersForPost
-      .map((player) => ({ player, stats: getStatsPlayerData(player.name) }))
-      .filter((row) => Number(row.stats?.goals || 0) + Number(row.stats?.assists || 0) > 0)
-      .sort((a, b) => (Number(b.stats?.goals || 0) + Number(b.stats?.assists || 0)) - (Number(a.stats?.goals || 0) + Number(a.stats?.assists || 0)));
-    const revelationPlayersForPost = ratedPlayersForPost
-      .filter((row) => Number(row.stats?.minutes || 0) > 0 && Number(row.stats?.minutes || 0) < 70)
-      .sort((a, b) => Number(b.stats?.rating || 0) - Number(a.stats?.rating || 0));
-    const correctionPlayersForPost = [...ratedPlayersForPost].reverse();
+    const addIndividualImpactPlayer = async (category, playerId) => {
+      const selectedRow = playedStatsPlayersForPost.find((row) => row.player.id === playerId);
+      if (!selectedRow) return;
+      const alreadyInCategory = individualImpactSelections.some((entry) =>
+        entry.category === category && getImpactEntryKey(entry) === playerId
+      );
+      if (alreadyInCategory) return;
+      await saveIndividualImpactSelections([
+        ...individualImpactSelections,
+        {
+          category,
+          player_id: selectedRow.player.id,
+          comment: '',
+          updatedAt: new Date().toISOString(),
+        },
+      ]);
+    };
+    const removeIndividualImpactPlayer = async (category, playerId) => {
+      await saveIndividualImpactSelections(individualImpactSelections.filter((entry) => !(
+        entry.category === category && getImpactEntryKey(entry) === playerId
+      )));
+    };
+    const updateIndividualImpactComment = async (category, playerId, comment) => {
+      await saveIndividualImpactSelections(individualImpactSelections.map((entry) => (
+        entry.category === category && getImpactEntryKey(entry) === playerId
+          ? { ...entry, comment, updatedAt: new Date().toISOString() }
+          : entry
+      )));
+    };
+    const isImpactPlayerInAnotherCategory = (category, playerId) =>
+      individualImpactSelections.some((entry) => entry.category !== category && getImpactEntryKey(entry) === playerId);
     const buildPlayerEvidence = (stats = {}, mode = 'rating') => {
       const rows = [];
-      const rating = Number(stats.rating || 0);
       const minutes = Number(stats.minutes || 0);
       const goals = Number(stats.goals || 0);
       const assists = Number(stats.assists || 0);
@@ -9506,30 +9557,14 @@ function App() {
       }
       return rows.slice(0, 2);
     };
-    const buildImpactCard = ({ key, label, accent, candidate, mode = 'rating' }) => {
-      const player = candidate?.player || null;
-      const stats = candidate?.stats || {};
-      const playedPosition = player ? getStatsPlayedPosition(player.name) : '';
-      const positionLabel = playedPosition && playedPosition !== 'Sin posición' ? playedPosition : player?.position || '';
-      return {
-        key,
-        label,
-        accent,
-        player,
-        stats,
-        positionLabel,
-        score: Number(stats.rating || 0) > 0 ? Number(stats.rating || 0).toFixed(1) : '',
-        evidence: player ? buildPlayerEvidence(stats, mode) : [],
-      };
-    };
     const individualCards = [
-      buildImpactCard({ key: 'destacado', label: 'Destacado', accent: 'border-emerald-300/25 bg-emerald-300/[0.08] text-emerald-100', candidate: getManualImpactCandidate('destacado') || ratedPlayersForPost[0] }),
-      buildImpactCard({ key: 'a_corregir', label: 'A corregir', accent: 'border-amber-300/25 bg-amber-300/[0.08] text-amber-100', candidate: getManualImpactCandidate('a_corregir') || (correctionPlayersForPost.length > 1 ? correctionPlayersForPost[0] : null) }),
-      buildImpactCard({ key: 'revelacion', label: 'Revelación', accent: 'border-sky-300/25 bg-sky-300/[0.08] text-sky-100', candidate: getManualImpactCandidate('revelacion') || revelationPlayersForPost[0] }),
-      buildImpactCard({ key: 'decisivo', label: 'Decisivo', accent: 'border-caudal-electric/25 bg-caudal-electric/[0.10] text-caudal-electric', candidate: getManualImpactCandidate('decisivo') || decisivePlayersForPost[0], mode: 'decisive' }),
+      { key: 'destacado', label: 'Destacado', accent: 'border-emerald-300/25 bg-emerald-300/[0.08] text-emerald-100', mode: 'rating' },
+      { key: 'a_corregir', label: 'A corregir', accent: 'border-amber-300/25 bg-amber-300/[0.08] text-amber-100', mode: 'rating' },
+      { key: 'revelacion', label: 'Revelación', accent: 'border-sky-300/25 bg-sky-300/[0.08] text-sky-100', mode: 'rating' },
+      { key: 'decisivo', label: 'Decisivo', accent: 'border-caudal-electric/25 bg-caudal-electric/[0.10] text-caudal-electric', mode: 'decisive' },
     ];
     const readingCompleted = Boolean(selectedMatch.postReality || selectedMatch.postFulfilled || selectedMatch.postNotFulfilled || selectedMatch.postNextAdjustment || selectedMatch.postWhy || selectedMatch.postNotes);
-    const conclusionsCompleted = Boolean(selectedMatch.postRepeat || selectedMatch.postImprove || selectedMatch.postTrainWeek || selectedMatch.postIndividualObservations);
+    const conclusionsCompleted = Boolean(selectedMatch.postRepeat || selectedMatch.postImprove || selectedMatch.postTrainWeek || selectedMatch.postIndividualObservations || individualImpactSelections.length);
     const pipelineSteps = [
       { label: 'Eventos', value: pendingQuick ? `${pendingQuick} pendientes` : 'OK', done: pendingQuick === 0, tone: pendingQuick ? 'amber' : 'emerald' },
       { label: 'Clips', value: priorityClips.length || sortedPostClips.length || '--', done: sortedPostClips.length > 0, tone: sortedPostClips.length ? 'sky' : 'slate' },
@@ -10135,54 +10170,97 @@ function App() {
           {postBlockHeader('F · Observaciones individuales', 'Impacto de jugadores', 'Lectura compacta para detectar quién decide, quién necesita corrección y quién emerge.')}
           <div className="mt-5 grid gap-3 md:grid-cols-4">
             {individualCards.map((card) => (
-              <div key={card.label} className={`min-h-[168px] rounded-3xl border p-4 ${card.player ? card.accent : 'border-white/10 bg-white/[0.025] text-slate-400'}`}>
+              <div key={card.label} className={`min-h-[204px] rounded-3xl border p-4 ${getImpactEntriesForCategory(card.key).length ? card.accent : 'border-white/10 bg-white/[0.025] text-slate-400'}`}>
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-[10px] font-black uppercase tracking-[0.16em]">{card.label}</p>
-                  {card.player && card.score ? <span className="text-xl font-black text-white">{card.score}</span> : null}
+                  <span className="rounded-full bg-black/20 px-2 py-1 text-[10px] font-black text-white">{getImpactEntriesForCategory(card.key).length}</span>
                 </div>
-                <select
-                  value={card.player?.id || ''}
-                  onChange={(event) => updateIndividualImpactSelection(card.key, event.target.value)}
-                  className="mt-3 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold text-white outline-none transition focus:border-caudal-electric/50"
-                >
-                  <option value="">Sin seleccionar</option>
-                  {playedStatsPlayersForPost.map(({ player, stats }) => (
-                    <option key={`${card.key}-${player.id || player.name}`} value={player.id}>
-                      {player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name} · {Number(stats.minutes || 0)}'
-                    </option>
-                  ))}
-                </select>
-                {card.player ? (
-                  <div className="mt-4 flex items-start gap-3">
-                    <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-black/25 text-sm font-black text-white">
-                      {card.player.image ? <img src={card.player.image} alt="" className="h-full w-full object-cover" /> : (card.player.number || displayPlayerName(card.player).slice(0, 2).toUpperCase())}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate text-base font-black text-white">{displayPlayerName(card.player)}</p>
-                      <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                        {[card.player.number ? `#${card.player.number}` : null, card.positionLabel].filter(Boolean).join(' · ')}
-                      </p>
-                      {card.evidence.length ? (
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                          {card.evidence.map((item) => (
-                            <span key={item} className="rounded-xl bg-black/20 px-2 py-1 text-[10px] font-bold text-slate-200">{item}</span>
-                          ))}
+                <div className="mt-3 space-y-2">
+                  {getImpactEntriesForCategory(card.key).length ? getImpactEntriesForCategory(card.key).map((entry) => {
+                    const row = findImpactPlayerRow(entry);
+                    const player = row?.player;
+                    const stats = row?.stats || {};
+                    const playerEntryKey = getImpactEntryKey(entry);
+                    const playerName = player ? displayPlayerName(player) : entry.playerName || 'Jugador no disponible';
+                    const playedPosition = player ? getStatsPlayedPosition(player.name) : '';
+                    const positionLabel = playedPosition && playedPosition !== 'Sin posición' ? playedPosition : player?.position || '';
+                    const evidence = buildPlayerEvidence(stats, card.mode);
+                    const commentPreview = entry.comment?.trim() || 'Sin comentario';
+                    const repeatedElsewhere = playerEntryKey && isImpactPlayerInAnotherCategory(card.key, playerEntryKey);
+                    return (
+                      <div key={`${card.key}-${playerEntryKey || playerName}`} className="rounded-2xl bg-black/20 p-3">
+                        <div className="flex items-start gap-2">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/10 text-xs font-black text-white">
+                            {player?.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : (player?.number || playerName.slice(0, 2).toUpperCase())}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-black text-white">{playerName}</p>
+                            <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.10em] text-slate-400">
+                              {[player?.number ? `#${player.number}` : null, positionLabel, Number(stats.minutes || 0) ? `${Number(stats.minutes || 0)}'` : null].filter(Boolean).join(' · ')}
+                            </p>
+                          </div>
+                          <button type="button" onClick={() => removeIndividualImpactPlayer(card.key, playerEntryKey)} className="rounded-lg px-2 py-1 text-xs font-black text-slate-500 transition hover:bg-white/10 hover:text-white" aria-label={`Eliminar ${playerName}`}>
+                            ×
+                          </button>
                         </div>
-                      ) : null}
+                        {evidence.length ? (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {evidence.map((item) => (
+                              <span key={item} className="rounded-lg bg-white/10 px-2 py-1 text-[10px] font-bold text-slate-200">{item}</span>
+                            ))}
+                          </div>
+                        ) : null}
+                        {repeatedElsewhere ? <p className="mt-2 text-[10px] font-bold text-amber-200/90">Ya está seleccionado en otra categoría.</p> : null}
+                        <details className="mt-2 rounded-xl border border-white/10 bg-white/[0.025]">
+                          <summary className="cursor-pointer px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                            {entry.comment?.trim() ? 'Editar comentario' : 'Añadir comentario'}
+                            <span className="ml-2 font-bold normal-case tracking-normal text-slate-500">{commentPreview.length > 28 ? `${commentPreview.slice(0, 28)}...` : commentPreview}</span>
+                          </summary>
+                          <textarea
+                            defaultValue={entry.comment || ''}
+                            onBlur={(event) => updateIndividualImpactComment(card.key, playerEntryKey, event.target.value)}
+                            className="min-h-[72px] w-full border-t border-white/10 bg-transparent px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                            placeholder="Comentario individual del entrenador"
+                          />
+                        </details>
+                      </div>
+                    );
+                  }) : (
+                    <div className="flex min-h-[86px] items-center rounded-2xl border border-dashed border-white/10 px-3">
+                      <p className="text-sm font-bold text-slate-500">{playedStatsPlayersForPost.length ? 'Sin jugadores seleccionados' : postLoading || statsRefreshing ? 'Cargando minutos...' : 'Registra minutos jugados para poder seleccionar.'}</p>
                     </div>
+                  )}
+                </div>
+                {playedStatsPlayersForPost.length ? (
+                  <div className="mt-3">
+                    <input
+                      list={`impact-player-options-${card.key}`}
+                      onChange={(event) => {
+                        const typedValue = event.target.value;
+                        const selectedRow = playedStatsPlayersForPost.find(({ player, stats }) => {
+                          const optionLabel = `${player.number ? `${player.number} · ` : ''}${displayPlayerName(player) || player.name} · ${Number(stats.minutes || 0)}'`;
+                          return optionLabel === typedValue;
+                        });
+                        if (selectedRow) {
+                          addIndividualImpactPlayer(card.key, selectedRow.player.id);
+                          event.target.value = '';
+                        }
+                      }}
+                      className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-caudal-electric/50"
+                      placeholder="+ Añadir jugador"
+                    />
+                    <datalist id={`impact-player-options-${card.key}`}>
+                      {playedStatsPlayersForPost
+                        .filter(({ player }) => !getImpactEntriesForCategory(card.key).some((entry) => getImpactEntryPlayerId(entry) === player.id))
+                        .map(({ player, stats }) => (
+                          <option key={`${card.key}-${player.id || player.name}`} value={`${player.number ? `${player.number} · ` : ''}${displayPlayerName(player) || player.name} · ${Number(stats.minutes || 0)}'`} />
+                        ))}
+                    </datalist>
                   </div>
-                ) : (
-                  <div className="flex h-[82px] items-center">
-                    <p className="text-sm font-bold text-slate-500">{playedStatsPlayersForPost.length ? 'Sin seleccionar' : postLoading || statsRefreshing ? 'Cargando minutos...' : 'Registra los minutos jugados para poder seleccionar jugadores.'}</p>
-                  </div>
-                )}
+                ) : null}
               </div>
             ))}
           </div>
-          <details className="mt-4 rounded-2xl bg-black/15">
-            <summary className="cursor-pointer px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400">Validación del entrenador</summary>
-            <textarea value={selectedMatch.postIndividualObservations || ''} onChange={(event) => updateSelectedMatchFields({ postIndividualObservations: event.target.value })} className="min-h-[76px] w-full border-t border-white/10 bg-transparent px-4 py-3 text-sm text-white placeholder:text-slate-500" placeholder="Ej. Vicente: sostener como MC. Claudio: ajustar presión tras pérdida." />
-          </details>
         </section>
 
         <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
