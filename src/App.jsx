@@ -9405,6 +9405,37 @@ function App() {
     const priorityClips = sortedPostClips.filter((event) => getPostClipPriority(event) === 0);
     const mainClip = priorityClips[0] || sortedPostClips[0] || null;
     const statsCalledPlayersForPost = getStatsCalledPlayers();
+    const playedStatsPlayersForPost = statsCalledPlayersForPost
+      .map((player) => ({ player, stats: getStatsPlayerData(player.name) }))
+      .filter((row) => Number(row.stats?.minutes || 0) > 0);
+    const individualImpactSelections = safeObject(postAiMeta.individualImpactSelections);
+    const getManualImpactCandidate = (key) => {
+      const selection = safeObject(individualImpactSelections[key]);
+      if (!selection.playerId && !selection.playerName) return null;
+      return playedStatsPlayersForPost.find((row) => (
+        row.player.id === selection.playerId ||
+        row.player.name === selection.playerName
+      )) || null;
+    };
+    const updateIndividualImpactSelection = async (key, playerId) => {
+      const selectedRow = playedStatsPlayersForPost.find((row) => row.player.id === playerId);
+      const nextSelections = { ...individualImpactSelections };
+      if (selectedRow) {
+        nextSelections[key] = {
+          playerId: selectedRow.player.id,
+          playerName: selectedRow.player.name,
+          updatedAt: new Date().toISOString(),
+        };
+      } else {
+        delete nextSelections[key];
+      }
+      await updateSelectedMatchFields({
+        postAiAnalysis: {
+          ...postAiMeta,
+          individualImpactSelections: nextSelections,
+        },
+      });
+    };
     const ratedPlayersForPost = statsCalledPlayersForPost
       .map((player) => ({ player, stats: getStatsPlayerData(player.name) }))
       .filter((row) => Number(row.stats?.rating || 0) > 0)
@@ -9433,12 +9464,13 @@ function App() {
       }
       return rows.slice(0, 2);
     };
-    const buildImpactCard = ({ label, accent, candidate, mode = 'rating' }) => {
+    const buildImpactCard = ({ key, label, accent, candidate, mode = 'rating' }) => {
       const player = candidate?.player || null;
       const stats = candidate?.stats || {};
       const playedPosition = player ? getStatsPlayedPosition(player.name) : '';
       const positionLabel = playedPosition && playedPosition !== 'Sin posición' ? playedPosition : player?.position || '';
       return {
+        key,
         label,
         accent,
         player,
@@ -9449,10 +9481,10 @@ function App() {
       };
     };
     const individualCards = [
-      buildImpactCard({ label: 'Destacado', accent: 'border-emerald-300/25 bg-emerald-300/[0.08] text-emerald-100', candidate: ratedPlayersForPost[0] }),
-      buildImpactCard({ label: 'A corregir', accent: 'border-amber-300/25 bg-amber-300/[0.08] text-amber-100', candidate: correctionPlayersForPost.length > 1 ? correctionPlayersForPost[0] : null }),
-      buildImpactCard({ label: 'Revelación', accent: 'border-sky-300/25 bg-sky-300/[0.08] text-sky-100', candidate: revelationPlayersForPost[0] }),
-      buildImpactCard({ label: 'Decisivo', accent: 'border-caudal-electric/25 bg-caudal-electric/[0.10] text-caudal-electric', candidate: decisivePlayersForPost[0], mode: 'decisive' }),
+      buildImpactCard({ key: 'destacado', label: 'Destacado', accent: 'border-emerald-300/25 bg-emerald-300/[0.08] text-emerald-100', candidate: getManualImpactCandidate('destacado') || ratedPlayersForPost[0] }),
+      buildImpactCard({ key: 'a_corregir', label: 'A corregir', accent: 'border-amber-300/25 bg-amber-300/[0.08] text-amber-100', candidate: getManualImpactCandidate('a_corregir') || (correctionPlayersForPost.length > 1 ? correctionPlayersForPost[0] : null) }),
+      buildImpactCard({ key: 'revelacion', label: 'Revelación', accent: 'border-sky-300/25 bg-sky-300/[0.08] text-sky-100', candidate: getManualImpactCandidate('revelacion') || revelationPlayersForPost[0] }),
+      buildImpactCard({ key: 'decisivo', label: 'Decisivo', accent: 'border-caudal-electric/25 bg-caudal-electric/[0.10] text-caudal-electric', candidate: getManualImpactCandidate('decisivo') || decisivePlayersForPost[0], mode: 'decisive' }),
     ];
     const readingCompleted = Boolean(selectedMatch.postReality || selectedMatch.postFulfilled || selectedMatch.postNotFulfilled || selectedMatch.postNextAdjustment || selectedMatch.postWhy || selectedMatch.postNotes);
     const conclusionsCompleted = Boolean(selectedMatch.postRepeat || selectedMatch.postImprove || selectedMatch.postTrainWeek || selectedMatch.postIndividualObservations);
@@ -10066,8 +10098,20 @@ function App() {
                   <p className="text-[10px] font-black uppercase tracking-[0.16em]">{card.label}</p>
                   {card.player && card.score ? <span className="text-xl font-black text-white">{card.score}</span> : null}
                 </div>
+                <select
+                  value={card.player?.id || ''}
+                  onChange={(event) => updateIndividualImpactSelection(card.key, event.target.value)}
+                  className="mt-3 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold text-white outline-none transition focus:border-caudal-electric/50"
+                >
+                  <option value="">Sin seleccionar</option>
+                  {playedStatsPlayersForPost.map(({ player, stats }) => (
+                    <option key={`${card.key}-${player.id || player.name}`} value={player.id}>
+                      {player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name} · {Number(stats.minutes || 0)}'
+                    </option>
+                  ))}
+                </select>
                 {card.player ? (
-                  <div className="mt-5 flex items-start gap-3">
+                  <div className="mt-4 flex items-start gap-3">
                     <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-black/25 text-sm font-black text-white">
                       {card.player.image ? <img src={card.player.image} alt="" className="h-full w-full object-cover" /> : (card.player.number || displayPlayerName(card.player).slice(0, 2).toUpperCase())}
                     </span>
@@ -10086,8 +10130,8 @@ function App() {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex h-[104px] items-center">
-                    <p className="text-sm font-bold text-slate-500">Sin seleccionar</p>
+                  <div className="flex h-[82px] items-center">
+                    <p className="text-sm font-bold text-slate-500">{playedStatsPlayersForPost.length ? 'Sin seleccionar' : 'Añade minutos en estadísticas'}</p>
                   </div>
                 )}
               </div>
