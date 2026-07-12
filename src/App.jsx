@@ -2778,6 +2778,8 @@ function App() {
   const [preSubTab, setPreSubTab] = useState('Plan cuerpo técnico');
   const [isPreTalkMode, setIsPreTalkMode] = useState(false);
   const [manualConsignaDraft, setManualConsignaDraft] = useState('');
+  const [preKeyDraft, setPreKeyDraft] = useState('');
+  const [isPreKeyDraftOpen, setIsPreKeyDraftOpen] = useState(false);
   const [isTacticalZonesEditorOpen, setIsTacticalZonesEditorOpen] = useState(false);
   const [selectedTacticalPlayerIndex, setSelectedTacticalPlayerIndex] = useState(0);
   const [selectedRivalTacticalPlayerIndex, setSelectedRivalTacticalPlayerIndex] = useState(0);
@@ -3961,7 +3963,6 @@ function App() {
     () => normalizePreAiAnalysis(selectedMatch?.preAiAnalysis),
     [selectedMatch?.preAiAnalysis]
   );
-  const preReportChecklist = selectedPreAiAnalysis?.reportChecklist || {};
   const selectedMatchRivalTeam = useMemo(
     () => teams.find((team) => team.id === selectedMatch?.equipoRivalId) || findTeamByDisplayName(teams, selectedMatch?.opponent || ''),
     [teams, selectedMatch?.equipoRivalId, selectedMatch?.opponent]
@@ -4177,10 +4178,18 @@ function App() {
   const suggestedConsignas = safeArray(selectedPreAiAnalysis?.suggestedConsignas).length
     ? safeArray(selectedPreAiAnalysis?.suggestedConsignas)
     : createAutoVestuarioBullets(selectedMatch, selectedMatchRivalTeam);
-  const activeConsignas = String(selectedMatch?.planClave || '').split('\n').map((item) => String(item || '').trim()).filter(Boolean);
+  const activeConsignasSource = safeArray(selectedPreAiAnalysis?.matchKeys).length ? safeArray(selectedPreAiAnalysis?.matchKeys) : String(selectedMatch?.planClave || '').split('\n');
+  const activeConsignas = activeConsignasSource.map((item) => String(item || '').trim()).filter(Boolean);
   const saveActiveConsignas = (items) => {
     const cleanItems = safeArray(items).map((item) => String(item || '').trim()).filter(Boolean);
-    updateSelectedMatchFields({ planClave: cleanItems.join('\n') });
+    const { matchKey, ...restPreAiAnalysis } = selectedPreAiAnalysis || {};
+    updateSelectedMatchFields({
+      planClave: cleanItems.join('\n'),
+      preAiAnalysis: {
+        ...restPreAiAnalysis,
+        matchKeys: cleanItems,
+      },
+    });
   };
   const updateSuggestedConsignas = (nextConsignas) => {
     updateSelectedMatchFields({
@@ -4244,79 +4253,80 @@ function App() {
       return true;
     });
   };
-  const createUniqueKeyText = (items, baseText = 'Nueva clave') => {
-    const normalized = new Set(normalizeKeyBlockLines(items).map(normalizeKeyText));
-    const cleanBase = String(baseText || 'Nueva clave').trim() || 'Nueva clave';
-    if (!normalized.has(normalizeKeyText(cleanBase))) return cleanBase;
-    let copyIndex = 2;
-    let nextText = `${cleanBase} ${copyIndex}`;
-    while (normalized.has(normalizeKeyText(nextText))) {
-      copyIndex += 1;
-      nextText = `${cleanBase} ${copyIndex}`;
-    }
-    return nextText;
+  const getMatchKeyLines = () => {
+    const storedKeys = normalizeKeyBlockLines(safeArray(selectedPreAiAnalysis?.matchKeys));
+    if (storedKeys.length) return storedKeys;
+    return normalizeKeyBlockLines(splitPlanLines(selectedMatch?.planClave));
   };
-  const savePlanLines = (field, items) => {
+  const saveMatchKeyLines = (items) => {
     const cleanItems = normalizeKeyBlockLines(items);
-    updateSelectedMatchFields({ [field]: cleanItems.join('\n') });
+    const { matchKey, ...restPreAiAnalysis } = selectedPreAiAnalysis || {};
+    updateSelectedMatchFields({
+      planClave: cleanItems.join('\n'),
+      preAiAnalysis: {
+        ...restPreAiAnalysis,
+        matchKeys: cleanItems,
+      },
+    });
   };
-  const preKeyBlocks = [
-    { title: 'Ofensivas', field: 'planClave', tone: 'border-caudal-electric/15 bg-caudal-electric/[0.045]', placeholder: 'Atacar espalda lateral.' },
-    { title: 'Defensivas', field: 'preCaudalDefendStrengths', tone: 'border-rose-200/15 bg-rose-300/[0.045]', placeholder: 'Cerrar pase interior.' },
-    { title: 'ABP', field: 'abpOfensiva', secondaryField: 'abpDefensiva', tone: 'border-amber-200/15 bg-amber-300/[0.055]', placeholder: 'Defender primer palo.' },
-  ];
-  const getKeyBlockLines = (block) => normalizeKeyBlockLines([
-    ...splitPlanLines(selectedMatch?.[block.field]),
-    ...(block.secondaryField ? splitPlanLines(selectedMatch?.[block.secondaryField]) : []),
-  ]);
-  const saveKeyBlockLines = (block, items) => {
-    const cleanItems = normalizeKeyBlockLines(items);
-    if (!block.secondaryField) {
-      savePlanLines(block.field, cleanItems);
-      return;
-    }
-    updateSelectedMatchFields({ [block.field]: cleanItems.join('\n'), [block.secondaryField]: '' });
-  };
-  const updateKeyBlockLine = (block, index, value) => {
-    const lines = getKeyBlockLines(block);
+  const updateMatchKeyLine = (index, value) => {
+    const lines = getMatchKeyLines();
     const cleanValue = String(value || '').trim();
     if (cleanValue && lines.some((line, itemIndex) => itemIndex !== index && normalizeKeyText(line) === normalizeKeyText(cleanValue))) return;
     lines[index] = value;
-    saveKeyBlockLines(block, lines);
+    saveMatchKeyLines(lines);
   };
-  const addKeyBlockLine = (block) => {
-    const lines = getKeyBlockLines(block);
-    saveKeyBlockLines(block, [...lines, createUniqueKeyText(lines)]);
+  const removeMatchKeyLine = (index) => {
+    saveMatchKeyLines(getMatchKeyLines().filter((_, itemIndex) => itemIndex !== index));
   };
-  const duplicateKeyBlockLine = (block, index) => {
-    const lines = getKeyBlockLines(block);
-    const source = lines[index] || block.placeholder || 'Nueva clave';
-    saveKeyBlockLines(block, [...lines, createUniqueKeyText(lines, `${source} copia`)]);
-  };
-  const focusKeyBlockLine = (block, index) => {
-    document.getElementById(`pre-key-${block.field}-${index}`)?.focus();
-  };
-  const removeKeyBlockLine = (block, index) => saveKeyBlockLines(block, getKeyBlockLines(block).filter((_, itemIndex) => itemIndex !== index));
-  const moveKeyBlockLine = (block, index, direction) => {
-    const lines = getKeyBlockLines(block);
+  const moveMatchKeyLine = (index, direction) => {
+    const lines = getMatchKeyLines();
     const nextIndex = index + direction;
     if (nextIndex < 0 || nextIndex >= lines.length) return;
     [lines[index], lines[nextIndex]] = [lines[nextIndex], lines[index]];
-    saveKeyBlockLines(block, lines);
+    saveMatchKeyLines(lines);
+  };
+  const focusMatchKeyLine = (index) => {
+    document.getElementById(`pre-match-key-${index}`)?.focus();
+  };
+  const openMatchKeyDraft = () => {
+    setPreKeyDraft('');
+    setIsPreKeyDraftOpen(true);
+  };
+  const cancelMatchKeyDraft = () => {
+    setPreKeyDraft('');
+    setIsPreKeyDraftOpen(false);
+  };
+  const saveMatchKeyDraft = () => {
+    const cleanText = String(preKeyDraft || '').trim();
+    if (!cleanText) {
+      cancelMatchKeyDraft();
+      return;
+    }
+    const lines = getMatchKeyLines();
+    if (!lines.some((line) => normalizeKeyText(line) === normalizeKeyText(cleanText))) {
+      saveMatchKeyLines([...lines, cleanText]);
+    }
+    cancelMatchKeyDraft();
   };
   useEffect(() => {
     if (!selectedMatch?.id) return;
+    const storedKeys = normalizeKeyBlockLines(safeArray(selectedPreAiAnalysis?.matchKeys));
+    const planLines = splitPlanLines(selectedMatch?.planClave);
+    const storedSingleKey = String(selectedPreAiAnalysis?.matchKey || '').trim();
+    const cleanLines = normalizeKeyBlockLines(storedKeys.length ? storedKeys : [...planLines, ...(planLines.length ? [] : [storedSingleKey])]);
+    const cleanValue = cleanLines.join('\n');
     const updates = {};
-    preKeyBlocks.forEach((block) => {
-      const primaryLines = splitPlanLines(selectedMatch?.[block.field]);
-      const secondaryLines = block.secondaryField ? splitPlanLines(selectedMatch?.[block.secondaryField]) : [];
-      const cleanLines = normalizeKeyBlockLines([...primaryLines, ...secondaryLines]);
-      const cleanValue = cleanLines.join('\n');
-      if (primaryLines.join('\n') !== cleanValue) updates[block.field] = cleanValue;
-      if (block.secondaryField && secondaryLines.length) updates[block.secondaryField] = '';
-    });
+    if (planLines.join('\n') !== cleanValue) updates.planClave = cleanValue;
+    if (!storedKeys.length && cleanLines.length) {
+      const { matchKey, ...restPreAiAnalysis } = selectedPreAiAnalysis || {};
+      updates.preAiAnalysis = { ...restPreAiAnalysis, matchKeys: cleanLines };
+    } else if (storedSingleKey) {
+      const { matchKey, ...restPreAiAnalysis } = selectedPreAiAnalysis || {};
+      updates.preAiAnalysis = restPreAiAnalysis;
+    }
     if (Object.keys(updates).length) updateSelectedMatchFields(updates);
-  }, [selectedMatch?.id, selectedMatch?.planClave, selectedMatch?.preCaudalDefendStrengths, selectedMatch?.abpOfensiva, selectedMatch?.abpDefensiva]);
+  }, [selectedMatch?.id, selectedMatch?.planClave, selectedPreAiAnalysis?.matchKey, selectedPreAiAnalysis?.matchKeys]);
   const getPrePlayerStatus = (player) => {
     const isStarter = safeArray(selectedMatch?.preCaudalLineup).includes(player.name);
     if (isStarter) return 'Titular';
@@ -4392,73 +4402,6 @@ function App() {
       setPreError(lineupError.message || 'No se pudo guardar el once definitivo.');
     }
   };
-  const togglePreReportChecklist = (key) => {
-    updateSelectedMatchFields({
-      preAiAnalysis: {
-        ...(selectedPreAiAnalysis || {}),
-        reportChecklist: {
-          ...preReportChecklist,
-          [key]: !preReportChecklist[key],
-        },
-      },
-    });
-  };
-
-  const getMatchKey = () => {
-    const manual = String(selectedPreAiAnalysis?.matchKey || '').trim();
-    if (manual) return manual;
-    const identity = liveRivalIdentity;
-    if (identity.detectedWeakness === 'espalda lateral') return `Atacar espalda del lateral en su lado ${identity.strongSide}.`;
-    if (identity.mainThreat === 'segunda jugada') return 'Cerrar segunda jugada interior y rechace frontal.';
-    if (identity.blockHeight === 'bajo') return 'Mover su bloque bajo y activar lado débil.';
-    if (identity.pressureType === 'hombre a hombre') return 'Atraer presión y liberar tercer hombre.';
-    return `Atacar ${identity.detectedWeakness} sin conceder ${identity.mainThreat}.`;
-  };
-
-  const updateMatchKey = (value) => updatePreAiAnalysisPatch({ matchKey: value });
-
-  const getDetectedPreRisks = () => {
-    const identity = liveRivalIdentity;
-    const risks = [];
-    const add = (label, tone = 'alerta') => {
-      if (!risks.some((risk) => risk.label === label)) risks.push({ label, tone });
-    };
-    if (identity.mainThreat === 'transición' || identity.attackingRhythm === 'vertical') add('Transición rival', 'alerta');
-    if (identity.mainThreat === 'segunda jugada') add('Segunda jugada', 'vigilancia');
-    if (identity.offensiveFocus === 'ABP' || identity.mainThreat === 'ABP') add('Balón parado', 'alerta');
-    if (identity.strongSide) add(`Lado fuerte ${identity.strongSide}`, 'vigilancia');
-    if (identity.pressureType === 'tras pérdida') add('Pérdida interior', 'alerta');
-    const keyPlayer = liveRivalPlayers.find((player) => player.isKey);
-    if (keyPlayer) add(`Duelo crítico: ${keyPlayer.name}`, 'vigilancia');
-    const unavailable = liveRivalPlayers.find(isUnavailableRivalPlayer);
-    if (unavailable) add(`Ausencia: ${unavailable.name}`, 'ofensiva');
-    return risks.slice(0, 7);
-  };
-
-  const getPreReviewRows = () => {
-    const hasSystem = Boolean(getCurrentRivalSystem());
-    const hasLineup = Boolean(getCurrentRivalLineup().filter(Boolean).length >= 8);
-    const hasCanva = Boolean(selectedMatch?.preCanvaLink);
-    const hasAbp = Boolean(selectedMatch?.abpOfensiva || selectedMatch?.abpDefensiva || selectedMatch?.preRivalCornersFor || selectedMatch?.preRivalCornersAgainst);
-    const hasMarkedPlayers = liveRivalMarkedPlayers.length > 0;
-    return [
-      { key: 'systemConfirmed', label: 'Sistema', status: hasSystem ? 'COMPLETADO' : 'PENDIENTE' },
-      { key: 'probableLineup', label: 'Alineación', status: hasLineup || preReportChecklist.probableLineup ? 'COMPLETADO' : 'PENDIENTE' },
-      { key: 'videoReviewed', label: 'Vídeo', status: hasCanva || preReportChecklist.videoReviewed ? 'COMPLETADO' : 'PENDIENTE' },
-      { key: 'abpAnalyzed', label: 'ABP', status: hasAbp || preReportChecklist.abpAnalyzed ? 'COMPLETADO' : 'CRÍTICO' },
-      { key: 'watchedPlayers', label: 'Estados', status: hasMarkedPlayers || preReportChecklist.watchedPlayers ? 'COMPLETADO' : 'PENDIENTE' },
-    ];
-  };
-
-  const getPreReviewContext = () => {
-    const context = [];
-    context.push(selectedMatch?.preCanvaLink ? 'Informe cargado' : 'Sin enlace de informe');
-    context.push(`${Math.max(0, getCurrentRivalLineup().filter(Boolean).length)} jugadores probables`);
-    context.push(getCurrentRivalSystem() ? 'Sistema confirmado' : 'Sistema pendiente');
-    context.push(preReportChecklist.videoReviewed || selectedMatch?.preCanvaLink ? 'Vídeo revisado' : 'Vídeo pendiente');
-    return context;
-  };
-
   const getPreLastReviewLabel = () => {
     const dateValue = selectedPreAiAnalysis?.generatedAt || selectedPreAiAnalysis?.tacticalQuestion?.createdAt || selectedPreAiAnalysis?.inputSummary?.createdAt;
     if (!dateValue) return '';
@@ -18147,92 +18090,66 @@ function App() {
                           </div>
                         ) : null}
 
-                        <div className={`grid gap-5 ${isPreTalkMode ? 'xl:grid-cols-[0.48fr_0.52fr]' : 'xl:grid-cols-[minmax(0,0.54fr)_minmax(360px,0.46fr)]'}`}>
+                        <div className={`grid gap-5 ${isPreTalkMode ? 'xl:grid-cols-[0.48fr_0.52fr]' : 'xl:grid-cols-[minmax(0,0.58fr)_minmax(360px,0.42fr)]'}`}>
                           <div className="space-y-5">
-                            <section className="rounded-[1.45rem] border border-caudal-electric/20 bg-[linear-gradient(135deg,rgba(79,140,255,0.14),rgba(9,20,40,0.88))] p-5 shadow-[0_18px_50px_rgba(79,140,255,0.10)]">
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Clave del partido</p>
-                                  {isPreTalkMode ? (
-                                    <h4 className="mt-2 text-2xl font-black leading-tight text-white">{getMatchKey()}</h4>
-                                  ) : (
-                                    <input
-                                      value={getMatchKey()}
-                                      onChange={(event) => updateMatchKey(event.target.value)}
-                                      className="mt-2 w-full bg-transparent text-2xl font-black leading-tight text-white outline-none placeholder:text-slate-500"
-                                      placeholder="Idea principal del partido..."
-                                    />
-                                  )}
-                                </div>
-                                <span className="hidden rounded-2xl border border-white/10 bg-white/[0.08] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white sm:inline-flex">Briefing</span>
-                              </div>
-                            </section>
                             <section className="rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.20)]">
                               <div className="flex items-start justify-between gap-3">
                                 <div>
                                   <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/75">Claves del partido</p>
                                   <h4 className="mt-1 text-xl font-black text-white">Decisiones del cuerpo técnico</h4>
                                 </div>
-                                <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">
-                                  {preKeyBlocks.reduce((sum, block) => sum + getKeyBlockLines(block).length, 0)} CLAVES
-                                </span>
+                                {!isPreTalkMode ? (
+                                  <button type="button" onClick={openMatchKeyDraft} className="rounded-xl border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-caudal-electric transition hover:bg-caudal-electric/15">
+                                    + Añadir clave
+                                  </button>
+                                ) : null}
                               </div>
-                              <div className="mt-4 grid gap-3">
-                                {preKeyBlocks.map((block) => {
-                                  const lines = getKeyBlockLines(block);
-                                  return (
-                                    <div key={block.title} className={`rounded-2xl border p-3 ${block.tone}`}>
-                                      <div className="flex items-center justify-between gap-3">
-                                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white">{block.title}</p>
-                                        {!isPreTalkMode ? (
-                                          <button type="button" onClick={() => addKeyBlockLine(block)} className="rounded-lg border border-white/10 bg-white/[0.06] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-200 hover:bg-white/10">
-                                            Añadir
-                                          </button>
-                                        ) : null}
-                                      </div>
-                                      <div className="mt-3 grid gap-2">
-                                        {lines.length ? lines.map((line, index) => (
-                                          <div key={`${block.title}-${index}`} className="group flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/20 px-2.5 py-2">
-                                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current text-caudal-electric" />
-                                            {isPreTalkMode ? (
-                                              <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-100">{line}</span>
-                                            ) : (
-                                              <input
-                                                id={`pre-key-${block.field}-${index}`}
-                                                value={line}
-                                                onChange={(event) => updateKeyBlockLine(block, index, event.target.value)}
-                                                placeholder={block.placeholder}
-                                                className="min-w-0 flex-1 bg-transparent text-sm font-bold text-white outline-none placeholder:text-slate-500"
-                                              />
-                                            )}
-                                            {!isPreTalkMode ? (
-                                              <span className="flex shrink-0 flex-wrap items-center justify-end gap-1 opacity-80 transition group-hover:opacity-100">
-                                                <button type="button" onClick={() => focusKeyBlockLine(block, index)} className="rounded-md px-1.5 py-1 text-[10px] font-black uppercase text-slate-300 hover:bg-white/10 hover:text-white">Editar</button>
-                                                <button type="button" onClick={() => duplicateKeyBlockLine(block, index)} className="rounded-md px-1.5 py-1 text-[10px] font-black uppercase text-slate-300 hover:bg-white/10 hover:text-white">Duplicar</button>
-                                                <button type="button" onClick={() => moveKeyBlockLine(block, index, -1)} className="rounded-md px-1.5 py-1 text-[10px] font-black uppercase text-slate-400 hover:bg-white/10 hover:text-white">Subir</button>
-                                                <button type="button" onClick={() => moveKeyBlockLine(block, index, 1)} className="rounded-md px-1.5 py-1 text-[10px] font-black uppercase text-slate-400 hover:bg-white/10 hover:text-white">Bajar</button>
-                                                <button type="button" onClick={() => removeKeyBlockLine(block, index)} className="rounded-md px-1.5 py-1 text-[10px] font-black uppercase text-red-200 hover:bg-red-500/15">Eliminar</button>
-                                              </span>
-                                            ) : null}
-                                          </div>
-                                        )) : (
-                                          <p className="rounded-xl border border-dashed border-white/10 px-3 py-3 text-sm text-slate-500">{block.placeholder}</p>
-                                        )}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              {isPreTalkMode ? (
-                                <div className="mt-4 rounded-2xl border border-amber-200/15 bg-amber-200/[0.07] p-3">
-                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-100">Riesgos</p>
-                                  <div className="mt-3 flex flex-wrap gap-2">
-                                    {getDetectedPreRisks().map((risk) => (
-                                      <span key={risk.label} className={`rounded-xl border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.08em] ${consignaToneClass[risk.tone] || consignaToneClass.alerta}`}>{risk.label}</span>
-                                    ))}
+                              <div className="mt-4 grid gap-2">
+                                {getMatchKeyLines().length ? getMatchKeyLines().map((line, index) => (
+                                  <div key={`${line}-${index}`} className="group flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/22 px-3 py-2.5">
+                                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-caudal-electric" />
+                                    {isPreTalkMode ? (
+                                      <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-100">{line}</span>
+                                    ) : (
+                                      <input
+                                        id={`pre-match-key-${index}`}
+                                        value={line}
+                                        onChange={(event) => updateMatchKeyLine(index, event.target.value)}
+                                        className="min-w-0 flex-1 bg-transparent text-sm font-bold text-white outline-none placeholder:text-slate-500"
+                                      />
+                                    )}
+                                    {!isPreTalkMode ? (
+                                      <span className="flex shrink-0 items-center justify-end gap-1 opacity-80 transition group-hover:opacity-100">
+                                        <button type="button" onClick={() => focusMatchKeyLine(index)} className="rounded-md px-1.5 py-1 text-[10px] font-black uppercase text-slate-300 hover:bg-white/10 hover:text-white">Editar</button>
+                                        <button type="button" onClick={() => moveMatchKeyLine(index, -1)} className="rounded-md px-1.5 py-1 text-[10px] font-black uppercase text-slate-400 hover:bg-white/10 hover:text-white">Subir</button>
+                                        <button type="button" onClick={() => moveMatchKeyLine(index, 1)} className="rounded-md px-1.5 py-1 text-[10px] font-black uppercase text-slate-400 hover:bg-white/10 hover:text-white">Bajar</button>
+                                        <button type="button" onClick={() => removeMatchKeyLine(index)} className="rounded-md px-1.5 py-1 text-[10px] font-black uppercase text-red-200 hover:bg-red-500/15">Eliminar</button>
+                                      </span>
+                                    ) : null}
                                   </div>
-                                </div>
-                              ) : null}
+                                )) : (
+                                  <p className="rounded-xl border border-dashed border-white/10 px-3 py-3 text-sm font-semibold text-slate-500">Sin claves añadidas</p>
+                                )}
+                                {isPreKeyDraftOpen && !isPreTalkMode ? (
+                                  <div className="flex flex-col gap-2 rounded-xl border border-caudal-electric/20 bg-caudal-electric/[0.055] px-3 py-3 sm:flex-row sm:items-center">
+                                    <input
+                                      autoFocus
+                                      value={preKeyDraft}
+                                      onChange={(event) => setPreKeyDraft(event.target.value)}
+                                      onKeyDown={(event) => {
+                                        if (event.key === 'Enter') saveMatchKeyDraft();
+                                        if (event.key === 'Escape') cancelMatchKeyDraft();
+                                      }}
+                                      placeholder="Nueva clave del partido..."
+                                      className="min-w-0 flex-1 bg-transparent text-sm font-bold text-white outline-none placeholder:text-slate-500"
+                                    />
+                                    <div className="flex shrink-0 gap-2">
+                                      <button type="button" onClick={saveMatchKeyDraft} className="rounded-lg bg-caudal-electric px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-950">Guardar</button>
+                                      <button type="button" onClick={cancelMatchKeyDraft} className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300 hover:bg-white/10">Cancelar</button>
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </div>
                             </section>
 
                             <section className={`rounded-[1.45rem] border border-white/10 bg-white/[0.025] p-5 ${isPreTalkMode ? 'hidden' : ''}`}>
@@ -18416,48 +18333,6 @@ function App() {
                             </PreBlockErrorBoundary>
                             ) : null}
 
-                            <section className={`rounded-[1.45rem] border border-white/10 bg-white/[0.025] p-5 ${isPreTalkMode ? 'hidden xl:block' : ''}`}>
-                              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Estado del informe</p>
-                              <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                                {getPreReviewRows().map((row) => {
-                                  const statusClass = row.status === 'COMPLETADO'
-                                    ? 'border-emerald-200/20 bg-emerald-200/[0.09] text-emerald-100'
-                                    : row.status === 'CRÍTICO'
-                                      ? 'border-red-200/25 bg-red-400/[0.11] text-red-100'
-                                      : 'border-amber-200/[0.16] bg-amber-200/[0.055] text-amber-100';
-                                  const icon = row.status === 'COMPLETADO' ? 'OK' : row.status === 'CRÍTICO' ? '!' : '--';
-                                  return (
-                                  <button
-                                    key={row.key}
-                                    type="button"
-                                    onClick={() => togglePreReportChecklist(row.key)}
-                                    className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs font-black uppercase tracking-[0.08em] transition ${statusClass}`}
-                                  >
-                                    <span>{row.label}</span>
-                                    <span>{icon} {row.status}</span>
-                                  </button>
-                                  );
-                                })}
-                              </div>
-                              <div className="mt-5 border-t border-white/10 pt-4">
-                                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Riesgos detectados</p>
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                  {getDetectedPreRisks().map((risk) => (
-                                    <span key={risk.label} className={`rounded-xl border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.08em] ${consignaToneClass[risk.tone] || consignaToneClass.alerta}`}>
-                                      {risk.label}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                              <div className="mt-5 border-t border-white/10 pt-4">
-                                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Última revisión</p>
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                  {getPreReviewContext().map((item) => (
-                                    <span key={item} className="rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-300">{item}</span>
-                                  ))}
-                                </div>
-                              </div>
-                            </section>
                           </div>
 
                           <section className={`rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/85 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.22)] ${isPreTalkMode ? 'hidden' : ''}`}>
@@ -18817,7 +18692,7 @@ function App() {
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => updateSelectedMatchFields({ planClave: [selectedMatch.planClave, selectedPreAiAnalysis.tacticalQuestion.answer].filter(Boolean).join('\n') })}
+                                    onClick={() => saveMatchKeyLines([...getMatchKeyLines(), selectedPreAiAnalysis.tacticalQuestion.answer])}
                                     className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/15"
                                   >
                                     Enviar a charla
@@ -18842,7 +18717,6 @@ function App() {
                                     ['Copiar a transiciones', 'planTransiciones'],
                                     ['Copiar a ABP ofensiva', 'abpOfensiva'],
                                     ['Copiar a ABP defensiva', 'abpDefensiva'],
-                                    ['Copiar a charla final', 'planClave'],
                                   ].map(([label, field]) => (
                                     <button
                                       key={field}
