@@ -5649,24 +5649,12 @@ function App() {
     const rivalSystem = getCurrentRivalSystem();
     const collective = selectedRivalObservedScouting.collective;
     const evidences = selectedRivalObservedScouting.evidences;
-    const systemMidfieldAdvantage = getSystemStructure(caudalSystem).midfielders >= getSystemStructure(rivalSystem).midfielders;
     const observedPlayerRows = liveRivalPlayers
       .map((player) => ({ player, profile: getObservedPlayerProfile(player) }))
       .filter(({ profile }) => profile.speed || profile.technique || profile.aerial || profile.oneVsOne || profile.defensiveWork || profile.foot || profile.traits.length || String(profile.notes || '').trim());
     const hasCollectiveData = Object.values(collective).some((value) => Array.isArray(value) ? value.length : Boolean(value));
-    const hasObservedData = hasCollectiveData || observedPlayerRows.length || evidences.length;
-    const collectiveFieldsDone = ['buildUp', 'blockHeight', 'pressureType', 'attackingRhythm', 'preferredAttack'].filter((field) => Boolean(collective[field])).length;
-    const collectiveListsDone = Number(Boolean(collective.strengths.length)) + Number(Boolean(collective.weaknesses.length));
-    const collectiveCompletion = Math.round(((collectiveFieldsDone + collectiveListsDone) / 7) * 100);
-    const playerCompletion = Math.min(100, Math.round((observedPlayerRows.length / Math.max(1, Math.min(8, liveRivalPlayers.length || 8))) * 100));
-    const evidenceCompletion = Math.min(100, evidences.length * 20);
-    const scoutingCompletion = Math.round((collectiveCompletion * 0.45) + (playerCompletion * 0.3) + (evidenceCompletion * 0.25));
-    const evidenceWeight = evidences.reduce((sum, item) => sum + (item.importance === 'Alta' ? 3 : item.importance === 'Baja' ? 1 : 2), 0);
-    const evidenceCounts = evidenceTypeOptions.reduce((acc, type) => ({ ...acc, [type]: evidences.filter((item) => item.type === type).length }), {});
     const splitLines = (value) => String(value || '').split(/\r?\n|•/).map((item) => String(item || '').trim()).filter(Boolean);
     const uniq = (items) => [...new Set(safeArray(items).map((item) => String(item || '').trim()).filter(Boolean))];
-    const firstSentence = (value) => String(value || '').split(/[.;]\s/)[0].replace(/[.;]$/, '').trim();
-    const activeZones = getTacticalZones().filter((zone) => zone.active);
     const rivalConnectionOptions = getRivalFormationSlots().map((slot) => slot.player?.name || slot.role || `R${Number(slot.slot || 0) + 1}`).filter(Boolean);
     const caudalConnectionOptions = Array.from({ length: 11 }, (_, index) => safeArray(selectedMatch.preCaudalLineup)[index] || getFormationRoles(caudalSystem)[index] || `C${index + 1}`);
     const connectionPlayerOptions = tacticalConnectionDraft.team === 'caudal' ? caudalConnectionOptions : rivalConnectionOptions;
@@ -5683,8 +5671,6 @@ function App() {
     const unavailablePlayers = getUnavailableRivalPlayers();
     const weaknessPlayers = observedPlayerRows.filter(({ profile }) => profile.speed && Number(profile.speed) <= 2 || profile.defensiveWork && Number(profile.defensiveWork) <= 2).map(({ player }) => player);
     const watchedPlayers = observedPlayerRows.map(({ player }) => player).filter((player) => !keyPlayers.includes(player) && !weaknessPlayers.includes(player) && !isUnavailableRivalPlayer(player));
-    const sourceCount = [hasCollectiveData, observedPlayerRows.length > 0, evidences.length > 0].filter(Boolean).length;
-    const confidence = evidenceWeight >= 7 && sourceCount >= 2 ? 'Alta' : sourceCount >= 2 || evidenceWeight >= 2 ? 'Media' : 'Baja';
     const sourceLabel = [
       hasCollectiveData ? 'Perfil colectivo' : null,
       observedPlayerRows.length ? 'Perfil jugador' : null,
@@ -5695,7 +5681,6 @@ function App() {
       ...splitLines(selectedMatch.prePlanTrigger),
       collective.weaknesses.includes('Espalda lateral') ? 'Atacar espalda lateral registrada' : '',
       collective.weaknesses.includes('Pérdida interior') ? 'Forzar recepción interior' : '',
-      systemMidfieldAdvantage ? `Superioridad interior ${getSystemStructure(caudalSystem).midfielders}v${getSystemStructure(rivalSystem).midfielders}` : '',
     ]).slice(0, 3);
     const defensePlan = uniq([
       ...splitLines(selectedMatch.planSinBalon),
@@ -5722,14 +5707,6 @@ function App() {
       red: 'border-red-300/25 bg-red-400/10 text-red-100',
       cyan: 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric',
     };
-    const executiveItems = [
-      systemMidfieldAdvantage ? { label: `Superioridad interior ${getSystemStructure(caudalSystem).midfielders}v${getSystemStructure(rivalSystem).midfielders}`, tone: 'green' } : null,
-      collective.weaknesses[0] ? { label: collective.weaknesses[0], tone: 'green' } : null,
-      collective.strengths.includes('Transiciones') || collective.strengths.includes('Contraataque') ? { label: 'Transición rival observada', tone: 'amber' } : null,
-      keyPlayers[0] ? { label: displayPlayerName(keyPlayers[0]), tone: 'red' } : null,
-      collective.strengths.includes('ABP') ? { label: 'ABP registrada', tone: 'red' } : null,
-      !hasObservedData ? { label: 'Sin información suficiente', tone: 'amber' } : null,
-    ].filter(Boolean).map((item) => ({ ...item, label: firstSentence(item.label) }));
     const duelRows = observedPlayerRows.slice(0, 5).map(({ player, profile }, index) => {
       const rivalName = displayPlayerName(player);
       const caudalName = safeArray(selectedMatch.preCaudalLineup).filter(Boolean)[index] || getFormationRoles(caudalSystem)[index] || 'Caudal';
@@ -5751,18 +5728,6 @@ function App() {
       '¿Qué cambios harías al descanso?',
       '¿Qué riesgo tiene nuestro sistema?',
     ];
-    const zoneTone = {
-      cyan: 'border-sky-300/20 bg-sky-300/10 text-sky-100',
-      amber: 'border-amber-300/20 bg-amber-300/10 text-amber-100',
-      emerald: 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100',
-      red: 'border-red-300/25 bg-red-400/10 text-red-100',
-    };
-    const weeklyPriority = uniq([
-      collective.weaknesses.includes('Pérdida interior') ? 'Proteger pérdida interior' : '',
-      collective.strengths.includes('Centros') || collective.strengths.includes('ABP') ? 'cerrar segundo palo' : '',
-      collective.strengths.includes('Transiciones') || collective.strengths.includes('Contraataque') ? 'controlar transición tras pérdida' : '',
-      keyPlayers[0] ? `vigilar ${displayPlayerName(keyPlayers[0])}` : '',
-    ]).slice(0, 2).join(' y ') || 'Información insuficiente para emitir una conclusión fiable.';
     const renderPlanList = (title, items) => (
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{title}</p>
@@ -5780,20 +5745,10 @@ function App() {
     return (
       <div className={isPreTalkMode ? 'space-y-4' : 'space-y-5'}>
         <div className="sticky top-2 z-20 border border-white/10 bg-[#081327]/95 px-3 py-2 backdrop-blur">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="mr-1 text-base font-black text-white">{caudalSystem} vs {rivalSystem}</div>
-            <div className="rounded-lg border border-caudal-electric/30 bg-caudal-electric/12 px-3 py-1.5 text-xs font-black uppercase tracking-[0.12em] text-caudal-electric">
-              Scouting {scoutingCompletion}%
-            </div>
-            {executiveItems.map((item) => (
-              <span key={`${item.tone}-${item.label}`} className={`rounded-md border px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] ${semitoneClass[item.tone]}`}>
-                {item.tone === 'green' ? 'OK' : item.tone === 'amber' ? '!' : '!!'} {item.label}
-              </span>
-            ))}
-          </div>
+          <div className="text-base font-black text-white">{caudalSystem} vs {rivalSystem}</div>
         </div>
 
-        <div className={`grid gap-4 ${isPreTalkMode ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(340px,0.36fr)_minmax(0,0.64fr)]'}`}>
+        <div className={`grid gap-4 ${isPreTalkMode ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(320px,0.32fr)_minmax(0,0.68fr)]'}`}>
           <div className="grid gap-4 xl:contents">
             <section className="order-1 border border-caudal-electric/15 bg-[#091428]/90 p-4 xl:col-start-1">
               <div className="flex items-center justify-between gap-3">
@@ -5801,9 +5756,6 @@ function App() {
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Resumen ejecutivo</p>
                   <h4 className="mt-1 text-xl font-black text-white">{selectedMatchRivalTeam?.name || selectedMatch.opponent || 'Rival'}</h4>
                 </div>
-                <span className={`rounded-lg border px-2.5 py-1 text-[10px] font-black uppercase ${confidence === 'Alta' ? semitoneClass.green : confidence === 'Media' ? semitoneClass.amber : semitoneClass.red}`}>
-                  Confianza {confidence}
-                </span>
               </div>
               <div className="mt-3 grid gap-2 text-xs font-bold text-slate-200 sm:grid-cols-2">
                 {[
@@ -5820,17 +5772,13 @@ function App() {
                   </div>
                 ))}
               </div>
-              <p className="mt-3 border-l-2 border-caudal-electric bg-caudal-electric/[0.055] px-3 py-2 text-sm font-black text-white">
-                Prioridad semanal: {weeklyPriority}
-              </p>
             </section>
             <section className="order-11 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Perfil colectivo</p>
-                  <p className="mt-1 text-xs font-bold text-slate-500">{confidence} · {sourceLabel}</p>
+                  <p className="mt-1 text-xs font-bold text-slate-500">{sourceLabel}</p>
                 </div>
-                {!hasObservedData ? <span className="rounded-lg border border-amber-300/20 bg-amber-300/10 px-2 py-1 text-[10px] font-black uppercase text-amber-100">Sin datos reales</span> : null}
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {[
@@ -5929,24 +5877,16 @@ function App() {
 
             <section className="order-13 border border-white/10 bg-[#091428]/82 p-4">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Evidencias observadas</p>
-              <div className="mt-3 grid grid-cols-4 gap-1.5 text-center text-[10px] font-black uppercase text-slate-300">
-                {['Ataque', 'Defensa', 'Transición', 'ABP'].map((type) => (
-                  <span key={type} className="bg-white/[0.045] px-2 py-1.5">{type}: {evidenceCounts[type] || 0}</span>
-                ))}
-              </div>
-              <div className="mt-3 grid gap-2 md:grid-cols-[1fr_116px_110px_104px]">
-                <input value={evidenceDraft.match} onChange={(event) => setEvidenceDraft((current) => ({ ...current, match: event.target.value }))} placeholder="Partido" className="border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500" />
-                <input type="date" value={evidenceDraft.date} onChange={(event) => setEvidenceDraft((current) => ({ ...current, date: event.target.value }))} className="border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none" />
-                <select value={evidenceDraft.type} onChange={(event) => setEvidenceDraft((current) => ({ ...current, type: event.target.value }))} className="border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none">
+              <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(150px,170px)_minmax(150px,170px)]">
+                <input value={evidenceDraft.match} onChange={(event) => setEvidenceDraft((current) => ({ ...current, match: event.target.value }))} placeholder="Partido / contexto" className="h-11 min-w-0 border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500" />
+                <input type="date" value={evidenceDraft.date} onChange={(event) => setEvidenceDraft((current) => ({ ...current, date: event.target.value }))} className="h-11 min-w-[150px] border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none" />
+                <select value={evidenceDraft.type} onChange={(event) => setEvidenceDraft((current) => ({ ...current, type: event.target.value }))} className="h-11 min-w-0 border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none">
                   {evidenceTypeOptions.map((type) => <option key={type} value={type}>{type}</option>)}
                 </select>
-                <select value={evidenceDraft.importance} onChange={(event) => setEvidenceDraft((current) => ({ ...current, importance: event.target.value }))} className="border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none">
-                  {['Alta', 'Media', 'Baja'].map((importance) => <option key={importance} value={importance}>{importance}</option>)}
-                </select>
               </div>
-              <div className="mt-2 flex gap-2">
-                <input value={evidenceDraft.observation} onChange={(event) => setEvidenceDraft((current) => ({ ...current, observation: event.target.value }))} placeholder="Ej. 14 de 18 saques de portería fueron largos." className="min-w-0 flex-1 border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500" />
-                <button type="button" onClick={addObservedEvidence} className="bg-caudal-electric px-4 py-2 text-xs font-black uppercase text-slate-950">Añadir</button>
+              <div className="mt-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_120px]">
+                <input value={evidenceDraft.observation} onChange={(event) => setEvidenceDraft((current) => ({ ...current, observation: event.target.value }))} placeholder="Descripción de la evidencia..." className="h-11 min-w-0 border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500" />
+                <button type="button" onClick={addObservedEvidence} className="h-11 bg-caudal-electric px-4 py-2 text-xs font-black uppercase text-slate-950">Añadir</button>
               </div>
               <div className="mt-3 space-y-2">
                 {evidences.length ? evidences.slice(0, 5).map((item) => (
@@ -5976,7 +5916,6 @@ function App() {
                 <span className="bg-white/[0.045] px-3 py-2">Salida: {collective.buildUp || 'Sin información suficiente'}</span>
                 <span className="bg-white/[0.045] px-3 py-2">Bloque: {collective.blockHeight || 'Sin información suficiente'}</span>
                 <span className="bg-white/[0.045] px-3 py-2">Presión: {collective.pressureType || 'Sin información suficiente'}</span>
-                <span className="bg-white/[0.045] px-3 py-2">Confianza: {confidence}</span>
               </div>
             </section>
 
@@ -5991,30 +5930,6 @@ function App() {
                     </span>
                   </div>
                 ))}
-              </div>
-            </section>
-
-            <section className="order-10 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Mapa del partido</p>
-              <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-200">Ataque</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {uniq([systemMidfieldAdvantage ? `Interior ${getSystemStructure(caudalSystem).midfielders}v${getSystemStructure(rivalSystem).midfielders}` : '', ...collective.weaknesses]).slice(0, 3).map((item, index) => (
-                      <span key={`attack-${item}`} className={`rounded-lg border px-2.5 py-1.5 text-xs font-black ${index < 2 ? semitoneClass.green : semitoneClass.amber}`}>{item}</span>
-                    ))}
-                    {!systemMidfieldAdvantage && !collective.weaknesses.length ? <span className={`rounded-lg border px-2.5 py-1.5 text-xs font-black ${semitoneClass.amber}`}>Sin información suficiente</span> : null}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-red-100">Defensa</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {uniq([collective.strengths.includes('Centros') ? 'Segundo palo' : '', collective.strengths.includes('ABP') ? 'ABP lateral' : '', collective.strengths.includes('Transiciones') || collective.strengths.includes('Contraataque') ? 'Transición rival' : '']).slice(0, 3).map((item, index) => (
-                      <span key={`defense-${item}`} className={`rounded-lg border px-2.5 py-1.5 text-xs font-black ${index < 2 ? semitoneClass.red : semitoneClass.amber}`}>{item}</span>
-                    ))}
-                    {!collective.strengths.length ? <span className={`rounded-lg border px-2.5 py-1.5 text-xs font-black ${semitoneClass.amber}`}>Sin información suficiente</span> : null}
-                  </div>
-                </div>
               </div>
             </section>
 
@@ -6167,53 +6082,8 @@ function App() {
                 </div>
               </div>
             </section>
-
-            <section className="order-8 border border-white/10 bg-[#091428]/82 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Zonas activas</p>
-                <button type="button" onClick={() => setIsTacticalZonesEditorOpen(true)} className="border border-white/10 bg-white/[0.045] px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] text-slate-200 hover:bg-white/[0.08]">
-                  Editar zonas tácticas
-                </button>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {(activeZones.length ? activeZones : defaultTacticalZones()).slice(0, 6).map((zone) => (
-                  <span key={zone.id} className={`rounded-lg border px-3 py-2 text-xs font-black uppercase tracking-[0.08em] ${zoneTone[zone.color] || zoneTone.cyan}`}>{zone.label}</span>
-                ))}
-              </div>
-            </section>
           </div>
         </div>
-
-        {isTacticalZonesEditorOpen ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
-            <div className="max-h-[88vh] w-full max-w-4xl overflow-y-auto border border-white/10 bg-[#091428] p-5 shadow-2xl">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Editor</p>
-                  <h4 className="text-xl font-black text-white">Editar zonas tácticas</h4>
-                </div>
-                <div className="flex gap-2">
-                  <button type="button" onClick={addTacticalZone} className="bg-caudal-electric px-3 py-2 text-xs font-black uppercase text-slate-950">Añadir zona</button>
-                  <button type="button" onClick={() => setIsTacticalZonesEditorOpen(false)} className="border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase text-white">Cerrar</button>
-                </div>
-              </div>
-              <div className="mt-5 grid gap-2">
-                {getTacticalZones().map((zone) => (
-                  <div key={zone.id} className="grid gap-2 border border-white/10 bg-white/[0.035] p-3 md:grid-cols-[auto_1fr_92px_92px_110px_auto] md:items-center">
-                    <button type="button" onClick={() => updateTacticalZone(zone.id, { active: !zone.active })} className={`h-9 px-3 text-[10px] font-black uppercase ${zone.active ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-400'}`}>{zone.active ? 'ON' : 'OFF'}</button>
-                    <input value={zone.label || ''} onChange={(event) => updateTacticalZone(zone.id, { label: event.target.value.toUpperCase() })} className="min-w-0 border border-white/10 bg-black/20 px-3 py-2 text-xs font-black uppercase tracking-[0.08em] text-white" />
-                    <input type="number" min="5" max="95" value={zone.x || 50} onChange={(event) => updateTacticalZone(zone.id, { x: Number(event.target.value) })} className="border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold text-white" />
-                    <input type="number" min="5" max="95" value={zone.y || 50} onChange={(event) => updateTacticalZone(zone.id, { y: Number(event.target.value) })} className="border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold text-white" />
-                    <select value={zone.color || 'cyan'} onChange={(event) => updateTacticalZone(zone.id, { color: event.target.value })} className="border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold text-white">
-                      {['cyan', 'amber', 'emerald', 'red'].map((color) => <option key={color} value={color}>{color}</option>)}
-                    </select>
-                    <button type="button" onClick={() => removeTacticalZone(zone.id)} className="bg-red-500/15 px-3 py-2 text-[10px] font-black uppercase text-red-100">Borrar</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : null}
       </div>
     );
   };
