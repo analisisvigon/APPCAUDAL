@@ -428,24 +428,48 @@ const collectiveProfileOptions = {
   strengths: ['Juego interior', 'Centros', 'ABP', 'Transiciones', 'Juego directo', 'Duelos', 'Contraataque', 'Segunda jugada'],
   weaknesses: ['Espalda lateral', 'Pérdida interior', 'Defensa área', 'ABP defensiva', 'Transición defensiva', 'Juego aéreo', 'Vigilancias', 'Salida de balón'],
 };
-const playerScoutingTraitGroups = [
-  {
-    title: 'Ataque',
-    traits: ['Asociativo', 'Conductor', 'Regateador', 'Vertical', 'Rematador', 'Ataca espacio', 'Ataca espalda', 'Ataca primer palo', 'Juego de espaldas', 'Referencia aérea'],
+const PLAYER_BEHAVIOURS_BY_POSITION = {
+  goalkeeper: {
+    label: 'Portero',
+    withBall: ['juego corto', 'juego largo', 'buen iniciador', 'atrae presión', 'juega directo', 'dominante con el pie', 'presionable'],
+    withoutBall: ['portero adelantado', 'dominio aéreo', 'buen uno contra uno', 'blocaje', 'rechaza', 'débil en centros', 'lento en salidas'],
   },
-  {
-    title: 'Construcción',
-    traits: ['Organizador', 'Buen juego largo', 'Recibe entre líneas'],
+  centerback: {
+    label: 'Central',
+    withBall: ['constructor', 'juego largo', 'rompe líneas', 'conducción', 'seguro en corto', 'vulnerable presionado', 'usa perfil menos dominante'],
+    withoutBall: ['dominante aéreo', 'agresivo al salto', 'corrector', 'rápido al espacio', 'defiende área', 'sufre a la espalda', 'pierde referencias', 'fuerte en duelo'],
   },
-  {
-    title: 'Defensa',
-    traits: ['Intensidad defensiva', 'Presión alta', 'Defiende área', 'Llega al área', 'Especialista ABP', 'Agresivo al salto'],
+  fullback: {
+    label: 'Lateral / carrilero',
+    withBall: ['profundo', 'interior', 'asociativo', 'buen centro', 'conductor', 'rompe por fuera', 'juega por dentro', 'vulnerable presionado'],
+    withoutBall: ['agresivo en presión', 'fuerte en uno contra uno', 'sufre a la espalda', 'pierde segundo palo', 'buena cobertura', 'repliegue lento', 'intensidad defensiva'],
   },
-  {
-    title: 'Vulnerabilidades',
-    traits: ['Vulnerable presionado', 'Débil pierna izquierda', 'Pierde referencias', 'Baja intensidad defensiva'],
+  defensive_midfielder: {
+    label: 'Pivote',
+    withBall: ['organizador', 'juego largo', 'asociativo', 'recibe entre líneas', 'gira bajo presión', 'conductor', 'vertical', 'vulnerable presionado'],
+    withoutBall: ['equilibra', 'roba', 'intenso', 'llega tarde', 'protege carril central', 'salta a presión', 'domina segunda jugada', 'pierde marca'],
   },
-];
+  midfielder: {
+    label: 'Mediocentro',
+    withBall: ['organizador', 'juego largo', 'asociativo', 'recibe entre líneas', 'gira bajo presión', 'conductor', 'vertical', 'vulnerable presionado'],
+    withoutBall: ['equilibra', 'roba', 'intenso', 'llega tarde', 'protege carril central', 'salta a presión', 'domina segunda jugada', 'pierde marca'],
+  },
+  attacking_midfielder: {
+    label: 'Mediapunta',
+    withBall: ['recibe entre líneas', 'último pase', 'gira', 'asociativo', 'vertical', 'llegada', 'rematador', 'conduce'],
+    withoutBall: ['presión tras pérdida', 'baja intensidad', 'cierra línea de pase', 'llega al área', 'pierde referencia', 'ayuda poco'],
+  },
+  winger: {
+    label: 'Extremo',
+    withBall: ['regateador', 'pie cambiado', 'pie natural', 'profundo', 'interior', 'ataca espacio', 'finalizador', 'buen centro', 'asociativo'],
+    withoutBall: ['presión alta', 'repliegue', 'ayuda al lateral', 'pierde segundo palo', 'baja intensidad', 'amenaza transición'],
+  },
+  forward: {
+    label: 'Delantero',
+    withBall: ['físico/fijador', 'rápido al espacio', 'móvil', 'asociativo', 'juego de espaldas', 'rematador', 'referencia aérea', 'falso nueve', 'ataca primer palo'],
+    withoutBall: ['inicia presión', 'orienta salida', 'baja intensidad', 'fija centrales', 'amenaza profundidad', 'domina segundas jugadas', 'ataca área'],
+  },
+};
 const microProfileCatalog = {
   forward: ['Físico / fijador', 'Rápido al espacio', 'Móvil', 'Rematador', 'Asociativo', 'Juego aéreo', 'Falso nueve'],
   winger: ['Desbordador', 'Interior', 'Profundo', 'Asociativo', 'Finalizador', 'Ataca espalda', 'Pie natural', 'Pie cambiado'],
@@ -482,6 +506,7 @@ const emptyObservedPlayerProfile = {
   oneVsOne: 0,
   defensiveWork: 0,
   foot: '',
+  position: '',
   mainProfile: '',
   secondaryProfile: '',
   traits: [],
@@ -4043,6 +4068,7 @@ function App() {
   const getObservedPlayerProfile = (player) => ({
     ...emptyObservedPlayerProfile,
     ...(selectedRivalObservedScouting.playerProfiles[getObservedPlayerKey(player)] || {}),
+    position: selectedRivalObservedScouting.playerProfiles[getObservedPlayerKey(player)]?.position || '',
     mainProfile: selectedRivalObservedScouting.playerProfiles[getObservedPlayerKey(player)]?.mainProfile || '',
     secondaryProfile: selectedRivalObservedScouting.playerProfiles[getObservedPlayerKey(player)]?.secondaryProfile || '',
     traits: safeArray(selectedRivalObservedScouting.playerProfiles[getObservedPlayerKey(player)]?.traits),
@@ -4063,8 +4089,10 @@ function App() {
   };
   const toggleObservedPlayerTrait = (player, trait) => {
     const profile = getObservedPlayerProfile(player);
+    const normalizedTrait = String(trait).toLowerCase();
+    const exists = profile.traits.some((item) => String(item).toLowerCase() === normalizedTrait);
     updateObservedPlayerProfile(player, {
-      traits: profile.traits.includes(trait) ? profile.traits.filter((item) => item !== trait) : [...profile.traits, trait],
+      traits: exists ? profile.traits.filter((item) => String(item).toLowerCase() !== normalizedTrait) : [...profile.traits, trait],
     });
   };
   const addObservedEvidence = () => {
@@ -5753,17 +5781,35 @@ function App() {
     setTacticalQuestionText('');
   };
 
-  const getMicroPositionGroup = (player) => {
-    const text = `${player?.position || ''} ${player?.role || ''}`.toLowerCase();
+  const getEffectiveMicroPosition = (player, profile = null) => String(profile?.position || player?.position || '').trim();
+  const getMicroPositionGroup = (player, profile = null) => {
+    const text = `${getEffectiveMicroPosition(player, profile)} ${player?.role || ''}`.toLowerCase();
+    if (!text.trim()) return '';
     if (/port|gk/.test(text)) return 'goalkeeper';
     if (/central|defensa central|dfc|cb/.test(text)) return 'centerback';
     if (/lateral|carrilero|li|ld|lb|rb/.test(text)) return 'fullback';
     if (/extremo|banda|wing|ei|ed/.test(text)) return 'winger';
-    if (/medio|mediocentro|pivote|interior|volante|mc|mcd|mp/.test(text)) return 'midfielder';
+    if (/mediapunta|mp|enganche/.test(text)) return 'attacking_midfielder';
+    if (/pivote|mcd|defensivo/.test(text)) return 'defensive_midfielder';
+    if (/medio|mediocentro|interior|volante|mc/.test(text)) return 'midfielder';
     if (/delantero|punta|dc|nueve|9/.test(text)) return 'forward';
-    return 'general';
+    return '';
   };
-  const getMicroProfileOptions = (player) => microProfileCatalog[getMicroPositionGroup(player)] || microProfileCatalog.general;
+  const getMicroProfileOptions = (player, profile = null) => {
+    const group = getMicroPositionGroup(player, profile);
+    if (group === 'defensive_midfielder' || group === 'attacking_midfielder') return microProfileCatalog.midfielder;
+    return microProfileCatalog[group] || [];
+  };
+  const getMicroBehaviourConfig = (player, profile = null) => PLAYER_BEHAVIOURS_BY_POSITION[getMicroPositionGroup(player, profile)] || null;
+  const getCompatibleMicroTraits = (player, profile = null) => {
+    const config = getMicroBehaviourConfig(player, profile);
+    return config ? [...config.withBall, ...config.withoutBall] : [];
+  };
+  const getIncompatibleMicroTraits = (player, profile = null) => {
+    const compatible = getCompatibleMicroTraits(player, profile).map((trait) => trait.toLowerCase());
+    if (!compatible.length) return safeArray(profile?.traits);
+    return safeArray(profile?.traits).filter((trait) => !compatible.includes(String(trait).toLowerCase()));
+  };
   const getMicroProfileState = (profile) => {
     const registeredTraits = safeArray(profile?.traits);
     const hasIdentity = Boolean(profile?.mainProfile || profile?.secondaryProfile || profile?.foot);
@@ -5777,9 +5823,9 @@ function App() {
     if (getMicroProfileState(profile) === 'Perfil parcial') return 'PERFIL PARCIAL';
     return 'PERFIL NO IDENTIFICADO';
   };
-  const microWeaknessTraitLabels = ['Vulnerable presionado', 'Débil pierna izquierda', 'Pierde referencias', 'Baja intensidad defensiva'];
-  const getMicroStrengthTraits = (profile) => safeArray(profile?.traits).filter((trait) => !microWeaknessTraitLabels.includes(trait));
-  const getMicroWeaknessTraits = (profile) => safeArray(profile?.traits).filter((trait) => microWeaknessTraitLabels.includes(trait));
+  const microWeaknessTraitLabels = ['vulnerable presionado', 'débil pierna izquierda', 'pierde referencias', 'baja intensidad defensiva', 'presionable', 'débil en centros', 'lento en salidas', 'sufre a la espalda', 'pierde segundo palo', 'repliegue lento', 'llega tarde', 'pierde marca', 'pierde referencia', 'ayuda poco', 'baja intensidad', 'usa perfil menos dominante'];
+  const getMicroStrengthTraits = (profile) => safeArray(profile?.traits).filter((trait) => !microWeaknessTraitLabels.includes(String(trait).toLowerCase()));
+  const getMicroWeaknessTraits = (profile) => safeArray(profile?.traits).filter((trait) => microWeaknessTraitLabels.includes(String(trait).toLowerCase()));
   const getPlayerHeightValue = (player) => player?.height || player?.altura || player?.heightCm || player?.estatura || '';
   const describeScoutingTrait = (trait) => {
     const descriptions = {
@@ -5806,18 +5852,39 @@ function App() {
       'Débil pierna izquierda': 'Débil con pierna izquierda',
       'Pierde referencias': 'Pierde referencias',
       'Baja intensidad defensiva': 'Baja intensidad defensiva',
+      'juego corto': 'Juego corto',
+      'juego largo': 'Juego largo',
+      'buen iniciador': 'Buen iniciador',
+      'atrae presión': 'Atrae presión',
+      presionable: 'Presionable',
+      constructor: 'Constructor',
+      'rompe líneas': 'Rompe líneas',
+      conducción: 'Conducción',
+      profundo: 'Profundo',
+      interior: 'Interior',
+      asociativo: 'Asociativo',
+      'buen centro': 'Buen centro',
+      regateador: 'Regateador',
+      finalizador: 'Finalizador',
+      organizador: 'Organizador',
+      vertical: 'Vertical',
+      rematador: 'Rematador',
+      'rápido al espacio': 'Rápido al espacio',
+      móvil: 'Móvil',
+      'juego de espaldas': 'Juego de espaldas',
+      'referencia aérea': 'Referencia aérea',
+      'ataca primer palo': 'Ataca primer palo',
     };
     return descriptions[trait] || trait;
   };
   const getMicroDetectedProfileLines = (player, profile) => {
     const lines = [];
     const traits = safeArray(profile?.traits);
-    const profileTitle = [profile?.mainProfile, profile?.secondaryProfile].filter(Boolean).join(' / ');
+    const profileTitle = [getEffectiveMicroPosition(player, profile), profile?.mainProfile, profile?.secondaryProfile].filter(Boolean).join(' · ');
     if (profileTitle) lines.push(profileTitle);
     if (profile?.foot) lines.push(`Pie ${String(profile.foot).toLowerCase()}`);
     traits.slice(0, 5).forEach((trait) => lines.push(describeScoutingTrait(trait)));
-    if (!lines.length && player?.position) lines.push(`Posición registrada: ${player.position}`);
-    return lines.length >= 2 || profile?.mainProfile || traits.length ? lines.slice(0, 6) : ['Perfil pendiente de completar.'];
+    return lines.length >= 3 || (profile?.mainProfile && traits.length) ? lines.slice(0, 6) : ['Perfil pendiente de completar.'];
   };
   const getMicroObservedFacts = (player, profile) => {
     const facts = [];
@@ -5942,11 +6009,17 @@ function App() {
   };
   const buildMicroQuestionSet = (player, profile) => {
     const label = `${profile.mainProfile} ${profile.traits.join(' ')}`.toLowerCase();
+    const group = getMicroPositionGroup(player, profile);
+    if (!group) return ['¿Qué posición debemos registrar?', '¿Qué comportamiento debemos observar?', '¿Qué dato falta validar?'];
     if (/rápido|espacio|ataca espalda|profundo/.test(label)) return ['¿Cómo protegemos la espalda de la línea?', '¿Quién controla su desmarque?', '¿Cómo condicionamos al pasador?', '¿Qué altura defensiva nos conviene?'];
     if (/físico|fijador|referencia|espaldas|juego aéreo|dominante aéreo/.test(label)) return ['¿Quién disputa el primer duelo?', '¿Quién recoge la segunda jugada?', '¿Cómo evitamos que descargue de cara?', '¿Qué central debe anticipar?'];
     if (/desbordador|regateador|1v1/.test(label)) return ['¿Le orientamos hacia dentro o hacia fuera?', '¿Cuándo doblamos la ayuda?', '¿Cómo protegemos la espalda del lateral?', '¿Qué hacemos si recibe perfilado?'];
     if (/rematador|primer palo|finalizador|llega al área/.test(label)) return ['¿Quién lo toma en área?', '¿Cómo defendemos primer palo?', '¿Qué vigilancia requiere en centros?', '¿Cómo protegemos el rechace?'];
-    const group = getMicroPositionGroup(player);
+    if (group === 'goalkeeper') return ['¿Cómo condicionamos su inicio?', '¿Presionamos corto o esperamos juego largo?', '¿Dónde atacamos su punto débil?', '¿Qué hacemos si juega directo?'];
+    if (group === 'centerback') return ['¿Cómo condicionamos su primer pase?', '¿Cuándo atacamos su espalda?', '¿Qué delantero debe fijarlo?', '¿Cómo forzamos su perfil menos cómodo?'];
+    if (group === 'fullback') return ['¿Cómo atacamos su espalda?', '¿Quién sigue su incorporación?', '¿Qué vigilancia necesita nuestro extremo?', '¿Le orientamos dentro o fuera?'];
+    if (group === 'defensive_midfielder' || group === 'midfielder') return ['¿Cómo impedimos que reciba de cara?', '¿Quién salta sobre su primera recepción?', '¿Qué línea de pase debemos cerrar?', '¿Cómo atacamos tras robarle?'];
+    if (group === 'attacking_midfielder') return ['¿Quién lo toma entre líneas?', '¿Cómo cerramos su último pase?', '¿Qué vigilancia necesita en rechace?', '¿Cuándo debe saltar el mediocentro?'];
     if (group === 'forward') return ['¿Cómo defendemos al delantero centro?', '¿Qué escenario debemos preparar?', '¿Quién cubre si fija centrales?', '¿Cómo ajustamos la altura?'];
     if (group === 'winger') return ['¿Cómo defendemos su banda?', '¿Le orientamos dentro o fuera?', '¿Cuándo salta la ayuda?', '¿Cómo protegemos la espalda del lateral?'];
     return ['¿Qué perfil debemos confirmar?', '¿Qué vigilancia individual necesita?', '¿Cómo ajustamos el duelo?', '¿Qué dato falta validar?'];
@@ -5955,7 +6028,7 @@ function App() {
     const group = getMicroPositionGroup(player);
     if (group === 'goalkeeper') return 'PORTEROS';
     if (group === 'centerback' || group === 'fullback') return 'DEFENSAS';
-    if (group === 'midfielder') return 'MEDIOS';
+    if (group === 'midfielder' || group === 'defensive_midfielder' || group === 'attacking_midfielder') return 'MEDIOS';
     if (group === 'winger' || group === 'forward') return 'DELANTEROS';
     return 'SIN DEMARCACIÓN';
   };
@@ -5968,7 +6041,10 @@ function App() {
     if (!tags.length && (profile.traits.length || profile.mainProfile || profile.notes || profile.foot)) tags.push('Vigilancia');
     return tags;
   };
-  const keyPlayersIncludesProfile = (profile) => profile.traits.includes('Rematador') || profile.traits.includes('Ataca espacio') || profile.traits.includes('Especialista ABP');
+  const keyPlayersIncludesProfile = (profile) => {
+    const traits = safeArray(profile.traits).map((trait) => String(trait).toLowerCase());
+    return ['rematador', 'ataca espacio', 'rápido al espacio', 'especialista abp', 'finalizador', 'referencia aérea'].some((trait) => traits.includes(trait));
+  };
 
   const getUnavailableRivalPlayers = () => liveRivalPlayers.filter(isUnavailableRivalPlayer);
 
@@ -6080,7 +6156,7 @@ function App() {
       if (tacticalConnectionFilter === 'Transiciones') return ['Pase largo', 'Descarga', 'Segunda jugada'].includes(connection.type);
       return true;
     });
-    const keyPlayers = observedPlayerRows.filter(({ profile }) => profile.traits.includes('Rematador') || profile.traits.includes('Ataca espacio') || profile.traits.includes('Especialista ABP')).map(({ player }) => player);
+    const keyPlayers = observedPlayerRows.filter(({ profile }) => keyPlayersIncludesProfile(profile)).map(({ player }) => player);
     const unavailablePlayers = getUnavailableRivalPlayers();
     const weaknessPlayers = observedPlayerRows.filter(({ profile }) => profile.speed && Number(profile.speed) <= 2 || profile.defensiveWork && Number(profile.defensiveWork) <= 2).map(({ player }) => player);
     const watchedPlayers = observedPlayerRows.map(({ player }) => player).filter((player) => !keyPlayers.includes(player) && !weaknessPlayers.includes(player) && !isUnavailableRivalPlayer(player));
@@ -6111,6 +6187,9 @@ function App() {
     const selectedMicroStrengths = getMicroStrengthTraits(selectedMicroProfile);
     const selectedMicroWeaknesses = getMicroWeaknessTraits(selectedMicroProfile);
     const selectedMicroHeight = selectedMicroPlayer ? getPlayerHeightValue(selectedMicroPlayer) : '';
+    const selectedMicroPosition = selectedMicroPlayer ? getEffectiveMicroPosition(selectedMicroPlayer, selectedMicroProfile) : '';
+    const selectedMicroBehaviourConfig = selectedMicroPlayer ? getMicroBehaviourConfig(selectedMicroPlayer, selectedMicroProfile) : null;
+    const selectedMicroIncompatibleTraits = selectedMicroPlayer ? getIncompatibleMicroTraits(selectedMicroPlayer, selectedMicroProfile) : [];
     const microPlayersByGroup = ['PORTEROS', 'DEFENSAS', 'MEDIOS', 'DELANTEROS', 'SIN DEMARCACIÓN'].map((group) => ({
       group,
       players: filteredMicroPlayers.filter((player) => getMicroPositionGroupLabel(player) === group),
@@ -6435,95 +6514,122 @@ function App() {
                         </div>
                       </div>
 
-                      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(220px,0.34fr)_minmax(0,0.66fr)]">
+                      <div className="mt-4 grid min-w-0 gap-3">
                         <div className="border border-caudal-electric/15 bg-caudal-electric/[0.045] p-3">
                           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Perfil detectado</p>
                           <div className="mt-3 space-y-1.5">
                             {selectedMicroDetectedProfile.map((line) => (
-                              <p key={line} className="text-sm font-black leading-5 text-white">{line}</p>
+                              <p key={line} className="break-words text-sm font-black leading-5 text-white">{line}</p>
                             ))}
                           </div>
-                          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                            <div>
-                              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Fortalezas</p>
-                              <div className="mt-1.5 space-y-1">
-                                {selectedMicroStrengths.length ? selectedMicroStrengths.slice(0, 4).map((trait) => (
-                                  <p key={trait} className="text-xs font-semibold text-slate-200">• {trait}</p>
-                                )) : <p className="text-xs font-semibold text-slate-500">Sin fortalezas seleccionadas</p>}
-                              </div>
+                        </div>
+
+                        <div className="border border-white/10 bg-white/[0.03] p-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Identidad</p>
+                          <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2">
+                            <div className="min-w-0 bg-black/15 px-3 py-2">
+                              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Posición natural</p>
+                              <p className="mt-1 break-words text-sm font-black text-white">{selectedMicroPlayer.position || 'Sin información'}</p>
                             </div>
-                            <div>
-                              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Vulnerabilidades</p>
-                              <div className="mt-1.5 space-y-1">
-                                {selectedMicroWeaknesses.length ? selectedMicroWeaknesses.map((trait) => (
-                                  <p key={trait} className="text-xs font-semibold text-slate-200">• {trait}</p>
-                                )) : <p className="text-xs font-semibold text-slate-500">Sin vulnerabilidades seleccionadas</p>}
-                              </div>
+                            <label className="grid min-w-0 gap-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
+                              <span>Posición táctica</span>
+                              <select value={selectedMicroProfile.position || ''} onChange={(event) => updateObservedPlayerProfile(selectedMicroPlayer, { position: event.target.value })} className="h-10 min-w-0 border border-white/10 bg-black/20 px-2 text-xs font-bold normal-case tracking-normal text-white outline-none">
+                                <option value="">Sin información</option>
+                                {positions.map((position) => <option key={position} value={position}>{position}</option>)}
+                              </select>
+                            </label>
+                            <label className="grid min-w-0 gap-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
+                              <span>Pie dominante</span>
+                              <select value={selectedMicroProfile.foot || ''} onChange={(event) => updateObservedPlayerProfile(selectedMicroPlayer, { foot: event.target.value })} className="h-10 min-w-0 border border-white/10 bg-black/20 px-2 text-xs font-bold normal-case tracking-normal text-white outline-none">
+                                <option value="">Sin información</option>
+                                {['Derecho', 'Izquierdo', 'Ambos'].map((foot) => <option key={foot} value={foot}>{foot}</option>)}
+                              </select>
+                            </label>
+                            <div className="min-w-0 bg-black/15 px-3 py-2">
+                              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Altura</p>
+                              <p className="mt-1 break-words text-sm font-black text-white">{selectedMicroHeight || 'Sin información'}</p>
                             </div>
+                            <label className="grid min-w-0 gap-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
+                              <span>Perfil principal</span>
+                              <select value={selectedMicroProfile.mainProfile || ''} onChange={(event) => updateObservedPlayerProfile(selectedMicroPlayer, { mainProfile: event.target.value })} className="h-10 min-w-0 border border-white/10 bg-black/20 px-2 text-xs font-bold normal-case tracking-normal text-white outline-none">
+                                <option value="">Sin información</option>
+                                {getMicroProfileOptions(selectedMicroPlayer, selectedMicroProfile).map((option) => <option key={option} value={option}>{option}</option>)}
+                              </select>
+                            </label>
+                            <label className="grid min-w-0 gap-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
+                              <span>Perfil secundario</span>
+                              <select value={selectedMicroProfile.secondaryProfile || ''} onChange={(event) => updateObservedPlayerProfile(selectedMicroPlayer, { secondaryProfile: event.target.value })} className="h-10 min-w-0 border border-white/10 bg-black/20 px-2 text-xs font-bold normal-case tracking-normal text-white outline-none">
+                                <option value="">Sin información</option>
+                                {getMicroProfileOptions(selectedMicroPlayer, selectedMicroProfile).filter((option) => option !== selectedMicroProfile.mainProfile).map((option) => <option key={option} value={option}>{option}</option>)}
+                              </select>
+                            </label>
                           </div>
                         </div>
 
-                        <div className="grid gap-3">
-                          <div className="border border-white/10 bg-white/[0.03] p-3">
-                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Identidad</p>
-                            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                              <div className="bg-black/15 px-3 py-2">
-                                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Posición natural</p>
-                                <p className="mt-1 text-sm font-black text-white">{selectedMicroPlayer.position || 'Sin posición registrada'}</p>
-                              </div>
-                              <label className="grid gap-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
-                                <span>Pie dominante</span>
-                                <select value={selectedMicroProfile.foot || ''} onChange={(event) => updateObservedPlayerProfile(selectedMicroPlayer, { foot: event.target.value })} className="h-10 border border-white/10 bg-black/20 px-2 text-xs font-bold normal-case tracking-normal text-white outline-none">
-                                  <option value="">Sin dato</option>
-                                  {['Derecho', 'Izquierdo', 'Ambos'].map((foot) => <option key={foot} value={foot}>{foot}</option>)}
-                                </select>
-                              </label>
-                              <div className="bg-black/15 px-3 py-2">
-                                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Altura</p>
-                                <p className="mt-1 text-sm font-black text-white">{selectedMicroHeight || 'Sin dato'}</p>
-                              </div>
-                              <label className="grid gap-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
-                                <span>Perfil principal</span>
-                                <select value={selectedMicroProfile.mainProfile || ''} onChange={(event) => updateObservedPlayerProfile(selectedMicroPlayer, { mainProfile: event.target.value })} className="h-10 border border-white/10 bg-black/20 px-2 text-xs font-bold normal-case tracking-normal text-white outline-none">
-                                  <option value="">Por identificar</option>
-                                  {getMicroProfileOptions(selectedMicroPlayer).map((option) => <option key={option} value={option}>{option}</option>)}
-                                </select>
-                              </label>
-                              <label className="grid gap-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500 sm:col-span-2 xl:col-span-2">
-                                <span>Perfil secundario</span>
-                                <select value={selectedMicroProfile.secondaryProfile || ''} onChange={(event) => updateObservedPlayerProfile(selectedMicroPlayer, { secondaryProfile: event.target.value })} className="h-10 border border-white/10 bg-black/20 px-2 text-xs font-bold normal-case tracking-normal text-white outline-none">
-                                  <option value="">Sin perfil secundario</option>
-                                  {getMicroProfileOptions(selectedMicroPlayer).filter((option) => option !== selectedMicroProfile.mainProfile).map((option) => <option key={option} value={option}>{option}</option>)}
-                                </select>
-                              </label>
+                        <div className="border border-white/10 bg-white/[0.03] p-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Comportamientos según posición</p>
+                          <p className="mt-1 text-xs font-semibold text-slate-500">{selectedMicroPosition ? selectedMicroBehaviourConfig?.label || selectedMicroPosition : 'Selecciona la posición del jugador para mostrar comportamientos específicos.'}</p>
+                          {selectedMicroBehaviourConfig ? (
+                            <div className="mt-3 grid min-w-0 gap-3">
+                              {[
+                                ['Con balón', selectedMicroBehaviourConfig.withBall],
+                                ['Sin balón', selectedMicroBehaviourConfig.withoutBall],
+                              ].map(([title, traits]) => (
+                                <div key={title} className="min-w-0">
+                                  <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{title}</p>
+                                  <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
+                                    {traits.map((trait) => {
+                                      const active = selectedMicroProfile.traits.some((item) => String(item).toLowerCase() === String(trait).toLowerCase());
+                                      return (
+                                        <button key={trait} type="button" onClick={() => toggleObservedPlayerTrait(selectedMicroPlayer, trait)} className={`max-w-full rounded-lg border px-2 py-1.5 text-left text-[10px] font-black uppercase tracking-[0.04em] ${active ? semitoneClass.cyan : 'border-white/10 bg-black/15 text-slate-500 hover:text-white'}`}>
+                                          {trait}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
-                          </div>
-
-                          {playerScoutingTraitGroups.map((group) => (
-                            <div key={group.title} className="border border-white/10 bg-white/[0.03] p-3">
-                              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                                {group.title === 'Ataque' || group.title === 'Construcción' ? 'Comportamiento con balón' : group.title === 'Defensa' ? 'Comportamiento sin balón' : 'Vulnerabilidades'} · {group.title}
-                              </p>
+                          ) : null}
+                          {selectedMicroIncompatibleTraits.length ? (
+                            <div className="mt-3 border border-amber-300/20 bg-amber-300/10 p-2.5">
+                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-amber-100">Hay rasgos registrados que no corresponden a la posición actual.</p>
                               <div className="mt-2 flex flex-wrap gap-1.5">
-                                {group.traits.map((trait) => {
-                                  const active = selectedMicroProfile.traits.includes(trait);
-                                  return (
-                                    <button key={trait} type="button" onClick={() => toggleObservedPlayerTrait(selectedMicroPlayer, trait)} className={`rounded-lg border px-2 py-1.5 text-[10px] font-black uppercase tracking-[0.06em] ${active ? semitoneClass.cyan : 'border-white/10 bg-black/15 text-slate-500 hover:text-white'}`}>
-                                      {trait}
-                                    </button>
-                                  );
-                                })}
+                                {selectedMicroIncompatibleTraits.map((trait) => (
+                                  <button key={trait} type="button" onClick={() => toggleObservedPlayerTrait(selectedMicroPlayer, trait)} className="rounded-lg border border-amber-200/25 bg-black/15 px-2 py-1 text-[10px] font-black uppercase tracking-[0.04em] text-amber-100">
+                                    {trait}
+                                  </button>
+                                ))}
                               </div>
                             </div>
-                          ))}
-
-                          <label className="grid gap-2 border border-white/10 bg-white/[0.03] p-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                            <span>Observaciones</span>
-                            <textarea value={selectedMicroProfile.notes || ''} onChange={(event) => updateObservedPlayerProfile(selectedMicroPlayer, { notes: event.target.value })} placeholder="Solo detalles útiles para preparar el duelo individual." rows={3} className="min-h-[76px] w-full resize-none border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold normal-case leading-5 tracking-normal text-white outline-none placeholder:text-slate-600" />
-                          </label>
+                          ) : null}
                         </div>
+
+                        <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+                          <div className="border border-white/10 bg-white/[0.03] p-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Fortalezas</p>
+                            <div className="mt-2 space-y-1">
+                              {selectedMicroStrengths.length ? selectedMicroStrengths.slice(0, 5).map((trait) => (
+                                <p key={trait} className="break-words text-xs font-semibold text-slate-200">• {trait}</p>
+                              )) : <p className="text-xs font-semibold text-slate-500">Sin fortalezas seleccionadas</p>}
+                            </div>
+                          </div>
+                          <div className="border border-white/10 bg-white/[0.03] p-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Vulnerabilidades</p>
+                            <div className="mt-2 space-y-1">
+                              {selectedMicroWeaknesses.length ? selectedMicroWeaknesses.map((trait) => (
+                                <p key={trait} className="break-words text-xs font-semibold text-slate-200">• {trait}</p>
+                              )) : <p className="text-xs font-semibold text-slate-500">Sin vulnerabilidades seleccionadas</p>}
+                            </div>
+                          </div>
+                        </div>
+
+                        <label className="grid gap-2 border border-white/10 bg-white/[0.03] p-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                          <span>Observaciones</span>
+                          <textarea value={selectedMicroProfile.notes || ''} onChange={(event) => updateObservedPlayerProfile(selectedMicroPlayer, { notes: event.target.value })} placeholder="Solo detalles útiles para preparar el duelo individual." rows={3} className="min-h-[76px] w-full resize-none border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold normal-case leading-5 tracking-normal text-white outline-none placeholder:text-slate-600" />
+                        </label>
                       </div>
-                      <div className="mt-3 grid gap-2">
+                      <div className="mt-4 grid gap-2">
                         {selectedMicroQuestions.map((question) => {
                           const active = selectedPreAiAnalysis?.tacticalQuestion?.question === question && selectedPreAiAnalysis?.tacticalQuestion?.playerKey === selectedMicroKey;
                           const sourceType = selectedPreAiAnalysis?.tacticalQuestion?.sourceType;
