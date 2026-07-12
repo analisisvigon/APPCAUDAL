@@ -2924,6 +2924,7 @@ function App() {
   const statsOperationRef = useRef(Promise.resolve());
   const postYoutubeIframeRef = useRef(null);
   const postYoutubePlayerRef = useRef(null);
+  const postMatchVideoRef = useRef(null);
 
   useEffect(() => {
     if (!delegatedTimerRunning) return undefined;
@@ -6390,6 +6391,11 @@ function App() {
   };
 
   const getPostVideoCurrentSeconds = () => {
+    const visiblePlayerDuration = postMatchVideoRef.current?.getDuration?.();
+    if (Number(visiblePlayerDuration) > 0 && postMatchVideoRef.current?.getCurrentTime) {
+      const visiblePlayerTime = postMatchVideoRef.current.getCurrentTime();
+      if (Number.isFinite(Number(visiblePlayerTime))) return Math.max(0, Math.round(Number(visiblePlayerTime)));
+    }
     if (!postYoutubeReady || !postYoutubePlayerRef.current?.getCurrentTime) return null;
     try {
       const currentTime = postYoutubePlayerRef.current?.getCurrentTime?.();
@@ -6944,6 +6950,7 @@ function App() {
       type: current.type || event.type || selectedEventType,
     }));
     try {
+      if (postMatchVideoRef.current?.jumpTo?.(seconds)) return;
       if (postYoutubePlayerRef.current?.seekTo) {
         postYoutubePlayerRef.current.seekTo(seconds, true);
         postYoutubePlayerRef.current.playVideo?.();
@@ -9750,27 +9757,37 @@ function App() {
               {postVideoSaveStatus ? <span className="text-xs text-slate-500">{postVideoSaveStatus}</span> : null}
             </label>
             <div className="mt-4 rounded-3xl border border-white/10 bg-white/[0.035] p-4">
-              <MatchVideoPlayer videoUrl={selectedMatch.postVideoLink} isSaving={postVideoSaveStatus === 'Guardando vídeo...'} />
-              <div className="mt-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Clips importantes</p>
-                <div className="mt-2 grid gap-2">
-                  {(priorityClips.length ? priorityClips : sortedPostClips).slice(0, 6).map((event) => (
-                    <button
-                      key={event.id}
-                      type="button"
-                      onClick={() => seekPostVideoToEvent(event)}
-                      className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/15 px-3 py-2 text-left transition hover:border-caudal-electric/30 hover:bg-caudal-electric/10"
-                    >
-                      <span className="min-w-0 truncate text-sm font-bold text-white">{event.type || 'Clip'} · {event.minute || '-'}'</span>
-                      <span className="shrink-0 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{event.player || 'Ver'}</span>
-                    </button>
-                  ))}
-                  {!sortedPostClips.length ? <p className="rounded-2xl bg-black/15 px-3 py-3 text-sm text-slate-400">No se han marcado clips importantes todavía.</p> : null}
-                </div>
-              </div>
+              <MatchVideoPlayer
+                ref={postMatchVideoRef}
+                videoUrl={selectedMatch.postVideoLink}
+                isSaving={postVideoSaveStatus === 'Guardando vídeo...'}
+                events={chronologicalPostClips}
+                selectedEventId={selectedPostEventId}
+                onDurationChange={(duration) => setPostVideoDuration(duration)}
+                onTimeUpdate={(seconds) => {
+                  setPostVideoStartSeconds(seconds);
+                  setPostCurrentMinute(String(Math.floor(Number(seconds || 0) / 60)));
+                  setNewEventDraft((current) => (
+                    current.videoSeconds === seconds && current.minute === String(Math.floor(Number(seconds || 0) / 60))
+                      ? current
+                      : { ...current, videoSeconds: seconds, minute: String(Math.floor(Number(seconds || 0) / 60)) }
+                  ));
+                }}
+                onEventSelect={(event, seconds) => {
+                  setSelectedPostEventId(event.id);
+                  setPostVideoStartSeconds(seconds);
+                  setPostCurrentMinute(event.minute || String(Math.floor(Number(seconds || 0) / 60)));
+                  setNewEventDraft((current) => ({
+                    ...current,
+                    minute: event.minute || String(Math.floor(Number(seconds || 0) / 60)),
+                    videoSeconds: seconds,
+                    type: current.type || event.type || selectedEventType,
+                  }));
+                }}
+              />
             </div>
             <div className="hidden">
-              {getYouTubeEmbedUrl(selectedMatch.postVideoLink, postVideoStartSeconds) ? (
+              {false && getYouTubeEmbedUrl(selectedMatch.postVideoLink, postVideoStartSeconds) ? (
                 <>
                   <div className="relative overflow-hidden rounded-3xl bg-black shadow-inner" style={{ paddingTop: '56.25%' }}>
                     <iframe

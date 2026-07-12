@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 
 const IFRAME_PROVIDERS = {
   youtube: ['www.youtube-nocookie.com'],
@@ -7,6 +7,24 @@ const IFRAME_PROVIDERS = {
 
 const DIRECT_VIDEO_EXTENSIONS = ['.mp4', '.webm', '.m3u8'];
 const SUPABASE_STORAGE_HOST_PATTERN = /(?:^|\.)supabase\.co$/;
+
+const TIMELINE_FILTERS = [
+  { id: 'all', label: 'Todos', match: () => true },
+  { id: 'chances', label: 'Ocasiones', match: (event) => /ocas|tiro|remate|gol|final/i.test(event.type || '') },
+  { id: 'losses', label: 'Perdidas', match: (event) => /perd|perdid|perdida/i.test(event.type || '') },
+  { id: 'recoveries', label: 'Recuperaciones', match: (event) => /recup|robo/i.test(event.type || '') },
+  { id: 'crosses', label: 'Centros', match: (event) => /centro|lateral/i.test(event.type || '') },
+  { id: 'transitions', label: 'Transiciones', match: (event) => /transici|contra|ataque/i.test(event.type || '') },
+];
+
+const EVENT_TONE_CLASSES = {
+  chances: 'bg-red-400',
+  losses: 'bg-amber-300',
+  recoveries: 'bg-sky-400',
+  crosses: 'bg-violet-400',
+  transitions: 'bg-orange-400',
+  default: 'bg-slate-400',
+};
 
 const normalizeHost = (hostname) => hostname.replace(/^www\./, '').toLowerCase();
 
@@ -58,13 +76,42 @@ const isSupabaseStorageUrl = (url) => (
   && url.pathname.toLowerCase().includes('/storage/v1/object/')
 );
 
+const formatTimelineTime = (seconds) => {
+  const total = Math.max(0, Math.round(Number(seconds || 0)));
+  const minutes = Math.floor(total / 60);
+  const rest = total % 60;
+  return `${minutes}:${String(rest).padStart(2, '0')}`;
+};
+
+const getEventSeconds = (event) => {
+  const explicitSeconds = Number(event?.videoSeconds ?? event?.video_seconds);
+  if (Number.isFinite(explicitSeconds) && explicitSeconds >= 0) return Math.round(explicitSeconds);
+  const minute = Number(event?.minute);
+  return Number.isFinite(minute) ? Math.max(0, Math.round(minute * 60)) : null;
+};
+
+const getEventTone = (event) => {
+  const type = String(event?.type || '').toLowerCase();
+  if (/ocas|tiro|remate|gol|final/.test(type)) return 'chances';
+  if (/perd|perdid|perdida/.test(type)) return 'losses';
+  if (/recup|robo/.test(type)) return 'recoveries';
+  if (/centro|lateral/.test(type)) return 'crosses';
+  if (/transici|contra|ataque/.test(type)) return 'transitions';
+  return 'default';
+};
+
+const getFilteredEvents = (events, activeFilter) => {
+  const filter = TIMELINE_FILTERS.find((item) => item.id === activeFilter) || TIMELINE_FILTERS[0];
+  return events.filter((event) => filter.match(event));
+};
+
 export function detectMatchVideoProvider(videoUrl) {
   const rawUrl = String(videoUrl || '').trim();
   if (!rawUrl) {
     return {
       kind: 'empty',
       playable: false,
-      message: 'No hay vídeo asociado a este partido.',
+      message: 'No hay video asociado a este partido.',
     };
   }
 
@@ -75,7 +122,7 @@ export function detectMatchVideoProvider(videoUrl) {
     return {
       kind: 'invalid',
       playable: false,
-      message: 'El enlace del vídeo no es válido.',
+      message: 'El enlace del video no es valido.',
     };
   }
 
@@ -83,7 +130,7 @@ export function detectMatchVideoProvider(videoUrl) {
     return {
       kind: 'invalid',
       playable: false,
-      message: 'El enlace del vídeo no es válido.',
+      message: 'El enlace del video no es valido.',
     };
   }
 
@@ -94,6 +141,8 @@ export function detectMatchVideoProvider(videoUrl) {
     const embedUrl = new URL(`https://www.youtube-nocookie.com/embed/${youtubeId}`);
     embedUrl.searchParams.set('rel', '0');
     embedUrl.searchParams.set('modestbranding', '1');
+    embedUrl.searchParams.set('enablejsapi', '1');
+    if (typeof window !== 'undefined') embedUrl.searchParams.set('origin', window.location.origin);
     if (startSeconds > 0) embedUrl.searchParams.set('start', String(Math.floor(startSeconds)));
     return {
       kind: 'iframe',
@@ -119,11 +168,11 @@ export function detectMatchVideoProvider(videoUrl) {
   if (host === 'play.asturfutbol.es') {
     return {
       kind: 'external',
-      provider: 'AsturFútbol',
+      provider: 'AsturFutbol',
       playable: false,
       originalUrl: rawUrl,
-      message: 'Este proveedor no permite reproducir el vídeo dentro de la aplicación.',
-      detail: 'El vídeo está guardado, pero este proveedor solo permite abrirlo externamente.',
+      message: 'Este proveedor no permite reproducir el video dentro de la aplicacion.',
+      detail: 'El video esta guardado, pero este proveedor solo permite abrirlo externamente.',
     };
   }
 
@@ -144,7 +193,7 @@ export function detectMatchVideoProvider(videoUrl) {
     provider: 'Enlace externo',
     playable: false,
     originalUrl: rawUrl,
-    message: 'El vídeo está guardado, pero este proveedor solo permite abrirlo externamente.',
+    message: 'El video esta guardado, pero este proveedor solo permite abrirlo externamente.',
   };
 }
 
@@ -157,35 +206,253 @@ function MatchVideoFallback({ analysis }) {
   );
 }
 
-export default function MatchVideoPlayer({ videoUrl, isSaving = false }) {
+function MatchTimeline({ duration, events, selectedEventId, onJump }) {
+  const [activeFilter, setActiveFilter] = useState('all');
+  const timedEvents = useMemo(
+    () => events
+      .map((event) => ({ ...event, timelineSeconds: getEventSeconds(event) }))
+      .filter((event) => event.timelineSeconds !== null)
+      .sort((a, b) => a.timelineSeconds - b.timelineSeconds),
+    [events]
+  );
+  const visibleEvents = useMemo(() => getFilteredEvents(timedEvents, activeFilter), [timedEvents, activeFilter]);
+  const hasDuration = Number(duration) > 0;
+
+  return (
+    <div className="mt-4 rounded-2xl bg-black/20 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Timeline de analisis</p>
+        <div className="flex flex-wrap gap-1.5">
+          {TIMELINE_FILTERS.map((filter) => (
+            <button
+              key={filter.id}
+              type="button"
+              onClick={() => setActiveFilter(filter.id)}
+              className={`rounded-xl px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.10em] transition ${activeFilter === filter.id ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-400 hover:bg-white/15 hover:text-white'}`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {hasDuration && visibleEvents.length ? (
+        <div className="mt-4 px-1 pb-3 pt-5">
+          <div className="relative h-2 rounded-full bg-white/10">
+            {visibleEvents.map((event) => {
+              const left = Math.max(0, Math.min(100, (event.timelineSeconds / duration) * 100));
+              const tone = getEventTone(event);
+              return (
+                <button
+                  key={event.id}
+                  type="button"
+                  onClick={() => onJump(event)}
+                  className={`group absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-black/40 shadow-[0_0_0_2px_rgba(255,255,255,0.12)] transition hover:scale-125 ${EVENT_TONE_CLASSES[tone]} ${selectedEventId === event.id ? 'ring-2 ring-caudal-electric' : ''}`}
+                  style={{ left: `${left}%` }}
+                  aria-label={`${formatTimelineTime(event.timelineSeconds)} ${event.type || 'Clip'}`}
+                >
+                  <span className="pointer-events-none absolute bottom-5 left-1/2 z-20 hidden w-64 -translate-x-1/2 rounded-xl border border-white/10 bg-[#071326] p-3 text-left shadow-glow group-hover:block">
+                    <span className="block text-xs font-black text-white">{formatTimelineTime(event.timelineSeconds)}</span>
+                    <span className="mt-1 block text-xs font-bold text-caudal-electric">{event.type || 'Clip'}</span>
+                    {event.player ? <span className="mt-1 block truncate text-xs text-slate-300">{event.player}</span> : null}
+                    {event.description ? <span className="mt-1 block line-clamp-2 text-xs leading-5 text-slate-400">{event.description}</span> : null}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {!hasDuration ? <p className="mt-4 text-sm text-slate-500">La duracion del video todavia no esta disponible.</p> : null}
+      {hasDuration && !timedEvents.length ? <p className="mt-4 text-sm text-slate-500">No hay clips registrados.</p> : null}
+      {hasDuration && timedEvents.length > 0 && !visibleEvents.length ? <p className="mt-4 text-sm text-slate-500">No hay clips registrados para este filtro.</p> : null}
+
+      {visibleEvents.length ? (
+        <div className="mt-4 divide-y divide-white/10 overflow-hidden rounded-2xl bg-white/[0.035]">
+          {visibleEvents.map((event) => {
+            const tone = getEventTone(event);
+            return (
+              <button
+                key={`row-${event.id}`}
+                type="button"
+                onClick={() => onJump(event)}
+                className={`grid w-full gap-2 px-3 py-3 text-left transition hover:bg-white/[0.06] sm:grid-cols-[82px_1fr] ${selectedEventId === event.id ? 'bg-caudal-electric/10' : ''}`}
+              >
+                <span className="flex items-center gap-2 text-xs font-black text-white">
+                  <span className={`h-2.5 w-2.5 rounded-full ${EVENT_TONE_CLASSES[tone]}`} />
+                  {formatTimelineTime(event.timelineSeconds)}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-black text-white">{event.type || 'Clip'}{event.player ? ` · ${event.player}` : ''}</span>
+                  {event.description ? <span className="mt-0.5 block truncate text-xs text-slate-400">{event.description}</span> : null}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const MatchVideoPlayer = forwardRef(function MatchVideoPlayer({
+  videoUrl,
+  isSaving = false,
+  events = [],
+  selectedEventId = null,
+  onEventSelect = null,
+  onTimeUpdate = null,
+  onDurationChange = null,
+}, ref) {
   const analysis = useMemo(() => detectMatchVideoProvider(videoUrl), [videoUrl]);
   const canOpenExternally = Boolean(analysis.originalUrl);
+  const iframeRef = useRef(null);
+  const videoRef = useRef(null);
+  const youtubePlayerRef = useRef(null);
+  const currentSecondsRef = useRef(0);
+  const [duration, setDuration] = useState(0);
+  const [youtubeReady, setYoutubeReady] = useState(false);
+
+  const updateDuration = (nextDuration) => {
+    const numericDuration = Math.max(0, Math.round(Number(nextDuration || 0)));
+    setDuration(numericDuration);
+    onDurationChange?.(numericDuration);
+  };
+
+  const updateCurrentSeconds = (nextSeconds) => {
+    const numericSeconds = Math.max(0, Math.round(Number(nextSeconds || 0)));
+    currentSecondsRef.current = numericSeconds;
+    onTimeUpdate?.(numericSeconds);
+  };
+
+  const jumpToSeconds = (seconds) => {
+    const nextSeconds = Math.max(0, Math.round(Number(seconds || 0)));
+    if (analysis.kind === 'video' && videoRef.current) {
+      videoRef.current.currentTime = nextSeconds;
+      videoRef.current.play?.();
+      updateCurrentSeconds(nextSeconds);
+      return true;
+    }
+    if (analysis.provider === 'YouTube' && youtubePlayerRef.current?.seekTo) {
+      youtubePlayerRef.current.seekTo(nextSeconds, true);
+      youtubePlayerRef.current.playVideo?.();
+      updateCurrentSeconds(nextSeconds);
+      return true;
+    }
+    return false;
+  };
+
+  const handleJumpToEvent = (event) => {
+    const seconds = getEventSeconds(event);
+    if (seconds === null) return;
+    jumpToSeconds(seconds);
+    onEventSelect?.(event, seconds);
+  };
+
+  useImperativeHandle(ref, () => ({
+    getCurrentTime: () => currentSecondsRef.current,
+    getDuration: () => duration,
+    jumpTo: jumpToSeconds,
+  }), [analysis.kind, analysis.provider, duration]);
+
+  useEffect(() => {
+    updateDuration(0);
+    updateCurrentSeconds(0);
+    setYoutubeReady(false);
+    if (youtubePlayerRef.current?.destroy) {
+      try {
+        youtubePlayerRef.current.destroy();
+      } catch {
+        // Player may already be disposed by the iframe reload.
+      }
+    }
+    youtubePlayerRef.current = null;
+  }, [videoUrl]);
+
+  useEffect(() => {
+    if (analysis.provider !== 'YouTube' || !analysis.playable) return undefined;
+    let cancelled = false;
+    let pollId = null;
+
+    const initializePlayer = () => {
+      if (cancelled || !iframeRef.current || !window.YT?.Player || youtubePlayerRef.current) return;
+      youtubePlayerRef.current = new window.YT.Player(iframeRef.current, {
+        events: {
+          onReady: (event) => {
+            if (cancelled) return;
+            setYoutubeReady(true);
+            updateDuration(event.target.getDuration?.());
+            pollId = window.setInterval(() => {
+              updateCurrentSeconds(event.target.getCurrentTime?.());
+              updateDuration(event.target.getDuration?.());
+            }, 500);
+          },
+          onStateChange: (event) => {
+            updateCurrentSeconds(event.target.getCurrentTime?.());
+            updateDuration(event.target.getDuration?.());
+          },
+        },
+      });
+    };
+
+    if (window.YT?.Player) {
+      initializePlayer();
+    } else {
+      const previousReady = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        previousReady?.();
+        initializePlayer();
+      };
+      if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+        const script = document.createElement('script');
+        script.src = 'https://www.youtube.com/iframe_api';
+        script.async = true;
+        document.body.appendChild(script);
+      }
+    }
+
+    return () => {
+      cancelled = true;
+      if (pollId) window.clearInterval(pollId);
+      setYoutubeReady(false);
+      try {
+        youtubePlayerRef.current?.destroy?.();
+      } catch {
+        // YouTube may have already removed the iframe.
+      }
+      youtubePlayerRef.current = null;
+    };
+  }, [analysis.embedUrl, analysis.playable, analysis.provider]);
+
+  const canShowTimeline = analysis.playable && (analysis.kind === 'video' || (analysis.provider === 'YouTube' && youtubeReady));
 
   return (
     <div>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Vídeo del partido</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Video del partido</p>
         {canOpenExternally ? (
           <button
             type="button"
             onClick={() => window.open(analysis.originalUrl, '_blank', 'noopener,noreferrer')}
             className="self-start rounded-2xl border border-caudal-electric/25 bg-caudal-electric/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-caudal-electric transition hover:bg-caudal-electric hover:text-slate-950 sm:self-auto"
           >
-            Abrir en una pestaña nueva
+            Abrir en una pestana nueva
           </button>
         ) : null}
       </div>
 
       <div className="mt-4">
         {isSaving ? (
-          <p className="mb-3 text-xs font-semibold text-slate-500">Guardando vídeo…</p>
+          <p className="mb-3 text-xs font-semibold text-slate-500">Guardando video...</p>
         ) : null}
 
         {analysis.kind === 'iframe' && analysis.playable ? (
           <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-inner">
             <iframe
+              ref={iframeRef}
               src={analysis.embedUrl}
-              title="Vídeo del partido"
+              title="Video del partido"
               allow="autoplay; fullscreen; picture-in-picture"
               allowFullScreen
               referrerPolicy="strict-origin-when-cross-origin"
@@ -197,14 +464,32 @@ export default function MatchVideoPlayer({ videoUrl, isSaving = false }) {
 
         {analysis.kind === 'video' && analysis.playable ? (
           <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-inner">
-            <video controls preload="metadata" className="absolute inset-0 h-full w-full bg-black">
+            <video
+              ref={videoRef}
+              controls
+              preload="metadata"
+              onLoadedMetadata={(event) => updateDuration(event.currentTarget.duration)}
+              onDurationChange={(event) => updateDuration(event.currentTarget.duration)}
+              onTimeUpdate={(event) => updateCurrentSeconds(event.currentTarget.currentTime)}
+              className="absolute inset-0 h-full w-full bg-black"
+            >
               <source src={analysis.directVideoUrl} type={analysis.type} />
             </video>
           </div>
         ) : null}
 
         {!analysis.playable ? <MatchVideoFallback analysis={analysis} /> : null}
+        {canShowTimeline ? (
+          <MatchTimeline
+            duration={duration}
+            events={events}
+            selectedEventId={selectedEventId}
+            onJump={handleJumpToEvent}
+          />
+        ) : null}
       </div>
     </div>
   );
-}
+});
+
+export default MatchVideoPlayer;
