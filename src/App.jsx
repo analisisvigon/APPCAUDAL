@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import React from 'react';
 import { createPortal } from 'react-dom';
 
@@ -5920,7 +5920,7 @@ function App() {
       ? evidenceWeight >= 7 && sources.length >= 3 ? 'Alta' : evidenceWeight >= 3 || sources.length >= 3 ? 'Media' : 'Baja'
       : 'General';
     const evidenceText = evidences.slice(0, 3).map((item) => `- ${item.observation}${item.importance ? ` (${item.importance})` : ''}${item.match ? ` · ${item.match}` : ''}`).join('\n');
-    const sourceText = sources.map((source) => `✓ ${source}`).join('\n');
+    const sourceText = sources.map((source) => `? ${source}`).join('\n');
     const formatAnswer = ({ title, analysis, proposals, sourceLabel, sourceText: answerSourceText = sourceText, confidenceLabel = confidence }) => ({
       answer: [
         title,
@@ -5982,7 +5982,7 @@ function App() {
       sourceLabel: 'general',
       analysis: `No existen suficientes evidencias para describir cómo actúa específicamente este rival. La orientación siguiente usa principios tácticos generales frente a un ${rivalSystem}, no conclusiones del scouting.`,
       proposals: generalPrinciplesByQuestion(),
-      answerSourceText: '✓ Recomendación táctica general',
+      answerSourceText: 'Recomendación táctica general',
     });
 
     if (!hasSpecificScouting) return generalAnswer();
@@ -5999,7 +5999,7 @@ function App() {
           sourceLabel: 'general',
           analysis: 'Sin información individual registrada.',
           proposals: ['Seleccionar o registrar un jugador rival antes de preparar el duelo Micro.', ...getMicroGeneralScenarios(null)],
-          answerSourceText: '✓ Recomendación táctica general',
+          answerSourceText: 'Recomendación táctica general',
         });
       }
       const profile = getObservedPlayerProfile(targetPlayer);
@@ -6021,7 +6021,7 @@ function App() {
             ...getMicroGeneralScenarios(targetPlayer).map((item) => `• ${item}`),
           ].join('\n'),
           proposals: ['Completar el perfil individual para convertir estas opciones en un plan específico.'],
-          answerSourceText: '✓ Recomendación táctica general',
+          answerSourceText: 'Recomendación táctica general',
         });
       }
       const plan = getMicroPlanForProfile(targetPlayer, profile);
@@ -6037,7 +6037,7 @@ function App() {
           plan.reading,
         ].join('\n'),
         proposals: plan.proposals,
-        answerSourceText: '✓ Scouting individual del rival',
+        answerSourceText: '? Scouting individual del rival',
       });
     }
 
@@ -7020,7 +7020,7 @@ function App() {
                                 className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-xs font-black text-slate-100 transition hover:bg-white/[0.045]"
                               >
                                 <span>{question}</span>
-                                <span className="shrink-0 text-sm font-black text-caudal-electric">{active ? '−' : '+'}</span>
+                                <span className="shrink-0 text-sm font-black text-caudal-electric">{active ? '-' : '+'}</span>
                               </button>
                               {active && tacticalAnswer ? (
                                 <div className="border-t border-white/10 px-3 py-3">
@@ -7077,7 +7077,7 @@ function App() {
                               className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-xs font-black text-slate-100 transition hover:bg-white/[0.045]"
                             >
                               <span>{question}</span>
-                              <span className="shrink-0 text-sm font-black text-caudal-electric">{active ? '−' : '+'}</span>
+                              <span className="shrink-0 text-sm font-black text-caudal-electric">{active ? '-' : '+'}</span>
                             </button>
                             {active && tacticalAnswer ? (
                               <div className="border-t border-white/10 px-3 py-3">
@@ -7171,7 +7171,7 @@ function App() {
                   {visibleTacticalConnections.length ? visibleTacticalConnections.slice(0, 8).map((connection) => (
                     <div key={connection.id} className={`flex items-center justify-between gap-3 border px-2.5 py-2 text-xs ${selectedTacticalConnectionId === connection.id ? 'border-caudal-electric/35 bg-caudal-electric/10' : 'border-white/10 bg-white/[0.035]'}`}>
                       <button type="button" onClick={() => setSelectedTacticalConnectionId(selectedTacticalConnectionId === connection.id ? '' : connection.id)} className="min-w-0 flex-1 truncate text-left font-black text-white">
-                        {connection.origin} → {connection.destination} · {connection.type} · {connection.intensity}
+                          {connection.origin} {'->'} {connection.destination} · {connection.type} · {connection.intensity}
                       </button>
                       <button type="button" onClick={() => removeTacticalConnection(connection.id)} className="shrink-0 text-[10px] font-black uppercase text-red-200">Eliminar</button>
                     </div>
@@ -8642,10 +8642,10 @@ function App() {
   };
 
   const getStatsTimelineIcon = (event) => {
-    if (event.category === 'Goles') return '⚽';
-    if (event.category === 'Tarjetas') return event.type === 'Roja' ? '🔴' : '🟨';
-    if (event.category === 'Cambios') return '🔄';
-    if (event.category === 'Lesiones') return '🚑';
+    if (event.category === 'Goles') return '?';
+    if (event.category === 'Tarjetas') return event.type === 'Roja' ? '??' : '??';
+    if (event.category === 'Cambios') return '??';
+    if (event.category === 'Lesiones') return '??';
     return 'EV';
   };
 
@@ -9606,9 +9606,9 @@ function App() {
       corner: 'COR',
     }[getQuickEventBaseType(tipoEvento)] || 'EV');
     const getMomentumIcon = (tipoEvento) => ({
-      momento_dominamos: '🟢',
-      momento_igualado: '🟡',
-      momento_sufriendo: '🔴',
+      momento_dominamos: '??',
+      momento_igualado: '??',
+      momento_sufriendo: '??',
     }[tipoEvento] || '•');
     const liveReading = (() => {
       const totalLiveEvents = getDelegatedEvents().length;
@@ -9854,7 +9854,7 @@ function App() {
                 <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">Timeline en directo</h4>
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={() => setShowOnlyImportantDelegatedEvents((current) => !current)} className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.10em] ${showOnlyImportantDelegatedEvents ? 'bg-yellow-300 text-slate-950' : 'bg-white/10 text-slate-200'}`}>
-                    ⭐
+                    ?
                   </button>
                   {orderedDelegatedEvents.length > 20 ? (
                     <button type="button" onClick={() => setShowAllDelegatedEvents((current) => !current)} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-slate-200">
@@ -9882,7 +9882,7 @@ function App() {
                           <p className="truncate text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{playerName || (eventSide === 'rival' && definition?.requiresPlayer ? 'Jugador no identificado' : 'Evento colectivo')}</p>
                         </div>
                         <div className="flex items-center gap-1">
-                          {important ? <span className="rounded-lg bg-yellow-300 px-2 py-1 text-[10px] font-black text-slate-950">★</span> : null}
+                          {important ? <span className="rounded-lg bg-yellow-300 px-2 py-1 text-[10px] font-black text-slate-950">?</span> : null}
                         </div>
                       </div>
                       <details className="mt-2">
@@ -9901,7 +9901,7 @@ function App() {
                         ) : null}
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           <button type="button" onClick={() => toggleDelegatedImportantEvent(event.id)} className={`rounded-lg px-2 py-1 text-[10px] font-black ${important ? 'bg-yellow-300 text-slate-950' : 'bg-white/10 text-slate-300'}`}>
-                            ★ Importante
+                            ? Importante
                           </button>
                           <button
                             type="button"
@@ -10015,10 +10015,10 @@ function App() {
           const stats = playerName ? getStatsPlayerData(playerName) : null;
           const isCaptain = player?.id && selectedMatch.captainPlayerId === player.id;
           const statusBadges = [
-            stats?.yellow ? { key: 'yellow', label: '🟨', title: 'Amarilla' } : null,
-            stats?.red ? { key: 'red', label: '🔴', title: 'Roja' } : null,
-            stats?.injured ? { key: 'injured', label: '🚑', title: 'Lesión' } : null,
-            isCaptain ? { key: 'captain', label: '⭐', title: 'Capitán' } : null,
+            stats?.yellow ? { key: 'yellow', label: '??', title: 'Amarilla' } : null,
+            stats?.red ? { key: 'red', label: '??', title: 'Roja' } : null,
+            stats?.injured ? { key: 'injured', label: 'LES', title: 'Lesión' } : null,
+            isCaptain ? { key: 'captain', label: 'CAP', title: 'Capitán' } : null,
           ].filter(Boolean);
           const replacementInfo = playerName ? getStatsReplacementInfo(playerName) : null;
           const playerStateClass = stats?.red
@@ -10998,7 +10998,7 @@ function App() {
               <div key={`${item}-${index}`} className="flex items-center justify-between gap-3 rounded-2xl border border-white/5 bg-white/[0.04] px-3 py-2">
                 <p className="min-w-0 truncate text-sm font-semibold text-white">
                   <span className={status === 'Cumplido' || status === 'Parcial' ? 'text-emerald-200' : status === 'No cumplido' ? 'text-red-200' : 'text-slate-500'}>
-                    {status === 'Cumplido' || status === 'Parcial' ? '✓' : status === 'No cumplido' ? '✕' : '·'}
+                    {status === 'Cumplido' || status === 'Parcial' ? 'OK' : status === 'No cumplido' ? 'NO' : '-'}
                   </span>{' '}
                   {item}
                 </p>
@@ -11816,7 +11816,7 @@ function App() {
       : completionPercent >= 40
         ? 'border-amber-200/20 bg-amber-200/10 text-amber-100'
         : 'border-red-200/20 bg-red-300/10 text-red-100';
-    const trafficIcon = completionPercent >= 75 ? '●' : completionPercent >= 40 ? '●' : '●';
+    const trafficIcon = completionPercent >= 75 ? '?' : completionPercent >= 40 ? '?' : '?';
     const scoutingSource = latestScoutingMatch || {};
     const strengthsText = firstMatchValue('preRivalStrengths') || (hasRealValue(team.mainThreat) ? `Amenaza principal: ${team.mainThreat}` : '');
     const weaknessesText = firstMatchValue('preRivalWeaknesses', 'preRivalSpacesAllowed') || (hasRealValue(team.detectedWeakness) ? `Espacio a atacar: ${team.detectedWeakness}` : '');
@@ -12498,12 +12498,12 @@ function App() {
       post: safeArray(match.events),
     }));
     const patternDefs = [
-      { id: 'high_recovery_shot', label: 'Recuperación → tiro', a: ['recuperacion'], aSide: 'caudal', b: ['tiro', 'tiro_puerta', 'gol'], bSide: 'caudal', outcome: ['tiro_puerta', 'gol'] },
-      { id: 'loss_rival_chance', label: 'Pérdida interior → ocasión rival', a: ['perdida'], aSide: 'caudal', b: ['tiro', 'tiro_puerta', 'gol', 'centro', 'regate'], bSide: 'rival', outcome: ['tiro_puerta', 'gol'] },
-      { id: 'direct_second', label: 'Juego directo → segunda jugada', text: [/juego directo/i, /segunda/i] },
-      { id: 'cross_finish', label: 'Centro lateral → remate', text: [/centro|lateral|banda/i, /remate|finaliza|tiro|gol/i] },
-      { id: 'transition_finish', label: 'Transición → finalización rápida', text: [/transici/i, /tiro|finaliza|gol|ocas/i] },
-      { id: 'abp_second', label: 'ABP → segunda acción', text: [/abp|corner|falta/i, /segunda|rechace/i] },
+      { id: 'high_recovery_shot', label: 'Recuperación -> tiro', a: ['recuperacion'], aSide: 'caudal', b: ['tiro', 'tiro_puerta', 'gol'], bSide: 'caudal', outcome: ['tiro_puerta', 'gol'] },
+      { id: 'loss_rival_chance', label: 'Pérdida interior -> ocasión rival', a: ['perdida'], aSide: 'caudal', b: ['tiro', 'tiro_puerta', 'gol', 'centro', 'regate'], bSide: 'rival', outcome: ['tiro_puerta', 'gol'] },
+      { id: 'direct_second', label: 'Juego directo ? segunda jugada', text: [/juego directo/i, /segunda/i] },
+      { id: 'cross_finish', label: 'Centro lateral ? remate', text: [/centro|lateral|banda/i, /remate|finaliza|tiro|gol/i] },
+      { id: 'transition_finish', label: 'Transición -> finalización rápida', text: [/transici/i, /tiro|finaliza|gol|ocas/i] },
+      { id: 'abp_second', label: 'ABP -> segunda acción', text: [/abp|corner|falta/i, /segunda|rechace/i] },
     ];
     return patternDefs.map((pattern) => {
       let frequency = 0;
@@ -13314,12 +13314,12 @@ function App() {
   const getRivalPlayerStatusIcons = (teamId, player) => {
     const flags = getRivalPlayerFlags(teamId, player.name);
     return [
-      player.isKey ? ['⭐', 'Jugador estrella', 'bg-amber-200 text-slate-950'] : null,
+      player.isKey ? ['?', 'Jugador estrella', 'bg-amber-200 text-slate-950'] : null,
       flags.captain || player.captain ? ['©', 'Capitán', 'bg-blue-300 text-slate-950'] : null,
-      flags.observed || player.observed ? ['👁', 'Observado', 'bg-sky-200 text-slate-950'] : null,
-      player.injured ? ['🏥', 'Lesionado', 'bg-red-300 text-slate-950'] : null,
-      player.suspended ? ['🚫', 'Sancionado / expulsado', 'bg-red-900 text-white'] : null,
-      player.yellowRisk ? ['🟨', '5 amarillas / riesgo sanción', 'bg-yellow-200 text-slate-950'] : null,
+      flags.observed || player.observed ? ['??', 'Observado', 'bg-sky-200 text-slate-950'] : null,
+      player.injured ? ['??', 'Lesionado', 'bg-red-300 text-slate-950'] : null,
+      player.suspended ? ['??', 'Sancionado / expulsado', 'bg-red-900 text-white'] : null,
+      player.yellowRisk ? ['AM', '5 amarillas / riesgo sanción', 'bg-yellow-200 text-slate-950'] : null,
     ].filter(Boolean);
   };
 
@@ -14771,7 +14771,7 @@ function App() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-[9px] font-black uppercase tracking-[0.16em] opacity-70">Conexión táctica</p>
-                <p className="mt-1 text-sm font-black text-white">{selectedConnection.origin} → {selectedConnection.destination}</p>
+                <p className="mt-1 text-sm font-black text-white">{selectedConnection.origin} ? {selectedConnection.destination}</p>
               </div>
               <button type="button" onClick={() => setSelectedTacticalConnectionId('')} className="text-[10px] font-black uppercase text-white/70">Cerrar</button>
             </div>
@@ -16667,10 +16667,10 @@ function App() {
                 </div>
                 <div className="grid gap-2 sm:grid-cols-4 xl:min-w-[560px]">
                   {[
-                    ['👥', 'Total plantilla', squadSummary.total, 'border-white/10 bg-white/[0.05] text-white'],
-                    ['●', 'Disponibles reales', squadSummary.available, 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100'],
-                    ['●', 'Lesionados', squadSummary.injured, 'border-red-200/20 bg-red-300/10 text-red-100'],
-                    ['●', 'Sancionados', squadSummary.suspended, 'border-slate-200/20 bg-slate-200/10 text-slate-200'],
+                    ['??', 'Total plantilla', squadSummary.total, 'border-white/10 bg-white/[0.05] text-white'],
+                    ['?', 'Disponibles reales', squadSummary.available, 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100'],
+                    ['?', 'Lesionados', squadSummary.injured, 'border-red-200/20 bg-red-300/10 text-red-100'],
+                    ['?', 'Sancionados', squadSummary.suspended, 'border-slate-200/20 bg-slate-200/10 text-slate-200'],
                   ].map(([icon, label, value, tone]) => (
                     <div key={label} className={`rounded-2xl border px-3 py-2 ${tone}`}>
                       <p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-65">{icon} {label}</p>
@@ -16843,12 +16843,12 @@ function App() {
                               </td>
                               <td className="px-4 py-3">
                                 <div className="flex flex-wrap gap-1.5">
-                                  {inBaseEleven ? <span className="rounded-lg border border-white/10 bg-white/[0.06] px-2 py-1 text-[10px] font-bold text-white">⭐ Titular habitual</span> : null}
-                                  {staffStatus.captain ? <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">👑 Capitán</span> : null}
-                                  {rosterDashboard.launcherPlayerIds.has(player.id) ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">🎯 Lanzador</span> : null}
-                                  {rosterRow.yellow ? <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">🟨 Amonestado</span> : null}
-                                  {staffStatus.injured ? <span className="rounded-lg border border-red-200/20 bg-red-300/10 px-2 py-1 text-[10px] font-bold text-red-100">🚑 Lesionado</span> : null}
-                                  {staffStatus.sub23 ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">🔵 Sub-23</span> : null}
+                                  {inBaseEleven ? <span className="rounded-lg border border-white/10 bg-white/[0.06] px-2 py-1 text-[10px] font-bold text-white">? Titular habitual</span> : null}
+                                  {staffStatus.captain ? <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">Capitán</span> : null}
+                                  {rosterDashboard.launcherPlayerIds.has(player.id) ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">?? Lanzador</span> : null}
+                                  {rosterRow.yellow ? <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">?? Amonestado</span> : null}
+                                  {staffStatus.injured ? <span className="rounded-lg border border-red-200/20 bg-red-300/10 px-2 py-1 text-[10px] font-bold text-red-100">?? Lesionado</span> : null}
+                                  {staffStatus.sub23 ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">?? Sub-23</span> : null}
                                 </div>
                               </td>
                               <td className="px-4 py-3 font-bold text-white">{rosterRow.minutes ? `${rosterRow.minutes}'` : '-'}</td>
@@ -16880,12 +16880,12 @@ function App() {
                         const startsLabel = rosterRow.starts ? `${rosterRow.starts} TIT` : 'Sin participar';
                         const footLabel = player.foot || 'No disponible';
                         const tacticalChips = [
-                          inBaseEleven || rosterRow.starts >= 2 ? ['⭐ Titular habitual', 'border-white/12 bg-white/[0.06] text-white'] : null,
-                          staffStatus.captain ? ['👑 Capitán', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
-                          rosterDashboard.launcherPlayerIds.has(player.id) ? ['🎯 Lanzador', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
-                          rosterRow.yellow ? ['🟨 Amonestado', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
-                          staffStatus.injured ? ['🚑 Lesionado', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
-                          staffStatus.sub23 ? ['🔵 Sub-23', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
+                          inBaseEleven || rosterRow.starts >= 2 ? ['? Titular habitual', 'border-white/12 bg-white/[0.06] text-white'] : null,
+                          staffStatus.captain ? ['Capitán', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
+                          rosterDashboard.launcherPlayerIds.has(player.id) ? ['?? Lanzador', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
+                          rosterRow.yellow ? ['?? Amonestado', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
+                          staffStatus.injured ? ['?? Lesionado', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
+                          staffStatus.sub23 ? ['?? Sub-23', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
                         ].filter(Boolean);
                         return (
                         <article key={player.id} onClick={() => setSelectedPlayerProfileId(player.id)} className="group relative min-h-[112px] cursor-pointer rounded-[1rem] border border-white/10 bg-[#0a1425]/86 p-3 shadow-[0_10px_24px_rgba(0,0,0,0.13)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c] hover:shadow-[0_14px_34px_rgba(0,0,0,0.20)] focus-within:border-caudal-electric/40">
@@ -16894,7 +16894,7 @@ function App() {
                             onClick={(event) => openFloatingMenu(event, { id: `player-card-${player.id}`, type: 'player-card' })}
                             className="absolute right-2 top-2 z-20 flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-black/25 text-base font-black leading-none text-slate-300 transition hover:bg-white/10 hover:text-white"
                           >
-                            ⋮
+                            ?
                           </button>
                           {floatingMenu?.id === `player-card-${player.id}` ? (
                             <FloatingActionMenu anchorRect={floatingMenu.anchorRect} width={144} onClose={closeFloatingMenu}>
@@ -16972,7 +16972,7 @@ function App() {
               {!selectedTeam ? (
                 <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(260px,1fr)_220px] lg:items-center">
                   <label className="relative block">
-                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-500">⌕</span>
+                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-500">?</span>
                     <input
                       value={teamSearchTerm}
                       onChange={(event) => setTeamSearchTerm(event.target.value)}
@@ -17319,11 +17319,11 @@ function App() {
                     <div className={`rounded-2xl border border-white/10 bg-white/[0.035] ${isPresentationMode ? 'px-3 py-2' : 'p-4'}`}>
                       <div className={`flex flex-wrap items-center font-bold text-slate-200 ${isPresentationMode ? 'gap-x-4 gap-y-1 text-xs' : 'gap-2 text-sm'}`}>
                         <span className="font-black uppercase tracking-[0.16em] text-caudal-electric">Resumen rival</span>
-                        <span>⭐ <strong className="text-white">{keyPlayer ? displayPlayerName(keyPlayer) : '-'}</strong></span>
+                        <span>? <strong className="text-white">{keyPlayer ? displayPlayerName(keyPlayer) : '-'}</strong></span>
                         <span>© <strong className="text-white">{captainPlayer ? displayPlayerName(captainPlayer) : '-'}</strong></span>
-                        <span>🏥 <strong className="text-white">{rivalPlayers.filter((player) => player.injured).length ? rivalPlayers.filter((player) => player.injured).map(displayPlayerName).join(', ') : '-'}</strong></span>
-                        <span>🚫 <strong className="text-white">{rivalPlayers.filter((player) => player.suspended).length ? rivalPlayers.filter((player) => player.suspended).map(displayPlayerName).join(', ') : '-'}</strong></span>
-                        <span>🟨 <strong className="text-white">{yellowRiskPlayers.length ? yellowRiskPlayers.map(displayPlayerName).join(', ') : '-'}</strong></span>
+                        <span>?? <strong className="text-white">{rivalPlayers.filter((player) => player.injured).length ? rivalPlayers.filter((player) => player.injured).map(displayPlayerName).join(', ') : '-'}</strong></span>
+                        <span>?? <strong className="text-white">{rivalPlayers.filter((player) => player.suspended).length ? rivalPlayers.filter((player) => player.suspended).map(displayPlayerName).join(', ') : '-'}</strong></span>
+                        <span>?? <strong className="text-white">{yellowRiskPlayers.length ? yellowRiskPlayers.map(displayPlayerName).join(', ') : '-'}</strong></span>
                         <span>Reservas: <strong className="text-white">{presentationBenchPlayers.length}</strong></span>
                         <span>Sistema: <strong className="text-white">{selectedTeam.system || 'Pendiente'}</strong></span>
                       </div>
@@ -17429,7 +17429,7 @@ function App() {
                                     >
                                       ×
                                     </button> : null}
-                                    {slotPlayer.isKey ? <span className={`absolute left-1/2 flex -translate-x-1/2 items-center justify-center rounded-full border border-amber-200/70 bg-amber-200 font-black text-slate-950 shadow-[0_0_16px_rgba(250,204,21,0.42)] ${isPresentationMode ? '-top-3 h-5 w-5 text-[10px]' : '-top-5 h-7 w-7 text-sm'}`}>⭐</span> : null}
+                                    {slotPlayer.isKey ? <span className={`absolute left-1/2 flex -translate-x-1/2 items-center justify-center rounded-full border border-amber-200/70 bg-amber-200 font-black text-slate-950 shadow-[0_0_16px_rgba(250,204,21,0.42)] ${isPresentationMode ? '-top-3 h-5 w-5 text-[10px]' : '-top-5 h-7 w-7 text-sm'}`}>?</span> : null}
                                     <span className={`absolute flex flex-col gap-0.5 ${isPresentationMode ? '-right-1 top-1' : '-right-2 top-2'}`}>
                                       {getRivalPlayerStatusIcons(selectedTeam.id, slotPlayer).filter(([, title]) => title !== 'Capitán').map(([icon, title, className]) => (
                                         <span key={title} title={title} className={`flex items-center justify-center rounded-md px-1 font-black leading-none ${isPresentationMode ? 'h-4 min-w-4 text-[8px]' : 'h-5 min-w-5 text-[10px]'} ${className}`}>{icon}</span>
@@ -17653,7 +17653,7 @@ function App() {
                                         onClick={(event) => openFloatingMenu(event, { id: `rival-player-${getRivalPlayerUniqueKey(player)}`, type: 'rival-player' })}
                                         className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-sm font-black text-slate-300 transition hover:bg-white/10"
                                       >
-                                        ⋮
+                                        ?
                                       </button>
                                       {floatingMenu?.id === `rival-player-${getRivalPlayerUniqueKey(player)}` ? (
                                         <FloatingActionMenu anchorRect={floatingMenu.anchorRect} width={256} onClose={closeFloatingMenu}>
@@ -18253,7 +18253,7 @@ function App() {
                                 onClick={(event) => openFloatingMenu(event, { id: `team-card-${team.id}`, type: 'team-card' })}
                                 className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.045] text-sm font-black text-slate-300 transition hover:bg-white/10"
                               >
-                                ⋯
+                                ?
                               </button>
                               {floatingMenu?.id === `team-card-${team.id}` ? (
                                 <FloatingActionMenu anchorRect={floatingMenu.anchorRect} width={176} onClose={closeFloatingMenu}>
@@ -18269,7 +18269,7 @@ function App() {
 
                         <div className="relative mt-4 flex items-center">
                           <span className="inline-flex items-center gap-2 rounded-xl border border-caudal-electric/20 bg-caudal-electric/[0.11] px-3 py-2 text-sm font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                            <span className="text-base leading-none">⚽</span>
+                            <span className="text-base leading-none">?</span>
                             <span>{team.system || 'Sin registrar'}</span>
                           </span>
                         </div>
@@ -18319,966 +18319,269 @@ function App() {
 
         {activeTab === 'Análisis Grupal' ? (() => {
           try {
-          const groupData = getGroupAnalysisData();
-          const scopedMatches = safeArray(groupData.scoped);
-          const hasData = groupData.played > 0;
+          {
+          const scopedMatches = getGroupScopedMatches().map((match) => ({
+            ...match,
+            statsGoalEvents: safeArray(match.statsGoalEvents),
+            events: safeArray(match.events),
+          }));
+          const hasData = scopedMatches.length > 0;
+          const goalForRows = scopedMatches.flatMap((match) => safeArray(match.statsGoalEvents).filter((event) => event.type === 'Gol a favor').map((event) => ({ ...event, match })));
+          const goalAgainstRows = scopedMatches.flatMap((match) => safeArray(match.statsGoalEvents).filter((event) => event.type === 'Gol en contra').map((event) => ({ ...event, match })));
+          const allGoalRows = [...goalForRows, ...goalAgainstRows];
+          const groupData = summarizeGroupMatches(scopedMatches);
           const leagueResults = calculateLeagueResults(matches);
-          const goalForRows = safeArray(groupData.goalForEvents);
-          const goalAgainstRows = safeArray(groupData.goalAgainstEvents);
-          const quickRows = safeArray(groupData.quickEvents);
           const minuteFor = groupEventsByMinuteRange(goalForRows);
           const minuteAgainst = groupEventsByMinuteRange(goalAgainstRows);
           const maxMinuteGoals = Math.max(1, ...minuteFor.map((row) => row.count), ...minuteAgainst.map((row) => row.count));
           const phaseFor = countPhases(goalForRows);
           const phaseAgainst = countPhases(goalAgainstRows);
-          const assistZoneCounts = countPitchZones(filterAssistEventsByGroupMode(goalForRows).map((event) => event.assistZone));
-          const shotSourceEvents = groupShotFilter === 'Goles a favor'
-            ? goalForRows
-            : groupShotFilter === 'Goles en contra'
-              ? goalAgainstRows
-              : [...goalForRows, ...goalAgainstRows];
-          const shotZoneCounts = countPitchZones(shotSourceEvents.map((event) => event.shotZone));
+          const assistZoneCounts = countPitchZones(goalForRows.map((event) => event.assistZone));
+          const shotZoneCounts = countPitchZones(allGoalRows.map((event) => event.shotZone));
+          const goalZoneForCounts = getGroupGoalZoneCounts(goalForRows);
+          const goalZoneAgainstCounts = getGroupGoalZoneCounts(goalAgainstRows);
           const abpFor = getSetPieceSummary(goalForRows);
           const abpAgainst = getSetPieceSummary(goalAgainstRows);
           const localSummary = summarizeGroupMatches(scopedMatches.filter((match) => match.isHome));
           const awaySummary = summarizeGroupMatches(scopedMatches.filter((match) => !match.isHome));
-          const trend = getGroupTendency(scopedMatches);
-          const rankings = getGroupRankings(scopedMatches);
           const mostUsedSystem = getMostUsedRealSystem(scopedMatches);
-          const effectiveIdealSystem = idealSystem || mostUsedSystem.system || gameSystems[0];
-          const idealSystemOptions = Array.from(new Set([mostUsedSystem.system, effectiveIdealSystem, ...gameSystems].filter((system) => system && system !== 'Otro')));
-          const idealElevenRows = effectiveIdealSystem ? buildIdealElevenForSystem(rankings.idealRows, effectiveIdealSystem) : [];
-          const subphaseForRows = getGroupSubphaseRanking(goalForRows);
-          const subphaseAgainstRows = getGroupSubphaseRanking(goalAgainstRows);
-          const goalZoneForCounts = getGroupGoalZoneCounts(goalForRows);
-          const goalZoneAgainstCounts = getGroupGoalZoneCounts(goalAgainstRows);
-          const quickSummary = groupData.quickSummary || getQuickEventSummary([]);
-          const quickMinuteRanges = getQuickEventsByMinuteRange(quickRows);
-          const maxQuickRange = Math.max(1, ...quickMinuteRanges.flatMap((row) => [row.caudal, row.rival]));
-          const hasReviewedQuickEvents = quickRows.length > 0;
-          const hasUnreviewedQuickEvents = safeArray(groupData.unreviewedQuickEvents).length > 0;
-          const quickEvolution = scopedMatches.map((match) => ({
-            match,
-            summary: getQuickEventSummary(safeArray(match.quickEvents)),
-          }));
-          const quickStatGroups = ['Producción ofensiva', 'Seguridad con balón', 'Disciplina y duelos'].map((group) => ({
-            group,
-            rows: safeArray(quickSummary.statRows).filter((row) => row.group === group),
-          }));
-          const automaticAlerts = getGroupAlerts(groupData, rankings, localSummary, awaySummary);
-          const automaticReadings = getGroupAutomaticReadings(groupData);
-          const groupIdentity = getGroupIdentity(groupData);
-          const tacticalPatterns = getGroupTacticalPatterns(groupData);
-          const temporalContext = getGroupTemporalContext(groupData);
-          const trainingProposals = getGroupTrainingProposals(tacticalPatterns, automaticAlerts, groupIdentity, temporalContext);
-          const mainReadings = getGroupMainReading({ groupData, identity: groupIdentity, patterns: tacticalPatterns, alerts: automaticAlerts, temporal: temporalContext, quickSummary });
-          const prePostLinks = getGroupPrePostReality(scopedMatches);
-          const idealIntelligence = getIdealElevenIntelligence(scopedMatches, idealElevenRows, effectiveIdealSystem);
-          const abpReading = (forGoals, againstGoals) => {
-            if (!forGoals && !againstGoals) return 'neutro';
-            if (forGoals >= againstGoals + 2) return 'fuerte';
-            if (againstGoals >= forGoals + 2) return 'vulnerable';
-            return 'neutro';
-          };
-          const abpGlobalReading = abpReading(abpFor.total, abpAgainst.total);
-          const rankingList = (rows, valueKey, empty = 'sin datos suficientes') => (
-            safeArray(rows).length ? safeArray(rows).map((row, index) => (
-              <div key={row.player?.name || row.playerName || index} className="flex items-center justify-between gap-3 rounded-2xl bg-white/5 px-4 py-3">
-                <span className="truncate text-sm font-bold text-white">{row.player?.name || row.playerName || 'Jugador'}</span>
-                <strong className="text-caudal-electric">
-                  {row[valueKey]}{valueKey === 'minutes' ? ` · ${row.minutePct}%` : ''}
-                </strong>
-              </div>
-            )) : <p className="rounded-2xl bg-white/5 p-4 text-sm italic text-slate-500">{empty}</p>
-          );
-          const topZoneEntry = (counts) => Object.entries(counts || {}).sort((a, b) => Number(b[1]) - Number(a[1]))[0] || null;
-          const zoneReading = (counts, total, fallback) => {
-            const topZone = topZoneEntry(counts);
-            if (!topZone || !total) return 'Sin datos suficientes';
-            return `${Math.round((Number(topZone[1]) / Math.max(1, total)) * 100)}% en ${displayZoneLabel(topZone[0]).toLowerCase()}.`;
-          };
-          const weeklyPriority = trainingProposals[0]?.title || automaticAlerts.find((alert) => alert.gravity === 'alta' || alert.gravity === 'media')?.text || mainReadings[0]?.text || 'Validar más partidos para priorizar.';
-          const executiveReport = hasData
-            ? `El equipo presenta una identidad dominante de ${String(groupIdentity.dominantFor?.label || 'juego por validar').toLowerCase()}. La principal fortaleza detectada es ${String(groupIdentity.dominantFor?.label || 'sin patrón claro').toLowerCase()} y la fragilidad más repetida aparece en ${String(groupIdentity.dominantAgainst?.label || 'acciones todavía sin muestra suficiente').toLowerCase()}. El mejor tramo competitivo es ${temporalContext.best?.range || 'sin datos'} y la prioridad semanal es ${weeklyPriority}.`
-            : 'Sin datos suficientes para emitir un informe colectivo fiable.';
-          const compactMetric = (label, value, meta = '') => (
-            <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
-              <p className="mt-2 text-lg font-black text-white">{value}</p>
-              {meta ? <p className="mt-1 text-[11px] font-bold text-caudal-electric">{meta}</p> : null}
+          const systemRows = Object.entries(scopedMatches.reduce((acc, match) => {
+            const system = match.statsSystem || match.preCaudalSystem || '';
+            if (!system) return acc;
+            const score = getMatchScoreData(match);
+            const row = acc[system] || { system, played: 0, points: 0, wins: 0, draws: 0, losses: 0 };
+            row.played += 1;
+            if (score.caudalGoals > score.rivalGoals) {
+              row.wins += 1;
+              row.points += 3;
+            } else if (score.caudalGoals === score.rivalGoals) {
+              row.draws += 1;
+              row.points += 1;
+            } else {
+              row.losses += 1;
+            }
+            acc[system] = row;
+            return acc;
+          }, {})).map(([, row]) => ({ ...row, ppg: row.played ? row.points / row.played : 0 })).sort((a, b) => b.ppg - a.ppg || b.played - a.played);
+          const mostEffectiveSystem = systemRows[0] || null;
+          const competitionRows = Object.entries(scopedMatches.reduce((acc, match) => {
+            const key = match.type || 'Sin competición';
+            acc[key] = [...(acc[key] || []), match];
+            return acc;
+          }, {})).map(([competition, rows]) => ({ competition, ...summarizeGroupMatches(rows) })).sort((a, b) => b.played - a.played);
+          const secondHalfGoals = allGoalRows.filter((event) => Number(event.minute) >= 45).length;
+          const centralFinish = allGoalRows.filter((event) => normalizePitchZone(event.shotZone || event.goalZone).includes('centro')).length;
+          const scoringStreak = scopedMatches.reduceRight((streak, match) => streak.active && getMatchScoreData(match).caudalGoals > 0 ? { active: true, count: streak.count + 1 } : { active: false, count: streak.count }, { active: true, count: 0 }).count;
+          const cleanSheetStreak = scopedMatches.reduceRight((streak, match) => streak.active && getMatchScoreData(match).rivalGoals === 0 ? { active: true, count: streak.count + 1 } : { active: false, count: streak.count }, { active: true, count: 0 }).count;
+          const comebackWins = scopedMatches.filter((match) => safeArray(match.statsGoalEvents).some((event) => event.type === 'Gol en contra') && getMatchScoreData(match).caudalGoals > getMatchScoreData(match).rivalGoals).length;
+          const statisticalPatterns = [
+            scoringStreak >= 3 ? `${scoringStreak} partidos consecutivos marcando.` : null,
+            cleanSheetStreak >= 2 ? `${cleanSheetStreak} porterías a cero consecutivas.` : null,
+            goalForRows.length >= 3 && phaseFor.some((row) => row.count >= 3) ? `${phaseFor.slice().sort((a, b) => b.count - a.count)[0].count} goles mediante ${phaseFor.slice().sort((a, b) => b.count - a.count)[0].phase.toLowerCase()}.` : null,
+            allGoalRows.length >= 4 && secondHalfGoals / allGoalRows.length >= 0.75 ? `${Math.round((secondHalfGoals / allGoalRows.length) * 100)}% de los goles registrados llegan en segunda parte.` : null,
+            goalAgainstRows.filter((event) => event.phase === 'ABP' && event.subphase === 'Córner').length >= 2 ? `${goalAgainstRows.filter((event) => event.phase === 'ABP' && event.subphase === 'Córner').length} goles encajados tras córner.` : null,
+            allGoalRows.length >= 4 && centralFinish / allGoalRows.length >= 0.7 ? `${Math.round((centralFinish / allGoalRows.length) * 100)}% de los goles finalizan por zona central.` : null,
+            scopedMatches.length >= 3 && comebackWins === 0 ? 'No hay remontadas registradas en la muestra actual.' : null,
+          ].filter(Boolean);
+          const objectiveReadings = [
+            goalForRows.length ? `El equipo ha marcado ${goalForRows.length} goles en la muestra filtrada.` : 'No hay goles a favor registrados en la muestra filtrada.',
+            goalAgainstRows.length ? `El equipo ha encajado ${goalAgainstRows.length} goles en la muestra filtrada.` : 'Todavía no ha encajado goles en la muestra filtrada.',
+            goalForRows.length ? `${phaseFor.slice().sort((a, b) => b.count - a.count)[0]?.phase || 'Sin fase'} genera ${goalForRows.length ? Math.round((Number(phaseFor.slice().sort((a, b) => b.count - a.count)[0]?.count || 0) / goalForRows.length) * 100) : 0}% de los goles a favor.` : null,
+            allGoalRows.length ? `El tramo con más goles registrados es ${[...minuteFor.map((row, index) => ({ range: row.range, count: row.count + minuteAgainst[index].count }))].sort((a, b) => b.count - a.count)[0]?.range}'.` : null,
+          ].filter(Boolean).slice(0, 4);
+          const metricCard = (label, value, meta = '') => (
+            <div key={label} className="rounded-3xl border border-white/10 bg-white/[0.045] p-5">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+              <p className="mt-3 text-3xl font-black text-white">{value}</p>
+              {meta ? <p className="mt-1 text-xs font-bold text-caudal-electric">{meta}</p> : null}
             </div>
           );
-          const podiumList = (title, rows, valueKey, formatter = (value) => value) => {
-            const medals = ['🥇', '🥈', '🥉'];
-            return (
-              <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{title}</p>
-                <div className="mt-3 space-y-2">
-                  {safeArray(rows).slice(0, 3).length ? safeArray(rows).slice(0, 3).map((row, index) => (
-                    <div key={`${title}-${row.player?.name || index}`} className="flex items-center justify-between gap-3 rounded-2xl bg-black/15 px-3 py-2">
-                      <span className="min-w-0 truncate text-sm font-black text-white">{medals[index]} {row.player?.name || 'Jugador'}</span>
-                      <strong className="text-caudal-electric">{formatter(row[valueKey], row)}</strong>
-                    </div>
-                  )) : <p className="rounded-2xl bg-black/15 px-3 py-3 text-sm text-slate-500">Sin datos suficientes</p>}
-                </div>
+          const simpleSummaryTable = (title, summary) => (
+            <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5">
+              <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">{title}</h4>
+              <div className="mt-4 grid grid-cols-4 gap-2 text-center sm:grid-cols-7">
+                {[
+                  ['PJ', summary.played],
+                  ['V', summary.wins],
+                  ['E', summary.draws],
+                  ['D', summary.losses],
+                  ['GF', summary.goalsFor],
+                  ['GC', summary.goalsAgainst],
+                  ['PPG', summary.played ? ((summary.wins * 3 + summary.draws) / summary.played).toFixed(2) : '-'],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-2xl bg-black/15 px-3 py-3">
+                    <p className="text-[10px] font-black uppercase text-slate-500">{label}</p>
+                    <p className="mt-1 text-lg font-black text-white">{value}</p>
+                  </div>
+                ))}
               </div>
-            );
-          };
-          const avgRatingRows = safeArray(rankings.rows).filter((row) => row.avgRating > 0).sort((a, b) => b.avgRating - a.avgRating).slice(0, 5);
-          const idealSystemStats = [
-            ['Sistema más usado', mostUsedSystem.system || 'Sin datos', mostUsedSystem.count ? `${mostUsedSystem.count} partidos` : ''],
-            ['Sistema visualizado', effectiveIdealSystem || 'Sin datos', ''],
-            ['PPG', groupData.pointsPerGame, `${groupData.played} partidos`],
-            ['GF / partido', groupData.played ? (groupData.goalsFor / groupData.played).toFixed(1) : '0.0', `${groupData.goalsFor} GF`],
-            ['GC / partido', groupData.played ? (groupData.goalsAgainst / groupData.played).toFixed(1) : '0.0', `${groupData.goalsAgainst} GC`],
-            ['Analizados', groupData.played, 'partidos'],
-          ];
-          const prePlanAggregates = Object.values(prePostLinks.reduce((acc, link) => {
-            const key = link.item || 'Plan';
-            const current = acc[key] || { item: key, total: 0, ok: 0 };
-            current.total += 1;
-            if (link.severity === 'ok' || /cumpl/i.test(link.status || '')) current.ok += 1;
-            acc[key] = current;
-            return acc;
-          }, {})).map((row) => ({ ...row, pct: Math.round((row.ok / Math.max(1, row.total)) * 100) })).sort((a, b) => b.total - a.total).slice(0, 5);
-
-          return (
-            <GroupAnalysisErrorBoundary label="Análisis Grupal" resetKey={`${groupCompetitionFilter}-${groupContextFilter}-${groupQuickReviewedOnly}-${scopedMatches.length}`}>
-            <main className="space-y-6">
-              {groupLoading ? (
-                <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 text-sm text-slate-400 shadow-glow">
-                  Cargando análisis grupal...
-                </section>
-              ) : null}
-              {groupError ? (
-                <section className="rounded-3xl border border-red-500/20 bg-red-500/10 p-6 text-sm text-red-100 shadow-glow">
-                  {groupError}
-                </section>
-              ) : null}
-              <section className="overflow-hidden rounded-3xl border border-white/10 bg-[#091428]/90 shadow-glow backdrop-blur-md">
-                <div className="grid gap-0 xl:grid-cols-[0.9fr_1.35fr]">
-                  <div className="border-b border-white/10 p-6 xl:border-b-0 xl:border-r">
-                    <p className="text-xs font-black uppercase tracking-[0.34em] text-caudal-electric">Análisis grupal</p>
-                    <h2 className="mt-3 max-w-md text-3xl font-black uppercase leading-tight text-white sm:text-4xl">
-                      Métricas colectivas del equipo
-                    </h2>
-                    <div className="mt-5 flex flex-wrap gap-3">
-                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Filtro actual</p>
-                        <p className="mt-1 text-sm font-bold text-white">{hasData ? `${groupData.played} partidos` : 'Sin datos'}</p>
+            </div>
+          );
+          const phaseBlock = (title, rows, total, colorClass) => (
+            <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-5 shadow-glow">
+              <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">{title}</h3>
+              {total ? (
+                <div className="mt-5 space-y-4">
+                  {rows.filter((row) => row.count > 0).map((row) => (
+                    <div key={`${title}-${row.phase}`}>
+                      <div className="flex justify-between text-xs font-bold uppercase text-slate-400">
+                        <span>{row.phase}</span>
+                        <span>{row.count} · {Math.round((row.count / total) * 100)}%</span>
                       </div>
-                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Competición</p>
-                        <p className="mt-1 text-sm font-bold text-white">{groupCompetitionFilter}</p>
-                      </div>
-                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Contexto</p>
-                        <p className="mt-1 text-sm font-bold text-white">{groupContextFilter}</p>
+                      <div className="mt-2 h-3 rounded-full bg-white/10">
+                        <div className={`h-full rounded-full ${colorClass}`} style={{ width: `${(row.count / total) * 100}%` }} />
                       </div>
                     </div>
-                  </div>
-
-                  <div className="space-y-5 p-6">
-                    <div>
-                      <div className="mb-2 flex items-center justify-between gap-3">
-                        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Competición</p>
-                        <span className="hidden h-px flex-1 bg-white/10 sm:block" />
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {['Todos', 'Liga', 'Copa', 'Amistoso'].map((filter) => (
-                          <button
-                            key={filter}
-                            type="button"
-                            onClick={() => setGroupCompetitionFilter(filter)}
-                            className={`rounded-2xl px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] transition ${
-                              groupCompetitionFilter === filter
-                                ? 'bg-caudal-electric text-slate-950 shadow-[0_0_26px_rgba(79,140,255,0.28)]'
-                                : 'bg-white/8 text-slate-300 ring-1 ring-white/10 hover:bg-white/15 hover:text-white'
-                            }`}
-                          >
-                            {filter}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="mb-2 flex items-center justify-between gap-3">
-                        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Vista del rendimiento</p>
-                        <span className="hidden h-px flex-1 bg-white/10 sm:block" />
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {['Todos', 'Local', 'Visitante', 'Últimos 5 partidos', 'Victorias', 'Empates', 'Derrotas'].map((filter) => (
-                          <button
-                            key={filter}
-                            type="button"
-                            onClick={() => setGroupContextFilter(filter)}
-                            className={`rounded-2xl px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] transition ${
-                              groupContextFilter === filter
-                                ? 'bg-emerald-300 text-slate-950 shadow-[0_0_26px_rgba(110,231,183,0.25)]'
-                                : 'bg-white/8 text-slate-300 ring-1 ring-white/10 hover:bg-white/15 hover:text-white'
-                            }`}
-                          >
-                            {filter}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="mb-2 flex items-center justify-between gap-3">
-                        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Eventos rápidos</p>
-                        <span className="hidden h-px flex-1 bg-white/10 sm:block" />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setGroupQuickReviewedOnly((value) => !value)}
-                        className={`rounded-2xl px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] transition ${
-                          groupQuickReviewedOnly
-                            ? 'bg-caudal-electric text-slate-950 shadow-[0_0_26px_rgba(79,140,255,0.28)]'
-                            : 'bg-white/8 text-slate-300 ring-1 ring-white/10 hover:bg-white/15 hover:text-white'
-                        }`}
-                      >
-                        {groupQuickReviewedOnly ? 'Solo eventos revisados de partidos validados' : 'Todos los eventos de partidos validados'}
-                      </button>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              </section>
-
-              <section className="relative overflow-hidden rounded-[2rem] border border-caudal-electric/20 bg-[radial-gradient(circle_at_18%_18%,rgba(79,140,255,0.24),transparent_34%),linear-gradient(135deg,rgba(9,20,40,0.96),rgba(6,13,26,0.92))] p-5 shadow-[0_26px_90px_rgba(0,0,0,0.34)] sm:p-6">
-                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.026)_1px,transparent_1px)] bg-[size:34px_34px] opacity-45" />
-                <div className="relative grid gap-5 xl:grid-cols-[1.15fr_1fr]">
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.32em] text-caudal-electric">Informe automático del equipo</p>
-                    <h3 className="mt-3 max-w-4xl text-2xl font-black leading-tight text-white sm:text-3xl">
-                      {mainReadings[0]?.text || 'Sin lectura principal suficiente todavía.'}
-                    </h3>
-                    <p className="mt-4 max-w-3xl text-sm font-semibold leading-6 text-slate-300">{executiveReport}</p>
+              ) : (
+                <p className="mt-5 rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">No existen suficientes goles registrados.</p>
+              )}
+            </div>
+          );
+          const zoneTotal = (counts) => Object.values(counts || {}).reduce((sum, count) => sum + Number(count || 0), 0);
+          return (
+            <GroupAnalysisErrorBoundary label="Análisis Grupal" resetKey={`official-${groupCompetitionFilter}-${groupContextFilter}-${scopedMatches.length}-${allGoalRows.length}`}>
+              <main className="space-y-6">
+                {groupLoading ? (
+                  <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 text-sm text-slate-400 shadow-glow">Cargando análisis grupal...</section>
+                ) : null}
+                {groupError ? (
+                  <section className="rounded-3xl border border-red-500/20 bg-red-500/10 p-6 text-sm text-red-100 shadow-glow">{groupError}</section>
+                ) : null}
+                <section className="rounded-3xl border border-white/10 bg-[#091428]/90 p-6 shadow-glow">
+                  <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.34em] text-caudal-electric">Análisis Grupal</p>
+                      <h2 className="mt-3 text-3xl font-black uppercase tracking-[0.08em] text-white">Estadísticas oficiales del equipo</h2>
+                      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">Partidos, estadísticas oficiales, eventos de gol y eventos POST. Sin lecturas de Registro Delegado ni análisis PRE.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {['Todos', 'Liga', 'Copa RFEF', 'Play off', 'Amistoso'].map((filter) => (
+                        <button key={filter} type="button" onClick={() => setGroupCompetitionFilter(filter)} className={`rounded-2xl px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] ${groupCompetitionFilter === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}>{filter}</button>
+                      ))}
+                      {['Todos', 'Local', 'Visitante', 'Últimos 5 partidos', 'Victorias', 'Empates', 'Derrotas'].map((filter) => (
+                        <button key={filter} type="button" onClick={() => setGroupContextFilter(filter)} className={`rounded-2xl px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] ${groupContextFilter === filter ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}>{filter}</button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                </section>
+
+                <section className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
+                  <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Resumen competitivo</h3>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     {[
-                      ['Identidad dominante', groupIdentity.dominantFor?.label || 'Pendiente', groupIdentity.dominantFor?.forPct ? `${groupIdentity.dominantFor.forPct}%` : ''],
-                      ['Fortaleza principal', groupIdentity.dominantFor?.label || 'Pendiente', groupIdentity.dominantFor?.forPct ? `${groupIdentity.dominantFor.forPct}% goles` : ''],
-                      ['Fragilidad principal', groupIdentity.dominantAgainst?.label || 'Pendiente', groupIdentity.dominantAgainst?.againstPct ? `${groupIdentity.dominantAgainst.againstPct}% encajados` : ''],
-                      ['Mejor tramo', temporalContext.best?.range || 'Pendiente', temporalContext.worst?.range ? `crítico ${temporalContext.worst.range}` : ''],
-                      ['Prioridad semanal', weeklyPriority, ''],
-                      ['Jugadores diferenciales', rankings.participations[0]?.player?.name || rankings.scorers[0]?.player?.name || 'Pendiente', rankings.participations[0]?.goalParticipation ? `${rankings.participations[0].goalParticipation} participaciones` : ''],
-                    ].map(([label, value, meta]) => (
-                      <div key={label} className="rounded-3xl border border-white/10 bg-white/[0.055] p-4 backdrop-blur-sm transition hover:border-caudal-electric/25 hover:bg-white/[0.075]">
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
-                        <p className="mt-2 line-clamp-2 text-base font-black text-white">{value}</p>
-                        {meta ? <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-caudal-electric">{meta}</p> : null}
-                      </div>
+                      ['PJ', groupData.played],
+                      ['V', groupData.wins],
+                      ['E', groupData.draws],
+                      ['D', groupData.losses],
+                      ['GF', groupData.goalsFor],
+                      ['GC', groupData.goalsAgainst],
+                      ['PPG', groupData.pointsPerGame],
+                      ['Porterías a cero', groupData.cleanSheets],
+                    ].map(([label, value]) => metricCard(label, value))}
+                  </div>
+                  <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                    {(objectiveReadings.length ? objectiveReadings : ['No hay datos oficiales suficientes para generar una lectura objetiva.']).map((line) => (
+                      <p key={line} className="rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm font-semibold leading-6 text-slate-100">{line}</p>
                     ))}
                   </div>
-                </div>
-              </section>
-
-              <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">ADN del equipo</h3>
-                    <p className="mt-2 text-sm text-slate-400">Identidad, patrón recurrente, alerta principal y foco entrenable en una sola lectura.</p>
-                  </div>
-                  <span className="rounded-2xl border border-caudal-electric/20 bg-caudal-electric/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-caudal-electric">
-                    {hasData ? `${groupData.played} partidos analizados` : 'Sin datos suficientes'}
-                  </span>
-                </div>
-                <div className="mt-4 grid gap-3 lg:grid-cols-5">
-                  {[
-                    ['Identidad dominante', groupIdentity.dominantFor?.label || 'Sin datos suficientes'],
-                    ['Fortaleza principal', groupIdentity.dominantFor?.label || 'Sin datos suficientes'],
-                    ['Fragilidad principal', groupIdentity.dominantAgainst?.label || 'Sin datos suficientes'],
-                    ['Patrón recurrente', tacticalPatterns[0]?.label || groupIdentity.dna[0] || 'Sin datos suficientes'],
-                    ['Prioridad semanal', weeklyPriority],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
-                      <p className="mt-2 line-clamp-3 text-sm font-bold leading-5 text-white">{value}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                  {(mainReadings.length || automaticAlerts.length || trainingProposals.length) ? [
-                    ['Lectura', mainReadings[0]?.text || 'Sin datos suficientes'],
-                    ['Alerta', automaticAlerts[0]?.text || 'Sin datos suficientes'],
-                    ['Entrenar', trainingProposals[0]?.reason || 'Sin datos suficientes'],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-2xl bg-black/15 px-4 py-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
-                      <p className="mt-2 text-sm font-semibold leading-6 text-slate-200">{value}</p>
-                    </div>
-                  )) : <p className="rounded-2xl bg-black/15 px-4 py-3 text-sm text-slate-500 lg:col-span-3">Sin datos suficientes</p>}
-                </div>
-              </section>
-
-              <AccordionSection title="Resumen" subtitle="Balance general del equipo">
-              <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Resumen competitivo</h3>
-                <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                  {[
-                    ['Partidos jugados', groupData.played],
-                    ['Victorias', groupData.wins],
-                    ['Empates', groupData.draws],
-                    ['Derrotas', groupData.losses],
-                    ['Goles a favor', groupData.goalsFor],
-                    ['Goles en contra', groupData.goalsAgainst],
-                    ['Diferencia goles', groupData.goalDiff],
-                    ['Puntos/partido', groupData.pointsPerGame],
-                    ['Porterías a cero', groupData.cleanSheets],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-3xl border border-white/5 bg-white/5 p-5">
-                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
-                      <p className="mt-3 text-3xl font-black text-white">{value}</p>
-                    </div>
-                  ))}
-                </div>
-              </section>
-              </AccordionSection>
-
-              <AccordionSection title="Identidad de juego" subtitle="ADN ofensivo, defensivo y competitivo">
-                <section className="grid gap-6 xl:grid-cols-[1.25fr_0.9fr]">
-                  <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Identidad ofensiva y defensiva</h3>
-                        <p className="mt-2 text-sm text-slate-400">Cómo marcamos y cómo encajamos, cruzando goles y eventos del delegado.</p>
-                      </div>
-                      <span className="rounded-2xl bg-caudal-electric/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-caudal-electric">
-                        Dominante: {groupIdentity.dominantFor?.label || 'sin datos'}
-                      </span>
-                    </div>
-                    <div className="mt-5 space-y-3">
-                      {groupIdentity.rows.map((row) => (
-                        <div key={row.key} className="rounded-2xl border border-white/5 bg-white/[0.035] p-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-black text-white">{row.label}</p>
-                            <p className="text-xs font-bold text-slate-400">Marcamos {row.forPct}% · Encajamos {row.againstPct}%</p>
-                          </div>
-                          <div className="mt-3 grid grid-cols-2 gap-2">
-                            <div className="h-2 overflow-hidden rounded-full bg-white/10">
-                              <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${Math.min(100, row.forPct)}%` }} />
-                            </div>
-                            <div className="h-2 overflow-hidden rounded-full bg-white/10">
-                              <div className="h-full rounded-full bg-red-400" style={{ width: `${Math.min(100, row.againstPct)}%` }} />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-6">
-                    <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">ADN competitivo</h3>
-                      <div className="mt-4 space-y-3">
-                        {(groupIdentity.dna.length ? groupIdentity.dna : ['Sin ADN competitivo suficiente todavía.']).map((line) => (
-                          <p key={line} className="rounded-2xl bg-white/5 p-3 text-sm font-semibold leading-6 text-slate-100">{line}</p>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Local / visitante</h3>
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                        {[
-                          ['Local', groupIdentity.homeAway.home],
-                          ['Visitante', groupIdentity.homeAway.away],
-                        ].map(([label, summary]) => (
-                          <div key={label} className="rounded-2xl bg-white/5 p-4">
-                            <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
-                            <p className="mt-2 text-sm font-bold text-white">Tiros {summary.shots}-{summary.rivalShots} · Rec/Pér {summary.recoveryLossBalance}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
                 </section>
-              </AccordionSection>
 
-              <AccordionSection title="Patrones y qué entrenar" subtitle="Secuencias repetidas, alertas y propuestas entrenables">
-                <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-                  <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Patrones detectados</h3>
-                    <div className="mt-5 grid gap-3 md:grid-cols-2">
-                      {tacticalPatterns.length ? tacticalPatterns.map((pattern) => (
-                        <div key={pattern.id} className="rounded-3xl border border-caudal-electric/15 bg-caudal-electric/[0.055] p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <p className="text-sm font-black text-white">{pattern.label}</p>
-                            <span className="rounded-xl bg-white/10 px-2.5 py-1 text-xs font-black text-caudal-electric">{pattern.frequency}x</span>
-                          </div>
-                          <p className="mt-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Eficacia {pattern.efficiency}%</p>
-                          <p className="mt-3 text-xs leading-5 text-slate-400">Últimos: {pattern.matches.join(' · ') || 'sin partidos recientes'}</p>
-                        </div>
-                      )) : <p className="rounded-2xl bg-white/5 p-4 text-sm italic text-slate-500 md:col-span-2">Sin patrones repetidos suficientes todavía.</p>}
-                    </div>
+                <section className="grid gap-6 xl:grid-cols-2">
+                  {phaseBlock('Cómo marcamos', phaseFor, goalForRows.length, 'bg-caudal-electric')}
+                  {phaseBlock('Cómo encajamos', phaseAgainst, goalAgainstRows.length, 'bg-red-400')}
+                  <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Origen de asistencias</h3>
+                    <div className="mt-5">{zoneTotal(assistZoneCounts) ? renderReadOnlyZoneGrid({ counts: assistZoneCounts }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">No existen suficientes asistencias registradas.</p>}</div>
                   </div>
-                  <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Qué entrenar</h3>
-                    <div className="mt-5 space-y-3">
-                      {trainingProposals.length ? trainingProposals.map((proposal) => (
-                        <div key={proposal.title} className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-black text-white">{proposal.title}</p>
-                            <span className="rounded-xl bg-white/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">{proposal.source}</span>
-                          </div>
-                          <p className="mt-2 text-xs leading-5 text-slate-400">{proposal.reason}</p>
-                        </div>
-                      )) : <p className="rounded-2xl bg-white/5 p-4 text-sm italic text-slate-500">Sin propuestas automáticas todavía.</p>}
-                    </div>
+                  <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Zonas de finalización</h3>
+                    <div className="mt-5">{zoneTotal(shotZoneCounts) ? renderReadOnlyZoneGrid({ counts: shotZoneCounts }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">No existen suficientes zonas de finalización registradas.</p>}</div>
                   </div>
-                </section>
-              </AccordionSection>
-
-              <AccordionSection title="Datos en vivo validados" subtitle="Modo Delegado separado de la estadística oficial">
-              <section className="app-card">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h3 className="app-section-title">Datos en vivo validados</h3>
-                    <p className="app-subtitle">Agregado desde match_quick_events solo cuando el partido está marcado como Validado.</p>
-                  </div>
-                  <div className="rounded-2xl bg-white/5 px-4 py-3 text-right">
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Balance rec/pérd</p>
-                    <p className={`mt-1 text-2xl font-black ${quickSummary.recoveryLossBalance >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{quickSummary.recoveryLossBalance}</p>
-                  </div>
-                </div>
-                {groupQuickReviewedOnly && !hasReviewedQuickEvents ? (
-                  <div className="empty-state mt-5">
-                    <p className="font-bold text-slate-200">No hay datos en vivo validados suficientes.</p>
-                    <p className="mt-1">
-                      {hasUnreviewedQuickEvents
-                        ? 'Hay eventos sin revisar o partidos sin validar. Usa Registro Delegado para decidir si entran en análisis.'
-                        : 'Valida partidos en Registro Delegado para activar tiros, tiros a puerta, córners, faltas, recuperaciones, pérdidas y lecturas automáticas.'}
-                    </p>
-                  </div>
-                ) : null}
-                {quickSummary.hasRegisteredEvents ? (
-                  <>
-                    <div className="mt-5 grid gap-4 xl:grid-cols-3">
-                      {quickStatGroups.map((group) => (
-                        <div key={group.group} className="rounded-3xl border border-white/5 bg-white/[0.045] p-5">
-                          <p className="text-xs font-black uppercase tracking-[0.16em] text-caudal-electric">{group.group}</p>
-                          <div className="mt-4 space-y-2">
-                            {group.rows.map((row) => (
-                              <div key={row.key} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-2xl bg-black/15 px-3 py-2">
-                                <span className="text-sm font-bold text-slate-300">{row.label}</span>
-                                <span className="text-sm font-black text-white">{row.caudal}</span>
-                                <span className="text-sm font-black text-red-200">{row.rival}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">ABP ofensiva</h3>
+                    <div className="mt-5 grid grid-cols-2 gap-3">
                       {[
-                        ['Precisión de tiro', quickSummary.shotAccuracy],
-                        ['Precisión rival', quickSummary.concededDanger],
-                        ['Balance recuperación', `${quickSummary.recoveryBalance} - ${quickSummary.rivalRecoveryBalance}`],
-                        ['Eventos registrados', quickRows.length],
-                      ].map(([label, value]) => (
-                        <div key={label} className="rounded-2xl border border-white/5 bg-white/[0.035] p-4">
-                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
-                          <p className="mt-2 text-xl font-black text-white">{value}</p>
-                        </div>
-                      ))}
+                        ['Total', abpFor.total],
+                        ['Córner', abpFor.corner],
+                        ['Falta directa', abpFor.directFreeKick],
+                        ['Penalti', abpFor.penalty],
+                      ].map(([label, value]) => metricCard(label, value))}
                     </div>
-                  </>
-                ) : (
-                  <div className="empty-state mt-5">
-                    <p className="font-bold text-slate-200">Sin datos registrados.</p>
-                    <p className="mt-1">Cuando haya partidos validados en Registro Delegado, aparecerán aquí las estadísticas colectivas de Caudal y rival.</p>
                   </div>
-                )}
-                <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_1.15fr]">
-                  <div className="rounded-3xl bg-[#0f1e38]/80 p-5">
-                    <h4 className="text-xs font-black uppercase tracking-[0.18em] text-white">Tramos de partido</h4>
-                    <div className="mt-6 grid h-52 grid-cols-6 items-end gap-2 border-b border-white/10 pb-3">
-                      {quickMinuteRanges.map((row) => (
+                  <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">ABP defensiva</h3>
+                    <div className="mt-5 grid grid-cols-2 gap-3">
+                      {[
+                        ['Total', abpAgainst.total],
+                        ['Córner', abpAgainst.corner],
+                        ['Falta directa', abpAgainst.directFreeKick],
+                        ['Penalti', abpAgainst.penalty],
+                      ].map(([label, value]) => metricCard(label, value))}
+                    </div>
+                  </div>
+                </section>
+
+                <section className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+                  <LeagueResultsDistribution results={leagueResults} />
+                  <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Goles por tramos</h3>
+                    <div className="mt-8 grid h-72 grid-cols-6 items-end gap-3 border-b border-white/10 pb-4">
+                      {minuteFor.map((row, index) => (
                         <div key={row.range} className="flex h-full flex-col items-center justify-end gap-2">
-                          <div className="flex h-40 w-full items-end justify-center gap-1">
-                            <div className="w-4 rounded-t-lg bg-caudal-electric" style={{ height: `${(row.caudal / maxQuickRange) * 100}%` }} title={`Caudal: ${row.caudal}`} />
-                            <div className="w-4 rounded-t-lg bg-red-400" style={{ height: `${(row.rival / maxQuickRange) * 100}%` }} title={`Rival: ${row.rival}`} />
+                          <div className="flex h-56 w-full items-end justify-center gap-1">
+                            <div className="w-5 rounded-t-lg bg-caudal-electric" style={{ height: `${(row.count / maxMinuteGoals) * 100}%` }} title={`Favor: ${row.count}`} />
+                            <div className="w-5 rounded-t-lg bg-red-400" style={{ height: `${(minuteAgainst[index].count / maxMinuteGoals) * 100}%` }} title={`Contra: ${minuteAgainst[index].count}`} />
                           </div>
                           <span className="text-[10px] font-bold text-slate-500">{row.range}'</span>
                         </div>
                       ))}
                     </div>
-                    <div className="mt-4 flex gap-4 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
-                      <span className="text-caudal-electric">Caudal</span>
-                      <span className="text-red-300">Rival</span>
-                    </div>
-                  </div>
-                  <div className="rounded-3xl bg-[#0f1e38]/80 p-5">
-                    <h4 className="text-xs font-black uppercase tracking-[0.18em] text-white">Evolución por partido</h4>
-                    <div className="mt-4 space-y-3">
-                      {quickEvolution.length ? quickEvolution.slice(-6).reverse().map(({ match, summary }) => (
-                        <div key={match.id} className="rounded-2xl bg-white/5 p-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-black text-white">{match.opponent}</p>
-                              <p className="text-xs uppercase tracking-[0.12em] text-slate-500">{matchDisplayDate(match.date)} · {match.isHome ? 'Local' : 'Visitante'}</p>
-                            </div>
-                            <p className="text-sm font-black text-caudal-electric">T {summary.shots}-{summary.rivalShots}</p>
-                          </div>
-                          <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                            <span className="rounded-xl bg-white/5 px-2 py-2 text-slate-300">Puerta {summary.shotsOnTarget}-{summary.rivalShotsOnTarget}</span>
-                            <span className="rounded-xl bg-white/5 px-2 py-2 text-slate-300">Córners {summary.corners}-{summary.rivalCorners}</span>
-                            <span className={`rounded-xl px-2 py-2 ${summary.recoveryLossBalance >= 0 ? 'bg-emerald-400/10 text-emerald-200' : 'bg-red-400/10 text-red-200'}`}>Rec/Pér {summary.recoveryLossBalance}</span>
-                          </div>
-                        </div>
-                      )) : <p className="rounded-2xl bg-white/5 p-4 text-sm italic text-slate-500">Sin eventos rápidos registrados.</p>}
-                    </div>
-                  </div>
-                </div>
-              </section>
-              </AccordionSection>
-
-              <AccordionSection title="Lecturas automáticas" subtitle="Interpretación útil para cuerpo técnico">
-              <section className="overflow-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-4 shadow-glow sm:p-6">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Lecturas automáticas</h3>
-                    <p className="mt-2 text-sm text-slate-400">Interpretación rápida basada en partidos, goles, estadísticas oficiales y datos en vivo validados.</p>
-                  </div>
-                  <span className="rounded-2xl bg-white/5 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
-                    Máx. 8 lecturas
-                  </span>
-                </div>
-                <div className="mt-5 grid gap-3 md:grid-cols-2">
-                  {automaticReadings.map((reading, index) => (
-                    <div key={`${reading}-${index}`} className="rounded-3xl border border-caudal-electric/15 bg-caudal-electric/10 p-4 text-sm font-semibold leading-6 text-white">
-                      {reading}
-                    </div>
-                  ))}
-                </div>
-              </section>
-              </AccordionSection>
-
-              <AccordionSection title="PRE + POST conectado" subtitle="Consignas, clips y revisión táctica">
-                <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Plan preparado vs realidad acumulada</h3>
-                      <p className="mt-2 text-sm text-slate-400">Relación automática entre consignas PRE, clips POST y lecturas del partido.</p>
-                    </div>
-                    <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-300">{prePostLinks.length} vínculos</span>
-                  </div>
-                  <div className="mt-5 grid gap-3 md:grid-cols-2">
-                    {prePostLinks.length ? prePostLinks.map((link, index) => (
-                      <div key={`${link.match.id}-${link.item}-${index}`} className={`rounded-3xl border p-4 transition hover:-translate-y-0.5 ${
-                        link.severity === 'risk'
-                          ? 'border-red-300/20 bg-red-400/[0.075]'
-                          : link.severity === 'ok'
-                            ? 'border-emerald-300/20 bg-emerald-300/[0.07]'
-                            : 'border-white/10 bg-white/[0.04]'
-                      }`}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-black text-white">{link.item}</p>
-                            <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">{link.match.opponent} · {matchDisplayDate(link.match.date)}</p>
-                          </div>
-                          <span className={`rounded-xl px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${
-                            link.severity === 'risk'
-                              ? 'bg-red-300/15 text-red-100'
-                              : link.severity === 'ok'
-                                ? 'bg-emerald-300/15 text-emerald-100'
-                                : 'bg-caudal-electric/15 text-caudal-electric'
-                          }`}>
-                            {link.status}
-                          </span>
-                        </div>
-                        <p className="mt-3 text-xs font-bold text-slate-400">
-                          {link.relatedClips.length} clips · {link.relatedQuickEvents.length} eventos · {link.relatedClips.slice(0, 2).map((clip) => `${clip.minute || '-'}' ${clip.type || 'clip'}`).join(' · ') || 'sin clip directo'}
-                        </p>
-                      </div>
-                    )) : <p className="rounded-2xl bg-white/5 p-4 text-sm italic text-slate-500 md:col-span-2">Sin relaciones suficientes. Completa PRE y relaciona clips en POST para activar este bloque.</p>}
                   </div>
                 </section>
-              </AccordionSection>
-
-              <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Timing competitivo</h3>
-                    <p className="mt-2 text-sm text-slate-400">Mejor tramo, tramo vulnerable, goles y presión del partido en una única lectura.</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <span className="rounded-2xl bg-emerald-400/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-emerald-200">Mejor {temporalContext.best?.range || '--'}</span>
-                    <span className="rounded-2xl bg-red-400/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-red-200">Peor {temporalContext.worst?.range || '--'}</span>
-                  </div>
-                </div>
-                <div className="mt-5 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-                  {temporalContext.rows.map((row) => (
-                    <div key={`timing-${row.range}`} className="rounded-2xl border border-white/5 bg-white/[0.04] p-3">
-                      <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">{row.range}'</p>
-                      <p className="mt-2 text-sm font-bold text-white">Tiros {row.shots}-{row.rivalShots}</p>
-                      <p className={`mt-1 text-xs font-bold ${row.pressure >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>Presión {row.pressure}</p>
-                      <p className="mt-1 text-xs text-slate-400">Área {row.boxEntries} · Pér {row.losses}</p>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Cumplimiento del plan</h3>
-                    <p className="mt-2 text-sm text-slate-400">Relación acumulada entre consignas PRE, clips POST y eventos validados.</p>
-                  </div>
-                  <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-300">{prePostLinks.length} evidencias</span>
-                </div>
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                  {prePlanAggregates.length ? prePlanAggregates.map((row) => (
-                    <div key={row.item} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="line-clamp-2 text-sm font-black text-white">{row.item}</p>
-                        <span className="text-lg font-black text-caudal-electric">{row.pct}%</span>
-                      </div>
-                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-                        <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${row.pct}%` }} />
-                      </div>
-                      <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">{row.ok}/{row.total} cumplidas</p>
-                    </div>
-                  )) : <p className="rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm text-slate-500 md:col-span-2 xl:col-span-5">Sin datos suficientes</p>}
-                </div>
-              </section>
-
-              <AccordionSection title="Tendencias" subtitle="Resultados, tramos y evolución">
-              <section className="grid gap-6 xl:grid-cols-[0.85fr_1.4fr]">
-                <LeagueResultsDistribution results={leagueResults} />
-
-                <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Goles por tramos</h3>
-                    <div className="flex gap-4 text-xs font-bold uppercase text-slate-400">
-                      <span className="text-caudal-electric">Favor</span>
-                      <span className="text-red-300">Contra</span>
-                    </div>
-                  </div>
-                  <div className="mt-8 grid h-72 grid-cols-6 items-end gap-3 border-b border-white/10 pb-4">
-                    {minuteFor.map((row, index) => (
-                      <div key={row.range} className="flex h-full flex-col items-center justify-end gap-2">
-                        <div className="flex h-56 w-full items-end justify-center gap-1">
-                          <div className="w-5 rounded-t-lg bg-caudal-electric" style={{ height: `${(row.count / maxMinuteGoals) * 100}%` }} title={`Favor: ${row.count}`} />
-                          <div className="w-5 rounded-t-lg bg-red-400" style={{ height: `${(minuteAgainst[index].count / maxMinuteGoals) * 100}%` }} title={`Contra: ${minuteAgainst[index].count}`} />
+                <section className="grid gap-6 xl:grid-cols-2">
+                  {simpleSummaryTable('Local', localSummary)}
+                  {simpleSummaryTable('Visitante', awaySummary)}
+                  <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Resultados por competición</h3>
+                    <div className="mt-5 space-y-3">
+                      {competitionRows.length ? competitionRows.map((row) => (
+                        <div key={row.competition} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl bg-white/5 px-4 py-3">
+                          <span className="font-bold text-white">{row.competition}</span>
+                          <span className="text-sm font-black text-caudal-electric">PJ {row.played} · {row.wins}-{row.draws}-{row.losses} · GF {row.goalsFor} GC {row.goalsAgainst}</span>
                         </div>
-                        <span className="text-[10px] font-bold text-slate-500">{row.range}'</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </section>
-              <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Contexto temporal del partido</h3>
-                    <p className="mt-2 text-sm text-slate-400">{temporalContext.summary}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <span className="rounded-2xl bg-emerald-400/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-emerald-200">Mejor {temporalContext.best?.range}</span>
-                    <span className="rounded-2xl bg-red-400/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-red-200">Crítico {temporalContext.worst?.range}</span>
-                  </div>
-                </div>
-                <div className="mt-5 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-                  {temporalContext.rows.map((row) => (
-                    <div key={row.range} className="rounded-2xl border border-white/5 bg-white/[0.04] p-3">
-                      <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">{row.range}'</p>
-                      <p className="mt-2 text-sm font-bold text-white">T {row.shots}-{row.rivalShots}</p>
-                      <p className={`mt-1 text-xs font-bold ${row.pressure >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>Presión {row.pressure}</p>
-                      <p className="mt-1 text-xs text-slate-400">Área {row.boxEntries} · Pér {row.losses}</p>
-                    </div>
-                  ))}
-                </div>
-              </section>
-              </AccordionSection>
-
-              <AccordionSection title="Goles / fases" subtitle="Fases, zonas y balón parado">
-              <section className="grid gap-6 xl:grid-cols-2">
-                {[
-                  ['Cómo marcamos', phaseFor, 'bg-caudal-electric'],
-                  ['Cómo encajamos', phaseAgainst, 'bg-red-400'],
-                ].map(([title, rows, colorClass]) => {
-                  const maxPhase = Math.max(1, ...rows.map((row) => row.count));
-                  return (
-                    <div key={title} className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">{title}</h3>
-                      <div className="mt-6 space-y-4">
-                        {rows.map((row) => (
-                          <div key={row.phase}>
-                            <div className="flex justify-between text-xs font-bold uppercase text-slate-400">
-                              <span>{row.phase}</span>
-                              <span>{row.count}</span>
-                            </div>
-                            <div className="mt-2 h-3 rounded-full bg-white/10">
-                              <div className={`h-full rounded-full ${colorClass}`} style={{ width: `${(row.count / maxPhase) * 100}%` }} />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </section>
-
-              <section className="grid gap-6 xl:grid-cols-2">
-                <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Origen de asistencias</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {['Todas', 'Juego', 'Transición', 'ABP'].map((filter) => (
-                        <button key={filter} onClick={() => setGroupAssistFilter(filter)} className={`rounded-xl px-3 py-2 text-xs font-bold uppercase ${groupAssistFilter === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>{filter}</button>
-                      ))}
+                      )) : <p className="rounded-2xl bg-white/5 p-4 text-sm text-slate-400">Sin partidos oficiales.</p>}
                     </div>
                   </div>
-                  <div className="mt-5">{renderReadOnlyZoneGrid({ counts: assistZoneCounts })}</div>
-                  <p className="mt-3 rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.055] px-4 py-3 text-sm font-semibold leading-6 text-slate-100">
-                    {zoneReading(assistZoneCounts, Object.values(assistZoneCounts).reduce((sum, count) => sum + Number(count || 0), 0), 'Sin datos suficientes')}
-                  </p>
-                </div>
-
-                <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Zonas de remate / finalización</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {['Goles a favor', 'Goles en contra', 'Ambos'].map((filter) => (
-                        <button key={filter} onClick={() => setGroupShotFilter(filter)} className={`rounded-xl px-3 py-2 text-xs font-bold uppercase ${groupShotFilter === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>{filter}</button>
-                      ))}
+                  <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Sistemas</h3>
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                      {metricCard('Sistema más utilizado', mostUsedSystem.system || 'Sin datos', mostUsedSystem.count ? `${mostUsedSystem.count} partidos` : '')}
+                      {metricCard('Sistema más efectivo', mostEffectiveSystem?.system || 'Sin datos', mostEffectiveSystem ? `${mostEffectiveSystem.ppg.toFixed(2)} PPG` : '')}
                     </div>
                   </div>
-                  <div className="mt-5">{renderReadOnlyZoneGrid({ counts: shotZoneCounts })}</div>
-                  <p className="mt-3 rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.055] px-4 py-3 text-sm font-semibold leading-6 text-slate-100">
-                    {zoneReading(shotZoneCounts, Object.values(shotZoneCounts).reduce((sum, count) => sum + Number(count || 0), 0), 'Sin datos suficientes')}
-                  </p>
-                </div>
-              </section>
-
-              <section className="grid gap-6 xl:grid-cols-2">
-                <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                  <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Subfases más repetidas</h3>
-                  <div className="mt-5 grid gap-4 md:grid-cols-2">
-                    {[
-                      ['A favor', subphaseForRows, 'text-caudal-electric'],
-                      ['En contra', subphaseAgainstRows, 'text-red-300'],
-                    ].map(([title, rows, color]) => (
-                      <div key={title}>
-                        <p className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500">{title}</p>
-                        {rows.length ? rows.map(([subphase, count]) => (
-                          <div key={subphase} className="mb-2 flex items-center justify-between gap-3 rounded-2xl bg-white/5 px-4 py-3">
-                            <span className="truncate text-sm font-bold text-white">{subphase}</span>
-                            <strong className={color}>{count}</strong>
-                          </div>
-                        )) : <p className="rounded-2xl bg-white/5 p-4 text-sm italic text-slate-500">sin datos suficientes</p>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                  <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Portería 3x3</h3>
-                  <div className="goal-3x3-pair mt-5 grid gap-5 lg:grid-cols-2">
-                    <div className="min-w-0">
-                      <p className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500">Goles marcados</p>
-                      {renderReadOnlyZoneGrid({ counts: goalZoneForCounts, zones: goalZoneOptions, goal: true })}
-                      <p className="mt-3 text-xs font-bold leading-5 text-slate-400">{zoneReading(goalZoneForCounts, goalForRows.length, 'Sin datos suficientes')}</p>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500">Goles encajados</p>
-                      {renderReadOnlyZoneGrid({ counts: goalZoneAgainstCounts, zones: goalZoneOptions, goal: true })}
-                      <p className="mt-3 text-xs font-bold leading-5 text-slate-400">{zoneReading(goalZoneAgainstCounts, goalAgainstRows.length, 'Sin datos suficientes')}</p>
+                  <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow xl:col-span-2">
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Portería 3x3</h3>
+                    <div className="mt-5 grid gap-5 lg:grid-cols-2">
+                      <div>{zoneTotal(goalZoneForCounts) ? renderReadOnlyZoneGrid({ counts: goalZoneForCounts, zones: goalZoneOptions, goal: true }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{goalForRows.length ? 'Goles marcados registrados sin zona de portería.' : 'No existen goles marcados registrados.'}</p>}</div>
+                      <div>{zoneTotal(goalZoneAgainstCounts) ? renderReadOnlyZoneGrid({ counts: goalZoneAgainstCounts, zones: goalZoneOptions, goal: true }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{goalAgainstRows.length ? 'Goles encajados registrados sin zona de portería.' : 'No existen goles encajados registrados.'}</p>}</div>
                     </div>
                   </div>
-                </div>
-              </section>
+                </section>
 
-              <section className="grid gap-6 xl:grid-cols-2">
-                {[
-                  ['ABP ofensiva', abpFor, 'Eficacia ABP', abpFor.total ? `${Math.round((abpFor.total / Math.max(1, groupData.goalsFor)) * 100)}%` : 'sin datos', groupData.goalsFor, 'bg-caudal-electric', 'text-caudal-electric'],
-                  ['ABP defensiva', abpAgainst, 'Vulnerabilidad ABP', abpAgainst.total ? `${Math.round((abpAgainst.total / Math.max(1, groupData.goalsAgainst)) * 100)}%` : 'sin datos', groupData.goalsAgainst, 'bg-red-400', 'text-red-300'],
-                ].map(([title, summary, metric, value, totalGoals, barClass, textClass]) => {
-                  const rows = [
-                    ['Córner', summary.corner],
-                    ['Falta directa', summary.directFreeKick],
-                    ['Falta con remate', summary.freeKickHeader],
-                    ['Penalti', summary.penalty],
-                    ['Segunda jugada', summary.secondBall],
-                  ];
-                  const maxAbp = Math.max(1, ...rows.map(([, count]) => count));
-                  const share = Math.round((summary.total / Math.max(1, totalGoals)) * 100);
-
-                  return (
-                  <div key={title} className="overflow-hidden rounded-3xl border border-white/5 bg-[#091428]/80 shadow-glow">
-                    <div className="flex items-start justify-between gap-4 border-b border-white/10 p-6">
-                      <div>
-                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">{title}</h3>
-                        <p className="mt-2 text-sm text-slate-400">{metric}</p>
-                      </div>
-                      <div className="text-right">
-                        <span className={`rounded-2xl px-3 py-2 text-xs font-black uppercase ${abpGlobalReading === 'fuerte' ? 'bg-emerald-400/15 text-emerald-300' : abpGlobalReading === 'vulnerable' ? 'bg-red-400/15 text-red-300' : 'bg-white/10 text-slate-300'}`}>
-                          {abpGlobalReading}
-                        </span>
-                        <p className={`mt-3 text-4xl font-black ${textClass}`}>{summary.total}</p>
-                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">goles ABP</p>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-6 p-6 lg:grid-cols-[1fr_160px]">
-                      <div className="space-y-4">
-                        {rows.map(([label, count]) => (
-                          <div key={label}>
-                            <div className="flex items-center justify-between gap-3 text-xs font-bold uppercase tracking-[0.12em]">
-                              <span className="text-slate-400">{label}</span>
-                              <span className="text-white">{count}</span>
-                            </div>
-                            <div className="mt-2 h-3 overflow-hidden rounded-full bg-white/10">
-                              <div className={`h-full rounded-full ${barClass}`} style={{ width: `${(count / maxAbp) * 100}%` }} />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="flex flex-col items-center justify-center rounded-3xl bg-white/5 p-4">
-                        <div className="relative flex h-28 w-28 items-center justify-center rounded-full" style={{ background: `conic-gradient(${title === 'ABP ofensiva' ? '#4f8cff' : '#f87171'} 0 ${share}%, rgba(255,255,255,0.1) ${share}% 100%)` }}>
-                          <div className="flex h-20 w-20 flex-col items-center justify-center rounded-full bg-[#091428]">
-                            <span className="text-2xl font-black text-white">{value}</span>
-                            <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500">del total</span>
-                          </div>
-                        </div>
-                        <p className="mt-4 text-center text-xs font-bold leading-5 text-slate-400">
-                          {summary.total ? `${summary.total} de ${Math.max(1, totalGoals)} goles` : 'Sin acciones registradas'}
-                        </p>
-                      </div>
-                    </div>
+                <section className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
+                  <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Patrones</h3>
+                  <div className="mt-5 grid gap-3 md:grid-cols-2">
+                    {statisticalPatterns.length ? statisticalPatterns.map((pattern) => (
+                      <p key={pattern} className="rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.055] px-4 py-3 text-sm font-semibold leading-6 text-slate-100">{pattern}</p>
+                    )) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400 md:col-span-2">No existen patrones repetidos suficientes.</p>}
                   </div>
-                  );
-                })}
-              </section>
-
-              <section className="grid gap-6 xl:grid-cols-2">
-                <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                  <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Local vs visitante</h3>
-                  <div className="mt-5 overflow-x-auto">
-                    <table className="w-full min-w-[640px] text-left text-sm">
-                      <thead className="text-xs uppercase tracking-[0.14em] text-slate-500">
-                        <tr>{['Contexto', 'PJ', 'V', 'E', 'D', 'GF', 'GC', 'PPG', 'PC'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}</tr>
-                      </thead>
-                      <tbody>
-                        {[
-                          ['Local', localSummary],
-                          ['Visitante', awaySummary],
-                        ].map(([label, row]) => (
-                          <tr key={label} className="border-t border-white/10">
-                            <td className="px-3 py-4 font-bold text-white">{label}</td>
-                            <td className="px-3 py-4 text-slate-300">{row.played}</td>
-                            <td className="px-3 py-4 text-emerald-300">{row.wins}</td>
-                            <td className="px-3 py-4 text-amber-300">{row.draws}</td>
-                            <td className="px-3 py-4 text-red-300">{row.losses}</td>
-                            <td className="px-3 py-4 text-white">{row.goalsFor}</td>
-                            <td className="px-3 py-4 text-white">{row.goalsAgainst}</td>
-                            <td className="px-3 py-4 text-caudal-electric">{row.pointsPerGame}</td>
-                            <td className="px-3 py-4 text-white">{row.cleanSheets}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                  <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Tendencia últimos partidos</h3>
-                  <div className="mt-5 space-y-3">
-                    {trend.length ? trend.map((row) => (
-                      <div key={row.match.id} className="grid grid-cols-[1fr_auto] gap-3 rounded-2xl bg-white/5 p-4">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-black text-white">{row.match.opponent}</p>
-                          <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">{matchDisplayDate(row.match.date)} · {row.match.type} · {row.match.isHome ? 'Local' : 'Visitante'}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xl font-black text-white">{row.goalsFor}-{row.goalsAgainst}</p>
-                          <p className="text-xs text-slate-400">{row.cleanSheet ? 'Portería a cero' : 'Encajado'} · {row.cards} tarjetas</p>
-                        </div>
-                      </div>
-                    )) : <p className="rounded-2xl bg-white/5 p-4 text-sm italic text-slate-500">sin datos suficientes</p>}
-                  </div>
-                </div>
-              </section>
-              </AccordionSection>
-
-              <AccordionSection title="Rankings" subtitle="Jugadores destacados por métricas">
-              <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Ranking individual</h3>
-                    <p className="mt-2 text-sm text-slate-400">Jugadores que están marcando diferencias en producción, minutos e impacto.</p>
-                  </div>
-                  <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-300">
-                    Top 3 por métrica
-                  </span>
-                </div>
-                <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                  {podiumList('Top goleadores', rankings.scorers, 'goals')}
-                  {podiumList('Top asistentes', rankings.assistants, 'assists')}
-                  {podiumList('Top participación gol', rankings.participations, 'goalParticipation')}
-                  {podiumList('Top minutos', rankings.minutes, 'minutes', (value, row) => `${value} · ${row.minutePct}%`)}
-                  {podiumList('Top valoración', avgRatingRows, 'avgRating', (value) => Number(value || 0).toFixed(1))}
-                </div>
-              </section>
-
-              <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Once ideal</h3>
-                    <p className="mt-2 text-sm text-slate-500">Calculado por slots reales de alineación, minutos, titularidades, goles, asistencias y valoración registrada.</p>
-                    {mostUsedSystem.system ? (
-                      <p className="mt-2 text-sm font-bold text-caudal-electric">Sistema más usado: {mostUsedSystem.system} ({mostUsedSystem.count} {mostUsedSystem.count === 1 ? 'partido' : 'partidos'})</p>
-                    ) : (
-                      <p className="mt-2 text-sm text-amber-100">No hay datos suficientes para calcular sistema más usado.</p>
-                    )}
-                  </div>
-                  <select value={effectiveIdealSystem} onChange={(event) => setIdealSystem(event.target.value)} className="rounded-2xl border border-white/10 bg-white px-5 py-3 text-sm font-black text-slate-950">
-                    {idealSystemOptions.map((system) => <option key={system}>{system}</option>)}
-                  </select>
-                </div>
-                <div className="mt-6">
-                  {mostUsedSystem.system && rankings.idealRows.length ? renderIdealElevenPitch(idealElevenRows, effectiveIdealSystem) : <p className="rounded-2xl bg-white/5 p-6 text-center text-sm italic text-slate-500">sin datos suficientes</p>}
-                </div>
-                <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-                  {idealSystemStats.map(([label, value, meta]) => compactMetric(label, value, meta))}
-                </div>
-                <div className="mt-6 grid gap-3 md:grid-cols-2">
-                  {(idealIntelligence.length ? idealIntelligence : ['Sin química suficiente todavía: faltan alineaciones, sistemas o resultados validados.']).map((line) => (
-                    <div key={line} className="rounded-3xl border border-caudal-electric/15 bg-caudal-electric/[0.055] p-4 text-sm font-semibold leading-6 text-slate-100">
-                      {line}
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Alertas automáticas</h3>
-                <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                  {automaticAlerts.map((alert) => (
-                    <div key={alert.text || alert} className={`rounded-3xl border p-4 text-sm font-bold text-white ${
-                      alert.gravity === 'alta'
-                        ? 'border-red-300/25 bg-red-400/10'
-                        : alert.gravity === 'media'
-                          ? 'border-amber-300/25 bg-amber-300/10'
-                          : 'border-caudal-electric/15 bg-caudal-electric/10'
-                    }`}>
-                      <div className="mb-2 flex flex-wrap gap-1.5">
-                        <span className="rounded-lg bg-white/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-300">{alert.gravity || 'leve'}</span>
-                        <span className="rounded-lg bg-white/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-300">{alert.type || 'mixta'}</span>
-                        <span className="rounded-lg bg-white/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-300">{alert.trend || 'estable'}</span>
-                        <span className="rounded-lg bg-white/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-300">freq {alert.frequency || 0}</span>
-                      </div>
-                      {alert.text || alert}
-                    </div>
-                  ))}
-                </div>
-              </section>
-              </AccordionSection>
-            </main>
+                </section>
+              </main>
             </GroupAnalysisErrorBoundary>
           );
+          }
           } catch (error) {
             console.error('Error renderizando Análisis Grupal:', error);
             return (
@@ -19408,7 +18711,7 @@ function App() {
                       ...statsEvents.map((event) => ({
                         minute: Number(event.minute) || 999,
                         minuteLabel: event.minute ? `${event.minute}'` : '',
-                        icon: '⚽',
+                        icon: '?',
                         side: event.type === 'Gol a favor' ? 'caudal' : 'rival',
                         label: event.type === 'Gol a favor' ? (event.scorer || 'Caudal') : (match.opponent || 'Rival'),
                         assist: event.assistant || '',
@@ -19417,7 +18720,7 @@ function App() {
                         stats.yellow ? {
                           minute: 999,
                           minuteLabel: '',
-                          icon: '🟨',
+                          icon: '??',
                           side: 'staff',
                           label: name,
                           detail: Number(stats.yellowCount || 1) > 1 ? `x${Number(stats.yellowCount || 1)}` : '',
@@ -19425,7 +18728,7 @@ function App() {
                         stats.red ? {
                           minute: 999,
                           minuteLabel: '',
-                          icon: '🟥',
+                          icon: '??',
                           side: 'staff',
                           label: name,
                           detail: '',
@@ -19433,7 +18736,7 @@ function App() {
                         stats.injured ? {
                           minute: 999,
                           minuteLabel: '',
-                          icon: '🤕',
+                          icon: '??',
                           side: 'staff',
                           label: name,
                           detail: '',
@@ -19498,7 +18801,7 @@ function App() {
                                     <span className="leading-none">{event.icon}</span>
                                     <span className={`min-w-0 font-semibold ${event.side === 'caudal' ? 'text-emerald-100' : event.side === 'rival' ? 'text-red-100' : 'text-slate-200'}`}>
                                       <span className="block truncate">{event.label}{event.detail ? ` ${event.detail}` : ''}</span>
-                                      {event.assist ? <span className="mt-0.5 block truncate text-[11px] font-bold text-caudal-electric">↳ {event.assist}</span> : null}
+                                      {event.assist ? <span className="mt-0.5 block truncate text-[11px] font-bold text-caudal-electric">? {event.assist}</span> : null}
                                     </span>
                                   </div>
                                 ))}
@@ -21323,7 +20626,7 @@ function App() {
                         <div className="mt-3 flex flex-wrap items-center gap-2">
                           {chain.map((item, index) => (
                             <span key={`${item}-${index}`} className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.1em] text-slate-200">
-                              {index ? <span className="text-caudal-electric">→</span> : null}
+                              {index ? <span className="text-caudal-electric">?</span> : null}
                               <span className="rounded-lg bg-white/10 px-2 py-1">{item}</span>
                             </span>
                           ))}
@@ -21842,11 +21145,11 @@ function App() {
             <div className="mt-5 grid gap-2 sm:grid-cols-2">
               {[
                 ['captain', '© Capitán'],
-                ['isKey', '⭐ Jugador estrella'],
-                ['observed', '👁 Observado'],
-                ['yellowRisk', '🟨 5 amarillas'],
-                ['suspended', '🟥 Sancionado'],
-                ['injured', '🏥 Lesionado'],
+                ['isKey', '? Jugador estrella'],
+                ['observed', '?? Observado'],
+                ['yellowRisk', '?? 5 amarillas'],
+                ['suspended', '?? Sancionado'],
+                ['injured', '?? Lesionado'],
               ].map(([field, label]) => (
                 <label key={field} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm font-bold text-slate-100">
                   <input type="checkbox" checked={Boolean(rivalPlayerModal.draft?.[field])} onChange={(event) => updateRivalPlayerDraft(field, event.target.checked)} className="h-4 w-4 accent-[#4f8cff]" />
