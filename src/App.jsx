@@ -901,6 +901,12 @@ const createPartidoPayload = (matchFormState, teams = []) => {
   return { ...basePayload, ...prepPayload };
 };
 
+const goalDbToForm = (row = {}) => ({
+  shotZone: normalizePitchZone(row.shot_zone ?? row.shotZone),
+  assistZone: normalizePitchZone(row.assist_zone ?? row.assistZone),
+  goalZone: normalizeGoalMouthZone(row.goal_zone ?? row.goalZone),
+});
+
 const normalizeSupabaseGoalEvent = (event) => ({
   id: event.id,
   partidoId: event.partido_id,
@@ -913,9 +919,7 @@ const normalizeSupabaseGoalEvent = (event) => ({
   assistantId: event.assistant_id || event.assistantId || null,
   phase: event.phase || '',
   subphase: event.subphase || '',
-  shotZone: normalizePitchZone(event.shot_zone),
-  assistZone: normalizePitchZone(event.assist_zone),
-  goalZone: normalizeGoalMouthZone(event.goal_zone),
+  ...goalDbToForm(event),
   contact: event.contact || '',
   videoUrl: event.video_url || '',
   description: event.description || '',
@@ -928,10 +932,18 @@ const emptyToNull = (value) => {
   return text ? text : null;
 };
 
-const createGoalEventPayload = (partidoId, draft) => {
+const goalFormToDb = (draft = {}) => {
   const shotZone = normalizePitchZone(draft.shotZone);
   const assistZone = normalizePitchZone(draft.assistZone);
   const goalZone = normalizeGoalMouthZone(draft.goalZone);
+  return {
+    shot_zone: emptyToNull(shotZone),
+    assist_zone: emptyToNull(assistZone),
+    goal_zone: emptyToNull(goalZone),
+  };
+};
+
+const createGoalEventPayload = (partidoId, draft) => {
   const payload = {
     partido_id: partidoId,
     type: draft.type,
@@ -941,9 +953,7 @@ const createGoalEventPayload = (partidoId, draft) => {
     assistant: emptyToNull(draft.assistant),
     phase: emptyToNull(draft.phase),
     subphase: emptyToNull(draft.subphase),
-    shot_zone: emptyToNull(shotZone),
-    assist_zone: emptyToNull(assistZone),
-    goal_zone: emptyToNull(goalZone),
+    ...goalFormToDb(draft),
     contact: emptyToNull(draft.contact),
     description: emptyToNull(draft.summary),
     video_url: emptyToNull(draft.videoUrl),
@@ -953,16 +963,18 @@ const createGoalEventPayload = (partidoId, draft) => {
   return payload;
 };
 
-const createCompatibleGoalEventPayload = (partidoId, draft) => ({
-  partido_id: partidoId,
-  type: draft.type,
-  half: draft.half,
-  minute: draft.minute,
-  scorer: emptyToNull(draft.scorer),
-  assistant: emptyToNull(draft.assistant),
-  phase: emptyToNull(draft.phase),
-  subphase: emptyToNull(draft.subphase),
-});
+const goalEventOptionalDbColumns = ['shot_zone', 'assist_zone', 'goal_zone', 'contact', 'video_url', 'scorer_id', 'assistant_id'];
+
+const getMissingGoalEventColumn = (error) => {
+  const message = String(error?.message || error?.details || error?.hint || '').toLowerCase();
+  return goalEventOptionalDbColumns.find((column) => message.includes(column));
+};
+
+const removeGoalEventDbColumn = (payload, column) => {
+  const nextPayload = { ...payload };
+  delete nextPayload[column];
+  return nextPayload;
+};
 
 const normalizeSupabasePostEventType = (eventType) => ({
   id: eventType.id,
@@ -9641,16 +9653,20 @@ function App() {
     payloadDraft.assistantId = isUuid(assistantPlayer?.id) ? assistantPlayer.id : null;
     const fullGoalPayload = createGoalEventPayload(selectedMatch.id, payloadDraft);
     const isEditingGoal = Boolean(editingGoalEventId);
-    let { error: goalError } = isEditingGoal
-      ? await supabase.from("partido_eventos_gol").update(fullGoalPayload).eq("id", editingGoalEventId)
-      : await supabase.from("partido_eventos_gol").insert(fullGoalPayload);
-    if (goalError && /column|schema|cache|goal_zone|assist_zone|shot_zone|video_url|contact|scorer_id|assistant_id/i.test(goalError.message || '')) {
-      console.warn('Reintentando guardado de gol con payload compatible:', { fullGoalPayload, error: goalError });
-      const compatiblePayload = createCompatibleGoalEventPayload(selectedMatch.id, payloadDraft);
-      const retry = isEditingGoal
-        ? await supabase.from("partido_eventos_gol").update(compatiblePayload).eq("id", editingGoalEventId)
-        : await supabase.from("partido_eventos_gol").insert(compatiblePayload);
-      goalError = retry.error;
+    let goalPayloadForSave = fullGoalPayload;
+    let savedGoalRow = null;
+    let goalError = null;
+    for (let attempt = 0; attempt <= goalEventOptionalDbColumns.length; attempt += 1) {
+      const query = isEditingGoal
+        ? supabase.from("partido_eventos_gol").update(goalPayloadForSave).eq("id", editingGoalEventId).select("*").single()
+        : supabase.from("partido_eventos_gol").insert(goalPayloadForSave).select("*").single();
+      const result = await query;
+      goalError = result.error;
+      savedGoalRow = result.data || null;
+      if (!goalError) break;
+      const missingColumn = getMissingGoalEventColumn(goalError);
+      if (!missingColumn || !(missingColumn in goalPayloadForSave)) break;
+      goalPayloadForSave = removeGoalEventDbColumn(goalPayloadForSave, missingColumn);
     }
     if (goalError) {
       console.error('[GOAL_SAVE_ERROR]', { payload: fullGoalPayload, error: goalError });
@@ -9658,6 +9674,10 @@ function App() {
       setStatsError('No se ha podido guardar el gol.');
       return;
     }
+    const normalizedSavedGoal = normalizeSupabaseGoalEvent(savedGoalRow || {});
+    const expectedZones = goalFormToDb(payloadDraft);
+    const savedZones = goalFormToDb(normalizedSavedGoal);
+    const missingSavedZones = ['assist_zone', 'shot_zone', 'goal_zone'].filter((column) => expectedZones[column] && savedZones[column] !== expectedZones[column]);
 
     const postAnalysis = safeObject(selectedMatch.postAiAnalysis);
     const nextGoalAnalysisMeta = isEditingGoal
@@ -9714,6 +9734,11 @@ function App() {
     setIsGoalAnalysisOpen(false);
     await loadPartidos();
     await refreshStatsFromSupabase(selectedMatch.id, 'análisis de goles y marcador');
+    if (missingSavedZones.length) {
+      setStatsSaveStatus('');
+      setStatsError(`Gol guardado, pero Supabase no devolvió las zonas esperadas: ${missingSavedZones.join(', ')}.`);
+      return;
+    }
     setStatsSaveStatus(isEditingGoal ? 'Gol actualizado OK' : 'Gol registrado OK');
     window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Gol registrado OK' || current === 'Gol actualizado OK' ? '' : current)), 2200);
   };
