@@ -943,8 +943,29 @@ const goalFormToDb = (draft = {}) => {
   };
 };
 
+const goalEventDbColumns = new Set([
+  'partido_id',
+  'type',
+  'half',
+  'minute',
+  'scorer',
+  'assistant',
+  'phase',
+  'subphase',
+  'shot_zone',
+  'assist_zone',
+  'goal_zone',
+  'contact',
+  'video_url',
+  'scorer_id',
+  'assistant_id',
+]);
+
+const filterGoalEventDbPayload = (payload = {}) =>
+  Object.fromEntries(Object.entries(payload).filter(([column]) => goalEventDbColumns.has(column)));
+
 const createGoalEventPayload = (partidoId, draft) => {
-  const payload = {
+  const rawPayload = {
     partido_id: partidoId,
     type: draft.type,
     half: draft.half,
@@ -955,12 +976,11 @@ const createGoalEventPayload = (partidoId, draft) => {
     subphase: emptyToNull(draft.subphase),
     ...goalFormToDb(draft),
     contact: emptyToNull(draft.contact),
-    description: emptyToNull(draft.summary),
     video_url: emptyToNull(draft.videoUrl),
   };
-  if (draft.scorerId) payload.scorer_id = draft.scorerId;
-  if (draft.assistantId) payload.assistant_id = draft.assistantId;
-  return payload;
+  if (draft.scorerId) rawPayload.scorer_id = draft.scorerId;
+  if (draft.assistantId) rawPayload.assistant_id = draft.assistantId;
+  return filterGoalEventDbPayload(rawPayload);
 };
 
 const goalEventOptionalDbColumns = ['contact', 'video_url', 'scorer_id', 'assistant_id'];
