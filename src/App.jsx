@@ -21640,14 +21640,6 @@ function App() {
           Ataque: ['Extremo derecho', 'Extremo izquierdo', 'Delantero centro', 'Delantero'],
         };
         const selectedGroup = Object.entries(positionGroups).find(([, items]) => items.includes(formState.position))?.[0] || 'Defensa';
-        const currentPlayer = players.find((player) => player.id === editingId);
-        const currentStatus = currentPlayer ? staffStatusByPlayerId.get(currentPlayer.id) || {} : {};
-        const statusOptions = [
-          ['Disponible', !currentStatus.injured && !currentStatus.suspended, 'border-emerald-200/20 bg-emerald-200/10 text-emerald-100'],
-          ['Lesionado', Boolean(currentStatus.injured), 'border-red-200/20 bg-red-300/10 text-red-100'],
-          ['Sancionado', Boolean(currentStatus.suspended), 'border-slate-200/20 bg-slate-200/10 text-slate-200'],
-        ];
-        const initials = (formState.name || 'Jugador').split(' ').map((part) => part[0]).join('').slice(0, 2);
         const formPlayerPreview = {
           name: formState.name || 'Jugador',
           shirtName: formState.shirtName,
@@ -21752,16 +21744,6 @@ function App() {
                     </div>
                   </section>
 
-                  <section className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Estado</p>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                      {statusOptions.map(([label, active, className]) => (
-                        <div key={label} className={`rounded-2xl border px-4 py-3 text-sm font-black ${active ? className : 'border-white/10 bg-black/15 text-slate-500'}`}>
-                          {label}
-                        </div>
-                      ))}
-                    </div>
-                  </section>
                 </div>
 
                 <aside className="space-y-3">
