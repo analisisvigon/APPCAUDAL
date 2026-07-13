@@ -909,22 +909,28 @@ const normalizeSupabaseGoalEvent = (event) => ({
   description: event.description || '',
 });
 
+const emptyToNull = (value) => {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text ? text : null;
+};
+
 const createGoalEventPayload = (partidoId, draft) => {
   const payload = {
     partido_id: partidoId,
     type: draft.type,
     half: draft.half,
     minute: draft.minute,
-    scorer: draft.scorer,
-    assistant: draft.assistant,
-    phase: draft.phase,
-    subphase: draft.subphase,
-    shot_zone: draft.shotZone,
-    assist_zone: draft.assistZone,
-    goal_zone: draft.goalZone,
-    contact: draft.contact,
-    description: draft.summary || '',
-    video_url: draft.videoUrl,
+    scorer: emptyToNull(draft.scorer),
+    assistant: emptyToNull(draft.assistant),
+    phase: emptyToNull(draft.phase),
+    subphase: emptyToNull(draft.subphase),
+    shot_zone: emptyToNull(draft.shotZone),
+    assist_zone: emptyToNull(draft.assistZone),
+    goal_zone: emptyToNull(draft.goalZone),
+    contact: emptyToNull(draft.contact),
+    description: emptyToNull(draft.summary),
+    video_url: emptyToNull(draft.videoUrl),
   };
   if (draft.scorerId) payload.scorer_id = draft.scorerId;
   if (draft.assistantId) payload.assistant_id = draft.assistantId;
@@ -936,10 +942,10 @@ const createCompatibleGoalEventPayload = (partidoId, draft) => ({
   type: draft.type,
   half: draft.half,
   minute: draft.minute,
-  scorer: draft.scorer,
-  assistant: draft.assistant,
-  phase: draft.phase,
-  subphase: draft.subphase,
+  scorer: emptyToNull(draft.scorer),
+  assistant: emptyToNull(draft.assistant),
+  phase: emptyToNull(draft.phase),
+  subphase: emptyToNull(draft.subphase),
 });
 
 const normalizeSupabasePostEventType = (eventType) => ({
@@ -9226,6 +9232,8 @@ function App() {
   const openGoalAnalysisModal = () => {
     const remembered = lastGoalAnalysisContext || {};
     const goalPlayerOptions = getStatsCalledPlayers().length ? getStatsCalledPlayers() : players;
+    setStatsError('');
+    setStatsSaveStatus('');
     setGoalAnalysisDraft({
       ...defaultGoalAnalysisDraft,
       ...remembered,
@@ -9236,6 +9244,12 @@ function App() {
       assistant: '',
     });
     setIsGoalAnalysisOpen(true);
+  };
+
+  const getExplicitGoalSummary = (draft = goalAnalysisDraft) => {
+    const summary = String(draft.summary || '').trim();
+    if (!summary) return '';
+    return summary === buildGoalDraftSummary(draft) ? '' : summary;
   };
 
   const getGoalZonePhrase = (zone) => {
@@ -9311,6 +9325,7 @@ function App() {
   };
 
   const updateGoalAnalysisDraft = (field, value) => {
+    if (statsError) setStatsError('');
     setGoalAnalysisDraft((prev) => {
       const withAutoSummary = (next) => ({
         ...next,
@@ -9328,11 +9343,26 @@ function App() {
   };
 
   const saveGoalAnalysisEvent = async () => {
-    if (!selectedMatch || !goalAnalysisDraft.minute) return;
+    if (statsSaveStatus === 'Guardando gol...') return;
+    if (!selectedMatch) {
+      setStatsError('No hay partido seleccionado para guardar el gol.');
+      return;
+    }
+    if (!String(goalAnalysisDraft.minute || '').trim()) {
+      setStatsError('Indica el minuto del gol.');
+      return;
+    }
+    if (!goalAnalysisDraft.half) {
+      setStatsError('Indica si el gol fue en primera o segunda parte.');
+      return;
+    }
+    if (goalAnalysisDraft.type === 'Gol a favor' && !String(goalAnalysisDraft.scorer || '').trim()) {
+      setStatsError('Selecciona el goleador.');
+      return;
+    }
     const minute = Number(goalAnalysisDraft.minute);
     if (!Number.isFinite(minute) || minute < 0 || minute > 120) {
-      setStatsSaveStatus('No se pudo guardar gol: minuto inválido');
-      setStatsError('No se pudo guardar gol: el minuto debe estar entre 0 y 120.');
+      setStatsError('El minuto debe estar entre 0 y 120.');
       return;
     }
     setStatsSaveStatus('Guardando gol...');
@@ -9340,7 +9370,7 @@ function App() {
     const payloadDraft = {
       ...goalAnalysisDraft,
       minute: String(minute),
-      summary: goalAnalysisDraft.summary || buildGoalDraftSummary(goalAnalysisDraft),
+      summary: getExplicitGoalSummary(goalAnalysisDraft),
     };
     const scorerPlayer = players.find((player) => player.name === payloadDraft.scorer);
     const assistantPlayer = players.find((player) => player.name === payloadDraft.assistant);
@@ -9358,9 +9388,9 @@ function App() {
       goalError = retry.error;
     }
     if (goalError) {
-      console.error('Error guardando análisis de gol en Supabase:', { payload: fullGoalPayload, error: goalError });
-      setStatsSaveStatus(`No se pudo guardar gol: ${goalError.message || 'error desconocido'}`);
-      setStatsError(`No se pudo guardar gol: ${goalError.message || 'error desconocido'}`);
+      console.error('[GOAL_SAVE_ERROR]', { payload: fullGoalPayload, error: goalError });
+      setStatsSaveStatus('');
+      setStatsError('No se ha podido guardar el gol.');
       return;
     }
 
@@ -9369,8 +9399,9 @@ function App() {
       .select("*")
       .eq("partido_id", selectedMatch.id);
     if (goalsFetchError) {
-      console.error('Error recalculando marcador desde Supabase:', goalsFetchError);
-      setStatsError(`Gol guardado, pero no se pudo recalcular marcador: ${goalsFetchError.message || 'error desconocido'}`);
+      console.error('[GOAL_SAVE_ERROR]', { step: 'fetch_goals_after_insert', matchId: selectedMatch.id, error: goalsFetchError });
+      setStatsSaveStatus('');
+      setStatsError('Gol guardado, pero no se ha podido actualizar el marcador.');
       return;
     }
 
@@ -9405,8 +9436,9 @@ function App() {
     };
     const { error: matchScoreError } = await supabase.from("partidos").update(scorePayload).eq("id", selectedMatch.id);
     if (matchScoreError) {
-      console.error('Error actualizando marcador del partido en Supabase:', matchScoreError);
-      setStatsError(`Gol guardado, pero no se pudo actualizar marcador: ${matchScoreError.message || 'error desconocido'}`);
+      console.error('[GOAL_SAVE_ERROR]', { step: 'update_match_score', payload: scorePayload, error: matchScoreError });
+      setStatsSaveStatus('');
+      setStatsError('Gol guardado, pero no se ha podido actualizar el marcador.');
       return;
     }
 
@@ -21262,9 +21294,19 @@ function App() {
                   <p className="mt-1 text-sm text-slate-400">Análisis táctico y contextual del evento</p>
                 </div>
               </div>
-              <button type="button" onClick={() => setIsGoalAnalysisOpen(false)} className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-slate-200">Cerrar</button>
+              <button type="button" onClick={() => setIsGoalAnalysisOpen(false)} disabled={statsSaveStatus === 'Guardando gol...'} className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-slate-200 disabled:cursor-not-allowed disabled:opacity-50">Cerrar</button>
             </div>
             <div className="max-h-[calc(100vh-150px)] space-y-4 overflow-y-auto px-6 py-5 pb-24">
+              {statsError ? (
+                <div className="rounded-2xl border border-red-300/20 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-100">
+                  {statsError}
+                </div>
+              ) : null}
+              {statsSaveStatus && statsSaveStatus !== 'Guardando gol...' ? (
+                <div className="rounded-2xl border border-emerald-300/20 bg-emerald-400/10 px-4 py-3 text-sm font-bold text-emerald-100">
+                  {statsSaveStatus}
+                </div>
+              ) : null}
               {(() => {
                 const partialScore = getGoalDraftPartialScore(goalAnalysisDraft);
                 const chain = getGoalDraftChain(goalAnalysisDraft);
@@ -21303,7 +21345,10 @@ function App() {
                       <button key={type} type="button" onClick={() => updateGoalAnalysisDraft('type', type)} className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.1em] ${goalAnalysisDraft.type === type ? 'bg-emerald-500 text-white' : 'text-slate-400'}`}>{type}</button>
                     ))}
                   </div>
-                  <input value={goalAnalysisDraft.minute} onChange={(event) => updateGoalAnalysisDraft('minute', event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') saveGoalAnalysisEvent(); }} placeholder="Minuto" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
+                  <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                    <span>Minuto</span>
+                    <input value={goalAnalysisDraft.minute} onChange={(event) => updateGoalAnalysisDraft('minute', event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') saveGoalAnalysisEvent(); }} placeholder="Minuto" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white" />
+                  </label>
                   <div className="grid grid-cols-2 rounded-2xl border border-white/10 bg-white/5 p-1 lg:col-span-2">
                     {['1ª parte', '2ª parte'].map((half) => (
                       <button key={half} type="button" onClick={() => updateGoalAnalysisDraft('half', half)} className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.1em] ${goalAnalysisDraft.half === half ? 'bg-caudal-electric text-slate-950' : 'text-slate-400'}`}>{half}</button>
@@ -21311,22 +21356,31 @@ function App() {
                   </div>
                   {goalAnalysisDraft.type === 'Gol a favor' ? (
                     <>
-                      <select value={goalAnalysisDraft.scorer} onChange={(event) => updateGoalAnalysisDraft('scorer', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white lg:col-span-2">
-                        <option value="">Goleador...</option>
-                        {getGoalDraftPlayerOptions().map((player) => <option key={player.id || player.name} value={player.name}>{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</option>)}
-                      </select>
-                      <select value={goalAnalysisDraft.assistant} onChange={(event) => updateGoalAnalysisDraft('assistant', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white lg:col-span-2">
-                        <option value="">Sin asistencia</option>
-                        {getGoalDraftPlayerOptions().map((player) => <option key={player.id || player.name} value={player.name}>{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</option>)}
-                      </select>
+                      <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 lg:col-span-2">
+                        <span>Goleador</span>
+                        <select value={goalAnalysisDraft.scorer} onChange={(event) => updateGoalAnalysisDraft('scorer', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white">
+                          <option value="">Seleccionar goleador</option>
+                          {getGoalDraftPlayerOptions().map((player) => <option key={player.id || player.name} value={player.name}>{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</option>)}
+                        </select>
+                      </label>
+                      <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 lg:col-span-2">
+                        <span>Asistente</span>
+                        <select value={goalAnalysisDraft.assistant} onChange={(event) => updateGoalAnalysisDraft('assistant', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white">
+                          <option value="">Sin asistencia registrada</option>
+                          {getGoalDraftPlayerOptions().map((player) => <option key={player.id || player.name} value={player.name}>{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</option>)}
+                        </select>
+                      </label>
                     </>
                   ) : (
-                    <input
-                      value={goalAnalysisDraft.scorer}
-                      onChange={(event) => updateGoalAnalysisDraft('scorer', event.target.value)}
-                      placeholder="Goleador rival o descripción libre..."
-                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white lg:col-span-4"
-                    />
+                    <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 lg:col-span-4">
+                      <span>Goleador rival</span>
+                      <input
+                        value={goalAnalysisDraft.scorer}
+                        onChange={(event) => updateGoalAnalysisDraft('scorer', event.target.value)}
+                        placeholder="Opcional si no está identificado"
+                        className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white"
+                      />
+                    </label>
                   )}
                 </div>
               </section>
@@ -21433,7 +21487,7 @@ function App() {
               </section>
             </div>
             <div className="sticky bottom-0 border-t border-white/10 bg-[#111b2a]/95 px-6 py-4 backdrop-blur">
-              <button type="button" onClick={saveGoalAnalysisEvent} className="w-full rounded-3xl bg-caudal-electric px-5 py-4 text-sm font-black uppercase tracking-[0.16em] text-slate-950">
+              <button type="button" onClick={saveGoalAnalysisEvent} disabled={statsSaveStatus === 'Guardando gol...'} className="w-full rounded-3xl bg-caudal-electric px-5 py-4 text-sm font-black uppercase tracking-[0.16em] text-slate-950 disabled:cursor-not-allowed disabled:opacity-60">
                 {statsSaveStatus === 'Guardando gol...' ? 'Guardando...' : 'Guardar gol'}
               </button>
             </div>
