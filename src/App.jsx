@@ -963,7 +963,7 @@ const createGoalEventPayload = (partidoId, draft) => {
   return payload;
 };
 
-const goalEventOptionalDbColumns = ['shot_zone', 'assist_zone', 'goal_zone', 'contact', 'video_url', 'scorer_id', 'assistant_id'];
+const goalEventOptionalDbColumns = ['contact', 'video_url', 'scorer_id', 'assistant_id'];
 
 const getMissingGoalEventColumn = (error) => {
   const message = String(error?.message || error?.details || error?.hint || '').toLowerCase();
@@ -974,6 +974,12 @@ const removeGoalEventDbColumn = (payload, column) => {
   const nextPayload = { ...payload };
   delete nextPayload[column];
   return nextPayload;
+};
+
+const createGoalSaveError = (message, details = {}) => {
+  const error = new Error(message);
+  error.details = details;
+  return error;
 };
 
 const normalizeSupabasePostEventType = (eventType) => ({
@@ -9574,6 +9580,53 @@ function App() {
     return { nextEvents, caudalGoals, rivalGoals, scorePayload };
   };
 
+  const saveGoalWithSchemaFallback = async ({ mode, goalId, payload }) => {
+    if (mode === 'edit' && !goalId) {
+      return {
+        data: null,
+        error: createGoalSaveError('No se pudo guardar el gol: falta el identificador del gol.'),
+        removedColumns: [],
+      };
+    }
+    let currentPayload = { ...payload };
+    const removedColumns = [];
+    for (let attempt = 0; attempt <= goalEventOptionalDbColumns.length; attempt += 1) {
+      let result;
+      try {
+        result = mode === 'edit'
+          ? await supabase.from("partido_eventos_gol").update(currentPayload).eq("id", goalId).select("*").maybeSingle()
+          : await supabase.from("partido_eventos_gol").insert(currentPayload).select("*").maybeSingle();
+      } catch (error) {
+        return { data: null, error, removedColumns };
+      }
+
+      if (!result.error && result.data) return { data: result.data, error: null, removedColumns };
+      if (!result.error && !result.data) {
+        return {
+          data: null,
+          error: createGoalSaveError(
+            mode === 'edit'
+              ? 'No se actualizó ningún gol. Revisa que el evento siga existiendo y que tengas permisos de lectura.'
+              : 'El gol se envió, pero Supabase no devolvió la fila creada. Revisa permisos SELECT/RLS sobre partido_eventos_gol.'
+          ),
+          removedColumns,
+        };
+      }
+
+      const missingColumn = getMissingGoalEventColumn(result.error);
+      if (!missingColumn || !(missingColumn in currentPayload) || removedColumns.includes(missingColumn)) {
+        return { data: null, error: result.error, removedColumns };
+      }
+      removedColumns.push(missingColumn);
+      currentPayload = removeGoalEventDbColumn(currentPayload, missingColumn);
+    }
+    return {
+      data: null,
+      error: createGoalSaveError('No se pudo guardar el gol tras varios intentos.'),
+      removedColumns,
+    };
+  };
+
   const detectGoalClipPlatform = (url = '') => {
     const lower = String(url).toLowerCase();
     if (!lower.trim()) return { label: 'Sin clip', icon: 'CLIP' };
@@ -9653,31 +9706,31 @@ function App() {
     payloadDraft.assistantId = isUuid(assistantPlayer?.id) ? assistantPlayer.id : null;
     const fullGoalPayload = createGoalEventPayload(selectedMatch.id, payloadDraft);
     const isEditingGoal = Boolean(editingGoalEventId);
-    let goalPayloadForSave = fullGoalPayload;
-    let savedGoalRow = null;
-    let goalError = null;
-    for (let attempt = 0; attempt <= goalEventOptionalDbColumns.length; attempt += 1) {
-      const query = isEditingGoal
-        ? supabase.from("partido_eventos_gol").update(goalPayloadForSave).eq("id", editingGoalEventId).select("*").single()
-        : supabase.from("partido_eventos_gol").insert(goalPayloadForSave).select("*").single();
-      const result = await query;
-      goalError = result.error;
-      savedGoalRow = result.data || null;
-      if (!goalError) break;
-      const missingColumn = getMissingGoalEventColumn(goalError);
-      if (!missingColumn || !(missingColumn in goalPayloadForSave)) break;
-      goalPayloadForSave = removeGoalEventDbColumn(goalPayloadForSave, missingColumn);
-    }
-    if (goalError) {
-      console.error('[GOAL_SAVE_ERROR]', { payload: fullGoalPayload, error: goalError });
+    if (isEditingGoal && !getStatsGoalEvents().some((event) => event.id === editingGoalEventId)) {
       setStatsSaveStatus('');
-      setStatsError('No se ha podido guardar el gol.');
+      setStatsError('No se ha podido guardar el gol: el evento seleccionado ya no está disponible.');
       return;
     }
-    const normalizedSavedGoal = normalizeSupabaseGoalEvent(savedGoalRow || {});
+    const saveResult = await saveGoalWithSchemaFallback({
+      mode: isEditingGoal ? 'edit' : 'create',
+      goalId: editingGoalEventId,
+      payload: fullGoalPayload,
+    });
+    if (saveResult.error) {
+      console.error('[GOAL_SAVE_ERROR]', { mode: isEditingGoal ? 'edit' : 'create', goalId: editingGoalEventId, payload: fullGoalPayload, removedColumns: saveResult.removedColumns, error: saveResult.error });
+      setStatsSaveStatus('');
+      setStatsError(saveResult.error.message || 'No se ha podido guardar el gol.');
+      return;
+    }
+    const normalizedSavedGoal = normalizeSupabaseGoalEvent(saveResult.data || {});
     const expectedZones = goalFormToDb(payloadDraft);
     const savedZones = goalFormToDb(normalizedSavedGoal);
     const missingSavedZones = ['assist_zone', 'shot_zone', 'goal_zone'].filter((column) => expectedZones[column] && savedZones[column] !== expectedZones[column]);
+    if (missingSavedZones.length) {
+      setStatsSaveStatus('');
+      setStatsError(`Gol guardado, pero Supabase no devolvió las zonas esperadas: ${missingSavedZones.join(', ')}.`);
+      return;
+    }
 
     const postAnalysis = safeObject(selectedMatch.postAiAnalysis);
     const nextGoalAnalysisMeta = isEditingGoal
@@ -9734,11 +9787,6 @@ function App() {
     setIsGoalAnalysisOpen(false);
     await loadPartidos();
     await refreshStatsFromSupabase(selectedMatch.id, 'análisis de goles y marcador');
-    if (missingSavedZones.length) {
-      setStatsSaveStatus('');
-      setStatsError(`Gol guardado, pero Supabase no devolvió las zonas esperadas: ${missingSavedZones.join(', ')}.`);
-      return;
-    }
     setStatsSaveStatus(isEditingGoal ? 'Gol actualizado OK' : 'Gol registrado OK');
     window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Gol registrado OK' || current === 'Gol actualizado OK' ? '' : current)), 2200);
   };
