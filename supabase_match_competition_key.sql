@@ -104,13 +104,78 @@ values (
   'competition-assets',
   true,
   2097152,
-  array['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
+  array['image/png', 'image/jpeg', 'image/webp']
 )
 on conflict (id) do update
 set
   public = excluded.public,
   file_size_limit = excluded.file_size_limit,
   allowed_mime_types = excluded.allowed_mime_types;
+
+alter table public.competitions enable row level security;
+
+drop policy if exists "Authenticated staff can read competitions" on public.competitions;
+create policy "Authenticated staff can read competitions"
+on public.competitions
+for select
+to authenticated
+using (true);
+
+drop policy if exists "Authenticated staff can write competitions" on public.competitions;
+create policy "Authenticated staff can write competitions"
+on public.competitions
+for insert
+to authenticated
+with check (true);
+
+drop policy if exists "Authenticated staff can update competitions" on public.competitions;
+create policy "Authenticated staff can update competitions"
+on public.competitions
+for update
+to authenticated
+using (true)
+with check (true);
+
+drop policy if exists "Authenticated staff can read competition assets" on storage.objects;
+create policy "Authenticated staff can read competition assets"
+on storage.objects
+for select
+to authenticated
+using (bucket_id = 'competition-assets');
+
+drop policy if exists "Authenticated staff can upload own competition assets" on storage.objects;
+create policy "Authenticated staff can upload own competition assets"
+on storage.objects
+for insert
+to authenticated
+with check (
+  bucket_id = 'competition-assets'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+drop policy if exists "Authenticated staff can update own competition assets" on storage.objects;
+create policy "Authenticated staff can update own competition assets"
+on storage.objects
+for update
+to authenticated
+using (
+  bucket_id = 'competition-assets'
+  and (storage.foldername(name))[1] = auth.uid()::text
+)
+with check (
+  bucket_id = 'competition-assets'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+drop policy if exists "Authenticated staff can delete own competition assets" on storage.objects;
+create policy "Authenticated staff can delete own competition assets"
+on storage.objects
+for delete
+to authenticated
+using (
+  bucket_id = 'competition-assets'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
 
 comment on column public.partidos.competition_key is
 'Clave estable de competicion del partido: league, copa_rfef, playoff o friendly. Fuente de verdad para filtros y acumulados.';
@@ -122,4 +187,4 @@ comment on table public.competitions is
 'Catalogo persistente de competiciones usado por partidos, filtros, acumulados e iconos/logos.';
 
 comment on column public.competitions.logo_url is
-'URL publica del icono/logo guardado en Supabase Storage bucket competition-assets.';
+'URL publica del icono/logo guardado en Supabase Storage bucket competition-assets, ruta auth.uid()/competition_key/archivo.';

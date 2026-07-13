@@ -83,6 +83,9 @@ function FloatingActionMenu({ anchorRect, width = 224, onClose, children }) {
 
 function CompetitionIcon({ competition, className = 'h-9 w-9 rounded-xl', textClassName = 'text-[10px]' }) {
   const [logoFailed, setLogoFailed] = useState(false);
+  useEffect(() => {
+    setLogoFailed(false);
+  }, [competition?.logoUrl]);
   if (competition?.logoUrl && !logoFailed) {
     return (
       <span className={`flex shrink-0 items-center justify-center border border-white/10 bg-white ${className}`}>
@@ -3286,6 +3289,18 @@ function App() {
   const [competitionCatalogError, setCompetitionCatalogError] = useState('');
   const [uploadingCompetitionKey, setUploadingCompetitionKey] = useState('');
   const [competitionIconStatus, setCompetitionIconStatus] = useState('');
+  const [competitionIconModal, setCompetitionIconModal] = useState({
+    open: false,
+    mode: 'url',
+    competitionKey: '',
+    url: '',
+    previewUrl: '',
+    file: null,
+    filePreviewUrl: '',
+    error: '',
+    status: '',
+    saving: false,
+  });
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [draggedPlayer, setDraggedPlayer] = useState(null);
   const [importStatus, setImportStatus] = useState('');
@@ -14749,66 +14764,189 @@ function App() {
     setMatchFormState((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
-  const handleCompetitionIconUpload = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
+  const openCompetitionIconModal = () => {
     const competitionKey = matchFormState.competitionKey;
     const competition = getCompetitionFromCatalog(competitionKey);
     if (!competitions.some((competitionOption) => competitionOption.key === competitionKey)) {
-      setCompetitionIconStatus('Selecciona la competicion antes de anadir un icono.');
+      setMatchFieldErrors((current) => ({ ...current, competitionKey: 'Selecciona la competicion.' }));
       return;
     }
-    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+    setCompetitionIconStatus('');
+    setCompetitionIconModal({
+      open: true,
+      mode: 'url',
+      competitionKey,
+      url: competition.logoUrl || '',
+      previewUrl: competition.logoUrl || '',
+      file: null,
+      filePreviewUrl: '',
+      error: '',
+      status: '',
+      saving: false,
+    });
+  };
+
+  const closeCompetitionIconModal = () => {
+    if (competitionIconModal.filePreviewUrl) URL.revokeObjectURL(competitionIconModal.filePreviewUrl);
+    setCompetitionIconModal((current) => ({ ...current, open: false, error: '', status: '', saving: false }));
+  };
+
+  const setCompetitionLogoSaveError = ({ operation, competitionKey, error }) => {
+    console.error('[COMPETITION_LOGO_SAVE_ERROR]', {
+      operation,
+      competitionKey,
+      clubId: null,
+      error,
+    });
+    setCompetitionIconModal((current) => ({ ...current, error: 'No se ha podido guardar el icono.', saving: false }));
+  };
+
+  const validateCompetitionLogoUrl = (urlValue) =>
+    new Promise((resolve, reject) => {
+      let parsed;
+      try {
+        parsed = new URL(String(urlValue || '').trim());
+      } catch {
+        reject(new Error('URL no valida.'));
+        return;
+      }
+      if (parsed.protocol !== 'https:') {
+        reject(new Error('La URL debe empezar por https.'));
+        return;
+      }
+      const supportedExtension = /\.(png|jpe?g|webp)(\?.*)?$/i.test(parsed.pathname + parsed.search);
+      if (!supportedExtension) {
+        reject(new Error('La URL debe apuntar a PNG, JPG o WEBP.'));
+        return;
+      }
+      const image = new Image();
+      image.onload = () => resolve(parsed.toString());
+      image.onerror = () => reject(new Error('No se ha podido cargar la imagen desde ese enlace.'));
+      image.referrerPolicy = 'no-referrer';
+      image.src = parsed.toString();
+    });
+
+  const previewCompetitionLogoUrl = async () => {
+    try {
+      setCompetitionIconModal((current) => ({ ...current, error: '', status: '' }));
+      const previewUrl = await validateCompetitionLogoUrl(competitionIconModal.url);
+      setCompetitionIconModal((current) => ({ ...current, previewUrl, status: 'Previsualizacion lista.' }));
+    } catch (error) {
+      setCompetitionIconModal((current) => ({ ...current, previewUrl: '', error: error.message || 'No se ha podido cargar la imagen desde ese enlace.' }));
+    }
+  };
+
+  const updateCompetitionLogoUrl = async ({ competitionKey, logoUrl, operation }) => {
+    const competition = getCompetitionFromCatalog(competitionKey);
+    const payload = {
+      id: isUuid(competition.id) ? competition.id : undefined,
+      key: competitionKey,
+      name: competition.label,
+      short_name: competition.shortName || competition.label,
+      fallback_icon: competition.icon || getCompetitionMeta(competitionKey).icon,
+      logo_url: logoUrl || null,
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await supabase
+      .from("competitions")
+      .upsert(payload, { onConflict: "key" })
+      .select("*")
+      .single();
+    if (error) {
+      setCompetitionLogoSaveError({ operation, competitionKey, error });
+      throw error;
+    }
+    const nextCompetition = normalizeSupabaseCompetition(data);
+    setCompetitions((current) => mergeCompetitionCatalog([
+      ...current.filter((item) => item.key !== nextCompetition.key),
+      nextCompetition,
+    ]));
+    setCompetitionCatalogError('');
+    return nextCompetition;
+  };
+
+  const saveCompetitionLogoFromUrl = async () => {
+    const competitionKey = competitionIconModal.competitionKey;
+    const competition = getCompetitionFromCatalog(competitionKey);
+    if (competition.logoUrl && competition.logoUrl !== competitionIconModal.previewUrl) {
+      const confirmed = window.confirm(`Este cambio actualizara el icono de ${competition.label} en toda la aplicacion.`);
+      if (!confirmed) return;
+    }
+    try {
+      setCompetitionIconModal((current) => ({ ...current, saving: true, error: '', status: '' }));
+      const logoUrl = await validateCompetitionLogoUrl(competitionIconModal.previewUrl || competitionIconModal.url);
+      const nextCompetition = await updateCompetitionLogoUrl({ competitionKey, logoUrl, operation: 'save-url' });
+      setCompetitionIconStatus(`Icono de ${nextCompetition.label} actualizado.`);
+      closeCompetitionIconModal();
+    } catch (error) {
+      if (!competitionIconModal.error) {
+        setCompetitionIconModal((current) => ({ ...current, error: error.message || 'No se ha podido guardar el icono.', saving: false }));
+      }
+    }
+  };
+
+  const handleCompetitionIconFileSelect = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
     if (!allowedTypes.includes(file.type)) {
-      setCompetitionIconStatus('Formato no valido. Usa PNG, JPG, WEBP o SVG.');
+      setCompetitionIconModal((current) => ({ ...current, file: null, filePreviewUrl: '', error: 'Formato no valido. Usa PNG, JPG o WEBP.' }));
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
-      setCompetitionIconStatus('El icono no puede superar 2 MB.');
+      setCompetitionIconModal((current) => ({ ...current, file: null, filePreviewUrl: '', error: 'El icono no puede superar 2 MB.' }));
+      return;
+    }
+    if (competitionIconModal.filePreviewUrl) URL.revokeObjectURL(competitionIconModal.filePreviewUrl);
+    const filePreviewUrl = URL.createObjectURL(file);
+    setCompetitionIconModal((current) => ({ ...current, file, filePreviewUrl, error: '', status: 'Archivo listo para guardar.' }));
+  };
+
+  const saveCompetitionLogoFromFile = async () => {
+    const competitionKey = competitionIconModal.competitionKey;
+    const competition = getCompetitionFromCatalog(competitionKey);
+    if (!competitionIconModal.file) {
+      setCompetitionIconModal((current) => ({ ...current, error: 'Selecciona una imagen antes de guardar.' }));
       return;
     }
     if (competition.logoUrl) {
       const confirmed = window.confirm(`Este cambio actualizara el icono de ${competition.label} en toda la aplicacion.`);
       if (!confirmed) return;
     }
-
     try {
       setUploadingCompetitionKey(competitionKey);
-      setCompetitionIconStatus('');
+      setCompetitionIconModal((current) => ({ ...current, saving: true, error: '', status: '' }));
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError || !userData?.user?.id) throw userError || new Error('Usuario no autenticado.');
       const publicUrl = await uploadPublicFile({
         bucket: 'competition-assets',
-        file,
-        folder: sanitizeStorageName(competitionKey),
+        file: competitionIconModal.file,
+        folder: `${userData.user.id}/${sanitizeStorageName(competitionKey)}`,
       });
-      const payload = {
-        id: isUuid(competition.id) ? competition.id : undefined,
-        key: competitionKey,
-        name: competition.label,
-        short_name: competition.shortName || competition.label,
-        fallback_icon: competition.icon || getCompetitionMeta(competitionKey).icon,
-        logo_url: publicUrl,
-        is_active: true,
-        updated_at: new Date().toISOString(),
-      };
-      const { data, error } = await supabase
-        .from("competitions")
-        .upsert(payload, { onConflict: "key" })
-        .select("*")
-        .single();
-      if (error) throw error;
-      const nextCompetition = normalizeSupabaseCompetition(data);
-      setCompetitions((current) => mergeCompetitionCatalog([
-        ...current.filter((item) => item.key !== nextCompetition.key),
-        nextCompetition,
-      ]));
-      setCompetitionCatalogError('');
+      const nextCompetition = await updateCompetitionLogoUrl({ competitionKey, logoUrl: publicUrl, operation: 'save-upload' });
       setCompetitionIconStatus(`Icono de ${nextCompetition.label} actualizado.`);
-    } catch (uploadError) {
-      console.error('Error guardando icono de competicion:', uploadError);
-      setCompetitionIconStatus(uploadError.message || 'No se pudo guardar el icono de la competicion.');
+      closeCompetitionIconModal();
+    } catch (error) {
+      setCompetitionLogoSaveError({ operation: 'save-upload', competitionKey, error });
     } finally {
       setUploadingCompetitionKey('');
+    }
+  };
+
+  const deleteCompetitionLogo = async () => {
+    const competitionKey = competitionIconModal.competitionKey;
+    const competition = getCompetitionFromCatalog(competitionKey);
+    const confirmed = window.confirm(`Este cambio eliminara el icono de ${competition.label} en toda la aplicacion.`);
+    if (!confirmed) return;
+    try {
+      setCompetitionIconModal((current) => ({ ...current, saving: true, error: '', status: '' }));
+      const nextCompetition = await updateCompetitionLogoUrl({ competitionKey, logoUrl: '', operation: 'delete-logo' });
+      setCompetitionIconStatus(`Icono de ${nextCompetition.label} eliminado.`);
+      closeCompetitionIconModal();
+    } catch (error) {
+      setCompetitionLogoSaveError({ operation: 'delete-logo', competitionKey, error });
     }
   };
 
@@ -23003,10 +23141,13 @@ function App() {
                       {competitions.map((competition) => <option key={competition.key} value={competition.key}>{competition.label}</option>)}
                     </select>
                     {matchFormState.competitionKey ? (
-                      <label className={`flex h-[46px] cursor-pointer items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-3 text-[10px] font-black uppercase tracking-[0.1em] text-slate-200 transition hover:bg-white/10 ${uploadingCompetitionKey ? 'pointer-events-none opacity-60' : ''}`}>
+                      <button
+                        type="button"
+                        onClick={openCompetitionIconModal}
+                        className={`flex h-[46px] items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-3 text-[10px] font-black uppercase tracking-[0.1em] text-slate-200 transition hover:bg-white/10 ${uploadingCompetitionKey ? 'pointer-events-none opacity-60' : ''}`}
+                      >
                         {getCompetitionFromCatalog(matchFormState.competitionKey).logoUrl ? 'Cambiar' : 'Anadir'}
-                        <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={handleCompetitionIconUpload} className="hidden" />
-                      </label>
+                      </button>
                     ) : null}
                   </div>
                   {matchFormState.competitionKey ? (
@@ -23015,7 +23156,6 @@ function App() {
                       <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-200">{getCompetitionFromCatalog(matchFormState.competitionKey).label}</span>
                     </span>
                   ) : null}
-                  {competitionIconStatus ? <span className="block text-xs font-semibold text-caudal-electric">{competitionIconStatus}</span> : null}
                   {competitionCatalogError ? <span className="block text-xs font-semibold text-amber-200">{competitionCatalogError}</span> : null}
                   {matchFieldErrors.competitionKey ? <span className="block text-xs font-semibold text-red-200">{matchFieldErrors.competitionKey}</span> : null}
                 </label>
@@ -23056,6 +23196,76 @@ function App() {
                 <input name="stadium" value={matchFormState.stadium} onChange={handleMatchChange} placeholder="Campo del encuentro" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
                 {getMatchStadiumHelp() ? <span className="block text-xs font-semibold text-slate-500">{getMatchStadiumHelp()}</span> : null}
               </label>
+
+              {competitionIconModal.open ? (() => {
+                const competition = getCompetitionFromCatalog(competitionIconModal.competitionKey);
+                const previewUrl = competitionIconModal.mode === 'upload'
+                  ? competitionIconModal.filePreviewUrl
+                  : competitionIconModal.previewUrl;
+                return (
+                  <div className="rounded-3xl border border-white/10 bg-[#07111f] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Icono de la competicion</p>
+                        <div className="mt-3 flex items-center gap-3">
+                          <CompetitionIcon competition={{ ...competition, logoUrl: previewUrl || competition.logoUrl }} className="h-12 w-12 rounded-2xl" textClassName="text-[11px]" />
+                          <p className="text-sm font-black uppercase tracking-[0.12em] text-white">{competition.label}</p>
+                        </div>
+                      </div>
+                      <button type="button" onClick={closeCompetitionIconModal} className="text-2xl leading-none text-slate-500 hover:text-white">×</button>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl bg-white/[0.04] p-1">
+                      {[
+                        ['url', 'Usar enlace'],
+                        ['upload', 'Subir imagen'],
+                      ].map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setCompetitionIconModal((current) => ({ ...current, mode, error: '', status: '' }))}
+                          className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.12em] ${competitionIconModal.mode === mode ? 'bg-caudal-electric text-slate-950' : 'text-slate-300 hover:bg-white/10'}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {competitionIconModal.mode === 'url' ? (
+                      <div className="mt-4 space-y-3">
+                        <label className="space-y-2 text-sm text-slate-300">
+                          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">URL de la imagen</span>
+                          <input
+                            value={competitionIconModal.url}
+                            onChange={(event) => setCompetitionIconModal((current) => ({ ...current, url: event.target.value, error: '', status: '' }))}
+                            placeholder="https://..."
+                            className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
+                          />
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          <button type="button" onClick={previewCompetitionLogoUrl} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-200 hover:bg-white/10">Previsualizar</button>
+                          <button type="button" disabled={competitionIconModal.saving} onClick={saveCompetitionLogoFromUrl} className="rounded-2xl bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950 disabled:opacity-60">Guardar icono</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-4 space-y-3">
+                        <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-dashed border-white/15 bg-white/[0.04] px-4 py-3 text-sm text-slate-300 hover:bg-white/[0.07]">
+                          <span className="font-bold">{competitionIconModal.file ? competitionIconModal.file.name : 'Seleccionar PNG, JPG o WEBP'}</span>
+                          <span className="text-xs font-black uppercase tracking-[0.12em] text-caudal-electric">Elegir</span>
+                          <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleCompetitionIconFileSelect} className="hidden" />
+                        </label>
+                        {competitionIconModal.file ? (
+                          <p className="text-xs font-semibold text-slate-500">{Math.round(competitionIconModal.file.size / 1024)} KB</p>
+                        ) : null}
+                        <button type="button" disabled={competitionIconModal.saving} onClick={saveCompetitionLogoFromFile} className="rounded-2xl bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950 disabled:opacity-60">Guardar icono</button>
+                      </div>
+                    )}
+                    {competition.logoUrl ? (
+                      <button type="button" disabled={competitionIconModal.saving} onClick={deleteCompetitionLogo} className="mt-4 text-xs font-black uppercase tracking-[0.12em] text-red-200 hover:text-red-100">Eliminar icono</button>
+                    ) : null}
+                    {competitionIconModal.error ? <p className="mt-3 rounded-2xl border border-red-300/20 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-100">{competitionIconModal.error}</p> : null}
+                    {competitionIconModal.status ? <p className="mt-3 rounded-2xl border border-caudal-electric/20 bg-caudal-electric/10 px-4 py-3 text-sm font-semibold text-caudal-electric">{competitionIconModal.status}</p> : null}
+                  </div>
+                );
+              })() : null}
 
               {matchSubmitError ? (
                 <div className="rounded-2xl border border-red-300/20 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-100">
