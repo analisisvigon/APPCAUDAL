@@ -13014,21 +13014,6 @@ function App() {
       nextMatch?.preRivalStrengths ||
       nextMatch?.preRivalWeaknesses
     );
-    const currentStatuses = players.map((player) => staffStatusByPlayerId.get(player.id) || {});
-    const disciplinaryByPlayer = players.map((player) => {
-      const yellowCount = weeklyMatches.reduce((sum, match) => {
-        const stats = match.statsPlayerData?.[player.name];
-        return sum + (Number(stats?.yellowCount ?? (stats?.yellow ? 1 : 0)) || 0);
-      }, 0);
-      return { player, yellowCount };
-    });
-    const squad = {
-      available: currentStatuses.filter((status) => status.available).length,
-      injured: currentStatuses.filter((status) => status.injured).length,
-      suspended: currentStatuses.filter((status) => status.suspended).length,
-      yellow: disciplinaryByPlayer.filter((row) => row.yellowCount > 0).length,
-      yellowRisk: disciplinaryByPlayer.filter((row) => row.yellowCount >= 4).length,
-    };
     const activityCandidates = [
       nextMatch ? { label: 'Partido creado', detail: `${nextMatch.opponent || 'Rival'} · ${matchDisplayDate(nextMatch.date)}` } : null,
       nextMatch && hasNextRival ? { label: 'Rival actualizado', detail: nextMatch.opponent || 'Próximo partido' } : null,
@@ -13043,7 +13028,6 @@ function App() {
       nextOpponentTeam,
       lastMatch,
       activity: activityCandidates,
-      squad,
       balance,
       leagueResults: calculateLeagueResults(matches),
       recent,
@@ -13053,7 +13037,7 @@ function App() {
       sub23Count: players.filter((player) => calculateAge(player.dob) < 23).length,
       rivalCount: teams.length,
     };
-  }, [matches, players, teams, matchFilter, staffStatusByPlayerId]);
+  }, [matches, players, teams, matchFilter]);
 
   const openForm = (player = null) => {
     setPlayerFormError('');
@@ -15941,24 +15925,7 @@ function App() {
               ))}
             </section>
 
-            <section className="grid gap-4 xl:grid-cols-[0.95fr_1.25fr_0.8fr]">
-              <div className="rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]">
-                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Estado de plantilla</h3>
-                <div className="mt-4 grid gap-2">
-                  {[
-                    ['Disponibles', homeDashboard.squad.available, 'bg-emerald-300 text-slate-950'],
-                    ['Lesionados', homeDashboard.squad.injured, 'bg-red-300 text-slate-950'],
-                    ['Riesgo sanción', homeDashboard.squad.yellowRisk, 'bg-orange-300 text-slate-950'],
-                    ['Amonestados', homeDashboard.squad.yellow, 'bg-amber-200 text-slate-950'],
-                  ].map(([label, value, tone]) => (
-                    <div key={label} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 transition hover:bg-white/[0.07]">
-                      <span className="text-sm font-bold text-slate-200">{label}</span>
-                      <span className={`rounded-xl px-3 py-1 text-xs font-black ${tone}`}>{value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
+            <section className="grid gap-4 xl:grid-cols-[1.35fr_0.85fr]">
               <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.045] p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]">
                 <div className="flex items-center justify-between gap-3">
                   <div>
