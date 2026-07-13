@@ -417,6 +417,7 @@ const emptyMatchForm = {
   redCards: '',
   cleanSheet: false,
   statsGoalEvents: [],
+  systemEvents: [],
   statsSystem: '4-4-2',
   statsLineup: [],
   statsCalledPlayers: [],
@@ -1143,6 +1144,139 @@ const normalizeSupabaseGoalEvent = (event) => ({
   description: event.description || '',
   createdAt: event.created_at || event.createdAt || '',
 });
+
+const parseMatchEventMinute = (value) => {
+  const raw = String(value ?? '').trim();
+  if (!raw || raw === '999') return { sortMinute: 999, label: 'Sin minuto', hasMinute: false };
+  const addedTimeMatch = raw.match(/^(\d+)\s*\+\s*(\d+)$/);
+  if (addedTimeMatch) {
+    const base = Number(addedTimeMatch[1]);
+    const added = Number(addedTimeMatch[2]);
+    return {
+      sortMinute: Number.isFinite(base + added) ? base + added : 999,
+      label: `${base}+${added}'`,
+      hasMinute: true,
+    };
+  }
+  const minute = Number(raw);
+  if (!Number.isFinite(minute) || minute >= 999) return { sortMinute: 999, label: 'Sin minuto', hasMinute: false };
+  return { sortMinute: minute, label: `${minute}'`, hasMinute: true };
+};
+
+const getEventHalfOrder = (half) => {
+  const normalized = String(half || '').toLowerCase();
+  if (normalized.includes('1') || normalized.includes('first')) return 1;
+  if (normalized.includes('2') || normalized.includes('second')) return 2;
+  return 3;
+};
+
+const normalizeSupabaseSystemEvent = (event = {}) => ({
+  id: event.id,
+  partidoId: event.partido_id || event.partidoId || '',
+  eventType: 'system_change',
+  minute: event.minute ?? '',
+  period: event.period || event.half || '',
+  second: Number(event.second || 0),
+  fromSystem: event.from_system || event.fromSystem || '',
+  toSystem: event.to_system || event.toSystem || '',
+  note: event.note || '',
+  createdAt: event.created_at || event.createdAt || '',
+  updatedAt: event.updated_at || event.updatedAt || '',
+});
+
+const getEventMinuteNumber = (value) => {
+  if (!hasRealValue(value)) return null;
+  const parsed = parseMatchEventMinute(value);
+  return parsed.hasMinute ? parsed.sortMinute : null;
+};
+
+const getSystemEventMinute = (event = {}) => getEventMinuteNumber(event.minute);
+
+const sortSystemEventsChronologically = (events = []) => safeArray(events)
+  .map(normalizeSupabaseSystemEvent)
+  .filter((event) => hasRealValue(event.toSystem))
+  .sort((a, b) => {
+    const halfDiff = getEventHalfOrder(a.period) - getEventHalfOrder(b.period);
+    if (halfDiff) return halfDiff;
+    const minuteDiff = (getSystemEventMinute(a) ?? 999) - (getSystemEventMinute(b) ?? 999);
+    if (minuteDiff) return minuteDiff;
+    const secondDiff = Number(a.second || 0) - Number(b.second || 0);
+    if (secondDiff) return secondDiff;
+    return String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
+  });
+
+const getInitialMatchSystem = (match = {}) => match.statsSystem || match.statsSystemRaw || match.preCaudalSystem || match.preCaudalSystemRaw || '4-4-2';
+
+const getSystemAtMinute = ({ initialSystem = '4-4-2', systemEvents = [], minute, period = '' } = {}) => {
+  const targetMinute = getEventMinuteNumber(minute);
+  if (targetMinute === null) return initialSystem || '4-4-2';
+  const targetHalf = getEventHalfOrder(period);
+  return sortSystemEventsChronologically(systemEvents).reduce((currentSystem, event) => {
+    const eventMinute = getSystemEventMinute(event);
+    if (eventMinute === null) return currentSystem;
+    const eventHalf = getEventHalfOrder(event.period);
+    if (eventHalf < targetHalf || (eventHalf === targetHalf && eventMinute <= targetMinute)) {
+      return event.toSystem || currentSystem;
+    }
+    return currentSystem;
+  }, initialSystem || '4-4-2');
+};
+
+const getSystemBeforeEvent = ({ initialSystem = '4-4-2', systemEvents = [], eventId = '', minute, period = '' } = {}) => {
+  const targetMinute = getEventMinuteNumber(minute);
+  if (targetMinute === null) return initialSystem || '4-4-2';
+  const targetHalf = getEventHalfOrder(period);
+  return sortSystemEventsChronologically(systemEvents).reduce((currentSystem, event) => {
+    if (event.id && event.id === eventId) return currentSystem;
+    const eventMinute = getSystemEventMinute(event);
+    if (eventMinute === null) return currentSystem;
+    const eventHalf = getEventHalfOrder(event.period);
+    if (eventHalf < targetHalf || (eventHalf === targetHalf && eventMinute < targetMinute)) {
+      return event.toSystem || currentSystem;
+    }
+    return currentSystem;
+  }, initialSystem || '4-4-2');
+};
+
+const getMatchDurationMinutes = (match = {}) => {
+  const candidates = [
+    match.duration,
+    match.matchDuration,
+    match.officialDuration,
+    match.minutes,
+    ...Object.values(safeObject(match.statsPlayerData)).map((row) => row.minutes),
+  ];
+  const numeric = candidates.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0);
+  return Math.max(90, ...numeric, 90);
+};
+
+const buildSystemSequence = (match = {}) => {
+  const initialSystem = getInitialMatchSystem(match);
+  const duration = getMatchDurationMinutes(match);
+  const events = sortSystemEventsChronologically(match.systemEvents);
+  const boundaries = [
+    { minute: 0, system: initialSystem, event: null },
+    ...events.map((event) => ({
+      minute: getSystemEventMinute(event),
+      system: event.toSystem,
+      event,
+    })).filter((row) => row.minute !== null),
+  ].sort((a, b) => a.minute - b.minute);
+  return boundaries.map((row, index) => {
+    const next = boundaries[index + 1];
+    const fromMinute = Math.max(0, Math.min(duration, row.minute));
+    const toMinute = Math.max(fromMinute, Math.min(duration, next?.minute ?? duration));
+    return {
+      id: row.event?.id || `${match.id || 'match'}-${row.system}-${fromMinute}`,
+      matchId: match.id,
+      system: row.system || initialSystem || '4-4-2',
+      fromMinute,
+      toMinute,
+      minutes: Math.max(0, toMinute - fromMinute),
+      event: row.event,
+    };
+  }).filter((segment) => segment.system && segment.minutes >= 0);
+};
 
 const emptyToNull = (value) => {
   if (value === null || value === undefined) return null;
@@ -3416,6 +3550,9 @@ function App() {
   const [isGoalAnalysisOpen, setIsGoalAnalysisOpen] = useState(false);
   const [goalAnalysisDraft, setGoalAnalysisDraft] = useState(defaultGoalAnalysisDraft);
   const [editingGoalEventId, setEditingGoalEventId] = useState('');
+  const [systemChangeDraft, setSystemChangeDraft] = useState(null);
+  const [editingSystemEventId, setEditingSystemEventId] = useState('');
+  const [systemChangeSaving, setSystemChangeSaving] = useState(false);
   const [lastGoalAnalysisContext, setLastGoalAnalysisContext] = useState(null);
   const [isStatsCallupPanelOpen, setIsStatsCallupPanelOpen] = useState(false);
   const [selectedStatsCallups, setSelectedStatsCallups] = useState([]);
@@ -3486,6 +3623,7 @@ function App() {
   const [playerDelegatedScope, setPlayerDelegatedScope] = useState('Solo validados');
   const [playerInfluenceFilter, setPlayerInfluenceFilter] = useState('Todos');
   const [selectedTimelineAction, setSelectedTimelineAction] = useState(null);
+  const [selectedSystemMoment, setSelectedSystemMoment] = useState(null);
   const [playerReport, setPlayerReport] = useState(null);
   const [rivalScoutingDrafts, setRivalScoutingDrafts] = useState(() => {
     try {
@@ -3798,12 +3936,13 @@ function App() {
   };
 
   const loadPartidos = async () => {
-    const [{ data, error: partidosError }, quickEventsResponse] = await Promise.all([
+    const [{ data, error: partidosError }, quickEventsResponse, systemEventsResponse] = await Promise.all([
       supabase
         .from("partidos")
         .select("*")
         .order("date", { ascending: false, nullsFirst: false }),
       supabase.from("match_quick_events").select("*"),
+      supabase.from("partido_eventos_sistema").select("*"),
     ]);
     if (partidosError) throw partidosError;
     const quickEventsByMatch = quickEventsResponse.error
@@ -3815,9 +3954,19 @@ function App() {
     if (quickEventsResponse.error) {
       console.warn('No se pudieron cargar eventos rápidos para Partidos; se continúa marcando esos datos como no cargados:', quickEventsResponse.error);
     }
+    const systemEventsByMatch = systemEventsResponse.error
+      ? {}
+      : (systemEventsResponse.data || []).reduce((acc, event) => {
+          acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseSystemEvent(event)];
+          return acc;
+        }, {});
+    if (systemEventsResponse.error) {
+      console.warn('No se pudieron cargar cambios de sistema para Partidos; se continúa sin ellos:', systemEventsResponse.error);
+    }
     const nextMatches = (data || []).map((match) => ({
       ...normalizeSupabasePartido(match),
       quickEvents: quickEventsByMatch[match.id] || [],
+      systemEvents: systemEventsByMatch[match.id] || [],
     }));
     setMatches(nextMatches);
     return nextMatches;
@@ -3867,13 +4016,14 @@ function App() {
     setHomeError('');
 
     try {
-      const [partidosResponse, jugadoresResponse, equiposResponse, statsResponse, goalsResponse, quickEventsResponse] = await Promise.all([
+      const [partidosResponse, jugadoresResponse, equiposResponse, statsResponse, goalsResponse, quickEventsResponse, systemEventsResponse] = await Promise.all([
         supabase.from("partidos").select("*").order("date", { ascending: true, nullsFirst: false }),
         supabase.from("jugadores").select("*").order("name", { ascending: true }),
         supabase.from("equipos_rivales").select("*").order("name", { ascending: true }),
         supabase.from("partido_estadisticas_jugador").select("*"),
         supabase.from("partido_eventos_gol").select("*"),
         supabase.from("match_quick_events").select("*"),
+        supabase.from("partido_eventos_sistema").select("*"),
       ]);
       const failed = [partidosResponse, jugadoresResponse, equiposResponse, statsResponse, goalsResponse].find((response) => response.error);
       if (failed) throw failed.error;
@@ -3907,11 +4057,18 @@ function App() {
             acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseQuickEvent(event)];
             return acc;
           }, {});
+      const systemEventsByMatch = systemEventsResponse.error
+        ? {}
+        : (systemEventsResponse.data || []).reduce((acc, event) => {
+            acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseSystemEvent(event)];
+            return acc;
+          }, {});
       const nextMatches = (partidosResponse.data || []).map((match) => ({
         ...normalizeSupabasePartido(match),
         statsGoalEvents: eventsByMatch[match.id] || [],
         statsPlayerData: statsByMatch[match.id] || {},
         quickEvents: quickEventsByMatch[match.id] || [],
+        systemEvents: systemEventsByMatch[match.id] || [],
       }));
       const baseTeams = (equiposResponse.data || []).map((team) => ({
         id: team.id,
@@ -3973,6 +4130,22 @@ function App() {
     setHomePhraseSaving(false);
   };
 
+  const loadSystemEventsForMatch = async (partidoId) => {
+    const response = await supabase
+      .from("partido_eventos_sistema")
+      .select("*")
+      .eq("partido_id", partidoId)
+      .order("minute", { ascending: true });
+    if (response.error) {
+      console.warn('No se pudieron cargar cambios de sistema; aplica supabase_match_system_events.sql para habilitarlos:', {
+        partidoId,
+        error: response.error,
+      });
+      return [];
+    }
+    return (response.data || []).map(normalizeSupabaseSystemEvent);
+  };
+
   const loadMatchStatsData = async (partidoId) => {
     setStatsRefreshing(true);
     setStatsError('');
@@ -4020,6 +4193,7 @@ function App() {
     } else {
       quickEvents = (quickEventsResponse.data || []).map(normalizeSupabaseQuickEvent);
     }
+    const systemEvents = await loadSystemEventsForMatch(partidoId);
 
     const statsLineup = Array.from({ length: 11 }, () => '');
     (slotsResponse.data || []).forEach((slot) => {
@@ -4080,6 +4254,7 @@ function App() {
       statsCalledPlayers: (convocadosResponse.data || []).map((row) => row.player_name),
       statsPlayerData,
       statsGoalEvents: (goalsResponse.data || []).map(normalizeSupabaseGoalEvent),
+      systemEvents,
       quickEvents,
       statsLineup,
     };
@@ -4214,11 +4389,13 @@ function App() {
       } else {
         quickEvents = (quickEventsResponse.data || []).map(normalizeSupabaseQuickEvent);
       }
+      const systemEvents = await loadSystemEventsForMatch(partidoId);
 
       const detailedMatch = {
         ...normalizeSupabasePartido(partidoResponse.data),
         events: (postEventsResponse.data || []).map(normalizeSupabasePostEvent),
         quickEvents,
+        systemEvents,
         statsPlayerData,
         statsGoalEvents: (goalsResponse.data || []).map(normalizeSupabaseGoalEvent),
       };
@@ -4270,16 +4447,20 @@ function App() {
     setGroupError('');
 
     try {
-      const [partidosResponse, statsResponse, goalsResponse, slotsResponse, postEventsResponse] = await Promise.all([
+      const [partidosResponse, statsResponse, goalsResponse, slotsResponse, postEventsResponse, systemEventsResponse] = await Promise.all([
         supabase.from("partidos").select("*").order("date", { ascending: true, nullsFirst: false }),
         supabase.from("partido_estadisticas_jugador").select("*"),
         supabase.from("partido_eventos_gol").select("*"),
         supabase.from("partido_alineacion_slots").select("*").in("scope", ["stats", "pre_caudal"]).order("slot", { ascending: true }),
         supabase.from("partido_eventos_post").select("*"),
+        supabase.from("partido_eventos_sistema").select("*"),
       ]);
 
       const failed = [partidosResponse, statsResponse, goalsResponse, slotsResponse, postEventsResponse].find((response) => response.error);
       if (failed) throw failed.error;
+      if (systemEventsResponse.error) {
+        console.warn('No se pudieron cargar cambios de sistema para Análisis Grupal; se continúa sin ellos:', systemEventsResponse.error);
+      }
 
       let quickEventsRows = [];
       const quickEventsResponse = await supabase.from("match_quick_events").select("*");
@@ -4336,6 +4517,11 @@ function App() {
         return acc;
       }, {});
 
+      const systemEventsByMatch = systemEventsResponse.error ? {} : (systemEventsResponse.data || []).reduce((acc, event) => {
+        acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseSystemEvent(event)];
+        return acc;
+      }, {});
+
       setMatches((partidosResponse.data || []).map((match) => {
         const normalized = normalizeSupabasePartido(match);
         const lineupSlots = slotsByMatch[match.id] || { stats: [], preCaudal: [] };
@@ -4348,6 +4534,7 @@ function App() {
           statsSystemRaw: match.stats_system || '',
           preCaudalSystemRaw: match.pre_caudal_system || '',
           statsGoalEvents: eventsByMatch[match.id] || [],
+          systemEvents: systemEventsByMatch[match.id] || [],
           events: postEventsByMatch[match.id] || [],
           quickEvents: quickEventsByMatch[match.id] || [],
           statsPlayerData: statsByMatch[match.id] || {},
@@ -8493,6 +8680,7 @@ function App() {
     yellow_card: { label: 'Tarjeta amarilla', icon: '🟨', badgeIcon: '🟨', category: 'Tarjetas', tone: 'border-yellow-300/20 bg-yellow-300/[0.08]' },
     red_card: { label: 'Tarjeta roja', icon: '🟥', badgeIcon: '🟥', category: 'Tarjetas', tone: 'border-red-300/25 bg-red-500/[0.10]' },
     substitution: { label: 'Cambio', icon: '↔', badgeIcon: '↔', category: 'Cambios', tone: 'border-sky-300/20 bg-sky-300/[0.08]' },
+    system_change: { label: 'Cambio de sistema', icon: 'SYS', badgeIcon: 'SYS', category: 'Sistemas', tone: 'border-violet-300/25 bg-violet-300/[0.10]' },
     injury: { label: 'Lesión', icon: '+', badgeIcon: '+', category: 'Lesiones', tone: 'border-rose-300/25 bg-rose-300/[0.10]' },
     unknown: { label: 'Evento', icon: 'EV', badgeIcon: 'EV', category: 'Eventos', tone: 'border-white/10 bg-white/[0.035]' },
   };
@@ -8503,31 +8691,6 @@ function App() {
       console.warn('[UNKNOWN_MATCH_EVENT]', event || { key });
     }
     return meta;
-  };
-
-  const parseMatchEventMinute = (value) => {
-    const raw = String(value ?? '').trim();
-    if (!raw || raw === '999') return { sortMinute: 999, label: 'Sin minuto', hasMinute: false };
-    const addedTimeMatch = raw.match(/^(\d+)\s*\+\s*(\d+)$/);
-    if (addedTimeMatch) {
-      const base = Number(addedTimeMatch[1]);
-      const added = Number(addedTimeMatch[2]);
-      return {
-        sortMinute: Number.isFinite(base + added) ? base + added : 999,
-        label: `${base}+${added}'`,
-        hasMinute: true,
-      };
-    }
-    const minute = Number(raw);
-    if (!Number.isFinite(minute) || minute >= 999) return { sortMinute: 999, label: 'Sin minuto', hasMinute: false };
-    return { sortMinute: minute, label: `${minute}'`, hasMinute: true };
-  };
-
-  const getEventHalfOrder = (half) => {
-    const normalized = String(half || '').toLowerCase();
-    if (normalized.includes('1')) return 1;
-    if (normalized.includes('2')) return 2;
-    return 3;
   };
 
   const sortMatchEventsChronologically = (events = []) => [...events].sort((a, b) => {
@@ -8661,7 +8824,50 @@ function App() {
         };
       });
     });
-    return attachScoreAfterGoalEvents(sortMatchEventsChronologically([...goalEvents, ...playerIncidents, ...substitutions]));
+    const systemChanges = sortSystemEventsChronologically(selectedMatch?.systemEvents).map((event) => {
+      const meta = getMatchEventMeta('system_change', event);
+      const minuteData = parseMatchEventMinute(event.minute);
+      const fromSystem = getSystemBeforeEvent({
+        initialSystem: getInitialMatchSystem(selectedMatch),
+        systemEvents: selectedMatch?.systemEvents,
+        eventId: event.id,
+        minute: event.minute,
+        period: event.period,
+      });
+      return {
+        id: `system-${event.id}`,
+        source: 'system',
+        rawId: event.id,
+        eventType: 'system_change',
+        key: 'system_change',
+        minute: minuteData.hasMinute ? minuteData.sortMinute : 999,
+        sortMinute: minuteData.sortMinute,
+        minuteLabel: minuteData.label,
+        half: event.period || '',
+        period: event.period || '',
+        halfOrder: getEventHalfOrder(event.period),
+        second: Number(event.second || 0),
+        createdAt: event.createdAt || '',
+        type: meta.label,
+        category: meta.category,
+        priority: 3,
+        tone: meta.tone,
+        icon: meta.icon,
+        badgeIcon: meta.badgeIcon,
+        title: meta.label,
+        fromSystem,
+        toSystem: event.toSystem,
+        note: event.note || '',
+        subtitle: `${fromSystem || 'Sistema inicial'} -> ${event.toSystem}`,
+        detail: event.note || '',
+        meta: event.period || '',
+        timelineLines: [
+          `${fromSystem || 'Sistema inicial'} -> ${event.toSystem}`,
+          event.note || '',
+        ].filter(Boolean),
+      };
+    });
+    return attachScoreAfterGoalEvents(sortMatchEventsChronologically([...goalEvents, ...playerIncidents, ...substitutions, ...systemChanges]));
   };
 
   const getEventsByPlayerName = (playerName) => {
@@ -9228,6 +9434,7 @@ function App() {
     if (event.category === 'Goles') return event.type === 'Gol a favor' ? 'border-emerald-300/20 bg-emerald-300/[0.08]' : 'border-red-300/20 bg-red-400/[0.08]';
     if (event.category === 'Tarjetas') return event.key === 'red_card' ? 'border-red-300/25 bg-red-500/[0.10]' : 'border-yellow-300/20 bg-yellow-300/[0.08]';
     if (event.category === 'Cambios') return 'border-sky-300/20 bg-sky-300/[0.08]';
+    if (event.category === 'Sistemas') return 'border-violet-300/25 bg-violet-300/[0.10]';
     if (event.category === 'Lesiones') return 'border-rose-300/25 bg-rose-300/[0.10]';
     return 'border-white/10 bg-white/[0.035]';
   };
@@ -9482,6 +9689,105 @@ function App() {
       return;
     }
     await refreshStatsFromSupabase(selectedMatch.id, 'sistema de estadísticas');
+  };
+
+  const getSystemChangeDraftDefaults = (event = null) => {
+    const baseMinute = event?.minute ?? '';
+    const basePeriod = event?.period || event?.half || (Number(baseMinute || 0) <= 45 ? '1ª parte' : '2ª parte');
+    const fromSystem = getSystemBeforeEvent({
+      initialSystem: getInitialMatchSystem(selectedMatch),
+      systemEvents: selectedMatch?.systemEvents,
+      eventId: event?.rawId || event?.id || '',
+      minute: baseMinute,
+      period: basePeriod,
+    });
+    return {
+      minute: baseMinute ? String(baseMinute) : '',
+      period: basePeriod,
+      fromSystem,
+      toSystem: event?.toSystem || fromSystem || getInitialMatchSystem(selectedMatch),
+      note: event?.note || '',
+    };
+  };
+
+  const openSystemChangeModal = (event = null) => {
+    if (!selectedMatch) return;
+    setEditingSystemEventId(event?.rawId || event?.id || '');
+    setSystemChangeDraft(getSystemChangeDraftDefaults(event));
+  };
+
+  const closeSystemChangeModal = () => {
+    setSystemChangeDraft(null);
+    setEditingSystemEventId('');
+    setSystemChangeSaving(false);
+  };
+
+  const saveSystemChangeEvent = async () => {
+    if (!selectedMatch || !systemChangeDraft) return;
+    const minuteData = parseMatchEventMinute(systemChangeDraft.minute);
+    if (!minuteData.hasMinute) {
+      setStatsError('Indica un minuto real para el cambio de sistema.');
+      return;
+    }
+    if (!hasRealValue(systemChangeDraft.toSystem)) {
+      setStatsError('Selecciona el nuevo sistema.');
+      return;
+    }
+    setSystemChangeSaving(true);
+    setStatsError('');
+    const fromSystem = getSystemBeforeEvent({
+      initialSystem: getInitialMatchSystem(selectedMatch),
+      systemEvents: selectedMatch.systemEvents,
+      eventId: editingSystemEventId,
+      minute: systemChangeDraft.minute,
+      period: systemChangeDraft.period,
+    });
+    const payload = {
+      partido_id: selectedMatch.id,
+      minute: String(systemChangeDraft.minute).trim(),
+      period: systemChangeDraft.period || '',
+      from_system: fromSystem || getInitialMatchSystem(selectedMatch),
+      to_system: systemChangeDraft.toSystem,
+      note: systemChangeDraft.note || '',
+    };
+    const request = editingSystemEventId
+      ? supabase.from("partido_eventos_sistema").update(payload).eq("id", editingSystemEventId)
+      : supabase.from("partido_eventos_sistema").insert(payload);
+    const { error: saveError } = await request;
+    if (saveError) {
+      console.error('Error guardando cambio de sistema:', { payload, error: saveError });
+      setStatsError(saveError.message || 'No se pudo guardar el cambio de sistema.');
+      setSystemChangeSaving(false);
+      return;
+    }
+    await normalizeStoredSystemEventFromSystems(selectedMatch.id);
+    closeSystemChangeModal();
+    await refreshStatsFromSupabase(selectedMatch.id, 'cambio de sistema');
+  };
+
+  const normalizeStoredSystemEventFromSystems = async (partidoId) => {
+    if (!selectedMatch || !partidoId) return;
+    const rows = await loadSystemEventsForMatch(partidoId);
+    let currentSystem = getInitialMatchSystem(selectedMatch);
+    for (const event of sortSystemEventsChronologically(rows)) {
+      if (event.fromSystem !== currentSystem) {
+        await supabase.from("partido_eventos_sistema").update({ from_system: currentSystem }).eq("id", event.id);
+      }
+      currentSystem = event.toSystem || currentSystem;
+    }
+  };
+
+  const deleteSystemChangeEvent = async (eventId) => {
+    if (!selectedMatch || !eventId) return;
+    if (!window.confirm('¿Eliminar este cambio de sistema? Se recalculará la secuencia táctica.')) return;
+    const { error: deleteError } = await supabase.from("partido_eventos_sistema").delete().eq("id", eventId);
+    if (deleteError) {
+      console.error('Error eliminando cambio de sistema:', deleteError);
+      setStatsError(deleteError.message || 'No se pudo eliminar el cambio de sistema.');
+      return;
+    }
+    await normalizeStoredSystemEventFromSystems(selectedMatch.id);
+    await refreshStatsFromSupabase(selectedMatch.id, 'eliminación de cambio de sistema');
   };
 
   const updateMatchCaptain = async (captainPlayerId) => {
@@ -10695,7 +11001,11 @@ function App() {
 
   const renderStatsPitch = () => {
     if (!selectedMatch) return null;
-    const coordinates = getFormationCoordinates(selectedMatch.statsSystem || '4-4-2');
+    const systemSequence = buildSystemSequence(selectedMatch);
+    const latestSegment = systemSequence[systemSequence.length - 1] || null;
+    const activeSystem = selectedSystemMoment?.system || latestSegment?.system || selectedMatch.statsSystem || '4-4-2';
+    const activeSystemFromMinute = selectedSystemMoment?.minute ?? latestSegment?.fromMinute ?? 0;
+    const coordinates = getFormationCoordinates(activeSystem);
     const matchEvents = getStatsMatchEvents();
     return (
       <div
@@ -10712,6 +11022,10 @@ function App() {
         <div className="absolute left-1/2 top-1/2 h-32 w-32 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/45" />
         <div className="absolute left-1/2 top-4 h-24 w-56 -translate-x-1/2 rounded-b-3xl border-x-2 border-b-2 border-white/45" />
         <div className="absolute bottom-4 left-1/2 h-24 w-56 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/45" />
+        <div className="absolute left-5 top-5 z-10 rounded-2xl border border-white/15 bg-black/55 px-3 py-2 text-xs font-black text-white shadow-lg">
+          <p className="text-[9px] uppercase tracking-[0.14em] text-slate-300">Sistema vigente desde el {activeSystemFromMinute}'</p>
+          <p className="mt-0.5 text-base text-caudal-electric">{activeSystem}</p>
+        </div>
         {coordinates.map((slot, slotIndex) => {
           const playerName = selectedMatch.statsLineup?.[slotIndex] || '';
           const player = players.find((item) => item.name === playerName);
@@ -10772,7 +11086,7 @@ function App() {
                 </div>
               ) : null}
               <div className="max-w-[112px] truncate rounded-lg bg-black/70 px-2 py-1 text-[10px] font-black uppercase tracking-[0.04em] text-white">
-                {playerName ? `${player?.number || slotIndex + 1} ${shortName}` : getFormationRoles(selectedMatch.statsSystem || '4-4-2')[slotIndex]}
+                {playerName ? `${player?.number || slotIndex + 1} ${shortName}` : getFormationRoles(activeSystem)[slotIndex]}
               </div>
               {replacementInfo ? (
                 <div className="max-w-[108px] truncate rounded-xl bg-emerald-500 px-2 py-1 text-[10px] font-black text-white" title={`Entra ${replacementInfo.replacementName}`}>
@@ -10906,12 +11220,17 @@ function App() {
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Timeline de partido</p>
                   <p className="mt-1 text-sm font-semibold text-slate-400">Eventos cronológicos registrados</p>
                 </div>
-                <button type="button" onClick={openGoalAnalysisModal} className="bg-red-500 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white">
-                  Registrar gol
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => openSystemChangeModal()} className="bg-violet-500 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white">
+                    Cambio sistema
+                  </button>
+                  <button type="button" onClick={openGoalAnalysisModal} className="bg-red-500 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white">
+                    Registrar gol
+                  </button>
+                </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5">
-                {['Todos', 'Goles', 'Tarjetas', 'Cambios', 'Lesiones'].map((filter) => (
+                {['Todos', 'Goles', 'Tarjetas', 'Cambios', 'Sistemas', 'Lesiones'].map((filter) => (
                   <button
                     key={filter}
                     type="button"
@@ -10924,7 +11243,13 @@ function App() {
               </div>
               <div className="mt-4 max-h-[470px] space-y-2 overflow-y-auto pr-1">
                 {timelineEvents.length ? timelineEvents.map((event) => (
-                  <div key={event.id} className={`border px-3 py-2.5 ${getStatsTimelineTone(event)}`}>
+                  <div
+                    key={event.id}
+                    onClick={() => {
+                      if (event.source === 'system') setSelectedSystemMoment({ minute: event.minute, period: event.period || event.half, system: event.toSystem, eventId: event.rawId });
+                    }}
+                    className={`border px-3 py-2.5 ${event.source === 'system' ? 'cursor-pointer hover:border-violet-200/40' : ''} ${getStatsTimelineTone(event)}`}
+                  >
                     <div className="flex items-start gap-3">
                       <span className="w-12 shrink-0 text-right text-xl font-black leading-none text-white">{event.minute || '-'}'</span>
                       <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-black/25 px-1 text-sm font-black">{getStatsTimelineIcon(event)}</span>
@@ -10940,6 +11265,24 @@ function App() {
                                 </svg>
                               </button>
                               <button type="button" title="Eliminar evento" aria-label="Eliminar evento" onClick={() => deleteGoalAnalysisEvent(event.rawId)} className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-500/15 text-red-100 hover:bg-red-500/25">
+                                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                  <path d="M3 6h18" />
+                                  <path d="M8 6V4h8v2" />
+                                  <path d="M6 6l1 15h10l1-15" />
+                                  <path d="M10 11v6" />
+                                  <path d="M14 11v6" />
+                                </svg>
+                              </button>
+                            </div>
+                          ) : event.source === 'system' ? (
+                            <div className="flex gap-1.5">
+                              <button type="button" title="Editar cambio de sistema" aria-label="Editar cambio de sistema" onClick={(clickEvent) => { clickEvent.stopPropagation(); openSystemChangeModal(event); }} className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 text-slate-200 hover:bg-white/15">
+                                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                  <path d="M12 20h9" />
+                                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                                </svg>
+                              </button>
+                              <button type="button" title="Eliminar cambio de sistema" aria-label="Eliminar cambio de sistema" onClick={(clickEvent) => { clickEvent.stopPropagation(); deleteSystemChangeEvent(event.rawId); }} className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-500/15 text-red-100 hover:bg-red-500/25">
                                 <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                                   <path d="M3 6h18" />
                                   <path d="M8 6V4h8v2" />
@@ -13023,6 +13366,56 @@ function App() {
     };
   };
 
+  const buildSystemUsageRows = (scopedMatches = []) => {
+    const rowsBySystem = new Map();
+    safeArray(scopedMatches).forEach((match) => {
+      const initialSystem = getInitialMatchSystem(match);
+      const sequence = buildSystemSequence(match);
+      sequence.forEach((segment) => {
+        if (!segment.system) return;
+        const row = rowsBySystem.get(segment.system) || {
+          system: segment.system,
+          initialStarts: 0,
+          matches: new Set(),
+          minutes: 0,
+          goalsFor: 0,
+          goalsAgainst: 0,
+          sequences: [],
+        };
+        row.matches.add(match.id);
+        row.minutes += Number(segment.minutes || 0);
+        row.initialStarts += segment.fromMinute === 0 && segment.system === initialSystem ? 1 : 0;
+        row.sequences.push({
+          matchId: match.id,
+          opponent: match.opponent || 'Rival',
+          fromMinute: segment.fromMinute,
+          toMinute: segment.toMinute,
+          system: segment.system,
+        });
+        rowsBySystem.set(segment.system, row);
+      });
+      safeArray(match.statsGoalEvents).forEach((goal) => {
+        const system = getSystemAtMinute({
+          initialSystem,
+          systemEvents: match.systemEvents,
+          minute: goal.minute,
+          period: goal.half,
+        });
+        const row = rowsBySystem.get(system);
+        if (!row) return;
+        if (goal.type === 'Gol a favor') row.goalsFor += 1;
+        if (goal.type === 'Gol en contra') row.goalsAgainst += 1;
+      });
+    });
+    return Array.from(rowsBySystem.values())
+      .map((row) => ({
+        ...row,
+        played: row.matches.size,
+        balance: row.goalsFor - row.goalsAgainst,
+      }))
+      .sort((a, b) => b.minutes - a.minutes || b.played - a.played || a.system.localeCompare(b.system));
+  };
+
   const filterAssistEventsByGroupMode = (events) => {
     const rows = safeArray(events);
     if (groupAssistFilter === 'Juego') return rows.filter((event) => ['Juego combinativo', 'Juego directo'].includes(event.phase));
@@ -13796,7 +14189,14 @@ function App() {
 
   useEffect(() => {
     setSelectedTimelineAction(null);
+    setSelectedSystemMoment(null);
   }, [selectedPlayerProfileId, playerCompetitionFilter, playerVenueFilter, playerQuickScope]);
+
+  useEffect(() => {
+    setSelectedSystemMoment(null);
+    setSystemChangeDraft(null);
+    setEditingSystemEventId('');
+  }, [selectedMatchId]);
 
   useEffect(() => {
     setPlayerReport(null);
@@ -19545,6 +19945,7 @@ function App() {
           const scopedMatches = getGroupScopedMatches().map((match) => ({
             ...match,
             statsGoalEvents: safeArray(match.statsGoalEvents),
+            systemEvents: safeArray(match.systemEvents),
             events: safeArray(match.events),
           }));
           const hasData = scopedMatches.length > 0;
@@ -19589,26 +19990,11 @@ function App() {
           const connectionRows = buildGoalConnectionRows(filteredOfficialGoals);
           const localSummary = summarizeGroupMatches(scopedMatches.filter((match) => match.isHome));
           const awaySummary = summarizeGroupMatches(scopedMatches.filter((match) => !match.isHome));
-          const mostUsedSystem = getMostUsedRealSystem(scopedMatches);
-          const systemRows = Object.entries(scopedMatches.reduce((acc, match) => {
-            const system = match.statsSystem || match.preCaudalSystem || '';
-            if (!system) return acc;
-            const score = getMatchScoreData(match);
-            const row = acc[system] || { system, played: 0, points: 0, wins: 0, draws: 0, losses: 0 };
-            row.played += 1;
-            if (score.caudalGoals > score.rivalGoals) {
-              row.wins += 1;
-              row.points += 3;
-            } else if (score.caudalGoals === score.rivalGoals) {
-              row.draws += 1;
-              row.points += 1;
-            } else {
-              row.losses += 1;
-            }
-            acc[system] = row;
-            return acc;
-          }, {})).map(([, row]) => ({ ...row, ppg: row.played ? row.points / row.played : 0 })).sort((a, b) => b.ppg - a.ppg || b.played - a.played);
-          const mostEffectiveSystem = systemRows[0] || null;
+          const systemRows = buildSystemUsageRows(scopedMatches);
+          const systemSequences = scopedMatches.map((match) => ({
+            match,
+            segments: buildSystemSequence(match),
+          }));
           const competitionRows = Object.entries(scopedMatches.reduce((acc, match) => {
             const normalizedKey = normalizeCompetitionKey(match);
             acc[normalizedKey] = [...(acc[normalizedKey] || []), match];
@@ -19962,10 +20348,32 @@ function App() {
                     </div>
                   </div>
                   <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Sistemas</h3>
-                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                      {metricCard('Sistema más utilizado', mostUsedSystem.system || 'Sin datos', mostUsedSystem.count ? `${mostUsedSystem.count} partidos` : '')}
-                      {metricCard('Sistema más efectivo', mostEffectiveSystem?.system || 'Sin datos', mostEffectiveSystem ? `${mostEffectiveSystem.ppg.toFixed(2)} PPG` : '')}
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Sistemas utilizados</h3>
+                    <div className="mt-5 space-y-3">
+                      {systemRows.length ? systemRows.map((row) => (
+                        <div key={row.system} className="rounded-2xl bg-white/5 px-4 py-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-base font-black text-white">{row.system}</p>
+                            <span className="text-sm font-black text-caudal-electric">{row.minutes} min</span>
+                          </div>
+                          <p className="mt-2 text-xs font-bold uppercase tracking-[0.10em] text-slate-400">
+                            PJ {row.played} · Inicios {row.initialStarts} · GF {row.goalsFor} · GC {row.goalsAgainst} · Balance {row.balance > 0 ? `+${row.balance}` : row.balance}
+                          </p>
+                        </div>
+                      )) : <p className="rounded-2xl bg-white/5 p-4 text-sm text-slate-400">Sin sistemas registrados.</p>}
+                      {systemSequences.length ? (
+                        <div className="mt-4 space-y-2 border-t border-white/10 pt-4">
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Secuencias por partido</p>
+                          {systemSequences.slice(0, 4).map(({ match, segments }) => (
+                            <div key={`sequence-${match.id}`} className="rounded-2xl bg-black/15 px-4 py-3">
+                              <p className="text-sm font-black text-white">{match.opponent || 'Rival'}</p>
+                              <p className="mt-1 text-xs font-bold text-slate-400">
+                                {segments.map((segment) => `${segment.fromMinute}'-${segment.toMinute}' ${segment.system}`).join(' · ')}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </section>
@@ -20170,8 +20578,40 @@ function App() {
                           detail: event.detail,
                         };
                       })),
+                      ...sortSystemEventsChronologically(match.systemEvents).map((event) => {
+                        const meta = getMatchEventMeta('system_change', event);
+                        const minuteData = parseMatchEventMinute(event.minute);
+                        const fromSystem = getSystemBeforeEvent({
+                          initialSystem: getInitialMatchSystem(match),
+                          systemEvents: match.systemEvents,
+                          eventId: event.id,
+                          minute: event.minute,
+                          period: event.period,
+                        });
+                        return {
+                          id: `system-${event.id}`,
+                          key: 'system_change',
+                          sortMinute: minuteData.sortMinute,
+                          minuteLabel: minuteData.label,
+                          hasMinute: minuteData.hasMinute,
+                          halfOrder: getEventHalfOrder(event.period),
+                          second: Number(event.second || 0),
+                          createdAt: event.createdAt || '',
+                          priority: 4,
+                          icon: meta.badgeIcon,
+                          side: 'staff',
+                          label: `${fromSystem || 'Sistema'} -> ${event.toSystem}`,
+                          typeLabel: meta.label,
+                          detail: '',
+                        };
+                      }),
                     ]);
-                    const visibleMatchEventRows = matchEventRows.slice(0, 5);
+                    const visibleMatchEventRows = sortMatchEventsChronologically(
+                      matchEventRows
+                        .slice()
+                        .sort((a, b) => (a.priority || 9) - (b.priority || 9) || (a.sortMinute ?? 999) - (b.sortMinute ?? 999))
+                        .slice(0, 5)
+                    );
                     const hiddenMatchEventCountDesktop = Math.max(0, matchEventRows.length - visibleMatchEventRows.length);
                     const hiddenMatchEventCountMobile = Math.max(0, matchEventRows.length - Math.min(3, visibleMatchEventRows.length));
                     const cardToneClass = played
@@ -21636,9 +22076,14 @@ function App() {
                             <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Disposición táctica</h3>
                             <p className="mt-2 text-sm text-slate-400">Arrastra convocados al campo y modifica posiciones por sistema.</p>
                           </div>
-                          <select value={selectedMatch.statsSystem || '4-4-2'} onChange={(event) => updateStatsSystem(event.target.value)} className="rounded-2xl border border-white/10 bg-white px-5 py-3 text-sm font-black text-slate-950">
-                            {gameSystems.map((system) => <option key={system} value={system}>{system}</option>)}
-                          </select>
+                          <div className="flex flex-wrap gap-2">
+                            <select value={selectedMatch.statsSystem || '4-4-2'} onChange={(event) => updateStatsSystem(event.target.value)} className="rounded-2xl border border-white/10 bg-white px-5 py-3 text-sm font-black text-slate-950">
+                              {gameSystems.map((system) => <option key={system} value={system}>{system}</option>)}
+                            </select>
+                            <button type="button" onClick={() => openSystemChangeModal()} className="rounded-2xl border border-violet-300/25 bg-violet-300/10 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-violet-100">
+                              Registrar cambio de sistema
+                            </button>
+                          </div>
                         </div>
                         <label className="mt-5 block space-y-2 text-sm text-slate-300">
                           <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Capitán</span>
@@ -21969,6 +22414,78 @@ function App() {
             </div>
           ) : null}
         </>
+      ) : null}
+
+      {systemChangeDraft && selectedMatch ? (
+        <div className="fixed inset-0 z-[75] flex items-end justify-center bg-black/70 px-3 pb-3 pt-10 sm:items-center sm:px-4 sm:py-4">
+          <div className="max-h-[86vh] w-full max-w-lg overflow-y-auto rounded-t-[2rem] border border-white/10 bg-caudal-950 p-5 shadow-glow sm:rounded-3xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-200">Cambio de sistema</p>
+                <h3 className="mt-1 text-2xl font-black text-white">{editingSystemEventId ? 'Editar cambio' : 'Registrar cambio'}</h3>
+              </div>
+              <button type="button" onClick={closeSystemChangeModal} className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-bold text-white">Cerrar</button>
+            </div>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <label className="block space-y-2">
+                <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Minuto</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="130"
+                  value={systemChangeDraft.minute}
+                  onChange={(event) => setSystemChangeDraft((current) => ({ ...current, minute: event.target.value, fromSystem: getSystemBeforeEvent({ initialSystem: getInitialMatchSystem(selectedMatch), systemEvents: selectedMatch.systemEvents, eventId: editingSystemEventId, minute: event.target.value, period: current.period }) }))}
+                  className="w-full rounded-2xl bg-white px-4 py-4 text-xl font-black text-slate-950"
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Parte</span>
+                <select
+                  value={systemChangeDraft.period}
+                  onChange={(event) => setSystemChangeDraft((current) => ({ ...current, period: event.target.value, fromSystem: getSystemBeforeEvent({ initialSystem: getInitialMatchSystem(selectedMatch), systemEvents: selectedMatch.systemEvents, eventId: editingSystemEventId, minute: current.minute, period: event.target.value }) }))}
+                  className="w-full rounded-2xl bg-white px-4 py-4 text-base font-black text-slate-950"
+                >
+                  <option value="1ª parte">1ª parte</option>
+                  <option value="2ª parte">2ª parte</option>
+                  <option value="Prórroga">Prórroga</option>
+                </select>
+              </label>
+            </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-4">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Sistema anterior</p>
+                <p className="mt-2 text-xl font-black text-white">{systemChangeDraft.fromSystem || getInitialMatchSystem(selectedMatch)}</p>
+              </div>
+              <label className="block space-y-2">
+                <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Nuevo sistema</span>
+                <select
+                  value={systemChangeDraft.toSystem}
+                  onChange={(event) => setSystemChangeDraft((current) => ({ ...current, toSystem: event.target.value }))}
+                  className="w-full rounded-2xl bg-white px-4 py-4 text-base font-black text-slate-950"
+                >
+                  {gameSystems.map((system) => <option key={system} value={system}>{system}</option>)}
+                </select>
+              </label>
+            </div>
+            <label className="mt-4 block space-y-2">
+              <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Observación opcional</span>
+              <textarea
+                value={systemChangeDraft.note}
+                onChange={(event) => setSystemChangeDraft((current) => ({ ...current, note: event.target.value }))}
+                className="min-h-[96px] w-full rounded-2xl bg-white px-4 py-3 text-sm font-bold text-slate-950"
+                placeholder="Ej. Buscar un jugador entre líneas."
+              />
+            </label>
+            <button
+              type="button"
+              onClick={saveSystemChangeEvent}
+              disabled={systemChangeSaving}
+              className="mt-5 flex min-h-[56px] w-full items-center justify-center rounded-2xl bg-violet-300 px-5 py-4 text-base font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {systemChangeSaving ? 'Guardando...' : 'Guardar cambio'}
+            </button>
+          </div>
+        </div>
       ) : null}
 
       {isGoalAnalysisOpen && selectedMatch ? (
