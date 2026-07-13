@@ -303,18 +303,30 @@ const goalPhaseOptions = {
   Transición: ['Tras robo', 'Tras ABP'],
   ABP: ['Córner', 'Falta directa', 'Falta con remate', 'Saque de banda', 'Penalti', 'Segunda jugada'],
 };
-const pitchZoneOptions = [
-  'F.Finalización izquierda',
-  'F.Finalización centro',
-  'F.Finalización derecha',
-  'F.Creación izquierda',
-  'F.Creación centro',
-  'F.Creación derecha',
-  'F.Inicio izquierda',
-  'F.Inicio centro',
-  'F.Inicio derecha',
+const pitchZoneCatalog = [
+  { value: 'finalizacion_izquierda', label: 'F.Finalización izquierda', shortLabel: 'F.Finalización\nIZQ' },
+  { value: 'finalizacion_centro', label: 'F.Finalización centro', shortLabel: 'F.Finalización\nCENTRO' },
+  { value: 'finalizacion_derecha', label: 'F.Finalización derecha', shortLabel: 'F.Finalización\nDER' },
+  { value: 'creacion_izquierda', label: 'F.Creación izquierda', shortLabel: 'F.Creación\nIZQ' },
+  { value: 'creacion_centro', label: 'F.Creación centro', shortLabel: 'F.Creación\nCENTRO' },
+  { value: 'creacion_derecha', label: 'F.Creación derecha', shortLabel: 'F.Creación\nDER' },
+  { value: 'inicio_izquierda', label: 'F.Inicio izquierda', shortLabel: 'F.Inicio\nIZQ' },
+  { value: 'inicio_centro', label: 'F.Inicio centro', shortLabel: 'F.Inicio\nCENTRO' },
+  { value: 'inicio_derecha', label: 'F.Inicio derecha', shortLabel: 'F.Inicio\nDER' },
 ];
-const goalZoneOptions = ['Alta izquierda', 'Alta centro', 'Alta derecha', 'Media izquierda', 'Media centro', 'Media derecha', 'Baja izquierda', 'Baja centro', 'Baja derecha'];
+const goalMouthZoneCatalog = [
+  { value: 'alta_izquierda', label: 'Alta izquierda', shortLabel: 'Alta\nIZQ' },
+  { value: 'alta_centro', label: 'Alta centro', shortLabel: 'Alta\nCENTRO' },
+  { value: 'alta_derecha', label: 'Alta derecha', shortLabel: 'Alta\nDER' },
+  { value: 'media_izquierda', label: 'Media izquierda', shortLabel: 'Media\nIZQ' },
+  { value: 'media_centro', label: 'Media centro', shortLabel: 'Media\nCENTRO' },
+  { value: 'media_derecha', label: 'Media derecha', shortLabel: 'Media\nDER' },
+  { value: 'baja_izquierda', label: 'Baja izquierda', shortLabel: 'Baja\nIZQ' },
+  { value: 'baja_centro', label: 'Baja centro', shortLabel: 'Baja\nCENTRO' },
+  { value: 'baja_derecha', label: 'Baja derecha', shortLabel: 'Baja\nDER' },
+];
+const pitchZoneOptions = pitchZoneCatalog.map((zone) => zone.value);
+const goalZoneOptions = goalMouthZoneCatalog.map((zone) => zone.value);
 const goalAttackTypeOptions = ['Combinativo', 'Transición', 'ABP', 'Juego directo', 'Contraataque', 'Segunda jugada'];
 const goalSituationOptions = ['Organizado', 'Desorganizado', 'Superioridad', 'Igualdad', 'Inferioridad'];
 const defaultGoalAnalysisDraft = {
@@ -901,9 +913,9 @@ const normalizeSupabaseGoalEvent = (event) => ({
   assistantId: event.assistant_id || event.assistantId || null,
   phase: event.phase || '',
   subphase: event.subphase || '',
-  shotZone: event.shot_zone || '',
-  assistZone: event.assist_zone || '',
-  goalZone: event.goal_zone || '',
+  shotZone: normalizePitchZone(event.shot_zone),
+  assistZone: normalizePitchZone(event.assist_zone),
+  goalZone: normalizeGoalMouthZone(event.goal_zone),
   contact: event.contact || '',
   videoUrl: event.video_url || '',
   description: event.description || '',
@@ -917,6 +929,9 @@ const emptyToNull = (value) => {
 };
 
 const createGoalEventPayload = (partidoId, draft) => {
+  const shotZone = normalizePitchZone(draft.shotZone);
+  const assistZone = normalizePitchZone(draft.assistZone);
+  const goalZone = normalizeGoalMouthZone(draft.goalZone);
   const payload = {
     partido_id: partidoId,
     type: draft.type,
@@ -926,9 +941,9 @@ const createGoalEventPayload = (partidoId, draft) => {
     assistant: emptyToNull(draft.assistant),
     phase: emptyToNull(draft.phase),
     subphase: emptyToNull(draft.subphase),
-    shot_zone: emptyToNull(draft.shotZone),
-    assist_zone: emptyToNull(draft.assistZone),
-    goal_zone: emptyToNull(draft.goalZone),
+    shot_zone: emptyToNull(shotZone),
+    assist_zone: emptyToNull(assistZone),
+    goal_zone: emptyToNull(goalZone),
     contact: emptyToNull(draft.contact),
     description: emptyToNull(draft.summary),
     video_url: emptyToNull(draft.videoUrl),
@@ -2725,29 +2740,84 @@ const playerLabel = (dob) => (calculateAge(dob) < 23 ? 'Sub-23' : 'Senior');
 
 const displayDorsal = (number) => (number ? number : '-');
 
-const normalizePitchZone = (zone) =>
+const normalizeZoneToken = (zone) =>
   String(zone || '')
-    .replace(/^Arriba/i, 'F.Finalización')
-    .replace(/^Medio/i, 'F.Creación')
-    .replace(/^Bajo/i, 'F.Inicio');
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\./g, '')
+    .replace(/ª/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
 
-const displayZoneLabel = (zone) =>
-  String(zone || '')
-    .replace('F.Finalización', 'F.Finalización')
-    .replace('F.Creación', 'F.Creación')
-    .replace('F.Inicio', 'F.Inicio')
-    .replace(' izquierda', '\nIZQ')
-    .replace(' centro', '\nCENTRO')
-    .replace(' derecha', '\nDER')
-    .replace('Alta izquierda', 'Alta\nIZQ')
-    .replace('Alta centro', 'Alta\nCENTRO')
-    .replace('Alta derecha', 'Alta\nDER')
-    .replace('Media izquierda', 'Media\nIZQ')
-    .replace('Media centro', 'Media\nCENTRO')
-    .replace('Media derecha', 'Media\nDER')
-    .replace('Baja izquierda', 'Baja\nIZQ')
-    .replace('Baja centro', 'Baja\nCENTRO')
-    .replace('Baja derecha', 'Baja\nDER');
+const FIELD_ZONE_LEGACY_MAP = {
+  finalizacion_izquierda: 'finalizacion_izquierda',
+  f_finalizacion_izquierda: 'finalizacion_izquierda',
+  arriba_izquierda: 'finalizacion_izquierda',
+  finalizacion_centro: 'finalizacion_centro',
+  f_finalizacion_centro: 'finalizacion_centro',
+  arriba_centro: 'finalizacion_centro',
+  finalizacion_derecha: 'finalizacion_derecha',
+  f_finalizacion_derecha: 'finalizacion_derecha',
+  arriba_derecha: 'finalizacion_derecha',
+  creacion_izquierda: 'creacion_izquierda',
+  f_creacion_izquierda: 'creacion_izquierda',
+  medio_izquierda: 'creacion_izquierda',
+  creacion_centro: 'creacion_centro',
+  f_creacion_centro: 'creacion_centro',
+  medio_centro: 'creacion_centro',
+  creacion_derecha: 'creacion_derecha',
+  f_creacion_derecha: 'creacion_derecha',
+  medio_derecha: 'creacion_derecha',
+  inicio_izquierda: 'inicio_izquierda',
+  f_inicio_izquierda: 'inicio_izquierda',
+  bajo_izquierda: 'inicio_izquierda',
+  inicio_centro: 'inicio_centro',
+  f_inicio_centro: 'inicio_centro',
+  bajo_centro: 'inicio_centro',
+  inicio_derecha: 'inicio_derecha',
+  f_inicio_derecha: 'inicio_derecha',
+  bajo_derecha: 'inicio_derecha',
+};
+
+const GOAL_MOUTH_ZONE_LEGACY_MAP = {
+  alta_izquierda: 'alta_izquierda',
+  alta_centro: 'alta_centro',
+  alta_derecha: 'alta_derecha',
+  media_izquierda: 'media_izquierda',
+  media_centro: 'media_centro',
+  media_derecha: 'media_derecha',
+  baja_izquierda: 'baja_izquierda',
+  baja_centro: 'baja_centro',
+  baja_derecha: 'baja_derecha',
+  high_left: 'alta_izquierda',
+  high_center: 'alta_centro',
+  high_right: 'alta_derecha',
+  middle_left: 'media_izquierda',
+  middle_center: 'media_centro',
+  middle_right: 'media_derecha',
+  low_left: 'baja_izquierda',
+  low_center: 'baja_centro',
+  low_right: 'baja_derecha',
+};
+
+const normalizePitchZone = (zone) => FIELD_ZONE_LEGACY_MAP[normalizeZoneToken(zone)] || '';
+
+const normalizeGoalMouthZone = (zone) => GOAL_MOUTH_ZONE_LEGACY_MAP[normalizeZoneToken(zone)] || '';
+
+const getZoneCatalogItem = (zone, catalog) => {
+  const normalized = catalog === goalMouthZoneCatalog ? normalizeGoalMouthZone(zone) : normalizePitchZone(zone);
+  return catalog.find((item) => item.value === normalized) || null;
+};
+
+const getZoneLabel = (zone, { goal = false, short = false } = {}) => {
+  const item = getZoneCatalogItem(zone, goal ? goalMouthZoneCatalog : pitchZoneCatalog);
+  if (!item) return '';
+  return short ? item.shortLabel : item.label;
+};
+
+const displayZoneLabel = (zone, options = {}) => getZoneLabel(zone, { ...options, short: true }) || 'Sin zona';
 
 const toTacticalItems = (value, fallback) => {
   if (Array.isArray(value)) return value.filter(Boolean).slice(0, 3);
@@ -8116,7 +8186,7 @@ function App() {
     const pieces = [
       event.phase,
       event.subphase,
-      event.shotZone ? `Finalización ${normalizePitchZone(event.shotZone).toLowerCase()}` : '',
+      event.shotZone ? `Finalización ${getZoneLabel(event.shotZone).toLowerCase()}` : '',
     ].filter((item) => String(item || '').trim());
     return pieces.join(' · ');
   };
@@ -8163,8 +8233,8 @@ function App() {
         subtitle: isGoalFor && event.assistant ? `Asistencia: ${event.assistant}` : '',
         detail: contextLine,
         meta: [
-          event.assistZone ? `Genera: ${normalizePitchZone(event.assistZone)}` : '',
-          event.goalZone ? `Entra: ${event.goalZone}` : '',
+          event.assistZone ? `Genera: ${getZoneLabel(event.assistZone)}` : '',
+          event.goalZone ? `Entra: ${getZoneLabel(event.goalZone, { goal: true })}` : '',
         ].filter(Boolean).join(' · '),
         timelineLines: [
           isGoalFor && event.assistant ? `Asistencia: ${event.assistant}` : '',
@@ -8711,8 +8781,8 @@ function App() {
     const goals = getStatsGoalEvents();
     const describeGoalContext = (event) => {
       const attackType = event.attackType || event.subphase || event.phase || 'acción';
-      const source = event.assistZone ? `generada en ${normalizePitchZone(event.assistZone).toLowerCase()}` : '';
-      const finish = event.shotZone ? `finalizada en ${normalizePitchZone(event.shotZone).toLowerCase()}` : '';
+      const source = event.assistZone ? `generada en ${getZoneLabel(event.assistZone).toLowerCase()}` : '';
+      const finish = event.shotZone ? `finalizada en ${getZoneLabel(event.shotZone).toLowerCase()}` : '';
       return [attackType.toLowerCase(), source, finish].filter(Boolean).join(' y ');
     };
     const caudalGoalText = goals
@@ -9426,15 +9496,12 @@ function App() {
 
   const getGoalZonePhrase = (zone) => {
     if (!hasRealValue(zone)) return getMissingDataLabel('sin zona registrada');
-    const normalized = normalizePitchZone(zone).toLowerCase();
-    if (normalized.includes('inicio')) return normalized.replace('f.', 'zona de ');
-    if (normalized.includes('creación')) return normalized.replace('f.', 'zona de ');
-    if (normalized.includes('finalización')) return normalized.replace('f.', 'zona de ');
-    return normalized;
+    const label = getZoneLabel(zone);
+    return label ? label.toLowerCase().replace(/^f\./i, 'zona de ') : getMissingDataLabel('sin zona registrada');
   };
 
   const getGoalSidePhrase = (zone) => {
-    const normalized = String(zone || '').toLowerCase();
+    const normalized = getZoneLabel(zone).toLowerCase();
     if (normalized.includes('izquierda')) return 'por izquierda';
     if (normalized.includes('derecha')) return 'por derecha';
     if (normalized.includes('centro')) return 'por dentro';
@@ -9448,7 +9515,8 @@ function App() {
     const originSide = getGoalSidePhrase(draft.assistZone);
     const origin = getGoalZonePhrase(draft.assistZone);
     const finish = getGoalZonePhrase(draft.shotZone);
-    const goal = draft.goalZone ? ` Entra ${String(draft.goalZone).toLowerCase()}.` : '';
+    const goalMouthLabel = getZoneLabel(draft.goalZone, { goal: true });
+    const goal = goalMouthLabel ? ` Entra ${goalMouthLabel.toLowerCase()}.` : '';
     if (draft.type === 'Gol en contra') {
       return `${minute}gol rival en una ${action}${situation} iniciada ${originSide} y terminada desde ${finish}.${goal}`;
     }
@@ -9683,6 +9751,11 @@ function App() {
   const renderZoneGrid = ({ value, onChange, zones = pitchZoneOptions, goal = false, compact = false, variant = 'neutral' }) => {
     const isStart = variant === 'start';
     const isFinish = variant === 'finish';
+    const zoneCatalog = zones.map((zone) => {
+      if (typeof zone === 'object' && zone?.value) return zone;
+      return (goal ? goalMouthZoneCatalog : pitchZoneCatalog).find((item) => item.value === zone) || { value: String(zone || ''), label: String(zone || ''), shortLabel: String(zone || '') };
+    });
+    const normalizedValue = goal ? normalizeGoalMouthZone(value) : normalizePitchZone(value);
     const fieldTone = isStart
       ? 'border-cyan-300/35 bg-[radial-gradient(circle_at_50%_18%,rgba(34,211,238,0.16),transparent_34%),repeating-linear-gradient(90deg,#063b3f_0,#063b3f_16.6%,#073640_16.6%,#073640_33.3%)] shadow-[0_0_34px_rgba(34,211,238,0.14)]'
       : isFinish
@@ -9707,16 +9780,16 @@ function App() {
         </>
       )}
       <div className={`${goal ? 'absolute inset-x-6 bottom-8 top-10' : 'absolute inset-4'} grid grid-cols-3 grid-rows-3`}>
-        {zones.map((zone) => {
-          const selected = goal ? value === zone : normalizePitchZone(value) === zone;
+        {zoneCatalog.map((zone) => {
+          const selected = normalizedValue === zone.value;
           return (
             <button
-              key={zone}
+              key={zone.value}
               type="button"
-              onClick={() => onChange(zone)}
+              onClick={() => onChange(zone.value)}
               className={`whitespace-pre-line break-words border border-white/15 px-1 text-center font-black uppercase transition duration-200 ${goal ? 'text-[8px] leading-none hover:scale-[1.03]' : 'text-[9px] leading-tight'} ${selected ? (goal ? 'bg-emerald-300 text-slate-950 shadow-[0_0_34px_rgba(74,222,128,0.58)]' : isStart ? 'bg-cyan-300/90 text-slate-950 shadow-[0_0_30px_rgba(34,211,238,0.42)]' : isFinish ? 'bg-emerald-300/90 text-slate-950 shadow-[0_0_30px_rgba(74,222,128,0.42)]' : 'bg-caudal-electric/85 text-slate-950 shadow-[0_0_35px_rgba(79,140,255,0.45)]') : goal ? 'bg-black/15 text-slate-200 hover:bg-emerald-200/20 hover:text-white' : isStart ? 'bg-black/20 text-cyan-50 hover:bg-cyan-300/20' : isFinish ? 'bg-black/10 text-emerald-50 hover:bg-emerald-300/22' : 'bg-black/10 text-white hover:bg-emerald-400/20'}`}
             >
-              {displayZoneLabel(zone)}
+              {zone.shortLabel || displayZoneLabel(zone.value, { goal })}
             </button>
           );
         })}
@@ -11932,6 +12005,7 @@ function App() {
     values.reduce((acc, value) => {
       if (!value) return acc;
       const normalized = normalizePitchZone(value);
+      if (!normalized) return acc;
       acc[normalized] = (acc[normalized] || 0) + 1;
       return acc;
     }, {});
@@ -12010,7 +12084,8 @@ function App() {
     safeArray(goals).reduce((acc, goal) => {
       const value = goal?.[field];
       if (!value) return acc;
-      const normalized = field === 'goalMouthZone' ? value : normalizePitchZone(value);
+      const normalized = field === 'goalMouthZone' ? normalizeGoalMouthZone(value) : normalizePitchZone(value);
+      if (!normalized) return acc;
       acc[normalized] = (acc[normalized] || 0) + 1;
       return acc;
     }, {});
@@ -12137,7 +12212,7 @@ function App() {
           const count = counts[zone] || 0;
           return (
           <div key={zone} className={`flex flex-col items-center justify-center border border-white/8 px-1 text-center transition duration-300 hover:bg-white/10 ${count ? 'bg-caudal-electric/35 text-white shadow-[inset_0_0_24px_rgba(79,140,255,0.20),0_0_26px_rgba(79,140,255,0.14)]' : 'bg-black/0 text-transparent'}`}>
-            <span className={`${goal ? 'text-[8px]' : 'text-[9px]'} whitespace-pre-line font-black uppercase leading-tight ${count ? 'text-white/90' : 'text-transparent'}`}>{count ? displayZoneLabel(zone) : ''}</span>
+            <span className={`${goal ? 'text-[8px]' : 'text-[9px]'} whitespace-pre-line font-black uppercase leading-tight ${count ? 'text-white/90' : 'text-transparent'}`}>{count ? displayZoneLabel(zone, { goal }) : ''}</span>
             <strong className={`${goal ? 'mt-0 text-sm' : 'mt-0.5 text-base'} ${count ? 'text-white' : 'text-transparent'}`}>{count || ''}</strong>
           </div>
           );
@@ -12731,7 +12806,13 @@ function App() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6);
 
-  const getGroupGoalZoneCounts = (events) => countValues(safeArray(events).map((event) => event.goalZone));
+  const getGroupGoalZoneCounts = (events) =>
+    safeArray(events).reduce((acc, event) => {
+      const normalized = normalizeGoalMouthZone(event.goalZone);
+      if (!normalized) return acc;
+      acc[normalized] = (acc[normalized] || 0) + 1;
+      return acc;
+    }, {});
 
   const getGroupAlerts = (groupData, rankings, localSummary, awaySummary) => {
     if (groupData.played < 3) return [{ text: 'Sin datos suficientes para generar alertas fiables.', gravity: 'leve', type: 'contexto', trend: 'estable' }];
@@ -16461,7 +16542,7 @@ function App() {
                 .filter((event) => event.match);
               const influenceActions = playerInfluenceFilter === 'Goles' ? allGoalActions : playerInfluenceFilter === 'Asistencias' ? allAssistActions : [...allGoalActions, ...allAssistActions];
               const shotZoneCounts = countPitchZones(influenceActions.map((event) => event.action === 'Gol' ? event.shotZone : event.assistZone));
-              const goalZoneCounts = countValues(allGoalActions.map((event) => event.goalZone));
+              const goalZoneCounts = getGroupGoalZoneCounts(allGoalActions);
               const playerGoalPhaseCounts = countPhases(allGoalActions);
               const maxPlayerGoalPhase = Math.max(1, ...playerGoalPhaseCounts.map((row) => row.count));
               const timelineActions = [
