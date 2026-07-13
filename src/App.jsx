@@ -1207,51 +1207,74 @@ const loadImageForCanvas = (sourceUrl) => new Promise((resolve, reject) => {
 
 const createAppCaudalPortraitFile = async ({ imageUrl, playerName = 'jugador' }) => {
   const image = await loadImageForCanvas(imageUrl);
-  const size = 512;
+  const size = 768;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const context = canvas.getContext('2d');
   if (!context) throw new Error('El navegador no permite procesar esta imagen.');
 
-  const gradient = context.createLinearGradient(0, 0, size, size);
-  gradient.addColorStop(0, '#17213a');
-  gradient.addColorStop(0.52, '#0c1729');
-  gradient.addColorStop(1, '#050812');
+  const gradient = context.createLinearGradient(0, 0, size, size * 1.08);
+  gradient.addColorStop(0, '#172236');
+  gradient.addColorStop(0.46, '#101827');
+  gradient.addColorStop(1, '#060910');
   context.fillStyle = gradient;
   context.fillRect(0, 0, size, size);
 
-  const glow = context.createRadialGradient(size / 2, size * 0.18, 20, size / 2, size * 0.18, size * 0.72);
-  glow.addColorStop(0, 'rgba(79, 140, 255, 0.42)');
+  const glow = context.createRadialGradient(size / 2, size * 0.2, 20, size / 2, size * 0.2, size * 0.82);
+  glow.addColorStop(0, 'rgba(79, 140, 255, 0.20)');
   glow.addColorStop(1, 'rgba(79, 140, 255, 0)');
   context.fillStyle = glow;
   context.fillRect(0, 0, size, size);
 
-  const sourceRatio = image.width / image.height;
-  const targetRatio = 1;
-  let cropWidth = image.width;
-  let cropHeight = image.height;
-  if (sourceRatio > targetRatio) cropWidth = image.height * targetRatio;
-  else cropHeight = image.width / targetRatio;
-  const cropX = (image.width - cropWidth) / 2;
-  const cropY = Math.max(0, (image.height - cropHeight) * 0.18);
-  const drawSize = Math.round(size * 0.86);
+  const vignette = context.createRadialGradient(size / 2, size * 0.42, size * 0.28, size / 2, size / 2, size * 0.72);
+  vignette.addColorStop(0, 'rgba(0,0,0,0)');
+  vignette.addColorStop(1, 'rgba(0,0,0,0.36)');
+  context.fillStyle = vignette;
+  context.fillRect(0, 0, size, size);
+
+  const isLandscape = image.width / image.height > 1.15;
+  const cropSize = Math.min(
+    image.width * (isLandscape ? 0.62 : 0.92),
+    image.height * (isLandscape ? 0.92 : 0.68)
+  );
+  const cropX = Math.max(0, Math.min(image.width - cropSize, (image.width - cropSize) / 2));
+  const cropY = Math.max(0, Math.min(image.height - cropSize, image.height * (isLandscape ? 0.04 : 0.08)));
+  const drawSize = Math.round(size * 0.98);
   const drawX = Math.round((size - drawSize) / 2);
-  const drawY = Math.round(size * 0.08);
+  const drawY = Math.round(size * 0.015);
 
   context.save();
   context.beginPath();
-  context.arc(size / 2, size / 2, size * 0.45, 0, Math.PI * 2);
+  context.arc(size / 2, size / 2, size * 0.485, 0, Math.PI * 2);
   context.clip();
-  context.filter = 'contrast(1.05) saturate(0.96) brightness(1.04)';
-  context.drawImage(image, cropX, cropY, cropWidth, cropHeight, drawX, drawY, drawSize, drawSize);
+
+  context.save();
+  context.beginPath();
+  context.ellipse(size / 2, size * 0.42, size * 0.34, size * 0.39, 0, 0, Math.PI * 2);
+  context.ellipse(size / 2, size * 0.82, size * 0.47, size * 0.28, 0, 0, Math.PI * 2);
+  context.clip();
+  context.filter = 'contrast(1.12) saturate(0.82) brightness(1.08)';
+  context.drawImage(image, cropX, cropY, cropSize, cropSize, drawX, drawY, drawSize, drawSize);
   context.restore();
 
-  context.strokeStyle = 'rgba(255,255,255,0.16)';
-  context.lineWidth = 10;
+  context.globalCompositeOperation = 'screen';
+  const faceLight = context.createRadialGradient(size / 2, size * 0.34, 10, size / 2, size * 0.34, size * 0.42);
+  faceLight.addColorStop(0, 'rgba(255,255,255,0.13)');
+  faceLight.addColorStop(1, 'rgba(255,255,255,0)');
+  context.fillStyle = faceLight;
+  context.fillRect(0, 0, size, size);
+  context.globalCompositeOperation = 'source-over';
+
+  context.fillStyle = 'rgba(7, 10, 18, 0.18)';
+  context.fillRect(0, size * 0.78, size, size * 0.22);
+
+  context.strokeStyle = 'rgba(255,255,255,0.08)';
+  context.lineWidth = 2;
   context.beginPath();
-  context.arc(size / 2, size / 2, size * 0.45, 0, Math.PI * 2);
+  context.arc(size / 2, size / 2, size * 0.482, 0, Math.PI * 2);
   context.stroke();
+  context.restore();
 
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', 0.92));
   if (!blob) throw new Error('No se pudo generar la versión APPCAUDAL.');
@@ -2215,10 +2238,11 @@ const getPlayerInitials = (player = {}) => {
 const getPlayerPortraitUrl = (player = {}) => player.processedImage || player.processed_image || player.image || '';
 const AppCaudalPlayerAvatar = ({ player = {}, className = '', textClassName = 'text-xs' }) => (
   <div className={`relative flex items-center justify-center overflow-hidden bg-[#091428] ${className}`}>
-    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(79,140,255,0.36),transparent_35%),linear-gradient(145deg,#101820_0%,#13243f_48%,#050912_100%)]" />
-    <div className="absolute bottom-0 h-[62%] w-[72%] rounded-t-full bg-slate-950/50" />
-    <div className="absolute top-[22%] h-[30%] w-[30%] rounded-full bg-slate-300/18" />
-    <span className={`relative font-black uppercase tracking-[0.08em] text-slate-100/85 ${textClassName}`}>{getPlayerInitials(player)}</span>
+    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_22%,rgba(79,140,255,0.20),transparent_42%),linear-gradient(145deg,#172236_0%,#101827_48%,#060910_100%)]" />
+    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,transparent_42%,rgba(0,0,0,0.34)_100%)]" />
+    <div className="absolute top-[20%] h-[31%] w-[31%] rounded-full bg-slate-200/18 shadow-[0_12px_24px_rgba(0,0,0,0.18)]" />
+    <div className="absolute bottom-[-4%] h-[54%] w-[76%] rounded-t-full bg-slate-200/12" />
+    <span className={`relative mt-[18%] font-black uppercase tracking-[0.08em] text-slate-100/70 ${textClassName}`}>{getPlayerInitials(player)}</span>
   </div>
 );
 const PlayerPortrait = ({ player = {}, className = '', imgClassName = 'h-full w-full object-cover', fallbackTextClassName = 'text-xs' }) => {
@@ -21652,7 +21676,7 @@ function App() {
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Normalización APPCAUDAL</p>
-                          <p className="mt-1 text-xs leading-5 text-slate-400">Recorte automático 1:1, tamaño fijo, fondo clásico y ajuste suave de luz. La foto original se conserva.</p>
+                          <p className="mt-1 text-xs leading-5 text-slate-400">Recorte automático de busto, máscara de retrato, fondo clásico y color grading común. La foto original se conserva.</p>
                         </div>
                         <button
                           type="button"
