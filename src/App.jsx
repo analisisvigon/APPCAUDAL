@@ -15,6 +15,7 @@ import {
   getPostEventTypeLabel,
   getPostEventTypeValue,
 } from './constants/postEventTypes';
+import { buildLeagueResultsDonut, calculateLeagueResults } from './utils/leagueResults';
 import './styles/print.css';
 
 const clubCrest =
@@ -77,6 +78,79 @@ function FloatingActionMenu({ anchorRect, width = 224, onClose, children }) {
       {children}
     </div>,
     document.body
+  );
+}
+
+function LeagueResultsDistribution({ results, compact = false, onViewStats }) {
+  const played = Number(results?.played || 0);
+  const hasData = played > 0;
+  const donut = buildLeagueResultsDonut(results);
+  const sizeClass = compact ? 'h-28 w-28' : 'h-48 w-48';
+  const innerClass = compact ? 'h-16 w-16 text-[10px]' : 'h-28 w-28 text-sm';
+  const counterValue = (value) => (hasData ? value : '—');
+
+  return (
+    <div className={compact ? 'rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]' : 'rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow'}>
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Resultados de Liga</h3>
+        {onViewStats ? (
+          <button
+            type="button"
+            onClick={onViewStats}
+            className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-200 transition hover:bg-white/10"
+          >
+            Ver estadísticas
+          </button>
+        ) : null}
+      </div>
+
+      {hasData ? (
+        <>
+          <div className={`mx-auto ${compact ? 'mt-4' : 'mt-8'} flex ${sizeClass} items-center justify-center rounded-full`} style={{ background: donut }}>
+            <div className={`flex ${innerClass} items-center justify-center rounded-full bg-[#091428] font-black uppercase text-slate-300`}>
+              {played} PJ
+            </div>
+          </div>
+          <div className={`${compact ? 'mt-4' : 'mt-6'} grid grid-cols-3 gap-2 text-center`}>
+            {[
+              ['Victorias', counterValue(results.wins), 'text-emerald-300'],
+              ['Empates', counterValue(results.draws), 'text-amber-300'],
+              ['Derrotas', counterValue(results.losses), 'text-red-300'],
+            ].map(([label, value, color]) => (
+              <div key={label} className="rounded-2xl bg-white/5 p-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
+                <p className={`${compact ? 'mt-1 text-xl' : 'mt-2 text-2xl'} font-black ${color}`}>{value}</p>
+              </div>
+            ))}
+          </div>
+          {compact ? (
+            <p className="mt-3 text-center text-xs font-bold text-slate-400">
+              {results.wins} victorias · {results.draws} empates · {results.losses} derrotas
+            </p>
+          ) : null}
+          <p className="mt-2 text-center text-xs font-black uppercase tracking-[0.14em] text-slate-500">{played} partidos</p>
+        </>
+      ) : (
+        <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-5 text-center">
+          <div className={`mx-auto flex ${compact ? 'h-20 w-20' : 'h-28 w-28'} items-center justify-center rounded-full border border-slate-500/30 bg-slate-500/10`}>
+            <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Sin datos</span>
+          </div>
+          <p className="mt-4 text-sm font-bold text-slate-200">Aún no hay partidos de Liga jugados.</p>
+          <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+            {[
+              ['Victorias', counterValue(results?.wins), 'text-emerald-300'],
+              ['Empates', counterValue(results?.draws), 'text-amber-300'],
+              ['Derrotas', counterValue(results?.losses), 'text-red-300'],
+            ].map(([label, value, color]) => (
+              <div key={label} className="rounded-2xl bg-white/5 p-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
+                <p className={`mt-1 text-xl font-black ${color}`}>{value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -12756,6 +12830,7 @@ function App() {
       activity: activityCandidates,
       squad,
       balance,
+      leagueResults: calculateLeagueResults(matches),
       recent,
       weeklyStats,
       tendency,
@@ -15507,19 +15582,25 @@ function App() {
                 </div>
               </div>
 
-              <div className="rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]">
-                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Actividad reciente</h3>
-                <div className="mt-3 space-y-2">
-                  {safeArray(homeDashboard.activity).length ? safeArray(homeDashboard.activity).map((item) => (
-                    <div key={`${item.label}-${item.detail}`} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm transition hover:bg-white/[0.07]">
-                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-caudal-electric" />
-                      <div className="min-w-0">
-                        <p className="font-bold text-white">{item.label}</p>
-                        <p className="truncate text-xs text-slate-500">{item.detail}</p>
-                      </div>
+              <LeagueResultsDistribution
+                compact
+                results={homeDashboard.leagueResults}
+                onViewStats={() => setActiveTab('Análisis Grupal')}
+              />
+            </section>
+
+            <section className="rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]">
+              <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Actividad reciente</h3>
+              <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+                {safeArray(homeDashboard.activity).length ? safeArray(homeDashboard.activity).map((item) => (
+                  <div key={`${item.label}-${item.detail}`} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm transition hover:bg-white/[0.07]">
+                    <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-caudal-electric" />
+                    <div className="min-w-0">
+                      <p className="font-bold text-white">{item.label}</p>
+                      <p className="truncate text-xs text-slate-500">{item.detail}</p>
                     </div>
-                  )) : <p className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-sm text-slate-400">Sin actividad reciente guardada.</p>}
-                </div>
+                  </div>
+                )) : <p className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-sm text-slate-400 md:col-span-2 xl:col-span-5">Sin actividad reciente guardada.</p>}
               </div>
             </section>
 
@@ -18015,6 +18096,7 @@ function App() {
           const groupData = getGroupAnalysisData();
           const scopedMatches = safeArray(groupData.scoped);
           const hasData = groupData.played > 0;
+          const leagueResults = calculateLeagueResults(matches);
           const goalForRows = safeArray(groupData.goalForEvents);
           const goalAgainstRows = safeArray(groupData.goalAgainstEvents);
           const quickRows = safeArray(groupData.quickEvents);
@@ -18066,7 +18148,6 @@ function App() {
           const mainReadings = getGroupMainReading({ groupData, identity: groupIdentity, patterns: tacticalPatterns, alerts: automaticAlerts, temporal: temporalContext, quickSummary });
           const prePostLinks = getGroupPrePostReality(scopedMatches);
           const idealIntelligence = getIdealElevenIntelligence(scopedMatches, idealElevenRows, effectiveIdealSystem);
-          const resultDonut = `conic-gradient(#34d399 0 ${groupData.played ? (groupData.wins / groupData.played) * 100 : 0}%, #facc15 ${groupData.played ? (groupData.wins / groupData.played) * 100 : 0}% ${groupData.played ? ((groupData.wins + groupData.draws) / groupData.played) * 100 : 0}%, #f87171 ${groupData.played ? ((groupData.wins + groupData.draws) / groupData.played) * 100 : 0}% 100%)`;
           const abpReading = (forGoals, againstGoals) => {
             if (!forGoals && !againstGoals) return 'neutro';
             if (forGoals >= againstGoals + 2) return 'fuerte';
@@ -18638,26 +18719,7 @@ function App() {
 
               <AccordionSection title="Tendencias" subtitle="Resultados, tramos y evolución">
               <section className="grid gap-6 xl:grid-cols-[0.85fr_1.4fr]">
-                <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                  <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Distribución de resultados</h3>
-                  <div className="mx-auto mt-8 flex h-48 w-48 items-center justify-center rounded-full" style={{ background: resultDonut }}>
-                    <div className="flex h-28 w-28 items-center justify-center rounded-full bg-[#091428] text-sm font-black uppercase text-slate-300">
-                      {hasData ? `${groupData.played} PJ` : 'sin datos'}
-                    </div>
-                  </div>
-                  <div className="mt-6 grid grid-cols-3 gap-3 text-center">
-                    {[
-                      ['Victorias', groupData.wins, 'text-emerald-300'],
-                      ['Empates', groupData.draws, 'text-amber-300'],
-                      ['Derrotas', groupData.losses, 'text-red-300'],
-                    ].map(([label, value, color]) => (
-                      <div key={label} className="rounded-2xl bg-white/5 p-3">
-                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
-                        <p className={`mt-2 text-2xl font-black ${color}`}>{value}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <LeagueResultsDistribution results={leagueResults} />
 
                 <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                   <div className="flex items-center justify-between gap-3">
