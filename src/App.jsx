@@ -913,6 +913,24 @@ const normalizeCompetitionKey = (matchOrValue = {}) => {
 
 const getCompetitionMeta = (key) => COMPETITION_META[key] || COMPETITION_META.other;
 
+const getCompetitionAccentClass = (competitionKey) => ({
+  league: 'bg-blue-400',
+  copa_rfef: 'bg-amber-300',
+  playoff: 'bg-violet-400',
+  friendly: 'bg-slate-400',
+  all: 'bg-caudal-electric',
+  other: 'bg-slate-500',
+}[competitionKey] || 'bg-slate-500');
+
+const getCompetitionPanelClass = (competitionKey) => ({
+  league: 'border-blue-300/15 bg-blue-400/[0.08] text-blue-100',
+  copa_rfef: 'border-amber-300/20 bg-amber-300/[0.10] text-amber-100',
+  playoff: 'border-violet-300/20 bg-violet-300/[0.10] text-violet-100',
+  friendly: 'border-slate-300/15 bg-slate-300/[0.08] text-slate-200',
+  all: 'border-caudal-electric/20 bg-caudal-electric/[0.08] text-caudal-electric',
+  other: 'border-white/10 bg-white/[0.055] text-slate-200',
+}[competitionKey] || 'border-white/10 bg-white/[0.055] text-slate-200');
+
 const getMatchCompetition = (match = {}) => {
   const key = normalizeCompetitionKey(match);
   const meta = getCompetitionMeta(key);
@@ -8479,10 +8497,30 @@ function App() {
     unknown: { label: 'Evento', icon: 'EV', badgeIcon: 'EV', category: 'Eventos', tone: 'border-white/10 bg-white/[0.035]' },
   };
 
-  const getMatchEventMeta = (key) => {
+  const getMatchEventMeta = (key, event = null) => {
     const meta = MATCH_EVENT_META[key] || MATCH_EVENT_META.unknown;
-    if (!MATCH_EVENT_META[key]) console.warn('Tipo de evento de partido no reconocido:', key);
+    if (!MATCH_EVENT_META[key] && import.meta.env.DEV) {
+      console.warn('[UNKNOWN_MATCH_EVENT]', event || { key });
+    }
     return meta;
+  };
+
+  const parseMatchEventMinute = (value) => {
+    const raw = String(value ?? '').trim();
+    if (!raw || raw === '999') return { sortMinute: 999, label: 'Sin minuto', hasMinute: false };
+    const addedTimeMatch = raw.match(/^(\d+)\s*\+\s*(\d+)$/);
+    if (addedTimeMatch) {
+      const base = Number(addedTimeMatch[1]);
+      const added = Number(addedTimeMatch[2]);
+      return {
+        sortMinute: Number.isFinite(base + added) ? base + added : 999,
+        label: `${base}+${added}'`,
+        hasMinute: true,
+      };
+    }
+    const minute = Number(raw);
+    if (!Number.isFinite(minute) || minute >= 999) return { sortMinute: 999, label: 'Sin minuto', hasMinute: false };
+    return { sortMinute: minute, label: `${minute}'`, hasMinute: true };
   };
 
   const getEventHalfOrder = (half) => {
@@ -8495,7 +8533,7 @@ function App() {
   const sortMatchEventsChronologically = (events = []) => [...events].sort((a, b) => {
     const halfDiff = (a.halfOrder || 3) - (b.halfOrder || 3);
     if (halfDiff) return halfDiff;
-    const minuteDiff = Number(a.minute || 0) - Number(b.minute || 0);
+    const minuteDiff = Number(a.sortMinute ?? a.minute ?? 999) - Number(b.sortMinute ?? b.minute ?? 999);
     if (minuteDiff) return minuteDiff;
     const secondDiff = Number(a.second || 0) - Number(b.second || 0);
     if (secondDiff) return secondDiff;
@@ -20081,64 +20119,71 @@ function App() {
                       if (diffDays === 0) return 'MD';
                       return `MD+${Math.abs(diffDays)}`;
                     };
-                    const matchEventRows = [
-                      ...statsEvents.map((event) => ({
-                        minute: Number(event.minute) || 999,
-                        minuteLabel: event.minute ? `${event.minute}'` : '',
-                        icon: '?',
-                        side: event.type === 'Gol a favor' ? 'caudal' : 'rival',
-                        label: event.type === 'Gol a favor' ? (event.scorer || 'Caudal') : (match.opponent || 'Rival'),
-                        assist: event.assistant || '',
-                      })),
+                    const matchEventRows = sortMatchEventsChronologically([
+                      ...statsEvents.map((event) => {
+                        const isGoalFor = event.type === 'Gol a favor';
+                        const meta = getMatchEventMeta(isGoalFor ? 'goal_for' : 'goal_against', event);
+                        const minuteData = parseMatchEventMinute(event.minute);
+                        return {
+                          id: event.id || `goal-${event.minute || 'no-minute'}-${event.scorer || event.type}`,
+                          key: isGoalFor ? 'goal_for' : 'goal_against',
+                          sortMinute: minuteData.sortMinute,
+                          minuteLabel: minuteData.label,
+                          hasMinute: minuteData.hasMinute,
+                          halfOrder: getEventHalfOrder(event.half),
+                          second: Number(event.second || 0),
+                          createdAt: event.createdAt || event.created_at || '',
+                          priority: 1,
+                          icon: meta.badgeIcon,
+                          side: isGoalFor ? 'caudal' : 'rival',
+                          label: isGoalFor ? (event.scorer || 'Caudal') : (match.opponent || 'Rival'),
+                          typeLabel: meta.label,
+                          assist: isGoalFor ? event.assistant || '' : '',
+                        };
+                      }),
                       ...Object.entries(match.statsPlayerData || {}).flatMap(([name, stats]) => [
+                        stats.red ? { key: 'red_card', name, detail: '', priority: 2 } : null,
+                        stats.injured ? { key: 'injury', name, detail: 'Incidencia registrada', priority: 3 } : null,
                         stats.yellow ? {
-                          minute: 999,
-                          minuteLabel: '',
-                          icon: '??',
-                          side: 'staff',
-                          label: name,
+                          key: 'yellow_card',
+                          name,
                           detail: Number(stats.yellowCount || 1) > 1 ? `x${Number(stats.yellowCount || 1)}` : '',
+                          priority: 5,
                         } : null,
-                        stats.red ? {
-                          minute: 999,
-                          minuteLabel: '',
-                          icon: '??',
+                      ].filter(Boolean).map((event) => {
+                        const meta = getMatchEventMeta(event.key, event);
+                        const minuteData = parseMatchEventMinute('');
+                        return {
+                          id: `${event.key}-${event.name}`,
+                          key: event.key,
+                          sortMinute: minuteData.sortMinute,
+                          minuteLabel: minuteData.label,
+                          hasMinute: false,
+                          halfOrder: 3,
+                          second: 0,
+                          createdAt: '',
+                          priority: event.priority,
+                          icon: meta.badgeIcon,
                           side: 'staff',
-                          label: name,
-                          detail: '',
-                        } : null,
-                        stats.injured ? {
-                          minute: 999,
-                          minuteLabel: '',
-                          icon: '??',
-                          side: 'staff',
-                          label: name,
-                          detail: '',
-                        } : null,
-                      ].filter(Boolean)),
-                    ].sort((a, b) => a.minute - b.minute || String(a.label).localeCompare(String(b.label)));
-                    const visibleMatchEventRows = matchEventRows.slice(0, 4);
-                    const hiddenMatchEventCount = Math.max(0, matchEventRows.length - visibleMatchEventRows.length);
-                    const timelineEvents = visibleMatchEventRows.map((event) => ({
-                        minute: event.minuteLabel,
-                        side: 'staff',
-                        ...event,
-                      }));
-                    const resultStripeClass = !played
-                      ? 'bg-slate-400'
-                      : score.caudal > score.rival
-                        ? 'bg-emerald-400'
-                        : score.caudal < score.rival
-                          ? 'bg-red-500'
-                          : 'bg-amber-300';
+                          label: event.name,
+                          typeLabel: meta.label,
+                          detail: event.detail,
+                        };
+                      })),
+                    ]);
+                    const visibleMatchEventRows = matchEventRows.slice(0, 5);
+                    const hiddenMatchEventCountDesktop = Math.max(0, matchEventRows.length - visibleMatchEventRows.length);
+                    const hiddenMatchEventCountMobile = Math.max(0, matchEventRows.length - Math.min(3, visibleMatchEventRows.length));
                     const cardToneClass = played
                       ? 'border-white/10 bg-[#091428]/[0.86] shadow-[0_18px_48px_rgba(0,0,0,0.22)] hover:border-white/20'
                       : 'border-caudal-electric/[0.14] bg-[#08192c]/[0.80] shadow-[0_14px_40px_rgba(0,0,0,0.18)] hover:border-caudal-electric/30';
                     const competitionMeta = getCompetitionFromCatalog(match);
+                    const competitionAccentClass = getCompetitionAccentClass(competitionMeta.key);
+                    const competitionPanelClass = getCompetitionPanelClass(competitionMeta.key);
                     return (
                       <article key={match.id} className={`relative overflow-hidden rounded-[1.45rem] border transition hover:-translate-y-0.5 ${cardToneClass}`}>
                         <div className={`pointer-events-none absolute inset-0 ${played ? 'bg-[linear-gradient(180deg,rgba(255,255,255,0.035),transparent_38%)]' : 'bg-[radial-gradient(circle_at_50%_0%,rgba(79,140,255,0.13),transparent_34%),linear-gradient(180deg,rgba(79,140,255,0.035),transparent_44%)]'}`} />
-                        <div className={`h-1.5 w-full ${resultStripeClass}`} />
+                        <div className={`h-1.5 w-full ${competitionAccentClass}`} />
                         <div className="absolute right-4 top-4 z-10 flex gap-2">
                           <button onClick={() => openMatchForm(match)} className="rounded-lg border border-white/10 bg-white/[0.07] px-2.5 py-1 text-[11px] font-bold text-white hover:bg-white/[0.12]">Editar</button>
                           <button onClick={() => handleMatchDelete(match)} className="rounded-lg border border-red-200/10 bg-red-500/10 px-2.5 py-1 text-[11px] font-bold text-red-100 hover:bg-red-500/[0.18]">Eliminar</button>
@@ -20155,11 +20200,11 @@ function App() {
                             <p className={`${played ? 'mt-3 text-6xl text-white drop-shadow-[0_8px_18px_rgba(0,0,0,0.35)]' : 'mt-3 text-3xl text-slate-400'} font-black leading-none tracking-normal`}>
                               {played ? `${score.home} - ${score.away}` : 'VS'}
                             </p>
-                            <p className="mt-2 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
-                              <CompetitionIcon competition={competitionMeta} className="h-5 w-5 rounded-md" textClassName="text-[8px]" />
-                              <span>{competitionMeta.label}</span>
-                              {match.round ? <span>{match.round}</span> : null}
-                            </p>
+                            <div className={`mx-auto mt-3 flex max-w-[150px] flex-col items-center gap-1 rounded-2xl border px-3 py-2 ${competitionPanelClass}`}>
+                              <CompetitionIdentity competition={competitionMeta} size="md" showName={false} />
+                              <p className="max-w-full truncate text-[11px] font-black uppercase tracking-[0.12em]">{competitionMeta.label}</p>
+                              {match.round ? <p className="max-w-full truncate text-[10px] font-bold uppercase tracking-[0.10em] opacity-75">{match.round}</p> : null}
+                            </div>
                             {!played ? <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">{getMatchMdLabel()}</p> : null}
                             {match.stadium ? <p className="mt-1 text-xs font-semibold text-slate-400">{match.stadium}</p> : null}
                           </div>
@@ -20172,20 +20217,23 @@ function App() {
                         </div>
                         {played ? (
                           <div className="relative px-4 pb-3">
-                            {timelineEvents.length ? (
+                            {visibleMatchEventRows.length ? (
                               <div className="grid gap-1 rounded-2xl border border-white/10 bg-slate-950/[0.18] p-2">
-                                {timelineEvents.map((event, index) => (
-                                  <div key={`${event.label}-${event.icon}-${event.minute}-${index}`} className="grid grid-cols-[34px_22px_1fr] items-start gap-2 border-b border-white/[0.055] px-1.5 py-1.5 text-xs last:border-b-0">
-                                    <span className="font-black tabular-nums text-slate-500">{event.minute || ''}</span>
-                                    <span className="leading-none">{event.icon}</span>
+                                {visibleMatchEventRows.map((event, index) => (
+                                  <div key={`${event.id || event.label}-${event.icon}-${index}`} className={`grid grid-cols-[68px_30px_1fr] items-start gap-2 border-b border-white/[0.055] px-1.5 py-1.5 text-xs last:border-b-0 ${index >= 3 ? 'hidden sm:grid' : ''}`}>
+                                    <span className="font-black tabular-nums text-slate-500">{event.hasMinute ? event.minuteLabel : 'Sin minuto'}</span>
+                                    <span className="flex h-6 w-6 items-center justify-center rounded-lg border border-white/10 bg-white/[0.055] text-[10px] font-black leading-none text-white">{event.icon}</span>
                                     <span className={`min-w-0 font-semibold ${event.side === 'caudal' ? 'text-emerald-100' : event.side === 'rival' ? 'text-red-100' : 'text-slate-200'}`}>
-                                      <span className="block truncate">{event.label}{event.detail ? ` ${event.detail}` : ''}</span>
-                                      {event.assist ? <span className="mt-0.5 block truncate text-[11px] font-bold text-caudal-electric">? {event.assist}</span> : null}
+                                      <span className="block truncate">{event.typeLabel ? `${event.typeLabel}: ` : ''}{event.label}{event.detail ? ` ${event.detail}` : ''}</span>
+                                      {event.assist ? <span className="mt-0.5 block truncate text-[11px] font-bold text-caudal-electric">Asistencia: {event.assist}</span> : null}
                                     </span>
                                   </div>
                                 ))}
-                                {hiddenMatchEventCount ? (
-                                  <p className="px-1.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">+{hiddenMatchEventCount} eventos más</p>
+                                {hiddenMatchEventCountMobile ? (
+                                  <p className="px-1.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500 sm:hidden">+{hiddenMatchEventCountMobile} eventos más</p>
+                                ) : null}
+                                {hiddenMatchEventCountDesktop ? (
+                                  <p className="hidden px-1.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500 sm:block">+{hiddenMatchEventCountDesktop} eventos más</p>
                                 ) : null}
                               </div>
                             ) : (
