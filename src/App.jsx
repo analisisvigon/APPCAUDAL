@@ -81,12 +81,27 @@ function FloatingActionMenu({ anchorRect, width = 224, onClose, children }) {
   );
 }
 
+function CompetitionIcon({ competition, className = 'h-9 w-9 rounded-xl', textClassName = 'text-[10px]' }) {
+  if (competition?.logoUrl) {
+    return (
+      <span className={`flex shrink-0 items-center justify-center border border-white/10 bg-white ${className}`}>
+        <img src={competition.logoUrl} alt="" className="h-full w-full object-contain p-1" />
+      </span>
+    );
+  }
+  return (
+    <span className={`flex shrink-0 items-center justify-center border border-white/10 bg-white/[0.06] font-black uppercase tracking-[0.08em] text-caudal-electric ${className} ${textClassName}`}>
+      {competition?.icon || 'CP'}
+    </span>
+  );
+}
+
 function LeagueResultsDistribution({ results, compact = false, onViewStats }) {
   const played = Number(results?.played || 0);
   const hasData = played > 0;
   const donut = buildLeagueResultsDonut(results);
   const title = results?.title || 'Resultados de Liga';
-  const icon = results?.icon || 'LG';
+  const competition = { icon: results?.icon || 'LG', logoUrl: results?.logoUrl || '' };
   const emptyMessage = results?.emptyMessage || 'Aun no hay partidos de Liga jugados.';
   const sizeClass = compact ? 'h-28 w-28' : 'h-48 w-48';
   const innerClass = compact ? 'h-16 w-16 text-[10px]' : 'h-28 w-28 text-sm';
@@ -96,9 +111,7 @@ function LeagueResultsDistribution({ results, compact = false, onViewStats }) {
     <div className={compact ? 'rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]' : 'rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow'}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-[10px] font-black uppercase tracking-[0.08em] text-caudal-electric">
-            {icon}
-          </span>
+          <CompetitionIcon competition={competition} />
           <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">{title}</h3>
         </div>
         {onViewStats ? (
@@ -302,7 +315,13 @@ const squadGroups = [
 ];
 
 const gameSystems = ['4-4-2', '4-2-3-1', '4-3-3', '3-5-2', '3-4-3', '3-4-1-2', '5-3-2', '5-4-1', 'Otro'];
-const matchTypes = ['Liga', 'Copa RFEF', 'Play off', 'Amistoso'];
+const competitionOptions = [
+  { value: 'league', label: 'Liga' },
+  { value: 'copa_rfef', label: 'Copa RFEF' },
+  { value: 'playoff', label: 'Play Off' },
+  { value: 'friendly', label: 'Amistoso' },
+];
+const matchTypes = competitionOptions.map((competition) => competition.label);
 const matchFilters = ['Todos', ...matchTypes];
 const eventColorOptions = ['emerald', 'red', 'sky', 'violet', 'amber', 'orange', 'slate'];
 const goalPhaseOptions = {
@@ -362,7 +381,9 @@ const defaultGoalAnalysisDraft = {
 const emptyMatchForm = {
   date: '',
   time: '',
-  type: 'Liga',
+  type: '',
+  competitionKey: '',
+  competitionId: null,
   round: '',
   stadium: '',
   opponent: '',
@@ -799,6 +820,7 @@ const COMPETITION_META = {
     title: 'Resultados de la temporada',
     shortTitle: 'Temporada',
     icon: 'TR',
+    logoUrl: '',
     emptyMessage: 'Aun no hay partidos jugados en la muestra seleccionada.',
   },
   league: {
@@ -807,6 +829,7 @@ const COMPETITION_META = {
     title: 'Resultados de Liga',
     shortTitle: 'Liga',
     icon: 'LG',
+    logoUrl: '',
     emptyMessage: 'Aun no hay partidos de Liga jugados.',
   },
   copa_rfef: {
@@ -815,6 +838,7 @@ const COMPETITION_META = {
     title: 'Resultados de Copa RFEF',
     shortTitle: 'Copa RFEF',
     icon: 'CR',
+    logoUrl: '',
     emptyMessage: 'Aun no hay partidos de Copa RFEF jugados.',
   },
   playoff: {
@@ -823,6 +847,7 @@ const COMPETITION_META = {
     title: 'Resultados de Play Off',
     shortTitle: 'Play Off',
     icon: 'PO',
+    logoUrl: '',
     emptyMessage: 'Aun no hay partidos de Play Off jugados.',
   },
   friendly: {
@@ -831,6 +856,7 @@ const COMPETITION_META = {
     title: 'Resultados de amistosos',
     shortTitle: 'Amistoso',
     icon: 'AM',
+    logoUrl: '',
     emptyMessage: 'Aun no hay amistosos jugados.',
   },
   other: {
@@ -839,6 +865,7 @@ const COMPETITION_META = {
     title: 'Resultados de otra competicion',
     shortTitle: 'Otra',
     icon: 'CP',
+    logoUrl: '',
     emptyMessage: 'Aun no hay partidos jugados en esta competicion.',
   },
 };
@@ -872,6 +899,19 @@ const normalizeCompetitionKey = (matchOrValue = {}) => {
 };
 
 const getCompetitionMeta = (key) => COMPETITION_META[key] || COMPETITION_META.other;
+
+const getMatchCompetition = (match = {}) => {
+  const key = normalizeCompetitionKey(match);
+  const meta = getCompetitionMeta(key);
+  return {
+    key,
+    ...meta,
+    logoUrl: match.competitionLogoUrl || match.competition_logo_url || meta.logoUrl || '',
+  };
+};
+
+const filterMatchesByCompetition = (rows = [], competitionKey = 'all') =>
+  safeArray(rows).filter((match) => competitionKey === 'all' || getMatchCompetition(match).key === competitionKey);
 
 const getCompetitionFilterKey = (filter) => {
   const normalized = normalizeCatalogText(filter);
@@ -955,7 +995,10 @@ const normalizeSupabasePartido = (match) =>
     id: match.id,
     date: match.date || '',
     time: match.time || '',
-    type: match.type || 'Liga',
+    type: match.type || '',
+    competitionKey: match.competition_key || match.competitionKey || normalizeCompetitionKey(match),
+    competitionId: match.competition_id || match.competitionId || null,
+    competitionLogoUrl: match.competition_logo_url || match.competitionLogoUrl || '',
     round: match.round || '',
     stadium: match.stadium || '',
     opponent: match.opponent || '',
@@ -978,10 +1021,14 @@ const createPartidoPayload = (matchFormState, teams = []) => {
   const selectedTeam = findTeamByDisplayName(teams, matchFormState.opponent);
   const equipoRivalId = isUuid(selectedTeam?.id) ? selectedTeam.id : null;
   const roundValue = String(matchFormState.round || '').trim();
+  const competitionKey = normalizeCompetitionKey(matchFormState.competitionKey);
+  const competitionMeta = getCompetitionMeta(competitionKey);
   const basePayload = {
     date: matchFormState.date || null,
     time: matchFormState.time || '',
-    type: matchFormState.type || 'Liga',
+    type: competitionKey === 'other' ? '' : competitionMeta.label,
+    competition_key: competitionKey === 'other' ? null : competitionKey,
+    competition_logo_url: matchFormState.competitionLogoUrl || null,
     round: roundValue || null,
     stadium: matchFormState.stadium || '',
     opponent: selectedTeam ? cleanTeamDisplayName(selectedTeam.name) : matchFormState.opponent || '',
@@ -2515,10 +2562,14 @@ const createBlankTeamPlayer = () => ({
 });
 
 const normalizeMatch = (match) => {
+  const competitionKey = normalizeCompetitionKey(match);
+  const competitionMeta = getCompetitionMeta(competitionKey);
   const merged = {
     ...emptyMatchForm,
     ...match,
     id: match.id ?? Date.now(),
+    competitionKey: competitionKey === 'other' ? (match.competitionKey || '') : competitionKey,
+    type: competitionKey === 'other' ? (match.type || '') : competitionMeta.label,
   };
 
   return {
@@ -5118,7 +5169,7 @@ function App() {
   };
 
   const formatLitoAmbiguousMatches = (matches) =>
-    matches.map((match) => `${formatLitoMatchName(match)} · ${match.type || 'Competición sin indicar'}`).join(', ');
+    matches.map((match) => `${formatLitoMatchName(match)} · ${getMatchCompetition(match).label || 'Competición sin indicar'}`).join(', ');
 
   const getLitoGoalsForMatch = (context, match) =>
     context.goals.filter((goal) => goal.partidoId === match?.id && goal.type === 'Gol a favor');
@@ -10598,7 +10649,7 @@ function App() {
       if (Number.isNaN(date.getTime())) return String(dateValue || '');
       return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
     };
-    const matchMeta = [selectedMatch.competition, formatStatsMatchDate(selectedMatch.date)].filter(Boolean).join(' · ');
+    const matchMeta = [getMatchCompetition(selectedMatch).label, formatStatsMatchDate(selectedMatch.date)].filter(Boolean).join(' · ');
     const statRows = [...getStatsCalledPlayers()].sort((a, b) => {
       const roleDiff = (getStatsPlayerData(a.name).role === 'Titular' ? -1 : 1) - (getStatsPlayerData(b.name).role === 'Titular' ? -1 : 1);
       return roleDiff || displayPlayerName(a).localeCompare(displayPlayerName(b));
@@ -11315,7 +11366,7 @@ function App() {
               ['Rival', selectedMatch.opponent || 'Rival'],
               ['Sistema rival', getCurrentRivalSystem()],
               ['Fecha', matchDisplayDate(selectedMatch.date)],
-              ['Competición', selectedMatch.type || 'Partido'],
+              ['Competición', getMatchCompetition(selectedMatch).label || 'Partido'],
               ['Pendientes', pendingQuick],
             ].map(([label, value]) => (
               <div key={label} className="rounded-2xl border border-white/5 bg-white/[0.045] p-4">
@@ -12012,11 +12063,7 @@ function App() {
         };
       })
       .filter(Boolean)
-      .filter((row) =>
-        playerCompetitionFilter === 'Todos' ||
-        row.match.type === playerCompetitionFilter ||
-        (playerCompetitionFilter === 'Playoff' && row.match.type === 'Play off')
-      )
+      .filter((row) => filterMatchesByCompetition([row.match], getCompetitionFilterKey(playerCompetitionFilter)).length)
       .filter((row) => playerVenueFilter === 'Todos' || (playerVenueFilter === 'Local' ? row.match.isHome : !row.match.isHome));
   };
 
@@ -12126,11 +12173,7 @@ function App() {
       .filter((event) => event.match)
       .filter((event) => playerDelegatedScope === 'Todos los registros' || isDelegatedDataValidated(event.match))
       .filter((event) => event.jugadorId === player.id && getQuickEventSide(event) === 'caudal')
-      .filter((event) =>
-        playerCompetitionFilter === 'Todos' ||
-        event.match.type === playerCompetitionFilter ||
-        (playerCompetitionFilter === 'Playoff' && event.match.type === 'Play off')
-      )
+      .filter((event) => filterMatchesByCompetition([event.match], getCompetitionFilterKey(playerCompetitionFilter)).length)
       .filter((event) => playerVenueFilter === 'Todos' || (playerVenueFilter === 'Local' ? event.match.isHome : !event.match.isHome));
     const orderedMatchIds = [...new Map(
       scopedReviewedEvents
@@ -12513,6 +12556,7 @@ function App() {
       title: scope.meta.title,
       label: scope.meta.label,
       icon: scope.meta.icon,
+      logoUrl: scope.meta.logoUrl || '',
       emptyMessage: scope.meta.emptyMessage,
     };
 
@@ -13804,12 +13848,12 @@ function App() {
   );
 
   const filteredMatches = useMemo(
-    () => (matchFilter === 'Todos' ? matches : matches.filter((match) => match.type === matchFilter)),
+    () => filterMatchesByCompetition(matches, getCompetitionFilterKey(matchFilter)),
     [matchFilter, matches]
   );
 
   const matchStats = useMemo(() => {
-    const scopedMatches = matchFilter === 'Todos' ? matches : matches.filter((match) => match.type === matchFilter);
+    const scopedMatches = filterMatchesByCompetition(matches, getCompetitionFilterKey(matchFilter));
     const finished = scopedMatches.filter((match) => match.status === 'Finalizado' || (match.statsGoalEvents || []).length > 0);
     const wins = finished.filter((match) => getMatchResult(match) === 'W').length;
     const goalsFor = finished.reduce((sum, match) => {
@@ -13827,7 +13871,7 @@ function App() {
   }, [matches, matchFilter]);
 
   const homeDashboard = useMemo(() => {
-    const scopedMatches = matchFilter === 'Todos' ? matches : matches.filter((match) => match.type === matchFilter);
+    const scopedMatches = filterMatchesByCompetition(matches, getCompetitionFilterKey(matchFilter));
     const sortedMatches = [...scopedMatches].sort((a, b) => {
       const dateCompare = String(a.date || '').localeCompare(String(b.date || ''));
       if (dateCompare !== 0) return dateCompare;
@@ -14488,7 +14532,9 @@ function App() {
   const validateMatchForm = (formState = matchFormState) => {
     const errors = {};
     if (!String(formState.opponent || '').trim()) errors.opponent = 'Selecciona o escribe un rival.';
-    if (!String(formState.type || '').trim()) errors.type = 'Selecciona la competición.';
+    if (!competitionOptions.some((competition) => competition.value === formState.competitionKey)) {
+      errors.competitionKey = 'Selecciona la competicion.';
+    }
     if (!String(formState.date || '').trim()) errors.date = 'Indica la fecha del encuentro.';
     if (formState.isHome !== true && formState.isHome !== false) errors.isHome = 'Indica si el partido es local o visitante.';
     return errors;
@@ -14607,6 +14653,11 @@ function App() {
     }
     if (name === 'stadium') {
       setMatchStadiumManuallyEdited(true);
+    }
+    if (name === 'competitionKey') {
+      const meta = getCompetitionMeta(value);
+      setMatchFormState((prev) => ({ ...prev, competitionKey: value, type: meta.label }));
+      return;
     }
     setMatchFormState((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
@@ -16309,7 +16360,7 @@ function App() {
                         <p className="text-lg font-black text-white">{match.opponent || 'Rival'}</p>
                         <span className={`rounded-2xl border px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${getDelegatedStatusTone(status)}`}>{status}</span>
                       </div>
-                      <p className="mt-1 text-sm text-slate-500">{matchDisplayDate(match.date)} · {match.type || 'Partido'} · {getMatchScoreLabel(match)}</p>
+                      <p className="mt-1 text-sm text-slate-500">{matchDisplayDate(match.date)} · {getMatchCompetition(match).label || 'Partido'} · {getMatchScoreLabel(match)}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {DELEGATED_DATA_STATUSES.map((nextStatus) => (
@@ -16649,7 +16700,7 @@ function App() {
                         <span>{homeDashboard.nextMatch.time || 'Hora pendiente'}</span>
                         <span>{homeDashboard.nextMatch.isHome ? 'Local' : 'Visitante'}</span>
                         <span>{homeDashboard.nextMatch.stadium || homeDashboard.nextOpponentTeam?.stadium || 'Estadio pendiente'}</span>
-                        {homeDashboard.nextMatch.type ? <span>{homeDashboard.nextMatch.type}{homeDashboard.nextMatch.round ? ` · ${homeDashboard.nextMatch.round}` : ''}</span> : null}
+                        {homeDashboard.nextMatch ? <span>{getMatchCompetition(homeDashboard.nextMatch).label}{homeDashboard.nextMatch.round ? ` · ${homeDashboard.nextMatch.round}` : ''}</span> : null}
                       </div>
                     ) : (
                       <p className="mt-4 max-w-2xl text-sm font-semibold leading-6 text-slate-400">Crea o programa el siguiente partido desde la pestaña Partidos.</p>
@@ -16830,7 +16881,7 @@ function App() {
                     <p className="truncate text-2xl font-black text-white">{homeDashboard.lastMatch.opponent}</p>
                     <p className="mt-2 text-4xl font-black text-caudal-electric">{getMatchScoreData(homeDashboard.lastMatch).caudalGoals}-{getMatchScoreData(homeDashboard.lastMatch).rivalGoals}</p>
                     <div className="mt-3 space-y-1 text-sm text-slate-400">
-                      <p>{homeDashboard.lastMatch.type || 'Competición'}</p>
+                      <p>{getMatchCompetition(homeDashboard.lastMatch).label || 'Competición'}</p>
                       <p>{matchDisplayDate(homeDashboard.lastMatch.date)}</p>
                     </div>
                     <button
@@ -17365,7 +17416,7 @@ function App() {
                               <div className="flex aspect-video items-center justify-center bg-[linear-gradient(135deg,rgba(61,217,255,0.12),rgba(255,255,255,0.04))] text-xs font-black uppercase tracking-[0.18em] text-slate-400">Clip</div>
                               <div className="p-4">
                               <p className="font-bold text-white">{event.action} · {event.minute}' vs {event.match.opponent}</p>
-                              <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">{event.match.type}</p>
+                              <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">{getMatchCompetition(event.match).label}</p>
                               <button type="button" onClick={() => window.open(event.videoUrl, '_blank')} className="mt-3 rounded-xl bg-caudal-electric/90 px-3 py-2 text-xs font-bold text-slate-950 transition hover:bg-caudal-electric">Ver análisis</button>
                               </div>
                             </div>
@@ -17415,7 +17466,7 @@ function App() {
                         <p className="text-xs font-black uppercase tracking-[0.16em] text-caudal-electric">{selectedTimelineAction.type} · minuto {selectedTimelineAction.minute}'</p>
                         <p className="mt-2 text-sm font-bold text-white">{getMatchScoreLabel(selectedTimelineAction.match)}</p>
                         <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">
-                          {matchDisplayDate(selectedTimelineAction.match.date)} · {selectedTimelineAction.match.type} · {selectedTimelineAction.match.isHome ? 'Local' : 'Visitante'}
+                          {matchDisplayDate(selectedTimelineAction.match.date)} · {getMatchCompetition(selectedTimelineAction.match).label} · {selectedTimelineAction.match.isHome ? 'Local' : 'Visitante'}
                         </p>
                         {selectedTimelineAction.videoUrl ? (
                           <button
@@ -17465,7 +17516,7 @@ function App() {
                                   {resultLabel} · {score.caudalGoals}-{score.rivalGoals}
                                 </span>
                               </td>
-                              <td className="px-3 py-4 text-slate-300">{row.match.type}</td>
+                              <td className="px-3 py-4 text-slate-300">{getMatchCompetition(row.match).label}</td>
                               <td className="px-3 py-4 text-slate-300">{row.match.isHome ? 'Local' : 'Visitante'}</td>
                               <td className="px-3 py-4"><span className={`rounded-xl px-2 py-1 text-xs font-black ${row.role === 'Titular' ? 'bg-caudal-electric/15 text-caudal-electric' : 'bg-white/[0.06] text-slate-300'}`}>{row.role}</span></td>
                               <td className="px-3 py-4 font-black text-white">{row.minutes}'</td>
@@ -19238,6 +19289,7 @@ function App() {
             competitionKey,
             competition: getCompetitionMeta(competitionKey).label,
             icon: getCompetitionMeta(competitionKey).icon,
+            logoUrl: getCompetitionMeta(competitionKey).logoUrl || '',
             ...summarizeGroupMatches(rows),
           })).sort((a, b) => b.played - a.played);
           const secondHalfGoals = allGoalRows.filter((event) => Number(event.minute) >= 45).length;
@@ -19571,7 +19623,7 @@ function App() {
                       {competitionRows.length ? competitionRows.map((row) => (
                         <div key={row.competitionKey || row.competition} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl bg-white/5 px-4 py-3">
                           <span className="flex items-center gap-3 font-bold text-white">
-                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.06] text-[9px] font-black uppercase tracking-[0.08em] text-caudal-electric">{row.icon || 'CP'}</span>
+                            <CompetitionIcon competition={row} className="h-8 w-8 rounded-lg" textClassName="text-[9px]" />
                             {row.competition}
                           </span>
                           <span className="text-sm font-black text-caudal-electric">PJ {row.played} · {row.wins}-{row.draws}-{row.losses} · GF {row.goalsFor} GC {row.goalsAgainst}</span>
@@ -19676,10 +19728,10 @@ function App() {
                 <p className="mt-3 text-4xl font-semibold text-white">{matchStats.total}</p>
                 {matchFilter === 'Todos' ? (
                   <div className="mt-3 grid grid-cols-2 gap-2 text-xs uppercase text-slate-400">
-                    {matchTypes.map((type) => (
-                      <div key={type} className="rounded-xl bg-white/5 px-2 py-1">
-                        <span className="block truncate">{type}</span>
-                        <strong className="text-white">{matches.filter((match) => match.type === type).length}</strong>
+                    {competitionOptions.map((competition) => (
+                      <div key={competition.value} className="rounded-xl bg-white/5 px-2 py-1">
+                        <span className="block truncate">{competition.label}</span>
+                        <strong className="text-white">{filterMatchesByCompetition(matches, competition.value).length}</strong>
                       </div>
                     ))}
                   </div>
@@ -19790,6 +19842,7 @@ function App() {
                     const cardToneClass = played
                       ? 'border-white/10 bg-[#091428]/[0.86] shadow-[0_18px_48px_rgba(0,0,0,0.22)] hover:border-white/20'
                       : 'border-caudal-electric/[0.14] bg-[#08192c]/[0.80] shadow-[0_14px_40px_rgba(0,0,0,0.18)] hover:border-caudal-electric/30';
+                    const competitionMeta = getMatchCompetition(match);
                     return (
                       <article key={match.id} className={`relative overflow-hidden rounded-[1.45rem] border transition hover:-translate-y-0.5 ${cardToneClass}`}>
                         <div className={`pointer-events-none absolute inset-0 ${played ? 'bg-[linear-gradient(180deg,rgba(255,255,255,0.035),transparent_38%)]' : 'bg-[radial-gradient(circle_at_50%_0%,rgba(79,140,255,0.13),transparent_34%),linear-gradient(180deg,rgba(79,140,255,0.035),transparent_44%)]'}`} />
@@ -19810,7 +19863,11 @@ function App() {
                             <p className={`${played ? 'mt-3 text-6xl text-white drop-shadow-[0_8px_18px_rgba(0,0,0,0.35)]' : 'mt-3 text-3xl text-slate-400'} font-black leading-none tracking-normal`}>
                               {played ? `${score.home} - ${score.away}` : 'VS'}
                             </p>
-                            <p className="mt-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{match.type} {match.round}</p>
+                            <p className="mt-2 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
+                              <CompetitionIcon competition={competitionMeta} className="h-5 w-5 rounded-md" textClassName="text-[8px]" />
+                              <span>{competitionMeta.label}</span>
+                              {match.round ? <span>{match.round}</span> : null}
+                            </p>
                             {!played ? <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">{getMatchMdLabel()}</p> : null}
                             {match.stadium ? <p className="mt-1 text-xs font-semibold text-slate-400">{match.stadium}</p> : null}
                           </div>
@@ -19883,7 +19940,7 @@ function App() {
                       </button>
                       <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{matchView === 'pre_partido' ? 'Pre partido' : matchView === 'estadisticas_partido' ? 'Estadísticas' : matchView === 'impresion_partido' ? 'Impresión' : 'Post partido'}</p>
                       <h2 className="mt-2 text-3xl font-semibold text-white">{matchView === 'pre_partido' ? 'PRE partido' : matchView === 'estadisticas_partido' ? 'Estadísticas del partido' : matchView === 'impresion_partido' ? 'IMPRESIÓN' : 'POST partido'}</h2>
-                      <p className="mt-2 text-sm text-slate-400">{matchDisplayDate(selectedMatch.date)} · {selectedMatch.type} · {selectedMatch.round}</p>
+                      <p className="mt-2 text-sm text-slate-400">{matchDisplayDate(selectedMatch.date)} · {getMatchCompetition(selectedMatch).label} · {selectedMatch.round}</p>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="rounded-3xl bg-[#091428]/90 p-4">
@@ -22786,10 +22843,17 @@ function App() {
                 </label>
                 <label className="space-y-2 text-sm text-slate-300">
                   <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Competición</span>
-                  <select name="type" value={matchFormState.type} onChange={handleMatchChange} className={`w-full rounded-2xl border bg-white/5 px-4 py-3 text-sm font-semibold text-white ${matchFieldErrors.type ? 'border-red-300/50' : 'border-white/10'}`}>
-                    {matchTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                  <select name="competitionKey" value={matchFormState.competitionKey || ''} onChange={handleMatchChange} className={`w-full rounded-2xl border bg-white/5 px-4 py-3 text-sm font-semibold text-white ${matchFieldErrors.competitionKey ? 'border-red-300/50' : 'border-white/10'}`}>
+                    <option value="">Selecciona la competicion</option>
+                    {competitionOptions.map((competition) => <option key={competition.value} value={competition.value}>{competition.label}</option>)}
                   </select>
-                  {matchFieldErrors.type ? <span className="block text-xs font-semibold text-red-200">{matchFieldErrors.type}</span> : null}
+                  {matchFormState.competitionKey ? (
+                    <span className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2">
+                      <CompetitionIcon competition={getCompetitionMeta(matchFormState.competitionKey)} className="h-8 w-8 rounded-lg" textClassName="text-[9px]" />
+                      <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-200">{getCompetitionMeta(matchFormState.competitionKey).label}</span>
+                    </span>
+                  ) : null}
+                  {matchFieldErrors.competitionKey ? <span className="block text-xs font-semibold text-red-200">{matchFieldErrors.competitionKey}</span> : null}
                 </label>
                 <label className="space-y-2 text-sm text-slate-300">
                   <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Jornada</span>
