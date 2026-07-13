@@ -3105,9 +3105,14 @@ function App() {
   const [litoMessages, setLitoMessages] = useState([
     {
       role: 'assistant',
-      text: 'Soy Lito. Pregúntame por partidos, goles, sistemas, tarjetas o minutos guardados en Supabase.',
+      text: 'Soy Lito. Pregúntame por plantilla, partidos, goles, minutos, robos validados o scouting rival.',
     },
   ]);
+  const [litoConversationContext, setLitoConversationContext] = useState({
+    lastIntent: '',
+    lastMatchId: '',
+    lastPlayerName: '',
+  });
   const [playerVenueFilter, setPlayerVenueFilter] = useState('Todos');
   const [playerQuickScope, setPlayerQuickScope] = useState('Últimos 5 partidos');
   const [playerDelegatedScope, setPlayerDelegatedScope] = useState('Solo validados');
@@ -4711,43 +4716,110 @@ function App() {
   };
 
   const loadLitoContext = async () => {
-    const [matchesResponse, goalsResponse, statsResponse, teamsResponse, playersResponse] = await Promise.all([
-      supabase
-        .from('partidos')
-        .select('id,date,time,opponent,home_score,away_score,is_home,status,pre_caudal_system,pre_rival_system,rival_lineup_system,stats_system')
-        .order('date', { ascending: false, nullsFirst: false })
-        .limit(60),
-      supabase
-        .from('partido_eventos_gol')
-        .select('id,partido_id,type,minute,scorer,assistant,phase,subphase,description')
-        .limit(300),
-      supabase
-        .from('partido_estadisticas_jugador')
-        .select('partido_id,player_name,minutes,yellow,yellow_count,red,rating,role')
-        .limit(500),
-      supabase
-        .from('equipos_rivales')
-        .select('id,name,system')
-        .limit(200),
-      supabase
-        .from('jugadores')
-        .select('id,name,position')
-        .limit(200),
+    const [matchesResponse, goalsResponse, statsResponse, teamsResponse, playersResponse, quickEventsResponse, postEventsResponse] = await Promise.all([
+      supabase.from('partidos').select('*').order('date', { ascending: false, nullsFirst: false }).limit(80),
+      supabase.from('partido_eventos_gol').select('*').limit(500),
+      supabase.from('partido_estadisticas_jugador').select('*').limit(900),
+      supabase.from('equipos_rivales').select('*').limit(250),
+      supabase.from('jugadores').select('*').order('name', { ascending: true }).limit(250),
+      supabase.from('match_quick_events').select('*').limit(1200),
+      supabase.from('partido_eventos_post').select('*').limit(500),
     ]);
 
     const failed = [matchesResponse, goalsResponse, statsResponse, teamsResponse, playersResponse].find((response) => response.error);
-    if (failed) {
-      console.error('Error consultando datos de Lito en Supabase:', failed.error);
-      throw failed.error;
-    }
+    if (failed) throw failed.error;
+    if (quickEventsResponse.error) console.warn('[LITO_OPTIONAL_SOURCE_ERROR]', quickEventsResponse.error);
+    if (postEventsResponse.error) console.warn('[LITO_OPTIONAL_SOURCE_ERROR]', postEventsResponse.error);
+
+    const normalizedMatches = (matchesResponse.data || []).map(normalizeSupabasePartido);
+    const quickEventsByMatch = (quickEventsResponse.data || []).reduce((acc, event) => {
+      const normalized = normalizeSupabaseQuickEvent(event);
+      acc[normalized.partidoId] = [...(acc[normalized.partidoId] || []), normalized];
+      return acc;
+    }, {});
+    const postEventsByMatch = (postEventsResponse.data || []).reduce((acc, event) => {
+      const normalized = normalizeSupabasePostEvent(event);
+      acc[event.partido_id] = [...(acc[event.partido_id] || []), normalized];
+      return acc;
+    }, {});
 
     return {
-      matches: matchesResponse.data || [],
-      goals: goalsResponse.data || [],
+      matches: normalizedMatches.map((match) => ({
+        ...match,
+        quickEvents: quickEventsByMatch[match.id] || [],
+        events: postEventsByMatch[match.id] || [],
+      })),
+      goals: (goalsResponse.data || []).map(normalizeSupabaseGoalEvent),
       stats: statsResponse.data || [],
-      teams: teamsResponse.data || [],
-      players: playersResponse.data || [],
+      teams: (teamsResponse.data || []).map((team) => ({ ...mapSnakeRowToCamel(team), id: team.id, name: cleanTeamDisplayName(team.name || ''), system: team.system || '' })),
+      players: (playersResponse.data || []).map(normalizeSupabaseJugador),
     };
+  };
+
+  const litoResponse = (text, { source = '', context = {} } = {}) => ({
+    text: [text, source ? `\n\nFuente: ${source}` : ''].join(''),
+    context,
+  });
+
+  const hasLitoScoreValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
+
+  const getLitoMatchScoreValues = (match) => {
+    if (!match) return null;
+    const home = match.homeScore ?? match.home_score;
+    const away = match.awayScore ?? match.away_score;
+    if (!hasLitoScoreValue(home) || !hasLitoScoreValue(away)) return null;
+    const homeNumber = Number(home);
+    const awayNumber = Number(away);
+    if (!Number.isFinite(homeNumber) || !Number.isFinite(awayNumber)) return null;
+    return {
+      home: homeNumber,
+      away: awayNumber,
+      caudal: match.isHome ? homeNumber : awayNumber,
+      rival: match.isHome ? awayNumber : homeNumber,
+    };
+  };
+
+  const getLitoMatchScoreText = (match) => {
+    const score = getLitoMatchScoreValues(match);
+    return score ? `${score.home}-${score.away}` : 'sin marcador completo guardado';
+  };
+
+  const isLitoPlayedMatch = (match) =>
+    Boolean(match && (match.status === 'Finalizado' || getLitoMatchScoreValues(match)));
+
+  const getLitoPositionGroup = (position = '') => {
+    const text = normalizeLitoText(position);
+    if (/portero|goalkeeper|arquero/.test(text)) return 'porteros';
+    if (/central|defensa|lateral|carrilero/.test(text)) return 'defensas';
+    if (/pivote|medio|mediocentro|mediapunta|interior/.test(text)) return 'centrocampistas';
+    if (/extremo|delantero|punta|atacante/.test(text)) return 'delanteros';
+    return 'sin posición';
+  };
+
+  const resolveLitoPlayer = (context, question, fallbackName = '') => {
+    const candidates = context.players.map((player) => ({
+      player,
+      names: [player.name, player.shirtName].filter(Boolean).map(normalizeLitoText),
+    }));
+    const questionText = normalizeLitoText([question, fallbackName].filter(Boolean).join(' '));
+    const exact = candidates.find(({ names }) => names.some((name) => name && questionText.split(' ').includes(name)));
+    if (exact) return { status: 'found', player: exact.player };
+    const scored = candidates
+      .map(({ player, names }) => {
+        const tokens = names.flatMap(getLitoTokens);
+        const score = tokens.reduce((sum, token) => sum + (questionText.split(' ').includes(token) ? 3 : questionText.includes(token) ? 1 : 0), 0);
+        return { player, score };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score || String(a.player.name).localeCompare(String(b.player.name)));
+    if (!scored.length && fallbackName) {
+      const byName = candidates.find(({ player }) => normalizeLitoText(player.name) === normalizeLitoText(fallbackName));
+      if (byName) return { status: 'found', player: byName.player };
+    }
+    if (scored.length > 1 && scored[0].score === scored[1].score) {
+      return { status: 'ambiguous', options: scored.slice(0, 4).map((item) => item.player.name) };
+    }
+    return scored[0] ? { status: 'found', player: scored[0].player } : { status: 'missing' };
   };
 
   const findLitoMatches = (context, question) => {
@@ -4772,75 +4844,172 @@ function App() {
   const detectLitoIntent = (question) => {
     const text = normalizeLitoText(question);
     const rawText = normalizeLitoText(String(question || '').replace(/-/g, ' '));
+    if ((text.includes('cuantos') || text.includes('numero') || text.includes('total')) && (text.includes('jugadores') || text.includes('futbolistas') || text.includes('plantilla'))) return 'squad_count';
+    if ((text.includes('cuantos') || text.includes('numero')) && (text.includes('porteros') || text.includes('defensas') || text.includes('centrocampistas') || text.includes('mediocentros') || text.includes('delanteros'))) return 'players_by_position';
+    if (text.includes('proximo rival') || text.includes('proximo partido') || text.includes('siguiente partido')) return 'next_match';
     if ((text.includes('partidos') || text.includes('calendario')) && (text.includes('jugamos') || text.includes('jugado') || text.includes('hasta ahora') || text.includes('ultimos'))) return 'played_matches';
+    if ((text.includes('con que pierna') || text.includes('pierna') || text.includes('contacto') || text.includes('golpeo')) && (text.includes('marco') || text.includes('gol') || text.length < 24)) return 'goal_contact';
     if ((text.includes('gol') || text.includes('goles') || text.includes('marco') || text.includes('marcaron') || text.includes('metio')) && (text.includes('ultimo partido') || text.includes('ultima partido'))) return 'last_match_goals';
     if (text.includes('gol') || text.includes('goles') || text.includes('marco') || text.includes('marcaron') || text.includes('metio')) return 'goals_vs_rival';
-    if (text.includes('como quedo') || text.includes('resultado') || text.includes('ultimo partido')) return 'last_match';
+    if (text.includes('como fue') || text.includes('resumen') || text.includes('conclusiones') || text.includes('post')) return 'match_summary';
+    if (text.includes('como quedo') || text.includes('como quedamos') || text.includes('resultado')) return 'match_result';
+    if (text.includes('ultimo partido')) return 'last_match';
     if (text.includes('sistema') && (text.includes('mas') || text.includes('usamos mas'))) return 'most_used_system';
     if (text.includes('sistema')) return 'system_vs_rival';
     if (text.includes('amarilla') || text.includes('tarjeta')) return 'yellow_cards';
     if (text.includes('minuto')) return 'minutes';
+    if (text.includes('robo') || text.includes('robos')) return 'steals';
     if (text.includes('rivales') && (rawText.includes('4 4 2') || text.includes('442'))) return 'rivals_442';
     if (text.includes('encaj') && text.includes('transicion')) return 'conceded_transition';
     return 'unknown';
   };
 
-  const answerLitoQuestion = (question, context) => {
+  const getLitoPlayedMatches = (context) => context.matches.filter(isLitoPlayedMatch);
+  const getLitoLastMatch = (context) => getLitoPlayedMatches(context)[0] || null;
+  const getLitoNextMatch = (context) =>
+    context.matches
+      .filter((match) => !isLitoPlayedMatch(match))
+      .slice()
+      .sort((a, b) => String(a.date || '9999-12-31').localeCompare(String(b.date || '9999-12-31')))[0] || null;
+
+  const resolveLitoMatchFromQuestion = (context, question, conversationContext = {}) => {
+    const result = findLitoMatches(context, question);
+    if (result.matches.length > 1) return { status: 'ambiguous', rival: result.rival, matches: result.matches.slice(0, 5) };
+    if (result.matches.length === 1) return { status: 'found', match: result.matches[0] };
+    if (conversationContext.lastMatchId) {
+      const previous = context.matches.find((match) => match.id === conversationContext.lastMatchId);
+      if (previous) return { status: 'found', match: previous };
+    }
+    return { status: 'missing' };
+  };
+
+  const formatLitoAmbiguousMatches = (matches) =>
+    matches.map((match) => `${formatLitoMatchName(match)} · ${match.type || 'Competición sin indicar'}`).join(', ');
+
+  const getLitoGoalsForMatch = (context, match) =>
+    context.goals.filter((goal) => goal.partidoId === match?.id && goal.type === 'Gol a favor');
+
+  const buildLitoMatchSummary = (context, match) => {
+    const goals = getLitoGoalsForMatch(context, match);
+    const postLines = [
+      match.postNotes ? `Resumen del staff: ${match.postNotes}` : '',
+      match.postReality ? `Qué ocurrió: ${match.postReality}` : '',
+      match.postRepeat ? `A repetir: ${match.postRepeat}` : '',
+      match.postImprove ? `A corregir: ${match.postImprove}` : '',
+    ].filter(Boolean);
+    const clips = safeArray(match.events).slice(0, 4).map((event) => `${event.minute || '-'}' ${event.typeLabel || event.type}: ${event.description || 'sin descripción'}`);
+    return [
+      `${formatLitoMatchName(match)} terminó ${getLitoMatchScoreText(match)}.`,
+      goals.length ? `Goles Caudal: ${goals.map((goal) => `${goal.scorer || 'sin goleador'}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.` : 'No hay goles a favor registrados para ese partido.',
+      ...postLines,
+      clips.length ? `Clips POST: ${clips.join(' · ')}` : '',
+      !postLines.length && !clips.length ? 'No hay todavía un análisis POST guardado.' : '',
+    ].filter(Boolean).join('\n');
+  };
+
+  const answerLitoQuestion = (question, context, conversationContext = {}) => {
     const normalizedQuestion = normalizeLitoText(question);
     const intent = detectLitoIntent(question);
     const rivalResult = findLitoMatches(context, question);
-    const notFound = 'No encontré datos suficientes en Supabase para responder eso.';
+    const responseContext = { lastIntent: intent };
+    const missing = (text = 'No tengo ese dato registrado ahora mismo.', source = '') => litoResponse(text, { source, context: responseContext });
+
+    if (intent === 'squad_count') {
+      const total = context.players.length;
+      if (!total) return missing('No hay jugadores registrados en la plantilla actual.', 'Plantilla');
+      const groups = context.players.reduce((acc, player) => {
+        const group = getLitoPositionGroup(player.position);
+        acc[group] = (acc[group] || 0) + 1;
+        return acc;
+      }, {});
+      const summary = ['porteros', 'defensas', 'centrocampistas', 'delanteros']
+        .filter((group) => groups[group])
+        .map((group) => `${groups[group]} ${group}`)
+        .join(', ');
+      return litoResponse(`La plantilla tiene ${total} jugadores${summary ? `: ${summary}.` : '.'}`, { source: 'Plantilla', context: responseContext });
+    }
+
+    if (intent === 'players_by_position') {
+      const requestedGroup = [
+        ['porteros', /portero/],
+        ['defensas', /defensa|central|lateral/],
+        ['centrocampistas', /centrocampista|mediocentro|medio|pivote/],
+        ['delanteros', /delantero|extremo|punta/],
+      ].find(([, pattern]) => pattern.test(normalizedQuestion))?.[0];
+      if (!requestedGroup) return missing('Dime qué posición quieres consultar: porteros, defensas, centrocampistas o delanteros.', 'Plantilla');
+      const playersByGroup = context.players.filter((player) => getLitoPositionGroup(player.position) === requestedGroup);
+      return litoResponse(`Tenemos ${playersByGroup.length} ${requestedGroup}${playersByGroup.length ? `: ${playersByGroup.map((player) => player.name).join(', ')}.` : '.'}`, { source: 'Plantilla', context: responseContext });
+    }
+
     if (intent === 'played_matches') {
-      const playedMatches = context.matches.filter((match) => match.status === 'Finalizado' || match.home_score !== null || match.away_score !== null);
-      if (!playedMatches.length) return notFound;
-      return `Partidos jugados hasta ahora:\n${playedMatches.slice(0, 10).map((match) => `- ${formatLitoMatchName(match)}: ${getLitoMatchScore(match)}`).join('\n')}`;
+      const playedMatches = getLitoPlayedMatches(context);
+      if (!playedMatches.length) return missing('No hay partidos jugados registrados.', 'Partidos');
+      return litoResponse(`Partidos jugados hasta ahora:\n${playedMatches.slice(0, 10).map((match) => `- ${formatLitoMatchName(match)}: ${getLitoMatchScoreText(match)}`).join('\n')}`, { source: 'Partidos', context: responseContext });
+    }
+
+    if (intent === 'next_match') {
+      const match = getLitoNextMatch(context);
+      if (!match) return missing('No hay próximo partido registrado.', 'Partidos');
+      return litoResponse(`El próximo partido registrado es contra ${formatLitoMatchName(match)}${match.time ? ` a las ${match.time}` : ''}${match.stadium ? ` en ${match.stadium}` : ''}.`, { source: 'Partidos', context: { ...responseContext, lastMatchId: match.id } });
     }
 
     if (intent === 'goals_vs_rival' || intent === 'last_match_goals') {
-      const matchesForGoals = intent === 'last_match_goals'
-        ? [context.matches[0]].filter(Boolean)
-        : rivalResult.matches;
-      const goals = context.goals.filter((goal) => matchesForGoals.some((match) => match.id === goal.partido_id) && goal.type === 'Gol a favor');
-      if (!matchesForGoals.length) return notFound;
-      if (!goals.length) return 'No encontré goles registrados contra ese rival.';
-      const byMatch = matchesForGoals
-        .map((match) => {
-          const matchGoals = goals.filter((goal) => goal.partido_id === match.id);
-          if (!matchGoals.length) return null;
-          const details = matchGoals.map((goal) => {
-            const how = [goal.phase, goal.subphase, goal.description].filter(Boolean).join(' · ');
-            return `${goal.scorer || 'Sin goleador'}${goal.minute ? ` (${goal.minute}')` : ''}${how ? `: ${how}` : ''}`;
-          });
-          return `${rivalResult.rival ? `Encontré datos para: ${match.opponent}. ` : ''}${formatLitoMatchName(match)}: ${details.join('; ')}`;
-        })
-        .filter(Boolean);
-      return byMatch.join('\n');
+      const matchesForGoals = intent === 'last_match_goals' ? [getLitoLastMatch(context)].filter(Boolean) : rivalResult.matches;
+      if (!matchesForGoals.length) return missing('No localizo ese partido en los datos guardados.', 'Partidos');
+      if (matchesForGoals.length > 1) return litoResponse(`Tengo varios partidos contra ${rivalResult.rival}. ¿Te refieres a ${formatLitoAmbiguousMatches(matchesForGoals)}?`, { source: 'Partidos', context: responseContext });
+      const goals = getLitoGoalsForMatch(context, matchesForGoals[0]);
+      if (!goals.length) return missing('No hay goles a favor registrados para ese partido.', 'Goles');
+      return litoResponse(`Contra ${formatLitoMatchName(matchesForGoals[0])} marcaron: ${goals.map((goal) => `${goal.scorer || 'Sin goleador'}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.`, { source: 'Goles', context: { ...responseContext, lastMatchId: matchesForGoals[0].id, lastPlayerName: goals[0]?.scorer || '' } });
     }
 
     if (intent === 'last_match') {
-      const match = context.matches[0];
-      if (!match) return notFound;
-      const goals = context.goals.filter((goal) => goal.partido_id === match.id);
-      const scorers = goals.filter((goal) => goal.type === 'Gol a favor').map((goal) => goal.scorer).filter(Boolean);
-      return `El último partido fue contra ${formatLitoMatchName(match)} y quedó ${getLitoMatchScore(match)}. ${scorers.length ? `Goles Caudal: ${scorers.join(', ')}.` : 'No tengo goleadores a favor registrados.'}`;
+      const match = getLitoLastMatch(context);
+      if (!match) return missing('No hay últimos partidos jugados registrados.', 'Partidos');
+      const goals = getLitoGoalsForMatch(context, match);
+      return litoResponse(`El último partido fue contra ${formatLitoMatchName(match)} y quedó ${getLitoMatchScoreText(match)}. ${goals.length ? `Goles Caudal: ${goals.map((goal) => goal.scorer).filter(Boolean).join(', ')}.` : 'No tengo goleadores a favor registrados.'}`, { source: 'Partidos y goles', context: { ...responseContext, lastMatchId: match.id, lastPlayerName: goals[0]?.scorer || '' } });
+    }
+
+    if (intent === 'match_result' || intent === 'match_summary') {
+      const result = resolveLitoMatchFromQuestion(context, question, conversationContext);
+      if (result.status === 'ambiguous') return litoResponse(`Tengo varios partidos contra ${result.rival}. ¿Cuál quieres consultar: ${formatLitoAmbiguousMatches(result.matches)}?`, { source: 'Partidos', context: responseContext });
+      if (result.status !== 'found') return missing('No localizo ese partido en los datos guardados.', 'Partidos');
+      const text = intent === 'match_result' ? `${formatLitoMatchName(result.match)} quedó ${getLitoMatchScoreText(result.match)}.` : buildLitoMatchSummary(context, result.match);
+      return litoResponse(text, { source: intent === 'match_summary' ? 'Partido, goles y POST' : 'Partidos', context: { ...responseContext, lastMatchId: result.match.id } });
     }
 
     if (normalizedQuestion.includes('quien marco') || normalizedQuestion.includes('quién marcó')) {
-      const match = normalizedQuestion.includes('ultimo partido') || normalizedQuestion.includes('último partido')
-        ? context.matches[0]
-        : findLitoMatch(context, question);
-      if (!match) return notFound;
-      const goals = context.goals.filter((goal) => goal.partido_id === match.id && goal.type === 'Gol a favor');
-      if (!goals.length) return `No encontré goles a favor guardados para ${formatLitoMatchName(match)}.`;
-      return `Contra ${formatLitoMatchName(match)} marcaron: ${goals.map((goal) => `${goal.scorer || 'Sin goleador'}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.`;
+      const match = normalizedQuestion.includes('ultimo partido') || normalizedQuestion.includes('último partido') ? getLitoLastMatch(context) : findLitoMatch(context, question);
+      if (!match) return missing('No localizo ese partido en los datos guardados.', 'Partidos');
+      const goals = getLitoGoalsForMatch(context, match);
+      if (!goals.length) return missing(`No hay goles a favor guardados para ${formatLitoMatchName(match)}.`, 'Goles');
+      return litoResponse(`Contra ${formatLitoMatchName(match)} marcaron: ${goals.map((goal) => `${goal.scorer || 'Sin goleador'}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.`, { source: 'Goles', context: { ...responseContext, lastMatchId: match.id, lastPlayerName: goals[0]?.scorer || '' } });
+    }
+
+    if (intent === 'goal_contact') {
+      const playerResult = resolveLitoPlayer(context, question, conversationContext.lastPlayerName);
+      const matchResult = resolveLitoMatchFromQuestion(context, question, conversationContext);
+      if (playerResult.status === 'ambiguous') return missing(`¿A qué jugador te refieres: ${playerResult.options.join(', ')}?`, 'Goles');
+      if (playerResult.status !== 'found') return missing('Necesito saber de qué jugador hablamos para consultar el golpeo.', 'Goles');
+      const playerName = playerResult.player.name;
+      const goals = context.goals.filter((goal) => goal.type === 'Gol a favor' && normalizeLitoText(goal.scorer) === normalizeLitoText(playerName));
+      const scopedGoals = matchResult.status === 'found' ? goals.filter((goal) => goal.partidoId === matchResult.match.id) : goals;
+      if (scopedGoals.length > 1 && matchResult.status !== 'found') {
+        const options = scopedGoals.map((goal) => context.matches.find((match) => match.id === goal.partidoId)).filter(Boolean);
+        return litoResponse(`${playerName} tiene varios goles registrados. ¿Te refieres a ${formatLitoAmbiguousMatches(options)}?`, { source: 'Goles', context: { ...responseContext, lastPlayerName: playerName } });
+      }
+      const goal = scopedGoals[0];
+      if (!goal) return missing(`No tengo goles registrados de ${playerName} en ese contexto.`, 'Goles');
+      const match = context.matches.find((item) => item.id === goal.partidoId);
+      if (!goal.contact) return litoResponse(`${playerName} marcó${goal.minute ? ` en el minuto ${goal.minute}` : ''}${match ? ` contra ${match.opponent}` : ''}, pero la pierna o contacto del golpeo no fue registrado.`, { source: 'Goles', context: { ...responseContext, lastMatchId: goal.partidoId, lastPlayerName: playerName } });
+      return litoResponse(`${playerName} marcó con: ${goal.contact}.`, { source: 'Goles', context: { ...responseContext, lastMatchId: goal.partidoId, lastPlayerName: playerName } });
     }
 
     if (intent === 'system_vs_rival') {
       const match = rivalResult.matches[0] || findLitoMatch(context, question);
-      if (!match) return notFound;
-      const system = match.stats_system || match.pre_caudal_system || 'sin sistema guardado';
-      const rivalSystem = match.pre_rival_system || match.rival_lineup_system || 'sin sistema rival guardado';
-      return `Contra ${formatLitoMatchName(match)} usamos ${system}. El sistema rival guardado es ${rivalSystem}.`;
+      if (!match) return missing('No localizo ese partido en los datos guardados.', 'Partidos');
+      const system = match.statsSystem || match.preCaudalSystem || 'sin sistema guardado';
+      const rivalSystem = match.preRivalSystem || match.rivalLineupSystem || 'sin sistema rival guardado';
+      return litoResponse(`Contra ${formatLitoMatchName(match)} usamos ${system}. El sistema rival guardado es ${rivalSystem}.`, { source: 'Partidos y scouting rival', context: { ...responseContext, lastMatchId: match.id } });
     }
 
     if (intent === 'yellow_cards') {
@@ -4850,45 +5019,65 @@ function App() {
         return acc;
       }, {});
       const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
-      if (!top || top[1] <= 0) return notFound;
-      return `El jugador con más amarillas registradas es ${top[0]}, con ${top[1]}.`;
+      if (!top || top[1] <= 0) return missing('No hay amarillas registradas.', 'Estadísticas de jugador');
+      return litoResponse(`El jugador con más amarillas registradas es ${top[0]}, con ${top[1]}.`, { source: 'Estadísticas de jugador', context: { ...responseContext, lastPlayerName: top[0] } });
     }
 
     if (intent === 'minutes') {
+      const playerResult = resolveLitoPlayer(context, question, conversationContext.lastPlayerName);
       const totals = context.stats.reduce((acc, row) => {
         const name = row.player_name || 'Sin jugador';
         acc[name] = (acc[name] || 0) + Number(row.minutes || 0);
         return acc;
       }, {});
+      if (playerResult.status === 'found' && !/mas|minutos tiene quien|quien tiene/.test(normalizedQuestion)) {
+        const total = totals[playerResult.player.name] || 0;
+        return litoResponse(`${playerResult.player.name} tiene ${total} minutos registrados.`, { source: 'Estadísticas de jugador', context: { ...responseContext, lastPlayerName: playerResult.player.name } });
+      }
+      if (playerResult.status === 'ambiguous') return missing(`¿A qué jugador te refieres: ${playerResult.options.join(', ')}?`, 'Estadísticas de jugador');
       const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
-      if (!top || top[1] <= 0) return notFound;
-      return `El jugador con más minutos registrados es ${top[0]}, con ${top[1]} minutos.`;
+      if (!top || top[1] <= 0) return missing('No hay minutos registrados.', 'Estadísticas de jugador');
+      return litoResponse(`El jugador con más minutos registrados es ${top[0]}, con ${top[1]} minutos.`, { source: 'Estadísticas de jugador', context: { ...responseContext, lastPlayerName: top[0] } });
+    }
+
+    if (intent === 'steals') {
+      const validMatchIds = new Set(context.matches.filter(isDelegatedDataValidated).map((match) => match.id));
+      const totals = context.matches.flatMap((match) => safeArray(match.quickEvents))
+        .filter((event) => validMatchIds.has(event.partidoId) && getQuickEventBaseType(event.tipoEvento) === 'robo' && getQuickEventSide(event) === 'caudal' && event.jugadorId)
+        .reduce((acc, event) => {
+          acc[event.jugadorId] = (acc[event.jugadorId] || 0) + 1;
+          return acc;
+        }, {});
+      const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
+      if (!top) return missing('No hay robos validados en el Registro Delegado.', 'Registro Delegado validado');
+      const player = context.players.find((item) => item.id === top[0]);
+      return litoResponse(`El jugador con más robos validados es ${player?.name || 'jugador no identificado'}, con ${top[1]}.`, { source: 'Registro Delegado validado', context: { ...responseContext, lastPlayerName: player?.name || '' } });
     }
 
     if (intent === 'rivals_442') {
       const rivals = context.teams.filter((team) => String(team.system || '').trim() === '4-4-2');
-      if (!rivals.length) return notFound;
-      return `Rivales con 4-4-2 guardado: ${rivals.map((team) => team.name).join(', ')}.`;
+      if (!rivals.length) return missing('No hay rivales con 4-4-2 registrado.', 'Scouting rival');
+      return litoResponse(`Rivales con 4-4-2 guardado: ${rivals.map((team) => team.name).join(', ')}.`, { source: 'Scouting rival', context: responseContext });
     }
 
     if (intent === 'conceded_transition') {
       const goals = context.goals.filter((goal) => goal.type === 'Gol en contra' && normalizeLitoText(`${goal.phase || ''} ${goal.subphase || ''}`).includes('transicion'));
-      return `Hay ${goals.length} goles encajados en transición registrados en Supabase.`;
+      return litoResponse(`Hay ${goals.length} goles encajados en transición registrados.`, { source: 'Goles', context: responseContext });
     }
 
     if (intent === 'most_used_system') {
       const totals = context.matches.reduce((acc, match) => {
-        const system = match.stats_system || match.pre_caudal_system;
+        const system = match.statsSystem || match.preCaudalSystem;
         if (!system) return acc;
         acc[system] = (acc[system] || 0) + 1;
         return acc;
       }, {});
       const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
-      if (!top) return notFound;
-      return `El sistema más usado en los partidos guardados es ${top[0]}, con ${top[1]} partidos.`;
+      if (!top) return missing('No hay sistemas registrados.', 'Partidos');
+      return litoResponse(`El sistema más usado en los partidos guardados es ${top[0]}, con ${top[1]} partidos.`, { source: 'Partidos', context: responseContext });
     }
 
-    return notFound;
+    return litoResponse('Todavía no tengo una herramienta fiable para esa pregunta. Prueba con plantilla, posiciones, último/próximo partido, resultado contra rival, goles, minutos, robos o sistema rival.', { context: responseContext });
   };
 
   const handleLitoSubmit = async (event) => {
@@ -4902,13 +5091,19 @@ function App() {
 
     try {
       const context = await loadLitoContext();
-      const answer = answerLitoQuestion(question, context);
-      setLitoMessages((current) => [...current, { role: 'assistant', text: answer }]);
+      const answer = answerLitoQuestion(question, context, litoConversationContext);
+      setLitoConversationContext((current) => ({ ...current, ...(answer.context || {}) }));
+      setLitoMessages((current) => [...current, { role: 'assistant', text: answer.text }]);
     } catch (litoError) {
-      console.error('Error respondiendo con Lito:', litoError);
+      console.error('[LITO_QUERY_ERROR]', {
+        question,
+        intent: detectLitoIntent(question),
+        context: litoConversationContext,
+        error: litoError,
+      });
       setLitoMessages((current) => [
         ...current,
-        { role: 'assistant', text: 'No encontré datos suficientes en Supabase para responder eso.' },
+        { role: 'assistant', text: 'No he podido consultar ese dato. Inténtalo de nuevo.' },
       ]);
     } finally {
       setLitoLoading(false);
@@ -21053,7 +21248,7 @@ function App() {
                   ))}
                   {litoLoading ? (
                     <div className="mr-8 rounded-3xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm text-slate-300">
-                      Consultando Supabase...
+                      Consultando datos...
                     </div>
                   ) : null}
                 </div>
@@ -21061,9 +21256,10 @@ function App() {
                 <div className="border-t border-white/10 px-5 py-4">
                   <div className="mb-3 flex flex-wrap gap-2">
                     {[
-                      '¿Quién marcó en el último partido?',
-                      '¿Qué jugador tiene más amarillas?',
-                      '¿Qué rivales juegan 4-4-2?',
+                      '¿Cuántos jugadores tiene la plantilla?',
+                      '¿Cómo fue el último partido?',
+                      '¿Quién tiene más minutos?',
+                      '¿Qué sabemos del próximo rival?',
                     ].map((example) => (
                       <button
                         key={example}
