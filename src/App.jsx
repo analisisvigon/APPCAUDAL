@@ -727,6 +727,9 @@ const normalizeSupabaseJugador = (player) => ({
   position: player.position ?? player.posicion ?? '',
   foot: player.foot ?? player.pierna ?? '',
   image: player.image ?? player.imagen ?? '',
+  originalImage: player.original_image ?? player.originalImage ?? '',
+  processedImage: player.processed_image ?? player.processedImage ?? '',
+  portraitStyle: player.portrait_style ?? player.portraitStyle ?? 'original',
 });
 
 async function getJugadores() {
@@ -743,6 +746,9 @@ const createJugadorPayload = (formState) => ({
   position: formState.position,
   foot: formState.foot,
   image: formState.image.trim(),
+  original_image: formState.originalImage.trim(),
+  processed_image: formState.processedImage.trim(),
+  portrait_style: formState.portraitStyle || 'original',
 });
 
 const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
@@ -1189,6 +1195,67 @@ const uploadPublicFile = async ({ bucket, file, folder = '' }) => {
   if (uploadError) throw uploadError;
   const { data } = supabase.storage.from(bucket).getPublicUrl(storagePath);
   return data.publicUrl;
+};
+
+const loadImageForCanvas = (sourceUrl) => new Promise((resolve, reject) => {
+  const image = new Image();
+  image.crossOrigin = 'anonymous';
+  image.onload = () => resolve(image);
+  image.onerror = () => reject(new Error('No se pudo leer la imagen para procesarla.'));
+  image.src = sourceUrl;
+});
+
+const createAppCaudalPortraitFile = async ({ imageUrl, playerName = 'jugador' }) => {
+  const image = await loadImageForCanvas(imageUrl);
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('El navegador no permite procesar esta imagen.');
+
+  const gradient = context.createLinearGradient(0, 0, size, size);
+  gradient.addColorStop(0, '#17213a');
+  gradient.addColorStop(0.52, '#0c1729');
+  gradient.addColorStop(1, '#050812');
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, size, size);
+
+  const glow = context.createRadialGradient(size / 2, size * 0.18, 20, size / 2, size * 0.18, size * 0.72);
+  glow.addColorStop(0, 'rgba(79, 140, 255, 0.42)');
+  glow.addColorStop(1, 'rgba(79, 140, 255, 0)');
+  context.fillStyle = glow;
+  context.fillRect(0, 0, size, size);
+
+  const sourceRatio = image.width / image.height;
+  const targetRatio = 1;
+  let cropWidth = image.width;
+  let cropHeight = image.height;
+  if (sourceRatio > targetRatio) cropWidth = image.height * targetRatio;
+  else cropHeight = image.width / targetRatio;
+  const cropX = (image.width - cropWidth) / 2;
+  const cropY = Math.max(0, (image.height - cropHeight) * 0.18);
+  const drawSize = Math.round(size * 0.86);
+  const drawX = Math.round((size - drawSize) / 2);
+  const drawY = Math.round(size * 0.08);
+
+  context.save();
+  context.beginPath();
+  context.arc(size / 2, size / 2, size * 0.45, 0, Math.PI * 2);
+  context.clip();
+  context.filter = 'contrast(1.05) saturate(0.96) brightness(1.04)';
+  context.drawImage(image, cropX, cropY, cropWidth, cropHeight, drawX, drawY, drawSize, drawSize);
+  context.restore();
+
+  context.strokeStyle = 'rgba(255,255,255,0.16)';
+  context.lineWidth = 10;
+  context.beginPath();
+  context.arc(size / 2, size / 2, size * 0.45, 0, Math.PI * 2);
+  context.stroke();
+
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', 0.92));
+  if (!blob) throw new Error('No se pudo generar la versión APPCAUDAL.');
+  return new File([blob], `${sanitizeStorageName(playerName || 'jugador')}-appcaudal.webp`, { type: 'image/webp' });
 };
 
 const getDominantImageColor = async (imageUrl) => {
@@ -2141,6 +2208,27 @@ const displayPlayerName = (player) => {
   if (last.length <= 9) return `${parts[0][0]}. ${last}`;
   return `${parts[0]} ${last[0]}.`;
 };
+const getPlayerInitials = (player = {}) => {
+  const source = String(player.shirtName || player.name || 'Jugador').trim();
+  return source.split(/\s+/).filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'JC';
+};
+const getPlayerPortraitUrl = (player = {}) => player.processedImage || player.processed_image || player.image || '';
+const AppCaudalPlayerAvatar = ({ player = {}, className = '', textClassName = 'text-xs' }) => (
+  <div className={`relative flex items-center justify-center overflow-hidden bg-[#091428] ${className}`}>
+    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(79,140,255,0.36),transparent_35%),linear-gradient(145deg,#101820_0%,#13243f_48%,#050912_100%)]" />
+    <div className="absolute bottom-0 h-[62%] w-[72%] rounded-t-full bg-slate-950/50" />
+    <div className="absolute top-[22%] h-[30%] w-[30%] rounded-full bg-slate-300/18" />
+    <span className={`relative font-black uppercase tracking-[0.08em] text-slate-100/85 ${textClassName}`}>{getPlayerInitials(player)}</span>
+  </div>
+);
+const PlayerPortrait = ({ player = {}, className = '', imgClassName = 'h-full w-full object-cover', fallbackTextClassName = 'text-xs' }) => {
+  const portraitUrl = getPlayerPortraitUrl(player);
+  return portraitUrl ? (
+    <img src={portraitUrl} alt={player.name || ''} className={imgClassName} />
+  ) : (
+    <AppCaudalPlayerAvatar player={player} className={className} textClassName={fallbackTextClassName} />
+  );
+};
 const playerReservePlacement = (player) => {
   return 'below';
 };
@@ -2907,6 +2995,8 @@ function App() {
   const [empty, setEmpty] = useState(false);
   const [isSavingPlayer, setIsSavingPlayer] = useState(false);
   const [playerFormError, setPlayerFormError] = useState('');
+  const [playerPortraitProcessing, setPlayerPortraitProcessing] = useState(false);
+  const [playerPortraitStatus, setPlayerPortraitStatus] = useState('');
   const [playerSearchTerm, setPlayerSearchTerm] = useState('');
   const [playerQuickFilter, setPlayerQuickFilter] = useState('Todos');
   const [playerRosterView, setPlayerRosterView] = useState('Tarjetas');
@@ -3147,6 +3237,9 @@ function App() {
     position: 'Portero',
     foot: 'Derecha',
     image: '',
+    originalImage: '',
+    processedImage: '',
+    portraitStyle: 'original',
   });
   const [teamFormState, setTeamFormState] = useState(createEmptyTeamForm);
   const [matchFormState, setMatchFormState] = useState(emptyMatchForm);
@@ -9800,8 +9893,8 @@ function App() {
               style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
             >
               <div className={`relative flex h-16 w-16 items-center justify-center rounded-full border-2 text-sm font-black shadow-glow ${playerName ? playerStateClass : 'border-dashed border-white/40 bg-white/10 text-white/70'}`}>
-                {player?.image ? (
-                  <img src={player.image} alt="" className="h-full w-full rounded-full object-cover" />
+                {player ? (
+                  <PlayerPortrait player={player} className="h-full w-full rounded-full" imgClassName="h-full w-full rounded-full object-cover" fallbackTextClassName="text-xs" />
                 ) : (
                   <span>{playerName ? playerName.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase() : slotIndex + 1}</span>
                 )}
@@ -9862,7 +9955,7 @@ function App() {
       >
         <div className="flex items-center gap-3">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/10 text-[11px] font-black text-white">
-            {player.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : (player.number || displayPlayerName(player).slice(0, 2).toUpperCase())}
+            <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" />
           </span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-black text-white">{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</p>
@@ -10007,7 +10100,7 @@ function App() {
               {mvp ? (
                 <div className="mt-3 flex items-center gap-3">
                   <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-white/10 text-sm font-black text-white">
-                    {mvp.player.image ? <img src={mvp.player.image} alt="" className="h-full w-full object-cover" /> : (mvp.player.number || displayPlayerName(mvp.player).slice(0, 2).toUpperCase())}
+                    <PlayerPortrait player={mvp.player} className="h-full w-full" fallbackTextClassName="text-xs" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xl font-black text-white">{displayPlayerName(mvp.player)}</p>
@@ -10114,7 +10207,7 @@ function App() {
                         <td className={`sticky left-0 z-10 border-t border-white/10 px-3 py-2 font-bold text-white shadow-[8px_0_18px_rgba(0,0,0,0.22)] transition group-hover:bg-[#10213f] ${stats.red ? 'bg-[#1c1220]' : stats.injured ? 'bg-[#171525]' : stats.role === 'Titular' ? 'bg-[#0d1f3b]' : 'bg-[#091428]'}`}>
                           <div className="flex items-center gap-3">
                             <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/10 text-[11px] font-black text-white">
-                              {player.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : (player.number || displayPlayerName(player).slice(0, 2).toUpperCase())}
+                              <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" />
                             </span>
                             <div className="min-w-0">
                               <p className="truncate text-sm font-black">{displayPlayerName(player)}</p>
@@ -11056,7 +11149,7 @@ function App() {
                       <div key={`${card.key}-${playerEntryKey || playerName}`} className="rounded-2xl bg-black/20 p-3">
                         <div className="flex items-start gap-2">
                           <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/10 text-xs font-black text-white">
-                            {player?.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : (player?.number || playerName.slice(0, 2).toUpperCase())}
+                            {player ? <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" /> : (playerName.slice(0, 2).toUpperCase())}
                           </span>
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-black text-white">{playerName}</p>
@@ -12501,7 +12594,7 @@ function App() {
           return (
             <div key={`${slot.id}-${index}`} className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-0.5 text-center sm:gap-1" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
               <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-caudal-electric/60 bg-caudal-950/80 text-[10px] font-black text-white sm:h-14 sm:w-14 sm:rounded-2xl sm:border-2 sm:text-xs">
-                {player?.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : player?.number || index + 1}
+                {player ? <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" /> : index + 1}
               </div>
               <span className="max-w-[54px] truncate rounded-lg bg-black/60 px-1.5 py-0.5 text-[8px] font-black text-white sm:max-w-[90px] sm:rounded-xl sm:px-2 sm:py-1 sm:text-[10px]">{player?.name || slot.label}</span>
               {row?.primaryRole ? (
@@ -12842,6 +12935,7 @@ function App() {
 
   const openForm = (player = null) => {
     setPlayerFormError('');
+    setPlayerPortraitStatus('');
     setIsSavingPlayer(false);
     if (player) {
       setEditingId(player.id);
@@ -12853,6 +12947,9 @@ function App() {
         position: player.position,
         foot: player.foot,
         image: player.image,
+        originalImage: player.originalImage || player.image || '',
+        processedImage: player.processedImage || '',
+        portraitStyle: player.portraitStyle || (player.processedImage ? 'appcaudal_classic' : 'original'),
       });
     } else {
       setEditingId(null);
@@ -12864,6 +12961,9 @@ function App() {
         position: 'Portero',
         foot: 'Derecha',
         image: '',
+        originalImage: '',
+        processedImage: '',
+        portraitStyle: 'original',
       });
     }
     setIsPanelOpen(true);
@@ -12873,6 +12973,7 @@ function App() {
     setIsPanelOpen(false);
     setEditingId(null);
     setPlayerFormError('');
+    setPlayerPortraitStatus('');
     setIsSavingPlayer(false);
   };
 
@@ -12922,6 +13023,17 @@ function App() {
 
   const handleChange = (event) => {
     const { name, value } = event.target;
+    if (name === 'image') {
+      setFormState((prev) => ({
+        ...prev,
+        image: value,
+        originalImage: value,
+        processedImage: '',
+        portraitStyle: 'original',
+      }));
+      setPlayerPortraitStatus('');
+      return;
+    }
     setFormState((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -12930,22 +13042,78 @@ function App() {
     if (!file) return;
     setIsUploadingPlayerImage(true);
     setPlayerFormError('');
+    setPlayerPortraitStatus('');
     try {
       const publicUrl = await uploadPublicFile({ bucket: 'jugadores', file, folder: sanitizeStorageName(formState.name || 'jugador') });
-      setFormState((prev) => ({ ...prev, image: publicUrl }));
+      setFormState((prev) => ({
+        ...prev,
+        image: publicUrl,
+        originalImage: publicUrl,
+        processedImage: '',
+        portraitStyle: 'original',
+      }));
       if (editingId) {
-        const { error: updateError } = await supabase.from("jugadores").update({ image: publicUrl }).eq("id", editingId);
+        const { error: updateError } = await supabase
+          .from("jugadores")
+          .update({ image: publicUrl, original_image: publicUrl, processed_image: '', portrait_style: 'original' })
+          .eq("id", editingId);
         if (updateError) throw updateError;
         const jugadores = await getJugadores();
         setPlayers(jugadores);
         setEmpty(jugadores.length === 0);
       }
+      setPlayerPortraitStatus('Fotografía original subida. Puedes aplicar el estilo APPCAUDAL antes de guardar.');
     } catch (uploadError) {
       console.error('Error subiendo foto de jugador a Supabase Storage:', uploadError);
       setPlayerFormError(uploadError.message || 'No se pudo subir la foto del jugador.');
     } finally {
       setIsUploadingPlayerImage(false);
       event.target.value = '';
+    }
+  };
+
+  const applyAppCaudalPortraitStyle = async () => {
+    const sourceUrl = formState.originalImage || formState.image;
+    if (!sourceUrl) {
+      setPlayerFormError('Sube una imagen antes de aplicar el estilo APPCAUDAL.');
+      return;
+    }
+    setPlayerPortraitProcessing(true);
+    setPlayerFormError('');
+    setPlayerPortraitStatus('');
+    try {
+      const portraitFile = await createAppCaudalPortraitFile({ imageUrl: sourceUrl, playerName: formState.name || 'jugador' });
+      const processedUrl = await uploadPublicFile({
+        bucket: 'jugadores',
+        file: portraitFile,
+        folder: `${sanitizeStorageName(formState.name || 'jugador')}/appcaudal-classic`,
+      });
+      const nextPatch = {
+        image: processedUrl,
+        original_image: sourceUrl,
+        processed_image: processedUrl,
+        portrait_style: 'appcaudal_classic',
+      };
+      setFormState((prev) => ({
+        ...prev,
+        image: processedUrl,
+        originalImage: sourceUrl,
+        processedImage: processedUrl,
+        portraitStyle: 'appcaudal_classic',
+      }));
+      if (editingId) {
+        const { error: updateError } = await supabase.from("jugadores").update(nextPatch).eq("id", editingId);
+        if (updateError) throw updateError;
+        const jugadores = await getJugadores();
+        setPlayers(jugadores);
+        setEmpty(jugadores.length === 0);
+      }
+      setPlayerPortraitStatus('Estilo APPCAUDAL aplicado. Se conserva la fotografía original.');
+    } catch (processError) {
+      console.error('Error aplicando estilo APPCAUDAL:', processError);
+      setPlayerFormError(processError.message || 'No se pudo aplicar el estilo. Puedes mantener la fotografía original.');
+    } finally {
+      setPlayerPortraitProcessing(false);
     }
   };
 
@@ -14580,7 +14748,7 @@ function App() {
               const player = players.find((item) => item.name === caudalLineup[index]);
               return (
                 <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-caudal-electric bg-caudal-950 text-[10px] font-black text-caudal-electric shadow-lg transition duration-300">
-                  {player?.image ? <img src={player.image} alt="" className="h-full w-full object-cover object-center" /> : index === 0 ? 'P' : index}
+                  {player ? <PlayerPortrait player={player} className="h-full w-full rounded-full" imgClassName="h-full w-full rounded-full object-cover object-center" fallbackTextClassName="text-[9px]" /> : index === 0 ? 'P' : index}
                 </span>
               );
             })()}
@@ -16605,7 +16773,7 @@ function App() {
                               <td className="px-4 py-3">
                                 <div className="flex items-center gap-3">
                                   <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/[0.06] text-xs font-black text-white">
-                                    {player.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
+                                    <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" />
                                   </span>
                                   <span className="font-black text-white">{player.name}</span>
                                 </div>
@@ -16678,7 +16846,7 @@ function App() {
                           ) : null}
                           <div className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-start gap-3 pr-8">
                             <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.16),rgba(255,255,255,0.055)_42%,rgba(212,0,0,0.12))] text-sm font-black text-slate-100 shadow-[0_8px_18px_rgba(0,0,0,0.18)] transition duration-200 group-hover:scale-[1.02]">
-                              {player.image ? <img src={player.image} alt={player.name} className="h-full w-full object-cover" /> : <span>{player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>}
+                              <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-xs" />
                             </div>
                             <div className="min-w-0 pr-1">
                               <h3 className="line-clamp-2 [overflow-wrap:normal] [word-break:normal] text-[17px] font-black leading-[1.12] text-white">{player.name}</h3>
@@ -19584,7 +19752,7 @@ function App() {
                                           style={{ left: `${position.x}%`, top: `${position.y}%` }}
                                         >
                                           <span className={`relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border bg-caudal-950 text-[11px] font-black shadow-lg ${selectedTacticalPlayerIndex === index ? 'border-caudal-electric ring-4 ring-caudal-electric/25' : 'border-caudal-electric/60'}`}>
-                                            {player?.image ? <img src={player.image} alt="" className="h-full w-full object-cover object-center" /> : (playerName ? playerName.split(' ').map((part) => part[0]).join('').slice(0, 2) : shortRoleLabel(getFormationRoles(selectedMatch.preCaudalSystem || '4-4-2')[index]))}
+                                            {player ? <PlayerPortrait player={player} className="h-full w-full" imgClassName="h-full w-full object-cover object-center" fallbackTextClassName="text-[10px]" /> : (playerName ? playerName.split(' ').map((part) => part[0]).join('').slice(0, 2) : shortRoleLabel(getFormationRoles(selectedMatch.preCaudalSystem || '4-4-2')[index]))}
                                             {player?.number ? <span className="absolute left-1 top-1 rounded-md bg-slate-950/85 px-1 py-0.5 text-[9px] leading-none text-white">#{player.number}</span> : null}
                                             {isCaptain ? <span className="absolute -right-1 -top-1 rounded-full bg-blue-200 px-1 text-[9px] font-black text-slate-950">©</span> : null}
                                           </span>
@@ -19624,7 +19792,7 @@ function App() {
                                                     <div key={player.id} draggable onDragStart={() => setDraggedPlayer(player)} className={`group rounded-xl border px-2 py-1.5 text-xs ${isCurrent ? 'border-caudal-electric/40 bg-caudal-electric/15' : 'border-white/10 bg-white/[0.04]'}`}>
                                                       <div className="flex items-center gap-2">
                                                         <button type="button" onClick={() => updateCaudalLineupSlot(selectedTacticalPlayerIndex, player.name)} className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-caudal-950 text-[9px] font-black text-caudal-electric">
-                                                          {player.image ? <img src={player.image} alt="" className="h-full w-full object-cover object-center" /> : (player.number ? `#${player.number}` : player.name.split(' ').map((part) => part[0]).join('').slice(0, 2))}
+                                                          <PlayerPortrait player={player} className="h-full w-full" imgClassName="h-full w-full object-cover object-center" fallbackTextClassName="text-[8px]" />
                                                         </button>
                                                         <button type="button" onClick={() => updateCaudalLineupSlot(selectedTacticalPlayerIndex, player.name)} className="min-w-0 flex-1 text-left">
                                                           <span className="block truncate font-black text-white">{player.number ? `#${player.number} ` : ''}{player.name}{isCaptain ? ' ©' : ''}</span>
@@ -21349,7 +21517,7 @@ function App() {
                             className="h-5 w-5 accent-caudal-electric disabled:opacity-30"
                           />
                           <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/10 text-xs font-black text-white">
-                            {player.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : player.number || '-'}
+                            <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" />
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm font-bold">{player.name}</span>
@@ -21415,6 +21583,13 @@ function App() {
           ['Sancionado', Boolean(currentStatus.suspended), 'border-slate-200/20 bg-slate-200/10 text-slate-200'],
         ];
         const initials = (formState.name || 'Jugador').split(' ').map((part) => part[0]).join('').slice(0, 2);
+        const formPlayerPreview = {
+          name: formState.name || 'Jugador',
+          shirtName: formState.shirtName,
+          image: formState.image,
+          originalImage: formState.originalImage,
+          processedImage: formState.processedImage,
+        };
         return (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 px-4 py-5 backdrop-blur-sm sm:px-6">
           <div className="mx-auto flex h-full max-w-5xl flex-col overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#07111f] shadow-[0_28px_90px_rgba(0,0,0,0.42)]">
@@ -21466,12 +21641,49 @@ function App() {
                       onClick={() => playerImageInputRef.current?.click()}
                     >
                       <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/[0.06] text-xs font-black text-white">
-                        {formState.image ? <img src={formState.image} alt="" className="h-full w-full object-cover" /> : initials}
+                        <PlayerPortrait player={formPlayerPreview} className="h-full w-full" fallbackTextClassName="text-[10px]" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-black text-white">{isUploadingPlayerImage ? 'Subiendo foto...' : 'Arrastra una foto o pulsa para cambiarla'}</p>
-                        <p className="truncate text-xs text-slate-500">{formState.image || 'JPG, PNG o WebP'}</p>
+                        <p className="text-sm font-black text-white">{isUploadingPlayerImage ? 'Subiendo foto...' : 'Subir imagen'}</p>
+                        <p className="truncate text-xs text-slate-500">{formState.originalImage || formState.image || 'JPG, PNG o WebP'}</p>
                       </div>
+                    </div>
+                    <div className="mt-3 rounded-2xl border border-white/10 bg-black/15 p-3">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Normalización APPCAUDAL</p>
+                          <p className="mt-1 text-xs leading-5 text-slate-400">Recorte automático 1:1, tamaño fijo, fondo clásico y ajuste suave de luz. La foto original se conserva.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={applyAppCaudalPortraitStyle}
+                          disabled={playerPortraitProcessing || isUploadingPlayerImage || isSavingPlayer || !(formState.originalImage || formState.image)}
+                          className="rounded-2xl bg-caudal-electric px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {playerPortraitProcessing ? 'Procesando...' : 'Aplicar estilo APPCAUDAL'}
+                        </button>
+                      </div>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-xl bg-white/[0.04] p-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Original</p>
+                          <div className="mt-2 flex items-center gap-3">
+                            <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-white/10 text-xs font-black text-white">
+                              {formState.originalImage || formState.image ? <img src={formState.originalImage || formState.image} alt="" className="h-full w-full object-cover" /> : initials}
+                            </div>
+                            <span className="min-w-0 truncate text-xs font-bold text-slate-400">{formState.originalImage || 'Sin imagen original'}</span>
+                          </div>
+                        </div>
+                        <div className="rounded-xl bg-white/[0.04] p-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">APPCAUDAL clásico</p>
+                          <div className="mt-2 flex items-center gap-3">
+                            <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-white/10">
+                              <PlayerPortrait player={formPlayerPreview} className="h-full w-full" fallbackTextClassName="text-[10px]" />
+                            </div>
+                            <span className="min-w-0 truncate text-xs font-bold text-slate-400">{formState.processedImage ? 'Versión procesada lista' : 'Pendiente de aplicar'}</span>
+                          </div>
+                        </div>
+                      </div>
+                      {playerPortraitStatus ? <p className="mt-3 text-xs font-bold text-emerald-200">{playerPortraitStatus}</p> : null}
                     </div>
                   </section>
 
@@ -21520,7 +21732,9 @@ function App() {
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Previsualización</p>
                     <div className="mt-4 overflow-hidden rounded-[1.25rem] border border-white/10 bg-white/[0.04]">
                       <div className="flex aspect-[4/3] items-center justify-center bg-[linear-gradient(135deg,rgba(61,217,255,0.18),rgba(255,255,255,0.05),rgba(212,0,0,0.10))] text-4xl font-black text-white">
-                        {formState.image ? <img src={formState.image} alt="" className="h-full w-full object-cover" /> : initials}
+                        <div className="h-36 w-36 overflow-hidden rounded-full border border-white/15 shadow-[0_18px_50px_rgba(0,0,0,0.32)]">
+                          <PlayerPortrait player={formPlayerPreview} className="h-full w-full" fallbackTextClassName="text-3xl" />
+                        </div>
                       </div>
                       <div className="p-4">
                         <div className="flex items-start justify-between gap-3">
