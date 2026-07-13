@@ -907,6 +907,7 @@ const normalizeSupabaseGoalEvent = (event) => ({
   contact: event.contact || '',
   videoUrl: event.video_url || '',
   description: event.description || '',
+  createdAt: event.created_at || event.createdAt || '',
 });
 
 const emptyToNull = (value) => {
@@ -8076,13 +8077,14 @@ function App() {
   };
 
   const MATCH_EVENT_META = {
-    goal_for: { label: 'Gol', icon: 'GOL', category: 'Goles', tone: 'border-emerald-300/20 bg-emerald-300/[0.08]' },
-    goal_against: { label: 'Gol rival', icon: 'GOL', category: 'Goles', tone: 'border-red-300/20 bg-red-400/[0.08]' },
-    yellow_card: { label: 'Tarjeta amarilla', icon: 'TA', category: 'Tarjetas', tone: 'border-yellow-300/20 bg-yellow-300/[0.08]' },
-    red_card: { label: 'Tarjeta roja', icon: 'TR', category: 'Tarjetas', tone: 'border-red-300/25 bg-red-500/[0.10]' },
-    substitution: { label: 'Cambio', icon: 'CAM', category: 'Cambios', tone: 'border-sky-300/20 bg-sky-300/[0.08]' },
-    injury: { label: 'Lesión', icon: 'LES', category: 'Lesiones', tone: 'border-rose-300/25 bg-rose-300/[0.10]' },
-    unknown: { label: 'Evento', icon: 'EV', category: 'Eventos', tone: 'border-white/10 bg-white/[0.035]' },
+    goal_for: { label: 'Gol', icon: '⚽', badgeIcon: '⚽', category: 'Goles', tone: 'border-emerald-300/20 bg-emerald-300/[0.08]' },
+    goal_against: { label: 'Gol rival', icon: '⚽', badgeIcon: '⚽', category: 'Goles', tone: 'border-red-300/20 bg-red-400/[0.08]' },
+    assist: { label: 'Asistencia', icon: 'A', badgeIcon: 'A', category: 'Goles', tone: 'border-caudal-electric/25 bg-caudal-electric/[0.10]' },
+    yellow_card: { label: 'Tarjeta amarilla', icon: '🟨', badgeIcon: '🟨', category: 'Tarjetas', tone: 'border-yellow-300/20 bg-yellow-300/[0.08]' },
+    red_card: { label: 'Tarjeta roja', icon: '🟥', badgeIcon: '🟥', category: 'Tarjetas', tone: 'border-red-300/25 bg-red-500/[0.10]' },
+    substitution: { label: 'Cambio', icon: '↔', badgeIcon: '↔', category: 'Cambios', tone: 'border-sky-300/20 bg-sky-300/[0.08]' },
+    injury: { label: 'Lesión', icon: '+', badgeIcon: '+', category: 'Lesiones', tone: 'border-rose-300/25 bg-rose-300/[0.10]' },
+    unknown: { label: 'Evento', icon: 'EV', badgeIcon: 'EV', category: 'Eventos', tone: 'border-white/10 bg-white/[0.035]' },
   };
 
   const getMatchEventMeta = (key) => {
@@ -8091,29 +8093,83 @@ function App() {
     return meta;
   };
 
+  const getEventHalfOrder = (half) => {
+    const normalized = String(half || '').toLowerCase();
+    if (normalized.includes('1')) return 1;
+    if (normalized.includes('2')) return 2;
+    return 3;
+  };
+
+  const sortMatchEventsChronologically = (events = []) => [...events].sort((a, b) => {
+    const halfDiff = (a.halfOrder || 3) - (b.halfOrder || 3);
+    if (halfDiff) return halfDiff;
+    const minuteDiff = Number(a.minute || 0) - Number(b.minute || 0);
+    if (minuteDiff) return minuteDiff;
+    const secondDiff = Number(a.second || 0) - Number(b.second || 0);
+    if (secondDiff) return secondDiff;
+    const createdDiff = String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
+    if (createdDiff) return createdDiff;
+    return (a.priority || 9) - (b.priority || 9);
+  });
+
+  const formatGoalContextLine = (event) => {
+    const pieces = [
+      event.phase,
+      event.subphase,
+      event.shotZone ? `Finalización ${normalizePitchZone(event.shotZone).toLowerCase()}` : '',
+    ].filter((item) => String(item || '').trim());
+    return pieces.join(' · ');
+  };
+
+  const attachScoreAfterGoalEvents = (events = []) => {
+    let caudalGoals = 0;
+    let rivalGoals = 0;
+    return events.map((event) => {
+      if (event.key !== 'goal_for' && event.key !== 'goal_against') return event;
+      if (event.key === 'goal_for') caudalGoals += 1;
+      if (event.key === 'goal_against') rivalGoals += 1;
+      const home = selectedMatch?.isHome ? caudalGoals : rivalGoals;
+      const away = selectedMatch?.isHome ? rivalGoals : caudalGoals;
+      return { ...event, scoreAfter: { home, away, label: `${home}-${away}` } };
+    });
+  };
+
   const getStatsMatchEvents = () => {
     const goalEvents = getStatsGoalEvents().map((event) => {
       const isGoalFor = event.type === 'Gol a favor';
       const meta = getMatchEventMeta(isGoalFor ? 'goal_for' : 'goal_against');
+      const contextLine = formatGoalContextLine(event);
       return {
         id: `goal-${event.id}`,
         source: 'goal',
         rawId: event.id,
         key: isGoalFor ? 'goal_for' : 'goal_against',
         minute: Number(event.minute || 0),
+        half: event.half || '',
+        halfOrder: getEventHalfOrder(event.half),
+        second: Number(event.second || 0),
+        createdAt: event.createdAt || '',
         type: event.type,
         category: meta.category,
         priority: 1,
         tone: meta.tone,
         icon: meta.icon,
-        title: meta.label,
+        badgeIcon: meta.badgeIcon,
+        title: isGoalFor ? event.scorer || 'Gol Caudal' : selectedMatch?.opponent || 'Gol rival',
         playerName: isGoalFor ? event.scorer || 'Sin goleador' : selectedMatch?.opponent || 'Rival',
         playerId: isGoalFor ? event.scorerId : null,
         secondaryPlayerName: isGoalFor ? event.assistant || '' : '',
         secondaryPlayerId: isGoalFor ? event.assistantId : null,
-        subtitle: isGoalFor && event.assistant ? `Asistencia: ${event.assistant}` : event.phase || `Tramo ${getStatsMomentRange(event.minute)}`,
-        detail: event.description || `${event.phase || 'Sin fase registrada'} · ${event.subphase || 'Sin subfase registrada'}`,
-        meta: `Finaliza: ${event.shotZone ? normalizePitchZone(event.shotZone) : 'Sin zona registrada'} · Genera: ${event.assistZone ? normalizePitchZone(event.assistZone) : 'Sin zona registrada'} · Entra: ${event.goalZone || 'Sin zona registrada'}`,
+        subtitle: isGoalFor && event.assistant ? `Asistencia: ${event.assistant}` : '',
+        detail: contextLine,
+        meta: [
+          event.assistZone ? `Genera: ${normalizePitchZone(event.assistZone)}` : '',
+          event.goalZone ? `Entra: ${event.goalZone}` : '',
+        ].filter(Boolean).join(' · '),
+        timelineLines: [
+          isGoalFor && event.assistant ? `Asistencia: ${event.assistant}` : '',
+          contextLine,
+        ].filter(Boolean),
       };
     });
     const substitutions = getStatsSubstitutionEvents().map((event) => {
@@ -8123,17 +8179,23 @@ function App() {
         source: 'stats',
         key: 'substitution',
         minute: event.minute,
+        half: Number(event.minute || 0) <= 45 ? '1ª parte' : '2ª parte',
+        halfOrder: Number(event.minute || 0) <= 45 ? 1 : 2,
+        second: 0,
+        createdAt: '',
         type: meta.label,
         category: meta.category,
         priority: 4,
         tone: meta.tone,
         icon: meta.icon,
+        badgeIcon: meta.badgeIcon,
         title: meta.label,
         playerName: event.outPlayer,
         secondaryPlayerName: event.inPlayer,
         subtitle: `Sale ${event.outPlayer}`,
         detail: `Entra ${event.inPlayer}`,
         meta: `Cambio · ${event.minute}'`,
+        timelineLines: [`Sale ${event.outPlayer}`, `Entra ${event.inPlayer}`],
       };
     });
     const playerIncidents = getStatsCalledPlayers().flatMap((player) => {
@@ -8150,21 +8212,26 @@ function App() {
           source: 'stats',
           key: event.key,
           minute: event.minute,
+          half: Number(event.minute || 0) <= 45 ? '1ª parte' : '2ª parte',
+          halfOrder: Number(event.minute || 0) <= 45 ? 1 : 2,
+          second: 0,
+          createdAt: '',
           type: meta.label,
           category: meta.category,
           priority: event.key === 'red_card' ? 2 : event.key === 'injury' ? 3 : 5,
           tone: meta.tone,
           icon: meta.icon,
+          badgeIcon: meta.badgeIcon,
           title: meta.label,
           playerName: player.name,
           subtitle: player.name,
           detail: event.detail,
           meta: event.minute ? `${event.minute}'` : 'Minuto pendiente',
+          timelineLines: [event.detail].filter(Boolean),
         };
       });
     });
-    return [...goalEvents, ...playerIncidents, ...substitutions]
-      .sort((a, b) => (Number(a.minute || 0) - Number(b.minute || 0)) || (a.priority - b.priority));
+    return attachScoreAfterGoalEvents(sortMatchEventsChronologically([...goalEvents, ...playerIncidents, ...substitutions]));
   };
 
   const getEventsByPlayerName = (playerName) => {
@@ -8173,6 +8240,49 @@ function App() {
       normalizePlayerIdentityName(event.playerName) === normalizePlayerIdentityName(playerName) ||
       normalizePlayerIdentityName(event.secondaryPlayerName) === normalizePlayerIdentityName(playerName)
     );
+  };
+
+  const getEventsByPlayerId = (matchEvents = getStatsMatchEvents(), playerId, playerName = '') => {
+    if (!playerId && !playerName) return [];
+    const normalizedName = normalizePlayerIdentityName(playerName);
+    return matchEvents.filter((event) =>
+      (playerId && (event.playerId === playerId || event.secondaryPlayerId === playerId)) ||
+      (normalizedName && (
+        normalizePlayerIdentityName(event.playerName) === normalizedName ||
+        normalizePlayerIdentityName(event.secondaryPlayerName) === normalizedName
+      ))
+    );
+  };
+
+  const getScoreAfterEvent = (matchEvents = getStatsMatchEvents(), eventId) => {
+    return matchEvents.find((event) => event.id === eventId || event.rawId === eventId)?.scoreAfter || null;
+  };
+
+  const formatMinuteList = (events = []) => events
+    .map((event) => event.minute ? `${event.minute}'` : '')
+    .filter(Boolean)
+    .join(' y ');
+
+  const getPlayerEventSummary = (matchEvents = getStatsMatchEvents(), player) => {
+    const playerName = player?.name || '';
+    const playerEvents = getEventsByPlayerId(matchEvents, player?.id, playerName);
+    const ownName = normalizePlayerIdentityName(playerName);
+    const goals = playerEvents.filter((event) => event.key === 'goal_for' && normalizePlayerIdentityName(event.playerName) === ownName);
+    const assists = playerEvents.filter((event) => event.key === 'goal_for' && normalizePlayerIdentityName(event.secondaryPlayerName) === ownName);
+    const yellows = playerEvents.filter((event) => event.key === 'yellow_card');
+    const reds = playerEvents.filter((event) => event.key === 'red_card');
+    const injuries = playerEvents.filter((event) => event.key === 'injury');
+    const subOut = playerEvents.filter((event) => event.key === 'substitution' && normalizePlayerIdentityName(event.playerName) === ownName);
+    const subIn = playerEvents.filter((event) => event.key === 'substitution' && normalizePlayerIdentityName(event.secondaryPlayerName) === ownName);
+    return [
+      goals.length ? { key: 'goals', label: `⚽${goals.length > 1 ? goals.length : ''}`, title: `${goals.length} gol${goals.length > 1 ? 'es' : ''}${formatMinuteList(goals) ? ` · ${formatMinuteList(goals)}` : ''}`, className: 'bg-white text-slate-950' } : null,
+      assists.length ? { key: 'assists', label: `A${assists.length > 1 ? assists.length : ''}`, title: `${assists.length} asistencia${assists.length > 1 ? 's' : ''}${formatMinuteList(assists) ? ` · ${formatMinuteList(assists)}` : ''}`, className: 'bg-caudal-electric text-slate-950' } : null,
+      yellows.length ? { key: 'yellow', label: yellows.length > 1 ? `🟨${yellows.length}` : '🟨', title: `Tarjeta amarilla${formatMinuteList(yellows) ? ` · ${formatMinuteList(yellows)}` : ''}`, className: 'bg-yellow-300 text-slate-950' } : null,
+      reds.length ? { key: 'red', label: '🟥', title: `Tarjeta roja${formatMinuteList(reds) ? ` · ${formatMinuteList(reds)}` : ''}`, className: 'bg-red-600 text-white' } : null,
+      subOut.length ? { key: 'sub-out', label: '↔', title: `Sustituido${formatMinuteList(subOut) ? ` · ${formatMinuteList(subOut)}` : ''}`, className: 'bg-sky-300 text-slate-950' } : null,
+      subIn.length ? { key: 'sub-in', label: '↔', title: `Entra${formatMinuteList(subIn) ? ` · ${formatMinuteList(subIn)}` : ''}`, className: 'bg-sky-500 text-white' } : null,
+      injuries.length ? { key: 'injury', label: '+', title: `Lesión${formatMinuteList(injuries) ? ` · ${formatMinuteList(injuries)}` : ''}`, className: 'bg-rose-200 text-rose-800' } : null,
+    ].filter(Boolean);
   };
 
   const getStatsCalledPlayerNames = () => {
@@ -8672,9 +8782,12 @@ function App() {
   };
 
   const getStatsKeyEvents = () => {
-    return getStatsMatchEvents()
-      .filter((event) => statsEventFilter === 'Todos' || event.category === statsEventFilter)
-      .sort((a, b) => (a.minute - b.minute) || (a.priority - b.priority));
+    return getTimelineEvents(getStatsMatchEvents());
+  };
+
+  const getTimelineEvents = (matchEvents = getStatsMatchEvents()) => {
+    return sortMatchEventsChronologically(matchEvents)
+      .filter((event) => statsEventFilter === 'Todos' || event.category === statsEventFilter);
   };
 
   const getStatsTimelineIcon = (event) => {
@@ -8683,7 +8796,7 @@ function App() {
 
   const getStatsTimelineTone = (event) => {
     if (event.category === 'Goles') return event.type === 'Gol a favor' ? 'border-emerald-300/20 bg-emerald-300/[0.08]' : 'border-red-300/20 bg-red-400/[0.08]';
-    if (event.category === 'Tarjetas') return event.type === 'Roja' ? 'border-red-300/25 bg-red-500/[0.10]' : 'border-yellow-300/20 bg-yellow-300/[0.08]';
+    if (event.category === 'Tarjetas') return event.key === 'red_card' ? 'border-red-300/25 bg-red-500/[0.10]' : 'border-yellow-300/20 bg-yellow-300/[0.08]';
     if (event.category === 'Cambios') return 'border-sky-300/20 bg-sky-300/[0.08]';
     if (event.category === 'Lesiones') return 'border-rose-300/25 bg-rose-300/[0.10]';
     return 'border-white/10 bg-white/[0.035]';
@@ -8717,8 +8830,7 @@ function App() {
         const minutes = Number(getStatsSubstituteMinutes(player.name) || stats.minutes || 0);
         const rating = Number(stats.rating || 0);
         const score = (rating * 10) + (stats.goals * 6) + (stats.assists * 4) + Math.min(minutes, 90) / 18 - (stats.red ? 8 : 0) - (stats.injured ? 2 : 0);
-        const confidence = hasRealValue(stats.rating) && hasRealValue(stats.minutes) ? 'Alta' : hasRealValue(stats.rating) || hasRealValue(stats.minutes) || stats.goals || stats.assists ? 'Media' : 'Baja';
-        return { player, stats, minutes, rating, score, confidence };
+        return { player, stats, minutes, rating, score };
       })
       .sort((a, b) => b.score - a.score);
     return ranked[0] || null;
@@ -10096,6 +10208,7 @@ function App() {
   const renderStatsPitch = () => {
     if (!selectedMatch) return null;
     const coordinates = getFormationCoordinates(selectedMatch.statsSystem || '4-4-2');
+    const matchEvents = getStatsMatchEvents();
     return (
       <div
         className="relative aspect-[7/8.9] min-h-[640px] overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner"
@@ -10117,21 +10230,10 @@ function App() {
           const shortName = player ? displayPlayerName(player) : playerName.split(' ').slice(-1)[0] || '';
           const stats = playerName ? getStatsPlayerData(playerName) : null;
           const isCaptain = player?.id && selectedMatch.captainPlayerId === player.id;
-          const eventBadges = playerName ? getEventsByPlayerName(playerName).map((event) => {
-            const isSecondaryPlayer = normalizePlayerIdentityName(event.secondaryPlayerName) === normalizePlayerIdentityName(playerName);
-            return {
-              key: event.id,
-              label: event.icon,
-              title: [
-                event.key === 'substitution' ? (isSecondaryPlayer ? 'Entra' : 'Sale') : event.title,
-                event.minute ? `${event.minute}'` : 'minuto pendiente',
-                event.key === 'goal_for' && isSecondaryPlayer ? 'Asistencia' : '',
-              ].filter(Boolean).join(' · '),
-            };
-          }) : [];
+          const eventBadges = playerName ? getPlayerEventSummary(matchEvents, player || { name: playerName }) : [];
           const statusBadges = [
             ...eventBadges,
-            isCaptain ? { key: 'captain', label: 'CAP', title: 'Capitán' } : null,
+            isCaptain ? { key: 'captain', label: 'CAP', title: 'Capitán', className: 'bg-black text-white' } : null,
           ].filter(Boolean);
           const replacementInfo = playerName ? getStatsReplacementInfo(playerName) : null;
           const playerStateClass = stats?.red
@@ -10165,16 +10267,22 @@ function App() {
                     {stats.rating}
                   </span>
                 ) : null}
-                {statusBadges.length ? (
-                  <div className="absolute -right-4 -top-3 flex max-w-[62px] flex-wrap justify-end gap-0.5">
-                    {statusBadges.map((badge) => (
-                      <span key={badge.key} title={badge.title} className="flex h-5 min-w-5 items-center justify-center rounded-md bg-black/80 px-1 text-[10px] font-black shadow-lg">
-                        {badge.label}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
               </div>
+              {statusBadges.length ? (
+                <div className="flex max-w-[118px] flex-wrap justify-center gap-1">
+                  {statusBadges.map((badge) => (
+                    <button
+                      key={badge.key}
+                      type="button"
+                      title={badge.title}
+                      aria-label={badge.title}
+                      className={`flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-[10px] font-black shadow-lg ${badge.className || 'bg-black/80 text-white'}`}
+                    >
+                      {badge.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <div className="max-w-[112px] truncate rounded-lg bg-black/70 px-2 py-1 text-[10px] font-black uppercase tracking-[0.04em] text-white">
                 {playerName ? `${player?.number || slotIndex + 1} ${shortName}` : getFormationRoles(selectedMatch.statsSystem || '4-4-2')[slotIndex]}
               </div>
@@ -10328,23 +10436,43 @@ function App() {
               </div>
               <div className="mt-4 max-h-[470px] space-y-2 overflow-y-auto pr-1">
                 {timelineEvents.length ? timelineEvents.map((event) => (
-                  <div key={event.id} className={`border px-3 py-3 ${getStatsTimelineTone(event)}`}>
+                  <div key={event.id} className={`border px-3 py-2.5 ${getStatsTimelineTone(event)}`}>
                     <div className="flex items-start gap-3">
-                      <span className="w-11 shrink-0 text-right text-lg font-black text-white">{event.minute || '-'}'</span>
-                      <span className="flex h-9 min-w-9 items-center justify-center rounded-xl bg-black/25 px-1.5 text-base font-black">{getStatsTimelineIcon(event)}</span>
+                      <span className="w-12 shrink-0 text-right text-xl font-black leading-none text-white">{event.minute || '-'}'</span>
+                      <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-black/25 px-1 text-sm font-black">{getStatsTimelineIcon(event)}</span>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <p className="text-sm font-black text-white">{event.title}</p>
                           {event.source === 'goal' ? (
                             <div className="flex gap-1.5">
-                              <button type="button" onClick={() => openGoalEditModal(event.rawId)} className="rounded-lg bg-white/10 px-2 py-1 text-[10px] font-black uppercase text-slate-200 hover:bg-white/15">Editar</button>
-                              <button type="button" onClick={() => deleteGoalAnalysisEvent(event.rawId)} className="rounded-lg bg-red-500/15 px-2 py-1 text-[10px] font-black uppercase text-red-100 hover:bg-red-500/25">Eliminar</button>
+                              <button type="button" title="Editar evento" aria-label="Editar evento" onClick={() => openGoalEditModal(event.rawId)} className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 text-slate-200 hover:bg-white/15">
+                                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                  <path d="M12 20h9" />
+                                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                                </svg>
+                              </button>
+                              <button type="button" title="Eliminar evento" aria-label="Eliminar evento" onClick={() => deleteGoalAnalysisEvent(event.rawId)} className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-500/15 text-red-100 hover:bg-red-500/25">
+                                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                  <path d="M3 6h18" />
+                                  <path d="M8 6V4h8v2" />
+                                  <path d="M6 6l1 15h10l1-15" />
+                                  <path d="M10 11v6" />
+                                  <path d="M14 11v6" />
+                                </svg>
+                              </button>
                             </div>
                           ) : null}
                         </div>
-                        <p className="mt-1 text-xs font-semibold text-slate-300">{event.playerName}</p>
-                        {event.secondaryPlayerName ? <p className="text-xs font-semibold text-caudal-electric">{event.subtitle}</p> : <p className="text-xs font-semibold text-slate-400">{event.subtitle}</p>}
-                        {event.detail ? <p className="mt-1 text-[11px] leading-4 text-slate-500">{event.detail}</p> : null}
+                        {event.timelineLines?.length ? (
+                          <div className="mt-1 space-y-0.5">
+                            {event.timelineLines.map((line, index) => (
+                              <p key={`${event.id}-line-${index}`} className={`text-xs font-semibold ${index === 0 && event.secondaryPlayerName ? 'text-caudal-electric' : 'text-slate-400'}`}>
+                                {line}
+                              </p>
+                            ))}
+                          </div>
+                        ) : null}
+                        {event.scoreAfter ? <p className="mt-1 text-sm font-black text-white">{event.scoreAfter.label}</p> : null}
                       </div>
                     </div>
                   </div>
@@ -10380,7 +10508,15 @@ function App() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xl font-black text-white">{displayPlayerName(mvp.player)}</p>
-                    <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Nota {mvp.stats.rating || '-'} · Goles {mvp.stats.goals} · Asistencias {mvp.stats.assists} · Confianza {mvp.confidence}</p>
+                    <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
+                      {[
+                        hasRealValue(mvp.stats.rating) ? `Nota ${mvp.stats.rating}` : '',
+                        `${mvp.minutes || 0} min`,
+                        `Goles ${mvp.stats.goals}`,
+                        `Asistencias ${mvp.stats.assists}`,
+                        mvp.stats.goals || mvp.stats.assists ? `Participación en gol ${mvp.stats.goals + mvp.stats.assists}` : '',
+                      ].filter(Boolean).join(' · ')}
+                    </p>
                   </div>
                 </div>
               ) : (
