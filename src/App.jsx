@@ -85,6 +85,9 @@ function LeagueResultsDistribution({ results, compact = false, onViewStats }) {
   const played = Number(results?.played || 0);
   const hasData = played > 0;
   const donut = buildLeagueResultsDonut(results);
+  const title = results?.title || 'Resultados de Liga';
+  const icon = results?.icon || 'LG';
+  const emptyMessage = results?.emptyMessage || 'Aun no hay partidos de Liga jugados.';
   const sizeClass = compact ? 'h-28 w-28' : 'h-48 w-48';
   const innerClass = compact ? 'h-16 w-16 text-[10px]' : 'h-28 w-28 text-sm';
   const counterValue = (value) => (hasData ? value : '—');
@@ -92,7 +95,12 @@ function LeagueResultsDistribution({ results, compact = false, onViewStats }) {
   return (
     <div className={compact ? 'rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]' : 'rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow'}>
       <div className="flex items-start justify-between gap-3">
-        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Resultados de Liga</h3>
+        <div className="flex items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-[10px] font-black uppercase tracking-[0.08em] text-caudal-electric">
+            {icon}
+          </span>
+          <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">{title}</h3>
+        </div>
         {onViewStats ? (
           <button
             type="button"
@@ -135,7 +143,7 @@ function LeagueResultsDistribution({ results, compact = false, onViewStats }) {
           <div className={`mx-auto flex ${compact ? 'h-20 w-20' : 'h-28 w-28'} items-center justify-center rounded-full border border-slate-500/30 bg-slate-500/10`}>
             <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Sin datos</span>
           </div>
-          <p className="mt-4 text-sm font-bold text-slate-200">Aún no hay partidos de Liga jugados.</p>
+          <p className="mt-4 text-sm font-bold text-slate-200">{emptyMessage}</p>
           <div className="mt-4 grid grid-cols-3 gap-2 text-center">
             {[
               ['Victorias', counterValue(results?.wins), 'text-emerald-300'],
@@ -777,6 +785,101 @@ const hasRealValue = (value) => {
 const hasObservedSource = (...values) => values.some(hasRealValue);
 const getInsufficientLabel = (fallback = 'Información insuficiente') => fallback;
 const getMissingDataLabel = (fallback = 'Sin dato registrado') => fallback;
+const normalizeCatalogText = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+const COMPETITION_META = {
+  all: {
+    key: 'all',
+    label: 'Temporada',
+    title: 'Resultados de la temporada',
+    shortTitle: 'Temporada',
+    icon: 'TR',
+    emptyMessage: 'Aun no hay partidos jugados en la muestra seleccionada.',
+  },
+  league: {
+    key: 'league',
+    label: 'Liga',
+    title: 'Resultados de Liga',
+    shortTitle: 'Liga',
+    icon: 'LG',
+    emptyMessage: 'Aun no hay partidos de Liga jugados.',
+  },
+  copa_rfef: {
+    key: 'copa_rfef',
+    label: 'Copa RFEF',
+    title: 'Resultados de Copa RFEF',
+    shortTitle: 'Copa RFEF',
+    icon: 'CR',
+    emptyMessage: 'Aun no hay partidos de Copa RFEF jugados.',
+  },
+  playoff: {
+    key: 'playoff',
+    label: 'Play Off',
+    title: 'Resultados de Play Off',
+    shortTitle: 'Play Off',
+    icon: 'PO',
+    emptyMessage: 'Aun no hay partidos de Play Off jugados.',
+  },
+  friendly: {
+    key: 'friendly',
+    label: 'Amistosos',
+    title: 'Resultados de amistosos',
+    shortTitle: 'Amistoso',
+    icon: 'AM',
+    emptyMessage: 'Aun no hay amistosos jugados.',
+  },
+  other: {
+    key: 'other',
+    label: 'Otra competicion',
+    title: 'Resultados de otra competicion',
+    shortTitle: 'Otra',
+    icon: 'CP',
+    emptyMessage: 'Aun no hay partidos jugados en esta competicion.',
+  },
+};
+
+const mapCompetitionTextToKey = (source) => {
+  const text = normalizeCatalogText(source);
+  if (!text) return 'other';
+  if (['liga', 'league', 'regular', 'campeonato'].includes(text) || /\bliga\b/.test(text)) return 'league';
+  if (text.includes('rfef') || (text.includes('copa') && !text.includes('play'))) return 'copa_rfef';
+  if (text.includes('playoff') || text.includes('play off') || text.includes('promocion')) return 'playoff';
+  if (text.includes('amistoso') || text.includes('friendly')) return 'friendly';
+  return 'other';
+};
+
+const normalizeCompetitionKey = (matchOrValue = {}) => {
+  const candidates = isPlainObject(matchOrValue)
+    ? [
+        matchOrValue.competitionKey,
+        matchOrValue.competition_id,
+        matchOrValue.competitionId,
+        matchOrValue.competition,
+        matchOrValue.type,
+      ]
+    : [matchOrValue];
+  for (const source of candidates) {
+    if (!hasRealValue(source)) continue;
+    const key = mapCompetitionTextToKey(source);
+    if (key !== 'other') return key;
+  }
+  return 'other';
+};
+
+const getCompetitionMeta = (key) => COMPETITION_META[key] || COMPETITION_META.other;
+
+const getCompetitionFilterKey = (filter) => {
+  const normalized = normalizeCatalogText(filter);
+  if (!normalized || normalized === 'todos') return 'all';
+  if (normalized === 'copa') return 'copa_rfef';
+  return normalizeCompetitionKey(normalized);
+};
+
 const normalizePreAiAnalysis = (value) => {
   if (isPlainObject(value)) return value;
   if (typeof value === 'string' && value.trim()) {
@@ -12374,6 +12477,76 @@ function App() {
     return { caudalGoals, rivalGoals };
   };
 
+  const hasCompleteOfficialScore = (match = {}) => {
+    const hasHomeAwayScore = hasRealValue(match.homeScore) && hasRealValue(match.awayScore);
+    const hasForAgainstScore = hasRealValue(match.goalsFor) && hasRealValue(match.goalsAgainst);
+    const hasOfficialGoalEvents = safeArray(match.statsGoalEvents).length > 0;
+    return hasHomeAwayScore || hasForAgainstScore || hasOfficialGoalEvents;
+  };
+
+  const isOfficialPlayedMatch = (match = {}) => {
+    const status = normalizeCatalogText(match.status);
+    const hasPlayedStatus = ['finalizado', 'jugado'].includes(status);
+    return hasPlayedStatus && hasCompleteOfficialScore(match);
+  };
+
+  const getCompetitionResultScope = (filter) => {
+    const key = getCompetitionFilterKey(filter);
+    const meta = getCompetitionMeta(key);
+    return {
+      key,
+      meta,
+      accepts: (match) => key === 'all' || normalizeCompetitionKey(match) === key,
+    };
+  };
+
+  const buildCompetitionResults = (rows, filter) => {
+    const scope = getCompetitionResultScope(filter);
+    const initial = {
+      played: 0,
+      wins: 0,
+      draws: 0,
+      losses: 0,
+      includedMatches: [],
+      excludedMatches: [],
+      competitionKey: scope.key,
+      title: scope.meta.title,
+      label: scope.meta.label,
+      icon: scope.meta.icon,
+      emptyMessage: scope.meta.emptyMessage,
+    };
+
+    const results = safeArray(rows).reduce((acc, match) => {
+      if (!scope.accepts(match)) return acc;
+      if (!isOfficialPlayedMatch(match)) {
+        acc.excludedMatches.push(match);
+        return acc;
+      }
+
+      const score = getMatchScoreData(match);
+      acc.played += 1;
+      acc.goalsFor = (acc.goalsFor || 0) + score.caudalGoals;
+      acc.goalsAgainst = (acc.goalsAgainst || 0) + score.rivalGoals;
+      if (score.caudalGoals > score.rivalGoals) acc.wins += 1;
+      else if (score.caudalGoals < score.rivalGoals) acc.losses += 1;
+      else acc.draws += 1;
+      acc.includedMatches.push({ match, score });
+      return acc;
+    }, initial);
+
+    if (import.meta.env.DEV && results.played !== results.wins + results.draws + results.losses) {
+      console.warn('Resultados por competicion desincronizados', {
+        filter,
+        played: results.played,
+        wins: results.wins,
+        draws: results.draws,
+        losses: results.losses,
+      });
+    }
+
+    return results;
+  };
+
   const getMatchScoreLabel = (match) => {
     const score = getMatchScoreData(match);
     return match.isHome ? `C.D. Caudal ${score.caudalGoals}-${score.rivalGoals} ${match.opponent}` : `${match.opponent} ${score.rivalGoals}-${score.caudalGoals} C.D. Caudal`;
@@ -12514,26 +12687,23 @@ function App() {
     };
   };
 
-  const getGroupScopedMatches = () => {
+  const getGroupScopedMatches = ({ ignoreResultFilter = false } = {}) => {
     let scoped = matches
-      .filter((match) => match.status === 'Finalizado' || (match.statsGoalEvents || []).length > 0)
+      .filter(isOfficialPlayedMatch)
       .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
-    if (groupCompetitionFilter === 'Liga') scoped = scoped.filter((match) => match.type === 'Liga');
-    if (groupCompetitionFilter === 'Copa') scoped = scoped.filter((match) => /copa/i.test(match.type));
-    if (groupCompetitionFilter === 'Copa RFEF') scoped = scoped.filter((match) => match.type === 'Copa RFEF');
-    if (groupCompetitionFilter === 'Playoff') scoped = scoped.filter((match) => match.type === 'Play off');
-    if (groupCompetitionFilter === 'Amistoso') scoped = scoped.filter((match) => match.type === 'Amistoso');
+    const competitionKey = getCompetitionFilterKey(groupCompetitionFilter);
+    if (competitionKey !== 'all') scoped = scoped.filter((match) => normalizeCompetitionKey(match) === competitionKey);
     if (groupContextFilter === 'Local') scoped = scoped.filter((match) => match.isHome);
     if (groupContextFilter === 'Visitante') scoped = scoped.filter((match) => !match.isHome);
-    if (groupContextFilter === 'Victorias') scoped = scoped.filter((match) => {
+    if (!ignoreResultFilter && groupContextFilter === 'Victorias') scoped = scoped.filter((match) => {
       const score = getMatchScoreData(match);
       return score.caudalGoals > score.rivalGoals;
     });
-    if (groupContextFilter === 'Empates') scoped = scoped.filter((match) => {
+    if (!ignoreResultFilter && groupContextFilter === 'Empates') scoped = scoped.filter((match) => {
       const score = getMatchScoreData(match);
       return score.caudalGoals === score.rivalGoals;
     });
-    if (groupContextFilter === 'Derrotas') scoped = scoped.filter((match) => {
+    if (!ignoreResultFilter && groupContextFilter === 'Derrotas') scoped = scoped.filter((match) => {
       const score = getMatchScoreData(match);
       return score.caudalGoals < score.rivalGoals;
     });
@@ -19004,7 +19174,14 @@ function App() {
           const goalAgainstRows = filteredOfficialGoals.filter((goal) => goal.teamSide === 'against');
           const allGoalRows = filteredOfficialGoals;
           const groupData = summarizeGroupMatches(scopedMatches);
-          const leagueResults = calculateLeagueResults(matches);
+          const competitionResults = buildCompetitionResults(
+            getGroupScopedMatches({ ignoreResultFilter: true }).map((match) => ({
+              ...match,
+              statsGoalEvents: safeArray(match.statsGoalEvents),
+              events: safeArray(match.events),
+            })),
+            groupCompetitionFilter
+          );
           const minuteFor = groupEventsByMinuteRange(goalForRows);
           const minuteAgainst = groupEventsByMinuteRange(goalAgainstRows);
           const goalTimeRows = buildGoalTimeBucketRows(filteredOfficialGoals);
@@ -19054,10 +19231,15 @@ function App() {
           }, {})).map(([, row]) => ({ ...row, ppg: row.played ? row.points / row.played : 0 })).sort((a, b) => b.ppg - a.ppg || b.played - a.played);
           const mostEffectiveSystem = systemRows[0] || null;
           const competitionRows = Object.entries(scopedMatches.reduce((acc, match) => {
-            const key = match.type || 'Sin competición';
-            acc[key] = [...(acc[key] || []), match];
+            const normalizedKey = normalizeCompetitionKey(match);
+            acc[normalizedKey] = [...(acc[normalizedKey] || []), match];
             return acc;
-          }, {})).map(([competition, rows]) => ({ competition, ...summarizeGroupMatches(rows) })).sort((a, b) => b.played - a.played);
+          }, {})).map(([competitionKey, rows]) => ({
+            competitionKey,
+            competition: getCompetitionMeta(competitionKey).label,
+            icon: getCompetitionMeta(competitionKey).icon,
+            ...summarizeGroupMatches(rows),
+          })).sort((a, b) => b.played - a.played);
           const secondHalfGoals = allGoalRows.filter((event) => Number(event.minute) >= 45).length;
           const centralFinish = allGoalRows.filter((event) => event.finishZone && normalizePitchZone(event.finishZone).includes('centro')).length;
           const scoringStreak = scopedMatches.reduceRight((streak, match) => streak.active && getMatchScoreData(match).caudalGoals > 0 ? { active: true, count: streak.count + 1 } : { active: false, count: streak.count }, { active: true, count: 0 }).count;
@@ -19378,7 +19560,7 @@ function App() {
                 </section>
 
                 <section>
-                  <LeagueResultsDistribution results={leagueResults} />
+                  <LeagueResultsDistribution results={competitionResults} />
                 </section>
                 <section className="grid gap-6 xl:grid-cols-2">
                   {simpleSummaryTable('Local', localSummary)}
@@ -19387,8 +19569,11 @@ function App() {
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Resultados por competición</h3>
                     <div className="mt-5 space-y-3">
                       {competitionRows.length ? competitionRows.map((row) => (
-                        <div key={row.competition} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl bg-white/5 px-4 py-3">
-                          <span className="font-bold text-white">{row.competition}</span>
+                        <div key={row.competitionKey || row.competition} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl bg-white/5 px-4 py-3">
+                          <span className="flex items-center gap-3 font-bold text-white">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.06] text-[9px] font-black uppercase tracking-[0.08em] text-caudal-electric">{row.icon || 'CP'}</span>
+                            {row.competition}
+                          </span>
                           <span className="text-sm font-black text-caudal-electric">PJ {row.played} · {row.wins}-{row.draws}-{row.losses} · GF {row.goalsFor} GC {row.goalsAgainst}</span>
                         </div>
                       )) : <p className="rounded-2xl bg-white/5 p-4 text-sm text-slate-400">Sin partidos oficiales.</p>}

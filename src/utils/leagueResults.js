@@ -12,9 +12,30 @@ const isFiniteScore = (value) => {
   return Number.isFinite(Number(value));
 };
 
-const normalizeText = (value) => String(value || '').trim().toLowerCase();
+const normalizeText = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 
-export const isLeagueMatch = (match = {}) => String(match.type || '').trim() === LEAGUE_COMPETITION_TYPE;
+export const normalizeLeagueCompetitionKey = (match = {}) => {
+  const candidates = [
+    match.competitionKey,
+    match.competition_id,
+    match.competitionId,
+    match.competition,
+    match.type,
+  ];
+  for (const source of candidates) {
+    if (source === '' || source === null || source === undefined) continue;
+    const text = normalizeText(source);
+    if (text === 'liga' || text === 'league' || /\bliga\b/.test(text)) return 'league';
+  }
+  return 'other';
+};
+
+export const isLeagueMatch = (match = {}) => normalizeLeagueCompetitionKey(match) === 'league';
 
 export const isPlayedMatch = (match = {}) => {
   const status = normalizeText(match.status);
