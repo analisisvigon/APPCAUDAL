@@ -1079,8 +1079,6 @@ const aggregateQuickEventStats = (events = [], { side = 'caudal', playerId = '',
   return { ...stats, events: sourceEvents, hasEvents: sourceEvents.length > 0 };
 };
 const getStatRate = (part, total) => (total > 0 ? `${Math.round((part / total) * 100)}%` : 'No disponible');
-const hasPendingQuickEvents = (match) => (match?.quickEvents || []).some((event) => !event.reviewed);
-const pendingQuickEventsMessage = 'Este partido tiene eventos rápidos pendientes de revisar.';
 
 const getMatchScoreValues = (match) => {
   const statsEvents = match?.statsGoalEvents || [];
@@ -1105,16 +1103,13 @@ const isMatchPlayedForUi = (match) => {
 };
 
 const getMatchOperationalStatus = (match) => {
-  if (hasPendingQuickEvents(match)) {
-    return { label: 'CON EVENTOS PENDIENTES', className: 'border-amber-200/25 bg-amber-200/[0.12] text-amber-100' };
-  }
   if (!isMatchPlayedForUi(match)) {
     return { label: 'PREPARANDO', className: 'border-caudal-electric/25 bg-caudal-electric/[0.10] text-caudal-electric' };
   }
   if ((match?.events || []).some((event) => event.reviewed)) {
     return { label: 'ANALIZADO', className: 'border-emerald-200/25 bg-emerald-200/[0.10] text-emerald-100' };
   }
-  if ((match?.events || []).length || (match?.quickEvents || []).length) {
+  if ((match?.events || []).length) {
     return { label: 'EN REVISIÓN', className: 'border-sky-200/25 bg-sky-200/[0.10] text-sky-100' };
   }
   return { label: 'CERRADO', className: 'border-white/15 bg-white/[0.055] text-slate-300' };
@@ -19461,36 +19456,29 @@ function App() {
                             <p className="mt-2 line-clamp-1 text-sm font-bold text-white">{caudalIsHome ? match.opponent : 'C.D. Caudal'}</p>
                           </div>
                         </div>
-                        {(played || hasPendingQuickEvents(match)) ? (
+                        {played ? (
                           <div className="relative px-4 pb-3">
-                            {played ? (
-                              timelineEvents.length ? (
-                                <div className="grid gap-1 rounded-2xl border border-white/10 bg-slate-950/[0.18] p-2">
-                                  {timelineEvents.map((event, index) => (
-                                    <div key={`${event.label}-${event.icon}-${event.minute}-${index}`} className="grid grid-cols-[34px_22px_1fr] items-start gap-2 border-b border-white/[0.055] px-1.5 py-1.5 text-xs last:border-b-0">
-                                      <span className="font-black tabular-nums text-slate-500">{event.minute || ''}</span>
-                                      <span className="leading-none">{event.icon}</span>
-                                      <span className={`min-w-0 font-semibold ${event.side === 'caudal' ? 'text-emerald-100' : event.side === 'rival' ? 'text-red-100' : 'text-slate-200'}`}>
-                                        <span className="block truncate">{event.label}{event.detail ? ` ${event.detail}` : ''}</span>
-                                        {event.assist ? <span className="mt-0.5 block truncate text-[11px] font-bold text-caudal-electric">↳ {event.assist}</span> : null}
-                                      </span>
-                                    </div>
-                                  ))}
-                                  {hiddenMatchEventCount ? (
-                                    <p className="px-1.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">+{hiddenMatchEventCount} eventos más</p>
-                                  ) : null}
-                                </div>
-                              ) : (
-                                <div className="rounded-2xl border border-white/10 bg-slate-950/[0.18] px-3 py-3 text-xs font-semibold text-slate-500">
-                                  Sin eventos registrados.
-                                </div>
-                              )
-                            ) : null}
-                            {hasPendingQuickEvents(match) ? (
-                              <p className={`${played ? 'mt-2' : ''} rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs font-bold text-amber-100`}>
-                                {pendingQuickEventsMessage}
-                              </p>
-                            ) : null}
+                            {timelineEvents.length ? (
+                              <div className="grid gap-1 rounded-2xl border border-white/10 bg-slate-950/[0.18] p-2">
+                                {timelineEvents.map((event, index) => (
+                                  <div key={`${event.label}-${event.icon}-${event.minute}-${index}`} className="grid grid-cols-[34px_22px_1fr] items-start gap-2 border-b border-white/[0.055] px-1.5 py-1.5 text-xs last:border-b-0">
+                                    <span className="font-black tabular-nums text-slate-500">{event.minute || ''}</span>
+                                    <span className="leading-none">{event.icon}</span>
+                                    <span className={`min-w-0 font-semibold ${event.side === 'caudal' ? 'text-emerald-100' : event.side === 'rival' ? 'text-red-100' : 'text-slate-200'}`}>
+                                      <span className="block truncate">{event.label}{event.detail ? ` ${event.detail}` : ''}</span>
+                                      {event.assist ? <span className="mt-0.5 block truncate text-[11px] font-bold text-caudal-electric">↳ {event.assist}</span> : null}
+                                    </span>
+                                  </div>
+                                ))}
+                                {hiddenMatchEventCount ? (
+                                  <p className="px-1.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">+{hiddenMatchEventCount} eventos más</p>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <div className="rounded-2xl border border-white/10 bg-slate-950/[0.18] px-3 py-3 text-xs font-semibold text-slate-500">
+                                Sin eventos registrados.
+                              </div>
+                            )}
                           </div>
                         ) : null}
                         <div className="grid grid-cols-4 border-t border-white/10">
@@ -19557,11 +19545,6 @@ function App() {
                       </button>
                     ))}
                   </div>
-                  {hasPendingQuickEvents(selectedMatch) ? (
-                    <div className="mt-5 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm font-semibold text-amber-100">
-                      {pendingQuickEventsMessage}
-                    </div>
-                  ) : null}
                 </div>
 
                 {matchView === 'pre_partido' ? (
