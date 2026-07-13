@@ -12609,24 +12609,28 @@ function App() {
     });
   };
 
-  const getMatchScoreData = (match) => {
-    const events = match.statsGoalEvents || [];
-    const caudalGoals = events.filter((event) => event.type === 'Gol a favor').length || Number(match.goalsFor) || Number(match.isHome ? match.homeScore : match.awayScore) || 0;
-    const rivalGoals = events.filter((event) => event.type === 'Gol en contra').length || Number(match.goalsAgainst) || Number(match.isHome ? match.awayScore : match.homeScore) || 0;
+  const getMatchScoreData = (match, officialGoals = null) => {
+    const events = safeArray(officialGoals || match.statsGoalEvents);
+    const goalForEvents = events.filter((event) => event.type === 'Gol a favor').length;
+    const goalAgainstEvents = events.filter((event) => event.type === 'Gol en contra').length;
+    const caudalGoals = goalForEvents || Number(match.goalsFor) || Number(match.isHome ? match.homeScore : match.awayScore) || 0;
+    const rivalGoals = goalAgainstEvents || Number(match.goalsAgainst) || Number(match.isHome ? match.awayScore : match.homeScore) || 0;
     return { caudalGoals, rivalGoals };
   };
 
-  const hasCompleteOfficialScore = (match = {}) => {
+  const hasCompleteOfficialScore = (match = {}, officialGoals = null) => {
     const hasHomeAwayScore = hasRealValue(match.homeScore) && hasRealValue(match.awayScore);
     const hasForAgainstScore = hasRealValue(match.goalsFor) && hasRealValue(match.goalsAgainst);
-    const hasOfficialGoalEvents = safeArray(match.statsGoalEvents).length > 0;
+    const hasOfficialGoalEvents = safeArray(officialGoals || match.statsGoalEvents).some((event) => ['Gol a favor', 'Gol en contra'].includes(event.type));
     return hasHomeAwayScore || hasForAgainstScore || hasOfficialGoalEvents;
   };
 
-  const isOfficialPlayedMatch = (match = {}) => {
+  const isOfficialPlayedMatch = (match = {}, officialGoals = null) => {
     const status = normalizeCatalogText(match.status);
-    const hasPlayedStatus = ['finalizado', 'jugado'].includes(status);
-    return hasPlayedStatus && hasCompleteOfficialScore(match);
+    const playedFlag = match.jugado === true || match.played === true || match.isPlayed === true || match.is_played === true;
+    const hasPlayedStatus = ['finalizado', 'jugado', 'played', 'finished'].includes(status);
+    const hasScore = hasCompleteOfficialScore(match, officialGoals);
+    return hasScore && (playedFlag || hasPlayedStatus || hasScore);
   };
 
   const getCompetitionResultScope = (filter) => {
@@ -12827,7 +12831,7 @@ function App() {
     };
   };
 
-  const getGroupScopedMatches = ({ ignoreResultFilter = false } = {}) => {
+  const getGroupScopedMatches = () => {
     let scoped = matches
       .filter(isOfficialPlayedMatch)
       .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
@@ -12835,19 +12839,6 @@ function App() {
     if (competitionKey !== 'all') scoped = scoped.filter((match) => normalizeCompetitionKey(match) === competitionKey);
     if (groupContextFilter === 'Local') scoped = scoped.filter((match) => match.isHome);
     if (groupContextFilter === 'Visitante') scoped = scoped.filter((match) => !match.isHome);
-    if (!ignoreResultFilter && groupContextFilter === 'Victorias') scoped = scoped.filter((match) => {
-      const score = getMatchScoreData(match);
-      return score.caudalGoals > score.rivalGoals;
-    });
-    if (!ignoreResultFilter && groupContextFilter === 'Empates') scoped = scoped.filter((match) => {
-      const score = getMatchScoreData(match);
-      return score.caudalGoals === score.rivalGoals;
-    });
-    if (!ignoreResultFilter && groupContextFilter === 'Derrotas') scoped = scoped.filter((match) => {
-      const score = getMatchScoreData(match);
-      return score.caudalGoals < score.rivalGoals;
-    });
-    if (groupContextFilter === 'Últimos 5 partidos') scoped = scoped.slice(-5);
     return scoped;
   };
 
@@ -19387,7 +19378,7 @@ function App() {
           const allGoalRows = filteredOfficialGoals;
           const groupData = summarizeGroupMatches(scopedMatches);
           const competitionResults = buildCompetitionResults(
-            getGroupScopedMatches({ ignoreResultFilter: true }).map((match) => ({
+            getGroupScopedMatches().map((match) => ({
               ...match,
               statsGoalEvents: safeArray(match.statsGoalEvents),
               events: safeArray(match.events),
@@ -19611,7 +19602,7 @@ function App() {
                           <CompetitionIdentity competition={getCompetitionFilterIdentity(filter)} size="xs" />
                         </button>
                       ))}
-                      {['Todos', 'Local', 'Visitante', 'Últimos 5 partidos', 'Victorias', 'Empates', 'Derrotas'].map((filter) => (
+                      {['Todos', 'Local', 'Visitante'].map((filter) => (
                         <button key={filter} type="button" onClick={() => setGroupContextFilter(filter)} className={`rounded-2xl px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] ${groupContextFilter === filter ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}>{filter}</button>
                       ))}
                     </div>
