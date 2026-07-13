@@ -2215,6 +2215,25 @@ const PlayerPortrait = ({ player = {}, className = '', imgClassName = 'h-full w-
     <PlayerAvatarFallback player={player} className={className} textClassName={fallbackTextClassName} />
   );
 };
+const PlayerIdentity = ({ player = {}, name = '', meta = '', size = 'sm' }) => {
+  const avatarSize = size === 'xs' ? 'h-8 w-8 rounded-lg' : 'h-10 w-10 rounded-xl';
+  const displayName = player?.name ? displayPlayerName(player) || player.name : name || 'Jugador no identificado';
+  const detail = [
+    player?.number ? `#${player.number}` : '',
+    meta,
+  ].filter(Boolean).join(' · ');
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <div className={`shrink-0 overflow-hidden bg-white ${avatarSize}`}>
+        <PlayerPortrait player={player?.name ? player : { name: displayName }} className="h-full w-full" fallbackTextClassName="text-[10px]" />
+      </div>
+      <div className="min-w-0">
+        <p className="break-words text-sm font-black leading-tight text-white">{displayName}</p>
+        {detail ? <p className="mt-0.5 break-words text-[11px] font-bold text-slate-500">{detail}</p> : null}
+      </div>
+    </div>
+  );
+};
 const playerReservePlacement = (player) => {
   return 'below';
 };
@@ -12132,7 +12151,8 @@ function App() {
             scorerName: emptyToNull(event.scorer),
             assistantId: event.assistantId || null,
             assistantName: emptyToNull(event.assistant),
-            minute: hasRealValue(event.minute) ? Number(event.minute) : null,
+            minuteRaw: event.minute || '',
+            minute: parseGoalMinute(event.minute),
             period: emptyToNull(event.half),
             goalContext: normalizeOfficialGoalContext(event),
             subphase: emptyToNull(event.subphase),
@@ -12186,8 +12206,16 @@ function App() {
   const buildOfficialIndividualRankings = (officialGoals = [], scopedMatches = []) => {
     const playerKey = (player) => player?.id || normalizePlayerIdentityName(player?.name || '');
     const goalPlayerKey = (id, name) => id || normalizePlayerIdentityName(name || '');
+    const playersById = new Map(safeArray(players).filter((player) => player?.id).map((player) => [player.id, player]));
+    const playersByName = new Map(safeArray(players).filter((player) => player?.name).map((player) => [normalizePlayerIdentityName(player.name), player]));
+    const resolveOfficialPlayer = (id, name) => {
+      if (id && playersById.has(id)) return playersById.get(id);
+      const normalizedName = normalizePlayerIdentityName(name || '');
+      return normalizedName ? playersByName.get(normalizedName) || null : null;
+    };
     const rowsByKey = new Map(safeArray(players).map((player) => [playerKey(player), {
       key: playerKey(player),
+      playerId: player.id || null,
       player,
       name: displayPlayerName(player) || player.name,
       goals: 0,
@@ -12201,13 +12229,15 @@ function App() {
     }]));
 
     const ensureRow = (id, name) => {
-      const key = goalPlayerKey(id, name);
+      const resolvedPlayer = resolveOfficialPlayer(id, name);
+      const key = resolvedPlayer ? playerKey(resolvedPlayer) : goalPlayerKey(id, name);
       if (!key) return null;
       if (!rowsByKey.has(key)) {
         rowsByKey.set(key, {
           key,
-          player: null,
-          name: name || 'Jugador no identificado',
+          playerId: resolvedPlayer?.id || id || null,
+          player: resolvedPlayer,
+          name: resolvedPlayer ? displayPlayerName(resolvedPlayer) || resolvedPlayer.name : name || 'Jugador no identificado',
           goals: 0,
           assists: 0,
           scoringMatches: new Set(),
@@ -12217,6 +12247,12 @@ function App() {
           ratingTotal: 0,
           ratingCount: 0,
         });
+      }
+      const row = rowsByKey.get(key);
+      if (!row.player && resolvedPlayer) {
+        row.player = resolvedPlayer;
+        row.playerId = resolvedPlayer.id || row.playerId;
+        row.name = displayPlayerName(resolvedPlayer) || resolvedPlayer.name;
       }
       return rowsByKey.get(key);
     };
@@ -12271,15 +12307,23 @@ function App() {
     };
   };
 
-  const buildGoalConnectionRows = (officialGoals = []) =>
-    Object.values(safeArray(officialGoals).filter((goal) => goal.teamSide === 'for' && (goal.scorerName || goal.scorerId) && (goal.assistantName || goal.assistantId)).reduce((acc, goal) => {
-      const scorer = goal.scorerName || goal.scorerId;
-      const assistant = goal.assistantName || goal.assistantId;
-      const key = `${assistant}->${scorer}`;
-      acc[key] = acc[key] || { key, assistant, scorer, count: 0 };
+  const buildGoalConnectionRows = (officialGoals = []) => {
+    const playersById = new Map(safeArray(players).filter((player) => player?.id).map((player) => [player.id, player]));
+    const playersByName = new Map(safeArray(players).filter((player) => player?.name).map((player) => [normalizePlayerIdentityName(player.name), player]));
+    const resolve = (id, name) => id && playersById.has(id)
+      ? playersById.get(id)
+      : playersByName.get(normalizePlayerIdentityName(name || '')) || null;
+    return Object.values(safeArray(officialGoals).filter((goal) => goal.teamSide === 'for' && (goal.scorerName || goal.scorerId) && (goal.assistantName || goal.assistantId)).reduce((acc, goal) => {
+      const scorerPlayer = resolve(goal.scorerId, goal.scorerName);
+      const assistantPlayer = resolve(goal.assistantId, goal.assistantName);
+      const scorer = scorerPlayer ? displayPlayerName(scorerPlayer) || scorerPlayer.name : goal.scorerName || goal.scorerId;
+      const assistant = assistantPlayer ? displayPlayerName(assistantPlayer) || assistantPlayer.name : goal.assistantName || goal.assistantId;
+      const key = `${assistantPlayer?.id || assistant}->${scorerPlayer?.id || scorer}`;
+      acc[key] = acc[key] || { key, assistant, scorer, assistantPlayer, scorerPlayer, count: 0 };
       acc[key].count += 1;
       return acc;
     }, {})).sort((a, b) => b.count - a.count || a.assistant.localeCompare(b.assistant));
+  };
 
   const renderReadOnlyZoneGrid = ({ counts, zones = pitchZoneOptions, goal = false }) => (
     <div className={`relative w-full max-w-full min-w-0 overflow-hidden rounded-3xl border border-white/18 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_24px_70px_rgba(0,0,0,0.28)] ${goal ? 'aspect-[16/9] min-h-[160px] bg-[radial-gradient(circle_at_50%_12%,rgba(79,140,255,0.16),transparent_34%),linear-gradient(180deg,#172033,#0a101d)] sm:min-h-[180px]' : 'aspect-[7/10] bg-[radial-gradient(circle_at_50%_45%,rgba(118,255,210,0.14),transparent_26%),linear-gradient(180deg,#0b5a42,#064432_48%,#073a30)]'}`}>
@@ -12549,10 +12593,43 @@ function App() {
       const isLastRange = to === 90;
       return {
         range,
-        count: rows.filter((event) => Number(event.minute) >= from && (isLastRange ? Number(event.minute) <= to : Number(event.minute) < to)).length,
+        count: rows.filter((event) => {
+          const minute = parseGoalMinute(event.minute);
+          return minute !== null && minute >= from && (isLastRange ? minute <= to : minute < to);
+        }).length,
       };
     });
   };
+
+  const goalTimeBuckets = ['0-15', '15-30', '30-45', '45-60', '60-75', '75-90'];
+
+  const parseGoalMinute = (minuteValue) => {
+    if (!hasRealValue(minuteValue)) return null;
+    const text = String(minuteValue).trim();
+    const base = Number(text.split('+')[0].replace(/[^\d.-]/g, ''));
+    if (!Number.isFinite(base)) return null;
+    return Math.max(0, Math.min(90, base));
+  };
+
+  const getGoalTimeBucket = (minuteValue) => {
+    const minute = parseGoalMinute(minuteValue);
+    if (minute === null) return null;
+    if (minute <= 15) return '0-15';
+    if (minute <= 30) return '15-30';
+    if (minute <= 45) return '30-45';
+    if (minute <= 60) return '45-60';
+    if (minute <= 75) return '60-75';
+    return '75-90';
+  };
+
+  const buildGoalTimeBucketRows = (officialGoals = []) => goalTimeBuckets.map((bucket) => {
+    const bucketGoals = safeArray(officialGoals).filter((goal) => getGoalTimeBucket(goal.minuteRaw ?? goal.minute) === bucket);
+    return {
+      range: bucket,
+      forCount: bucketGoals.filter((goal) => goal.teamSide === 'for').length,
+      againstCount: bucketGoals.filter((goal) => goal.teamSide === 'against').length,
+    };
+  });
 
   const countPhases = (events) => safeArray(['Juego combinativo', 'Juego directo', 'Transición', 'ABP']).map((phase) => ({
     phase,
@@ -18930,7 +19007,12 @@ function App() {
           const leagueResults = calculateLeagueResults(matches);
           const minuteFor = groupEventsByMinuteRange(goalForRows);
           const minuteAgainst = groupEventsByMinuteRange(goalAgainstRows);
-          const maxMinuteGoals = Math.max(1, ...minuteFor.map((row) => row.count), ...minuteAgainst.map((row) => row.count));
+          const goalTimeRows = buildGoalTimeBucketRows(filteredOfficialGoals);
+          const maxMinuteGoals = Math.max(1, ...goalTimeRows.map((row) => row.forCount), ...goalTimeRows.map((row) => row.againstCount));
+          const totalBucketFor = goalTimeRows.reduce((sum, row) => sum + row.forCount, 0);
+          const totalBucketAgainst = goalTimeRows.reduce((sum, row) => sum + row.againstCount, 0);
+          const topForBucket = goalTimeRows.filter((row) => row.forCount > 0).sort((a, b) => b.forCount - a.forCount)[0] || null;
+          const topAgainstBucket = goalTimeRows.filter((row) => row.againstCount > 0).sort((a, b) => b.againstCount - a.againstCount)[0] || null;
           const goalTypeRows = buildOfficialGoalTypeRows(filteredOfficialGoals);
           const phaseFor = goalTypeRows.map((row) => ({ phase: row.context === 'Sin clasificar' ? 'Sin contexto registrado' : row.context, count: row.forCount }));
           const phaseAgainst = goalTypeRows.map((row) => ({ phase: row.context === 'Sin clasificar' ? 'Sin contexto registrado' : row.context, count: row.againstCount }));
@@ -19049,12 +19131,9 @@ function App() {
           );
           const zoneTotal = (counts) => Object.values(counts || {}).reduce((sum, count) => sum + Number(count || 0), 0);
           const rankingRow = (row, value, meta = '') => (
-            <div key={`${row.key}-${value}-${meta}`} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl bg-white/5 px-4 py-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-black text-white">{row.name}</p>
-                {meta ? <p className="mt-1 text-xs font-bold text-slate-500">{meta}</p> : null}
-              </div>
-              <span className="text-sm font-black text-caudal-electric">{value}</span>
+            <div key={`${row.key}-${value}-${meta}`} className="grid gap-3 rounded-2xl bg-white/5 px-4 py-3 sm:grid-cols-[1fr_auto] sm:items-center">
+              <PlayerIdentity player={row.player || { name: row.name }} name={row.name} meta={meta} size="sm" />
+              <span className="text-sm font-black text-caudal-electric sm:text-right">{value}</span>
             </div>
           );
           const rankingTabs = ['Goles', 'Asistencias', 'Eficiencia', 'Participación', 'Conexiones'];
@@ -19103,9 +19182,13 @@ function App() {
             return connectionRows.length ? (
               <div className="grid gap-3 lg:grid-cols-2">
                 {connectionRows.slice(0, 5).map((row) => (
-                  <div key={row.key} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl bg-white/5 px-4 py-3">
-                    <p className="truncate text-sm font-black text-white">{row.assistant} {'->'} {row.scorer}</p>
-                    <span className="text-sm font-black text-caudal-electric">{row.count} goles</span>
+                  <div key={row.key} className="grid gap-3 rounded-2xl bg-white/5 px-4 py-3 sm:grid-cols-[1fr_auto] sm:items-center">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <PlayerIdentity player={row.assistantPlayer || { name: row.assistant }} name={row.assistant} size="xs" />
+                      <span className="shrink-0 text-sm font-black text-caudal-electric">→</span>
+                      <PlayerIdentity player={row.scorerPlayer || { name: row.scorer }} name={row.scorer} size="xs" />
+                    </div>
+                    <span className="text-sm font-black text-caudal-electric sm:text-right">{row.count} goles</span>
                   </div>
                 ))}
               </div>
@@ -19179,6 +19262,54 @@ function App() {
                 </section>
 
                 <section className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Goles por tramos</h3>
+                      <p className="mt-2 text-sm font-semibold text-slate-400">Distribución oficial de goles a favor y en contra en la muestra filtrada.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-[0.12em]">
+                      <span className="rounded-xl bg-caudal-electric/15 px-3 py-2 text-caudal-electric">A favor {totalBucketFor}</span>
+                      <span className="rounded-xl bg-red-400/15 px-3 py-2 text-red-100">En contra {totalBucketAgainst}</span>
+                    </div>
+                  </div>
+                  {!hasData ? (
+                    <p className="mt-5 rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">No hay partidos para los filtros seleccionados.</p>
+                  ) : !filteredOfficialGoals.length ? (
+                    <p className="mt-5 rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">No se registraron goles en los partidos filtrados.</p>
+                  ) : (
+                    <>
+                      <div className="mt-6 space-y-4">
+                        {goalTimeRows.map((row) => (
+                          <div key={row.range} className="grid gap-3 rounded-2xl bg-white/[0.035] p-3 sm:grid-cols-[64px_1fr] sm:items-center">
+                            <p className="text-xs font-black tabular-nums text-slate-400">{row.range}'</p>
+                            <div className="space-y-2">
+                              <div className="grid grid-cols-[80px_1fr_28px] items-center gap-2">
+                                <span className="text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">A favor</span>
+                                <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
+                                  <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${(row.forCount / maxMinuteGoals) * 100}%` }} />
+                                </div>
+                                <span className="text-right text-xs font-black text-white">{row.forCount}</span>
+                              </div>
+                              <div className="grid grid-cols-[80px_1fr_28px] items-center gap-2">
+                                <span className="text-[10px] font-black uppercase tracking-[0.12em] text-red-200">En contra</span>
+                                <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
+                                  <div className="h-full rounded-full bg-red-400" style={{ width: `${(row.againstCount / maxMinuteGoals) * 100}%` }} />
+                                </div>
+                                <span className="text-right text-xs font-black text-white">{row.againstCount}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-5 grid gap-3 md:grid-cols-2">
+                        <p className="rounded-2xl bg-black/15 px-4 py-3 text-sm font-semibold text-slate-300">Mayor concentración a favor: <span className="font-black text-white">{topForBucket ? `${topForBucket.range}' (${topForBucket.forCount})` : 'Sin goles a favor'}</span></p>
+                        <p className="rounded-2xl bg-black/15 px-4 py-3 text-sm font-semibold text-slate-300">Mayor concentración en contra: <span className="font-black text-white">{topAgainstBucket ? `${topAgainstBucket.range}' (${topAgainstBucket.againstCount})` : 'Sin goles en contra'}</span></p>
+                      </div>
+                    </>
+                  )}
+                </section>
+
+                <section className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
                   <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Tipos de gol</h3>
                   <div className="mt-5 space-y-3">
                     {goalTypeRows.map((row) => {
@@ -19246,22 +19377,8 @@ function App() {
                   </div>
                 </section>
 
-                <section className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+                <section>
                   <LeagueResultsDistribution results={leagueResults} />
-                  <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Goles por tramos</h3>
-                    <div className="mt-8 grid h-72 grid-cols-6 items-end gap-3 border-b border-white/10 pb-4">
-                      {minuteFor.map((row, index) => (
-                        <div key={row.range} className="flex h-full flex-col items-center justify-end gap-2">
-                          <div className="flex h-56 w-full items-end justify-center gap-1">
-                            <div className="w-5 rounded-t-lg bg-caudal-electric" style={{ height: `${(row.count / maxMinuteGoals) * 100}%` }} title={`Favor: ${row.count}`} />
-                            <div className="w-5 rounded-t-lg bg-red-400" style={{ height: `${(minuteAgainst[index].count / maxMinuteGoals) * 100}%` }} title={`Contra: ${minuteAgainst[index].count}`} />
-                          </div>
-                          <span className="text-[10px] font-bold text-slate-500">{row.range}'</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
                 </section>
                 <section className="grid gap-6 xl:grid-cols-2">
                   {simpleSummaryTable('Local', localSummary)}
