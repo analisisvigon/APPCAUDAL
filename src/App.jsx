@@ -928,8 +928,8 @@ const getDelegatedDataStatus = (match = {}) => {
 const isDelegatedDataValidated = (match = {}) => getDelegatedDataStatus(match) === 'Validado';
 const getDelegatedStatusTone = (status) => ({
   Validado: 'border-emerald-300/25 bg-emerald-300/12 text-emerald-100',
-  Revisado: 'border-caudal-electric/25 bg-caudal-electric/12 text-caudal-electric',
-  'Sin revisar': 'border-yellow-300/25 bg-yellow-300/12 text-yellow-100',
+  Revisado: 'border-yellow-300/25 bg-yellow-300/12 text-yellow-100',
+  'Sin revisar': 'border-white/10 bg-slate-500/15 text-slate-300',
   Descartado: 'border-red-300/25 bg-red-400/12 text-red-100',
   'Sin registro': 'border-white/10 bg-white/[0.04] text-slate-400',
 }[status] || 'border-white/10 bg-white/[0.04] text-slate-300');
@@ -14772,30 +14772,136 @@ function App() {
     const visibleMatches = matchesWithDelegatedEvents
       .filter((match) => delegatedStatusFilter === 'Todos' || getDelegatedDataStatus(match) === delegatedStatusFilter)
       .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-    const rankingMatches = matchesWithDelegatedEvents.filter((match) => (
+    const analysisMatches = visibleMatches.filter((match) => (
       delegatedRankingScope === 'Todos los registros'
-        ? getDelegatedDataStatus(match) !== 'Descartado'
+        ? true
         : isDelegatedDataValidated(match)
     ));
-    const rankingEvents = rankingMatches.flatMap((match) => safeArray(match.quickEvents).map((event) => ({ ...event, match })));
+    const rankingEvents = analysisMatches.flatMap((match) => safeArray(match.quickEvents).map((event) => ({ ...event, match })));
     const collectiveSummary = getQuickEventSummary(rankingEvents);
-    const playerRows = players
-      .map((player) => {
-        const events = rankingEvents.filter((event) => event.jugadorId === player.id && getQuickEventSide(event) === 'caudal');
-        const stats = aggregateQuickEventStats(events, { side: 'caudal', playerId: player.id, scope: 'player' });
-        const total = EVENT_STAT_FIELDS.filter((field) => !field.teamOnly).reduce((sum, field) => sum + Number(stats[field.key] || 0), 0);
-        return { player, stats, total, matches: new Set(events.map((event) => event.partidoId)).size };
+    const getCoveredMinutes = (events = []) => {
+      const minutes = safeArray(events)
+        .map((event) => Number(event.minute || 0))
+        .filter((minute) => Number.isFinite(minute) && minute >= 0);
+      return minutes.length ? Math.min(90, Math.max(...minutes)) : 0;
+    };
+    const getCoveredPeriods = (events = []) => [
+      safeArray(events).some((event) => Number(event.minute || 0) < 45) ? '1T' : null,
+      safeArray(events).some((event) => Number(event.minute || 0) >= 45) ? '2T' : null,
+    ].filter(Boolean);
+    const getIndividualEvents = (events = []) => safeArray(events).filter((event) => Object.keys(EVENT_STAT_EFFECTS[getQuickEventBaseType(event.tipoEvento)]?.player || {}).length);
+    const visibleEvents = visibleMatches.flatMap((match) => safeArray(match.quickEvents).map((event) => ({ ...event, match })));
+    const visibleIndividualEvents = getIndividualEvents(visibleEvents);
+    const visibleSummary = {
+      registeredMatches: visibleMatches.length,
+      validatedMatches: visibleMatches.filter(isDelegatedDataValidated).length,
+      events: visibleEvents.length,
+      unidentified: visibleIndividualEvents.filter((event) => !event.jugadorId).length,
+      coveredMinutes: visibleMatches.reduce((sum, match) => sum + getCoveredMinutes(match.quickEvents), 0),
+      playersWithEvents: new Set(visibleEvents.filter((event) => getQuickEventSide(event) === 'caudal' && event.jugadorId).map((event) => event.jugadorId)).size,
+    };
+    const analysisIndividualEvents = getIndividualEvents(rankingEvents);
+    const analysisSummary = {
+      registeredMatches: analysisMatches.length,
+      validatedMatches: analysisMatches.filter(isDelegatedDataValidated).length,
+      events: rankingEvents.length,
+      unidentified: analysisIndividualEvents.filter((event) => !event.jugadorId).length,
+      coveredMinutes: analysisMatches.reduce((sum, match) => sum + getCoveredMinutes(match.quickEvents), 0),
+      coveredPeriods: analysisMatches.reduce((sum, match) => sum + getCoveredPeriods(match.quickEvents).length, 0),
+      playersWithEvents: new Set(rankingEvents.filter((event) => getQuickEventSide(event) === 'caudal' && event.jugadorId).map((event) => event.jugadorId)).size,
+    };
+    const playerRows = players.map((player) => {
+      const events = rankingEvents.filter((event) => event.jugadorId === player.id && getQuickEventSide(event) === 'caudal');
+      const stats = aggregateQuickEventStats(events, { side: 'caudal', playerId: player.id, scope: 'player' });
+      return { player, stats, matches: new Set(events.map((event) => event.partidoId)).size };
+    });
+    const getTopPlayerRows = (fieldKey) => {
+      const rows = playerRows
+        .map((row, index) => ({ ...row, sourceIndex: index, value: Number(row.stats[fieldKey] || 0) }))
+        .filter((row) => row.value > 0)
+        .sort((a, b) => b.value - a.value);
+      const topValues = [...new Set(rows.map((row) => row.value))].slice(0, 3);
+      return rows
+        .filter((row) => topValues.includes(row.value))
+        .map((row) => ({ ...row, rank: topValues.indexOf(row.value) + 1 }));
+    };
+    const metricComparisonRows = [
+      'goals',
+      'shots',
+      'shotsOnTarget',
+      'dribbles',
+      'crosses',
+      'turnovers',
+      'steals',
+      'recoveries',
+      'foulsCommitted',
+      'foulsReceived',
+      'corners',
+    ].map((key) => {
+      const field = EVENT_STAT_FIELDS.find((item) => item.key === key);
+      const caudal = Number(collectiveSummary.stats?.[key] || 0);
+      const rival = Number(collectiveSummary.rivalStats?.[key] || 0);
+      return { key, label: field?.label || key, caudal, rival, max: Math.max(caudal, rival, 1) };
+    }).filter((row) => row.caudal || row.rival);
+    const offensiveRows = [
+      ['Goles', collectiveSummary.goals],
+      ['Tiros', collectiveSummary.shots],
+      ['Tiros a puerta', collectiveSummary.shotsOnTarget],
+      ['Regates', collectiveSummary.dribbles],
+      ['Centros', collectiveSummary.crosses],
+      ['Corners', collectiveSummary.corners],
+    ].filter(([, value]) => Number(value || 0) > 0);
+    const possessionRows = [
+      ['Perdidas', collectiveSummary.losses],
+      ['Robos', collectiveSummary.steals],
+      ['Recuperaciones', collectiveSummary.recoveries],
+    ].filter(([, value]) => Number(value || 0) > 0);
+    const shotAccuracyText = collectiveSummary.shots
+      ? `${collectiveSummary.shotsOnTarget} de ${collectiveSummary.shots} · ${Math.round((collectiveSummary.shotsOnTarget / collectiveSummary.shots) * 100)}%`
+      : 'No disponible';
+    const possessionBalance = Number(collectiveSummary.steals || 0) + Number(collectiveSummary.recoveries || 0) - Number(collectiveSummary.losses || 0);
+    const possessionBalanceText = `${possessionBalance > 0 ? '+' : ''}${possessionBalance} · ${collectiveSummary.steals} robos, ${collectiveSummary.recoveries} recuperaciones, ${collectiveSummary.losses} perdidas`;
+    const individualRankingGroups = [
+      ['Mas tiros', 'shots'],
+      ['Mas tiros a puerta', 'shotsOnTarget'],
+      ['Mas regates', 'dribbles'],
+      ['Mas centros', 'crosses'],
+      ['Mas robos', 'steals'],
+      ['Mas recuperaciones', 'recoveries'],
+      ['Mas perdidas', 'turnovers'],
+      ['Mas faltas recibidas', 'foulsReceived'],
+      ['Mas faltas realizadas', 'foulsCommitted'],
+    ].map(([label, key]) => ({ label, key, rows: getTopPlayerRows(key) })).filter((group) => group.rows.length);
+    const eventTimelineRows = analysisMatches
+      .slice()
+      .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0))
+      .map((match) => {
+        const events = safeArray(match.quickEvents);
+        return {
+          match,
+          status: getDelegatedDataStatus(match),
+          events: events.length,
+          label: `${matchDisplayDate(match.date)} · ${match.opponent || 'Rival'}`,
+        };
       })
-      .filter((row) => row.total)
-      .sort((a, b) => b.total - a.total || b.stats.goals - a.stats.goals || b.stats.shots - a.stats.shots);
+      .filter((row) => row.events > 0);
+    const maxTimelineEvents = Math.max(1, ...eventTimelineRows.map((row) => row.events));
+    const renderMetricCard = (label, value) => (
+      <div key={label} className="rounded-2xl border border-white/5 bg-white/[0.045] p-4">
+        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+        <p className="mt-2 text-2xl font-black text-white">{value}</p>
+      </div>
+    );
     const auditMatch = (match) => {
       const events = safeArray(match.quickEvents);
-      const individualEvents = events.filter((event) => Object.keys(EVENT_STAT_EFFECTS[getQuickEventBaseType(event.tipoEvento)]?.player || {}).length);
+      const individualEvents = getIndividualEvents(events);
       const unidentified = individualEvents.filter((event) => !event.jugadorId).length;
       const caudalUnidentified = individualEvents.filter((event) => getQuickEventSide(event) === 'caudal' && !event.jugadorId).length;
       const invalidTypes = events.filter((event) => !EVENT_STAT_EFFECTS[getQuickEventBaseType(event.tipoEvento)]).length;
       const unreviewed = events.filter((event) => !event.reviewed).length;
       const minutes = events.map((event) => Number(event.minute || 0)).filter((minute) => Number.isFinite(minute));
+      const coveredMinutes = getCoveredMinutes(events);
+      const periods = getCoveredPeriods(events);
       const quickScore = getQuickEventSummary(events);
       const officialScore = getMatchScoreData(match);
       const checks = [
@@ -14809,18 +14915,13 @@ function App() {
       return {
         events,
         unidentified,
+        coveredMinutes,
+        coverageLabel: coveredMinutes ? `${coveredMinutes} de 90 minutos` : 'Sin minutos',
         duration: minutes.length ? `${Math.min(...minutes)}'-${Math.max(...minutes)}'` : 'Sin minutos',
-        periods: [
-          events.some((event) => Number(event.minute || 0) < 45) ? '1T' : null,
-          events.some((event) => Number(event.minute || 0) >= 45) ? '2T' : null,
-        ].filter(Boolean).join(' · ') || 'Sin periodo',
+        periods: periods.join(' · ') || 'Sin periodo',
         checks,
       };
     };
-    const groupedStats = ['Producción ofensiva', 'Seguridad con balón', 'Disciplina y duelos'].map((group) => ({
-      group,
-      rows: safeArray(collectiveSummary.statRows).filter((row) => row.group === group),
-    }));
 
     return (
       <main className="space-y-6">
@@ -14829,7 +14930,7 @@ function App() {
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-caudal-electric">Registro Delegado</p>
               <h2 className="mt-2 text-3xl font-black uppercase tracking-[0.08em] text-white">Datos en vivo</h2>
-              <p className="mt-2 max-w-3xl text-sm text-slate-400">Capa independiente de eventos rápidos. No alimenta rankings oficiales salvo partidos marcados como Validados.</p>
+              <p className="mt-2 max-w-3xl text-sm text-slate-400">Datos procedentes del registro delegado. Capa independiente: no alimenta rankings oficiales salvo partidos marcados como Validados.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {DELEGATED_DATA_FILTERS.map((filter) => (
@@ -14837,18 +14938,25 @@ function App() {
               ))}
             </div>
           </div>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            {[
-              ['Registro delegado', `${matchesWithDelegatedEvents.length} de ${matches.length} partidos`],
-              ['Validados', statusCounts.Validado || 0],
-              ['Revisados', statusCounts.Revisado || 0],
-              ['Sin revisar', statusCounts['Sin revisar'] || 0],
-              ['Descartados', statusCounts.Descartado || 0],
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-2xl border border-white/5 bg-white/[0.045] p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
-                <p className="mt-2 text-2xl font-black text-white">{value}</p>
-              </div>
+          {visibleEvents.length ? (
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+              {[
+                ['Partidos registrados', visibleSummary.registeredMatches],
+                ['Partidos validados', visibleSummary.validatedMatches],
+                ['Eventos registrados', visibleSummary.events],
+                ['Sin identificar', visibleSummary.unidentified],
+                ['Minutos cubiertos', visibleSummary.coveredMinutes],
+                ['Jugadores con eventos', visibleSummary.playersWithEvents],
+              ].map(([label, value]) => renderMetricCard(label, value))}
+            </div>
+          ) : (
+            <div className="empty-state mt-5">
+              <p className="font-bold text-slate-200">Sin datos registrados</p>
+            </div>
+          )}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {DELEGATED_DATA_STATUSES.map((status) => (
+              <span key={status} className={`rounded-2xl border px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${getDelegatedStatusTone(status)}`}>{status}: {statusCounts[status] || 0}</span>
             ))}
           </div>
         </section>
@@ -14856,8 +14964,8 @@ function App() {
         <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Acumulados del Registro Delegado</p>
-              <p className="mt-1 text-sm text-slate-400">Por defecto solo partidos validados. No son rankings oficiales de temporada.</p>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Panel de analisis delegado</p>
+              <p className="mt-1 text-sm text-slate-400">Datos procedentes del registro delegado · {delegatedRankingScope}. Filtro de estado: {delegatedStatusFilter}.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {['Solo validados', 'Todos los registros'].map((scope) => (
@@ -14866,42 +14974,162 @@ function App() {
             </div>
           </div>
           {rankingEvents.length ? (
-            <div className="mt-5 grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
-              <div className="grid gap-4">
-                {groupedStats.map((group) => (
-                  <div key={group.group} className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-white">{group.group}</p>
-                    <div className="mt-4 space-y-2">
-                      {group.rows.map((row) => (
-                        <div key={row.key} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-2xl bg-black/15 px-3 py-2">
-                          <span className="text-sm font-bold text-slate-300">{row.label}</span>
-                          <span className="text-sm font-black text-white">{row.caudal}</span>
-                          <span className="text-sm font-black text-red-200">{row.rival}</span>
+            <div className="mt-5 space-y-5">
+              <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+                <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Comparativa de eventos</p>
+                  <div className="mt-4 space-y-3">
+                    {metricComparisonRows.map((row) => (
+                      <div key={row.key} className="grid grid-cols-[minmax(6rem,1fr)_auto_minmax(8rem,1.35fr)_auto] items-center gap-3 rounded-2xl bg-black/15 px-3 py-2 max-sm:grid-cols-[1fr_auto_auto]">
+                        <span className="text-sm font-bold text-slate-300">{row.label}</span>
+                        <span className="text-sm font-black text-caudal-electric">{row.caudal}</span>
+                        <div className="flex h-7 items-center gap-1.5 max-sm:col-span-3 max-sm:order-last">
+                          <div className="flex-1">
+                            <div className="h-2 rounded-full bg-white/10">
+                              <div className="h-2 rounded-full bg-caudal-electric" style={{ width: `${Math.max(6, (row.caudal / row.max) * 100)}%` }} />
+                            </div>
+                          </div>
+                          <div className="flex-1">
+                            <div className="h-2 rounded-full bg-white/10">
+                              <div className="h-2 rounded-full bg-red-300" style={{ width: `${Math.max(6, (row.rival / row.max) * 100)}%` }} />
+                            </div>
+                          </div>
                         </div>
-                      ))}
+                        <span className="text-sm font-black text-red-200">{row.rival}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-3 text-xs font-bold text-slate-400">
+                    <span className="inline-flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-caudal-electric" />Caudal</span>
+                    <span className="inline-flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-red-300" />Rival</span>
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Produccion ofensiva</p>
+                  <div className="mt-4 grid gap-2">
+                    {offensiveRows.map(([label, value]) => {
+                      const maxValue = Math.max(1, ...offensiveRows.map(([, rowValue]) => Number(rowValue || 0)));
+                      return (
+                        <div key={label} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl bg-black/15 px-3 py-2">
+                          <span className="text-sm font-bold text-slate-300">{label}</span>
+                          <span className="text-sm font-black text-white">{value}</span>
+                          <div className="col-span-2 h-2 rounded-full bg-white/10">
+                            <div className="h-2 rounded-full bg-caudal-electric" style={{ width: `${Math.max(7, (Number(value || 0) / maxValue) * 100)}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.07] p-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">Precision de tiro</p>
+                      <p className="mt-1 text-lg font-black text-white">{shotAccuracyText}</p>
                     </div>
                   </div>
-                ))}
+                </div>
               </div>
-              <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
-                <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Ranking individual delegado</p>
-                <div className="mt-4 space-y-2">
-                  {playerRows.slice(0, 10).map((row) => (
-                    <div key={row.player.id} className="rounded-2xl bg-black/15 p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="truncate text-sm font-black text-white">{row.player.number ? `${row.player.number} · ` : ''}{displayPlayerName(row.player) || row.player.name}</p>
-                        <span className="text-sm font-black text-caudal-electric">{row.total}</span>
+
+              <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+                <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Recuperacion y posesion</p>
+                  <div className="mt-4 grid gap-2">
+                    {possessionRows.map(([label, value]) => {
+                      const maxValue = Math.max(1, ...possessionRows.map(([, rowValue]) => Number(rowValue || 0)));
+                      return (
+                        <div key={label} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl bg-black/15 px-3 py-2">
+                          <span className="text-sm font-bold text-slate-300">{label}</span>
+                          <span className="text-sm font-black text-white">{value}</span>
+                          <div className="col-span-2 h-2 rounded-full bg-white/10">
+                            <div className="h-2 rounded-full bg-emerald-300" style={{ width: `${Math.max(7, (Number(value || 0) / maxValue) * 100)}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.07] p-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-200">Balance de acciones de posesion</p>
+                      <p className="mt-1 text-lg font-black text-white">{possessionBalanceText}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Impacto individual</p>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {individualRankingGroups.map((group) => {
+                      const maxValue = Math.max(1, ...group.rows.map((row) => row.value));
+                      return (
+                        <div key={group.key} className="rounded-2xl bg-black/15 p-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{group.label}</p>
+                          <div className="mt-3 space-y-2">
+                            {group.rows.map((row) => (
+                              <div key={`${group.key}-${row.player.id}`} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
+                                <span className="text-xs font-black text-slate-500">{row.rank}.</span>
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-black text-white">{displayPlayerName(row.player) || row.player.name}</p>
+                                  <div className="mt-1 h-1.5 rounded-full bg-white/10">
+                                    <div className="h-1.5 rounded-full bg-caudal-electric" style={{ width: `${Math.max(8, (row.value / maxValue) * 100)}%` }} />
+                                  </div>
+                                </div>
+                                <span className="text-sm font-black text-caudal-electric">{row.value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {eventTimelineRows.length ? (
+                <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Eventos por partido</p>
+                  <div className="mt-4 flex h-48 items-end gap-2 overflow-hidden rounded-2xl bg-black/15 px-3 py-4">
+                    {eventTimelineRows.map((row) => (
+                      <div key={row.match.id} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-2">
+                        <span className="text-xs font-black text-white">{row.events}</span>
+                        <div className={`w-full max-w-10 rounded-t-xl ${row.status === 'Validado' ? 'bg-emerald-300' : row.status === 'Revisado' ? 'bg-yellow-300' : row.status === 'Descartado' ? 'bg-red-300' : 'bg-slate-500'}`} style={{ height: `${Math.max(12, (row.events / maxTimelineEvents) * 135)}px` }} title={row.label} />
+                        <span className="max-w-full truncate text-[10px] font-bold text-slate-500">{row.match.opponent || 'Rival'}</span>
                       </div>
-                      <p className="mt-1 text-xs text-slate-500">PJ {row.matches} · G {row.stats.goals} · T {row.stats.shots} · REC {row.stats.recoveries} · PER {row.stats.turnovers}</p>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-3 text-xs font-bold text-slate-400">
+                    <span className="inline-flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-emerald-300" />Validado</span>
+                    <span className="inline-flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-yellow-300" />Revisado</span>
+                    <span className="inline-flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-slate-500" />Sin revisar</span>
+                    <span className="inline-flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-red-300" />Descartado</span>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Cobertura del registro</p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                  {[
+                    ['Partidos con registro', analysisSummary.registeredMatches],
+                    ['Partidos validados', `${analysisSummary.validatedMatches} de ${analysisSummary.registeredMatches}`],
+                    ['Minutos cubiertos', analysisSummary.coveredMinutes],
+                    ['Periodos cubiertos', analysisSummary.coveredPeriods],
+                    ['Sin identificar', analysisSummary.unidentified],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-2xl bg-black/15 p-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                      <p className="mt-1 text-lg font-black text-white">{value}</p>
                     </div>
                   ))}
+                </div>
+                <div className="mt-4">
+                  <div className="flex items-center justify-between gap-3 text-xs font-bold text-slate-400">
+                    <span>{analysisSummary.validatedMatches} de {analysisSummary.registeredMatches} partidos validados</span>
+                  </div>
+                  <div className="mt-2 h-2 rounded-full bg-white/10">
+                    <div className="h-2 rounded-full bg-emerald-300" style={{ width: `${analysisSummary.registeredMatches ? (analysisSummary.validatedMatches / analysisSummary.registeredMatches) * 100 : 0}%` }} />
+                  </div>
                 </div>
               </div>
             </div>
           ) : (
             <div className="empty-state mt-5">
-              <p className="font-bold text-slate-200">Sin datos registrados para este filtro.</p>
-              <p className="mt-1">Valida algún partido o cambia a Todos los registros para consultar el histórico delegado.</p>
+              <p className="font-bold text-slate-200">No hay registros para este filtro.</p>
             </div>
           )}
         </section>
@@ -14932,7 +15160,7 @@ function App() {
                     {[
                       ['Eventos', audit.events.length],
                       ['Sin identificar', audit.unidentified],
-                      ['Duración cubierta', audit.duration],
+                      ['Duracion cubierta', audit.coverageLabel],
                       ['Periodos', audit.periods],
                       ['Comprobaciones', audit.checks.length || 'Sin alertas'],
                     ].map(([label, value]) => (
@@ -14941,6 +15169,15 @@ function App() {
                         <p className="mt-1 text-sm font-black text-white">{value}</p>
                       </div>
                     ))}
+                  </div>
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between gap-3 text-xs font-bold text-slate-400">
+                      <span>Cobertura por duracion real</span>
+                      <span>{audit.coverageLabel}</span>
+                    </div>
+                    <div className="mt-2 h-2 rounded-full bg-white/10">
+                      <div className="h-2 rounded-full bg-caudal-electric" style={{ width: `${Math.min(100, (audit.coveredMinutes / 90) * 100)}%` }} />
+                    </div>
                   </div>
                   {audit.checks.length ? (
                     <div className="mt-3 flex flex-wrap gap-2">
