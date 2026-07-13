@@ -82,16 +82,28 @@ function FloatingActionMenu({ anchorRect, width = 224, onClose, children }) {
 }
 
 function CompetitionIcon({ competition, className = 'h-9 w-9 rounded-xl', textClassName = 'text-[10px]' }) {
-  if (competition?.logoUrl) {
+  const [logoFailed, setLogoFailed] = useState(false);
+  if (competition?.logoUrl && !logoFailed) {
     return (
       <span className={`flex shrink-0 items-center justify-center border border-white/10 bg-white ${className}`}>
-        <img src={competition.logoUrl} alt="" className="h-full w-full object-contain p-1" />
+        <img src={competition.logoUrl} alt="" className="h-full w-full object-contain p-1" onError={() => setLogoFailed(true)} />
       </span>
     );
   }
   return (
     <span className={`flex shrink-0 items-center justify-center border border-white/10 bg-white/[0.06] font-black uppercase tracking-[0.08em] text-caudal-electric ${className} ${textClassName}`}>
       {competition?.icon || 'CP'}
+    </span>
+  );
+}
+
+function CompetitionIdentity({ competition, size = 'sm', showName = true }) {
+  const iconSize = size === 'xs' ? 'h-5 w-5 rounded-md' : size === 'md' ? 'h-9 w-9 rounded-xl' : 'h-7 w-7 rounded-lg';
+  const textSize = size === 'xs' ? 'text-[8px]' : 'text-[9px]';
+  return (
+    <span className="inline-flex min-w-0 items-center gap-2">
+      <CompetitionIcon competition={competition} className={iconSize} textClassName={textSize} />
+      {showName ? <span className="truncate">{competition?.label || competition?.name || 'Competicion'}</span> : null}
     </span>
   );
 }
@@ -321,8 +333,6 @@ const competitionOptions = [
   { value: 'playoff', label: 'Play Off' },
   { value: 'friendly', label: 'Amistoso' },
 ];
-const matchTypes = competitionOptions.map((competition) => competition.label);
-const matchFilters = ['Todos', ...matchTypes];
 const eventColorOptions = ['emerald', 'red', 'sky', 'violet', 'amber', 'orange', 'slate'];
 const goalPhaseOptions = {
   'Juego combinativo': ['Dentro del área', 'Fuera del área'],
@@ -906,18 +916,55 @@ const getMatchCompetition = (match = {}) => {
   return {
     key,
     ...meta,
-    logoUrl: match.competitionLogoUrl || match.competition_logo_url || meta.logoUrl || '',
+    logoUrl: meta.logoUrl || '',
   };
 };
-
-const filterMatchesByCompetition = (rows = [], competitionKey = 'all') =>
-  safeArray(rows).filter((match) => competitionKey === 'all' || getMatchCompetition(match).key === competitionKey);
 
 const getCompetitionFilterKey = (filter) => {
   const normalized = normalizeCatalogText(filter);
   if (!normalized || normalized === 'todos') return 'all';
   if (normalized === 'copa') return 'copa_rfef';
   return normalizeCompetitionKey(normalized);
+};
+
+const buildDefaultCompetitionCatalog = () =>
+  competitionOptions.map((competition) => {
+    const meta = getCompetitionMeta(competition.value);
+    return {
+      id: null,
+      key: competition.value,
+      name: competition.label,
+      label: competition.label,
+      shortName: meta.shortTitle,
+      icon: meta.icon,
+      logoUrl: meta.logoUrl || '',
+      isActive: true,
+    };
+  });
+
+const normalizeSupabaseCompetition = (competition = {}) => {
+  const key = normalizeCompetitionKey(competition.key || competition.competition_key || competition);
+  const meta = getCompetitionMeta(key);
+  return {
+    id: competition.id || null,
+    key,
+    name: competition.name || meta.label,
+    label: competition.name || meta.label,
+    shortName: competition.short_name || competition.shortName || meta.shortTitle,
+    icon: competition.fallback_icon || competition.fallbackIcon || meta.icon,
+    logoUrl: competition.logo_url || competition.logoUrl || meta.logoUrl || '',
+    season: competition.season || '',
+    isActive: competition.is_active ?? competition.isActive ?? true,
+  };
+};
+
+const mergeCompetitionCatalog = (rows = []) => {
+  const byKey = new Map(buildDefaultCompetitionCatalog().map((competition) => [competition.key, competition]));
+  safeArray(rows).map(normalizeSupabaseCompetition).forEach((competition) => {
+    if (competition.key === 'other') return;
+    byKey.set(competition.key, { ...(byKey.get(competition.key) || {}), ...competition });
+  });
+  return Array.from(byKey.values()).filter((competition) => competition.isActive);
 };
 
 const normalizePreAiAnalysis = (value) => {
@@ -998,7 +1045,6 @@ const normalizeSupabasePartido = (match) =>
     type: match.type || '',
     competitionKey: match.competition_key || match.competitionKey || normalizeCompetitionKey(match),
     competitionId: match.competition_id || match.competitionId || null,
-    competitionLogoUrl: match.competition_logo_url || match.competitionLogoUrl || '',
     round: match.round || '',
     stadium: match.stadium || '',
     opponent: match.opponent || '',
@@ -1017,18 +1063,19 @@ const normalizeSupabasePartido = (match) =>
     equipoRivalId: match.equipo_rival_id || null,
   });
 
-const createPartidoPayload = (matchFormState, teams = []) => {
+const createPartidoPayload = (matchFormState, teams = [], competitions = []) => {
   const selectedTeam = findTeamByDisplayName(teams, matchFormState.opponent);
   const equipoRivalId = isUuid(selectedTeam?.id) ? selectedTeam.id : null;
   const roundValue = String(matchFormState.round || '').trim();
   const competitionKey = normalizeCompetitionKey(matchFormState.competitionKey);
   const competitionMeta = getCompetitionMeta(competitionKey);
+  const selectedCompetition = safeArray(competitions).find((competition) => competition.key === competitionKey);
   const basePayload = {
     date: matchFormState.date || null,
     time: matchFormState.time || '',
     type: competitionKey === 'other' ? '' : competitionMeta.label,
     competition_key: competitionKey === 'other' ? null : competitionKey,
-    competition_logo_url: matchFormState.competitionLogoUrl || null,
+    competition_id: isUuid(selectedCompetition?.id) ? selectedCompetition.id : null,
     round: roundValue || null,
     stadium: matchFormState.stadium || '',
     opponent: selectedTeam ? cleanTeamDisplayName(selectedTeam.name) : matchFormState.opponent || '',
@@ -3235,6 +3282,10 @@ function App() {
   const [homePhraseSaving, setHomePhraseSaving] = useState(false);
   const [homePhraseStatus, setHomePhraseStatus] = useState('');
   const [matches, setMatches] = useState([]);
+  const [competitions, setCompetitions] = useState(() => buildDefaultCompetitionCatalog());
+  const [competitionCatalogError, setCompetitionCatalogError] = useState('');
+  const [uploadingCompetitionKey, setUploadingCompetitionKey] = useState('');
+  const [competitionIconStatus, setCompetitionIconStatus] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [draggedPlayer, setDraggedPlayer] = useState(null);
   const [importStatus, setImportStatus] = useState('');
@@ -3672,6 +3723,45 @@ function App() {
     if (!rows.length) return;
     const { error: insertError } = await supabase.from("equipo_rival_banquillo").insert(rows);
     if (insertError) throw insertError;
+  };
+
+  const competitionFilterOptions = useMemo(
+    () => ['Todos', ...competitions.map((competition) => competition.label)],
+    [competitions]
+  );
+
+  const getCompetitionFilterIdentity = (filter) => {
+    const key = getCompetitionFilterKey(filter);
+    if (key === 'all') return COMPETITION_META.all;
+    return getCompetitionFromCatalog(key);
+  };
+
+  const getCompetitionFromCatalog = (matchOrKey = {}) => {
+    const key = normalizeCompetitionKey(matchOrKey);
+    const fallback = { key, ...getCompetitionMeta(key) };
+    const found = competitions.find((competition) => competition.key === key);
+    return found ? { ...fallback, ...found, key } : fallback;
+  };
+
+  const filterMatchesByCompetitionCatalog = (rows = [], competitionKey = 'all') =>
+    safeArray(rows).filter((match) => competitionKey === 'all' || getCompetitionFromCatalog(match).key === competitionKey);
+
+  const loadCompetitions = async () => {
+    const { data, error } = await supabase
+      .from("competitions")
+      .select("*")
+      .order("name", { ascending: true });
+    if (error) {
+      console.warn('No se pudo cargar el catalogo de competiciones; se usa fallback local:', error);
+      setCompetitionCatalogError('Catalogo persistente de competiciones no disponible.');
+      const fallback = buildDefaultCompetitionCatalog();
+      setCompetitions(fallback);
+      return fallback;
+    }
+    const nextCatalog = mergeCompetitionCatalog(data || []);
+    setCompetitionCatalogError('');
+    setCompetitions(nextCatalog);
+    return nextCatalog;
   };
 
   const loadPartidos = async () => {
@@ -4404,6 +4494,12 @@ function App() {
     return () => {
       isMounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    loadCompetitions().catch((loadError) => {
+      console.error('Error cargando competiciones desde Supabase:', loadError);
+    });
   }, []);
 
   useEffect(() => {
@@ -5169,7 +5265,7 @@ function App() {
   };
 
   const formatLitoAmbiguousMatches = (matches) =>
-    matches.map((match) => `${formatLitoMatchName(match)} · ${getMatchCompetition(match).label || 'Competición sin indicar'}`).join(', ');
+    matches.map((match) => `${formatLitoMatchName(match)} · ${getCompetitionFromCatalog(match).label || 'Competición sin indicar'}`).join(', ');
 
   const getLitoGoalsForMatch = (context, match) =>
     context.goals.filter((goal) => goal.partidoId === match?.id && goal.type === 'Gol a favor');
@@ -10649,7 +10745,7 @@ function App() {
       if (Number.isNaN(date.getTime())) return String(dateValue || '');
       return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
     };
-    const matchMeta = [getMatchCompetition(selectedMatch).label, formatStatsMatchDate(selectedMatch.date)].filter(Boolean).join(' · ');
+    const matchMeta = [getCompetitionFromCatalog(selectedMatch).label, formatStatsMatchDate(selectedMatch.date)].filter(Boolean).join(' · ');
     const statRows = [...getStatsCalledPlayers()].sort((a, b) => {
       const roleDiff = (getStatsPlayerData(a.name).role === 'Titular' ? -1 : 1) - (getStatsPlayerData(b.name).role === 'Titular' ? -1 : 1);
       return roleDiff || displayPlayerName(a).localeCompare(displayPlayerName(b));
@@ -11366,7 +11462,7 @@ function App() {
               ['Rival', selectedMatch.opponent || 'Rival'],
               ['Sistema rival', getCurrentRivalSystem()],
               ['Fecha', matchDisplayDate(selectedMatch.date)],
-              ['Competición', getMatchCompetition(selectedMatch).label || 'Partido'],
+              ['Competición', getCompetitionFromCatalog(selectedMatch).label || 'Partido'],
               ['Pendientes', pendingQuick],
             ].map(([label, value]) => (
               <div key={label} className="rounded-2xl border border-white/5 bg-white/[0.045] p-4">
@@ -12063,7 +12159,7 @@ function App() {
         };
       })
       .filter(Boolean)
-      .filter((row) => filterMatchesByCompetition([row.match], getCompetitionFilterKey(playerCompetitionFilter)).length)
+      .filter((row) => filterMatchesByCompetitionCatalog([row.match], getCompetitionFilterKey(playerCompetitionFilter)).length)
       .filter((row) => playerVenueFilter === 'Todos' || (playerVenueFilter === 'Local' ? row.match.isHome : !row.match.isHome));
   };
 
@@ -12173,7 +12269,7 @@ function App() {
       .filter((event) => event.match)
       .filter((event) => playerDelegatedScope === 'Todos los registros' || isDelegatedDataValidated(event.match))
       .filter((event) => event.jugadorId === player.id && getQuickEventSide(event) === 'caudal')
-      .filter((event) => filterMatchesByCompetition([event.match], getCompetitionFilterKey(playerCompetitionFilter)).length)
+      .filter((event) => filterMatchesByCompetitionCatalog([event.match], getCompetitionFilterKey(playerCompetitionFilter)).length)
       .filter((event) => playerVenueFilter === 'Todos' || (playerVenueFilter === 'Local' ? event.match.isHome : !event.match.isHome));
     const orderedMatchIds = [...new Map(
       scopedReviewedEvents
@@ -12535,7 +12631,7 @@ function App() {
 
   const getCompetitionResultScope = (filter) => {
     const key = getCompetitionFilterKey(filter);
-    const meta = getCompetitionMeta(key);
+    const meta = getCompetitionFromCatalog(key);
     return {
       key,
       meta,
@@ -13848,12 +13944,12 @@ function App() {
   );
 
   const filteredMatches = useMemo(
-    () => filterMatchesByCompetition(matches, getCompetitionFilterKey(matchFilter)),
+    () => filterMatchesByCompetitionCatalog(matches, getCompetitionFilterKey(matchFilter)),
     [matchFilter, matches]
   );
 
   const matchStats = useMemo(() => {
-    const scopedMatches = filterMatchesByCompetition(matches, getCompetitionFilterKey(matchFilter));
+    const scopedMatches = filterMatchesByCompetitionCatalog(matches, getCompetitionFilterKey(matchFilter));
     const finished = scopedMatches.filter((match) => match.status === 'Finalizado' || (match.statsGoalEvents || []).length > 0);
     const wins = finished.filter((match) => getMatchResult(match) === 'W').length;
     const goalsFor = finished.reduce((sum, match) => {
@@ -13871,7 +13967,7 @@ function App() {
   }, [matches, matchFilter]);
 
   const homeDashboard = useMemo(() => {
-    const scopedMatches = filterMatchesByCompetition(matches, getCompetitionFilterKey(matchFilter));
+    const scopedMatches = filterMatchesByCompetitionCatalog(matches, getCompetitionFilterKey(matchFilter));
     const sortedMatches = [...scopedMatches].sort((a, b) => {
       const dateCompare = String(a.date || '').localeCompare(String(b.date || ''));
       if (dateCompare !== 0) return dateCompare;
@@ -14532,7 +14628,7 @@ function App() {
   const validateMatchForm = (formState = matchFormState) => {
     const errors = {};
     if (!String(formState.opponent || '').trim()) errors.opponent = 'Selecciona o escribe un rival.';
-    if (!competitionOptions.some((competition) => competition.value === formState.competitionKey)) {
+    if (!competitions.some((competition) => competition.key === formState.competitionKey)) {
       errors.competitionKey = 'Selecciona la competicion.';
     }
     if (!String(formState.date || '').trim()) errors.date = 'Indica la fecha del encuentro.';
@@ -14655,11 +14751,74 @@ function App() {
       setMatchStadiumManuallyEdited(true);
     }
     if (name === 'competitionKey') {
-      const meta = getCompetitionMeta(value);
+      const meta = getCompetitionFromCatalog(value);
       setMatchFormState((prev) => ({ ...prev, competitionKey: value, type: meta.label }));
       return;
     }
     setMatchFormState((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+  };
+
+  const handleCompetitionIconUpload = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const competitionKey = matchFormState.competitionKey;
+    const competition = getCompetitionFromCatalog(competitionKey);
+    if (!competitions.some((competitionOption) => competitionOption.key === competitionKey)) {
+      setCompetitionIconStatus('Selecciona la competicion antes de anadir un icono.');
+      return;
+    }
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+    if (!allowedTypes.includes(file.type)) {
+      setCompetitionIconStatus('Formato no valido. Usa PNG, JPG, WEBP o SVG.');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setCompetitionIconStatus('El icono no puede superar 2 MB.');
+      return;
+    }
+    if (competition.logoUrl) {
+      const confirmed = window.confirm(`Este cambio actualizara el icono de ${competition.label} en toda la aplicacion.`);
+      if (!confirmed) return;
+    }
+
+    try {
+      setUploadingCompetitionKey(competitionKey);
+      setCompetitionIconStatus('');
+      const publicUrl = await uploadPublicFile({
+        bucket: 'competition-assets',
+        file,
+        folder: sanitizeStorageName(competitionKey),
+      });
+      const payload = {
+        id: isUuid(competition.id) ? competition.id : undefined,
+        key: competitionKey,
+        name: competition.label,
+        short_name: competition.shortName || competition.label,
+        fallback_icon: competition.icon || getCompetitionMeta(competitionKey).icon,
+        logo_url: publicUrl,
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      };
+      const { data, error } = await supabase
+        .from("competitions")
+        .upsert(payload, { onConflict: "key" })
+        .select("*")
+        .single();
+      if (error) throw error;
+      const nextCompetition = normalizeSupabaseCompetition(data);
+      setCompetitions((current) => mergeCompetitionCatalog([
+        ...current.filter((item) => item.key !== nextCompetition.key),
+        nextCompetition,
+      ]));
+      setCompetitionCatalogError('');
+      setCompetitionIconStatus(`Icono de ${nextCompetition.label} actualizado.`);
+    } catch (uploadError) {
+      console.error('Error guardando icono de competicion:', uploadError);
+      setCompetitionIconStatus(uploadError.message || 'No se pudo guardar el icono de la competicion.');
+    } finally {
+      setUploadingCompetitionKey('');
+    }
   };
 
   const handleMatchSubmit = async (event) => {
@@ -14677,7 +14836,7 @@ function App() {
 
     try {
       setIsSavingMatch(true);
-      const payload = createPartidoPayload(matchFormState, teams);
+      const payload = createPartidoPayload(matchFormState, teams, competitions);
       const request = editingMatchId
         ? supabase.from("partidos").update(payload).eq("id", editingMatchId).select("id").single()
         : supabase.from("partidos").insert(payload).select("id").single();
@@ -16360,7 +16519,7 @@ function App() {
                         <p className="text-lg font-black text-white">{match.opponent || 'Rival'}</p>
                         <span className={`rounded-2xl border px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${getDelegatedStatusTone(status)}`}>{status}</span>
                       </div>
-                      <p className="mt-1 text-sm text-slate-500">{matchDisplayDate(match.date)} · {getMatchCompetition(match).label || 'Partido'} · {getMatchScoreLabel(match)}</p>
+                      <p className="mt-1 text-sm text-slate-500">{matchDisplayDate(match.date)} · {getCompetitionFromCatalog(match).label || 'Partido'} · {getMatchScoreLabel(match)}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {DELEGATED_DATA_STATUSES.map((nextStatus) => (
@@ -16700,7 +16859,7 @@ function App() {
                         <span>{homeDashboard.nextMatch.time || 'Hora pendiente'}</span>
                         <span>{homeDashboard.nextMatch.isHome ? 'Local' : 'Visitante'}</span>
                         <span>{homeDashboard.nextMatch.stadium || homeDashboard.nextOpponentTeam?.stadium || 'Estadio pendiente'}</span>
-                        {homeDashboard.nextMatch ? <span>{getMatchCompetition(homeDashboard.nextMatch).label}{homeDashboard.nextMatch.round ? ` · ${homeDashboard.nextMatch.round}` : ''}</span> : null}
+                        {homeDashboard.nextMatch ? <span>{getCompetitionFromCatalog(homeDashboard.nextMatch).label}{homeDashboard.nextMatch.round ? ` · ${homeDashboard.nextMatch.round}` : ''}</span> : null}
                       </div>
                     ) : (
                       <p className="mt-4 max-w-2xl text-sm font-semibold leading-6 text-slate-400">Crea o programa el siguiente partido desde la pestaña Partidos.</p>
@@ -16881,7 +17040,7 @@ function App() {
                     <p className="truncate text-2xl font-black text-white">{homeDashboard.lastMatch.opponent}</p>
                     <p className="mt-2 text-4xl font-black text-caudal-electric">{getMatchScoreData(homeDashboard.lastMatch).caudalGoals}-{getMatchScoreData(homeDashboard.lastMatch).rivalGoals}</p>
                     <div className="mt-3 space-y-1 text-sm text-slate-400">
-                      <p>{getMatchCompetition(homeDashboard.lastMatch).label || 'Competición'}</p>
+                      <p>{getCompetitionFromCatalog(homeDashboard.lastMatch).label || 'Competición'}</p>
                       <p>{matchDisplayDate(homeDashboard.lastMatch.date)}</p>
                     </div>
                     <button
@@ -17102,8 +17261,10 @@ function App() {
                   <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-5 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
                     <div className="no-print flex flex-col gap-3 border-b border-white/10 pb-4 lg:flex-row lg:items-center lg:justify-between">
                       <div className="flex flex-wrap gap-2">
-                        {['Todos', 'Liga', 'Copa RFEF', 'Playoff', 'Amistoso'].map((filter) => (
-                          <button key={filter} onClick={() => setPlayerCompetitionFilter(filter)} className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${playerCompetitionFilter === filter ? 'border-caudal-electric/30 bg-caudal-electric/90 text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.07]'}`}>{filter}</button>
+                        {competitionFilterOptions.map((filter) => (
+                          <button key={filter} onClick={() => setPlayerCompetitionFilter(filter)} className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${playerCompetitionFilter === filter ? 'border-caudal-electric/30 bg-caudal-electric/90 text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.07]'}`}>
+                            <CompetitionIdentity competition={getCompetitionFilterIdentity(filter)} size="xs" />
+                          </button>
                         ))}
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -17416,7 +17577,7 @@ function App() {
                               <div className="flex aspect-video items-center justify-center bg-[linear-gradient(135deg,rgba(61,217,255,0.12),rgba(255,255,255,0.04))] text-xs font-black uppercase tracking-[0.18em] text-slate-400">Clip</div>
                               <div className="p-4">
                               <p className="font-bold text-white">{event.action} · {event.minute}' vs {event.match.opponent}</p>
-                              <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">{getMatchCompetition(event.match).label}</p>
+                              <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">{getCompetitionFromCatalog(event.match).label}</p>
                               <button type="button" onClick={() => window.open(event.videoUrl, '_blank')} className="mt-3 rounded-xl bg-caudal-electric/90 px-3 py-2 text-xs font-bold text-slate-950 transition hover:bg-caudal-electric">Ver análisis</button>
                               </div>
                             </div>
@@ -17466,7 +17627,7 @@ function App() {
                         <p className="text-xs font-black uppercase tracking-[0.16em] text-caudal-electric">{selectedTimelineAction.type} · minuto {selectedTimelineAction.minute}'</p>
                         <p className="mt-2 text-sm font-bold text-white">{getMatchScoreLabel(selectedTimelineAction.match)}</p>
                         <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">
-                          {matchDisplayDate(selectedTimelineAction.match.date)} · {getMatchCompetition(selectedTimelineAction.match).label} · {selectedTimelineAction.match.isHome ? 'Local' : 'Visitante'}
+                          {matchDisplayDate(selectedTimelineAction.match.date)} · {getCompetitionFromCatalog(selectedTimelineAction.match).label} · {selectedTimelineAction.match.isHome ? 'Local' : 'Visitante'}
                         </p>
                         {selectedTimelineAction.videoUrl ? (
                           <button
@@ -17516,7 +17677,7 @@ function App() {
                                   {resultLabel} · {score.caudalGoals}-{score.rivalGoals}
                                 </span>
                               </td>
-                              <td className="px-3 py-4 text-slate-300">{getMatchCompetition(row.match).label}</td>
+                              <td className="px-3 py-4 text-slate-300">{getCompetitionFromCatalog(row.match).label}</td>
                               <td className="px-3 py-4 text-slate-300">{row.match.isHome ? 'Local' : 'Visitante'}</td>
                               <td className="px-3 py-4"><span className={`rounded-xl px-2 py-1 text-xs font-black ${row.role === 'Titular' ? 'bg-caudal-electric/15 text-caudal-electric' : 'bg-white/[0.06] text-slate-300'}`}>{row.role}</span></td>
                               <td className="px-3 py-4 font-black text-white">{row.minutes}'</td>
@@ -19287,9 +19448,9 @@ function App() {
             return acc;
           }, {})).map(([competitionKey, rows]) => ({
             competitionKey,
-            competition: getCompetitionMeta(competitionKey).label,
-            icon: getCompetitionMeta(competitionKey).icon,
-            logoUrl: getCompetitionMeta(competitionKey).logoUrl || '',
+            competition: getCompetitionFromCatalog(competitionKey).label,
+            icon: getCompetitionFromCatalog(competitionKey).icon,
+            logoUrl: getCompetitionFromCatalog(competitionKey).logoUrl || '',
             ...summarizeGroupMatches(rows),
           })).sort((a, b) => b.played - a.played);
           const secondHalfGoals = allGoalRows.filter((event) => Number(event.minute) >= 45).length;
@@ -19445,8 +19606,10 @@ function App() {
                       <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">Partidos, estadísticas oficiales, eventos de gol y eventos POST. Sin lecturas de Registro Delegado ni análisis PRE.</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {['Todos', 'Liga', 'Copa RFEF', 'Play off', 'Amistoso'].map((filter) => (
-                        <button key={filter} type="button" onClick={() => setGroupCompetitionFilter(filter)} className={`rounded-2xl px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] ${groupCompetitionFilter === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}>{filter}</button>
+                      {competitionFilterOptions.map((filter) => (
+                        <button key={filter} type="button" onClick={() => setGroupCompetitionFilter(filter)} className={`rounded-2xl px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] ${groupCompetitionFilter === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}>
+                          <CompetitionIdentity competition={getCompetitionFilterIdentity(filter)} size="xs" />
+                        </button>
                       ))}
                       {['Todos', 'Local', 'Visitante', 'Últimos 5 partidos', 'Victorias', 'Empates', 'Derrotas'].map((filter) => (
                         <button key={filter} type="button" onClick={() => setGroupContextFilter(filter)} className={`rounded-2xl px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] ${groupContextFilter === filter ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}>{filter}</button>
@@ -19703,7 +19866,7 @@ function App() {
             {matchView === 'lista_partidos' ? (
               <>
                 <div className="flex flex-wrap gap-3">
-              {matchFilters.map((filter) => (
+              {competitionFilterOptions.map((filter) => (
                 <button
                   key={filter}
                   onClick={() => setMatchFilter(filter)}
@@ -19711,7 +19874,7 @@ function App() {
                     matchFilter === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'
                   }`}
                 >
-                  {filter}
+                  <CompetitionIdentity competition={getCompetitionFilterIdentity(filter)} size="xs" />
                 </button>
               ))}
             </div>
@@ -19728,10 +19891,10 @@ function App() {
                 <p className="mt-3 text-4xl font-semibold text-white">{matchStats.total}</p>
                 {matchFilter === 'Todos' ? (
                   <div className="mt-3 grid grid-cols-2 gap-2 text-xs uppercase text-slate-400">
-                    {competitionOptions.map((competition) => (
-                      <div key={competition.value} className="rounded-xl bg-white/5 px-2 py-1">
+                    {competitions.map((competition) => (
+                      <div key={competition.key} className="rounded-xl bg-white/5 px-2 py-1">
                         <span className="block truncate">{competition.label}</span>
-                        <strong className="text-white">{filterMatchesByCompetition(matches, competition.value).length}</strong>
+                        <strong className="text-white">{filterMatchesByCompetitionCatalog(matches, competition.key).length}</strong>
                       </div>
                     ))}
                   </div>
@@ -19842,7 +20005,7 @@ function App() {
                     const cardToneClass = played
                       ? 'border-white/10 bg-[#091428]/[0.86] shadow-[0_18px_48px_rgba(0,0,0,0.22)] hover:border-white/20'
                       : 'border-caudal-electric/[0.14] bg-[#08192c]/[0.80] shadow-[0_14px_40px_rgba(0,0,0,0.18)] hover:border-caudal-electric/30';
-                    const competitionMeta = getMatchCompetition(match);
+                    const competitionMeta = getCompetitionFromCatalog(match);
                     return (
                       <article key={match.id} className={`relative overflow-hidden rounded-[1.45rem] border transition hover:-translate-y-0.5 ${cardToneClass}`}>
                         <div className={`pointer-events-none absolute inset-0 ${played ? 'bg-[linear-gradient(180deg,rgba(255,255,255,0.035),transparent_38%)]' : 'bg-[radial-gradient(circle_at_50%_0%,rgba(79,140,255,0.13),transparent_34%),linear-gradient(180deg,rgba(79,140,255,0.035),transparent_44%)]'}`} />
@@ -19940,7 +20103,7 @@ function App() {
                       </button>
                       <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{matchView === 'pre_partido' ? 'Pre partido' : matchView === 'estadisticas_partido' ? 'Estadísticas' : matchView === 'impresion_partido' ? 'Impresión' : 'Post partido'}</p>
                       <h2 className="mt-2 text-3xl font-semibold text-white">{matchView === 'pre_partido' ? 'PRE partido' : matchView === 'estadisticas_partido' ? 'Estadísticas del partido' : matchView === 'impresion_partido' ? 'IMPRESIÓN' : 'POST partido'}</h2>
-                      <p className="mt-2 text-sm text-slate-400">{matchDisplayDate(selectedMatch.date)} · {getMatchCompetition(selectedMatch).label} · {selectedMatch.round}</p>
+                      <p className="mt-2 text-sm text-slate-400">{matchDisplayDate(selectedMatch.date)} · {getCompetitionFromCatalog(selectedMatch).label} · {selectedMatch.round}</p>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="rounded-3xl bg-[#091428]/90 p-4">
@@ -22843,16 +23006,26 @@ function App() {
                 </label>
                 <label className="space-y-2 text-sm text-slate-300">
                   <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Competición</span>
-                  <select name="competitionKey" value={matchFormState.competitionKey || ''} onChange={handleMatchChange} className={`w-full rounded-2xl border bg-white/5 px-4 py-3 text-sm font-semibold text-white ${matchFieldErrors.competitionKey ? 'border-red-300/50' : 'border-white/10'}`}>
-                    <option value="">Selecciona la competicion</option>
-                    {competitionOptions.map((competition) => <option key={competition.value} value={competition.value}>{competition.label}</option>)}
-                  </select>
+                  <div className="flex gap-2">
+                    <select name="competitionKey" value={matchFormState.competitionKey || ''} onChange={handleMatchChange} className={`min-w-0 flex-1 rounded-2xl border bg-white/5 px-4 py-3 text-sm font-semibold text-white ${matchFieldErrors.competitionKey ? 'border-red-300/50' : 'border-white/10'}`}>
+                      <option value="">Selecciona la competicion</option>
+                      {competitions.map((competition) => <option key={competition.key} value={competition.key}>{competition.label}</option>)}
+                    </select>
+                    {matchFormState.competitionKey ? (
+                      <label className={`flex h-[46px] cursor-pointer items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-3 text-[10px] font-black uppercase tracking-[0.1em] text-slate-200 transition hover:bg-white/10 ${uploadingCompetitionKey ? 'pointer-events-none opacity-60' : ''}`}>
+                        {getCompetitionFromCatalog(matchFormState.competitionKey).logoUrl ? 'Cambiar' : 'Anadir'}
+                        <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={handleCompetitionIconUpload} className="hidden" />
+                      </label>
+                    ) : null}
+                  </div>
                   {matchFormState.competitionKey ? (
                     <span className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2">
-                      <CompetitionIcon competition={getCompetitionMeta(matchFormState.competitionKey)} className="h-8 w-8 rounded-lg" textClassName="text-[9px]" />
-                      <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-200">{getCompetitionMeta(matchFormState.competitionKey).label}</span>
+                      <CompetitionIcon competition={getCompetitionFromCatalog(matchFormState.competitionKey)} className="h-8 w-8 rounded-lg" textClassName="text-[9px]" />
+                      <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-200">{getCompetitionFromCatalog(matchFormState.competitionKey).label}</span>
                     </span>
                   ) : null}
+                  {competitionIconStatus ? <span className="block text-xs font-semibold text-caudal-electric">{competitionIconStatus}</span> : null}
+                  {competitionCatalogError ? <span className="block text-xs font-semibold text-amber-200">{competitionCatalogError}</span> : null}
                   {matchFieldErrors.competitionKey ? <span className="block text-xs font-semibold text-red-200">{matchFieldErrors.competitionKey}</span> : null}
                 </label>
                 <label className="space-y-2 text-sm text-slate-300">
