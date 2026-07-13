@@ -3049,6 +3049,7 @@ function App() {
   const [closureSaveError, setClosureSaveError] = useState('');
   const [isGoalAnalysisOpen, setIsGoalAnalysisOpen] = useState(false);
   const [goalAnalysisDraft, setGoalAnalysisDraft] = useState(defaultGoalAnalysisDraft);
+  const [editingGoalEventId, setEditingGoalEventId] = useState('');
   const [lastGoalAnalysisContext, setLastGoalAnalysisContext] = useState(null);
   const [isStatsCallupPanelOpen, setIsStatsCallupPanelOpen] = useState(false);
   const [selectedStatsCallups, setSelectedStatsCallups] = useState([]);
@@ -8074,6 +8075,106 @@ function App() {
     };
   };
 
+  const MATCH_EVENT_META = {
+    goal_for: { label: 'Gol', icon: 'GOL', category: 'Goles', tone: 'border-emerald-300/20 bg-emerald-300/[0.08]' },
+    goal_against: { label: 'Gol rival', icon: 'GOL', category: 'Goles', tone: 'border-red-300/20 bg-red-400/[0.08]' },
+    yellow_card: { label: 'Tarjeta amarilla', icon: 'TA', category: 'Tarjetas', tone: 'border-yellow-300/20 bg-yellow-300/[0.08]' },
+    red_card: { label: 'Tarjeta roja', icon: 'TR', category: 'Tarjetas', tone: 'border-red-300/25 bg-red-500/[0.10]' },
+    substitution: { label: 'Cambio', icon: 'CAM', category: 'Cambios', tone: 'border-sky-300/20 bg-sky-300/[0.08]' },
+    injury: { label: 'Lesión', icon: 'LES', category: 'Lesiones', tone: 'border-rose-300/25 bg-rose-300/[0.10]' },
+    unknown: { label: 'Evento', icon: 'EV', category: 'Eventos', tone: 'border-white/10 bg-white/[0.035]' },
+  };
+
+  const getMatchEventMeta = (key) => {
+    const meta = MATCH_EVENT_META[key] || MATCH_EVENT_META.unknown;
+    if (!MATCH_EVENT_META[key]) console.warn('Tipo de evento de partido no reconocido:', key);
+    return meta;
+  };
+
+  const getStatsMatchEvents = () => {
+    const goalEvents = getStatsGoalEvents().map((event) => {
+      const isGoalFor = event.type === 'Gol a favor';
+      const meta = getMatchEventMeta(isGoalFor ? 'goal_for' : 'goal_against');
+      return {
+        id: `goal-${event.id}`,
+        source: 'goal',
+        rawId: event.id,
+        key: isGoalFor ? 'goal_for' : 'goal_against',
+        minute: Number(event.minute || 0),
+        type: event.type,
+        category: meta.category,
+        priority: 1,
+        tone: meta.tone,
+        icon: meta.icon,
+        title: meta.label,
+        playerName: isGoalFor ? event.scorer || 'Sin goleador' : selectedMatch?.opponent || 'Rival',
+        playerId: isGoalFor ? event.scorerId : null,
+        secondaryPlayerName: isGoalFor ? event.assistant || '' : '',
+        secondaryPlayerId: isGoalFor ? event.assistantId : null,
+        subtitle: isGoalFor && event.assistant ? `Asistencia: ${event.assistant}` : event.phase || `Tramo ${getStatsMomentRange(event.minute)}`,
+        detail: event.description || `${event.phase || 'Sin fase registrada'} · ${event.subphase || 'Sin subfase registrada'}`,
+        meta: `Finaliza: ${event.shotZone ? normalizePitchZone(event.shotZone) : 'Sin zona registrada'} · Genera: ${event.assistZone ? normalizePitchZone(event.assistZone) : 'Sin zona registrada'} · Entra: ${event.goalZone || 'Sin zona registrada'}`,
+      };
+    });
+    const substitutions = getStatsSubstitutionEvents().map((event) => {
+      const meta = getMatchEventMeta('substitution');
+      return {
+        id: `sub-${event.outPlayer}-${event.inPlayer}-${event.minute}`,
+        source: 'stats',
+        key: 'substitution',
+        minute: event.minute,
+        type: meta.label,
+        category: meta.category,
+        priority: 4,
+        tone: meta.tone,
+        icon: meta.icon,
+        title: meta.label,
+        playerName: event.outPlayer,
+        secondaryPlayerName: event.inPlayer,
+        subtitle: `Sale ${event.outPlayer}`,
+        detail: `Entra ${event.inPlayer}`,
+        meta: `Cambio · ${event.minute}'`,
+      };
+    });
+    const playerIncidents = getStatsCalledPlayers().flatMap((player) => {
+      const stats = getStatsPlayerData(player.name);
+      const minute = Number(stats.minutes || 0) || 0;
+      return [
+        stats.red ? { key: 'red_card', playerName: player.name, minute, detail: 'Tarjeta roja registrada.' } : null,
+        stats.injured ? { key: 'injury', playerName: player.name, minute, detail: 'Incidencia médica registrada.' } : null,
+        stats.yellow ? { key: 'yellow_card', playerName: player.name, minute, detail: `${stats.yellowCount} amarilla${stats.yellowCount > 1 ? 's' : ''}.` } : null,
+      ].filter(Boolean).map((event) => {
+        const meta = getMatchEventMeta(event.key);
+        return {
+          id: `${event.key}-${player.name}`,
+          source: 'stats',
+          key: event.key,
+          minute: event.minute,
+          type: meta.label,
+          category: meta.category,
+          priority: event.key === 'red_card' ? 2 : event.key === 'injury' ? 3 : 5,
+          tone: meta.tone,
+          icon: meta.icon,
+          title: meta.label,
+          playerName: player.name,
+          subtitle: player.name,
+          detail: event.detail,
+          meta: event.minute ? `${event.minute}'` : 'Minuto pendiente',
+        };
+      });
+    });
+    return [...goalEvents, ...playerIncidents, ...substitutions]
+      .sort((a, b) => (Number(a.minute || 0) - Number(b.minute || 0)) || (a.priority - b.priority));
+  };
+
+  const getEventsByPlayerName = (playerName) => {
+    if (!playerName) return [];
+    return getStatsMatchEvents().filter((event) =>
+      normalizePlayerIdentityName(event.playerName) === normalizePlayerIdentityName(playerName) ||
+      normalizePlayerIdentityName(event.secondaryPlayerName) === normalizePlayerIdentityName(playerName)
+    );
+  };
+
   const getStatsCalledPlayerNames = () => {
     return safeArray(selectedMatch?.statsCalledPlayers);
   };
@@ -8571,83 +8672,13 @@ function App() {
   };
 
   const getStatsKeyEvents = () => {
-    const goalEvents = getStatsGoalEvents().map((event) => ({
-      id: `goal-${event.id}`,
-      minute: Number(event.minute || 0),
-      type: event.type,
-      category: 'Goles',
-      priority: 1,
-      tone: event.type === 'Gol a favor' ? 'border-emerald-200/10 bg-emerald-400/[0.07]' : 'border-red-200/10 bg-red-500/[0.07]',
-      title: event.type === 'Gol a favor' ? event.scorer || 'Gol Caudal' : selectedMatch.opponent || 'Gol rival',
-      subtitle: event.assistant ? `Asist. ${event.assistant}` : `Tramo ${getStatsMomentRange(event.minute)}`,
-      detail: event.description || `${event.phase || 'Sin fase registrada'} · ${event.subphase || 'Sin subfase registrada'}`,
-      meta: `Finaliza: ${event.shotZone ? normalizePitchZone(event.shotZone) : 'Sin zona registrada'} · Genera: ${event.assistZone ? normalizePitchZone(event.assistZone) : 'Sin zona registrada'} · Entra: ${event.goalZone || 'Sin zona registrada'}`,
-    }));
-    const substitutions = getStatsSubstitutionEvents().map((event) => ({
-      id: `sub-${event.outPlayer}-${event.inPlayer}-${event.minute}`,
-      minute: event.minute,
-      type: 'Sustitución',
-      category: 'Cambios',
-      priority: 4,
-      tone: 'border-emerald-200/10 bg-emerald-400/[0.06]',
-      title: `Sale ${event.outPlayer}`,
-      subtitle: `Entra ${event.inPlayer} · ${90 - event.minute}'`,
-      detail: `Cambio en tramo ${getStatsMomentRange(event.minute)}`,
-      meta: '',
-    }));
-    const playerIncidents = getStatsCalledPlayers().flatMap((player) => {
-      const stats = getStatsPlayerData(player.name);
-      const minute = Number(stats.minutes || 0) || 0;
-      return [
-        stats.red ? {
-          id: `red-${player.name}`,
-          minute,
-          type: 'Roja',
-          category: 'Tarjetas',
-          priority: 2,
-          tone: 'border-red-200/10 bg-red-500/[0.08]',
-          title: player.name,
-          subtitle: `${minute ? `${minute}'` : 'Minuto pendiente'} · expulsión`,
-          detail: 'Condiciona estructura y minutos.',
-          meta: '',
-        } : null,
-        stats.injured ? {
-          id: `injury-${player.name}`,
-          minute,
-          type: 'Lesión',
-          category: 'Lesiones',
-          priority: 3,
-          tone: 'border-rose-200/10 bg-rose-400/[0.08]',
-          title: player.name,
-          subtitle: `${minute ? `${minute}'` : 'Minuto pendiente'} · lesión`,
-          detail: 'Incidencia médica registrada.',
-          meta: '',
-        } : null,
-        stats.yellow ? {
-          id: `yellow-${player.name}`,
-          minute,
-          type: 'Amarilla',
-          category: 'Tarjetas',
-          priority: 5,
-          tone: 'border-yellow-200/10 bg-yellow-300/[0.07]',
-          title: player.name,
-          subtitle: `${stats.yellowCount} amarilla${stats.yellowCount > 1 ? 's' : ''}`,
-          detail: 'Riesgo disciplinario.',
-          meta: '',
-        } : null,
-      ].filter(Boolean);
-    });
-    return [...goalEvents, ...playerIncidents, ...substitutions]
+    return getStatsMatchEvents()
       .filter((event) => statsEventFilter === 'Todos' || event.category === statsEventFilter)
       .sort((a, b) => (a.minute - b.minute) || (a.priority - b.priority));
   };
 
   const getStatsTimelineIcon = (event) => {
-    if (event.category === 'Goles') return '?';
-    if (event.category === 'Tarjetas') return event.type === 'Roja' ? '??' : '??';
-    if (event.category === 'Cambios') return '??';
-    if (event.category === 'Lesiones') return '??';
-    return 'EV';
+    return event.icon || MATCH_EVENT_META.unknown.icon;
   };
 
   const getStatsTimelineTone = (event) => {
@@ -9235,6 +9266,7 @@ function App() {
     const goalPlayerOptions = getStatsCalledPlayers().length ? getStatsCalledPlayers() : players;
     setStatsError('');
     setStatsSaveStatus('');
+    setEditingGoalEventId('');
     setGoalAnalysisDraft({
       ...defaultGoalAnalysisDraft,
       ...remembered,
@@ -9243,6 +9275,33 @@ function App() {
       videoUrl: '',
       scorer: goalPlayerOptions[0]?.name || '',
       assistant: '',
+    });
+    setIsGoalAnalysisOpen(true);
+  };
+
+  const openGoalEditModal = (eventId) => {
+    const goal = getStatsGoalEvents().find((event) => event.id === eventId);
+    if (!goal) return;
+    setStatsError('');
+    setStatsSaveStatus('');
+    setEditingGoalEventId(goal.id);
+    setGoalAnalysisDraft({
+      ...defaultGoalAnalysisDraft,
+      type: goal.type || 'Gol a favor',
+      half: goal.half || '',
+      minute: goal.minute || '',
+      scorer: goal.scorer || '',
+      assistant: goal.assistant || '',
+      phase: goal.phase || '',
+      subphase: goal.subphase || '',
+      attackType: goal.attackType || goal.phase || '',
+      situation: goal.situation || '',
+      assistZone: goal.assistZone || '',
+      shotZone: goal.shotZone || '',
+      goalZone: goal.goalZone || '',
+      contact: goal.contact || '',
+      videoUrl: goal.videoUrl || '',
+      summary: goal.description || '',
     });
     setIsGoalAnalysisOpen(true);
   };
@@ -9298,6 +9357,29 @@ function App() {
     const origin = getGoalZonePhrase(draft.assistZone);
     if (draft.type === 'Gol en contra') return [selectedMatch?.opponent || 'Rival', origin, 'Gol'];
     return [origin, draft.assistant, draft.scorer || 'Goleador'].filter(Boolean);
+  };
+
+  const recalculateMatchScoreFromGoalEvents = async (matchId, extraPayload = {}) => {
+    const { data: goalRows, error: goalsFetchError } = await supabase
+      .from("partido_eventos_gol")
+      .select("*")
+      .eq("partido_id", matchId);
+    if (goalsFetchError) throw goalsFetchError;
+
+    const nextEvents = (goalRows || []).map(normalizeSupabaseGoalEvent);
+    const caudalGoals = nextEvents.filter((event) => event.type === 'Gol a favor').length;
+    const rivalGoals = nextEvents.filter((event) => event.type === 'Gol en contra').length;
+    const currentMatch = selectedMatch?.id === matchId ? selectedMatch : matches.find((match) => match.id === matchId);
+    const scorePayload = {
+      goals_for: String(caudalGoals),
+      goals_against: String(rivalGoals),
+      home_score: currentMatch?.isHome ? String(caudalGoals) : String(rivalGoals),
+      away_score: currentMatch?.isHome ? String(rivalGoals) : String(caudalGoals),
+      ...extraPayload,
+    };
+    const { error: matchScoreError } = await supabase.from("partidos").update(scorePayload).eq("id", matchId);
+    if (matchScoreError) throw matchScoreError;
+    return { nextEvents, caudalGoals, rivalGoals, scorePayload };
   };
 
   const detectGoalClipPlatform = (url = '') => {
@@ -9378,14 +9460,16 @@ function App() {
     payloadDraft.scorerId = isUuid(scorerPlayer?.id) ? scorerPlayer.id : null;
     payloadDraft.assistantId = isUuid(assistantPlayer?.id) ? assistantPlayer.id : null;
     const fullGoalPayload = createGoalEventPayload(selectedMatch.id, payloadDraft);
-    let { error: goalError } = await supabase
-      .from("partido_eventos_gol")
-      .insert(fullGoalPayload);
+    const isEditingGoal = Boolean(editingGoalEventId);
+    let { error: goalError } = isEditingGoal
+      ? await supabase.from("partido_eventos_gol").update(fullGoalPayload).eq("id", editingGoalEventId)
+      : await supabase.from("partido_eventos_gol").insert(fullGoalPayload);
     if (goalError && /column|schema|cache|goal_zone|assist_zone|shot_zone|video_url|contact|scorer_id|assistant_id/i.test(goalError.message || '')) {
       console.warn('Reintentando guardado de gol con payload compatible:', { fullGoalPayload, error: goalError });
-      const retry = await supabase
-        .from("partido_eventos_gol")
-        .insert(createCompatibleGoalEventPayload(selectedMatch.id, payloadDraft));
+      const compatiblePayload = createCompatibleGoalEventPayload(selectedMatch.id, payloadDraft);
+      const retry = isEditingGoal
+        ? await supabase.from("partido_eventos_gol").update(compatiblePayload).eq("id", editingGoalEventId)
+        : await supabase.from("partido_eventos_gol").insert(compatiblePayload);
       goalError = retry.error;
     }
     if (goalError) {
@@ -9395,24 +9479,12 @@ function App() {
       return;
     }
 
-    const { data: goalRows, error: goalsFetchError } = await supabase
-      .from("partido_eventos_gol")
-      .select("*")
-      .eq("partido_id", selectedMatch.id);
-    if (goalsFetchError) {
-      console.error('[GOAL_SAVE_ERROR]', { step: 'fetch_goals_after_insert', matchId: selectedMatch.id, error: goalsFetchError });
-      setStatsSaveStatus('');
-      setStatsError('Gol guardado, pero no se ha podido actualizar el marcador.');
-      return;
-    }
-
-    const nextEvents = (goalRows || []).map(normalizeSupabaseGoalEvent);
-    const caudalGoals = nextEvents.filter((event) => event.type === 'Gol a favor').length;
-    const rivalGoals = nextEvents.filter((event) => event.type === 'Gol en contra').length;
     const postAnalysis = safeObject(selectedMatch.postAiAnalysis);
-    const nextGoalAnalysisMeta = [
-      ...safeArray(postAnalysis.goalAnalysisMeta),
-      {
+    const nextGoalAnalysisMeta = isEditingGoal
+      ? safeArray(postAnalysis.goalAnalysisMeta)
+      : [
+        ...safeArray(postAnalysis.goalAnalysisMeta),
+        {
         id: `${Date.now()}-${payloadDraft.minute || 'gol'}`,
         minute: payloadDraft.minute,
         type: payloadDraft.type,
@@ -9427,17 +9499,16 @@ function App() {
         goalZone: payloadDraft.goalZone,
       },
     ];
-    const scorePayload = {
-      goals_for: String(caudalGoals),
-      goals_against: String(rivalGoals),
-      home_score: selectedMatch.isHome ? String(caudalGoals) : String(rivalGoals),
-      away_score: selectedMatch.isHome ? String(rivalGoals) : String(caudalGoals),
-      post_notes: [selectedMatch.postNotes, payloadDraft.summary].filter(Boolean).join('\n'),
-      post_ai_analysis: { ...postAnalysis, goalAnalysisMeta: nextGoalAnalysisMeta },
-    };
-    const { error: matchScoreError } = await supabase.from("partidos").update(scorePayload).eq("id", selectedMatch.id);
-    if (matchScoreError) {
-      console.error('[GOAL_SAVE_ERROR]', { step: 'update_match_score', payload: scorePayload, error: matchScoreError });
+    const scoreExtraPayload = isEditingGoal
+      ? {}
+      : {
+        post_notes: [selectedMatch.postNotes, payloadDraft.summary].filter(Boolean).join('\n'),
+        post_ai_analysis: { ...postAnalysis, goalAnalysisMeta: nextGoalAnalysisMeta },
+      };
+    try {
+      await recalculateMatchScoreFromGoalEvents(selectedMatch.id, scoreExtraPayload);
+    } catch (scoreError) {
+      console.error('[GOAL_SAVE_ERROR]', { step: 'recalculate_match_score', matchId: selectedMatch.id, error: scoreError });
       setStatsSaveStatus('');
       setStatsError('Gol guardado, pero no se ha podido actualizar el marcador.');
       return;
@@ -9459,11 +9530,42 @@ function App() {
       recoveryType: payloadDraft.recoveryType,
       realOrigin: payloadDraft.realOrigin,
     });
+    setEditingGoalEventId('');
     setIsGoalAnalysisOpen(false);
     await loadPartidos();
     await refreshStatsFromSupabase(selectedMatch.id, 'análisis de goles y marcador');
-    setStatsSaveStatus('Gol registrado OK');
-    window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Gol registrado OK' ? '' : current)), 2200);
+    setStatsSaveStatus(isEditingGoal ? 'Gol actualizado OK' : 'Gol registrado OK');
+    window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Gol registrado OK' || current === 'Gol actualizado OK' ? '' : current)), 2200);
+  };
+
+  const deleteGoalAnalysisEvent = async (eventId) => {
+    if (!selectedMatch || !eventId) return;
+    if (!window.confirm('¿Eliminar este gol? Se recalculará marcador, timeline y estadísticas.')) return;
+    setStatsSaveStatus('Eliminando gol...');
+    setStatsError('');
+    const { error: deleteError } = await supabase.from("partido_eventos_gol").delete().eq("id", eventId);
+    if (deleteError) {
+      console.error('[GOAL_DELETE_ERROR]', { eventId, error: deleteError });
+      setStatsSaveStatus('');
+      setStatsError(deleteError.message || 'No se pudo eliminar el gol.');
+      return;
+    }
+    try {
+      await recalculateMatchScoreFromGoalEvents(selectedMatch.id);
+    } catch (scoreError) {
+      console.error('[GOAL_DELETE_ERROR]', { step: 'recalculate_match_score', matchId: selectedMatch.id, error: scoreError });
+      setStatsSaveStatus('');
+      setStatsError('Gol eliminado, pero no se ha podido recalcular el marcador.');
+      return;
+    }
+    if (editingGoalEventId === eventId) {
+      setEditingGoalEventId('');
+      setIsGoalAnalysisOpen(false);
+    }
+    await loadPartidos();
+    await refreshStatsFromSupabase(selectedMatch.id, 'eliminación de gol');
+    setStatsSaveStatus('Gol eliminado OK');
+    window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Gol eliminado OK' ? '' : current)), 2200);
   };
 
   const renderZoneGrid = ({ value, onChange, zones = pitchZoneOptions, goal = false, compact = false, variant = 'neutral' }) => {
@@ -10015,10 +10117,20 @@ function App() {
           const shortName = player ? displayPlayerName(player) : playerName.split(' ').slice(-1)[0] || '';
           const stats = playerName ? getStatsPlayerData(playerName) : null;
           const isCaptain = player?.id && selectedMatch.captainPlayerId === player.id;
+          const eventBadges = playerName ? getEventsByPlayerName(playerName).map((event) => {
+            const isSecondaryPlayer = normalizePlayerIdentityName(event.secondaryPlayerName) === normalizePlayerIdentityName(playerName);
+            return {
+              key: event.id,
+              label: event.icon,
+              title: [
+                event.key === 'substitution' ? (isSecondaryPlayer ? 'Entra' : 'Sale') : event.title,
+                event.minute ? `${event.minute}'` : 'minuto pendiente',
+                event.key === 'goal_for' && isSecondaryPlayer ? 'Asistencia' : '',
+              ].filter(Boolean).join(' · '),
+            };
+          }) : [];
           const statusBadges = [
-            stats?.yellow ? { key: 'yellow', label: '??', title: 'Amarilla' } : null,
-            stats?.red ? { key: 'red', label: '??', title: 'Roja' } : null,
-            stats?.injured ? { key: 'injured', label: 'LES', title: 'Lesión' } : null,
+            ...eventBadges,
             isCaptain ? { key: 'captain', label: 'CAP', title: 'Capitán' } : null,
           ].filter(Boolean);
           const replacementInfo = playerName ? getStatsReplacementInfo(playerName) : null;
@@ -10096,6 +10208,10 @@ function App() {
       return roleDiff || displayPlayerName(a).localeCompare(displayPlayerName(b));
     });
     const callupCounts = getStatsCallupCounts();
+    const homeTeamName = selectedMatch.isHome ? 'C.D. Caudal' : selectedMatch.opponent || 'Rival';
+    const awayTeamName = selectedMatch.isHome ? selectedMatch.opponent || 'Rival' : 'C.D. Caudal';
+    const homeTeamCrest = selectedMatch.isHome ? clubCrest : selectedMatch.opponentCrest;
+    const awayTeamCrest = selectedMatch.isHome ? selectedMatch.opponentCrest : clubCrest;
     const renderStatsSquadCard = ({ player, status }) => (
       <div
         key={`${status}-${player.id || player.name}`}
@@ -10150,11 +10266,11 @@ function App() {
           <div className="grid items-center gap-4 lg:grid-cols-[1fr_auto_1fr]">
             <div className="flex items-center gap-3">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-2">
-                <img src={clubCrest} alt="" className="h-full w-full object-contain" />
+                {homeTeamCrest ? <img src={homeTeamCrest} alt="" className="h-full w-full object-contain" /> : <span className="text-lg font-black text-slate-950">{homeTeamName.slice(0, 2).toUpperCase()}</span>}
               </div>
               <div>
-                <p className="text-sm font-black text-white">C.D. Caudal</p>
-                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{selectedMatch.isHome ? 'Local' : 'Visitante'}</p>
+                <p className="text-sm font-black text-white">{homeTeamName}</p>
+                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Local</p>
               </div>
             </div>
             <div className="text-center">
@@ -10163,11 +10279,11 @@ function App() {
             </div>
             <div className="flex items-center justify-start gap-3 lg:justify-end">
               <div className="text-left lg:text-right">
-                <p className="text-sm font-black text-white">{selectedMatch.opponent || 'Rival'}</p>
-                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{selectedMatch.isHome ? 'Visitante' : 'Local'}</p>
+                <p className="text-sm font-black text-white">{awayTeamName}</p>
+                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Visitante</p>
               </div>
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 p-2">
-                {selectedMatch.opponentCrest ? <img src={selectedMatch.opponentCrest} alt="" className="h-full w-full object-contain" /> : <span className="text-lg font-black text-white">{selectedMatch.opponent?.slice(0, 2).toUpperCase()}</span>}
+                {awayTeamCrest ? <img src={awayTeamCrest} alt="" className="h-full w-full object-contain" /> : <span className="text-lg font-black text-white">{awayTeamName.slice(0, 2).toUpperCase()}</span>}
               </div>
             </div>
           </div>
@@ -10213,12 +10329,22 @@ function App() {
               <div className="mt-4 max-h-[470px] space-y-2 overflow-y-auto pr-1">
                 {timelineEvents.length ? timelineEvents.map((event) => (
                   <div key={event.id} className={`border px-3 py-3 ${getStatsTimelineTone(event)}`}>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-start gap-3">
                       <span className="w-11 shrink-0 text-right text-lg font-black text-white">{event.minute || '-'}'</span>
                       <span className="flex h-9 min-w-9 items-center justify-center rounded-xl bg-black/25 px-1.5 text-base font-black">{getStatsTimelineIcon(event)}</span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-black text-white">{event.title}</p>
-                        <p className="truncate text-xs font-semibold text-slate-400">{event.subtitle}</p>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-black text-white">{event.title}</p>
+                          {event.source === 'goal' ? (
+                            <div className="flex gap-1.5">
+                              <button type="button" onClick={() => openGoalEditModal(event.rawId)} className="rounded-lg bg-white/10 px-2 py-1 text-[10px] font-black uppercase text-slate-200 hover:bg-white/15">Editar</button>
+                              <button type="button" onClick={() => deleteGoalAnalysisEvent(event.rawId)} className="rounded-lg bg-red-500/15 px-2 py-1 text-[10px] font-black uppercase text-red-100 hover:bg-red-500/25">Eliminar</button>
+                            </div>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 text-xs font-semibold text-slate-300">{event.playerName}</p>
+                        {event.secondaryPlayerName ? <p className="text-xs font-semibold text-caudal-electric">{event.subtitle}</p> : <p className="text-xs font-semibold text-slate-400">{event.subtitle}</p>}
+                        {event.detail ? <p className="mt-1 text-[11px] leading-4 text-slate-500">{event.detail}</p> : null}
                       </div>
                     </div>
                   </div>
@@ -10262,24 +10388,6 @@ function App() {
               )}
             </section>
 
-            {getPreStatsLinks().length ? (
-              <section className="border border-white/10 bg-[#091428]/82 p-4 shadow-glow">
-                {(() => {
-                  const compliance = getPreStatsCompliance();
-                  return (
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Relación PRE - Estadísticas</p>
-                        <p className={`mt-1 text-xs font-black ${compliance.textClass}`}>{compliance.assessed}/{compliance.total} revisadas · {compliance.percentage}% cumplimiento</p>
-                      </div>
-                      <div className="h-2 w-32 overflow-hidden rounded-full bg-white/10">
-                        <div className={`h-full ${compliance.colorClass}`} style={{ width: `${compliance.percentage}%` }} />
-                      </div>
-                    </div>
-                  );
-                })()}
-              </section>
-            ) : null}
           </div>
 
           <section className="border border-white/10 bg-[#091428]/82 p-4 shadow-glow">
@@ -20467,40 +20575,6 @@ function App() {
                           </button>
                         </div>
                       </div>
-                      {getPreStatsLinks().length ? (
-                        <div className="mt-4 rounded-3xl border border-white/10 bg-[#0f1e38]/70 p-4">
-                          {(() => {
-                            const compliance = getPreStatsCompliance();
-                            return (
-                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                <div>
-                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Relación PRE ? Estadísticas</p>
-                                  <p className={`mt-1 text-xs font-black ${compliance.textClass}`}>{compliance.assessed}/{compliance.total} revisadas · {compliance.percentage}% cumplimiento</p>
-                                </div>
-                                <div className="h-2 w-full overflow-hidden rounded-full bg-white/10 sm:max-w-[180px]">
-                                  <div className={`h-full rounded-full ${compliance.colorClass}`} style={{ width: `${compliance.percentage}%` }} />
-                                </div>
-                              </div>
-                            );
-                          })()}
-                          <div className="mt-3 grid gap-2">
-                            {getPreStatsLinks().slice(0, 6).map((link) => (
-                              <div key={link.consignaId} className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/[0.035] p-3 sm:flex-row sm:items-center sm:justify-between">
-                                <p className="min-w-0 flex-1 truncate text-sm font-semibold text-white">{link.text}</p>
-                                <div className="flex flex-wrap gap-1.5">
-                                  <button type="button" onClick={() => updatePreStatsLink(link.consignaId, { fulfilled: true })} className={`rounded-lg px-2 py-1 text-[10px] font-black ${link.fulfilled === true ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-slate-300'}`}>Cumplida</button>
-                                  <button type="button" onClick={() => updatePreStatsLink(link.consignaId, { fulfilled: 'partial' })} className={`rounded-lg px-2 py-1 text-[10px] font-black ${link.fulfilled === 'partial' ? 'bg-yellow-300 text-slate-950' : 'bg-white/10 text-slate-300'}`}>Parcial</button>
-                                  <button type="button" onClick={() => updatePreStatsLink(link.consignaId, { fulfilled: false })} className={`rounded-lg px-2 py-1 text-[10px] font-black ${link.fulfilled === false ? 'bg-red-400 text-white' : 'bg-white/10 text-slate-300'}`}>No</button>
-                                  <select value={link.eventId || ''} onChange={(event) => updatePreStatsLink(link.consignaId, { eventId: event.target.value })} className="rounded-lg bg-white px-2 py-1 text-[10px] font-bold text-slate-950">
-                                    <option value="">Sin evento</option>
-                                    {getStatsGoalEvents().map((event) => <option key={event.id} value={event.id}>{event.minute}' {event.type}</option>)}
-                                  </select>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
                     </div>
 
                     <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
@@ -20903,11 +20977,21 @@ function App() {
               <div className="flex items-center gap-3">
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500 text-xl font-black text-white">+</span>
                 <div>
-                  <h3 className="text-lg font-black uppercase tracking-[0.18em] text-white">Registrar gol</h3>
+                  <h3 className="text-lg font-black uppercase tracking-[0.18em] text-white">{editingGoalEventId ? 'Editar gol' : 'Registrar gol'}</h3>
                   <p className="mt-1 text-sm text-slate-400">Análisis táctico y contextual del evento</p>
                 </div>
               </div>
-              <button type="button" onClick={() => setIsGoalAnalysisOpen(false)} disabled={statsSaveStatus === 'Guardando gol...'} className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-slate-200 disabled:cursor-not-allowed disabled:opacity-50">Cerrar</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingGoalEventId('');
+                  setIsGoalAnalysisOpen(false);
+                }}
+                disabled={statsSaveStatus === 'Guardando gol...'}
+                className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cerrar
+              </button>
             </div>
             <div className="max-h-[calc(100vh-150px)] space-y-4 overflow-y-auto px-6 py-5 pb-24">
               {statsError ? (
@@ -21101,8 +21185,18 @@ function App() {
             </div>
             <div className="sticky bottom-0 border-t border-white/10 bg-[#111b2a]/95 px-6 py-4 backdrop-blur">
               <button type="button" onClick={saveGoalAnalysisEvent} disabled={statsSaveStatus === 'Guardando gol...'} className="w-full rounded-3xl bg-caudal-electric px-5 py-4 text-sm font-black uppercase tracking-[0.16em] text-slate-950 disabled:cursor-not-allowed disabled:opacity-60">
-                {statsSaveStatus === 'Guardando gol...' ? 'Guardando...' : 'Guardar gol'}
+                {statsSaveStatus === 'Guardando gol...' ? 'Guardando...' : editingGoalEventId ? 'Guardar cambios' : 'Guardar gol'}
               </button>
+              {editingGoalEventId ? (
+                <button
+                  type="button"
+                  onClick={() => deleteGoalAnalysisEvent(editingGoalEventId)}
+                  disabled={statsSaveStatus === 'Guardando gol...'}
+                  className="mt-3 w-full rounded-3xl border border-red-300/20 bg-red-500/10 px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Eliminar gol
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
