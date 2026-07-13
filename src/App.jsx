@@ -3661,6 +3661,7 @@ function App() {
   const [groupContextFilter, setGroupContextFilter] = useState('Todos');
   const [groupQuickReviewedOnly, setGroupQuickReviewedOnly] = useState(true);
   const [groupRankingTab, setGroupRankingTab] = useState('Goles');
+  const [expandedSystemXi, setExpandedSystemXi] = useState('');
   const [delegatedStatusFilter, setDelegatedStatusFilter] = useState('Todos');
   const [delegatedRankingScope, setDelegatedRankingScope] = useState('Solo validados');
   const [delegatedStatusSavingId, setDelegatedStatusSavingId] = useState('');
@@ -13416,6 +13417,112 @@ function App() {
       .sort((a, b) => b.minutes - a.minutes || b.played - a.played || a.system.localeCompare(b.system));
   };
 
+  const getMatchSnapshotForSystem = (match = {}, system = '') => {
+    const source = getMatchLineupSource(match);
+    const slots = safeArray(source.slots);
+    if (!system || source.system !== system || !slots.length) {
+      return { hasSnapshot: false, system, slots: [], source: source.scope || 'none' };
+    }
+    return { hasSnapshot: true, system, slots, source: source.scope };
+  };
+
+  const getPlayerPresenceIntervalsForSlot = (match = {}, playerName = '', slotIndex = 0, duration = getMatchDurationMinutes(match)) => {
+    const stored = safeObject(match.statsPlayerData?.[playerName]);
+    const starterMinutes = hasRealValue(stored.minutes) ? Number(stored.minutes || 0) : duration;
+    const intervals = [{ playerName, fromMinute: 0, toMinute: Math.max(0, Math.min(duration, starterMinutes)), starts: 1 }];
+    if (stored.replacementName && starterMinutes > 0 && starterMinutes < duration) {
+      intervals.push({ playerName: stored.replacementName, fromMinute: starterMinutes, toMinute: duration, starts: 0 });
+    }
+    return intervals.filter((interval) => interval.playerName && interval.toMinute > interval.fromMinute);
+  };
+
+  const buildTacticalSlotMinutes = (scopedMatches = []) => {
+    const bySystem = new Map();
+    const coverage = { totalMatches: safeArray(scopedMatches).length, tacticalMatches: 0, missingSegments: 0, missingMinutes: 0 };
+    safeArray(scopedMatches).forEach((match) => {
+      const duration = getMatchDurationMinutes(match);
+      const sequence = buildSystemSequence(match);
+      let matchHasSnapshot = false;
+      sequence.forEach((segment) => {
+        const snapshot = getMatchSnapshotForSystem(match, segment.system);
+        if (!snapshot.hasSnapshot) {
+          coverage.missingSegments += 1;
+          coverage.missingMinutes += segment.minutes;
+          return;
+        }
+        matchHasSnapshot = true;
+        const systemData = bySystem.get(segment.system) || { system: segment.system, slots: new Map(), pairRows: new Map(), segmentMinutes: 0 };
+        systemData.segmentMinutes += segment.minutes;
+        const slotPlayers = [];
+        safeArray(snapshot.slots).forEach((slotRow) => {
+          if (!slotRow?.playerName || !Number.isInteger(slotRow.slot)) return;
+          const role = getFormationRoles(segment.system)[slotRow.slot] || '';
+          const idealSlot = getIdealSlotForStoredSlot(segment.system, slotRow.slot, role);
+          if (!idealSlot) return;
+          const slotData = systemData.slots.get(idealSlot.id) || { slot: idealSlot, players: new Map() };
+          getPlayerPresenceIntervalsForSlot(match, slotRow.playerName, slotRow.slot, duration).forEach((presence) => {
+            const fromMinute = Math.max(segment.fromMinute, presence.fromMinute);
+            const toMinute = Math.min(segment.toMinute, presence.toMinute);
+            const minutes = Math.max(0, toMinute - fromMinute);
+            if (!minutes) return;
+            const player = players.find((item) => normalizePlayerIdentityName(item.name) === normalizePlayerIdentityName(presence.playerName)) || { name: presence.playerName };
+            const row = slotData.players.get(presence.playerName) || { player, playerName: presence.playerName, minutes: 0, starts: 0, appearances: 0 };
+            row.minutes += minutes;
+            row.starts += presence.starts && fromMinute === 0 ? 1 : 0;
+            row.appearances += 1;
+            slotData.players.set(presence.playerName, row);
+            slotPlayers.push({ slot: idealSlot, playerName: presence.playerName, minutes });
+          });
+          systemData.slots.set(idealSlot.id, slotData);
+        });
+        const addGroup = (groupName, predicate, minSize = 2, maxSize = 3) => {
+          const names = slotPlayers.filter((entry) => predicate(entry.slot)).map((entry) => entry.playerName);
+          const uniqueNames = Array.from(new Set(names)).sort();
+          if (uniqueNames.length < minSize) return;
+          const selected = uniqueNames.slice(0, maxSize);
+          const key = `${groupName}-${selected.join('+')}`;
+          const current = systemData.pairRows.get(key) || { groupName, names: selected, minutes: 0 };
+          current.minutes += segment.minutes;
+          systemData.pairRows.set(key, current);
+        };
+        addGroup('Pareja de centrales', (slot) => slot.id.startsWith('DFC'), 2, 2);
+        addGroup('Doble pivote', (slot) => slot.id.startsWith('MCD') || slot.id.startsWith('MC'), 2, 2);
+        addGroup('Pareja de delanteros', (slot) => slot.id.startsWith('DC'), 2, 2);
+        addGroup('Trío de centrales', (slot) => slot.id.startsWith('DFC'), 3, 3);
+        addGroup('Trío de centrocampistas', (slot) => slot.line === 'medio', 3, 3);
+        addGroup('Tridente ofensivo', (slot) => slot.line === 'ataque' || slot.id.startsWith('MP') || slot.id.startsWith('ED') || slot.id.startsWith('EI'), 3, 3);
+        bySystem.set(segment.system, systemData);
+      });
+      if (matchHasSnapshot) coverage.tacticalMatches += 1;
+    });
+    return { bySystem, coverage };
+  };
+
+  const buildMostUsedXI = (system, tacticalAggregation) => {
+    const systemData = tacticalAggregation?.bySystem?.get(system);
+    if (!systemData) return { system, assignments: [], alternatives: {}, hasData: false };
+    const usedPlayers = new Set();
+    const alternatives = {};
+    const slots = getIdealFormationSlots(system);
+    const assignments = slots.map((slot) => {
+      const slotData = systemData.slots.get(slot.id);
+      const candidates = Array.from(slotData?.players?.values?.() || [])
+        .sort((a, b) => b.minutes - a.minutes || b.starts - a.starts || b.appearances - a.appearances || a.playerName.localeCompare(b.playerName));
+      const selected = candidates.find((candidate) => !usedPlayers.has(candidate.playerName)) || null;
+      if (selected) usedPlayers.add(selected.playerName);
+      alternatives[slot.id] = candidates.filter((candidate) => candidate.playerName !== selected?.playerName).slice(0, 2);
+      return { slot, row: selected, candidates };
+    });
+    return { system, assignments, alternatives, hasData: assignments.some((assignment) => assignment.row) };
+  };
+
+  const buildMostUsedPairs = (tacticalAggregation) =>
+    Array.from(tacticalAggregation?.bySystem?.values?.() || [])
+      .flatMap((systemData) => Array.from(systemData.pairRows.values()).map((row) => ({ ...row, system: systemData.system })))
+      .filter((row) => row.minutes > 0)
+      .sort((a, b) => b.minutes - a.minutes || a.groupName.localeCompare(b.groupName))
+      .slice(0, 6);
+
   const filterAssistEventsByGroupMode = (events) => {
     const rows = safeArray(events);
     if (groupAssistFilter === 'Juego') return rows.filter((event) => ['Juego combinativo', 'Juego directo'].includes(event.phase));
@@ -14174,6 +14281,52 @@ function App() {
             </div>
           );
         })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderMostUsedXiPitch = (xiData) => {
+    if (!xiData?.hasData) {
+      return <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Aún no hay minutos tácticos suficientes para construir el once.</p>;
+    }
+    return (
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_260px]">
+        <div className="mx-auto w-full max-w-[min(100%,42rem)] overflow-hidden">
+          <div className="relative mx-auto aspect-[7/8.9] w-full overflow-hidden rounded-2xl border border-white/20 bg-[#102616] shadow-inner sm:rounded-3xl">
+            <div className="absolute inset-3 rounded-2xl border-2 border-white/55 sm:inset-4 sm:rounded-[28px]" />
+            <div className="absolute left-3 right-3 top-1/2 h-px bg-white/35 sm:left-4 sm:right-4" />
+            <div className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/35 sm:h-32 sm:w-32" />
+            <div className="absolute left-1/2 top-3 h-16 w-36 -translate-x-1/2 rounded-b-3xl border-x-2 border-b-2 border-white/35 sm:top-4 sm:h-24 sm:w-56" />
+            <div className="absolute bottom-3 left-1/2 h-16 w-36 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/35 sm:bottom-4 sm:h-24 sm:w-56" />
+            {xiData.assignments.map(({ slot, row }, index) => {
+              const player = row?.player;
+              return (
+                <div key={`${slot.id}-${index}`} className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-0.5 text-center sm:gap-1" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
+                  <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-caudal-electric/60 bg-caudal-950/80 text-[10px] font-black text-white sm:h-14 sm:w-14 sm:rounded-2xl sm:border-2">
+                    {player?.name ? <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" /> : index + 1}
+                  </div>
+                  <span className="max-w-[72px] truncate rounded-lg bg-black/70 px-1.5 py-0.5 text-[8px] font-black text-white sm:max-w-[104px] sm:rounded-xl sm:px-2 sm:py-1 sm:text-[10px]">
+                    {player?.number ? `#${player.number} ` : ''}{player?.name || slot.label}
+                  </span>
+                  {row?.minutes ? <span className="rounded-lg bg-caudal-electric px-1.5 py-0.5 text-[7px] font-black text-slate-950 sm:text-[9px]">{row.minutes} min</span> : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="space-y-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Alternativas por posición</p>
+          {xiData.assignments.filter((assignment) => assignment.row).map(({ slot, row }) => {
+            const alternatives = xiData.alternatives?.[slot.id] || [];
+            return (
+              <div key={`alt-${slot.id}`} className="rounded-2xl bg-white/5 px-3 py-3">
+                <p className="text-xs font-black uppercase tracking-[0.12em] text-white">{slot.label}</p>
+                <p className="mt-1 text-sm font-bold text-caudal-electric">{row.playerName} · {row.minutes} min</p>
+                {alternatives[0] ? <p className="mt-1 text-xs font-semibold text-slate-400">Alternativa: {alternatives[0].playerName} · {alternatives[0].minutes} min</p> : null}
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -19991,6 +20144,37 @@ function App() {
           const localSummary = summarizeGroupMatches(scopedMatches.filter((match) => match.isHome));
           const awaySummary = summarizeGroupMatches(scopedMatches.filter((match) => !match.isHome));
           const systemRows = buildSystemUsageRows(scopedMatches);
+          const totalSystemMinutes = systemRows.reduce((sum, row) => sum + Number(row.minutes || 0), 0);
+          const tacticalAggregation = buildTacticalSlotMinutes(scopedMatches);
+          const seasonBaseSystem = systemRows[0]?.system || '';
+          const seasonMostUsedXi = seasonBaseSystem ? buildMostUsedXI(seasonBaseSystem, tacticalAggregation) : null;
+          const mostUsedPairs = buildMostUsedPairs(tacticalAggregation);
+          const playerSlotBreakdown = Array.from(tacticalAggregation.bySystem.values()).flatMap((systemData) =>
+            Array.from(systemData.slots.values()).flatMap((slotData) =>
+              Array.from(slotData.players.values()).map((row) => ({
+                playerName: row.playerName,
+                player: row.player,
+                system: systemData.system,
+                slotLabel: slotData.slot.label,
+                minutes: row.minutes,
+              }))
+            )
+          ).reduce((acc, row) => {
+            const current = acc.get(row.playerName) || { playerName: row.playerName, player: row.player, total: 0, slots: [] };
+            current.total += row.minutes;
+            current.slots.push(row);
+            acc.set(row.playerName, current);
+            return acc;
+          }, new Map());
+          const playerSlotBreakdownRows = Array.from(playerSlotBreakdown.values())
+            .map((row) => ({ ...row, slots: row.slots.sort((a, b) => b.minutes - a.minutes) }))
+            .filter((row) => row.slots.length > 1)
+            .sort((a, b) => b.total - a.total)
+            .slice(0, 5);
+          const maxMinutesRow = systemRows[0] || null;
+          const maxInitialRow = systemRows.slice().sort((a, b) => b.initialStarts - a.initialStarts || b.minutes - a.minutes)[0] || null;
+          const maxGf90Row = systemRows.filter((row) => row.minutes > 0 && row.goalsFor > 0).sort((a, b) => (b.goalsFor / b.minutes) - (a.goalsFor / a.minutes))[0] || null;
+          const minGc90Row = systemRows.filter((row) => row.minutes >= 30).sort((a, b) => (a.goalsAgainst / a.minutes) - (b.goalsAgainst / b.minutes) || b.minutes - a.minutes)[0] || null;
           const systemSequences = scopedMatches.map((match) => ({
             match,
             segments: buildSystemSequence(match),
@@ -20167,6 +20351,57 @@ function App() {
                       {['Todos', 'Local', 'Visitante'].map((filter) => (
                         <button key={filter} type="button" onClick={() => setGroupContextFilter(filter)} className={`rounded-2xl px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] ${groupContextFilter === filter ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}>{filter}</button>
                       ))}
+                    </div>
+                  </div>
+                </section>
+
+                <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
+                  <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Once más utilizado de la temporada</h3>
+                        <p className="mt-2 text-sm font-semibold text-slate-400">
+                          Sistema base: <span className="text-caudal-electric">{seasonBaseSystem || 'Sin datos'}</span>
+                        </p>
+                      </div>
+                      <span className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-black text-slate-300">
+                        Datos tácticos en {tacticalAggregation.coverage.tacticalMatches} de {tacticalAggregation.coverage.totalMatches} partidos
+                      </span>
+                    </div>
+                    <div className="mt-5">
+                      {seasonMostUsedXi ? renderMostUsedXiPitch(seasonMostUsedXi) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Aún no hay minutos tácticos suficientes para construir el once.</p>}
+                    </div>
+                    <p className="mt-4 text-xs font-semibold leading-5 text-slate-500">
+                      Convención: el sistema nuevo empieza en el minuto registrado; el anterior termina justo antes. Si un tramo no tiene disposición táctica registrada, suma minutos al sistema pero no al once por slot.
+                    </p>
+                  </div>
+                  <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Parejas más utilizadas</h3>
+                    <div className="mt-5 space-y-3">
+                      {mostUsedPairs.length ? mostUsedPairs.map((row) => (
+                        <div key={`${row.system}-${row.groupName}-${row.names.join('-')}`} className="rounded-2xl bg-white/5 px-4 py-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{row.groupName} · {row.system}</p>
+                          <p className="mt-1 text-sm font-black text-white">{row.names.join(' + ')}</p>
+                          <p className="mt-1 text-xs font-bold text-slate-400">{row.minutes} min juntos</p>
+                        </div>
+                      )) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Aún no hay parejas tácticas suficientes.</p>}
+                    </div>
+                    <div className="mt-6 border-t border-white/10 pt-5">
+                      <h4 className="text-xs font-black uppercase tracking-[0.16em] text-white">Minutos por posición del jugador</h4>
+                      <div className="mt-3 space-y-3">
+                        {playerSlotBreakdownRows.length ? playerSlotBreakdownRows.map((row) => (
+                          <div key={`breakdown-${row.playerName}`} className="rounded-2xl bg-white/5 px-4 py-3">
+                            <PlayerIdentity player={row.player} name={row.playerName} meta={`${row.total} min tácticos`} size="sm" />
+                            <div className="mt-2 space-y-1">
+                              {row.slots.slice(0, 3).map((slot) => (
+                                <p key={`${row.playerName}-${slot.system}-${slot.slotLabel}`} className="text-xs font-semibold text-slate-400">
+                                  {slot.slotLabel} · {slot.system} · {slot.minutes} min
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        )) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Sin jugadores con minutos en varios slots tácticos.</p>}
+                      </div>
                     </div>
                   </div>
                 </section>
@@ -20352,24 +20587,77 @@ function App() {
                     <div className="mt-5 space-y-3">
                       {systemRows.length ? systemRows.map((row) => (
                         <div key={row.system} className="rounded-2xl bg-white/5 px-4 py-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-base font-black text-white">{row.system}</p>
-                            <span className="text-sm font-black text-caudal-electric">{row.minutes} min</span>
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-base font-black text-white">{row.system}</p>
+                              <p className="mt-1 text-xs font-bold text-slate-400">{row.minutes} min · {totalSystemMinutes ? Math.round((row.minutes / totalSystemMinutes) * 100) : 0}% del tiempo registrado</p>
+                            </div>
+                            <div className="flex flex-wrap justify-end gap-1.5">
+                              {maxMinutesRow?.system === row.system ? <span className="rounded-lg bg-caudal-electric px-2 py-1 text-[10px] font-black text-slate-950">Más utilizado</span> : null}
+                              {maxInitialRow?.system === row.system && row.initialStarts > 0 ? <span className="rounded-lg bg-white/10 px-2 py-1 text-[10px] font-black text-slate-200">Más usado como inicio</span> : null}
+                              {maxGf90Row?.system === row.system ? <span className="rounded-lg bg-emerald-300/20 px-2 py-1 text-[10px] font-black text-emerald-100">Mayor GF/90</span> : null}
+                              {minGc90Row?.system === row.system ? <span className="rounded-lg bg-red-300/15 px-2 py-1 text-[10px] font-black text-red-100">Menor GC/90</span> : null}
+                            </div>
                           </div>
-                          <p className="mt-2 text-xs font-bold uppercase tracking-[0.10em] text-slate-400">
-                            PJ {row.played} · Inicios {row.initialStarts} · GF {row.goalsFor} · GC {row.goalsAgainst} · Balance {row.balance > 0 ? `+${row.balance}` : row.balance}
-                          </p>
+                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+                            <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${totalSystemMinutes ? (row.minutes / totalSystemMinutes) * 100 : 0}%` }} />
+                          </div>
+                          <div className="mt-3 grid grid-cols-3 gap-2 text-center sm:grid-cols-6">
+                            {[
+                              ['PJ', row.played],
+                              ['Inicios', row.initialStarts],
+                              ['GF', row.goalsFor],
+                              ['GC', row.goalsAgainst],
+                              ['GF/90', row.minutes ? ((row.goalsFor / row.minutes) * 90).toFixed(2) : '0.00'],
+                              ['GC/90', row.minutes ? ((row.goalsAgainst / row.minutes) * 90).toFixed(2) : '0.00'],
+                            ].map(([label, value]) => (
+                              <div key={`${row.system}-${label}`} className="rounded-xl bg-black/15 px-2 py-2">
+                                <p className="text-[9px] font-black uppercase text-slate-500">{label}</p>
+                                <p className="mt-1 text-sm font-black text-white">{value}</p>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="mt-3 flex items-center justify-between gap-3">
+                            <span className="text-xs font-black text-caudal-electric">Balance {row.balance > 0 ? `+${row.balance}` : row.balance}</span>
+                            <button type="button" onClick={() => setExpandedSystemXi((current) => current === row.system ? '' : row.system)} className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white">
+                              {expandedSystemXi === row.system ? 'Ocultar once' : 'Ver once más utilizado'}
+                            </button>
+                          </div>
+                          {expandedSystemXi === row.system ? (
+                            <div className="mt-4 rounded-2xl border border-white/10 bg-black/15 p-4">
+                              <p className="mb-4 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Once más utilizado en este sistema</p>
+                              {renderMostUsedXiPitch(buildMostUsedXI(row.system, tacticalAggregation))}
+                            </div>
+                          ) : null}
                         </div>
                       )) : <p className="rounded-2xl bg-white/5 p-4 text-sm text-slate-400">Sin sistemas registrados.</p>}
+                      {tacticalAggregation.coverage.missingMinutes > 0 ? (
+                        <p className="rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-xs font-bold text-amber-100">
+                          Minutos sin disposición táctica registrada: {tacticalAggregation.coverage.missingMinutes}. Se cuentan para el sistema, pero no para el once por posición.
+                        </p>
+                      ) : null}
                       {systemSequences.length ? (
                         <div className="mt-4 space-y-2 border-t border-white/10 pt-4">
                           <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Secuencias por partido</p>
                           {systemSequences.slice(0, 4).map(({ match, segments }) => (
                             <div key={`sequence-${match.id}`} className="rounded-2xl bg-black/15 px-4 py-3">
-                              <p className="text-sm font-black text-white">{match.opponent || 'Rival'}</p>
-                              <p className="mt-1 text-xs font-bold text-slate-400">
-                                {segments.map((segment) => `${segment.fromMinute}'-${segment.toMinute}' ${segment.system}`).join(' · ')}
-                              </p>
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-sm font-black text-white">{match.opponent || 'Rival'}</p>
+                                <p className="text-[10px] font-black uppercase tracking-[0.10em] text-slate-500">
+                                  {getCompetitionFromCatalog(match).label} · {matchDisplayDate(match.date)} · {match.isHome ? 'Local' : 'Visitante'} · {getMatchScoreData(match).caudalGoals}-{getMatchScoreData(match).rivalGoals}
+                                </p>
+                              </div>
+                              <div className="mt-3 flex h-9 overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                                {segments.map((segment) => {
+                                  const width = getMatchDurationMinutes(match) ? (segment.minutes / getMatchDurationMinutes(match)) * 100 : 0;
+                                  return (
+                                    <div key={`${match.id}-${segment.id}`} className="flex min-w-[42px] items-center justify-center border-r border-black/20 bg-caudal-electric/25 px-2 text-[10px] font-black text-white last:border-r-0" style={{ width: `${width}%` }} title={`${segment.fromMinute}'-${segment.toMinute}' · ${segment.system}`}>
+                                      {segment.system}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <p className="mt-2 text-xs font-bold text-slate-400">{segments.map((segment) => `${segment.fromMinute}'-${segment.toMinute}' · ${segment.system}`).join(' · ')}</p>
                             </div>
                           ))}
                         </div>
