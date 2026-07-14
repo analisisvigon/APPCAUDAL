@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "test:league-results": "node src/utils/leagueResults.test.js",
+    "test:encoding": "node src/utils/encodingAudit.test.js",
+    "audit:supabase-encoding": "node src/utils/supabaseEncodingAudit.js",
     "preview": "vite preview"
   },
   "dependencies": {
