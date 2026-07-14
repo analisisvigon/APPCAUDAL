@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import React from 'react';
 import { createPortal } from 'react-dom';
 
@@ -120,7 +120,7 @@ function LeagueResultsDistribution({ results, compact = false, onViewStats }) {
   const emptyMessage = results?.emptyMessage || 'Aun no hay partidos de Liga jugados.';
   const sizeClass = compact ? 'h-28 w-28' : 'h-48 w-48';
   const innerClass = compact ? 'h-16 w-16 text-[10px]' : 'h-28 w-28 text-sm';
-  const counterValue = (value) => (hasData ? value : '—');
+  const counterValue = (value) => (hasData ? value : 'â€”');
 
   return (
     <div className={compact ? 'rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]' : 'rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow'}>
@@ -135,7 +135,7 @@ function LeagueResultsDistribution({ results, compact = false, onViewStats }) {
             onClick={onViewStats}
             className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-200 transition hover:bg-white/10"
           >
-            Ver estadísticas
+            Ver estadÃ­sticas
           </button>
         ) : null}
       </div>
@@ -161,7 +161,7 @@ function LeagueResultsDistribution({ results, compact = false, onViewStats }) {
           </div>
           {compact ? (
             <p className="mt-3 text-center text-xs font-bold text-slate-400">
-              {results.wins} victorias · {results.draws} empates · {results.losses} derrotas
+              {results.wins} victorias Â· {results.draws} empates Â· {results.losses} derrotas
             </p>
           ) : null}
           <p className="mt-2 text-center text-xs font-black uppercase tracking-[0.14em] text-slate-500">{played} partidos</p>
@@ -237,7 +237,7 @@ class GroupAnalysisErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error(`Error cargando bloque de Análisis Grupal (${this.props.label || 'bloque'}):`, error, errorInfo);
+    console.error(`Error cargando bloque de AnÃ¡lisis Grupal (${this.props.label || 'bloque'}):`, error, errorInfo);
   }
 
   componentDidUpdate(previousProps) {
@@ -338,18 +338,18 @@ const competitionOptions = [
 ];
 const eventColorOptions = ['emerald', 'red', 'sky', 'violet', 'amber', 'orange', 'slate'];
 const goalPhaseOptions = {
-  'Juego combinativo': ['Dentro del área', 'Fuera del área'],
-  'Juego directo': ['Centro al área', 'Segunda jugada'],
-  Transición: ['Tras robo', 'Tras ABP'],
-  ABP: ['Córner', 'Falta directa', 'Falta con remate', 'Saque de banda', 'Penalti', 'Segunda jugada'],
+  'Juego combinativo': ['Dentro del Ã¡rea', 'Fuera del Ã¡rea'],
+  'Juego directo': ['Centro al Ã¡rea', 'Segunda jugada'],
+  'TransiciÃ³n': ['Tras robo', 'Tras ABP'],
+  ABP: ['CÃ³rner', 'Falta directa', 'Falta con remate', 'Saque de banda', 'Penalti', 'Segunda jugada'],
 };
 const pitchZoneCatalog = [
-  { value: 'finalizacion_izquierda', label: 'F.Finalización izquierda', shortLabel: 'F.Finalización\nIZQ' },
-  { value: 'finalizacion_centro', label: 'F.Finalización centro', shortLabel: 'F.Finalización\nCENTRO' },
-  { value: 'finalizacion_derecha', label: 'F.Finalización derecha', shortLabel: 'F.Finalización\nDER' },
-  { value: 'creacion_izquierda', label: 'F.Creación izquierda', shortLabel: 'F.Creación\nIZQ' },
-  { value: 'creacion_centro', label: 'F.Creación centro', shortLabel: 'F.Creación\nCENTRO' },
-  { value: 'creacion_derecha', label: 'F.Creación derecha', shortLabel: 'F.Creación\nDER' },
+  { value: 'finalizacion_izquierda', label: 'F.FinalizaciÃ³n izquierda', shortLabel: 'F.FinalizaciÃ³n\nIZQ' },
+  { value: 'finalizacion_centro', label: 'F.FinalizaciÃ³n centro', shortLabel: 'F.FinalizaciÃ³n\nCENTRO' },
+  { value: 'finalizacion_derecha', label: 'F.FinalizaciÃ³n derecha', shortLabel: 'F.FinalizaciÃ³n\nDER' },
+  { value: 'creacion_izquierda', label: 'F.CreaciÃ³n izquierda', shortLabel: 'F.CreaciÃ³n\nIZQ' },
+  { value: 'creacion_centro', label: 'F.CreaciÃ³n centro', shortLabel: 'F.CreaciÃ³n\nCENTRO' },
+  { value: 'creacion_derecha', label: 'F.CreaciÃ³n derecha', shortLabel: 'F.CreaciÃ³n\nDER' },
   { value: 'inicio_izquierda', label: 'F.Inicio izquierda', shortLabel: 'F.Inicio\nIZQ' },
   { value: 'inicio_centro', label: 'F.Inicio centro', shortLabel: 'F.Inicio\nCENTRO' },
   { value: 'inicio_derecha', label: 'F.Inicio derecha', shortLabel: 'F.Inicio\nDER' },
@@ -367,7 +367,7 @@ const goalMouthZoneCatalog = [
 ];
 const pitchZoneOptions = pitchZoneCatalog.map((zone) => zone.value);
 const goalZoneOptions = goalMouthZoneCatalog.map((zone) => zone.value);
-const goalAttackTypeOptions = ['Combinativo', 'Transición', 'ABP', 'Juego directo', 'Contraataque', 'Segunda jugada'];
+const goalAttackTypeOptions = ['Combinativo', 'TransiciÃ³n', 'ABP', 'Juego directo', 'Contraataque', 'Segunda jugada'];
 const goalSituationOptions = ['Organizado', 'Desorganizado', 'Superioridad', 'Igualdad', 'Inferioridad'];
 const defaultGoalAnalysisDraft = {
   type: 'Gol a favor',
@@ -516,7 +516,7 @@ const emptyMatchForm = {
   // POST Partido
   postVideoLink: '',
   events: [],
-  // PRE Partido - Alineación rival específica
+  // PRE Partido - AlineaciÃ³n rival especÃ­fica
   rivalLineupSystem: '',
   rivalLineupPlayers: [],
 };
@@ -555,60 +555,60 @@ const collectiveProfileOptions = {
   attackingRhythm: ['Posicional', 'Mixto', 'Vertical'],
   preferredAttack: ['Izquierda', 'Centro', 'Derecha', 'Equilibrado'],
   strengths: ['Juego interior', 'Centros', 'ABP', 'Transiciones', 'Juego directo', 'Duelos', 'Contraataque', 'Segunda jugada'],
-  weaknesses: ['Espalda lateral', 'Pérdida interior', 'Defensa área', 'ABP defensiva', 'Transición defensiva', 'Juego aéreo', 'Vigilancias', 'Salida de balón'],
+  weaknesses: ['Espalda lateral', 'PÃ©rdida interior', 'Defensa Ã¡rea', 'ABP defensiva', 'TransiciÃ³n defensiva', 'Juego aÃ©reo', 'Vigilancias', 'Salida de balÃ³n'],
 };
 const PLAYER_BEHAVIOURS_BY_POSITION = {
   goalkeeper: {
     label: 'Portero',
-    withBall: ['juego corto', 'juego largo', 'buen iniciador', 'atrae presión', 'juega directo', 'dominante con el pie', 'presionable'],
-    withoutBall: ['portero adelantado', 'dominio aéreo', 'buen uno contra uno', 'blocaje', 'rechaza', 'débil en centros', 'lento en salidas'],
+    withBall: ['juego corto', 'juego largo', 'buen iniciador', 'atrae presiÃ³n', 'juega directo', 'dominante con el pie', 'presionable'],
+    withoutBall: ['portero adelantado', 'dominio aÃ©reo', 'buen uno contra uno', 'blocaje', 'rechaza', 'dÃ©bil en centros', 'lento en salidas'],
   },
   centerback: {
     label: 'Central',
-    withBall: ['constructor', 'juego largo', 'rompe líneas', 'conducción', 'seguro en corto', 'vulnerable presionado', 'usa perfil menos dominante'],
-    withoutBall: ['dominante aéreo', 'agresivo al salto', 'corrector', 'rápido al espacio', 'defiende área', 'sufre a la espalda', 'pierde referencias', 'fuerte en duelo'],
+    withBall: ['constructor', 'juego largo', 'rompe lÃ­neas', 'conducciÃ³n', 'seguro en corto', 'vulnerable presionado', 'usa perfil menos dominante'],
+    withoutBall: ['dominante aÃ©reo', 'agresivo al salto', 'corrector', 'rÃ¡pido al espacio', 'defiende Ã¡rea', 'sufre a la espalda', 'pierde referencias', 'fuerte en duelo'],
   },
   fullback: {
     label: 'Lateral / carrilero',
     withBall: ['profundo', 'interior', 'asociativo', 'buen centro', 'conductor', 'rompe por fuera', 'juega por dentro', 'vulnerable presionado'],
-    withoutBall: ['agresivo en presión', 'fuerte en uno contra uno', 'sufre a la espalda', 'pierde segundo palo', 'buena cobertura', 'repliegue lento', 'intensidad defensiva'],
+    withoutBall: ['agresivo en presiÃ³n', 'fuerte en uno contra uno', 'sufre a la espalda', 'pierde segundo palo', 'buena cobertura', 'repliegue lento', 'intensidad defensiva'],
   },
   defensive_midfielder: {
     label: 'Pivote',
-    withBall: ['organizador', 'juego largo', 'asociativo', 'recibe entre líneas', 'gira bajo presión', 'conductor', 'vertical', 'vulnerable presionado'],
-    withoutBall: ['equilibra', 'roba', 'intenso', 'llega tarde', 'protege carril central', 'salta a presión', 'domina segunda jugada', 'pierde marca'],
+    withBall: ['organizador', 'juego largo', 'asociativo', 'recibe entre lÃ­neas', 'gira bajo presiÃ³n', 'conductor', 'vertical', 'vulnerable presionado'],
+    withoutBall: ['equilibra', 'roba', 'intenso', 'llega tarde', 'protege carril central', 'salta a presiÃ³n', 'domina segunda jugada', 'pierde marca'],
   },
   midfielder: {
     label: 'Mediocentro',
-    withBall: ['organizador', 'juego largo', 'asociativo', 'recibe entre líneas', 'gira bajo presión', 'conductor', 'vertical', 'vulnerable presionado'],
-    withoutBall: ['equilibra', 'roba', 'intenso', 'llega tarde', 'protege carril central', 'salta a presión', 'domina segunda jugada', 'pierde marca'],
+    withBall: ['organizador', 'juego largo', 'asociativo', 'recibe entre lÃ­neas', 'gira bajo presiÃ³n', 'conductor', 'vertical', 'vulnerable presionado'],
+    withoutBall: ['equilibra', 'roba', 'intenso', 'llega tarde', 'protege carril central', 'salta a presiÃ³n', 'domina segunda jugada', 'pierde marca'],
   },
   attacking_midfielder: {
     label: 'Mediapunta',
-    withBall: ['recibe entre líneas', 'último pase', 'gira', 'asociativo', 'vertical', 'llegada', 'rematador', 'conduce'],
-    withoutBall: ['presión tras pérdida', 'baja intensidad', 'cierra línea de pase', 'llega al área', 'pierde referencia', 'ayuda poco'],
+    withBall: ['recibe entre lÃ­neas', 'Ãºltimo pase', 'gira', 'asociativo', 'vertical', 'llegada', 'rematador', 'conduce'],
+    withoutBall: ['presiÃ³n tras pÃ©rdida', 'baja intensidad', 'cierra lÃ­nea de pase', 'llega al Ã¡rea', 'pierde referencia', 'ayuda poco'],
   },
   winger: {
     label: 'Extremo',
     withBall: ['regateador', 'pie cambiado', 'pie natural', 'profundo', 'interior', 'ataca espacio', 'finalizador', 'buen centro', 'asociativo'],
-    withoutBall: ['presión alta', 'repliegue', 'ayuda al lateral', 'pierde segundo palo', 'baja intensidad', 'amenaza transición'],
+    withoutBall: ['presiÃ³n alta', 'repliegue', 'ayuda al lateral', 'pierde segundo palo', 'baja intensidad', 'amenaza transiciÃ³n'],
   },
   forward: {
     label: 'Delantero',
-    withBall: ['físico/fijador', 'rápido al espacio', 'móvil', 'asociativo', 'juego de espaldas', 'rematador', 'referencia aérea', 'falso nueve', 'ataca primer palo'],
-    withoutBall: ['inicia presión', 'orienta salida', 'baja intensidad', 'fija centrales', 'amenaza profundidad', 'domina segundas jugadas', 'ataca área'],
+    withBall: ['fÃ­sico/fijador', 'rÃ¡pido al espacio', 'mÃ³vil', 'asociativo', 'juego de espaldas', 'rematador', 'referencia aÃ©rea', 'falso nueve', 'ataca primer palo'],
+    withoutBall: ['inicia presiÃ³n', 'orienta salida', 'baja intensidad', 'fija centrales', 'amenaza profundidad', 'domina segundas jugadas', 'ataca Ã¡rea'],
   },
 };
 const microProfileCatalog = {
-  forward: ['Físico / fijador', 'Rápido al espacio', 'Móvil', 'Rematador', 'Asociativo', 'Juego aéreo', 'Falso nueve'],
+  forward: ['FÃ­sico / fijador', 'RÃ¡pido al espacio', 'MÃ³vil', 'Rematador', 'Asociativo', 'Juego aÃ©reo', 'Falso nueve'],
   winger: ['Desbordador', 'Interior', 'Profundo', 'Asociativo', 'Finalizador', 'Ataca espalda', 'Pie natural', 'Pie cambiado'],
-  midfielder: ['Organizador', 'Pivote defensivo', 'Box to box', 'Llegador', 'Presionable', 'Dominante físicamente', 'Especialista en juego largo'],
-  fullback: ['Profundo', 'Interior', 'Defensivo', 'Asociativo', 'Agresivo en presión', 'Débil a su espalda'],
-  centerback: ['Dominante aéreo', 'Rápido al espacio', 'Agresivo al salto', 'Corrector', 'Constructor', 'Vulnerable presionado'],
-  goalkeeper: ['Juego corto', 'Juego largo', 'Portero adelantado', 'Dominante aéreo', 'Débil bajo presión', 'Buen iniciador'],
-  general: ['Rápido al espacio', 'Físico / fijador', 'Rematador', 'Asociativo', 'Desbordador', 'Organizador', 'Presionable', 'Vulnerable presionado'],
+  midfielder: ['Organizador', 'Pivote defensivo', 'Box to box', 'Llegador', 'Presionable', 'Dominante fÃ­sicamente', 'Especialista en juego largo'],
+  fullback: ['Profundo', 'Interior', 'Defensivo', 'Asociativo', 'Agresivo en presiÃ³n', 'DÃ©bil a su espalda'],
+  centerback: ['Dominante aÃ©reo', 'RÃ¡pido al espacio', 'Agresivo al salto', 'Corrector', 'Constructor', 'Vulnerable presionado'],
+  goalkeeper: ['Juego corto', 'Juego largo', 'Portero adelantado', 'Dominante aÃ©reo', 'DÃ©bil bajo presiÃ³n', 'Buen iniciador'],
+  general: ['RÃ¡pido al espacio', 'FÃ­sico / fijador', 'Rematador', 'Asociativo', 'Desbordador', 'Organizador', 'Presionable', 'Vulnerable presionado'],
 };
-const evidenceTypeOptions = ['Ataque', 'Defensa', 'ABP', 'Transición', 'Jugador'];
+const evidenceTypeOptions = ['Ataque', 'Defensa', 'ABP', 'TransiciÃ³n', 'Jugador'];
 const tacticalConnectionTypes = ['Pase habitual', 'Pase largo', 'Centro', 'Descarga', 'Segunda jugada', 'ABP'];
 const tacticalConnectionFilters = ['Todas', 'Pases', 'Centros', 'Pases largos', 'ABP', 'Transiciones'];
 const emptyTacticalConnectionDraft = {
@@ -650,19 +650,19 @@ const emptyEvidenceDraft = {
 };
 const tacticalIdentityOptions = {
   strongSide: ['izquierda', 'derecha', 'interior', 'ambos laterales', 'directo'],
-  mainThreat: ['transición', 'ABP', 'espalda lateral', 'delantero referencia', 'centros laterales', 'segunda jugada'],
+  mainThreat: ['transiciÃ³n', 'ABP', 'espalda lateral', 'delantero referencia', 'centros laterales', 'segunda jugada'],
   blockHeight: ['alto', 'medio', 'bajo'],
-  pressureType: ['tras pérdida', 'espera', 'hombre a hombre', 'repliegue'],
+  pressureType: ['tras pÃ©rdida', 'espera', 'hombre a hombre', 'repliegue'],
   attackingRhythm: ['alto', 'medio', 'pausado', 'vertical'],
-  offensiveBehavior: ['combinativo', 'directo', 'por fuera', 'segunda jugada', 'transición'],
-  offensiveFocus: ['izquierda', 'derecha', 'interior', 'espalda lateral', 'área', 'ABP'],
-  detectedWeakness: ['espalda lateral', 'defiende centros', 'pérdida interior', 'ABP defensiva', 'bloque bajo', 'retorno lento'],
+  offensiveBehavior: ['combinativo', 'directo', 'por fuera', 'segunda jugada', 'transiciÃ³n'],
+  offensiveFocus: ['izquierda', 'derecha', 'interior', 'espalda lateral', 'Ã¡rea', 'ABP'],
+  detectedWeakness: ['espalda lateral', 'defiende centros', 'pÃ©rdida interior', 'ABP defensiva', 'bloque bajo', 'retorno lento'],
 };
 const tacticalIdentityLabels = {
   strongSide: 'Lado fuerte',
   mainThreat: 'Amenaza principal',
   blockHeight: 'Altura de bloque',
-  pressureType: 'Tipo de presión',
+  pressureType: 'Tipo de presiÃ³n',
   attackingRhythm: 'Ritmo ofensivo',
   offensiveBehavior: 'Comportamiento ofensivo',
   offensiveFocus: 'Foco ofensivo',
@@ -685,15 +685,15 @@ const capitalizeText = (value) => {
 const mapRivalIdentityToPre = (identity = {}) => {
   const data = getTeamTacticalIdentity(identity);
   const block = capitalizeText(data.blockHeight);
-  const pressure = data.pressureType === 'tras pérdida' || data.pressureType === 'hombre a hombre' ? 'Alta' : data.pressureType === 'repliegue' ? 'Baja' : data.pressureType ? 'Media' : '';
+  const pressure = data.pressureType === 'tras pÃ©rdida' || data.pressureType === 'hombre a hombre' ? 'Alta' : data.pressureType === 'repliegue' ? 'Baja' : data.pressureType ? 'Media' : '';
   return {
-    preRivalStyle: [data.offensiveBehavior, data.attackingRhythm ? `ritmo ${data.attackingRhythm}` : '', data.offensiveFocus ? `foco ${data.offensiveFocus}` : ''].filter(Boolean).join(' · '),
+    preRivalStyle: [data.offensiveBehavior, data.attackingRhythm ? `ritmo ${data.attackingRhythm}` : '', data.offensiveFocus ? `foco ${data.offensiveFocus}` : ''].filter(Boolean).join(' Â· '),
     preRivalStrengths: [data.strongSide ? `Lado fuerte ${data.strongSide}` : '', data.mainThreat ? `amenaza principal ${data.mainThreat}` : ''].filter(Boolean).join('; '),
     preRivalWeaknesses: data.detectedWeakness,
     preRivalBuildUp: data.offensiveBehavior === 'combinativo' ? 'Combinativo' : data.offensiveBehavior === 'directo' ? 'Directo' : 'Mixto',
     preRivalDefensiveBlock: block,
     preRivalPressure: pressure,
-    preRivalTransitions: data.mainThreat === 'transición' || data.attackingRhythm === 'vertical' ? 'Directas' : 'Equilibradas',
+    preRivalTransitions: data.mainThreat === 'transiciÃ³n' || data.attackingRhythm === 'vertical' ? 'Directas' : 'Equilibradas',
     preRivalOffensiveOrganization: data.offensiveBehavior,
     preRivalBaseSystem: '',
     preRivalProgression: data.offensiveFocus,
@@ -702,7 +702,7 @@ const mapRivalIdentityToPre = (identity = {}) => {
     preRivalDangerZones: data.offensiveFocus,
     preRivalPressureType: data.pressureType,
     preRivalSpacesAllowed: data.detectedWeakness,
-    preRivalAfterRecovery: data.mainThreat === 'transición' ? 'Primer pase vertical; corre tras robo' : '',
+    preRivalAfterRecovery: data.mainThreat === 'transiciÃ³n' ? 'Primer pase vertical; corre tras robo' : '',
   };
 };
 const readStoredRivalTacticalIdentity = () => {
@@ -726,22 +726,22 @@ const createSuggestedConsignas = (identity = {}) => {
   };
 
   if (data.blockHeight === 'bajo') {
-    add('Dar amplitud y mover rápido de lado a lado antes de acelerar.', 'ofensiva');
+    add('Dar amplitud y mover rÃ¡pido de lado a lado antes de acelerar.', 'ofensiva');
     add('Tener paciencia ofensiva: circular, fijar y atacar el intervalo libre.', 'fortaleza');
   }
   if (data.blockHeight === 'alto') {
-    add('Superar primera línea y atacar la espalda de su defensa.', 'ofensiva');
+    add('Superar primera lÃ­nea y atacar la espalda de su defensa.', 'ofensiva');
   }
-  if (data.mainThreat === 'transición') {
-    add('Vigilancia tras pérdida: cerrar pase interior y primera carrera rival.', 'alerta');
-    add('Evitar pérdidas interiores con el equipo abierto.', 'vigilancia');
+  if (data.mainThreat === 'transiciÃ³n') {
+    add('Vigilancia tras pÃ©rdida: cerrar pase interior y primera carrera rival.', 'alerta');
+    add('Evitar pÃ©rdidas interiores con el equipo abierto.', 'vigilancia');
   }
-  if (data.pressureType === 'tras pérdida' || data.pressureType === 'hombre a hombre') {
-    add('Salir de presión con tercer hombre o apoyo cercano.', 'ofensiva');
-    add('Atacar espalda tras atraer su salto de presión.', 'ofensiva');
+  if (data.pressureType === 'tras pÃ©rdida' || data.pressureType === 'hombre a hombre') {
+    add('Salir de presiÃ³n con tercer hombre o apoyo cercano.', 'ofensiva');
+    add('Atacar espalda tras atraer su salto de presiÃ³n.', 'ofensiva');
   }
   if (data.pressureType === 'repliegue' || data.pressureType === 'espera') {
-    add('No precipitar centros: atraer, fijar y buscar pase atrás.', 'vigilancia');
+    add('No precipitar centros: atraer, fijar y buscar pase atrÃ¡s.', 'vigilancia');
   }
   if (data.detectedWeakness === 'espalda lateral' || data.offensiveFocus === 'espalda lateral') {
     add('Atacar profundidad exterior a la espalda del lateral.', 'ofensiva');
@@ -753,13 +753,13 @@ const createSuggestedConsignas = (identity = {}) => {
     add('Ganar rechace frontal y orientar segundas jugadas hacia fuera.', 'vigilancia');
   }
   if (data.mainThreat === 'centros laterales') {
-    add('Tapar centro cómodo y proteger segundo palo.', 'alerta');
+    add('Tapar centro cÃ³modo y proteger segundo palo.', 'alerta');
   }
   if (data.strongSide === 'izquierda' || data.strongSide === 'derecha') {
-    add(`Cerrar su lado fuerte ${data.strongSide} y obligarles a jugar por zona débil.`, 'vigilancia');
+    add(`Cerrar su lado fuerte ${data.strongSide} y obligarles a jugar por zona dÃ©bil.`, 'vigilancia');
   }
   if (data.attackingRhythm === 'alto' || data.attackingRhythm === 'vertical') {
-    add('Temporizar pérdidas y no partir el equipo tras ataque finalizado.', 'alerta');
+    add('Temporizar pÃ©rdidas y no partir el equipo tras ataque finalizado.', 'alerta');
   }
   return items.slice(0, 6);
 };
@@ -768,7 +768,7 @@ const consignaToneClass = {
   vigilancia: 'border-amber-200/25 bg-amber-200/[0.10] text-amber-100',
   ofensiva: 'border-caudal-electric/25 bg-caudal-electric/[0.10] text-caudal-electric',
   fortaleza: 'border-emerald-200/25 bg-emerald-200/[0.10] text-emerald-100',
-  transición: 'border-indigo-200/25 bg-indigo-400/[0.12] text-indigo-100',
+  'transiciÃ³n': 'border-indigo-200/25 bg-indigo-400/[0.12] text-indigo-100',
   transicion: 'border-indigo-200/25 bg-indigo-400/[0.12] text-indigo-100',
   abp: 'border-cyan-200/25 bg-cyan-300/[0.12] text-cyan-100',
 };
@@ -818,7 +818,7 @@ const hasRealValue = (value) => {
   return String(value).trim() !== '';
 };
 const hasObservedSource = (...values) => values.some(hasRealValue);
-const getInsufficientLabel = (fallback = 'Información insuficiente') => fallback;
+const getInsufficientLabel = (fallback = 'InformaciÃ³n insuficiente') => fallback;
 const getMissingDataLabel = (fallback = 'Sin dato registrado') => fallback;
 const normalizeCatalogText = (value) =>
   String(value || '')
@@ -1390,15 +1390,15 @@ const EVENT_STAT_EFFECTS = {
 };
 
 const EVENT_STAT_FIELDS = [
-  { key: 'goals', label: 'Goles', individualLabel: 'Gol', group: 'Producción ofensiva' },
-  { key: 'shots', label: 'Tiros', group: 'Producción ofensiva' },
-  { key: 'shotsOnTarget', label: 'Tiros a puerta', group: 'Producción ofensiva' },
-  { key: 'dribbles', label: 'Regates', group: 'Producción ofensiva' },
-  { key: 'crosses', label: 'Centros', group: 'Producción ofensiva' },
-  { key: 'corners', label: 'Córners', group: 'Producción ofensiva', teamOnly: true },
-  { key: 'turnovers', label: 'Pérdidas', group: 'Seguridad con balón' },
-  { key: 'steals', label: 'Robos', group: 'Seguridad con balón' },
-  { key: 'recoveries', label: 'Recuperaciones', group: 'Seguridad con balón' },
+  { key: 'goals', label: 'Goles', individualLabel: 'Gol', group: 'ProducciÃ³n ofensiva' },
+  { key: 'shots', label: 'Tiros', group: 'ProducciÃ³n ofensiva' },
+  { key: 'shotsOnTarget', label: 'Tiros a puerta', group: 'ProducciÃ³n ofensiva' },
+  { key: 'dribbles', label: 'Regates', group: 'ProducciÃ³n ofensiva' },
+  { key: 'crosses', label: 'Centros', group: 'ProducciÃ³n ofensiva' },
+  { key: 'corners', label: 'CÃ³rners', group: 'ProducciÃ³n ofensiva', teamOnly: true },
+  { key: 'turnovers', label: 'PÃ©rdidas', group: 'Seguridad con balÃ³n' },
+  { key: 'steals', label: 'Robos', group: 'Seguridad con balÃ³n' },
+  { key: 'recoveries', label: 'Recuperaciones', group: 'Seguridad con balÃ³n' },
   { key: 'foulsCommitted', label: 'Faltas realizadas', group: 'Disciplina y duelos' },
   { key: 'foulsReceived', label: 'Faltas recibidas', group: 'Disciplina y duelos' },
 ];
@@ -1422,17 +1422,17 @@ const getDelegatedStatusTone = (status) => ({
 }[status] || 'border-white/10 bg-white/[0.04] text-slate-300');
 
 const delegatedStatEventCatalog = [
-  { tipoEvento: 'gol', label: 'Gol', short: 'GOL', group: 'Finalización', tone: 'goal', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.gol.team },
-  { tipoEvento: 'tiro', label: 'Tiro', short: 'TIR', group: 'Finalización', tone: 'offensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.tiro.team },
-  { tipoEvento: 'tiro_puerta', label: 'Tiro a puerta', short: 'TP', group: 'Finalización', tone: 'offensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.tiro_puerta.team },
+  { tipoEvento: 'gol', label: 'Gol', short: 'GOL', group: 'FinalizaciÃ³n', tone: 'goal', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.gol.team },
+  { tipoEvento: 'tiro', label: 'Tiro', short: 'TIR', group: 'FinalizaciÃ³n', tone: 'offensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.tiro.team },
+  { tipoEvento: 'tiro_puerta', label: 'Tiro a puerta', short: 'TP', group: 'FinalizaciÃ³n', tone: 'offensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.tiro_puerta.team },
   { tipoEvento: 'regate', label: 'Regate', short: 'REG', group: 'Ataque', tone: 'offensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.regate.team },
   { tipoEvento: 'centro', label: 'Centro', short: 'CEN', group: 'Ataque', tone: 'offensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.centro.team },
-  { tipoEvento: 'perdida', label: 'Pérdida', short: 'PER', group: 'Posesión', tone: 'danger', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.perdida.team },
-  { tipoEvento: 'robo', label: 'Robo', short: 'ROB', group: 'Posesión', tone: 'defensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.robo.team },
-  { tipoEvento: 'recuperacion', label: 'Recuperación', short: 'REC', group: 'Posesión', tone: 'defensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.recuperacion.team },
+  { tipoEvento: 'perdida', label: 'PÃ©rdida', short: 'PER', group: 'PosesiÃ³n', tone: 'danger', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.perdida.team },
+  { tipoEvento: 'robo', label: 'Robo', short: 'ROB', group: 'PosesiÃ³n', tone: 'defensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.robo.team },
+  { tipoEvento: 'recuperacion', label: 'RecuperaciÃ³n', short: 'REC', group: 'PosesiÃ³n', tone: 'defensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.recuperacion.team },
   { tipoEvento: 'falta_realizada', label: 'Falta realizada', short: 'FR', group: 'Faltas', tone: 'danger', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.falta_realizada.team },
   { tipoEvento: 'falta_recibida', label: 'Falta recibida', short: 'FREC', group: 'Faltas', tone: 'defensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.falta_recibida.team },
-  { tipoEvento: 'corner', label: 'Córner', short: 'COR', group: 'Ataque', tone: 'offensive', requiresPlayer: false, effects: EVENT_STAT_EFFECTS.corner.team },
+  { tipoEvento: 'corner', label: 'CÃ³rner', short: 'COR', group: 'Ataque', tone: 'offensive', requiresPlayer: false, effects: EVENT_STAT_EFFECTS.corner.team },
 ];
 const delegatedEventDefinitions = [
   ...['caudal', 'rival'].flatMap((side) => delegatedStatEventCatalog.map((event) => ({
@@ -1453,9 +1453,9 @@ const delegatedCounterPairs = [
   { label: 'Tiros', caudal: 'tiro', rival: 'tiro' },
   { label: 'Tiros puerta', caudal: 'tiro_puerta', rival: 'tiro_puerta' },
   { label: 'Regates', caudal: 'regate', rival: 'regate' },
-  { label: 'Córners', caudal: 'corner', rival: 'corner' },
+  { label: 'CÃ³rners', caudal: 'corner', rival: 'corner' },
   { label: 'Recuperaciones', caudal: 'recuperacion', rival: 'recuperacion' },
-  { label: 'Pérdidas', caudal: 'perdida', rival: 'perdida' },
+  { label: 'PÃ©rdidas', caudal: 'perdida', rival: 'perdida' },
 ];
 
 const quickEventLabelByType = Object.fromEntries(delegatedEventDefinitions.map((definition) => [definition.tipoEvento, definition.label]));
@@ -1522,7 +1522,7 @@ const getMatchOperationalStatus = (match) => {
     return { label: 'ANALIZADO', className: 'border-emerald-200/25 bg-emerald-200/[0.10] text-emerald-100' };
   }
   if ((match?.events || []).length) {
-    return { label: 'EN REVISIÓN', className: 'border-sky-200/25 bg-sky-200/[0.10] text-sky-100' };
+    return { label: 'EN REVISIÃ“N', className: 'border-sky-200/25 bg-sky-200/[0.10] text-sky-100' };
   }
   return { label: 'CERRADO', className: 'border-white/15 bg-white/[0.055] text-slate-300' };
 };
@@ -1904,7 +1904,7 @@ const formatLineupForPrompt = (system, lineup) =>
 const getReportLineValue = (text, labels) => {
   const lines = String(text || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const labelPattern = labels.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  const regex = new RegExp(`^(?:${labelPattern})\\s*[:\\-–]\\s*(.+)$`, 'i');
+  const regex = new RegExp(`^(?:${labelPattern})\\s*[:\\-â€“]\\s*(.+)$`, 'i');
   const match = lines.map((line) => line.match(regex)).find(Boolean);
   return match?.[1]?.trim() || '';
 };
@@ -1926,31 +1926,31 @@ const extractRivalReportData = (text) => {
   const source = String(text || '').trim();
   const systemMatch = source.match(/\b[1-5]-[1-5]-[1-5](?:-[1-5])?\b/);
   const fields = {
-    preRivalSystem: getReportLineValue(source, ['sistema rival', 'sistema', 'dibujo', 'formación', 'formacion']) || systemMatch?.[0] || '',
-    preRivalBaseSystem: getReportLineValue(source, ['sistema con balón', 'sistema con balon', 'sistema base', 'estructura ofensiva']) || '',
-    preRivalStyle: getReportLineValue(source, ['estilo', 'cómo juega', 'como juega', 'modelo rival']) || findReportSentence(source, ['directo', 'combinativo', 'posesión', 'posesion', 'bloque']),
+    preRivalSystem: getReportLineValue(source, ['sistema rival', 'sistema', 'dibujo', 'formaciÃ³n', 'formacion']) || systemMatch?.[0] || '',
+    preRivalBaseSystem: getReportLineValue(source, ['sistema con balÃ³n', 'sistema con balon', 'sistema base', 'estructura ofensiva']) || '',
+    preRivalStyle: getReportLineValue(source, ['estilo', 'cÃ³mo juega', 'como juega', 'modelo rival']) || findReportSentence(source, ['directo', 'combinativo', 'posesiÃ³n', 'posesion', 'bloque']),
     preRivalStrengths: getReportLineValue(source, ['fortalezas', 'puntos fuertes', 'fuerte en', 'virtudes']) || findReportSentence(source, ['fortaleza', 'punto fuerte', 'destaca', 'peligro']),
-    preRivalWeaknesses: getReportLineValue(source, ['debilidades', 'puntos débiles', 'puntos debiles', 'sufre en', 'débil en', 'debil en']) || findReportSentence(source, ['debilidad', 'sufre', 'espacio', 'espalda']),
+    preRivalWeaknesses: getReportLineValue(source, ['debilidades', 'puntos dÃ©biles', 'puntos debiles', 'sufre en', 'dÃ©bil en', 'debil en']) || findReportSentence(source, ['debilidad', 'sufre', 'espacio', 'espalda']),
     preRivalBuildUp: detectReportOption(source, ['Combinativo', 'Directo', 'Mixto'], ''),
     preRivalDefensiveBlock: detectReportOption(source, ['Alto', 'Medio', 'Bajo'], ''),
-    preRivalPressure: findReportSentence(source, ['presión alta', 'presion alta']) ? 'Alta' : findReportSentence(source, ['presión baja', 'presion baja']) ? 'Baja' : findReportSentence(source, ['presión media', 'presion media']) ? 'Media' : '',
+    preRivalPressure: findReportSentence(source, ['presiÃ³n alta', 'presion alta']) ? 'Alta' : findReportSentence(source, ['presiÃ³n baja', 'presion baja']) ? 'Baja' : findReportSentence(source, ['presiÃ³n media', 'presion media']) ? 'Media' : '',
     preRivalTransitions: detectReportOption(source, ['Directas', 'Equilibradas', 'Pausadas'], ''),
-    preRivalOffensiveOrganization: getReportLineValue(source, ['organización ofensiva', 'organizacion ofensiva', 'ataque organizado']) || findReportSentence(source, ['con balón', 'con balon', 'organización ofensiva', 'organizacion ofensiva']),
-    preRivalStartPlay: getReportLineValue(source, ['salida', 'inicio de juego', 'cómo inicia', 'como inicia']) || findReportSentence(source, ['salida', 'inicia', 'portero', 'centrales']),
-    preRivalProgression: getReportLineValue(source, ['progresión', 'progresion', 'cómo progresa', 'como progresa']) || findReportSentence(source, ['progresa', 'tercer hombre', 'por dentro', 'por fuera']),
-    preRivalFinishing: getReportLineValue(source, ['finalización', 'finalizacion', 'cómo finaliza', 'como finaliza']) || findReportSentence(source, ['centro', 'pase atrás', 'pase atras', 'remate', 'finaliza']),
+    preRivalOffensiveOrganization: getReportLineValue(source, ['organizaciÃ³n ofensiva', 'organizacion ofensiva', 'ataque organizado']) || findReportSentence(source, ['con balÃ³n', 'con balon', 'organizaciÃ³n ofensiva', 'organizacion ofensiva']),
+    preRivalStartPlay: getReportLineValue(source, ['salida', 'inicio de juego', 'cÃ³mo inicia', 'como inicia']) || findReportSentence(source, ['salida', 'inicia', 'portero', 'centrales']),
+    preRivalProgression: getReportLineValue(source, ['progresiÃ³n', 'progresion', 'cÃ³mo progresa', 'como progresa']) || findReportSentence(source, ['progresa', 'tercer hombre', 'por dentro', 'por fuera']),
+    preRivalFinishing: getReportLineValue(source, ['finalizaciÃ³n', 'finalizacion', 'cÃ³mo finaliza', 'como finaliza']) || findReportSentence(source, ['centro', 'pase atrÃ¡s', 'pase atras', 'remate', 'finaliza']),
     preRivalOffensiveKeyPlayers: getReportLineValue(source, ['jugadores clave', 'jugadores clave ofensivos', 'amenazas', 'referentes']) || '',
-    preRivalDangerZones: getReportLineValue(source, ['zonas de peligro', 'dónde genera peligro', 'donde genera peligro', 'zona fuerte']) || findReportSentence(source, ['banda', 'intervalo', 'frontal', 'espalda']),
-    preRivalDefensiveOrganization: getReportLineValue(source, ['organización defensiva', 'organizacion defensiva', 'sin balón', 'sin balon']) || findReportSentence(source, ['sin balón', 'sin balon', 'defiende', 'bloque']),
-    preRivalPressureType: getReportLineValue(source, ['tipo de presión', 'tipo de presion', 'presión', 'presion']) || findReportSentence(source, ['hombre a hombre', 'orientada', 'pivote', 'presión']),
-    preRivalSpacesAllowed: getReportLineValue(source, ['espacios que deja', 'dónde deja espacios', 'donde deja espacios', 'espacios concedidos']) || findReportSentence(source, ['deja espacio', 'espalda', 'lado débil', 'lado debil', 'entre líneas', 'entre lineas']),
-    preRivalDefendsCrosses: getReportLineValue(source, ['defiende centros', 'cómo defiende centros', 'como defiende centros']) || findReportSentence(source, ['centros', 'área', 'area', 'primer palo', 'segundo palo']),
-    preRivalDefendsBack: getReportLineValue(source, ['defiende espalda', 'espalda centrales', 'defiende espalda de centrales']) || findReportSentence(source, ['espalda de centrales', 'línea alta', 'linea alta', 'cobertura']),
-    preRivalAfterLoss: getReportLineValue(source, ['tras pérdida', 'tras perdida', 'después de perder', 'despues de perder']) || findReportSentence(source, ['tras pérdida', 'tras perdida', 'repliega', 'presiona tras pérdida']),
-    preRivalAfterRecovery: getReportLineValue(source, ['tras robo', 'tras recuperación', 'tras recuperacion', 'después de robar', 'despues de robar']) || findReportSentence(source, ['tras robo', 'transición', 'transicion', 'primer pase']),
-    preRivalTransitionLaunchers: getReportLineValue(source, ['lanzadores transición', 'lanzadores transicion', 'lanzadores', 'quién corre', 'quien corre']) || '',
-    preRivalCornersFor: getReportLineValue(source, ['córners ofensivos', 'corners ofensivos', 'abp ofensiva', 'balón parado ofensivo', 'balon parado ofensivo']) || findReportSentence(source, ['córner ofensivo', 'corner ofensivo', 'abp ofensiva']),
-    preRivalCornersAgainst: getReportLineValue(source, ['córners defensivos', 'corners defensivos', 'abp defensiva', 'balón parado defensivo', 'balon parado defensivo']) || findReportSentence(source, ['córner defensivo', 'corner defensivo', 'abp defensiva']),
+    preRivalDangerZones: getReportLineValue(source, ['zonas de peligro', 'dÃ³nde genera peligro', 'donde genera peligro', 'zona fuerte']) || findReportSentence(source, ['banda', 'intervalo', 'frontal', 'espalda']),
+    preRivalDefensiveOrganization: getReportLineValue(source, ['organizaciÃ³n defensiva', 'organizacion defensiva', 'sin balÃ³n', 'sin balon']) || findReportSentence(source, ['sin balÃ³n', 'sin balon', 'defiende', 'bloque']),
+    preRivalPressureType: getReportLineValue(source, ['tipo de presiÃ³n', 'tipo de presion', 'presiÃ³n', 'presion']) || findReportSentence(source, ['hombre a hombre', 'orientada', 'pivote', 'presiÃ³n']),
+    preRivalSpacesAllowed: getReportLineValue(source, ['espacios que deja', 'dÃ³nde deja espacios', 'donde deja espacios', 'espacios concedidos']) || findReportSentence(source, ['deja espacio', 'espalda', 'lado dÃ©bil', 'lado debil', 'entre lÃ­neas', 'entre lineas']),
+    preRivalDefendsCrosses: getReportLineValue(source, ['defiende centros', 'cÃ³mo defiende centros', 'como defiende centros']) || findReportSentence(source, ['centros', 'Ã¡rea', 'area', 'primer palo', 'segundo palo']),
+    preRivalDefendsBack: getReportLineValue(source, ['defiende espalda', 'espalda centrales', 'defiende espalda de centrales']) || findReportSentence(source, ['espalda de centrales', 'lÃ­nea alta', 'linea alta', 'cobertura']),
+    preRivalAfterLoss: getReportLineValue(source, ['tras pÃ©rdida', 'tras perdida', 'despuÃ©s de perder', 'despues de perder']) || findReportSentence(source, ['tras pÃ©rdida', 'tras perdida', 'repliega', 'presiona tras pÃ©rdida']),
+    preRivalAfterRecovery: getReportLineValue(source, ['tras robo', 'tras recuperaciÃ³n', 'tras recuperacion', 'despuÃ©s de robar', 'despues de robar']) || findReportSentence(source, ['tras robo', 'transiciÃ³n', 'transicion', 'primer pase']),
+    preRivalTransitionLaunchers: getReportLineValue(source, ['lanzadores transiciÃ³n', 'lanzadores transicion', 'lanzadores', 'quiÃ©n corre', 'quien corre']) || '',
+    preRivalCornersFor: getReportLineValue(source, ['cÃ³rners ofensivos', 'corners ofensivos', 'abp ofensiva', 'balÃ³n parado ofensivo', 'balon parado ofensivo']) || findReportSentence(source, ['cÃ³rner ofensivo', 'corner ofensivo', 'abp ofensiva']),
+    preRivalCornersAgainst: getReportLineValue(source, ['cÃ³rners defensivos', 'corners defensivos', 'abp defensiva', 'balÃ³n parado defensivo', 'balon parado defensivo']) || findReportSentence(source, ['cÃ³rner defensivo', 'corner defensivo', 'abp defensiva']),
   };
   const cleanedFields = Object.fromEntries(Object.entries(fields).filter(([, value]) => String(value || '').trim()));
   return {
@@ -2075,20 +2075,20 @@ const buildPlayerAdvice = ({ playerName, playerIndex, caudalSystem, rivalSystem,
   const playerRole = role || getFormationRoles(caudalSystem)[playerIndex] || 'Jugador';
   const rivalBlock = questionnaire.preRivalDefensiveBlock || 'Medio';
   const rivalPressure = questionnaire.preRivalPressure || 'Media';
-  const rivalWeaknesses = questionnaire.preRivalWeaknesses || 'espacios entre líneas y espalda de laterales';
+  const rivalWeaknesses = questionnaire.preRivalWeaknesses || 'espacios entre lÃ­neas y espalda de laterales';
   const caudalIntent = questionnaire.preCaudalIntent || 'competir con equipo corto y ataques claros';
   const profileText = [playerProfile?.position, playerProfile?.foot ? `pierna ${playerProfile.foot.toLowerCase()}` : '', playerNotes].filter(Boolean).join(', ');
 
   return [
     `${playerName}: actuar como ${playerRole.toLowerCase()} dentro del ${caudalSystem}, con prioridad en sostener el plan: ${caudalIntent}.`,
-    profileText ? `Perfil usado por la IA: ${profileText}.` : 'Añade una nota individual para que la recomendación sea más precisa.',
+    profileText ? `Perfil usado por la IA: ${profileText}.` : 'AÃ±ade una nota individual para que la recomendaciÃ³n sea mÃ¡s precisa.',
     rivalName ? `Duelo probable: ${rivalName}${rivalNotes ? ` (${rivalNotes})` : ''}.` : 'Asigna jugadores rivales para que la IA detecte duelos directos.',
     rivalPressure === 'Alta'
-      ? 'Primer control orientado y apoyo cercano para superar presión; si no hay pase limpio, jugar a zona de segunda jugada.'
+      ? 'Primer control orientado y apoyo cercano para superar presiÃ³n; si no hay pase limpio, jugar a zona de segunda jugada.'
       : `Atraer a su par y acelerar cuando aparezca ${rivalWeaknesses}.`,
     rivalBlock === 'Bajo'
-      ? 'Aportar paciencia, amplitud y llegada al área; no precipitar centros sin ocupación de remate.'
-      : `Buscar ventajas entre líneas contra el ${rivalSystem} y cerrar rápido tras pérdida.`,
+      ? 'Aportar paciencia, amplitud y llegada al Ã¡rea; no precipitar centros sin ocupaciÃ³n de remate.'
+      : `Buscar ventajas entre lÃ­neas contra el ${rivalSystem} y cerrar rÃ¡pido tras pÃ©rdida.`,
   ];
 };
 
@@ -2107,36 +2107,36 @@ const createIndividualTacticalBlock = ({ upAttack, upDefense, downAttack, downDe
 const buildPlayerTacticalAdvice = ({ playerName, playerIndex, caudalSystem, rivalSystem, questionnaire, playerProfile, playerNotes, rivalName, rivalNotes, role }) => {
   const playerRole = role || getFormationRoles(caudalSystem)[playerIndex] || playerProfile?.position || 'Jugador';
   const rivalBlock = questionnaire.preRivalDefensiveBlock || 'Medio';
-  const rivalWeaknesses = questionnaire.preRivalWeaknesses || 'los espacios entre líneas y la espalda de los laterales';
-  const rivalStrengths = questionnaire.preRivalStrengths || 'su orden defensivo y la transición tras robo';
+  const rivalWeaknesses = questionnaire.preRivalWeaknesses || 'los espacios entre lÃ­neas y la espalda de los laterales';
+  const rivalStrengths = questionnaire.preRivalStrengths || 'su orden defensivo y la transiciÃ³n tras robo';
   const likelyZone = questionnaire.preCaudalAttackZones || (/Extremo|Lateral/i.test(playerRole) ? 'el carril exterior y el intervalo lateral-central' : 'la zona interior y la espalda del mediocentro rival');
   const rivalReference = rivalName ? `${rivalName}${rivalNotes ? ` (${rivalNotes})` : ''}` : `el rival de su zona dentro del ${rivalSystem}`;
   const profileDetail = [playerProfile?.foot ? `su pierna ${playerProfile.foot.toLowerCase()}` : '', playerNotes].filter(Boolean).join(' y ');
 
   return createIndividualTacticalBlock({
     upAttack: [
-      `${playerName}: jugar como ${playerRole.toLowerCase()} entendiendo dónde queda libre ${likelyZone} ante el ${rivalSystem}.`,
+      `${playerName}: jugar como ${playerRole.toLowerCase()} entendiendo dÃ³nde queda libre ${likelyZone} ante el ${rivalSystem}.`,
       rivalBlock === 'Bajo'
         ? 'Recibir con paciencia, fijar a su marca y acelerar solo cuando aparezca pase interior o ruptura clara.'
-        : 'Orientar el primer control para superar presión y conectar rápido con el apoyo cercano.',
+        : 'Orientar el primer control para superar presiÃ³n y conectar rÃ¡pido con el apoyo cercano.',
       profileDetail
         ? `Usar ${profileDetail} para ganar ventaja en el duelo con ${rivalReference}.`
-        : `Tomar como referencia a ${rivalReference}: fijarlo, moverlo y atacar su espalda cuando mire balón.`,
+        : `Tomar como referencia a ${rivalReference}: fijarlo, moverlo y atacar su espalda cuando mire balÃ³n.`,
     ],
     upDefense: [
-      `Tras pérdida, cerrar primero el pase interior de ${rivalReference} y después ajustar la marca.`,
-      `Defender perfilado para ver balón y rival; si ${rivalReference} ataca espacio, temporizar hasta la ayuda.`,
-      `Comunicar coberturas con el compañero cercano para que el ${rivalSystem} no encuentre superioridad en su zona.`,
+      `Tras pÃ©rdida, cerrar primero el pase interior de ${rivalReference} y despuÃ©s ajustar la marca.`,
+      `Defender perfilado para ver balÃ³n y rival; si ${rivalReference} ataca espacio, temporizar hasta la ayuda.`,
+      `Comunicar coberturas con el compaÃ±ero cercano para que el ${rivalSystem} no encuentre superioridad en su zona.`,
     ],
     downAttack: [
       `No recibir parado y de espaldas si no hay descarga cerca, porque el ${rivalSystem} puede encerrarlo.`,
-      `No conducir hacia la presión de ${rivalReference}; atraer y soltar antes de quedar encerrado.`,
+      `No conducir hacia la presiÃ³n de ${rivalReference}; atraer y soltar antes de quedar encerrado.`,
       `No forzar acciones individuales contra dos rivales si el punto fuerte rival es ${rivalStrengths}.`,
     ],
     downDefense: [
-      'No abandonar su zona tras atacar; primero equilibrar y después pensar en una segunda acción ofensiva.',
+      'No abandonar su zona tras atacar; primero equilibrar y despuÃ©s pensar en una segunda acciÃ³n ofensiva.',
       `No saltar a ${rivalReference} si el pase interior queda libre a su espalda.`,
-      'No mirar solo balón en centros o cambios de orientación; controlar marca, área útil y segunda jugada.',
+      'No mirar solo balÃ³n en centros o cambios de orientaciÃ³n; controlar marca, Ã¡rea Ãºtil y segunda jugada.',
     ],
   });
 };
@@ -2160,48 +2160,48 @@ const buildTacticalAnalysis = ({ caudalSystem, rivalSystem, caudalLineup, rivalL
     .slice(0, 3)
     .map((name) => `${name}: ${rivalNotes[name]}`);
   const weakness = questionnaire.preRivalWeaknesses || 'los espacios a espalda de sus laterales y el intervalo central-lateral';
-  const strength = questionnaire.preRivalStrengths || 'su organización defensiva y salida tras robo';
+  const strength = questionnaire.preRivalStrengths || 'su organizaciÃ³n defensiva y salida tras robo';
   const block = questionnaire.preRivalDefensiveBlock || 'Medio';
   const likelyAttackZone = questionnaire.preCaudalAttackZones || (rival.hasBackThree ? 'los costados de sus centrales exteriores' : 'la espalda de sus laterales');
   const playerToActivate = questionnaire.preCaudalPlayersToActivate || caudalNames.find((name, index) => /Extremo|Mediapunta|Delantero|Interior/.test(caudalRoles[index])) || caudalNames[10];
   const rivalToLimit = questionnaire.preCaudalRivalsToBlock || rivalNames.find((name, index) => /Pivote|Mediapunta|Delantero/.test(rivalRoles[index])) || rivalNames[6];
   const dangerZone = questionnaire.preRivalDangerZones || (rival.attackers >= 3 ? 'sus extremos atacando la espalda de nuestros laterales' : 'la zona de segunda jugada alrededor de nuestros centrales');
-  const avoidScenario = questionnaire.preCaudalAvoid || 'pérdidas interiores con el equipo abierto';
-  const afterLossPlan = questionnaire.preCaudalAfterLoss || 'presión inmediata del jugador más cercano y cierre del pase interior por los mediocentros';
-  const afterRecoveryPlan = questionnaire.preCaudalAfterRecovery || 'primer pase vertical si el rival está abierto y pausa si el robo llega en zona baja';
+  const avoidScenario = questionnaire.preCaudalAvoid || 'pÃ©rdidas interiores con el equipo abierto';
+  const afterLossPlan = questionnaire.preCaudalAfterLoss || 'presiÃ³n inmediata del jugador mÃ¡s cercano y cierre del pase interior por los mediocentros';
+  const afterRecoveryPlan = questionnaire.preCaudalAfterRecovery || 'primer pase vertical si el rival estÃ¡ abierto y pausa si el robo llega en zona baja';
   const transitionLaunchers = questionnaire.preRivalTransitionLaunchers || rivalNames.filter((name, index) => /Pivote|Interior|Mediapunta|Delantero|Extremo/.test(rivalRoles[index])).slice(0, 2).join(' y ');
   const recommendedDefensiveBlock = wantsDirect ? 'B.MEDIO' : wantsPress ? 'B.ALTO' : 'B.MEDIO';
-  const caudalMidfieldText = caudal.midfielders >= rival.midfielders ? 'igualdad o superioridad interior' : 'inferioridad interior si no juntamos líneas';
-  const widthText = caudalWide || rivalWideRisk ? 'la amplitud y los cambios de orientación' : 'los apoyos interiores antes de activar banda';
+  const caudalMidfieldText = caudal.midfielders >= rival.midfielders ? 'igualdad o superioridad interior' : 'inferioridad interior si no juntamos lÃ­neas';
+  const widthText = caudalWide || rivalWideRisk ? 'la amplitud y los cambios de orientaciÃ³n' : 'los apoyos interiores antes de activar banda';
 
   return {
     generalReading: [
-      `Partido entre ${caudalSystem} y ${rivalSystem}: la clave será relacionar nuestra estructura con los espacios que deja el rival.`,
+      `Partido entre ${caudalSystem} y ${rivalSystem}: la clave serÃ¡ relacionar nuestra estructura con los espacios que deja el rival.`,
       rival.midfielders > caudal.midfielders
-        ? 'El rival puede juntar más gente por dentro; conviene atraerle a un lado y salir rápido al lado débil.'
+        ? 'El rival puede juntar mÃ¡s gente por dentro; conviene atraerle a un lado y salir rÃ¡pido al lado dÃ©bil.'
         : 'Tenemos buena base para no quedar partidos por dentro; la diferencia puede estar en activar extremos/laterales con ventaja.',
       caudalHasBackFour && !rivalHasBackFour
-        ? 'Nuestra línea de cuatro puede encontrar superioridad en banda si el extremo fija y el lateral llega con timing.'
-        : 'El partido pide controlar distancias entre líneas para no conceder recepciones limpias a la espalda de los mediocentros.',
+        ? 'Nuestra lÃ­nea de cuatro puede encontrar superioridad en banda si el extremo fija y el lateral llega con timing.'
+        : 'El partido pide controlar distancias entre lÃ­neas para no conceder recepciones limpias a la espalda de los mediocentros.',
     ],
     winPlan: [
-      `La mejor manera de ganar es atacar ${weakness}, pero protegiendo pérdidas porque su punto fuerte es ${strength}.`,
+      `La mejor manera de ganar es atacar ${weakness}, pero protegiendo pÃ©rdidas porque su punto fuerte es ${strength}.`,
       block === 'Bajo'
-        ? 'Moverlos de lado a lado, cargar área con tres alturas y finalizar jugadas para evitar contras.'
-        : 'Atraer presión, encontrar hombre libre por dentro y atacar rápido la espalda de la última línea.',
+        ? 'Moverlos de lado a lado, cargar Ã¡rea con tres alturas y finalizar jugadas para evitar contras.'
+        : 'Atraer presiÃ³n, encontrar hombre libre por dentro y atacar rÃ¡pido la espalda de la Ãºltima lÃ­nea.',
       wantsPress
-        ? 'Presión tras pérdida de 5 segundos y saltos coordinados sobre central-lateral-pivote para robar cerca de portería.'
+        ? 'PresiÃ³n tras pÃ©rdida de 5 segundos y saltos coordinados sobre central-lateral-pivote para robar cerca de porterÃ­a.'
         : 'Bloque medio compacto, orientar fuera y acelerar tras robo con primer pase vertical.',
       rivalThreats.length
-        ? `Atención especial a ${rivalThreats.join(' / ')}.`
-        : 'Completa características de jugadores rivales para afinar amenazas y emparejamientos.',
+        ? `AtenciÃ³n especial a ${rivalThreats.join(' / ')}.`
+        : 'Completa caracterÃ­sticas de jugadores rivales para afinar amenazas y emparejamientos.',
     ],
     collective: [
       caudal.midfielders >= rival.midfielders
         ? `Mantener superioridad o igualdad por dentro: ${caudalSystem} puede proteger la zona central ante ${rivalSystem}.`
         : `Compensar inferioridad interior: juntar extremo, lateral y mediocentro para no partir el equipo ante ${rivalSystem}.`,
       caudalWide || rivalWideRisk
-        ? 'Atacar cambios de orientación y el intervalo lateral-central; ahí pueden aparecer ventajas antes de que bascule el rival.'
+        ? 'Atacar cambios de orientaciÃ³n y el intervalo lateral-central; ahÃ­ pueden aparecer ventajas antes de que bascule el rival.'
         : 'Progresar con paciencia por dentro y activar bandas cuando el rival cierre el carril central.',
       wantsPress
         ? 'Si la idea es presionar alto, saltar sobre central orientado a banda y cerrar pase interior con el pivote.'
@@ -2237,14 +2237,14 @@ const buildTacticalAnalysis = ({ caudalSystem, rivalSystem, caudalLineup, rivalL
           [
             `Relacionar nuestro ${caudalSystem} con su ${rivalSystem}: atacar donde aparezca ${weakness}.`,
             block === 'Bajo'
-              ? 'Mover el bloque rival con paciencia, cambios de orientación y llegadas desde segunda línea.'
-              : 'Atraer la presión rival y acelerar cuando aparezca el hombre libre por dentro.',
+              ? 'Mover el bloque rival con paciencia, cambios de orientaciÃ³n y llegadas desde segunda lÃ­nea.'
+              : 'Atraer la presiÃ³n rival y acelerar cuando aparezca el hombre libre por dentro.',
             `Cerrar el equipo tras cada ataque para que ${strength} no aparezca en campo abierto.`,
           ],
           [
-            `No partir al equipo entre mediocentros y delanteros, porque el ${rivalSystem} puede recibir entre líneas.`,
-            `No atacar siempre por el mismo carril; si el rival bascula cómodo, nos obliga a centros forzados.`,
-            `No perder por dentro con laterales altos: ahí aparece ${avoidScenario}.`,
+            `No partir al equipo entre mediocentros y delanteros, porque el ${rivalSystem} puede recibir entre lÃ­neas.`,
+            `No atacar siempre por el mismo carril; si el rival bascula cÃ³modo, nos obliga a centros forzados.`,
+            `No perder por dentro con laterales altos: ahÃ­ aparece ${avoidScenario}.`,
           ],
         ),
       },
@@ -2253,12 +2253,12 @@ const buildTacticalAnalysis = ({ caudalSystem, rivalSystem, caudalLineup, rivalL
         ...createTacticalBlock(
           [
             `Usar el ${caudalSystem} para generar ${caudalMidfieldText} ante su ${rivalSystem}.`,
-            `Atacar ${likelyAttackZone} cuando su línea defensiva salte tarde o quede abierta.`,
-            `Activar a ${playerToActivate} tras atraer en un lado, no desde una recepción aislada.`,
+            `Atacar ${likelyAttackZone} cuando su lÃ­nea defensiva salte tarde o quede abierta.`,
+            `Activar a ${playerToActivate} tras atraer en un lado, no desde una recepciÃ³n aislada.`,
           ],
           [
-            `No convertir la ventaja del sistema en posesión plana sin profundidad.`,
-            `No dejar solo al receptor entre líneas; necesita apoyo cercano y amenaza a la espalda.`,
+            `No convertir la ventaja del sistema en posesiÃ³n plana sin profundidad.`,
+            `No dejar solo al receptor entre lÃ­neas; necesita apoyo cercano y amenaza a la espalda.`,
             `No permitir que el ${rivalSystem} nos iguale con duelos directos en banda sin cobertura interior.`,
           ],
         ),
@@ -2268,83 +2268,83 @@ const buildTacticalAnalysis = ({ caudalSystem, rivalSystem, caudalLineup, rivalL
         ...createTacticalBlock(
           [
             `Proteger ${dangerZone} antes de que el rival active sus carreras.`,
-            `Tapar a ${rivalToLimit} con orientación corporal hacia fuera y ayuda del mediocentro cercano.`,
+            `Tapar a ${rivalToLimit} con orientaciÃ³n corporal hacia fuera y ayuda del mediocentro cercano.`,
             `Ajustar la espalda de laterales si nuestro ${caudalSystem} queda abierto al atacar.`,
           ],
           [
-            `No regalar una pérdida interior con el equipo ancho ante su ${rivalSystem}.`,
+            `No regalar una pÃ©rdida interior con el equipo ancho ante su ${rivalSystem}.`,
             `No saltar a presionar de uno en uno; el rival puede encontrar al tercer hombre.`,
-            `No defender centros mirando solo balón; controlar área, frontal y segunda jugada.`,
+            `No defender centros mirando solo balÃ³n; controlar Ã¡rea, frontal y segunda jugada.`,
           ],
         ),
       },
       {
-        title: 'Cómo atacar',
+        title: 'CÃ³mo atacar',
         sections: [
           {
-            title: 'Fase iniciación',
+            title: 'Fase iniciaciÃ³n',
             ...createTacticalBlock(
               [
                 block === 'Bajo'
-                  ? 'Iniciar en corto con centrales abiertos y un mediocentro bajando para atraer su primera línea.'
+                  ? 'Iniciar en corto con centrales abiertos y un mediocentro bajando para atraer su primera lÃ­nea.'
                   : 'Preparar salida con apoyo cercano al central presionado y tercer hombre por dentro.',
                 `Fijar a su primer salto y encontrar al jugador libre que deja el ${rivalSystem}.`,
-                'Si aprietan alto, alternar pase corto con envío al intervalo para ganar segunda jugada.',
+                'Si aprietan alto, alternar pase corto con envÃ­o al intervalo para ganar segunda jugada.',
               ],
               [
-                'No conducir hacia dentro si el pase al mediocentro está tapado.',
+                'No conducir hacia dentro si el pase al mediocentro estÃ¡ tapado.',
                 'No iniciar con los dos laterales altos a la vez si no hay cobertura del pivote.',
-                'No forzar pase vertical si el receptor está de espaldas y sin descarga cercana.',
+                'No forzar pase vertical si el receptor estÃ¡ de espaldas y sin descarga cercana.',
               ],
             ),
           },
           {
-            title: 'Fase creación',
+            title: 'Fase creaciÃ³n',
             ...createTacticalBlock(
               [
-                `Atraer en un costado y cambiar rápido para explotar ${widthText}.`,
-                `Buscar a ${playerToActivate} entre líneas o atacando intervalo cuando el rival bascule.`,
-                'Crear triángulos lateral-medio-extremo para progresar sin perder estructura.',
+                `Atraer en un costado y cambiar rÃ¡pido para explotar ${widthText}.`,
+                `Buscar a ${playerToActivate} entre lÃ­neas o atacando intervalo cuando el rival bascule.`,
+                'Crear triÃ¡ngulos lateral-medio-extremo para progresar sin perder estructura.',
               ],
               [
-                'No juntar demasiados jugadores por dentro si el rival ya cerró el carril central.',
+                'No juntar demasiados jugadores por dentro si el rival ya cerrÃ³ el carril central.',
                 'No jugar de cara al bloque rival sin amenaza de ruptura.',
-                'No perder la ocupación del lado débil; ahí puede estar la ventaja final.',
+                'No perder la ocupaciÃ³n del lado dÃ©bil; ahÃ­ puede estar la ventaja final.',
               ],
             ),
           },
           {
-            title: 'Fase finalización',
+            title: 'Fase finalizaciÃ³n',
             ...createTacticalBlock(
               [
-                'Finalizar ataques con remate o pase atrás para evitar transiciones limpias.',
+                'Finalizar ataques con remate o pase atrÃ¡s para evitar transiciones limpias.',
                 'Ocupar primer palo, segundo palo y frontal antes de centrar.',
                 `Atacar ${likelyAttackZone} con llegada coordinada, no con centros sin ventaja.`,
               ],
               [
-                'No centrar si el área está vacía o con inferioridad clara.',
-                'No acabar jugadas con todos por delante del balón.',
-                'No precipitar tiros lejanos si existe pase atrás o continuidad por lado débil.',
+                'No centrar si el Ã¡rea estÃ¡ vacÃ­a o con inferioridad clara.',
+                'No acabar jugadas con todos por delante del balÃ³n.',
+                'No precipitar tiros lejanos si existe pase atrÃ¡s o continuidad por lado dÃ©bil.',
               ],
             ),
           },
         ],
       },
       {
-        title: 'Cómo defender',
+        title: 'CÃ³mo defender',
         sections: [
           {
             title: 'B.BAJO',
             badge: recommendedDefensiveBlock === 'B.BAJO' ? 'Recomendado' : 'Uso puntual',
             ...createTacticalBlock(
               [
-                'Cerrar área con centrales protegidos y mediocentros atentos a la frontal.',
+                'Cerrar Ã¡rea con centrales protegidos y mediocentros atentos a la frontal.',
                 `Orientar al rival hacia fuera y defender ${dangerZone} con ayudas previas.`,
                 'Salir tras robo con primer pase seguro antes de correr.',
               ],
               [
-                'No hundir a toda la línea en el área pequeña.',
-                'No permitir centros cómodos sin presión al poseedor.',
+                'No hundir a toda la lÃ­nea en el Ã¡rea pequeÃ±a.',
+                'No permitir centros cÃ³modos sin presiÃ³n al poseedor.',
                 'No despejar siempre al mismo carril si no hay jugador para sostener la segunda jugada.',
               ],
             ),
@@ -2355,13 +2355,13 @@ const buildTacticalAnalysis = ({ caudalSystem, rivalSystem, caudalLineup, rivalL
             ...createTacticalBlock(
               [
                 `Mantener bloque medio compacto para tapar a ${rivalToLimit}.`,
-                'Orientar la circulación rival hacia banda y saltar cuando el control sea malo.',
+                'Orientar la circulaciÃ³n rival hacia banda y saltar cuando el control sea malo.',
                 'Tener centrales preparados para anticipar y mediocentros cerca del rechace.',
               ],
               [
                 'No dejar distancia grande entre delantero y mediocentros.',
-                'No saltar el lateral sin que el extremo cierre línea de pase interior.',
-                'No permitir que el rival reciba de cara entre nuestra línea media y defensiva.',
+                'No saltar el lateral sin que el extremo cierre lÃ­nea de pase interior.',
+                'No permitir que el rival reciba de cara entre nuestra lÃ­nea media y defensiva.',
               ],
             ),
           },
@@ -2372,11 +2372,11 @@ const buildTacticalAnalysis = ({ caudalSystem, rivalSystem, caudalLineup, rivalL
               [
                 'Saltar sobre central orientado a banda con extremo y delantero coordinados.',
                 'Cerrar pase al pivote rival antes de presionar al poseedor.',
-                'Tras robo alto, buscar finalización rápida o pase atrás al frontal.',
+                'Tras robo alto, buscar finalizaciÃ³n rÃ¡pida o pase atrÃ¡s al frontal.',
               ],
               [
-                'No presionar alto si la línea defensiva no acompaña.',
-                'No dejar al pivote rival recibir libre a la espalda de la primera presión.',
+                'No presionar alto si la lÃ­nea defensiva no acompaÃ±a.',
+                'No dejar al pivote rival recibir libre a la espalda de la primera presiÃ³n.',
                 'No perseguir marcas hasta desordenar todo el bloque.',
               ],
             ),
@@ -2387,12 +2387,12 @@ const buildTacticalAnalysis = ({ caudalSystem, rivalSystem, caudalLineup, rivalL
         title: 'Transiciones',
         ...createTacticalBlock(
           [
-            `Tras pérdida: ${afterLossPlan}.`,
+            `Tras pÃ©rdida: ${afterLossPlan}.`,
             `Tras robo: ${afterRecoveryPlan}.`,
             `Vigilar a ${transitionLaunchers || 'pivote e interiores rivales'} como primer lanzador de contraataque.`,
           ],
           [
-            'No perder balón con los dos mediocentros por delante de la jugada.',
+            'No perder balÃ³n con los dos mediocentros por delante de la jugada.',
             'No correr todos hacia delante tras robo si el primer pase no es claro.',
             'No permitir que el rival reciba de cara tras nuestro ataque finalizado mal.',
           ],
@@ -2404,12 +2404,12 @@ const buildTacticalAnalysis = ({ caudalSystem, rivalSystem, caudalLineup, rivalL
           [
             questionnaire.preKeyMatchups || `${caudalNames[6]} debe imponerse en la zona del mediocentro para controlar ritmo y rechaces.`,
             questionnaire.preCaudalPlayerToBoost ? `Potenciar a ${questionnaire.preCaudalPlayerToBoost} con recepciones orientadas.` : `Potenciar a ${playerToActivate} en la zona de ventaja.`,
-            questionnaire.preRivalPlayerToWatch ? `Vigilar a ${questionnaire.preRivalPlayerToWatch} con cobertura cercana.` : `Vigilar a ${rivalToLimit} cuando reciba entre líneas.`,
+            questionnaire.preRivalPlayerToWatch ? `Vigilar a ${questionnaire.preRivalPlayerToWatch} con cobertura cercana.` : `Vigilar a ${rivalToLimit} cuando reciba entre lÃ­neas.`,
           ],
           [
             'No dejar al jugador clave rival recibir de cara y con tiempo para levantar cabeza.',
             'No aislar a nuestro jugador a potenciar contra dos rivales.',
-            'No defender los duelos sin cobertura; el segundo jugador debe cerrar la continuación.',
+            'No defender los duelos sin cobertura; el segundo jugador debe cerrar la continuaciÃ³n.',
           ],
         ),
       },
@@ -2419,12 +2419,12 @@ const buildTacticalAnalysis = ({ caudalSystem, rivalSystem, caudalLineup, rivalL
           [
             questionnaire.preCaudalBuildPlan || `Competir con equipo corto, ataques claros y control de ${dangerZone}.`,
             `Atacar ${weakness} sin perder vigilancia sobre ${strength}.`,
-            'Priorizar ataques finalizados, presión tras pérdida y cambios de orientación con sentido.',
+            'Priorizar ataques finalizados, presiÃ³n tras pÃ©rdida y cambios de orientaciÃ³n con sentido.',
           ],
           [
             `No entrar en intercambio de golpes si el rival vive de ${strength}.`,
-            'No confundir posesión con dominio si no se pisa área.',
-            'No abandonar el plan tras una pérdida; ajustar alturas y seguir atacando el punto débil.',
+            'No confundir posesiÃ³n con dominio si no se pisa Ã¡rea.',
+            'No abandonar el plan tras una pÃ©rdida; ajustar alturas y seguir atacando el punto dÃ©bil.',
           ],
         ),
       },
@@ -2433,25 +2433,25 @@ const buildTacticalAnalysis = ({ caudalSystem, rivalSystem, caudalLineup, rivalL
         ...createTacticalBlock(
           [
             'Si cuesta progresar, cambiar a salida de tres con un lateral bajo o un mediocentro incrustado.',
-            'Si falta profundidad, adelantar un extremo y buscar más rupturas al intervalo central-lateral.',
-            'Si el rival domina por dentro, cerrar con un medio más y atacar más directo la segunda jugada.',
+            'Si falta profundidad, adelantar un extremo y buscar mÃ¡s rupturas al intervalo central-lateral.',
+            'Si el rival domina por dentro, cerrar con un medio mÃ¡s y atacar mÃ¡s directo la segunda jugada.',
           ],
           [
-            'No cambiar el sistema sin definir quién protege las pérdidas.',
-            'No acumular delanteros si el problema está en llegar con ventaja a zona de finalización.',
-            'No sostener presión alta si el equipo queda largo; bajar a bloque medio y juntar líneas.',
+            'No cambiar el sistema sin definir quiÃ©n protege las pÃ©rdidas.',
+            'No acumular delanteros si el problema estÃ¡ en llegar con ventaja a zona de finalizaciÃ³n.',
+            'No sostener presiÃ³n alta si el equipo queda largo; bajar a bloque medio y juntar lÃ­neas.',
           ],
         ),
       },
     ],
     advantages: caudal.midfielders >= rival.midfielders
       ? 'Buena base para controlar mediocampo y orientar ataques con apoyos cercanos.'
-      : 'Ventaja posible si se atrae por fuera y se encuentra al hombre libre entre líneas.',
+      : 'Ventaja posible si se atrae por fuera y se encuentra al hombre libre entre lÃ­neas.',
     risks: rival.attackers >= 3
-      ? 'Cuidado con pérdidas en salida: el rival puede amenazar con tres jugadores arriba.'
+      ? 'Cuidado con pÃ©rdidas en salida: el rival puede amenazar con tres jugadores arriba.'
       : 'Riesgo principal en segundas jugadas y rupturas del delantero tras descarga.',
     progress: wantsPossession
-      ? 'Progresar con tercer hombre: central, pivote y mediapunta para superar la primera presión.'
+      ? 'Progresar con tercer hombre: central, pivote y mediapunta para superar la primera presiÃ³n.'
       : 'Progresar alternando pase vertical y descarga a banda para ganar metros sin partirse.',
     pressure: wantsDirect
       ? 'Presionar la segunda jugada: centrales preparados para anticipar y mediocentros cerca del rechace.'
@@ -2460,32 +2460,32 @@ const buildTacticalAnalysis = ({ caudalSystem, rivalSystem, caudalLineup, rivalL
       ? `${caudalNames[6] || 'Nuestro pivote'} debe dominar la zona del mediocentro. Duelos marcados: ${rivalThreats.join(' / ')}.`
       : `${caudalNames[6] || 'Nuestro pivote'} debe dominar la zona del mediocentro; laterales y extremos deben atacar ${weakness}.`,
     attackPlan: [
-      `Atacar ${likelyAttackZone}: fijar por un lado, atraer presión y acelerar el cambio de orientación antes de que el bloque bascule.`,
+      `Atacar ${likelyAttackZone}: fijar por un lado, atraer presiÃ³n y acelerar el cambio de orientaciÃ³n antes de que el bloque bascule.`,
       `Activar a ${playerToActivate} con ventaja corporal, preferiblemente recibiendo de cara o atacando intervalo, no aislado de espaldas.`,
       questionnaire.preRivalDefendsCrosses
-        ? `En centros: aprovechar que el rival defiende así: ${questionnaire.preRivalDefendsCrosses}.`
-        : 'En centros, cargar primer palo, segundo palo y frontal; si el área está igualada, priorizar pase atrás sobre centro forzado.',
+        ? `En centros: aprovechar que el rival defiende asÃ­: ${questionnaire.preRivalDefendsCrosses}.`
+        : 'En centros, cargar primer palo, segundo palo y frontal; si el Ã¡rea estÃ¡ igualada, priorizar pase atrÃ¡s sobre centro forzado.',
     ],
     defendPlan: [
-      `Tapar a ${rivalToLimit}: orientar su recepción hacia fuera y negar el giro cómodo entre líneas.`,
-      `Proteger ${dangerZone}: ajustar coberturas antes del pase, no cuando el rival ya está corriendo.`,
-      `Evitar ${avoidScenario}, porque ahí el rival puede correr con el equipo desordenado.`,
+      `Tapar a ${rivalToLimit}: orientar su recepciÃ³n hacia fuera y negar el giro cÃ³modo entre lÃ­neas.`,
+      `Proteger ${dangerZone}: ajustar coberturas antes del pase, no cuando el rival ya estÃ¡ corriendo.`,
+      `Evitar ${avoidScenario}, porque ahÃ­ el rival puede correr con el equipo desordenado.`,
     ],
     transitionsPlan: [
-      `Tras pérdida: ${afterLossPlan}. La primera reacción debe cerrar pase vertical y zona de robo rival.`,
-      `Tras robo: ${afterRecoveryPlan}. Primer pase con intención y ocupación inmediata de carriles.`,
-      `Vigilar lanzadores: ${transitionLaunchers || 'pivote e interiores rivales'}. Si reciben de cara, falta táctica o temporización antes de que activen la carrera.`,
+      `Tras pÃ©rdida: ${afterLossPlan}. La primera reacciÃ³n debe cerrar pase vertical y zona de robo rival.`,
+      `Tras robo: ${afterRecoveryPlan}. Primer pase con intenciÃ³n y ocupaciÃ³n inmediata de carriles.`,
+      `Vigilar lanzadores: ${transitionLaunchers || 'pivote e interiores rivales'}. Si reciben de cara, falta tÃ¡ctica o temporizaciÃ³n antes de que activen la carrera.`,
     ],
     duelsPlan: [
       questionnaire.preKeyMatchups || `${caudalNames[6]} debe imponerse a ${rivalNames[6]} para que el partido no se parta por dentro.`,
       questionnaire.preCaudalPlayerToBoost ? `Potenciar a ${questionnaire.preCaudalPlayerToBoost}.` : `Potenciar a ${playerToActivate}, porque es el perfil mejor situado para atacar la ventaja estructural.`,
       questionnaire.preRivalPlayerToWatch ? `Vigilar a ${questionnaire.preRivalPlayerToWatch}.` : `Vigilar a ${rivalToLimit}, porque puede conectar la salida rival con la zona de ataque.`,
     ],
-    recommendedPlan: questionnaire.preCaudalBuildPlan || 'Plan recomendado: equipo corto, ayudas interiores, cambios de orientación, presión tras pérdida y ataques finalizados.',
+    recommendedPlan: questionnaire.preCaudalBuildPlan || 'Plan recomendado: equipo corto, ayudas interiores, cambios de orientaciÃ³n, presiÃ³n tras pÃ©rdida y ataques finalizados.',
     complicationAdjustments: [
-      'Si el partido se complica con pérdidas interiores: bajar riesgo en salida y progresar por fuera con apoyo cercano.',
-      'Si no generamos ocasiones: cambiar orientación más rápido y añadir llegada desde segunda línea.',
-      'Si el rival corre demasiado: finalizar jugadas, temporizar pérdidas y juntar mediocentros.',
+      'Si el partido se complica con pÃ©rdidas interiores: bajar riesgo en salida y progresar por fuera con apoyo cercano.',
+      'Si no generamos ocasiones: cambiar orientaciÃ³n mÃ¡s rÃ¡pido y aÃ±adir llegada desde segunda lÃ­nea.',
+      'Si el rival corre demasiado: finalizar jugadas, temporizar pÃ©rdidas y juntar mediocentros.',
     ],
   };
 };
@@ -2539,7 +2539,7 @@ const getUnplacedTeamStarters = (team) => {
   );
 };
 
-const getPlayerMeta = (player) => [player.position, player.age ? `${player.age} años` : ''].filter(Boolean).join(' · ');
+const getPlayerMeta = (player) => [player.position, player.age ? `${player.age} aÃ±os` : ''].filter(Boolean).join(' Â· ');
 const displayPlayerName = (player) => {
   const preferred = String(player?.shirtName || player?.shirt_name || player?.shortName || player?.short_name || '').trim();
   if (preferred) return preferred;
@@ -2573,7 +2573,7 @@ const PlayerIdentity = ({ player = {}, name = '', meta = '', size = 'sm' }) => {
   const detail = [
     player?.number ? `#${player.number}` : '',
     meta,
-  ].filter(Boolean).join(' · ');
+  ].filter(Boolean).join(' Â· ');
   return (
     <div className="flex min-w-0 items-center gap-3">
       <div className={`shrink-0 overflow-hidden bg-white ${avatarSize}`}>
@@ -2592,9 +2592,9 @@ const playerReservePlacement = (player) => {
 const playerStatusBadges = (player) =>
   [
     player.injured ? { label: 'LES', className: 'border border-slate-400/20 bg-slate-800/85 text-slate-200', title: 'Lesionado / no disponible' } : null,
-    player.yellowRisk ? { label: 'AM', className: 'border border-yellow-200/35 bg-yellow-300/75 text-slate-950', title: 'No puede jugar por acumulación' } : null,
-    player.suspended || player.expelled || player.red ? { label: 'RJ', className: 'border border-red-200/30 bg-red-700/80 text-red-50', title: 'No puede jugar por sanción' } : null,
-    player.doubtful || player.physicalDoubt ? { label: 'DUDA', className: 'border border-sky-200/15 bg-sky-200/[0.08] text-sky-100', title: 'Duda física' } : null,
+    player.yellowRisk ? { label: 'AM', className: 'border border-yellow-200/35 bg-yellow-300/75 text-slate-950', title: 'No puede jugar por acumulaciÃ³n' } : null,
+    player.suspended || player.expelled || player.red ? { label: 'RJ', className: 'border border-red-200/30 bg-red-700/80 text-red-50', title: 'No puede jugar por sanciÃ³n' } : null,
+    player.doubtful || player.physicalDoubt ? { label: 'DUDA', className: 'border border-sky-200/15 bg-sky-200/[0.08] text-sky-100', title: 'Duda fÃ­sica' } : null,
     player.isKey ? { label: 'DEST', className: 'border border-amber-100/30 bg-amber-300/[0.14] text-amber-100', title: 'Jugador diferencial' } : null,
   ].filter(Boolean);
 
@@ -2683,7 +2683,7 @@ const getBenchGroups = (squad) =>
   dedupeRivalPlayers(squad)
     .filter((player) => player.role !== 'Titular')
     .reduce((groups, player) => {
-      const position = player.position || 'Sin posición';
+      const position = player.position || 'Sin posiciÃ³n';
       return { ...groups, [position]: [...(groups[position] ?? []), player] };
     }, {});
 
@@ -2735,7 +2735,7 @@ const parseSquadText = (value) =>
     .split('\n')
     .map((line) => {
       const [name, image = '', number = '', position = '', age = '', role = 'Reserva', keyValue = ''] = line.split('|').map((part) => part.trim());
-      return name ? { id: name, name, image, number, position, age, role: role || 'Reserva', isKey: /destacado|clave|si|sí|true/i.test(keyValue) } : null;
+      return name ? { id: name, name, image, number, position, age, role: role || 'Reserva', isKey: /destacado|clave|si|sÃ­|true/i.test(keyValue) } : null;
     })
     .filter(Boolean);
 
@@ -2828,7 +2828,7 @@ const extractImportedPlayers = (text) => {
     'jugadores',
     'plantilla',
     'equipo',
-    'posición',
+    'posiciÃ³n',
     'nacionalidad',
     'edad',
     'altura',
@@ -2852,7 +2852,7 @@ const extractImportedPlayers = (text) => {
           return (
             line.length >= 5 &&
             line.length <= 45 &&
-            /[a-záéíóúñü]/i.test(line) &&
+            /[a-zÃ¡Ã©Ã­Ã³ÃºÃ±Ã¼]/i.test(line) &&
             !ignored.has(lower) &&
             !lower.includes('http') &&
             !lower.includes('temporada') &&
@@ -2891,14 +2891,14 @@ const extractTeamName = (doc, fallback) => {
 
 const extractStadium = (doc) => {
   const text = (doc.body?.textContent || '').replace(/\s+/g, ' ').trim();
-  const labelMatch = text.match(/(?:Estadio|Campo|Campo de juego)\s*:?\s*([A-ZÁÉÍÓÚÑÜ][A-Za-zÁÉÍÓÚÑÜáéíóúñü0-9 .'-]{2,70})/i);
-  if (labelMatch) return labelMatch[1].replace(/\s+(Aforo|Capacidad|Dirección|Direccion|Ciudad).*$/i, '').trim();
+  const labelMatch = text.match(/(?:Estadio|Campo|Campo de juego)\s*:?\s*([A-ZÃÃ‰ÃÃ“ÃšÃ‘Ãœ][A-Za-zÃÃ‰ÃÃ“ÃšÃ‘ÃœÃ¡Ã©Ã­Ã³ÃºÃ±Ã¼0-9 .'-]{2,70})/i);
+  if (labelMatch) return labelMatch[1].replace(/\s+(Aforo|Capacidad|DirecciÃ³n|Direccion|Ciudad).*$/i, '').trim();
 
   const tableMatch = Array.from(doc.querySelectorAll('tr, li, p, div'))
     .map((node) => node.textContent?.replace(/\s+/g, ' ').trim() || '')
     .find((value) => /^(Estadio|Campo|Campo de juego)\b/i.test(value));
 
-  return tableMatch?.replace(/^(Estadio|Campo|Campo de juego)\s*:?\s*/i, '').replace(/\s+(Aforo|Capacidad|Dirección|Direccion|Ciudad).*$/i, '').trim() || '';
+  return tableMatch?.replace(/^(Estadio|Campo|Campo de juego)\s*:?\s*/i, '').replace(/\s+(Aforo|Capacidad|DirecciÃ³n|Direccion|Ciudad).*$/i, '').trim() || '';
 };
 
 const extractKitColor = (doc) => {
@@ -3014,7 +3014,7 @@ const extractBesoccerPlayers = (doc, baseUrl) => {
   playerLinks.forEach((link) => {
     const name = link.textContent?.replace(/\s+/g, ' ').trim();
     const image = getImageSource(link.querySelector('img') || link.closest('tr')?.querySelector('img'), baseUrl);
-    if (name && name.length > 2 && name.length < 45 && !/más|comparar|partidos|trayectoria/i.test(name)) {
+    if (name && name.length > 2 && name.length < 45 && !/mÃ¡s|comparar|partidos|trayectoria/i.test(name)) {
       byName.set(name, { id: name, name, image, number: '', position: '', role: 'Reserva', isKey: false });
     }
   });
@@ -3024,7 +3024,7 @@ const extractBesoccerPlayers = (doc, baseUrl) => {
 
 const cleanImportedName = (value) =>
   value
-    .replace(/\[\d+†([^\]]+)\]/g, '$1')
+    .replace(/\[\d+â€ ([^\]]+)\]/g, '$1')
     .replace(/\[|\]|\*|#/g, '')
     .replace(/Image:\s*/gi, '')
     .replace(/\s{2,}/g, ' ')
@@ -3035,17 +3035,17 @@ const isLikelyPlayerName = (value) => {
   return (
     value.length >= 3 &&
     value.length <= 45 &&
-    /[a-záéíóúñü]/i.test(value) &&
-    !/plantilla|porteros|defensas|centrocampistas|delanteros|rendimiento|info|totales|edad|rating|temporada|image:|pj|pt|cm|€|seleccionar|copyright|jugadores destacados|máximo goleador|más sancionado|minutos/i.test(lower) &&
+    /[a-zÃ¡Ã©Ã­Ã³ÃºÃ±Ã¼]/i.test(value) &&
+    !/plantilla|porteros|defensas|centrocampistas|delanteros|rendimiento|info|totales|edad|rating|temporada|image:|pj|pt|cm|â‚¬|seleccionar|copyright|jugadores destacados|mÃ¡ximo goleador|mÃ¡s sancionado|minutos/i.test(lower) &&
     !/^\d+$/.test(value) &&
-    !/^\d+\s*(k|m)?\.?€?$/i.test(value)
+    !/^\d+\s*(k|m)?\.?â‚¬?$/i.test(value)
   );
 };
 
 const extractBesoccerPlayersFromText = (text) => {
   const start = text.search(/#\s*Plantilla|##\s*Plantilla|Plantilla\s+.+\s*\|/i);
   const scoped = start >= 0 ? text.slice(start) : text;
-  const end = scoped.search(/\n##\s*(Jugadores destacados|Temporada|Últimos|Noticias|Estadio|Fichajes)|Copyright/i);
+  const end = scoped.search(/\n##\s*(Jugadores destacados|Temporada|Ãšltimos|Noticias|Estadio|Fichajes)|Copyright/i);
   const rosterText = end > 0 ? scoped.slice(0, end) : scoped;
   const byName = new Map();
   let currentPosition = '';
@@ -3060,7 +3060,7 @@ const extractBesoccerPlayersFromText = (text) => {
   rosterText.split('\n').forEach((rawLine) => {
     const line = rawLine.trim();
     const indexedMatch = line.match(
-      /^(\d{1,2})?\s*(?:\[\d+†\s*)?\[?\d+†([^\]]+)\]?.*?(?:Image:\s*[a-z]{2}).*?\s(\d{2}|-)\s(?:\d{2,3}|-)\s(?:[\d.,]+K|-)\s+\d+/i
+      /^(\d{1,2})?\s*(?:\[\d+â€ \s*)?\[?\d+â€ ([^\]]+)\]?.*?(?:Image:\s*[a-z]{2}).*?\s(\d{2}|-)\s(?:\d{2,3}|-)\s(?:[\d.,]+K|-)\s+\d+/i
     );
     if (indexedMatch) {
       const [, number = '', rawName, rawAge = ''] = indexedMatch;
@@ -3160,7 +3160,7 @@ const normalizeZoneToken = (zone) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\./g, '')
-    .replace(/ª/g, '')
+    .replace(/Âª/g, '')
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');
 
@@ -3245,21 +3245,21 @@ const getTacticalBlocksForRender = (analysis) => {
       title: 'Lectura general',
       ...createTacticalBlock(
         toTacticalItems(analysis?.generalReading, 'Analiza los sistemas para generar una lectura concreta.'),
-        ['Evitar conclusiones genéricas sin relación con el sistema rival.', 'Evitar pérdidas interiores con el equipo abierto.', 'Evitar ataques sin vigilancia tras pérdida.'],
+        ['Evitar conclusiones genÃ©ricas sin relaciÃ³n con el sistema rival.', 'Evitar pÃ©rdidas interiores con el equipo abierto.', 'Evitar ataques sin vigilancia tras pÃ©rdida.'],
       ),
     },
     {
-      title: 'Cómo atacar',
+      title: 'CÃ³mo atacar',
       ...createTacticalBlock(
         toTacticalItems(analysis?.attackPlan, 'Busca ventajas por sistema y concreta la zona de ataque.'),
-        ['Evitar centros sin ocupación de área.', 'Evitar progresar sin apoyos cercanos.', 'Evitar atacar siempre por el mismo carril.'],
+        ['Evitar centros sin ocupaciÃ³n de Ã¡rea.', 'Evitar progresar sin apoyos cercanos.', 'Evitar atacar siempre por el mismo carril.'],
       ),
     },
     {
-      title: 'Cómo defender',
+      title: 'CÃ³mo defender',
       ...createTacticalBlock(
         toTacticalItems(analysis?.defendPlan, 'Define altura de bloque y emparejamientos defensivos.'),
-        ['Evitar saltos individuales sin cobertura.', 'Evitar dejar recibir de cara entre líneas.', 'Evitar defender centros sin controlar frontal.'],
+        ['Evitar saltos individuales sin cobertura.', 'Evitar dejar recibir de cara entre lÃ­neas.', 'Evitar defender centros sin controlar frontal.'],
       ),
     },
   ];
@@ -3271,9 +3271,9 @@ const getIndividualAdviceForRender = (playerAdvice) => {
   const baseItems = toTacticalItems(playerAdvice?.advice, 'Selecciona un jugador y analiza sistemas para generar recomendaciones concretas.');
   return createIndividualTacticalBlock({
     upAttack: baseItems,
-    upDefense: ['Cerrar pase interior tras pérdida.', 'Temporizar hasta recibir ayuda.', 'Comunicar cobertura con el compañero cercano.'],
-    downAttack: ['No recibir parado si no hay apoyo cercano.', 'No conducir hacia la presión.', 'No forzar el duelo individual si aparece una ayuda rival.'],
-    downDefense: ['No perder la posición tras pérdida.', 'No saltar sin cobertura.', 'No mirar solo balón en centros o cambios de orientación.'],
+    upDefense: ['Cerrar pase interior tras pÃ©rdida.', 'Temporizar hasta recibir ayuda.', 'Comunicar cobertura con el compaÃ±ero cercano.'],
+    downAttack: ['No recibir parado si no hay apoyo cercano.', 'No conducir hacia la presiÃ³n.', 'No forzar el duelo individual si aparece una ayuda rival.'],
+    downDefense: ['No perder la posiciÃ³n tras pÃ©rdida.', 'No saltar sin cobertura.', 'No mirar solo balÃ³n en centros o cambios de orientaciÃ³n.'],
   });
 };
 
@@ -3507,7 +3507,7 @@ function App() {
   const [matchView, setMatchView] = useState('lista_partidos');
   const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [matchViewSection, setMatchViewSection] = useState('PRE');
-  const [preSubTab, setPreSubTab] = useState('Plan cuerpo técnico');
+  const [preSubTab, setPreSubTab] = useState('Plan cuerpo tÃ©cnico');
   const [isPreTalkMode, setIsPreTalkMode] = useState(false);
   const [manualConsignaDraft, setManualConsignaDraft] = useState('');
   const [preKeyDraft, setPreKeyDraft] = useState('');
@@ -3543,6 +3543,11 @@ function App() {
   const [postClipFeedback, setPostClipFeedback] = useState('');
   const [postEventSaving, setPostEventSaving] = useState(false);
   const [postEventFeedback, setPostEventFeedback] = useState('');
+  const [isEditingPostSummary, setIsEditingPostSummary] = useState(false);
+  const [postSummaryDraft, setPostSummaryDraft] = useState('');
+  const [postSummarySaving, setPostSummarySaving] = useState(false);
+  const [postSummarySaveError, setPostSummarySaveError] = useState('');
+  const [pendingPostSummaryProposal, setPendingPostSummaryProposal] = useState('');
   const [isEditingClosure, setIsEditingClosure] = useState(false);
   const [closureDraft, setClosureDraft] = useState({});
   const [closureSaving, setClosureSaving] = useState(false);
@@ -3610,7 +3615,7 @@ function App() {
   const [litoMessages, setLitoMessages] = useState([
     {
       role: 'assistant',
-      text: 'Soy Lito. Pregúntame por plantilla, partidos, goles, minutos, robos validados o scouting rival.',
+      text: 'Soy Lito. PregÃºntame por plantilla, partidos, goles, minutos, robos validados o scouting rival.',
     },
   ]);
   const [litoConversationContext, setLitoConversationContext] = useState({
@@ -3619,7 +3624,7 @@ function App() {
     lastPlayerName: '',
   });
   const [playerVenueFilter, setPlayerVenueFilter] = useState('Todos');
-  const [playerQuickScope, setPlayerQuickScope] = useState('Últimos 5 partidos');
+  const [playerQuickScope, setPlayerQuickScope] = useState('Ãšltimos 5 partidos');
   const [playerDelegatedScope, setPlayerDelegatedScope] = useState('Solo validados');
   const [playerInfluenceFilter, setPlayerInfluenceFilter] = useState('Todos');
   const [selectedTimelineAction, setSelectedTimelineAction] = useState(null);
@@ -3723,7 +3728,7 @@ function App() {
     const { error: authSubmitError } = await supabase.auth.signInWithPassword(credentials);
 
     if (authSubmitError) {
-      setAuthError(authSubmitError.message || 'No se pudo completar la autenticación.');
+      setAuthError(authSubmitError.message || 'No se pudo completar la autenticaciÃ³n.');
     }
 
     setAuthSubmitting(false);
@@ -3733,7 +3738,7 @@ function App() {
     setAuthError('');
     const { error: signOutError } = await supabase.auth.signOut();
     if (signOutError) {
-      setAuthError(signOutError.message || 'No se pudo cerrar sesión.');
+      setAuthError(signOutError.message || 'No se pudo cerrar sesiÃ³n.');
       return;
     }
     setSession(null);
@@ -3953,7 +3958,7 @@ function App() {
           return acc;
         }, {});
     if (quickEventsResponse.error) {
-      console.warn('No se pudieron cargar eventos rápidos para Partidos; se continúa marcando esos datos como no cargados:', quickEventsResponse.error);
+      console.warn('No se pudieron cargar eventos rÃ¡pidos para Partidos; se continÃºa marcando esos datos como no cargados:', quickEventsResponse.error);
     }
     const systemEventsByMatch = systemEventsResponse.error
       ? {}
@@ -3962,7 +3967,7 @@ function App() {
           return acc;
         }, {});
     if (systemEventsResponse.error) {
-      console.warn('No se pudieron cargar cambios de sistema para Partidos; se continúa sin ellos:', systemEventsResponse.error);
+      console.warn('No se pudieron cargar cambios de sistema para Partidos; se continÃºa sin ellos:', systemEventsResponse.error);
     }
     const nextMatches = (data || []).map((match) => ({
       ...normalizeSupabasePartido(match),
@@ -4029,7 +4034,7 @@ function App() {
       const failed = [partidosResponse, jugadoresResponse, equiposResponse, statsResponse, goalsResponse].find((response) => response.error);
       if (failed) throw failed.error;
       if (quickEventsResponse.error) {
-        console.warn('No se pudieron cargar eventos rápidos para Inicio; se continúa sin avisos:', quickEventsResponse.error);
+        console.warn('No se pudieron cargar eventos rÃ¡pidos para Inicio; se continÃºa sin avisos:', quickEventsResponse.error);
       }
 
       const nextPlayers = (jugadoresResponse.data || []).map(normalizeSupabaseJugador);
@@ -4167,7 +4172,7 @@ function App() {
     const responses = [partidoResponse, convocadosResponse, statsResponse, goalsResponse, slotsResponse];
     const failed = responses.find((response) => response.error);
     if (failed) {
-      console.error('Error refrescando estadísticas desde Supabase después de guardar:', {
+      console.error('Error refrescando estadÃ­sticas desde Supabase despuÃ©s de guardar:', {
         partidoId,
         partidoError: partidoResponse.error,
         convocadosError: convocadosResponse.error,
@@ -4175,7 +4180,7 @@ function App() {
         goalsError: goalsResponse.error,
         slotsError: slotsResponse.error,
       });
-      setStatsError(failed.error.message || 'No se pudieron refrescar las estadísticas desde Supabase.');
+      setStatsError(failed.error.message || 'No se pudieron refrescar las estadÃ­sticas desde Supabase.');
       setStatsRefreshing(false);
       throw failed.error;
     }
@@ -4187,7 +4192,7 @@ function App() {
       .eq("partido_id", partidoId)
       .order("minuto", { ascending: true });
     if (quickEventsResponse.error) {
-      console.warn('No se pudieron cargar eventos rápidos; se continúa sin ellos:', {
+      console.warn('No se pudieron cargar eventos rÃ¡pidos; se continÃºa sin ellos:', {
         partidoId,
         error: quickEventsResponse.error,
       });
@@ -4382,11 +4387,11 @@ function App() {
         .eq("partido_id", partidoId)
         .order("minuto", { ascending: true });
       if (quickEventsResponse.error) {
-        console.warn('No se pudieron cargar eventos rápidos en POST; se continúa sin ellos:', {
+        console.warn('No se pudieron cargar eventos rÃ¡pidos en POST; se continÃºa sin ellos:', {
           partidoId,
           error: quickEventsResponse.error,
         });
-        setPostError(`No se pudieron cargar los eventos rápidos: ${quickEventsResponse.error.message || 'error desconocido'}`);
+        setPostError(`No se pudieron cargar los eventos rÃ¡pidos: ${quickEventsResponse.error.message || 'error desconocido'}`);
       } else {
         quickEvents = (quickEventsResponse.data || []).map(normalizeSupabaseQuickEvent);
       }
@@ -4460,14 +4465,14 @@ function App() {
       const failed = [partidosResponse, statsResponse, goalsResponse, slotsResponse, postEventsResponse].find((response) => response.error);
       if (failed) throw failed.error;
       if (systemEventsResponse.error) {
-        console.warn('No se pudieron cargar cambios de sistema para Análisis Grupal; se continúa sin ellos:', systemEventsResponse.error);
+        console.warn('No se pudieron cargar cambios de sistema para AnÃ¡lisis Grupal; se continÃºa sin ellos:', systemEventsResponse.error);
       }
 
       let quickEventsRows = [];
       const quickEventsResponse = await supabase.from("match_quick_events").select("*");
       if (quickEventsResponse.error) {
-        console.warn('No se pudieron cargar eventos rápidos para Análisis Grupal; se continúa sin ellos:', quickEventsResponse.error);
-        setGroupError(`No se pudieron cargar los eventos rápidos: ${quickEventsResponse.error.message || 'error desconocido'}`);
+        console.warn('No se pudieron cargar eventos rÃ¡pidos para AnÃ¡lisis Grupal; se continÃºa sin ellos:', quickEventsResponse.error);
+        setGroupError(`No se pudieron cargar los eventos rÃ¡pidos: ${quickEventsResponse.error.message || 'error desconocido'}`);
       } else {
         quickEventsRows = quickEventsResponse.data || [];
       }
@@ -4544,8 +4549,8 @@ function App() {
         };
       }));
     } catch (analysisError) {
-      console.error('Error cargando análisis grupal desde Supabase:', analysisError);
-      setGroupError(analysisError.message || 'No se pudo cargar el análisis grupal.');
+      console.error('Error cargando anÃ¡lisis grupal desde Supabase:', analysisError);
+      setGroupError(analysisError.message || 'No se pudo cargar el anÃ¡lisis grupal.');
     } finally {
       setGroupLoading(false);
     }
@@ -4578,7 +4583,7 @@ function App() {
       const failed = [scoredResponse, assistedResponse, ...statsResponses].find((response) => response.error);
       if (failed) throw failed.error;
       if (quickEventsResponse.error) {
-        console.warn('No se pudieron cargar eventos rápidos de jugador; se continúa sin ellos:', {
+        console.warn('No se pudieron cargar eventos rÃ¡pidos de jugador; se continÃºa sin ellos:', {
           playerId: player.id,
           error: quickEventsResponse.error,
         });
@@ -4633,7 +4638,7 @@ function App() {
       const { data, error: sessionError } = await supabase.auth.getSession();
       if (!isMounted) return;
 
-      if (sessionError) setAuthError(sessionError.message || 'No se pudo cargar la sesión.');
+      if (sessionError) setAuthError(sessionError.message || 'No se pudo cargar la sesiÃ³n.');
       setSession(data.session ?? null);
       setAuthLoading(false);
     };
@@ -4771,7 +4776,7 @@ function App() {
   }, [activeTab]);
 
   useEffect(() => {
-    if (activeTab !== 'Análisis Grupal') return;
+    if (activeTab !== 'AnÃ¡lisis Grupal') return;
     loadGroupAnalysisData();
   }, [activeTab]);
 
@@ -4980,7 +4985,7 @@ function App() {
       preRivalBaseSystem: selectedMatchRivalTeam?.system || mapped.preRivalBaseSystem,
       preRivalOffensiveKeyPlayers: keyPlayers.join(', '),
       preRivalPlayerToWatch: keyPlayers[0] || '',
-      preRivalStyle: [mapped.preRivalStyle, unavailable.length ? `alertas: ${unavailable.join(', ')}` : ''].filter(Boolean).join(' · '),
+      preRivalStyle: [mapped.preRivalStyle, unavailable.length ? `alertas: ${unavailable.join(', ')}` : ''].filter(Boolean).join(' Â· '),
     };
   }, [liveRivalIdentity, liveRivalPlayers, selectedMatchRivalTeam]);
   const createAutoVestuarioBullets = (match = selectedMatch, rivalTeam = selectedMatchRivalTeam) => {
@@ -5013,13 +5018,13 @@ function App() {
 
     createSuggestedConsignas(identity).forEach((item) => add(bullets, item.text, item.tone, 'identidad rival'));
     if (identity.mainThreat === 'segunda jugada' || /segunda jugada|rechace/.test(textPool)) add(bullets, 'Rival fuerte en segunda jugada.', 'alerta', 'scouting/PRE');
-    if (identity.detectedWeakness === 'pérdida interior' || /perdida interior|perdidas interiores/.test(textPool) || quick.losses >= 2) add(bullets, 'Evitar pérdidas interiores.', 'vigilancia', 'eventos/PRE');
-    if (identity.pressureType === 'tras pérdida' || /presion tras perdida|tras perdida agresiva/.test(textPool)) add(bullets, 'Presión tras pérdida agresiva.', 'alerta', 'scouting');
-    if (identity.mainThreat === 'centros laterales' || /centro|lateral|segundo palo/.test(textPool)) add(bullets, 'Tapar centro y proteger segundo palo.', 'alerta', 'patrón');
+    if (identity.detectedWeakness === 'pÃ©rdida interior' || /perdida interior|perdidas interiores/.test(textPool) || quick.losses >= 2) add(bullets, 'Evitar pÃ©rdidas interiores.', 'vigilancia', 'eventos/PRE');
+    if (identity.pressureType === 'tras pÃ©rdida' || /presion tras perdida|tras perdida agresiva/.test(textPool)) add(bullets, 'PresiÃ³n tras pÃ©rdida agresiva.', 'alerta', 'scouting');
+    if (identity.mainThreat === 'centros laterales' || /centro|lateral|segundo palo/.test(textPool)) add(bullets, 'Tapar centro y proteger segundo palo.', 'alerta', 'patrÃ³n');
     if (identity.mainThreat === 'ABP' || /abp|corner|falta lateral/.test(textPool)) add(bullets, 'Evitar faltas laterales y vigilar bloqueos.', 'abp', 'ABP');
     if (identity.offensiveFocus === 'espalda lateral' || /espalda lateral|intervalo/.test(textPool)) add(bullets, 'Extremo busca intervalo a espalda lateral.', 'vigilancia', 'scouting');
-    if (quick.rivalBoxEntries > quick.boxEntries) add(bullets, 'Cerrar área antes de saltar fuera.', 'alerta', 'eventos repetidos');
-    if (quick.recoveries >= 3) add(bullets, 'Nuestra presión alta puede dar ventaja.', 'ofensiva', 'eventos repetidos');
+    if (quick.rivalBoxEntries > quick.boxEntries) add(bullets, 'Cerrar Ã¡rea antes de saltar fuera.', 'alerta', 'eventos repetidos');
+    if (quick.recoveries >= 3) add(bullets, 'Nuestra presiÃ³n alta puede dar ventaja.', 'ofensiva', 'eventos repetidos');
     keyPlayers.forEach((name) => add(bullets, `Vigilar a ${name}.`, 'vigilancia', 'jugador clave'));
 
     return bullets.slice(0, 8);
@@ -5210,7 +5215,7 @@ function App() {
       await loadMatchPreData(selectedMatch.id);
     } catch (slotError) {
       console.error('Error limpiando once PRE Caudal en Supabase:', slotError);
-      setPreError(slotError.message || 'No se pudo limpiar la alineación PRE.');
+      setPreError(slotError.message || 'No se pudo limpiar la alineaciÃ³n PRE.');
     }
   };
   const getPrePlayerPositionGroup = (position) => {
@@ -5257,9 +5262,9 @@ function App() {
     const date = new Date(dateValue);
     if (Number.isNaN(date.getTime())) return '';
     const diffDays = Math.max(0, Math.floor((Date.now() - date.getTime()) / 86400000));
-    if (diffDays === 0) return 'Última edición hoy';
-    if (diffDays === 1) return 'Última edición hace 1 día';
-    return `Última edición hace ${diffDays} días`;
+    if (diffDays === 0) return 'Ãšltima ediciÃ³n hoy';
+    if (diffDays === 1) return 'Ãšltima ediciÃ³n hace 1 dÃ­a';
+    return `Ãšltima ediciÃ³n hace ${diffDays} dÃ­as`;
   };
 
   const selectedPlayerProfile = useMemo(
@@ -5272,7 +5277,7 @@ function App() {
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
-      .replace(/[¿?¡!.,;:()[\]{}'"`´]/g, ' ')
+      .replace(/[Â¿?Â¡!.,;:()[\]{}'"`Â´]/g, ' ')
       .replace(/\b(vs|versus|contra|frente a|frente al|ante|el|la|los|las|un|una|del|de|al)\b/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
@@ -5395,7 +5400,7 @@ function App() {
     if (/central|defensa|lateral|carrilero/.test(text)) return 'defensas';
     if (/pivote|medio|mediocentro|mediapunta|interior/.test(text)) return 'centrocampistas';
     if (/extremo|delantero|punta|atacante/.test(text)) return 'delanteros';
-    return 'sin posición';
+    return 'sin posiciÃ³n';
   };
 
   const resolveLitoPlayer = (context, question, fallbackName = '') => {
@@ -5486,7 +5491,7 @@ function App() {
   };
 
   const formatLitoAmbiguousMatches = (matches) =>
-    matches.map((match) => `${formatLitoMatchName(match)} · ${getCompetitionFromCatalog(match).label || 'Competición sin indicar'}`).join(', ');
+    matches.map((match) => `${formatLitoMatchName(match)} Â· ${getCompetitionFromCatalog(match).label || 'CompeticiÃ³n sin indicar'}`).join(', ');
 
   const getLitoGoalsForMatch = (context, match) =>
     context.goals.filter((goal) => goal.partidoId === match?.id && goal.type === 'Gol a favor');
@@ -5495,17 +5500,17 @@ function App() {
     const goals = getLitoGoalsForMatch(context, match);
     const postLines = [
       match.postNotes ? `Resumen del staff: ${match.postNotes}` : '',
-      match.postReality ? `Qué ocurrió: ${match.postReality}` : '',
+      match.postReality ? `QuÃ© ocurriÃ³: ${match.postReality}` : '',
       match.postRepeat ? `A repetir: ${match.postRepeat}` : '',
       match.postImprove ? `A corregir: ${match.postImprove}` : '',
     ].filter(Boolean);
-    const clips = safeArray(match.events).slice(0, 4).map((event) => `${event.minute || '-'}' ${event.typeLabel || event.type}: ${event.description || 'sin descripción'}`);
+    const clips = safeArray(match.events).slice(0, 4).map((event) => `${event.minute || '-'}' ${event.typeLabel || event.type}: ${event.description || 'sin descripciÃ³n'}`);
     return [
-      `${formatLitoMatchName(match)} terminó ${getLitoMatchScoreText(match)}.`,
+      `${formatLitoMatchName(match)} terminÃ³ ${getLitoMatchScoreText(match)}.`,
       goals.length ? `Goles Caudal: ${goals.map((goal) => `${goal.scorer || 'sin goleador'}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.` : 'No hay goles a favor registrados para ese partido.',
       ...postLines,
-      clips.length ? `Clips POST: ${clips.join(' · ')}` : '',
-      !postLines.length && !clips.length ? 'No hay todavía un análisis POST guardado.' : '',
+      clips.length ? `Clips POST: ${clips.join(' Â· ')}` : '',
+      !postLines.length && !clips.length ? 'No hay todavÃ­a un anÃ¡lisis POST guardado.' : '',
     ].filter(Boolean).join('\n');
   };
 
@@ -5538,7 +5543,7 @@ function App() {
         ['centrocampistas', /centrocampista|mediocentro|medio|pivote/],
         ['delanteros', /delantero|extremo|punta/],
       ].find(([, pattern]) => pattern.test(normalizedQuestion))?.[0];
-      if (!requestedGroup) return missing('Dime qué posición quieres consultar: porteros, defensas, centrocampistas o delanteros.', 'Plantilla');
+      if (!requestedGroup) return missing('Dime quÃ© posiciÃ³n quieres consultar: porteros, defensas, centrocampistas o delanteros.', 'Plantilla');
       const playersByGroup = context.players.filter((player) => getLitoPositionGroup(player.position) === requestedGroup);
       return litoResponse(`Tenemos ${playersByGroup.length} ${requestedGroup}${playersByGroup.length ? `: ${playersByGroup.map((player) => player.name).join(', ')}.` : '.'}`, { source: 'Plantilla', context: responseContext });
     }
@@ -5551,14 +5556,14 @@ function App() {
 
     if (intent === 'next_match') {
       const match = getLitoNextMatch(context);
-      if (!match) return missing('No hay próximo partido registrado.', 'Partidos');
-      return litoResponse(`El próximo partido registrado es contra ${formatLitoMatchName(match)}${match.time ? ` a las ${match.time}` : ''}${match.stadium ? ` en ${match.stadium}` : ''}.`, { source: 'Partidos', context: { ...responseContext, lastMatchId: match.id } });
+      if (!match) return missing('No hay prÃ³ximo partido registrado.', 'Partidos');
+      return litoResponse(`El prÃ³ximo partido registrado es contra ${formatLitoMatchName(match)}${match.time ? ` a las ${match.time}` : ''}${match.stadium ? ` en ${match.stadium}` : ''}.`, { source: 'Partidos', context: { ...responseContext, lastMatchId: match.id } });
     }
 
     if (intent === 'goals_vs_rival' || intent === 'last_match_goals') {
       const matchesForGoals = intent === 'last_match_goals' ? [getLitoLastMatch(context)].filter(Boolean) : rivalResult.matches;
       if (!matchesForGoals.length) return missing('No localizo ese partido en los datos guardados.', 'Partidos');
-      if (matchesForGoals.length > 1) return litoResponse(`Tengo varios partidos contra ${rivalResult.rival}. ¿Te refieres a ${formatLitoAmbiguousMatches(matchesForGoals)}?`, { source: 'Partidos', context: responseContext });
+      if (matchesForGoals.length > 1) return litoResponse(`Tengo varios partidos contra ${rivalResult.rival}. Â¿Te refieres a ${formatLitoAmbiguousMatches(matchesForGoals)}?`, { source: 'Partidos', context: responseContext });
       const goals = getLitoGoalsForMatch(context, matchesForGoals[0]);
       if (!goals.length) return missing('No hay goles a favor registrados para ese partido.', 'Goles');
       return litoResponse(`Contra ${formatLitoMatchName(matchesForGoals[0])} marcaron: ${goals.map((goal) => `${goal.scorer || 'Sin goleador'}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.`, { source: 'Goles', context: { ...responseContext, lastMatchId: matchesForGoals[0].id, lastPlayerName: goals[0]?.scorer || '' } });
@@ -5566,21 +5571,21 @@ function App() {
 
     if (intent === 'last_match') {
       const match = getLitoLastMatch(context);
-      if (!match) return missing('No hay últimos partidos jugados registrados.', 'Partidos');
+      if (!match) return missing('No hay Ãºltimos partidos jugados registrados.', 'Partidos');
       const goals = getLitoGoalsForMatch(context, match);
-      return litoResponse(`El último partido fue contra ${formatLitoMatchName(match)} y quedó ${getLitoMatchScoreText(match)}. ${goals.length ? `Goles Caudal: ${goals.map((goal) => goal.scorer).filter(Boolean).join(', ')}.` : 'No tengo goleadores a favor registrados.'}`, { source: 'Partidos y goles', context: { ...responseContext, lastMatchId: match.id, lastPlayerName: goals[0]?.scorer || '' } });
+      return litoResponse(`El Ãºltimo partido fue contra ${formatLitoMatchName(match)} y quedÃ³ ${getLitoMatchScoreText(match)}. ${goals.length ? `Goles Caudal: ${goals.map((goal) => goal.scorer).filter(Boolean).join(', ')}.` : 'No tengo goleadores a favor registrados.'}`, { source: 'Partidos y goles', context: { ...responseContext, lastMatchId: match.id, lastPlayerName: goals[0]?.scorer || '' } });
     }
 
     if (intent === 'match_result' || intent === 'match_summary') {
       const result = resolveLitoMatchFromQuestion(context, question, conversationContext);
-      if (result.status === 'ambiguous') return litoResponse(`Tengo varios partidos contra ${result.rival}. ¿Cuál quieres consultar: ${formatLitoAmbiguousMatches(result.matches)}?`, { source: 'Partidos', context: responseContext });
+      if (result.status === 'ambiguous') return litoResponse(`Tengo varios partidos contra ${result.rival}. Â¿CuÃ¡l quieres consultar: ${formatLitoAmbiguousMatches(result.matches)}?`, { source: 'Partidos', context: responseContext });
       if (result.status !== 'found') return missing('No localizo ese partido en los datos guardados.', 'Partidos');
-      const text = intent === 'match_result' ? `${formatLitoMatchName(result.match)} quedó ${getLitoMatchScoreText(result.match)}.` : buildLitoMatchSummary(context, result.match);
+      const text = intent === 'match_result' ? `${formatLitoMatchName(result.match)} quedÃ³ ${getLitoMatchScoreText(result.match)}.` : buildLitoMatchSummary(context, result.match);
       return litoResponse(text, { source: intent === 'match_summary' ? 'Partido, goles y POST' : 'Partidos', context: { ...responseContext, lastMatchId: result.match.id } });
     }
 
-    if (normalizedQuestion.includes('quien marco') || normalizedQuestion.includes('quién marcó')) {
-      const match = normalizedQuestion.includes('ultimo partido') || normalizedQuestion.includes('último partido') ? getLitoLastMatch(context) : findLitoMatch(context, question);
+    if (normalizedQuestion.includes('quien marco') || normalizedQuestion.includes('quiÃ©n marcÃ³')) {
+      const match = normalizedQuestion.includes('ultimo partido') || normalizedQuestion.includes('Ãºltimo partido') ? getLitoLastMatch(context) : findLitoMatch(context, question);
       if (!match) return missing('No localizo ese partido en los datos guardados.', 'Partidos');
       const goals = getLitoGoalsForMatch(context, match);
       if (!goals.length) return missing(`No hay goles a favor guardados para ${formatLitoMatchName(match)}.`, 'Goles');
@@ -5590,20 +5595,20 @@ function App() {
     if (intent === 'goal_contact') {
       const playerResult = resolveLitoPlayer(context, question, conversationContext.lastPlayerName);
       const matchResult = resolveLitoMatchFromQuestion(context, question, conversationContext);
-      if (playerResult.status === 'ambiguous') return missing(`¿A qué jugador te refieres: ${playerResult.options.join(', ')}?`, 'Goles');
-      if (playerResult.status !== 'found') return missing('Necesito saber de qué jugador hablamos para consultar el golpeo.', 'Goles');
+      if (playerResult.status === 'ambiguous') return missing(`Â¿A quÃ© jugador te refieres: ${playerResult.options.join(', ')}?`, 'Goles');
+      if (playerResult.status !== 'found') return missing('Necesito saber de quÃ© jugador hablamos para consultar el golpeo.', 'Goles');
       const playerName = playerResult.player.name;
       const goals = context.goals.filter((goal) => goal.type === 'Gol a favor' && normalizeLitoText(goal.scorer) === normalizeLitoText(playerName));
       const scopedGoals = matchResult.status === 'found' ? goals.filter((goal) => goal.partidoId === matchResult.match.id) : goals;
       if (scopedGoals.length > 1 && matchResult.status !== 'found') {
         const options = scopedGoals.map((goal) => context.matches.find((match) => match.id === goal.partidoId)).filter(Boolean);
-        return litoResponse(`${playerName} tiene varios goles registrados. ¿Te refieres a ${formatLitoAmbiguousMatches(options)}?`, { source: 'Goles', context: { ...responseContext, lastPlayerName: playerName } });
+        return litoResponse(`${playerName} tiene varios goles registrados. Â¿Te refieres a ${formatLitoAmbiguousMatches(options)}?`, { source: 'Goles', context: { ...responseContext, lastPlayerName: playerName } });
       }
       const goal = scopedGoals[0];
       if (!goal) return missing(`No tengo goles registrados de ${playerName} en ese contexto.`, 'Goles');
       const match = context.matches.find((item) => item.id === goal.partidoId);
-      if (!goal.contact) return litoResponse(`${playerName} marcó${goal.minute ? ` en el minuto ${goal.minute}` : ''}${match ? ` contra ${match.opponent}` : ''}, pero la pierna o contacto del golpeo no fue registrado.`, { source: 'Goles', context: { ...responseContext, lastMatchId: goal.partidoId, lastPlayerName: playerName } });
-      return litoResponse(`${playerName} marcó con: ${goal.contact}.`, { source: 'Goles', context: { ...responseContext, lastMatchId: goal.partidoId, lastPlayerName: playerName } });
+      if (!goal.contact) return litoResponse(`${playerName} marcÃ³${goal.minute ? ` en el minuto ${goal.minute}` : ''}${match ? ` contra ${match.opponent}` : ''}, pero la pierna o contacto del golpeo no fue registrado.`, { source: 'Goles', context: { ...responseContext, lastMatchId: goal.partidoId, lastPlayerName: playerName } });
+      return litoResponse(`${playerName} marcÃ³ con: ${goal.contact}.`, { source: 'Goles', context: { ...responseContext, lastMatchId: goal.partidoId, lastPlayerName: playerName } });
     }
 
     if (intent === 'system_vs_rival') {
@@ -5621,8 +5626,8 @@ function App() {
         return acc;
       }, {});
       const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
-      if (!top || top[1] <= 0) return missing('No hay amarillas registradas.', 'Estadísticas de jugador');
-      return litoResponse(`El jugador con más amarillas registradas es ${top[0]}, con ${top[1]}.`, { source: 'Estadísticas de jugador', context: { ...responseContext, lastPlayerName: top[0] } });
+      if (!top || top[1] <= 0) return missing('No hay amarillas registradas.', 'EstadÃ­sticas de jugador');
+      return litoResponse(`El jugador con mÃ¡s amarillas registradas es ${top[0]}, con ${top[1]}.`, { source: 'EstadÃ­sticas de jugador', context: { ...responseContext, lastPlayerName: top[0] } });
     }
 
     if (intent === 'minutes') {
@@ -5634,12 +5639,12 @@ function App() {
       }, {});
       if (playerResult.status === 'found' && !/mas|minutos tiene quien|quien tiene/.test(normalizedQuestion)) {
         const total = totals[playerResult.player.name] || 0;
-        return litoResponse(`${playerResult.player.name} tiene ${total} minutos registrados.`, { source: 'Estadísticas de jugador', context: { ...responseContext, lastPlayerName: playerResult.player.name } });
+        return litoResponse(`${playerResult.player.name} tiene ${total} minutos registrados.`, { source: 'EstadÃ­sticas de jugador', context: { ...responseContext, lastPlayerName: playerResult.player.name } });
       }
-      if (playerResult.status === 'ambiguous') return missing(`¿A qué jugador te refieres: ${playerResult.options.join(', ')}?`, 'Estadísticas de jugador');
+      if (playerResult.status === 'ambiguous') return missing(`Â¿A quÃ© jugador te refieres: ${playerResult.options.join(', ')}?`, 'EstadÃ­sticas de jugador');
       const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
-      if (!top || top[1] <= 0) return missing('No hay minutos registrados.', 'Estadísticas de jugador');
-      return litoResponse(`El jugador con más minutos registrados es ${top[0]}, con ${top[1]} minutos.`, { source: 'Estadísticas de jugador', context: { ...responseContext, lastPlayerName: top[0] } });
+      if (!top || top[1] <= 0) return missing('No hay minutos registrados.', 'EstadÃ­sticas de jugador');
+      return litoResponse(`El jugador con mÃ¡s minutos registrados es ${top[0]}, con ${top[1]} minutos.`, { source: 'EstadÃ­sticas de jugador', context: { ...responseContext, lastPlayerName: top[0] } });
     }
 
     if (intent === 'steals') {
@@ -5653,7 +5658,7 @@ function App() {
       const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
       if (!top) return missing('No hay robos validados en el Registro Delegado.', 'Registro Delegado validado');
       const player = context.players.find((item) => item.id === top[0]);
-      return litoResponse(`El jugador con más robos validados es ${player?.name || 'jugador no identificado'}, con ${top[1]}.`, { source: 'Registro Delegado validado', context: { ...responseContext, lastPlayerName: player?.name || '' } });
+      return litoResponse(`El jugador con mÃ¡s robos validados es ${player?.name || 'jugador no identificado'}, con ${top[1]}.`, { source: 'Registro Delegado validado', context: { ...responseContext, lastPlayerName: player?.name || '' } });
     }
 
     if (intent === 'rivals_442') {
@@ -5664,7 +5669,7 @@ function App() {
 
     if (intent === 'conceded_transition') {
       const goals = context.goals.filter((goal) => goal.type === 'Gol en contra' && normalizeLitoText(`${goal.phase || ''} ${goal.subphase || ''}`).includes('transicion'));
-      return litoResponse(`Hay ${goals.length} goles encajados en transición registrados.`, { source: 'Goles', context: responseContext });
+      return litoResponse(`Hay ${goals.length} goles encajados en transiciÃ³n registrados.`, { source: 'Goles', context: responseContext });
     }
 
     if (intent === 'most_used_system') {
@@ -5676,10 +5681,10 @@ function App() {
       }, {});
       const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
       if (!top) return missing('No hay sistemas registrados.', 'Partidos');
-      return litoResponse(`El sistema más usado en los partidos guardados es ${top[0]}, con ${top[1]} partidos.`, { source: 'Partidos', context: responseContext });
+      return litoResponse(`El sistema mÃ¡s usado en los partidos guardados es ${top[0]}, con ${top[1]} partidos.`, { source: 'Partidos', context: responseContext });
     }
 
-    return litoResponse('Todavía no tengo una herramienta fiable para esa pregunta. Prueba con plantilla, posiciones, último/próximo partido, resultado contra rival, goles, minutos, robos o sistema rival.', { context: responseContext });
+    return litoResponse('TodavÃ­a no tengo una herramienta fiable para esa pregunta. Prueba con plantilla, posiciones, Ãºltimo/prÃ³ximo partido, resultado contra rival, goles, minutos, robos o sistema rival.', { context: responseContext });
   };
 
   const handleLitoSubmit = async (event) => {
@@ -5705,7 +5710,7 @@ function App() {
       });
       setLitoMessages((current) => [
         ...current,
-        { role: 'assistant', text: 'No he podido consultar ese dato. Inténtalo de nuevo.' },
+        { role: 'assistant', text: 'No he podido consultar ese dato. IntÃ©ntalo de nuevo.' },
       ]);
     } finally {
       setLitoLoading(false);
@@ -5805,11 +5810,11 @@ function App() {
     };
     const { error: sessionError } = await supabase.from('training_sessions').insert(payload);
     if (sessionError) {
-      console.error('Error guardando sesión de Rendimiento:', { payload, error: sessionError });
-      setPerformanceError(sessionError.message || 'No se pudo guardar la sesión.');
+      console.error('Error guardando sesiÃ³n de Rendimiento:', { payload, error: sessionError });
+      setPerformanceError(sessionError.message || 'No se pudo guardar la sesiÃ³n.');
       return;
     }
-    setPerformanceStatus('Sesión guardada en Supabase.');
+    setPerformanceStatus('SesiÃ³n guardada en Supabase.');
     setPerformanceSessionDraft((current) => ({ ...current, formCode: '', title: '', plannedDuration: '', notes: '' }));
     await loadPerformanceData();
   };
@@ -5850,7 +5855,7 @@ function App() {
   const saveRpeEntry = async (event) => {
     event.preventDefault();
     if (!rpeDraft.jugadorId || !rpeDraft.sessionId) {
-      setPerformanceError('Selecciona jugador y sesión para guardar RPE.');
+      setPerformanceError('Selecciona jugador y sesiÃ³n para guardar RPE.');
       return;
     }
     const session = trainingSessions.find((item) => item.id === rpeDraft.sessionId);
@@ -5951,7 +5956,7 @@ function App() {
     const peakText = dashboard.peak?.load ? ` Pico de carga en ${dashboard.peak.session.md_label || dashboard.peak.session.session_date}.` : '';
     const riskText = dashboard.riskRows.length
       ? ` ${dashboard.riskRows.slice(0, 4).map((row) => row.player.name).join(', ')} presentan indicadores a vigilar.`
-      : ' Sin alertas relevantes en el semáforo PF.';
+      : ' Sin alertas relevantes en el semÃ¡foro PF.';
     const wellnessText = dashboard.avgWellness
       ? ` Wellness grupal medio ${dashboard.avgWellness.toFixed(1)}/10.`
       : ' Sin wellness suficiente para valorar tendencia grupal.';
@@ -6072,22 +6077,22 @@ function App() {
   const savePostVideoLink = async () => {
     if (!selectedMatch) return;
     const nextVideoLink = selectedMatch.postVideoLink || '';
-    setPostVideoSaveStatus('Guardando vídeo...');
+    setPostVideoSaveStatus('Guardando vÃ­deo...');
     const { error: videoError } = await supabase
       .from("partidos")
       .update({ post_video_link: nextVideoLink })
       .eq("id", selectedMatch.id);
     if (videoError) {
-      console.error('Error guardando enlace de vídeo POST en Supabase:', {
+      console.error('Error guardando enlace de vÃ­deo POST en Supabase:', {
         matchId: selectedMatch.id,
         postVideoLink: nextVideoLink,
         error: videoError,
       });
-      setPostError(videoError.message || 'No se pudo guardar el enlace de vídeo POST.');
-      setPostVideoSaveStatus('Error al guardar vídeo');
+      setPostError(videoError.message || 'No se pudo guardar el enlace de vÃ­deo POST.');
+      setPostVideoSaveStatus('Error al guardar vÃ­deo');
       return;
     }
-    setPostVideoSaveStatus('Vídeo guardado');
+    setPostVideoSaveStatus('VÃ­deo guardado');
   };
 
   const parseLineupText = (text) => text.split('\n').map((line) => line.trim()).filter(Boolean);
@@ -6269,25 +6274,25 @@ function App() {
 
     if (midfieldDiff > 0) {
       reading.advantages.push(`Superioridad interior ${caudal.midfielders}v${rival.midfielders}: fijar su ${rivalSystem} y encontrar tercer hombre.`);
-      reading.attackZones.push('Recibir entre líneas y activar tercer hombre por dentro.');
+      reading.attackZones.push('Recibir entre lÃ­neas y activar tercer hombre por dentro.');
     } else if (midfieldDiff < 0) {
       reading.risks.push(`Riesgo interior ${caudal.midfielders}v${rival.midfielders}: el rival puede progresar si no cerramos pivote y lado fuerte.`);
-      reading.protectZones.push('Cerrar carril central y orientar la presión hacia banda.');
+      reading.protectZones.push('Cerrar carril central y orientar la presiÃ³n hacia banda.');
       reading.adjustments.push('Acercar un delantero o extremo al pivote rival cuando progresen por dentro.');
     } else {
-      reading.advantages.push(`Igualdad interior ${caudal.midfielders}v${rival.midfielders}: decidir con orientación corporal y ritmo ante su bloque ${identity.blockHeight}.`);
+      reading.advantages.push(`Igualdad interior ${caudal.midfielders}v${rival.midfielders}: decidir con orientaciÃ³n corporal y ritmo ante su bloque ${identity.blockHeight}.`);
     }
 
     if (rival.attackers >= 3 && caudalBackFour) {
       reading.risks.push('Sus tres atacantes pueden fijar centrales y atacar espalda de laterales.');
       reading.protectZones.push('Espalda de nuestros laterales y distancia central-lateral.');
-      reading.adjustments.push('Extremo del lado débil preparado para cerrar lateral rival y proteger segundo palo.');
+      reading.adjustments.push('Extremo del lado dÃ©bil preparado para cerrar lateral rival y proteger segundo palo.');
     }
 
     if (wingBackRival) {
       reading.attackZones.push(`Espalda de carrileros si saltan alto, especialmente tras atraer su lado fuerte ${identity.strongSide}.`);
       reading.protectZones.push('Centros laterales y segundo palo.');
-      reading.adjustments.push('Atacar rápido tras robo a la espalda del carrilero alejado.');
+      reading.adjustments.push('Atacar rÃ¡pido tras robo a la espalda del carrilero alejado.');
     }
 
     if (caudal.attackers >= 2 && rival.defenders <= 4) {
@@ -6305,17 +6310,17 @@ function App() {
     }
     if (caudalSystem === '4-3-3' && rivalSystem === '5-3-2') {
       reading.advantages.push('Extremos abiertos pueden fijar carrileros y aislar uno contra uno.');
-      reading.risks.push('Si perdemos por dentro, sus dos puntas quedan listos para transición.');
-      reading.adjustments.push('Pivote siempre por detrás de balón para cortar primera transición.');
+      reading.risks.push('Si perdemos por dentro, sus dos puntas quedan listos para transiciÃ³n.');
+      reading.adjustments.push('Pivote siempre por detrÃ¡s de balÃ³n para cortar primera transiciÃ³n.');
     }
     if (identity.detectedWeakness) reading.advantages.push(`Atacar debilidad detectada: ${identity.detectedWeakness}.`);
     if (identity.mainThreat) reading.risks.push(`Amenaza principal: ${identity.mainThreat}; vigilancia sobre ${firstThreat}.`);
     if (identity.offensiveFocus) reading.protectZones.push(`Proteger foco ofensivo rival: ${identity.offensiveFocus}.`);
-    if (identity.pressureType) reading.adjustments.push(`Ajuste sobre presión ${identity.pressureType}: salida con apoyo cercano y lado débil preparado.`);
+    if (identity.pressureType) reading.adjustments.push(`Ajuste sobre presiÃ³n ${identity.pressureType}: salida con apoyo cercano y lado dÃ©bil preparado.`);
     if (alertPlayers.length) reading.advantages.push(`Forzar decisiones sobre jugadores marcados: ${alertPlayers.slice(0, 3).map((player) => `${player.name} ${playerStatusBadges(player).map((badge) => badge.label).join('/')}`).join(', ')}.`);
 
     Object.keys(reading).forEach((key) => {
-      if (!reading[key].length) reading[key].push(`${caudalSystem} vs ${rivalSystem}: lectura basada en bloque ${identity.blockHeight}, presión ${identity.pressureType} y amenaza ${identity.mainThreat}.`);
+      if (!reading[key].length) reading[key].push(`${caudalSystem} vs ${rivalSystem}: lectura basada en bloque ${identity.blockHeight}, presiÃ³n ${identity.pressureType} y amenaza ${identity.mainThreat}.`);
     });
     return {
       caudalSystem,
@@ -6330,12 +6335,12 @@ function App() {
     const rival = getSystemStructure(rivalSystem);
     const identity = liveRivalIdentity;
     const keyPlayers = liveRivalPlayers.filter((player) => player.isKey);
-    const weakSide = identity.strongSide === 'izquierda' ? 'derecha' : identity.strongSide === 'derecha' ? 'izquierda' : 'lado débil';
+    const weakSide = identity.strongSide === 'izquierda' ? 'derecha' : identity.strongSide === 'derecha' ? 'izquierda' : 'lado dÃ©bil';
     return [
       {
         zone: 'Carril central',
         duel: `${caudal.midfielders}v${rival.midfielders} por dentro`,
-        reading: caudal.midfielders >= rival.midfielders ? 'Superioridad o igualdad interior para recibir entre líneas.' : 'Riesgo de quedar en inferioridad si no cerramos al mediocentro rival.',
+        reading: caudal.midfielders >= rival.midfielders ? 'Superioridad o igualdad interior para recibir entre lÃ­neas.' : 'Riesgo de quedar en inferioridad si no cerramos al mediocentro rival.',
         action: caudal.midfielders >= rival.midfielders ? 'Fijar con puntas y activar tercer hombre.' : 'Ajuste sobre mediocentro rival y ayudas del extremo hacia dentro.',
       },
       {
@@ -6345,16 +6350,16 @@ function App() {
         action: `Orientarles hacia ${weakSide} y proteger espalda del lateral.`,
       },
       {
-        zone: 'Transición',
-        duel: `Pérdida Caudal vs ${identity.mainThreat}`,
-        reading: `Riesgo tras pérdida si atacamos con equipo abierto ante ritmo ${identity.attackingRhythm}.`,
-        action: 'Cerrar pase interior, finalizar ataques y sostener vigilancia en lado débil.',
+        zone: 'TransiciÃ³n',
+        duel: `PÃ©rdida Caudal vs ${identity.mainThreat}`,
+        reading: `Riesgo tras pÃ©rdida si atacamos con equipo abierto ante ritmo ${identity.attackingRhythm}.`,
+        action: 'Cerrar pase interior, finalizar ataques y sostener vigilancia en lado dÃ©bil.',
       },
       {
         zone: 'Jugador clave',
         duel: keyPlayers[0] ? `${keyPlayers[0].name} vs marca cercana` : `Amenaza ${identity.mainThreat}`,
         reading: keyPlayers[0] ? `${keyPlayers[0].name} llega marcado como DEST desde EQUIPOS.` : `Prioridad sobre su amenaza principal: ${identity.mainThreat}.`,
-        action: 'No permitir recepción de cara; contacto previo y cobertura interior.',
+        action: 'No permitir recepciÃ³n de cara; contacto previo y cobertura interior.',
       },
     ];
   };
@@ -6427,7 +6432,7 @@ function App() {
       { id: 'strong-side', label: `LADO FUERTE ${identity.strongSide}`.toUpperCase(), active: true, color: 'cyan', x: identity.strongSide === 'derecha' ? 70 : identity.strongSide === 'izquierda' ? 18 : 38, y: 22 },
       { id: 'threat', label: identity.mainThreat.toUpperCase(), active: true, color: 'amber', x: 50, y: 30 },
       { id: 'weakness', label: identity.detectedWeakness.toUpperCase(), active: true, color: 'emerald', x: 50, y: 62 },
-      { id: 'transition', label: 'TRANSICIÓN', active: identity.mainThreat === 'transición', color: 'red', x: 50, y: 47 },
+      { id: 'transition', label: 'TRANSICIÃ“N', active: identity.mainThreat === 'transiciÃ³n', color: 'red', x: 50, y: 47 },
     ];
   };
 
@@ -6520,18 +6525,18 @@ function App() {
     const confidence = hasSpecificScouting
       ? evidenceWeight >= 7 && sources.length >= 3 ? 'Alta' : evidenceWeight >= 3 || sources.length >= 3 ? 'Media' : 'Baja'
       : 'General';
-    const evidenceText = evidences.slice(0, 3).map((item) => `- ${item.observation}${item.importance ? ` (${item.importance})` : ''}${item.match ? ` · ${item.match}` : ''}`).join('\n');
+    const evidenceText = evidences.slice(0, 3).map((item) => `- ${item.observation}${item.importance ? ` (${item.importance})` : ''}${item.match ? ` Â· ${item.match}` : ''}`).join('\n');
     const sourceText = sources.map((source) => `? ${source}`).join('\n');
     const formatAnswer = ({ title, analysis, proposals, sourceLabel, sourceText: answerSourceText = sourceText, confidenceLabel = confidence }) => ({
       answer: [
         title,
         `Confianza: ${confidenceLabel}`,
         '',
-        'ANÁLISIS',
+        'ANÃLISIS',
         analysis,
         '',
         'PROPUESTA DEL STAFF',
-        ...safeArray(proposals).map((item) => `• ${item}`),
+        ...safeArray(proposals).map((item) => `â€¢ ${item}`),
         '',
         'FUENTE',
         answerSourceText,
@@ -6540,50 +6545,50 @@ function App() {
       sourceType: sourceLabel,
     });
     const generalPrinciplesByQuestion = () => {
-      if (/presión|presion|iniciar/.test(q)) return [
-        'Definir una primera altura de presión coherente con nuestro sistema antes de saltar.',
-        'Orientar la salida hacia una zona donde podamos cerrar pase interior y pase atrás.',
-        'Activar el salto solo con señal común: mal control, pase horizontal o recepción de espaldas.',
+      if (/presiÃ³n|presion|iniciar/.test(q)) return [
+        'Definir una primera altura de presiÃ³n coherente con nuestro sistema antes de saltar.',
+        'Orientar la salida hacia una zona donde podamos cerrar pase interior y pase atrÃ¡s.',
+        'Activar el salto solo con seÃ±al comÃºn: mal control, pase horizontal o recepciÃ³n de espaldas.',
       ];
       if (/vigilancias|proteger|zonas/.test(q)) return [
-        'Asegurar vigilancia preventiva por detrás de la línea de balón.',
+        'Asegurar vigilancia preventiva por detrÃ¡s de la lÃ­nea de balÃ³n.',
         'Proteger carril central antes de perseguir fuera de zona.',
         'Mantener coberturas cortas cuando el lateral o el central exterior salten.',
       ];
-      if (/pérdida|perdida|tras pérdida|transición/.test(q)) return [
-        'Tras pérdida, cerrar primero pase interior y receptor de cara.',
-        'Si no hay opción de robo inmediato, temporizar y reorganizar el bloque.',
-        'Evitar que la primera presión se convierta en saltos individuales sin cobertura.',
+      if (/pÃ©rdida|perdida|tras pÃ©rdida|transiciÃ³n/.test(q)) return [
+        'Tras pÃ©rdida, cerrar primero pase interior y receptor de cara.',
+        'Si no hay opciÃ³n de robo inmediato, temporizar y reorganizar el bloque.',
+        'Evitar que la primera presiÃ³n se convierta en saltos individuales sin cobertura.',
       ];
-      if (/recuperación|recuperacion|castigamos/.test(q)) return [
+      if (/recuperaciÃ³n|recuperacion|castigamos/.test(q)) return [
         'Buscar primer pase hacia delante si hay receptor perfilado.',
-        'Atacar el intervalo más cercano antes de que el rival vuelva a organizarse.',
-        'Si no hay ventaja clara, asegurar posesión y cambiar orientación.',
+        'Atacar el intervalo mÃ¡s cercano antes de que el rival vuelva a organizarse.',
+        'Si no hay ventaja clara, asegurar posesiÃ³n y cambiar orientaciÃ³n.',
       ];
       if (/estrategia|abp/.test(q)) return [
         'Asignar responsabilidades claras: zona, marca y rechace frontal.',
-        'Proteger segundo palo y zona de caída tras despeje.',
+        'Proteger segundo palo y zona de caÃ­da tras despeje.',
         'En ataque, bloquear legalmente para liberar un rematador o una segunda jugada.',
       ];
-      if (/superioridades|espacios|progresamos|estructura|balón|balon/.test(q)) return [
-        `Como principio general frente a un ${rivalSystem}, mover rápido para obligar a bascular.`,
-        'Fijar una línea antes de atacar el siguiente intervalo.',
-        'Buscar tercer hombre o recepción entre líneas cuando el pase directo esté tapado.',
-        'Evitar pérdidas interiores si no hay vigilancia preparada.',
+      if (/superioridades|espacios|progresamos|estructura|balÃ³n|balon/.test(q)) return [
+        `Como principio general frente a un ${rivalSystem}, mover rÃ¡pido para obligar a bascular.`,
+        'Fijar una lÃ­nea antes de atacar el siguiente intervalo.',
+        'Buscar tercer hombre o recepciÃ³n entre lÃ­neas cuando el pase directo estÃ© tapado.',
+        'Evitar pÃ©rdidas interiores si no hay vigilancia preparada.',
       ];
       return [
         `Aplicar principios generales contra ${rivalSystem} sin atribuir comportamientos concretos al rival.`,
-        'Priorizar decisiones simples, coberturas cercanas y ocupación racional de espacios.',
-        'Validar la propuesta con vídeo o evidencias antes de convertirla en consigna específica.',
+        'Priorizar decisiones simples, coberturas cercanas y ocupaciÃ³n racional de espacios.',
+        'Validar la propuesta con vÃ­deo o evidencias antes de convertirla en consigna especÃ­fica.',
       ];
     };
     const generalAnswer = () => formatAnswer({
-      title: 'RECOMENDACIÓN TÁCTICA GENERAL',
+      title: 'RECOMENDACIÃ“N TÃCTICA GENERAL',
       confidenceLabel: 'General',
       sourceLabel: 'general',
-      analysis: `No existen suficientes evidencias para describir cómo actúa específicamente este rival. La orientación siguiente usa principios tácticos generales frente a un ${rivalSystem}, no conclusiones del scouting.`,
+      analysis: `No existen suficientes evidencias para describir cÃ³mo actÃºa especÃ­ficamente este rival. La orientaciÃ³n siguiente usa principios tÃ¡cticos generales frente a un ${rivalSystem}, no conclusiones del scouting.`,
       proposals: generalPrinciplesByQuestion(),
-      answerSourceText: 'Recomendación táctica general',
+      answerSourceText: 'RecomendaciÃ³n tÃ¡ctica general',
     });
 
     if (!hasSpecificScouting) return generalAnswer();
@@ -6598,9 +6603,9 @@ function App() {
           title: 'PERFIL NO IDENTIFICADO',
           confidenceLabel: 'General',
           sourceLabel: 'general',
-          analysis: 'Sin información individual registrada.',
+          analysis: 'Sin informaciÃ³n individual registrada.',
           proposals: ['Seleccionar o registrar un jugador rival antes de preparar el duelo Micro.', ...getMicroGeneralScenarios(null)],
-          answerSourceText: 'Recomendación táctica general',
+          answerSourceText: 'RecomendaciÃ³n tÃ¡ctica general',
         });
       }
       const profile = getObservedPlayerProfile(targetPlayer);
@@ -6613,16 +6618,16 @@ function App() {
           sourceLabel: 'general',
           analysis: [
             'DATOS OBSERVADOS',
-            'Sin información individual registrada.',
+            'Sin informaciÃ³n individual registrada.',
             '',
-            'LECTURA TÁCTICA',
-            `No existe información suficiente para determinar el perfil concreto de ${displayPlayerName(targetPlayer) || targetPlayer.name}.`,
+            'LECTURA TÃCTICA',
+            `No existe informaciÃ³n suficiente para determinar el perfil concreto de ${displayPlayerName(targetPlayer) || targetPlayer.name}.`,
             '',
             'POSIBLES ESCENARIOS',
-            ...getMicroGeneralScenarios(targetPlayer).map((item) => `• ${item}`),
+            ...getMicroGeneralScenarios(targetPlayer).map((item) => `â€¢ ${item}`),
           ].join('\n'),
-          proposals: ['Completar el perfil individual para convertir estas opciones en un plan específico.'],
-          answerSourceText: 'Recomendación táctica general',
+          proposals: ['Completar el perfil individual para convertir estas opciones en un plan especÃ­fico.'],
+          answerSourceText: 'RecomendaciÃ³n tÃ¡ctica general',
         });
       }
       const plan = getMicroPlanForProfile(targetPlayer, profile);
@@ -6634,7 +6639,7 @@ function App() {
           'DATOS OBSERVADOS',
           facts.join('\n'),
           '',
-          'LECTURA TÁCTICA',
+          'LECTURA TÃCTICA',
           plan.reading,
         ].join('\n'),
         proposals: plan.proposals,
@@ -6645,7 +6650,7 @@ function App() {
     if (q.includes('bloque') || q.includes('atacamos')) {
       if (!collective.blockHeight && !collective.weaknesses.length && !evidences.length) return generalAnswer();
       return formatAnswer({
-        title: 'ANÁLISIS BASADO EN EL SCOUTING',
+        title: 'ANÃLISIS BASADO EN EL SCOUTING',
         sourceLabel: 'scouting',
         analysis: [
           collective.blockHeight ? `Bloque registrado: ${collective.blockHeight}.` : 'Altura de bloque no registrada.',
@@ -6653,9 +6658,9 @@ function App() {
           collective.weaknesses.length ? `Debilidades registradas: ${collective.weaknesses.slice(0, 2).join(', ')}.` : 'Sin debilidad registrada.',
         ].join('\n'),
         proposals: [
-          'Atacar únicamente las zonas respaldadas por perfil o evidencias.',
-          'Evitar convertir una lectura estructural en conclusión si no hay observación real.',
-          'Usar el primer tramo del partido para validar si el patrón se repite.',
+          'Atacar Ãºnicamente las zonas respaldadas por perfil o evidencias.',
+          'Evitar convertir una lectura estructural en conclusiÃ³n si no hay observaciÃ³n real.',
+          'Usar el primer tramo del partido para validar si el patrÃ³n se repite.',
         ],
         answerSourceText: `${sourceText}${evidenceText ? `\n${evidenceText}` : ''}`,
       });
@@ -6663,26 +6668,26 @@ function App() {
     if (q.includes('superioridad')) {
       const diff = caudal.midfielders - rival.midfielders;
       return hasSpecificScouting ? formatAnswer({
-        title: 'ANÁLISIS BASADO EN EL SCOUTING',
+        title: 'ANÃLISIS BASADO EN EL SCOUTING',
         sourceLabel: 'scouting',
-        analysis: `La estructura base da una referencia numérica (${caudal.midfielders}v${rival.midfielders}), pero la ventaja solo debe validarse con evidencias observadas.`,
+        analysis: `La estructura base da una referencia numÃ©rica (${caudal.midfielders}v${rival.midfielders}), pero la ventaja solo debe validarse con evidencias observadas.`,
         proposals: [
-          diff >= 0 ? 'Buscar recepción del tercer hombre si el rival protege solo la primera línea interior.' : 'Compensar inferioridad interior acercando extremo o punta a zona de mediocentro.',
-          'Confirmar con vídeo o evidencia antes de convertirlo en consigna principal.',
+          diff >= 0 ? 'Buscar recepciÃ³n del tercer hombre si el rival protege solo la primera lÃ­nea interior.' : 'Compensar inferioridad interior acercando extremo o punta a zona de mediocentro.',
+          'Confirmar con vÃ­deo o evidencia antes de convertirlo en consigna principal.',
           'No llamar superioridad a una coincidencia posicional sin comportamiento observado.',
         ],
         answerSourceText: sourceText,
       }) : generalAnswer();
     }
-    if (q.includes('pérdida') || q.includes('perdida') || q.includes('transiciones')) {
+    if (q.includes('pÃ©rdida') || q.includes('perdida') || q.includes('transiciones')) {
       if (!collective.strengths.includes('Transiciones') && !collective.strengths.includes('Contraataque') && !evidences.length) return generalAnswer();
       return formatAnswer({
-        title: 'ANÁLISIS BASADO EN EL SCOUTING',
+        title: 'ANÃLISIS BASADO EN EL SCOUTING',
         sourceLabel: 'scouting',
-        analysis: `Riesgo de transición respaldado por ${evidences.length ? `${evidences.length} evidencias` : 'perfil colectivo registrado'}.\n${collective.strengths.length ? `Fortalezas registradas: ${collective.strengths.join(', ')}.` : ''}`,
+        analysis: `Riesgo de transiciÃ³n respaldado por ${evidences.length ? `${evidences.length} evidencias` : 'perfil colectivo registrado'}.\n${collective.strengths.length ? `Fortalezas registradas: ${collective.strengths.join(', ')}.` : ''}`,
         proposals: [
           'Finalizar ataques o asegurar vigilancia antes de perder por dentro.',
-          'Cerrar primera recepción hacia delante tras pérdida.',
+          'Cerrar primera recepciÃ³n hacia delante tras pÃ©rdida.',
           'Si no hay robo inmediato, temporizar y reorganizar.',
         ],
         answerSourceText: `${sourceText}${evidenceText ? `\n${evidenceText}` : ''}`,
@@ -6692,11 +6697,11 @@ function App() {
       if (!profiledPlayers.length && !evidences.length) return generalAnswer();
       const watched = profiledPlayers[0]?.player ? displayPlayerName(profiledPlayers[0].player) : 'Jugador observado';
       return formatAnswer({
-        title: 'ANÁLISIS BASADO EN EL SCOUTING',
+        title: 'ANÃLISIS BASADO EN EL SCOUTING',
         sourceLabel: 'scouting',
         analysis: `Vigilancia sobre ${watched}, basada en perfil individual y evidencias disponibles.`,
         proposals: [
-          'Negar su acción dominante registrada.',
+          'Negar su acciÃ³n dominante registrada.',
           'Ajustar cobertura cercana antes de saltar.',
           'No extender esa vigilancia a otros jugadores sin dato registrado.',
         ],
@@ -6705,12 +6710,12 @@ function App() {
     }
     if (q.includes('ajuste') || q.includes('progresamos')) {
       return formatAnswer({
-        title: 'ANÁLISIS BASADO EN EL SCOUTING',
+        title: 'ANÃLISIS BASADO EN EL SCOUTING',
         sourceLabel: 'scouting',
-        analysis: `Ajuste condicionado por datos observados.\n${collective.pressureType ? `Presión registrada: ${collective.pressureType}.` : 'Presión sin registrar.'}\n${collective.weaknesses.length ? `Atacar: ${collective.weaknesses[0]}.` : 'Sin debilidad validada.'}`,
+        analysis: `Ajuste condicionado por datos observados.\n${collective.pressureType ? `PresiÃ³n registrada: ${collective.pressureType}.` : 'PresiÃ³n sin registrar.'}\n${collective.weaknesses.length ? `Atacar: ${collective.weaknesses[0]}.` : 'Sin debilidad validada.'}`,
         proposals: [
-          'Progresar por el espacio realmente observado, no por una hipótesis.',
-          'Preparar alternativa si el patrón no aparece en los primeros minutos.',
+          'Progresar por el espacio realmente observado, no por una hipÃ³tesis.',
+          'Preparar alternativa si el patrÃ³n no aparece en los primeros minutos.',
           'Validar con evidencia antes de fijarlo como plan principal.',
         ],
         answerSourceText: sourceText,
@@ -6746,7 +6751,7 @@ function App() {
     });
   };
   const askTacticalQuestion = () => {
-    const question = tacticalQuestionText.trim() || '¿Dónde podemos generar superioridades?';
+    const question = tacticalQuestionText.trim() || 'Â¿DÃ³nde podemos generar superioridades?';
     answerTacticalQuestion(question, tacticalQuestionMode);
   };
 
@@ -6803,7 +6808,7 @@ function App() {
     if (getMicroProfileState(profile) === 'Perfil parcial') return 'PERFIL PARCIAL';
     return 'PERFIL NO IDENTIFICADO';
   };
-  const microWeaknessTraitLabels = ['vulnerable presionado', 'débil pierna izquierda', 'pierde referencias', 'baja intensidad defensiva', 'presionable', 'débil en centros', 'lento en salidas', 'sufre a la espalda', 'pierde segundo palo', 'repliegue lento', 'llega tarde', 'pierde marca', 'pierde referencia', 'ayuda poco', 'baja intensidad', 'usa perfil menos dominante'];
+  const microWeaknessTraitLabels = ['vulnerable presionado', 'dÃ©bil pierna izquierda', 'pierde referencias', 'baja intensidad defensiva', 'presionable', 'dÃ©bil en centros', 'lento en salidas', 'sufre a la espalda', 'pierde segundo palo', 'repliegue lento', 'llega tarde', 'pierde marca', 'pierde referencia', 'ayuda poco', 'baja intensidad', 'usa perfil menos dominante'];
   const getMicroStrengthTraits = (profile) => safeArray(profile?.traits).filter((trait) => !microWeaknessTraitLabels.includes(String(trait).toLowerCase()));
   const getMicroWeaknessTraits = (profile) => safeArray(profile?.traits).filter((trait) => microWeaknessTraitLabels.includes(String(trait).toLowerCase()));
   const getPlayerHeightValue = (player) => player?.height || player?.altura || player?.heightCm || player?.estatura || '';
@@ -6817,29 +6822,29 @@ function App() {
       Conductor: 'Conduce para progresar',
       Regateador: 'Amenaza en 1v1',
       Vertical: 'Busca acciones verticales',
-      Organizador: 'Organiza la circulación',
+      Organizador: 'Organiza la circulaciÃ³n',
       'Buen juego largo': 'Buen juego largo',
-      'Recibe entre líneas': 'Recibe entre líneas',
+      'Recibe entre lÃ­neas': 'Recibe entre lÃ­neas',
       'Juego de espaldas': 'Puede jugar de espaldas',
-      'Referencia aérea': 'Referencia aérea',
+      'Referencia aÃ©rea': 'Referencia aÃ©rea',
       'Intensidad defensiva': 'Intensidad defensiva alta',
-      'Presión alta': 'Activa presión alta',
-      'Defiende área': 'Defiende área',
-      'Llega al área': 'Llega al área',
+      'PresiÃ³n alta': 'Activa presiÃ³n alta',
+      'Defiende Ã¡rea': 'Defiende Ã¡rea',
+      'Llega al Ã¡rea': 'Llega al Ã¡rea',
       'Especialista ABP': 'Especialista en ABP',
       'Agresivo al salto': 'Agresivo al salto',
       'Vulnerable presionado': 'Vulnerable cuando recibe presionado',
-      'Débil pierna izquierda': 'Débil con pierna izquierda',
+      'DÃ©bil pierna izquierda': 'DÃ©bil con pierna izquierda',
       'Pierde referencias': 'Pierde referencias',
       'Baja intensidad defensiva': 'Baja intensidad defensiva',
       'juego corto': 'Juego corto',
       'juego largo': 'Juego largo',
       'buen iniciador': 'Buen iniciador',
-      'atrae presión': 'Atrae presión',
+      'atrae presiÃ³n': 'Atrae presiÃ³n',
       presionable: 'Presionable',
       constructor: 'Constructor',
-      'rompe líneas': 'Rompe líneas',
-      conducción: 'Conducción',
+      'rompe lÃ­neas': 'Rompe lÃ­neas',
+      'conducciÃ³n': 'ConducciÃ³n',
       profundo: 'Profundo',
       interior: 'Interior',
       asociativo: 'Asociativo',
@@ -6849,10 +6854,10 @@ function App() {
       organizador: 'Organizador',
       vertical: 'Vertical',
       rematador: 'Rematador',
-      'rápido al espacio': 'Rápido al espacio',
-      móvil: 'Móvil',
+      'rÃ¡pido al espacio': 'RÃ¡pido al espacio',
+      'mÃ³vil': 'MÃ³vil',
       'juego de espaldas': 'Juego de espaldas',
-      'referencia aérea': 'Referencia aérea',
+      'referencia aÃ©rea': 'Referencia aÃ©rea',
       'ataca primer palo': 'Ataca primer palo',
     };
     return descriptions[trait] || trait;
@@ -6860,7 +6865,7 @@ function App() {
   const getMicroDetectedProfileLines = (player, profile) => {
     const lines = [];
     const traits = safeArray(profile?.traits);
-    const profileTitle = [getEffectiveMicroPosition(player, profile), profile?.mainProfile, profile?.secondaryProfile].filter(Boolean).join(' · ');
+    const profileTitle = [getEffectiveMicroPosition(player, profile), profile?.mainProfile, profile?.secondaryProfile].filter(Boolean).join(' Â· ');
     if (profileTitle) lines.push(profileTitle);
     if (profile?.foot) lines.push(`Pie ${String(profile.foot).toLowerCase()}`);
     traits.slice(0, 5).forEach((trait) => lines.push(describeScoutingTrait(trait)));
@@ -6868,48 +6873,48 @@ function App() {
   };
   const getMicroObservedFacts = (player, profile) => {
     const facts = [];
-    if (player?.position) facts.push(`Posición registrada: ${player.position}.`);
+    if (player?.position) facts.push(`PosiciÃ³n registrada: ${player.position}.`);
     if (profile.mainProfile) facts.push(`Perfil principal: ${profile.mainProfile}.`);
     if (profile.secondaryProfile) facts.push(`Perfil secundario: ${profile.secondaryProfile}.`);
     if (profile.traits.length) facts.push(`Rasgos registrados: ${profile.traits.join(', ')}.`);
     if (profile.foot) facts.push(`Pie dominante: ${profile.foot}.`);
     const metrics = [
       profile.speed ? `velocidad ${profile.speed}` : '',
-      profile.technique ? `técnica ${profile.technique}` : '',
-      profile.aerial ? `juego aéreo ${profile.aerial}` : '',
+      profile.technique ? `tÃ©cnica ${profile.technique}` : '',
+      profile.aerial ? `juego aÃ©reo ${profile.aerial}` : '',
       profile.oneVsOne ? `1v1 ${profile.oneVsOne}` : '',
       profile.defensiveWork ? `trabajo defensivo ${profile.defensiveWork}` : '',
     ].filter(Boolean);
-    if (metrics.length) facts.push(`Valoraciones registradas: ${metrics.join(' · ')}.`);
-    if (profile.notes) facts.push(`Observación: ${profile.notes}`);
+    if (metrics.length) facts.push(`Valoraciones registradas: ${metrics.join(' Â· ')}.`);
+    if (profile.notes) facts.push(`ObservaciÃ³n: ${profile.notes}`);
     return facts;
   };
   const getMicroPlanForProfile = (player, profile) => {
     const label = `${profile.mainProfile} ${profile.traits.join(' ')}`.toLowerCase();
-    if (/rápido|espacio|ataca espalda|profundo/.test(label)) return {
+    if (/rÃ¡pido|espacio|ataca espalda|profundo/.test(label)) return {
       reading: 'Su amenaza registrada apunta a atacar profundidad o recibir con ventaja corriendo hacia adelante.',
       proposals: [
-        'Reducir el espacio a la espalda de la línea cuando el pasador pueda jugar de cara.',
-        'Orientar la presión para dificultar el pase vertical.',
+        'Reducir el espacio a la espalda de la lÃ­nea cuando el pasador pueda jugar de cara.',
+        'Orientar la presiÃ³n para dificultar el pase vertical.',
         'Asegurar cobertura del defensor que salta.',
         'Controlar el momento del pase, no perseguir tarde la carrera.',
       ],
     };
-    if (/físico|fijador|referencia|espaldas|juego aéreo|dominante aéreo/.test(label)) return {
-      reading: 'Su perfil registrado prioriza contacto, apoyo, descarga o disputa aérea.',
+    if (/fÃ­sico|fijador|referencia|espaldas|juego aÃ©reo|dominante aÃ©reo/.test(label)) return {
+      reading: 'Su perfil registrado prioriza contacto, apoyo, descarga o disputa aÃ©rea.',
       proposals: [
-        'Evitar que reciba cómodo de espaldas.',
+        'Evitar que reciba cÃ³modo de espaldas.',
         'Anticipar solo con cobertura preparada.',
         'Controlar segundas jugadas alrededor del duelo.',
         'No entrar al choque si el receptor posterior queda libre.',
       ],
     };
-    if (/rematador|primer palo|finalizador|llega al área/.test(label)) return {
+    if (/rematador|primer palo|finalizador|llega al Ã¡rea/.test(label)) return {
       reading: 'Su perfil registrado le da valor en zonas de remate.',
       proposals: [
-        'Controlar orientación corporal dentro del área.',
+        'Controlar orientaciÃ³n corporal dentro del Ã¡rea.',
         'Defender primer contacto y rechace.',
-        'Evitar centros cómodos desde el lado fuerte.',
+        'Evitar centros cÃ³modos desde el lado fuerte.',
         'Asignar referencia clara en ABP y centros laterales.',
       ],
     };
@@ -6925,27 +6930,27 @@ function App() {
     if (/organizador|asociativo|constructor|juego largo|buen iniciador/.test(label)) return {
       reading: 'Su perfil registrado puede condicionar la salida o la continuidad del juego.',
       proposals: [
-        'Tapar línea de pase interior antes de saltar.',
-        'Forzar recepción de espaldas o hacia zona menos peligrosa.',
+        'Tapar lÃ­nea de pase interior antes de saltar.',
+        'Forzar recepciÃ³n de espaldas o hacia zona menos peligrosa.',
         'Cerrar apoyos cercanos para impedir descarga limpia.',
         'Presionar al receptor siguiente, no solo al poseedor.',
       ],
     };
-    if (/presionable|vulnerable|débil/.test(label)) return {
+    if (/presionable|vulnerable|dÃ©bil/.test(label)) return {
       reading: 'El scouting registra una posible debilidad explotable.',
       proposals: [
-        'Orientar la presión hacia su perfil menos cómodo.',
+        'Orientar la presiÃ³n hacia su perfil menos cÃ³modo.',
         'Saltar con apoyo cercano para impedir salida limpia.',
-        'Atacar su zona tras recuperación si queda abierto.',
-        'Validar rápido si esa debilidad aparece en partido.',
+        'Atacar su zona tras recuperaciÃ³n si queda abierto.',
+        'Validar rÃ¡pido si esa debilidad aparece en partido.',
       ],
     };
     return {
-      reading: `Existe información parcial de ${displayPlayerName(player) || player?.name || 'este jugador'}, pero no suficiente para definir una respuesta específica de perfil.`,
+      reading: `Existe informaciÃ³n parcial de ${displayPlayerName(player) || player?.name || 'este jugador'}, pero no suficiente para definir una respuesta especÃ­fica de perfil.`,
       proposals: [
-        'Usar los rasgos registrados como alerta, no como conclusión completa.',
+        'Usar los rasgos registrados como alerta, no como conclusiÃ³n completa.',
         'Observar sus primeras acciones para confirmar tendencia.',
-        'Preparar cobertura y comunicación antes de modificar el plan individual.',
+        'Preparar cobertura y comunicaciÃ³n antes de modificar el plan individual.',
       ],
     };
   };
@@ -6953,27 +6958,27 @@ function App() {
     const group = getMicroPositionGroup(player);
     if (group === 'forward') return [
       'Si busca apoyos y contacto: anticipar con cobertura y controlar segunda jugada.',
-      'Si amenaza el espacio: ajustar altura de línea y presionar al pasador.',
+      'Si amenaza el espacio: ajustar altura de lÃ­nea y presionar al pasador.',
       'Si se mueve fuera de zona: comunicar intercambios y no romper estructura sin relevo.',
     ];
     if (group === 'winger') return [
-      'Si es desbordador: decidir orientación y preparar ayuda.',
+      'Si es desbordador: decidir orientaciÃ³n y preparar ayuda.',
       'Si ataca espalda: proteger al lateral y controlar pase exterior-interior.',
-      'Si juega a pie cambiado: cerrar conducción interior y tiro.',
+      'Si juega a pie cambiado: cerrar conducciÃ³n interior y tiro.',
     ];
     if (group === 'fullback') return [
-      'Si es profundo: vigilar su carrera tras pase atrás o cambio de orientación.',
+      'Si es profundo: vigilar su carrera tras pase atrÃ¡s o cambio de orientaciÃ³n.',
       'Si es interior: ajustar marcas por dentro y no liberar mediocentro.',
       'Si es defensivo: valorar atacar su espalda solo si su extremo no compensa.',
     ];
     if (group === 'midfielder') return [
       'Si es organizador: impedir que reciba de cara.',
-      'Si es llegador: controlar segunda línea y rechace frontal.',
-      'Si es presionable: orientar la presión hacia su primer control.',
+      'Si es llegador: controlar segunda lÃ­nea y rechace frontal.',
+      'Si es presionable: orientar la presiÃ³n hacia su primer control.',
     ];
     if (group === 'centerback') return [
-      'Si es constructor: tapar pase interior y forzar lado menos cómodo.',
-      'Si es agresivo al salto: atacar su espalda cuando abandone línea.',
+      'Si es constructor: tapar pase interior y forzar lado menos cÃ³modo.',
+      'Si es agresivo al salto: atacar su espalda cuando abandone lÃ­nea.',
       'Si domina por arriba: preparar segunda jugada y evitar duelo frontal sin apoyo.',
     ];
     if (group === 'goalkeeper') return [
@@ -6982,27 +6987,27 @@ function App() {
       'Si es adelantado: valorar ataque a espalda si hay robo y campo abierto.',
     ];
     return [
-      'Identificar primero si amenaza espacio, apoyo, duelo o asociación.',
+      'Identificar primero si amenaza espacio, apoyo, duelo o asociaciÃ³n.',
       'No cambiar el plan individual hasta registrar una tendencia real.',
-      'Preparar ayudas cercanas y comunicación entre líneas.',
+      'Preparar ayudas cercanas y comunicaciÃ³n entre lÃ­neas.',
     ];
   };
   const buildMicroQuestionSet = (player, profile) => {
     const label = `${profile.mainProfile} ${profile.traits.join(' ')}`.toLowerCase();
     const group = getMicroPositionGroup(player, profile);
-    if (!group) return ['¿Qué posición debemos registrar?', '¿Qué comportamiento debemos observar?', '¿Qué dato falta validar?'];
-    if (/rápido|espacio|ataca espalda|profundo/.test(label)) return ['¿Cómo protegemos la espalda de la línea?', '¿Quién controla su desmarque?', '¿Cómo condicionamos al pasador?', '¿Qué altura defensiva nos conviene?'];
-    if (/físico|fijador|referencia|espaldas|juego aéreo|dominante aéreo/.test(label)) return ['¿Quién disputa el primer duelo?', '¿Quién recoge la segunda jugada?', '¿Cómo evitamos que descargue de cara?', '¿Qué central debe anticipar?'];
-    if (/desbordador|regateador|1v1/.test(label)) return ['¿Le orientamos hacia dentro o hacia fuera?', '¿Cuándo doblamos la ayuda?', '¿Cómo protegemos la espalda del lateral?', '¿Qué hacemos si recibe perfilado?'];
-    if (/rematador|primer palo|finalizador|llega al área/.test(label)) return ['¿Quién lo toma en área?', '¿Cómo defendemos primer palo?', '¿Qué vigilancia requiere en centros?', '¿Cómo protegemos el rechace?'];
-    if (group === 'goalkeeper') return ['¿Cómo condicionamos su inicio?', '¿Presionamos corto o esperamos juego largo?', '¿Dónde atacamos su punto débil?', '¿Qué hacemos si juega directo?'];
-    if (group === 'centerback') return ['¿Cómo condicionamos su primer pase?', '¿Cuándo atacamos su espalda?', '¿Qué delantero debe fijarlo?', '¿Cómo forzamos su perfil menos cómodo?'];
-    if (group === 'fullback') return ['¿Cómo atacamos su espalda?', '¿Quién sigue su incorporación?', '¿Qué vigilancia necesita nuestro extremo?', '¿Le orientamos dentro o fuera?'];
-    if (group === 'defensive_midfielder' || group === 'midfielder') return ['¿Cómo impedimos que reciba de cara?', '¿Quién salta sobre su primera recepción?', '¿Qué línea de pase debemos cerrar?', '¿Cómo atacamos tras robarle?'];
-    if (group === 'attacking_midfielder') return ['¿Quién lo toma entre líneas?', '¿Cómo cerramos su último pase?', '¿Qué vigilancia necesita en rechace?', '¿Cuándo debe saltar el mediocentro?'];
-    if (group === 'forward') return ['¿Cómo defendemos al delantero centro?', '¿Qué escenario debemos preparar?', '¿Quién cubre si fija centrales?', '¿Cómo ajustamos la altura?'];
-    if (group === 'winger') return ['¿Cómo defendemos su banda?', '¿Le orientamos dentro o fuera?', '¿Cuándo salta la ayuda?', '¿Cómo protegemos la espalda del lateral?'];
-    return ['¿Qué perfil debemos confirmar?', '¿Qué vigilancia individual necesita?', '¿Cómo ajustamos el duelo?', '¿Qué dato falta validar?'];
+    if (!group) return ['Â¿QuÃ© posiciÃ³n debemos registrar?', 'Â¿QuÃ© comportamiento debemos observar?', 'Â¿QuÃ© dato falta validar?'];
+    if (/rÃ¡pido|espacio|ataca espalda|profundo/.test(label)) return ['Â¿CÃ³mo protegemos la espalda de la lÃ­nea?', 'Â¿QuiÃ©n controla su desmarque?', 'Â¿CÃ³mo condicionamos al pasador?', 'Â¿QuÃ© altura defensiva nos conviene?'];
+    if (/fÃ­sico|fijador|referencia|espaldas|juego aÃ©reo|dominante aÃ©reo/.test(label)) return ['Â¿QuiÃ©n disputa el primer duelo?', 'Â¿QuiÃ©n recoge la segunda jugada?', 'Â¿CÃ³mo evitamos que descargue de cara?', 'Â¿QuÃ© central debe anticipar?'];
+    if (/desbordador|regateador|1v1/.test(label)) return ['Â¿Le orientamos hacia dentro o hacia fuera?', 'Â¿CuÃ¡ndo doblamos la ayuda?', 'Â¿CÃ³mo protegemos la espalda del lateral?', 'Â¿QuÃ© hacemos si recibe perfilado?'];
+    if (/rematador|primer palo|finalizador|llega al Ã¡rea/.test(label)) return ['Â¿QuiÃ©n lo toma en Ã¡rea?', 'Â¿CÃ³mo defendemos primer palo?', 'Â¿QuÃ© vigilancia requiere en centros?', 'Â¿CÃ³mo protegemos el rechace?'];
+    if (group === 'goalkeeper') return ['Â¿CÃ³mo condicionamos su inicio?', 'Â¿Presionamos corto o esperamos juego largo?', 'Â¿DÃ³nde atacamos su punto dÃ©bil?', 'Â¿QuÃ© hacemos si juega directo?'];
+    if (group === 'centerback') return ['Â¿CÃ³mo condicionamos su primer pase?', 'Â¿CuÃ¡ndo atacamos su espalda?', 'Â¿QuÃ© delantero debe fijarlo?', 'Â¿CÃ³mo forzamos su perfil menos cÃ³modo?'];
+    if (group === 'fullback') return ['Â¿CÃ³mo atacamos su espalda?', 'Â¿QuiÃ©n sigue su incorporaciÃ³n?', 'Â¿QuÃ© vigilancia necesita nuestro extremo?', 'Â¿Le orientamos dentro o fuera?'];
+    if (group === 'defensive_midfielder' || group === 'midfielder') return ['Â¿CÃ³mo impedimos que reciba de cara?', 'Â¿QuiÃ©n salta sobre su primera recepciÃ³n?', 'Â¿QuÃ© lÃ­nea de pase debemos cerrar?', 'Â¿CÃ³mo atacamos tras robarle?'];
+    if (group === 'attacking_midfielder') return ['Â¿QuiÃ©n lo toma entre lÃ­neas?', 'Â¿CÃ³mo cerramos su Ãºltimo pase?', 'Â¿QuÃ© vigilancia necesita en rechace?', 'Â¿CuÃ¡ndo debe saltar el mediocentro?'];
+    if (group === 'forward') return ['Â¿CÃ³mo defendemos al delantero centro?', 'Â¿QuÃ© escenario debemos preparar?', 'Â¿QuiÃ©n cubre si fija centrales?', 'Â¿CÃ³mo ajustamos la altura?'];
+    if (group === 'winger') return ['Â¿CÃ³mo defendemos su banda?', 'Â¿Le orientamos dentro o fuera?', 'Â¿CuÃ¡ndo salta la ayuda?', 'Â¿CÃ³mo protegemos la espalda del lateral?'];
+    return ['Â¿QuÃ© perfil debemos confirmar?', 'Â¿QuÃ© vigilancia individual necesita?', 'Â¿CÃ³mo ajustamos el duelo?', 'Â¿QuÃ© dato falta validar?'];
   };
   const getMicroPositionGroupLabel = (player) => {
     const group = getMicroPositionGroup(player);
@@ -7010,7 +7015,7 @@ function App() {
     if (group === 'centerback' || group === 'fullback') return 'DEFENSAS';
     if (group === 'midfielder' || group === 'defensive_midfielder' || group === 'attacking_midfielder') return 'MEDIOS';
     if (group === 'winger' || group === 'forward') return 'DELANTEROS';
-    return 'SIN DEMARCACIÓN';
+    return 'SIN DEMARCACIÃ“N';
   };
   const getMicroPlayerTags = (player) => {
     const profile = getObservedPlayerProfile(player);
@@ -7023,15 +7028,15 @@ function App() {
   };
   const keyPlayersIncludesProfile = (profile) => {
     const traits = safeArray(profile.traits).map((trait) => String(trait).toLowerCase());
-    return ['rematador', 'ataca espacio', 'rápido al espacio', 'especialista abp', 'finalizador', 'referencia aérea'].some((trait) => traits.includes(trait));
+    return ['rematador', 'ataca espacio', 'rÃ¡pido al espacio', 'especialista abp', 'finalizador', 'referencia aÃ©rea'].some((trait) => traits.includes(trait));
   };
 
   const getUnavailableRivalPlayers = () => liveRivalPlayers.filter(isUnavailableRivalPlayer);
 
   const getUnavailableRivalReason = (player) => {
-    if (player.yellowRisk) return 'sanción por acumulación';
-    if (player.suspended || player.expelled || player.red) return 'sanción / expulsión';
-    if (player.injured) return 'lesión';
+    if (player.yellowRisk) return 'sanciÃ³n por acumulaciÃ³n';
+    if (player.suspended || player.expelled || player.red) return 'sanciÃ³n / expulsiÃ³n';
+    if (player.injured) return 'lesiÃ³n';
     return 'no disponible';
   };
 
@@ -7066,9 +7071,9 @@ function App() {
     });
     doubtfulPlayers.slice(0, 2).forEach((player) => {
       add(
-        `Probar físicamente a ${player.name}`,
+        `Probar fÃ­sicamente a ${player.name}`,
         `${player.position || 'Jugador'} marcado como DUDA; medir si puede repetir esfuerzos.`,
-        'Alternar ritmo, cambios de orientación y carreras a su espalda sin regalar transición.',
+        'Alternar ritmo, cambios de orientaciÃ³n y carreras a su espalda sin regalar transiciÃ³n.',
         'ofensiva',
         player
       );
@@ -7076,7 +7081,7 @@ function App() {
     add(
       `Lado fuerte ${identity.strongSide}`,
       `El rival carga ${identity.offensiveFocus} con ritmo ${identity.attackingRhythm}.`,
-      'Emparejar lateral-extremo con ayuda cercana y preparar cambio al lado débil tras robo.',
+      'Emparejar lateral-extremo con ayuda cercana y preparar cambio al lado dÃ©bil tras robo.',
       'vigilancia'
     );
     add(
@@ -7088,7 +7093,7 @@ function App() {
     if (getSystemStructure(rivalSystem).defenders >= 5) {
       add(
         'Espalda de carrileros',
-        `Su ${rivalSystem} puede dejar espacio si el carrilero salta en presión ${identity.pressureType}.`,
+        `Su ${rivalSystem} puede dejar espacio si el carrilero salta en presiÃ³n ${identity.pressureType}.`,
         'Atraer por dentro, soltar fuera y atacar el intervalo antes de que bascule el central exterior.',
         'ofensiva'
       );
@@ -7097,7 +7102,7 @@ function App() {
       add(
         'Bloque bajo rival',
         `Defienden bajo y su debilidad marcada es ${identity.detectedWeakness}.`,
-        'Mover de lado a lado, fijar área con tres alturas y evitar centros sin ocupación.',
+        'Mover de lado a lado, fijar Ã¡rea con tres alturas y evitar centros sin ocupaciÃ³n.',
         'fortaleza'
       );
     }
@@ -7122,7 +7127,7 @@ function App() {
       .map((player) => ({ player, profile: getObservedPlayerProfile(player) }))
       .filter(({ profile }) => profile.speed || profile.technique || profile.aerial || profile.oneVsOne || profile.defensiveWork || profile.foot || profile.traits.length || String(profile.notes || '').trim());
     const hasCollectiveData = Object.values(collective).some((value) => Array.isArray(value) ? value.length : Boolean(value));
-    const splitLines = (value) => String(value || '').split(/\r?\n|•/).map((item) => String(item || '').trim()).filter(Boolean);
+    const splitLines = (value) => String(value || '').split(/\r?\n|â€¢/).map((item) => String(item || '').trim()).filter(Boolean);
     const uniq = (items) => [...new Set(safeArray(items).map((item) => String(item || '').trim()).filter(Boolean))];
     const rivalConnectionOptions = getRivalFormationSlots().map((slot) => slot.player?.name || slot.role || `R${Number(slot.slot || 0) + 1}`).filter(Boolean);
     const caudalConnectionOptions = Array.from({ length: 11 }, (_, index) => safeArray(selectedMatch.preCaudalLineup)[index] || getFormationRoles(caudalSystem)[index] || `C${index + 1}`);
@@ -7170,7 +7175,7 @@ function App() {
     const selectedMicroPosition = selectedMicroPlayer ? getEffectiveMicroPosition(selectedMicroPlayer, selectedMicroProfile) : '';
     const selectedMicroBehaviourConfig = selectedMicroPlayer ? getMicroBehaviourConfig(selectedMicroPlayer, selectedMicroProfile) : null;
     const selectedMicroIncompatibleTraits = selectedMicroPlayer ? getIncompatibleMicroTraits(selectedMicroPlayer, selectedMicroProfile) : [];
-    const microPlayersByGroup = ['PORTEROS', 'DEFENSAS', 'MEDIOS', 'DELANTEROS', 'SIN DEMARCACIÓN'].map((group) => ({
+    const microPlayersByGroup = ['PORTEROS', 'DEFENSAS', 'MEDIOS', 'DELANTEROS', 'SIN DEMARCACIÃ“N'].map((group) => ({
       group,
       players: filteredMicroPlayers.filter((player) => getMicroPositionGroupLabel(player) === group),
     })).filter((group) => group.players.length);
@@ -7178,12 +7183,12 @@ function App() {
       hasCollectiveData ? 'Perfil colectivo' : null,
       observedPlayerRows.length ? 'Perfil jugador' : null,
       evidences.length ? `${evidences.length} evidencias` : null,
-    ].filter(Boolean).join(' · ') || 'Sin fuente observada';
+    ].filter(Boolean).join(' Â· ') || 'Sin fuente observada';
     const attackPlan = uniq([
       ...splitLines(selectedMatch.planConBalon),
       ...splitLines(selectedMatch.prePlanTrigger),
       collective.weaknesses.includes('Espalda lateral') ? 'Atacar espalda lateral registrada' : '',
-      collective.weaknesses.includes('Pérdida interior') ? 'Forzar recepción interior' : '',
+      collective.weaknesses.includes('PÃ©rdida interior') ? 'Forzar recepciÃ³n interior' : '',
     ]).slice(0, 3);
     const defensePlan = uniq([
       ...splitLines(selectedMatch.planSinBalon),
@@ -7195,7 +7200,7 @@ function App() {
     const transitionPlan = uniq([
       ...splitLines(selectedMatch.planTransiciones),
       ...splitLines(selectedMatch.prePlanAvoid),
-      collective.strengths.includes('Transiciones') || collective.strengths.includes('Contraataque') ? 'Falta táctica si la pérdida es interior' : '',
+      collective.strengths.includes('Transiciones') || collective.strengths.includes('Contraataque') ? 'Falta tÃ¡ctica si la pÃ©rdida es interior' : '',
       collective.strengths.includes('Transiciones') || collective.strengths.includes('Contraataque') ? 'Repliegue inmediato' : '',
     ]).slice(0, 3);
     const abpPlan = uniq([
@@ -7215,41 +7220,41 @@ function App() {
       const caudalName = safeArray(selectedMatch.preCaudalLineup).filter(Boolean)[index] || getFormationRoles(caudalSystem)[index] || 'Caudal';
       const bestMetric = [
         ['velocidad', Number(profile.speed || 0)],
-        ['juego aéreo', Number(profile.aerial || 0)],
+        ['juego aÃ©reo', Number(profile.aerial || 0)],
         ['1v1', Number(profile.oneVsOne || 0)],
-        ['técnica', Number(profile.technique || 0)],
+        ['tÃ©cnica', Number(profile.technique || 0)],
       ].sort((a, b) => b[1] - a[1])[0];
       const tone = bestMetric?.[1] >= 4 ? 'red' : bestMetric?.[1] <= 2 ? 'green' : 'amber';
       return { caudalName, rivalName, tone, reason: bestMetric?.[1] ? `${bestMetric[0]} ${bestMetric[1]}` : 'perfil registrado' };
     });
     const tacticalAnswer = selectedPreAiAnalysis?.tacticalQuestion?.answer || '';
     const tacticalQuestionGroups = [
-      ['Con balón', 'Macro', [
-        '¿Cómo progresamos contra su estructura?',
-        '¿Qué espacios debemos atacar?',
-        '¿Dónde podemos generar superioridades?',
-        '¿Qué riesgos debemos evitar con balón?',
+      ['Con balÃ³n', 'Macro', [
+        'Â¿CÃ³mo progresamos contra su estructura?',
+        'Â¿QuÃ© espacios debemos atacar?',
+        'Â¿DÃ³nde podemos generar superioridades?',
+        'Â¿QuÃ© riesgos debemos evitar con balÃ³n?',
       ]],
-      ['Sin balón', 'Macro', [
-        '¿Dónde debemos iniciar la presión?',
-        '¿Qué vigilancias son prioritarias?',
-        '¿Qué zonas debemos proteger?',
+      ['Sin balÃ³n', 'Macro', [
+        'Â¿DÃ³nde debemos iniciar la presiÃ³n?',
+        'Â¿QuÃ© vigilancias son prioritarias?',
+        'Â¿QuÃ© zonas debemos proteger?',
       ]],
       ['Transiciones', 'Macro', [
-        '¿Qué hacemos tras pérdida?',
-        '¿Cómo castigamos tras recuperación?',
+        'Â¿QuÃ© hacemos tras pÃ©rdida?',
+        'Â¿CÃ³mo castigamos tras recuperaciÃ³n?',
       ]],
       ['ABP', 'Macro', [
-        '¿Qué debemos vigilar en estrategia?',
-        '¿Dónde podemos generar ventaja?',
+        'Â¿QuÃ© debemos vigilar en estrategia?',
+        'Â¿DÃ³nde podemos generar ventaja?',
       ]],
     ];
-    const selectedMicroQuestions = selectedMicroPlayer ? buildMicroQuestionSet(selectedMicroPlayer, selectedMicroProfile) : ['¿Qué perfil debemos confirmar?', '¿Qué dato debemos observar?', '¿Cómo ajustamos el duelo?'];
+    const selectedMicroQuestions = selectedMicroPlayer ? buildMicroQuestionSet(selectedMicroPlayer, selectedMicroProfile) : ['Â¿QuÃ© perfil debemos confirmar?', 'Â¿QuÃ© dato debemos observar?', 'Â¿CÃ³mo ajustamos el duelo?'];
     const renderPlanList = (title, items) => (
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{title}</p>
         <ul className="mt-2 space-y-1.5 text-sm font-semibold leading-5 text-slate-100">
-          {(items.length ? items : ['Información insuficiente para emitir una conclusión fiable.']).map((item) => (
+          {(items.length ? items : ['InformaciÃ³n insuficiente para emitir una conclusiÃ³n fiable.']).map((item) => (
             <li key={`${title}-${item}`} className="flex gap-2">
               <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-caudal-electric" />
               <span>{item}</span>
@@ -7277,11 +7282,11 @@ function App() {
               <div className="mt-3 grid gap-2 text-xs font-bold text-slate-200 sm:grid-cols-2">
                 {[
                   ['Sistema', rivalSystem],
-                  ['Salida', collective.buildUp || 'Sin información suficiente'],
-                  ['Fortaleza', collective.strengths[0] || 'Sin información suficiente'],
-                  ['Debilidad', collective.weaknesses[0] || 'Sin información suficiente'],
-                  ['Jugador a vigilar', keyPlayers[0] ? displayPlayerName(keyPlayers[0]) : 'Sin información suficiente'],
-                  ['Ausencias', unavailablePlayers[0] ? displayPlayerName(unavailablePlayers[0]) : 'Sin información suficiente'],
+                  ['Salida', collective.buildUp || 'Sin informaciÃ³n suficiente'],
+                  ['Fortaleza', collective.strengths[0] || 'Sin informaciÃ³n suficiente'],
+                  ['Debilidad', collective.weaknesses[0] || 'Sin informaciÃ³n suficiente'],
+                  ['Jugador a vigilar', keyPlayers[0] ? displayPlayerName(keyPlayers[0]) : 'Sin informaciÃ³n suficiente'],
+                  ['Ausencias', unavailablePlayers[0] ? displayPlayerName(unavailablePlayers[0]) : 'Sin informaciÃ³n suficiente'],
                 ].map(([label, value]) => (
                   <div key={label} className="bg-white/[0.045] px-3 py-2">
                     <span className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</span>
@@ -7299,16 +7304,16 @@ function App() {
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {[
-                  ['Salida de balón', 'buildUp', collectiveProfileOptions.buildUp],
+                  ['Salida de balÃ³n', 'buildUp', collectiveProfileOptions.buildUp],
                   ['Altura del bloque', 'blockHeight', collectiveProfileOptions.blockHeight],
-                  ['Tipo de presión', 'pressureType', collectiveProfileOptions.pressureType],
+                  ['Tipo de presiÃ³n', 'pressureType', collectiveProfileOptions.pressureType],
                   ['Ritmo ofensivo', 'attackingRhythm', collectiveProfileOptions.attackingRhythm],
                   ['Ataque preferente', 'preferredAttack', collectiveProfileOptions.preferredAttack],
                 ].map(([label, field, options]) => (
                   <label key={field} className="grid gap-1.5 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
                     <span>{label}</span>
                     <select value={collective[field] || ''} onChange={(event) => updateObservedCollectiveProfile(field, event.target.value)} className="border border-white/10 bg-black/20 px-3 py-2 text-sm font-bold normal-case tracking-normal text-white">
-                      <option value="">Sin información suficiente</option>
+                      <option value="">Sin informaciÃ³n suficiente</option>
                       {options.map((option) => <option key={option} value={option}>{option}</option>)}
                     </select>
                   </label>
@@ -7346,16 +7351,16 @@ function App() {
                 </select>
               </div>
               <div className="mt-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_120px]">
-                <input value={evidenceDraft.observation} onChange={(event) => setEvidenceDraft((current) => ({ ...current, observation: event.target.value }))} placeholder="Descripción de la evidencia..." className="h-11 min-w-0 border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500" />
-                <button type="button" onClick={addObservedEvidence} className="h-11 bg-caudal-electric px-4 py-2 text-xs font-black uppercase text-slate-950">Añadir</button>
+                <input value={evidenceDraft.observation} onChange={(event) => setEvidenceDraft((current) => ({ ...current, observation: event.target.value }))} placeholder="DescripciÃ³n de la evidencia..." className="h-11 min-w-0 border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500" />
+                <button type="button" onClick={addObservedEvidence} className="h-11 bg-caudal-electric px-4 py-2 text-xs font-black uppercase text-slate-950">AÃ±adir</button>
               </div>
               <div className="mt-3 space-y-2">
                 {evidences.length ? evidences.slice(0, 5).map((item) => (
                   <div key={item.id} className="flex items-start justify-between gap-3 border-b border-white/8 pb-2">
-                    <p className="text-xs font-semibold leading-5 text-slate-200"><span className="font-black text-white">{item.type}</span> <span className="text-amber-100">({item.importance || 'Media'})</span>{item.match ? ` · ${item.match}` : ''}{item.date ? ` · ${item.date}` : ''}: {item.observation}</p>
+                    <p className="text-xs font-semibold leading-5 text-slate-200"><span className="font-black text-white">{item.type}</span> <span className="text-amber-100">({item.importance || 'Media'})</span>{item.match ? ` Â· ${item.match}` : ''}{item.date ? ` Â· ${item.date}` : ''}: {item.observation}</p>
                     <button type="button" onClick={() => removeObservedEvidence(item.id)} className="text-[10px] font-black uppercase text-red-200">Borrar</button>
                   </div>
-                )) : <p className="text-sm font-semibold text-slate-500">Sin evidencias observadas. La IA no emitirá conclusiones fiables.</p>}
+                )) : <p className="text-sm font-semibold text-slate-500">Sin evidencias observadas. La IA no emitirÃ¡ conclusiones fiables.</p>}
               </div>
             </section>
 
@@ -7374,20 +7379,20 @@ function App() {
                 </select>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-2 text-xs font-bold text-slate-200">
-                <span className="bg-white/[0.045] px-3 py-2">Salida: {collective.buildUp || 'Sin información suficiente'}</span>
-                <span className="bg-white/[0.045] px-3 py-2">Bloque: {collective.blockHeight || 'Sin información suficiente'}</span>
-                <span className="bg-white/[0.045] px-3 py-2">Presión: {collective.pressureType || 'Sin información suficiente'}</span>
+                <span className="bg-white/[0.045] px-3 py-2">Salida: {collective.buildUp || 'Sin informaciÃ³n suficiente'}</span>
+                <span className="bg-white/[0.045] px-3 py-2">Bloque: {collective.blockHeight || 'Sin informaciÃ³n suficiente'}</span>
+                <span className="bg-white/[0.045] px-3 py-2">PresiÃ³n: {collective.pressureType || 'Sin informaciÃ³n suficiente'}</span>
               </div>
             </section>
 
             <section className="order-5 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Duelos críticos</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Duelos crÃ­ticos</p>
               <div className="mt-4 space-y-2">
                 {(duelRows.length ? duelRows : [{ caudalName: 'Caudal', rivalName: liveRivalIdentity.mainThreat || 'Rival', tone: 'amber' }]).map((duel) => (
                   <div key={`${duel.caudalName}-${duel.rivalName}`} className="flex items-center justify-between gap-3 border-b border-white/8 pb-2 text-sm">
                     <span className="min-w-0 truncate font-black text-white">{duel.caudalName} vs {duel.rivalName}</span>
                     <span className={`shrink-0 rounded-md border px-2 py-1 text-[10px] font-black uppercase ${semitoneClass[duel.tone]}`}>
-                      {duel.tone === 'green' ? 'Favorable' : duel.tone === 'red' ? 'Riesgo' : 'Igualado'} · {duel.reason}
+                      {duel.tone === 'green' ? 'Favorable' : duel.tone === 'red' ? 'Riesgo' : 'Igualado'} Â· {duel.reason}
                     </span>
                   </div>
                 ))}
@@ -7397,16 +7402,16 @@ function App() {
             <section className="order-6 border border-caudal-electric/15 bg-[#091428]/90 p-4">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Plan de partido</p>
               <div className="mt-4 grid gap-5 md:grid-cols-2">
-                {renderPlanList('Con balón', attackPlan)}
-                {renderPlanList('Sin balón', defensePlan)}
-                {renderPlanList('Transición', transitionPlan)}
+                {renderPlanList('Con balÃ³n', attackPlan)}
+                {renderPlanList('Sin balÃ³n', defensePlan)}
+                {renderPlanList('TransiciÃ³n', transitionPlan)}
                 {renderPlanList('ABP', abpPlan)}
               </div>
             </section>
 
             <section className="order-2 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Pregunta táctica IA</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Pregunta tÃ¡ctica IA</p>
                 {selectedPreAiAnalysis?.tacticalQuestion?.confidence ? (
                   <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">
                     {selectedPreAiAnalysis.tacticalQuestion.confidence}
@@ -7458,7 +7463,7 @@ function App() {
                             const tags = getMicroPlayerTags(player);
                             return (
                               <option key={getObservedPlayerKey(player)} value={getObservedPlayerKey(player)}>
-                                {displayPlayerName(player) || player.name}{tags.length ? ` · ${tags.join(' / ')}` : ''}
+                                {displayPlayerName(player) || player.name}{tags.length ? ` Â· ${tags.join(' / ')}` : ''}
                               </option>
                             );
                           })}
@@ -7471,7 +7476,7 @@ function App() {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <p className="text-base font-black text-white">{displayPlayerName(selectedMicroPlayer) || selectedMicroPlayer.name}</p>
-                          <p className="mt-1 text-xs font-bold text-slate-400">{selectedMicroPlayer.position || 'Sin posición registrada'}</p>
+                          <p className="mt-1 text-xs font-bold text-slate-400">{selectedMicroPlayer.position || 'Sin posiciÃ³n registrada'}</p>
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           <span className="rounded-lg border border-white/10 bg-white/[0.05] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-300">
@@ -7500,38 +7505,38 @@ function App() {
                           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Identidad</p>
                           <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2">
                             <div className="min-w-0 bg-black/15 px-3 py-2">
-                              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Posición natural</p>
-                              <p className="mt-1 break-words text-sm font-black text-white">{selectedMicroPlayer.position || 'Sin información'}</p>
+                              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">PosiciÃ³n natural</p>
+                              <p className="mt-1 break-words text-sm font-black text-white">{selectedMicroPlayer.position || 'Sin informaciÃ³n'}</p>
                             </div>
                             <label className="grid min-w-0 gap-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
-                              <span>Posición táctica</span>
+                              <span>PosiciÃ³n tÃ¡ctica</span>
                               <select value={selectedMicroProfile.position || ''} onChange={(event) => updateObservedPlayerProfile(selectedMicroPlayer, { position: event.target.value })} className="h-10 min-w-0 border border-white/10 bg-black/20 px-2 text-xs font-bold normal-case tracking-normal text-white outline-none">
-                                <option value="">Sin información</option>
+                                <option value="">Sin informaciÃ³n</option>
                                 {positions.map((position) => <option key={position} value={position}>{position}</option>)}
                               </select>
                             </label>
                             <label className="grid min-w-0 gap-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
                               <span>Pie dominante</span>
                               <select value={selectedMicroProfile.foot || ''} onChange={(event) => updateObservedPlayerProfile(selectedMicroPlayer, { foot: event.target.value })} className="h-10 min-w-0 border border-white/10 bg-black/20 px-2 text-xs font-bold normal-case tracking-normal text-white outline-none">
-                                <option value="">Sin información</option>
+                                <option value="">Sin informaciÃ³n</option>
                                 {['Derecho', 'Izquierdo', 'Ambos'].map((foot) => <option key={foot} value={foot}>{foot}</option>)}
                               </select>
                             </label>
                             <div className="min-w-0 bg-black/15 px-3 py-2">
                               <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Altura</p>
-                              <p className="mt-1 break-words text-sm font-black text-white">{selectedMicroHeight || 'Sin información'}</p>
+                              <p className="mt-1 break-words text-sm font-black text-white">{selectedMicroHeight || 'Sin informaciÃ³n'}</p>
                             </div>
                             <label className="grid min-w-0 gap-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
                               <span>Perfil principal</span>
                               <select value={selectedMicroProfile.mainProfile || ''} onChange={(event) => updateObservedPlayerProfile(selectedMicroPlayer, { mainProfile: event.target.value })} className="h-10 min-w-0 border border-white/10 bg-black/20 px-2 text-xs font-bold normal-case tracking-normal text-white outline-none">
-                                <option value="">Sin información</option>
+                                <option value="">Sin informaciÃ³n</option>
                                 {getMicroProfileOptions(selectedMicroPlayer, selectedMicroProfile).map((option) => <option key={option} value={option}>{option}</option>)}
                               </select>
                             </label>
                             <label className="grid min-w-0 gap-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
                               <span>Perfil secundario</span>
                               <select value={selectedMicroProfile.secondaryProfile || ''} onChange={(event) => updateObservedPlayerProfile(selectedMicroPlayer, { secondaryProfile: event.target.value })} className="h-10 min-w-0 border border-white/10 bg-black/20 px-2 text-xs font-bold normal-case tracking-normal text-white outline-none">
-                                <option value="">Sin información</option>
+                                <option value="">Sin informaciÃ³n</option>
                                 {getMicroProfileOptions(selectedMicroPlayer, selectedMicroProfile).filter((option) => option !== selectedMicroProfile.mainProfile).map((option) => <option key={option} value={option}>{option}</option>)}
                               </select>
                             </label>
@@ -7539,13 +7544,13 @@ function App() {
                         </div>
 
                         <div className="border border-white/10 bg-white/[0.03] p-3">
-                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Comportamientos según posición</p>
-                          <p className="mt-1 text-xs font-semibold text-slate-500">{selectedMicroPosition ? selectedMicroBehaviourConfig?.label || selectedMicroPosition : 'Selecciona la posición del jugador para mostrar comportamientos específicos.'}</p>
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Comportamientos segÃºn posiciÃ³n</p>
+                          <p className="mt-1 text-xs font-semibold text-slate-500">{selectedMicroPosition ? selectedMicroBehaviourConfig?.label || selectedMicroPosition : 'Selecciona la posiciÃ³n del jugador para mostrar comportamientos especÃ­ficos.'}</p>
                           {selectedMicroBehaviourConfig ? (
                             <div className="mt-3 grid min-w-0 gap-3">
                               {[
-                                ['Con balón', selectedMicroBehaviourConfig.withBall],
-                                ['Sin balón', selectedMicroBehaviourConfig.withoutBall],
+                                ['Con balÃ³n', selectedMicroBehaviourConfig.withBall],
+                                ['Sin balÃ³n', selectedMicroBehaviourConfig.withoutBall],
                               ].map(([title, traits]) => (
                                 <div key={title} className="min-w-0">
                                   <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{title}</p>
@@ -7565,7 +7570,7 @@ function App() {
                           ) : null}
                           {selectedMicroIncompatibleTraits.length ? (
                             <div className="mt-3 border border-amber-300/20 bg-amber-300/10 p-2.5">
-                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-amber-100">Hay rasgos registrados que no corresponden a la posición actual.</p>
+                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-amber-100">Hay rasgos registrados que no corresponden a la posiciÃ³n actual.</p>
                               <div className="mt-2 flex flex-wrap gap-1.5">
                                 {selectedMicroIncompatibleTraits.map((trait) => (
                                   <button key={trait} type="button" onClick={() => toggleObservedPlayerTrait(selectedMicroPlayer, trait)} className="rounded-lg border border-amber-200/25 bg-black/15 px-2 py-1 text-[10px] font-black uppercase tracking-[0.04em] text-amber-100">
@@ -7582,7 +7587,7 @@ function App() {
                             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Fortalezas</p>
                             <div className="mt-2 space-y-1">
                               {selectedMicroStrengths.length ? selectedMicroStrengths.slice(0, 5).map((trait) => (
-                                <p key={trait} className="break-words text-xs font-semibold text-slate-200">• {trait}</p>
+                                <p key={trait} className="break-words text-xs font-semibold text-slate-200">â€¢ {trait}</p>
                               )) : <p className="text-xs font-semibold text-slate-500">Sin fortalezas seleccionadas</p>}
                             </div>
                           </div>
@@ -7590,7 +7595,7 @@ function App() {
                             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Vulnerabilidades</p>
                             <div className="mt-2 space-y-1">
                               {selectedMicroWeaknesses.length ? selectedMicroWeaknesses.map((trait) => (
-                                <p key={trait} className="break-words text-xs font-semibold text-slate-200">• {trait}</p>
+                                <p key={trait} className="break-words text-xs font-semibold text-slate-200">â€¢ {trait}</p>
                               )) : <p className="text-xs font-semibold text-slate-500">Sin vulnerabilidades seleccionadas</p>}
                             </div>
                           </div>
@@ -7598,7 +7603,7 @@ function App() {
 
                           <label className="grid gap-2 border border-white/10 bg-white/[0.03] p-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
                             <span>Observaciones</span>
-                            <textarea value={selectedMicroProfile.notes || ''} onChange={(event) => updateObservedPlayerProfile(selectedMicroPlayer, { notes: event.target.value })} placeholder="Solo detalles útiles para preparar el duelo individual." rows={3} className="min-h-[76px] w-full resize-none border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold normal-case leading-5 tracking-normal text-white outline-none placeholder:text-slate-600" />
+                            <textarea value={selectedMicroProfile.notes || ''} onChange={(event) => updateObservedPlayerProfile(selectedMicroPlayer, { notes: event.target.value })} placeholder="Solo detalles Ãºtiles para preparar el duelo individual." rows={3} className="min-h-[76px] w-full resize-none border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold normal-case leading-5 tracking-normal text-white outline-none placeholder:text-slate-600" />
                           </label>
                         </div>
                         <div className="grid min-w-0 gap-2">
@@ -7652,7 +7657,7 @@ function App() {
                     </div>
                     </div>
                   ) : (
-                    <p className="mt-3 border border-dashed border-white/10 px-3 py-3 text-sm font-semibold text-slate-500">Sin jugadores disponibles para análisis Micro.</p>
+                    <p className="mt-3 border border-dashed border-white/10 px-3 py-3 text-sm font-semibold text-slate-500">Sin jugadores disponibles para anÃ¡lisis Micro.</p>
                   )}
                 </div>
                 {tacticalQuestionGroups.map(([group, mode, questions]) => (
@@ -7709,7 +7714,7 @@ function App() {
             <section className="order-4 border border-white/10 bg-[#091428]/82 p-3 xl:col-start-2 xl:row-span-3 xl:row-start-1">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Campo táctico</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Campo tÃ¡ctico</p>
                   <h4 className="mt-1 text-2xl font-black text-white">Pizarra de partido</h4>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -7735,7 +7740,7 @@ function App() {
               {renderFacingSystemsOverview()}
               <div className="mt-3 border-t border-white/10 pt-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Conexiones tácticas</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Conexiones tÃ¡cticas</p>
                   <div className="flex flex-wrap gap-1.5">
                     {tacticalConnectionFilters.map((filter) => (
                       <button key={filter} type="button" onClick={() => setTacticalConnectionFilter(filter)} className={`border px-2 py-1 text-[9px] font-black uppercase ${tacticalConnectionFilter === filter ? 'border-caudal-electric/25 bg-caudal-electric/10 text-caudal-electric' : 'border-white/10 bg-white/[0.035] text-slate-500'}`}>
@@ -7765,14 +7770,14 @@ function App() {
                   </select>
                 </div>
                 <div className="mt-2 flex gap-2">
-                  <input value={tacticalConnectionDraft.comment} onChange={(event) => updateTacticalConnectionDraft({ comment: event.target.value })} placeholder="Observación opcional: cuándo aparece esta conexión..." className="min-w-0 flex-1 border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none placeholder:text-slate-500" />
-                  <button type="button" onClick={addTacticalConnection} className="bg-caudal-electric px-4 py-2 text-[10px] font-black uppercase text-slate-950">Añadir</button>
+                  <input value={tacticalConnectionDraft.comment} onChange={(event) => updateTacticalConnectionDraft({ comment: event.target.value })} placeholder="ObservaciÃ³n opcional: cuÃ¡ndo aparece esta conexiÃ³n..." className="min-w-0 flex-1 border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none placeholder:text-slate-500" />
+                  <button type="button" onClick={addTacticalConnection} className="bg-caudal-electric px-4 py-2 text-[10px] font-black uppercase text-slate-950">AÃ±adir</button>
                 </div>
                 <div className="mt-3 max-h-32 space-y-1.5 overflow-y-auto pr-1">
                   {visibleTacticalConnections.length ? visibleTacticalConnections.slice(0, 8).map((connection) => (
                     <div key={connection.id} className={`flex items-center justify-between gap-3 border px-2.5 py-2 text-xs ${selectedTacticalConnectionId === connection.id ? 'border-caudal-electric/35 bg-caudal-electric/10' : 'border-white/10 bg-white/[0.035]'}`}>
                       <button type="button" onClick={() => setSelectedTacticalConnectionId(selectedTacticalConnectionId === connection.id ? '' : connection.id)} className="min-w-0 flex-1 truncate text-left font-black text-white">
-                          {connection.origin} {'->'} {connection.destination} · {connection.type} · {connection.intensity}
+                          {connection.origin} {'->'} {connection.destination} Â· {connection.type} Â· {connection.intensity}
                       </button>
                       <button type="button" onClick={() => removeTacticalConnection(connection.id)} className="shrink-0 text-[10px] font-black uppercase text-red-200">Eliminar</button>
                     </div>
@@ -7859,35 +7864,35 @@ function App() {
       ['Ritmo ofensivo EQUIPOS', liveRivalIdentity.attackingRhythm],
       ['Estilo rival', questionnaire.preRivalStyle],
       ['Bloque defensivo rival', questionnaire.preRivalDefensiveBlock],
-      ['Presión rival', questionnaire.preRivalPressure],
-      ['Tipo de presión', questionnaire.preRivalPressureType],
+      ['PresiÃ³n rival', questionnaire.preRivalPressure],
+      ['Tipo de presiÃ³n', questionnaire.preRivalPressureType],
       ['Fortalezas rival', questionnaire.preRivalStrengths],
       ['Debilidades rival', questionnaire.preRivalWeaknesses],
-      ['Dónde genera peligro', questionnaire.preRivalDangerZones],
+      ['DÃ³nde genera peligro', questionnaire.preRivalDangerZones],
       ['Espacios que concede', questionnaire.preRivalSpacesAllowed],
-      ['Cómo defiende centros', questionnaire.preRivalDefendsCrosses],
-      ['Cómo defiende espalda', questionnaire.preRivalDefendsBack],
-      ['Plan con balón Caudal', questionnaire.preCaudalBuildPlan],
+      ['CÃ³mo defiende centros', questionnaire.preRivalDefendsCrosses],
+      ['CÃ³mo defiende espalda', questionnaire.preRivalDefendsBack],
+      ['Plan con balÃ³n Caudal', questionnaire.preCaudalBuildPlan],
       ['Zonas a atacar', questionnaire.preCaudalAttackZones],
       ['Jugadores a activar', questionnaire.preCaudalPlayersToActivate],
       ['Rivales a tapar', questionnaire.preCaudalRivalsToBlock],
-      ['Qué evitar', questionnaire.preCaudalAvoid],
-      ['Información adicional IA', questionnaire.preAiSupportNotes],
+      ['QuÃ© evitar', questionnaire.preCaudalAvoid],
+      ['InformaciÃ³n adicional IA', questionnaire.preAiSupportNotes],
     ];
     const filledInputs = importantInputs.filter(([, value]) => String(value || '').trim());
     const tags = [
       selectedMatch?.preCaudalSystem ? `Caudal ${selectedMatch.preCaudalSystem}` : 'Caudal 4-4-2',
       `Rival ${getCurrentRivalSystem()}`,
       questionnaire.preRivalDefensiveBlock ? `bloque ${questionnaire.preRivalDefensiveBlock}` : null,
-      questionnaire.preRivalPressure ? `presión ${questionnaire.preRivalPressure}` : null,
+      questionnaire.preRivalPressure ? `presiÃ³n ${questionnaire.preRivalPressure}` : null,
       questionnaire.preRivalStrengths ? 'fortaleza rival' : null,
       questionnaire.preRivalWeaknesses ? 'debilidad rival' : null,
       questionnaire.preCaudalAttackZones ? 'zona a atacar' : null,
-      questionnaire.preAiSupportNotes ? 'información adicional' : null,
+      questionnaire.preAiSupportNotes ? 'informaciÃ³n adicional' : null,
       hasRivalReportText ? 'texto informe rival' : null,
       selectedMatchRivalTeam ? 'EQUIPOS conectado' : null,
       liveRivalMarkedPlayers.length ? `${liveRivalMarkedPlayers.length} estados reales` : null,
-      rivalPlayersWithNotes.length ? `${rivalPlayersWithNotes.length} rivales con característica` : null,
+      rivalPlayersWithNotes.length ? `${rivalPlayersWithNotes.length} rivales con caracterÃ­stica` : null,
       caudalPlayersWithNotes.length ? `${caudalPlayersWithNotes.length} notas Caudal` : null,
     ].filter(Boolean);
     const score = filledInputs.length + rivalPlayersWithNotes.length + caudalPlayersWithNotes.length;
@@ -7914,7 +7919,7 @@ function App() {
     const liveRivalNotes = Object.fromEntries(
       getRivalAvailablePlayers()
         .filter((player) => player.isKey || player.yellowRisk || player.suspended || player.injured || player.doubtful)
-        .map((player) => [player.name, playerStatusBadges(player).map((badge) => badge.title).join(' · ')])
+        .map((player) => [player.name, playerStatusBadges(player).map((badge) => badge.title).join(' Â· ')])
     );
     const rivalNotes = { ...liveRivalNotes, ...(selectedMatch.preRivalPlayerNotes || {}) };
     const prompt = buildTacticalPrompt({
@@ -7971,7 +7976,7 @@ function App() {
       const currentTime = postYoutubePlayerRef.current?.getCurrentTime?.();
       if (Number.isFinite(Number(currentTime))) return Math.max(0, Math.round(Number(currentTime)));
     } catch (playerError) {
-      console.error('Error leyendo segundo actual del vídeo POST:', playerError);
+      console.error('Error leyendo segundo actual del vÃ­deo POST:', playerError);
     }
     return null;
   };
@@ -7980,7 +7985,7 @@ function App() {
     if (!selectedMatch || !eventType) return;
     const seconds = getPostVideoCurrentSeconds();
     if (seconds === null) {
-      setPostError('El vídeo todavía no está listo. Reproduce el vídeo y vuelve a pulsar el botón.');
+      setPostError('El vÃ­deo todavÃ­a no estÃ¡ listo. Reproduce el vÃ­deo y vuelve a pulsar el botÃ³n.');
       return;
     }
 
@@ -8010,7 +8015,7 @@ function App() {
     }
 
     setSelectedPostEventId(savedClip?.id || null);
-    setPostClipFeedback(`Clip guardado ${formatVideoSeconds(seconds)} · ${eventType.name}`);
+    setPostClipFeedback(`Clip guardado ${formatVideoSeconds(seconds)} Â· ${eventType.name}`);
     await loadMatchPostData(selectedMatch.id);
     setPostClipSaving(false);
   };
@@ -8090,7 +8095,7 @@ function App() {
     const effectiveType = getPostEventTypeValue(newEventDraft.type || selectedEventType);
     const selectedType = eventTypes.find((eventType) => eventType.name === effectiveType);
     if (!effectiveType) {
-      setPostError('Selecciona una tipología antes de guardar.');
+      setPostError('Selecciona una tipologÃ­a antes de guardar.');
       setPostEventFeedback('');
       setPostEventSaving(false);
       return;
@@ -8103,7 +8108,7 @@ function App() {
         ? Math.max(0, Math.round(Number(postVideoStartSeconds)))
         : manualSeconds;
     if (!Number.isFinite(Number(nextVideoSeconds)) || Number(nextVideoSeconds) < 0) {
-      setPostError('No se ha podido guardar el evento. El tiempo del vídeo no está disponible.');
+      setPostError('No se ha podido guardar el evento. El tiempo del vÃ­deo no estÃ¡ disponible.');
       setPostEventFeedback('');
       setPostEventSaving(false);
       return;
@@ -8148,7 +8153,7 @@ function App() {
         keyEvent: false,
         videoSeconds: nextVideoSeconds,
       });
-      setPostEventFeedback(`Evento guardado ${formatVideoSeconds(nextVideoSeconds)} · ${getPostEventTypeLabel(effectiveType)}`);
+      setPostEventFeedback(`Evento guardado ${formatVideoSeconds(nextVideoSeconds)} Â· ${getPostEventTypeLabel(effectiveType)}`);
       await loadMatchPostData(selectedMatch.id);
     } catch (eventError) {
       console.error('[POST_EVENT_SAVE_ERROR]', eventError);
@@ -8168,19 +8173,53 @@ function App() {
     const resultText = `${score.caudal === score.rival ? 'Empate' : score.caudal > score.rival ? 'Victoria' : 'Derrota'} ${score.caudal}-${score.rival}.`;
     const goalContext = goalEvents.length
       ? goalEvents.slice(0, 2).map((event) => {
-        const action = event.attackType || event.phase || event.subphase || 'acción';
+        const action = event.attackType || event.phase || event.subphase || 'acciÃ³n';
         return event.type === 'Gol a favor'
-          ? `El equipo encontró gol en ${String(action).toLowerCase()}`
-          : `Concedió tras ${String(action).toLowerCase()}`;
+          ? `El equipo encontrÃ³ gol en ${String(action).toLowerCase()}`
+          : `ConcediÃ³ tras ${String(action).toLowerCase()}`;
       }).join('. ')
       : '';
     const attackText = quick.shots || quick.boxEntries
-      ? `Generó ${quick.shots} tiros y ${quick.boxEntries} entradas al área.`
+      ? `GenerÃ³ ${quick.shots} tiros y ${quick.boxEntries} entradas al Ã¡rea.`
       : 'Pendiente de etiquetar volumen ofensivo.';
     const riskText = quick.rivalShots || quick.losses
-      ? `Registró ${quick.losses} pérdidas y concedió ${quick.rivalShots} tiros.`
-      : 'No hay riesgos rápidos relevantes registrados.';
+      ? `RegistrÃ³ ${quick.losses} pÃ©rdidas y concediÃ³ ${quick.rivalShots} tiros.`
+      : 'No hay riesgos rÃ¡pidos relevantes registrados.';
     return [resultText, derived.trend, goalContext, attackText, riskText].filter(Boolean).join(' ');
+  };
+
+  const buildPostFactualSummary = () => {
+    if (!selectedMatch) return '';
+    const score = getStatsScore();
+    const quick = getQuickEventSummary(selectedMatch.quickEvents || []);
+    const goalEvents = getStatsGoalEvents();
+    const hasScore = hasRealValue(selectedMatch.goalsFor) || hasRealValue(selectedMatch.goalsAgainst) || hasRealValue(selectedMatch.homeScore) || hasRealValue(selectedMatch.awayScore) || goalEvents.length;
+    const resultWord = score.caudal === score.rival ? 'Empate' : score.caudal > score.rival ? 'Victoria' : 'Derrota';
+    const resultText = hasScore ? `${resultWord} ${score.caudal}-${score.rival}${selectedMatch.opponent ? ` ante ${selectedMatch.opponent}` : ''}.` : '';
+    const formatGoal = (event) => {
+      const minute = event.minute ? `minuto ${event.minute}` : '';
+      const side = event.type === 'Gol a favor' ? 'gol a favor' : event.type === 'Gol en contra' ? 'gol en contra' : 'gol';
+      const author = event.type === 'Gol a favor' && event.scorer ? ` de ${event.scorer}` : '';
+      const phase = event.attackType || event.phase || event.subphase || '';
+      return [minute, `${side}${author}`, phase ? `mediante ${String(phase).toLowerCase()}` : ''].filter(Boolean).join(', ');
+    };
+    const goalsText = goalEvents.length ? `Goles: ${goalEvents.map(formatGoal).join('; ')}.` : '';
+    const initialSystem = selectedMatch.statsSystem || selectedMatch.preCaudalSystem || '';
+    const systemChanges = safeArray(selectedMatch.systemEvents)
+      .filter((event) => event.toSystem || event.to_system)
+      .map((event) => `${event.minute ? `${event.minute}' ` : ''}${event.fromSystem || event.from_system ? `${event.fromSystem || event.from_system} > ` : ''}${event.toSystem || event.to_system}`);
+    const systemText = [initialSystem ? `Sistema inicial: ${initialSystem}.` : '', systemChanges.length ? `Cambios de sistema: ${systemChanges.join('; ')}.` : ''].filter(Boolean).join(' ');
+    const statRows = [
+      quick.hasRegisteredEvents && (quick.shots || quick.rivalShots) ? `Tiros: ${quick.shots}-${quick.rivalShots}` : '',
+      quick.hasRegisteredEvents && (quick.shotsOnTarget || quick.rivalShotsOnTarget) ? `Tiros a puerta: ${quick.shotsOnTarget}-${quick.rivalShotsOnTarget}` : '',
+      quick.hasRegisteredEvents && (quick.corners || quick.rivalCorners) ? `Corners: ${quick.corners}-${quick.rivalCorners}` : '',
+      quick.hasRegisteredEvents && (quick.fouls || quick.rivalFouls) ? `Faltas: ${quick.fouls}-${quick.rivalFouls}` : '',
+    ].filter(Boolean);
+    const statsText = statRows.length ? `Estadisticas registradas: ${statRows.join('; ')}.` : '';
+    const clips = safeArray(selectedMatch.events);
+    const clipsText = clips.length ? `Clips POST registrados: ${clips.length}.` : '';
+    const observationsText = selectedMatch.postReality ? `Observaciones POST: ${selectedMatch.postReality.trim()}` : '';
+    return [resultText, goalsText, systemText, statsText, clipsText, observationsText].filter(Boolean).join(' ').trim();
   };
 
   const buildPostDerivedReading = () => {
@@ -8203,7 +8242,7 @@ function App() {
     const dominantMoment = momentumSegments[0]?.state
       ? momentumSegments[0].state
       : quick.recoveries > quick.rivalRecoveries
-        ? 'presión alta Caudal'
+        ? 'presiÃ³n alta Caudal'
         : quick.rivalBoxEntries > quick.boxEntries
           ? 'empuje rival'
           : 'partido igualado';
@@ -8213,19 +8252,19 @@ function App() {
       ? Math.round((caudalActivity / Math.max(1, caudalActivity + rivalActivity)) * 100)
       : 50;
     const tendency = quick.losses >= 3
-      ? `Caudal tuvo volumen, pero el partido se abrió por pérdidas.`
+      ? `Caudal tuvo volumen, pero el partido se abriÃ³ por pÃ©rdidas.`
       : quick.recoveries >= quick.rivalRecoveries + 2
-        ? `Caudal sostuvo el partido desde presión y recuperación alta.`
+        ? `Caudal sostuvo el partido desde presiÃ³n y recuperaciÃ³n alta.`
         : quick.rivalShotsOnTarget > quick.shotsOnTarget
-          ? `El rival generó menos volumen, pero encontró más amenaza real.`
+          ? `El rival generÃ³ menos volumen, pero encontrÃ³ mÃ¡s amenaza real.`
           : goals.some((goal) => goal.type === 'Gol en contra')
-            ? `El rival castigó una acción puntual que conviene aislar en vídeo.`
-            : `Partido pendiente de matizar con vídeo y clips tácticos.`;
+            ? `El rival castigÃ³ una acciÃ³n puntual que conviene aislar en vÃ­deo.`
+            : `Partido pendiente de matizar con vÃ­deo y clips tÃ¡cticos.`;
     const suggestions = [
-      quick.losses >= 2 ? 'Revisar pérdidas y cobertura tras pérdida.' : null,
-      quick.shots > quick.shotsOnTarget + 2 ? 'Mucho tiro sin precisión: revisar calidad de finalización.' : null,
-      quick.rivalBoxEntries > quick.boxEntries ? 'El rival pisó más área: revisar altura y cierres laterales.' : null,
-      quick.recoveries >= 3 ? 'Presión alta con señales útiles para repetir.' : null,
+      quick.losses >= 2 ? 'Revisar pÃ©rdidas y cobertura tras pÃ©rdida.' : null,
+      quick.shots > quick.shotsOnTarget + 2 ? 'Mucho tiro sin precisiÃ³n: revisar calidad de finalizaciÃ³n.' : null,
+      quick.rivalBoxEntries > quick.boxEntries ? 'El rival pisÃ³ mÃ¡s Ã¡rea: revisar altura y cierres laterales.' : null,
+      quick.recoveries >= 3 ? 'PresiÃ³n alta con seÃ±ales Ãºtiles para repetir.' : null,
       clips.some((event) => /juego directo|directo/i.test(event.type || event.description || '')) ? 'Cruzar clips de juego directo con duelos y segundas jugadas.' : null,
     ].filter(Boolean);
     return {
@@ -8234,7 +8273,7 @@ function App() {
       criticalRange: criticalRange?.range || 'Sin tramo claro',
       dominantRange: dominantRange?.range || 'Sin tramo claro',
       trend: tendency,
-      suggestions: suggestions.length ? suggestions : ['Validar primero eventos rápidos y clips para afinar la lectura.'],
+      suggestions: suggestions.length ? suggestions : ['Validar primero eventos rÃ¡pidos y clips para afinar la lectura.'],
     };
   };
 
@@ -8290,24 +8329,24 @@ function App() {
       partido_id: selectedMatch.id,
       tipo_evento_id: selectedType?.id || null,
       minute: postTacticalPanel.minute || '0',
-      type: postTacticalPanel.type || selectedType?.name || selectedEventType || 'Evento táctico',
+      type: postTacticalPanel.type || selectedType?.name || selectedEventType || 'Evento tÃ¡ctico',
       description: [
         postTacticalPanel.description,
         postTacticalPanel.tags ? `Tags: ${postTacticalPanel.tags}` : '',
         postTacticalPanel.importance ? `Importancia: ${postTacticalPanel.importance}` : '',
-      ].filter(Boolean).join(' · '),
+      ].filter(Boolean).join(' Â· '),
       player: postTacticalPanel.player || '',
       video_seconds: Math.max(0, Math.round(Number(postTacticalPanel.minute || 0) * 60)),
     };
     const { data: savedEvent, error: eventError } = await supabase.from("partido_eventos_post").insert(payload).select("id").single();
     if (eventError) {
-      setPostError(eventError.message || 'No se pudo convertir en evento táctico.');
+      setPostError(eventError.message || 'No se pudo convertir en evento tÃ¡ctico.');
       return;
     }
     if (postTacticalPanel.quickEventId) {
       await updateQuickEvent(postTacticalPanel.quickEventId, { reviewed: true });
     }
-    const line = `${payload.minute}' · ${payload.type}${payload.player ? ` · ${payload.player}` : ''}: ${postTacticalPanel.description || ''}`;
+    const line = `${payload.minute}' Â· ${payload.type}${payload.player ? ` Â· ${payload.player}` : ''}: ${postTacticalPanel.description || ''}`;
     await updateSelectedMatchFields({
       [postTacticalPanel.targetField || 'postReality']: [selectedMatch[postTacticalPanel.targetField || 'postReality'], line].filter(Boolean).join('\n'),
       postAiAnalysis: {
@@ -8372,17 +8411,17 @@ function App() {
 
   const relatePostClipWithAnalysis = async (event, targetField = 'postReality') => {
     if (!event) return;
-    const line = `${event.minute || '-'}' · ${event.type || 'Clip'}${event.description ? `: ${event.description}` : ''}`;
+    const line = `${event.minute || '-'}' Â· ${event.type || 'Clip'}${event.description ? `: ${event.description}` : ''}`;
     const currentAnalysis = safeObject(selectedMatch.postAiAnalysis);
     const clipText = normalizePlayerIdentityName(`${event.type || ''} ${event.description || ''}`);
     const concepts = [
-      /perdida/.test(clipText) ? 'pérdidas interiores' : null,
-      /recuper|presion/.test(clipText) ? 'presión alta' : null,
+      /perdida/.test(clipText) ? 'pÃ©rdidas interiores' : null,
+      /recuper|presion/.test(clipText) ? 'presiÃ³n alta' : null,
       /directo/.test(clipText) ? 'juego directo' : null,
       /segunda/.test(clipText) ? 'segunda jugada' : null,
       /centro|lateral/.test(clipText) ? 'centros laterales' : null,
       /corner|abp|falta/.test(clipText) ? 'ABP' : null,
-      /transicion/.test(clipText) ? 'transición' : null,
+      /transicion/.test(clipText) ? 'transiciÃ³n' : null,
     ].filter(Boolean);
     await updateSelectedMatchFields({
       [targetField]: [selectedMatch[targetField], line].filter(Boolean).join('\n'),
@@ -8407,7 +8446,7 @@ function App() {
         ],
       },
     });
-    setPostClipFeedback(`Clip relacionado con ${targetField === 'postFulfilled' ? 'qué funcionó' : targetField === 'postNotFulfilled' ? 'qué no funcionó' : targetField === 'postNextAdjustment' ? 'ajustes futuros' : 'qué ocurrió'}.`);
+    setPostClipFeedback(`Clip relacionado con ${targetField === 'postFulfilled' ? 'quÃ© funcionÃ³' : targetField === 'postNotFulfilled' ? 'quÃ© no funcionÃ³' : targetField === 'postNextAdjustment' ? 'ajustes futuros' : 'quÃ© ocurriÃ³'}.`);
     window.setTimeout(() => setPostClipFeedback((current) => (current.startsWith('Clip relacionado') ? '' : current)), 2200);
   };
 
@@ -8416,36 +8455,36 @@ function App() {
     const quick = getQuickEventSummary(safeArray(selectedMatch?.quickEvents).filter((event) => event.reviewed));
     const clips = safeArray(selectedMatch?.events).slice().sort((a, b) => getPostClipPriority(a) - getPostClipPriority(b));
     const training = [
-      quick.losses >= 2 ? 'Pérdidas interiores y cobertura tras pérdida.' : null,
-      quick.rivalBoxEntries > quick.boxEntries ? 'Defensa de área y cierres laterales.' : null,
+      quick.losses >= 2 ? 'PÃ©rdidas interiores y cobertura tras pÃ©rdida.' : null,
+      quick.rivalBoxEntries > quick.boxEntries ? 'Defensa de Ã¡rea y cierres laterales.' : null,
       quick.rivalCorners >= quick.corners + 2 ? 'ABP defensiva y despeje a zona segura.' : null,
-      quick.recoveries >= 3 ? 'Presión alta + primera decisión tras robo.' : null,
-      quick.shots > quick.shotsOnTarget + 2 ? 'Finalización con mejor selección de tiro.' : null,
+      quick.recoveries >= 3 ? 'PresiÃ³n alta + primera decisiÃ³n tras robo.' : null,
+      quick.shots > quick.shotsOnTarget + 2 ? 'FinalizaciÃ³n con mejor selecciÃ³n de tiro.' : null,
       ...derived.suggestions,
     ].filter(Boolean);
     const repeatedErrors = [
-      quick.losses >= 2 ? `Pérdidas: ${quick.losses}` : null,
-      quick.rivalBoxEntries > quick.boxEntries ? `Entradas área rival: ${quick.rivalBoxEntries}` : null,
+      quick.losses >= 2 ? `PÃ©rdidas: ${quick.losses}` : null,
+      quick.rivalBoxEntries > quick.boxEntries ? `Entradas Ã¡rea rival: ${quick.rivalBoxEntries}` : null,
       quick.rivalShotsOnTarget >= 3 ? `Tiros a puerta rival: ${quick.rivalShotsOnTarget}` : null,
-      derived.criticalRange ? `Tramo crítico: ${derived.criticalRange}` : null,
+      derived.criticalRange ? `Tramo crÃ­tico: ${derived.criticalRange}` : null,
     ].filter(Boolean);
-    const keyClips = clips.slice(0, 5).map((event) => `${event.minute || '-'}' · ${event.type || 'Clip'}${event.player ? ` · ${event.player}` : ''}`);
+    const keyClips = clips.slice(0, 5).map((event) => `${event.minute || '-'}' Â· ${event.type || 'Clip'}${event.player ? ` Â· ${event.player}` : ''}`);
     return {
       generatedAt: new Date().toISOString(),
-      summary: buildPostAutoSummary(),
+      summary: buildPostFactualSummary(),
       training: Array.from(new Set(training)).slice(0, 6),
       vigilances: Array.from(new Set([
-        quick.losses >= 2 ? 'Equipo corto tras pérdida.' : null,
-        quick.rivalBoxEntries > quick.boxEntries ? 'Cerrar lado débil antes de saltar.' : null,
-        quick.rivalCorners >= quick.corners + 2 ? 'Evitar faltas laterales y córners evitables.' : null,
+        quick.losses >= 2 ? 'Equipo corto tras pÃ©rdida.' : null,
+        quick.rivalBoxEntries > quick.boxEntries ? 'Cerrar lado dÃ©bil antes de saltar.' : null,
+        quick.rivalCorners >= quick.corners + 2 ? 'Evitar faltas laterales y cÃ³rners evitables.' : null,
         derived.criticalRange ? `Gestionar ${derived.criticalRange}.` : null,
       ].filter(Boolean))).slice(0, 5),
       keyClips,
       repeatedErrors,
-      trends: [derived.trend, `Posesión emocional: ${derived.emotionalPossession}%`, `Momento dominante: ${derived.dominantMoment}`].filter(Boolean),
+      trends: [derived.trend, `PosesiÃ³n emocional: ${derived.emotionalPossession}%`, `Momento dominante: ${derived.dominantMoment}`].filter(Boolean),
       shortDossier: [
-        `Resumen: ${buildPostAutoSummary()}`,
-        `Qué entrenar: ${Array.from(new Set(training)).slice(0, 3).join(' | ') || 'validar clips'}`,
+        `Resumen: ${buildPostFactualSummary()}`,
+        `QuÃ© entrenar: ${Array.from(new Set(training)).slice(0, 3).join(' | ') || 'validar clips'}`,
         `Vigilancias: ${repeatedErrors.slice(0, 3).join(' | ') || 'sin alertas fuertes'}`,
       ].join('\n'),
     };
@@ -8453,7 +8492,7 @@ function App() {
 
   const closePostAnalysis = async () => {
     if (!selectedMatch) return;
-    const finalSummary = buildPostAutoSummary();
+    const finalSummary = buildPostFactualSummary();
     const mondayFlow = buildMondayAutoFlow();
     const closureValidated = safeObject(safeObject(selectedMatch.postAiAnalysis).closureValidated);
     const readValidatedClosure = (field, fallback = '') => {
@@ -8464,7 +8503,7 @@ function App() {
     const finalContinue = readValidatedClosure('continueDoing', selectedMatch.postRepeat);
     const finalCorrect = readValidatedClosure('correct', selectedMatch.postImprove);
     if (!finalClosureSummary || !finalContinue || !finalCorrect) {
-      setPostError('Antes de cerrar, guarda Resumen, Continuar haciendo y Corregir.');
+      setPostError('Antes de cerrar, guarda el Resumen POST, Continuar haciendo y Corregir.');
       return;
     }
     const nextPostAiAnalysis = {
@@ -8487,7 +8526,7 @@ function App() {
       })
       .eq("id", selectedMatch.id);
     if (closeError) {
-      setPostError(closeError.message || 'No se pudo cerrar el análisis.');
+      setPostError(closeError.message || 'No se pudo cerrar el anÃ¡lisis.');
       return;
     }
     setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? {
@@ -8615,24 +8654,24 @@ function App() {
   const runPostAiAnalysis = () => {
     if (!selectedMatch) return;
     const events = selectedMatch.events || [];
-    const losses = events.filter((event) => /pérdida|perdida/i.test(event.type)).length;
+    const losses = events.filter((event) => /pÃ©rdida|perdida/i.test(event.type)).length;
     const recoveries = events.filter((event) => /recuper/i.test(event.type)).length;
     const chances = events.filter((event) => /ocas/i.test(event.type)).length;
     updateSelectedMatchFields({
       postAiAnalysis: {
         worked: [
-          selectedMatch.postFulfilled || 'Las fases que generaron continuidad y ocasiones deben revisarse en vídeo para repetir patrones.',
-          recoveries ? `Se registraron ${recoveries} recuperaciones: revisar si llegaron en las zonas previstas del plan PRE.` : 'Valorar si la presión permitió recuperar cerca de portería rival.',
+          selectedMatch.postFulfilled || 'Las fases que generaron continuidad y ocasiones deben revisarse en vÃ­deo para repetir patrones.',
+          recoveries ? `Se registraron ${recoveries} recuperaciones: revisar si llegaron en las zonas previstas del plan PRE.` : 'Valorar si la presiÃ³n permitiÃ³ recuperar cerca de porterÃ­a rival.',
         ],
         notWorked: [
-          selectedMatch.postNotFulfilled || 'Comparar el plan PRE con los eventos negativos para localizar qué comportamientos no aparecieron.',
-          losses ? `Hubo ${losses} pérdidas registradas: analizar zona, perfil corporal y apoyos cercanos.` : 'Revisar si hubo pérdidas no registradas en salida o progresión.',
+          selectedMatch.postNotFulfilled || 'Comparar el plan PRE con los eventos negativos para localizar quÃ© comportamientos no aparecieron.',
+          losses ? `Hubo ${losses} pÃ©rdidas registradas: analizar zona, perfil corporal y apoyos cercanos.` : 'Revisar si hubo pÃ©rdidas no registradas en salida o progresiÃ³n.',
         ],
-        why: selectedMatch.postWhy || 'Cruzar vídeo, eventos y resultado para separar problema táctico, técnico o de toma de decisión.',
+        why: selectedMatch.postWhy || 'Cruzar vÃ­deo, eventos y resultado para separar problema tÃ¡ctico, tÃ©cnico o de toma de decisiÃ³n.',
         repeat: selectedMatch.postRepeat || selectedMatch.planConBalon || 'Repetir las acciones que permitieron progresar con control y finalizar jugadas.',
-        correct: selectedMatch.postImprove || 'Corregir distancias entre líneas, reacción tras pérdida y ocupación de área.',
-        train: selectedMatch.postTrainWeek || 'Entrenar presión tras pérdida, salida bajo presión y finalización tras centro o pase atrás.',
-        review: selectedMatch.postIndividualObservations || `Revisar jugadores implicados en ${chances} ocasiones, pérdidas y recuperaciones clave.`,
+        correct: selectedMatch.postImprove || 'Corregir distancias entre lÃ­neas, reacciÃ³n tras pÃ©rdida y ocupaciÃ³n de Ã¡rea.',
+        train: selectedMatch.postTrainWeek || 'Entrenar presiÃ³n tras pÃ©rdida, salida bajo presiÃ³n y finalizaciÃ³n tras centro o pase atrÃ¡s.',
+        review: selectedMatch.postIndividualObservations || `Revisar jugadores implicados en ${chances} ocasiones, pÃ©rdidas y recuperaciones clave.`,
       },
     });
   };
@@ -8675,14 +8714,14 @@ function App() {
   };
 
   const MATCH_EVENT_META = {
-    goal_for: { label: 'Gol', icon: '⚽', badgeIcon: '⚽', category: 'Goles', tone: 'border-emerald-300/20 bg-emerald-300/[0.08]' },
-    goal_against: { label: 'Gol rival', icon: '⚽', badgeIcon: '⚽', category: 'Goles', tone: 'border-red-300/20 bg-red-400/[0.08]' },
+    goal_for: { label: 'Gol', icon: 'âš½', badgeIcon: 'âš½', category: 'Goles', tone: 'border-emerald-300/20 bg-emerald-300/[0.08]' },
+    goal_against: { label: 'Gol rival', icon: 'âš½', badgeIcon: 'âš½', category: 'Goles', tone: 'border-red-300/20 bg-red-400/[0.08]' },
     assist: { label: 'Asistencia', icon: 'A', badgeIcon: 'A', category: 'Goles', tone: 'border-caudal-electric/25 bg-caudal-electric/[0.10]' },
-    yellow_card: { label: 'Tarjeta amarilla', icon: '🟨', badgeIcon: '🟨', category: 'Tarjetas', tone: 'border-yellow-300/20 bg-yellow-300/[0.08]' },
-    red_card: { label: 'Tarjeta roja', icon: '🟥', badgeIcon: '🟥', category: 'Tarjetas', tone: 'border-red-300/25 bg-red-500/[0.10]' },
-    substitution: { label: 'Cambio', icon: '↔', badgeIcon: '↔', category: 'Cambios', tone: 'border-sky-300/20 bg-sky-300/[0.08]' },
+    yellow_card: { label: 'Tarjeta amarilla', icon: 'ðŸŸ¨', badgeIcon: 'ðŸŸ¨', category: 'Tarjetas', tone: 'border-yellow-300/20 bg-yellow-300/[0.08]' },
+    red_card: { label: 'Tarjeta roja', icon: 'ðŸŸ¥', badgeIcon: 'ðŸŸ¥', category: 'Tarjetas', tone: 'border-red-300/25 bg-red-500/[0.10]' },
+    substitution: { label: 'Cambio', icon: 'â†”', badgeIcon: 'â†”', category: 'Cambios', tone: 'border-sky-300/20 bg-sky-300/[0.08]' },
     system_change: { label: 'Cambio de sistema', icon: 'SYS', badgeIcon: 'SYS', category: 'Sistemas', tone: 'border-violet-300/25 bg-violet-300/[0.10]' },
-    injury: { label: 'Lesión', icon: '+', badgeIcon: '+', category: 'Lesiones', tone: 'border-rose-300/25 bg-rose-300/[0.10]' },
+    injury: { label: 'LesiÃ³n', icon: '+', badgeIcon: '+', category: 'Lesiones', tone: 'border-rose-300/25 bg-rose-300/[0.10]' },
     unknown: { label: 'Evento', icon: 'EV', badgeIcon: 'EV', category: 'Eventos', tone: 'border-white/10 bg-white/[0.035]' },
   };
 
@@ -8710,9 +8749,9 @@ function App() {
     const pieces = [
       event.phase,
       event.subphase,
-      event.shotZone ? `Finalización ${getZoneLabel(event.shotZone).toLowerCase()}` : '',
+      event.shotZone ? `FinalizaciÃ³n ${getZoneLabel(event.shotZone).toLowerCase()}` : '',
     ].filter((item) => String(item || '').trim());
-    return pieces.join(' · ');
+    return pieces.join(' Â· ');
   };
 
   const attachScoreAfterGoalEvents = (events = []) => {
@@ -8759,7 +8798,7 @@ function App() {
         meta: [
           event.assistZone ? `Genera: ${getZoneLabel(event.assistZone)}` : '',
           event.goalZone ? `Entra: ${getZoneLabel(event.goalZone, { goal: true })}` : '',
-        ].filter(Boolean).join(' · '),
+        ].filter(Boolean).join(' Â· '),
         timelineLines: [
           isGoalFor && event.assistant ? `Asistencia: ${event.assistant}` : '',
           contextLine,
@@ -8773,7 +8812,7 @@ function App() {
         source: 'stats',
         key: 'substitution',
         minute: event.minute,
-        half: Number(event.minute || 0) <= 45 ? '1ª parte' : '2ª parte',
+        half: Number(event.minute || 0) <= 45 ? '1Âª parte' : '2Âª parte',
         halfOrder: Number(event.minute || 0) <= 45 ? 1 : 2,
         second: 0,
         createdAt: '',
@@ -8788,7 +8827,7 @@ function App() {
         secondaryPlayerName: event.inPlayer,
         subtitle: `Sale ${event.outPlayer}`,
         detail: `Entra ${event.inPlayer}`,
-        meta: `Cambio · ${event.minute}'`,
+        meta: `Cambio Â· ${event.minute}'`,
         timelineLines: [`Sale ${event.outPlayer}`, `Entra ${event.inPlayer}`],
       };
     });
@@ -8797,7 +8836,7 @@ function App() {
       const minute = Number(stats.minutes || 0) || 0;
       return [
         stats.red ? { key: 'red_card', playerName: player.name, minute, detail: 'Tarjeta roja registrada.' } : null,
-        stats.injured ? { key: 'injury', playerName: player.name, minute, detail: 'Incidencia médica registrada.' } : null,
+        stats.injured ? { key: 'injury', playerName: player.name, minute, detail: 'Incidencia mÃ©dica registrada.' } : null,
         stats.yellow ? { key: 'yellow_card', playerName: player.name, minute, detail: `${stats.yellowCount} amarilla${stats.yellowCount > 1 ? 's' : ''}.` } : null,
       ].filter(Boolean).map((event) => {
         const meta = getMatchEventMeta(event.key);
@@ -8806,7 +8845,7 @@ function App() {
           source: 'stats',
           key: event.key,
           minute: event.minute,
-          half: Number(event.minute || 0) <= 45 ? '1ª parte' : '2ª parte',
+          half: Number(event.minute || 0) <= 45 ? '1Âª parte' : '2Âª parte',
           halfOrder: Number(event.minute || 0) <= 45 ? 1 : 2,
           second: 0,
           createdAt: '',
@@ -8912,13 +8951,13 @@ function App() {
     const subOut = playerEvents.filter((event) => event.key === 'substitution' && normalizePlayerIdentityName(event.playerName) === ownName);
     const subIn = playerEvents.filter((event) => event.key === 'substitution' && normalizePlayerIdentityName(event.secondaryPlayerName) === ownName);
     return [
-      goals.length ? { key: 'goals', label: `⚽${goals.length > 1 ? goals.length : ''}`, title: `${goals.length} gol${goals.length > 1 ? 'es' : ''}${formatMinuteList(goals) ? ` · ${formatMinuteList(goals)}` : ''}`, className: 'bg-white text-slate-950' } : null,
-      assists.length ? { key: 'assists', label: `A${assists.length > 1 ? assists.length : ''}`, title: `${assists.length} asistencia${assists.length > 1 ? 's' : ''}${formatMinuteList(assists) ? ` · ${formatMinuteList(assists)}` : ''}`, className: 'bg-caudal-electric text-slate-950' } : null,
-      yellows.length ? { key: 'yellow', label: yellows.length > 1 ? `🟨${yellows.length}` : '🟨', title: `Tarjeta amarilla${formatMinuteList(yellows) ? ` · ${formatMinuteList(yellows)}` : ''}`, className: 'bg-yellow-300 text-slate-950' } : null,
-      reds.length ? { key: 'red', label: '🟥', title: `Tarjeta roja${formatMinuteList(reds) ? ` · ${formatMinuteList(reds)}` : ''}`, className: 'bg-red-600 text-white' } : null,
-      subOut.length ? { key: 'sub-out', label: '↔', title: `Sustituido${formatMinuteList(subOut) ? ` · ${formatMinuteList(subOut)}` : ''}`, className: 'bg-sky-300 text-slate-950' } : null,
-      subIn.length ? { key: 'sub-in', label: '↔', title: `Entra${formatMinuteList(subIn) ? ` · ${formatMinuteList(subIn)}` : ''}`, className: 'bg-sky-500 text-white' } : null,
-      injuries.length ? { key: 'injury', label: '+', title: `Lesión${formatMinuteList(injuries) ? ` · ${formatMinuteList(injuries)}` : ''}`, className: 'bg-rose-200 text-rose-800' } : null,
+      goals.length ? { key: 'goals', label: `âš½${goals.length > 1 ? goals.length : ''}`, title: `${goals.length} gol${goals.length > 1 ? 'es' : ''}${formatMinuteList(goals) ? ` Â· ${formatMinuteList(goals)}` : ''}`, className: 'bg-white text-slate-950' } : null,
+      assists.length ? { key: 'assists', label: `A${assists.length > 1 ? assists.length : ''}`, title: `${assists.length} asistencia${assists.length > 1 ? 's' : ''}${formatMinuteList(assists) ? ` Â· ${formatMinuteList(assists)}` : ''}`, className: 'bg-caudal-electric text-slate-950' } : null,
+      yellows.length ? { key: 'yellow', label: yellows.length > 1 ? `ðŸŸ¨${yellows.length}` : 'ðŸŸ¨', title: `Tarjeta amarilla${formatMinuteList(yellows) ? ` Â· ${formatMinuteList(yellows)}` : ''}`, className: 'bg-yellow-300 text-slate-950' } : null,
+      reds.length ? { key: 'red', label: 'ðŸŸ¥', title: `Tarjeta roja${formatMinuteList(reds) ? ` Â· ${formatMinuteList(reds)}` : ''}`, className: 'bg-red-600 text-white' } : null,
+      subOut.length ? { key: 'sub-out', label: 'â†”', title: `Sustituido${formatMinuteList(subOut) ? ` Â· ${formatMinuteList(subOut)}` : ''}`, className: 'bg-sky-300 text-slate-950' } : null,
+      subIn.length ? { key: 'sub-in', label: 'â†”', title: `Entra${formatMinuteList(subIn) ? ` Â· ${formatMinuteList(subIn)}` : ''}`, className: 'bg-sky-500 text-white' } : null,
+      injuries.length ? { key: 'injury', label: '+', title: `LesiÃ³n${formatMinuteList(injuries) ? ` Â· ${formatMinuteList(injuries)}` : ''}`, className: 'bg-rose-200 text-rose-800' } : null,
     ].filter(Boolean);
   };
 
@@ -8938,7 +8977,7 @@ function App() {
       .filter((player) => player?.name);
   };
 
-  const refreshStatsFromSupabase = async (partidoId, reason = 'estadísticas') => {
+  const refreshStatsFromSupabase = async (partidoId, reason = 'estadÃ­sticas') => {
     try {
       return await loadMatchStatsData(partidoId);
     } catch (refreshError) {
@@ -8947,7 +8986,7 @@ function App() {
         reason,
         error: refreshError,
       });
-      setStatsError(refreshError.message || 'No se pudieron refrescar las estadísticas desde Supabase.');
+      setStatsError(refreshError.message || 'No se pudieron refrescar las estadÃ­sticas desde Supabase.');
       return null;
     }
   };
@@ -9004,9 +9043,9 @@ function App() {
         window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Guardado ?' ? '' : current)), 2200);
         return refreshed;
       } catch (operationError) {
-        console.error(`Error guardando estadísticas (${reason}) en Supabase:`, operationError);
+        console.error(`Error guardando estadÃ­sticas (${reason}) en Supabase:`, operationError);
         setStatsSaveStatus('Error al guardar');
-        setStatsError(operationError.message || 'No se pudo guardar el cambio en estadísticas.');
+        setStatsError(operationError.message || 'No se pudo guardar el cambio en estadÃ­sticas.');
         return null;
       }
     });
@@ -9140,8 +9179,8 @@ function App() {
       setSelectedStatsCallups([]);
       setIsStatsCallupPanelOpen(false);
     } catch (bulkError) {
-      console.error('Error añadiendo convocados en lote:', bulkError);
-      setStatsCallupError(bulkError.message || 'No se pudieron añadir los convocados seleccionados.');
+      console.error('Error aÃ±adiendo convocados en lote:', bulkError);
+      setStatsCallupError(bulkError.message || 'No se pudieron aÃ±adir los convocados seleccionados.');
     } finally {
       setStatsCallupSaving(false);
     }
@@ -9326,7 +9365,7 @@ function App() {
       stats.assists ? { key: 'assists', label: stats.assists > 1 ? `?${stats.assists}` : '?', title: `${stats.assists} asistencia${stats.assists > 1 ? 's' : ''}`, className: 'bg-caudal-electric text-slate-950' } : null,
       stats.yellow ? { key: 'yellow', label: stats.yellowCount > 1 ? `AM${stats.yellowCount}` : 'AM', title: 'Amarilla', className: 'bg-yellow-300 text-slate-950' } : null,
       stats.red ? { key: 'red', label: 'RJ', title: 'Roja', className: 'bg-red-600 text-white' } : null,
-      stats.injured ? { key: 'injured', label: '?', title: 'Lesión', className: 'bg-rose-200 text-rose-800' } : null,
+      stats.injured ? { key: 'injured', label: '?', title: 'LesiÃ³n', className: 'bg-rose-200 text-rose-800' } : null,
       substitutionOut ? { key: 'sub-out', label: `${substitutionOut.minute}'?`, title: `Sale por ${substitutionOut.replacementName}`, className: 'bg-emerald-500 text-white' } : null,
       substitutionIn ? { key: 'sub-in', label: `${substitutionIn.minute}'?`, title: `Entra por ${substitutionIn.outPlayer}`, className: 'bg-emerald-400 text-slate-950' } : null,
     ].filter(Boolean);
@@ -9347,7 +9386,7 @@ function App() {
     const score = getStatsScore();
     const goals = getStatsGoalEvents();
     const describeGoalContext = (event) => {
-      const attackType = event.attackType || event.subphase || event.phase || 'acción';
+      const attackType = event.attackType || event.subphase || event.phase || 'acciÃ³n';
       const source = event.assistZone ? `generada en ${getZoneLabel(event.assistZone).toLowerCase()}` : '';
       const finish = event.shotZone ? `finalizada en ${getZoneLabel(event.shotZone).toLowerCase()}` : '';
       return [attackType.toLowerCase(), source, finish].filter(Boolean).join(' y ');
@@ -9363,7 +9402,7 @@ function App() {
       return [
         stats.yellow ? `${player.name} amarilla${stats.yellowCount > 1 ? ` x${stats.yellowCount}` : ''}` : null,
         stats.red ? `${player.name} roja` : null,
-        stats.injured ? `${player.name} lesión` : null,
+        stats.injured ? `${player.name} lesiÃ³n` : null,
       ].filter(Boolean);
     });
     const substitutionText = getStatsSubstitutionEvents().map((event) => `${event.minute}': entra ${event.inPlayer} por ${event.outPlayer}`);
@@ -9495,7 +9534,7 @@ function App() {
     if (slotIndex >= 0) return getFormationRoles(selectedMatch?.statsSystem || '4-4-2')[slotIndex] || 'Titular';
     const substitution = getStatsSubstitutionEvents().find((event) => event.inPlayer === playerName);
     if (substitution) return `Cambio por ${substitution.outPlayer}`;
-    return 'Sin posición';
+    return 'Sin posiciÃ³n';
   };
 
   const getStatsSquadRows = () => {
@@ -9657,7 +9696,7 @@ function App() {
       { onConflict: "partido_id,scope,slot" }
     );
     if (slotError) {
-      console.error('Error guardando slot de alineación en Supabase:', slotError);
+      console.error('Error guardando slot de alineaciÃ³n en Supabase:', slotError);
       return;
     }
 
@@ -9679,22 +9718,22 @@ function App() {
       },
       { onConflict: "partido_id,player_name" }
     );
-    await refreshStatsFromSupabase(selectedMatch.id, 'alineación de estadísticas');
+    await refreshStatsFromSupabase(selectedMatch.id, 'alineaciÃ³n de estadÃ­sticas');
   };
 
   const updateStatsSystem = async (system) => {
     if (!selectedMatch) return;
     const { error: systemError } = await supabase.from("partidos").update({ stats_system: system }).eq("id", selectedMatch.id);
     if (systemError) {
-      console.error('Error guardando sistema de estadísticas en Supabase:', systemError);
+      console.error('Error guardando sistema de estadÃ­sticas en Supabase:', systemError);
       return;
     }
-    await refreshStatsFromSupabase(selectedMatch.id, 'sistema de estadísticas');
+    await refreshStatsFromSupabase(selectedMatch.id, 'sistema de estadÃ­sticas');
   };
 
   const getSystemChangeDraftDefaults = (event = null) => {
     const baseMinute = event?.minute ?? '';
-    const basePeriod = event?.period || event?.half || (Number(baseMinute || 0) <= 45 ? '1ª parte' : '2ª parte');
+    const basePeriod = event?.period || event?.half || (Number(baseMinute || 0) <= 45 ? '1Âª parte' : '2Âª parte');
     const fromSystem = getSystemBeforeEvent({
       initialSystem: getInitialMatchSystem(selectedMatch),
       systemEvents: selectedMatch?.systemEvents,
@@ -9780,7 +9819,7 @@ function App() {
 
   const deleteSystemChangeEvent = async (eventId) => {
     if (!selectedMatch || !eventId) return;
-    if (!window.confirm('¿Eliminar este cambio de sistema? Se recalculará la secuencia táctica.')) return;
+    if (!window.confirm('Â¿Eliminar este cambio de sistema? Se recalcularÃ¡ la secuencia tÃ¡ctica.')) return;
     const { error: deleteError } = await supabase.from("partido_eventos_sistema").delete().eq("id", eventId);
     if (deleteError) {
       console.error('Error eliminando cambio de sistema:', deleteError);
@@ -9788,7 +9827,7 @@ function App() {
       return;
     }
     await normalizeStoredSystemEventFromSystems(selectedMatch.id);
-    await refreshStatsFromSupabase(selectedMatch.id, 'eliminación de cambio de sistema');
+    await refreshStatsFromSupabase(selectedMatch.id, 'eliminaciÃ³n de cambio de sistema');
   };
 
   const updateMatchCaptain = async (captainPlayerId) => {
@@ -9799,8 +9838,8 @@ function App() {
       .update({ captain_player_id: nextCaptainId })
       .eq("id", selectedMatch.id);
     if (captainError) {
-      console.error('Error guardando capitán del partido en Supabase:', captainError);
-      setStatsError(captainError.message || 'No se pudo guardar el capitán.');
+      console.error('Error guardando capitÃ¡n del partido en Supabase:', captainError);
+      setStatsError(captainError.message || 'No se pudo guardar el capitÃ¡n.');
       return;
     }
     setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? { ...match, captainPlayerId: nextCaptainId } : match)));
@@ -9888,7 +9927,7 @@ function App() {
       const { error } = await request;
       if (error) throw error;
       setDelegatedEventDraft(null);
-      setDelegatedEventFeedback(`${delegatedEventDraft.label} guardado en ${String(minute).padStart(2, '0')}:00${selectedPlayer ? ` · ${selectedPlayer.name}` : delegatedEventDraft.side === 'rival' && delegatedEventDraft.requiresPlayer ? ' · Jugador no identificado' : ''}`);
+      setDelegatedEventFeedback(`${delegatedEventDraft.label} guardado en ${String(minute).padStart(2, '0')}:00${selectedPlayer ? ` Â· ${selectedPlayer.name}` : delegatedEventDraft.side === 'rival' && delegatedEventDraft.requiresPlayer ? ' Â· Jugador no identificado' : ''}`);
       await markDelegatedDataDirty(selectedMatch.id);
       await refreshStatsFromSupabase(selectedMatch.id, 'evento de Modo Delegado');
     } catch (error) {
@@ -9931,8 +9970,8 @@ function App() {
           : match
       )));
       await markDelegatedDataDirty(selectedMatch.id);
-      setDelegatedEventFeedback(`${definition.label} · ${String(minute).padStart(2, '0')}:00`);
-      window.setTimeout(() => setDelegatedEventFeedback((current) => (current === `${definition.label} · ${String(minute).padStart(2, '0')}:00` ? '' : current)), 1200);
+      setDelegatedEventFeedback(`${definition.label} Â· ${String(minute).padStart(2, '0')}:00`);
+      window.setTimeout(() => setDelegatedEventFeedback((current) => (current === `${definition.label} Â· ${String(minute).padStart(2, '0')}:00` ? '' : current)), 1200);
     } catch (error) {
       console.error('Error guardando evento directo de Modo Delegado:', { definition, error });
       setStatsError(error.message || 'No se pudo guardar el evento del Modo Delegado.');
@@ -10011,8 +10050,8 @@ function App() {
     setDelegatedEventSaving(true);
     const { error } = await supabase.from("match_quick_events").delete().eq("id", lastEvent.id);
     if (error) {
-      console.error('Error deshaciendo último evento de Modo Delegado:', { lastEvent, error });
-      setStatsError(error.message || 'No se pudo deshacer el último evento.');
+      console.error('Error deshaciendo Ãºltimo evento de Modo Delegado:', { lastEvent, error });
+      setStatsError(error.message || 'No se pudo deshacer el Ãºltimo evento.');
       setDelegatedEventSaving(false);
       return;
     }
@@ -10046,8 +10085,8 @@ function App() {
 
     const { error } = await supabase.from("match_quick_events").update(payload).eq("id", eventId);
     if (error) {
-      console.error('Error actualizando evento rápido en Supabase:', { eventId, payload, error });
-      setPostError(error.message || 'No se pudo actualizar el evento rápido.');
+      console.error('Error actualizando evento rÃ¡pido en Supabase:', { eventId, payload, error });
+      setPostError(error.message || 'No se pudo actualizar el evento rÃ¡pido.');
       setQuickEventStatus('Error al guardar');
       setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
       return;
@@ -10065,8 +10104,8 @@ function App() {
     setQuickEventSavingIds((current) => (current.includes(eventId) ? current : [...current, eventId]));
     const { error } = await supabase.from("match_quick_events").delete().eq("id", eventId);
     if (error) {
-      console.error('Error borrando evento rápido en Supabase:', { eventId, error });
-      setPostError(error.message || 'No se pudo borrar el evento rápido.');
+      console.error('Error borrando evento rÃ¡pido en Supabase:', { eventId, error });
+      setPostError(error.message || 'No se pudo borrar el evento rÃ¡pido.');
       setQuickEventStatus('Error al guardar');
       setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
       return;
@@ -10177,7 +10216,7 @@ function App() {
 
   const buildGoalDraftSummary = (draft = goalAnalysisDraft) => {
     const minute = draft.minute ? `${draft.minute}': ` : '';
-    const action = String(draft.attackType || draft.phase || getMissingDataLabel('acción sin fase registrada')).toLowerCase();
+    const action = String(draft.attackType || draft.phase || getMissingDataLabel('acciÃ³n sin fase registrada')).toLowerCase();
     const situation = draft.situation ? ` ${String(draft.situation).toLowerCase()}` : '';
     const originSide = getGoalSidePhrase(draft.assistZone);
     const origin = getGoalZonePhrase(draft.assistZone);
@@ -10255,8 +10294,8 @@ function App() {
           data: null,
           error: createGoalSaveError(
             mode === 'edit'
-              ? 'No se actualizó ningún gol. Revisa que el evento siga existiendo y que tengas permisos de lectura.'
-              : 'El gol se envió, pero Supabase no devolvió la fila creada. Revisa permisos SELECT/RLS sobre partido_eventos_gol.'
+              ? 'No se actualizÃ³ ningÃºn gol. Revisa que el evento siga existiendo y que tengas permisos de lectura.'
+              : 'El gol se enviÃ³, pero Supabase no devolviÃ³ la fila creada. Revisa permisos SELECT/RLS sobre partido_eventos_gol.'
           ),
           removedColumns,
         };
@@ -10288,9 +10327,9 @@ function App() {
 
   const applyGoalPreset = (preset) => {
     const presets = {
-      combinativo: { phase: 'Juego combinativo', subphase: 'Dentro del área', attackType: 'Combinativo', situation: 'Organizado', realOrigin: 'por dentro', offensivePattern: 'tercer hombre' },
-      transicion: { phase: 'Transición', subphase: 'Tras robo', attackType: 'Transición', situation: 'Desorganizado', realOrigin: 'tras robo', recoveryType: 'robo alto' },
-      abp: { phase: 'ABP', subphase: 'Córner', attackType: 'ABP', situation: 'Igualdad', offensivePattern: 'balón parado' },
+      combinativo: { phase: 'Juego combinativo', subphase: 'Dentro del Ã¡rea', attackType: 'Combinativo', situation: 'Organizado', realOrigin: 'por dentro', offensivePattern: 'tercer hombre' },
+      transicion: { phase: 'TransiciÃ³n', subphase: 'Tras robo', attackType: 'TransiciÃ³n', situation: 'Desorganizado', realOrigin: 'tras robo', recoveryType: 'robo alto' },
+      abp: { phase: 'ABP', subphase: 'CÃ³rner', attackType: 'ABP', situation: 'Igualdad', offensivePattern: 'balÃ³n parado' },
       directo: { phase: 'Juego directo', subphase: 'Segunda jugada', attackType: 'Juego directo', situation: 'Igualdad', offensivePattern: 'segunda jugada' },
     };
     const patch = presets[preset];
@@ -10357,7 +10396,7 @@ function App() {
     const isEditingGoal = Boolean(editingGoalEventId);
     if (isEditingGoal && !getStatsGoalEvents().some((event) => event.id === editingGoalEventId)) {
       setStatsSaveStatus('');
-      setStatsError('No se ha podido guardar el gol: el evento seleccionado ya no está disponible.');
+      setStatsError('No se ha podido guardar el gol: el evento seleccionado ya no estÃ¡ disponible.');
       return;
     }
     const saveResult = await saveGoalWithSchemaFallback({
@@ -10377,7 +10416,7 @@ function App() {
     const missingSavedZones = ['assist_zone', 'shot_zone', 'goal_zone'].filter((column) => expectedZones[column] && savedZones[column] !== expectedZones[column]);
     if (missingSavedZones.length) {
       setStatsSaveStatus('');
-      setStatsError(`Gol guardado, pero Supabase no devolvió las zonas esperadas: ${missingSavedZones.join(', ')}.`);
+      setStatsError(`Gol guardado, pero Supabase no devolviÃ³ las zonas esperadas: ${missingSavedZones.join(', ')}.`);
       return;
     }
 
@@ -10435,14 +10474,14 @@ function App() {
     setEditingGoalEventId('');
     setIsGoalAnalysisOpen(false);
     await loadPartidos();
-    await refreshStatsFromSupabase(selectedMatch.id, 'análisis de goles y marcador');
+    await refreshStatsFromSupabase(selectedMatch.id, 'anÃ¡lisis de goles y marcador');
     setStatsSaveStatus(isEditingGoal ? 'Gol actualizado OK' : 'Gol registrado OK');
     window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Gol registrado OK' || current === 'Gol actualizado OK' ? '' : current)), 2200);
   };
 
   const deleteGoalAnalysisEvent = async (eventId) => {
     if (!selectedMatch || !eventId) return;
-    if (!window.confirm('¿Eliminar este gol? Se recalculará marcador, timeline y estadísticas.')) return;
+    if (!window.confirm('Â¿Eliminar este gol? Se recalcularÃ¡ marcador, timeline y estadÃ­sticas.')) return;
     setStatsSaveStatus('Eliminando gol...');
     setStatsError('');
     const { error: deleteError } = await supabase.from("partido_eventos_gol").delete().eq("id", eventId);
@@ -10465,7 +10504,7 @@ function App() {
       setIsGoalAnalysisOpen(false);
     }
     await loadPartidos();
-    await refreshStatsFromSupabase(selectedMatch.id, 'eliminación de gol');
+    await refreshStatsFromSupabase(selectedMatch.id, 'eliminaciÃ³n de gol');
     setStatsSaveStatus('Gol eliminado OK');
     window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Gol eliminado OK' ? '' : current)), 2200);
   };
@@ -10522,7 +10561,7 @@ function App() {
 
   const renderDelegatedStatsMode = () => {
     const eventOrder = ['gol', 'tiro', 'tiro_puerta', 'regate', 'centro', 'corner', 'perdida', 'robo', 'recuperacion', 'falta_realizada', 'falta_recibida'];
-    const delegatedEventGroups = ['Finalización', 'Ataque', 'Posesión', 'Faltas'];
+    const delegatedEventGroups = ['FinalizaciÃ³n', 'Ataque', 'PosesiÃ³n', 'Faltas'];
     const caudalEvents = delegatedEventDefinitions
       .filter((definition) => definition.category === 'principal' && definition.side === 'caudal')
       .filter((definition) => eventOrder.includes(definition.tipoEvento))
@@ -10619,20 +10658,20 @@ function App() {
       momento_dominamos: '??',
       momento_igualado: '??',
       momento_sufriendo: '??',
-    }[tipoEvento] || '•');
+    }[tipoEvento] || 'â€¢');
     const liveReading = (() => {
       const totalLiveEvents = getDelegatedEvents().length;
-      if (!totalLiveEvents) return 'Información insuficiente para emitir una conclusión fiable.';
+      if (!totalLiveEvents) return 'InformaciÃ³n insuficiente para emitir una conclusiÃ³n fiable.';
       if (liveSummary.shots >= liveSummary.rivalShots + 3 && Number(liveSummary.shotAccuracy.replace('%', '')) < 35) {
-        return 'Caudal está llegando más, pero con poca precisión.';
+        return 'Caudal estÃ¡ llegando mÃ¡s, pero con poca precisiÃ³n.';
       }
-      if (liveSummary.losses >= 3) return 'Hay demasiadas pérdidas: vigilar la primera salida tras robo rival.';
-      if (liveSummary.recoveries >= liveSummary.rivalRecoveries + 3) return 'La presión alta está dando recuperaciones útiles.';
-      if (liveSummary.rivalBoxEntries > liveSummary.boxEntries) return 'El rival pisa más área: proteger mejor la frontal y los retornos.';
-      if (liveSummary.shotsOnTarget > liveSummary.rivalShotsOnTarget) return 'Caudal está generando más amenaza real a portería.';
+      if (liveSummary.losses >= 3) return 'Hay demasiadas pÃ©rdidas: vigilar la primera salida tras robo rival.';
+      if (liveSummary.recoveries >= liveSummary.rivalRecoveries + 3) return 'La presiÃ³n alta estÃ¡ dando recuperaciones Ãºtiles.';
+      if (liveSummary.rivalBoxEntries > liveSummary.boxEntries) return 'El rival pisa mÃ¡s Ã¡rea: proteger mejor la frontal y los retornos.';
+      if (liveSummary.shotsOnTarget > liveSummary.rivalShotsOnTarget) return 'Caudal estÃ¡ generando mÃ¡s amenaza real a porterÃ­a.';
       return totalLiveEvents >= 6
-        ? 'Partido equilibrado en eventos rápidos. Seguir registrando para afinar la lectura.'
-        : 'Información todavía limitada: registrar más eventos antes de concluir.';
+        ? 'Partido equilibrado en eventos rÃ¡pidos. Seguir registrando para afinar la lectura.'
+        : 'InformaciÃ³n todavÃ­a limitada: registrar mÃ¡s eventos antes de concluir.';
     })();
     const playerOptions = [...calledPlayers].sort((a, b) => {
       const aIndex = recentDelegatedPlayerIds.indexOf(a.id);
@@ -10649,9 +10688,9 @@ function App() {
       return player ? { name: displayPlayerName(player), count: top[1] } : null;
     };
     const standoutRows = [
-      ['Más tiros', getTopPlayerByEvent('tiro_puerta')],
-      ['Más recuperaciones', getTopPlayerByEvent('recuperacion')],
-      ['Más regates', getTopPlayerByEvent('regate')],
+      ['MÃ¡s tiros', getTopPlayerByEvent('tiro_puerta')],
+      ['MÃ¡s recuperaciones', getTopPlayerByEvent('recuperacion')],
+      ['MÃ¡s regates', getTopPlayerByEvent('regate')],
     ];
     const liveBars = [
       ['Tiros', liveSummary.shots, liveSummary.rivalShots],
@@ -10659,8 +10698,8 @@ function App() {
       ['Regates + centros', liveSummary.boxEntries, liveSummary.rivalBoxEntries],
       ['Robos', liveSummary.steals, liveSummary.rivalSteals],
       ['Recuperaciones', liveSummary.recoveries, liveSummary.rivalRecoveries],
-      ['Pérdidas', liveSummary.losses, liveSummary.rivalLosses],
-      ['Córners', liveSummary.corners, liveSummary.rivalCorners],
+      ['PÃ©rdidas', liveSummary.losses, liveSummary.rivalLosses],
+      ['CÃ³rners', liveSummary.corners, liveSummary.rivalCorners],
     ];
     const momentumTimeline = getQuickEventsByMinuteRange(getDelegatedEvents());
 
@@ -10671,7 +10710,7 @@ function App() {
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-caudal-electric">Modo Delegado</p>
               <h3 className="mt-1 text-lg font-black uppercase tracking-[0.08em] text-white">Recogida de datos en vivo</h3>
-              <p className="mt-2 text-sm text-slate-400">Acciones rápidas, minuto actual y lectura automática basada en eventos registrados.</p>
+              <p className="mt-2 text-sm text-slate-400">Acciones rÃ¡pidas, minuto actual y lectura automÃ¡tica basada en eventos registrados.</p>
             </div>
             <div className={`rounded-3xl border p-4 text-center ${stateClass}`}>
               <p className="text-xs font-black uppercase tracking-[0.22em] opacity-75">{delegatedMatchState}</p>
@@ -10692,19 +10731,19 @@ function App() {
               <div className="grid grid-cols-3 gap-2">
                 <button type="button" onClick={startDelegatedMatch} className="min-h-11 rounded-2xl bg-emerald-300 px-3 py-2 text-xs font-black uppercase tracking-[0.10em] text-slate-950">{Number(delegatedElapsedSeconds) > 0 ? 'Reanudar' : 'Iniciar'}</button>
                 <button type="button" onClick={pauseDelegatedTimerForHalftime} className="min-h-11 rounded-2xl bg-yellow-300 px-3 py-2 text-xs font-black uppercase tracking-[0.10em] text-slate-950">Descanso</button>
-                <button type="button" onClick={startDelegatedSecondHalf} className="min-h-11 rounded-2xl bg-caudal-electric px-3 py-2 text-xs font-black uppercase tracking-[0.10em] text-slate-950">2ª parte</button>
+                <button type="button" onClick={startDelegatedSecondHalf} className="min-h-11 rounded-2xl bg-caudal-electric px-3 py-2 text-xs font-black uppercase tracking-[0.10em] text-slate-950">2Âª parte</button>
                 <button type="button" onClick={finishDelegatedMatch} className="min-h-11 rounded-2xl bg-slate-500 px-3 py-2 text-xs font-black uppercase tracking-[0.10em] text-white">Final</button>
                 <button type="button" onClick={resetDelegatedTimer} className="min-h-11 rounded-2xl bg-white/10 px-3 py-2 text-xs font-black uppercase tracking-[0.10em] text-slate-200">Reset</button>
                 <label className="flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-white/10 px-3 py-2 text-xs font-black uppercase tracking-[0.10em] text-slate-300">
                   +
-                  <input value={delegatedAddedTime} onChange={(event) => setDelegatedAddedTime(event.target.value.replace(/\D/g, '').slice(0, 2))} placeholder="Añ." className="w-10 bg-transparent text-center text-sm font-black text-white outline-none" />
+                  <input value={delegatedAddedTime} onChange={(event) => setDelegatedAddedTime(event.target.value.replace(/\D/g, '').slice(0, 2))} placeholder="AÃ±." className="w-10 bg-transparent text-center text-sm font-black text-white outline-none" />
                 </label>
               </div>
             </div>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button type="button" onClick={undoLastDelegatedEvent} disabled={!orderedDelegatedEvents.length || delegatedEventSaving} className="rounded-2xl bg-red-500/15 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-red-100 transition hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-40">
-              Deshacer último evento
+              Deshacer Ãºltimo evento
             </button>
             {delegatedEventFeedback ? <span className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-bold text-slate-200">{delegatedEventFeedback}</span> : null}
             {delegatedEventSaving ? <span className="rounded-2xl bg-caudal-electric/15 px-4 py-2 text-xs font-bold text-caudal-electric">Guardando...</span> : null}
@@ -10769,7 +10808,7 @@ function App() {
                 <div className="mt-4 flex flex-wrap gap-2">
                   {momentumSegments.slice(-4).map((segment) => (
                     <span key={segment.id} className="rounded-xl border border-white/10 bg-white/[0.055] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
-                      {segment.start_minute}'-{segment.end_minute ?? '...'}' · {segment.state}
+                      {segment.start_minute}'-{segment.end_minute ?? '...'}' Â· {segment.state}
                     </span>
                   ))}
                 </div>
@@ -10779,7 +10818,7 @@ function App() {
 
           <aside className="grid gap-4 xl:col-span-2 xl:grid-cols-2 xl:items-start">
             <section className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-5">
-              <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">Estadísticas en directo</h4>
+              <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">EstadÃ­sticas en directo</h4>
               <div className="mt-4 space-y-3">
                 {liveBars.map(([label, caudal, rival]) => {
                   const maxValue = Math.max(1, Number(caudal || 0), Number(rival || 0));
@@ -10841,7 +10880,7 @@ function App() {
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <div className="rounded-2xl bg-white/5 p-3 text-center">
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Precisión tiro</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">PrecisiÃ³n tiro</p>
                   <p className="mt-1 text-xl font-black text-white">{liveSummary.shotAccuracy}</p>
                 </div>
                 <div className="rounded-2xl bg-white/5 p-3 text-center">
@@ -10849,12 +10888,12 @@ function App() {
                   <p className="mt-1 text-xl font-black text-white">{liveSummary.shotsPer10}</p>
                 </div>
                 <div className="rounded-2xl bg-white/5 p-3 text-center">
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Área 1T / 2T</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Ãrea 1T / 2T</p>
                   <p className="mt-1 text-xl font-black text-white">{liveSummary.firstHalfBoxEntries}-{liveSummary.secondHalfBoxEntries}</p>
                 </div>
                 <div className="rounded-2xl bg-white/5 p-3 text-center">
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Pérd. / presión</p>
-                  <p className="mt-1 text-xl font-black text-white">{liveSummary.dangerLossRatio} · {liveSummary.highPressEffectiveness}</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">PÃ©rd. / presiÃ³n</p>
+                  <p className="mt-1 text-xl font-black text-white">{liveSummary.dangerLossRatio} Â· {liveSummary.highPressEffectiveness}</p>
                 </div>
               </div>
             </section>
@@ -10887,7 +10926,7 @@ function App() {
                         <span className="font-mono text-xs font-black text-caudal-electric">{getDelegatedTimeLabel(event)}</span>
                         <div className="min-w-0">
                           <p className="truncate text-sm font-black text-white">
-                            <span className="text-slate-500">{eventSide === 'rival' ? 'RIV' : 'CAU'} · </span>{getQuickEventLabel(event.tipoEvento)}{playerName ? ` · ${playerName}` : ''}
+                            <span className="text-slate-500">{eventSide === 'rival' ? 'RIV' : 'CAU'} Â· </span>{getQuickEventLabel(event.tipoEvento)}{playerName ? ` Â· ${playerName}` : ''}
                           </p>
                           <p className="truncate text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{playerName || (eventSide === 'rival' && definition?.requiresPlayer ? 'Jugador no identificado' : 'Evento colectivo')}</p>
                         </div>
@@ -10903,9 +10942,9 @@ function App() {
                             onChange={(changeEvent) => updateDelegatedEventPlayer(event.id, changeEvent.target.value)}
                             className="mt-2 w-full rounded-lg bg-white px-2 py-1 text-[11px] font-bold text-slate-950"
                           >
-                            <option value="">Añadir jugador</option>
+                            <option value="">AÃ±adir jugador</option>
                             {playerOptions.map((player) => (
-                              <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
+                              <option key={player.id} value={player.id}>{player.number || '-'} Â· {player.name}</option>
                             ))}
                           </select>
                         ) : null}
@@ -10938,7 +10977,7 @@ function App() {
                     </div>
                   );
                 }) : (
-                  <p className="rounded-2xl bg-white/5 px-4 py-4 text-sm text-slate-400">Todavía no hay eventos rápidos registrados.</p>
+                  <p className="rounded-2xl bg-white/5 px-4 py-4 text-sm text-slate-400">TodavÃ­a no hay eventos rÃ¡pidos registrados.</p>
                 )}
               </div>
             </section>
@@ -10976,12 +11015,12 @@ function App() {
                   >
                     <option value="">{calledPlayers.length ? 'Seleccionar jugador' : 'Sin convocatoria cargada'}</option>
                     {calledPlayers.map((player) => (
-                      <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
+                      <option key={player.id} value={player.id}>{player.number || '-'} Â· {player.name}</option>
                     ))}
                   </select>
                 ) : (
                   <p className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-4 text-sm font-bold text-slate-300">
-                    {delegatedEventDraft.requiresPlayer ? 'Jugador no identificado' : 'Córner colectivo: no solicita jugador.'}
+                    {delegatedEventDraft.requiresPlayer ? 'Jugador no identificado' : 'CÃ³rner colectivo: no solicita jugador.'}
                   </p>
                 )}
               </label>
@@ -11036,7 +11075,7 @@ function App() {
           const eventBadges = playerName ? getPlayerEventSummary(matchEvents, player || { name: playerName }) : [];
           const statusBadges = [
             ...eventBadges,
-            isCaptain ? { key: 'captain', label: 'CAP', title: 'Capitán', className: 'bg-black text-white' } : null,
+            isCaptain ? { key: 'captain', label: 'CAP', title: 'CapitÃ¡n', className: 'bg-black text-white' } : null,
           ].filter(Boolean);
           const replacementInfo = playerName ? getStatsReplacementInfo(playerName) : null;
           const playerStateClass = stats?.red
@@ -11091,7 +11130,7 @@ function App() {
               </div>
               {replacementInfo ? (
                 <div className="max-w-[108px] truncate rounded-xl bg-emerald-500 px-2 py-1 text-[10px] font-black text-white" title={`Entra ${replacementInfo.replacementName}`}>
-                  ? {replacementInfo.replacementName} · {replacementInfo.substituteMinutes}'
+                  ? {replacementInfo.replacementName} Â· {replacementInfo.substituteMinutes}'
                 </div>
               ) : null}
             </div>
@@ -11113,7 +11152,7 @@ function App() {
       if (Number.isNaN(date.getTime())) return String(dateValue || '');
       return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
     };
-    const matchMeta = [getCompetitionFromCatalog(selectedMatch).label, formatStatsMatchDate(selectedMatch.date)].filter(Boolean).join(' · ');
+    const matchMeta = [getCompetitionFromCatalog(selectedMatch).label, formatStatsMatchDate(selectedMatch.date)].filter(Boolean).join(' Â· ');
     const statRows = [...getStatsCalledPlayers()].sort((a, b) => {
       const roleDiff = (getStatsPlayerData(a.name).role === 'Titular' ? -1 : 1) - (getStatsPlayerData(b.name).role === 'Titular' ? -1 : 1);
       return roleDiff || displayPlayerName(a).localeCompare(displayPlayerName(b));
@@ -11135,8 +11174,8 @@ function App() {
             <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-black text-white">{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</p>
-            <p className="truncate text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{player.position || 'Sin posición'}</p>
+            <p className="truncate text-sm font-black text-white">{player.number ? `${player.number} Â· ` : ''}{displayPlayerName(player) || player.name}</p>
+            <p className="truncate text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{player.position || 'Sin posiciÃ³n'}</p>
           </div>
           <select
             value={status}
@@ -11219,7 +11258,7 @@ function App() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Timeline de partido</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-400">Eventos cronológicos registrados</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-400">Eventos cronolÃ³gicos registrados</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => openSystemChangeModal()} className="bg-violet-500 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white">
@@ -11315,7 +11354,7 @@ function App() {
             </section>
 
             <section className="hidden border border-white/10 bg-[#091428]/82 p-4 shadow-glow">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Resumen de participación</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Resumen de participaciÃ³n</p>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 {[
                   ['Titulares', participation.starters],
@@ -11346,13 +11385,13 @@ function App() {
                         `${mvp.minutes || 0} min`,
                         `Goles ${mvp.stats.goals}`,
                         `Asistencias ${mvp.stats.assists}`,
-                        mvp.stats.goals || mvp.stats.assists ? `Participación en gol ${mvp.stats.goals + mvp.stats.assists}` : '',
-                      ].filter(Boolean).join(' · ')}
+                        mvp.stats.goals || mvp.stats.assists ? `ParticipaciÃ³n en gol ${mvp.stats.goals + mvp.stats.assists}` : '',
+                      ].filter(Boolean).join(' Â· ')}
                     </p>
                   </div>
                 </div>
               ) : (
-                <p className="mt-3 text-sm font-semibold text-slate-400">Añade convocados y datos registrados para activar este cálculo.</p>
+                <p className="mt-3 text-sm font-semibold text-slate-400">AÃ±ade convocados y datos registrados para activar este cÃ¡lculo.</p>
               )}
             </section>
 
@@ -11361,7 +11400,7 @@ function App() {
           <section className="border border-white/10 bg-[#091428]/82 p-4 shadow-glow">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Disposición táctica</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">DisposiciÃ³n tÃ¡ctica</p>
                 <p className="mt-1 text-sm font-semibold text-slate-400">Dorsal, nombre corto y foto si existe</p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -11369,7 +11408,7 @@ function App() {
                   {['4-4-2', '4-2-3-1', '4-3-3', '3-5-2', '5-3-2', '3-4-3'].map((system) => <option key={system} value={system}>{system}</option>)}
                 </select>
                 <button type="button" onClick={autoPlaceStatsStarters} className="bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-200">Auto colocar titulares</button>
-                <button type="button" onClick={openStatsCallupPanel} className="bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Añadir convocados</button>
+                <button type="button" onClick={openStatsCallupPanel} className="bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">AÃ±adir convocados</button>
               </div>
             </div>
             <div className="mt-4">{renderStatsPitch()}</div>
@@ -11437,7 +11476,7 @@ function App() {
                             </span>
                             <div className="min-w-0">
                               <p className="truncate text-sm font-black">{displayPlayerName(player)}</p>
-                              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">{player.number ? `#${player.number}` : 'Sin dorsal'} · {getStatsPlayedPosition(player.name)}</p>
+                              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">{player.number ? `#${player.number}` : 'Sin dorsal'} Â· {getStatsPlayedPosition(player.name)}</p>
                             </div>
                           </div>
                         </td>
@@ -11451,7 +11490,7 @@ function App() {
                         <td className="border-t border-white/10 px-2 py-2 text-center text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{enteredAsSub ? 'Entrado' : stats.role}</td>
                         <td className="border-t border-white/10 px-2 py-2 text-center">
                           <select value={stats.replacementName} disabled={!canReplace} onChange={(event) => updateStatsPlayerData(player.name, { replacementName: event.target.value })} className="w-44 bg-white px-2 py-2 text-[11px] font-bold text-slate-950 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500">
-                            <option value="">{canReplace ? `Sale ${minutes}' · entra...` : enteredAsSub ? `Entra · ${displayedMinutes}'` : 'Sin cambio'}</option>
+                            <option value="">{canReplace ? `Sale ${minutes}' Â· entra...` : enteredAsSub ? `Entra Â· ${displayedMinutes}'` : 'Sin cambio'}</option>
                             {getStatsReplacementOptions(player.name).map((replacement) => <option key={replacement.id} value={replacement.name}>{replacement.name}</option>)}
                           </select>
                         </td>
@@ -11483,7 +11522,7 @@ function App() {
               </table>
             </div>
           ) : (
-            <div className="mt-4 border border-dashed border-white/10 bg-black/20 p-6 text-center text-sm text-slate-400">La tabla aparecerá cuando añadas convocados.</div>
+            <div className="mt-4 border border-dashed border-white/10 bg-black/20 p-6 text-center text-sm text-slate-400">La tabla aparecerÃ¡ cuando aÃ±adas convocados.</div>
           )}
         </section>
       </div>
@@ -11494,10 +11533,82 @@ function App() {
     const reviewState = getPostReviewState();
     const pendingQuick = (selectedMatch.quickEvents || []).filter((event) => !event.reviewed).length;
     const score = getStatsScore();
-    const postDerivedReading = buildPostDerivedReading();
     const postAiMeta = safeObject(selectedMatch.postAiAnalysis);
     const mondayFlow = safeObject(postAiMeta.mondayFlow);
-    const postSummary = buildPostAutoSummary();
+    const postSummaryMeta = safeObject(postAiMeta.postSummary);
+    const autoSummary = buildPostFactualSummary();
+    const postDerivedReading = buildPostDerivedReading();
+    const storedAutoSummary = typeof postSummaryMeta.autoSummary === 'string' ? postSummaryMeta.autoSummary : '';
+    const staffSummary = typeof postSummaryMeta.staffSummary === 'string' ? postSummaryMeta.staffSummary : selectedMatch.postNotes || '';
+    const visibleAutoSummary = pendingPostSummaryProposal || storedAutoSummary || autoSummary;
+    const postSummary = staffSummary || visibleAutoSummary;
+    const postSummarySource = staffSummary ? 'Resumen validado' : visibleAutoSummary ? 'Propuesta automatica' : 'Vacio';
+    const startPostSummaryEditing = () => {
+      setPostSummarySaveError('');
+      setPostSummaryDraft(postSummary || '');
+      setIsEditingPostSummary(true);
+    };
+    const cancelPostSummaryEditing = () => {
+      setIsEditingPostSummary(false);
+      setPostSummarySaveError('');
+      setPostSummaryDraft('');
+    };
+    const savePostSummaryDraft = async () => {
+      if (!selectedMatch) return;
+      setPostSummarySaving(true);
+      setPostSummarySaveError('');
+      const now = new Date().toISOString();
+      const nextStaffSummary = String(postSummaryDraft || '').trim();
+      const nextPostAiAnalysis = {
+        ...postAiMeta,
+        postSummary: {
+          ...postSummaryMeta,
+          autoSummary: visibleAutoSummary || autoSummary,
+          staffSummary: nextStaffSummary,
+          staffUpdatedAt: now,
+        },
+        closureValidated: {
+          ...safeObject(postAiMeta.closureValidated),
+          summary: {
+            ...safeObject(safeObject(postAiMeta.closureValidated).summary),
+            generatedValue: visibleAutoSummary || autoSummary,
+            validatedValue: nextStaffSummary,
+            source: 'postSummary',
+            updatedAt: now,
+          },
+        },
+      };
+      const { error: saveError } = await supabase
+        .from("partidos")
+        .update({
+          post_ai_analysis: nextPostAiAnalysis,
+          post_notes: nextStaffSummary,
+        })
+        .eq("id", selectedMatch.id);
+      if (saveError) {
+        setPostSummarySaveError('No se ha podido guardar el resumen.');
+        setPostSummarySaving(false);
+        return;
+      }
+      setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? {
+        ...match,
+        postAiAnalysis: nextPostAiAnalysis,
+        postNotes: nextStaffSummary,
+      } : match)));
+      setPendingPostSummaryProposal('');
+      setIsEditingPostSummary(false);
+      setPostSummarySaving(false);
+      await loadMatchPostData(selectedMatch.id);
+    };
+    const regeneratePostSummaryProposal = () => {
+      setPendingPostSummaryProposal(autoSummary);
+      setPostSummarySaveError('');
+    };
+    const usePostSummaryProposal = () => {
+      setPostSummaryDraft(visibleAutoSummary || autoSummary || '');
+      setIsEditingPostSummary(true);
+      setPostSummarySaveError('');
+    };
     const sortedPostClips = [...(selectedMatch.events || [])].sort((a, b) => {
       const priority = getPostClipPriority(a) - getPostClipPriority(b);
       return priority || Number(a.videoSeconds || 0) - Number(b.videoSeconds || 0);
@@ -11532,7 +11643,7 @@ function App() {
     const cleanClosureProposal = (value) => {
       const text = String(value || '').trim();
       if (!text) return '';
-      return /pendiente|solicitar validaci[oó]n|definir con staff|validar primero/i.test(text) ? '' : text;
+      return /pendiente|solicitar validaci[oÃ³]n|definir con staff|validar primero/i.test(text) ? '' : text;
     };
     const generatedClosure = {
       summary: cleanClosureProposal(postSummary),
@@ -11552,7 +11663,7 @@ function App() {
     const getClosureDisplayValue = (field) =>
       getClosureValidatedValue(field) || generatedClosure[field] || '';
     const getClosureSource = (field) =>
-      getClosureValidatedValue(field) ? 'Validado' : generatedClosure[field] ? 'Propuesta' : 'Vacío';
+      getClosureValidatedValue(field) ? 'Validado' : generatedClosure[field] ? 'Propuesta' : 'VacÃ­o';
     const selectedMainClipId = safeObject(closureValidated.mainClip).clipId || postAiMeta.mainClipId || '';
     const autoMainClip = priorityClips[0] || sortedPostClips[0] || null;
     const mainClip = sortedPostClips.find((clip) => clip.id === selectedMainClipId) || autoMainClip;
@@ -11573,7 +11684,7 @@ function App() {
       const proposed = generatedClosure[field] || '';
       const current = closureDraft[field] || '';
       if (current.trim() && current.trim() !== proposed.trim()) {
-        const confirmed = window.confirm('Esto sustituirá el texto escrito por la propuesta automática. ¿Continuar?');
+        const confirmed = window.confirm('Esto sustituirÃ¡ el texto escrito por la propuesta automÃ¡tica. Â¿Continuar?');
         if (!confirmed) return;
       }
       updateClosureDraft(field, proposed);
@@ -11584,7 +11695,7 @@ function App() {
       setClosureSaveError('');
       const now = new Date().toISOString();
       const nextClosureValidated = {
-        summary: { generatedValue: generatedClosure.summary, validatedValue: (closureDraft.summary || '').trim(), source: 'manual', updatedAt: now },
+        summary: { generatedValue: generatedClosure.summary, validatedValue: staffSummary || selectedMatch.postNotes || '', source: staffSummary || selectedMatch.postNotes ? 'postSummary' : 'empty', updatedAt: now },
         continueDoing: { generatedValue: generatedClosure.continueDoing, validatedValue: (closureDraft.continueDoing || '').trim(), source: 'manual', updatedAt: now },
         correct: { generatedValue: generatedClosure.correct, validatedValue: (closureDraft.correct || '').trim(), source: 'manual', updatedAt: now },
         mainClip: {
@@ -11601,7 +11712,7 @@ function App() {
       };
       const payload = {
         post_ai_analysis: nextPostAiAnalysis,
-        post_notes: nextClosureValidated.summary.validatedValue,
+        post_notes: selectedMatch.postNotes || '',
         post_repeat: nextClosureValidated.continueDoing.validatedValue,
         post_improve: nextClosureValidated.correct.validatedValue,
       };
@@ -11736,7 +11847,7 @@ function App() {
     const individualCards = [
       { key: 'destacado', label: 'Destacado', accent: 'border-emerald-300/25 bg-emerald-300/[0.08] text-emerald-100', mode: 'rating' },
       { key: 'a_corregir', label: 'A corregir', accent: 'border-amber-300/25 bg-amber-300/[0.08] text-amber-100', mode: 'rating' },
-      { key: 'revelacion', label: 'Revelación', accent: 'border-sky-300/25 bg-sky-300/[0.08] text-sky-100', mode: 'rating' },
+      { key: 'revelacion', label: 'RevelaciÃ³n', accent: 'border-sky-300/25 bg-sky-300/[0.08] text-sky-100', mode: 'rating' },
       { key: 'decisivo', label: 'Decisivo', accent: 'border-caudal-electric/25 bg-caudal-electric/[0.10] text-caudal-electric', mode: 'decisive' },
     ];
     const readingCompleted = Boolean(selectedMatch.postReality || selectedMatch.postFulfilled || selectedMatch.postNotFulfilled || selectedMatch.postNextAdjustment || selectedMatch.postWhy || selectedMatch.postNotes);
@@ -11757,15 +11868,15 @@ function App() {
       return done ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100' : 'border-white/10 bg-white/[0.04] text-slate-400';
     };
     const patternChips = [
-      getQuickEventSummary(selectedMatch.quickEvents || []).recoveries >= 3 ? 'presión alta efectiva' : null,
-      getQuickEventSummary(selectedMatch.quickEvents || []).losses >= 2 ? 'sufrimiento tras pérdida' : null,
+      getQuickEventSummary(selectedMatch.quickEvents || []).recoveries >= 3 ? 'presiÃ³n alta efectiva' : null,
+      getQuickEventSummary(selectedMatch.quickEvents || []).losses >= 2 ? 'sufrimiento tras pÃ©rdida' : null,
       sortedPostClips.some((event) => /juego directo|directo/i.test(`${event.type || ''} ${event.description || ''}`)) ? 'juego directo rival' : null,
       sortedPostClips.some((event) => /segunda jugada/i.test(`${event.type || ''} ${event.description || ''}`)) ? 'segunda jugada' : null,
-      getQuickEventSummary(selectedMatch.quickEvents || []).boxEntries > getQuickEventSummary(selectedMatch.quickEvents || []).rivalBoxEntries ? 'transición positiva' : null,
-      getQuickEventSummary(selectedMatch.quickEvents || []).rivalBoxEntries > getQuickEventSummary(selectedMatch.quickEvents || []).boxEntries ? 'sufrimiento lado débil' : null,
+      getQuickEventSummary(selectedMatch.quickEvents || []).boxEntries > getQuickEventSummary(selectedMatch.quickEvents || []).rivalBoxEntries ? 'transiciÃ³n positiva' : null,
+      getQuickEventSummary(selectedMatch.quickEvents || []).rivalBoxEntries > getQuickEventSummary(selectedMatch.quickEvents || []).boxEntries ? 'sufrimiento lado dÃ©bil' : null,
     ].filter(Boolean);
     const closureCompleted = Boolean(
-      getClosureValidatedValue('summary') &&
+      Boolean(staffSummary || selectedMatch.postNotes) &&
       getClosureValidatedValue('continueDoing') &&
       getClosureValidatedValue('correct')
     );
@@ -11776,19 +11887,19 @@ function App() {
     const analysisFieldSuggestions = {
       postReality: postDerivedReading.suggestions,
       postFulfilled: [
-        getQuickEventSummary(selectedMatch.quickEvents || []).recoveries >= 3 ? 'Presión alta con recuperaciones suficientes para repetir.' : null,
-        getQuickEventSummary(selectedMatch.quickEvents || []).boxEntries >= 4 ? 'Buena llegada a área: buscar clips de progresión.' : null,
+        getQuickEventSummary(selectedMatch.quickEvents || []).recoveries >= 3 ? 'PresiÃ³n alta con recuperaciones suficientes para repetir.' : null,
+        getQuickEventSummary(selectedMatch.quickEvents || []).boxEntries >= 4 ? 'Buena llegada a Ã¡rea: buscar clips de progresiÃ³n.' : null,
       ].filter(Boolean),
       postNotFulfilled: [
-        getQuickEventSummary(selectedMatch.quickEvents || []).losses >= 2 ? 'Problemas tras pérdida: revisar apoyos cercanos.' : null,
-        getQuickEventSummary(selectedMatch.quickEvents || []).rivalBoxEntries > getQuickEventSummary(selectedMatch.quickEvents || []).boxEntries ? 'El rival pisó más área que Caudal.' : null,
+        getQuickEventSummary(selectedMatch.quickEvents || []).losses >= 2 ? 'Problemas tras pÃ©rdida: revisar apoyos cercanos.' : null,
+        getQuickEventSummary(selectedMatch.quickEvents || []).rivalBoxEntries > getQuickEventSummary(selectedMatch.quickEvents || []).boxEntries ? 'El rival pisÃ³ mÃ¡s Ã¡rea que Caudal.' : null,
       ].filter(Boolean),
       postNextAdjustment: [
         'Convertir los clips clave en tareas de entrenamiento.',
-        getQuickEventSummary(selectedMatch.quickEvents || []).shots > getQuickEventSummary(selectedMatch.quickEvents || []).shotsOnTarget ? 'Trabajar selección de tiro y llegada con ventaja.' : null,
+        getQuickEventSummary(selectedMatch.quickEvents || []).shots > getQuickEventSummary(selectedMatch.quickEvents || []).shotsOnTarget ? 'Trabajar selecciÃ³n de tiro y llegada con ventaja.' : null,
       ].filter(Boolean),
       postWhy: ['Cruzar consignas PRE con clips y eventos validados.'],
-      postNotes: [`Base automática: ${postDerivedReading.trend}`],
+      postNotes: [`Base automÃ¡tica: ${postDerivedReading.trend}`],
     };
     const postBlockHeader = (eyebrow, title, subtitle, right = null) => (
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -11825,42 +11936,19 @@ function App() {
           </div>
         ) : null}
 
-        <section className="sticky top-2 z-20 rounded-3xl border border-white/10 bg-[#071326]/95 p-4 shadow-glow backdrop-blur">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric">Pipeline POST</p>
-              <div className="mt-2 flex items-center gap-3">
-                <div className="h-2 min-w-[140px] flex-1 overflow-hidden rounded-full bg-white/10 xl:w-64 xl:flex-none">
-                  <div className="h-full rounded-full bg-caudal-electric transition-all duration-500" style={{ width: `${progressPercent}%` }} />
-                </div>
-                <span className="text-sm font-black text-white">{progressPercent}%</span>
-              </div>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
-              {pipelineSteps.map((step) => (
-                <div key={step.label} className={`rounded-2xl border px-3 py-2 transition ${pipelineToneClass(step.tone, step.done)}`}>
-                  <p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-70">{step.label}</p>
-                  <p className="mt-1 text-sm font-black">{step.value}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
         <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-          {postBlockHeader('A · Resumen POST', 'Centro de revisión del partido', 'Primera lectura para orientar la revisión de vídeo y validar lo capturado en directo.', (
+          {postBlockHeader('A Â· Resumen POST', 'Centro de revisiÃ³n del partido', 'Primera lectura para orientar la revisiÃ³n de vÃ­deo y validar lo capturado en directo.', (
             <span className={`rounded-2xl border px-4 py-2 text-xs font-black uppercase tracking-[0.14em] ${getPostReviewStateClass(reviewState)}`}>
               {reviewState}
             </span>
           ))}
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             {[
               ['Resultado', `${score.caudal}-${score.rival}`],
               ['Rival', selectedMatch.opponent || 'Rival'],
               ['Sistema rival', getCurrentRivalSystem()],
               ['Fecha', matchDisplayDate(selectedMatch.date)],
-              ['Competición', getCompetitionFromCatalog(selectedMatch).label || 'Partido'],
-              ['Pendientes', pendingQuick],
+              ['CompeticiÃ³n', getCompetitionFromCatalog(selectedMatch).label || 'Partido'],
             ].map(([label, value]) => (
               <div key={label} className="rounded-2xl border border-white/5 bg-white/[0.045] p-4">
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
@@ -11869,54 +11957,66 @@ function App() {
             ))}
           </div>
           <div className="mt-5 rounded-3xl border border-caudal-electric/15 bg-caudal-electric/[0.055] p-4">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Mini resumen automático</p>
-            <p className="mt-2 text-sm leading-6 text-slate-100">{postSummary}</p>
-          </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-4">
-            {[
-              ['Posesión emocional', `${postDerivedReading.emotionalPossession}% Caudal`],
-              ['Momento dominante', postDerivedReading.dominantMoment],
-              ['Tramo crítico', postDerivedReading.criticalRange],
-              ['Tendencia partido', postDerivedReading.trend],
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-2xl border border-white/5 bg-black/15 p-3">
-                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
-                <p className="mt-2 text-sm font-bold leading-5 text-slate-100">{value}</p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Resumen del partido</p>
+                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{postSummarySource}</p>
               </div>
-            ))}
+              {!isEditingPostSummary ? (
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={startPostSummaryEditing} className="rounded-2xl border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-caudal-electric">
+                    {postSummary ? 'Editar resumen' : 'Escribir resumen'}
+                  </button>
+                  {autoSummary ? (
+                    <button type="button" onClick={regeneratePostSummaryProposal} className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-200">
+                      Regenerar propuesta
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            {postSummarySaveError ? <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-100">{postSummarySaveError}</div> : null}
+            {isEditingPostSummary ? (
+              <div className="mt-4">
+                <textarea value={postSummaryDraft} onChange={(event) => setPostSummaryDraft(event.target.value)} className="min-h-[150px] w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm leading-6 text-white outline-none focus:border-caudal-electric/50" placeholder="Todavia no hay un resumen del partido." />
+                <div className="mt-3 flex flex-wrap justify-end gap-2">
+                  <button type="button" onClick={savePostSummaryDraft} disabled={postSummarySaving} className="rounded-2xl bg-caudal-electric px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-950 disabled:opacity-60">
+                    {postSummarySaving ? 'Guardando...' : 'Guardar cambios'}
+                  </button>
+                  <button type="button" onClick={cancelPostSummaryEditing} disabled={postSummarySaving} className="rounded-2xl border border-white/10 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-300 disabled:opacity-60">
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-4 whitespace-pre-line text-sm leading-6 text-slate-100">{postSummary || 'Todavia no hay un resumen del partido.'}</p>
+            )}
+            {pendingPostSummaryProposal && staffSummary ? (
+              <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Nueva propuesta</p>
+                <p className="mt-2 text-sm leading-6 text-slate-100">{pendingPostSummaryProposal}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={usePostSummaryProposal} className="rounded-2xl bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-950">Usar propuesta</button>
+                  <button type="button" onClick={() => setPendingPostSummaryProposal('')} className="rounded-2xl border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-300">Mantener resumen actual</button>
+                </div>
+              </div>
+            ) : null}
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            {(patternChips.length ? patternChips : ['validar capturas', 'relacionar clips', 'cerrar lectura']).map((chip) => (
-              <span key={chip} className="rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
-                {chip}
-              </span>
+            {[
+              ['Validar capturas', 'post-quick-events'],
+              ['Relacionar clips', 'post-video-clips'],
+              ['Cerrar lectura', 'post-final-closure'],
+            ].map(([label, targetId]) => (
+              <button key={targetId} type="button" onClick={() => document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300 transition hover:border-caudal-electric/30 hover:text-caudal-electric">
+                {label}
+              </button>
             ))}
           </div>
-          {mondayFlow.generatedAt ? (
-            <div className="mt-5 rounded-3xl border border-emerald-300/15 bg-emerald-300/[0.055] p-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-100">Lunes preparado</p>
-              <div className="mt-3 grid gap-3 lg:grid-cols-3">
-                {[
-                  ['Qué entrenar', safeArray(mondayFlow.training)],
-                  ['Vigilancias', safeArray(mondayFlow.vigilances)],
-                  ['Clips clave', safeArray(mondayFlow.keyClips)],
-                ].map(([title, items]) => (
-                  <div key={title} className="rounded-2xl border border-white/10 bg-black/15 p-3">
-                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">{title}</p>
-                    <div className="mt-2 space-y-1.5">
-                      {(items.length ? items : ['Pendiente']).slice(0, 4).map((item) => (
-                        <p key={item} className="text-xs font-bold leading-5 text-slate-100">{item}</p>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
         </section>
 
-        <section className="app-card">
-          {postBlockHeader('B · Eventos rápidos del delegado', 'Revisar y validar capturas de directo', 'Apuntes simples del partido: corrige minuto, equipo, jugador y marca qué entra al análisis.', (
+        <section id="post-quick-events" className="app-card">
+          {postBlockHeader('B Â· Eventos rÃ¡pidos del delegado', 'Revisar y validar capturas de directo', 'Apuntes simples del partido: corrige minuto, equipo, jugador y marca quÃ© entra al anÃ¡lisis.', (
             <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-300">
               {pendingQuick} pendientes de revisar
             </span>
@@ -11924,7 +12024,7 @@ function App() {
           <StatusMessage status={quickEventStatus} className="mt-4" />
           <details className="mt-4 rounded-3xl border border-white/10 bg-white/[0.035]">
             <summary className="cursor-pointer px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white">
-              {pendingQuick ? `${pendingQuick} eventos pendientes` : `${validatedQuick} eventos validados`} · Abrir revisión
+              {pendingQuick ? `${pendingQuick} eventos pendientes` : `${validatedQuick} eventos validados`} Â· Abrir revisiÃ³n
             </summary>
             <div className="space-y-2 border-t border-white/10 p-4">
             {(selectedMatch.quickEvents || []).length ? (
@@ -11995,7 +12095,7 @@ function App() {
                         >
                           <option value="">{isRival ? 'Evento rival' : 'Sin jugador'}</option>
                           {getStatsCalledPlayers().map((player) => (
-                            <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
+                            <option key={player.id} value={player.id}>{player.number || '-'} Â· {player.name}</option>
                           ))}
                         </select>
                         </div>
@@ -12004,7 +12104,7 @@ function App() {
                             {event.reviewed ? 'Desmarcar' : 'Validar'}
                           </button>
                           <button type="button" onClick={() => openQuickTacticalPanel(event, definition)} className="btn-small bg-caudal-electric text-slate-950">
-                            Convertir en evento táctico
+                            Convertir en evento tÃ¡ctico
                           </button>
                           {isConfirmingDelete ? (
                             <button type="button" onClick={() => deleteQuickEvent(event.id)} disabled={isSaving} className="btn-danger btn-small bg-red-500 text-white">Confirmar</button>
@@ -12018,8 +12118,8 @@ function App() {
                 })
             ) : (
               <div className="empty-state">
-                <p className="font-bold text-slate-200">No hay eventos rápidos todavía</p>
-                <p className="mt-1">Lo capturado en Modo Delegado aparecerá aquí para validarlo antes del análisis.</p>
+                <p className="font-bold text-slate-200">No hay eventos rÃ¡pidos todavÃ­a</p>
+                <p className="mt-1">Lo capturado en Modo Delegado aparecerÃ¡ aquÃ­ para validarlo antes del anÃ¡lisis.</p>
               </div>
             )}
             </div>
@@ -12028,15 +12128,15 @@ function App() {
             <div className="mt-5 rounded-3xl border border-caudal-electric/25 bg-caudal-electric/[0.055] p-4 shadow-glow">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Panel rápido</p>
-                  <h4 className="mt-1 text-base font-black text-white">Convertir en evento táctico</h4>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Panel rÃ¡pido</p>
+                  <h4 className="mt-1 text-base font-black text-white">Convertir en evento tÃ¡ctico</h4>
                 </div>
                 <button type="button" onClick={() => setPostTacticalPanel(null)} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-slate-300">Cerrar</button>
               </div>
               <div className="mt-4 grid gap-3 lg:grid-cols-[70px_150px_1fr_160px]">
                 <input value={postTacticalPanel.minute || ''} onChange={(event) => setPostTacticalPanel((current) => ({ ...current, minute: event.target.value }))} placeholder="Min." className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white" />
                 <input value={postTacticalPanel.player || ''} onChange={(event) => setPostTacticalPanel((current) => ({ ...current, player: event.target.value }))} placeholder="Jugador" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
-                <input value={postTacticalPanel.description || ''} onChange={(event) => setPostTacticalPanel((current) => ({ ...current, description: event.target.value }))} placeholder="Descripción táctica corta" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
+                <input value={postTacticalPanel.description || ''} onChange={(event) => setPostTacticalPanel((current) => ({ ...current, description: event.target.value }))} placeholder="DescripciÃ³n tÃ¡ctica corta" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
                 <select value={postTacticalPanel.importance || 'Media'} onChange={(event) => setPostTacticalPanel((current) => ({ ...current, importance: event.target.value }))} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white">
                   <option>Alta</option>
                   <option>Media</option>
@@ -12044,15 +12144,15 @@ function App() {
                 </select>
               </div>
               <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_220px_180px]">
-                <input value={postTacticalPanel.tags || ''} onChange={(event) => setPostTacticalPanel((current) => ({ ...current, tags: event.target.value }))} placeholder="Tags tácticos: presión, transición, lado débil..." className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
+                <input value={postTacticalPanel.tags || ''} onChange={(event) => setPostTacticalPanel((current) => ({ ...current, tags: event.target.value }))} placeholder="Tags tÃ¡cticos: presiÃ³n, transiciÃ³n, lado dÃ©bil..." className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
                 <select value={postTacticalPanel.clipId || ''} onChange={(event) => setPostTacticalPanel((current) => ({ ...current, clipId: event.target.value }))} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white">
                   <option value="">Sin clip relacionado</option>
-                  {chronologicalPostClips.map((clip) => <option key={clip.id} value={clip.id}>{clip.minute}' · {clip.type}</option>)}
+                  {chronologicalPostClips.map((clip) => <option key={clip.id} value={clip.id}>{clip.minute}' Â· {clip.type}</option>)}
                 </select>
                 <select value={postTacticalPanel.targetField || 'postReality'} onChange={(event) => setPostTacticalPanel((current) => ({ ...current, targetField: event.target.value }))} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white">
-                  <option value="postReality">Qué ocurrió</option>
-                  <option value="postFulfilled">Qué funcionó</option>
-                  <option value="postNotFulfilled">Qué no funcionó</option>
+                  <option value="postReality">QuÃ© ocurriÃ³</option>
+                  <option value="postFulfilled">QuÃ© funcionÃ³</option>
+                  <option value="postNotFulfilled">QuÃ© no funcionÃ³</option>
                   <option value="postNextAdjustment">Ajustes futuros</option>
                 </select>
               </div>
@@ -12064,7 +12164,7 @@ function App() {
         </section>
 
         <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
-          {postBlockHeader('D · Cumplimiento del plan', 'PRE vs POST', 'Qué consignas se cumplieron, cuáles quedaron pendientes y qué exige la semana.', (
+          {postBlockHeader('D Â· Cumplimiento del plan', 'PRE vs POST', 'QuÃ© consignas se cumplieron, cuÃ¡les quedaron pendientes y quÃ© exige la semana.', (
             <div className="rounded-2xl border border-caudal-electric/25 bg-caudal-electric/10 px-4 py-2 text-right">
               <p className="text-xl font-black text-white">{fulfilledPrePlanRows.length}/{prePlanReviewRows.length || 0}</p>
               <p className="text-[10px] font-black uppercase tracking-[0.14em] text-caudal-electric">{prePlanCompletionPercent}% cumplido</p>
@@ -12093,16 +12193,16 @@ function App() {
                 </div>
               </div>
             )) : (
-              <p className="rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm text-slate-400 lg:col-span-2">No hay consignas PRE para comparar todavía.</p>
+              <p className="rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm text-slate-400 lg:col-span-2">No hay consignas PRE para comparar todavÃ­a.</p>
             )}
           </div>
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[1.45fr_0.85fr]">
-          <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-            {postBlockHeader('C · Vídeo y clips', 'Vídeo y clips del partido', 'Marca acciones, navega por la timeline y relaciona clips con la lectura táctica.')}
+          <div id="post-video-clips" className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+            {postBlockHeader('C Â· VÃ­deo y clips', 'VÃ­deo y clips del partido', 'Marca acciones, navega por la timeline y relaciona clips con la lectura tÃ¡ctica.')}
             <label className="mt-5 block space-y-2 text-sm text-slate-300">
-              <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Enlace del vídeo</span>
+              <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Enlace del vÃ­deo</span>
               <input
                 value={selectedMatch.postVideoLink || ''}
                 onChange={(event) => handlePostVideoLinkChange(event.target.value)}
@@ -12114,14 +12214,14 @@ function App() {
                 placeholder="https://..."
                 className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
               />
-              <span className="text-xs text-slate-500">YouTube, Vimeo, AsturFútbol o enlace directo compatible</span>
+              <span className="text-xs text-slate-500">YouTube, Vimeo, AsturFÃºtbol o enlace directo compatible</span>
               {postVideoSaveStatus ? <span className="text-xs text-slate-500">{postVideoSaveStatus}</span> : null}
             </label>
             <div className="mt-4 rounded-3xl border border-white/10 bg-white/[0.035] p-4">
               <MatchVideoPlayer
                 ref={postMatchVideoRef}
                 videoUrl={selectedMatch.postVideoLink}
-                isSaving={postVideoSaveStatus === 'Guardando vídeo...'}
+                isSaving={postVideoSaveStatus === 'Guardando vÃ­deo...'}
                 events={chronologicalPostClips}
                 selectedEventId={selectedPostEventId}
                 onDurationChange={(duration) => setPostVideoDuration(duration)}
@@ -12181,7 +12281,7 @@ function App() {
                   <div className="mt-4 rounded-3xl border border-white/10 bg-black/25 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Timeline real</p>
-                      <p className="text-xs text-slate-400">{postVideoDuration ? `${Math.round(postVideoDuration / 60)} min` : 'Duración no disponible'}</p>
+                      <p className="text-xs text-slate-400">{postVideoDuration ? `${Math.round(postVideoDuration / 60)} min` : 'DuraciÃ³n no disponible'}</p>
                     </div>
                     {chronologicalPostClips.length ? (
                       <div className="mt-5 overflow-x-auto pb-3">
@@ -12197,7 +12297,7 @@ function App() {
                                 onClick={() => seekPostVideoToEvent(event)}
                                 className={`absolute top-6 flex -translate-x-1/2 flex-col items-center gap-1 transition ${selectedPostEventId === event.id ? 'scale-110' : 'hover:scale-105'}`}
                                 style={{ left: `${left}%` }}
-                                title={`${event.minute}' · ${event.type}${event.description ? ` · ${event.description}` : ''}`}
+                                title={`${event.minute}' Â· ${event.type}${event.description ? ` Â· ${event.description}` : ''}`}
                               >
                                 <span className={`h-4 w-4 rounded-full border border-white/30 ${eventButtonClass(getPostEventTone(event.type))}`} />
                                 <span className="max-w-[72px] truncate rounded-xl bg-[#091428] px-2 py-1 text-[10px] font-black text-slate-200">{event.minute}'</span>
@@ -12219,22 +12319,22 @@ function App() {
                           <div className="mb-3 flex flex-wrap items-center gap-2">
                             <span className={`rounded-xl border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${priorityMeta.className}`}>{priorityMeta.label}</span>
                             {isPriority ? <span className="rounded-xl bg-amber-300/15 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-amber-100">Prioritario</span> : null}
-                            {isLinked ? <span className="rounded-xl bg-caudal-electric/15 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-caudal-electric">Usado en lectura táctica</span> : null}
+                            {isLinked ? <span className="rounded-xl bg-caudal-electric/15 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-caudal-electric">Usado en lectura tÃ¡ctica</span> : null}
                           </div>
                           <div className="grid gap-3 lg:grid-cols-[80px_145px_1fr_auto] lg:items-center">
                             <input value={event.minute || ''} onChange={(changeEvent) => updatePostEventLocal(event.id, { minute: changeEvent.target.value })} onBlur={(blurEvent) => savePostEventInline({ ...event, minute: blurEvent.target.value })} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white" />
                             <select value={event.type || ''} onChange={(changeEvent) => { updatePostEventLocal(event.id, { type: changeEvent.target.value }); const selectedType = eventTypes.find((eventType) => eventType.name === changeEvent.target.value); savePostEventInline({ ...event, type: changeEvent.target.value, tipoEventoId: selectedType?.id || null }); }} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white">
                               {eventTypes.map((eventType) => <option key={eventType.id} value={eventType.name}>{eventType.name}</option>)}
                             </select>
-                            <input value={event.description || ''} onChange={(changeEvent) => updatePostEventLocal(event.id, { description: changeEvent.target.value })} onBlur={(blurEvent) => savePostEventInline({ ...event, description: blurEvent.target.value })} placeholder="Descripción / observable" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500" />
+                            <input value={event.description || ''} onChange={(changeEvent) => updatePostEventLocal(event.id, { description: changeEvent.target.value })} onBlur={(blurEvent) => savePostEventInline({ ...event, description: blurEvent.target.value })} placeholder="DescripciÃ³n / observable" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500" />
                             <div className="flex flex-wrap gap-2 lg:justify-end">
-                              <button type="button" onClick={() => seekPostVideoToEvent(event)} className={`rounded-xl px-3 py-2 text-xs font-bold ${eventButtonClass(event.type)}`}>Ir al vídeo</button>
+                              <button type="button" onClick={() => seekPostVideoToEvent(event)} className={`rounded-xl px-3 py-2 text-xs font-bold ${eventButtonClass(event.type)}`}>Ir al vÃ­deo</button>
                               <button type="button" onClick={() => { seekPostVideoToEvent(event); handleEventDraftChange('description', event.description || event.type || ''); }} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-slate-200">Usar como base</button>
                               <select onChange={(changeEvent) => { if (changeEvent.target.value) relatePostClipWithAnalysis(event, changeEvent.target.value); changeEvent.target.value = ''; }} defaultValue="" className="rounded-xl border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-xs font-bold text-caudal-electric">
                                 <option value="">Relacionar</option>
-                                <option value="postReality">Qué ocurrió</option>
-                                <option value="postFulfilled">Qué funcionó</option>
-                                <option value="postNotFulfilled">Qué no funcionó</option>
+                                <option value="postReality">QuÃ© ocurriÃ³</option>
+                                <option value="postFulfilled">QuÃ© funcionÃ³</option>
+                                <option value="postNotFulfilled">QuÃ© no funcionÃ³</option>
                                 <option value="postNextAdjustment">Ajustes futuros</option>
                               </select>
                               {isConfirmingDelete ? <button type="button" onClick={() => deletePostEvent(event.id)} className="rounded-xl bg-red-500 px-3 py-2 text-xs font-bold text-white">Confirmar</button> : <button type="button" onClick={() => setPendingPostEventDeleteId(event.id)} className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100">Eliminar</button>}
@@ -12243,12 +12343,12 @@ function App() {
                           <input value={event.player || ''} onChange={(changeEvent) => updatePostEventLocal(event.id, { player: changeEvent.target.value })} onBlur={(blurEvent) => savePostEventInline({ ...event, player: blurEvent.target.value })} placeholder="Jugador asociado" className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500" />
                         </div>
                       );
-                    }) : <div className="rounded-3xl bg-[#091428]/80 p-6 text-sm text-slate-400">No se han marcado clips todavía.</div>}
+                    }) : <div className="rounded-3xl bg-[#091428]/80 p-6 text-sm text-slate-400">No se han marcado clips todavÃ­a.</div>}
                   </div>
                 </>
               ) : (
                 <div className="flex min-h-[360px] items-center justify-center rounded-3xl border border-dashed border-white/10 bg-black/20 text-center text-sm text-slate-400">
-                  Sin vídeo asignado
+                  Sin vÃ­deo asignado
                 </div>
               )}
             </div>
@@ -12256,7 +12356,7 @@ function App() {
 
           <aside className="space-y-6">
             <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
-              {postBlockHeader('Registro manual', 'Registrar algo importante', 'Mientras revisas el vídeo, crea un clip táctico sin salir del flujo.')}
+              {postBlockHeader('Registro manual', 'Registrar algo importante', 'Mientras revisas el vÃ­deo, crea un clip tÃ¡ctico sin salir del flujo.')}
               <div className="mt-4 flex flex-wrap gap-2">
                 {getPostQuickClipTypes().map((eventType) => (
                   <button key={`draft-${eventType.name}`} type="button" onClick={() => { setSelectedEventType(eventType.name); handleEventDraftChange('type', eventType.name); }} className={`rounded-xl px-2.5 py-1.5 text-[10px] font-black ${eventButtonClass(eventType.color || eventType.name)}`}>
@@ -12283,13 +12383,13 @@ function App() {
                 >
                   <option value="">Sin jugador asociado</option>
                   {players.map((player) => (
-                    <option key={player.id || player.name} value={player.id}>{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</option>
+                    <option key={player.id || player.name} value={player.id}>{player.number ? `${player.number} Â· ` : ''}{displayPlayerName(player) || player.name}</option>
                   ))}
                 </select>
-                <textarea value={newEventDraft.description} onChange={(event) => handleEventDraftChange('description', event.target.value)} placeholder="Qué ocurrió y por qué importa..." className="min-h-[92px] w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm text-white placeholder:text-slate-500" />
+                <textarea value={newEventDraft.description} onChange={(event) => handleEventDraftChange('description', event.target.value)} placeholder="QuÃ© ocurriÃ³ y por quÃ© importa..." className="min-h-[92px] w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm text-white placeholder:text-slate-500" />
                 <div className="flex flex-wrap gap-2">
-                  {['tras pérdida', 'lado débil', 'segunda jugada', 'área rival'].map((tag) => (
-                    <button key={tag} type="button" onClick={() => handleEventDraftChange('description', [newEventDraft.description, tag].filter(Boolean).join(' · '))} className="rounded-xl bg-white/10 px-2.5 py-1.5 text-[10px] font-bold text-slate-300">
+                  {['tras pÃ©rdida', 'lado dÃ©bil', 'segunda jugada', 'Ã¡rea rival'].map((tag) => (
+                    <button key={tag} type="button" onClick={() => handleEventDraftChange('description', [newEventDraft.description, tag].filter(Boolean).join(' Â· '))} className="rounded-xl bg-white/10 px-2.5 py-1.5 text-[10px] font-bold text-slate-300">
                       {tag}
                     </button>
                   ))}
@@ -12308,9 +12408,9 @@ function App() {
         </section>
 
         <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
-          {postBlockHeader('E · Lectura táctica', 'Repetir · Corregir · Entrenar', 'Tres decisiones accionables para convertir el partido en semana de trabajo.')}
+          {postBlockHeader('E Â· Lectura tÃ¡ctica', 'Repetir Â· Corregir Â· Entrenar', 'Tres decisiones accionables para convertir el partido en semana de trabajo.')}
           <div className="mt-4 flex flex-wrap gap-2">
-            {(patternChips.length ? patternChips : ['sin patrón validado todavía']).map((chip) => (
+            {(patternChips.length ? patternChips : ['sin patrÃ³n validado todavÃ­a']).map((chip) => (
               <span key={chip} className="rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.06] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">
                 {chip}
               </span>
@@ -12318,8 +12418,8 @@ function App() {
           </div>
           <div className="mt-4 grid gap-4 lg:grid-cols-3">
             {[
-              { label: 'REPETIR', field: 'postRepeat', hints: ['Presión alta', 'Llegada por fuera', 'Ataques tras robo'] },
-              { label: 'CORREGIR', field: 'postImprove', hints: ['Vigilancias', 'Segundo palo', 'Pérdida interior'] },
+              { label: 'REPETIR', field: 'postRepeat', hints: ['PresiÃ³n alta', 'Llegada por fuera', 'Ataques tras robo'] },
+              { label: 'CORREGIR', field: 'postImprove', hints: ['Vigilancias', 'Segundo palo', 'PÃ©rdida interior'] },
               { label: 'ENTRENAR', field: 'postTrainWeek', hints: postDerivedReading.suggestions },
             ].map((item) => (
               <label key={item.field} className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
@@ -12337,8 +12437,8 @@ function App() {
             <summary className="cursor-pointer px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400">Lectura ampliada</summary>
             <div className="grid gap-3 border-t border-white/10 p-4 lg:grid-cols-3">
               {[
-                ['Qué ocurrió', selectedMatch.postReality || postDerivedReading.trend],
-                ['Relación con PRE', selectedMatch.postWhy || 'Cruzar consignas PRE con clips y eventos validados.'],
+                ['QuÃ© ocurriÃ³', selectedMatch.postReality || postDerivedReading.trend],
+                ['RelaciÃ³n con PRE', selectedMatch.postWhy || 'Cruzar consignas PRE con clips y eventos validados.'],
                 ['Contexto', selectedMatch.postNotes || 'Pendiente de cierre del staff.'],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-2xl bg-white/[0.04] p-3">
@@ -12351,7 +12451,7 @@ function App() {
         </section>
 
         <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
-          {postBlockHeader('F · Observaciones individuales', 'Impacto de jugadores', 'Lectura compacta para detectar quién decide, quién necesita corrección y quién emerge.')}
+          {postBlockHeader('F Â· Observaciones individuales', 'Impacto de jugadores', 'Lectura compacta para detectar quiÃ©n decide, quiÃ©n necesita correcciÃ³n y quiÃ©n emerge.')}
           <div className="mt-5 grid gap-3 md:grid-cols-4">
             {individualCards.map((card) => (
               <div key={card.label} className={`min-h-[204px] rounded-3xl border p-4 ${getImpactEntriesForCategory(card.key).length ? card.accent : 'border-white/10 bg-white/[0.025] text-slate-400'}`}>
@@ -12367,7 +12467,7 @@ function App() {
                     const playerEntryKey = getImpactEntryKey(entry);
                     const playerName = player ? displayPlayerName(player) : entry.playerName || 'Jugador no disponible';
                     const playedPosition = player ? getStatsPlayedPosition(player.name) : '';
-                    const positionLabel = playedPosition && playedPosition !== 'Sin posición' ? playedPosition : player?.position || '';
+                    const positionLabel = playedPosition && playedPosition !== 'Sin posiciÃ³n' ? playedPosition : player?.position || '';
                     const evidence = buildPlayerEvidence(stats, card.mode);
                     const commentPreview = entry.comment?.trim() || 'Sin comentario';
                     const repeatedElsewhere = playerEntryKey && isImpactPlayerInAnotherCategory(card.key, playerEntryKey);
@@ -12380,11 +12480,11 @@ function App() {
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-black text-white">{playerName}</p>
                             <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.10em] text-slate-400">
-                              {[player?.number ? `#${player.number}` : null, positionLabel, Number(stats.minutes || 0) ? `${Number(stats.minutes || 0)}'` : null].filter(Boolean).join(' · ')}
+                              {[player?.number ? `#${player.number}` : null, positionLabel, Number(stats.minutes || 0) ? `${Number(stats.minutes || 0)}'` : null].filter(Boolean).join(' Â· ')}
                             </p>
                           </div>
                           <button type="button" onClick={() => removeIndividualImpactPlayer(card.key, playerEntryKey)} className="rounded-lg px-2 py-1 text-xs font-black text-slate-500 transition hover:bg-white/10 hover:text-white" aria-label={`Eliminar ${playerName}`}>
-                            ×
+                            Ã—
                           </button>
                         </div>
                         {evidence.length ? (
@@ -12394,10 +12494,10 @@ function App() {
                             ))}
                           </div>
                         ) : null}
-                        {repeatedElsewhere ? <p className="mt-2 text-[10px] font-bold text-amber-200/90">Ya está seleccionado en otra categoría.</p> : null}
+                        {repeatedElsewhere ? <p className="mt-2 text-[10px] font-bold text-amber-200/90">Ya estÃ¡ seleccionado en otra categorÃ­a.</p> : null}
                         <details className="mt-2 rounded-xl border border-white/10 bg-white/[0.025]">
                           <summary className="cursor-pointer px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                            {entry.comment?.trim() ? 'Editar comentario' : 'Añadir comentario'}
+                            {entry.comment?.trim() ? 'Editar comentario' : 'AÃ±adir comentario'}
                             <span className="ml-2 font-bold normal-case tracking-normal text-slate-500">{commentPreview.length > 28 ? `${commentPreview.slice(0, 28)}...` : commentPreview}</span>
                           </summary>
                           <textarea
@@ -12422,7 +12522,7 @@ function App() {
                       onChange={(event) => {
                         const typedValue = event.target.value;
                         const selectedRow = playedStatsPlayersForPost.find(({ player, stats }) => {
-                          const optionLabel = `${player.number ? `${player.number} · ` : ''}${displayPlayerName(player) || player.name} · ${Number(stats.minutes || 0)}'`;
+                          const optionLabel = `${player.number ? `${player.number} Â· ` : ''}${displayPlayerName(player) || player.name} Â· ${Number(stats.minutes || 0)}'`;
                           return optionLabel === typedValue;
                         });
                         if (selectedRow) {
@@ -12431,13 +12531,13 @@ function App() {
                         }
                       }}
                       className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-caudal-electric/50"
-                      placeholder="+ Añadir jugador"
+                      placeholder="+ AÃ±adir jugador"
                     />
                     <datalist id={`impact-player-options-${card.key}`}>
                       {playedStatsPlayersForPost
                         .filter(({ player }) => !getImpactEntriesForCategory(card.key).some((entry) => getImpactEntryPlayerId(entry) === player.id))
                         .map(({ player, stats }) => (
-                          <option key={`${card.key}-${player.id || player.name}`} value={`${player.number ? `${player.number} · ` : ''}${displayPlayerName(player) || player.name} · ${Number(stats.minutes || 0)}'`} />
+                          <option key={`${card.key}-${player.id || player.name}`} value={`${player.number ? `${player.number} Â· ` : ''}${displayPlayerName(player) || player.name} Â· ${Number(stats.minutes || 0)}'`} />
                         ))}
                     </datalist>
                   </div>
@@ -12447,8 +12547,8 @@ function App() {
           </div>
         </section>
 
-        <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
-          {postBlockHeader('G · Informe ejecutivo final', 'Cierre de partido', 'Qué pasó, por qué pasó y qué hacemos ahora.', (
+        <section id="post-final-closure" className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
+          {postBlockHeader('G Â· Informe ejecutivo final', 'Cierre de partido', 'QuÃ© pasÃ³, por quÃ© pasÃ³ y quÃ© hacemos ahora.', (
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={startClosureEditing} className="rounded-2xl border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-caudal-electric">
                 Editar cierre
@@ -12469,12 +12569,12 @@ function App() {
                   <select value={closureDraft.mainClipId || ''} onChange={(event) => updateClosureDraft('mainClipId', event.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-bold text-white outline-none focus:border-caudal-electric/50">
                     <option value="">Sin clip principal</option>
                     {chronologicalPostClips.map((clip) => (
-                      <option key={clip.id} value={clip.id}>{clip.minute || '-'}' · {clip.type || 'Clip'}{clip.player ? ` · ${clip.player}` : ''}</option>
+                      <option key={clip.id} value={clip.id}>{clip.minute || '-'}' Â· {clip.type || 'Clip'}{clip.player ? ` Â· ${clip.player}` : ''}</option>
                     ))}
                   </select>
                 ) : mainClip ? (
                   <button type="button" onClick={() => seekPostVideoToEvent(mainClip)} className="mt-2 text-left text-sm font-bold text-slate-200 transition hover:text-caudal-electric">
-                    {mainClip.minute || '-'}' · {mainClip.type || 'Clip'}{mainClip.player ? ` · ${mainClip.player}` : ''}
+                    {mainClip.minute || '-'}' Â· {mainClip.type || 'Clip'}{mainClip.player ? ` Â· ${mainClip.player}` : ''}
                   </button>
                 ) : (
                   <p className="mt-2 text-sm font-bold text-slate-500">Sin clip principal</p>
@@ -12483,9 +12583,8 @@ function App() {
             </div>
             <div className="mt-6 space-y-5">
               {[
-                ['Resumen', 'summary', 'Resume qué ocurrió en el partido y por qué.'],
-                ['Continuar haciendo', 'continueDoing', 'Ideas que queremos mantener.'],
-                ['Corregir', 'correct', 'Prioridades concretas de mejora.'],
+        ['Continuar haciendo', 'continueDoing', 'Ideas que queremos mantener.'],
+        ['Corregir', 'correct', 'Prioridades concretas de mejora.'],
               ].map(([label, field, placeholder]) => (
                 <div key={label} className="border-t border-white/10 pt-4">
                   <div className="flex items-center justify-between gap-2">
@@ -12495,7 +12594,7 @@ function App() {
                   {isEditingClosure ? (
                     <div className="mt-3">
                       <textarea value={closureDraft[field] || ''} onChange={(event) => updateClosureDraft(field, event.target.value)} placeholder={placeholder} className="min-h-[84px] w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-bold leading-5 text-white placeholder:text-slate-600 outline-none focus:border-caudal-electric/50" />
-                      {generatedClosure[field] ? <button type="button" onClick={() => useClosureProposal(field)} className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">Usar propuesta automática</button> : null}
+                      {generatedClosure[field] ? <button type="button" onClick={() => useClosureProposal(field)} className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">Usar propuesta automÃ¡tica</button> : null}
                     </div>
                   ) : (
                     <p className="mt-3 whitespace-pre-line text-base font-bold leading-7 text-white">{getClosureDisplayValue(field) || <span className="text-slate-500">{placeholder}</span>}</p>
@@ -12516,7 +12615,7 @@ function App() {
               </div>
             ) : (
               <button type="button" onClick={closePostAnalysis} className="rounded-2xl bg-caudal-electric px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-950">
-                Cerrar análisis
+                Cerrar anÃ¡lisis
               </button>
             )}
           </div>
@@ -12674,7 +12773,7 @@ function App() {
         .sort((a, b) => new Date(b.match.date || 0) - new Date(a.match.date || 0))
         .map((event) => [event.partidoId, event.match])
     ).keys()];
-    const quickScopeLimit = playerQuickScope === 'Últimos 3 partidos' ? 3 : playerQuickScope === 'Últimos 5 partidos' ? 5 : null;
+    const quickScopeLimit = playerQuickScope === 'Ãšltimos 3 partidos' ? 3 : playerQuickScope === 'Ãšltimos 5 partidos' ? 5 : null;
     const visibleMatchIds = quickScopeLimit ? new Set(orderedMatchIds.slice(0, quickScopeLimit)) : null;
     const quickEvents = visibleMatchIds
       ? scopedReviewedEvents.filter((event) => visibleMatchIds.has(event.partidoId))
@@ -12688,10 +12787,10 @@ function App() {
     const shotAccuracyValue = Number(String(shotAccuracy).replace('%', '')) || 0;
     const readings = [
       summary.recoveries >= 5 ? 'Alto volumen de recuperaciones' : null,
-      summary.turnovers > summary.recoveries && summary.turnovers >= 3 ? 'Muchas pérdidas respecto a recuperaciones' : null,
-      summary.shots >= 3 ? 'Participa en finalización' : null,
-      summary.shots >= 3 && shotAccuracyValue >= 50 ? 'Buena precisión de tiro' : null,
-      quickScopeLimit && quickEvents.length <= 2 ? 'Poca participación reciente' : null,
+      summary.turnovers > summary.recoveries && summary.turnovers >= 3 ? 'Muchas pÃ©rdidas respecto a recuperaciones' : null,
+      summary.shots >= 3 ? 'Participa en finalizaciÃ³n' : null,
+      summary.shots >= 3 && shotAccuracyValue >= 50 ? 'Buena precisiÃ³n de tiro' : null,
+      quickScopeLimit && quickEvents.length <= 2 ? 'Poca participaciÃ³n reciente' : null,
     ].filter(Boolean);
     return {
       ...summary,
@@ -12761,7 +12860,7 @@ function App() {
       return acc;
     }, {});
 
-  const officialGoalContexts = ['Juego combinativo', 'Juego directo', 'Transición', 'ABP'];
+  const officialGoalContexts = ['Juego combinativo', 'Juego directo', 'TransiciÃ³n', 'ABP'];
 
   const getOfficialGoalSide = (event = {}) => {
     if (event.type === 'Gol a favor') return 'for';
@@ -12999,10 +13098,10 @@ function App() {
 
   const generatePlayerReport = (player, aggregate) => {
     setPlayerReport({
-      general: `${player.name} acumula ${aggregate.played} partidos, ${aggregate.minutes}' y ${aggregate.directGoalParticipation} participaciones directas de gol en el filtro actual. En eventos rápidos: ${aggregate.quick.shots} tiros, ${aggregate.quick.recoveries} recuperaciones y ${aggregate.quick.losses} pérdidas.`,
-      strengths: aggregate.quick.recoveries > aggregate.quick.losses ? 'Buen balance presión/pérdida: recupera más de lo que pierde en los eventos registrados.' : aggregate.goals || aggregate.assists ? 'Aporta producción ofensiva medible: revisar sus acciones de gol/asistencia para repetir zonas y sociedades.' : 'Sin producción ofensiva registrada: valorar influencia sin balón, continuidad y ocupación de zonas.',
-      improve: aggregate.quick.losses >= 5 ? 'Acumula pérdidas: revisar zonas, apoyos y perfil corporal en últimos partidos.' : aggregate.yellow || aggregate.red ? 'Controlar acciones disciplinarias y momentos de riesgo competitivo.' : 'Aumentar presencia en acciones decisivas si su rol lo permite.',
-      trend: aggregate.quick.recent.slice(0, 3).length ? `Últimos eventos rápidos: ${aggregate.quick.recent.slice(0, 3).map((event) => `${getQuickEventLabel(event.tipoEvento)} vs ${event.match.opponent}`).join(', ')}.` : aggregate.rows.slice(-3).length ? `Últimos ${aggregate.rows.slice(-3).length} partidos registrados: ${aggregate.rows.slice(-3).reduce((sum, row) => sum + row.minutes, 0)} minutos.` : 'Sin tendencia reciente registrada.',
+      general: `${player.name} acumula ${aggregate.played} partidos, ${aggregate.minutes}' y ${aggregate.directGoalParticipation} participaciones directas de gol en el filtro actual. En eventos rÃ¡pidos: ${aggregate.quick.shots} tiros, ${aggregate.quick.recoveries} recuperaciones y ${aggregate.quick.losses} pÃ©rdidas.`,
+      strengths: aggregate.quick.recoveries > aggregate.quick.losses ? 'Buen balance presiÃ³n/pÃ©rdida: recupera mÃ¡s de lo que pierde en los eventos registrados.' : aggregate.goals || aggregate.assists ? 'Aporta producciÃ³n ofensiva medible: revisar sus acciones de gol/asistencia para repetir zonas y sociedades.' : 'Sin producciÃ³n ofensiva registrada: valorar influencia sin balÃ³n, continuidad y ocupaciÃ³n de zonas.',
+      improve: aggregate.quick.losses >= 5 ? 'Acumula pÃ©rdidas: revisar zonas, apoyos y perfil corporal en Ãºltimos partidos.' : aggregate.yellow || aggregate.red ? 'Controlar acciones disciplinarias y momentos de riesgo competitivo.' : 'Aumentar presencia en acciones decisivas si su rol lo permite.',
+      trend: aggregate.quick.recent.slice(0, 3).length ? `Ãšltimos eventos rÃ¡pidos: ${aggregate.quick.recent.slice(0, 3).map((event) => `${getQuickEventLabel(event.tipoEvento)} vs ${event.match.opponent}`).join(', ')}.` : aggregate.rows.slice(-3).length ? `Ãšltimos ${aggregate.rows.slice(-3).length} partidos registrados: ${aggregate.rows.slice(-3).reduce((sum, row) => sum + row.minutes, 0)} minutos.` : 'Sin tendencia reciente registrada.',
     });
   };
 
@@ -13168,9 +13267,9 @@ function App() {
     const scoutingSource = latestScoutingMatch || {};
     const strengthsText = firstMatchValue('preRivalStrengths') || (hasRealValue(team.mainThreat) ? `Amenaza principal: ${team.mainThreat}` : '');
     const weaknessesText = firstMatchValue('preRivalWeaknesses', 'preRivalSpacesAllowed') || (hasRealValue(team.detectedWeakness) ? `Espacio a atacar: ${team.detectedWeakness}` : '');
-    const patternText = firstMatchValue('preRivalStyle', 'preRivalProgression', 'preRivalAfterRecovery') || [team.offensiveBehavior, team.attackingRhythm ? `ritmo ${team.attackingRhythm}` : '', team.offensiveFocus ? `foco ${team.offensiveFocus}` : ''].filter(hasRealValue).join(' · ');
+    const patternText = firstMatchValue('preRivalStyle', 'preRivalProgression', 'preRivalAfterRecovery') || [team.offensiveBehavior, team.attackingRhythm ? `ritmo ${team.attackingRhythm}` : '', team.offensiveFocus ? `foco ${team.offensiveFocus}` : ''].filter(hasRealValue).join(' Â· ');
     const threatRows = [
-      ...keyPlayers.slice(0, 2).map((player) => player.position ? `${displayPlayerName(player)} · ${player.position}` : displayPlayerName(player)),
+      ...keyPlayers.slice(0, 2).map((player) => player.position ? `${displayPlayerName(player)} Â· ${player.position}` : displayPlayerName(player)),
       firstMatchValue('preRivalOffensiveKeyPlayers'),
       hasRealValue(team.mainThreat) ? `Amenaza: ${team.mainThreat}` : null,
       firstMatchValue('preRivalDangerZones') ? `Zona: ${firstMatchValue('preRivalDangerZones')}` : null,
@@ -13190,7 +13289,7 @@ function App() {
       const score = getMatchScoreData(match);
       return {
         id: match.id,
-        label: `${matchDisplayDate(match.date)} · ${score.caudalGoals}-${score.rivalGoals}`,
+        label: `${matchDisplayDate(match.date)} Â· ${score.caudalGoals}-${score.rivalGoals}`,
         result: score.caudalGoals > score.rivalGoals ? 'V' : score.caudalGoals < score.rivalGoals ? 'D' : 'E',
       };
     });
@@ -13207,7 +13306,7 @@ function App() {
       playedMatches,
       balance,
       latestMatch,
-      lastAnalysisLabel: daysAgo === null ? 'Sin análisis reciente' : daysAgo === 0 ? 'Último análisis: hoy' : `Último análisis: hace ${daysAgo} días`,
+      lastAnalysisLabel: daysAgo === null ? 'Sin anÃ¡lisis reciente' : daysAgo === 0 ? 'Ãšltimo anÃ¡lisis: hoy' : `Ãšltimo anÃ¡lisis: hace ${daysAgo} dÃ­as`,
       completion,
       completionClass,
       completionPercent,
@@ -13329,7 +13428,7 @@ function App() {
     };
   });
 
-  const countPhases = (events) => safeArray(['Juego combinativo', 'Juego directo', 'Transición', 'ABP']).map((phase) => ({
+  const countPhases = (events) => safeArray(['Juego combinativo', 'Juego directo', 'TransiciÃ³n', 'ABP']).map((phase) => ({
     phase,
     count: safeArray(events).filter((event) => event.phase === phase).length,
   }));
@@ -13339,7 +13438,7 @@ function App() {
     const get = (subphase) => abp.filter((event) => event.subphase === subphase).length;
     return {
       total: abp.length,
-      corner: get('Córner'),
+      corner: get('CÃ³rner'),
       directFreeKick: get('Falta directa'),
       freeKickHeader: get('Falta con remate'),
       penalty: get('Penalti'),
@@ -13488,8 +13587,8 @@ function App() {
         addGroup('Pareja de centrales', (slot) => slot.id.startsWith('DFC'), 2, 2);
         addGroup('Doble pivote', (slot) => slot.id.startsWith('MCD') || slot.id.startsWith('MC'), 2, 2);
         addGroup('Pareja de delanteros', (slot) => slot.id.startsWith('DC'), 2, 2);
-        addGroup('Trío de centrales', (slot) => slot.id.startsWith('DFC'), 3, 3);
-        addGroup('Trío de centrocampistas', (slot) => slot.line === 'medio', 3, 3);
+        addGroup('TrÃ­o de centrales', (slot) => slot.id.startsWith('DFC'), 3, 3);
+        addGroup('TrÃ­o de centrocampistas', (slot) => slot.line === 'medio', 3, 3);
         addGroup('Tridente ofensivo', (slot) => slot.line === 'ataque' || slot.id.startsWith('MP') || slot.id.startsWith('ED') || slot.id.startsWith('EI'), 3, 3);
         bySystem.set(segment.system, systemData);
       });
@@ -13526,7 +13625,7 @@ function App() {
   const filterAssistEventsByGroupMode = (events) => {
     const rows = safeArray(events);
     if (groupAssistFilter === 'Juego') return rows.filter((event) => ['Juego combinativo', 'Juego directo'].includes(event.phase));
-    if (groupAssistFilter === 'Transición') return rows.filter((event) => event.phase === 'Transición');
+    if (groupAssistFilter === 'TransiciÃ³n') return rows.filter((event) => event.phase === 'TransiciÃ³n');
     if (groupAssistFilter === 'ABP') return rows.filter((event) => event.phase === 'ABP');
     return rows;
   };
@@ -13849,19 +13948,19 @@ function App() {
     const cardsLast = getGroupTendency(groupData.scoped).reduce((sum, row) => sum + row.cards, 0);
     const topMinutes = rankings.minutes[0];
 
-    if (secondHalfAgainst > firstHalfAgainst) addAlert('Caída defensiva en segunda parte.', 'media', 'defensiva', 'creciente', secondHalfAgainst);
-    if (abpFor >= Math.max(2, groupData.goalsFor * 0.35)) addAlert('La ABP ofensiva está dando goles.', 'leve', 'ofensiva', 'creciente', abpFor);
+    if (secondHalfAgainst > firstHalfAgainst) addAlert('CaÃ­da defensiva en segunda parte.', 'media', 'defensiva', 'creciente', secondHalfAgainst);
+    if (abpFor >= Math.max(2, groupData.goalsFor * 0.35)) addAlert('La ABP ofensiva estÃ¡ dando goles.', 'leve', 'ofensiva', 'creciente', abpFor);
     if (awaySummary.played >= 2 && Number(awaySummary.pointsPerGame) < Number(localSummary.pointsPerGame)) addAlert('El equipo baja rendimiento fuera de casa.', 'media', 'competitiva', 'estable', awaySummary.played);
-    if (topMinutes && topMinutes.minutePct >= 80) addAlert(`Alta carga de minutos en ${topMinutes.player.name}.`, 'leve', 'gestión', 'creciente', topMinutes.minutePct);
+    if (topMinutes && topMinutes.minutePct >= 80) addAlert(`Alta carga de minutos en ${topMinutes.player.name}.`, 'leve', 'gestiÃ³n', 'creciente', topMinutes.minutePct);
     if (cardsLast >= 8) addAlert('Demasiadas tarjetas recientes.', 'media', 'competitiva', 'creciente', cardsLast);
     if (quickSummary.rivalShots >= 10 && Number(quickSummary.concededDanger.replace('%', '')) >= 45) addAlert('Concedemos mucho tiro a puerta.', 'alta', 'defensiva', 'creciente', quickSummary.rivalShotsOnTarget);
     if (quickSummary.shots >= 10 && Number(quickSummary.shotAccuracy.replace('%', '')) < 35) addAlert('Baja eficacia de tiro.', 'media', 'ofensiva', 'estable', `${quickSummary.shotAccuracy}`);
-    if (quickSummary.losses > quickSummary.recoveries) addAlert('Pérdidas interiores repetidas.', 'alta', 'defensiva', 'creciente', quickSummary.losses);
-    if (quickSummary.recoveries >= quickSummary.losses + 5) addAlert('Buena eficacia tras recuperación alta.', 'leve', 'ofensiva', 'creciente', quickSummary.recoveries);
-    if (quickSummary.rivalBoxEntries > quickSummary.boxEntries) addAlert('Sufrimos entradas al área rival.', 'alta', 'defensiva', 'creciente', quickSummary.rivalBoxEntries);
-    if (quickSummary.rivalCorners >= quickSummary.corners + 3) addAlert('Sufrimos centros laterales y córners.', 'media', 'defensiva', 'creciente', quickSummary.rivalCorners);
+    if (quickSummary.losses > quickSummary.recoveries) addAlert('PÃ©rdidas interiores repetidas.', 'alta', 'defensiva', 'creciente', quickSummary.losses);
+    if (quickSummary.recoveries >= quickSummary.losses + 5) addAlert('Buena eficacia tras recuperaciÃ³n alta.', 'leve', 'ofensiva', 'creciente', quickSummary.recoveries);
+    if (quickSummary.rivalBoxEntries > quickSummary.boxEntries) addAlert('Sufrimos entradas al Ã¡rea rival.', 'alta', 'defensiva', 'creciente', quickSummary.rivalBoxEntries);
+    if (quickSummary.rivalCorners >= quickSummary.corners + 3) addAlert('Sufrimos centros laterales y cÃ³rners.', 'media', 'defensiva', 'creciente', quickSummary.rivalCorners);
 
-    return alerts.length ? alerts : [{ text: 'Sin alertas críticas con los datos actuales.', gravity: 'leve', type: 'contexto', trend: 'estable' }];
+    return alerts.length ? alerts : [{ text: 'Sin alertas crÃ­ticas con los datos actuales.', gravity: 'leve', type: 'contexto', trend: 'estable' }];
   };
 
   const getGroupAutomaticReadings = (groupData) => {
@@ -13875,32 +13974,32 @@ function App() {
     const shotAccuracyValue = Number(quickSummary.shotAccuracy.replace('%', '')) || 0;
     const concededDangerValue = Number(quickSummary.concededDanger.replace('%', '')) || 0;
 
-    if (quickSummary.shots > quickSummary.rivalShots) readings.push('Generamos más tiros que el rival.');
+    if (quickSummary.shots > quickSummary.rivalShots) readings.push('Generamos mÃ¡s tiros que el rival.');
     if (quickSummary.shots >= 8 && shotAccuracyValue < 35) {
-      readings.push('El equipo genera volumen de tiro, pero necesita mejorar precisión a puerta.');
+      readings.push('El equipo genera volumen de tiro, pero necesita mejorar precisiÃ³n a puerta.');
     } else if (quickSummary.shotsOnTarget >= Math.max(3, quickSummary.shots * 0.45)) {
       readings.push('Buena eficacia ofensiva: una parte alta de los tiros acaba entre palos.');
     }
 
-    if (quickSummary.rivalShotsOnTarget >= Math.max(3, quickSummary.shotsOnTarget)) readings.push('El rival nos está tirando demasiado a puerta.');
+    if (quickSummary.rivalShotsOnTarget >= Math.max(3, quickSummary.shotsOnTarget)) readings.push('El rival nos estÃ¡ tirando demasiado a puerta.');
     if (quickSummary.rivalShots >= 8 && concededDangerValue >= 40) {
-      readings.push('El rival está generando demasiados tiros a puerta: conviene revisar protección de área y presión al poseedor.');
+      readings.push('El rival estÃ¡ generando demasiados tiros a puerta: conviene revisar protecciÃ³n de Ã¡rea y presiÃ³n al poseedor.');
     } else if (quickSummary.rivalShotsOnTarget <= Math.max(1, quickSummary.rivalShots * 0.25)) {
-      readings.push('Solidez defensiva correcta: se están reduciendo los tiros claros del rival.');
+      readings.push('Solidez defensiva correcta: se estÃ¡n reduciendo los tiros claros del rival.');
     }
 
     if (quickSummary.corners >= 4 || quickSummary.rivalCorners >= 4) {
-      readings.push(quickSummary.corners >= quickSummary.rivalCorners ? 'Mucho balón parado a favor.' : 'Mucho balón parado en contra.');
+      readings.push(quickSummary.corners >= quickSummary.rivalCorners ? 'Mucho balÃ³n parado a favor.' : 'Mucho balÃ³n parado en contra.');
     }
     if (quickSummary.corners >= quickSummary.rivalCorners + 3) {
-      readings.push('El equipo carga bastante el balón parado ofensivo y fuerza más córners que el rival.');
+      readings.push('El equipo carga bastante el balÃ³n parado ofensivo y fuerza mÃ¡s cÃ³rners que el rival.');
     } else if (quickSummary.rivalCorners >= quickSummary.corners + 3) {
-      readings.push('El rival está acumulando córners: revisar defensa de banda y despejes hacia zonas seguras.');
+      readings.push('El rival estÃ¡ acumulando cÃ³rners: revisar defensa de banda y despejes hacia zonas seguras.');
     }
 
-    if (quickSummary.losses > quickSummary.recoveries) readings.push('Hay más pérdidas que recuperaciones.');
+    if (quickSummary.losses > quickSummary.recoveries) readings.push('Hay mÃ¡s pÃ©rdidas que recuperaciones.');
     if (quickSummary.recoveries > quickSummary.losses) {
-      readings.push('Buen balance de presión: hay más recuperaciones que pérdidas.');
+      readings.push('Buen balance de presiÃ³n: hay mÃ¡s recuperaciones que pÃ©rdidas.');
     }
 
     const scopedWithQuick = scopedMatches.filter((match) => safeArray(match.quickEvents).length);
@@ -13916,9 +14015,9 @@ function App() {
       const previousRecoveries = previous.length ? previousSummary.recoveries / previous.length : 0;
       const recentRecoveries = recent.length ? recentSummary.recoveries / recent.length : 0;
 
-      if (recentPerMatch >= previousPerMatch + 2) readings.push('Tendencia positiva: en los últimos 3 partidos aumenta el volumen de tiro.');
-      if (recentLosses >= previousLosses + 2) readings.push('Tendencia a vigilar: aumentan las pérdidas en los últimos 3 partidos.');
-      if (recentRecoveries >= previousRecoveries + 2) readings.push('Mejora la presión reciente: suben las recuperaciones en los últimos 3 partidos.');
+      if (recentPerMatch >= previousPerMatch + 2) readings.push('Tendencia positiva: en los Ãºltimos 3 partidos aumenta el volumen de tiro.');
+      if (recentLosses >= previousLosses + 2) readings.push('Tendencia a vigilar: aumentan las pÃ©rdidas en los Ãºltimos 3 partidos.');
+      if (recentRecoveries >= previousRecoveries + 2) readings.push('Mejora la presiÃ³n reciente: suben las recuperaciones en los Ãºltimos 3 partidos.');
     }
 
     const ranges = getQuickEventsByMinuteRange(quickEvents);
@@ -13936,12 +14035,12 @@ function App() {
     const topOwnShotRange = rangeDetails.slice().sort((a, b) => b.ownShots - a.ownShots)[0];
     const topRivalShotRange = rangeDetails.slice().sort((a, b) => b.rivalShots - a.rivalShots)[0];
     const topLossRange = rangeDetails.slice().sort((a, b) => b.losses - a.losses)[0];
-    if (topOwnShotRange?.ownShots > 0) readings.push(`El tramo con más tiros propios es ${topOwnShotRange.range}'.`);
-    if (topRivalShotRange?.rivalShots > 0) readings.push(`El tramo con más tiros rivales es ${topRivalShotRange.range}': controlar ese momento del partido.`);
-    if (topLossRange?.losses >= 2) readings.push(`El tramo con más pérdidas es ${topLossRange.range}': revisar gestión de balón en esa fase.`);
+    if (topOwnShotRange?.ownShots > 0) readings.push(`El tramo con mÃ¡s tiros propios es ${topOwnShotRange.range}'.`);
+    if (topRivalShotRange?.rivalShots > 0) readings.push(`El tramo con mÃ¡s tiros rivales es ${topRivalShotRange.range}': controlar ese momento del partido.`);
+    if (topLossRange?.losses >= 2) readings.push(`El tramo con mÃ¡s pÃ©rdidas es ${topLossRange.range}': revisar gestiÃ³n de balÃ³n en esa fase.`);
     const firstHalfRecoveries = quickEvents.filter((event) => getQuickEventBaseType(event.tipoEvento) === 'recuperacion' && getQuickEventSide(event) === 'caudal' && Number(event.minute) < 45).length;
     const secondHalfRecoveries = quickEvents.filter((event) => getQuickEventBaseType(event.tipoEvento) === 'recuperacion' && getQuickEventSide(event) === 'caudal' && Number(event.minute) >= 45).length;
-    if (secondHalfRecoveries > firstHalfRecoveries) readings.push('El equipo recupera más en la segunda parte.');
+    if (secondHalfRecoveries > firstHalfRecoveries) readings.push('El equipo recupera mÃ¡s en la segunda parte.');
 
     const homeMatches = scopedMatches.filter((match) => match.isHome && safeArray(match.quickEvents).length);
     const awayMatches = scopedMatches.filter((match) => !match.isHome && safeArray(match.quickEvents).length);
@@ -13952,8 +14051,8 @@ function App() {
       const awayShots = awaySummary.shots / awayMatches.length;
       const homeRivalShots = homeSummary.rivalShots / homeMatches.length;
       const awayRivalShots = awaySummary.rivalShots / awayMatches.length;
-      if (homeShots >= awayShots + 2) readings.push('Como local se genera más volumen de tiro que fuera de casa.');
-      if (awayRivalShots >= homeRivalShots + 2) readings.push('Como visitante se conceden más tiros: ajustar bloque y vigilancia tras pérdida.');
+      if (homeShots >= awayShots + 2) readings.push('Como local se genera mÃ¡s volumen de tiro que fuera de casa.');
+      if (awayRivalShots >= homeRivalShots + 2) readings.push('Como visitante se conceden mÃ¡s tiros: ajustar bloque y vigilancia tras pÃ©rdida.');
     }
 
     return readings.slice(0, 8);
@@ -13981,8 +14080,8 @@ function App() {
     const identityRows = [
       { key: 'combinativo', label: 'Juego combinativo', forCount: realGoalForEvents.filter((event) => event.phase === 'Juego combinativo').length, againstCount: realGoalAgainstEvents.filter((event) => event.phase === 'Juego combinativo').length },
       { key: 'directo', label: 'Juego directo', forCount: realGoalForEvents.filter((event) => event.phase === 'Juego directo').length, againstCount: realGoalAgainstEvents.filter((event) => event.phase === 'Juego directo').length },
-      { key: 'transicion', label: 'Transición', forCount: realGoalForEvents.filter((event) => event.phase === 'Transición').length, againstCount: realGoalAgainstEvents.filter((event) => event.phase === 'Transición').length },
-      { key: 'recuperacion', label: 'Recuperación', forCount: quickEvents.filter((event) => getQuickEventBaseType(event.tipoEvento) === 'recuperacion' && getQuickEventSide(event) === 'caudal').length, againstCount: quickEvents.filter((event) => getQuickEventBaseType(event.tipoEvento) === 'recuperacion' && getQuickEventSide(event) === 'rival').length },
+      { key: 'transicion', label: 'TransiciÃ³n', forCount: realGoalForEvents.filter((event) => event.phase === 'TransiciÃ³n').length, againstCount: realGoalAgainstEvents.filter((event) => event.phase === 'TransiciÃ³n').length },
+      { key: 'recuperacion', label: 'RecuperaciÃ³n', forCount: quickEvents.filter((event) => getQuickEventBaseType(event.tipoEvento) === 'recuperacion' && getQuickEventSide(event) === 'caudal').length, againstCount: quickEvents.filter((event) => getQuickEventBaseType(event.tipoEvento) === 'recuperacion' && getQuickEventSide(event) === 'rival').length },
       { key: 'centro', label: 'Centro lateral', forCount: zoneCount(realGoalForEvents.map((event) => ({ text: `${event.subphase} ${event.assistZone} ${event.description}` })), [/centro|lateral|banda|derecha|izquierda/]), againstCount: zoneCount(realGoalAgainstEvents.map((event) => ({ text: `${event.subphase} ${event.assistZone} ${event.description}` })), [/centro|lateral|banda|derecha|izquierda/]) },
       { key: 'abp', label: 'ABP', forCount: realGoalForEvents.filter((event) => event.phase === 'ABP').length, againstCount: realGoalAgainstEvents.filter((event) => event.phase === 'ABP').length },
       { key: 'izquierda', label: 'Lado izquierdo', forCount: zoneCount(realGoalForEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/izquierda|izquierdo/]), againstCount: zoneCount(realGoalAgainstEvents.map((event) => ({ text: `${event.assistZone} ${event.shotZone}` })), [/izquierda|izquierdo/]) },
@@ -14010,9 +14109,9 @@ function App() {
       },
       dna: [
         !hasMinimumSample ? 'Sin muestra suficiente.' : null,
-        dominantFor?.forCount ? `Equipo más eficaz en ${dominantFor.label.toLowerCase()}.` : null,
+        dominantFor?.forCount ? `Equipo mÃ¡s eficaz en ${dominantFor.label.toLowerCase()}.` : null,
         dominantAgainst?.againstCount ? `Fragilidad defensiva: ${dominantAgainst.label.toLowerCase()}.` : null,
-        homeIdentity.recoveries > awayIdentity.recoveries ? 'Más sólido/activo en casa.' : awayIdentity.rivalShots > homeIdentity.rivalShots ? 'Fuera concede más amenaza.' : null,
+        homeIdentity.recoveries > awayIdentity.recoveries ? 'MÃ¡s sÃ³lido/activo en casa.' : awayIdentity.rivalShots > homeIdentity.rivalShots ? 'Fuera concede mÃ¡s amenaza.' : null,
       ].filter(Boolean),
     };
   };
@@ -14025,12 +14124,12 @@ function App() {
       post: safeArray(match.events),
     }));
     const patternDefs = [
-      { id: 'high_recovery_shot', label: 'Recuperación -> tiro', a: ['recuperacion'], aSide: 'caudal', b: ['tiro', 'tiro_puerta', 'gol'], bSide: 'caudal', outcome: ['tiro_puerta', 'gol'] },
-      { id: 'loss_rival_chance', label: 'Pérdida interior -> ocasión rival', a: ['perdida'], aSide: 'caudal', b: ['tiro', 'tiro_puerta', 'gol', 'centro', 'regate'], bSide: 'rival', outcome: ['tiro_puerta', 'gol'] },
+      { id: 'high_recovery_shot', label: 'RecuperaciÃ³n -> tiro', a: ['recuperacion'], aSide: 'caudal', b: ['tiro', 'tiro_puerta', 'gol'], bSide: 'caudal', outcome: ['tiro_puerta', 'gol'] },
+      { id: 'loss_rival_chance', label: 'PÃ©rdida interior -> ocasiÃ³n rival', a: ['perdida'], aSide: 'caudal', b: ['tiro', 'tiro_puerta', 'gol', 'centro', 'regate'], bSide: 'rival', outcome: ['tiro_puerta', 'gol'] },
       { id: 'direct_second', label: 'Juego directo ? segunda jugada', text: [/juego directo/i, /segunda/i] },
       { id: 'cross_finish', label: 'Centro lateral ? remate', text: [/centro|lateral|banda/i, /remate|finaliza|tiro|gol/i] },
-      { id: 'transition_finish', label: 'Transición -> finalización rápida', text: [/transici/i, /tiro|finaliza|gol|ocas/i] },
-      { id: 'abp_second', label: 'ABP -> segunda acción', text: [/abp|corner|falta/i, /segunda|rechace/i] },
+      { id: 'transition_finish', label: 'TransiciÃ³n -> finalizaciÃ³n rÃ¡pida', text: [/transici/i, /tiro|finaliza|gol|ocas/i] },
+      { id: 'abp_second', label: 'ABP -> segunda acciÃ³n', text: [/abp|corner|falta/i, /segunda|rechace/i] },
     ];
     return patternDefs.map((pattern) => {
       let frequency = 0;
@@ -14095,7 +14194,7 @@ function App() {
       rows,
       best,
       worst,
-      summary: best && worst ? `Mejor tramo ${best.range}; tramo crítico ${worst.range}.` : 'Sin eventos suficientes por tramos.',
+      summary: best && worst ? `Mejor tramo ${best.range}; tramo crÃ­tico ${worst.range}.` : 'Sin eventos suficientes por tramos.',
     };
   };
 
@@ -14106,19 +14205,19 @@ function App() {
     };
     safeArray(alerts).forEach((alert) => {
       const text = typeof alert === 'string' ? alert : alert.text;
-      if (/p[eé]rdida|tras p/i.test(text)) push('Vigilancia tras pérdida', text, 'alerta');
+      if (/p[eÃ©]rdida|tras p/i.test(text)) push('Vigilancia tras pÃ©rdida', text, 'alerta');
       if (/segunda/i.test(text)) push('Cierre segunda jugada', text, 'alerta');
-      if (/tiro|puerta|precisi/i.test(text)) push('Finalización y selección de tiro', text, 'alerta');
+      if (/tiro|puerta|precisi/i.test(text)) push('FinalizaciÃ³n y selecciÃ³n de tiro', text, 'alerta');
       if (/juego directo/i.test(text)) push('Defensa de juego directo', text, 'alerta');
       if (/centro|lateral|banda/i.test(text)) push('Defensa de centro lateral', text, 'alerta');
     });
     safeArray(patterns).forEach((pattern) => {
-      if (/recuperaci/i.test(pattern.label)) push('Presión tras pérdida + finalización', pattern.label, 'patrón');
-      if (/centro/i.test(pattern.label)) push('Ocupación de área y remate de centro', pattern.label, 'patrón');
-      if (/ABP/i.test(pattern.label)) push('ABP: rechace y segunda acción', pattern.label, 'patrón');
+      if (/recuperaci/i.test(pattern.label)) push('PresiÃ³n tras pÃ©rdida + finalizaciÃ³n', pattern.label, 'patrÃ³n');
+      if (/centro/i.test(pattern.label)) push('OcupaciÃ³n de Ã¡rea y remate de centro', pattern.label, 'patrÃ³n');
+      if (/ABP/i.test(pattern.label)) push('ABP: rechace y segunda acciÃ³n', pattern.label, 'patrÃ³n');
     });
     if (identity?.dominantAgainst?.againstCount) push(`Corregir ${identity.dominantAgainst.label.toLowerCase()}`, 'Identidad defensiva detectada', 'identidad');
-    if (temporal?.worst?.losses >= 2) push(`Gestión del tramo ${temporal.worst.range}`, 'Tramo crítico por pérdidas/rival', 'tramo');
+    if (temporal?.worst?.losses >= 2) push(`GestiÃ³n del tramo ${temporal.worst.range}`, 'Tramo crÃ­tico por pÃ©rdidas/rival', 'tramo');
     return proposals.slice(0, 6);
   };
 
@@ -14134,22 +14233,22 @@ function App() {
     const patternRows = safeArray(patterns);
     const alertRows = safeArray(alerts);
     const highRecoveryPattern = patternRows.find((pattern) => /Recuperaci/i.test(pattern.label));
-    const lossPattern = patternRows.find((pattern) => /Pérdida|perdida/i.test(pattern.label));
+    const lossPattern = patternRows.find((pattern) => /PÃ©rdida|perdida/i.test(pattern.label));
     const directPattern = patternRows.find((pattern) => /directo/i.test(pattern.label));
     const topAlert = alertRows.find((alert) => alert.gravity === 'alta') || alertRows.find((alert) => alert.gravity === 'media') || alertRows[0];
 
     if (dominantFor?.forCount) push(`Equipo dominante en ${dominantFor.label.toLowerCase()}.`, 'positive', `${dominantFor.forPct}% de la identidad ofensiva detectada`);
-    if (dominantAgainst?.againstCount) push(`Fragilidad recurrente ante ${dominantAgainst.label.toLowerCase()}.`, 'risk', `${dominantAgainst.againstPct}% de los daños detectados`);
-    if (highRecoveryPattern?.frequency) push('Mejor rendimiento tras recuperación alta.', 'positive', `${highRecoveryPattern.frequency} secuencias · ${highRecoveryPattern.efficiency}% eficacia`);
-    if (lossPattern?.frequency) push('Problemas recurrentes en transición defensiva.', 'risk', `${lossPattern.frequency} secuencias detectadas`);
-    if (directPattern?.frequency || /juego directo/i.test(topAlert?.text || '')) push('El juego directo rival aparece como foco de corrección.', 'risk', directPattern ? `${directPattern.frequency} patrones` : topAlert.text);
-    if ((quickSummary?.boxEntries || 0) > (quickSummary?.rivalBoxEntries || 0) && shotAccuracy < 35) push('Caudal llega, pero necesita convertir mejor el volumen ofensivo.', 'warning', `Precisión tiro ${quickSummary.shotAccuracy}`);
+    if (dominantAgainst?.againstCount) push(`Fragilidad recurrente ante ${dominantAgainst.label.toLowerCase()}.`, 'risk', `${dominantAgainst.againstPct}% de los daÃ±os detectados`);
+    if (highRecoveryPattern?.frequency) push('Mejor rendimiento tras recuperaciÃ³n alta.', 'positive', `${highRecoveryPattern.frequency} secuencias Â· ${highRecoveryPattern.efficiency}% eficacia`);
+    if (lossPattern?.frequency) push('Problemas recurrentes en transiciÃ³n defensiva.', 'risk', `${lossPattern.frequency} secuencias detectadas`);
+    if (directPattern?.frequency || /juego directo/i.test(topAlert?.text || '')) push('El juego directo rival aparece como foco de correcciÃ³n.', 'risk', directPattern ? `${directPattern.frequency} patrones` : topAlert.text);
+    if ((quickSummary?.boxEntries || 0) > (quickSummary?.rivalBoxEntries || 0) && shotAccuracy < 35) push('Caudal llega, pero necesita convertir mejor el volumen ofensivo.', 'warning', `PrecisiÃ³n tiro ${quickSummary.shotAccuracy}`);
     if (concededDanger >= 45) push('El rival convierte demasiado sus ataques en amenaza real.', 'risk', `Peligro concedido ${quickSummary.concededDanger}`);
-    if (temporal?.best?.range) push(`Equipo fuerte en el tramo ${temporal.best.range}.`, 'positive', 'Mejor balance de tiros, presión y entradas al área');
-    if (temporal?.worst?.range) push(`Tramo crítico: ${temporal.worst.range}.`, 'warning', 'Más tiros rivales, pérdidas o presión negativa');
-    if (topAlert?.text && !/Sin alertas/i.test(topAlert.text)) push(topAlert.text, topAlert.gravity === 'alta' ? 'risk' : 'warning', `${topAlert.type || 'alerta'} · ${topAlert.trend || 'estable'}`);
+    if (temporal?.best?.range) push(`Equipo fuerte en el tramo ${temporal.best.range}.`, 'positive', 'Mejor balance de tiros, presiÃ³n y entradas al Ã¡rea');
+    if (temporal?.worst?.range) push(`Tramo crÃ­tico: ${temporal.worst.range}.`, 'warning', 'MÃ¡s tiros rivales, pÃ©rdidas o presiÃ³n negativa');
+    if (topAlert?.text && !/Sin alertas/i.test(topAlert.text)) push(topAlert.text, topAlert.gravity === 'alta' ? 'risk' : 'warning', `${topAlert.type || 'alerta'} Â· ${topAlert.trend || 'estable'}`);
 
-    return readings.length ? readings.slice(0, 5) : [{ text: 'Sin lectura principal fiable todavía: faltan eventos, goles o clips revisados.', tone: 'neutral', evidence: 'Completa ESTADÍSTICAS y POST para activar la interpretación.' }];
+    return readings.length ? readings.slice(0, 5) : [{ text: 'Sin lectura principal fiable todavÃ­a: faltan eventos, goles o clips revisados.', tone: 'neutral', evidence: 'Completa ESTADÃSTICAS y POST para activar la interpretaciÃ³n.' }];
   };
 
   const getGroupPrePostReality = (scopedMatches) => {
@@ -14157,11 +14256,11 @@ function App() {
       if (Array.isArray(value)) {
         return value.flatMap((item) => {
           if (typeof item === 'string') return item.split('\n');
-          if (isPlainObject(item)) return [Object.values(item).filter(Boolean).join(' · ')];
+          if (isPlainObject(item)) return [Object.values(item).filter(Boolean).join(' Â· ')];
           return [];
         });
       }
-      if (isPlainObject(value)) return [Object.values(value).filter(Boolean).join(' · ')];
+      if (isPlainObject(value)) return [Object.values(value).filter(Boolean).join(' Â· ')];
       return String(value || '').split('\n');
     };
     const extractPlanItems = (match) => [
@@ -14241,9 +14340,9 @@ function App() {
       }, {});
     const topConnection = Object.entries(goalConnection).sort((a, b) => b[1] - a[1])[0];
     return [
-      bestSystem ? `Sistema más efectivo: ${bestSystem.system} (${(bestSystem.points / Math.max(1, bestSystem.played)).toFixed(2)} pts/partido).` : null,
-      bestPair ? `Pareja más repetida: ${bestPair[0]} (${bestPair[1]} partidos).` : null,
-      topConnection ? `Conexión ofensiva más productiva en XI ideal: ${topConnection[0]} (${topConnection[1]} goles del equipo con él en once).` : null,
+      bestSystem ? `Sistema mÃ¡s efectivo: ${bestSystem.system} (${(bestSystem.points / Math.max(1, bestSystem.played)).toFixed(2)} pts/partido).` : null,
+      bestPair ? `Pareja mÃ¡s repetida: ${bestPair[0]} (${bestPair[1]} partidos).` : null,
+      topConnection ? `ConexiÃ³n ofensiva mÃ¡s productiva en XI ideal: ${topConnection[0]} (${topConnection[1]} goles del equipo con Ã©l en once).` : null,
       system ? `Estructura analizada: ${system}.` : null,
     ].filter(Boolean).slice(0, 4);
   };
@@ -14274,7 +14373,7 @@ function App() {
               </div>
               <span className="max-w-[54px] truncate rounded-lg bg-black/60 px-1.5 py-0.5 text-[8px] font-black text-white sm:max-w-[90px] sm:rounded-xl sm:px-2 sm:py-1 sm:text-[10px]">{player?.name || slot.label}</span>
               {row?.primaryRole ? (
-                <span className="max-w-[58px] truncate rounded-lg bg-caudal-electric/90 px-1.5 py-0.5 text-[7px] font-black text-slate-950 sm:max-w-[96px] sm:rounded-xl sm:px-2 sm:text-[9px]" title={`Rol más jugado: ${row.primaryRole}${row.idealSlotFallback ? ' (fallback plantilla)' : ''}`}>
+                <span className="max-w-[58px] truncate rounded-lg bg-caudal-electric/90 px-1.5 py-0.5 text-[7px] font-black text-slate-950 sm:max-w-[96px] sm:rounded-xl sm:px-2 sm:text-[9px]" title={`Rol mÃ¡s jugado: ${row.primaryRole}${row.idealSlotFallback ? ' (fallback plantilla)' : ''}`}>
                   {row.idealSlotFallback ? `${slot.label}*` : row.primaryRole}
                 </span>
               ) : null}
@@ -14288,7 +14387,7 @@ function App() {
 
   const renderMostUsedXiPitch = (xiData) => {
     if (!xiData?.hasData) {
-      return <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Aún no hay minutos tácticos suficientes para construir el once.</p>;
+      return <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">AÃºn no hay minutos tÃ¡cticos suficientes para construir el once.</p>;
     }
     return (
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_260px]">
@@ -14316,14 +14415,14 @@ function App() {
           </div>
         </div>
         <div className="space-y-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Alternativas por posición</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Alternativas por posiciÃ³n</p>
           {xiData.assignments.filter((assignment) => assignment.row).map(({ slot, row }) => {
             const alternatives = xiData.alternatives?.[slot.id] || [];
             return (
               <div key={`alt-${slot.id}`} className="rounded-2xl bg-white/5 px-3 py-3">
                 <p className="text-xs font-black uppercase tracking-[0.12em] text-white">{slot.label}</p>
-                <p className="mt-1 text-sm font-bold text-caudal-electric">{row.playerName} · {row.minutes} min</p>
-                {alternatives[0] ? <p className="mt-1 text-xs font-semibold text-slate-400">Alternativa: {alternatives[0].playerName} · {alternatives[0].minutes} min</p> : null}
+                <p className="mt-1 text-sm font-bold text-caudal-electric">{row.playerName} Â· {row.minutes} min</p>
+                {alternatives[0] ? <p className="mt-1 text-xs font-semibold text-slate-400">Alternativa: {alternatives[0].playerName} Â· {alternatives[0].minutes} min</p> : null}
               </div>
             );
           })}
@@ -14364,28 +14463,28 @@ function App() {
 
   const openMatchPage = async (match, section) => {
     setSelectedMatchId(match.id);
-    setMatchView(section === 'PRE' ? 'pre_partido' : section === 'ESTADÍSTICAS' ? 'estadisticas_partido' : section === 'IMPRESIÓN' ? 'impresion_partido' : 'post_partido');
+    setMatchView(section === 'PRE' ? 'pre_partido' : section === 'ESTADÃSTICAS' ? 'estadisticas_partido' : section === 'IMPRESIÃ“N' ? 'impresion_partido' : 'post_partido');
     setMatchViewSection(section);
     if (section === 'PRE') {
-      setPreSubTab('Plan cuerpo técnico');
+      setPreSubTab('Plan cuerpo tÃ©cnico');
       await loadMatchPreData(match.id);
     }
-    if (section === 'ESTADÍSTICAS') {
+    if (section === 'ESTADÃSTICAS') {
       try {
         await loadMatchStatsData(match.id);
       } catch (loadError) {
-        console.error('Error cargando estadísticas del partido desde Supabase:', loadError);
+        console.error('Error cargando estadÃ­sticas del partido desde Supabase:', loadError);
       }
     }
     if (section === 'POST') {
       await loadMatchPostData(match.id);
     }
-    if (section === 'IMPRESIÓN') {
+    if (section === 'IMPRESIÃ“N') {
       await loadMatchPreData(match.id);
       try {
         await loadMatchStatsData(match.id);
       } catch (loadError) {
-        console.error('Error cargando datos de impresión del partido desde Supabase:', loadError);
+        console.error('Error cargando datos de impresiÃ³n del partido desde Supabase:', loadError);
       }
     }
   };
@@ -14393,7 +14492,7 @@ function App() {
   const closeMatchPage = async () => {
     if (selectedMatchId && matchView === 'estadisticas_partido') {
       await statsOperationRef.current;
-      const refreshed = await refreshStatsFromSupabase(selectedMatchId, 'salida de Estadísticas');
+      const refreshed = await refreshStatsFromSupabase(selectedMatchId, 'salida de EstadÃ­sticas');
       if (!refreshed) return;
     }
     setMatchView('lista_partidos');
@@ -14509,11 +14608,11 @@ function App() {
       launcherPlayerIds,
       mostUsedSystem,
       keyPlayers: [
-        { label: 'Más minutos', row: topMinutes, value: topMinutes ? `${topMinutes.minutes}'` : '-' },
-        { label: 'Máximo goleador', row: topScorer, value: topScorer ? topScorer.goals : '-' },
-        { label: 'Más asistencias', row: topAssistant, value: topAssistant ? topAssistant.assists : '-' },
+        { label: 'MÃ¡s minutos', row: topMinutes, value: topMinutes ? `${topMinutes.minutes}'` : '-' },
+        { label: 'MÃ¡ximo goleador', row: topScorer, value: topScorer ? topScorer.goals : '-' },
+        { label: 'MÃ¡s asistencias', row: topAssistant, value: topAssistant ? topAssistant.assists : '-' },
         { label: 'Portero principal', row: mainGoalkeeper, value: mainGoalkeeper ? `${mainGoalkeeper.minutes}'` : '-' },
-        { label: 'Capitán', player: captain, value: captain ? `#${displayDorsal(captain.number)}` : '-' },
+        { label: 'CapitÃ¡n', player: captain, value: captain ? `#${displayDorsal(captain.number)}` : '-' },
       ],
     };
   }, [matches, players, staffStatusByPlayerId]);
@@ -14622,11 +14721,11 @@ function App() {
       nextMatch?.preRivalWeaknesses
     );
     const activityCandidates = [
-      nextMatch ? { label: 'Partido creado', detail: `${nextMatch.opponent || 'Rival'} · ${matchDisplayDate(nextMatch.date)}` } : null,
-      nextMatch && hasNextRival ? { label: 'Rival actualizado', detail: nextMatch.opponent || 'Próximo partido' } : null,
-      nextMatch?.postVideoLink ? { label: 'Vídeo añadido', detail: nextMatch.opponent || 'Próximo partido' } : null,
-      lastMatch ? { label: 'Último resultado guardado', detail: getMatchScoreLabel(lastMatch) } : null,
-      players.length ? { label: 'Jugador añadido', detail: displayPlayerName(players[players.length - 1]) || players[players.length - 1].name } : null,
+      nextMatch ? { label: 'Partido creado', detail: `${nextMatch.opponent || 'Rival'} Â· ${matchDisplayDate(nextMatch.date)}` } : null,
+      nextMatch && hasNextRival ? { label: 'Rival actualizado', detail: nextMatch.opponent || 'PrÃ³ximo partido' } : null,
+      nextMatch?.postVideoLink ? { label: 'VÃ­deo aÃ±adido', detail: nextMatch.opponent || 'PrÃ³ximo partido' } : null,
+      lastMatch ? { label: 'Ãšltimo resultado guardado', detail: getMatchScoreLabel(lastMatch) } : null,
+      players.length ? { label: 'Jugador aÃ±adido', detail: displayPlayerName(players[players.length - 1]) || players[players.length - 1].name } : null,
     ].filter(Boolean).slice(0, 5);
 
     return {
@@ -14895,11 +14994,11 @@ function App() {
     const flags = getRivalPlayerFlags(teamId, player.name);
     return [
       player.isKey ? ['?', 'Jugador estrella', 'bg-amber-200 text-slate-950'] : null,
-      flags.captain || player.captain ? ['©', 'Capitán', 'bg-blue-300 text-slate-950'] : null,
+      flags.captain || player.captain ? ['Â©', 'CapitÃ¡n', 'bg-blue-300 text-slate-950'] : null,
       flags.observed || player.observed ? ['??', 'Observado', 'bg-sky-200 text-slate-950'] : null,
       player.injured ? ['??', 'Lesionado', 'bg-red-300 text-slate-950'] : null,
       player.suspended ? ['??', 'Sancionado / expulsado', 'bg-red-900 text-white'] : null,
-      player.yellowRisk ? ['AM', '5 amarillas / riesgo sanción', 'bg-yellow-200 text-slate-950'] : null,
+      player.yellowRisk ? ['AM', '5 amarillas / riesgo sanciÃ³n', 'bg-yellow-200 text-slate-950'] : null,
     ].filter(Boolean);
   };
 
@@ -15001,7 +15100,7 @@ function App() {
       await syncRivalPlayerPlacementSnapshots(selectedTeam.id, originalName, draft);
     } catch (placementError) {
       console.error('Error sincronizando jugador rival colocado:', placementError);
-      setSaveStatus(placementError.message || 'Jugador guardado, pero no se pudo actualizar su posición guardada.');
+      setSaveStatus(placementError.message || 'Jugador guardado, pero no se pudo actualizar su posiciÃ³n guardada.');
       return;
     }
     if (draft.isKey) {
@@ -15081,7 +15180,7 @@ function App() {
   };
 
   const handleDelete = async (player) => {
-    const confirmed = window.confirm(`¿Eliminar a ${player.name}? Esta acción no se puede deshacer.`);
+    const confirmed = window.confirm(`Â¿Eliminar a ${player.name}? Esta acciÃ³n no se puede deshacer.`);
     if (!confirmed) return;
     setLoading(true);
     setError(null);
@@ -15144,7 +15243,7 @@ function App() {
           setImportStatus('No pude importar ese enlace. Pega la plantilla manualmente o prueba otro enlace de plantilla.');
           return;
         }
-        setImportStatus('No pude importar los datos del enlace, pero guardaré la información que has escrito.');
+        setImportStatus('No pude importar los datos del enlace, pero guardarÃ© la informaciÃ³n que has escrito.');
       }
     }
 
@@ -15282,7 +15381,7 @@ function App() {
       preRivalBaseSystem: team.system || mapped.preRivalBaseSystem || '',
       preRivalOffensiveKeyPlayers: keyPlayers.join(', '),
       preRivalPlayerToWatch: keyPlayers[0] || '',
-      preRivalStyle: [mapped.preRivalStyle, unavailable.length ? `Bajas/dudas: ${unavailable.join(', ')}` : ''].filter(Boolean).join(' · '),
+      preRivalStyle: [mapped.preRivalStyle, unavailable.length ? `Bajas/dudas: ${unavailable.join(', ')}` : ''].filter(Boolean).join(' Â· '),
       preRivalSetPieceTakers: previous.preRivalSetPieceTakers || keyPlayers.join(', '),
       preRivalMainHeaders: previous.preRivalMainHeaders || keyPlayers.join(', '),
       preRivalLineup: nextLineup,
@@ -15295,7 +15394,7 @@ function App() {
           filled: [
             'sistema',
             'bloque',
-            'presión',
+            'presiÃ³n',
             'amenazas',
             'debilidades',
             nextLineup.length ? 'XI rival' : '',
@@ -15330,7 +15429,7 @@ function App() {
         stadium: nextStadium,
         ...automountedPre,
       }));
-      setMatchFormAutoStatus(selectedTeam ? `PRE automontado desde EQUIPOS: ${automountedPre.preRivalSystem || selectedTeam.system || 'sin sistema'} · ${(automountedPre.preRivalLineup || []).length}/11 XI rival.` : '');
+      setMatchFormAutoStatus(selectedTeam ? `PRE automontado desde EQUIPOS: ${automountedPre.preRivalSystem || selectedTeam.system || 'sin sistema'} Â· ${(automountedPre.preRivalLineup || []).length}/11 XI rival.` : '');
       return;
     }
     if (name === 'isHome') {
@@ -15583,7 +15682,7 @@ function App() {
             return;
           }
           await loadPartidos();
-          setMatchSubmitError('El encuentro se ha guardado, pero no se pudo generar la alineación inicial.');
+          setMatchSubmitError('El encuentro se ha guardado, pero no se pudo generar la alineaciÃ³n inicial.');
           return;
         }
       }
@@ -15601,7 +15700,7 @@ function App() {
   };
 
   const handleMatchDelete = async (match) => {
-    const confirmed = window.confirm(`¿Eliminar el partido contra ${match.opponent}?`);
+    const confirmed = window.confirm(`Â¿Eliminar el partido contra ${match.opponent}?`);
     if (!confirmed) return;
     const { error: deleteError } = await supabase.from("partidos").delete().eq("id", match.id);
     if (deleteError) {
@@ -15621,7 +15720,7 @@ function App() {
   const handleImportSquad = async () => {
     const sourceUrl = normalizeSourceUrl(teamFormState.sourceUrl);
     if (!sourceUrl) {
-      setImportStatus('Añade un enlace de BeSoccer o Transfermarkt para importar.');
+      setImportStatus('AÃ±ade un enlace de BeSoccer o Transfermarkt para importar.');
       return;
     }
 
@@ -15654,7 +15753,7 @@ function App() {
 
       setImportStatus(`Plantilla importada: ${imported.players.length} jugadores detectados.`);
     } catch (error) {
-      setImportStatus('No pude importar ese enlace porque la web bloquea la lectura automática. Prueba con el enlace de plantilla exacto o pega la plantilla.');
+      setImportStatus('No pude importar ese enlace porque la web bloquea la lectura automÃ¡tica. Prueba con el enlace de plantilla exacto o pega la plantilla.');
     }
   };
 
@@ -15680,8 +15779,8 @@ function App() {
       }
       await loadTeams();
     } catch (lineupError) {
-      console.error('Error guardando alineación rival en Supabase:', lineupError);
-      setSaveStatus(lineupError.message || 'No se pudo guardar la alineación.');
+      console.error('Error guardando alineaciÃ³n rival en Supabase:', lineupError);
+      setSaveStatus(lineupError.message || 'No se pudo guardar la alineaciÃ³n.');
     }
   };
 
@@ -15821,7 +15920,7 @@ function App() {
   const arrangeSelectedTeam = () => {
     if (!selectedTeam) return;
     const hasManualLineup = safeArray(selectedTeam.lineup).length > 0;
-    if (hasManualLineup && !window.confirm('¿Sobrescribir la disposición actual de titulares?')) return;
+    if (hasManualLineup && !window.confirm('Â¿Sobrescribir la disposiciÃ³n actual de titulares?')) return;
     const squad = selectedTeam.squad.map(normalizeSquadEntry);
     const starters = squad.filter((player) => player.role === 'Titular');
     const prioritized = starters.length > 0 ? starters : squad.slice(0, 11);
@@ -15836,7 +15935,7 @@ function App() {
   const generateSelectedTeamAutoXI = () => {
     if (!selectedTeam) return;
     const hasManualLineup = safeArray(selectedTeam.lineup).length > 0;
-    if (hasManualLineup && !window.confirm('¿Sobrescribir la disposición manual actual?')) return;
+    if (hasManualLineup && !window.confirm('Â¿Sobrescribir la disposiciÃ³n manual actual?')) return;
     const system = selectedTeam.system || '4-4-2';
     const roles = getFormationRoles(system);
     const coordinates = getFormationCoordinates(system);
@@ -15908,7 +16007,7 @@ function App() {
       await persistTeamLineup(selectedTeam.id, nextLineup);
       await loadTeams();
     } catch (lineupError) {
-      console.error('Error reajustando alineación rival en Supabase:', lineupError);
+      console.error('Error reajustando alineaciÃ³n rival en Supabase:', lineupError);
     }
   };
 
@@ -16021,7 +16120,7 @@ function App() {
       await loadMatchPreData(selectedMatch.id);
     } catch (slotError) {
       console.error('Error guardando once PRE Caudal en Supabase:', slotError);
-      setPreError(slotError.message || 'No se pudo guardar la alineación PRE.');
+      setPreError(slotError.message || 'No se pudo guardar la alineaciÃ³n PRE.');
     }
   };
 
@@ -16038,7 +16137,7 @@ function App() {
       await loadMatchPreData(selectedMatch.id);
     } catch (slotError) {
       console.error('Error guardando once PRE rival en Supabase:', slotError);
-      setPreError(slotError.message || 'No se pudo guardar la alineación rival.');
+      setPreError(slotError.message || 'No se pudo guardar la alineaciÃ³n rival.');
     }
   };
 
@@ -16052,7 +16151,7 @@ function App() {
       await loadMatchPreData(selectedMatch.id);
     } catch (slotError) {
       console.error('Error limpiando once PRE Caudal en Supabase:', slotError);
-      setPreError(slotError.message || 'No se pudo limpiar la alineación PRE.');
+      setPreError(slotError.message || 'No se pudo limpiar la alineaciÃ³n PRE.');
     }
   };
 
@@ -16066,7 +16165,7 @@ function App() {
       await loadMatchPreData(selectedMatch.id);
     } catch (slotError) {
       console.error('Error limpiando once PRE rival en Supabase:', slotError);
-      setPreError(slotError.message || 'No se pudo limpiar la alineación rival.');
+      setPreError(slotError.message || 'No se pudo limpiar la alineaciÃ³n rival.');
     }
   };
 
@@ -16383,10 +16482,10 @@ function App() {
           <div className="absolute left-1/2 top-0 h-12 w-24 -translate-x-1/2 rounded-b-2xl border-x-2 border-b-2 border-white/45" />
           <div className="absolute bottom-0 left-1/2 h-12 w-24 -translate-x-1/2 rounded-t-2xl border-x-2 border-t-2 border-white/45" />
           <div className="absolute left-4 top-4 rounded-xl bg-rose-950/75 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white">
-            Rival · {getCurrentRivalSystem()}
+            Rival Â· {getCurrentRivalSystem()}
           </div>
           <div className="absolute bottom-4 left-4 rounded-xl bg-caudal-950/75 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white">
-            C.D. Caudal · {selectedMatch.preCaudalSystem || '4-4-2'}
+            C.D. Caudal Â· {selectedMatch.preCaudalSystem || '4-4-2'}
           </div>
           {caudalCoordinates.map((position, index) => renderPlayer(position, index, 'caudal', caudalLineup))}
           {rivalCoordinates.map((position, index) => renderPlayer(position, index, 'rival', rivalLineup))}
@@ -16399,7 +16498,7 @@ function App() {
     if (!selectedMatch) {
       return (
         <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] p-6 text-sm text-slate-400">
-          Selecciona un partido para ver la pizarra táctica.
+          Selecciona un partido para ver la pizarra tÃ¡ctica.
         </div>
       );
     }
@@ -16419,16 +16518,16 @@ function App() {
     const leftHud = [
       ['Lado fuerte', identity.strongSide],
       ['Amplitud', identity.strongSide === 'ambos laterales' ? 'doble banda' : identity.strongSide],
-      ['Progresión', identity.attackingRhythm],
+      ['ProgresiÃ³n', identity.attackingRhythm],
     ].filter(([, value]) => value);
     const rightHud = [
-      ['Transición', identity.mainThreat === 'transición' ? 'amenaza' : identity.attackingRhythm],
+      ['TransiciÃ³n', identity.mainThreat === 'transiciÃ³n' ? 'amenaza' : identity.attackingRhythm],
       ['Amenaza', identity.mainThreat],
       ['Foco', identity.offensiveFocus],
       ...activeHudZones.slice(0, 2).map((zone) => ['Zona', zone.label]),
     ].filter(([, value]) => value);
     const topHud = [
-      ['Presión', identity.pressureType],
+      ['PresiÃ³n', identity.pressureType],
       ['Bloque', identity.blockHeight],
     ].filter(([, value]) => value);
     const bottomHud = [
@@ -16543,7 +16642,7 @@ function App() {
           <div className={`absolute right-4 top-4 z-40 w-64 border px-3 py-3 text-xs shadow-2xl backdrop-blur ${selectedConnection.team === 'caudal' ? 'border-caudal-electric/35 bg-caudal-950/90 text-caudal-electric' : 'border-rose-300/35 bg-rose-950/90 text-rose-100'}`}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-[9px] font-black uppercase tracking-[0.16em] opacity-70">Conexión táctica</p>
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] opacity-70">ConexiÃ³n tÃ¡ctica</p>
                 <p className="mt-1 text-sm font-black text-white">{selectedConnection.origin} ? {selectedConnection.destination}</p>
               </div>
               <button type="button" onClick={() => setSelectedTacticalConnectionId('')} className="text-[10px] font-black uppercase text-white/70">Cerrar</button>
@@ -16552,7 +16651,7 @@ function App() {
               <p>Tipo: {selectedConnection.type}</p>
               <p>Frecuencia: {selectedConnection.intensity}</p>
               <p>Confianza: {selectedConnection.comment ? 'Media' : 'Baja'}</p>
-              <p>Observación: {selectedConnection.comment || 'Sin comentario registrado.'}</p>
+              <p>ObservaciÃ³n: {selectedConnection.comment || 'Sin comentario registrado.'}</p>
             </div>
           </div>
         ) : null}
@@ -16611,7 +16710,7 @@ function App() {
 
   const clearSelectedTeamField = async () => {
     if (!selectedTeam) return;
-    if (safeArray(selectedTeam.lineup).length && !window.confirm('¿Quitar todos los jugadores del campo?')) return;
+    if (safeArray(selectedTeam.lineup).length && !window.confirm('Â¿Quitar todos los jugadores del campo?')) return;
     try {
       await persistTeamLineup(selectedTeam.id, []);
       await supabase.from("jugadores_rivales").update({ role: 'Reserva' }).eq("equipo_rival_id", selectedTeam.id);
@@ -16635,10 +16734,10 @@ function App() {
             .slice(0, 11)
             .map((player, index) => ({ ...player, slot: index, ...getFormationCoordinates(selectedTeam.system || '4-4-2')[index] }));
       await persistTeamLineup(selectedTeam.id, fallbackLineup);
-      setSaveStatus('Disposición guardada.');
+      setSaveStatus('DisposiciÃ³n guardada.');
       await loadTeams();
     } catch (saveLineupError) {
-      setSaveStatus(saveLineupError.message || 'No se pudo guardar la disposición.');
+      setSaveStatus(saveLineupError.message || 'No se pudo guardar la disposiciÃ³n.');
     }
   };
 
@@ -16662,7 +16761,7 @@ function App() {
     const copyPlayersMap = async () => {
       try {
         await navigator.clipboard.writeText(playerMapClipboardText);
-        setPerformanceStatus('Mapa de jugadores copiado. Pégalo directamente en Google Sheets.');
+        setPerformanceStatus('Mapa de jugadores copiado. PÃ©galo directamente en Google Sheets.');
         setPerformanceError('');
       } catch (copyError) {
         console.error('Error copiando mapa de jugadores:', copyError);
@@ -16707,25 +16806,25 @@ function App() {
 
         <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
           <form onSubmit={saveTrainingSession} className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Crear sesión</h3>
+            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Crear sesiÃ³n</h3>
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <input type="date" value={performanceSessionDraft.sessionDate} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, sessionDate: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
               <select value={performanceSessionDraft.mdLabel} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, mdLabel: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
                 {mdOptions.map((option) => <option key={option} value={option}>{option}</option>)}
               </select>
               <input value={performanceSessionDraft.formCode} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, formCode: event.target.value }))} placeholder="RPE-2026-05-08-MD3" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
-              <input value={performanceSessionDraft.title} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Título sesión" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
-              <input type="number" min="0" value={performanceSessionDraft.plannedDuration} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, plannedDuration: event.target.value }))} placeholder="Duración planificada" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
+              <input value={performanceSessionDraft.title} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, title: event.target.value }))} placeholder="TÃ­tulo sesiÃ³n" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
+              <input type="number" min="0" value={performanceSessionDraft.plannedDuration} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, plannedDuration: event.target.value }))} placeholder="DuraciÃ³n planificada" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
             </div>
             <p className="mt-3 rounded-2xl bg-white/5 px-4 py-3 text-xs text-slate-400">
-              Código para Google Forms RPE: <span className="font-bold text-white">{performanceSessionDraft.formCode || 'RPE-YYYY-MM-DD-MD3'}</span>
+              CÃ³digo para Google Forms RPE: <span className="font-bold text-white">{performanceSessionDraft.formCode || 'RPE-YYYY-MM-DD-MD3'}</span>
             </p>
-            <textarea value={performanceSessionDraft.notes} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Notas de la sesión" className="mt-4 min-h-[90px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
-            <button type="submit" className="mt-4 w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950">Guardar sesión</button>
+            <textarea value={performanceSessionDraft.notes} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Notas de la sesiÃ³n" className="mt-4 min-h-[90px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
+            <button type="submit" className="mt-4 w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950">Guardar sesiÃ³n</button>
           </form>
 
           <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Resumen por día</h3>
+            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Resumen por dÃ­a</h3>
             <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {mdOptions.map((md) => {
                 const sessions = trainingSessions.filter((session) => session.md_label === md);
@@ -16782,11 +16881,11 @@ function App() {
               </select>
               <input type="date" value={wellnessDraft.entryDate} onChange={(event) => setWellnessDraft((current) => ({ ...current, entryDate: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
               {[
-                ['Sueño calidad', 'sleepQuality'],
+                ['SueÃ±o calidad', 'sleepQuality'],
                 ['Fatiga', 'fatigue'],
                 ['Dolor muscular', 'muscleSoreness'],
-                ['Estrés', 'stress'],
-                ['Ánimo', 'mood'],
+                ['EstrÃ©s', 'stress'],
+                ['Ãnimo', 'mood'],
                 ['Peso', 'weight'],
               ].map(([label, field]) => (
                 <label key={field} className="space-y-1 text-xs uppercase tracking-[0.14em] text-slate-500">
@@ -16808,20 +16907,20 @@ function App() {
                 {players.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}
               </select>
               <select value={rpeDraft.sessionId} onChange={(event) => setRpeDraft((current) => ({ ...current, sessionId: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
-                <option value="">Sesión</option>
-                {trainingSessions.map((session) => <option key={session.id} value={session.id}>{session.md_label || session.session_date} · {session.title || session.session_type}</option>)}
+                <option value="">SesiÃ³n</option>
+                {trainingSessions.map((session) => <option key={session.id} value={session.id}>{session.md_label || session.session_date} Â· {session.title || session.session_type}</option>)}
               </select>
-              <input type="number" min="0" value={rpeDraft.durationMinutes} onChange={(event) => setRpeDraft((current) => ({ ...current, durationMinutes: event.target.value }))} placeholder="Duración minutos" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
+              <input type="number" min="0" value={rpeDraft.durationMinutes} onChange={(event) => setRpeDraft((current) => ({ ...current, durationMinutes: event.target.value }))} placeholder="DuraciÃ³n minutos" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
               <input type="number" min="1" max="10" value={rpeDraft.rpe} onChange={(event) => setRpeDraft((current) => ({ ...current, rpe: event.target.value }))} placeholder="RPE 1-10" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
             </div>
-            <p className="mt-3 rounded-2xl bg-white/5 px-4 py-3 text-sm text-slate-300">Carga automática: <span className="font-black text-white">{normalizePerformanceNumber(rpeDraft.durationMinutes) * normalizePerformanceNumber(rpeDraft.rpe)}</span></p>
+            <p className="mt-3 rounded-2xl bg-white/5 px-4 py-3 text-sm text-slate-300">Carga automÃ¡tica: <span className="font-black text-white">{normalizePerformanceNumber(rpeDraft.durationMinutes) * normalizePerformanceNumber(rpeDraft.rpe)}</span></p>
             <textarea value={rpeDraft.comment} onChange={(event) => setRpeDraft((current) => ({ ...current, comment: event.target.value }))} placeholder="Comentario libre" className="mt-4 min-h-[90px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
             <button type="submit" className="mt-4 w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950">Guardar RPE</button>
           </form>
         </div>
 
         <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-          <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Semáforo PF y evolución individual</h3>
+          <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">SemÃ¡foro PF y evoluciÃ³n individual</h3>
           <div className="mt-5 overflow-x-auto">
             <table className="w-full min-w-[920px] text-left text-sm">
               <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
@@ -16948,10 +17047,10 @@ function App() {
       ['Recuperaciones', collectiveSummary.recoveries],
     ].filter(([, value]) => Number(value || 0) > 0);
     const shotAccuracyText = collectiveSummary.shots
-      ? `${collectiveSummary.shotsOnTarget} de ${collectiveSummary.shots} · ${Math.round((collectiveSummary.shotsOnTarget / collectiveSummary.shots) * 100)}%`
+      ? `${collectiveSummary.shotsOnTarget} de ${collectiveSummary.shots} Â· ${Math.round((collectiveSummary.shotsOnTarget / collectiveSummary.shots) * 100)}%`
       : 'No disponible';
     const possessionBalance = Number(collectiveSummary.steals || 0) + Number(collectiveSummary.recoveries || 0) - Number(collectiveSummary.losses || 0);
-    const possessionBalanceText = `${possessionBalance > 0 ? '+' : ''}${possessionBalance} · ${collectiveSummary.steals} robos, ${collectiveSummary.recoveries} recuperaciones, ${collectiveSummary.losses} perdidas`;
+    const possessionBalanceText = `${possessionBalance > 0 ? '+' : ''}${possessionBalance} Â· ${collectiveSummary.steals} robos, ${collectiveSummary.recoveries} recuperaciones, ${collectiveSummary.losses} perdidas`;
     const individualRankingGroups = [
       ['Mas tiros', 'shots'],
       ['Mas tiros a puerta', 'shotsOnTarget'],
@@ -16972,7 +17071,7 @@ function App() {
           match,
           status: getDelegatedDataStatus(match),
           events: events.length,
-          label: `${matchDisplayDate(match.date)} · ${match.opponent || 'Rival'}`,
+          label: `${matchDisplayDate(match.date)} Â· ${match.opponent || 'Rival'}`,
         };
       })
       .filter((row) => row.events > 0);
@@ -16999,7 +17098,7 @@ function App() {
         unreviewed ? `${unreviewed} eventos sin revisar` : null,
         caudalUnidentified ? `${caudalUnidentified} eventos de Caudal sin jugador` : null,
         unidentified && !caudalUnidentified ? `${unidentified} eventos sin jugador identificado` : null,
-        invalidTypes ? `${invalidTypes} tipos fuera del catálogo` : null,
+        invalidTypes ? `${invalidTypes} tipos fuera del catÃ¡logo` : null,
         quickScore.goals !== officialScore.caudalGoals ? `Goles Caudal delegado ${quickScore.goals} / oficial ${officialScore.caudalGoals}` : null,
         quickScore.rivalGoals !== officialScore.rivalGoals ? `Goles rival delegado ${quickScore.rivalGoals} / oficial ${officialScore.rivalGoals}` : null,
       ].filter(Boolean);
@@ -17009,7 +17108,7 @@ function App() {
         coveredMinutes,
         coverageLabel: coveredMinutes ? `${coveredMinutes} de 90 minutos` : 'Sin minutos',
         duration: minutes.length ? `${Math.min(...minutes)}'-${Math.max(...minutes)}'` : 'Sin minutos',
-        periods: periods.join(' · ') || 'Sin periodo',
+        periods: periods.join(' Â· ') || 'Sin periodo',
         checks,
       };
     };
@@ -17056,7 +17155,7 @@ function App() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Panel de analisis delegado</p>
-              <p className="mt-1 text-sm text-slate-400">Datos procedentes del registro delegado · {delegatedRankingScope}. Filtro de estado: {delegatedStatusFilter}.</p>
+              <p className="mt-1 text-sm text-slate-400">Datos procedentes del registro delegado Â· {delegatedRankingScope}. Filtro de estado: {delegatedStatusFilter}.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {['Solo validados', 'Todos los registros'].map((scope) => (
@@ -17226,7 +17325,7 @@ function App() {
         </section>
 
         <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Validación por partido</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">ValidaciÃ³n por partido</p>
           <div className="mt-5 grid gap-4">
             {visibleMatches.length ? visibleMatches.map((match) => {
               const status = getDelegatedDataStatus(match);
@@ -17239,7 +17338,7 @@ function App() {
                         <p className="text-lg font-black text-white">{match.opponent || 'Rival'}</p>
                         <span className={`rounded-2xl border px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${getDelegatedStatusTone(status)}`}>{status}</span>
                       </div>
-                      <p className="mt-1 text-sm text-slate-500">{matchDisplayDate(match.date)} · {getCompetitionFromCatalog(match).label || 'Partido'} · {getMatchScoreLabel(match)}</p>
+                      <p className="mt-1 text-sm text-slate-500">{matchDisplayDate(match.date)} Â· {getCompetitionFromCatalog(match).label || 'Partido'} Â· {getMatchScoreLabel(match)}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {DELEGATED_DATA_STATUSES.map((nextStatus) => (
@@ -17291,13 +17390,13 @@ function App() {
   };
 
   const authUser = session?.user ?? null;
-  const desktopTabs = ['Inicio', 'Plantilla', 'Equipos', 'Partidos', 'Biblioteca', 'Rendimiento', 'Registro Delegado', 'Análisis Grupal'];
+  const desktopTabs = ['Inicio', 'Plantilla', 'Equipos', 'Partidos', 'Biblioteca', 'Rendimiento', 'Registro Delegado', 'AnÃ¡lisis Grupal'];
   const mobilePrimaryTabs = [
     ['Inicio', 'Inicio'],
     ['Partidos', 'Partidos'],
     ['Plantilla', 'Plant.'],
     ['Registro Delegado', 'Deleg.'],
-    ['Análisis Grupal', 'Análisis'],
+    ['AnÃ¡lisis Grupal', 'AnÃ¡lisis'],
   ];
   const mobileMoreTabs = ['Equipos', 'Rendimiento', 'Biblioteca'];
   const goToTab = (tab) => {
@@ -17324,7 +17423,7 @@ function App() {
             <div className="mx-auto flex h-28 w-28 items-center justify-center overflow-hidden rounded-[1.45rem] bg-white p-3.5 shadow-[0_16px_45px_rgba(0,0,0,0.25)] sm:h-32 sm:w-32">
               <img src={clubCrest} alt="Escudo del C.D. Caudal" className="h-full w-full object-contain" />
             </div>
-            <p className="mt-5 text-[11px] font-black uppercase tracking-[0.26em] text-caudal-electric/90">Panel cuerpo técnico</p>
+            <p className="mt-5 text-[11px] font-black uppercase tracking-[0.26em] text-caudal-electric/90">Panel cuerpo tÃ©cnico</p>
             <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">C.D. Caudal de Mieres</h1>
             <p className="mt-2 text-sm font-medium text-slate-500">Mieres, Asturias</p>
             {authError ? <p className="mx-auto mt-5 max-w-sm rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">{authError}</p> : null}
@@ -17343,7 +17442,7 @@ function App() {
                 />
               </label>
               <label className="space-y-2 text-sm font-semibold text-slate-300">
-                <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Contraseña</span>
+                <span className="text-xs uppercase tracking-[0.16em] text-slate-500">ContraseÃ±a</span>
                 <input
                   required
                   type="password"
@@ -17352,7 +17451,7 @@ function App() {
                   onChange={handleAuthFormChange}
                   autoComplete="current-password"
                   className="min-h-[52px] w-full rounded-2xl border border-white/15 bg-white/[0.075] px-4 py-3 text-sm font-medium text-white shadow-inner transition duration-200 placeholder:text-slate-400 hover:border-white/25 focus:border-caudal-electric focus:bg-white/[0.095] focus:shadow-[0_0_0_4px_rgba(61,217,255,0.10)]"
-                  placeholder="Tu contraseña"
+                  placeholder="Tu contraseÃ±a"
                 />
               </label>
               <button
@@ -17360,11 +17459,11 @@ function App() {
                 disabled={authLoading || authSubmitting}
                 className="mt-2 inline-flex min-h-[52px] items-center justify-center rounded-2xl bg-gradient-to-r from-white to-slate-200 px-6 py-3 text-sm font-black text-slate-950 shadow-[0_14px_35px_rgba(255,255,255,0.10)] transition duration-200 hover:-translate-y-0.5 hover:from-caudal-electric hover:to-[#aeefff] hover:shadow-[0_18px_45px_rgba(61,217,255,0.20)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
               >
-                {authSubmitting ? 'Enviando...' : 'Iniciar sesión'}
+                {authSubmitting ? 'Enviando...' : 'Iniciar sesiÃ³n'}
               </button>
             </form>
             <p className="mx-auto mt-5 max-w-sm text-sm leading-6 text-slate-500">
-              Acceso privado para usuarios autorizados del cuerpo técnico.
+              Acceso privado para usuarios autorizados del cuerpo tÃ©cnico.
             </p>
           </section>
         </main>
@@ -17385,7 +17484,7 @@ function App() {
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:items-end">
             <div className="flex w-full flex-col gap-3 rounded-2xl border border-white/10 bg-caudal-950/40 p-3 sm:w-auto sm:min-w-72 sm:flex-row sm:items-center sm:justify-end">
               <div className="min-w-0 text-sm text-slate-300 sm:text-right">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Sesión iniciada</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">SesiÃ³n iniciada</p>
                 <p className="truncate font-semibold text-white">{authUser.email}</p>
               </div>
               {installPromptEvent && !isAppInstalled ? (
@@ -17402,7 +17501,7 @@ function App() {
                 onClick={handleSignOut}
                 className="inline-flex shrink-0 items-center justify-center rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]"
               >
-                Cerrar sesión
+                Cerrar sesiÃ³n
               </button>
             </div>
             <nav className="hidden flex-wrap gap-3 sm:flex sm:justify-end">
@@ -17465,7 +17564,7 @@ function App() {
               onClick={() => setIsMobileMoreOpen((current) => !current)}
               className={`min-h-[48px] rounded-2xl px-1.5 py-2 text-[10px] font-black uppercase tracking-[0.02em] ${isMobileMoreOpen || mobileMoreTabs.includes(activeTab) ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-200'}`}
             >
-              Más
+              MÃ¡s
             </button>
           </div>
         </nav>
@@ -17479,7 +17578,7 @@ function App() {
                   <img src={clubCrest} alt="Escudo del C.D. Caudal" className="h-full w-full object-contain" />
                 </div>
                 <div className="text-center sm:text-left">
-                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-red-200/80">Cuerpo técnico</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-red-200/80">Cuerpo tÃ©cnico</p>
                   <h2 className="mt-1 text-xl font-black text-white sm:text-3xl">C.D. Caudal de Mieres</h2>
                   <div className="mt-2 max-w-3xl">
                     {isEditingHomePhrase ? (
@@ -17571,18 +17670,18 @@ function App() {
                     />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric/85">Partido en preparación</p>
-                    <h3 className="mt-2 truncate text-3xl font-black text-white sm:text-5xl">{homeDashboard.nextMatch?.opponent || 'No hay ningún partido próximo programado.'}</h3>
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric/85">Partido en preparaciÃ³n</p>
+                    <h3 className="mt-2 truncate text-3xl font-black text-white sm:text-5xl">{homeDashboard.nextMatch?.opponent || 'No hay ningÃºn partido prÃ³ximo programado.'}</h3>
                     {homeDashboard.nextMatch ? (
                       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm font-bold text-slate-200">
                         <span>{matchDisplayDate(homeDashboard.nextMatch.date)}</span>
                         <span>{homeDashboard.nextMatch.time || 'Hora pendiente'}</span>
                         <span>{homeDashboard.nextMatch.isHome ? 'Local' : 'Visitante'}</span>
                         <span>{homeDashboard.nextMatch.stadium || homeDashboard.nextOpponentTeam?.stadium || 'Estadio pendiente'}</span>
-                        {homeDashboard.nextMatch ? <span>{getCompetitionFromCatalog(homeDashboard.nextMatch).label}{homeDashboard.nextMatch.round ? ` · ${homeDashboard.nextMatch.round}` : ''}</span> : null}
+                        {homeDashboard.nextMatch ? <span>{getCompetitionFromCatalog(homeDashboard.nextMatch).label}{homeDashboard.nextMatch.round ? ` Â· ${homeDashboard.nextMatch.round}` : ''}</span> : null}
                       </div>
                     ) : (
-                      <p className="mt-4 max-w-2xl text-sm font-semibold leading-6 text-slate-400">Crea o programa el siguiente partido desde la pestaña Partidos.</p>
+                      <p className="mt-4 max-w-2xl text-sm font-semibold leading-6 text-slate-400">Crea o programa el siguiente partido desde la pestaÃ±a Partidos.</p>
                     )}
                   </div>
                   <button
@@ -17601,7 +17700,7 @@ function App() {
               <LeagueResultsDistribution
                 compact
                 results={homeDashboard.leagueResults}
-                onViewStats={() => setActiveTab('Análisis Grupal')}
+                onViewStats={() => setActiveTab('AnÃ¡lisis Grupal')}
               />
             </section>
 
@@ -17692,8 +17791,8 @@ function App() {
                   ),
                 },
                 {
-                  tab: 'Análisis Grupal',
-                  title: 'Análisis Grupal',
+                  tab: 'AnÃ¡lisis Grupal',
+                  title: 'AnÃ¡lisis Grupal',
                   copy: `${homeDashboard.balance.played} partidos analizados`,
                   accent: 'bg-white/[0.045]',
                   iconColor: 'text-slate-100',
@@ -17729,8 +17828,8 @@ function App() {
               <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.045] p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Últimos resultados</h3>
-                    <p className="mt-1 text-xs text-slate-500">Últimos 5 partidos finalizados</p>
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Ãšltimos resultados</h3>
+                    <p className="mt-1 text-xs text-slate-500">Ãšltimos 5 partidos finalizados</p>
                   </div>
                   <span className="rounded-xl border border-white/10 bg-white/[0.06] px-2.5 py-1 text-xs font-black text-slate-300">{homeDashboard.tendency}</span>
                 </div>
@@ -17754,13 +17853,13 @@ function App() {
               </div>
 
               <div className="rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]">
-                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Último partido</h3>
+                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Ãšltimo partido</h3>
                 {homeDashboard.lastMatch ? (
                   <div className="mt-4">
                     <p className="truncate text-2xl font-black text-white">{homeDashboard.lastMatch.opponent}</p>
                     <p className="mt-2 text-4xl font-black text-caudal-electric">{getMatchScoreData(homeDashboard.lastMatch).caudalGoals}-{getMatchScoreData(homeDashboard.lastMatch).rivalGoals}</p>
                     <div className="mt-3 space-y-1 text-sm text-slate-400">
-                      <p>{getCompetitionFromCatalog(homeDashboard.lastMatch).label || 'Competición'}</p>
+                      <p>{getCompetitionFromCatalog(homeDashboard.lastMatch).label || 'CompeticiÃ³n'}</p>
                       <p>{matchDisplayDate(homeDashboard.lastMatch.date)}</p>
                     </div>
                     <button
@@ -17775,7 +17874,7 @@ function App() {
                     </button>
                   </div>
                 ) : (
-                  <p className="mt-4 rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-sm text-slate-400">Sin último partido guardado.</p>
+                  <p className="mt-4 rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-sm text-slate-400">Sin Ãºltimo partido guardado.</p>
                 )}
               </div>
             </section>
@@ -17816,16 +17915,16 @@ function App() {
               const playerGoalPhaseCounts = countPhases(allGoalActions);
               const maxPlayerGoalPhase = Math.max(1, ...playerGoalPhaseCounts.map((row) => row.count));
               const timelineActions = [
-                ...allGoalActions.map((event) => ({ minute: event.minute, label: 'G', icon: 'Gol', type: 'Gol', tone: 'goal', match: event.match, videoUrl: event.videoUrl, actionKey: `goal-${event.match.id}-${event.id}`, title: `Gol · ${getMatchScoreLabel(event.match)}` })),
-                ...allAssistActions.map((event) => ({ minute: event.minute, label: 'A', icon: 'Asis', type: 'Asistencia', tone: 'assist', match: event.match, videoUrl: event.videoUrl, actionKey: `assist-${event.match.id}-${event.id}`, title: `Asistencia · ${getMatchScoreLabel(event.match)}` })),
+                ...allGoalActions.map((event) => ({ minute: event.minute, label: 'G', icon: 'Gol', type: 'Gol', tone: 'goal', match: event.match, videoUrl: event.videoUrl, actionKey: `goal-${event.match.id}-${event.id}`, title: `Gol Â· ${getMatchScoreLabel(event.match)}` })),
+                ...allAssistActions.map((event) => ({ minute: event.minute, label: 'A', icon: 'Asis', type: 'Asistencia', tone: 'assist', match: event.match, videoUrl: event.videoUrl, actionKey: `assist-${event.match.id}-${event.id}`, title: `Asistencia Â· ${getMatchScoreLabel(event.match)}` })),
                 ...quick.events.map((event) => {
                   const eventLabel = getQuickEventLabel(event.tipoEvento);
-                  return { minute: event.minute, label: eventLabel.slice(0, 3), icon: eventLabel.slice(0, 3), type: eventLabel, tone: 'quick', match: event.match, actionKey: `quick-${event.match.id}-${event.id}`, title: `${eventLabel} · ${getMatchScoreLabel(event.match)}` };
+                  return { minute: event.minute, label: eventLabel.slice(0, 3), icon: eventLabel.slice(0, 3), type: eventLabel, tone: 'quick', match: event.match, actionKey: `quick-${event.match.id}-${event.id}`, title: `${eventLabel} Â· ${getMatchScoreLabel(event.match)}` };
                 }),
                 ...aggregate.rows.flatMap((row) => [
-                  ...row.cardActions.map((event, cardIndex) => ({ minute: event.minute, label: event.type.includes('roja') ? 'TR' : 'TA', icon: event.type.includes('roja') ? 'TR' : 'TA', type: event.type, tone: event.type.includes('roja') ? 'red' : 'yellow', match: row.match, actionKey: `card-${row.match.id}-${cardIndex}`, title: `${event.type} · ${getMatchScoreLabel(row.match)}` })),
-                  row.role === 'Suplente' && row.minutes > 0 ? { minute: Math.max(0, 90 - Number(row.minutes || 0)), label: 'CAM', icon: 'CAM', type: 'Cambio', tone: 'sub', match: row.match, actionKey: `sub-${row.match.id}`, title: `Entrada al partido · ${getMatchScoreLabel(row.match)}` } : null,
-                  row.injured ? { minute: row.minutes || '', label: 'LES', icon: 'LES', type: 'Lesión', tone: 'injury', match: row.match, actionKey: `injury-${row.match.id}`, title: `Lesión · ${getMatchScoreLabel(row.match)}` } : null,
+                  ...row.cardActions.map((event, cardIndex) => ({ minute: event.minute, label: event.type.includes('roja') ? 'TR' : 'TA', icon: event.type.includes('roja') ? 'TR' : 'TA', type: event.type, tone: event.type.includes('roja') ? 'red' : 'yellow', match: row.match, actionKey: `card-${row.match.id}-${cardIndex}`, title: `${event.type} Â· ${getMatchScoreLabel(row.match)}` })),
+                  row.role === 'Suplente' && row.minutes > 0 ? { minute: Math.max(0, 90 - Number(row.minutes || 0)), label: 'CAM', icon: 'CAM', type: 'Cambio', tone: 'sub', match: row.match, actionKey: `sub-${row.match.id}`, title: `Entrada al partido Â· ${getMatchScoreLabel(row.match)}` } : null,
+                  row.injured ? { minute: row.minutes || '', label: 'LES', icon: 'LES', type: 'LesiÃ³n', tone: 'injury', match: row.match, actionKey: `injury-${row.match.id}`, title: `LesiÃ³n Â· ${getMatchScoreLabel(row.match)}` } : null,
                 ].filter(Boolean)),
               ].filter((event) => event.minute !== '');
               const timelineGroups = Object.values(timelineActions.reduce((acc, event) => {
@@ -17845,7 +17944,7 @@ function App() {
                 { label: 'Minutos', value: `${aggregate.minutes}'`, detail: aggregate.played ? `${Math.round(aggregate.minutes / Math.max(1, aggregate.played))}'/partido` : 'Sin partidos' },
                 { label: 'Partidos', value: aggregate.played, detail: `${aggregate.starts} titularidades` },
                 { label: 'Titularidades', value: aggregate.starts, detail: regularStarter ? 'Base once' : `${aggregate.subs} desde banquillo` },
-                { label: 'Participación', value: `${aggregate.participation}%`, detail: aggregate.participation >= 60 ? 'Alta' : aggregate.participation >= 30 ? 'Media' : 'Baja' },
+                { label: 'ParticipaciÃ³n', value: `${aggregate.participation}%`, detail: aggregate.participation >= 60 ? 'Alta' : aggregate.participation >= 30 ? 'Media' : 'Baja' },
               ];
               const secondaryMetrics = [
                 ['Goles', aggregate.goals, 'text-emerald-200'],
@@ -17877,9 +17976,9 @@ function App() {
                 })
                 .filter((item) => item.preNote || item.reviewedEvents.length);
               const tacticalTrendRows = [
-                quick.losses >= 4 ? ['Pérdidas en salida', 'Preparar tarea de seguridad y apoyos cercanos'] : null,
-                quick.shots <= 1 && aggregate.played ? ['Baja finalización', 'Asociar tarea de llegada y último tercio'] : null,
-                quick.recoveries >= 4 ? ['Buena activación tras pérdida', 'Guardar clips de presión efectiva'] : null,
+                quick.losses >= 4 ? ['PÃ©rdidas en salida', 'Preparar tarea de seguridad y apoyos cercanos'] : null,
+                quick.shots <= 1 && aggregate.played ? ['Baja finalizaciÃ³n', 'Asociar tarea de llegada y Ãºltimo tercio'] : null,
+                quick.recoveries >= 4 ? ['Buena activaciÃ³n tras pÃ©rdida', 'Guardar clips de presiÃ³n efectiva'] : null,
                 aggregate.yellow + aggregate.red >= 2 ? ['Riesgo disciplinario', 'Revisar entradas, perfiles y duelos'] : null,
               ].filter(Boolean);
               const orderedSeasonRows = aggregate.rows.slice().sort((a, b) => new Date(a.match.date || 0) - new Date(b.match.date || 0));
@@ -17957,9 +18056,9 @@ function App() {
                         <div className="min-w-0">
                           <h2 className="text-3xl font-black uppercase tracking-tight text-white sm:text-4xl">{selectedPlayerProfile.name}</h2>
                           <div className="mt-3 flex flex-wrap items-center gap-2">
-                            <span className="rounded-2xl border border-caudal-electric/30 bg-caudal-electric/90 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-950">{selectedPlayerProfile.position || 'Sin demarcación'}</span>
+                            <span className="rounded-2xl border border-caudal-electric/30 bg-caudal-electric/90 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-950">{selectedPlayerProfile.position || 'Sin demarcaciÃ³n'}</span>
                             <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">#{displayDorsal(selectedPlayerProfile.number)}</span>
-                            <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">{calculateAge(selectedPlayerProfile.dob)} años</span>
+                            <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">{calculateAge(selectedPlayerProfile.dob)} aÃ±os</span>
                             <span className="rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-xs font-bold text-slate-400">Pie {selectedPlayerProfile.foot || 'no indicado'}</span>
                           </div>
                         </div>
@@ -17977,7 +18076,7 @@ function App() {
                     </div>
                   </section>
 
-                  <AccordionSection title="Estadísticas principales" subtitle="Datos base del periodo analizado" defaultOpen>
+                  <AccordionSection title="EstadÃ­sticas principales" subtitle="Datos base del periodo analizado" defaultOpen>
                   <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-5 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
                     <div className="no-print flex flex-col gap-3 border-b border-white/10 pb-4 lg:flex-row lg:items-center lg:justify-between">
                       <div className="flex flex-wrap gap-2">
@@ -18023,7 +18122,7 @@ function App() {
                   </AccordionSection>
 
                   {orderedSeasonRows.length ? (
-                  <AccordionSection title="Evolución temporada" subtitle="Progresión por tramos" defaultOpen>
+                  <AccordionSection title="EvoluciÃ³n temporada" subtitle="ProgresiÃ³n por tramos" defaultOpen>
                   <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-5 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
                     <div className="grid gap-4 lg:grid-cols-3">
                       {seasonStageRows.map((stage) => (
@@ -18053,15 +18152,15 @@ function App() {
                   </AccordionSection>
                   ) : null}
 
-                  <AccordionSection title="Registro en vivo" subtitle="Datos del Modo Delegado separados de la estadística oficial">
+                  <AccordionSection title="Registro en vivo" subtitle="Datos del Modo Delegado separados de la estadÃ­stica oficial">
                   <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)] sm:p-5">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Registro en vivo</h3>
-                        <p className="mt-1 text-sm text-slate-400">Eventos del Modo Delegado. No forman parte de la estadística oficial salvo partidos validados.</p>
+                        <p className="mt-1 text-sm text-slate-400">Eventos del Modo Delegado. No forman parte de la estadÃ­stica oficial salvo partidos validados.</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {['Últimos 3 partidos', 'Últimos 5 partidos', 'Temporada completa'].map((filter) => (
+                        {['Ãšltimos 3 partidos', 'Ãšltimos 5 partidos', 'Temporada completa'].map((filter) => (
                           <button key={filter} onClick={() => setPlayerQuickScope(filter)} className={`rounded-2xl px-3 py-2 text-xs font-black uppercase tracking-[0.12em] ${playerQuickScope === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>{filter}</button>
                         ))}
                         {['Solo validados', 'Todos los registros'].map((filter) => (
@@ -18080,10 +18179,10 @@ function App() {
                             ['% tiros a puerta', quick.shotAccuracy],
                             ['Regates', quick.dribbles],
                             ['Centros', quick.crosses],
-                            ['Pérdidas', quick.losses],
+                            ['PÃ©rdidas', quick.losses],
                             ['Robos', quick.steals],
                             ['Recuperaciones', quick.recoveries],
-                            ['Balance rec/pérd', quick.recoveryLossBalance],
+                            ['Balance rec/pÃ©rd', quick.recoveryLossBalance],
                             ['Faltas realizadas', quick.foulsCommitted],
                             ['Faltas recibidas', quick.foulsReceived],
                           ].map(([label, value]) => (
@@ -18103,8 +18202,8 @@ function App() {
                         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                           {quick.recent.slice(0, 4).map((event) => (
                             <div key={event.id} className="rounded-2xl bg-white/5 p-4 text-sm">
-                              <p className="font-black text-white">{event.minute}' · {getQuickEventLabel(event.tipoEvento)}</p>
-                              <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">{event.match.opponent} · {matchDisplayDate(event.match.date)}</p>
+                              <p className="font-black text-white">{event.minute}' Â· {getQuickEventLabel(event.tipoEvento)}</p>
+                              <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">{event.match.opponent} Â· {matchDisplayDate(event.match.date)}</p>
                             </div>
                           ))}
                         </div>
@@ -18112,8 +18211,8 @@ function App() {
                     ) : (
                       <div className="mt-4">
                         {renderProfileEmptyState(
-                          'Todavía no hay suficientes eventos revisados.',
-                          'Cuando se registren más acciones, este apartado mostrará patrones de participación y momentos destacados.',
+                          'TodavÃ­a no hay suficientes eventos revisados.',
+                          'Cuando se registren mÃ¡s acciones, este apartado mostrarÃ¡ patrones de participaciÃ³n y momentos destacados.',
                           'horizontal'
                         )}
                       </div>
@@ -18122,7 +18221,7 @@ function App() {
                   </AccordionSection>
 
                   {prePostRows.length || tacticalTrendRows.length ? (
-                  <AccordionSection title="Objetivos de partido" subtitle="Relación entre consignas y rendimiento" className="no-print">
+                  <AccordionSection title="Objetivos de partido" subtitle="RelaciÃ³n entre consignas y rendimiento" className="no-print">
                   <section className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
                     {prePostRows.length ? (
                     <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
@@ -18138,7 +18237,7 @@ function App() {
                               <span className={`rounded-xl px-2 py-1 text-[10px] font-black ${achieved === 'Cumplido' ? 'bg-emerald-200/15 text-emerald-100' : achieved === 'Parcialmente' ? 'bg-amber-200/15 text-amber-100' : achieved === 'No cumplido' ? 'bg-red-200/15 text-red-100' : 'bg-white/[0.06] text-slate-300'}`}>{achieved}</span>
                             </div>
                             <p className="mt-2 line-clamp-2 text-sm text-slate-300">{preNote || 'Sin objetivo individual PRE registrado.'}</p>
-                            <p className="mt-2 text-xs text-slate-500">{reviewedEvents.length} eventos revisados · Nota {row.rating || '-'}</p>
+                            <p className="mt-2 text-xs text-slate-500">{reviewedEvents.length} eventos revisados Â· Nota {row.rating || '-'}</p>
                           </div>
                         ))}
                       </div>
@@ -18161,7 +18260,7 @@ function App() {
                   </AccordionSection>
                   ) : null}
 
-                  <AccordionSection title="Mapa de influencia y sociedades" subtitle="Dónde aparece y con quién conecta">
+                  <AccordionSection title="Mapa de influencia y sociedades" subtitle="DÃ³nde aparece y con quiÃ©n conecta">
                   <section className="grid gap-4 xl:grid-cols-[1.18fr_0.82fr]">
                     <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)] sm:p-5">
                       <div className="flex items-center justify-between gap-3">
@@ -18179,17 +18278,17 @@ function App() {
                           </div>
                         ) : renderProfileEmptyState(
                           'Sin zonas de influencia registradas.',
-                          'Cuando haya goles, asistencias o eventos rápidos revisados, aquí aparecerán las zonas activas del jugador.',
+                          'Cuando haya goles, asistencias o eventos rÃ¡pidos revisados, aquÃ­ aparecerÃ¡n las zonas activas del jugador.',
                           'pitch'
                         )}
                         <div className="space-y-4">
                           <div className="rounded-[1.25rem] border border-caudal-electric/15 bg-[#0f1e38]/70 p-4 text-slate-100">
-                            <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Producción ofensiva</p>
+                            <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">ProducciÃ³n ofensiva</p>
                             <div className="mt-3 grid gap-2.5">
                               {[
                                 ['Goles/90', aggregate.goalsPer90, 'text-emerald-300'],
                                 ['Asistencias/90', aggregate.assistsPer90, 'text-caudal-electric'],
-                                ['Participación directa', aggregate.directGoalParticipation, 'text-white'],
+                                ['ParticipaciÃ³n directa', aggregate.directGoalParticipation, 'text-white'],
                               ].map(([label, value, color]) => (
                                 <div key={label} className="flex items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.045] px-4 py-3">
                                   <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">{label}</span>
@@ -18208,21 +18307,21 @@ function App() {
                                 <div key={row.phase}>
                                   <div className="flex justify-between text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">
                                     <span>{row.phase}</span>
-                                    <span>{row.count} · {Math.round((row.count / Math.max(1, allGoalActions.length)) * 100)}%</span>
+                                    <span>{row.count} Â· {Math.round((row.count / Math.max(1, allGoalActions.length)) * 100)}%</span>
                                   </div>
                                   <div className="mt-2 h-1.5 rounded-full bg-white/10">
                                     <div className={`h-full rounded-full ${dominantGoalPhase?.phase === row.phase ? 'bg-emerald-200' : 'bg-white/25'}`} style={{ width: `${(row.count / maxPlayerGoalPhase) * 100}%` }} />
                                   </div>
                                 </div>
                               ))}
-                            </div> : <div className="mt-3">{renderProfileEmptyState('Sin patrón dominante.', 'No hay goles suficientes para perfilar el tipo de finalización.', 'lines')}</div>}
+                            </div> : <div className="mt-3">{renderProfileEmptyState('Sin patrÃ³n dominante.', 'No hay goles suficientes para perfilar el tipo de finalizaciÃ³n.', 'lines')}</div>}
                           </div>
                           <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.025] p-4">
-                            <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Diana de finalización</p>
+                            <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Diana de finalizaciÃ³n</p>
                             {hasGoalZoneData ? (
                               <div className="mt-3 max-w-sm opacity-90">{renderReadOnlyZoneGrid({ counts: goalZoneCounts, zones: goalZoneOptions, goal: true })}</div>
                             ) : (
-                              <div className="mt-3">{renderProfileEmptyState('Sin tiros en diana.', 'La diana se activará al registrar zonas de finalización.', 'horizontal')}</div>
+                              <div className="mt-3">{renderProfileEmptyState('Sin tiros en diana.', 'La diana se activarÃ¡ al registrar zonas de finalizaciÃ³n.', 'horizontal')}</div>
                             )}
                           </div>
                         </div>
@@ -18235,11 +18334,11 @@ function App() {
                         {societyRows.length ? <div className="mt-4 space-y-4 text-sm text-slate-300">
                           <div className="grid gap-3 sm:grid-cols-2">
                             <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Más asistencias recibidas</p>
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">MÃ¡s asistencias recibidas</p>
                               <p className="mt-2 truncate text-lg font-black text-white">{topAssistant?.[0] || 'Sin datos'}</p>
                             </div>
                             <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Mayor asociación</p>
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Mayor asociaciÃ³n</p>
                               <p className="mt-2 truncate text-lg font-black text-white">{topAssociation?.name || 'Sin datos'}</p>
                             </div>
                           </div>
@@ -18251,7 +18350,7 @@ function App() {
                                   <span className="truncate font-bold text-white">{row.name}</span>
                                   <strong className="text-caudal-electric">{row.total}</strong>
                                 </div>
-                                <p className="mt-1 text-xs text-slate-500">Recibe {row.received} · Asiste {row.given}</p>
+                                <p className="mt-1 text-xs text-slate-500">Recibe {row.received} Â· Asiste {row.given}</p>
                                 <div className="mt-2 h-1.5 rounded-full bg-white/10">
                                   <div className="h-full rounded-full bg-caudal-electric/80" style={{ width: `${(row.total / maxSocietyCount) * 100}%` }} />
                                 </div>
@@ -18286,7 +18385,7 @@ function App() {
                               </div>
                             )) : <p className="mt-2 italic text-slate-500">Sin datos registrados</p>}
                           </div>
-                        </div> : <div className="mt-4">{renderProfileEmptyState('Sin sociedades ofensivas registradas.', 'Cuando haya goles y asistencias revisadas, se verán conexiones, participaciones compartidas y compañeros más asociados.', 'lines')}</div>}
+                        </div> : <div className="mt-4">{renderProfileEmptyState('Sin sociedades ofensivas registradas.', 'Cuando haya goles y asistencias revisadas, se verÃ¡n conexiones, participaciones compartidas y compaÃ±eros mÃ¡s asociados.', 'lines')}</div>}
                       </div>
                       {videoActions.length ? (
                       <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
@@ -18296,9 +18395,9 @@ function App() {
                             <div key={`${event.id}-${event.action}`} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] text-sm text-slate-300">
                               <div className="flex aspect-video items-center justify-center bg-[linear-gradient(135deg,rgba(61,217,255,0.12),rgba(255,255,255,0.04))] text-xs font-black uppercase tracking-[0.18em] text-slate-400">Clip</div>
                               <div className="p-4">
-                              <p className="font-bold text-white">{event.action} · {event.minute}' vs {event.match.opponent}</p>
+                              <p className="font-bold text-white">{event.action} Â· {event.minute}' vs {event.match.opponent}</p>
                               <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">{getCompetitionFromCatalog(event.match).label}</p>
-                              <button type="button" onClick={() => window.open(event.videoUrl, '_blank')} className="mt-3 rounded-xl bg-caudal-electric/90 px-3 py-2 text-xs font-bold text-slate-950 transition hover:bg-caudal-electric">Ver análisis</button>
+                              <button type="button" onClick={() => window.open(event.videoUrl, '_blank')} className="mt-3 rounded-xl bg-caudal-electric/90 px-3 py-2 text-xs font-bold text-slate-950 transition hover:bg-caudal-electric">Ver anÃ¡lisis</button>
                               </div>
                             </div>
                           ))}
@@ -18324,7 +18423,7 @@ function App() {
                               <button
                                 type="button"
                                 key={group.minute}
-                                title={group.events.map((event) => `${event.minute}' ${event.type}`).join(' · ')}
+                                title={group.events.map((event) => `${event.minute}' ${event.type}`).join(' Â· ')}
                                 onClick={() =>
                                   setSelectedTimelineAction((current) =>
                                     current?.actionKey === mainEvent.actionKey ? null : mainEvent
@@ -18340,14 +18439,14 @@ function App() {
                         </div>
                       </div>
                     ) : (
-                      <div className="mt-3">{renderProfileEmptyState('Sin momentos de impacto registrados.', 'Goles, asistencias, tarjetas y eventos rápidos revisados construirán aquí una línea temporal útil.', 'lines')}</div>
+                      <div className="mt-3">{renderProfileEmptyState('Sin momentos de impacto registrados.', 'Goles, asistencias, tarjetas y eventos rÃ¡pidos revisados construirÃ¡n aquÃ­ una lÃ­nea temporal Ãºtil.', 'lines')}</div>
                     )}
                     {selectedTimelineAction ? (
                       <div className="mt-5 rounded-2xl border border-caudal-electric/30 bg-caudal-electric/10 p-4">
-                        <p className="text-xs font-black uppercase tracking-[0.16em] text-caudal-electric">{selectedTimelineAction.type} · minuto {selectedTimelineAction.minute}'</p>
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-caudal-electric">{selectedTimelineAction.type} Â· minuto {selectedTimelineAction.minute}'</p>
                         <p className="mt-2 text-sm font-bold text-white">{getMatchScoreLabel(selectedTimelineAction.match)}</p>
                         <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">
-                          {matchDisplayDate(selectedTimelineAction.match.date)} · {getCompetitionFromCatalog(selectedTimelineAction.match).label} · {selectedTimelineAction.match.isHome ? 'Local' : 'Visitante'}
+                          {matchDisplayDate(selectedTimelineAction.match.date)} Â· {getCompetitionFromCatalog(selectedTimelineAction.match).label} Â· {selectedTimelineAction.match.isHome ? 'Local' : 'Visitante'}
                         </p>
                         {selectedTimelineAction.videoUrl ? (
                           <button
@@ -18355,10 +18454,10 @@ function App() {
                             onClick={() => window.open(selectedTimelineAction.videoUrl, '_blank')}
                             className="mt-3 rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950"
                           >
-                            Ver vídeo
+                            Ver vÃ­deo
                           </button>
                         ) : (
-                          <p className="mt-3 text-xs italic text-slate-500">Sin vídeo registrado en esta acción.</p>
+                          <p className="mt-3 text-xs italic text-slate-500">Sin vÃ­deo registrado en esta acciÃ³n.</p>
                         )}
                       </div>
                     ) : null}
@@ -18372,7 +18471,7 @@ function App() {
                     <div className="mt-4 player-history-table">
                       <table className="w-full text-left text-sm">
                         <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
-                          <tr>{['Fecha', 'Rival', 'Resultado', 'Competición', 'L/V', 'Rol', 'Min', 'Nota', 'Goles', 'Asist.', 'Tarjetas', 'Lesión'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}</tr>
+                          <tr>{['Fecha', 'Rival', 'Resultado', 'CompeticiÃ³n', 'L/V', 'Rol', 'Min', 'Nota', 'Goles', 'Asist.', 'Tarjetas', 'LesiÃ³n'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}</tr>
                         </thead>
                         <tbody>
                           {aggregate.rows.length ? aggregate.rows.map((row) => {
@@ -18380,7 +18479,7 @@ function App() {
                             const ratingValue = Number(row.rating) || 0;
                             const score = getMatchScoreData(row.match);
                             const resultLabel = score.caudalGoals > score.rivalGoals ? 'V' : score.caudalGoals < score.rivalGoals ? 'D' : 'E';
-                            const cardLabel = [row.yellow ? `${row.yellow} TA` : null, row.red ? '1 TR' : null].filter(Boolean).join(' · ') || '-';
+                            const cardLabel = [row.yellow ? `${row.yellow} TA` : null, row.red ? '1 TR' : null].filter(Boolean).join(' Â· ') || '-';
                             return (
                             <tr key={row.match.id} className={`border-t border-white/10 ${ratingValue >= 7 || row.goals.length || row.assists.length ? 'bg-emerald-200/[0.04]' : ratingValue && ratingValue < 5 || row.red || row.injured ? 'bg-red-200/[0.03]' : ''}`}>
                               <td className="px-3 py-4 text-slate-300">{matchDisplayDate(row.match.date)}</td>
@@ -18394,7 +18493,7 @@ function App() {
                               </td>
                               <td className="px-3 py-4">
                                 <span className={`rounded-xl px-2 py-1 text-xs font-black ${resultLabel === 'V' ? 'bg-emerald-200/15 text-emerald-100' : resultLabel === 'D' ? 'bg-red-200/15 text-red-100' : 'bg-amber-200/15 text-amber-100'}`}>
-                                  {resultLabel} · {score.caudalGoals}-{score.rivalGoals}
+                                  {resultLabel} Â· {score.caudalGoals}-{score.rivalGoals}
                                 </span>
                               </td>
                               <td className="px-3 py-4 text-slate-300">{getCompetitionFromCatalog(row.match).label}</td>
@@ -18407,7 +18506,7 @@ function App() {
                               <td className="px-3 py-4 text-emerald-100">{row.goals.length || '-'}</td>
                               <td className="px-3 py-4 text-caudal-electric">{row.assists.length || '-'}</td>
                               <td className="px-3 py-4 text-amber-100">{cardLabel}</td>
-                              <td className="px-3 py-4 text-red-100">{row.injured ? 'Sí' : '-'}</td>
+                              <td className="px-3 py-4 text-red-100">{row.injured ? 'SÃ­' : '-'}</td>
                             </tr>
                           );
                           }) : <tr><td colSpan="12" className="px-3 py-6 text-center text-slate-500">Sin datos registrados</td></tr>}
@@ -18419,7 +18518,7 @@ function App() {
 
                   {playerReport ? (
                     <section className="no-print rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Informe automático</h3>
+                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Informe automÃ¡tico</h3>
                       <div className="mt-5 grid gap-4 lg:grid-cols-2">
                         {Object.entries(playerReport).map(([title, text]) => (
                           <div key={title} className="rounded-3xl bg-[#0f1e38]/80 p-5">
@@ -18483,7 +18582,7 @@ function App() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h3 className="text-xs font-black uppercase tracking-[0.18em] text-white">Once base actual</h3>
-                      <p className="mt-1 text-xs text-slate-500">Sistema más usado: {rosterDashboard.mostUsedSystem}</p>
+                      <p className="mt-1 text-xs text-slate-500">Sistema mÃ¡s usado: {rosterDashboard.mostUsedSystem}</p>
                     </div>
                     <span className="rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-2.5 py-1 text-xs font-black text-caudal-electric">{rosterDashboard.baseEleven.length}/11</span>
                   </div>
@@ -18538,7 +18637,7 @@ function App() {
                   type="search"
                   value={playerSearchTerm}
                   onChange={(event) => setPlayerSearchTerm(event.target.value)}
-                  placeholder="Buscar jugador, dorsal, demarcación..."
+                  placeholder="Buscar jugador, dorsal, demarcaciÃ³n..."
                   className="min-h-[44px] w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-white outline-none transition placeholder:text-slate-500 hover:border-white/20 focus:border-caudal-electric/70 focus:bg-black/30"
                 />
                 <div className="flex flex-wrap gap-2">
@@ -18582,7 +18681,7 @@ function App() {
               </div>
             ) : empty ? (
               <div className="rounded-[1.35rem] border border-dashed border-white/10 bg-white/[0.03] px-5 py-5 text-sm text-slate-400">
-                No hay jugadores aún
+                No hay jugadores aÃºn
               </div>
             ) : (
             <div className="space-y-5">
@@ -18591,7 +18690,7 @@ function App() {
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[760px] text-left text-sm">
                       <thead className="bg-white/[0.04] text-[10px] uppercase tracking-[0.16em] text-slate-500">
-                        <tr>{['#', 'Jugador', 'Posición', 'Edad', 'Estado', 'Rol', 'Min'].map((head) => <th key={head} className="px-4 py-3">{head}</th>)}</tr>
+                        <tr>{['#', 'Jugador', 'PosiciÃ³n', 'Edad', 'Estado', 'Rol', 'Min'].map((head) => <th key={head} className="px-4 py-3">{head}</th>)}</tr>
                       </thead>
                       <tbody>
                         {visiblePlayers.map((player) => {
@@ -18612,14 +18711,14 @@ function App() {
                                 </div>
                               </td>
                               <td className="px-4 py-3 text-slate-300">{player.position || '-'}</td>
-                              <td className="px-4 py-3 text-slate-300">{calculateAge(player.dob)} años</td>
+                              <td className="px-4 py-3 text-slate-300">{calculateAge(player.dob)} aÃ±os</td>
                               <td className="px-4 py-3">
                                 {statusLabel ? <span className={`rounded-xl px-2.5 py-1 text-xs font-black ${statusClass}`}>{statusLabel}</span> : <span className="text-slate-600">-</span>}
                               </td>
                               <td className="px-4 py-3">
                                 <div className="flex flex-wrap gap-1.5">
                                   {inBaseEleven ? <span className="rounded-lg border border-white/10 bg-white/[0.06] px-2 py-1 text-[10px] font-bold text-white">? Titular habitual</span> : null}
-                                  {staffStatus.captain ? <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">Capitán</span> : null}
+                                  {staffStatus.captain ? <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">CapitÃ¡n</span> : null}
                                   {rosterDashboard.launcherPlayerIds.has(player.id) ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">?? Lanzador</span> : null}
                                   {rosterRow.yellow ? <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">?? Amonestado</span> : null}
                                   {staffStatus.injured ? <span className="rounded-lg border border-red-200/20 bg-red-300/10 px-2 py-1 text-[10px] font-bold text-red-100">?? Lesionado</span> : null}
@@ -18637,7 +18736,7 @@ function App() {
               ) : groupedPlayers.some((group) => group.players.length) ? groupedPlayers.filter((group) => group.players.length).map((group) => (
                 <section key={group.title} className="space-y-2.5">
                   <div className="flex items-center justify-between rounded-[1rem] border border-white/10 bg-white/[0.035] px-3.5 py-2">
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">{group.title} <span className="text-slate-500">· {group.players.length}</span></h3>
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">{group.title} <span className="text-slate-500">Â· {group.players.length}</span></h3>
                     <span className="h-px flex-1 bg-white/10 ml-4" />
                   </div>
 
@@ -18656,7 +18755,7 @@ function App() {
                         const footLabel = player.foot || 'No disponible';
                         const tacticalChips = [
                           inBaseEleven || rosterRow.starts >= 2 ? ['? Titular habitual', 'border-white/12 bg-white/[0.06] text-white'] : null,
-                          staffStatus.captain ? ['Capitán', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
+                          staffStatus.captain ? ['CapitÃ¡n', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
                           rosterDashboard.launcherPlayerIds.has(player.id) ? ['?? Lanzador', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
                           rosterRow.yellow ? ['?? Amonestado', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
                           staffStatus.injured ? ['?? Lesionado', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
@@ -18683,8 +18782,8 @@ function App() {
                             </div>
                             <div className="min-w-0 pr-1">
                               <h3 className="line-clamp-2 [overflow-wrap:normal] [word-break:normal] text-[17px] font-black leading-[1.12] text-white">{player.name}</h3>
-                              <p className="mt-1 line-clamp-1 [overflow-wrap:normal] [word-break:normal] text-[12px] font-bold leading-snug text-slate-300">{player.position || 'Sin demarcación'}</p>
-                              <p className="mt-0.5 text-[10px] font-semibold text-slate-500">{calculateAge(player.dob)} años</p>
+                              <p className="mt-1 line-clamp-1 [overflow-wrap:normal] [word-break:normal] text-[12px] font-bold leading-snug text-slate-300">{player.position || 'Sin demarcaciÃ³n'}</p>
+                              <p className="mt-0.5 text-[10px] font-semibold text-slate-500">{calculateAge(player.dob)} aÃ±os</p>
                             </div>
                             <p className="mt-0.5 rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2.5 py-1 text-[12px] font-black text-caudal-electric">#{displayDorsal(player.number)}</p>
                           </div>
@@ -18695,7 +18794,7 @@ function App() {
                             ))}
                           </div>
                           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-2 text-[11px] font-semibold text-slate-500">
-                            <span>{minutesLabel} · {startsLabel}</span>
+                            <span>{minutesLabel} Â· {startsLabel}</span>
                             <span>Pie {footLabel}</span>
                           </div>
                         </article>
@@ -18710,7 +18809,7 @@ function App() {
                 </section>
               )) : (
                 <div className="rounded-[1.35rem] border border-dashed border-white/10 bg-white/[0.03] px-5 py-5 text-sm text-slate-400">
-                  No hay jugadores que coincidan con la búsqueda o el filtro activo.
+                  No hay jugadores que coincidan con la bÃºsqueda o el filtro activo.
                 </div>
               )}
             </div>
@@ -18727,7 +18826,7 @@ function App() {
                 <div>
                   <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">Equipos / Rivales</p>
                   <h2 className="mt-1 text-xl font-black text-white sm:text-2xl">Base de datos de scouting</h2>
-                  <p className="mt-0.5 text-sm leading-5 text-slate-400">Consulta rápida de rivales antes de preparar el PRE.</p>
+                  <p className="mt-0.5 text-sm leading-5 text-slate-400">Consulta rÃ¡pida de rivales antes de preparar el PRE.</p>
                 </div>
                 {!selectedTeam ? (
                   <div className="rounded-2xl border border-white/10 bg-black/15 px-4 py-2">
@@ -18761,8 +18860,8 @@ function App() {
                     className="min-h-[42px] rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-black text-white outline-none"
                   >
                     <option>Nombre</option>
-                    <option>Último enfrentamiento</option>
-                    <option>Más reciente</option>
+                    <option>Ãšltimo enfrentamiento</option>
+                    <option>MÃ¡s reciente</option>
                   </select>
                   <div className="flex flex-wrap gap-1.5 lg:col-span-2">
                     {['Todos', '4-4-2', '4-3-3', '3-5-2', 'Otros sistemas'].filter((filter) => {
@@ -18794,7 +18893,7 @@ function App() {
                 const lastResult = profile.recentResults[0] || null;
                 const lastMatch = profile.playedMatches[0] || profile.latestMatch || null;
                 const lastScore = lastMatch ? getMatchScoreData(lastMatch) : null;
-                const lastMatchLabel = lastScore ? `${matchDisplayDate(lastMatch.date)} · ${lastScore.caudalGoals}-${lastScore.rivalGoals}` : 'Sin enfrentamientos';
+                const lastMatchLabel = lastScore ? `${matchDisplayDate(lastMatch.date)} Â· ${lastScore.caudalGoals}-${lastScore.rivalGoals}` : 'Sin enfrentamientos';
                 const rivalPlayers = dedupeRivalPlayers(selectedTeam.squad || []);
                 const manualPlacedStarters = rivalPlayers
                   .map((player) => ({ player, flags: getRivalPlayerFlags(selectedTeam.id, player.name) }))
@@ -18916,7 +19015,7 @@ function App() {
                   if ([4, 5, 6, 7].includes(order)) return 'MEDIOCENTROS';
                   if ([8, 9].includes(order)) return 'EXTREMOS';
                   if (order === 10) return 'DELANTEROS';
-                  return 'SIN POSICIÓN';
+                  return 'SIN POSICIÃ“N';
                 };
                 const positionChipClass = (position) => {
                   const order = positionOrderValue(position);
@@ -19002,7 +19101,7 @@ function App() {
                 };
                 const getPositionLocationWarning = (player, currentRole = getCurrentFieldRoleForPlayer(player)) => {
                   if (!player?.position || !currentRole || positionMatchesSlot(player.position, currentRole)) return '';
-                  return `Posición natural: ${player.position} · Ubicación actual: ${currentRole}`;
+                  return `PosiciÃ³n natural: ${player.position} Â· UbicaciÃ³n actual: ${currentRole}`;
                 };
                 const presentationBenchPlayers = rivalPlayers
                   .filter((player) => !starterNames.has(normalizePlayerIdentityName(player.name)))
@@ -19026,7 +19125,7 @@ function App() {
                 const formationRoleOptions = getFormationRoles(selectedTeam.system || '4-4-2').map((role, index) => ({
                   index,
                   role,
-                  label: `${shortRoleLabel(role)} · ${role}`,
+                  label: `${shortRoleLabel(role)} Â· ${role}`,
                 }));
                 const placeQuickRivalPlayer = (player) => {
                   if (!player?.name) return;
@@ -19053,7 +19152,7 @@ function App() {
                               ['Sistema', selectedTeam.system || 'Pendiente'],
                               ['Estadio', selectedTeam.stadium || 'Pendiente'],
                               ['Jugadores', rivalPlayers.length],
-                              ['Último análisis', profile.lastAnalysisLabel],
+                              ['Ãšltimo anÃ¡lisis', profile.lastAnalysisLabel],
                             ].map(([label, value]) => (
                               <span key={label} className={`rounded-xl border border-white/10 bg-white/[0.045] font-bold text-slate-300 ${isPresentationMode ? 'px-2 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px]'}`}>
                                 <span className="text-slate-500">{label}</span> <span className="text-white">{value}</span>
@@ -19064,13 +19163,13 @@ function App() {
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button type="button" onClick={() => setTeamFieldEditMode((value) => !value)} className={`rounded-2xl px-4 py-2 text-sm font-black transition ${teamFieldEditMode ? 'border border-caudal-electric/25 bg-caudal-electric/10 text-caudal-electric hover:bg-caudal-electric/15' : 'bg-caudal-electric text-slate-950 hover:bg-[#7aacff]'}`}>
-                          {teamFieldEditMode ? 'Modo presentación' : 'Modo edición'}
+                          {teamFieldEditMode ? 'Modo presentaciÃ³n' : 'Modo ediciÃ³n'}
                         </button>
                         {teamFieldEditMode ? (
                           <>
                             <button type="button" onClick={() => openTeamForm(selectedTeam)} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10">Editar</button>
                             <button type="button" onClick={() => setActiveTab('Partidos')} className="rounded-2xl border border-caudal-electric/20 bg-caudal-electric/10 px-4 py-2 text-sm font-bold text-caudal-electric transition hover:bg-caudal-electric/15">Crear PRE</button>
-                            <button type="button" onClick={() => { if (window.confirm('¿Seguro que quieres eliminar este rival?')) handleTeamDelete(selectedTeam); }} className="rounded-2xl border border-red-300/15 bg-red-500/10 px-4 py-2 text-sm font-bold text-red-100 transition hover:bg-red-500/15">Eliminar rival</button>
+                            <button type="button" onClick={() => { if (window.confirm('Â¿Seguro que quieres eliminar este rival?')) handleTeamDelete(selectedTeam); }} className="rounded-2xl border border-red-300/15 bg-red-500/10 px-4 py-2 text-sm font-bold text-red-100 transition hover:bg-red-500/15">Eliminar rival</button>
                           </>
                         ) : null}
                       </div>
@@ -19080,7 +19179,7 @@ function App() {
                       <div className="rounded-[1.15rem] border border-red-300/15 bg-red-500/[0.08] p-4">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div>
-                            <p className="text-sm font-black text-red-100">¿Eliminar este jugador rival?</p>
+                            <p className="text-sm font-black text-red-100">Â¿Eliminar este jugador rival?</p>
                             <p className="mt-1 text-xs font-semibold text-red-100/60">{pendingRivalPlayerDelete.name}</p>
                           </div>
                           <div className="flex gap-2">
@@ -19095,7 +19194,7 @@ function App() {
                       <div className={`flex flex-wrap items-center font-bold text-slate-200 ${isPresentationMode ? 'gap-x-4 gap-y-1 text-xs' : 'gap-2 text-sm'}`}>
                         <span className="font-black uppercase tracking-[0.16em] text-caudal-electric">Resumen rival</span>
                         <span>? <strong className="text-white">{keyPlayer ? displayPlayerName(keyPlayer) : '-'}</strong></span>
-                        <span>© <strong className="text-white">{captainPlayer ? displayPlayerName(captainPlayer) : '-'}</strong></span>
+                        <span>Â© <strong className="text-white">{captainPlayer ? displayPlayerName(captainPlayer) : '-'}</strong></span>
                         <span>?? <strong className="text-white">{rivalPlayers.filter((player) => player.injured).length ? rivalPlayers.filter((player) => player.injured).map(displayPlayerName).join(', ') : '-'}</strong></span>
                         <span>?? <strong className="text-white">{rivalPlayers.filter((player) => player.suspended).length ? rivalPlayers.filter((player) => player.suspended).map(displayPlayerName).join(', ') : '-'}</strong></span>
                         <span>?? <strong className="text-white">{yellowRiskPlayers.length ? yellowRiskPlayers.map(displayPlayerName).join(', ') : '-'}</strong></span>
@@ -19109,7 +19208,7 @@ function App() {
                         <div className={`flex flex-col sm:flex-row sm:items-center sm:justify-between ${isPresentationMode ? 'mb-2 gap-2' : 'mb-4 gap-3'}`}>
                           <div>
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Sistema y plantilla</p>
-                            <h4 className={`mt-1 font-black text-white ${isPresentationMode ? 'text-sm' : 'text-lg'}`}>{teamFieldEditMode ? 'Campo principal' : `${selectedTeam.system || 'Sistema'} · once rival`}</h4>
+                            <h4 className={`mt-1 font-black text-white ${isPresentationMode ? 'text-sm' : 'text-lg'}`}>{teamFieldEditMode ? 'Campo principal' : `${selectedTeam.system || 'Sistema'} Â· once rival`}</h4>
                           </div>
                           {teamFieldEditMode ? <div className="flex flex-wrap gap-2">
                             <select
@@ -19126,13 +19225,13 @@ function App() {
                               Colocar por sistema
                             </button>
                             <button type="button" onClick={generateSelectedTeamAutoXI} className="rounded-2xl border border-caudal-electric/20 bg-caudal-electric/10 px-4 py-2 text-sm font-bold text-caudal-electric transition hover:bg-caudal-electric/15">
-                              Generar XI automático
+                              Generar XI automÃ¡tico
                             </button>
                             <button type="button" onClick={clearSelectedTeamField} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-slate-100 transition hover:bg-white/10">
                               Limpiar campo
                             </button>
                             <button type="button" onClick={saveSelectedTeamField} className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-bold text-slate-200 transition hover:bg-white/10">
-                              Guardar disposición
+                              Guardar disposiciÃ³n
                             </button>
                           </div> : null}
                         </div>
@@ -19151,7 +19250,7 @@ function App() {
                           <div className="absolute bottom-4 left-1/2 h-24 w-56 -translate-x-1/2 rounded-t-3xl border-x border-t border-white/18" />
                           {getFormationCoordinates(selectedTeam.system || '4-4-2').map((slot, slotIndex) => {
                             const slotPlayer = getLineupSlotMap(visualFieldLineup).get(slotIndex);
-                            const slotRole = getFormationRoles(selectedTeam.system || '4-4-2')[slotIndex] || `Posición ${slotIndex + 1}`;
+                            const slotRole = getFormationRoles(selectedTeam.system || '4-4-2')[slotIndex] || `PosiciÃ³n ${slotIndex + 1}`;
                             const slotReservePlayers = reservePlayersBySlot[slotIndex] || [];
                             const slotPositionWarning = slotPlayer ? getPositionLocationWarning(slotPlayer, slotRole) : '';
                             return (
@@ -19202,11 +19301,11 @@ function App() {
                                       className="absolute -right-2 -top-2 z-20 flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-slate-950/85 text-[11px] font-black text-slate-300 transition hover:bg-red-500/20 hover:text-red-100"
                                       title="Quitar del campo"
                                     >
-                                      ×
+                                      Ã—
                                     </button> : null}
                                     {slotPlayer.isKey ? <span className={`absolute left-1/2 flex -translate-x-1/2 items-center justify-center rounded-full border border-amber-200/70 bg-amber-200 font-black text-slate-950 shadow-[0_0_16px_rgba(250,204,21,0.42)] ${isPresentationMode ? '-top-3 h-5 w-5 text-[10px]' : '-top-5 h-7 w-7 text-sm'}`}>?</span> : null}
                                     <span className={`absolute flex flex-col gap-0.5 ${isPresentationMode ? '-right-1 top-1' : '-right-2 top-2'}`}>
-                                      {getRivalPlayerStatusIcons(selectedTeam.id, slotPlayer).filter(([, title]) => title !== 'Capitán').map(([icon, title, className]) => (
+                                      {getRivalPlayerStatusIcons(selectedTeam.id, slotPlayer).filter(([, title]) => title !== 'CapitÃ¡n').map(([icon, title, className]) => (
                                         <span key={title} title={title} className={`flex items-center justify-center rounded-md px-1 font-black leading-none ${isPresentationMode ? 'h-4 min-w-4 text-[8px]' : 'h-5 min-w-5 text-[10px]'} ${className}`}>{icon}</span>
                                       ))}
                                     </span>
@@ -19218,7 +19317,7 @@ function App() {
                                     </span>
                                     <span className={`flex max-w-28 items-center justify-center gap-1 truncate font-black uppercase ${isPresentationMode ? 'mt-0.5 text-[10px]' : 'mt-1.5 text-[13px]'}`}>
                                       <span className="truncate">{displayPlayerName(slotPlayer)}</span>
-                                      {getRivalPlayerFlags(selectedTeam.id, slotPlayer.name).captain || slotPlayer.captain ? <span title="Capitán" className="shrink-0 text-[10px] leading-none text-blue-200">©</span> : null}
+                                      {getRivalPlayerFlags(selectedTeam.id, slotPlayer.name).captain || slotPlayer.captain ? <span title="CapitÃ¡n" className="shrink-0 text-[10px] leading-none text-blue-200">Â©</span> : null}
                                     </span>
                                     {teamFieldEditMode && slotPositionWarning ? (
                                       <span className="mt-1 max-w-36 rounded-lg border border-amber-200/15 bg-amber-200/[0.08] px-1.5 py-1 text-[8px] font-bold normal-case leading-tight tracking-normal text-amber-100" title={slotPositionWarning}>
@@ -19342,7 +19441,7 @@ function App() {
                             <h4 className="mt-1 text-lg font-black text-white">{rivalPlayers.length} jugadores</h4>
                           </div>
                           <button type="button" onClick={() => openRivalPlayerModal()} className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-bold text-white transition hover:bg-white/10">
-                            Añadir jugador
+                            AÃ±adir jugador
                           </button>
                         </div>
                         <input
@@ -19401,7 +19500,7 @@ function App() {
                                         </span>
                                         <span className="mt-1 flex flex-wrap items-center gap-1">
                                           <span className={`rounded-md border px-1.5 py-0.5 text-[9px] font-black uppercase ${positionChipClass(player.position)}`}>
-                                            {player.position || 'Sin posición'}
+                                            {player.position || 'Sin posiciÃ³n'}
                                           </span>
                                           <span className={`rounded-md border px-1.5 py-0.5 text-[8px] font-black uppercase ${getRosterFieldStateClass(fieldState)}`}>
                                             {fieldState}
@@ -19451,7 +19550,7 @@ function App() {
                                           <div className="m-1 rounded-xl border border-white/10 bg-white/[0.04] p-2">
                                             <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">{rivalQuickPlacement.mode}</p>
                                             <label className="mt-2 block text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
-                                              Posición
+                                              PosiciÃ³n
                                               <select
                                                 value={rivalQuickPlacement.slotIndex}
                                                 onChange={(event) => setRivalQuickPlacement((current) => ({ ...current, slotIndex: Number(event.target.value) }))}
@@ -19546,16 +19645,16 @@ function App() {
                         )}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Alineación</p>
+                        <p className="text-xs uppercase tracking-[0.25em] text-slate-500">AlineaciÃ³n</p>
                         <h3 className="truncate text-lg font-semibold text-white">{selectedTeam.name}</h3>
                       </div>
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-2">
                       {[
                         ['ALT', 'Altura', 'Por definir'],
-                        ['PRS', 'Presión', 'Sin pauta'],
+                        ['PRS', 'PresiÃ³n', 'Sin pauta'],
                         ['CLA', 'Foco rival', dedupeRivalPlayers(selectedTeam.squad).find((player) => player.isKey)?.name || 'Sin marcar'],
-                        ['ABP', 'Balón parado', 'Pendiente'],
+                        ['ABP', 'BalÃ³n parado', 'Pendiente'],
                       ].map(([code, label, value]) => (
                         <div key={label} className="group rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2 transition hover:border-caudal-electric/20 hover:bg-white/[0.055]">
                           <div className="flex items-center gap-2">
@@ -19650,7 +19749,7 @@ function App() {
                                         setTeamFieldEditMode(true);
                                       }}
                                       className={`rounded-lg border px-2 py-1 text-[10px] font-black opacity-80 transition group-hover:opacity-100 ${isSelectedForPlacement ? 'border-amber-200/30 bg-amber-300/20 text-amber-100' : 'border-white/10 bg-white/[0.04] text-slate-400 hover:bg-white/[0.08] hover:text-white'}`}
-                                      title="Asignar posición"
+                                      title="Asignar posiciÃ³n"
                                     >
                                       POS
                                     </button>
@@ -19672,7 +19771,7 @@ function App() {
                         ))
                       ) : (
                         <p className="rounded-2xl border border-dashed border-white/10 p-4 text-sm text-slate-400">
-                          Añade jugadores en la ficha del equipo.
+                          AÃ±ade jugadores en la ficha del equipo.
                         </p>
                       )}
                     </div>
@@ -19699,17 +19798,17 @@ function App() {
                           type="button"
                           onClick={() => setTeamFieldEditMode((value) => !value)}
                           className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition ${teamFieldEditMode ? 'bg-amber-300 text-slate-950' : 'border border-white/10 bg-white/[0.04] text-slate-400 hover:text-white'}`}
-                          title={teamFieldEditMode ? 'Edición activada' : 'Edición bloqueada'}
+                          title={teamFieldEditMode ? 'EdiciÃ³n activada' : 'EdiciÃ³n bloqueada'}
                         >
-                          {teamFieldEditMode ? 'Edición ON' : 'Candado'}
+                          {teamFieldEditMode ? 'EdiciÃ³n ON' : 'Candado'}
                         </button>
                       </div>
                     </div>
                     {selectedTeamUnplacedStarters.length ? (
                       <div className="rounded-2xl border border-amber-200/15 bg-amber-200/[0.055] p-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">Titulares sin posición asignada</p>
-                          <span className="text-[10px] font-bold text-amber-100/70">Selecciona y pulsa un slot vacío</span>
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">Titulares sin posiciÃ³n asignada</p>
+                          <span className="text-[10px] font-bold text-amber-100/70">Selecciona y pulsa un slot vacÃ­o</span>
                         </div>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {selectedTeamUnplacedStarters.map((player) => (
@@ -19771,13 +19870,13 @@ function App() {
                         'left-[31%] top-[13%] h-[74%] w-[38%]';
                       const threatClass =
                         identity.mainThreat === 'ABP' ? 'left-[27%] top-[8%] h-[18%] w-[46%]' :
-                        identity.mainThreat === 'transición' ? 'left-[18%] top-[46%] h-[34%] w-[64%]' :
+                        identity.mainThreat === 'transiciÃ³n' ? 'left-[18%] top-[46%] h-[34%] w-[64%]' :
                         identity.mainThreat === 'centros laterales' ? 'left-[9%] top-[22%] h-[56%] w-[82%]' :
                         identity.mainThreat === 'segunda jugada' ? 'left-[26%] top-[38%] h-[24%] w-[48%]' :
                         identity.mainThreat === 'delantero referencia' ? 'left-[36%] top-[18%] h-[22%] w-[28%]' :
                         'left-[14%] top-[28%] h-[48%] w-[72%]';
                       const blockTop = identity.blockHeight === 'alto' ? 'top-[32%]' : identity.blockHeight === 'bajo' ? 'top-[66%]' : 'top-[49%]';
-                      const pressureLabel = identity.pressureType === 'tras pérdida' ? 'presión tras pérdida' : identity.pressureType;
+                      const pressureLabel = identity.pressureType === 'tras pÃ©rdida' ? 'presiÃ³n tras pÃ©rdida' : identity.pressureType;
                       const showStaff = teamFieldViewMode === 'STAFF';
                       return (
                         <>
@@ -19796,7 +19895,7 @@ function App() {
                     })()}
                     {selectedTeamFieldLineup.some((player) => player.autoAssignedSlot) ? (
                       <div className="absolute left-1/2 top-16 z-40 -translate-x-1/2 rounded-xl border border-amber-200/20 bg-amber-200/[0.10] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-amber-100">
-                        Titular sin posición asignada · colocado en primer slot libre
+                        Titular sin posiciÃ³n asignada Â· colocado en primer slot libre
                       </div>
                     ) : null}
                     {teamFieldEditMode ? getFormationCoordinates(selectedTeam.system).map((slot, slotIndex) => {
@@ -19931,7 +20030,7 @@ function App() {
                                       : 'border border-white/10 bg-caudal-950/62 text-slate-200 hover:bg-caudal-950/80'
                                     : 'border border-dashed border-white/15 bg-white/[0.015] text-white/32 hover:text-white/55'
                                 }`}
-                                title={benchPlayer ? `${benchPlayer.name}${benchUnavailable ? ` · ${getUnavailableRivalReason(benchPlayer)}` : ''}` : 'Arrastra un reserva aquí'}
+                                title={benchPlayer ? `${benchPlayer.name}${benchUnavailable ? ` Â· ${getUnavailableRivalReason(benchPlayer)}` : ''}` : 'Arrastra un reserva aquÃ­'}
                               >
                                 {benchPlayer ? (
                                   <span className="flex items-center gap-1">
@@ -19994,8 +20093,8 @@ function App() {
                 .sort((a, b) => {
                   const profileA = getRivalCardProfile(a);
                   const profileB = getRivalCardProfile(b);
-                  if (teamSortMode === 'Último enfrentamiento') return String(profileB.latestMatch?.date || '').localeCompare(String(profileA.latestMatch?.date || '')) || String(a.name).localeCompare(String(b.name));
-                  if (teamSortMode === 'Más reciente') return String(profileB.latestMatch?.date || '').localeCompare(String(profileA.latestMatch?.date || '')) || String(a.name).localeCompare(String(b.name));
+                  if (teamSortMode === 'Ãšltimo enfrentamiento') return String(profileB.latestMatch?.date || '').localeCompare(String(profileA.latestMatch?.date || '')) || String(a.name).localeCompare(String(b.name));
+                  if (teamSortMode === 'MÃ¡s reciente') return String(profileB.latestMatch?.date || '').localeCompare(String(profileA.latestMatch?.date || '')) || String(a.name).localeCompare(String(b.name));
                   return cleanTeamDisplayName(a.name).localeCompare(cleanTeamDisplayName(b.name));
                 });
               return visibleTeams.length ? (
@@ -20034,7 +20133,7 @@ function App() {
                                 <FloatingActionMenu anchorRect={floatingMenu.anchorRect} width={176} onClose={closeFloatingMenu}>
                                   <button type="button" onClick={() => runMenuAction(() => openTeamForm(team))} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-slate-200 transition hover:bg-white/10">Editar equipo</button>
                                   <button type="button" onClick={() => runMenuAction(() => setActiveTab('Partidos'))} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-caudal-electric transition hover:bg-caudal-electric/10">Crear PRE</button>
-                                  <button type="button" onClick={() => runMenuAction(() => { if (window.confirm('¿Seguro que quieres eliminar este rival?')) handleTeamDelete(team); })} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar equipo</button>
+                                  <button type="button" onClick={() => runMenuAction(() => { if (window.confirm('Â¿Seguro que quieres eliminar este rival?')) handleTeamDelete(team); })} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar equipo</button>
                                 </FloatingActionMenu>
                               ) : null}
                             </div>
@@ -20050,7 +20149,7 @@ function App() {
                         </div>
 
                         <div className="relative mt-4 rounded-2xl border border-white/10 bg-white/[0.04] px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
-                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Último enfrentamiento</p>
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Ãšltimo enfrentamiento</p>
                           {lastMatch ? (
                             <>
                               <p className="mt-1.5 text-sm font-black leading-5 text-white">{lastResultLine}</p>
@@ -20070,13 +20169,13 @@ function App() {
                 </div>
               ) : (
                 <section className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] px-6 py-8 text-sm text-slate-400">
-                  No hay rivales que coincidan con la búsqueda.
+                  No hay rivales que coincidan con la bÃºsqueda.
                 </section>
               );
             })()
             : (
               <section className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] px-6 py-8 text-sm text-slate-400">
-                Todavía no hay equipos cargados.
+                TodavÃ­a no hay equipos cargados.
               </section>
             )}
           </main>
@@ -20092,7 +20191,7 @@ function App() {
 
         {activeTab === 'Registro Delegado' ? renderDelegatedRegistrySection() : null}
 
-        {activeTab === 'Análisis Grupal' ? (() => {
+        {activeTab === 'AnÃ¡lisis Grupal' ? (() => {
           try {
           {
           const scopedMatches = getGroupScopedMatches().map((match) => ({
@@ -20131,8 +20230,8 @@ function App() {
           const shotZoneCounts = getOfficialGoalZoneCounts(allGoalRows, 'finishZone');
           const goalZoneForCounts = getOfficialGoalZoneCounts(goalForRows, 'goalMouthZone');
           const goalZoneAgainstCounts = getOfficialGoalZoneCounts(goalAgainstRows, 'goalMouthZone');
-          const abpFor = { total: goalForRows.filter((goal) => goal.goalContext === 'ABP').length, corner: goalForRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Córner').length, directFreeKick: goalForRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Falta directa').length, penalty: goalForRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Penalti').length };
-          const abpAgainst = { total: goalAgainstRows.filter((goal) => goal.goalContext === 'ABP').length, corner: goalAgainstRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Córner').length, directFreeKick: goalAgainstRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Falta directa').length, penalty: goalAgainstRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Penalti').length };
+          const abpFor = { total: goalForRows.filter((goal) => goal.goalContext === 'ABP').length, corner: goalForRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'CÃ³rner').length, directFreeKick: goalForRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Falta directa').length, penalty: goalForRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Penalti').length };
+          const abpAgainst = { total: goalAgainstRows.filter((goal) => goal.goalContext === 'ABP').length, corner: goalAgainstRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'CÃ³rner').length, directFreeKick: goalAgainstRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Falta directa').length, penalty: goalAgainstRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Penalti').length };
           const goalCoverage = buildOfficialGoalCoverage(filteredOfficialGoals);
           const missingAssistCount = goalForRows.filter((goal) => !goal.assistantId && !goal.assistantName).length;
           const assistedWithoutZoneCount = assistedGoalRows.filter((goal) => !goal.creationZone).length;
@@ -20197,10 +20296,10 @@ function App() {
           const comebackWins = scopedMatches.filter((match) => filteredOfficialGoals.some((goal) => goal.partidoId === match.id && goal.teamSide === 'against') && getMatchScoreData(match).caudalGoals > getMatchScoreData(match).rivalGoals).length;
           const statisticalPatterns = [
             scoringStreak >= 3 ? `${scoringStreak} partidos consecutivos marcando.` : null,
-            cleanSheetStreak >= 2 ? `${cleanSheetStreak} porterías a cero consecutivas.` : null,
+            cleanSheetStreak >= 2 ? `${cleanSheetStreak} porterÃ­as a cero consecutivas.` : null,
             goalForRows.length >= 3 && phaseFor.some((row) => row.phase !== 'Sin contexto registrado' && row.count >= 3) ? `${phaseFor.filter((row) => row.phase !== 'Sin contexto registrado').slice().sort((a, b) => b.count - a.count)[0].count} goles mediante ${phaseFor.filter((row) => row.phase !== 'Sin contexto registrado').slice().sort((a, b) => b.count - a.count)[0].phase.toLowerCase()}.` : null,
             allGoalRows.length >= 4 && secondHalfGoals / allGoalRows.length >= 0.75 ? `${Math.round((secondHalfGoals / allGoalRows.length) * 100)}% de los goles registrados llegan en segunda parte.` : null,
-            goalAgainstRows.filter((event) => event.goalContext === 'ABP' && event.subphase === 'Córner').length >= 2 ? `${goalAgainstRows.filter((event) => event.goalContext === 'ABP' && event.subphase === 'Córner').length} goles encajados tras córner.` : null,
+            goalAgainstRows.filter((event) => event.goalContext === 'ABP' && event.subphase === 'CÃ³rner').length >= 2 ? `${goalAgainstRows.filter((event) => event.goalContext === 'ABP' && event.subphase === 'CÃ³rner').length} goles encajados tras cÃ³rner.` : null,
             allGoalRows.length >= 4 && centralFinish / allGoalRows.length >= 0.7 ? `${Math.round((centralFinish / allGoalRows.length) * 100)}% de los goles finalizan por zona central.` : null,
             scopedMatches.length >= 3 && comebackWins === 0 ? 'No hay remontadas registradas en la muestra actual.' : null,
           ].filter(Boolean);
@@ -20209,7 +20308,7 @@ function App() {
             goalForRows.length ? `El equipo ha marcado ${goalForRows.length} goles en la muestra filtrada.` : hasData ? 'No se registraron goles a favor en estos partidos.' : null,
             goalAgainstRows.length ? `El equipo ha encajado ${goalAgainstRows.length} goles en la muestra filtrada.` : hasData ? 'No hemos encajado goles en los partidos filtrados.' : null,
             goalForRows.length && phaseFor.some((row) => row.phase !== 'Sin contexto registrado' && row.count) ? `${phaseFor.filter((row) => row.phase !== 'Sin contexto registrado').slice().sort((a, b) => b.count - a.count)[0].phase} genera ${phaseFor.filter((row) => row.phase !== 'Sin contexto registrado').slice().sort((a, b) => b.count - a.count)[0].count} goles a favor.` : null,
-            allGoalRows.length ? `El tramo con más goles registrados es ${[...minuteFor.map((row, index) => ({ range: row.range, count: row.count + minuteAgainst[index].count }))].sort((a, b) => b.count - a.count)[0]?.range}'.` : null,
+            allGoalRows.length ? `El tramo con mÃ¡s goles registrados es ${[...minuteFor.map((row, index) => ({ range: row.range, count: row.count + minuteAgainst[index].count }))].sort((a, b) => b.count - a.count)[0]?.range}'.` : null,
           ].filter(Boolean).slice(0, 4);
           const metricCard = (label, value, meta = '') => (
             <div key={label} className="rounded-3xl border border-white/10 bg-white/[0.045] p-5">
@@ -20248,7 +20347,7 @@ function App() {
                     <div key={`${title}-${row.phase}`}>
                       <div className="flex justify-between text-xs font-bold uppercase text-slate-400">
                         <span>{row.phase}</span>
-                        <span>{row.count} · {Math.round((row.count / total) * 100)}%</span>
+                        <span>{row.count} Â· {Math.round((row.count / total) * 100)}%</span>
                       </div>
                       <div className="mt-2 h-3 rounded-full bg-white/10">
                         <div className={`h-full rounded-full ${colorClass}`} style={{ width: `${(row.count / total) * 100}%` }} />
@@ -20268,7 +20367,7 @@ function App() {
               <span className="text-sm font-black text-caudal-electric sm:text-right">{value}</span>
             </div>
           );
-          const rankingTabs = ['Goles', 'Asistencias', 'Eficiencia', 'Participación', 'Conexiones'];
+          const rankingTabs = ['Goles', 'Asistencias', 'Eficiencia', 'ParticipaciÃ³n', 'Conexiones'];
           const rankingPanel = () => {
             if (groupRankingTab === 'Goles') {
               return individualRankings.scorers.length ? (
@@ -20287,16 +20386,16 @@ function App() {
             if (groupRankingTab === 'Eficiencia') {
               return individualRankings.efficiency.length ? (
                 <div className="grid gap-3 lg:grid-cols-2">
-                  {individualRankings.efficiency.map((row) => rankingRow(row, `${Math.round(row.minutesPerGoal)} min/gol`, `${row.goalsPer90.toFixed(2)} goles/90 · mínimo 90 min`))}
+                  {individualRankings.efficiency.map((row) => rankingRow(row, `${Math.round(row.minutesPerGoal)} min/gol`, `${row.goalsPer90.toFixed(2)} goles/90 Â· mÃ­nimo 90 min`))}
                 </div>
               ) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Sin muestra suficiente para eficiencia goleadora.</p>;
             }
-            if (groupRankingTab === 'Participación') {
+            if (groupRankingTab === 'ParticipaciÃ³n') {
               return (
                 <div className="grid gap-4 xl:grid-cols-2">
                   <div className="space-y-3">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Más minutos</p>
-                    {individualRankings.participation.length ? individualRankings.participation.slice(0, 3).map((row) => rankingRow(row, `${row.minutes}'`, `${row.played} PJ · ${row.starts} titularidades`)) : <p className="rounded-2xl bg-white/5 p-4 text-sm text-slate-400">Sin minutos registrados.</p>}
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">MÃ¡s minutos</p>
+                    {individualRankings.participation.length ? individualRankings.participation.slice(0, 3).map((row) => rankingRow(row, `${row.minutes}'`, `${row.played} PJ Â· ${row.starts} titularidades`)) : <p className="rounded-2xl bg-white/5 p-4 text-sm text-slate-400">Sin minutos registrados.</p>}
                   </div>
                   <div className="space-y-3">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Mejor nota media</p>
@@ -20304,8 +20403,8 @@ function App() {
                   </div>
                   {individualRankings.goalParticipationRows.length ? (
                     <div className="space-y-3 xl:col-span-2">
-                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Participación directa en gol</p>
-                      {individualRankings.goalParticipationRows.slice(0, 3).map((row) => rankingRow(row, `${row.goalParticipation}`, `${row.goals} G · ${row.assists} A`))}
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">ParticipaciÃ³n directa en gol</p>
+                      {individualRankings.goalParticipationRows.slice(0, 3).map((row) => rankingRow(row, `${row.goalParticipation}`, `${row.goals} G Â· ${row.assists} A`))}
                     </div>
                   ) : null}
                 </div>
@@ -20317,7 +20416,7 @@ function App() {
                   <div key={row.key} className="grid gap-3 rounded-2xl bg-white/5 px-4 py-3 sm:grid-cols-[1fr_auto] sm:items-center">
                     <div className="flex min-w-0 items-center gap-2">
                       <PlayerIdentity player={row.assistantPlayer || { name: row.assistant }} name={row.assistant} size="xs" />
-                      <span className="shrink-0 text-sm font-black text-caudal-electric">→</span>
+                      <span className="shrink-0 text-sm font-black text-caudal-electric">â†’</span>
                       <PlayerIdentity player={row.scorerPlayer || { name: row.scorer }} name={row.scorer} size="xs" />
                     </div>
                     <span className="text-sm font-black text-caudal-electric sm:text-right">{row.count} goles</span>
@@ -20327,10 +20426,10 @@ function App() {
             ) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Sin conexiones goleador-asistente registradas.</p>;
           };
           return (
-            <GroupAnalysisErrorBoundary label="Análisis Grupal" resetKey={`official-${groupCompetitionFilter}-${groupContextFilter}-${scopedMatches.length}-${filteredOfficialGoals.length}-${groupRankingTab}`}>
+            <GroupAnalysisErrorBoundary label="AnÃ¡lisis Grupal" resetKey={`official-${groupCompetitionFilter}-${groupContextFilter}-${scopedMatches.length}-${filteredOfficialGoals.length}-${groupRankingTab}`}>
               <main className="space-y-6">
                 {groupLoading ? (
-                  <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 text-sm text-slate-400 shadow-glow">Cargando análisis grupal...</section>
+                  <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 text-sm text-slate-400 shadow-glow">Cargando anÃ¡lisis grupal...</section>
                 ) : null}
                 {groupError ? (
                   <section className="rounded-3xl border border-red-500/20 bg-red-500/10 p-6 text-sm text-red-100 shadow-glow">{groupError}</section>
@@ -20338,9 +20437,9 @@ function App() {
                 <section className="rounded-3xl border border-white/10 bg-[#091428]/90 p-6 shadow-glow">
                   <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
                     <div>
-                      <p className="text-xs font-black uppercase tracking-[0.34em] text-caudal-electric">Análisis Grupal</p>
-                      <h2 className="mt-3 text-3xl font-black uppercase tracking-[0.08em] text-white">Estadísticas oficiales del equipo</h2>
-                      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">Partidos, estadísticas oficiales, eventos de gol y eventos POST. Sin lecturas de Registro Delegado ni análisis PRE.</p>
+                      <p className="text-xs font-black uppercase tracking-[0.34em] text-caudal-electric">AnÃ¡lisis Grupal</p>
+                      <h2 className="mt-3 text-3xl font-black uppercase tracking-[0.08em] text-white">EstadÃ­sticas oficiales del equipo</h2>
+                      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">Partidos, estadÃ­sticas oficiales, eventos de gol y eventos POST. Sin lecturas de Registro Delegado ni anÃ¡lisis PRE.</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {competitionFilterOptions.map((filter) => (
@@ -20359,48 +20458,48 @@ function App() {
                   <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Once más utilizado de la temporada</h3>
+                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Once mÃ¡s utilizado de la temporada</h3>
                         <p className="mt-2 text-sm font-semibold text-slate-400">
                           Sistema base: <span className="text-caudal-electric">{seasonBaseSystem || 'Sin datos'}</span>
                         </p>
                       </div>
                       <span className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-black text-slate-300">
-                        Datos tácticos en {tacticalAggregation.coverage.tacticalMatches} de {tacticalAggregation.coverage.totalMatches} partidos
+                        Datos tÃ¡cticos en {tacticalAggregation.coverage.tacticalMatches} de {tacticalAggregation.coverage.totalMatches} partidos
                       </span>
                     </div>
                     <div className="mt-5">
-                      {seasonMostUsedXi ? renderMostUsedXiPitch(seasonMostUsedXi) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Aún no hay minutos tácticos suficientes para construir el once.</p>}
+                      {seasonMostUsedXi ? renderMostUsedXiPitch(seasonMostUsedXi) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">AÃºn no hay minutos tÃ¡cticos suficientes para construir el once.</p>}
                     </div>
                     <p className="mt-4 text-xs font-semibold leading-5 text-slate-500">
-                      Convención: el sistema nuevo empieza en el minuto registrado; el anterior termina justo antes. Si un tramo no tiene disposición táctica registrada, suma minutos al sistema pero no al once por slot.
+                      ConvenciÃ³n: el sistema nuevo empieza en el minuto registrado; el anterior termina justo antes. Si un tramo no tiene disposiciÃ³n tÃ¡ctica registrada, suma minutos al sistema pero no al once por slot.
                     </p>
                   </div>
                   <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Parejas más utilizadas</h3>
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Parejas mÃ¡s utilizadas</h3>
                     <div className="mt-5 space-y-3">
                       {mostUsedPairs.length ? mostUsedPairs.map((row) => (
                         <div key={`${row.system}-${row.groupName}-${row.names.join('-')}`} className="rounded-2xl bg-white/5 px-4 py-3">
-                          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{row.groupName} · {row.system}</p>
+                          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{row.groupName} Â· {row.system}</p>
                           <p className="mt-1 text-sm font-black text-white">{row.names.join(' + ')}</p>
                           <p className="mt-1 text-xs font-bold text-slate-400">{row.minutes} min juntos</p>
                         </div>
-                      )) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Aún no hay parejas tácticas suficientes.</p>}
+                      )) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">AÃºn no hay parejas tÃ¡cticas suficientes.</p>}
                     </div>
                     <div className="mt-6 border-t border-white/10 pt-5">
-                      <h4 className="text-xs font-black uppercase tracking-[0.16em] text-white">Minutos por posición del jugador</h4>
+                      <h4 className="text-xs font-black uppercase tracking-[0.16em] text-white">Minutos por posiciÃ³n del jugador</h4>
                       <div className="mt-3 space-y-3">
                         {playerSlotBreakdownRows.length ? playerSlotBreakdownRows.map((row) => (
                           <div key={`breakdown-${row.playerName}`} className="rounded-2xl bg-white/5 px-4 py-3">
-                            <PlayerIdentity player={row.player} name={row.playerName} meta={`${row.total} min tácticos`} size="sm" />
+                            <PlayerIdentity player={row.player} name={row.playerName} meta={`${row.total} min tÃ¡cticos`} size="sm" />
                             <div className="mt-2 space-y-1">
                               {row.slots.slice(0, 3).map((slot) => (
                                 <p key={`${row.playerName}-${slot.system}-${slot.slotLabel}`} className="text-xs font-semibold text-slate-400">
-                                  {slot.slotLabel} · {slot.system} · {slot.minutes} min
+                                  {slot.slotLabel} Â· {slot.system} Â· {slot.minutes} min
                                 </p>
                               ))}
                             </div>
                           </div>
-                        )) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Sin jugadores con minutos en varios slots tácticos.</p>}
+                        )) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Sin jugadores con minutos en varios slots tÃ¡cticos.</p>}
                       </div>
                     </div>
                   </div>
@@ -20417,7 +20516,7 @@ function App() {
                       ['GF', groupData.goalsFor],
                       ['GC', groupData.goalsAgainst],
                       ['PPG', groupData.pointsPerGame],
-                      ['Porterías a cero', groupData.cleanSheets],
+                      ['PorterÃ­as a cero', groupData.cleanSheets],
                     ].map(([label, value]) => metricCard(label, value))}
                   </div>
                   <div className="mt-5 grid gap-3 lg:grid-cols-2">
@@ -20428,9 +20527,9 @@ function App() {
                   <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                     {[
                       ['Goles analizados', goalCoverage.total],
-                      ['Con contexto táctico', goalCoverage.withContext],
-                      ['Con zona finalización', goalCoverage.withFinishZone],
-                      ['Con portería 3x3', goalCoverage.withGoalZone],
+                      ['Con contexto tÃ¡ctico', goalCoverage.withContext],
+                      ['Con zona finalizaciÃ³n', goalCoverage.withFinishZone],
+                      ['Con porterÃ­a 3x3', goalCoverage.withGoalZone],
                       ['Con asistencia', goalCoverage.withAssist],
                     ].map(([label, value]) => (
                       <div key={label} className="rounded-2xl bg-black/15 px-4 py-3">
@@ -20442,15 +20541,15 @@ function App() {
                 </section>
 
                 <section className="grid gap-6 xl:grid-cols-2">
-                  {phaseBlock('Cómo marcamos', phaseFor, goalForRows.length, 'bg-caudal-electric', hasData ? 'No se registraron goles a favor en estos partidos.' : 'No hay partidos para los filtros seleccionados.')}
-                  {phaseBlock('Cómo encajamos', phaseAgainst, goalAgainstRows.length, 'bg-red-400', hasData ? 'No hemos encajado goles en los partidos filtrados.' : 'No hay partidos para los filtros seleccionados.')}
+                  {phaseBlock('CÃ³mo marcamos', phaseFor, goalForRows.length, 'bg-caudal-electric', hasData ? 'No se registraron goles a favor en estos partidos.' : 'No hay partidos para los filtros seleccionados.')}
+                  {phaseBlock('CÃ³mo encajamos', phaseAgainst, goalAgainstRows.length, 'bg-red-400', hasData ? 'No hemos encajado goles en los partidos filtrados.' : 'No hay partidos para los filtros seleccionados.')}
                 </section>
 
                 <section className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
                       <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Goles por tramos</h3>
-                      <p className="mt-2 text-sm font-semibold text-slate-400">Distribución oficial de goles a favor y en contra en la muestra filtrada.</p>
+                      <p className="mt-2 text-sm font-semibold text-slate-400">DistribuciÃ³n oficial de goles a favor y en contra en la muestra filtrada.</p>
                     </div>
                     <div className="flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-[0.12em]">
                       <span className="rounded-xl bg-caudal-electric/15 px-3 py-2 text-caudal-electric">A favor {totalBucketFor}</span>
@@ -20487,8 +20586,8 @@ function App() {
                         ))}
                       </div>
                       <div className="mt-5 grid gap-3 md:grid-cols-2">
-                        <p className="rounded-2xl bg-black/15 px-4 py-3 text-sm font-semibold text-slate-300">Mayor concentración a favor: <span className="font-black text-white">{topForBucket ? `${topForBucket.range}' (${topForBucket.forCount})` : 'Sin goles a favor'}</span></p>
-                        <p className="rounded-2xl bg-black/15 px-4 py-3 text-sm font-semibold text-slate-300">Mayor concentración en contra: <span className="font-black text-white">{topAgainstBucket ? `${topAgainstBucket.range}' (${topAgainstBucket.againstCount})` : 'Sin goles en contra'}</span></p>
+                        <p className="rounded-2xl bg-black/15 px-4 py-3 text-sm font-semibold text-slate-300">Mayor concentraciÃ³n a favor: <span className="font-black text-white">{topForBucket ? `${topForBucket.range}' (${topForBucket.forCount})` : 'Sin goles a favor'}</span></p>
+                        <p className="rounded-2xl bg-black/15 px-4 py-3 text-sm font-semibold text-slate-300">Mayor concentraciÃ³n en contra: <span className="font-black text-white">{topAgainstBucket ? `${topAgainstBucket.range}' (${topAgainstBucket.againstCount})` : 'Sin goles en contra'}</span></p>
                       </div>
                     </>
                   )}
@@ -20522,19 +20621,19 @@ function App() {
                     <div className="mt-5">{zoneTotal(assistZoneCounts) ? renderReadOnlyZoneGrid({ counts: assistZoneCounts }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{assistedGoalRows.length ? `${assistedWithoutZoneCount} asistencia${assistedWithoutZoneCount === 1 ? '' : 's'} sin zona de origen registrada.` : missingAssistCount ? `${missingAssistCount} gol${missingAssistCount === 1 ? '' : 'es'} sin asistencia registrada.` : 'Sin asistencias registradas.'}</p>}</div>
                   </div>
                   <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Zonas de finalización</h3>
-                    <div className="mt-5">{zoneTotal(shotZoneCounts) ? renderReadOnlyZoneGrid({ counts: shotZoneCounts }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{allGoalRows.length ? `${missingFinishZoneCount} gol${missingFinishZoneCount === 1 ? '' : 'es'} sin zona de finalización registrada.` : 'No se registraron goles en estos partidos.'}</p>}</div>
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Zonas de finalizaciÃ³n</h3>
+                    <div className="mt-5">{zoneTotal(shotZoneCounts) ? renderReadOnlyZoneGrid({ counts: shotZoneCounts }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{allGoalRows.length ? `${missingFinishZoneCount} gol${missingFinishZoneCount === 1 ? '' : 'es'} sin zona de finalizaciÃ³n registrada.` : 'No se registraron goles en estos partidos.'}</p>}</div>
                   </div>
                   <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Portería 3x3</h3>
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">PorterÃ­a 3x3</h3>
                     <div className="mt-5 space-y-5">
                       <div>
                         <p className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500">Goles marcados</p>
-                        {zoneTotal(goalZoneForCounts) ? renderReadOnlyZoneGrid({ counts: goalZoneForCounts, zones: goalZoneOptions, goal: true }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{goalForRows.length ? `${missingGoalZoneForCount} gol${missingGoalZoneForCount === 1 ? '' : 'es'} marcado${missingGoalZoneForCount === 1 ? '' : 's'} sin zona de portería registrada.` : 'No existen goles marcados registrados.'}</p>}
+                        {zoneTotal(goalZoneForCounts) ? renderReadOnlyZoneGrid({ counts: goalZoneForCounts, zones: goalZoneOptions, goal: true }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{goalForRows.length ? `${missingGoalZoneForCount} gol${missingGoalZoneForCount === 1 ? '' : 'es'} marcado${missingGoalZoneForCount === 1 ? '' : 's'} sin zona de porterÃ­a registrada.` : 'No existen goles marcados registrados.'}</p>}
                       </div>
                       <div>
                         <p className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500">Goles encajados</p>
-                        {zoneTotal(goalZoneAgainstCounts) ? renderReadOnlyZoneGrid({ counts: goalZoneAgainstCounts, zones: goalZoneOptions, goal: true }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{goalAgainstRows.length ? `${missingGoalZoneAgainstCount} gol${missingGoalZoneAgainstCount === 1 ? '' : 'es'} encajado${missingGoalZoneAgainstCount === 1 ? '' : 's'} sin zona de portería registrada.` : 'No hemos encajado goles en los partidos filtrados.'}</p>}
+                        {zoneTotal(goalZoneAgainstCounts) ? renderReadOnlyZoneGrid({ counts: goalZoneAgainstCounts, zones: goalZoneOptions, goal: true }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{goalAgainstRows.length ? `${missingGoalZoneAgainstCount} gol${missingGoalZoneAgainstCount === 1 ? '' : 'es'} encajado${missingGoalZoneAgainstCount === 1 ? '' : 's'} sin zona de porterÃ­a registrada.` : 'No hemos encajado goles en los partidos filtrados.'}</p>}
                       </div>
                     </div>
                   </div>
@@ -20543,7 +20642,7 @@ function App() {
                     <div className="mt-5 grid grid-cols-2 gap-3">
                       {[
                         ['Total', abpFor.total],
-                        ['Córner', abpFor.corner],
+                        ['CÃ³rner', abpFor.corner],
                         ['Falta directa', abpFor.directFreeKick],
                         ['Penalti', abpFor.penalty],
                       ].map(([label, value]) => metricCard(label, value))}
@@ -20554,7 +20653,7 @@ function App() {
                     <div className="mt-5 grid grid-cols-2 gap-3">
                       {[
                         ['Total', abpAgainst.total],
-                        ['Córner', abpAgainst.corner],
+                        ['CÃ³rner', abpAgainst.corner],
                         ['Falta directa', abpAgainst.directFreeKick],
                         ['Penalti', abpAgainst.penalty],
                       ].map(([label, value]) => metricCard(label, value))}
@@ -20569,7 +20668,7 @@ function App() {
                   {simpleSummaryTable('Local', localSummary)}
                   {simpleSummaryTable('Visitante', awaySummary)}
                   <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Resultados por competición</h3>
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Resultados por competiciÃ³n</h3>
                     <div className="mt-5 space-y-3">
                       {competitionRows.length ? competitionRows.map((row) => (
                         <div key={row.competitionKey || row.competition} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl bg-white/5 px-4 py-3">
@@ -20577,7 +20676,7 @@ function App() {
                             <CompetitionIcon competition={row} className="h-8 w-8 rounded-lg" textClassName="text-[9px]" />
                             {row.competition}
                           </span>
-                          <span className="text-sm font-black text-caudal-electric">PJ {row.played} · {row.wins}-{row.draws}-{row.losses} · GF {row.goalsFor} GC {row.goalsAgainst}</span>
+                          <span className="text-sm font-black text-caudal-electric">PJ {row.played} Â· {row.wins}-{row.draws}-{row.losses} Â· GF {row.goalsFor} GC {row.goalsAgainst}</span>
                         </div>
                       )) : <p className="rounded-2xl bg-white/5 p-4 text-sm text-slate-400">Sin partidos oficiales.</p>}
                     </div>
@@ -20590,11 +20689,11 @@ function App() {
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
                               <p className="text-base font-black text-white">{row.system}</p>
-                              <p className="mt-1 text-xs font-bold text-slate-400">{row.minutes} min · {totalSystemMinutes ? Math.round((row.minutes / totalSystemMinutes) * 100) : 0}% del tiempo registrado</p>
+                              <p className="mt-1 text-xs font-bold text-slate-400">{row.minutes} min Â· {totalSystemMinutes ? Math.round((row.minutes / totalSystemMinutes) * 100) : 0}% del tiempo registrado</p>
                             </div>
                             <div className="flex flex-wrap justify-end gap-1.5">
-                              {maxMinutesRow?.system === row.system ? <span className="rounded-lg bg-caudal-electric px-2 py-1 text-[10px] font-black text-slate-950">Más utilizado</span> : null}
-                              {maxInitialRow?.system === row.system && row.initialStarts > 0 ? <span className="rounded-lg bg-white/10 px-2 py-1 text-[10px] font-black text-slate-200">Más usado como inicio</span> : null}
+                              {maxMinutesRow?.system === row.system ? <span className="rounded-lg bg-caudal-electric px-2 py-1 text-[10px] font-black text-slate-950">MÃ¡s utilizado</span> : null}
+                              {maxInitialRow?.system === row.system && row.initialStarts > 0 ? <span className="rounded-lg bg-white/10 px-2 py-1 text-[10px] font-black text-slate-200">MÃ¡s usado como inicio</span> : null}
                               {maxGf90Row?.system === row.system ? <span className="rounded-lg bg-emerald-300/20 px-2 py-1 text-[10px] font-black text-emerald-100">Mayor GF/90</span> : null}
                               {minGc90Row?.system === row.system ? <span className="rounded-lg bg-red-300/15 px-2 py-1 text-[10px] font-black text-red-100">Menor GC/90</span> : null}
                             </div>
@@ -20620,12 +20719,12 @@ function App() {
                           <div className="mt-3 flex items-center justify-between gap-3">
                             <span className="text-xs font-black text-caudal-electric">Balance {row.balance > 0 ? `+${row.balance}` : row.balance}</span>
                             <button type="button" onClick={() => setExpandedSystemXi((current) => current === row.system ? '' : row.system)} className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white">
-                              {expandedSystemXi === row.system ? 'Ocultar once' : 'Ver once más utilizado'}
+                              {expandedSystemXi === row.system ? 'Ocultar once' : 'Ver once mÃ¡s utilizado'}
                             </button>
                           </div>
                           {expandedSystemXi === row.system ? (
                             <div className="mt-4 rounded-2xl border border-white/10 bg-black/15 p-4">
-                              <p className="mb-4 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Once más utilizado en este sistema</p>
+                              <p className="mb-4 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Once mÃ¡s utilizado en este sistema</p>
                               {renderMostUsedXiPitch(buildMostUsedXI(row.system, tacticalAggregation))}
                             </div>
                           ) : null}
@@ -20633,7 +20732,7 @@ function App() {
                       )) : <p className="rounded-2xl bg-white/5 p-4 text-sm text-slate-400">Sin sistemas registrados.</p>}
                       {tacticalAggregation.coverage.missingMinutes > 0 ? (
                         <p className="rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-xs font-bold text-amber-100">
-                          Minutos sin disposición táctica registrada: {tacticalAggregation.coverage.missingMinutes}. Se cuentan para el sistema, pero no para el once por posición.
+                          Minutos sin disposiciÃ³n tÃ¡ctica registrada: {tacticalAggregation.coverage.missingMinutes}. Se cuentan para el sistema, pero no para el once por posiciÃ³n.
                         </p>
                       ) : null}
                       {systemSequences.length ? (
@@ -20644,20 +20743,20 @@ function App() {
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <p className="text-sm font-black text-white">{match.opponent || 'Rival'}</p>
                                 <p className="text-[10px] font-black uppercase tracking-[0.10em] text-slate-500">
-                                  {getCompetitionFromCatalog(match).label} · {matchDisplayDate(match.date)} · {match.isHome ? 'Local' : 'Visitante'} · {getMatchScoreData(match).caudalGoals}-{getMatchScoreData(match).rivalGoals}
+                                  {getCompetitionFromCatalog(match).label} Â· {matchDisplayDate(match.date)} Â· {match.isHome ? 'Local' : 'Visitante'} Â· {getMatchScoreData(match).caudalGoals}-{getMatchScoreData(match).rivalGoals}
                                 </p>
                               </div>
                               <div className="mt-3 flex h-9 overflow-hidden rounded-xl border border-white/10 bg-white/5">
                                 {segments.map((segment) => {
                                   const width = getMatchDurationMinutes(match) ? (segment.minutes / getMatchDurationMinutes(match)) * 100 : 0;
                                   return (
-                                    <div key={`${match.id}-${segment.id}`} className="flex min-w-[42px] items-center justify-center border-r border-black/20 bg-caudal-electric/25 px-2 text-[10px] font-black text-white last:border-r-0" style={{ width: `${width}%` }} title={`${segment.fromMinute}'-${segment.toMinute}' · ${segment.system}`}>
+                                    <div key={`${match.id}-${segment.id}`} className="flex min-w-[42px] items-center justify-center border-r border-black/20 bg-caudal-electric/25 px-2 text-[10px] font-black text-white last:border-r-0" style={{ width: `${width}%` }} title={`${segment.fromMinute}'-${segment.toMinute}' Â· ${segment.system}`}>
                                       {segment.system}
                                     </div>
                                   );
                                 })}
                               </div>
-                              <p className="mt-2 text-xs font-bold text-slate-400">{segments.map((segment) => `${segment.fromMinute}'-${segment.toMinute}' · ${segment.system}`).join(' · ')}</p>
+                              <p className="mt-2 text-xs font-bold text-slate-400">{segments.map((segment) => `${segment.fromMinute}'-${segment.toMinute}' Â· ${segment.system}`).join(' Â· ')}</p>
                             </div>
                           ))}
                         </div>
@@ -20691,13 +20790,13 @@ function App() {
           );
           }
           } catch (error) {
-            console.error('Error renderizando Análisis Grupal:', error);
+            console.error('Error renderizando AnÃ¡lisis Grupal:', error);
             return (
               <main className="space-y-6">
                 <section className="rounded-3xl border border-red-500/20 bg-red-500/10 p-6 text-red-100 shadow-glow">
-                  <p className="text-xs font-black uppercase tracking-[0.22em] text-red-100">Análisis Grupal</p>
-                  <h3 className="mt-2 text-xl font-black text-white">No se pudo cargar el análisis</h3>
-                  <p className="mt-3 text-sm leading-6">Se ha protegido la pantalla para evitar la app en blanco. Revisa que los partidos tengan eventos y alineaciones con formato válido.</p>
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-red-100">AnÃ¡lisis Grupal</p>
+                  <h3 className="mt-2 text-xl font-black text-white">No se pudo cargar el anÃ¡lisis</h3>
+                  <p className="mt-3 text-sm leading-6">Se ha protegido la pantalla para evitar la app en blanco. Revisa que los partidos tengan eventos y alineaciones con formato vÃ¡lido.</p>
                   <p className="mt-3 break-words text-xs text-red-100/80">{error?.message || String(error)}</p>
                 </section>
               </main>
@@ -20712,7 +20811,7 @@ function App() {
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.28em] text-caudal-electric/75">Partidos</p>
                   <h2 className="mt-1 text-2xl font-semibold text-white">Centro operativo competitivo</h2>
-                  <p className="mt-1 text-sm text-slate-400">Preparación, revisión y dinámica de temporada.</p>
+                  <p className="mt-1 text-sm text-slate-400">PreparaciÃ³n, revisiÃ³n y dinÃ¡mica de temporada.</p>
                 </div>
                 <div className="flex flex-wrap gap-3">
                   <button onClick={handleSaveMatches} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/[0.10]">
@@ -20784,7 +20883,7 @@ function App() {
                     <span key={`${result}-${index}`} className="flex h-9 w-9 items-center justify-center rounded-full border border-emerald-400/60 text-sm font-bold text-emerald-300">{result}</span>
                   ))}
                 </div>
-                <p className="mt-4 text-xs uppercase text-slate-500">Porterías a cero: {matchStats.cleanSheets}</p>
+                <p className="mt-4 text-xs uppercase text-slate-500">PorterÃ­as a cero: {matchStats.cleanSheets}</p>
               </div>
             </div>
 
@@ -20958,10 +21057,10 @@ function App() {
                                   </div>
                                 ))}
                                 {hiddenMatchEventCountMobile ? (
-                                  <p className="px-1.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500 sm:hidden">+{hiddenMatchEventCountMobile} eventos más</p>
+                                  <p className="px-1.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500 sm:hidden">+{hiddenMatchEventCountMobile} eventos mÃ¡s</p>
                                 ) : null}
                                 {hiddenMatchEventCountDesktop ? (
-                                  <p className="hidden px-1.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500 sm:block">+{hiddenMatchEventCountDesktop} eventos más</p>
+                                  <p className="hidden px-1.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500 sm:block">+{hiddenMatchEventCountDesktop} eventos mÃ¡s</p>
                                 ) : null}
                               </div>
                             ) : (
@@ -20972,7 +21071,7 @@ function App() {
                           </div>
                         ) : null}
                         <div className="grid grid-cols-4 border-t border-white/10">
-                          {['PRE', 'ESTADÍSTICAS', 'POST', 'IMPRESIÓN'].map((section) => (
+                          {['PRE', 'ESTADÃSTICAS', 'POST', 'IMPRESIÃ“N'].map((section) => (
                             <button
                               key={section}
                               onClick={() => {
@@ -20980,7 +21079,7 @@ function App() {
                                 openMatchPage(match, section);
                               }}
                               className={`min-w-0 px-1 py-3 text-[10px] font-black uppercase tracking-[0.02em] transition sm:px-3 sm:text-xs sm:tracking-[0.12em] ${activeSection === section ? 'bg-caudal-electric text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_-10px_30px_rgba(79,140,255,0.10)]' : 'bg-white/[0.025] text-slate-500 hover:bg-white/[0.055] hover:text-white'}`}>
-                              <span className="sm:hidden">{section === 'ESTADÍSTICAS' ? 'EST.' : section === 'IMPRESIÓN' ? 'IMP.' : section}</span>
+                              <span className="sm:hidden">{section === 'ESTADÃSTICAS' ? 'EST.' : section === 'IMPRESIÃ“N' ? 'IMP.' : section}</span>
                               <span className="hidden sm:inline">{section}</span>
                             </button>
                           ))}
@@ -21006,9 +21105,9 @@ function App() {
                       >
                         {statsRefreshing ? 'Actualizando...' : '? Volver a partidos'}
                       </button>
-                      <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{matchView === 'pre_partido' ? 'Pre partido' : matchView === 'estadisticas_partido' ? 'Estadísticas' : matchView === 'impresion_partido' ? 'Impresión' : 'Post partido'}</p>
-                      <h2 className="mt-2 text-3xl font-semibold text-white">{matchView === 'pre_partido' ? 'PRE partido' : matchView === 'estadisticas_partido' ? 'Estadísticas del partido' : matchView === 'impresion_partido' ? 'IMPRESIÓN' : 'POST partido'}</h2>
-                      <p className="mt-2 text-sm text-slate-400">{matchDisplayDate(selectedMatch.date)} · {getCompetitionFromCatalog(selectedMatch).label} · {selectedMatch.round}</p>
+                      <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{matchView === 'pre_partido' ? 'Pre partido' : matchView === 'estadisticas_partido' ? 'EstadÃ­sticas' : matchView === 'impresion_partido' ? 'ImpresiÃ³n' : 'Post partido'}</p>
+                      <h2 className="mt-2 text-3xl font-semibold text-white">{matchView === 'pre_partido' ? 'PRE partido' : matchView === 'estadisticas_partido' ? 'EstadÃ­sticas del partido' : matchView === 'impresion_partido' ? 'IMPRESIÃ“N' : 'POST partido'}</h2>
+                      <p className="mt-2 text-sm text-slate-400">{matchDisplayDate(selectedMatch.date)} Â· {getCompetitionFromCatalog(selectedMatch).label} Â· {selectedMatch.round}</p>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="rounded-3xl bg-[#091428]/90 p-4">
@@ -21025,12 +21124,12 @@ function App() {
                   </div>
 
                   <div className="mt-6 grid grid-cols-4 gap-1.5 sm:flex sm:flex-wrap sm:gap-3">
-                    {['PRE', 'ESTADÍSTICAS', 'POST', 'IMPRESIÓN'].map((section) => (
+                    {['PRE', 'ESTADÃSTICAS', 'POST', 'IMPRESIÃ“N'].map((section) => (
                       <button
                         key={section}
                         onClick={() => openMatchPage(selectedMatch, section)}
                         className={`min-h-[42px] min-w-0 rounded-xl border px-1.5 py-2.5 text-[10px] font-black uppercase tracking-[0.02em] transition sm:min-h-[46px] sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm sm:font-semibold sm:tracking-[0.12em] ${matchViewSection === section ? 'border-caudal-electric/40 bg-caudal-electric text-slate-950 shadow-[0_10px_28px_rgba(79,140,255,0.16)]' : 'border-white/10 bg-white/[0.055] text-slate-200 hover:bg-white/[0.09] hover:text-white'}`}>
-                        <span className="sm:hidden">{section === 'ESTADÍSTICAS' ? 'EST.' : section === 'IMPRESIÓN' ? 'IMP.' : section}</span>
+                        <span className="sm:hidden">{section === 'ESTADÃSTICAS' ? 'EST.' : section === 'IMPRESIÃ“N' ? 'IMP.' : section}</span>
                         <span className="hidden sm:inline">{section}</span>
                       </button>
                     ))}
@@ -21053,8 +21152,8 @@ function App() {
                       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                         <div>
                           <p className="text-xs uppercase tracking-[0.3em] text-slate-400">PRE partido</p>
-                          <h3 className="mt-2 text-2xl font-semibold text-white">Plan de partido y alineación</h3>
-                          <p className="mt-2 text-sm text-slate-400">Qué hará el rival, qué haremos nosotros y con qué once.</p>
+                          <h3 className="mt-2 text-2xl font-semibold text-white">Plan de partido y alineaciÃ³n</h3>
+                          <p className="mt-2 text-sm text-slate-400">QuÃ© harÃ¡ el rival, quÃ© haremos nosotros y con quÃ© once.</p>
                         </div>
                         <div className="flex flex-wrap gap-3">
                           <button
@@ -21064,11 +21163,11 @@ function App() {
                           >
                             Modo charla
                           </button>
-                          {['Plan cuerpo técnico', 'Sistemas enfrentados'].map((tab) => (
+                          {['Plan cuerpo tÃ©cnico', 'Sistemas enfrentados'].map((tab) => (
                             <button
                               key={tab}
                               onClick={() => setPreSubTab(tab)}
-                              className={`rounded-2xl px-4 py-3 text-sm font-semibold uppercase tracking-[0.12em] ${(preSubTab === tab || (preSubTab === 'Informe rival' && tab === 'Plan cuerpo técnico')) ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}>
+                              className={`rounded-2xl px-4 py-3 text-sm font-semibold uppercase tracking-[0.12em] ${(preSubTab === tab || (preSubTab === 'Informe rival' && tab === 'Plan cuerpo tÃ©cnico')) ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}>
                               {tab}
                             </button>
                           ))}
@@ -21076,13 +21175,13 @@ function App() {
                       </div>
                     </div>
 
-                    {(preSubTab === 'Informe rival' || preSubTab === 'Plan cuerpo técnico') ? (
+                    {(preSubTab === 'Informe rival' || preSubTab === 'Plan cuerpo tÃ©cnico') ? (
                       <div className={isPreTalkMode ? 'space-y-4' : 'space-y-5'}>
                         {isPreTalkMode ? (
                           <div className="sticky top-3 z-30 flex items-center justify-between rounded-2xl border border-caudal-electric/20 bg-caudal-950/95 px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.30)] backdrop-blur">
                             <div>
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Modo charla</p>
-                              <p className="text-sm font-bold text-white">{selectedMatch.opponent || 'Rival'} · PRE</p>
+                              <p className="text-sm font-bold text-white">{selectedMatch.opponent || 'Rival'} Â· PRE</p>
                             </div>
                             <button type="button" onClick={() => setIsPreTalkMode(false)} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-white hover:bg-white/10">
                               Salir
@@ -21096,11 +21195,11 @@ function App() {
                               <div className="flex items-start justify-between gap-3">
                                 <div>
                                   <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/75">Claves del partido</p>
-                                  <h4 className="mt-1 text-xl font-black text-white">Decisiones del cuerpo técnico</h4>
+                                  <h4 className="mt-1 text-xl font-black text-white">Decisiones del cuerpo tÃ©cnico</h4>
                                 </div>
                                 {!isPreTalkMode ? (
                                   <button type="button" onClick={openMatchKeyDraft} className="rounded-xl border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-caudal-electric transition hover:bg-caudal-electric/15">
-                                    + Añadir clave
+                                    + AÃ±adir clave
                                   </button>
                                 ) : null}
                               </div>
@@ -21128,7 +21227,7 @@ function App() {
                                     ) : null}
                                   </div>
                                 )) : (
-                                  <p className="rounded-xl border border-dashed border-white/10 px-3 py-3 text-sm font-semibold text-slate-500">Sin claves añadidas</p>
+                                  <p className="rounded-xl border border-dashed border-white/10 px-3 py-3 text-sm font-semibold text-slate-500">Sin claves aÃ±adidas</p>
                                 )}
                                 {isPreKeyDraftOpen && !isPreTalkMode ? (
                                   <div className="flex flex-col gap-2 rounded-xl border border-caudal-electric/20 bg-caudal-electric/[0.055] px-3 py-3 sm:flex-row sm:items-center">
@@ -21156,7 +21255,7 @@ function App() {
                               <div className="flex items-start justify-between gap-3">
                                 <div>
                                   <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/75">Plan de partido</p>
-                                  <h4 className="mt-1 text-xl font-black text-white">Qué vamos a hacer nosotros</h4>
+                                  <h4 className="mt-1 text-xl font-black text-white">QuÃ© vamos a hacer nosotros</h4>
                                 </div>
                               </div>
                               <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -21171,7 +21270,7 @@ function App() {
                                   </select>
                                 </label>
                                 <label className="grid gap-2 text-sm font-bold text-slate-300">
-                                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Tipo de presión</span>
+                                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Tipo de presiÃ³n</span>
                                   <input
                                     value={selectedMatch.preCaudalPressPlan || ''}
                                     onChange={(event) => updateSelectedMatchFields({ preCaudalPressPlan: event.target.value })}
@@ -21193,16 +21292,16 @@ function App() {
                                   <input
                                     value={selectedMatch.preCaudalIntent || ''}
                                     onChange={(event) => updateSelectedMatchFields({ preCaudalIntent: event.target.value })}
-                                    placeholder="Atacar espalda, proteger área, dominar ritmo..."
+                                    placeholder="Atacar espalda, proteger Ã¡rea, dominar ritmo..."
                                     className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-3 text-sm text-white placeholder:text-slate-500"
                                   />
                                 </label>
                                 <label className="grid gap-2 text-sm font-bold text-slate-300 md:col-span-2">
-                                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Comentario técnico</span>
+                                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Comentario tÃ©cnico</span>
                                   <textarea
                                     value={selectedMatch.preNotes || ''}
                                     onChange={(event) => updateSelectedMatchFields({ preNotes: event.target.value })}
-                                    placeholder="Matiz del cuerpo técnico para la semana..."
+                                    placeholder="Matiz del cuerpo tÃ©cnico para la semana..."
                                     className="min-h-[92px] rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-3 text-sm text-white placeholder:text-slate-500"
                                   />
                                 </label>
@@ -21210,13 +21309,13 @@ function App() {
                             </section>
 
                             {ENABLE_PRE_OWN_LINEUP ? (
-                            <PreBlockErrorBoundary label="mi alineacion" resetKey={`${selectedMatch?.id || 'sin-partido'}-mi-alineacion`} fallbackText="Alineación semanal no disponible temporalmente">
+                            <PreBlockErrorBoundary label="mi alineacion" resetKey={`${selectedMatch?.id || 'sin-partido'}-mi-alineacion`} fallbackText="AlineaciÃ³n semanal no disponible temporalmente">
                             {(() => {
                               const PreOwnLineupBlock = () => (
                             <section className={`rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.20)] ${isPreTalkMode ? 'hidden' : ''}`}>
                               <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                                 <div>
-                                  <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/75">Mi alineación</p>
+                                  <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/75">Mi alineaciÃ³n</p>
                                   <h4 className="mt-1 text-xl font-black text-white">Once semanal y convocatoria</h4>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
@@ -21232,7 +21331,7 @@ function App() {
                                   </label>
                                   <button type="button" onClick={loadSuggestedCaudalLineup} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-white hover:bg-white/10">Generar XI</button>
                                   <button type="button" onClick={clearPreCaudalLineup} className="rounded-xl border border-red-200/15 bg-red-500/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-red-100 hover:bg-red-500/15">Limpiar</button>
-                                  <button type="button" onClick={savePreLineupAsFinalLineup} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Guardar alineación</button>
+                                  <button type="button" onClick={savePreLineupAsFinalLineup} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Guardar alineaciÃ³n</button>
                                 </div>
                               </div>
                               <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(260px,3fr)]">
@@ -21258,7 +21357,7 @@ function App() {
                                           <span className={`relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border bg-caudal-950 text-[11px] font-black shadow-lg ${selectedTacticalPlayerIndex === index ? 'border-caudal-electric ring-4 ring-caudal-electric/25' : 'border-caudal-electric/60'}`}>
                                             {player ? <PlayerPortrait player={player} className="h-full w-full" imgClassName="h-full w-full object-cover object-center" fallbackTextClassName="text-[10px]" /> : (playerName ? playerName.split(' ').map((part) => part[0]).join('').slice(0, 2) : shortRoleLabel(getFormationRoles(selectedMatch.preCaudalSystem || '4-4-2')[index]))}
                                             {player?.number ? <span className="absolute left-1 top-1 rounded-md bg-slate-950/85 px-1 py-0.5 text-[9px] leading-none text-white">#{player.number}</span> : null}
-                                            {isCaptain ? <span className="absolute -right-1 -top-1 rounded-full bg-blue-200 px-1 text-[9px] font-black text-slate-950">©</span> : null}
+                                            {isCaptain ? <span className="absolute -right-1 -top-1 rounded-full bg-blue-200 px-1 text-[9px] font-black text-slate-950">Â©</span> : null}
                                           </span>
                                           <span className="max-w-28 rounded-lg bg-black/62 px-1.5 py-1 text-white">
                                             <span className="block truncate text-[10px] font-black leading-none">{playerName || getFormationRoles(selectedMatch.preCaudalSystem || '4-4-2')[index]}</span>
@@ -21299,10 +21398,10 @@ function App() {
                                                           <PlayerPortrait player={player} className="h-full w-full" imgClassName="h-full w-full object-cover object-center" fallbackTextClassName="text-[8px]" />
                                                         </button>
                                                         <button type="button" onClick={() => updateCaudalLineupSlot(selectedTacticalPlayerIndex, player.name)} className="min-w-0 flex-1 text-left">
-                                                          <span className="block truncate font-black text-white">{player.number ? `#${player.number} ` : ''}{player.name}{isCaptain ? ' ©' : ''}</span>
-                                                          <span className="mt-0.5 block truncate text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">{player.position || 'Sin posición'}</span>
+                                                          <span className="block truncate font-black text-white">{player.number ? `#${player.number} ` : ''}{player.name}{isCaptain ? ' Â©' : ''}</span>
+                                                          <span className="mt-0.5 block truncate text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">{player.position || 'Sin posiciÃ³n'}</span>
                                                         </button>
-                                                        <button type="button" onClick={() => updateMatchCaptain(isCaptain ? '' : player.id)} className={`rounded-md px-1.5 py-1 text-[9px] font-black ${isCaptain ? 'bg-blue-200 text-slate-950' : 'bg-white/10 text-slate-300 opacity-70 group-hover:opacity-100'}`}>©</button>
+                                                        <button type="button" onClick={() => updateMatchCaptain(isCaptain ? '' : player.id)} className={`rounded-md px-1.5 py-1 text-[9px] font-black ${isCaptain ? 'bg-blue-200 text-slate-950' : 'bg-white/10 text-slate-300 opacity-70 group-hover:opacity-100'}`}>Â©</button>
                                                       </div>
                                                       <div className="mt-1.5 grid grid-cols-3 gap-1">
                                                         <button type="button" onClick={() => updateCaudalLineupSlot(selectedTacticalPlayerIndex, player.name)} className={`rounded-md px-1 py-0.5 text-[8px] font-black uppercase ${status === 'Titular' ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.08] text-slate-300'}`}>Titular</button>
@@ -21324,7 +21423,7 @@ function App() {
                               <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
                                 <span className="rounded-xl bg-white/[0.045] px-2 py-1">Once probable: {safeArray(selectedMatch.preCaudalLineup).filter(Boolean).length}/11</span>
                                 <span className="rounded-xl bg-white/[0.045] px-2 py-1">Convocatoria: {getStatsCalledPlayerNames().length}</span>
-                                <span className="rounded-xl bg-white/[0.045] px-2 py-1">Capitán: {players.find((player) => player.id === selectedMatch.captainPlayerId)?.name || '-'}</span>
+                                <span className="rounded-xl bg-white/[0.045] px-2 py-1">CapitÃ¡n: {players.find((player) => player.id === selectedMatch.captainPlayerId)?.name || '-'}</span>
                               </div>
                             </section>
                               );
@@ -21338,7 +21437,7 @@ function App() {
                           <section className={`rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/85 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.22)] ${isPreTalkMode ? 'hidden' : ''}`}>
                             <div className="flex items-start justify-between gap-3">
                               <div>
-                                <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/75">Información scouting rival</p>
+                                <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/75">InformaciÃ³n scouting rival</p>
                                 <h4 className="mt-1 text-lg font-black text-white">{selectedMatchRivalTeam?.name || selectedMatch.opponent || 'Rival'}</h4>
                               </div>
                               <span className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">EQUIPOS</span>
@@ -21387,7 +21486,7 @@ function App() {
                                 {[
                                   ['Sistema', getCurrentRivalSystem()],
                                   ['Bloque', liveRivalIdentity.blockHeight],
-                                  ['Presión', liveRivalIdentity.pressureType],
+                                  ['PresiÃ³n', liveRivalIdentity.pressureType],
                                   ['Amenaza', liveRivalIdentity.mainThreat],
                                   ['Lado fuerte', liveRivalIdentity.strongSide],
                                   ['Debilidad', liveRivalIdentity.detectedWeakness],
@@ -21429,7 +21528,7 @@ function App() {
                           <div className="sticky top-3 z-30 flex items-center justify-between rounded-2xl border border-caudal-electric/20 bg-caudal-950/95 px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.30)] backdrop-blur">
                             <div>
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Modo charla</p>
-                              <p className="text-sm font-bold text-white">Sistemas enfrentados · {selectedMatch.opponent || 'Rival'}</p>
+                              <p className="text-sm font-bold text-white">Sistemas enfrentados Â· {selectedMatch.opponent || 'Rival'}</p>
                             </div>
                             <button type="button" onClick={() => setIsPreTalkMode(false)} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-white hover:bg-white/10">
                               Salir
@@ -21452,7 +21551,7 @@ function App() {
                               </select>
                               <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                                 <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">Altura: {selectedMatch.preCaudalPressPlan ? 'activa' : 'por definir'}</span>
-                                <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">Presión: {selectedMatch.preCaudalPressPlan || 'pendiente'}</span>
+                                <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">PresiÃ³n: {selectedMatch.preCaudalPressPlan || 'pendiente'}</span>
                               </div>
                             </div>
                             <div className="text-center">
@@ -21464,7 +21563,7 @@ function App() {
                               <p className="mt-2 text-2xl font-black text-white">{getCurrentRivalSystem()}</p>
                               <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                                 <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">Bloque: {liveRivalIdentity.blockHeight}</span>
-                                <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">Presión: {liveRivalIdentity.pressureType}</span>
+                                <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">PresiÃ³n: {liveRivalIdentity.pressureType}</span>
                                 <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">Foco: {liveRivalIdentity.offensiveFocus}</span>
                                 <span className="rounded-xl bg-white/[0.045] px-2 py-1 text-slate-300">Amenaza: {liveRivalIdentity.mainThreat}</span>
                               </div>
@@ -21494,7 +21593,7 @@ function App() {
                                 {[
                                   ['Sistema habitual', getCurrentRivalSystem()],
                                   ['Altura de bloque', liveRivalIdentity.blockHeight],
-                                  ['Tipo presión', liveRivalIdentity.pressureType],
+                                  ['Tipo presiÃ³n', liveRivalIdentity.pressureType],
                                   ['Comportamiento', liveRivalIdentity.offensiveBehavior],
                                   ['Ritmo ofensivo', liveRivalIdentity.attackingRhythm],
                                   ['Debilidad', liveRivalIdentity.detectedWeakness],
@@ -21527,8 +21626,8 @@ function App() {
                         <div className={`grid gap-6 ${isPreTalkMode ? 'xl:grid-cols-1' : 'xl:grid-cols-[1.05fr_0.95fr]'}`}>
                           <div className={`rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow ${isPreTalkMode ? 'min-h-[78vh]' : ''}`}>
                             <div className="mb-5">
-                              <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Pizarra táctica</h4>
-                              <p className="mt-2 text-sm text-slate-400">Un único campo con Caudal y rival enfrentados. Si hay alineaciones, aparecen los nombres; si no, los roles.</p>
+                              <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Pizarra tÃ¡ctica</h4>
+                              <p className="mt-2 text-sm text-slate-400">Un Ãºnico campo con Caudal y rival enfrentados. Si hay alineaciones, aparecen los nombres; si no, los roles.</p>
                             </div>
                             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
                               <div className="grid grid-cols-2 rounded-xl border border-white/10 bg-black/20 p-1">
@@ -21567,10 +21666,10 @@ function App() {
                             {!isPreTalkMode ? (
                               <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
                                 <div className="flex items-center justify-between gap-3">
-                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Zonas tácticas editables</p>
+                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Zonas tÃ¡cticas editables</p>
                                   <div className="flex gap-2">
-                                    <button type="button" onClick={() => setIsTacticalZonesEditorOpen((current) => !current)} className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-300 hover:text-white">Editar zonas tácticas</button>
-                                    {isTacticalZonesEditorOpen ? <button type="button" onClick={addTacticalZone} className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-caudal-electric">Añadir zona</button> : null}
+                                    <button type="button" onClick={() => setIsTacticalZonesEditorOpen((current) => !current)} className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-300 hover:text-white">Editar zonas tÃ¡cticas</button>
+                                    {isTacticalZonesEditorOpen ? <button type="button" onClick={addTacticalZone} className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-caudal-electric">AÃ±adir zona</button> : null}
                                   </div>
                                 </div>
                                 {isTacticalZonesEditorOpen ? <div className="mt-3 grid gap-2">
@@ -21592,7 +21691,7 @@ function App() {
                           </div>
 
                           <div className={`rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow ${isPreTalkMode ? 'hidden' : ''}`}>
-                            <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Pregunta táctica a la IA</h4>
+                            <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Pregunta tÃ¡ctica a la IA</h4>
                             <div className="mt-5 grid grid-cols-2 rounded-2xl border border-white/10 bg-white/5 p-1">
                               {['Macro', 'Micro'].map((mode) => (
                                 <button
@@ -21608,17 +21707,17 @@ function App() {
                             <textarea
                               value={tacticalQuestionText}
                               onChange={(event) => setTacticalQuestionText(event.target.value)}
-                              placeholder="Pregunta libre sobre cómo atacar, defender, ajustar o vigilar duelos..."
+                              placeholder="Pregunta libre sobre cÃ³mo atacar, defender, ajustar o vigilar duelos..."
                               className="mt-4 min-h-[120px] w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
                             />
                             <div className="mt-4 flex flex-wrap gap-2">
                               {[
-                                '¿Cómo atacamos su bloque?',
-                                '¿Dónde tenemos superioridad?',
-                                '¿Qué riesgos tenemos tras pérdida?',
-                                '¿Qué jugador rival debemos vigilar?',
-                                '¿Qué ajuste harías si no progresamos?',
-                                '¿Cómo defender sus transiciones?',
+                                'Â¿CÃ³mo atacamos su bloque?',
+                                'Â¿DÃ³nde tenemos superioridad?',
+                                'Â¿QuÃ© riesgos tenemos tras pÃ©rdida?',
+                                'Â¿QuÃ© jugador rival debemos vigilar?',
+                                'Â¿QuÃ© ajuste harÃ­as si no progresamos?',
+                                'Â¿CÃ³mo defender sus transiciones?',
                               ].map((question) => (
                                 <button
                                   key={question}
@@ -21633,7 +21732,7 @@ function App() {
                             {tacticalQuestionMode === 'Micro' && getFieldViewSettings().layers.microduels ? (
                               <div className="mt-4 space-y-3">
                                 <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-                                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Microduelos automáticos</p>
+                                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Microduelos automÃ¡ticos</p>
                                   <div className="mt-3 space-y-2">
                                     {getAutomaticMicroDuels().map((duel) => (
                                       <div key={`${duel.title}-${duel.action}`} className={`rounded-xl border px-3 py-2 text-xs ${consignaToneClass[duel.tone] || consignaToneClass.vigilancia}`}>
@@ -21666,7 +21765,7 @@ function App() {
                             ) : null}
                             {selectedPreAiAnalysis?.tacticalQuestion?.answer ? (
                               <div className="mt-5 rounded-3xl border border-caudal-electric/20 bg-caudal-electric/10 p-5">
-                                <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">{selectedPreAiAnalysis.tacticalQuestion.mode || 'Macro'} · respuesta guardada</p>
+                                <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">{selectedPreAiAnalysis.tacticalQuestion.mode || 'Macro'} Â· respuesta guardada</p>
                                 <p className="mt-3 text-sm leading-7 text-slate-100">{selectedPreAiAnalysis.tacticalQuestion.answer}</p>
                                 <div className="mt-4 flex flex-wrap gap-2">
                                   <button
@@ -21681,7 +21780,7 @@ function App() {
                                     onClick={() => addSuggestedConsignaToManual(selectedPreAiAnalysis.tacticalQuestion.answer)}
                                     className="rounded-2xl bg-caudal-electric/20 px-3 py-2 text-xs font-bold text-caudal-electric hover:bg-caudal-electric/30"
                                   >
-                                    Añadir como consigna
+                                    AÃ±adir como consigna
                                   </button>
                                   <button
                                     type="button"
@@ -21705,8 +21804,8 @@ function App() {
                                     Crear escenario
                                   </button>
                                   {[
-                                    ['Copiar a plan con balón', 'planConBalon'],
-                                    ['Copiar a plan sin balón', 'planSinBalon'],
+                                    ['Copiar a plan con balÃ³n', 'planConBalon'],
+                                    ['Copiar a plan sin balÃ³n', 'planSinBalon'],
                                     ['Copiar a transiciones', 'planTransiciones'],
                                     ['Copiar a ABP ofensiva', 'abpOfensiva'],
                                     ['Copiar a ABP defensiva', 'abpDefensiva'],
@@ -21735,7 +21834,7 @@ function App() {
                         <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
                           <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                             <div className="mb-5">
-                              <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Visualización táctica</h4>
+                              <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">VisualizaciÃ³n tÃ¡ctica</h4>
                               <p className="mt-2 text-sm text-slate-400">Ambos dibujos enfrentados en el mismo campo para ver alturas, emparejamientos y espacios.</p>
                             </div>
                             {renderFacingSystemsOverview()}
@@ -21743,8 +21842,8 @@ function App() {
                           <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                             <div className="flex items-center justify-between gap-3">
                               <div>
-                                <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Lectura táctica automática</h4>
-                                <p className="mt-2 text-sm text-slate-400">Reglas simples según sistemas. Puedes ajustar el plan en las notas manuales.</p>
+                                <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Lectura tÃ¡ctica automÃ¡tica</h4>
+                                <p className="mt-2 text-sm text-slate-400">Reglas simples segÃºn sistemas. Puedes ajustar el plan en las notas manuales.</p>
                               </div>
                             </div>
                             <div className="mt-5 grid gap-3">
@@ -21759,7 +21858,7 @@ function App() {
                                   <p className={`text-xs font-black uppercase tracking-[0.16em] ${color}`}>{title}</p>
                                   <ul className="mt-3 space-y-2 text-sm text-slate-300">
                                     {(items?.length ? items : ['Pulsa "Generar lectura" para crear una propuesta.']).map((item) => (
-                                      <li key={item}>• {item}</li>
+                                      <li key={item}>â€¢ {item}</li>
                                     ))}
                                   </ul>
                                 </div>
@@ -21775,7 +21874,7 @@ function App() {
                               <p className="mt-2 text-sm text-slate-400">Duelos y acciones concretas para trasladar la lectura al partido.</p>
                             </div>
                             <button type="button" onClick={addSystemMatchup} className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white hover:bg-white/15">
-                              Añadir matchup
+                              AÃ±adir matchup
                             </button>
                           </div>
                           <div className="space-y-3">
@@ -21785,7 +21884,7 @@ function App() {
                                   ['Zona', 'zone'],
                                   ['Duelo', 'duel'],
                                   ['Lectura', 'reading'],
-                                  ['Acción recomendada', 'action'],
+                                  ['AcciÃ³n recomendada', 'action'],
                                 ].map(([label, field]) => (
                                   <label key={field} className="space-y-1 text-xs text-slate-400">
                                     <span className="uppercase tracking-[0.14em] text-slate-500">{label}</span>
@@ -21807,9 +21906,9 @@ function App() {
 
                         <div className="grid gap-4 lg:grid-cols-3">
                           {[
-                            ['Qué queremos provocar', 'prePlanTrigger', 'Ej. saltos del lateral rival, pase interior forzado, juego directo incómodo...'],
-                            ['Qué queremos evitar', 'prePlanAvoid', 'Ej. pérdidas interiores, centros laterales sin presión, transiciones tras córner...'],
-                            ['Ajuste si no funciona', 'prePlanAdjustment', 'Ej. pasar a bloque medio, liberar mediapunta, cambiar orientación antes...'],
+                            ['QuÃ© queremos provocar', 'prePlanTrigger', 'Ej. saltos del lateral rival, pase interior forzado, juego directo incÃ³modo...'],
+                            ['QuÃ© queremos evitar', 'prePlanAvoid', 'Ej. pÃ©rdidas interiores, centros laterales sin presiÃ³n, transiciones tras cÃ³rner...'],
+                            ['Ajuste si no funciona', 'prePlanAdjustment', 'Ej. pasar a bloque medio, liberar mediapunta, cambiar orientaciÃ³n antes...'],
                           ].map(([label, field, placeholder]) => (
                             <label key={field} className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 text-sm text-slate-300 shadow-glow">
                               <span className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">{label}</span>
@@ -21825,86 +21924,86 @@ function App() {
 
                         <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                           <div className="mb-5">
-                            <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Cuestionario para análisis IA</h4>
-                            <p className="mt-2 text-sm text-slate-400">Marca rápido lo que ves en el Canva. La IA usará este checklist y la información adicional como apoyo.</p>
+                            <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Cuestionario para anÃ¡lisis IA</h4>
+                            <p className="mt-2 text-sm text-slate-400">Marca rÃ¡pido lo que ves en el Canva. La IA usarÃ¡ este checklist y la informaciÃ³n adicional como apoyo.</p>
                           </div>
                           <div className="space-y-3">
                             {[
                               {
                                 id: 'rivalProfile',
-                                title: '1. Identidad táctica del rival',
+                                title: '1. Identidad tÃ¡ctica del rival',
                                 description: 'Modelo general, salida y ritmo de partido.',
                                 fields: [
-                                  { label: 'Cómo juega', field: 'preRivalStyle', type: 'chips', options: ['Directo', 'Combinativo', 'Mixto', 'Ataque rápido', 'Posicional', 'Mucho ABP'], multiple: true },
+                                  { label: 'CÃ³mo juega', field: 'preRivalStyle', type: 'chips', options: ['Directo', 'Combinativo', 'Mixto', 'Ataque rÃ¡pido', 'Posicional', 'Mucho ABP'], multiple: true },
                                   { label: 'Salida rival', field: 'preRivalBuildUp', type: 'chips', options: ['Combinativo', 'Directo', 'Mixto'] },
                                   { label: 'Transiciones', field: 'preRivalTransitions', type: 'chips', options: ['Directas', 'Equilibradas', 'Pausadas'] },
-                                  { label: 'Sistema con balón si cambia', field: 'preRivalBaseSystem', placeholder: 'Ej. 3-2-5, lateral dentro, doble pivote...' },
+                                  { label: 'Sistema con balÃ³n si cambia', field: 'preRivalBaseSystem', placeholder: 'Ej. 3-2-5, lateral dentro, doble pivote...' },
                                 ],
                               },
                               {
                                 id: 'rivalAttack',
-                                title: '2. Rival con balón',
-                                description: 'Cómo progresa y dónde hace daño.',
+                                title: '2. Rival con balÃ³n',
+                                description: 'CÃ³mo progresa y dÃ³nde hace daÃ±o.',
                                 fields: [
                                   { label: 'Inicia juego', field: 'preRivalStartPlay', type: 'chips', options: ['Portero corto', 'Portero largo', 'Centrales abiertos', 'Pivote baja', 'Lateral alto', 'Busca punta'], multiple: true },
-                                  { label: 'Progresa', field: 'preRivalProgression', type: 'chips', options: ['Por dentro', 'Por fuera', 'Lado débil', 'Tercer hombre', 'Balón directo', 'Conducciones'], multiple: true },
-                                  { label: 'Finaliza', field: 'preRivalFinishing', type: 'chips', options: ['Centros', 'Pase atrás', 'Tiro frontal', 'Ruptura espalda', 'Segundo palo', 'ABP'], multiple: true },
-                                  { label: 'Zonas de peligro', field: 'preRivalDangerZones', type: 'chips', options: ['Banda izquierda', 'Banda derecha', 'Intervalo lateral-central', 'Entre líneas', 'Frontal', 'Área pequeña'], multiple: true },
+                                  { label: 'Progresa', field: 'preRivalProgression', type: 'chips', options: ['Por dentro', 'Por fuera', 'Lado dÃ©bil', 'Tercer hombre', 'BalÃ³n directo', 'Conducciones'], multiple: true },
+                                  { label: 'Finaliza', field: 'preRivalFinishing', type: 'chips', options: ['Centros', 'Pase atrÃ¡s', 'Tiro frontal', 'Ruptura espalda', 'Segundo palo', 'ABP'], multiple: true },
+                                  { label: 'Zonas de peligro', field: 'preRivalDangerZones', type: 'chips', options: ['Banda izquierda', 'Banda derecha', 'Intervalo lateral-central', 'Entre lÃ­neas', 'Frontal', 'Ãrea pequeÃ±a'], multiple: true },
                                   { label: 'Jugadores clave ofensivos', field: 'preRivalOffensiveKeyPlayers', placeholder: 'Nombres y amenaza principal...', wide: true },
                                 ],
                               },
                               {
                                 id: 'rivalDefense',
-                                title: '3. Rival sin balón',
-                                description: 'Bloque, presión, espacios que concede y puntos fuertes/débiles.',
+                                title: '3. Rival sin balÃ³n',
+                                description: 'Bloque, presiÃ³n, espacios que concede y puntos fuertes/dÃ©biles.',
                                 fields: [
                                   { label: 'Bloque defensivo', field: 'preRivalDefensiveBlock', type: 'chips', options: ['Alto', 'Medio', 'Bajo'] },
-                                  { label: 'Presión', field: 'preRivalPressure', type: 'chips', options: ['Alta', 'Media', 'Baja'] },
-                                  { label: 'Tipo de presión', field: 'preRivalPressureType', type: 'chips', options: ['Hombre a hombre', 'Orientada a banda', 'Sobre pivote', 'Salta central', 'Repliega', 'Tras pérdida'], multiple: true },
-                                  { label: 'Deja espacios', field: 'preRivalSpacesAllowed', type: 'chips', options: ['Espalda lateral', 'Entre líneas', 'Lado débil', 'Frontal', 'Espalda centrales', 'Segundo palo'], multiple: true },
-                                  { label: 'Defiende centros', field: 'preRivalDefendsCrosses', type: 'chips', options: ['Zona', 'Hombre', 'Sufre segundo palo', 'Sufre rechace', 'Defiende área fuerte'], multiple: true },
-                                  { label: 'Defiende espalda', field: 'preRivalDefendsBack', type: 'chips', options: ['Línea alta', 'Línea baja', 'Centrales lentos', 'Buenas coberturas', 'Sufre rupturas'], multiple: true },
-                                  { label: 'Fortalezas', field: 'preRivalStrengths', placeholder: 'Qué hace muy bien...', wide: true },
-                                  { label: 'Debilidades', field: 'preRivalWeaknesses', placeholder: 'Dónde sufre más...', wide: true },
+                                  { label: 'PresiÃ³n', field: 'preRivalPressure', type: 'chips', options: ['Alta', 'Media', 'Baja'] },
+                                  { label: 'Tipo de presiÃ³n', field: 'preRivalPressureType', type: 'chips', options: ['Hombre a hombre', 'Orientada a banda', 'Sobre pivote', 'Salta central', 'Repliega', 'Tras pÃ©rdida'], multiple: true },
+                                  { label: 'Deja espacios', field: 'preRivalSpacesAllowed', type: 'chips', options: ['Espalda lateral', 'Entre lÃ­neas', 'Lado dÃ©bil', 'Frontal', 'Espalda centrales', 'Segundo palo'], multiple: true },
+                                  { label: 'Defiende centros', field: 'preRivalDefendsCrosses', type: 'chips', options: ['Zona', 'Hombre', 'Sufre segundo palo', 'Sufre rechace', 'Defiende Ã¡rea fuerte'], multiple: true },
+                                  { label: 'Defiende espalda', field: 'preRivalDefendsBack', type: 'chips', options: ['LÃ­nea alta', 'LÃ­nea baja', 'Centrales lentos', 'Buenas coberturas', 'Sufre rupturas'], multiple: true },
+                                  { label: 'Fortalezas', field: 'preRivalStrengths', placeholder: 'QuÃ© hace muy bien...', wide: true },
+                                  { label: 'Debilidades', field: 'preRivalWeaknesses', placeholder: 'DÃ³nde sufre mÃ¡s...', wide: true },
                                 ],
                               },
                               {
                                 id: 'transitionsSetPieces',
                                 title: '4. Transiciones y ABP',
-                                description: 'Dos apartados rápidos para no dejar lo importante fuera.',
+                                description: 'Dos apartados rÃ¡pidos para no dejar lo importante fuera.',
                                 fields: [
-                                  { label: 'Tras pérdida rival', field: 'preRivalAfterLoss', type: 'chips', options: ['Presiona', 'Repliega', 'Falta táctica', 'Queda partido', 'Salta desordenado'], multiple: true },
+                                  { label: 'Tras pÃ©rdida rival', field: 'preRivalAfterLoss', type: 'chips', options: ['Presiona', 'Repliega', 'Falta tÃ¡ctica', 'Queda partido', 'Salta desordenado'], multiple: true },
                                   { label: 'Tras robo rival', field: 'preRivalAfterRecovery', type: 'chips', options: ['Primer pase vertical', 'Busca punta', 'Corre bandas', 'Temporiza', 'Ataca espalda'], multiple: true },
-                                  { label: 'Nuestro tras pérdida', field: 'preCaudalAfterLoss', type: 'chips', options: ['Presión inmediata', 'Cerrar dentro', 'Temporizar', 'Falta táctica', 'Replegar bloque medio'], multiple: true },
-                                  { label: 'Nuestro tras robo', field: 'preCaudalAfterRecovery', type: 'chips', options: ['Primer pase vertical', 'Atacar espalda', 'Cambiar orientación', 'Asegurar posesión', 'Buscar delantero'], multiple: true },
-                                  { label: 'ABP rival', field: 'preRivalCornersFor', type: 'chips', options: ['Córner cerrado', 'Córner abierto', 'Bloqueos', 'Primer palo', 'Segundo palo', 'Rechace frontal'], multiple: true },
+                                  { label: 'Nuestro tras pÃ©rdida', field: 'preCaudalAfterLoss', type: 'chips', options: ['PresiÃ³n inmediata', 'Cerrar dentro', 'Temporizar', 'Falta tÃ¡ctica', 'Replegar bloque medio'], multiple: true },
+                                  { label: 'Nuestro tras robo', field: 'preCaudalAfterRecovery', type: 'chips', options: ['Primer pase vertical', 'Atacar espalda', 'Cambiar orientaciÃ³n', 'Asegurar posesiÃ³n', 'Buscar delantero'], multiple: true },
+                                  { label: 'ABP rival', field: 'preRivalCornersFor', type: 'chips', options: ['CÃ³rner cerrado', 'CÃ³rner abierto', 'Bloqueos', 'Primer palo', 'Segundo palo', 'Rechace frontal'], multiple: true },
                                   { label: 'ABP a atacar', field: 'preRivalCornersAgainst', type: 'chips', options: ['Sufre zona', 'Sufre hombre', 'Deja rechace', 'Mal segundo palo', 'Portero no sale'], multiple: true },
                                 ],
                               },
                               {
                                 id: 'caudalPlan',
-                                title: '5. Plan rápido Caudal',
-                                description: 'Qué queremos hacer y qué debemos evitar.',
+                                title: '5. Plan rÃ¡pido Caudal',
+                                description: 'QuÃ© queremos hacer y quÃ© debemos evitar.',
                                 fields: [
-                                  { label: 'Intención', field: 'preCaudalIntent', type: 'chips', options: ['Presionar alto', 'Bloque medio', 'Atacar espalda', 'Dominar balón', 'Ser directo', 'Proteger área'], multiple: true },
+                                  { label: 'IntenciÃ³n', field: 'preCaudalIntent', type: 'chips', options: ['Presionar alto', 'Bloque medio', 'Atacar espalda', 'Dominar balÃ³n', 'Ser directo', 'Proteger Ã¡rea'], multiple: true },
                                   { label: 'Iniciar', field: 'preCaudalStartPlay', type: 'chips', options: ['Salida corta', 'Salida de tres', 'Atraer y saltar', 'Jugar directo', 'Buscar segunda jugada'], multiple: true },
-                                  { label: 'Progresar', field: 'preCaudalProgressionPlan', type: 'chips', options: ['Por dentro', 'Por fuera', 'Lado débil', 'Tercer hombre', 'Cambio orientación'], multiple: true },
-                                  { label: 'Atacar', field: 'preCaudalAttackZones', type: 'chips', options: ['Espalda lateral', 'Intervalo central-lateral', 'Entre líneas', 'Frontal', 'Segundo palo', 'Centros laterales'], multiple: true },
-                                  { label: 'Presionar', field: 'preCaudalPressPlan', type: 'chips', options: ['Central', 'Lateral', 'Pivote', 'Pase atrás', 'Saque de banda', 'Tras control malo'], multiple: true },
-                                  { label: 'Evitar', field: 'preCaudalAvoid', type: 'chips', options: ['Pérdidas interiores', 'Faltas laterales', 'Partido ida y vuelta', 'Centros sin área', 'Saltar sin cobertura'], multiple: true },
+                                  { label: 'Progresar', field: 'preCaudalProgressionPlan', type: 'chips', options: ['Por dentro', 'Por fuera', 'Lado dÃ©bil', 'Tercer hombre', 'Cambio orientaciÃ³n'], multiple: true },
+                                  { label: 'Atacar', field: 'preCaudalAttackZones', type: 'chips', options: ['Espalda lateral', 'Intervalo central-lateral', 'Entre lÃ­neas', 'Frontal', 'Segundo palo', 'Centros laterales'], multiple: true },
+                                  { label: 'Presionar', field: 'preCaudalPressPlan', type: 'chips', options: ['Central', 'Lateral', 'Pivote', 'Pase atrÃ¡s', 'Saque de banda', 'Tras control malo'], multiple: true },
+                                  { label: 'Evitar', field: 'preCaudalAvoid', type: 'chips', options: ['PÃ©rdidas interiores', 'Faltas laterales', 'Partido ida y vuelta', 'Centros sin Ã¡rea', 'Saltar sin cobertura'], multiple: true },
                                   { label: 'Jugadores a activar', field: 'preCaudalPlayersToActivate', placeholder: 'Nombres propios si los hay...' },
                                   { label: 'Rivales a tapar', field: 'preCaudalRivalsToBlock', placeholder: 'Nombres propios si los hay...' },
                                 ],
                               },
                               {
                                 id: 'extraInfo',
-                                title: '6. Información adicional para IA',
+                                title: '6. InformaciÃ³n adicional para IA',
                                 description: 'Notas grupales o individuales que no encajan en el checklist.',
                                 fields: [
-                                  { label: 'Jugador nuestro a potenciar', field: 'preCaudalPlayerToBoost', placeholder: 'Nombre, zona y por qué...' },
-                                  { label: 'Jugador rival a vigilar', field: 'preRivalPlayerToWatch', placeholder: 'Nombre, amenaza y cómo reducirle...' },
-                                  { label: 'Duelos importantes', field: 'preImportantDuels', placeholder: 'Duelos físicos, velocidad, juego aéreo, segunda jugada...', wide: true },
-                                  { label: 'Información adicional grupal o individual', field: 'preAiSupportNotes', placeholder: 'Ej. nuestro lateral llega tocado, su extremo no defiende, queremos proteger a un juvenil, el campo está pesado...', wide: true },
+                                  { label: 'Jugador nuestro a potenciar', field: 'preCaudalPlayerToBoost', placeholder: 'Nombre, zona y por quÃ©...' },
+                                  { label: 'Jugador rival a vigilar', field: 'preRivalPlayerToWatch', placeholder: 'Nombre, amenaza y cÃ³mo reducirle...' },
+                                  { label: 'Duelos importantes', field: 'preImportantDuels', placeholder: 'Duelos fÃ­sicos, velocidad, juego aÃ©reo, segunda jugada...', wide: true },
+                                  { label: 'InformaciÃ³n adicional grupal o individual', field: 'preAiSupportNotes', placeholder: 'Ej. nuestro lateral llega tocado, su extremo no defiende, queremos proteger a un juvenil, el campo estÃ¡ pesado...', wide: true },
                                 ],
                               },
                             ].map(renderQuestionnaireSection)}
@@ -21968,7 +22067,7 @@ function App() {
                                     >
                                       <span className="block truncate font-semibold">{player.name}</span>
                                       <span className={`mt-1 block text-xs ${isCurrent ? 'text-slate-800' : 'text-slate-500'}`}>
-                                        {[player.position, player.foot].filter(Boolean).join(' · ')}
+                                        {[player.position, player.foot].filter(Boolean).join(' Â· ')}
                                       </span>
                                     </button>
                                   );
@@ -21993,7 +22092,7 @@ function App() {
                                   onClick={addManualRivalPlayer}
                                   className="w-full rounded-2xl bg-rose-300 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-rose-950"
                                 >
-                                  Añadir
+                                  AÃ±adir
                                 </button>
                               </div>
                               <div className="mt-4 max-h-[360px] space-y-2 overflow-y-auto pr-1">
@@ -22017,14 +22116,14 @@ function App() {
                                           ))}
                                         </span>
                                         <span className={`mt-1 block text-xs ${isCurrent ? 'text-rose-900' : 'text-slate-500'}`}>
-                                          {[player.position, player.foot].filter(Boolean).join(' · ') || 'Sin perfil'}
+                                          {[player.position, player.foot].filter(Boolean).join(' Â· ') || 'Sin perfil'}
                                         </span>
                                       </button>
                                     );
                                   })
                                 ) : (
                                   <div className="rounded-2xl border border-dashed border-white/10 p-4 text-sm text-slate-400">
-                                    Vincula el partido a un equipo rival o añade jugadores manuales.
+                                    Vincula el partido a un equipo rival o aÃ±ade jugadores manuales.
                                   </div>
                                 )}
                               </div>
@@ -22043,17 +22142,17 @@ function App() {
                                   value={(selectedMatch.prePlayerNotes || {})[getSelectedLineupName()] || ''}
                                   onChange={(event) => updateSelectedPlayerNote(event.target.value)}
                                   disabled={!getSelectedLineupName()}
-                                  placeholder="Ej. llega justo físicamente, atacar su banda, buen golpeo, ayudar al lateral..."
+                                  placeholder="Ej. llega justo fÃ­sicamente, atacar su banda, buen golpeo, ayudar al lateral..."
                                   className="min-h-[150px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
                                 />
                               </label>
                               <label className="space-y-2 text-sm text-slate-300">
-                                <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Característica rival</span>
+                                <span className="text-xs uppercase tracking-[0.18em] text-slate-500">CaracterÃ­stica rival</span>
                                 <textarea
                                   value={(selectedMatch.preRivalPlayerNotes || {})[getSelectedRivalLineupName()] || ''}
                                   onChange={(event) => updateSelectedRivalPlayerNote(event.target.value)}
                                   disabled={!getSelectedRivalLineupName()}
-                                  placeholder="Ej. muy rápido al espacio, zurdo cerrado, sufre defendiendo centros..."
+                                  placeholder="Ej. muy rÃ¡pido al espacio, zurdo cerrado, sufre defendiendo centros..."
                                   className="min-h-[150px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
                                 />
                               </label>
@@ -22077,7 +22176,7 @@ function App() {
                                         </div>
                                       ) : (
                                         <div className="rounded-2xl bg-white/5 px-4 py-3 text-right">
-                                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Sin marca específica</p>
+                                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Sin marca especÃ­fica</p>
                                           <p className="mt-1 text-sm font-bold text-slate-300">Rol + sistema rival</p>
                                         </div>
                                       )}
@@ -22087,7 +22186,7 @@ function App() {
                                 );
                               })()
                             ) : (
-                              <p className="mt-3 text-sm text-slate-400">Pulsa "Analizar sistemas" y después selecciona un jugador del Caudal en el campo.</p>
+                              <p className="mt-3 text-sm text-slate-400">Pulsa "Analizar sistemas" y despuÃ©s selecciona un jugador del Caudal en el campo.</p>
                             )}
                               </div>
                             </div>
@@ -22097,7 +22196,7 @@ function App() {
                         <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                           <div className="flex items-center justify-between gap-3">
                             <div>
-                              <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Análisis táctico IA</h4>
+                              <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">AnÃ¡lisis tÃ¡ctico IA</h4>
                               <p className="mt-2 text-sm text-slate-400">El sistema compara las dos formaciones previstas y muestra los puntos clave.</p>
                             </div>
                             <button
@@ -22132,7 +22231,7 @@ function App() {
                                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
                                   <div>
                                     <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Datos usados por la IA</p>
-                                    <p className="mt-1 text-sm text-slate-400">Esto es lo que entra al análisis cuando pulsas el botón.</p>
+                                    <p className="mt-1 text-sm text-slate-400">Esto es lo que entra al anÃ¡lisis cuando pulsas el botÃ³n.</p>
                                   </div>
                                   <span className={`rounded-2xl px-4 py-2 text-xs font-black uppercase tracking-[0.16em] ${confidenceClass}`}>
                                     Confianza {inputSummary.confidence}
@@ -22158,7 +22257,7 @@ function App() {
                                   </div>
                                   <div className="space-y-3">
                                     <div className="rounded-2xl bg-white/5 p-4">
-                                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Rivales con características</p>
+                                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Rivales con caracterÃ­sticas</p>
                                       {inputSummary.rivalPlayersWithNotes.length ? (
                                         <div className="mt-3 space-y-2">
                                           {inputSummary.rivalPlayersWithNotes.slice(0, 5).map(([name, note]) => (
@@ -22166,12 +22265,12 @@ function App() {
                                           ))}
                                         </div>
                                       ) : (
-                                        <p className="mt-2 text-sm text-slate-400">Aún no hay características individuales del rival.</p>
+                                        <p className="mt-2 text-sm text-slate-400">AÃºn no hay caracterÃ­sticas individuales del rival.</p>
                                       )}
                                     </div>
                                     {inputSummary.missingInputs.length ? (
                                       <div className="rounded-2xl border border-amber-300/15 bg-amber-300/10 p-4">
-                                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-200">Para hacerlo más real</p>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-200">Para hacerlo mÃ¡s real</p>
                                         <div className="mt-3 flex flex-wrap gap-2">
                                           {inputSummary.missingInputs.map(([label]) => (
                                             <span key={label} className="rounded-full bg-black/20 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-amber-100">{label}</span>
@@ -22194,7 +22293,7 @@ function App() {
                               </div>
                             </div>
                           ) : (
-                            <div className="mt-6 rounded-3xl bg-[#0f1e38]/80 p-5 text-sm text-slate-400">Pulsa "Analizar sistemas" para obtener una previsión automática.</div>
+                            <div className="mt-6 rounded-3xl bg-[#0f1e38]/80 p-5 text-sm text-slate-400">Pulsa "Analizar sistemas" para obtener una previsiÃ³n automÃ¡tica.</div>
                           )}
                         </div>
                         </>
@@ -22212,7 +22311,7 @@ function App() {
                     ) : null}
                     {statsRefreshing ? (
                       <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 text-sm text-slate-400 shadow-glow">
-                        Actualizando estadísticas desde Supabase...
+                        Actualizando estadÃ­sticas desde Supabase...
                       </div>
                     ) : null}
                     <StatusMessage status={statsSaveStatus} />
@@ -22222,7 +22321,7 @@ function App() {
                         onClick={() => setStatsViewMode('completa')}
                         className={`rounded-2xl px-5 py-3 text-sm font-black uppercase tracking-[0.12em] transition ${statsViewMode === 'completa' ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}
                       >
-                        Estadísticas
+                        EstadÃ­sticas
                       </button>
                       <button
                         type="button"
@@ -22233,7 +22332,7 @@ function App() {
                       </button>
                     </div>
                     {statsViewMode === 'delegado' ? (
-                    <AccordionSection title="Modo Delegado" subtitle="Registro rápido durante el partido" defaultOpen>
+                    <AccordionSection title="Modo Delegado" subtitle="Registro rÃ¡pido durante el partido" defaultOpen>
                       {renderDelegatedStatsMode()}
                     </AccordionSection>
                     ) : (
@@ -22241,7 +22340,7 @@ function App() {
                     {renderCompleteStatsView()}
                     {false && (
                     <>
-                    <AccordionSection title="Resumen rápido" subtitle="Marcador, goles, tarjetas y lesiones" defaultOpen>
+                    <AccordionSection title="Resumen rÃ¡pido" subtitle="Marcador, goles, tarjetas y lesiones" defaultOpen>
                     <div className={`rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow ${isPreTalkMode ? 'hidden' : ''}`}>
                       <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Resumen de marcador</h3>
                       <div className="mt-6 grid items-center gap-6 lg:grid-cols-[1fr_auto_1fr]">
@@ -22267,7 +22366,7 @@ function App() {
                           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Goles Caudal</p>
                           <div className="mt-3 space-y-2 text-sm text-slate-300">
                             {getStatsGoalEvents().filter((event) => event.type === 'Gol a favor').length ? getStatsGoalEvents().filter((event) => event.type === 'Gol a favor').map((event) => (
-                              <p key={event.id}>{event.minute}' ? {event.scorer || 'Sin goleador'} · {event.subphase}{event.assistant ? ` · ?? ${event.assistant}` : ''}</p>
+                              <p key={event.id}>{event.minute}' ? {event.scorer || 'Sin goleador'} Â· {event.subphase}{event.assistant ? ` Â· ?? ${event.assistant}` : ''}</p>
                             )) : <p>Sin goles registrados.</p>}
                           </div>
                         </div>
@@ -22275,7 +22374,7 @@ function App() {
                           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Goles rivales</p>
                           <div className="mt-3 space-y-2 text-sm text-slate-300">
                             {getStatsGoalEvents().filter((event) => event.type === 'Gol en contra').length ? getStatsGoalEvents().filter((event) => event.type === 'Gol en contra').map((event) => (
-                              <p key={event.id}>{event.minute}' · {event.phase} · {event.subphase}</p>
+                              <p key={event.id}>{event.minute}' Â· {event.phase} Â· {event.subphase}</p>
                             )) : <p>Sin goles rivales registrados.</p>}
                           </div>
                         </div>
@@ -22304,7 +22403,7 @@ function App() {
                             <div className="mt-2 grid gap-2 text-sm leading-6 text-slate-100">
                               {getStatsAutoSummarySections().length ? getStatsAutoSummarySections().map((section, index) => (
                                 <p key={`${section}-${index}`} className="rounded-2xl bg-black/20 px-3 py-2">{section}</p>
-                              )) : <p>Añade goles, cambios o incidencias para generar el resumen.</p>}
+                              )) : <p>AÃ±ade goles, cambios o incidencias para generar el resumen.</p>}
                             </div>
                           </div>
                           <button type="button" onClick={saveStatsAutoSummary} className="shrink-0 rounded-2xl bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">
@@ -22318,7 +22417,7 @@ function App() {
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Eventos clave</h3>
-                          <p className="mt-2 text-sm text-slate-400">Goles, cambios, tarjetas y lesiones ordenados por impacto táctico.</p>
+                          <p className="mt-2 text-sm text-slate-400">Goles, cambios, tarjetas y lesiones ordenados por impacto tÃ¡ctico.</p>
                         </div>
                         <button type="button" onClick={openGoalAnalysisModal} className="rounded-2xl bg-red-500 px-5 py-3 text-sm font-bold uppercase tracking-[0.14em] text-white">
                           Registrar gol
@@ -22341,7 +22440,7 @@ function App() {
                           <div key={event.id} className={`rounded-2xl border p-4 ${event.tone}`}>
                             <div className="flex items-start justify-between gap-3">
                               <div>
-                                <p className="text-sm font-black text-caudal-electric">{event.minute || '-'}' · {event.type}</p>
+                                <p className="text-sm font-black text-caudal-electric">{event.minute || '-'}' Â· {event.type}</p>
                                 <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Tramo {getStatsMomentRange(event.minute)}</p>
                               </div>
                               <span className="rounded-lg bg-white/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">{event.category}</span>
@@ -22356,12 +22455,12 @@ function App() {
                     </div>
                     </AccordionSection>
 
-                    <AccordionSection title="Alineación y convocados" subtitle="Campo, sistema y lista de jugadores">
+                    <AccordionSection title="AlineaciÃ³n y convocados" subtitle="Campo, sistema y lista de jugadores">
                     <div className="grid gap-6 xl:grid-cols-[1.35fr_0.75fr]">
                       <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                           <div>
-                            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Disposición táctica</h3>
+                            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">DisposiciÃ³n tÃ¡ctica</h3>
                             <p className="mt-2 text-sm text-slate-400">Arrastra convocados al campo y modifica posiciones por sistema.</p>
                           </div>
                           <div className="flex flex-wrap gap-2">
@@ -22374,15 +22473,15 @@ function App() {
                           </div>
                         </div>
                         <label className="mt-5 block space-y-2 text-sm text-slate-300">
-                          <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Capitán</span>
+                          <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">CapitÃ¡n</span>
                           <select
                             value={selectedMatch.captainPlayerId || ''}
                             onChange={(event) => updateMatchCaptain(event.target.value)}
                             className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-sm font-black text-slate-950"
                           >
-                            <option value="">Sin capitán</option>
+                            <option value="">Sin capitÃ¡n</option>
                             {(getStatsCalledPlayers().length ? getStatsCalledPlayers() : players).map((player) => (
-                              <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
+                              <option key={player.id} value={player.id}>{player.number || '-'} Â· {player.name}</option>
                             ))}
                           </select>
                         </label>
@@ -22399,7 +22498,7 @@ function App() {
                             onClick={openStatsCallupPanel}
                             className="rounded-2xl bg-caudal-electric px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-950 transition hover:bg-[#7aacff]"
                           >
-                            Añadir convocados
+                            AÃ±adir convocados
                           </button>
                         </div>
                         {getStatsCalledPlayers().length ? (
@@ -22444,14 +22543,14 @@ function App() {
                           </>
                         ) : (
                           <div className="mt-5 rounded-3xl border border-dashed border-white/10 bg-black/20 p-6 text-center">
-                            <p className="text-sm font-semibold text-white">Todavía no hay convocados para este partido.</p>
-                            <p className="mt-2 text-sm text-slate-400">Añade varios jugadores de una vez desde la plantilla de Supabase.</p>
+                            <p className="text-sm font-semibold text-white">TodavÃ­a no hay convocados para este partido.</p>
+                            <p className="mt-2 text-sm text-slate-400">AÃ±ade varios jugadores de una vez desde la plantilla de Supabase.</p>
                             <button
                               type="button"
                               onClick={openStatsCallupPanel}
                               className="mt-5 rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-[#7aacff]"
                             >
-                              Añadir convocados
+                              AÃ±adir convocados
                             </button>
                           </div>
                         )}
@@ -22459,12 +22558,12 @@ function App() {
                     </div>
                     </AccordionSection>
 
-                    <AccordionSection title="Eventos / goles / tarjetas" subtitle="Análisis de goles y acciones clave">
+                    <AccordionSection title="Eventos / goles / tarjetas" subtitle="AnÃ¡lisis de goles y acciones clave">
                     <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Rendimiento individual</h3>
-                          <p className="mt-2 text-sm text-slate-400">Minutos, rol, tarjetas, lesión y valoración se guardan en Supabase.</p>
+                          <p className="mt-2 text-sm text-slate-400">Minutos, rol, tarjetas, lesiÃ³n y valoraciÃ³n se guardan en Supabase.</p>
                         </div>
                         {getStatsCalledPlayers().length ? (
                           <button
@@ -22497,7 +22596,7 @@ function App() {
                               const substituteMinutes = stats.role === 'Suplente' ? getStatsSubstituteMinutes(player.name) : 0;
                               const displayedMinutes = substituteMinutes || stats.minutes;
                               const enteredAsSub = substituteMinutes > 0;
-                              const rowSummary = `${player.name}: ${displayedMinutes || 0}' · G${stats.goals} A${stats.assists}${stats.yellow ? ` · AM ${stats.yellowCount}` : ''}${stats.red ? ' · RJ' : ''}${stats.injured ? ' · LES' : ''}`;
+                              const rowSummary = `${player.name}: ${displayedMinutes || 0}' Â· G${stats.goals} A${stats.assists}${stats.yellow ? ` Â· AM ${stats.yellowCount}` : ''}${stats.red ? ' Â· RJ' : ''}${stats.injured ? ' Â· LES' : ''}`;
                               return (
                                 <tr key={player.id} title={rowSummary} className={`group transition hover:bg-white/[0.07] ${stats.red ? 'bg-red-500/[0.06]' : stats.injured ? 'bg-rose-500/[0.06]' : enteredAsSub ? 'bg-emerald-400/[0.05]' : stats.role === 'Titular' ? 'bg-caudal-electric/10' : 'bg-white/[0.02]'}`}>
                                   <td className={`sticky left-0 z-10 border-t border-white/10 px-3 py-2 font-bold text-white shadow-[8px_0_18px_rgba(0,0,0,0.22)] transition group-hover:bg-[#10213f] ${stats.red ? 'bg-[#1c1220]' : stats.injured ? 'bg-[#171525]' : stats.role === 'Titular' ? 'bg-[#0d1f3b]' : 'bg-[#091428]'}`}>
@@ -22516,7 +22615,7 @@ function App() {
                                       onChange={(event) => updateStatsPlayerData(player.name, { replacementName: event.target.value })}
                                       className="w-44 rounded-lg bg-white px-2 py-1.5 text-[11px] font-bold text-slate-950 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
                                     >
-                                      <option value="">{canReplace ? `Sale ${minutes}' · entra...` : enteredAsSub ? `Entra · ${displayedMinutes}'` : 'Sin cambio'}</option>
+                                      <option value="">{canReplace ? `Sale ${minutes}' Â· entra...` : enteredAsSub ? `Entra Â· ${displayedMinutes}'` : 'Sin cambio'}</option>
                                       {getStatsReplacementOptions(player.name).map((replacement) => (
                                         <option key={replacement.id} value={replacement.name}>{replacement.name}</option>
                                       ))}
@@ -22576,7 +22675,7 @@ function App() {
                       </div>
                       ) : (
                         <div className="mt-5 rounded-3xl border border-dashed border-white/10 bg-black/20 p-6 text-center">
-                          <p className="text-sm text-slate-400">La tabla aparecerá cuando añadas convocados.</p>
+                          <p className="text-sm text-slate-400">La tabla aparecerÃ¡ cuando aÃ±adas convocados.</p>
                         </div>
                       )}
                     </div>
@@ -22667,10 +22766,10 @@ function App() {
                 <div className="border-t border-white/10 px-5 py-4">
                   <div className="mb-3 flex flex-wrap gap-2">
                     {[
-                      '¿Cuántos jugadores tiene la plantilla?',
-                      '¿Cómo fue el último partido?',
-                      '¿Quién tiene más minutos?',
-                      '¿Qué sabemos del próximo rival?',
+                      'Â¿CuÃ¡ntos jugadores tiene la plantilla?',
+                      'Â¿CÃ³mo fue el Ãºltimo partido?',
+                      'Â¿QuiÃ©n tiene mÃ¡s minutos?',
+                      'Â¿QuÃ© sabemos del prÃ³ximo rival?',
                     ].map((example) => (
                       <button
                         key={example}
@@ -22733,9 +22832,9 @@ function App() {
                   onChange={(event) => setSystemChangeDraft((current) => ({ ...current, period: event.target.value, fromSystem: getSystemBeforeEvent({ initialSystem: getInitialMatchSystem(selectedMatch), systemEvents: selectedMatch.systemEvents, eventId: editingSystemEventId, minute: current.minute, period: event.target.value }) }))}
                   className="w-full rounded-2xl bg-white px-4 py-4 text-base font-black text-slate-950"
                 >
-                  <option value="1ª parte">1ª parte</option>
-                  <option value="2ª parte">2ª parte</option>
-                  <option value="Prórroga">Prórroga</option>
+                  <option value="1Âª parte">1Âª parte</option>
+                  <option value="2Âª parte">2Âª parte</option>
+                  <option value="PrÃ³rroga">PrÃ³rroga</option>
                 </select>
               </label>
             </div>
@@ -22756,12 +22855,12 @@ function App() {
               </label>
             </div>
             <label className="mt-4 block space-y-2">
-              <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Observación opcional</span>
+              <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">ObservaciÃ³n opcional</span>
               <textarea
                 value={systemChangeDraft.note}
                 onChange={(event) => setSystemChangeDraft((current) => ({ ...current, note: event.target.value }))}
                 className="min-h-[96px] w-full rounded-2xl bg-white px-4 py-3 text-sm font-bold text-slate-950"
-                placeholder="Ej. Buscar un jugador entre líneas."
+                placeholder="Ej. Buscar un jugador entre lÃ­neas."
               />
             </label>
             <button
@@ -22792,7 +22891,7 @@ function App() {
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500 text-xl font-black text-white">+</span>
                 <div>
                   <h3 className="text-lg font-black uppercase tracking-[0.18em] text-white">{editingGoalEventId ? 'Editar gol' : 'Registrar gol'}</h3>
-                  <p className="mt-1 text-sm text-slate-400">Análisis táctico y contextual del evento</p>
+                  <p className="mt-1 text-sm text-slate-400">AnÃ¡lisis tÃ¡ctico y contextual del evento</p>
                 </div>
               </div>
               <button
@@ -22861,7 +22960,7 @@ function App() {
                     <input value={goalAnalysisDraft.minute} onChange={(event) => updateGoalAnalysisDraft('minute', event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') saveGoalAnalysisEvent(); }} placeholder="Minuto" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white" />
                   </label>
                   <div className="grid grid-cols-2 rounded-2xl border border-white/10 bg-white/5 p-1 lg:col-span-2">
-                    {['1ª parte', '2ª parte'].map((half) => (
+                    {['1Âª parte', '2Âª parte'].map((half) => (
                       <button key={half} type="button" onClick={() => updateGoalAnalysisDraft('half', half)} className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.1em] ${goalAnalysisDraft.half === half ? 'bg-caudal-electric text-slate-950' : 'text-slate-400'}`}>{half}</button>
                     ))}
                   </div>
@@ -22871,14 +22970,14 @@ function App() {
                         <span>Goleador</span>
                         <select value={goalAnalysisDraft.scorer} onChange={(event) => updateGoalAnalysisDraft('scorer', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white">
                           <option value="">Seleccionar goleador</option>
-                          {getGoalDraftPlayerOptions().map((player) => <option key={player.id || player.name} value={player.name}>{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</option>)}
+                          {getGoalDraftPlayerOptions().map((player) => <option key={player.id || player.name} value={player.name}>{player.number ? `${player.number} Â· ` : ''}{displayPlayerName(player) || player.name}</option>)}
                         </select>
                       </label>
                       <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 lg:col-span-2">
                         <span>Asistente</span>
                         <select value={goalAnalysisDraft.assistant} onChange={(event) => updateGoalAnalysisDraft('assistant', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white">
                           <option value="">Sin asistencia registrada</option>
-                          {getGoalDraftPlayerOptions().map((player) => <option key={player.id || player.name} value={player.name}>{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</option>)}
+                          {getGoalDraftPlayerOptions().map((player) => <option key={player.id || player.name} value={player.name}>{player.number ? `${player.number} Â· ` : ''}{displayPlayerName(player) || player.name}</option>)}
                         </select>
                       </label>
                     </>
@@ -22888,7 +22987,7 @@ function App() {
                       <input
                         value={goalAnalysisDraft.scorer}
                         onChange={(event) => updateGoalAnalysisDraft('scorer', event.target.value)}
-                        placeholder="Opcional si no está identificado"
+                        placeholder="Opcional si no estÃ¡ identificado"
                         className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white"
                       />
                     </label>
@@ -22898,11 +22997,11 @@ function App() {
 
               <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Contexto táctico</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Contexto tÃ¡ctico</p>
                   <div className="flex flex-wrap gap-2">
                     {[
                       ['combinativo', 'Combinativo'],
-                      ['transicion', 'Transición'],
+                      ['transicion', 'TransiciÃ³n'],
                       ['abp', 'ABP'],
                       ['directo', 'Directo'],
                     ].map(([preset, label]) => (
@@ -22937,15 +23036,15 @@ function App() {
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Mapas</p>
                 <div className="mt-4 grid gap-4 lg:grid-cols-3">
                   <div>
-                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">Dónde se genera</p>
+                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">DÃ³nde se genera</p>
                     {renderZoneGrid({ value: goalAnalysisDraft.assistZone, onChange: (zone) => updateGoalAnalysisDraft('assistZone', zone), compact: true, variant: 'start' })}
                   </div>
                   <div>
-                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-emerald-200">Dónde finaliza</p>
+                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-emerald-200">DÃ³nde finaliza</p>
                     {renderZoneGrid({ value: goalAnalysisDraft.shotZone, onChange: (zone) => updateGoalAnalysisDraft('shotZone', zone), compact: true, variant: 'finish' })}
                   </div>
                   <div>
-                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-white">Dónde entra</p>
+                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-white">DÃ³nde entra</p>
                     {renderZoneGrid({ value: goalAnalysisDraft.goalZone, onChange: (zone) => updateGoalAnalysisDraft('goalZone', zone), zones: goalZoneOptions, goal: true, compact: true })}
                   </div>
                 </div>
@@ -22953,9 +23052,9 @@ function App() {
 
               <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
                 <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Finalización</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">FinalizaciÃ³n</p>
                   <div className="mt-3 grid grid-cols-3 gap-2">
-                    {['Pie derecho', 'Pie izquierdo', 'Cabeza', 'Rechace', 'Desvío', 'Otro'].map((contact) => (
+                    {['Pie derecho', 'Pie izquierdo', 'Cabeza', 'Rechace', 'DesvÃ­o', 'Otro'].map((contact) => (
                       <button key={contact} type="button" onClick={() => updateGoalAnalysisDraft('contact', contact)} className={`rounded-xl px-3 py-2 text-xs font-bold ${goalAnalysisDraft.contact === contact ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>{contact}</button>
                     ))}
                   </div>
@@ -22965,7 +23064,7 @@ function App() {
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Clip relacionado</p>
                     {(() => {
                       const platform = detectGoalClipPlatform(goalAnalysisDraft.videoUrl);
-                      return <span className="rounded-xl bg-white/10 px-2.5 py-1 text-[10px] font-black text-slate-200">{platform.icon} · {platform.label}</span>;
+                      return <span className="rounded-xl bg-white/10 px-2.5 py-1 text-[10px] font-black text-slate-200">{platform.icon} Â· {platform.label}</span>;
                     })()}
                   </div>
                   <div className="mt-3 flex gap-2">
@@ -22988,7 +23087,7 @@ function App() {
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Autoresumen del gol</p>
                     <div className="mt-3 grid gap-1.5 text-sm font-semibold text-slate-100">
                       <p><span className="text-caudal-electric">{goalAnalysisDraft.minute || '--'}'</span> {goalAnalysisDraft.type === 'Gol a favor' ? `${goalAnalysisDraft.scorer || 'Goleador'} marca.` : `${selectedMatch.opponent || 'Rival'} marca.`}</p>
-                      <p>{goalAnalysisDraft.attackType || goalAnalysisDraft.phase}. {getGoalZonePhrase(goalAnalysisDraft.assistZone)}. Finalización: {getGoalZonePhrase(goalAnalysisDraft.shotZone)}.</p>
+                      <p>{goalAnalysisDraft.attackType || goalAnalysisDraft.phase}. {getGoalZonePhrase(goalAnalysisDraft.assistZone)}. FinalizaciÃ³n: {getGoalZonePhrase(goalAnalysisDraft.shotZone)}.</p>
                       <p>Pie/contacto: {goalAnalysisDraft.contact}. {goalAnalysisDraft.assistant ? `Asistencia de ${goalAnalysisDraft.assistant}.` : 'Sin asistencia registrada.'}</p>
                     </div>
                   </div>
@@ -23021,9 +23120,9 @@ function App() {
           <div className="mx-auto flex h-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-caudal-950 shadow-glow">
             <div className="flex flex-col gap-4 border-b border-white/10 px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Estadísticas</p>
-                <h3 className="mt-2 text-xl font-semibold text-white">Añadir convocados</h3>
-                <p className="mt-2 text-sm text-slate-400">Selecciona jugadores de la plantilla y se crearán sus registros de convocatoria y rendimiento.</p>
+                <p className="text-sm uppercase tracking-[0.3em] text-slate-400">EstadÃ­sticas</p>
+                <h3 className="mt-2 text-xl font-semibold text-white">AÃ±adir convocados</h3>
+                <p className="mt-2 text-sm text-slate-400">Selecciona jugadores de la plantilla y se crearÃ¡n sus registros de convocatoria y rendimiento.</p>
               </div>
               <button
                 type="button"
@@ -23111,7 +23210,7 @@ function App() {
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm font-bold">{player.name}</span>
-                            <span className="mt-0.5 block truncate text-xs text-slate-500">{player.position || 'Sin posición'} · {status}</span>
+                            <span className="mt-0.5 block truncate text-xs text-slate-500">{player.position || 'Sin posiciÃ³n'} Â· {status}</span>
                           </span>
                         </div>
                         <div className="mt-3 grid grid-cols-3 gap-1.5">
@@ -23125,8 +23224,8 @@ function App() {
                 </div>
               ) : (
                 <div className="rounded-3xl border border-dashed border-white/10 bg-black/20 p-8 text-center">
-                  <p className="text-sm font-semibold text-white">Todos los jugadores están añadidos.</p>
-                  <p className="mt-2 text-sm text-slate-400">Gestiona aquí titulares, suplentes y fuera convocatoria.</p>
+                  <p className="text-sm font-semibold text-white">Todos los jugadores estÃ¡n aÃ±adidos.</p>
+                  <p className="mt-2 text-sm text-slate-400">Gestiona aquÃ­ titulares, suplentes y fuera convocatoria.</p>
                 </div>
               )}
             </div>
@@ -23150,7 +23249,7 @@ function App() {
                 className="inline-flex items-center justify-center gap-2 rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {statsCallupSaving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-950/30 border-t-slate-950" /> : null}
-                {statsCallupSaving ? 'Añadiendo...' : 'Añadir seleccionados'}
+                {statsCallupSaving ? 'AÃ±adiendo...' : 'AÃ±adir seleccionados'}
               </button>
             </div>
           </div>
@@ -23159,7 +23258,7 @@ function App() {
 
       {isPanelOpen ? (() => {
         const positionGroups = {
-          Portería: ['Portero'],
+          'PorterÃ­a': ['Portero'],
           Defensa: ['Defensa central', 'Central derecho', 'Central izquierdo', 'Lateral derecho', 'Lateral izquierdo'],
           Mediocentro: ['Pivote', 'Mediocentro', 'Mediocentro ofensivo', 'Mediapunta'],
           Ataque: ['Extremo derecho', 'Extremo izquierdo', 'Delantero centro', 'Delantero'],
@@ -23196,7 +23295,7 @@ function App() {
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                         <span>Nombre completo</span>
-                        <input required name="name" value={formState.name} onChange={handleChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white outline-none transition placeholder:text-slate-500 focus:border-caudal-electric/60" placeholder="Ej. Pablo Núñez" />
+                        <input required name="name" value={formState.name} onChange={handleChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white outline-none transition placeholder:text-slate-500 focus:border-caudal-electric/60" placeholder="Ej. Pablo NÃºÃ±ez" />
                       </label>
                       <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                         <span>Nombre camiseta</span>
@@ -23230,8 +23329,8 @@ function App() {
                       </div>
                     </div>
                     <div className="mt-3 rounded-xl border border-white/10 bg-black/15 p-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Fotografía de jugador</p>
-                      <p className="mt-1 text-xs leading-5 text-slate-400">Presentación limpia: caja 1:1, fondo blanco, esquinas suaves y recorte uniforme con object-fit cover. No se aplican efectos a la imagen.</p>
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">FotografÃ­a de jugador</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-400">PresentaciÃ³n limpia: caja 1:1, fondo blanco, esquinas suaves y recorte uniforme con object-fit cover. No se aplican efectos a la imagen.</p>
                       <div className="mt-3 flex items-center gap-3">
                         <div className="flex aspect-square h-16 items-center justify-center overflow-hidden rounded-lg border border-slate-200/20 bg-white text-xs font-black text-slate-500">
                           <PlayerPortrait player={formPlayerPreview} className="h-full w-full" fallbackTextClassName="text-xs" />
@@ -23242,26 +23341,26 @@ function App() {
                   </section>
 
                   <section className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Fútbol</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">FÃºtbol</p>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                         <span>Dorsal</span>
                         <input required type="number" name="number" min="1" value={formState.number} onChange={handleChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white outline-none transition focus:border-caudal-electric/60" placeholder="7" />
                       </label>
                       <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
-                        <span>Posición</span>
+                        <span>PosiciÃ³n</span>
                         <select value={selectedGroup} onChange={(event) => setFormState((current) => ({ ...current, position: positionGroups[event.target.value][0] }))} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white outline-none transition focus:border-caudal-electric/60">
                           {Object.keys(positionGroups).map((group) => <option key={group} value={group}>{group}</option>)}
                         </select>
                       </label>
                       <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
-                        <span>Posición específica</span>
+                        <span>PosiciÃ³n especÃ­fica</span>
                         <select required name="position" value={formState.position} onChange={handleChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white outline-none transition focus:border-caudal-electric/60">
                           {(positionGroups[selectedGroup] || positions).map((position) => <option key={position} value={position}>{position}</option>)}
                         </select>
                       </label>
                       <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
-                        <span>Pierna hábil</span>
+                        <span>Pierna hÃ¡bil</span>
                         <select required name="foot" value={formState.foot} onChange={handleChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white outline-none transition focus:border-caudal-electric/60">
                           {footOptions.map((foot) => <option key={foot} value={foot}>{foot}</option>)}
                         </select>
@@ -23273,7 +23372,7 @@ function App() {
 
                 <aside className="space-y-3">
                   <div className="sticky top-0 rounded-[1.35rem] border border-white/10 bg-[#091428]/95 p-4 shadow-[0_18px_48px_rgba(0,0,0,0.22)]">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Previsualización</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">PrevisualizaciÃ³n</p>
                     <div className="mt-4 overflow-hidden rounded-xl border border-white/10 bg-white">
                       <div className="flex aspect-square items-center justify-center bg-white text-4xl font-black text-slate-500">
                         <PlayerPortrait player={formPlayerPreview} className="h-full w-full" fallbackTextClassName="text-3xl" />
@@ -23288,7 +23387,7 @@ function App() {
                         </div>
                         <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
                           <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                            <span className="block uppercase tracking-[0.14em] text-slate-500">Posición</span>
+                            <span className="block uppercase tracking-[0.14em] text-slate-500">PosiciÃ³n</span>
                             <strong className="mt-1 block truncate text-slate-900">{formState.position || 'No definida'}</strong>
                           </div>
                           <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
@@ -23323,7 +23422,7 @@ function App() {
             <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric">Jugador rival</p>
-                <h3 className="mt-1 text-xl font-black text-white">{rivalPlayerModal.mode === 'edit' ? 'Editar jugador' : 'Añadir jugador'}</h3>
+                <h3 className="mt-1 text-xl font-black text-white">{rivalPlayerModal.mode === 'edit' ? 'Editar jugador' : 'AÃ±adir jugador'}</h3>
               </div>
               <button type="button" onClick={closeRivalPlayerModal} className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-sm font-bold text-slate-200 transition hover:bg-white/10">
                 Cerrar
@@ -23340,9 +23439,9 @@ function App() {
                 <input value={rivalPlayerModal.draft?.number || ''} onChange={(event) => updateRivalPlayerDraft('number', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Ej. 10" />
               </label>
               <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
-                <span>Posición natural</span>
+                <span>PosiciÃ³n natural</span>
                 <select value={rivalPlayerModal.draft?.position || ''} onChange={(event) => updateRivalPlayerDraft('position', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner">
-                  <option value="">Seleccionar posición</option>
+                  <option value="">Seleccionar posiciÃ³n</option>
                   {positions.map((position) => <option key={position} value={position}>{position}</option>)}
                 </select>
               </label>
@@ -23362,7 +23461,7 @@ function App() {
 
             <div className="mt-5 grid gap-2 sm:grid-cols-2">
               {[
-                ['captain', '© Capitán'],
+                ['captain', 'Â© CapitÃ¡n'],
                 ['isKey', '? Jugador estrella'],
                 ['observed', '?? Observado'],
                 ['yellowRisk', '?? 5 amarillas'],
@@ -23426,9 +23525,9 @@ function App() {
           : [
             `Controlar ${teamFormState.mainThreat}.`,
             `Atacar ${teamFormState.detectedWeakness}.`,
-            `Evitar pérdidas ante presión de ${teamFormState.pressureType}.`,
+            `Evitar pÃ©rdidas ante presiÃ³n de ${teamFormState.pressureType}.`,
           ];
-        const abpOptions = ['Muy fuerte', 'Fuerte', 'Normal', 'Débil'];
+        const abpOptions = ['Muy fuerte', 'Fuerte', 'Normal', 'DÃ©bil'];
         const offensiveSetPieceLevel = formScoutingDraft.offensiveSetPieceLevel || 'Normal';
         const defensiveSetPieceLevel = formScoutingDraft.defensiveSetPieceLevel || 'Normal';
         const planVsRival = formScoutingDraft.planVsRival || '';
@@ -23452,13 +23551,13 @@ function App() {
           : formCompletion === 'PARCIAL'
             ? 'border-amber-200/20 bg-amber-200/10 text-amber-100'
             : 'border-red-200/20 bg-red-300/10 text-red-100';
-        const rivalAutoSummary = `Equipo que prioriza ataques por ${teamFormState.strongSide}, bloque ${teamFormState.blockHeight} y presión de ${teamFormState.pressureType}. Su principal amenaza son ${teamFormState.mainThreat}. Ritmo ofensivo ${teamFormState.attackingRhythm}, con foco en ${teamFormState.offensiveFocus}. Presenta vulnerabilidad en ${teamFormState.detectedWeakness}.`;
+        const rivalAutoSummary = `Equipo que prioriza ataques por ${teamFormState.strongSide}, bloque ${teamFormState.blockHeight} y presiÃ³n de ${teamFormState.pressureType}. Su principal amenaza son ${teamFormState.mainThreat}. Ritmo ofensivo ${teamFormState.attackingRhythm}, con foco en ${teamFormState.offensiveFocus}. Presenta vulnerabilidad en ${teamFormState.detectedWeakness}.`;
         return (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black/50 px-4 py-6 backdrop-blur-sm sm:px-6">
           <div className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-caudal-950 shadow-[0_24px_90px_rgba(0,0,0,0.45)]">
             <div className="flex items-center justify-between border-b border-white/10 px-5 py-4 sm:px-6">
               <div>
-                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">{isQuickCreateTeam ? 'Alta rápida' : 'Base de datos del rival'}</p>
+                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">{isQuickCreateTeam ? 'Alta rÃ¡pida' : 'Base de datos del rival'}</p>
                 <h3 className="mt-1 text-xl font-black text-white">{isQuickCreateTeam ? 'Crear rival' : 'Editar rival'}</h3>
               </div>
               <div className="flex items-center gap-2">
@@ -23482,8 +23581,8 @@ function App() {
               <div className="border-b border-red-300/15 bg-red-500/[0.08] px-5 py-4 sm:px-6">
                 <div className="flex flex-col gap-3 rounded-2xl border border-red-300/15 bg-[#120b12]/80 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="text-sm font-black text-red-100">¿Seguro que quieres eliminar este rival?</p>
-                    <p className="mt-1 text-xs font-semibold text-red-100/60">Se eliminará la ficha rival, su plantilla asociada y el scouting guardado para este rival.</p>
+                    <p className="text-sm font-black text-red-100">Â¿Seguro que quieres eliminar este rival?</p>
+                    <p className="mt-1 text-xs font-semibold text-red-100/60">Se eliminarÃ¡ la ficha rival, su plantilla asociada y el scouting guardado para este rival.</p>
                   </div>
                   <div className="flex gap-2">
                     <button type="button" onClick={() => setPendingTeamDelete(null)} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-slate-100 transition hover:bg-white/10">
@@ -23523,7 +23622,7 @@ function App() {
                               </div>
                               <div className="min-w-0">
                                 <p className="truncate text-base font-black uppercase text-white">{formTeamName}</p>
-                                <p className="mt-1 text-xs font-bold text-slate-500">{teamFormState.system || 'Seleccionar sistema (opcional)'} · Sin analizar</p>
+                                <p className="mt-1 text-xs font-bold text-slate-500">{teamFormState.system || 'Seleccionar sistema (opcional)'} Â· Sin analizar</p>
                               </div>
                             </div>
                           </div>
@@ -23558,15 +23657,15 @@ function App() {
 
                     <aside className="rounded-[1.5rem] border border-white/10 bg-white/[0.026] p-5 shadow-[0_14px_42px_rgba(0,0,0,0.2)]">
                       <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-300">Importar datos del rival <span className="text-slate-600">(opcional)</span></p>
-                      <p className="mt-2 text-sm leading-5 text-slate-500">Si pegas una URL válida se intentarán importar automáticamente datos del rival.</p>
+                      <p className="mt-2 text-sm leading-5 text-slate-500">Si pegas una URL vÃ¡lida se intentarÃ¡n importar automÃ¡ticamente datos del rival.</p>
                       <div className="mt-4 space-y-3">
                         <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                           <span>URL Besoccer</span>
-                          <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? '' : teamFormState.sourceUrl} onChange={handleTeamChange} autoComplete="new-password" className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquí el enlace del rival" />
+                          <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? '' : teamFormState.sourceUrl} onChange={handleTeamChange} autoComplete="new-password" className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquÃ­ el enlace del rival" />
                         </label>
                         <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                           <span>URL Transfermarkt</span>
-                          <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? teamFormState.sourceUrl : ''} onChange={handleTeamChange} autoComplete="new-password" className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquí el enlace del rival" />
+                          <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? teamFormState.sourceUrl : ''} onChange={handleTeamChange} autoComplete="new-password" className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquÃ­ el enlace del rival" />
                         </label>
                         <button type="button" onClick={handleImportSquad} className="inline-flex w-full min-h-[44px] items-center justify-center rounded-2xl border border-caudal-electric/20 bg-caudal-electric/[0.12] px-5 py-3 text-xs font-black uppercase tracking-[0.12em] text-caudal-electric transition hover:bg-caudal-electric/20">
                           Importar datos
@@ -23609,7 +23708,7 @@ function App() {
 
               <section className="hidden">
                 <div className="rounded-[1.35rem] border border-caudal-electric/15 bg-caudal-electric/[0.055] p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Resumen automático del rival</p>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Resumen automÃ¡tico del rival</p>
                   <p className="mt-3 text-sm leading-7 text-slate-100">{rivalAutoSummary}</p>
                   <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                     {Object.keys(tacticalIdentityOptions).map((field) => (
@@ -23631,7 +23730,7 @@ function App() {
                             value={matchKeys[index] || ''}
                             onChange={(event) => updateRivalScoutingDraft({ matchKeys: [0, 1, 2].map((itemIndex) => itemIndex === index ? event.target.value : (matchKeys[itemIndex] || '')) })}
                             className="min-w-0 flex-1 border-none bg-transparent pt-1 text-sm font-bold text-white outline-none placeholder:text-slate-500"
-                            placeholder={`Consigna táctica ${index + 1}`}
+                            placeholder={`Consigna tÃ¡ctica ${index + 1}`}
                           />
                         </label>
                       ))}
@@ -23639,16 +23738,16 @@ function App() {
                   </div>
                   <div className="rounded-[1.35rem] border border-caudal-electric/20 bg-caudal-electric/[0.07] p-4 shadow-[0_18px_50px_rgba(79,140,255,0.08)]">
                     <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Plan vs rival</p>
-                    <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Briefing técnico</p>
+                    <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Briefing tÃ©cnico</p>
                     <textarea
                       value={planVsRival}
                       onChange={(event) => updateRivalScoutingDraft({ planVsRival: event.target.value })}
                       className="mt-3 min-h-[110px] w-full rounded-2xl border border-caudal-electric/20 bg-black/25 px-3 py-2 text-sm font-semibold leading-6 text-white placeholder:text-slate-500"
-                      placeholder="Atraer por dentro, atacar espalda lateral, evitar pérdidas interiores..."
+                      placeholder="Atraer por dentro, atacar espalda lateral, evitar pÃ©rdidas interiores..."
                     />
                   </div>
                   <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.03] p-4">
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Evaluación ABP</p>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-white">EvaluaciÃ³n ABP</p>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
                       {[
                         ['offensiveSetPieceLevel', 'ABP ofensiva', offensiveSetPieceLevel],
@@ -23721,11 +23820,11 @@ function App() {
                     {teamEditMode ? <div className="mt-3 space-y-3">
                       <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                         <span>URL Besoccer</span>
-                        <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? '' : teamFormState.sourceUrl} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquí el enlace" />
+                        <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? '' : teamFormState.sourceUrl} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquÃ­ el enlace" />
                       </label>
                       <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                         <span>URL Transfermarkt</span>
-                        <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? teamFormState.sourceUrl : ''} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquí el enlace" />
+                        <input name="sourceUrl" type="password" value={teamFormState.sourceUrl.includes('transfermarkt') ? teamFormState.sourceUrl : ''} onChange={handleTeamChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Pega aquÃ­ el enlace" />
                       </label>
                       <div className="flex flex-wrap items-center gap-2">
                         <button type="button" onClick={handleImportSquad} className="inline-flex min-h-[40px] items-center justify-center rounded-2xl bg-caudal-electric/90 px-4 py-2 text-sm font-black uppercase tracking-[0.08em] text-slate-950 transition hover:bg-caudal-electric">
@@ -23764,10 +23863,10 @@ function App() {
               <section className="hidden">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/70">Identidad táctica</p>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric/70">Identidad tÃ¡ctica</p>
                     <h4 className="mt-1 text-lg font-black text-white">Lectura manual del rival</h4>
                   </div>
-                  <p className="text-xs font-semibold text-slate-500">Se refleja en la mesa táctica.</p>
+                  <p className="text-xs font-semibold text-slate-500">Se refleja en la mesa tÃ¡ctica.</p>
                 </div>
                 {teamEditMode ? (
                   <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -23800,7 +23899,7 @@ function App() {
                     ['Lado', teamFormState.strongSide],
                     ['Amenaza', teamFormState.mainThreat],
                     ['Bloque', teamFormState.blockHeight],
-                    ['Presión', teamFormState.pressureType],
+                    ['PresiÃ³n', teamFormState.pressureType],
                     ['Ritmo', teamFormState.attackingRhythm],
                     ['Foco', teamFormState.offensiveFocus],
                     ['Debilidad', teamFormState.detectedWeakness],
@@ -23816,10 +23915,10 @@ function App() {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Plantilla rival</p>
-                    <p className="mt-1 text-sm text-slate-400">{formSquad.length} jugadores cargados · {keyCount} destacados</p>
+                    <p className="mt-1 text-sm text-slate-400">{formSquad.length} jugadores cargados Â· {keyCount} destacados</p>
                   </div>
                   <button type="button" onClick={handleAddTeamPlayer} className="inline-flex w-fit items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10">
-                    Añadir jugador
+                    AÃ±adir jugador
                   </button>
                 </div>
 
@@ -23844,7 +23943,7 @@ function App() {
                       const playerFlags = getRivalPlayerFlags(formScoutingKey, player.name);
                       const playerStatusChips = [
                         player.isKey ? ['Estrella', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
-                        player.captain || playerFlags.captain ? ['Capitán', 'border-white/15 bg-white/[0.08] text-white'] : null,
+                        player.captain || playerFlags.captain ? ['CapitÃ¡n', 'border-white/15 bg-white/[0.08] text-white'] : null,
                         player.yellowRisk ? ['5 amarillas', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
                         player.suspended ? ['Sancionado', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
                         player.injured ? ['Lesionado', 'border-white/10 bg-white/[0.06] text-slate-100'] : null,
@@ -23861,7 +23960,7 @@ function App() {
                                   <input value={player.name} onChange={(event) => handleTeamPlayerChange(index, 'name', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-3 py-2 text-sm font-bold text-white shadow-inner placeholder:text-slate-500" placeholder="Nombre" />
                                   <div className="grid grid-cols-[1fr_70px] gap-2">
                                     <select value={player.position} onChange={(event) => handleTeamPlayerChange(index, 'position', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner">
-                                <option value="">Posición</option>
+                                <option value="">PosiciÃ³n</option>
                                 {positions.map((position) => <option key={position} value={position}>{position}</option>)}
                                     </select>
                                     <input value={player.age} onChange={(event) => handleTeamPlayerChange(index, 'age', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner placeholder:text-slate-500" placeholder="Edad" />
@@ -23870,8 +23969,8 @@ function App() {
                               ) : (
                                 <div>
                                   <h4 className="truncate text-sm font-black text-white">{player.name || 'Jugador sin nombre'}</h4>
-                                  <p className="mt-1 truncate text-xs font-semibold text-slate-400">{player.position || 'Sin posición'} · {player.age ? `${player.age} años` : 'Edad pendiente'}</p>
-                                  <p className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{player.role || 'Reserva'} · #{player.number || '-'}</p>
+                                  <p className="mt-1 truncate text-xs font-semibold text-slate-400">{player.position || 'Sin posiciÃ³n'} Â· {player.age ? `${player.age} aÃ±os` : 'Edad pendiente'}</p>
+                                  <p className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{player.role || 'Reserva'} Â· #{player.number || '-'}</p>
                                 </div>
                               )}
                             </div>
@@ -23887,7 +23986,7 @@ function App() {
                           <div className="mt-3 flex flex-wrap gap-1.5">
                             {isEditingPlayer ? [
                               ['isKey', 'Jugador estrella', 'text-amber-100 border-amber-200/20 bg-amber-200/10'],
-                              ['captain', 'Capitán', 'text-white border-white/15 bg-white/[0.08]'],
+                              ['captain', 'CapitÃ¡n', 'text-white border-white/15 bg-white/[0.08]'],
                               ['yellowRisk', '5 amarillas', 'text-amber-100 border-amber-200/20 bg-amber-200/10'],
                               ['suspended', 'Sancionado', 'text-red-100 border-red-200/20 bg-red-300/10'],
                               ['injured', 'Lesionado', 'text-slate-100 border-white/10 bg-white/[0.06]'],
@@ -23903,7 +24002,7 @@ function App() {
                           {!isEditingPlayer ? (
                             <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
                               <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{player.role || 'Reserva'}</span>
-                              <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{player.position || 'Sin posición'}</span>
+                              <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{player.position || 'Sin posiciÃ³n'}</span>
                               <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{player.number ? `#${player.number}` : 'Sin dorsal'}</span>
                               <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{player.yellowRisk || player.suspended || player.injured ? 'No disponible' : 'Disponible'}</span>
                             </div>
@@ -23911,7 +24010,7 @@ function App() {
                           <div className="mt-3 flex justify-end gap-2">
                             {teamEditMode ? (
                               <button type="button" onClick={() => setEditingTeamPlayerIndex((current) => current === index ? null : index)} className="rounded-xl border border-white/10 bg-white/[0.055] px-3 py-1.5 text-xs font-bold text-slate-200 transition hover:bg-white/10">
-                                {isEditingPlayer ? 'Cerrar edición' : 'Editar'}
+                                {isEditingPlayer ? 'Cerrar ediciÃ³n' : 'Editar'}
                               </button>
                             ) : null}
                             {isEditingPlayer ? <button type="button" onClick={() => handleRemoveTeamPlayer(index)} className="rounded-xl border border-red-300/10 bg-transparent px-3 py-1.5 text-xs font-bold text-red-200/60 transition hover:bg-red-500/10">Papelera</button> : null}
@@ -23921,7 +24020,7 @@ function App() {
                     })
                   ) : (
                     <div className="rounded-3xl border border-dashed border-white/10 px-5 py-6 text-sm text-slate-400">
-                      Importa desde el enlace o añade jugadores manualmente.
+                      Importa desde el enlace o aÃ±ade jugadores manualmente.
                     </div>
                   )}
                 </div>
@@ -23958,7 +24057,7 @@ function App() {
                 <h3 className="text-xl font-black uppercase tracking-[0.18em] text-white">{editingMatchId ? 'Editar partido' : 'Nuevo partido'}</h3>
               </div>
               <button onClick={closeMatchForm} className="text-3xl leading-none text-slate-500 hover:text-white">
-                ×
+                Ã—
               </button>
             </div>
 
@@ -23987,7 +24086,7 @@ function App() {
                   ) : null}
                 </label>
                 <label className="space-y-2 text-sm text-slate-300">
-                  <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Competición</span>
+                  <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">CompeticiÃ³n</span>
                   <div className="flex gap-2">
                     <select name="competitionKey" value={matchFormState.competitionKey || ''} onChange={handleMatchChange} className={`min-w-0 flex-1 rounded-2xl border bg-white/5 px-4 py-3 text-sm font-semibold text-white ${matchFieldErrors.competitionKey ? 'border-red-300/50' : 'border-white/10'}`}>
                       <option value="">Selecciona la competicion</option>
@@ -24022,7 +24121,7 @@ function App() {
                   {matchFieldErrors.date ? <span className="block text-xs font-semibold text-red-200">{matchFieldErrors.date}</span> : null}
                 </label>
                 <label className="space-y-2 text-sm text-slate-300">
-                  <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Condición</span>
+                  <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">CondiciÃ³n</span>
                   <select name="isHome" value={matchFormState.isHome ? 'true' : 'false'} onChange={handleMatchChange} className={`w-full rounded-2xl border bg-white/5 px-4 py-3 text-sm font-semibold text-white ${matchFieldErrors.isHome ? 'border-red-300/50' : 'border-white/10'}`}>
                     <option value="true">Local</option>
                     <option value="false">Visitante</option>
@@ -24039,7 +24138,7 @@ function App() {
                     >
                       <span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${matchFormState.status === 'Finalizado' ? 'left-8' : 'left-1'}`} />
                     </button>
-                    <span className="text-xs font-bold uppercase text-slate-500">{matchFormState.status === 'Finalizado' ? 'Sí' : 'No'}</span>
+                    <span className="text-xs font-bold uppercase text-slate-500">{matchFormState.status === 'Finalizado' ? 'SÃ­' : 'No'}</span>
                   </span>
                 </label>
               </div>
@@ -24065,7 +24164,7 @@ function App() {
                           <p className="text-sm font-black uppercase tracking-[0.12em] text-white">{competition.label}</p>
                         </div>
                       </div>
-                      <button type="button" onClick={closeCompetitionIconModal} className="text-2xl leading-none text-slate-500 hover:text-white">×</button>
+                      <button type="button" onClick={closeCompetitionIconModal} className="text-2xl leading-none text-slate-500 hover:text-white">Ã—</button>
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl bg-white/[0.04] p-1">
                       {[
