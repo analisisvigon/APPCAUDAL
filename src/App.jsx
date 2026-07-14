@@ -310,6 +310,13 @@ const positions = [
 
 const footOptions = ['Derecha', 'Izquierda', 'Ambas', 'No indicada'];
 
+const isValidHexColor = (value) => /^#[0-9a-f]{6}$/i.test(String(value || '').trim());
+
+const normalizeHexColor = (value, fallback = '#ef233c') => {
+  const color = String(value || '').trim();
+  return isValidHexColor(color) ? color.toLowerCase() : fallback;
+};
+
 const squadGroups = [
   {
     title: 'Porteros',
@@ -327,6 +334,14 @@ const squadGroups = [
     title: 'Delanteros',
     positions: ['Extremo derecho', 'Extremo izquierdo', 'Delantero centro', 'Delantero'],
   },
+];
+
+const rivalSquadLineGroups = [
+  { key: 'goalkeepers', title: 'Porteros' },
+  { key: 'defenders', title: 'Defensas' },
+  { key: 'midfielders', title: 'Centrocampistas' },
+  { key: 'forwards', title: 'Delanteros / Atacantes' },
+  { key: 'unknown', title: 'Sin posición' },
 ];
 
 const gameSystems = ['4-4-2', '4-2-3-1', '4-3-3', '3-5-2', '3-4-3', '3-4-1-2', '5-3-2', '5-4-1', 'Otro'];
@@ -1546,13 +1561,19 @@ const normalizeSupabaseRivalPlayer = (player) => ({
   image: player.image ?? player.image_url ?? player.photo_url ?? player.avatar_url ?? player.profile_image ?? player.foto ?? '',
   number: player.number ?? '',
   position: player.position ?? '',
+  specificPosition: player.specific_position ?? player.specificPosition ?? '',
+  dob: player.dob ?? player.birth_date ?? '',
   age: player.age ?? '',
+  foot: player.foot ?? '',
+  height: player.height ?? '',
+  notes: player.notes ?? player.observations ?? '',
   role: player.role ?? 'Reserva',
   isKey: Boolean(player.is_key ?? player.isKey),
   yellowRisk: Boolean(player.yellow_risk ?? player.yellowRisk),
   suspended: Boolean(player.suspended),
   injured: Boolean(player.injured),
   captain: Boolean(player.captain),
+  observed: Boolean(player.observed),
   doubtful: Boolean(player.doubtful ?? player.physical_doubt ?? player.physicalDoubt),
 });
 
@@ -1563,12 +1584,19 @@ const createRivalPlayerPayload = (teamId, player) => ({
   image: player.image || player.imageUrl || player.image_url || player.photoUrl || player.photo_url || player.avatarUrl || player.avatar_url || player.foto || '',
   number: String(player.number || ''),
   position: player.position || '',
+  specific_position: player.specificPosition || player.specific_position || '',
+  dob: player.dob || null,
   age: String(player.age || ''),
+  foot: player.foot || '',
+  height: String(player.height || ''),
+  notes: player.notes || player.observations || '',
   role: player.role || 'Reserva',
   is_key: Boolean(player.isKey),
   yellow_risk: Boolean(player.yellowRisk),
   suspended: Boolean(player.suspended),
   injured: Boolean(player.injured),
+  captain: Boolean(player.captain),
+  observed: Boolean(player.observed),
 });
 
 const createRivalTeamPayload = (teamFormState, importedData) => ({
@@ -1576,7 +1604,7 @@ const createRivalTeamPayload = (teamFormState, importedData) => ({
   source_url: normalizeSourceUrl(teamFormState.sourceUrl) || '',
   crest: importedData?.crest || teamFormState.crest || '',
   stadium: importedData?.stadium || teamFormState.stadium.trim(),
-  kit_color: importedData?.kitColor || teamFormState.kitColor || '#ef233c',
+  kit_color: normalizeHexColor(importedData?.kitColor || teamFormState.kitColor),
   system: teamFormState.system || '',
 });
 
@@ -2687,6 +2715,35 @@ const getBenchGroups = (squad) =>
       return { ...groups, [position]: [...(groups[position] ?? []), player] };
     }, {});
 
+const getRivalPlayerNaturalLine = (position) => {
+  const normalized = normalizePlayerIdentityName(position);
+  if (!normalized) return 'unknown';
+  if (/portero|arquero|goalkeeper/.test(normalized)) return 'goalkeepers';
+  if (/lateral|central|defensa|carrilero|back/.test(normalized)) return 'defenders';
+  if (/pivote|medio|mediocentro|interior|volante|mediapunta/.test(normalized)) return 'midfielders';
+  if (/extremo|delantero|atacante|punta|winger|forward/.test(normalized)) return 'forwards';
+  return 'unknown';
+};
+
+const buildRivalSquadGroups = (squad) => {
+  const grouped = rivalSquadLineGroups.map((group) => ({ ...group, players: [] }));
+  const byKey = new Map(grouped.map((group) => [group.key, group]));
+  dedupeRivalPlayers(squad).map(normalizeSquadEntry).forEach((player) => {
+    const key = getRivalPlayerNaturalLine(player.position);
+    byKey.get(key || 'unknown').players.push(player);
+  });
+  return grouped;
+};
+
+const getRivalPlayerInitials = (name) =>
+  String(name || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || 'JR';
+
 const getBenchForStarter = (starter, benchChart = emptyDepthChart) => {
   const assignedBench = (benchChart[starter.name] ?? []).filter(Boolean).map(normalizeSquadEntry);
   return assignedBench.slice(0, 3);
@@ -2697,14 +2754,20 @@ const normalizeSquadEntry = (entry) => {
     return {
       id: entry,
       name: entry,
-      image: '',
-      number: '',
-      position: '',
-      age: '',
-      role: 'Reserva',
+    image: '',
+    number: '',
+    position: '',
+    specificPosition: '',
+    dob: '',
+    age: '',
+    foot: '',
+    height: '',
+    notes: '',
+    role: 'Reserva',
     isKey: false,
     yellowRisk: false,
     captain: false,
+    observed: false,
     suspended: false,
     injured: false,
     doubtful: false,
@@ -2719,11 +2782,17 @@ const normalizeSquadEntry = (entry) => {
     image: entry.image ?? entry.image_url ?? entry.photo_url ?? entry.avatar_url ?? entry.profile_image ?? entry.foto ?? '',
     number: entry.number ?? '',
     position: entry.position ?? '',
+    specificPosition: entry.specificPosition ?? entry.specific_position ?? '',
+    dob: entry.dob ?? entry.birth_date ?? '',
     age: entry.age ?? '',
+    foot: entry.foot ?? '',
+    height: entry.height ?? '',
+    notes: entry.notes ?? entry.observations ?? '',
     role: entry.role ?? 'Reserva',
     isKey: Boolean(entry.isKey),
     yellowRisk: Boolean(entry.yellowRisk),
     captain: Boolean(entry.captain),
+    observed: Boolean(entry.observed),
     suspended: Boolean(entry.suspended),
     injured: Boolean(entry.injured),
     doubtful: Boolean(entry.doubtful ?? entry.physicalDoubt),
@@ -2753,11 +2822,17 @@ const createBlankTeamPlayer = () => ({
   image: '',
   number: '',
   position: '',
+  specificPosition: '',
+  dob: '',
   age: '',
+  foot: '',
+  height: '',
+  notes: '',
   role: 'Reserva',
   isKey: false,
   yellowRisk: false,
   captain: false,
+  observed: false,
   suspended: false,
   injured: false,
   doubtful: false,
@@ -3460,11 +3535,17 @@ function App() {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isTeamPanelOpen, setIsTeamPanelOpen] = useState(false);
   const [teamEditMode, setTeamEditMode] = useState(false);
+  const [teamSaveError, setTeamSaveError] = useState('');
+  const [teamSaving, setTeamSaving] = useState(false);
   const [teamFieldViewMode, setTeamFieldViewMode] = useState('LIMPIO');
   const [teamFieldEditMode, setTeamFieldEditMode] = useState(false);
   const [selectedTeamPlacementPlayerName, setSelectedTeamPlacementPlayerName] = useState('');
   const [editingTeamPlayerIndex, setEditingTeamPlayerIndex] = useState(null);
   const [rivalPlayerModal, setRivalPlayerModal] = useState({ open: false, mode: 'create', originalName: '', draft: null });
+  const [rivalPlayerSaveError, setRivalPlayerSaveError] = useState('');
+  const [rivalPlayerSaving, setRivalPlayerSaving] = useState(false);
+  const [rivalPlayerPhotoError, setRivalPlayerPhotoError] = useState('');
+  const [rivalPlayerPhotoUploading, setRivalPlayerPhotoUploading] = useState(false);
   const [pendingRivalPlayerDelete, setPendingRivalPlayerDelete] = useState(null);
   const [rivalRosterSearch, setRivalRosterSearch] = useState('');
   const [rivalRosterFilter, setRivalRosterFilter] = useState('Todos');
@@ -14810,6 +14891,8 @@ function App() {
     setTeamEditMode(!team);
     setEditingTeamPlayerIndex(null);
     setImportStatus('');
+    setTeamSaveError('');
+    setTeamSaving(false);
     setIsTeamPanelOpen(true);
   };
 
@@ -14824,6 +14907,33 @@ function App() {
       const { __new, ...rest } = current;
       return rest;
     });
+    setImportStatus('');
+    setTeamSaveError('');
+    setTeamSaving(false);
+  };
+
+  const cancelTeamEdit = () => {
+    const currentTeam = teams.find((team) => team.id === editingTeamId);
+    if (!currentTeam) {
+      closeTeamForm();
+      return;
+    }
+    setTeamFormState({
+      name: currentTeam.name,
+      sourceUrl: currentTeam.sourceUrl ?? '',
+      crest: currentTeam.crest ?? '',
+      stadium: currentTeam.stadium ?? '',
+      kitColor: currentTeam.kitColor ?? '#ef233c',
+      system: currentTeam.system,
+      ...getTeamTacticalIdentity(currentTeam),
+      squad: currentTeam.squad.map((entry) => {
+        const player = normalizeSquadEntry(entry);
+        return { ...player, captain: Boolean(getRivalPlayerFlags(currentTeam.id, player.name).captain || player.captain) };
+      }),
+    });
+    setTeamEditMode(false);
+    setEditingTeamPlayerIndex(null);
+    setTeamSaveError('');
     setImportStatus('');
   };
 
@@ -14932,27 +15042,31 @@ function App() {
   };
 
   const handleSelectedTeamPlayerDelete = async (player) => {
-    if (!selectedTeam || !player?.name) return;
-    const { error: deleteError } = await supabase
-      .from("jugadores_rivales")
-      .delete()
-      .eq("equipo_rival_id", selectedTeam.id)
-      .eq("name", player.name);
+    const activeTeam = getActiveRivalPlayerTeam();
+    if (!activeTeam || !player?.name) return;
+    const playerId = isUuid(player.jugadorRivalId) ? player.jugadorRivalId : isUuid(player.id) ? player.id : null;
+    let deleteRequest = supabase.from("jugadores_rivales").delete().eq("equipo_rival_id", activeTeam.id);
+    deleteRequest = playerId ? deleteRequest.eq("id", playerId) : deleteRequest.eq("name", player.name);
+    const { error: deleteError } = await deleteRequest;
     if (deleteError) {
       console.error('Error eliminando jugador rival en Supabase:', deleteError);
       setSaveStatus(deleteError.message || 'No se pudo eliminar el jugador rival.');
       return;
     }
     await Promise.all([
-      supabase.from("equipo_rival_alineacion").delete().eq("equipo_rival_id", selectedTeam.id).eq("player_name", player.name),
-      supabase.from("equipo_rival_banquillo").delete().eq("equipo_rival_id", selectedTeam.id).eq("player_name", player.name),
-      supabase.from("equipo_rival_banquillo").delete().eq("equipo_rival_id", selectedTeam.id).eq("starter_name", player.name),
+      supabase.from("equipo_rival_alineacion").delete().eq("equipo_rival_id", activeTeam.id).eq("player_name", player.name),
+      supabase.from("equipo_rival_banquillo").delete().eq("equipo_rival_id", activeTeam.id).eq("player_name", player.name),
+      supabase.from("equipo_rival_banquillo").delete().eq("equipo_rival_id", activeTeam.id).eq("starter_name", player.name),
     ]);
     setRivalPlayerFlags((current) => {
-      const { [getRivalPlayerFlagKey(selectedTeam.id, player.name)]: _removed, ...rest } = current;
+      const { [getRivalPlayerFlagKey(activeTeam.id, player.name)]: _removed, ...rest } = current;
       return rest;
     });
     await loadTeams();
+    setTeamFormState((current) => current && editingTeamId === activeTeam.id
+      ? { ...current, squad: current.squad.map(normalizeSquadEntry).filter((entry) => getRivalPlayerUniqueKey(entry) !== getRivalPlayerUniqueKey(player)) }
+      : current
+    );
     setPendingRivalPlayerDelete(null);
     if (rivalPlayerModal.open && rivalPlayerModal.originalName === player.name) closeRivalPlayerModal();
   };
@@ -14964,6 +15078,7 @@ function App() {
 
   const getRivalPlayerFlagKey = (teamId, playerName) => `${teamId || 'team'}::${normalizePlayerIdentityName(playerName)}`;
   const getRivalPlayerUniqueKey = (player) => String(player?.jugadorRivalId || player?.id || normalizePlayerIdentityName(player?.name || ''));
+  const getActiveRivalPlayerTeam = () => selectedTeam || teams.find((team) => team.id === editingTeamId) || null;
   const getRivalPlayerFlags = (teamId, playerName) => rivalPlayerFlags[getRivalPlayerFlagKey(teamId, playerName)] || {};
   const updateRivalPlayerFlags = (teamId, playerName, patch) => {
     const key = getRivalPlayerFlagKey(teamId, playerName);
@@ -15003,18 +15118,27 @@ function App() {
   };
 
   const openRivalPlayerModal = (player = null) => {
+    const activeTeam = getActiveRivalPlayerTeam();
     const normalized = player ? normalizeSquadEntry(player) : createBlankTeamPlayer();
-    const flags = selectedTeam ? getRivalPlayerFlags(selectedTeam.id, normalized.name) : {};
+    const flags = activeTeam ? getRivalPlayerFlags(activeTeam.id, normalized.name) : {};
+    setRivalPlayerSaveError('');
+    setRivalPlayerPhotoError('');
+    setRivalPlayerSaving(false);
     setRivalPlayerModal({
       open: true,
       mode: player ? 'edit' : 'create',
       originalName: normalized.name || '',
+      teamId: activeTeam?.id || editingTeamId || null,
       draft: { ...normalized, role: flags.hiddenFromField ? 'Sin colocar' : normalized.role, captain: Boolean(flags.captain || normalized.captain), observed: Boolean(flags.observed || normalized.observed) },
     });
   };
 
   const closeRivalPlayerModal = () => {
-    setRivalPlayerModal({ open: false, mode: 'create', originalName: '', draft: null });
+    setRivalPlayerModal({ open: false, mode: 'create', originalName: '', teamId: null, draft: null });
+    setRivalPlayerSaveError('');
+    setRivalPlayerPhotoError('');
+    setRivalPlayerSaving(false);
+    setRivalPlayerPhotoUploading(false);
   };
 
   const updateRivalPlayerDraft = (field, value) => {
@@ -15022,6 +15146,41 @@ function App() {
       ...current,
       draft: { ...(current.draft || createBlankTeamPlayer()), [field]: value },
     }));
+  };
+
+  const handleRivalPlayerPhotoFileChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file || !rivalPlayerModal.draft) return;
+    const teamId = rivalPlayerModal.teamId || selectedTeam?.id || editingTeamId;
+    if (!teamId) {
+      setRivalPlayerPhotoError('Guarda primero el rival para subir fotos de su plantilla.');
+      event.target.value = '';
+      return;
+    }
+    setRivalPlayerPhotoUploading(true);
+    setRivalPlayerPhotoError('');
+    try {
+      const draft = normalizeSquadEntry(rivalPlayerModal.draft);
+      const playerFolderId = draft.jugadorRivalId || (isUuid(draft.id) ? draft.id : sanitizeStorageName(draft.name || 'jugador'));
+      const publicUrl = await uploadPublicFile({
+        bucket: 'rival-player-assets',
+        file,
+        folder: [teamId, playerFolderId].filter(Boolean).join('/'),
+      });
+      updateRivalPlayerDraft('image', publicUrl);
+      const playerId = isUuid(draft.jugadorRivalId) ? draft.jugadorRivalId : isUuid(draft.id) ? draft.id : null;
+      if (playerId) {
+        const { error: updateError } = await supabase.from("jugadores_rivales").update({ image: publicUrl }).eq("id", playerId);
+        if (updateError) throw updateError;
+        await loadTeams();
+      }
+    } catch (uploadError) {
+      console.error('[RIVAL_PLAYER_PHOTO_ERROR]', uploadError);
+      setRivalPlayerPhotoError(uploadError.message || 'No se ha podido subir la foto del jugador rival.');
+    } finally {
+      setRivalPlayerPhotoUploading(false);
+      event.target.value = '';
+    }
   };
 
   const syncRivalPlayerPlacementSnapshots = async (teamId, originalName, draft) => {
@@ -15067,84 +15226,106 @@ function App() {
 
   const saveRivalPlayerFromModal = async (event) => {
     event.preventDefault();
-    if (!selectedTeam || !rivalPlayerModal.draft?.name?.trim()) return;
+    const activeTeam = getActiveRivalPlayerTeam();
+    const teamId = rivalPlayerModal.teamId || activeTeam?.id;
+    if (!teamId || !rivalPlayerModal.draft?.name?.trim()) return;
+    setRivalPlayerSaving(true);
+    setRivalPlayerSaveError('');
     const wantsUnplaced = rivalPlayerModal.draft.role === 'Sin colocar';
     const draft = normalizeSquadEntry({ ...rivalPlayerModal.draft, role: wantsUnplaced ? 'Reserva' : rivalPlayerModal.draft.role, name: rivalPlayerModal.draft.name.trim() });
     const originalName = rivalPlayerModal.originalName || draft.name;
     const normalizedDraftName = normalizePlayerIdentityName(draft.name);
     const normalizedOriginalName = normalizePlayerIdentityName(originalName);
+    const teamSquad = activeTeam?.squad || [];
     const duplicateName = rivalPlayerModal.mode === 'edit'
-      ? dedupeRivalPlayers(selectedTeam.squad || []).some((player) =>
+      ? dedupeRivalPlayers(teamSquad).some((player) =>
           normalizePlayerIdentityName(player.name) === normalizedDraftName
           && normalizePlayerIdentityName(player.name) !== normalizedOriginalName
         )
-      : dedupeRivalPlayers(selectedTeam.squad || []).some((player) => normalizePlayerIdentityName(player.name) === normalizedDraftName);
+      : dedupeRivalPlayers(teamSquad).some((player) => normalizePlayerIdentityName(player.name) === normalizedDraftName);
     if (duplicateName) {
-      setSaveStatus('Ya existe un jugador rival con ese nombre.');
-      return;
-    }
-    const payload = createRivalPlayerPayload(selectedTeam.id, draft);
-    const request = rivalPlayerModal.mode === 'edit'
-      ? supabase
-          .from("jugadores_rivales")
-          .update(payload)
-          .eq("equipo_rival_id", selectedTeam.id)
-          .eq("name", originalName)
-      : supabase.from("jugadores_rivales").insert(payload);
-    const { error: savePlayerError } = await request;
-    if (savePlayerError) {
-      setSaveStatus(savePlayerError.message || 'No se pudo guardar el jugador rival.');
+      setRivalPlayerSaveError('Ya existe un jugador rival con ese nombre.');
+      setRivalPlayerSaving(false);
       return;
     }
     try {
-      await syncRivalPlayerPlacementSnapshots(selectedTeam.id, originalName, draft);
-    } catch (placementError) {
-      console.error('Error sincronizando jugador rival colocado:', placementError);
-      setSaveStatus(placementError.message || 'Jugador guardado, pero no se pudo actualizar su posición guardada.');
-      return;
-    }
-    if (draft.isKey) {
-      const otherPlayers = dedupeRivalPlayers(selectedTeam.squad || []).filter((player) => normalizePlayerIdentityName(player.name) !== normalizePlayerIdentityName(draft.name));
-      await Promise.all(otherPlayers.map((player) =>
-        supabase
-          .from("jugadores_rivales")
-          .update({ is_key: false })
-          .eq("equipo_rival_id", selectedTeam.id)
-          .eq("name", player.name)
-      ));
-    }
-    const originalFlags = getRivalPlayerFlags(selectedTeam.id, originalName);
-    const wasPlacedStarter = safeArray(selectedTeam.lineup).some((player) =>
-      [originalName, draft.name].some((name) => normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(name))
-    );
-    const nextFlags = {
-      ...originalFlags,
-      captain: Boolean(rivalPlayerModal.draft.captain),
-      observed: Boolean(rivalPlayerModal.draft.observed),
-    };
-    if (wantsUnplaced) {
-      Object.assign(nextFlags, { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null });
-    } else if (draft.role === 'Reserva' && (originalFlags.fieldRole === 'Titular' || wasPlacedStarter)) {
-      Object.assign(nextFlags, { hiddenFromField: false, fieldRole: null, slotIndex: null, reserveIndex: null });
-      await updateTeamLineup(
-        selectedTeam.id,
-        (lineup) => removePlayerFromLineupItems(removePlayerFromLineupItems(lineup, originalName), draft.name),
-        { demoteNames: [originalName, draft.name] }
+      const payload = createRivalPlayerPayload(teamId, draft);
+      const playerId = isUuid(draft.jugadorRivalId) ? draft.jugadorRivalId : isUuid(draft.id) ? draft.id : null;
+      let request = null;
+      if (rivalPlayerModal.mode === 'edit') {
+        let updateRequest = supabase.from("jugadores_rivales").update(payload);
+        updateRequest = playerId ? updateRequest.eq("id", playerId) : updateRequest.eq("equipo_rival_id", teamId).eq("name", originalName);
+        request = updateRequest.select("*").single();
+      } else {
+        request = supabase.from("jugadores_rivales").insert(payload).select("*").single();
+      }
+      const { data: savedPlayer, error: savePlayerError } = await request;
+      if (savePlayerError) throw savePlayerError;
+      const savedDraft = normalizeSupabaseRivalPlayer(savedPlayer || draft);
+      await syncRivalPlayerPlacementSnapshots(teamId, originalName, savedDraft);
+      if (savedDraft.isKey) {
+        const otherPlayers = dedupeRivalPlayers(teamSquad).filter((player) => normalizePlayerIdentityName(player.name) !== normalizePlayerIdentityName(savedDraft.name));
+        await Promise.all(otherPlayers.map((player) => {
+          const otherPlayerId = isUuid(player.jugadorRivalId) ? player.jugadorRivalId : isUuid(player.id) ? player.id : null;
+          let clearRequest = supabase.from("jugadores_rivales").update({ is_key: false }).eq("equipo_rival_id", teamId);
+          clearRequest = otherPlayerId ? clearRequest.eq("id", otherPlayerId) : clearRequest.eq("name", player.name);
+          return clearRequest;
+        }));
+      }
+      const originalFlags = getRivalPlayerFlags(teamId, originalName);
+      const wasPlacedStarter = safeArray(activeTeam?.lineup).some((player) =>
+        [originalName, savedDraft.name].some((name) => normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(name))
       );
-    } else {
-      Object.assign(nextFlags, { hiddenFromField: false });
+      const nextFlags = {
+        ...originalFlags,
+        captain: Boolean(rivalPlayerModal.draft.captain),
+        observed: Boolean(rivalPlayerModal.draft.observed),
+      };
+      if (wantsUnplaced) {
+        Object.assign(nextFlags, { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null });
+      } else if (savedDraft.role === 'Reserva' && (originalFlags.fieldRole === 'Titular' || wasPlacedStarter)) {
+        Object.assign(nextFlags, { hiddenFromField: false, fieldRole: null, slotIndex: null, reserveIndex: null });
+        if (selectedTeam?.id === teamId) {
+          await updateTeamLineup(
+            teamId,
+            (lineup) => removePlayerFromLineupItems(removePlayerFromLineupItems(lineup, originalName), savedDraft.name),
+            { demoteNames: [originalName, savedDraft.name] }
+          );
+        }
+      } else {
+        Object.assign(nextFlags, { hiddenFromField: false });
+      }
+      updateRivalPlayerFlags(teamId, savedDraft.name, nextFlags);
+      if (rivalPlayerModal.mode === 'edit' && originalName && normalizePlayerIdentityName(originalName) !== normalizePlayerIdentityName(savedDraft.name)) {
+        setRivalPlayerFlags((current) => {
+          const { [getRivalPlayerFlagKey(teamId, originalName)]: _removed, ...rest } = current;
+          return rest;
+        });
+      }
+      await loadTeams();
+      setTeamFormState((current) => current && editingTeamId === teamId
+        ? {
+            ...current,
+            squad: rivalPlayerModal.mode === 'edit'
+              ? current.squad.map((player) => {
+                  const normalized = normalizeSquadEntry(player);
+                  const samePlayer = playerId
+                    ? (normalized.jugadorRivalId === playerId || normalized.id === playerId)
+                    : normalizePlayerIdentityName(normalized.name) === normalizedOriginalName;
+                  return samePlayer ? savedDraft : normalized;
+                })
+              : [...current.squad.map(normalizeSquadEntry), savedDraft],
+          }
+        : current
+      );
+      closeRivalPlayerModal();
+    } catch (savePlayerError) {
+      console.error('[RIVAL_PLAYER_SAVE_ERROR]', savePlayerError);
+      setRivalPlayerSaveError(savePlayerError.message || 'No se ha podido guardar el jugador rival.');
+    } finally {
+      setRivalPlayerSaving(false);
     }
-    updateRivalPlayerFlags(selectedTeam.id, draft.name, nextFlags);
-    if (rivalPlayerModal.mode === 'edit' && originalName && normalizePlayerIdentityName(originalName) !== normalizePlayerIdentityName(draft.name)) {
-      setRivalPlayerFlags((current) => {
-        const { [getRivalPlayerFlagKey(selectedTeam.id, originalName)]: _removed, ...rest } = current;
-        return rest;
-      });
-    }
-    await loadTeams();
-    closeRivalPlayerModal();
   };
-
   const handleAddTeamPlayer = () => {
     setTeamFormState((prev) => ({ ...prev, squad: [...prev.squad.map(normalizeSquadEntry), createBlankTeamPlayer()] }));
   };
@@ -15230,17 +15411,28 @@ function App() {
 
   const handleTeamSubmit = async (event) => {
     event.preventDefault();
+    if (teamSaving) return;
+    setTeamSaving(true);
+    setTeamSaveError('');
+    setImportStatus('');
     let squad = dedupeRivalPlayers(teamFormState.squad).filter((player) => player.name.trim());
     let importedData = null;
+
+    if (!isValidHexColor(teamFormState.kitColor)) {
+      setTeamSaveError('El color del rival debe tener formato #RRGGBB.');
+      setTeamSaving(false);
+      return;
+    }
 
     if (teamFormState.sourceUrl.trim()) {
       setImportStatus('Importando datos del equipo...');
       try {
         importedData = await importTeamFromSource(normalizeSourceUrl(teamFormState.sourceUrl));
-        if (squad.length === 0) squad = importedData.players;
+        if (!editingTeamId && squad.length === 0) squad = importedData.players;
       } catch (error) {
-        if (squad.length === 0) {
+        if (!editingTeamId && squad.length === 0) {
           setImportStatus('No pude importar ese enlace. Pega la plantilla manualmente o prueba otro enlace de plantilla.');
+          setTeamSaving(false);
           return;
         }
         setImportStatus('No pude importar los datos del enlace, pero guardaré la información que has escrito.');
@@ -15271,24 +15463,26 @@ function App() {
         });
       }
 
-      const { error: deletePlayersError } = await supabase.from("jugadores_rivales").delete().eq("equipo_rival_id", teamId);
-      if (deletePlayersError) throw deletePlayersError;
-
-      const playerRows = squad.map((player) => createRivalPlayerPayload(teamId, normalizeSquadEntry(player)));
-      if (playerRows.length) {
-        const { error: playersError } = await supabase.from("jugadores_rivales").insert(playerRows);
-        if (playersError) throw playersError;
+      if (!editingTeamId) {
+        const playerRows = squad.map((player) => createRivalPlayerPayload(teamId, normalizeSquadEntry(player)));
+        if (playerRows.length) {
+          const { error: playersError } = await supabase.from("jugadores_rivales").insert(playerRows);
+          if (playersError) throw playersError;
+        }
       }
 
       await loadTeams();
       setSelectedTeamId(teamId);
-      closeTeamForm();
+      setTeamEditMode(false);
+      setEditingTeamPlayerIndex(null);
+      if (!editingTeamId) closeTeamForm();
     } catch (saveError) {
-      console.error('Error guardando equipo rival en Supabase:', saveError);
-      setImportStatus(saveError.message || 'No se pudo guardar el equipo.');
+      console.error('[RIVAL_SAVE_ERROR]', saveError);
+      setTeamSaveError(saveError.message || 'No se han podido guardar los cambios del rival.');
+    } finally {
+      setTeamSaving(false);
     }
   };
-
   const handleTeamDelete = async (team) => {
     const { error: deleteError } = await supabase.from("equipos_rivales").delete().eq("id", team.id);
     if (deleteError) {
@@ -23416,57 +23610,86 @@ function App() {
         );
       })() : null}
 
-      {rivalPlayerModal.open && selectedTeam ? (
+      {rivalPlayerModal.open ? (
         <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/60 px-4 py-6 backdrop-blur-sm sm:px-6">
-          <form onSubmit={saveRivalPlayerFromModal} className="mx-auto max-w-xl rounded-3xl border border-white/10 bg-caudal-950 p-5 shadow-[0_24px_90px_rgba(0,0,0,0.45)]">
+          <form onSubmit={saveRivalPlayerFromModal} className="mx-auto max-w-2xl rounded-3xl border border-white/10 bg-caudal-950 p-5 shadow-[0_24px_90px_rgba(0,0,0,0.45)]">
             <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric">Jugador rival</p>
                 <h3 className="mt-1 text-xl font-black text-white">{rivalPlayerModal.mode === 'edit' ? 'Editar jugador' : 'Añadir jugador'}</h3>
               </div>
-              <button type="button" onClick={closeRivalPlayerModal} className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-sm font-bold text-slate-200 transition hover:bg-white/10">
+              <button type="button" onClick={closeRivalPlayerModal} disabled={rivalPlayerSaving} className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-sm font-bold text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60">
                 Cerrar
               </button>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 sm:col-span-2">
-                <span>Nombre</span>
-                <input required value={rivalPlayerModal.draft?.name || ''} onChange={(event) => updateRivalPlayerDraft('name', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-base font-black normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Nombre del jugador" />
-              </label>
-              <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
-                <span>Dorsal</span>
-                <input value={rivalPlayerModal.draft?.number || ''} onChange={(event) => updateRivalPlayerDraft('number', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Ej. 10" />
-              </label>
-              <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
-                <span>Posición natural</span>
-                <select value={rivalPlayerModal.draft?.position || ''} onChange={(event) => updateRivalPlayerDraft('position', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner">
-                  <option value="">Seleccionar posición</option>
-                  {positions.map((position) => <option key={position} value={position}>{position}</option>)}
-                </select>
-              </label>
-              <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
-                <span>Rol</span>
-                <select value={rivalPlayerModal.draft?.role || 'Reserva'} onChange={(event) => updateRivalPlayerDraft('role', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner">
-                  <option value="Titular">Titular</option>
-                  <option value="Reserva">Reserva</option>
-                  <option value="Sin colocar">Sin colocar</option>
-                </select>
-              </label>
-              <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
-                <span>Foto / URL de imagen</span>
-                <input type="url" value={rivalPlayerModal.draft?.image || ''} onChange={(event) => updateRivalPlayerDraft('image', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="https://..." />
-              </label>
+            <div className="mt-5 grid gap-4 md:grid-cols-[150px_1fr]">
+              <div className="space-y-3">
+                <div className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white text-2xl font-black text-slate-500">
+                  {rivalPlayerModal.draft?.image ? <img src={rivalPlayerModal.draft.image} alt="" className="h-full w-full object-cover" /> : getRivalPlayerInitials(rivalPlayerModal.draft?.name)}
+                </div>
+                <label className="block cursor-pointer rounded-2xl border border-dashed border-white/15 bg-white/[0.035] px-3 py-2 text-center text-xs font-black uppercase tracking-[0.08em] text-slate-200 transition hover:bg-white/[0.055]">
+                  {rivalPlayerPhotoUploading ? 'Subiendo...' : 'Subir foto'}
+                  <input type="file" accept="image/*" onChange={handleRivalPlayerPhotoFileChange} disabled={rivalPlayerPhotoUploading || rivalPlayerSaving} className="hidden" />
+                </label>
+                {rivalPlayerPhotoError ? <p className="rounded-2xl border border-red-300/15 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-100">{rivalPlayerPhotoError}</p> : null}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 sm:col-span-2">
+                  <span>Nombre</span>
+                  <input required value={rivalPlayerModal.draft?.name || ''} onChange={(event) => updateRivalPlayerDraft('name', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-base font-black normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Nombre del jugador" />
+                </label>
+                <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                  <span>Dorsal</span>
+                  <input value={rivalPlayerModal.draft?.number || ''} onChange={(event) => updateRivalPlayerDraft('number', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Ej. 10" />
+                </label>
+                <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                  <span>Edad</span>
+                  <input value={rivalPlayerModal.draft?.age || ''} onChange={(event) => updateRivalPlayerDraft('age', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Ej. 24" />
+                </label>
+                <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                  <span>Posición natural</span>
+                  <select value={rivalPlayerModal.draft?.position || ''} onChange={(event) => updateRivalPlayerDraft('position', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner">
+                    <option value="">Seleccionar posición</option>
+                    {positions.map((position) => <option key={position} value={position}>{position}</option>)}
+                  </select>
+                </label>
+                <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                  <span>Posición específica</span>
+                  <input value={rivalPlayerModal.draft?.specificPosition || ''} onChange={(event) => updateRivalPlayerDraft('specificPosition', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Ej. central perfil izquierdo" />
+                </label>
+                <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                  <span>Fecha nacimiento</span>
+                  <input type="date" value={rivalPlayerModal.draft?.dob || ''} onChange={(event) => updateRivalPlayerDraft('dob', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner" />
+                </label>
+                <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                  <span>Pierna</span>
+                  <select value={rivalPlayerModal.draft?.foot || ''} onChange={(event) => updateRivalPlayerDraft('foot', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner">
+                    <option value="">No indicada</option>
+                    {footOptions.map((foot) => <option key={foot} value={foot}>{foot}</option>)}
+                  </select>
+                </label>
+                <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                  <span>Altura</span>
+                  <input value={rivalPlayerModal.draft?.height || ''} onChange={(event) => updateRivalPlayerDraft('height', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Ej. 1,82" />
+                </label>
+                <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 sm:col-span-2">
+                  <span>Foto / URL de imagen</span>
+                  <input type="url" value={rivalPlayerModal.draft?.image || ''} onChange={(event) => updateRivalPlayerDraft('image', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="https://..." />
+                </label>
+                <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 sm:col-span-2">
+                  <span>Observaciones</span>
+                  <textarea value={rivalPlayerModal.draft?.notes || ''} onChange={(event) => updateRivalPlayerDraft('notes', event.target.value)} className="min-h-[90px] w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Notas manuales de scouting" />
+                </label>
+              </div>
             </div>
 
             <div className="mt-5 grid gap-2 sm:grid-cols-2">
               {[
-                ['captain', '© Capitán'],
-                ['isKey', '? Jugador estrella'],
-                ['observed', '?? Observado'],
-                ['yellowRisk', '?? 5 amarillas'],
-                ['suspended', '?? Sancionado'],
-                ['injured', '?? Lesionado'],
+                ['captain', 'Capitán'],
+                ['isKey', 'Jugador destacado'],
+                ['observed', 'Etiqueta manual de scouting'],
               ].map(([field, label]) => (
                 <label key={field} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm font-bold text-slate-100">
                   <input type="checkbox" checked={Boolean(rivalPlayerModal.draft?.[field])} onChange={(event) => updateRivalPlayerDraft(field, event.target.checked)} className="h-4 w-4 accent-[#4f8cff]" />
@@ -23475,27 +23698,28 @@ function App() {
               ))}
             </div>
 
+            {rivalPlayerSaveError ? <p className="mt-4 rounded-2xl border border-red-300/15 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-100">{rivalPlayerSaveError}</p> : null}
+
             <div className="mt-5 flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 {rivalPlayerModal.mode === 'edit' ? (
-                  <button type="button" onClick={() => { requestSelectedTeamPlayerDelete(rivalPlayerModal.draft); closeRivalPlayerModal(); }} className="rounded-2xl border border-red-300/15 bg-red-500/10 px-4 py-2 text-sm font-bold text-red-100 transition hover:bg-red-500/15">
+                  <button type="button" disabled={rivalPlayerSaving} onClick={() => { requestSelectedTeamPlayerDelete(rivalPlayerModal.draft); closeRivalPlayerModal(); }} className="rounded-2xl border border-red-300/15 bg-red-500/10 px-4 py-2 text-sm font-bold text-red-100 transition hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60">
                     Eliminar jugador
                   </button>
                 ) : null}
               </div>
               <div className="flex gap-2">
-                <button type="button" onClick={closeRivalPlayerModal} className="rounded-2xl border border-white/10 bg-white/[0.06] px-5 py-3 text-sm font-bold text-slate-100 transition hover:bg-white/10">
+                <button type="button" onClick={closeRivalPlayerModal} disabled={rivalPlayerSaving} className="rounded-2xl border border-white/10 bg-white/[0.06] px-5 py-3 text-sm font-bold text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60">
                   Cancelar
                 </button>
-                <button type="submit" className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-[#7aacff]">
-                  Guardar jugador
+                <button type="submit" disabled={rivalPlayerSaving} className="inline-flex items-center justify-center rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-70">
+                  {rivalPlayerSaving ? 'Guardando...' : 'Guardar jugador'}
                 </button>
               </div>
             </div>
           </form>
         </div>
       ) : null}
-
       {isTeamPanelOpen ? (() => {
         const formSquad = dedupeRivalPlayers(teamFormState.squad.map(normalizeSquadEntry));
         const keyCount = formSquad.filter((player) => player.isKey).length;
@@ -23681,31 +23905,27 @@ function App() {
                 <div className="grid gap-4 lg:grid-cols-[180px_1fr_220px] lg:items-center">
                   <div className="flex h-36 w-36 items-center justify-center rounded-[1.5rem] border border-white/10 bg-white/[0.07] p-3 shadow-[0_16px_40px_rgba(0,0,0,0.22)]">
                     <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl bg-white p-3 text-lg font-black text-caudal-950">
-                      {teamFormState.crest ? <img src={teamFormState.crest} alt="" className="h-full w-full object-contain" /> : formTeamName.split(' ').map((part) => part[0]).join('').slice(0, 3)}
+                      {teamFormState.crest ? <img src={teamFormState.crest} alt="" className="h-full w-full object-contain" /> : getRivalPlayerInitials(formTeamName)}
                     </div>
                   </div>
                   <div className="min-w-0">
-                    <span className={`inline-flex rounded-lg border px-2 py-1 text-[10px] font-black tracking-[0.08em] ${formCompletionClass}`}>{formCompletion}</span>
-                    <h2 className="mt-3 truncate text-3xl font-black uppercase text-white">{formTeamName}</h2>
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Ficha del rival</p>
+                    <h2 className="mt-2 truncate text-3xl font-black uppercase text-white">{formTeamName}</h2>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-300">
-                      <span className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-1.5">{teamFormState.stadium || 'Estadio pendiente'}</span>
+                      <span className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-1.5">{teamFormState.stadium || 'Sin estadio registrado'}</span>
+                      <span className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-1.5">Sistema habitual: {teamFormState.system || 'Pendiente'}</span>
                       <span className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-1.5">{relatedMatches.length} partidos registrados</span>
                     </div>
                   </div>
-                  <div className="rounded-[1.25rem] border border-caudal-electric/20 bg-caudal-electric/[0.075] p-4">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric/80">Sistema</p>
-                    <p className="mt-1 text-5xl font-black leading-none text-white">{teamFormState.system || '---'}</p>
-                    <div className="mt-4 flex items-center justify-between gap-3">
-                      <span className={`rounded-lg border px-2 py-1 text-[10px] font-black ${formCompletionClass}`}>{formCompletionPercent}%</span>
-                      <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Scouting</span>
-                    </div>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
-                      <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${formCompletionPercent}%` }} />
+                  <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.04] p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Color camiseta</p>
+                    <div className="mt-3 flex items-center gap-3">
+                      <span className="h-12 w-12 rounded-2xl border border-white/15" style={{ backgroundColor: normalizeHexColor(teamFormState.kitColor) }} />
+                      <span className="text-sm font-black uppercase text-white">{normalizeHexColor(teamFormState.kitColor)}</span>
                     </div>
                   </div>
                 </div>
               </section>
-
               <section className="hidden">
                 <div className="rounded-[1.35rem] border border-caudal-electric/15 bg-caudal-electric/[0.055] p-4">
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Resumen automático del rival</p>
@@ -23786,7 +24006,11 @@ function App() {
                     </div>
                     <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                       <span>Color camiseta</span>
-                      <input name="kitColor" type="color" value={teamFormState.kitColor} onChange={handleTeamChange} className="h-[40px] w-full rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 shadow-inner" />
+                      <input name="kitColor" type="color" value={normalizeHexColor(teamFormState.kitColor)} onChange={handleTeamChange} className="h-[40px] w-full rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 shadow-inner" />
+                    </label>
+                    <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                      <span>Hexadecimal</span>
+                      <input name="kitColor" value={teamFormState.kitColor} onChange={handleTeamChange} className={`w-full rounded-2xl border bg-white/[0.045] px-3 py-2 text-sm font-black uppercase normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600 ${isValidHexColor(teamFormState.kitColor) ? 'border-white/10' : 'border-red-300/45'}`} placeholder="#ef233c" />
                     </label>
                     <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                       <span>Sistema habitual</span>
@@ -23844,19 +24068,6 @@ function App() {
                     {importStatus ? <p className="mt-2 text-sm text-caudal-electric">{importStatus}</p> : null}
                     {isUploadingTeamCrest ? <p className="mt-2 text-xs text-caudal-electric">Subiendo escudo...</p> : null}
                   </div>
-                  <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.025] p-4">
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Scouting / estado</p>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      {[
-                        ['Identidad', hasIdentity],
-                        ['Plantilla', hasSquad],
-                        ['Sistema', hasSystem],
-                        ['Historial', hasHistory],
-                      ].map(([label, ok]) => (
-                        <span key={label} className={`rounded-xl border px-2 py-1.5 text-xs font-bold ${ok ? 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100' : 'border-white/10 bg-white/[0.035] text-slate-500'}`}>{ok ? 'OK ' : '-- '}{label}</span>
-                      ))}
-                    </div>
-                  </div>
                 </div>
               </section>
 
@@ -23911,136 +24122,92 @@ function App() {
                 </div>
               </section>
 
-              <section className="space-y-3 rounded-[1.35rem] border border-white/10 bg-[#091428]/62 p-4">
+              <section className="space-y-4 rounded-[1.35rem] border border-white/10 bg-[#091428]/62 p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Plantilla rival</p>
-                    <p className="mt-1 text-sm text-slate-400">{formSquad.length} jugadores cargados · {keyCount} destacados</p>
+                    <p className="mt-1 text-sm text-slate-400">{formSquad.length} jugadores registrados por posición natural</p>
                   </div>
-                  <button type="button" onClick={handleAddTeamPlayer} className="inline-flex w-fit items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10">
+                  <button type="button" onClick={() => openRivalPlayerModal()} disabled={!editingTeamId || teamSaving} className="inline-flex w-fit items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50">
                     Añadir jugador
                   </button>
                 </div>
 
-                <div className="grid gap-2 md:grid-cols-4">
-                  {[
-                    ['Jugadores', formSquad.length],
-                    ['Titulares', formSquad.filter((player) => player.role === 'Titular').length],
-                    ['Reservas', formSquad.filter((player) => player.role !== 'Titular').length],
-                    ['Estrella', keyCount],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2">
-                      <p className="text-xl font-black text-white">{value}</p>
-                      <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+                <div className="grid gap-2 md:grid-cols-5">
+                  {buildRivalSquadGroups(formSquad).map((group) => (
+                    <div key={group.key} className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2">
+                      <p className="text-xl font-black text-white">{group.players.length}</p>
+                      <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{group.title}</p>
                     </div>
                   ))}
                 </div>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {teamFormState.squad.length > 0 ? (
-                    teamFormState.squad.map((entry, index) => {
-                      const player = normalizeSquadEntry(entry);
-                      const isEditingPlayer = teamEditMode && editingTeamPlayerIndex === index;
-                      const playerFlags = getRivalPlayerFlags(formScoutingKey, player.name);
-                      const playerStatusChips = [
-                        player.isKey ? ['Estrella', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
-                        player.captain || playerFlags.captain ? ['Capitán', 'border-white/15 bg-white/[0.08] text-white'] : null,
-                        player.yellowRisk ? ['5 amarillas', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
-                        player.suspended ? ['Sancionado', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
-                        player.injured ? ['Lesionado', 'border-white/10 bg-white/[0.06] text-slate-100'] : null,
-                      ].filter(Boolean);
-                      return (
-                        <article key={`${player.id}-${index}`} className={`rounded-[1.25rem] border p-3 transition ${player.role === 'Titular' ? 'border-caudal-electric/25 bg-caudal-electric/[0.055]' : 'border-white/10 bg-white/[0.03]'} ${player.isKey ? 'shadow-[inset_0_0_0_1px_rgba(251,191,36,0.18)]' : ''}`}>
-                          <div className="flex gap-3">
-                            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06] text-sm font-black text-slate-200">
-                              {player.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
-                            </div>
-                            <div className="min-w-0 flex-1 space-y-2">
-                              {isEditingPlayer ? (
-                                <>
-                                  <input value={player.name} onChange={(event) => handleTeamPlayerChange(index, 'name', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-3 py-2 text-sm font-bold text-white shadow-inner placeholder:text-slate-500" placeholder="Nombre" />
-                                  <div className="grid grid-cols-[1fr_70px] gap-2">
-                                    <select value={player.position} onChange={(event) => handleTeamPlayerChange(index, 'position', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner">
-                                <option value="">Posición</option>
-                                {positions.map((position) => <option key={position} value={position}>{position}</option>)}
-                                    </select>
-                                    <input value={player.age} onChange={(event) => handleTeamPlayerChange(index, 'age', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner placeholder:text-slate-500" placeholder="Edad" />
-                                  </div>
-                                </>
-                              ) : (
-                                <div>
-                                  <h4 className="truncate text-sm font-black text-white">{player.name || 'Jugador sin nombre'}</h4>
-                                  <p className="mt-1 truncate text-xs font-semibold text-slate-400">{player.position || 'Sin posición'} · {player.age ? `${player.age} años` : 'Edad pendiente'}</p>
-                                  <p className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{player.role || 'Reserva'} · #{player.number || '-'}</p>
+
+                <div className="space-y-4">
+                  {buildRivalSquadGroups(formSquad).map((group) => group.players.length ? (
+                    <div key={group.key} className="space-y-2">
+                      <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                        <h4 className="text-sm font-black uppercase tracking-[0.14em] text-white">{group.title}</h4>
+                        <span className="text-xs font-bold text-slate-500">{group.players.length}</span>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        {group.players.map((player) => {
+                          const playerFlags = getRivalPlayerFlags(formScoutingKey, player.name);
+                          return (
+                            <article key={getRivalPlayerUniqueKey(player)} className="rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-3 transition hover:bg-white/[0.05]">
+                              <div className="flex gap-3">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white text-sm font-black text-slate-500">
+                                  {player.image ? <img src={player.image} alt="" className="h-full w-full object-cover" /> : getRivalPlayerInitials(player.name)}
                                 </div>
-                              )}
-                            </div>
-                          </div>
-                          {isEditingPlayer ? <div className="mt-3 grid grid-cols-[64px_1fr_70px] gap-2">
-                            <input value={player.number} onChange={(event) => handleTeamPlayerChange(index, 'number', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner placeholder:text-slate-500" placeholder="Dorsal" />
-                            <input type="password" value={player.image} onChange={(event) => handleTeamPlayerChange(index, 'image', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner placeholder:text-slate-500" placeholder="Pegar enlace foto" />
-                            <select value={player.role} onChange={(event) => handleTeamPlayerChange(index, 'role', event.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-2 py-2 text-xs text-white shadow-inner">
-                              <option value="Titular">Titular</option>
-                              <option value="Reserva">Reserva</option>
-                            </select>
-                          </div> : null}
-                          <div className="mt-3 flex flex-wrap gap-1.5">
-                            {isEditingPlayer ? [
-                              ['isKey', 'Jugador estrella', 'text-amber-100 border-amber-200/20 bg-amber-200/10'],
-                              ['captain', 'Capitán', 'text-white border-white/15 bg-white/[0.08]'],
-                              ['yellowRisk', '5 amarillas', 'text-amber-100 border-amber-200/20 bg-amber-200/10'],
-                              ['suspended', 'Sancionado', 'text-red-100 border-red-200/20 bg-red-300/10'],
-                              ['injured', 'Lesionado', 'text-slate-100 border-white/10 bg-white/[0.06]'],
-                            ].map(([field, label, className]) => (
-                              <label key={field} className={`inline-flex items-center gap-1.5 rounded-xl border px-2 py-1 text-[10px] font-bold ${className}`}>
-                                <input type="checkbox" checked={Boolean(player[field])} onChange={(event) => handleTeamPlayerChange(index, field, event.target.checked)} className="h-3 w-3 accent-[#4f8cff]" />
-                                {label}
-                              </label>
-                            )) : playerStatusChips.length ? playerStatusChips.map(([label, className]) => (
-                              <span key={label} className={`rounded-xl border px-2 py-1 text-[10px] font-bold ${className}`}>{label}</span>
-                            )) : <span className="rounded-xl border border-white/10 bg-white/[0.035] px-2 py-1 text-[10px] font-bold text-slate-500">Sin alertas</span>}
-                          </div>
-                          {!isEditingPlayer ? (
-                            <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                              <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{player.role || 'Reserva'}</span>
-                              <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{player.position || 'Sin posición'}</span>
-                              <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{player.number ? `#${player.number}` : 'Sin dorsal'}</span>
-                              <span className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5">{player.yellowRisk || player.suspended || player.injured ? 'No disponible' : 'Disponible'}</span>
-                            </div>
-                          ) : null}
-                          <div className="mt-3 flex justify-end gap-2">
-                            {teamEditMode ? (
-                              <button type="button" onClick={() => setEditingTeamPlayerIndex((current) => current === index ? null : index)} className="rounded-xl border border-white/10 bg-white/[0.055] px-3 py-1.5 text-xs font-bold text-slate-200 transition hover:bg-white/10">
-                                {isEditingPlayer ? 'Cerrar edición' : 'Editar'}
-                              </button>
-                            ) : null}
-                            {isEditingPlayer ? <button type="button" onClick={() => handleRemoveTeamPlayer(index)} className="rounded-xl border border-red-300/10 bg-transparent px-3 py-1.5 text-xs font-bold text-red-200/60 transition hover:bg-red-500/10">Papelera</button> : null}
-                          </div>
-                        </article>
-                      );
-                    })
-                  ) : (
-                    <div className="rounded-3xl border border-dashed border-white/10 px-5 py-6 text-sm text-slate-400">
-                      Importa desde el enlace o añade jugadores manualmente.
+                                <div className="min-w-0 flex-1">
+                                  <h4 className="truncate text-sm font-black text-white">{player.name || 'Jugador sin nombre'}</h4>
+                                  <p className="mt-1 truncate text-xs font-semibold text-slate-400">{player.position || 'Posición sin registrar'}{player.specificPosition ? ` · ${player.specificPosition}` : ''}</p>
+                                  <p className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{player.number ? `#${player.number}` : 'Sin dorsal'}{player.age ? ` · ${player.age} años` : ''}{player.foot ? ` · ${player.foot}` : ''}</p>
+                                </div>
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-1.5">
+                                {player.captain || playerFlags.captain ? <span className="rounded-xl border border-white/15 bg-white/[0.08] px-2 py-1 text-[10px] font-bold text-white">Capitán</span> : null}
+                                {player.isKey ? <span className="rounded-xl border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">Jugador destacado</span> : null}
+                                {player.observed || playerFlags.observed ? <span className="rounded-xl border border-sky-200/20 bg-sky-200/10 px-2 py-1 text-[10px] font-bold text-sky-100">Scouting manual</span> : null}
+                              </div>
+                              {player.notes ? <p className="mt-3 line-clamp-2 text-xs leading-5 text-slate-400">{player.notes}</p> : null}
+                              <div className="mt-3 flex justify-end">
+                                {teamEditMode ? (
+                                  <button type="button" onClick={() => openRivalPlayerModal(player)} className="rounded-xl border border-white/10 bg-white/[0.055] px-3 py-1.5 text-xs font-bold text-slate-200 transition hover:bg-white/10">
+                                    Editar
+                                  </button>
+                                ) : null}
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
                     </div>
-                  )}
+                  ) : null)}
+                  {formSquad.length === 0 ? (
+                    <div className="rounded-3xl border border-dashed border-white/10 px-5 py-6 text-sm text-slate-400">
+                      Guarda el rival y añade jugadores desde el formulario de plantilla.
+                    </div>
+                  ) : null}
                 </div>
-              </section>
-                </>
+              </section>                </>
               )}
 
               <div className="flex flex-col gap-3 rounded-[1.35rem] border border-white/10 bg-white/[0.025] p-4 sm:flex-row sm:items-center sm:justify-end">
+                {teamSaveError ? <p className="mr-auto rounded-2xl border border-red-300/15 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-100">{teamSaveError}</p> : null}
                 <button
                   type="button"
-                  onClick={closeTeamForm}
-                  className="inline-flex items-center justify-center rounded-3xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
+                  onClick={teamEditMode && editingTeamId ? cancelTeamEdit : closeTeamForm}
+                  disabled={teamSaving}
+                  className="inline-flex items-center justify-center rounded-3xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center justify-center rounded-2xl bg-caudal-electric px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]"
+                  disabled={teamSaving}
+                  className="inline-flex items-center justify-center rounded-2xl bg-caudal-electric px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  {isQuickCreateTeam ? 'Crear rival' : 'Guardar rival'}
+                  {teamSaving ? 'Guardando...' : isQuickCreateTeam ? 'Crear rival' : 'Guardar cambios'}
                 </button>
               </div>
             </form>
