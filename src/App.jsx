@@ -353,6 +353,45 @@ const rivalSquadLineGroups = [
   { key: 'unknown', title: 'Sin posición' },
 ];
 
+const normalizeImportedPosition = (value) => {
+  const text = normalizePlayerIdentityName(value);
+  if (!text) return { position: '', specificPosition: '' };
+  const rules = [
+    [/^(por|pt|gk|goalkeeper|keeper|portero|arquero|guardameta)$/, 'Portero', ''],
+    [/(centre back|center back|central|defensa central|zaguero|dfc|cb)/, 'Defensa central', 'Defensa central'],
+    [/(left back|lateral izquierdo|li\b|lb\b)/, 'Lateral izquierdo', 'Lateral izquierdo'],
+    [/(right back|lateral derecho|ld\b|rb\b)/, 'Lateral derecho', 'Lateral derecho'],
+    [/(defensive midfield|mediocentro defensivo|medio defensivo|pivote|mcd|dm\b)/, 'Pivote', 'Pivote'],
+    [/(central midfield|mediocentro|centrocampista|medio centro|mc\b|cm\b)/, 'Mediocentro', 'Mediocentro'],
+    [/(attacking midfield|mediapunta|media punta|mp\b|am\b)/, 'Mediapunta', 'Mediapunta'],
+    [/(right winger|extremo derecho|ed\b|rw\b)/, 'Extremo derecho', 'Extremo derecho'],
+    [/(left winger|extremo izquierdo|ei\b|lw\b)/, 'Extremo izquierdo', 'Extremo izquierdo'],
+    [/(centre forward|center forward|delantero centro|delantero centro|dc\b|cf\b|striker|st\b)/, 'Delantero centro', 'Delantero centro'],
+    [/(delantero|forward|atacante|punta)/, 'Delantero', 'Delantero'],
+  ];
+  const found = rules.find(([pattern]) => pattern.test(text));
+  if (found) return { position: found[1], specificPosition: found[2] || value };
+  return { position: '', specificPosition: String(value || '').trim() };
+};
+
+const normalizeImportedHeight = (value) => {
+  const text = String(value || '').replace(',', '.');
+  const match = text.match(/([12][.,.]?\d{2})\s*m|(\d{3})\s*cm/i);
+  if (!match) return '';
+  if (match[2]) return `${match[2]} cm`;
+  const meters = match[1].replace('.', ',');
+  return `${meters} m`;
+};
+
+const normalizeImportedFoot = (value) => {
+  const text = normalizePlayerIdentityName(value);
+  if (!text) return '';
+  if (/derecha|right/.test(text)) return 'Derecha';
+  if (/izquierda|left/.test(text)) return 'Izquierda';
+  if (/ambas|both|two-footed/.test(text)) return 'Ambas';
+  return '';
+};
+
 const gameSystems = ['4-4-2', '4-2-3-1', '4-3-3', '3-5-2', '3-4-3', '3-4-1-2', '5-3-2', '5-4-1', 'Otro'];
 const competitionOptions = [
   { value: 'league', label: 'Liga' },
@@ -1568,6 +1607,8 @@ const normalizeSupabaseRivalPlayer = (player) => ({
   legacyId: player.legacy_id ?? null,
   name: player.name ?? '',
   image: player.image ?? player.image_url ?? player.photo_url ?? player.avatar_url ?? player.profile_image ?? player.foto ?? '',
+  imageSource: player.image_source ?? player.imageSource ?? '',
+  sourceProfileUrl: player.source_profile_url ?? player.sourceProfileUrl ?? player.profileUrl ?? '',
   number: player.number ?? '',
   position: player.position ?? '',
   specificPosition: player.specific_position ?? player.specificPosition ?? '',
@@ -1576,9 +1617,17 @@ const normalizeSupabaseRivalPlayer = (player) => ({
   foot: player.foot ?? '',
   height: player.height ?? '',
   notes: player.notes ?? player.observations ?? '',
-  role: player.role ?? 'Reserva',
+  role: player.role ?? '',
   isKey: Boolean(player.is_key ?? player.isKey),
   yellowRisk: Boolean(player.yellow_risk ?? player.yellowRisk),
+  yellowCardsCount: player.yellow_cards_count ?? player.yellowCardsCount ?? '',
+  cardAlert: Boolean(player.card_alert ?? player.cardAlert ?? player.yellowRisk),
+  sentOffAlert: Boolean(player.sent_off_alert ?? player.sentOffAlert),
+  suspendedAlert: Boolean(player.suspended_alert ?? player.suspendedAlert ?? player.suspended),
+  injuredAlert: Boolean(player.injured_alert ?? player.injuredAlert ?? player.injured),
+  alertSince: player.alert_since ?? player.alertSince ?? '',
+  alertMatch: player.alert_match ?? player.alertMatch ?? '',
+  alertNote: player.alert_note ?? player.alertNote ?? '',
   suspended: Boolean(player.suspended),
   injured: Boolean(player.injured),
   captain: Boolean(player.captain),
@@ -1591,6 +1640,8 @@ const createRivalPlayerPayload = (teamId, player) => ({
   legacy_id: player.legacyId ?? (!isUuid(player.id) ? String(player.id || player.name) : null),
   name: player.name,
   image: player.image || player.imageUrl || player.image_url || player.photoUrl || player.photo_url || player.avatarUrl || player.avatar_url || player.foto || '',
+  image_source: player.imageSource || player.image_source || '',
+  source_profile_url: player.sourceProfileUrl || player.source_profile_url || player.profileUrl || '',
   number: String(player.number || ''),
   position: player.position || '',
   specific_position: player.specificPosition || player.specific_position || '',
@@ -1599,14 +1650,25 @@ const createRivalPlayerPayload = (teamId, player) => ({
   foot: player.foot || '',
   height: String(player.height || ''),
   notes: player.notes || player.observations || '',
-  role: player.role || 'Reserva',
+  role: player.role || '',
   is_key: Boolean(player.isKey),
-  yellow_risk: Boolean(player.yellowRisk),
-  suspended: Boolean(player.suspended),
-  injured: Boolean(player.injured),
+  yellow_risk: Boolean(player.yellowRisk || player.cardAlert),
+  yellow_cards_count: player.yellowCardsCount === '' || player.yellowCardsCount == null ? null : Number(player.yellowCardsCount),
+  card_alert: Boolean(player.cardAlert || player.yellowRisk),
+  sent_off_alert: Boolean(player.sentOffAlert),
+  suspended_alert: Boolean(player.suspendedAlert || player.suspended),
+  injured_alert: Boolean(player.injuredAlert || player.injured),
+  alert_since: player.alertSince || player.alert_since || null,
+  alert_match: player.alertMatch || player.alert_match || '',
+  alert_note: player.alertNote || player.alert_note || '',
+  suspended: Boolean(player.suspendedAlert || player.suspended),
+  injured: Boolean(player.injuredAlert || player.injured),
   captain: Boolean(player.captain),
   observed: Boolean(player.observed),
 });
+
+const rivalPlayerDbToForm = (row = {}) => normalizeSupabaseRivalPlayer(row);
+const rivalPlayerFormToDb = (teamId, form = {}) => createRivalPlayerPayload(teamId, normalizeSquadEntry(form));
 
 const normalizeStoredRivalStadium = (value) => {
   const stadium = String(value || '').trim();
@@ -2778,6 +2840,78 @@ const getRivalPlayerInitials = (name) =>
     .slice(0, 2)
     .toUpperCase() || 'JR';
 
+const getRivalPlayerImportKey = (player = {}) => {
+  const normalized = normalizeSquadEntry(player);
+  if (normalized.sourceProfileUrl) return `url:${normalized.sourceProfileUrl}`;
+  if (normalized.dob) return `dob:${normalizePlayerIdentityName(normalized.name)}:${normalized.dob}`;
+  if (normalized.number) return `num:${normalizePlayerIdentityName(normalized.name)}:${normalized.number}`;
+  return `name:${normalizePlayerIdentityName(normalized.name)}`;
+};
+
+const getImportableRivalPlayerFields = () => ['number', 'position', 'specificPosition', 'dob', 'age', 'height', 'foot', 'image', 'sourceProfileUrl', 'imageSource', 'captain'];
+
+const buildRivalPlayerImportPlan = (currentSquad = [], importedSquad = []) => {
+  const current = dedupeRivalPlayers(currentSquad).map(normalizeSquadEntry);
+  const imported = dedupeRivalPlayers(importedSquad).map(normalizeSquadEntry).filter((player) => player.name);
+  const byKey = new Map();
+  current.forEach((player, index) => {
+    byKey.set(getRivalPlayerImportKey(player), { player, index });
+    byKey.set(`name:${normalizePlayerIdentityName(player.name)}`, { player, index });
+  });
+
+  const newPlayers = [];
+  const updates = [];
+  const conflicts = [];
+  const nextSquad = current.map((player) => ({ ...player }));
+
+  imported.forEach((player) => {
+    const importedKey = getRivalPlayerImportKey(player);
+    const match = byKey.get(importedKey) || byKey.get(`name:${normalizePlayerIdentityName(player.name)}`);
+    if (!match) {
+      newPlayers.push(player);
+      nextSquad.push(player);
+      return;
+    }
+    const changes = [];
+    const blocked = [];
+    const nextPlayer = { ...match.player };
+    getImportableRivalPlayerFields().forEach((field) => {
+      const incoming = player[field];
+      if (incoming === undefined || incoming === null || incoming === '') return;
+      const currentValue = nextPlayer[field];
+      if (currentValue === undefined || currentValue === null || currentValue === '') {
+        nextPlayer[field] = incoming;
+        changes.push({ field, from: '', to: incoming });
+        return;
+      }
+      if (String(currentValue) !== String(incoming)) {
+        blocked.push({ field, from: currentValue, to: incoming });
+      }
+    });
+    if (changes.length) {
+      updates.push({ player: match.player, incoming: player, changes });
+      nextSquad[match.index] = nextPlayer;
+    }
+    if (blocked.length) conflicts.push({ player: match.player, incoming: player, changes: blocked });
+  });
+
+  return { newPlayers, updates, conflicts, nextSquad };
+};
+
+const rivalPlayerFieldLabels = {
+  number: 'Dorsal',
+  position: 'Posición',
+  specificPosition: 'Posición específica',
+  dob: 'Fecha nacimiento',
+  age: 'Edad',
+  height: 'Altura',
+  foot: 'Pierna',
+  image: 'Foto',
+  sourceProfileUrl: 'Perfil fuente',
+  imageSource: 'Fuente imagen',
+  captain: 'Capitán',
+};
+
 const getBenchForStarter = (starter, benchChart = emptyDepthChart) => {
   const assignedBench = (benchChart[starter.name] ?? []).filter(Boolean).map(normalizeSquadEntry);
   return assignedBench.slice(0, 3);
@@ -2789,6 +2923,8 @@ const normalizeSquadEntry = (entry) => {
       id: entry,
       name: entry,
     image: '',
+    imageSource: '',
+    sourceProfileUrl: '',
     number: '',
     position: '',
     specificPosition: '',
@@ -2797,9 +2933,17 @@ const normalizeSquadEntry = (entry) => {
     foot: '',
     height: '',
     notes: '',
-    role: 'Reserva',
+    role: '',
     isKey: false,
     yellowRisk: false,
+    yellowCardsCount: '',
+    cardAlert: false,
+    sentOffAlert: false,
+    suspendedAlert: false,
+    injuredAlert: false,
+    alertSince: '',
+    alertMatch: '',
+    alertNote: '',
     captain: false,
     observed: false,
     suspended: false,
@@ -2814,6 +2958,8 @@ const normalizeSquadEntry = (entry) => {
     jugadorRivalId: entry.jugadorRivalId ?? entry.jugador_rival_id ?? null,
     name,
     image: entry.image ?? entry.image_url ?? entry.photo_url ?? entry.avatar_url ?? entry.profile_image ?? entry.foto ?? '',
+    imageSource: entry.imageSource ?? entry.image_source ?? '',
+    sourceProfileUrl: entry.sourceProfileUrl ?? entry.source_profile_url ?? entry.profileUrl ?? '',
     number: entry.number ?? '',
     position: entry.position ?? '',
     specificPosition: entry.specificPosition ?? entry.specific_position ?? '',
@@ -2822,9 +2968,17 @@ const normalizeSquadEntry = (entry) => {
     foot: entry.foot ?? '',
     height: entry.height ?? '',
     notes: entry.notes ?? entry.observations ?? '',
-    role: entry.role ?? 'Reserva',
+    role: entry.role ?? '',
     isKey: Boolean(entry.isKey),
     yellowRisk: Boolean(entry.yellowRisk),
+    yellowCardsCount: entry.yellowCardsCount ?? entry.yellow_cards_count ?? '',
+    cardAlert: Boolean(entry.cardAlert ?? entry.card_alert ?? entry.yellowRisk),
+    sentOffAlert: Boolean(entry.sentOffAlert ?? entry.sent_off_alert),
+    suspendedAlert: Boolean(entry.suspendedAlert ?? entry.suspended_alert ?? entry.suspended),
+    injuredAlert: Boolean(entry.injuredAlert ?? entry.injured_alert ?? entry.injured),
+    alertSince: entry.alertSince ?? entry.alert_since ?? '',
+    alertMatch: entry.alertMatch ?? entry.alert_match ?? '',
+    alertNote: entry.alertNote ?? entry.alert_note ?? '',
     captain: Boolean(entry.captain),
     observed: Boolean(entry.observed),
     suspended: Boolean(entry.suspended),
@@ -2837,8 +2991,8 @@ const parseSquadText = (value) =>
   value
     .split('\n')
     .map((line) => {
-      const [name, image = '', number = '', position = '', age = '', role = 'Reserva', keyValue = ''] = line.split('|').map((part) => part.trim());
-      return name ? { id: name, name, image, number, position, age, role: role || 'Reserva', isKey: /destacado|clave|si|sí|true/i.test(keyValue) } : null;
+      const [name, image = '', number = '', position = '', age = '', role = '', keyValue = ''] = line.split('|').map((part) => part.trim());
+      return name ? { id: name, name, image, number, position, age, role, isKey: /destacado|clave|si|sí|true/i.test(keyValue) } : null;
     })
     .filter(Boolean);
 
@@ -2854,6 +3008,8 @@ const createBlankTeamPlayer = () => ({
   id: `manual-${Date.now()}`,
   name: '',
   image: '',
+  imageSource: '',
+  sourceProfileUrl: '',
   number: '',
   position: '',
   specificPosition: '',
@@ -2862,9 +3018,17 @@ const createBlankTeamPlayer = () => ({
   foot: '',
   height: '',
   notes: '',
-  role: 'Reserva',
+  role: '',
   isKey: false,
   yellowRisk: false,
+  yellowCardsCount: '',
+  cardAlert: false,
+  sentOffAlert: false,
+  suspendedAlert: false,
+  injuredAlert: false,
+  alertSince: '',
+  alertMatch: '',
+  alertNote: '',
   captain: false,
   observed: false,
   suspended: false,
@@ -3092,11 +3256,17 @@ const extractTransfermarktPlayers = (doc, baseUrl) => {
     const portrait = row.querySelector('img.bilderrahmen-fixed, img[src*="/portrait/"], img[data-src*="/portrait/"]');
     const name = (nameLink?.textContent || portrait?.alt || '').replace(/\s+/g, ' ').trim();
     const image = getImageSource(portrait, baseUrl);
+    const sourceProfileUrl = resolveAssetUrl(nameLink?.getAttribute('href') || '', baseUrl);
     const number = row.querySelector('.rn_nummer')?.textContent?.replace(/\D/g, '') ?? '';
-    const position =
+    const rawPosition =
       row.querySelector('td.posrela table tr:nth-child(2) td')?.textContent?.replace(/\s+/g, ' ').trim() ||
       row.querySelector('td:nth-child(2) table tr:nth-child(2) td')?.textContent?.replace(/\s+/g, ' ').trim() ||
       '';
+    const { position, specificPosition } = normalizeImportedPosition(rawPosition);
+    const rowText = row.textContent?.replace(/\s+/g, ' ').trim() || '';
+    const age = rowText.match(/\((\d{1,2})\)/)?.[1] || '';
+    const height = normalizeImportedHeight(rowText);
+    const foot = normalizeImportedFoot(rowText);
 
     if (
       name &&
@@ -3104,7 +3274,21 @@ const extractTransfermarktPlayers = (doc, baseUrl) => {
       name.length < 45 &&
       !/transfermarkt|laliga|bundesliga|premier|segunda|serie|ligue|deadline|club siero/i.test(name)
     ) {
-      byName.set(name, { id: name, name, image, number, position, role: 'Reserva', isKey: false });
+      byName.set(sourceProfileUrl || name, {
+        id: sourceProfileUrl || name,
+        name,
+        image,
+        imageSource: image ? 'imported' : '',
+        sourceProfileUrl,
+        number,
+        position,
+        specificPosition,
+        age,
+        height,
+        foot,
+        role: '',
+        isKey: false,
+      });
     }
   });
 
@@ -3122,9 +3306,32 @@ const extractBesoccerPlayers = (doc, baseUrl) => {
 
   playerLinks.forEach((link) => {
     const name = link.textContent?.replace(/\s+/g, ' ').trim();
-    const image = getImageSource(link.querySelector('img') || link.closest('tr')?.querySelector('img'), baseUrl);
-    if (name && name.length > 2 && name.length < 45 && !/más|comparar|partidos|trayectoria/i.test(name)) {
-      byName.set(name, { id: name, name, image, number: '', position: '', role: 'Reserva', isKey: false });
+    const row = link.closest('tr') || link.closest('li') || link.closest('article') || link.parentElement;
+    const rowText = row?.textContent?.replace(/\s+/g, ' ').trim() || '';
+    const image = getImageSource(link.querySelector('img') || row?.querySelector('img'), baseUrl);
+    const sourceProfileUrl = resolveAssetUrl(link.getAttribute('href') || '', baseUrl);
+    const number = rowText.match(/(?:^|\s)#?(\d{1,2})(?:\s|$)/)?.[1] || '';
+    const age = rowText.match(/(\d{2})\s*a(?:ños?)?/i)?.[1] || '';
+    const height = normalizeImportedHeight(rowText);
+    const foot = normalizeImportedFoot(rowText);
+    const rawPosition = rowText.match(/\b(Portero|Goalkeeper|POR|GK|Defensa central|Centre-Back|Central|Lateral derecho|Lateral izquierdo|Pivote|Mediocentro|Mediapunta|Extremo derecho|Extremo izquierdo|Delantero centro|Delantero|Forward|Striker)\b/i)?.[1] || '';
+    const { position, specificPosition } = normalizeImportedPosition(rawPosition);
+    if (name && name.length > 2 && name.length < 45 && !/mas|más|comparar|partidos|trayectoria/i.test(name)) {
+      byName.set(sourceProfileUrl || name, {
+        id: sourceProfileUrl || name,
+        name,
+        image,
+        imageSource: image ? 'imported' : '',
+        sourceProfileUrl,
+        number,
+        position,
+        specificPosition,
+        age,
+        height,
+        foot,
+        role: '',
+        isKey: false,
+      });
     }
   });
 
@@ -3133,7 +3340,7 @@ const extractBesoccerPlayers = (doc, baseUrl) => {
 
 const cleanImportedName = (value) =>
   value
-    .replace(/\[\d+†([^\]]+)\]/g, '$1')
+    .replace(/\[\d+[^\]]*?([^\]]+)\]/g, '$1')
     .replace(/\[|\]|\*|#/g, '')
     .replace(/Image:\s*/gi, '')
     .replace(/\s{2,}/g, ' ')
@@ -3168,27 +3375,6 @@ const extractBesoccerPlayersFromText = (text) => {
 
   rosterText.split('\n').forEach((rawLine) => {
     const line = rawLine.trim();
-    const indexedMatch = line.match(
-      /^(\d{1,2})?\s*(?:\[\d+†\s*)?\[?\d+†([^\]]+)\]?.*?(?:Image:\s*[a-z]{2}).*?\s(\d{2}|-)\s(?:\d{2,3}|-)\s(?:[\d.,]+K|-)\s+\d+/i
-    );
-    if (indexedMatch) {
-      const [, number = '', rawName, rawAge = ''] = indexedMatch;
-      const name = cleanImportedName(rawName);
-      if (isLikelyPlayerName(name)) {
-        byName.set(name, {
-          id: name,
-          name,
-          image: '',
-          number,
-          position: currentPosition,
-          age: rawAge === '-' ? '' : rawAge,
-          role: 'Reserva',
-          isKey: false,
-        });
-      }
-      return;
-    }
-
     if (/^(Desconocido|Porteros|Defensas|Centrocampistas|Delanteros)\s*\|/i.test(line)) {
       const groupName = line.split('|')[0].trim();
       currentPosition = positionLabels[groupName] ?? groupName;
@@ -3198,23 +3384,16 @@ const extractBesoccerPlayersFromText = (text) => {
 
     const cells = line.split('|').map(cleanImportedName).filter(Boolean);
     const number = cells.find((cell) => /^\d{1,2}$/.test(cell)) ?? '';
-    const nameCell = cells.find((cell, index) => {
-      const previous = cells[index - 1] ?? '';
-      return isLikelyPlayerName(cell) && !/^([a-z]{2}|ES|AR|VE|TR|NO)$/i.test(cell) && !isLikelyPlayerName(previous);
-    });
-
-    const fallbackName = cells.find(isLikelyPlayerName);
-    const name = nameCell || fallbackName;
-    const imageIndex = cells.findIndex((cell) => /^Image:/i.test(cell));
-    const possibleAge = cells
-      .slice(Math.max(imageIndex + 6, 0))
-      .find((cell) => /^\d{2}$/.test(cell) && Number(cell) >= 15 && Number(cell) <= 45);
-    if (name) byName.set(name, { id: name, name, image: '', number, position: currentPosition, age: possibleAge ?? '', role: 'Reserva', isKey: false });
+    const name = cells.find((cell) => isLikelyPlayerName(cell) && !/^([a-z]{2}|ES|AR|VE|TR|NO)$/i.test(cell));
+    const possibleAge = cells.find((cell) => /^\d{2}$/.test(cell) && Number(cell) >= 15 && Number(cell) <= 45 && cell !== number) || '';
+    const height = normalizeImportedHeight(cells.join(' '));
+    const foot = normalizeImportedFoot(cells.join(' '));
+    const { position, specificPosition } = normalizeImportedPosition(currentPosition);
+    if (name) byName.set(name, { id: name, name, image: '', number, position, specificPosition, age: possibleAge, height, foot, role: '', isKey: false });
   });
 
   return Array.from(byName.values());
 };
-
 const extractPlayersFromHtml = (html, baseUrl) => {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const transfermarktPlayers = isTransfermarktUrl(baseUrl) ? extractTransfermarktPlayers(doc, baseUrl) : [];
@@ -15128,13 +15307,15 @@ function App() {
     safeArray(lineup).filter((item) => normalizePlayerIdentityName(item.name) !== normalizePlayerIdentityName(playerName));
   const getRivalPlayerStatusIcons = (teamId, player) => {
     const flags = getRivalPlayerFlags(teamId, player.name);
+    const yellowCardsLabel = Number(player.yellowCardsCount) > 0 ? `${player.yellowCardsCount} amarillas` : 'Amonestaciones';
     return [
-      player.isKey ? ['?', 'Jugador estrella', 'bg-amber-200 text-slate-950'] : null,
-      flags.captain || player.captain ? ['©', 'Capitán', 'bg-blue-300 text-slate-950'] : null,
-      flags.observed || player.observed ? ['??', 'Observado', 'bg-sky-200 text-slate-950'] : null,
-      player.injured ? ['??', 'Lesionado', 'bg-red-300 text-slate-950'] : null,
-      player.suspended ? ['??', 'Sancionado / expulsado', 'bg-red-900 text-white'] : null,
-      player.yellowRisk ? ['AM', '5 amarillas / riesgo sanción', 'bg-yellow-200 text-slate-950'] : null,
+      player.isKey ? ['DEST', 'Jugador destacado', 'bg-amber-200 text-slate-950'] : null,
+      flags.captain || player.captain ? ['CAP', 'Capitán', 'bg-blue-300 text-slate-950'] : null,
+      flags.observed || player.observed ? ['OBS', 'Observado', 'bg-sky-200 text-slate-950'] : null,
+      player.injuredAlert || player.injured ? ['LES', 'Lesionado', 'bg-red-300 text-slate-950'] : null,
+      player.sentOffAlert ? ['EXP', 'Expulsado', 'bg-red-900 text-white'] : null,
+      player.suspendedAlert || player.suspended ? ['SAN', 'Sancionado', 'bg-red-900 text-white'] : null,
+      player.cardAlert || player.yellowRisk ? ['AM', yellowCardsLabel, 'bg-yellow-200 text-slate-950'] : null,
     ].filter(Boolean);
   };
 
@@ -15477,6 +15658,25 @@ function App() {
         if (playerRows.length) {
           const { error: playersError } = await supabase.from("jugadores_rivales").insert(playerRows);
           if (playersError) throw playersError;
+        }
+      } else {
+        const currentPlayers = (currentTeam?.squad || []).map(normalizeSquadEntry);
+        const currentByKey = new Map();
+        currentPlayers.forEach((player) => {
+          currentByKey.set(getRivalPlayerImportKey(player), player);
+          currentByKey.set(`name:${normalizePlayerIdentityName(player.name)}`, player);
+        });
+        for (const player of squad.map(normalizeSquadEntry)) {
+          const existing = currentByKey.get(getRivalPlayerImportKey(player)) || currentByKey.get(`name:${normalizePlayerIdentityName(player.name)}`);
+          const payload = rivalPlayerFormToDb(teamId, player);
+          const playerId = isUuid(player.jugadorRivalId) ? player.jugadorRivalId : isUuid(player.id) ? player.id : isUuid(existing?.jugadorRivalId) ? existing.jugadorRivalId : isUuid(existing?.id) ? existing.id : null;
+          const request = playerId
+            ? supabase.from("jugadores_rivales").update(payload).eq("id", playerId).select("id").single()
+            : existing?.name
+              ? supabase.from("jugadores_rivales").update(payload).eq("equipo_rival_id", teamId).eq("name", existing.name).select("id").single()
+              : supabase.from("jugadores_rivales").insert(payload).select("id").single();
+          const { error: playerSaveError } = await request;
+          if (playerSaveError) throw playerSaveError;
         }
       }
 
@@ -15952,7 +16152,8 @@ function App() {
         sourceUrl,
         squad: imported.players.map(normalizeSquadEntry),
       };
-      setRivalImportReview({ sourceUrl, data: foundData });
+      const playerPlan = buildRivalPlayerImportPlan(teamFormState.squad, foundData.squad);
+      setRivalImportReview({ sourceUrl, data: foundData, playerPlan });
       setImportStatus(imported.players.length ? `Datos encontrados. Plantilla detectada: ${imported.players.length} jugadores.` : 'Datos encontrados. Revisa antes de aplicar.');
     } catch (error) {
       console.error('[RIVAL_IMPORT_ERROR]', error);
@@ -15971,7 +16172,7 @@ function App() {
       stadium: imported.stadium || prev.stadium,
       system: imported.system || prev.system,
       kitColor: imported.kitColor || prev.kitColor,
-      squad: imported.squad?.length && !editingTeamId ? imported.squad : prev.squad,
+      squad: rivalImportReview.playerPlan?.nextSquad?.length ? rivalImportReview.playerPlan.nextSquad : prev.squad,
     }));
     setRivalImportReview(null);
     setImportStatus('Datos importados aplicados al formulario. Revisa y guarda los cambios.');
@@ -23716,19 +23917,55 @@ function App() {
               </div>
             </div>
 
-            <div className="mt-5 grid gap-2 sm:grid-cols-2">
-              {[
-                ['captain', 'Capitán'],
-                ['isKey', 'Jugador destacado'],
-                ['observed', 'Etiqueta manual de scouting'],
-              ].map(([field, label]) => (
-                <label key={field} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm font-bold text-slate-100">
-                  <input type="checkbox" checked={Boolean(rivalPlayerModal.draft?.[field])} onChange={(event) => updateRivalPlayerDraft(field, event.target.checked)} className="h-4 w-4 accent-[#4f8cff]" />
-                  {label}
-                </label>
-              ))}
-            </div>
+            <section className="mt-5 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Etiquetas de scouting</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {[
+                  ['captain', 'Capitán'],
+                  ['isKey', 'Jugador destacado'],
+                ].map(([field, label]) => (
+                  <label key={field} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm font-bold text-slate-100">
+                    <input type="checkbox" checked={Boolean(rivalPlayerModal.draft?.[field])} onChange={(event) => updateRivalPlayerDraft(field, event.target.checked)} className="h-4 w-4 accent-[#4f8cff]" />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </section>
 
+            <section className="mt-5 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-100">Alertas actuales</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {[
+                  ['cardAlert', 'Alerta por amonestaciones'],
+                  ['sentOffAlert', 'Expulsado'],
+                  ['suspendedAlert', 'Sancionado / no disponible'],
+                  ['injuredAlert', 'Lesionado'],
+                ].map(([field, label]) => (
+                  <label key={field} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm font-bold text-slate-100">
+                    <input type="checkbox" checked={Boolean(rivalPlayerModal.draft?.[field])} onChange={(event) => updateRivalPlayerDraft(field, event.target.checked)} className="h-4 w-4 accent-[#fbbf24]" />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                  <span>Amonestaciones conocidas</span>
+                  <input type="number" min="0" value={rivalPlayerModal.draft?.yellowCardsCount || ''} onChange={(event) => updateRivalPlayerDraft('yellowCardsCount', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Sin información" />
+                </label>
+                <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                  <span>Activo desde</span>
+                  <input type="date" value={rivalPlayerModal.draft?.alertSince || ''} onChange={(event) => updateRivalPlayerDraft('alertSince', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner" />
+                </label>
+                <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                  <span>Partido / referencia</span>
+                  <input value={rivalPlayerModal.draft?.alertMatch || ''} onChange={(event) => updateRivalPlayerDraft('alertMatch', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="vs Llanes" />
+                </label>
+                <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 sm:col-span-3">
+                  <span>Observación de alerta</span>
+                  <textarea value={rivalPlayerModal.draft?.alertNote || ''} onChange={(event) => updateRivalPlayerDraft('alertNote', event.target.value)} className="min-h-[76px] w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600" placeholder="Contexto de la alerta actual" />
+                </label>
+              </div>
+            </section>
             {rivalPlayerSaveError ? <p className="mt-4 rounded-2xl border border-red-300/15 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-100">{rivalPlayerSaveError}</p> : null}
 
             <div className="mt-5 flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
@@ -23919,6 +24156,34 @@ function App() {
                           );
                         })}
                       </div>
+                      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                        {[
+                          ['Nuevos jugadores', rivalImportReview.playerPlan?.newPlayers?.length || 0],
+                          ['Jugadores actualizados', rivalImportReview.playerPlan?.updates?.length || 0],
+                          ['Posibles conflictos', rivalImportReview.playerPlan?.conflicts?.length || 0],
+                        ].map(([label, value]) => (
+                          <div key={label} className="rounded-2xl border border-white/10 bg-black/15 px-3 py-2">
+                            <p className="text-xl font-black text-white">{value}</p>
+                            <p className="text-[9px] font-black uppercase tracking-[0.12em] text-amber-100/70">{label}</p>
+                          </div>
+                        ))}
+                      </div>
+                      {rivalImportReview.playerPlan?.updates?.slice(0, 4).map((item) => (
+                        <div key={`update-${item.incoming.name}`} className="mt-3 rounded-2xl border border-white/10 bg-black/15 px-3 py-2 text-sm">
+                          <p className="font-black text-white">{item.incoming.name}</p>
+                          {item.changes.slice(0, 4).map((change) => (
+                            <p key={change.field} className="mt-1 text-xs text-slate-300">{rivalPlayerFieldLabels[change.field] || change.field}: <span className="text-slate-500">Sin información</span> → <span className="text-amber-100">{String(change.to)}</span></p>
+                          ))}
+                        </div>
+                      ))}
+                      {rivalImportReview.playerPlan?.conflicts?.slice(0, 3).map((item) => (
+                        <div key={`conflict-${item.incoming.name}`} className="mt-3 rounded-2xl border border-red-300/20 bg-red-500/10 px-3 py-2 text-sm">
+                          <p className="font-black text-red-100">{item.incoming.name}</p>
+                          {item.changes.slice(0, 3).map((change) => (
+                            <p key={change.field} className="mt-1 text-xs text-red-100/80">{rivalPlayerFieldLabels[change.field] || change.field}: {String(change.from)} → {String(change.to)}</p>
+                          ))}
+                        </div>
+                      ))}
                       <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
                         <button type="button" onClick={cancelRivalImportReview} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-slate-100 transition hover:bg-white/10">Cancelar</button>
                         <button type="button" onClick={applyRivalImportReview} className="rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-[#7aacff]">Aplicar datos encontrados</button>
