@@ -310,12 +310,21 @@ const positions = [
 
 const footOptions = ['Derecha', 'Izquierda', 'Ambas', 'No indicada'];
 
+const neutralRivalAccentColor = '#64748b';
+
 const isValidHexColor = (value) => /^#[0-9a-f]{6}$/i.test(String(value || '').trim());
 
-const normalizeHexColor = (value, fallback = '#ef233c') => {
+const isValidOptionalHexColor = (value) => {
+  const color = String(value || '').trim();
+  return !color || isValidHexColor(color);
+};
+
+const normalizeHexColor = (value, fallback = '') => {
   const color = String(value || '').trim();
   return isValidHexColor(color) ? color.toLowerCase() : fallback;
 };
+
+const getSafeRivalAccentColor = (value) => normalizeHexColor(value, neutralRivalAccentColor);
 
 const squadGroups = [
   {
@@ -541,7 +550,7 @@ const emptyTeamForm = {
   sourceUrl: '',
   crest: '',
   stadium: '',
-  kitColor: '#ef233c',
+  kitColor: '',
   system: '',
   strongSide: '',
   mainThreat: '',
@@ -1599,13 +1608,38 @@ const createRivalPlayerPayload = (teamId, player) => ({
   observed: Boolean(player.observed),
 });
 
-const createRivalTeamPayload = (teamFormState, importedData) => ({
-  name: getSafeRivalNameInput(teamFormState.name) || getSafeRivalNameInput(importedData?.name) || 'Equipo sin nombre',
-  source_url: normalizeSourceUrl(teamFormState.sourceUrl) || '',
-  crest: importedData?.crest || teamFormState.crest || '',
-  stadium: importedData?.stadium || teamFormState.stadium.trim(),
-  kit_color: normalizeHexColor(importedData?.kitColor || teamFormState.kitColor),
-  system: teamFormState.system || '',
+const normalizeStoredRivalStadium = (value) => {
+  const stadium = String(value || '').trim();
+  return stadium && stadium !== '-' ? stadium : '';
+};
+
+const rivalFormToDb = (form, importedData = {}, currentTeam = {}) => {
+  const rawColor = String(importedData?.kitColor || form.kitColor || '').trim();
+  return {
+    name: getSafeRivalNameInput(form.name) || getSafeRivalNameInput(importedData?.name) || 'Equipo sin nombre',
+    source_url: normalizeSourceUrl(form.sourceUrl) || null,
+    crest: importedData?.crest || form.crest || currentTeam?.crest || null,
+    stadium: normalizeStoredRivalStadium(importedData?.stadium || form.stadium) || null,
+    kit_color: normalizeHexColor(rawColor) || null,
+    system: form.system || null,
+  };
+};
+
+const rivalDbToForm = (row = {}) => ({
+  id: row.id,
+  legacyId: row.legacy_id ?? null,
+  name: row.name ?? '',
+  sourceUrl: row.source_url ?? '',
+  crest: row.crest ?? '',
+  stadium: normalizeStoredRivalStadium(row.stadium),
+  kitColor: normalizeHexColor(row.kit_color),
+  system: row.system ?? '',
+});
+
+const rivalDbToTeam = (row = {}, extras = {}) => ({
+  ...extras,
+  ...rivalDbToForm(row),
+  system: row.system || extras.system || '4-4-2',
 });
 
 const sanitizeStorageName = (value) =>
@@ -3921,15 +3955,7 @@ function App() {
       }, {});
 
       const storedTacticalIdentity = readStoredRivalTacticalIdentity();
-      const nextTeams = (teamsResponse.data || []).map((team) => ({
-        id: team.id,
-        legacyId: team.legacy_id ?? null,
-        name: team.name || '',
-        sourceUrl: team.source_url || '',
-        crest: team.crest || '',
-        stadium: team.stadium || '',
-        kitColor: team.kit_color || '#ef233c',
-        system: team.system || '4-4-2',
+      const nextTeams = (teamsResponse.data || []).map((team) => rivalDbToTeam(team, {
         ...getTeamTacticalIdentity(storedTacticalIdentity[team.id]),
         squad: playersByTeam[team.id] || [],
         lineup: lineupByTeam[team.id] || emptyLineup,
@@ -4157,16 +4183,7 @@ function App() {
         quickEvents: quickEventsByMatch[match.id] || [],
         systemEvents: systemEventsByMatch[match.id] || [],
       }));
-      const baseTeams = (equiposResponse.data || []).map((team) => ({
-        id: team.id,
-        legacyId: team.legacy_id ?? null,
-        name: team.name || '',
-        sourceUrl: team.source_url || '',
-        crest: team.crest || '',
-        stadium: team.stadium || '',
-        kitColor: team.kit_color || '#ef233c',
-        system: team.system || '4-4-2',
-      }));
+      const baseTeams = (equiposResponse.data || []).map((team) => rivalDbToTeam(team));
 
       setPlayers(nextPlayers);
       setEmpty(nextPlayers.length === 0);
@@ -14872,7 +14889,7 @@ function App() {
         sourceUrl: team.sourceUrl ?? '',
         crest: team.crest ?? '',
         stadium: team.stadium ?? '',
-        kitColor: team.kitColor ?? '#ef233c',
+        kitColor: team.kitColor ?? '',
         system: team.system,
         ...getTeamTacticalIdentity(team),
         squad: team.squad.map((entry) => {
@@ -14923,7 +14940,7 @@ function App() {
       sourceUrl: currentTeam.sourceUrl ?? '',
       crest: currentTeam.crest ?? '',
       stadium: currentTeam.stadium ?? '',
-      kitColor: currentTeam.kitColor ?? '#ef233c',
+      kitColor: currentTeam.kitColor ?? '',
       system: currentTeam.system,
       ...getTeamTacticalIdentity(currentTeam),
       squad: currentTeam.squad.map((entry) => {
@@ -15418,7 +15435,7 @@ function App() {
     let squad = dedupeRivalPlayers(teamFormState.squad).filter((player) => player.name.trim());
     let importedData = null;
 
-    if (!isValidHexColor(teamFormState.kitColor)) {
+    if (!isValidOptionalHexColor(teamFormState.kitColor)) {
       setTeamSaveError('El color del rival debe tener formato #RRGGBB.');
       setTeamSaving(false);
       return;
@@ -15440,18 +15457,22 @@ function App() {
     }
 
     const currentTeam = teams.find((team) => team.id === editingTeamId);
-    const payload = {
-      ...createRivalTeamPayload(teamFormState, importedData),
-      crest: importedData?.crest || teamFormState.crest || currentTeam?.crest || '',
-    };
+    const payload = rivalFormToDb(teamFormState, importedData, currentTeam);
 
     try {
       const request = editingTeamId
-        ? supabase.from("equipos_rivales").update(payload).eq("id", editingTeamId).select("id").single()
-        : supabase.from("equipos_rivales").insert(payload).select("id").single();
+        ? supabase.from("equipos_rivales").update(payload).eq("id", editingTeamId).select("*").single()
+        : supabase.from("equipos_rivales").insert(payload).select("*").single();
       const { data, error: teamError } = await request;
       if (teamError) throw teamError;
-      const teamId = editingTeamId || data.id;
+      if (!data?.id) throw new Error('Supabase no devolvió la fila actualizada del rival.');
+      const teamId = data.id;
+      const savedTeam = rivalDbToTeam(data, {
+        ...(currentTeam || {}),
+        squad: currentTeam?.squad || [],
+        lineup: currentTeam?.lineup || emptyLineup,
+        benchChart: currentTeam?.benchChart || emptyDepthChart,
+      });
       saveStoredRivalTacticalIdentity(teamId, teamFormState);
       squad.forEach((player) => {
         if (player.name) updateRivalPlayerFlags(teamId, player.name, { captain: Boolean(player.captain) });
@@ -15471,13 +15492,25 @@ function App() {
         }
       }
 
+      setTeams((currentTeams) => {
+        const exists = currentTeams.some((team) => team.id === teamId);
+        return exists
+          ? currentTeams.map((team) => team.id === teamId ? { ...team, ...savedTeam } : team)
+          : [...currentTeams, savedTeam];
+      });
+      setTeamFormState((current) => ({
+        ...current,
+        ...rivalDbToForm(data),
+        ...getTeamTacticalIdentity(current),
+        squad: current.squad,
+      }));
       await loadTeams();
       setSelectedTeamId(teamId);
       setTeamEditMode(false);
       setEditingTeamPlayerIndex(null);
       if (!editingTeamId) closeTeamForm();
     } catch (saveError) {
-      console.error('[RIVAL_SAVE_ERROR]', saveError);
+      console.error('[RIVAL_SAVE_ERROR]', { rivalId: editingTeamId, payload, error: saveError });
       setTeamSaveError(saveError.message || 'No se han podido guardar los cambios del rival.');
     } finally {
       setTeamSaving(false);
@@ -15933,15 +15966,24 @@ function App() {
       }));
 
       if (editingTeamId) {
-        const { error: teamUpdateError } = await supabase
+        const currentTeam = teams.find((team) => team.id === editingTeamId);
+        const importPayload = rivalFormToDb(
+          { ...teamFormState, sourceUrl, crest: imported.crest || teamFormState.crest, stadium: imported.stadium || teamFormState.stadium, kitColor: imported.kitColor || teamFormState.kitColor },
+          {},
+          currentTeam
+        );
+        const { data: updatedTeam, error: teamUpdateError } = await supabase
           .from("equipos_rivales")
-          .update({
-            crest: imported.crest || teamFormState.crest || '',
-            stadium: imported.stadium || teamFormState.stadium || '',
-            kit_color: imported.kitColor || teamFormState.kitColor || '#ef233c',
-          })
-          .eq("id", editingTeamId);
-        if (teamUpdateError) console.error('Error actualizando equipo rival en Supabase:', teamUpdateError);
+          .update(importPayload)
+          .eq("id", editingTeamId)
+          .select("*")
+          .single();
+        if (teamUpdateError) {
+          console.error('[RIVAL_SAVE_ERROR]', { rivalId: editingTeamId, payload: importPayload, error: teamUpdateError });
+          setImportStatus('No se han podido guardar los cambios del rival.');
+          return;
+        }
+        setTeams((currentTeams) => currentTeams.map((team) => team.id === editingTeamId ? { ...team, ...rivalDbToTeam(updatedTeam, team) } : team));
         await loadTeams();
       }
 
@@ -19344,7 +19386,7 @@ function App() {
                           <div className={`flex flex-wrap gap-2 ${isPresentationMode ? 'mt-1' : 'mt-3'}`}>
                             {[
                               ['Sistema', selectedTeam.system || 'Pendiente'],
-                              ['Estadio', selectedTeam.stadium || 'Pendiente'],
+                              ['Estadio', selectedTeam.stadium || 'Sin estadio registrado'],
                               ['Jugadores', rivalPlayers.length],
                               ['Último análisis', profile.lastAnalysisLabel],
                             ].map(([label, value]) => (
@@ -20295,7 +20337,7 @@ function App() {
                 <div className="grid w-full grid-cols-[repeat(auto-fill,minmax(300px,340px))] justify-start gap-4">
                   {visibleTeams.map((team) => {
                     const profile = getRivalCardProfile(team);
-                    const accent = team.kitColor || '#4f8cff';
+                    const accent = getSafeRivalAccentColor(team.kitColor);
                     const lastMatch = profile.playedMatches[0] || profile.latestMatch || null;
                     const lastScore = lastMatch ? getMatchScoreData(lastMatch) : null;
                     const lastMatchDateLabel = lastMatch ? matchDisplayDate(lastMatch.date) : 'Sin fecha';
@@ -20305,8 +20347,9 @@ function App() {
                         key={team.id}
                         onClick={() => setSelectedTeamId(team.id)}
                         className="group relative flex h-full min-h-[252px] cursor-pointer flex-col overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.92] p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/35 hover:bg-[#0d192c] hover:shadow-[0_22px_52px_rgba(0,0,0,0.24)] active:scale-[0.995]"
+                        style={{ boxShadow: `inset 4px 0 0 ${accent}, 0 16px 42px rgba(0,0,0,0.18)` }}
                       >
-                        <div className="pointer-events-none absolute inset-0 opacity-80" style={{ background: `radial-gradient(circle at 18% 0%, ${accent}30, transparent 36%), linear-gradient(135deg, rgba(255,255,255,0.055), transparent 54%)` }} />
+                        <div className="pointer-events-none absolute inset-0 opacity-80" style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.055), transparent 54%)' }} />
                         <div className="relative flex items-start gap-3.5">
                           <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-[1.05rem] border border-white/10 bg-white/[0.075] p-1.5 shadow-[0_12px_26px_rgba(0,0,0,0.20)]">
                             <div className="flex h-[58px] w-[58px] items-center justify-center overflow-hidden rounded-xl bg-white p-1.5 text-base font-black text-caudal-950">
@@ -23727,6 +23770,7 @@ function App() {
         const isQuickCreateTeam = !editingTeamId;
         const safeTeamFormName = getSafeRivalNameInput(teamFormState.name);
         const formTeamName = isQuickCreateTeam ? getRivalFormDisplayName(safeTeamFormName) : getRivalFormDisplayName(safeTeamFormName || currentTeamForForm?.name);
+        const rivalAccentColor = getSafeRivalAccentColor(teamFormState.kitColor);
         const relatedMatches = safeTeamFormName ? matches.filter((match) => normalizePlayerIdentityName(match.opponent) === normalizePlayerIdentityName(safeTeamFormName)) : [];
         const hasIdentity = Boolean(safeTeamFormName && teamFormState.crest);
         const hasSquad = formSquad.length > 0;
@@ -23901,8 +23945,8 @@ function App() {
                 </>
               ) : (
                 <>
-              <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/74 p-4 shadow-[0_16px_50px_rgba(0,0,0,0.18)]">
-                <div className="grid gap-4 lg:grid-cols-[180px_1fr_220px] lg:items-center">
+              <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/74 p-4 shadow-[0_16px_50px_rgba(0,0,0,0.18)]" style={{ boxShadow: `inset 0 4px 0 ${rivalAccentColor}, 0 16px 50px rgba(0,0,0,0.18)` }}>
+                <div className="grid gap-4 lg:grid-cols-[180px_1fr] lg:items-center">
                   <div className="flex h-36 w-36 items-center justify-center rounded-[1.5rem] border border-white/10 bg-white/[0.07] p-3 shadow-[0_16px_40px_rgba(0,0,0,0.22)]">
                     <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl bg-white p-3 text-lg font-black text-caudal-950">
                       {teamFormState.crest ? <img src={teamFormState.crest} alt="" className="h-full w-full object-contain" /> : getRivalPlayerInitials(formTeamName)}
@@ -23915,13 +23959,6 @@ function App() {
                       <span className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-1.5">{teamFormState.stadium || 'Sin estadio registrado'}</span>
                       <span className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-1.5">Sistema habitual: {teamFormState.system || 'Pendiente'}</span>
                       <span className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-1.5">{relatedMatches.length} partidos registrados</span>
-                    </div>
-                  </div>
-                  <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.04] p-4">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Color camiseta</p>
-                    <div className="mt-3 flex items-center gap-3">
-                      <span className="h-12 w-12 rounded-2xl border border-white/15" style={{ backgroundColor: normalizeHexColor(teamFormState.kitColor) }} />
-                      <span className="text-sm font-black uppercase text-white">{normalizeHexColor(teamFormState.kitColor)}</span>
                     </div>
                   </div>
                 </div>
@@ -24006,11 +24043,11 @@ function App() {
                     </div>
                     <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                       <span>Color camiseta</span>
-                      <input name="kitColor" type="color" value={normalizeHexColor(teamFormState.kitColor)} onChange={handleTeamChange} className="h-[40px] w-full rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 shadow-inner" />
+                      <input name="kitColor" type="color" value={getSafeRivalAccentColor(teamFormState.kitColor)} onChange={handleTeamChange} className="h-[40px] w-full rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 shadow-inner" />
                     </label>
                     <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                       <span>Hexadecimal</span>
-                      <input name="kitColor" value={teamFormState.kitColor} onChange={handleTeamChange} className={`w-full rounded-2xl border bg-white/[0.045] px-3 py-2 text-sm font-black uppercase normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600 ${isValidHexColor(teamFormState.kitColor) ? 'border-white/10' : 'border-red-300/45'}`} placeholder="#ef233c" />
+                      <input name="kitColor" value={teamFormState.kitColor} onChange={handleTeamChange} className={`w-full rounded-2xl border bg-white/[0.045] px-3 py-2 text-sm font-black uppercase normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600 ${isValidOptionalHexColor(teamFormState.kitColor) ? 'border-white/10' : 'border-red-300/45'}`} placeholder="#C41230" />
                     </label>
                     <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                       <span>Sistema habitual</span>
@@ -24023,11 +24060,10 @@ function App() {
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
                       {[
                         ['Nombre', formTeamName],
-                        ['Estadio', teamFormState.stadium || 'Pendiente'],
+                        ['Estadio', teamFormState.stadium || 'Sin estadio registrado'],
                         ['Sistema', teamFormState.system || 'Pendiente'],
                         ['Fuente', teamFormState.sourceUrl ? 'Fuente vinculada' : 'Sin fuente vinculada'],
                         ['Escudo', teamFormState.crest ? 'Imagen vinculada' : 'Sin imagen vinculada'],
-                        ['Color', teamFormState.kitColor || 'No definido'],
                       ].map(([label, value]) => (
                         <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2">
                           <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
