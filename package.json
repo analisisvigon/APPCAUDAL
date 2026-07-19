@@ -8,6 +8,7 @@
     "build": "vite build",
     "test:league-results": "node src/utils/leagueResults.test.js",
     "test:encoding": "node src/utils/encodingAudit.test.js",
+    "test:rival-import": "node src/utils/rivalPlayerImport.test.js",
     "audit:supabase-encoding": "node src/utils/supabaseEncodingAudit.js",
     "preview": "vite preview"
   },

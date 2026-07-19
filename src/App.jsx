@@ -16,6 +16,7 @@ import {
   getPostEventTypeValue,
 } from './constants/postEventTypes';
 import { buildLeagueResultsDonut, calculateLeagueResults } from './utils/leagueResults';
+import { cleanImportedFieldValue, extractTransfermarktPlayerId, isEmptyImportedField, resolveImportedValue } from './utils/rivalPlayerImport';
 import './styles/print.css';
 
 const clubCrest =
@@ -1643,6 +1644,8 @@ const normalizeSupabaseRivalPlayer = (player) => ({
   image: player.image ?? player.image_url ?? player.photo_url ?? player.avatar_url ?? player.profile_image ?? player.foto ?? '',
   imageSource: player.image_source ?? player.imageSource ?? '',
   sourceProfileUrl: player.source_profile_url ?? player.sourceProfileUrl ?? player.profileUrl ?? '',
+  externalSource: player.external_source ?? player.externalSource ?? '',
+  externalPlayerId: player.external_player_id ?? player.externalPlayerId ?? '',
   number: player.number ?? '',
   position: player.position ?? '',
   specificPosition: player.specific_position ?? player.specificPosition ?? '',
@@ -1671,20 +1674,22 @@ const normalizeSupabaseRivalPlayer = (player) => ({
 
 const createRivalPlayerPayload = (teamId, player) => ({
   equipo_rival_id: teamId,
-  legacy_id: player.legacyId ?? (!isUuid(player.id) ? String(player.id || player.name) : null),
+  legacy_id: player.legacyId ?? (!isUuid(player.id) && !player.externalPlayerId ? String(player.id || player.name) : null),
   name: player.name,
-  image: player.image || player.imageUrl || player.image_url || player.photoUrl || player.photo_url || player.avatarUrl || player.avatar_url || player.foto || '',
-  image_source: player.imageSource || player.image_source || '',
-  source_profile_url: player.sourceProfileUrl || player.source_profile_url || player.profileUrl || '',
-  number: String(player.number || ''),
-  position: player.position || '',
-  specific_position: player.specificPosition || player.specific_position || '',
-  dob: player.dob || null,
-  age: String(player.age || ''),
-  foot: player.foot || '',
-  height: String(player.height || ''),
-  notes: player.notes || player.observations || '',
-  role: player.role || '',
+  image: cleanImportedFieldValue(player.image || player.imageUrl || player.image_url || player.photoUrl || player.photo_url || player.avatarUrl || player.avatar_url || player.foto, null),
+  image_source: cleanImportedFieldValue(player.imageSource || player.image_source, null),
+  source_profile_url: cleanImportedFieldValue(player.sourceProfileUrl || player.source_profile_url || player.profileUrl, null),
+  external_source: cleanImportedFieldValue(player.externalSource || player.external_source, null),
+  external_player_id: cleanImportedFieldValue(player.externalPlayerId || player.external_player_id, null),
+  number: cleanImportedFieldValue(player.number, null),
+  position: cleanImportedFieldValue(player.position, null),
+  specific_position: cleanImportedFieldValue(player.specificPosition || player.specific_position, null),
+  dob: cleanImportedFieldValue(player.dob, null),
+  age: cleanImportedFieldValue(player.dob ? calculateAge(player.dob) : player.age, null),
+  foot: cleanImportedFieldValue(player.foot, null),
+  height: cleanImportedFieldValue(player.height, null),
+  notes: cleanImportedFieldValue(player.notes || player.observations, null),
+  role: cleanImportedFieldValue(player.role, null),
   is_key: Boolean(player.isKey),
   yellow_risk: Boolean(player.yellowRisk || player.cardAlert),
   yellow_cards_count: player.yellowCardsCount === '' || player.yellowCardsCount == null ? null : Number(player.yellowCardsCount),
@@ -1697,6 +1702,7 @@ const createRivalPlayerPayload = (teamId, player) => ({
   alert_note: player.alertNote || player.alert_note || '',
   suspended: Boolean(player.suspendedAlert || player.suspended),
   injured: Boolean(player.injuredAlert || player.injured),
+  doubtful: Boolean(player.doubtful),
   captain: Boolean(player.captain),
   observed: Boolean(player.observed),
 });
@@ -2876,31 +2882,46 @@ const getRivalPlayerInitials = (name) =>
 
 const getRivalPlayerImportKey = (player = {}) => {
   const normalized = normalizeSquadEntry(player);
+  if (normalized.externalSource && normalized.externalPlayerId) return `external:${normalized.externalSource}:${normalized.externalPlayerId}`;
   if (normalized.sourceProfileUrl) return `url:${normalized.sourceProfileUrl}`;
   if (normalized.dob) return `dob:${normalizePlayerIdentityName(normalized.name)}:${normalized.dob}`;
   if (normalized.number) return `num:${normalizePlayerIdentityName(normalized.name)}:${normalized.number}`;
   return `name:${normalizePlayerIdentityName(normalized.name)}`;
 };
 
-const getImportableRivalPlayerFields = () => ['number', 'position', 'specificPosition', 'dob', 'age', 'height', 'foot', 'image', 'sourceProfileUrl', 'imageSource', 'captain'];
+const getImportableRivalPlayerFields = () => ['number', 'position', 'specificPosition', 'dob', 'age', 'height', 'foot', 'image', 'sourceProfileUrl', 'imageSource', 'externalSource', 'externalPlayerId', 'captain'];
 
 const buildRivalPlayerImportPlan = (currentSquad = [], importedSquad = []) => {
   const current = dedupeRivalPlayers(currentSquad).map(normalizeSquadEntry);
   const imported = dedupeRivalPlayers(importedSquad).map(normalizeSquadEntry).filter((player) => player.name);
-  const byKey = new Map();
-  current.forEach((player, index) => {
-    byKey.set(getRivalPlayerImportKey(player), { player, index });
-    byKey.set(`name:${normalizePlayerIdentityName(player.name)}`, { player, index });
-  });
+  const findMatch = (incoming) => {
+    const candidates = current.map((player, index) => ({ player, index }));
+    const profile = candidates.find(({ player }) => incoming.sourceProfileUrl && player.sourceProfileUrl === incoming.sourceProfileUrl);
+    if (profile) return profile;
+    const external = candidates.find(({ player }) => incoming.externalSource && incoming.externalPlayerId && player.externalSource === incoming.externalSource && String(player.externalPlayerId) === String(incoming.externalPlayerId));
+    if (external) return external;
+    const normalizedName = normalizePlayerIdentityName(incoming.name);
+    if (incoming.dob) {
+      const byDob = candidates.find(({ player }) => normalizePlayerIdentityName(player.name) === normalizedName && player.dob === incoming.dob);
+      if (byDob) return byDob;
+    }
+    if (!isEmptyImportedField(incoming.number)) {
+      const byNumber = candidates.find(({ player }) => normalizePlayerIdentityName(player.name) === normalizedName && String(player.number) === String(incoming.number));
+      if (byNumber) return byNumber;
+    }
+    const byName = candidates.filter(({ player }) => normalizePlayerIdentityName(player.name) === normalizedName);
+    return byName.length === 1 ? byName[0] : null;
+  };
 
   const newPlayers = [];
   const updates = [];
   const conflicts = [];
   const nextSquad = current.map((player) => ({ ...player }));
+  let autoCompletedFields = 0;
+  let unchangedPlayers = 0;
 
   imported.forEach((player) => {
-    const importedKey = getRivalPlayerImportKey(player);
-    const match = byKey.get(importedKey) || byKey.get(`name:${normalizePlayerIdentityName(player.name)}`);
+    const match = findMatch(player);
     if (!match) {
       newPlayers.push(player);
       nextSquad.push(player);
@@ -2911,11 +2932,12 @@ const buildRivalPlayerImportPlan = (currentSquad = [], importedSquad = []) => {
     const nextPlayer = { ...match.player };
     getImportableRivalPlayerFields().forEach((field) => {
       const incoming = player[field];
-      if (incoming === undefined || incoming === null || incoming === '') return;
+      if (isEmptyImportedField(incoming)) return;
       const currentValue = nextPlayer[field];
-      if (currentValue === undefined || currentValue === null || currentValue === '') {
+      if (isEmptyImportedField(currentValue)) {
         nextPlayer[field] = incoming;
         changes.push({ field, from: '', to: incoming });
+        autoCompletedFields += 1;
         return;
       }
       if (String(currentValue) !== String(incoming)) {
@@ -2926,10 +2948,31 @@ const buildRivalPlayerImportPlan = (currentSquad = [], importedSquad = []) => {
       updates.push({ player: match.player, incoming: player, changes });
       nextSquad[match.index] = nextPlayer;
     }
-    if (blocked.length) conflicts.push({ player: match.player, incoming: player, changes: blocked });
+    const playerKey = getRivalPlayerImportKey(match.player);
+    if (blocked.length) conflicts.push({ playerKey, player: match.player, incoming: player, changes: blocked });
+    if (!changes.length && !blocked.length) unchangedPlayers += 1;
   });
 
-  return { newPlayers, updates, conflicts, nextSquad };
+  return { newPlayers, updates, conflicts, nextSquad, autoCompletedFields, unchangedPlayers };
+};
+
+const buildDefaultConflictResolutions = (plan) => Object.fromEntries(
+  (plan?.conflicts || []).map((conflict) => [
+    conflict.playerKey,
+    Object.fromEntries(conflict.changes.map((change) => [change.field, 'existing'])),
+  ])
+);
+
+const applyRivalPlayerImportResolutions = (plan, resolutions = {}) => {
+  const resolvedSquad = (plan?.nextSquad || []).map((player) => ({ ...player }));
+  (plan?.conflicts || []).forEach((conflict) => {
+    const index = resolvedSquad.findIndex((player) => getRivalPlayerImportKey(player) === conflict.playerKey);
+    if (index < 0) return;
+    conflict.changes.forEach((change) => {
+      resolvedSquad[index][change.field] = resolveImportedValue({ existingValue: change.from, incomingValue: change.to, resolution: resolutions?.[conflict.playerKey]?.[change.field] });
+    });
+  });
+  return resolvedSquad;
 };
 
 const rivalPlayerFieldLabels = {
@@ -2943,6 +2986,8 @@ const rivalPlayerFieldLabels = {
   image: 'Foto',
   sourceProfileUrl: 'Perfil fuente',
   imageSource: 'Fuente imagen',
+  externalSource: 'Fuente externa',
+  externalPlayerId: 'ID externo',
   captain: 'Capitán',
 };
 
@@ -2959,6 +3004,8 @@ const normalizeSquadEntry = (entry) => {
     image: '',
     imageSource: '',
     sourceProfileUrl: '',
+    externalSource: '',
+    externalPlayerId: '',
     number: '',
     position: '',
     specificPosition: '',
@@ -2986,21 +3033,23 @@ const normalizeSquadEntry = (entry) => {
   };
   }
 
-  const name = entry.name ?? '';
+  const name = cleanImportedFieldValue(entry.name, '');
   return {
     id: entry.id ?? name,
     jugadorRivalId: entry.jugadorRivalId ?? entry.jugador_rival_id ?? null,
     name,
-    image: entry.image ?? entry.image_url ?? entry.photo_url ?? entry.avatar_url ?? entry.profile_image ?? entry.foto ?? '',
-    imageSource: entry.imageSource ?? entry.image_source ?? '',
-    sourceProfileUrl: entry.sourceProfileUrl ?? entry.source_profile_url ?? entry.profileUrl ?? '',
-    number: entry.number ?? '',
-    position: entry.position ?? '',
-    specificPosition: entry.specificPosition ?? entry.specific_position ?? '',
-    dob: entry.dob ?? entry.birth_date ?? '',
-    age: entry.age ?? '',
-    foot: entry.foot ?? '',
-    height: entry.height ?? '',
+    image: cleanImportedFieldValue(entry.image ?? entry.image_url ?? entry.photo_url ?? entry.avatar_url ?? entry.profile_image ?? entry.foto, ''),
+    imageSource: cleanImportedFieldValue(entry.imageSource ?? entry.image_source, ''),
+    sourceProfileUrl: cleanImportedFieldValue(entry.sourceProfileUrl ?? entry.source_profile_url ?? entry.profileUrl, ''),
+    externalSource: cleanImportedFieldValue(entry.externalSource ?? entry.external_source, ''),
+    externalPlayerId: cleanImportedFieldValue(entry.externalPlayerId ?? entry.external_player_id, ''),
+    number: cleanImportedFieldValue(entry.number, ''),
+    position: cleanImportedFieldValue(entry.position, ''),
+    specificPosition: cleanImportedFieldValue(entry.specificPosition ?? entry.specific_position, ''),
+    dob: cleanImportedFieldValue(entry.dob ?? entry.birth_date, ''),
+    age: cleanImportedFieldValue(entry.age, ''),
+    foot: cleanImportedFieldValue(entry.foot, ''),
+    height: cleanImportedFieldValue(entry.height, ''),
     notes: entry.notes ?? entry.observations ?? '',
     role: entry.role ?? '',
     isKey: Boolean(entry.isKey),
@@ -3044,6 +3093,8 @@ const createBlankTeamPlayer = () => ({
   image: '',
   imageSource: '',
   sourceProfileUrl: '',
+  externalSource: '',
+  externalPlayerId: '',
   number: '',
   position: '',
   specificPosition: '',
@@ -3291,6 +3342,7 @@ const extractTransfermarktPlayers = (doc, baseUrl) => {
     const name = (nameLink?.textContent || portrait?.alt || '').replace(/\s+/g, ' ').trim();
     const image = getImageSource(portrait, baseUrl);
     const sourceProfileUrl = resolveAssetUrl(nameLink?.getAttribute('href') || '', baseUrl);
+    const externalPlayerId = extractTransfermarktPlayerId(sourceProfileUrl);
     const number = row.querySelector('.rn_nummer')?.textContent?.replace(/\D/g, '') ?? '';
     const rawPosition =
       row.querySelector('td.posrela table tr:nth-child(2) td')?.textContent?.replace(/\s+/g, ' ').trim() ||
@@ -3308,12 +3360,14 @@ const extractTransfermarktPlayers = (doc, baseUrl) => {
       name.length < 45 &&
       !/transfermarkt|laliga|bundesliga|premier|segunda|serie|ligue|deadline|club siero/i.test(name)
     ) {
-      byName.set(sourceProfileUrl || name, {
-        id: sourceProfileUrl || name,
+      byName.set(externalPlayerId || sourceProfileUrl || name, {
+        id: externalPlayerId ? `transfermarkt:${externalPlayerId}` : name,
         name,
         image,
         imageSource: image ? 'imported' : '',
         sourceProfileUrl,
+        externalSource: 'transfermarkt',
+        externalPlayerId: externalPlayerId || '',
         number,
         position,
         specificPosition,
@@ -3327,6 +3381,41 @@ const extractTransfermarktPlayers = (doc, baseUrl) => {
   });
 
   return Array.from(byName.values());
+};
+
+const normalizeImportedDob = (value) => {
+  const text = String(value || '').trim().toLowerCase();
+  const numeric = text.match(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{4})\b/);
+  if (numeric) return `${numeric[3]}-${numeric[2].padStart(2, '0')}-${numeric[1].padStart(2, '0')}`;
+  const months = { enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12, january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
+  const written = text.match(/\b(\d{1,2})\s+(?:de\s+)?([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})\b/i);
+  const month = written ? months[normalizePlayerIdentityName(written[2])] : null;
+  return written && month ? `${written[3]}-${String(month).padStart(2, '0')}-${written[1].padStart(2, '0')}` : '';
+};
+
+const extractTransfermarktPlayerProfile = (doc, baseUrl, player) => {
+  const text = (doc.body?.textContent || '').replace(/\s+/g, ' ').trim();
+  const dobLabel = text.match(/(?:fecha de nacimiento|geburtsdatum|date of birth)\s*:?\s*([^|]{0,70})/i)?.[1] || text;
+  const dob = normalizeImportedDob(dobLabel);
+  const heightLabel = text.match(/(?:altura|größe|height)\s*:?\s*([^|]{0,30})/i)?.[1] || '';
+  const footLabel = text.match(/(?:pie|fuß|foot)\s*:?\s*([^|]{0,30})/i)?.[1] || '';
+  const positionLabel = text.match(/(?:posición|position)\s*:?\s*([^|]{0,55})/i)?.[1] || '';
+  const { position, specificPosition } = normalizeImportedPosition(positionLabel);
+  const portrait = doc.querySelector('.data-header__profile-container img, .data-header__profile-image, img[src*="/portrait/"]');
+  const image = getImageSource(portrait, baseUrl);
+  const number = text.match(/(?:dorsal|shirt number)\s*:?[#\s]*(\d{1,2})/i)?.[1] || '';
+  return normalizeSquadEntry({
+    ...player,
+    dob: dob || player.dob,
+    age: dob ? String(calculateAge(dob)) : player.age,
+    height: normalizeImportedHeight(heightLabel) || player.height,
+    foot: normalizeImportedFoot(footLabel) || player.foot,
+    position: position || player.position,
+    specificPosition: specificPosition || player.specificPosition,
+    image: image || player.image,
+    imageSource: image ? 'imported' : player.imageSource,
+    number: number || player.number,
+  });
 };
 
 const extractBesoccerPlayers = (doc, baseUrl) => {
@@ -3783,6 +3872,7 @@ function App() {
   const [teamSaveError, setTeamSaveError] = useState('');
   const [teamSaving, setTeamSaving] = useState(false);
   const [rivalImportReview, setRivalImportReview] = useState(null);
+  const rivalImportEnrichmentAbortRef = useRef(null);
   const [teamFieldViewMode, setTeamFieldViewMode] = useState('LIMPIO');
   const [teamFieldEditMode, setTeamFieldEditMode] = useState(false);
   const [selectedTeamPlacementPlayerName, setSelectedTeamPlacementPlayerName] = useState('');
@@ -15688,11 +15778,14 @@ function App() {
       if (!editingTeamId) {
         const playerRows = squad.map((player) => createRivalPlayerPayload(teamId, normalizeSquadEntry(player)));
         if (playerRows.length) {
-          const { error: playersError } = await supabase.from("jugadores_rivales").insert(playerRows);
+          const { data: insertedPlayers, error: playersError } = await supabase.from("jugadores_rivales").insert(playerRows).select("*");
           if (playersError) throw playersError;
+          if (!insertedPlayers || insertedPlayers.length !== playerRows.length) throw new Error('No se han podido confirmar todos los jugadores nuevos.');
+          squad = insertedPlayers.map(normalizeSupabaseRivalPlayer);
         }
       } else {
         const currentPlayers = (currentTeam?.squad || []).map(normalizeSquadEntry);
+        const confirmedPlayers = [];
         const currentByKey = new Map();
         currentPlayers.forEach((player) => {
           currentByKey.set(getRivalPlayerImportKey(player), player);
@@ -15703,13 +15796,16 @@ function App() {
           const payload = rivalPlayerFormToDb(teamId, player);
           const playerId = isUuid(player.jugadorRivalId) ? player.jugadorRivalId : isUuid(player.id) ? player.id : isUuid(existing?.jugadorRivalId) ? existing.jugadorRivalId : isUuid(existing?.id) ? existing.id : null;
           const request = playerId
-            ? supabase.from("jugadores_rivales").update(payload).eq("id", playerId).select("id").single()
+            ? supabase.from("jugadores_rivales").update(payload).eq("id", playerId).select("*").single()
             : existing?.name
-              ? supabase.from("jugadores_rivales").update(payload).eq("equipo_rival_id", teamId).eq("name", existing.name).select("id").single()
-              : supabase.from("jugadores_rivales").insert(payload).select("id").single();
-          const { error: playerSaveError } = await request;
+              ? supabase.from("jugadores_rivales").update(payload).eq("equipo_rival_id", teamId).eq("name", existing.name).select("*").single()
+              : supabase.from("jugadores_rivales").insert(payload).select("*").single();
+          const { data: confirmedPlayer, error: playerSaveError } = await request;
           if (playerSaveError) throw playerSaveError;
+          if (!confirmedPlayer?.id) throw new Error(`No se ha podido actualizar el jugador ${player.name}.`);
+          confirmedPlayers.push(normalizeSupabaseRivalPlayer(confirmedPlayer));
         }
+        squad = confirmedPlayers;
       }
 
       setTeams((currentTeams) => {
@@ -15722,7 +15818,7 @@ function App() {
         ...current,
         ...rivalDbToForm(data),
         ...getTeamTacticalIdentity(current),
-        squad: current.squad,
+        squad: squad.map(normalizeSquadEntry),
       }));
       await loadTeams();
       setSelectedTeamId(teamId);
@@ -16185,7 +16281,7 @@ function App() {
         squad: imported.players.map(normalizeSquadEntry),
       };
       const playerPlan = buildRivalPlayerImportPlan(teamFormState.squad, foundData.squad);
-      setRivalImportReview({ sourceUrl, data: foundData, playerPlan });
+      setRivalImportReview({ sourceUrl, data: foundData, playerPlan, conflictResolutions: buildDefaultConflictResolutions(playerPlan), enrichment: null });
       setImportStatus(imported.players.length ? `Datos encontrados. Plantilla detectada: ${imported.players.length} jugadores.` : 'Datos encontrados. Revisa antes de aplicar.');
     } catch (error) {
       console.error('[RIVAL_IMPORT_ERROR]', error);
@@ -16196,6 +16292,7 @@ function App() {
   const applyRivalImportReview = () => {
     if (!rivalImportReview?.data) return;
     const imported = rivalImportReview.data;
+    const resolvedSquad = applyRivalPlayerImportResolutions(rivalImportReview.playerPlan, rivalImportReview.conflictResolutions);
     setTeamFormState((prev) => ({
       ...prev,
       name: imported.name || prev.name,
@@ -16204,10 +16301,95 @@ function App() {
       stadium: imported.stadium || prev.stadium,
       system: imported.system || prev.system,
       kitColor: imported.kitColor || prev.kitColor,
-      squad: rivalImportReview.playerPlan?.nextSquad?.length ? rivalImportReview.playerPlan.nextSquad : prev.squad,
+      squad: resolvedSquad.length ? resolvedSquad : prev.squad,
     }));
     setRivalImportReview(null);
     setImportStatus('Datos importados aplicados al formulario. Revisa y guarda los cambios.');
+  };
+
+  const setRivalImportConflictResolution = (playerKey, field, resolution) => {
+    setRivalImportReview((current) => current ? ({
+      ...current,
+      conflictResolutions: {
+        ...(current.conflictResolutions || {}),
+        [playerKey]: { ...(current.conflictResolutions?.[playerKey] || {}), [field]: resolution },
+      },
+    }) : current);
+  };
+
+  const setAllRivalImportConflictResolutions = (resolution) => {
+    setRivalImportReview((current) => current ? ({
+      ...current,
+      conflictResolutions: Object.fromEntries((current.playerPlan?.conflicts || []).map((conflict) => [
+        conflict.playerKey,
+        Object.fromEntries(conflict.changes.map((change) => [change.field, resolution])),
+      ])),
+    }) : current);
+  };
+
+  const cancelRivalProfileEnrichment = () => {
+    rivalImportEnrichmentAbortRef.current?.abort();
+    setRivalImportReview((current) => current ? ({ ...current, enrichment: { ...(current.enrichment || {}), running: false, cancelled: true } }) : current);
+  };
+
+  const completeRivalImportProfiles = async () => {
+    if (!rivalImportReview?.data || rivalImportReview.enrichment?.running) return;
+    const targets = rivalImportReview.data.squad.filter((player) => player.sourceProfileUrl && ['dob', 'height', 'foot', 'position', 'image'].some((field) => isEmptyImportedField(player[field])));
+    if (!targets.length) {
+      setImportStatus('Las fichas importadas ya contienen los campos prioritarios disponibles.');
+      return;
+    }
+    const controller = new AbortController();
+    rivalImportEnrichmentAbortRef.current = controller;
+    const enrichedByKey = new Map(rivalImportReview.data.squad.map((player) => [getRivalPlayerImportKey(player), player]));
+    const failures = [];
+    let completed = 0;
+    let cursor = 0;
+    setRivalImportReview((current) => current ? ({ ...current, enrichment: { running: true, completed: 0, total: targets.length, failures: [], cancelled: false } }) : current);
+
+    const enrichOne = async (player) => {
+      let lastError = null;
+      for (const url of getReadableUrls(player.sourceProfileUrl)) {
+        try {
+          const response = await fetch(url, { signal: controller.signal });
+          if (!response.ok) throw new Error('No se pudo leer el perfil.');
+          const html = await response.text();
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          return extractTransfermarktPlayerProfile(doc, player.sourceProfileUrl, player);
+        } catch (error) {
+          if (controller.signal.aborted) throw error;
+          lastError = error;
+        }
+      }
+      throw lastError || new Error('Perfil no disponible.');
+    };
+
+    const worker = async () => {
+      while (!controller.signal.aborted) {
+        const targetIndex = cursor;
+        cursor += 1;
+        if (targetIndex >= targets.length) return;
+        const player = targets[targetIndex];
+        try {
+          enrichedByKey.set(getRivalPlayerImportKey(player), await enrichOne(player));
+        } catch (error) {
+          if (!controller.signal.aborted) failures.push(player.name);
+        } finally {
+          completed += 1;
+          setRivalImportReview((current) => current ? ({ ...current, enrichment: { running: !controller.signal.aborted && completed < targets.length, completed, total: targets.length, failures: [...failures], cancelled: controller.signal.aborted } }) : current);
+        }
+      }
+    };
+
+    await Promise.all([worker(), worker()]);
+    if (controller.signal.aborted) return;
+    setRivalImportReview((current) => {
+      if (!current) return current;
+      const squad = current.data.squad.map((player) => enrichedByKey.get(getRivalPlayerImportKey(player)) || player);
+      const playerPlan = buildRivalPlayerImportPlan(teamFormState.squad, squad);
+      return { ...current, data: { ...current.data, squad }, playerPlan, conflictResolutions: buildDefaultConflictResolutions(playerPlan), enrichment: { running: false, completed, total: targets.length, failures, cancelled: false } };
+    });
+    setImportStatus(failures.length ? `Importación completada. No se pudieron completar ${failures.length} perfiles.` : 'Perfiles individuales completados. Revisa los cambios.');
   };
 
   const cancelRivalImportReview = () => {
@@ -24094,11 +24276,13 @@ function App() {
                           );
                         })}
                       </div>
-                      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
                         {[
                           ['Nuevos jugadores', rivalImportReview.playerPlan?.newPlayers?.length || 0],
                           ['Jugadores actualizados', rivalImportReview.playerPlan?.updates?.length || 0],
-                          ['Posibles conflictos', rivalImportReview.playerPlan?.conflicts?.length || 0],
+                          ['Campos autocompletados', rivalImportReview.playerPlan?.autoCompletedFields || 0],
+                          ['Conflictos pendientes', (rivalImportReview.playerPlan?.conflicts || []).reduce((total, conflict) => total + conflict.changes.filter((change) => !rivalImportReview.conflictResolutions?.[conflict.playerKey]?.[change.field]).length, 0)],
+                          ['Jugadores sin cambios', rivalImportReview.playerPlan?.unchangedPlayers || 0],
                         ].map(([label, value]) => (
                           <div key={label} className="rounded-2xl border border-white/10 bg-black/15 px-3 py-2">
                             <p className="text-xl font-black text-white">{value}</p>
@@ -24114,17 +24298,44 @@ function App() {
                           ))}
                         </div>
                       ))}
-                      {rivalImportReview.playerPlan?.conflicts?.slice(0, 3).map((item) => (
+                      {rivalImportReview.playerPlan?.conflicts?.map((item) => (
                         <div key={`conflict-${item.incoming.name}`} className="mt-3 rounded-2xl border border-red-300/20 bg-red-500/10 px-3 py-2 text-sm">
                           <p className="font-black text-red-100">{item.incoming.name}</p>
-                          {item.changes.slice(0, 3).map((change) => (
-                            <p key={change.field} className="mt-1 text-xs text-red-100/80">{rivalPlayerFieldLabels[change.field] || change.field}: {String(change.from)} → {String(change.to)}</p>
+                          {item.changes.map((change) => (
+                            <div key={change.field} className="mt-2 rounded-xl border border-white/10 bg-black/15 p-2.5">
+                              <p className="text-[10px] font-black uppercase tracking-[0.1em] text-red-100/70">{rivalPlayerFieldLabels[change.field] || change.field}</p>
+                              <p className="mt-1 text-xs text-slate-300">Actual: <span className="font-bold text-white">{String(change.from)}</span></p>
+                              <p className="text-xs text-slate-300">Importado: <span className="font-bold text-amber-100">{String(change.to)}</span></p>
+                              <div className="mt-2 grid grid-cols-2 gap-2">
+                                {[['existing', 'Mantener actual'], ['incoming', 'Usar importado']].map(([value, label]) => (
+                                  <button key={value} type="button" onClick={() => setRivalImportConflictResolution(item.playerKey, change.field, value)} className={`rounded-lg px-2 py-1.5 text-[10px] font-black transition ${rivalImportReview.conflictResolutions?.[item.playerKey]?.[change.field] === value ? 'bg-caudal-electric text-slate-950' : 'border border-white/10 bg-white/[0.05] text-slate-300 hover:bg-white/10'}`}>{label}</button>
+                                ))}
+                              </div>
+                            </div>
                           ))}
                         </div>
                       ))}
+                      {(rivalImportReview.playerPlan?.conflicts || []).length ? (
+                        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                          <button type="button" onClick={() => setAllRivalImportConflictResolutions('existing')} className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-bold text-slate-200">Mantener todos los actuales</button>
+                          <button type="button" onClick={() => { const count = (rivalImportReview.playerPlan?.conflicts || []).reduce((total, conflict) => total + conflict.changes.length, 0); if (window.confirm(`Se sustituirán los datos actuales en ${count} campos.`)) setAllRivalImportConflictResolutions('incoming'); }} className="rounded-xl border border-amber-200/20 bg-amber-200/10 px-3 py-2 text-xs font-bold text-amber-100">Usar todos los datos importados</button>
+                        </div>
+                      ) : null}
+                      <div className="mt-4 rounded-2xl border border-white/10 bg-black/15 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Enriquecimiento opcional</p>
+                        {rivalImportReview.enrichment?.running ? (
+                          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-bold text-white">Completando perfiles: {rivalImportReview.enrichment.completed} de {rivalImportReview.enrichment.total}</p>
+                            <button type="button" onClick={cancelRivalProfileEnrichment} className="rounded-xl border border-red-300/20 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-100">Cancelar</button>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={completeRivalImportProfiles} className="mt-2 rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-3 py-2 text-xs font-bold text-caudal-electric">Completar fichas de jugadores</button>
+                        )}
+                        {rivalImportReview.enrichment?.failures?.length ? <p className="mt-2 text-xs font-semibold text-amber-100">No se pudieron completar {rivalImportReview.enrichment.failures.length} perfiles.</p> : null}
+                      </div>
                       <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
                         <button type="button" onClick={cancelRivalImportReview} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-slate-100 transition hover:bg-white/10">Cancelar</button>
-                        <button type="button" onClick={applyRivalImportReview} className="rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-[#7aacff]">Aplicar datos encontrados</button>
+                        <button type="button" disabled={rivalImportReview.enrichment?.running} onClick={applyRivalImportReview} className="rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-50">Aplicar datos encontrados</button>
                       </div>
                     </div>
                   ) : null}

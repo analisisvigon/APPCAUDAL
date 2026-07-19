@@ -8,6 +8,8 @@ alter table if exists public.jugadores_rivales
   add column if not exists observed boolean not null default false,
   add column if not exists source_profile_url text,
   add column if not exists image_source text,
+  add column if not exists external_source text,
+  add column if not exists external_player_id text,
   add column if not exists yellow_cards_count integer,
   add column if not exists card_alert boolean not null default false,
   add column if not exists sent_off_alert boolean not null default false,
@@ -15,7 +17,12 @@ alter table if exists public.jugadores_rivales
   add column if not exists injured_alert boolean not null default false,
   add column if not exists alert_since date,
   add column if not exists alert_match text,
-  add column if not exists alert_note text;
+  add column if not exists alert_note text,
+  add column if not exists doubtful boolean not null default false;
+
+create unique index if not exists jugadores_rivales_external_identity_uidx
+on public.jugadores_rivales (equipo_rival_id, external_source, external_player_id)
+where external_source is not null and external_player_id is not null;
 
 comment on column public.jugadores_rivales.position is
 'Posicion natural estable del jugador. La posicion tactica de partido se guarda en equipo_rival_alineacion/equipo_rival_banquillo.';
