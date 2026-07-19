@@ -90,17 +90,24 @@ function UsersIcon() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true" className="h-4 w-4 shrink-0"><path strokeLinecap="round" strokeLinejoin="round" d="M16 20v-1.5a4.5 4.5 0 0 0-4.5-4.5h-3A4.5 4.5 0 0 0 4 18.5V20M10 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM16 11a3 3 0 0 0 0-6M17 14a4 4 0 0 1 3 3.87V20" /></svg>;
 }
 
+function TeamLogo({ src, alt, teamName = '', size = 'md', className = '' }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  useEffect(() => setImageFailed(false), [src]);
+  const sizeClass = { xs: 'h-8 w-8', sm: 'h-12 w-12', md: 'h-14 w-14', lg: 'h-20 w-20', xl: 'h-24 w-24', '2xl': 'h-28 w-28' }[size] || 'h-14 w-14';
+  const initials = String(teamName || alt || 'Equipo').split(/\s+/).filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+  return (
+    <span className={`flex shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-slate-200/80 bg-white p-2 font-black text-slate-950 shadow-[0_6px_18px_rgba(0,0,0,0.16)] ${sizeClass} ${className}`}>
+      {src && !imageFailed ? <img src={src} alt={alt || `Escudo de ${teamName}`} className="h-full w-full object-contain" onError={() => setImageFailed(true)} /> : <span aria-label={`Iniciales de ${teamName || 'equipo'}`}>{initials || 'EQ'}</span>}
+    </span>
+  );
+}
+
 function RivalCard({ rival, playerCount, accent, menuOpen, onOpen, onEdit, onDelete, onMenuOpen, menuAnchorRect, onMenuClose }) {
-  const [crestFailed, setCrestFailed] = useState(false);
-  useEffect(() => setCrestFailed(false), [rival.crest]);
   const displayName = cleanTeamDisplayName(rival.name);
-  const initials = displayName.split(/\s+/).filter(Boolean).map((part) => part[0]).join('').slice(0, 3);
   return (
     <article onClick={onOpen} className="group relative flex min-h-[204px] cursor-pointer flex-col rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.92] p-4 transition duration-200 hover:-translate-y-0.5 hover:border-white/20 hover:bg-[#0d192c] active:scale-[0.995] sm:p-5" style={{ boxShadow: `inset 4px 0 0 ${accent}, 0 16px 42px rgba(0,0,0,0.18)` }}>
       <div className="flex min-w-0 items-start gap-4">
-        <div className="flex h-[96px] w-[96px] shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white p-2.5 text-xl font-black text-caudal-950 shadow-[0_8px_22px_rgba(0,0,0,0.18)]">
-          {rival.crest && !crestFailed ? <img src={rival.crest} alt={`Escudo de ${displayName}`} className="h-full w-full object-contain" onError={() => setCrestFailed(true)} /> : <span aria-label={`Iniciales de ${displayName}`}>{initials || '—'}</span>}
-        </div>
+        <TeamLogo src={rival.crest} alt={`Escudo de ${displayName}`} teamName={displayName} size="xl" />
         <div className="min-w-0 flex-1 pt-0.5">
           <div className="flex items-start justify-between gap-2">
             <h3 className="line-clamp-2 [overflow-wrap:normal] [word-break:normal] text-[1.18rem] font-black uppercase leading-[1.12] text-white">{displayName}</h3>
@@ -11615,9 +11622,7 @@ function App() {
         <div className="border border-white/10 bg-[#091428]/85 p-4 shadow-glow">
           <div className="grid items-center gap-4 lg:grid-cols-[1fr_auto_1fr]">
             <div className="flex items-center gap-3">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-2">
-                {homeTeamCrest ? <img src={homeTeamCrest} alt="" className="h-full w-full object-contain" /> : <span className="text-lg font-black text-slate-950">{homeTeamName.slice(0, 2).toUpperCase()}</span>}
-              </div>
+              <TeamLogo src={homeTeamCrest} alt={`Escudo de ${homeTeamName}`} teamName={homeTeamName} />
               <div>
                 <p className="text-sm font-black text-white">{homeTeamName}</p>
                 <p className="mt-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Local</p>
@@ -11632,9 +11637,7 @@ function App() {
                 <p className="text-sm font-black text-white">{awayTeamName}</p>
                 <p className="mt-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Visitante</p>
               </div>
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 p-2">
-                {awayTeamCrest ? <img src={awayTeamCrest} alt="" className="h-full w-full object-contain" /> : <span className="text-lg font-black text-white">{awayTeamName.slice(0, 2).toUpperCase()}</span>}
-              </div>
+              <TeamLogo src={awayTeamCrest} alt={`Escudo de ${awayTeamName}`} teamName={awayTeamName} />
             </div>
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-4">
@@ -18059,9 +18062,7 @@ function App() {
         {splashScreen}
         <main className="mx-auto flex min-h-screen max-w-xl flex-col items-center justify-center px-4 py-7 text-center sm:px-6 sm:py-10">
           <section className="w-full rounded-[1.65rem] border border-white/10 bg-[#081326]/88 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.38)] backdrop-blur-md sm:p-8">
-            <div className="mx-auto flex h-28 w-28 items-center justify-center overflow-hidden rounded-[1.45rem] bg-white p-3.5 shadow-[0_16px_45px_rgba(0,0,0,0.25)] sm:h-32 sm:w-32">
-              <img src={clubCrest} alt="Escudo del C.D. Caudal" className="h-full w-full object-contain" />
-            </div>
+            <TeamLogo className="mx-auto sm:h-32 sm:w-32" src={clubCrest} alt="Escudo del C.D. Caudal" teamName="C.D. Caudal" size="2xl" />
             <p className="mt-5 text-[11px] font-black uppercase tracking-[0.26em] text-caudal-electric/90">Panel cuerpo técnico</p>
             <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">C.D. Caudal de Mieres</h1>
             <p className="mt-2 text-sm font-medium text-slate-500">Mieres, Asturias</p>
@@ -18213,9 +18214,7 @@ function App() {
             <section className="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0b1220] shadow-[0_16px_48px_rgba(0,0,0,0.24)]">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(212,0,0,0.10),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.045),transparent_46%)]" />
               <div className="relative grid gap-4 p-3.5 sm:p-4 lg:grid-cols-[auto_1fr_auto] lg:items-center">
-                <div className="mx-auto flex h-16 w-16 items-center justify-center overflow-hidden rounded-[1.15rem] bg-white p-2 shadow-[0_12px_28px_rgba(0,0,0,0.22)] sm:mx-0 sm:h-20 sm:w-20">
-                  <img src={clubCrest} alt="Escudo del C.D. Caudal" className="h-full w-full object-contain" />
-                </div>
+                <TeamLogo className="mx-auto sm:mx-0" src={clubCrest} alt="Escudo del C.D. Caudal" teamName="C.D. Caudal" size="lg" />
                 <div className="text-center sm:text-left">
                   <p className="text-[10px] font-black uppercase tracking-[0.22em] text-red-200/80">Cuerpo técnico</p>
                   <h2 className="mt-1 text-xl font-black text-white sm:text-3xl">C.D. Caudal de Mieres</h2>
@@ -18301,13 +18300,7 @@ function App() {
               <div className="relative overflow-hidden rounded-[1.55rem] border border-caudal-electric/20 bg-[#091428]/95 p-5 shadow-[0_20px_58px_rgba(0,0,0,0.24)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/35 hover:shadow-[0_26px_70px_rgba(0,0,0,0.30)] sm:p-6">
                 <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(79,140,255,0.18),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.05),transparent_48%)]" />
                 <div className="relative grid gap-6 lg:grid-cols-[auto_1fr_auto] lg:items-center">
-                  <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[1.35rem] bg-white p-3 shadow-[0_18px_42px_rgba(0,0,0,0.22)] sm:h-28 sm:w-28">
-                    <img
-                      src={homeDashboard.nextMatch?.opponentCrest || homeDashboard.nextOpponentTeam?.crest || clubCrest}
-                      alt={homeDashboard.nextMatch?.opponent || 'Escudo rival'}
-                      className="h-full w-full object-contain"
-                    />
-                  </div>
+                  <TeamLogo src={homeDashboard.nextMatch?.opponentCrest || homeDashboard.nextOpponentTeam?.crest} alt={homeDashboard.nextMatch?.opponent || 'Escudo rival'} teamName={homeDashboard.nextMatch?.opponent || homeDashboard.nextOpponentTeam?.name || 'Rival'} size="2xl" />
                   <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric/85">Partido en preparación</p>
                     <h3 className="mt-2 truncate text-3xl font-black text-white sm:text-5xl">{homeDashboard.nextMatch?.opponent || 'No hay ningún partido próximo programado.'}</h3>
@@ -19124,9 +19117,7 @@ function App() {
                               <td className="px-3 py-4 text-slate-300">{matchDisplayDate(row.match.date)}</td>
                               <td className="px-3 py-4">
                                 <div className="flex items-center gap-3">
-                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 text-[10px] font-black text-slate-950">
-                                    {row.match.opponentCrest ? <img src={row.match.opponentCrest} alt="" className="h-full w-full object-contain" /> : row.match.opponent.slice(0, 2).toUpperCase()}
-                                  </span>
+                                  <TeamLogo src={row.match.opponentCrest} alt={`Escudo de ${row.match.opponent}`} teamName={row.match.opponent} size="xs" />
                                   <span className="truncate font-bold text-white">{row.match.opponent}</span>
                                 </div>
                               </td>
@@ -19755,9 +19746,7 @@ function App() {
                         <button type="button" onClick={() => setSelectedTeamId(null)} className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-2 text-sm font-bold text-slate-200 transition hover:bg-white/10">
                           Volver
                         </button>
-                        <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white p-2 text-base font-black text-caudal-950 ${isPresentationMode ? 'h-14 w-14' : 'h-24 w-24'}`}>
-                          {selectedTeam.crest ? <img src={selectedTeam.crest} alt={`Escudo de ${selectedTeam.name}`} className="h-full w-full object-contain" /> : selectedTeam.name.split(' ').map((part) => part[0]).join('').slice(0, 3)}
-                        </div>
+                        <TeamLogo src={selectedTeam.crest} alt={`Escudo de ${selectedTeam.name}`} teamName={selectedTeam.name} size={isPresentationMode ? 'md' : 'xl'} />
                         <div className="min-w-0">
                           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric">Ficha rival</p>
                           <h3 className={`truncate font-black uppercase text-white ${isPresentationMode ? 'text-xl' : 'text-3xl'}`}>{cleanTeamDisplayName(selectedTeam.name)}</h3>
@@ -20251,13 +20240,7 @@ function App() {
                 <div className="grid gap-4 lg:grid-cols-[0.32fr_0.68fr]">
                   <aside className="rounded-[1.5rem] border border-white/10 bg-[#091428]/[0.78] p-4 shadow-[0_16px_50px_rgba(0,0,0,0.18)]">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-white p-2 text-sm font-bold text-caudal-950">
-                        {selectedTeam.crest ? (
-                          <img src={selectedTeam.crest} alt={`Escudo de ${selectedTeam.name}`} className="h-full w-full object-contain" />
-                        ) : (
-                          <span>{selectedTeam.name.split(' ').map((part) => part[0]).join('').slice(0, 3)}</span>
-                        )}
-                      </div>
+                      <TeamLogo src={selectedTeam.crest} alt={`Escudo de ${selectedTeam.name}`} teamName={selectedTeam.name} />
                       <div className="min-w-0">
                         <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Alineación</p>
                         <h3 className="truncate text-lg font-semibold text-white">{selectedTeam.name}</h3>
@@ -21563,9 +21546,7 @@ function App() {
                         </div>
                         <div className="relative grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 pb-3 pt-4">
                           <div className="text-center">
-                            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-2">
-                              <img src={caudalIsHome ? clubCrest : match.opponentCrest || clubCrest} alt="" className="h-full w-full object-contain" />
-                            </div>
+                            <TeamLogo className="mx-auto" src={caudalIsHome ? clubCrest : match.opponentCrest} alt={`Escudo de ${caudalIsHome ? 'C.D. Caudal' : match.opponent}`} teamName={caudalIsHome ? 'C.D. Caudal' : match.opponent} />
                             <p className="mt-2 line-clamp-1 text-sm font-bold text-white">{caudalIsHome ? 'C.D. Caudal' : match.opponent}</p>
                           </div>
                           <div className="text-center">
@@ -21582,9 +21563,7 @@ function App() {
                             {match.stadium ? <p className="mt-1 text-xs font-semibold text-slate-400">{match.stadium}</p> : null}
                           </div>
                           <div className="text-center">
-                            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 p-2 text-lg font-bold text-white">
-                              {caudalIsHome ? (match.opponentCrest ? <img src={match.opponentCrest} alt="" className="h-full w-full object-contain" /> : match.opponent.slice(0, 2).toUpperCase()) : <img src={clubCrest} alt="" className="h-full w-full object-contain" />}
-                            </div>
+                            <TeamLogo className="mx-auto" src={caudalIsHome ? match.opponentCrest : clubCrest} alt={`Escudo de ${caudalIsHome ? match.opponent : 'C.D. Caudal'}`} teamName={caudalIsHome ? match.opponent : 'C.D. Caudal'} />
                             <p className="mt-2 line-clamp-1 text-sm font-bold text-white">{caudalIsHome ? match.opponent : 'C.D. Caudal'}</p>
                           </div>
                         </div>
@@ -22891,9 +22870,7 @@ function App() {
                       <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Resumen de marcador</h3>
                       <div className="mt-6 grid items-center gap-6 lg:grid-cols-[1fr_auto_1fr]">
                         <div className="text-center">
-                          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-white p-3 shadow-glow">
-                            <img src={clubCrest} alt="" className="h-full w-full object-contain" />
-                          </div>
+                          <TeamLogo className="mx-auto" src={clubCrest} alt="Escudo de C.D. Caudal" teamName="C.D. Caudal" size="lg" />
                           <p className="mt-3 text-sm font-bold text-white">C.D. Caudal</p>
                         </div>
                         <div className="text-center">
@@ -22901,9 +22878,7 @@ function App() {
                           <p className="mt-2 text-6xl font-black text-white">{getStatsScore().home} - {getStatsScore().away}</p>
                         </div>
                         <div className="text-center">
-                          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-white/10 p-3 shadow-glow">
-                            {selectedMatch.opponentCrest ? <img src={selectedMatch.opponentCrest} alt="" className="h-full w-full object-contain" /> : <span className="text-xl font-black text-white">{selectedMatch.opponent?.slice(0, 2).toUpperCase()}</span>}
-                          </div>
+                          <TeamLogo className="mx-auto" src={selectedMatch.opponentCrest} alt={`Escudo de ${selectedMatch.opponent || 'Rival'}`} teamName={selectedMatch.opponent || 'Rival'} size="lg" />
                           <p className="mt-3 text-sm font-bold text-white">{selectedMatch.opponent || 'Rival'}</p>
                         </div>
                       </div>
@@ -24360,9 +24335,7 @@ function App() {
                 <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/74 p-5 shadow-[0_16px_50px_rgba(0,0,0,0.18)]" style={{ boxShadow: `inset 0 4px 0 ${rivalAccentColor}, 0 16px 50px rgba(0,0,0,0.18)` }}>
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Previsualización</p>
                   <div className="mt-4 flex items-center gap-4">
-                    <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white p-3 text-lg font-black text-caudal-950">
-                      {teamFormState.crest ? <img src={teamFormState.crest} alt="" className="h-full w-full object-contain" /> : getRivalPlayerInitials(formTeamName)}
-                    </div>
+                    <TeamLogo src={teamFormState.crest} alt={`Escudo de ${formTeamName}`} teamName={formTeamName} size="xl" />
                     <div className="min-w-0">
                       <h2 className="truncate text-2xl font-black uppercase text-white">{formTeamName}</h2>
                       <p className="mt-2 text-sm font-bold text-slate-300">{teamFormState.stadium || 'Sin estadio registrado'}</p>
