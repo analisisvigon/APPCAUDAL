@@ -81,6 +81,40 @@ function FloatingActionMenu({ anchorRect, width = 224, onClose, children }) {
   );
 }
 
+function LocationIcon() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0"><path strokeLinecap="round" strokeLinejoin="round" d="M12 21s6-5.1 6-11a6 6 0 1 0-12 0c0 5.9 6 11 6 11Z" /><circle cx="12" cy="10" r="2.25" /></svg>;
+}
+
+function UsersIcon() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true" className="h-4 w-4 shrink-0"><path strokeLinecap="round" strokeLinejoin="round" d="M16 20v-1.5a4.5 4.5 0 0 0-4.5-4.5h-3A4.5 4.5 0 0 0 4 18.5V20M10 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM16 11a3 3 0 0 0 0-6M17 14a4 4 0 0 1 3 3.87V20" /></svg>;
+}
+
+function RivalCard({ rival, playerCount, accent, menuOpen, onOpen, onEdit, onDelete, onMenuOpen, menuAnchorRect, onMenuClose }) {
+  const [crestFailed, setCrestFailed] = useState(false);
+  useEffect(() => setCrestFailed(false), [rival.crest]);
+  const displayName = cleanTeamDisplayName(rival.name);
+  const initials = displayName.split(/\s+/).filter(Boolean).map((part) => part[0]).join('').slice(0, 3);
+  return (
+    <article onClick={onOpen} className="group relative flex min-h-[204px] cursor-pointer flex-col rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.92] p-4 transition duration-200 hover:-translate-y-0.5 hover:border-white/20 hover:bg-[#0d192c] active:scale-[0.995] sm:p-5" style={{ boxShadow: `inset 4px 0 0 ${accent}, 0 16px 42px rgba(0,0,0,0.18)` }}>
+      <div className="flex min-w-0 items-start gap-4">
+        <div className="flex h-[96px] w-[96px] shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white p-2.5 text-xl font-black text-caudal-950 shadow-[0_8px_22px_rgba(0,0,0,0.18)]">
+          {rival.crest && !crestFailed ? <img src={rival.crest} alt={`Escudo de ${displayName}`} className="h-full w-full object-contain" onError={() => setCrestFailed(true)} /> : <span aria-label={`Iniciales de ${displayName}`}>{initials || '—'}</span>}
+        </div>
+        <div className="min-w-0 flex-1 pt-0.5">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="line-clamp-2 [overflow-wrap:normal] [word-break:normal] text-[1.18rem] font-black uppercase leading-[1.12] text-white">{displayName}</h3>
+            <button type="button" aria-label={`Acciones de ${displayName}`} onClick={onMenuOpen} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xl font-black leading-none text-slate-400 transition hover:bg-white/10 hover:text-white">⋯</button>
+          </div>
+          <p className="mt-2 flex items-start gap-1.5 text-sm font-semibold leading-5 text-slate-400"><LocationIcon /><span>{String(rival.stadium || '').trim() || 'Estadio sin registrar'}</span></p>
+          <p className="mt-1.5 flex items-center gap-1.5 text-sm font-bold text-slate-300"><UsersIcon /><span>{playerCount > 0 ? `${playerCount} ${playerCount === 1 ? 'jugador' : 'jugadores'}` : 'Plantilla sin registrar'}</span></p>
+        </div>
+      </div>
+      <div className="mt-auto flex justify-end pt-4"><button type="button" onClick={(event) => { event.stopPropagation(); onOpen(); }} className="inline-flex min-h-[38px] w-full items-center justify-center rounded-xl bg-caudal-electric/90 px-4 py-2 text-xs font-black uppercase tracking-[0.10em] text-slate-950 transition hover:bg-caudal-electric active:scale-[0.98] sm:w-auto">Ver rival <span className="ml-2" aria-hidden="true">→</span></button></div>
+      {menuOpen ? <FloatingActionMenu anchorRect={menuAnchorRect} width={176} onClose={onMenuClose}><button type="button" onClick={onEdit} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-slate-200 transition hover:bg-white/10">Editar rival</button><button type="button" onClick={onDelete} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar rival</button></FloatingActionMenu> : null}
+    </article>
+  );
+}
+
 function CompetitionIcon({ competition, className = 'h-9 w-9 rounded-xl', textClassName = 'text-[10px]' }) {
   const [logoFailed, setLogoFailed] = useState(false);
   useEffect(() => {
@@ -3706,8 +3740,6 @@ function App() {
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [teamsError, setTeamsError] = useState('');
   const [teamSearchTerm, setTeamSearchTerm] = useState('');
-  const [teamSortMode, setTeamSortMode] = useState('Nombre');
-  const [teamQuickFilter, setTeamQuickFilter] = useState('Todos');
   const [floatingMenu, setFloatingMenu] = useState(null);
   const [matchSubmitError, setMatchSubmitError] = useState('');
   const [matchSubmitSuccess, setMatchSubmitSuccess] = useState('');
@@ -19269,7 +19301,7 @@ function App() {
                 </div>
               </div>
               {!selectedTeam ? (
-                <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(260px,1fr)_220px] lg:items-center">
+                <div className="mt-3">
                   <label className="relative block">
                     <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-500">?</span>
                     <input
@@ -19279,31 +19311,6 @@ function App() {
                       className="min-h-[42px] w-full rounded-2xl border border-white/10 bg-black/20 py-2 pl-10 pr-4 text-sm font-bold text-white outline-none transition placeholder:text-slate-600 focus:border-caudal-electric/40 focus:bg-black/30"
                     />
                   </label>
-                  <select
-                    value={teamSortMode}
-                    onChange={(event) => setTeamSortMode(event.target.value)}
-                    className="min-h-[42px] rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-black text-white outline-none"
-                  >
-                    <option>Nombre</option>
-                    <option>Último enfrentamiento</option>
-                    <option>Más reciente</option>
-                  </select>
-                  <div className="flex flex-wrap gap-1.5 lg:col-span-2">
-                    {['Todos', '4-4-2', '4-3-3', '3-5-2', 'Otros sistemas'].filter((filter) => {
-                      if (filter === 'Todos') return true;
-                      if (filter === 'Otros sistemas') return teams.some((team) => team.system && !['4-4-2', '4-3-3', '3-5-2'].includes(team.system));
-                      return teams.some((team) => team.system === filter);
-                    }).map((filter) => (
-                      <button
-                        key={filter}
-                        type="button"
-                        onClick={() => setTeamQuickFilter(filter)}
-                        className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.10em] transition active:scale-[0.98] ${teamQuickFilter === filter ? 'bg-caudal-electric text-slate-950' : 'border border-white/10 bg-white/[0.04] text-slate-400 hover:bg-white/[0.07] hover:text-white'}`}
-                      >
-                        {filter}
-                      </button>
-                    ))}
-                  </div>
                 </div>
               ) : null}
               {saveStatus ? <p className="mt-3 text-sm text-caudal-electric">{saveStatus}</p> : null}
@@ -20499,97 +20506,27 @@ function App() {
               const visibleTeams = teams
                 .filter((team) => {
                   if (!search) return true;
-                  const profile = getRivalCardProfile(team);
-                  return normalizePlayerIdentityName([
-                    team.name,
-                    team.stadium,
-                    team.system,
-                    team.mainThreat,
-                    team.detectedWeakness,
-                    profile.quickRead.map(([, value]) => value).join(' '),
-                  ].join(' ')).includes(search);
+                  return normalizePlayerIdentityName(team.name).includes(search);
                 })
-                .filter((team) => {
-                  if (teamQuickFilter === 'Todos') return true;
-                  if (['4-4-2', '4-3-3', '3-5-2'].includes(teamQuickFilter)) return team.system === teamQuickFilter;
-                  if (teamQuickFilter === 'Otros sistemas') return team.system && !['4-4-2', '4-3-3', '3-5-2'].includes(team.system);
-                  return true;
-                })
-                .sort((a, b) => {
-                  const profileA = getRivalCardProfile(a);
-                  const profileB = getRivalCardProfile(b);
-                  if (teamSortMode === 'Último enfrentamiento') return String(profileB.latestMatch?.date || '').localeCompare(String(profileA.latestMatch?.date || '')) || String(a.name).localeCompare(String(b.name));
-                  if (teamSortMode === 'Más reciente') return String(profileB.latestMatch?.date || '').localeCompare(String(profileA.latestMatch?.date || '')) || String(a.name).localeCompare(String(b.name));
-                  return cleanTeamDisplayName(a.name).localeCompare(cleanTeamDisplayName(b.name));
-                });
+                .sort((a, b) => cleanTeamDisplayName(a.name).localeCompare(cleanTeamDisplayName(b.name), 'es', { sensitivity: 'base' }));
               return visibleTeams.length ? (
-                <div className="grid w-full grid-cols-[repeat(auto-fill,minmax(300px,340px))] justify-start gap-4">
+                <div className="grid w-full gap-4 md:grid-cols-2 2xl:grid-cols-3">
                   {visibleTeams.map((team) => {
-                    const profile = getRivalCardProfile(team);
                     const accent = getSafeRivalAccentColor(team.kitColor);
-                    const lastMatch = profile.playedMatches[0] || profile.latestMatch || null;
-                    const lastScore = lastMatch ? getMatchScoreData(lastMatch) : null;
-                    const lastMatchDateLabel = lastMatch ? matchDisplayDate(lastMatch.date) : 'Sin fecha';
-                    const lastResultLine = lastScore ? `Caudal ${lastScore.caudalGoals}-${lastScore.rivalGoals} ${cleanTeamDisplayName(team.name)}` : '';
                     return (
-                      <article
+                      <RivalCard
                         key={team.id}
-                        onClick={() => setSelectedTeamId(team.id)}
-                        className="group relative flex h-full min-h-[252px] cursor-pointer flex-col overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.92] p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/35 hover:bg-[#0d192c] hover:shadow-[0_22px_52px_rgba(0,0,0,0.24)] active:scale-[0.995]"
-                        style={{ boxShadow: `inset 4px 0 0 ${accent}, 0 16px 42px rgba(0,0,0,0.18)` }}
-                      >
-                        <div className="pointer-events-none absolute inset-0 opacity-80" style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.055), transparent 54%)' }} />
-                        <div className="relative flex items-start gap-3.5">
-                          <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-[1.05rem] border border-white/10 bg-white/[0.075] p-1.5 shadow-[0_12px_26px_rgba(0,0,0,0.20)]">
-                            <div className="flex h-[58px] w-[58px] items-center justify-center overflow-hidden rounded-xl bg-white p-1.5 text-base font-black text-caudal-950">
-                              {team.crest ? <img src={team.crest} alt={`Escudo de ${team.name}`} className="h-full w-full object-contain" /> : <span>{team.name.split(' ').map((part) => part[0]).join('').slice(0, 3)}</span>}
-                            </div>
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-start justify-between gap-1.5">
-                              <h3 className="break-words pr-1 text-[1.18rem] font-black uppercase leading-[1.08] text-white">{cleanTeamDisplayName(team.name)}</h3>
-                              <button
-                                type="button"
-                                onClick={(event) => openFloatingMenu(event, { id: `team-card-${team.id}`, type: 'team-card' })}
-                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.045] text-sm font-black text-slate-300 transition hover:bg-white/10"
-                              >
-                                ?
-                              </button>
-                              {floatingMenu?.id === `team-card-${team.id}` ? (
-                                <FloatingActionMenu anchorRect={floatingMenu.anchorRect} width={176} onClose={closeFloatingMenu}>
-                                  <button type="button" onClick={() => runMenuAction(() => openTeamForm(team))} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-slate-200 transition hover:bg-white/10">Editar equipo</button>
-                                  <button type="button" onClick={() => runMenuAction(() => setActiveTab('Partidos'))} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-caudal-electric transition hover:bg-caudal-electric/10">Crear PRE</button>
-                                  <button type="button" onClick={() => runMenuAction(() => { if (window.confirm('¿Seguro que quieres eliminar este rival?')) handleTeamDelete(team); })} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar equipo</button>
-                                </FloatingActionMenu>
-                              ) : null}
-                            </div>
-                            {team.stadium ? <p className="mt-1.5 text-xs font-semibold leading-4 text-slate-400">{team.stadium}</p> : null}
-                          </div>
-                        </div>
-
-                        <div className="relative mt-4 flex items-center">
-                          <span className="inline-flex items-center gap-2 rounded-xl border border-caudal-electric/20 bg-caudal-electric/[0.11] px-3 py-2 text-sm font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                            <span className="text-base leading-none">?</span>
-                            <span>{team.system || 'Sin registrar'}</span>
-                          </span>
-                        </div>
-
-                        <div className="relative mt-4 rounded-2xl border border-white/10 bg-white/[0.04] px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
-                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Último enfrentamiento</p>
-                          {lastMatch ? (
-                            <>
-                              <p className="mt-1.5 text-sm font-black leading-5 text-white">{lastResultLine}</p>
-                              <p className="mt-0.5 text-xs font-semibold text-slate-400">{lastMatchDateLabel}</p>
-                            </>
-                          ) : (
-                            <p className="mt-1.5 text-sm font-semibold leading-5 text-slate-400">Sin enfrentamientos registrados</p>
-                          )}
-                        </div>
-
-                        <div className="relative mt-auto flex justify-end pt-3.5">
-                          <button type="button" onClick={(event) => { event.stopPropagation(); setSelectedTeamId(team.id); }} className="inline-flex min-h-[32px] items-center justify-center rounded-xl bg-caudal-electric/90 px-4 py-1.5 text-xs font-black uppercase tracking-[0.10em] text-slate-950 transition hover:bg-caudal-electric active:scale-[0.98]">Ver rival</button>
-                        </div>
-                      </article>
+                        rival={team}
+                        playerCount={dedupeRivalPlayers(team.squad || []).length}
+                        accent={accent}
+                        menuOpen={floatingMenu?.id === `team-card-${team.id}`}
+                        menuAnchorRect={floatingMenu?.anchorRect}
+                        onOpen={() => setSelectedTeamId(team.id)}
+                        onMenuOpen={(event) => openFloatingMenu(event, { id: `team-card-${team.id}`, type: 'team-card' })}
+                        onMenuClose={closeFloatingMenu}
+                        onEdit={() => runMenuAction(() => openTeamForm(team))}
+                        onDelete={() => runMenuAction(() => { if (window.confirm('¿Seguro que quieres eliminar este rival?')) handleTeamDelete(team); })}
+                      />
                     );
                   })}
                 </div>
@@ -20601,7 +20538,8 @@ function App() {
             })()
             : (
               <section className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] px-6 py-8 text-sm text-slate-400">
-                Todavía no hay equipos cargados.
+                <p>Todavía no hay equipos rivales registrados.</p>
+                <button type="button" onClick={() => openTeamForm(null)} className="mt-4 inline-flex min-h-[38px] items-center justify-center rounded-xl bg-caudal-electric/90 px-4 py-2 text-xs font-black uppercase tracking-[0.10em] text-slate-950 transition hover:bg-caudal-electric">Crear primer rival</button>
               </section>
             )}
           </main>
