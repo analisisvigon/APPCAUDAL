@@ -365,7 +365,14 @@ export const normalizeGlobalPlayer = (row = {}, related = {}) => {
     position: getNaturalPositionLabel(primaryNaturalPosition),
     specificPosition: getSpecificPositionLabel(primarySpecificPosition),
     sources: safeArray(related.sources).filter((item) => item.player_id === row.id).map((item) => ({
-      id: item.id, url: item.url, sourceName: item.source_name, isPrimary: Boolean(item.is_primary),
+      id: item.id,
+      url: item.url,
+      sourceName: item.source_name,
+      isPrimary: Boolean(item.is_primary),
+      analysisStatus: item.analysis_status || 'not_analyzed',
+      analyzedAt: item.analyzed_at || '',
+      analysisError: item.analysis_error || '',
+      analysisSummary: item.analysis_summary || {},
     })),
     traits: safeArray(related.traits).filter((item) => item.player_id === row.id).map((item) => ({
       id: item.id, category: item.category, label: item.label, positionFamily: item.position_family || '',
@@ -468,6 +475,10 @@ export const buildGlobalPlayerRpcPayload = (draft = {}) => {
       url: item.url,
       source_name: item.sourceName || 'Otro',
       is_primary: hasExplicitPrimarySource ? Boolean(item.isPrimary) : index === 0,
+      analysis_status: item.analysisStatus || 'not_analyzed',
+      analyzed_at: item.analyzedAt || null,
+      analysis_error: item.analysisError || '',
+      analysis_summary: item.analysisSummary || {},
     })),
     p_traits: safeArray(draft.traits).filter((item) => item.label).map((item) => ({
       category: item.category, label: item.label, position_family: item.positionFamily || model.primarySpecificPosition || model.primaryNaturalPosition,

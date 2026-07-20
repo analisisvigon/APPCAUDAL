@@ -4007,6 +4007,8 @@ function App() {
   const [rivalPlayerSaving, setRivalPlayerSaving] = useState(false);
   const [rivalPlayerPhotoError, setRivalPlayerPhotoError] = useState('');
   const [rivalPlayerPhotoUploading, setRivalPlayerPhotoUploading] = useState(false);
+  const [playerSourceAnalysis, setPlayerSourceAnalysis] = useState(null);
+  const [playerSourceAnalyzingUrl, setPlayerSourceAnalyzingUrl] = useState('');
   const [pendingRivalPlayerDelete, setPendingRivalPlayerDelete] = useState(null);
   const [rivalRosterSearch, setRivalRosterSearch] = useState('');
   const [rivalRosterFilter, setRivalRosterFilter] = useState('Todos');
@@ -15823,6 +15825,8 @@ function App() {
     setRivalPlayerSaveError('');
     setRivalPlayerPhotoError('');
     setRivalPlayerSaving(false);
+    setPlayerSourceAnalysis(null);
+    setPlayerSourceAnalyzingUrl('');
     setRivalPlayerModal({
       open: true,
       mode: player ? 'edit' : 'create',
@@ -15841,6 +15845,8 @@ function App() {
     setRivalPlayerPhotoError('');
     setRivalPlayerSaving(false);
     setRivalPlayerPhotoUploading(false);
+    setPlayerSourceAnalysis(null);
+    setPlayerSourceAnalyzingUrl('');
   };
 
   const duplicateGlobalPlayerDraft = (player) => {
@@ -15888,6 +15894,146 @@ function App() {
         ...(field === 'teamId' && value !== current.draft?.membership?.team_id ? { membershipId: null, membershipMode: 'replace' } : {}),
       },
     }));
+  };
+
+  const updatePlayerSourceDraft = (sourceUrl, changes) => {
+    setRivalPlayerModal((current) => ({
+      ...current,
+      draft: {
+        ...(current.draft || createBlankGlobalPlayer()),
+        sources: safeArray(current.draft?.sources).map((source) => source.url === sourceUrl ? { ...source, ...changes } : source),
+      },
+    }));
+  };
+
+  const persistPlayerSourceAnalysisState = async (source, changes) => {
+    updatePlayerSourceDraft(source.url, changes);
+    if (!source.id) return;
+    const { error: sourceUpdateError } = await supabase.from('player_sources').update({
+      analysis_status: changes.analysisStatus,
+      analyzed_at: changes.analyzedAt || null,
+      analysis_error: changes.analysisError || null,
+      analysis_summary: changes.analysisSummary || {},
+    }).eq('id', source.id);
+    if (sourceUpdateError) throw sourceUpdateError;
+  };
+
+  const analyzeGlobalPlayerSource = async (source) => {
+    if (!source?.url || playerSourceAnalyzingUrl) return;
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(source.url);
+      if (parsedUrl.protocol !== 'https:') throw new Error('Solo se pueden analizar fuentes HTTPS.');
+    } catch (urlError) {
+      setRivalPlayerSaveError(urlError.message || 'La URL de la fuente no es válida.');
+      return;
+    }
+    setPlayerSourceAnalyzingUrl(source.url);
+    setPlayerSourceAnalysis(null);
+    setRivalPlayerSaveError('');
+    updatePlayerSourceDraft(source.url, { analysisStatus: 'analyzing', analysisError: '' });
+    try {
+      const { data, error: functionError } = await supabase.functions.invoke('analyze-player-source', { body: { url: parsedUrl.href } });
+      if (functionError) throw functionError;
+      if (!data?.ok) throw new Error(data?.error || 'No se pudo analizar la fuente.');
+      const analyzedAt = data.analyzedAt || new Date().toISOString();
+      const analysisStatus = data.status || (data.fields?.length ? 'data_found' : 'no_data');
+      const analysisSummary = {
+        sourceType: data.sourceType || 'generic',
+        pageType: data.pageType || 'unknown',
+        canonicalUrl: data.canonicalUrl || parsedUrl.href,
+        fields: safeArray(data.fields),
+        discarded: safeArray(data.discarded),
+        structuredData: data.structuredData || {},
+      };
+      await persistPlayerSourceAnalysisState(source, { analysisStatus, analyzedAt, analysisError: '', analysisSummary });
+      setPlayerSourceAnalysis({ ...data, sourceUrl: source.url, analyzedAt });
+      if (analysisStatus === 'no_data') setRivalPlayerSaveError('No se han podido extraer datos automáticamente. La fuente se conserva como referencia.');
+      if (analysisStatus === 'not_player') setRivalPlayerSaveError('La página no parece ser una ficha individual de jugador. No se aplicarán datos dudosos.');
+    } catch (analysisError) {
+      const message = analysisError.message || 'No se pudo acceder a la fuente.';
+      try {
+        await persistPlayerSourceAnalysisState(source, { analysisStatus: 'access_error', analyzedAt: new Date().toISOString(), analysisError: message, analysisSummary: {} });
+      } catch (statusError) {
+        console.error('[PLAYER_SOURCE_STATUS_ERROR]', statusError);
+      }
+      setRivalPlayerSaveError(`Error de acceso: ${message}`);
+    } finally {
+      setPlayerSourceAnalyzingUrl('');
+    }
+  };
+
+  const applyGlobalPlayerSourceAnalysis = (analysis, selection) => {
+    if (!analysis?.fields?.length) return;
+    const found = Object.fromEntries(analysis.fields.map((field) => [field.field, field.value]));
+    const selected = (field) => Boolean(selection?.[field] && found[field] !== undefined && found[field] !== '');
+    const importedSource = analysis.sourceType === 'transfermarkt'
+      ? 'imported_transfermarkt'
+      : analysis.sourceType === 'besoccer' ? 'imported_besoccer' : 'imported_generic';
+    const updatedAt = new Date().toISOString();
+    setRivalPlayerModal((current) => {
+      const draft = current.draft || createBlankGlobalPlayer();
+      const next = { ...draft };
+      const nextFieldSources = { ...(draft.fieldSources || {}) };
+      const applyField = (field, value, sourceField = field) => {
+        next[field] = value;
+        nextFieldSources[sourceField] = createFieldSource(importedSource, updatedAt);
+      };
+      if (selected('name')) applyField('name', String(found.name).trim());
+      if (selected('photoUrl')) {
+        applyField('photoUrl', found.photoUrl);
+        next.image = found.photoUrl;
+        next.imageSource = importedSource;
+      }
+      if (selected('dob')) applyField('dob', found.dob);
+      if (selected('age')) applyField('age', String(found.age));
+      if (selected('height')) applyField('height', found.height);
+      if (selected('foot')) applyField('foot', found.foot);
+      if (selected('number')) applyField('number', String(found.number));
+      if (selected('rawPosition')) {
+        const positionModel = mapExternalPositionToPlayerPositions(found.rawPosition);
+        if (positionModel.primaryNaturalPosition) {
+          next.primaryNaturalPosition = positionModel.primaryNaturalPosition;
+          next.primarySpecificPosition = positionModel.primarySpecificPosition || '';
+          next.secondaryNaturalPositions = positionModel.secondaryNaturalPositions || [];
+          next.secondarySpecificPositions = positionModel.secondarySpecificPositions || [];
+          next.positionSource = importedSource;
+          nextFieldSources.position = createFieldSource(importedSource, updatedAt);
+          nextFieldSources.specificPosition = createFieldSource(importedSource, updatedAt);
+        }
+      }
+      if (selected('secondaryPositions')) {
+        const secondaryModels = safeArray(found.secondaryPositions).map(mapExternalPositionToPlayerPositions);
+        next.secondaryNaturalPositions = Array.from(new Set([
+          ...safeArray(next.secondaryNaturalPositions),
+          ...secondaryModels.flatMap((model) => [model.primaryNaturalPosition, ...safeArray(model.secondaryNaturalPositions)]),
+        ].filter((key) => key && key !== next.primaryNaturalPosition)));
+        next.secondarySpecificPositions = Array.from(new Set([
+          ...safeArray(next.secondarySpecificPositions),
+          ...secondaryModels.flatMap((model) => [model.primarySpecificPosition, ...safeArray(model.secondarySpecificPositions)]),
+        ].filter((key) => key && key !== next.primarySpecificPosition)));
+        next.positionSource = importedSource;
+        nextFieldSources.position = createFieldSource(importedSource, updatedAt);
+      }
+      if (selected('currentTeam')) {
+        const matchedTeam = teams.find((team) => normalizePlayerIdentityName(team.name) === normalizePlayerIdentityName(found.currentTeam));
+        if (matchedTeam) {
+          next.teamId = matchedTeam.id;
+          next.membershipId = String(draft.teamId || '') === String(matchedTeam.id) ? draft.membershipId : null;
+          next.membershipMode = 'replace';
+        }
+      }
+      next.fieldSources = nextFieldSources;
+      if (analysis.sourceType === 'transfermarkt') {
+        next.externalSource = next.externalSource || 'transfermarkt';
+        next.externalPlayerId = next.externalPlayerId || extractTransfermarktPlayerId(analysis.canonicalUrl || analysis.sourceUrl) || '';
+      } else if (analysis.sourceType === 'besoccer') {
+        next.externalSource = next.externalSource || 'besoccer';
+      }
+      return { ...current, draft: next };
+    });
+    setPlayerSourceAnalysis(null);
+    setGlobalPlayerStatus('Datos aplicados a la ficha. Revisa el resultado y pulsa “Guardar jugador” para persistirlos.');
   };
 
   const handleRivalPlayerPhotoFileChange = async (event) => {
@@ -15981,16 +16127,18 @@ function App() {
       teamId: draftTeamId,
       membershipId: changedTeam ? null : rivalPlayerModal.draft.membershipId,
     };
+    const manuallyMarkedFieldSources = markChangedFieldsManual({
+      current: rivalPlayerModal.mode === 'edit' ? currentGlobalPlayer : {},
+      next: draftBase,
+      fields: ['name', 'photoUrl', 'dob', 'age', 'height', 'foot', 'scoutingSummary', 'cardAlert', 'sentOffAlert', 'suspendedAlert', 'injuredAlert'],
+      fieldSources: draftBase.fieldSources || {},
+      sourceByField: { photoUrl: draftBase.imageSource === 'manual_upload' ? 'manual_upload' : 'manual_url' },
+    });
+    const importedFieldSources = Object.fromEntries(Object.entries(draftBase.fieldSources || {}).filter(([, metadata]) => /^imported(?:_|$)/i.test(metadata?.source || '')));
     const draft = {
       ...draftBase,
-      fieldSources: markChangedFieldsManual({
-        current: rivalPlayerModal.mode === 'edit' ? currentGlobalPlayer : {},
-        next: draftBase,
-        fields: ['name', 'photoUrl', 'dob', 'age', 'height', 'foot', 'scoutingSummary', 'cardAlert', 'sentOffAlert', 'suspendedAlert', 'injuredAlert'],
-        fieldSources: draftBase.fieldSources || {},
-        sourceByField: { photoUrl: draftBase.imageSource === 'manual_upload' ? 'manual_upload' : 'manual_url' },
-      }),
-      positionSource: 'manual',
+      fieldSources: { ...manuallyMarkedFieldSources, ...importedFieldSources },
+      positionSource: /^imported(?:_|$)/i.test(draftBase.positionSource || '') ? draftBase.positionSource : 'manual',
     };
     const matches = rivalPlayerModal.mode === 'create' ? findGlobalPlayerMatches(draft, globalPlayers) : [];
     if (matches.some((match) => match.confidence === 'exact')) {
@@ -25035,6 +25183,11 @@ function App() {
             onAllowDuplicate={() => setRivalPlayerModal((current) => ({ ...current, allowDuplicateCreate: true }))}
             onManageTeam={() => openPlayerTeamManager(rivalPlayerModal.draft)}
             onMergeDuplicate={mergeDuplicateGlobalPlayer}
+            sourceAnalysis={playerSourceAnalysis}
+            analyzingSourceUrl={playerSourceAnalyzingUrl}
+            onAnalyzeSource={analyzeGlobalPlayerSource}
+            onApplySourceAnalysis={applyGlobalPlayerSourceAnalysis}
+            onCloseSourceAnalysis={() => setPlayerSourceAnalysis(null)}
             onDelete={rivalPlayerModal.mode === 'edit' && (selectedTeam || editingTeamId) ? () => { requestSelectedTeamPlayerDelete(rivalPlayerModal.draft); closeRivalPlayerModal(); } : null}
           />
         </div>

@@ -24,11 +24,13 @@ assert.equal(payload.p_sources.length, 1);
 const sourcePayload = buildGlobalPlayerRpcPayload({
   name: 'Jugador con fuentes',
   sources: [
-    { url: 'https://generic.test/player', sourceName: 'Otro' },
-    { url: 'https://transfermarkt.test/player', sourceName: 'Transfermarkt', isPrimary: true },
+    { url: 'https://generic.test/player', sourceName: 'Otro', analysisStatus: 'no_data', analyzedAt: '2026-07-20T12:00:00.000Z', analysisSummary: { pageType: 'unknown' } },
+    { url: 'https://transfermarkt.test/player', sourceName: 'Transfermarkt', isPrimary: true, analysisStatus: 'data_found' },
   ],
 });
 assert.deepEqual(sourcePayload.p_sources.map((item) => item.is_primary), [false, true]);
+assert.deepEqual(sourcePayload.p_sources.map((item) => item.analysis_status), ['no_data', 'data_found']);
+assert.equal(sourcePayload.p_sources[0].analysis_summary.pageType, 'unknown');
 
 const existing = [{ id: 'global-1', name: 'Aitor Ferrero', dob: '1997-01-02', externalSource: 'transfermarkt', externalPlayerId: '123', sources: [] }];
 assert.equal(findGlobalPlayerMatches(imported, existing)[0].confidence, 'exact');

@@ -15,7 +15,9 @@
     "test:match-status": "node src/utils/matchStatus.test.js",
     "test:player-positions": "node src/constants/playerPositions.test.js",
     "test:global-players": "node src/utils/globalPlayerStore.test.js",
+    "test:player-source-analysis": "node src/utils/playerSourceAnalysis.test.js",
     "audit:supabase-encoding": "node src/utils/supabaseEncodingAudit.js",
+    "diagnose:player-source": "node scripts/playerSourceDiagnostic.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

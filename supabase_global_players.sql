@@ -135,9 +135,28 @@ create table if not exists public.player_sources (
   url text not null,
   source_name text not null default 'Otro',
   is_primary boolean not null default false,
+  analysis_status text not null default 'not_analyzed',
+  analyzed_at timestamptz,
+  analysis_error text,
+  analysis_summary jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
-  unique (player_id, url)
+  unique (player_id, url),
+  constraint player_sources_analysis_status_check check (analysis_status in ('not_analyzed', 'analyzing', 'data_found', 'no_data', 'access_error', 'not_player'))
 );
+
+alter table public.player_sources
+  add column if not exists analysis_status text not null default 'not_analyzed',
+  add column if not exists analyzed_at timestamptz,
+  add column if not exists analysis_error text,
+  add column if not exists analysis_summary jsonb not null default '{}'::jsonb;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'player_sources_analysis_status_check') then
+    alter table public.player_sources add constraint player_sources_analysis_status_check
+      check (analysis_status in ('not_analyzed', 'analyzing', 'data_found', 'no_data', 'access_error', 'not_player'));
+  end if;
+end $$;
 
 create unique index if not exists player_sources_one_primary_uidx
 on public.player_sources (player_id)
@@ -541,10 +560,11 @@ begin
     as item(position_type text, position_key text, is_primary boolean, source text);
 
   delete from public.player_sources where player_id = global_id;
-  insert into public.player_sources (player_id, url, source_name, is_primary)
-  select global_id, item.url, coalesce(nullif(item.source_name, ''), 'Otro'), item.is_primary
+  insert into public.player_sources (player_id, url, source_name, is_primary, analysis_status, analyzed_at, analysis_error, analysis_summary)
+  select global_id, item.url, coalesce(nullif(item.source_name, ''), 'Otro'), item.is_primary,
+    coalesce(nullif(item.analysis_status, ''), 'not_analyzed'), item.analyzed_at, nullif(item.analysis_error, ''), coalesce(item.analysis_summary, '{}'::jsonb)
   from jsonb_to_recordset(coalesce(p_sources, '[]'::jsonb))
-    as item(url text, source_name text, is_primary boolean)
+    as item(url text, source_name text, is_primary boolean, analysis_status text, analyzed_at timestamptz, analysis_error text, analysis_summary jsonb)
   where nullif(trim(item.url), '') is not null;
 
   delete from public.player_scouting_traits where player_id = global_id;

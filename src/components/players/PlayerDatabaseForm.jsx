@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   NATURAL_POSITION_OPTIONS,
   getNaturalPositionForSpecific,
@@ -28,11 +28,17 @@ export default function PlayerDatabaseForm({
   onDelete,
   onManageTeam,
   onMergeDuplicate,
+  sourceAnalysis,
+  analyzingSourceUrl = '',
+  onAnalyzeSource,
+  onApplySourceAnalysis,
+  onCloseSourceAnalysis,
 }) {
   const [sourceDraft, setSourceDraft] = useState({ url: '', sourceName: 'Otro' });
   const [customTraits, setCustomTraits] = useState({ strength: '', vulnerability: '', trend: '' });
   const [teamEntryMode, setTeamEntryMode] = useState(mode === 'create' && draft.teamId ? 'search' : 'create');
   const [databaseSearch, setDatabaseSearch] = useState('');
+  const [sourceFieldSelection, setSourceFieldSelection] = useState({});
   const showTeamEntryChoice = mode === 'create' && Boolean(draft.teamId);
   const databaseResults = useMemo(
     () => searchGlobalPlayersForTeam(globalPlayers, teams, databaseSearch).slice(0, 12),
@@ -65,10 +71,33 @@ export default function PlayerDatabaseForm({
   const addSource = () => {
     const url = sourceDraft.url.trim();
     if (!url || (draft.sources || []).some((source) => source.url === url)) return;
-    onChange('sources', [...(draft.sources || []), { ...sourceDraft, url, isPrimary: !(draft.sources || []).length }]);
+    const detectedSourceName = /transfermarkt\./i.test(url) ? 'Transfermarkt' : /besoccer\./i.test(url) ? 'BeSoccer' : sourceDraft.sourceName;
+    onChange('sources', [...(draft.sources || []), { ...sourceDraft, sourceName: detectedSourceName, url, isPrimary: !(draft.sources || []).length, analysisStatus: 'not_analyzed', analyzedAt: '', analysisError: '', analysisSummary: {} }]);
     setSourceDraft({ url: '', sourceName: 'Otro' });
   };
   const removeSource = (url) => onChange('sources', (draft.sources || []).filter((source) => source.url !== url).map((source, index) => ({ ...source, isPrimary: index === 0 })));
+  const markPrimarySource = (url) => onChange('sources', (draft.sources || []).map((source) => ({ ...source, isPrimary: source.url === url })));
+
+  const getCurrentSourceFieldValue = (field) => {
+    if (field === 'rawPosition') return draft.primarySpecificPosition || draft.specificPosition || draft.primaryNaturalPosition || draft.position || '';
+    if (field === 'secondaryPositions') return (draft.secondarySpecificPositions || []).join(', ');
+    if (field === 'currentTeam') return getCurrentTeams(draft).map((team) => team.name).join(' · ');
+    if (field === 'nationality' || field === 'canonicalUrl') return '';
+    return draft[field] || (field === 'photoUrl' ? draft.image : '') || '';
+  };
+  const sourceFieldKey = (field) => field === 'rawPosition' || field === 'secondaryPositions' ? 'position' : field;
+  const hasManualSource = (field) => ['manual', 'manual_upload', 'manual_url'].includes(draft.fieldSources?.[sourceFieldKey(field)]?.source);
+
+  useEffect(() => {
+    if (!sourceAnalysis?.fields) {
+      setSourceFieldSelection({});
+      return;
+    }
+    setSourceFieldSelection(Object.fromEntries(sourceAnalysis.fields.map((field) => [
+      field.field,
+      !getCurrentSourceFieldValue(field.field) && !hasManualSource(field.field) && !['nationality', 'canonicalUrl'].includes(field.field),
+    ])));
+  }, [sourceAnalysis]);
   const toggleSecondaryNatural = (key) => onChange(
     'secondaryNaturalPositions',
     (draft.secondaryNaturalPositions || []).includes(key)
@@ -230,9 +259,73 @@ export default function PlayerDatabaseForm({
 
       <section className="mt-4 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
         <h4 className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Fuentes</h4>
-        <div className="mt-3 space-y-2">{(draft.sources || []).map((source) => <div key={source.url} className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-black/15 px-3 py-2"><div className="min-w-0 flex-1"><p className="text-xs font-black text-white">{source.sourceName || 'Otro'}{source.isPrimary ? ' · Principal' : ''}</p><p className="truncate text-[10px] text-slate-500">{source.url}</p></div><button type="button" onClick={() => removeSource(source.url)} className="text-xs font-black text-red-200">Quitar</button></div>)}</div>
+        <p className="mt-1 text-[10px] font-semibold text-slate-500">Guardar un enlace no modifica la ficha. Utiliza “Analizar fuente” para extraer datos y revisarlos antes de aplicarlos.</p>
+        <div className="mt-3 space-y-2">{(draft.sources || []).map((source) => {
+          const status = analyzingSourceUrl === source.url ? 'analyzing' : source.analysisStatus || 'not_analyzed';
+          const statusPresentation = {
+            not_analyzed: ['Sin analizar', 'text-slate-500'],
+            analyzing: ['Analizando…', 'text-caudal-electric'],
+            data_found: ['Datos encontrados', 'text-emerald-300'],
+            no_data: ['Sin datos compatibles', 'text-amber-200'],
+            access_error: ['Error de acceso', 'text-red-200'],
+            not_player: ['No parece una ficha de jugador', 'text-orange-200'],
+          }[status] || ['Sin analizar', 'text-slate-500'];
+          return (
+            <div key={source.url} className="rounded-xl border border-white/[0.08] bg-black/15 px-3 py-3">
+              <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-black text-white">{source.sourceName || 'Otro'}{source.isPrimary ? ' · Principal' : ''}</p>
+                  <p className="truncate text-[10px] text-slate-500">{source.url}</p>
+                  <p className={`mt-1 text-[9px] font-black ${statusPresentation[1]}`}>{statusPresentation[0]}</p>
+                  {source.analysisError ? <p className="mt-1 text-[9px] font-semibold text-red-200/80">{source.analysisError}</p> : null}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <a href={source.url} target="_blank" rel="noreferrer" className="rounded-lg border border-white/10 px-2.5 py-1.5 text-[9px] font-black text-slate-300">Abrir enlace</a>
+                  <button type="button" onClick={() => onAnalyzeSource?.(source)} disabled={Boolean(analyzingSourceUrl)} className="rounded-lg border border-caudal-electric/25 bg-caudal-electric/10 px-2.5 py-1.5 text-[9px] font-black text-caudal-electric disabled:opacity-50">{status === 'analyzing' ? 'Analizando…' : 'Analizar fuente'}</button>
+                  {!source.isPrimary ? <button type="button" onClick={() => markPrimarySource(source.url)} className="rounded-lg border border-white/10 px-2.5 py-1.5 text-[9px] font-black text-slate-300">Marcar principal</button> : null}
+                  <button type="button" onClick={() => removeSource(source.url)} className="rounded-lg border border-red-300/15 px-2.5 py-1.5 text-[9px] font-black text-red-200">Quitar</button>
+                </div>
+              </div>
+            </div>
+          );
+        })}</div>
         <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_160px_auto]"><input type="url" value={sourceDraft.url} onChange={(event) => setSourceDraft((current) => ({ ...current, url: event.target.value }))} className="field-input" placeholder="https://…" /><select value={sourceDraft.sourceName} onChange={(event) => setSourceDraft((current) => ({ ...current, sourceName: event.target.value }))} className="field-input">{sourceNames.map((name) => <option key={name}>{name}</option>)}</select><button type="button" onClick={addSource} className="rounded-xl border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-xs font-black text-caudal-electric">Añadir fuente</button></div>
       </section>
+
+      {sourceAnalysis ? (
+        <section className="mt-4 rounded-2xl border border-caudal-electric/20 bg-caudal-electric/[0.045] p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Datos encontrados</p>
+              <p className="mt-1 text-xs font-semibold text-slate-400">{sourceAnalysis.sourceType === 'transfermarkt' ? 'Transfermarkt' : sourceAnalysis.sourceType === 'besoccer' ? 'BeSoccer' : 'Analizador genérico'} · {sourceAnalysis.pageType || 'tipo desconocido'}</p>
+            </div>
+            <button type="button" onClick={onCloseSourceAnalysis} className="rounded-lg border border-white/10 px-2.5 py-1.5 text-[9px] font-black text-slate-300">Cerrar revisión</button>
+          </div>
+          {sourceAnalysis.status === 'not_player' ? <p className="mt-3 rounded-xl border border-orange-300/20 bg-orange-300/[0.08] px-3 py-2 text-xs font-bold text-orange-100">La página no parece ser una ficha individual de jugador. Se conserva como referencia, pero no se aplicarán datos dudosos.</p> : null}
+          {sourceAnalysis.status === 'no_data' ? <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/[0.08] px-3 py-2 text-xs font-bold text-amber-100">No se han podido extraer datos automáticamente de esta página. La fuente queda guardada como referencia.</p> : null}
+          {sourceAnalysis.fields?.length ? (
+            <div className="mt-3 space-y-2">
+              {sourceAnalysis.fields.map((field) => {
+                const labels = { name: 'Nombre', photoUrl: 'Fotografía', dob: 'Fecha de nacimiento', age: 'Edad', rawPosition: 'Posición', secondaryPositions: 'Posiciones secundarias', height: 'Altura', foot: 'Pierna dominante', number: 'Dorsal', currentTeam: 'Equipo actual', nationality: 'Nacionalidad', canonicalUrl: 'Enlace canónico' };
+                const currentValue = getCurrentSourceFieldValue(field.field);
+                const foundValue = Array.isArray(field.value) ? field.value.join(', ') : field.value;
+                const informationalOnly = ['nationality', 'canonicalUrl'].includes(field.field);
+                const manualProtected = hasManualSource(field.field);
+                return (
+                  <article key={field.field} className="rounded-xl border border-white/[0.08] bg-black/20 p-3">
+                    <div className="grid gap-3 sm:grid-cols-[130px_1fr_auto] sm:items-center">
+                      <div><p className="text-[10px] font-black text-white">{labels[field.field] || field.field}</p><p className={`mt-1 text-[8px] font-black uppercase ${field.confidence === 'high' ? 'text-emerald-300' : 'text-amber-200'}`}>Confianza {field.confidence === 'high' ? 'alta' : 'media'}</p></div>
+                      <div className="min-w-0 text-[10px]"><p className="text-slate-500">Actual: <span className="font-bold text-slate-300">{currentValue || 'Sin información'}</span></p>{field.field === 'photoUrl' ? <img src={field.value} alt="Vista previa encontrada" className="mt-2 h-20 w-20 rounded-xl border border-white/10 object-cover" /> : <p className="mt-1 break-words text-slate-500">Encontrado: <span className="font-bold text-white">{String(foundValue)}</span></p>}<p className="mt-1 line-clamp-2 text-[8px] italic text-slate-600">Evidencia: {field.evidence || 'Dato estructurado'}</p>{manualProtected ? <p className="mt-1 text-[8px] font-black text-amber-200">Dato manual protegido: se mantiene por defecto.</p> : null}</div>
+                      {!informationalOnly ? <div className="flex gap-1 sm:flex-col"><button type="button" onClick={() => setSourceFieldSelection((current) => ({ ...current, [field.field]: false }))} className={`rounded-lg border px-2 py-1.5 text-[8px] font-black ${!sourceFieldSelection[field.field] ? 'border-white/20 bg-white/10 text-white' : 'border-white/10 text-slate-500'}`}>Mantener actual</button><button type="button" onClick={() => setSourceFieldSelection((current) => ({ ...current, [field.field]: true }))} className={`rounded-lg border px-2 py-1.5 text-[8px] font-black ${sourceFieldSelection[field.field] ? 'border-caudal-electric/30 bg-caudal-electric/15 text-caudal-electric' : 'border-white/10 text-slate-500'}`}>Usar encontrado</button></div> : <span className="text-[8px] font-black uppercase text-slate-600">Informativo</span>}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : null}
+          {sourceAnalysis.status === 'data_found' ? <div className="mt-4 flex justify-end"><button type="button" onClick={() => onApplySourceAnalysis?.(sourceAnalysis, sourceFieldSelection)} className="rounded-xl bg-caudal-electric px-4 py-2 text-xs font-black text-slate-950">Aplicar selección a la ficha</button></div> : null}
+        </section>
+      ) : null}
 
       {draft.memberships?.length ? <section className="mt-4 rounded-2xl border border-white/10 bg-white/[0.025] p-4"><h4 className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Historial de equipos</h4><div className="mt-3 space-y-2">{draft.memberships.map((membership) => { const team = teams.find((item) => item.id === membership.team_id); return <div key={membership.id} className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-black/15 px-3 py-2 text-xs"><span className="font-bold text-white">{membership.season || 'Temporada sin indicar'} · {team?.name || 'Equipo'}</span><span className={membership.is_current ? 'font-black text-emerald-300' : 'text-slate-500'}>{membership.is_current ? 'Actual' : membership.end_date || 'Finalizada'}</span></div>; })}</div></section> : null}
 
