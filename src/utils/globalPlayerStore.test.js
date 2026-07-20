@@ -20,6 +20,7 @@ const payload = buildGlobalPlayerRpcPayload({ ...imported, teamId: 'team-id' });
 assert.equal(payload.p_positions.find((item) => item.position_type === 'natural' && item.is_primary).position_key, 'defender');
 assert.equal(payload.p_positions.some((item) => item.position_key === 'holding_midfield' && !item.is_primary), true);
 assert.equal(payload.p_sources.length, 1);
+assert.equal(buildGlobalPlayerRpcPayload({ name: 'Prioritario', scoutingPriority: 'very_high' }).p_player.scoutingPriority, 'very_high');
 
 const sourcePayload = buildGlobalPlayerRpcPayload({
   name: 'Jugador con fuentes',

@@ -89,6 +89,57 @@ export const getNaturalPositionLabel = (key) => naturalLabelByKey.get(key) || ''
 export const getSpecificPositionLabel = (key) => specificLabelByKey.get(key) || '';
 export const getNaturalPositionForSpecific = (key) => naturalBySpecific.get(key) || '';
 
+const POSITION_PRESENTATION = {
+  goalkeeper: { short: 'POR', group: 'PORTEROS', order: 0 },
+  sweeper_keeper: { short: 'POR-L', group: 'PORTEROS', order: 0 },
+  right_back: { short: 'LD', group: 'LATERALES DERECHOS', order: 10 },
+  left_back: { short: 'LI', group: 'LATERALES IZQUIERDOS', order: 20 },
+  right_wing_back: { short: 'CAD', group: 'CARRILEROS', order: 30 },
+  left_wing_back: { short: 'CAI', group: 'CARRILEROS', order: 30 },
+  centre_back: { short: 'DFC', group: 'CENTRALES', order: 40 },
+  right_centre_back: { short: 'DFC-D', group: 'CENTRALES', order: 40 },
+  left_centre_back: { short: 'DFC-I', group: 'CENTRALES', order: 40 },
+  libero: { short: 'LIB', group: 'CENTRALES', order: 40 },
+  holding_midfield: { short: 'MCD', group: 'PIVOTES', order: 50 },
+  defensive_midfield: { short: 'MCD', group: 'PIVOTES', order: 50 },
+  central_midfield: { short: 'MC', group: 'MEDIOCENTROS', order: 60 },
+  right_central_midfield: { short: 'ID', group: 'INTERIORES', order: 70 },
+  left_central_midfield: { short: 'II', group: 'INTERIORES', order: 70 },
+  attacking_midfield: { short: 'MP', group: 'MEDIAPUNTAS', order: 80 },
+  right_midfield: { short: 'MD', group: 'INTERIORES', order: 70 },
+  left_midfield: { short: 'MI', group: 'INTERIORES', order: 70 },
+  right_winger: { short: 'ED', group: 'EXTREMOS DERECHOS', order: 90 },
+  left_winger: { short: 'EI', group: 'EXTREMOS IZQUIERDOS', order: 100 },
+  second_striker: { short: 'SD', group: 'SEGUNDOS PUNTAS', order: 110 },
+  centre_forward: { short: 'DC', group: 'DELANTEROS CENTRO', order: 120 },
+  mobile_forward: { short: 'DM', group: 'DELANTEROS CENTRO', order: 120 },
+  target_forward: { short: 'DC', group: 'DELANTEROS CENTRO', order: 120 },
+};
+
+const NATURAL_POSITION_PRESENTATION = {
+  goalkeeper: { short: 'POR', group: 'PORTEROS', order: 0 },
+  defender: { short: 'DEF', group: 'DEFENSAS', order: 45 },
+  midfielder: { short: 'MED', group: 'CENTROCAMPISTAS', order: 85 },
+  forward: { short: 'DEL', group: 'DELANTEROS', order: 125 },
+};
+
+export const getPlayerPositionPresentation = (player = {}) => {
+  const model = getPlayerPositionModel(player);
+  const specificKey = model.primarySpecificPosition;
+  const naturalKey = model.primaryNaturalPosition || getNaturalPositionForSpecific(specificKey);
+  const presentation = POSITION_PRESENTATION[specificKey]
+    || NATURAL_POSITION_PRESENTATION[naturalKey]
+    || { short: 'POS', group: 'SIN POSICIÓN', order: 999 };
+  return {
+    ...presentation,
+    specificKey,
+    naturalKey,
+    label: getSpecificPositionLabel(specificKey) || getNaturalPositionLabel(naturalKey) || '',
+  };
+};
+
+export const getPositionLineKey = (player = {}) => getPlayerPositionPresentation(player).naturalKey || '';
+
 export const mapExternalPositionToPlayerPositions = (rawPosition) => {
   const values = Array.isArray(rawPosition)
     ? rawPosition
@@ -165,4 +216,3 @@ export const getPlayerSlotCompatibility = (player, tacticalSlot) => {
 
 export const getSpecificOptionsForNaturalPositions = (naturalPositions = []) => unique(naturalPositions)
   .flatMap((key) => SPECIFIC_POSITION_CATALOG[key] || []);
-

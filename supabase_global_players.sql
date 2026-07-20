@@ -11,6 +11,7 @@ create table if not exists public.players_database (
   height text,
   foot text,
   scouting_summary varchar(500),
+  scouting_priority text,
   card_alert boolean not null default false,
   sent_off_alert boolean not null default false,
   suspended_alert boolean not null default false,
@@ -24,6 +25,15 @@ create table if not exists public.players_database (
 );
 
 alter table public.players_database add column if not exists age text;
+alter table public.players_database add column if not exists scouting_priority text;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'players_database_scouting_priority_check') then
+    alter table public.players_database add constraint players_database_scouting_priority_check
+      check (scouting_priority is null or scouting_priority in ('very_high', 'high', 'medium', 'low'));
+  end if;
+end $$;
 
 create unique index if not exists players_database_external_identity_uidx
 on public.players_database (lower(external_source), external_player_id)
@@ -523,12 +533,12 @@ begin
   global_id := nullif(p_player ->> 'id', '')::uuid;
   if global_id is null then
     insert into public.players_database (
-      name, photo_url, dob, age, height, foot, scouting_summary,
+      name, photo_url, dob, age, height, foot, scouting_summary, scouting_priority,
       card_alert, sent_off_alert, suspended_alert, injured_alert,
       external_source, external_player_id, field_sources
     ) values (
       trim(p_player ->> 'name'), nullif(p_player ->> 'photoUrl', ''), nullif(p_player ->> 'dob', '')::date, nullif(p_player ->> 'age', ''),
-      nullif(p_player ->> 'height', ''), nullif(p_player ->> 'foot', ''), left(nullif(p_player ->> 'scoutingSummary', ''), 500),
+      nullif(p_player ->> 'height', ''), nullif(p_player ->> 'foot', ''), left(nullif(p_player ->> 'scoutingSummary', ''), 500), nullif(p_player ->> 'scoutingPriority', ''),
       coalesce((p_player ->> 'cardAlert')::boolean, false), coalesce((p_player ->> 'sentOffAlert')::boolean, false),
       coalesce((p_player ->> 'suspendedAlert')::boolean, false), coalesce((p_player ->> 'injuredAlert')::boolean, false),
       nullif(p_player ->> 'externalSource', ''), nullif(p_player ->> 'externalPlayerId', ''), coalesce(p_player -> 'fieldSources', '{}'::jsonb)
@@ -542,6 +552,7 @@ begin
       height = nullif(p_player ->> 'height', ''),
       foot = nullif(p_player ->> 'foot', ''),
       scouting_summary = left(nullif(p_player ->> 'scoutingSummary', ''), 500),
+      scouting_priority = nullif(p_player ->> 'scoutingPriority', ''),
       card_alert = coalesce((p_player ->> 'cardAlert')::boolean, false),
       sent_off_alert = coalesce((p_player ->> 'sentOffAlert')::boolean, false),
       suspended_alert = coalesce((p_player ->> 'suspendedAlert')::boolean, false),
@@ -734,6 +745,7 @@ begin
       height = coalesce(keep_player.height, merge_player.height),
       foot = coalesce(keep_player.foot, merge_player.foot),
       scouting_summary = coalesce(keep_player.scouting_summary, merge_player.scouting_summary),
+      scouting_priority = coalesce(keep_player.scouting_priority, merge_player.scouting_priority),
       card_alert = keep_player.card_alert or merge_player.card_alert,
       sent_off_alert = keep_player.sent_off_alert or merge_player.sent_off_alert,
       suspended_alert = keep_player.suspended_alert or merge_player.suspended_alert,
