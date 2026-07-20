@@ -34,7 +34,7 @@ const cupIgnored = calculateLeagueResults([
 assert.equal(cupIgnored.played, 0);
 
 const upcomingIgnored = calculateLeagueResults([
-  finalLeague({ status: 'Previa', homeScore: 3, awayScore: 0 }),
+  finalLeague({ date: '2999-01-01', status: 'Previa', homeScore: 3, awayScore: 0 }),
 ]);
 assert.equal(upcomingIgnored.played, 0);
 

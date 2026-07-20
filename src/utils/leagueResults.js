@@ -1,3 +1,5 @@
+import { getMatchOutcome, getMatchScore, getMatchStatus } from './matchStatus.js';
+
 export const LEAGUE_COMPETITION_TYPE = 'Liga';
 
 export const LEAGUE_RESULT_COLORS = {
@@ -5,11 +7,6 @@ export const LEAGUE_RESULT_COLORS = {
   draws: '#facc15',
   losses: '#f87171',
   empty: '#475569',
-};
-
-const isFiniteScore = (value) => {
-  if (value === '' || value === null || value === undefined) return false;
-  return Number.isFinite(Number(value));
 };
 
 const normalizeText = (value) =>
@@ -37,46 +34,13 @@ export const normalizeLeagueCompetitionKey = (match = {}) => {
 
 export const isLeagueMatch = (match = {}) => normalizeLeagueCompetitionKey(match) === 'league';
 
-export const isPlayedMatch = (match = {}) => {
-  const status = normalizeText(match.status);
-  return status === 'finalizado' || status === 'jugado';
-};
+export const isPlayedMatch = (match = {}) => getMatchStatus(match) === 'played';
 
-export const getCompleteMatchScore = (match = {}) => {
-  if (isFiniteScore(match.homeScore) && isFiniteScore(match.awayScore)) {
-    const home = Number(match.homeScore);
-    const away = Number(match.awayScore);
-    return {
-      home,
-      away,
-      caudal: match.isHome ? home : away,
-      rival: match.isHome ? away : home,
-      source: 'home_away_score',
-    };
-  }
-
-  if (isFiniteScore(match.goalsFor) && isFiniteScore(match.goalsAgainst)) {
-    const caudal = Number(match.goalsFor);
-    const rival = Number(match.goalsAgainst);
-    return {
-      home: match.isHome ? caudal : rival,
-      away: match.isHome ? rival : caudal,
-      caudal,
-      rival,
-      source: 'goals_for_against',
-    };
-  }
-
-  return null;
-};
+export const getCompleteMatchScore = (match = {}) => getMatchScore(match);
 
 export const classifyLeagueMatchResult = (match = {}) => {
   if (!isLeagueMatch(match) || !isPlayedMatch(match)) return null;
-  const score = getCompleteMatchScore(match);
-  if (!score) return null;
-  if (score.caudal > score.rival) return 'win';
-  if (score.caudal < score.rival) return 'loss';
-  return 'draw';
+  return getMatchOutcome(match);
 };
 
 export const calculateLeagueResults = (matches = []) => {

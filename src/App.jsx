@@ -17,6 +17,13 @@ import {
   getPostEventTypeValue,
 } from './constants/postEventTypes';
 import { buildLeagueResultsDonut, calculateLeagueResults } from './utils/leagueResults';
+import {
+  getMatchOutcome,
+  getMatchScore,
+  getMatchStatus,
+  getMatchStatusPresentation,
+  parseLocalMatchDate,
+} from './utils/matchStatus';
 import { cleanImportedFieldValue, extractTransfermarktPlayerId, isEmptyImportedField, normalizeTransfermarktPosition } from './utils/rivalPlayerImport';
 import {
   createGoalParticipantDbFields,
@@ -1061,15 +1068,6 @@ const normalizeCompetitionKey = (matchOrValue = {}) => {
 
 const getCompetitionMeta = (key) => COMPETITION_META[key] || COMPETITION_META.other;
 
-const getCompetitionAccentClass = (competitionKey) => ({
-  league: 'bg-blue-400',
-  copa_rfef: 'bg-amber-300',
-  playoff: 'bg-violet-400',
-  friendly: 'bg-slate-400',
-  all: 'bg-caudal-electric',
-  other: 'bg-slate-500',
-}[competitionKey] || 'bg-slate-500');
-
 const getCompetitionPanelClass = (competitionKey) => ({
   league: 'border-blue-300/15 bg-blue-400/[0.08] text-blue-100',
   copa_rfef: 'border-amber-300/20 bg-amber-300/[0.10] text-amber-100',
@@ -1222,10 +1220,10 @@ const normalizeSupabasePartido = (match) =>
     awayTeam: match.away_team || '',
     isHome: Boolean(match.is_home),
     status: match.status || 'Previa',
-    homeScore: match.home_score || '',
-    awayScore: match.away_score || '',
-    goalsFor: match.goals_for || '',
-    goalsAgainst: match.goals_against || '',
+    homeScore: match.home_score ?? match.homeScore ?? '',
+    awayScore: match.away_score ?? match.awayScore ?? '',
+    goalsFor: match.goals_for ?? match.goalsFor ?? '',
+    goalsAgainst: match.goals_against ?? match.goalsAgainst ?? '',
     statsSystem: match.stats_system || '4-4-2',
     delegatedDataStatus: match.delegated_data_status || match.delegatedDataStatus || '',
     captainPlayerId: match.captain_player_id || null,
@@ -1253,10 +1251,10 @@ const createPartidoPayload = (matchFormState, teams = [], competitions = []) => 
     status: matchFormState.status || 'Previa',
     home_team: matchFormState.isHome ? 'C.D. Caudal' : (selectedTeam ? cleanTeamDisplayName(selectedTeam.name) : matchFormState.opponent),
     away_team: matchFormState.isHome ? (selectedTeam ? cleanTeamDisplayName(selectedTeam.name) : matchFormState.opponent) : 'C.D. Caudal',
-    home_score: matchFormState.homeScore || '',
-    away_score: matchFormState.awayScore || '',
-    goals_for: matchFormState.goalsFor || '',
-    goals_against: matchFormState.goalsAgainst || '',
+    home_score: matchFormState.homeScore ?? '',
+    away_score: matchFormState.awayScore ?? '',
+    goals_for: matchFormState.goalsFor ?? '',
+    goals_against: matchFormState.goalsAgainst ?? '',
     equipo_rival_id: equipoRivalId,
   };
   const prepPayload = Object.fromEntries(
@@ -1642,27 +1640,28 @@ const getMatchScoreValues = (match) => {
   const statsEvents = match?.statsGoalEvents || [];
   const statsCaudalGoals = statsEvents.filter((event) => event.type === 'Gol a favor').length;
   const statsRivalGoals = statsEvents.filter((event) => event.type === 'Gol en contra').length;
-  const hasStatsScore = statsEvents.length > 0;
+  const officialGoalEvents = statsEvents.filter((event) => ['Gol a favor', 'Gol en contra'].includes(event.type));
+  const hasStatsScore = officialGoalEvents.length > 0;
+  const score = getMatchScore(match);
   return {
     statsEvents,
     statsCaudalGoals,
     statsRivalGoals,
     hasStatsScore,
-    home: hasStatsScore ? (match.isHome ? statsCaudalGoals : statsRivalGoals) : match.homeScore || 0,
-    away: hasStatsScore ? (match.isHome ? statsRivalGoals : statsCaudalGoals) : match.awayScore || 0,
-    caudal: hasStatsScore ? statsCaudalGoals : Number(match.goalsFor || (match.isHome ? match.homeScore : match.awayScore) || 0),
-    rival: hasStatsScore ? statsRivalGoals : Number(match.goalsAgainst || (match.isHome ? match.awayScore : match.homeScore) || 0),
+    hasCompleteScore: Boolean(score),
+    home: score?.home ?? null,
+    away: score?.away ?? null,
+    caudal: score?.caudal ?? null,
+    rival: score?.rival ?? null,
   };
 };
 
-const isMatchPlayedForUi = (match) => {
-  const score = getMatchScoreValues(match);
-  return score.hasStatsScore || match?.status === 'Finalizado';
-};
+const isMatchPlayedForUi = (match) => getMatchStatus(match) === 'played';
 
 const getMatchOperationalStatus = (match) => {
   if (!isMatchPlayedForUi(match)) {
-    return { label: 'PREPARANDO', className: 'border-caudal-electric/25 bg-caudal-electric/[0.10] text-caudal-electric' };
+    const presentation = getMatchStatusPresentation(match);
+    return { label: presentation.label.toUpperCase(), className: 'border-white/15 bg-white/[0.055] text-slate-300' };
   }
   if ((match?.events || []).some((event) => event.reviewed)) {
     return { label: 'ANALIZADO', className: 'border-emerald-200/25 bg-emerald-200/[0.10] text-emerald-100' };
@@ -3211,13 +3210,8 @@ const findTeamByDisplayName = (teams, name) => {
 };
 
 const getMatchResult = (match) => {
-  if (match.status !== 'Finalizado') return null;
-  const caudalGoals = Number(match.isHome ? match.homeScore : match.awayScore);
-  const rivalGoals = Number(match.isHome ? match.awayScore : match.homeScore);
-  if (Number.isNaN(caudalGoals) || Number.isNaN(rivalGoals)) return null;
-  if (caudalGoals > rivalGoals) return 'W';
-  if (caudalGoals < rivalGoals) return 'L';
-  return 'D';
+  const outcome = getMatchOutcome(match);
+  return outcome === 'win' ? 'W' : outcome === 'loss' ? 'L' : outcome === 'draw' ? 'D' : null;
 };
 
 const matchDisplayDate = (date) => {
@@ -4568,7 +4562,7 @@ function App() {
   };
 
   const loadPartidos = async () => {
-    const [{ data, error: partidosError }, goalsResponse, quickEventsResponse, systemEventsResponse] = await Promise.all([
+    const [{ data, error: partidosError }, goalsResponse, quickEventsResponse, systemEventsResponse, postEventsResponse] = await Promise.all([
       supabase
         .from("partidos")
         .select("*")
@@ -4576,6 +4570,7 @@ function App() {
       supabase.from("partido_eventos_gol").select("*"),
       supabase.from("match_quick_events").select("*"),
       supabase.from("partido_eventos_sistema").select("*"),
+      supabase.from("partido_eventos_post").select("*"),
     ]);
     if (partidosError) throw partidosError;
     if (goalsResponse.error) throw goalsResponse.error;
@@ -4601,11 +4596,18 @@ function App() {
     if (systemEventsResponse.error) {
       console.warn('No se pudieron cargar cambios de sistema para Partidos; se continúa sin ellos:', systemEventsResponse.error);
     }
+    const postEventsByMatch = postEventsResponse.error
+      ? {}
+      : (postEventsResponse.data || []).reduce((acc, event) => {
+          acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabasePostEvent(event)];
+          return acc;
+        }, {});
     const nextMatches = (data || []).map((match) => ({
       ...normalizeSupabasePartido(match),
       statsGoalEvents: goalsByMatch[match.id] || [],
       quickEvents: quickEventsByMatch[match.id] || [],
       systemEvents: systemEventsByMatch[match.id] || [],
+      events: postEventsByMatch[match.id] || [],
     }));
     setMatches(nextMatches);
     return nextMatches;
@@ -4655,7 +4657,7 @@ function App() {
     setHomeError('');
 
     try {
-      const [partidosResponse, jugadoresResponse, equiposResponse, statsResponse, goalsResponse, quickEventsResponse, systemEventsResponse] = await Promise.all([
+      const [partidosResponse, jugadoresResponse, equiposResponse, statsResponse, goalsResponse, quickEventsResponse, systemEventsResponse, postEventsResponse] = await Promise.all([
         supabase.from("partidos").select("*").order("date", { ascending: true, nullsFirst: false }),
         supabase.from("jugadores").select("*").order("name", { ascending: true }),
         supabase.from("equipos_rivales").select("*").order("name", { ascending: true }),
@@ -4663,6 +4665,7 @@ function App() {
         supabase.from("partido_eventos_gol").select("*"),
         supabase.from("match_quick_events").select("*"),
         supabase.from("partido_eventos_sistema").select("*"),
+        supabase.from("partido_eventos_post").select("*"),
       ]);
       const failed = [partidosResponse, jugadoresResponse, equiposResponse, statsResponse, goalsResponse].find((response) => response.error);
       if (failed) throw failed.error;
@@ -4702,12 +4705,19 @@ function App() {
             acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseSystemEvent(event)];
             return acc;
           }, {});
+      const postEventsByMatch = postEventsResponse.error
+        ? {}
+        : (postEventsResponse.data || []).reduce((acc, event) => {
+            acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabasePostEvent(event)];
+            return acc;
+          }, {});
       const nextMatches = (partidosResponse.data || []).map((match) => ({
         ...normalizeSupabasePartido(match),
         statsGoalEvents: eventsByMatch[match.id] || [],
         statsPlayerData: statsByMatch[match.id] || {},
         quickEvents: quickEventsByMatch[match.id] || [],
         systemEvents: systemEventsByMatch[match.id] || [],
+        events: postEventsByMatch[match.id] || [],
       }));
       const baseTeams = (equiposResponse.data || []).map((team) => rivalDbToTeam(team));
 
@@ -5986,12 +5996,18 @@ function App() {
       acc[event.partido_id] = [...(acc[event.partido_id] || []), normalized];
       return acc;
     }, {});
+    const goalsByMatch = (goalsResponse.data || []).reduce((acc, event) => {
+      const normalized = normalizeSupabaseGoalEvent(event);
+      acc[normalized.partidoId] = [...(acc[normalized.partidoId] || []), normalized];
+      return acc;
+    }, {});
 
     return {
       matches: normalizedMatches.map((match) => ({
         ...match,
         quickEvents: quickEventsByMatch[match.id] || [],
         events: postEventsByMatch[match.id] || [],
+        statsGoalEvents: goalsByMatch[match.id] || [],
       })),
       goals: (goalsResponse.data || []).map(normalizeSupabaseGoalEvent),
       stats: statsResponse.data || [],
@@ -6005,31 +6021,16 @@ function App() {
     context,
   });
 
-  const hasLitoScoreValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
-
-  const getLitoMatchScoreValues = (match) => {
-    if (!match) return null;
-    const home = match.homeScore ?? match.home_score;
-    const away = match.awayScore ?? match.away_score;
-    if (!hasLitoScoreValue(home) || !hasLitoScoreValue(away)) return null;
-    const homeNumber = Number(home);
-    const awayNumber = Number(away);
-    if (!Number.isFinite(homeNumber) || !Number.isFinite(awayNumber)) return null;
-    return {
-      home: homeNumber,
-      away: awayNumber,
-      caudal: match.isHome ? homeNumber : awayNumber,
-      rival: match.isHome ? awayNumber : homeNumber,
-    };
-  };
+  const getLitoMatchScoreValues = (match) => getMatchScore(match);
 
   const getLitoMatchScoreText = (match) => {
+    const presentation = getMatchStatusPresentation(match);
+    if (presentation.status !== 'played') return presentation.label.toLowerCase();
     const score = getLitoMatchScoreValues(match);
     return score ? `${score.home}-${score.away}` : 'sin marcador completo guardado';
   };
 
-  const isLitoPlayedMatch = (match) =>
-    Boolean(match && (match.status === 'Finalizado' || getLitoMatchScoreValues(match)));
+  const isLitoPlayedMatch = (match) => Boolean(match && getMatchStatus(match) === 'played');
 
   const getLitoPositionGroup = (position = '') => {
     const text = normalizeLitoText(position);
@@ -6112,7 +6113,7 @@ function App() {
   const getLitoLastMatch = (context) => getLitoPlayedMatches(context)[0] || null;
   const getLitoNextMatch = (context) =>
     context.matches
-      .filter((match) => !isLitoPlayedMatch(match))
+      .filter((match) => getMatchStatus(match) === 'scheduled')
       .slice()
       .sort((a, b) => String(a.date || '9999-12-31').localeCompare(String(b.date || '9999-12-31')))[0] || null;
 
@@ -13456,7 +13457,7 @@ function App() {
     const orderedMatchIds = [...new Map(
       scopedReviewedEvents
         .slice()
-        .sort((a, b) => new Date(b.match.date || 0) - new Date(a.match.date || 0))
+        .sort((a, b) => String(b.match.date || '').localeCompare(String(a.match.date || '')))
         .map((event) => [event.partidoId, event.match])
     ).keys()];
     const quickScopeLimit = playerQuickScope === 'Últimos 3 partidos' ? 3 : playerQuickScope === 'Últimos 5 partidos' ? 5 : null;
@@ -13467,7 +13468,7 @@ function App() {
     const summary = aggregateQuickEventStats(quickEvents, { side: 'caudal', playerId: player.id, scope: 'player' });
     const recent = quickEvents
       .slice()
-      .sort((a, b) => new Date(b.match.date || 0) - new Date(a.match.date || 0) || Number(b.minute || 0) - Number(a.minute || 0));
+      .sort((a, b) => String(b.match.date || '').localeCompare(String(a.match.date || '')) || Number(b.minute || 0) - Number(a.minute || 0));
     const matchCount = new Set(quickEvents.map((event) => event.partidoId)).size;
     const shotAccuracy = getStatRate(summary.shotsOnTarget, summary.shots);
     const shotAccuracyValue = Number(String(shotAccuracy).replace('%', '')) || 0;
@@ -13787,27 +13788,14 @@ function App() {
   };
 
   const getMatchScoreData = (match, officialGoals = null) => {
-    const events = safeArray(officialGoals || match.statsGoalEvents);
-    const goalForEvents = events.filter((event) => event.type === 'Gol a favor').length;
-    const goalAgainstEvents = events.filter((event) => event.type === 'Gol en contra').length;
-    const caudalGoals = goalForEvents || Number(match.goalsFor) || Number(match.isHome ? match.homeScore : match.awayScore) || 0;
-    const rivalGoals = goalAgainstEvents || Number(match.goalsAgainst) || Number(match.isHome ? match.awayScore : match.homeScore) || 0;
-    return { caudalGoals, rivalGoals };
-  };
-
-  const hasCompleteOfficialScore = (match = {}, officialGoals = null) => {
-    const hasHomeAwayScore = hasRealValue(match.homeScore) && hasRealValue(match.awayScore);
-    const hasForAgainstScore = hasRealValue(match.goalsFor) && hasRealValue(match.goalsAgainst);
-    const hasOfficialGoalEvents = safeArray(officialGoals || match.statsGoalEvents).some((event) => ['Gol a favor', 'Gol en contra'].includes(event.type));
-    return hasHomeAwayScore || hasForAgainstScore || hasOfficialGoalEvents;
+    const sourceMatch = officialGoals === null ? match : { ...match, statsGoalEvents: safeArray(officialGoals) };
+    const score = getMatchScore(sourceMatch);
+    return { caudalGoals: score?.caudal ?? 0, rivalGoals: score?.rival ?? 0, hasScore: Boolean(score) };
   };
 
   const isOfficialPlayedMatch = (match = {}, officialGoals = null) => {
-    const status = normalizeCatalogText(match.status);
-    const playedFlag = match.jugado === true || match.played === true || match.isPlayed === true || match.is_played === true;
-    const hasPlayedStatus = ['finalizado', 'jugado', 'played', 'finished'].includes(status);
-    const hasScore = hasCompleteOfficialScore(match, officialGoals);
-    return hasScore && (playedFlag || hasPlayedStatus || hasScore);
+    const sourceMatch = officialGoals === null ? match : { ...match, statsGoalEvents: safeArray(officialGoals) };
+    return getMatchStatus(sourceMatch) === 'played';
   };
 
   const getCompetitionResultScope = (filter) => {
@@ -13845,12 +13833,15 @@ function App() {
       }
 
       const score = getMatchScoreData(match);
+      const outcome = getMatchOutcome(match);
       acc.played += 1;
-      acc.goalsFor = (acc.goalsFor || 0) + score.caudalGoals;
-      acc.goalsAgainst = (acc.goalsAgainst || 0) + score.rivalGoals;
-      if (score.caudalGoals > score.rivalGoals) acc.wins += 1;
-      else if (score.caudalGoals < score.rivalGoals) acc.losses += 1;
-      else acc.draws += 1;
+      if (score.hasScore) {
+        acc.goalsFor = (acc.goalsFor || 0) + score.caudalGoals;
+        acc.goalsAgainst = (acc.goalsAgainst || 0) + score.rivalGoals;
+      }
+      if (outcome === 'win') acc.wins += 1;
+      if (outcome === 'loss') acc.losses += 1;
+      if (outcome === 'draw') acc.draws += 1;
       acc.includedMatches.push({ match, score });
       return acc;
     }, initial);
@@ -13869,8 +13860,9 @@ function App() {
   };
 
   const getMatchScoreLabel = (match) => {
-    const score = getMatchScoreData(match);
-    return match.isHome ? `C.D. Caudal ${score.caudalGoals}-${score.rivalGoals} ${match.opponent}` : `${match.opponent} ${score.rivalGoals}-${score.caudalGoals} C.D. Caudal`;
+    const score = getMatchScore(match);
+    if (!score) return `${match.opponent || 'Rival'} · Resultado pendiente`;
+    return match.isHome ? `C.D. Caudal ${score.caudal}-${score.rival} ${match.opponent}` : `${match.opponent} ${score.rival}-${score.caudal} C.D. Caudal`;
   };
 
   const getRivalCardProfile = (team) => {
@@ -13878,7 +13870,7 @@ function App() {
     const relatedMatches = matches
       .filter((match) => normalizePlayerIdentityName(match.opponent) === teamName)
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-    const playedMatches = relatedMatches.filter((match) => match.status === 'Finalizado' || (match.statsGoalEvents || []).length || match.homeScore || match.awayScore);
+    const playedMatches = relatedMatches.filter(isOfficialPlayedMatch);
     const latestScoutingMatch = relatedMatches.find((match) =>
       match.preRivalReportText ||
       match.preRivalStyle ||
@@ -13900,16 +13892,20 @@ function App() {
     };
     const balance = playedMatches.reduce((acc, match) => {
       const score = getMatchScoreData(match);
-      acc.goalsFor += score.caudalGoals;
-      acc.goalsAgainst += score.rivalGoals;
-      if (score.caudalGoals > score.rivalGoals) acc.wins += 1;
-      else if (score.caudalGoals < score.rivalGoals) acc.losses += 1;
-      else acc.draws += 1;
+      const outcome = getMatchOutcome(match);
+      if (score.hasScore) {
+        acc.goalsFor += score.caudalGoals;
+        acc.goalsAgainst += score.rivalGoals;
+      }
+      if (outcome === 'win') acc.wins += 1;
+      if (outcome === 'loss') acc.losses += 1;
+      if (outcome === 'draw') acc.draws += 1;
       return acc;
     }, { wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0 });
     const latestMatch = relatedMatches[0] || null;
-    const daysAgo = latestMatch?.date
-      ? Math.max(0, Math.round((Date.now() - new Date(latestMatch.date).getTime()) / 86400000))
+    const latestMatchLocalDate = parseLocalMatchDate(latestMatch?.date);
+    const daysAgo = latestMatchLocalDate
+      ? Math.max(0, Math.round((Date.now() - latestMatchLocalDate.getTime()) / 86400000))
       : null;
     const rivalPlayers = dedupeRivalPlayers(team.squad || []);
     const keyPlayers = rivalPlayers.filter((player) => player.isKey);
@@ -14011,7 +14007,7 @@ function App() {
   const getGroupScopedMatches = () => {
     let scoped = matches
       .filter(isOfficialPlayedMatch)
-      .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
     const competitionKey = getCompetitionFilterKey(groupCompetitionFilter);
     if (competitionKey !== 'all') scoped = scoped.filter((match) => normalizeCompetitionKey(match) === competitionKey);
     if (groupContextFilter === 'Local') scoped = scoped.filter((match) => match.isHome);
@@ -14035,12 +14031,15 @@ function App() {
     }));
     const results = scoped.reduce((acc, match) => {
       const score = getMatchScoreData(match);
-      if (score.caudalGoals > score.rivalGoals) acc.wins += 1;
-      else if (score.caudalGoals === score.rivalGoals) acc.draws += 1;
-      else acc.losses += 1;
-      acc.goalsFor += score.caudalGoals;
-      acc.goalsAgainst += score.rivalGoals;
-      if (score.rivalGoals === 0) acc.cleanSheets += 1;
+      const outcome = getMatchOutcome(match);
+      if (outcome === 'win') acc.wins += 1;
+      if (outcome === 'draw') acc.draws += 1;
+      if (outcome === 'loss') acc.losses += 1;
+      if (score.hasScore) {
+        acc.goalsFor += score.caudalGoals;
+        acc.goalsAgainst += score.rivalGoals;
+        if (score.rivalGoals === 0) acc.cleanSheets += 1;
+      }
       return acc;
     }, { wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, cleanSheets: 0 });
     const allGoalEvents = scoped.flatMap((match) => safeArray(match.statsGoalEvents).map((event) => ({ ...event, match })));
@@ -14130,13 +14129,16 @@ function App() {
   const summarizeGroupMatches = (scopedMatches) => {
     const summary = safeArray(scopedMatches).reduce((acc, match) => {
       const score = getMatchScoreData(match);
-      if (score.caudalGoals > score.rivalGoals) acc.wins += 1;
-      else if (score.caudalGoals === score.rivalGoals) acc.draws += 1;
-      else acc.losses += 1;
+      const outcome = getMatchOutcome(match);
+      if (outcome === 'win') acc.wins += 1;
+      if (outcome === 'draw') acc.draws += 1;
+      if (outcome === 'loss') acc.losses += 1;
       acc.played += 1;
-      acc.goalsFor += score.caudalGoals;
-      acc.goalsAgainst += score.rivalGoals;
-      acc.cleanSheets += score.rivalGoals === 0 ? 1 : 0;
+      if (score.hasScore) {
+        acc.goalsFor += score.caudalGoals;
+        acc.goalsAgainst += score.rivalGoals;
+        acc.cleanSheets += score.rivalGoals === 0 ? 1 : 0;
+      }
       return acc;
     }, { played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, cleanSheets: 0 });
     const points = summary.wins * 3 + summary.draws;
@@ -15233,10 +15235,7 @@ function App() {
     };
   }, [players, staffStatusByPlayerId]);
   const rosterDashboard = useMemo(() => {
-    const hasPlayedData = (match) => {
-      const score = getMatchScoreData(match);
-      return match.status === 'Finalizado' || safeArray(match.statsGoalEvents).length > 0 || score.caudalGoals > 0 || score.rivalGoals > 0;
-    };
+    const hasPlayedData = (match) => getMatchStatus(match) === 'played';
     const finished = safeArray(matches).filter(hasPlayedData);
     const rankings = getGroupRankings(finished);
     const rows = rankings.rows || [];
@@ -15327,17 +15326,11 @@ function App() {
 
   const matchStats = useMemo(() => {
     const scopedMatches = filterMatchesByCompetitionCatalog(matches, getCompetitionFilterKey(matchFilter));
-    const finished = scopedMatches.filter((match) => match.status === 'Finalizado' || (match.statsGoalEvents || []).length > 0);
+    const finished = scopedMatches.filter((match) => getMatchStatus(match) === 'played');
     const wins = finished.filter((match) => getMatchResult(match) === 'W').length;
-    const goalsFor = finished.reduce((sum, match) => {
-      const statGoals = (match.statsGoalEvents || []).filter((event) => event.type === 'Gol a favor').length;
-      return sum + (statGoals || Number(match.goalsFor) || Number(match.isHome ? match.homeScore : match.awayScore) || 0);
-    }, 0);
-    const goalsAgainst = finished.reduce((sum, match) => {
-      const statGoals = (match.statsGoalEvents || []).filter((event) => event.type === 'Gol en contra').length;
-      return sum + (statGoals || Number(match.goalsAgainst) || Number(match.isHome ? match.awayScore : match.homeScore) || 0);
-    }, 0);
-    const cleanSheets = finished.filter((match) => match.cleanSheet || Number(match.goalsAgainst) === 0).length;
+    const goalsFor = finished.reduce((sum, match) => sum + (getMatchScore(match)?.caudal ?? 0), 0);
+    const goalsAgainst = finished.reduce((sum, match) => sum + (getMatchScore(match)?.rival ?? 0), 0);
+    const cleanSheets = finished.filter((match) => match.cleanSheet || getMatchScore(match)?.rival === 0).length;
     const recent = finished.slice(-3).map(getMatchResult).filter(Boolean);
 
     return { total: scopedMatches.length, finished: finished.length, wins, goalsFor, goalsAgainst, cleanSheets, recent };
@@ -15350,27 +15343,24 @@ function App() {
       if (dateCompare !== 0) return dateCompare;
       return String(a.time || '').localeCompare(String(b.time || ''));
     });
-    const todayKey = new Date().toISOString().slice(0, 10);
-    const hasPlayedData = (match) => {
-      const score = getMatchScoreData(match);
-      return match.status === 'Finalizado' || (match.statsGoalEvents || []).length > 0 || score.caudalGoals > 0 || score.rivalGoals > 0;
-    };
+    const hasPlayedData = (match) => getMatchStatus(match) === 'played';
     const finished = sortedMatches.filter(hasPlayedData);
     const nextMatch =
-      sortedMatches.find((match) => !hasPlayedData(match) && (!match.date || match.date >= todayKey)) ||
-      sortedMatches.find((match) => !hasPlayedData(match)) ||
+      sortedMatches.find((match) => getMatchStatus(match) === 'scheduled') ||
       null;
     const lastMatch = finished[finished.length - 1] || null;
     const balance = summarizeGroupMatches(finished);
-    const recent = finished.slice(-5).map((match) => {
+    const recent = finished.map((match) => {
       const score = getMatchScoreData(match);
+      const outcome = getMatchOutcome(match);
+      if (!score.hasScore || !outcome) return null;
       return {
         id: match.id,
-        label: score.caudalGoals > score.rivalGoals ? 'V' : score.caudalGoals < score.rivalGoals ? 'D' : 'E',
+        label: outcome === 'win' ? 'V' : outcome === 'loss' ? 'D' : 'E',
         match,
         score,
       };
-    });
+    }).filter(Boolean).slice(-5);
     const weeklyMatches = finished.slice(-5);
     const weeklyStats = weeklyMatches.reduce(
       (acc, match) => {
@@ -18418,7 +18408,7 @@ function App() {
     }, {});
     const visibleMatches = matchesWithDelegatedEvents
       .filter((match) => delegatedStatusFilter === 'Todos' || getDelegatedDataStatus(match) === delegatedStatusFilter)
-      .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
     const analysisMatches = visibleMatches.filter((match) => (
       delegatedRankingScope === 'Todos los registros'
         ? true
@@ -18521,7 +18511,7 @@ function App() {
     ].map(([label, key]) => ({ label, key, rows: getTopPlayerRows(key) })).filter((group) => group.rows.length);
     const eventTimelineRows = analysisMatches
       .slice()
-      .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0))
+      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
       .map((match) => {
         const events = safeArray(match.quickEvents);
         return {
@@ -19304,7 +19294,7 @@ function App() {
                 {homeDashboard.lastMatch ? (
                   <div className="mt-4">
                     <p className="truncate text-2xl font-black text-white">{homeDashboard.lastMatch.opponent}</p>
-                    <p className="mt-2 text-4xl font-black text-caudal-electric">{getMatchScoreData(homeDashboard.lastMatch).caudalGoals}-{getMatchScoreData(homeDashboard.lastMatch).rivalGoals}</p>
+                    <p className="mt-2 text-4xl font-black text-caudal-electric">{getMatchScore(homeDashboard.lastMatch) ? `${getMatchScore(homeDashboard.lastMatch).caudal}-${getMatchScore(homeDashboard.lastMatch).rival}` : 'Resultado pendiente'}</p>
                     <div className="mt-3 space-y-1 text-sm text-slate-400">
                       <p>{getCompetitionFromCatalog(homeDashboard.lastMatch).label || 'Competición'}</p>
                       <p>{matchDisplayDate(homeDashboard.lastMatch.date)}</p>
@@ -19428,7 +19418,7 @@ function App() {
                 quick.recoveries >= 4 ? ['Buena activación tras pérdida', 'Guardar clips de presión efectiva'] : null,
                 aggregate.yellow + aggregate.red >= 2 ? ['Riesgo disciplinario', 'Revisar entradas, perfiles y duelos'] : null,
               ].filter(Boolean);
-              const orderedSeasonRows = aggregate.rows.slice().sort((a, b) => new Date(a.match.date || 0) - new Date(b.match.date || 0));
+              const orderedSeasonRows = aggregate.rows.slice().sort((a, b) => String(a.match.date || '').localeCompare(String(b.match.date || '')));
               const seasonStageRows = ['Inicio temporada', 'Mitad temporada', 'Final temporada'].map((label, index) => {
                 const from = Math.floor((orderedSeasonRows.length * index) / 3);
                 const to = Math.floor((orderedSeasonRows.length * (index + 1)) / 3);
@@ -22556,11 +22546,28 @@ function App() {
                     const score = getMatchScoreValues(match);
                     const statsEvents = score.statsEvents;
                     const played = isMatchPlayedForUi(match);
+                    const statusPresentation = getMatchStatusPresentation(match);
+                    const scoreDisplay = played && score.hasCompleteScore
+                      ? `${score.home} - ${score.away}`
+                      : statusPresentation.status === 'scheduled'
+                        ? 'VS'
+                        : statusPresentation.status === 'pending_result' || statusPresentation.status === 'played'
+                          ? 'Resultado pendiente'
+                          : statusPresentation.label;
+                    const outcomeLabel = statusPresentation.outcome === 'win'
+                      ? 'Victoria'
+                      : statusPresentation.outcome === 'draw'
+                        ? 'Empate'
+                        : statusPresentation.outcome === 'loss'
+                          ? 'Derrota'
+                          : statusPresentation.label;
+                    const cardAriaLabel = `${outcomeLabel}${played && score.hasCompleteScore ? ` ${score.home}-${score.away}` : ''}: ${match.isHome ? 'C.D. Caudal contra' : `${match.opponent} contra`} ${match.isHome ? match.opponent : 'C.D. Caudal'}`;
                     const getMatchMdLabel = () => {
                       if (!match.date) return 'MD';
                       const today = new Date();
                       today.setHours(0, 0, 0, 0);
-                      const matchDate = new Date(match.date);
+                      const matchDate = parseLocalMatchDate(match.date);
+                      if (!matchDate) return 'MD';
                       matchDate.setHours(0, 0, 0, 0);
                       const diffDays = Math.round((matchDate - today) / 86400000);
                       if (diffDays > 0) return `MD-${diffDays}`;
@@ -22654,16 +22661,17 @@ function App() {
                     );
                     const hiddenMatchEventCountDesktop = Math.max(0, matchEventRows.length - visibleMatchEventRows.length);
                     const hiddenMatchEventCountMobile = Math.max(0, matchEventRows.length - Math.min(3, visibleMatchEventRows.length));
-                    const cardToneClass = played
-                      ? 'border-white/10 bg-[#091428]/[0.86] shadow-[0_18px_48px_rgba(0,0,0,0.22)] hover:border-white/20'
-                      : 'border-caudal-electric/[0.14] bg-[#08192c]/[0.80] shadow-[0_14px_40px_rgba(0,0,0,0.18)] hover:border-caudal-electric/30';
+                    const cardToneClass = 'border-white/10 bg-[#091428]/[0.86] hover:border-white/20';
                     const competitionMeta = getCompetitionFromCatalog(match);
-                    const competitionAccentClass = getCompetitionAccentClass(competitionMeta.key);
                     const competitionPanelClass = getCompetitionPanelClass(competitionMeta.key);
                     return (
-                      <article key={match.id} className={`relative overflow-hidden rounded-[1.45rem] border transition hover:-translate-y-0.5 ${cardToneClass}`}>
-                        <div className={`pointer-events-none absolute inset-0 ${played ? 'bg-[linear-gradient(180deg,rgba(255,255,255,0.035),transparent_38%)]' : 'bg-[radial-gradient(circle_at_50%_0%,rgba(79,140,255,0.13),transparent_34%),linear-gradient(180deg,rgba(79,140,255,0.035),transparent_44%)]'}`} />
-                        <div className={`h-1.5 w-full ${competitionAccentClass}`} />
+                      <article
+                        key={match.id}
+                        aria-label={cardAriaLabel}
+                        className={`relative overflow-hidden rounded-[1.45rem] border border-t-[6px] transition hover:-translate-y-0.5 ${cardToneClass}`}
+                        style={{ borderTopColor: statusPresentation.color, boxShadow: `0 18px 48px rgba(0,0,0,0.22), 0 -8px 30px ${statusPresentation.color}18` }}
+                      >
+                        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.035),transparent_38%)]" />
                         <div className="absolute right-4 top-4 z-10 flex gap-2">
                           <button onClick={() => openMatchForm(match)} className="rounded-lg border border-white/10 bg-white/[0.07] px-2.5 py-1 text-[11px] font-bold text-white hover:bg-white/[0.12]">Editar</button>
                           <button onClick={() => handleMatchDelete(match)} className="rounded-lg border border-red-200/10 bg-red-500/10 px-2.5 py-1 text-[11px] font-bold text-red-100 hover:bg-red-500/[0.18]">Eliminar</button>
@@ -22675,15 +22683,20 @@ function App() {
                           </div>
                           <div className="text-center">
                             <p className="rounded-xl bg-caudal-950/80 px-3 py-1 text-xs text-slate-400">{matchDisplayDate(match.date)}</p>
-                            <p className={`${played ? 'mt-3 text-6xl text-white drop-shadow-[0_8px_18px_rgba(0,0,0,0.35)]' : 'mt-3 text-3xl text-slate-400'} font-black leading-none tracking-normal`}>
-                              {played ? `${score.home} - ${score.away}` : 'VS'}
+                            <p className={`${played && score.hasCompleteScore ? 'mt-3 text-6xl text-white drop-shadow-[0_8px_18px_rgba(0,0,0,0.35)]' : 'mt-3 max-w-[180px] text-xl text-slate-300'} font-black leading-tight tracking-normal`}>
+                              {scoreDisplay}
                             </p>
+                            {(!played || !score.hasCompleteScore) ? (
+                              <span className="mt-2 inline-flex rounded-lg border border-white/10 bg-white/[0.06] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-200">
+                                {played ? 'Finalizado · sin marcador' : statusPresentation.label}
+                              </span>
+                            ) : null}
                             <div className={`mx-auto mt-3 flex max-w-[150px] flex-col items-center gap-1 rounded-2xl border px-3 py-2 ${competitionPanelClass}`}>
                               <CompetitionIdentity competition={competitionMeta} size="md" showName={false} />
                               <p className="max-w-full truncate text-[11px] font-black uppercase tracking-[0.12em]">{competitionMeta.label}</p>
                               {match.round ? <p className="max-w-full truncate text-[10px] font-bold uppercase tracking-[0.10em] opacity-75">{match.round}</p> : null}
                             </div>
-                            {!played ? <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">{getMatchMdLabel()}</p> : null}
+                            {statusPresentation.status === 'scheduled' ? <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">{getMatchMdLabel()}</p> : null}
                             {match.stadium ? <p className="mt-1 text-xs font-semibold text-slate-400">{match.stadium}</p> : null}
                           </div>
                           <div className="text-center">
@@ -22766,8 +22779,16 @@ function App() {
                       </div>
                       <div className="rounded-3xl bg-[#091428]/90 p-4">
                         <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Resultado</p>
-                        <p className="mt-3 text-3xl font-semibold text-white">{selectedMatch.status === 'Finalizado' ? `${selectedMatch.homeScore || 0} - ${selectedMatch.awayScore || 0}` : 'Pendiente'}</p>
-                        <p className="mt-2 text-sm uppercase tracking-[0.2em] text-slate-400">{selectedMatch.status}</p>
+                        {(() => {
+                          const score = getMatchScore(selectedMatch);
+                          const presentation = getMatchStatusPresentation(selectedMatch);
+                          return (
+                            <>
+                              <p className="mt-3 text-3xl font-semibold text-white">{presentation.status === 'played' && score ? `${score.home} - ${score.away}` : presentation.status === 'scheduled' ? 'VS' : presentation.status === 'pending_result' || presentation.status === 'played' ? 'Resultado pendiente' : presentation.label}</p>
+                              <p className="mt-2 text-sm uppercase tracking-[0.2em] text-slate-400">{presentation.label}</p>
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -25731,19 +25752,6 @@ function App() {
                   </select>
                   {matchFieldErrors.isHome ? <span className="block text-xs font-semibold text-red-200">{matchFieldErrors.isHome}</span> : null}
                 </label>
-                <label className="space-y-2 text-sm text-slate-300">
-                  <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Jugado</span>
-                  <span className="flex h-[46px] items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setMatchFormState((prev) => ({ ...prev, status: prev.status === 'Finalizado' ? 'Previa' : 'Finalizado' }))}
-                      className={`relative h-7 w-14 rounded-full transition ${matchFormState.status === 'Finalizado' ? 'bg-caudal-electric' : 'bg-white/15'}`}
-                    >
-                      <span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${matchFormState.status === 'Finalizado' ? 'left-8' : 'left-1'}`} />
-                    </button>
-                    <span className="text-xs font-bold uppercase text-slate-500">{matchFormState.status === 'Finalizado' ? 'Sí' : 'No'}</span>
-                  </span>
-                </label>
               </div>
 
               <label className="space-y-2 text-sm text-slate-300">
@@ -25751,6 +25759,26 @@ function App() {
                 <input name="stadium" value={matchFormState.stadium} onChange={handleMatchChange} placeholder="Campo del encuentro" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
                 {getMatchStadiumHelp() ? <span className="block text-xs font-semibold text-slate-500">{getMatchStadiumHelp()}</span> : null}
               </label>
+
+              {editingMatchId ? (
+                <details className="rounded-2xl border border-white/10 bg-white/[0.025] px-4 py-3">
+                  <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-slate-500">Estado especial</summary>
+                  <label className="mt-3 block space-y-2 text-sm text-slate-300">
+                    <span className="text-xs font-semibold text-slate-500">Solo para incidencias excepcionales; el estado deportivo se calcula automáticamente.</span>
+                    <select
+                      name="status"
+                      value={['Aplazado', 'Suspendido', 'Cancelado'].includes(matchFormState.status) ? matchFormState.status : 'Previa'}
+                      onChange={handleMatchChange}
+                      className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white"
+                    >
+                      <option value="Previa">Normal</option>
+                      <option value="Aplazado">Aplazado</option>
+                      <option value="Suspendido">Suspendido</option>
+                      <option value="Cancelado">Cancelado</option>
+                    </select>
+                  </label>
+                </details>
+              ) : null}
 
               {competitionIconModal.open ? (() => {
                 const competition = getCompetitionFromCatalog(competitionIconModal.competitionKey);
