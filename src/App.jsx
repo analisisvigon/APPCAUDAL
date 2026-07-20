@@ -3356,8 +3356,14 @@ const parseTransfermarktSquadRow = (row, baseUrl, columnIndexes = {}) => {
   const sourceProfileUrl = resolveAssetUrl(nameLink?.getAttribute('href') || '', baseUrl);
   const rawImage = getImageSource(portrait, baseUrl);
   const image = isTransfermarktPlaceholderPortrait(rawImage) ? '' : rawImage;
-  const positionNode = playerCell?.querySelector('table tr:nth-child(2) td, .hauptlink + table tr:nth-child(2) td, [class*="position"]');
-  const rawPosition = (positionNode?.textContent || Array.from(playerCell?.querySelectorAll('tr') || [])[1]?.textContent || '').replace(/\s+/g, ' ').trim();
+  const inlineRowTexts = Array.from(playerCell?.querySelectorAll('.inline-table tr') || [])
+    .map((inlineRow) => inlineRow.textContent?.replace(/\s+/g, ' ').trim() || '')
+    .filter(Boolean);
+  const normalizedName = normalizePlayerIdentityName(name);
+  const rawPosition = inlineRowTexts.find((text) => {
+    const normalizedText = normalizePlayerIdentityName(text);
+    return normalizedText && normalizedText !== normalizedName && !normalizedText.includes(normalizedName);
+  }) || '';
   const numberText = (cellAt(columnIndexes.number)?.textContent || row.querySelector('.rn_nummer')?.textContent || '').trim();
   const parsedNumber = Number(numberText.match(/\d{1,2}/)?.[0]);
   const ageCell = cellAt(columnIndexes.age) || cells.find((cell) => /^(edad|age|alter)$/i.test(cell.getAttribute('data-header') || cell.getAttribute('title') || ''));
@@ -3386,7 +3392,7 @@ const parseTransfermarktSquadRow = (row, baseUrl, columnIndexes = {}) => {
 const extractTransfermarktPlayers = (doc, baseUrl) => {
   const byName = new Map();
   const table = doc.querySelector('table.items');
-  const rows = Array.from(table?.querySelectorAll('tbody tr') || []);
+  const rows = Array.from(table?.tBodies?.[0]?.children || []).filter((row) => row.tagName === 'TR');
   const columnIndexes = getTransfermarktColumnIndexes(table);
 
   rows.forEach((row) => {
@@ -3429,6 +3435,8 @@ const extractTransfermarktPlayers = (doc, baseUrl) => {
   const players = Array.from(byName.values());
   console.table(players.map((player) => ({ name: player.name, rawPosition: player.rawPosition, position: player.position, specificPosition: player.specificPosition, age: player.age, number: player.number })));
   console.info('[TRANSFERMARKT_SQUAD_IMPORT]', {
+    title: doc.title,
+    headers: Array.from(table?.querySelectorAll('thead th') || []).map((header) => header.textContent?.trim() || ''),
     total: players.length,
     withName: players.filter((player) => player.name).length,
     withPosition: players.filter((player) => player.position).length,
@@ -16332,8 +16340,17 @@ function App() {
         squad: imported.players.map(normalizeSquadEntry),
       };
       const playerPlan = buildRivalPlayerImportPlan(teamFormState.squad, foundData.squad);
-      setRivalImportReview({ sourceUrl, data: foundData, playerPlan, conflictResolutions: buildDefaultConflictResolutions(playerPlan), enrichment: null });
-      setImportStatus(imported.players.length ? `Datos encontrados. Plantilla detectada: ${imported.players.length} jugadores.` : 'Datos encontrados. Revisa antes de aplicar.');
+      const coverage = {
+        total: foundData.squad.length,
+        withPosition: foundData.squad.filter((player) => !isEmptyImportedField(player.position)).length,
+        withAge: foundData.squad.filter((player) => Number.isInteger(Number(player.age)) && Number(player.age) > 14 && Number(player.age) < 60).length,
+        withNumber: foundData.squad.filter((player) => !isEmptyImportedField(player.number)).length,
+        withImage: foundData.squad.filter((player) => !isEmptyImportedField(player.image)).length,
+      };
+      setRivalImportReview({ sourceUrl, data: foundData, playerPlan, coverage, conflictResolutions: buildDefaultConflictResolutions(playerPlan), enrichment: null });
+      setImportStatus(coverage.total && coverage.withPosition === 0
+        ? `Importación incompleta: ${coverage.total} jugadores encontrados, pero ninguno tiene posición. Revisa la respuesta recibida antes de aplicar.`
+        : `Datos encontrados: ${coverage.total} jugadores · ${coverage.withPosition} con posición · ${coverage.withAge} con edad · ${coverage.withNumber} con dorsal · ${coverage.withImage} con fotografía real.`);
     } catch (error) {
       console.error('[RIVAL_IMPORT_ERROR]', error);
       setImportStatus('No se han podido importar los datos desde esa URL.');
@@ -16342,6 +16359,10 @@ function App() {
 
   const applyRivalImportReview = () => {
     if (!rivalImportReview?.data) return;
+    if (rivalImportReview.coverage?.total && rivalImportReview.coverage.withPosition === 0) {
+      setImportStatus('No se aplicaron los datos: la plantilla importada no contiene ninguna posición válida.');
+      return;
+    }
     const imported = rivalImportReview.data;
     const resolvedSquad = applyRivalPlayerImportResolutions(rivalImportReview.playerPlan, rivalImportReview.conflictResolutions);
     setTeamFormState((prev) => ({
