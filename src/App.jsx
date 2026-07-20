@@ -28,6 +28,14 @@ import {
   getRivalSyncPlayerKey,
   markChangedFieldsManual,
 } from './utils/rivalSync';
+import {
+  buildIntelligentLineup,
+  buildIntelligentReservePlacements,
+  isPlayerCompatibleWithRole,
+  movePlayerInLineup,
+  sanitizeTacticalLineup,
+  getTacticalPlayerKey,
+} from './utils/rivalTactics';
 import './styles/print.css';
 
 const clubCrest =
@@ -1676,6 +1684,9 @@ const normalizeSupabaseRivalPlayer = (player) => ({
   doubtful: Boolean(player.doubtful ?? player.physical_doubt ?? player.physicalDoubt),
   activeInSquad: player.active_in_squad ?? player.activeInSquad ?? true,
   fieldSources: player.field_sources ?? player.fieldSources ?? {},
+  fieldRole: player.tactical_role ?? player.fieldRole ?? null,
+  slotIndex: player.tactical_slot ?? player.slotIndex ?? null,
+  reserveIndex: player.tactical_reserve_slot ?? player.reserveIndex ?? null,
 });
 
 const createRivalPlayerPayload = (teamId, player) => ({
@@ -1713,6 +1724,9 @@ const createRivalPlayerPayload = (teamId, player) => ({
   observed: Boolean(player.observed),
   active_in_squad: player.activeInSquad !== false,
   field_sources: player.fieldSources || player.field_sources || {},
+  tactical_role: player.fieldRole || null,
+  tactical_slot: player.slotIndex !== null && player.slotIndex !== undefined && player.slotIndex !== '' && Number.isInteger(Number(player.slotIndex)) ? Number(player.slotIndex) : null,
+  tactical_reserve_slot: player.fieldRole === 'Reserva' && [0, 1].includes(Number(player.reserveIndex)) ? Number(player.reserveIndex) : null,
 });
 
 const rivalPlayerDbToForm = (row = {}) => normalizeSupabaseRivalPlayer(row);
@@ -2666,7 +2680,7 @@ const buildTacticalAnalysis = ({ caudalSystem, rivalSystem, caudalLineup, rivalL
 
 const getLineupSlotMap = (lineup) => {
   const usedSlots = new Map();
-  lineup.forEach((player) => {
+  sanitizeTacticalLineup(safeArray(lineup)).forEach((player) => {
     if (Number.isInteger(player.slot)) usedSlots.set(player.slot, player);
   });
   return usedSlots;
@@ -2701,7 +2715,10 @@ const getNearestFormationSlotIndex = (system, point) => {
 const getTeamFieldLineup = (team) => {
   if (!team) return [];
   const system = team.system || '4-4-2';
-  return safeArray(team.lineup).map((player, index) => normalizeLineupEntryWithField(player, index, system));
+  return sanitizeTacticalLineup(
+    safeArray(team.lineup).map((player, index) => normalizeLineupEntryWithField(player, index, system)),
+    getFormationRoles(system).length
+  );
 };
 
 const getUnplacedTeamStarters = (team) => {
@@ -2976,6 +2993,9 @@ const normalizeSquadEntry = (entry) => {
     doubtful: false,
     activeInSquad: true,
     fieldSources: {},
+    fieldRole: null,
+    slotIndex: null,
+    reserveIndex: null,
   };
   }
 
@@ -3015,6 +3035,9 @@ const normalizeSquadEntry = (entry) => {
     doubtful: Boolean(entry.doubtful ?? entry.physicalDoubt),
     activeInSquad: entry.activeInSquad ?? entry.active_in_squad ?? true,
     fieldSources: entry.fieldSources ?? entry.field_sources ?? {},
+    fieldRole: entry.fieldRole ?? entry.tactical_role ?? null,
+    slotIndex: entry.slotIndex ?? entry.tactical_slot ?? null,
+    reserveIndex: entry.reserveIndex ?? entry.tactical_reserve_slot ?? null,
   };
 };
 
@@ -3069,6 +3092,9 @@ const createBlankTeamPlayer = () => ({
   doubtful: false,
   activeInSquad: true,
   fieldSources: {},
+  fieldRole: null,
+  slotIndex: null,
+  reserveIndex: null,
 });
 
 const normalizeMatch = (match) => {
@@ -4308,7 +4334,7 @@ function App() {
   const persistTeamLineup = async (teamId, lineup) => {
     const { error: deleteError } = await supabase.from("equipo_rival_alineacion").delete().eq("equipo_rival_id", teamId);
     if (deleteError) throw deleteError;
-    const rows = (lineup || []).map((player, index) => ({
+    const rows = sanitizeTacticalLineup(lineup || []).map((player, index) => ({
       equipo_rival_id: teamId,
       jugador_rival_id: isUuid(player.id) ? player.id : null,
       player_name: player.name,
@@ -15450,29 +15476,58 @@ function App() {
   const getRivalPlayerFlagKey = (teamId, playerName) => `${teamId || 'team'}::${normalizePlayerIdentityName(playerName)}`;
   const getRivalPlayerUniqueKey = (player) => String(player?.jugadorRivalId || player?.id || normalizePlayerIdentityName(player?.name || ''));
   const getActiveRivalPlayerTeam = () => selectedTeam || teams.find((team) => team.id === editingTeamId) || null;
-  const getRivalPlayerFlags = (teamId, playerName) => rivalPlayerFlags[getRivalPlayerFlagKey(teamId, playerName)] || {};
+  const getRivalPlayerFlags = (teamId, playerName) => {
+    const storedPlayer = teams.find((team) => String(team.id) === String(teamId))?.squad?.map(normalizeSquadEntry).find((player) => normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(playerName));
+    const persistedPlacement = storedPlayer?.fieldRole ? {
+      fieldRole: storedPlayer.fieldRole,
+      slotIndex: storedPlayer.slotIndex,
+      reserveIndex: storedPlayer.reserveIndex,
+      hiddenFromField: false,
+    } : {};
+    return { ...persistedPlacement, ...(rivalPlayerFlags[getRivalPlayerFlagKey(teamId, playerName)] || {}) };
+  };
   const updateRivalPlayerFlags = (teamId, playerName, patch) => {
     const key = getRivalPlayerFlagKey(teamId, playerName);
     setRivalPlayerFlags((current) => ({ ...current, [key]: { ...(current[key] || {}), ...patch } }));
   };
-  const setRivalPlayerPlacement = (teamId, playerName, placement) => {
-    const normalizedName = normalizePlayerIdentityName(playerName);
+  const applyRivalPlacementPatches = (teamId, patches = []) => {
     setRivalPlayerFlags((current) => {
-      const next = {};
-      Object.entries(current).forEach(([key, value]) => {
-        const [storedTeamId, storedName] = key.split('::');
-        next[key] = storedTeamId === String(teamId) && storedName === normalizedName
-          ? { ...value, fieldRole: null, slotIndex: null, reserveIndex: null, hiddenFromField: true }
-          : value;
+      const next = { ...current };
+      patches.forEach(({ playerName, placement }) => {
+        const normalizedName = normalizePlayerIdentityName(playerName);
+        Object.entries(next).forEach(([key, value]) => {
+          const [storedTeamId, storedName] = key.split('::');
+          if (storedTeamId === String(teamId) && storedName === normalizedName) {
+            next[key] = { ...value, fieldRole: null, slotIndex: null, reserveIndex: null, hiddenFromField: true };
+          }
+        });
+        const key = getRivalPlayerFlagKey(teamId, playerName);
+        next[key] = { ...(next[key] || {}), ...placement };
       });
-      const key = getRivalPlayerFlagKey(teamId, playerName);
-      next[key] = {
-        ...(next[key] || {}),
-        ...placement,
-        hiddenFromField: false,
-      };
       return next;
     });
+  };
+  const persistRivalPlacementPatches = async (teamId, patches = []) => {
+    if (!patches.length) return;
+    const playerNames = Array.from(new Set(patches.map((patch) => patch.playerName).filter(Boolean)));
+    const { error: clearError } = await supabase
+      .from("jugadores_rivales")
+      .update({ tactical_role: null, tactical_slot: null, tactical_reserve_slot: null })
+      .eq("equipo_rival_id", teamId)
+      .in("name", playerNames);
+    if (clearError) throw clearError;
+    for (const { playerName, placement } of patches) {
+      const { error: placementError } = await supabase
+        .from("jugadores_rivales")
+        .update({
+          tactical_role: placement.fieldRole || null,
+          tactical_slot: placement.slotIndex !== null && placement.slotIndex !== undefined && placement.slotIndex !== '' && Number.isInteger(Number(placement.slotIndex)) ? Number(placement.slotIndex) : null,
+          tactical_reserve_slot: placement.fieldRole === 'Reserva' && [0, 1].includes(Number(placement.reserveIndex)) ? Number(placement.reserveIndex) : null,
+        })
+        .eq("equipo_rival_id", teamId)
+        .eq("name", playerName);
+      if (placementError) throw placementError;
+    }
   };
   const removePlayerFromLineupItems = (lineup, playerName) =>
     safeArray(lineup).filter((item) => normalizePlayerIdentityName(item.name) !== normalizePlayerIdentityName(playerName));
@@ -15616,8 +15671,12 @@ function App() {
       return draftId && playerId ? draftId === playerId : normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(rivalPlayerModal.originalName);
     }) || {};
     const imageManualSource = normalizedDraft.fieldSources?.image?.source === 'manual_upload' ? 'manual_upload' : 'manual_url';
+    const clearsTacticalPlacement = wantsUnplaced || (normalizedDraft.role === 'Reserva' && originalPlayer.fieldRole === 'Titular');
     const draft = {
       ...normalizedDraft,
+      fieldRole: clearsTacticalPlacement ? null : normalizedDraft.fieldRole,
+      slotIndex: clearsTacticalPlacement ? null : normalizedDraft.slotIndex,
+      reserveIndex: clearsTacticalPlacement ? null : normalizedDraft.reserveIndex,
       fieldSources: markChangedFieldsManual({
         current: rivalPlayerModal.mode === 'edit' ? originalPlayer : {},
         next: normalizedDraft,
@@ -16565,7 +16624,7 @@ function App() {
   const updateTeamLineup = async (teamId, updater, options = {}) => {
     const team = teams.find((item) => item.id === teamId);
     if (!team) return;
-    const nextLineup = updater(team.lineup ?? emptyLineup);
+    const nextLineup = sanitizeTacticalLineup(updater(team.lineup ?? emptyLineup));
     setTeams((current) =>
       current.map((item) => (item.id === teamId ? { ...item, lineup: nextLineup } : item))
     );
@@ -16619,7 +16678,7 @@ function App() {
     setActiveRivalDropSlot('');
 
     if (target.type === 'list') {
-      removeFromLineup(normalizedPlayer.name);
+      await removeFromLineup(normalizedPlayer.name);
       setDraggedPlayer(null);
       setSelectedTeamPlacementPlayerName('');
       return;
@@ -16629,62 +16688,71 @@ function App() {
     if (!Number.isInteger(slotIndex)) return;
     const system = selectedTeam.system || '4-4-2';
     const coordinates = getFormationCoordinates(system)[slotIndex] || { x: 50, y: 50 };
-    const slotRole = getFormationRoles(system)[slotIndex] || normalizedPlayer.position || '';
+    const formationCoordinates = getFormationCoordinates(system);
+    const currentLineup = sanitizeTacticalLineup(selectedTeam.lineup || []);
+    const sourceLineupPlayer = currentLineup.find((item) => normalizePlayerIdentityName(item.name) === normalizePlayerIdentityName(normalizedPlayer.name));
+    const sourceFlags = getRivalPlayerFlags(selectedTeam.id, normalizedPlayer.name);
+    const sourcePlacement = sourceLineupPlayer
+      ? { type: 'Titular', slotIndex: Number(sourceLineupPlayer.slot), reserveIndex: null }
+      : sourceFlags.fieldRole
+        ? { type: sourceFlags.fieldRole, slotIndex: Number(sourceFlags.slotIndex), reserveIndex: Number(sourceFlags.reserveIndex) }
+        : { type: 'list', slotIndex: null, reserveIndex: null };
 
-    if (target.type === 'Titular') {
+    try {
+      if (target.type === 'Titular') {
       const droppedPlayer = { ...normalizedPlayer, role: 'Titular', slot: slotIndex, ...coordinates };
-      const currentLineup = safeArray(selectedTeam.lineup);
       const replacedPlayer = currentLineup.find((item) =>
         Number(item.slot) === slotIndex
         && normalizePlayerIdentityName(item.name) !== normalizePlayerIdentityName(droppedPlayer.name)
       ) || findStarterSlotOccupant(slotIndex, droppedPlayer.name);
-      updateRivalPlayerFlags(selectedTeam.id, droppedPlayer.name, { hiddenFromField: false, fieldRole: 'Titular', slotIndex, reserveIndex: null });
+      const effectiveLineup = sourceLineupPlayer || sourcePlacement.type !== 'Titular'
+        ? currentLineup
+        : [...currentLineup, { ...normalizedPlayer, role: 'Titular', slot: sourcePlacement.slotIndex, ...(formationCoordinates[sourcePlacement.slotIndex] || {}) }];
+      const nextLineup = movePlayerInLineup({ lineup: effectiveLineup, player: droppedPlayer, targetSlot: slotIndex, coordinates: formationCoordinates });
+      const patches = [{ playerName: droppedPlayer.name, placement: { hiddenFromField: false, fieldRole: 'Titular', slotIndex, reserveIndex: null } }];
+      const demoteNames = [];
       if (replacedPlayer?.name) {
-        updateRivalPlayerFlags(selectedTeam.id, replacedPlayer.name, { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null });
+        if (sourcePlacement.type === 'Titular' && Number.isInteger(sourcePlacement.slotIndex) && sourcePlacement.slotIndex !== slotIndex) {
+          patches.push({ playerName: replacedPlayer.name, placement: { hiddenFromField: false, fieldRole: 'Titular', slotIndex: sourcePlacement.slotIndex, reserveIndex: null } });
+        } else if (sourcePlacement.type === 'Reserva' && Number.isInteger(sourcePlacement.slotIndex) && [0, 1].includes(sourcePlacement.reserveIndex)) {
+          patches.push({ playerName: replacedPlayer.name, placement: { hiddenFromField: false, fieldRole: 'Reserva', slotIndex: sourcePlacement.slotIndex, reserveIndex: sourcePlacement.reserveIndex } });
+          demoteNames.push(replacedPlayer.name);
+        } else {
+          patches.push({ playerName: replacedPlayer.name, placement: { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null } });
+          demoteNames.push(replacedPlayer.name);
+        }
       }
-      await updateTeamLineup(selectedTeam.id, (lineup) => [
-        ...safeArray(lineup).filter((item) =>
-          normalizePlayerIdentityName(item.name) !== normalizePlayerIdentityName(droppedPlayer.name)
-          && Number(item.slot) !== slotIndex
-        ),
-        droppedPlayer,
-      ], { demoteNames: replacedPlayer?.name ? [replacedPlayer.name] : [] });
-    }
+      await persistRivalPlacementPatches(selectedTeam.id, patches);
+      applyRivalPlacementPatches(selectedTeam.id, patches);
+      await updateTeamLineup(selectedTeam.id, () => nextLineup, { demoteNames });
+      }
 
-    if (target.type === 'Reserva') {
-      const reserveIndex = Number(target.reserveIndex || 0);
-      const replacedReserve = findReserveSlotOccupant(slotIndex, reserveIndex, normalizedPlayer.name);
-      if (replacedReserve?.name) {
-        updateRivalPlayerFlags(selectedTeam.id, replacedReserve.name, { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null });
-      }
-      updateRivalPlayerFlags(selectedTeam.id, normalizedPlayer.name, { hiddenFromField: false, fieldRole: 'Reserva', slotIndex, reserveIndex });
-      const nextPlayer = { ...normalizedPlayer, role: 'Reserva' };
-      const { error: updateError } = await supabase
-        .from("jugadores_rivales")
-        .update(createRivalPlayerPayload(selectedTeam.id, nextPlayer))
-        .eq("equipo_rival_id", selectedTeam.id)
-        .eq("name", normalizedPlayer.name);
-      if (updateError) {
-        setSaveStatus(updateError.message || 'No se pudo recolocar el reserva.');
+      if (target.type === 'Reserva') {
+      const reserveIndex = Number(target.reserveIndex ?? 0);
+      if (![0, 1].includes(reserveIndex)) {
+        setSaveStatus('Solo se permiten dos reservas por posición.');
         return;
       }
-      const nextLineup = removePlayerFromLineupItems(selectedTeam.lineup, normalizedPlayer.name);
-      await persistTeamLineup(selectedTeam.id, nextLineup);
-      setTeams((current) =>
-        current.map((team) =>
-          team.id === selectedTeam.id
-            ? {
-                ...team,
-                lineup: nextLineup,
-                squad: team.squad.map((entry) => {
-                  const squadPlayer = normalizeSquadEntry(entry);
-                  if (normalizePlayerIdentityName(squadPlayer.name) === normalizePlayerIdentityName(normalizedPlayer.name)) return nextPlayer;
-                  return squadPlayer;
-                }),
-              }
-            : team
-        )
-      );
+      const replacedReserve = findReserveSlotOccupant(slotIndex, reserveIndex, normalizedPlayer.name);
+      let nextLineup = removePlayerFromLineupItems(currentLineup, normalizedPlayer.name);
+      const patches = [{ playerName: normalizedPlayer.name, placement: { hiddenFromField: false, fieldRole: 'Reserva', slotIndex, reserveIndex } }];
+      if (replacedReserve?.name) {
+        if (sourcePlacement.type === 'Titular' && Number.isInteger(sourcePlacement.slotIndex)) {
+          nextLineup = movePlayerInLineup({ lineup: nextLineup, player: replacedReserve, targetSlot: sourcePlacement.slotIndex, coordinates: formationCoordinates });
+          patches.push({ playerName: replacedReserve.name, placement: { hiddenFromField: false, fieldRole: 'Titular', slotIndex: sourcePlacement.slotIndex, reserveIndex: null } });
+        } else if (sourcePlacement.type === 'Reserva' && Number.isInteger(sourcePlacement.slotIndex) && [0, 1].includes(sourcePlacement.reserveIndex)) {
+          patches.push({ playerName: replacedReserve.name, placement: { hiddenFromField: false, fieldRole: 'Reserva', slotIndex: sourcePlacement.slotIndex, reserveIndex: sourcePlacement.reserveIndex } });
+        } else {
+          patches.push({ playerName: replacedReserve.name, placement: { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null } });
+        }
+      }
+      await persistRivalPlacementPatches(selectedTeam.id, patches);
+      applyRivalPlacementPatches(selectedTeam.id, patches);
+      await updateTeamLineup(selectedTeam.id, () => nextLineup, { demoteNames: [normalizedPlayer.name] });
+      }
+    } catch (placementError) {
+      console.error('[RIVAL_TACTICAL_PLACEMENT_ERROR]', placementError);
+      setSaveStatus(placementError.message || 'No se pudo completar el movimiento táctico.');
       await loadTeams();
     }
 
@@ -16703,74 +16771,88 @@ function App() {
     placePlayer(draggedPlayer, { type: 'Titular', slotIndex: targetSlot, x, y });
   };
 
-  const removeFromLineup = (playerName) => {
+  const removeFromLineup = async (playerName) => {
     if (!selectedTeam) return;
-    updateRivalPlayerFlags(selectedTeam.id, playerName, { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null });
-    updateTeamLineup(selectedTeam.id, (lineup) => removePlayerFromLineupItems(lineup, playerName), { demoteNames: [playerName] });
-    setTeams((current) =>
-      current.map((team) =>
-        team.id === selectedTeam.id
-          ? {
-              ...team,
-              squad: team.squad.map((entry) => {
-                const player = normalizeSquadEntry(entry);
-                return player.name === playerName ? { ...player, role: 'Reserva' } : player;
-              }),
-            }
-          : team
-      )
-    );
+    const patches = [{ playerName, placement: { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null } }];
+    try {
+      await persistRivalPlacementPatches(selectedTeam.id, patches);
+      applyRivalPlacementPatches(selectedTeam.id, patches);
+      await updateTeamLineup(selectedTeam.id, (lineup) => removePlayerFromLineupItems(lineup, playerName), { demoteNames: [playerName] });
+    } catch (placementError) {
+      setSaveStatus(placementError.message || 'No se pudo quitar al jugador del campo.');
+      return;
+    }
+  };
+
+  const applyIntelligentRivalLineup = async (lineup, reservePlacements = []) => {
+    if (!selectedTeam) return;
+    const cleanLineup = sanitizeTacticalLineup(lineup);
+    const cleanReservePlacements = reservePlacements.filter((placement) => placement?.player?.name && Number.isInteger(placement.slotIndex) && [0, 1].includes(placement.reserveIndex));
+    const nextNames = new Set([
+      ...cleanLineup.map((player) => normalizePlayerIdentityName(player.name)),
+      ...cleanReservePlacements.map((placement) => normalizePlayerIdentityName(placement.player.name)),
+    ]);
+    const previousStarterNames = new Set([
+      ...safeArray(selectedTeam.lineup).map((player) => normalizePlayerIdentityName(player.name)),
+      ...dedupeRivalPlayers(selectedTeam.squad || []).filter((player) => getRivalPlayerFlags(selectedTeam.id, player.name).fieldRole === 'Titular').map((player) => normalizePlayerIdentityName(player.name)),
+    ]);
+    const previousPlacedNames = new Set(dedupeRivalPlayers(selectedTeam.squad || [])
+      .filter((player) => getRivalPlayerFlags(selectedTeam.id, player.name).fieldRole)
+      .map((player) => normalizePlayerIdentityName(player.name)));
+    previousStarterNames.forEach((name) => previousPlacedNames.add(name));
+    const patches = [
+      ...cleanLineup.map((player) => ({
+      playerName: player.name,
+      placement: { hiddenFromField: false, fieldRole: 'Titular', slotIndex: player.slot, reserveIndex: null },
+      })),
+      ...cleanReservePlacements.map((placement) => ({
+        playerName: placement.player.name,
+        placement: { hiddenFromField: false, fieldRole: 'Reserva', slotIndex: placement.slotIndex, reserveIndex: placement.reserveIndex },
+      })),
+    ];
+    dedupeRivalPlayers(selectedTeam.squad || []).forEach((player) => {
+      const name = normalizePlayerIdentityName(player.name);
+      if (previousPlacedNames.has(name) && !nextNames.has(name)) {
+        patches.push({ playerName: player.name, placement: { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null } });
+      }
+    });
+    await persistRivalPlacementPatches(selectedTeam.id, patches);
+    applyRivalPlacementPatches(selectedTeam.id, patches);
+    const demoteNames = dedupeRivalPlayers(selectedTeam.squad || [])
+      .filter((player) => previousStarterNames.has(normalizePlayerIdentityName(player.name)) && !nextNames.has(normalizePlayerIdentityName(player.name)))
+      .map((player) => player.name);
+    await updateTeamLineup(selectedTeam.id, () => cleanLineup, { demoteNames });
+  };
+
+  const generateSelectedTeamAutoXI = async ({ system = selectedTeam?.system || '4-4-2', confirmOverwrite = true } = {}) => {
+    if (!selectedTeam) return;
+    const hasManualLineup = safeArray(selectedTeam.lineup).length > 0;
+    if (confirmOverwrite && hasManualLineup && !window.confirm('¿Recolocar el once usando posiciones naturales y específicas?')) return;
+    const roles = getFormationRoles(system);
+    const result = buildIntelligentLineup({
+      players: dedupeRivalPlayers(selectedTeam.squad || []).map(normalizeSquadEntry),
+      roles,
+      coordinates: getFormationCoordinates(system),
+      currentLineup: selectedTeam.lineup || [],
+      currentRoles: getFormationRoles(selectedTeam.system || '4-4-2'),
+    });
+    const currentPlacements = new Map(dedupeRivalPlayers(selectedTeam.squad || []).map((player) => [getTacticalPlayerKey(player), getRivalPlayerFlags(selectedTeam.id, player.name)]));
+    const reserveResult = buildIntelligentReservePlacements({ players: result.unplacedPlayers, roles, currentPlacements, currentRoles: getFormationRoles(selectedTeam.system || '4-4-2') });
+    try {
+      await applyIntelligentRivalLineup(result.lineup, reserveResult.placements);
+      const pendingCount = reserveResult.unplacedPlayers.length;
+      setSaveStatus(pendingCount
+        ? `Autocolocación completada. ${pendingCount} jugadores quedaron sin colocar por falta de un puesto compatible libre.`
+        : 'Autocolocación completada sin solapamientos.');
+    } catch (autoPlaceError) {
+      console.error('[RIVAL_AUTO_PLACE_ERROR]', autoPlaceError);
+      setSaveStatus(autoPlaceError.message || 'No se pudo completar la autocolocación.');
+      await loadTeams();
+    }
   };
 
   const arrangeSelectedTeam = () => {
-    if (!selectedTeam) return;
-    const hasManualLineup = safeArray(selectedTeam.lineup).length > 0;
-    if (hasManualLineup && !window.confirm('¿Sobrescribir la disposición actual de titulares?')) return;
-    const squad = selectedTeam.squad.map(normalizeSquadEntry);
-    const starters = squad.filter((player) => player.role === 'Titular');
-    const prioritized = starters.length > 0 ? starters : squad.slice(0, 11);
-    const system = selectedTeam.system || '4-4-2';
-    const fieldCoordinates = getFormationCoordinates(system);
-    const lineup = prioritized.slice(0, 11).map((player, index) => ({ ...player, role: 'Titular', slot: index, ...fieldCoordinates[index] }));
-    prioritized.slice(0, 11).forEach((player, index) => setRivalPlayerPlacement(selectedTeam.id, player.name, { fieldRole: 'Titular', slotIndex: index, reserveIndex: null }));
-
-    updateTeamLineup(selectedTeam.id, () => lineup);
-  };
-
-  const generateSelectedTeamAutoXI = () => {
-    if (!selectedTeam) return;
-    const hasManualLineup = safeArray(selectedTeam.lineup).length > 0;
-    if (hasManualLineup && !window.confirm('¿Sobrescribir la disposición manual actual?')) return;
-    const system = selectedTeam.system || '4-4-2';
-    const roles = getFormationRoles(system);
-    const coordinates = getFormationCoordinates(system);
-    const squad = dedupeRivalPlayers(selectedTeam.squad || []).map(normalizeSquadEntry);
-    const used = new Set();
-    const scoreFit = (player, role) => {
-      const p = normalizePlayerIdentityName(player.position);
-      const r = normalizePlayerIdentityName(role);
-      let score = player.role === 'Titular' ? 20 : 0;
-      if (!p) return score;
-      if (p && (r.includes(p) || p.includes(r))) score += 50;
-      if (/portero|por/.test(p) && /portero/.test(r)) score += 80;
-      if (/central|dfc/.test(p) && /central/.test(r)) score += 70;
-      if (/lateral|carrilero|li|ld/.test(p) && /lateral|carrilero/.test(r)) score += 65;
-      if (/pivote|mediocentro|medio|interior|mc|mcd/.test(p) && /pivote|medio|interior|mediocentro/.test(r)) score += 60;
-      if (/extremo|banda|ed|ei/.test(p) && /extremo/.test(r)) score += 60;
-      if (/delantero|punta|dc/.test(p) && /delantero/.test(r)) score += 70;
-      return score;
-    };
-    const lineup = roles.map((role, index) => {
-      const candidate = squad
-        .filter((player) => !used.has(getRivalPlayerUniqueKey(player)) && !player.injured && !player.suspended)
-        .sort((a, b) => scoreFit(b, role) - scoreFit(a, role))[0]
-        || squad.filter((player) => !used.has(getRivalPlayerUniqueKey(player))).sort((a, b) => scoreFit(b, role) - scoreFit(a, role))[0];
-      if (!candidate) return null;
-      used.add(getRivalPlayerUniqueKey(candidate));
-      return { ...candidate, role: 'Titular', slot: index, ...coordinates[index] };
-    }).filter(Boolean);
-    lineup.forEach((player) => setRivalPlayerPlacement(selectedTeam.id, player.name, { fieldRole: 'Titular', slotIndex: player.slot, reserveIndex: null }));
-    updateTeamLineup(selectedTeam.id, () => lineup);
+    generateSelectedTeamAutoXI();
   };
 
   const handleDropOnLineupSlot = (slotIndex) => {
@@ -16792,27 +16874,34 @@ function App() {
 
   const updateSelectedTeamSystem = async (system) => {
     if (!selectedTeam) return;
-    const decision = window.prompt('Cambiar sistema puede recolocar posiciones. Escribe AUTO para recolocar, MANUAL para mantener posiciones actuales o CANCELAR.', 'MANUAL');
-    const normalizedDecision = String(decision || '').trim().toUpperCase();
-    if (!normalizedDecision || normalizedDecision === 'CANCELAR' || normalizedDecision === 'CANCEL') return;
-    const coordinates = getFormationCoordinates(system);
-    const shouldAutoReposition = normalizedDecision === 'AUTO' || normalizedDecision === 'RECOLOCAR';
-    const nextLineup = shouldAutoReposition
-      ? (selectedTeam.lineup ?? emptyLineup)
-          .slice(0, 11)
-          .map((player, index) => ({ ...player, slot: player.slot ?? index, ...coordinates[player.slot ?? index] }))
-      : (selectedTeam.lineup ?? emptyLineup).slice(0, 11);
-    const { error: systemError } = await supabase.from("equipos_rivales").update({ system }).eq("id", selectedTeam.id);
+    if (!system || system === selectedTeam.system) return;
+    const roles = getFormationRoles(system);
+    const result = buildIntelligentLineup({
+      players: dedupeRivalPlayers(selectedTeam.squad || []).map(normalizeSquadEntry),
+      roles,
+      coordinates: getFormationCoordinates(system),
+      currentLineup: selectedTeam.lineup || [],
+      currentRoles: getFormationRoles(selectedTeam.system || '4-4-2'),
+    });
+    const currentPlacements = new Map(dedupeRivalPlayers(selectedTeam.squad || []).map((player) => [getTacticalPlayerKey(player), getRivalPlayerFlags(selectedTeam.id, player.name)]));
+    const reserveResult = buildIntelligentReservePlacements({ players: result.unplacedPlayers, roles, currentPlacements, currentRoles: getFormationRoles(selectedTeam.system || '4-4-2') });
+    const nextFieldSources = { ...(selectedTeam.fieldSources || {}), system: createFieldSource('manual') };
+    const { error: systemError } = await supabase.from("equipos_rivales").update({ system, field_sources: nextFieldSources }).eq("id", selectedTeam.id);
     if (systemError) {
       console.error('Error guardando sistema rival en Supabase:', systemError);
       setSaveStatus(systemError.message || 'No se pudo guardar el sistema.');
       return;
     }
     try {
-      await persistTeamLineup(selectedTeam.id, nextLineup);
-      await loadTeams();
+      await applyIntelligentRivalLineup(result.lineup, reserveResult.placements);
+      setSaveStatus(reserveResult.unplacedPlayers.length
+        ? `Sistema ${system} aplicado. ${reserveResult.unplacedPlayers.length} jugadores quedaron sin puesto compatible libre.`
+        : `Sistema ${system} aplicado y plantilla recolocada por equivalencias.`);
     } catch (lineupError) {
       console.error('Error reajustando alineación rival en Supabase:', lineupError);
+      await supabase.from("equipos_rivales").update({ system: selectedTeam.system, field_sources: selectedTeam.fieldSources || {} }).eq("id", selectedTeam.id);
+      await loadTeams();
+      setSaveStatus(lineupError.message || 'No se pudo recolocar la plantilla; se restauró el sistema anterior.');
     }
   };
 
@@ -16829,7 +16918,7 @@ function App() {
       return;
     }
     if (role === 'Reserva') {
-      await updateTeamLineup(selectedTeam.id, (lineup) => lineup.filter((player) => player.name !== playerName), { demoteNames: [playerName] });
+      await removeFromLineup(playerName);
       if (selectedTeamPlacementPlayerName === playerName) setSelectedTeamPlacementPlayerName('');
     } else {
       setSelectedTeamPlacementPlayerName(currentPlayer.name);
@@ -17517,9 +17606,14 @@ function App() {
     if (!selectedTeam) return;
     if (safeArray(selectedTeam.lineup).length && !window.confirm('¿Quitar todos los jugadores del campo?')) return;
     try {
+      const starterNames = new Set(safeArray(selectedTeam.lineup).map((player) => normalizePlayerIdentityName(player.name)));
+      const patches = dedupeRivalPlayers(selectedTeam.squad || [])
+        .filter((player) => starterNames.has(normalizePlayerIdentityName(player.name)) || getRivalPlayerFlags(selectedTeam.id, player.name).fieldRole === 'Titular')
+        .map((player) => ({ playerName: player.name, placement: { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null } }));
+      await persistRivalPlacementPatches(selectedTeam.id, patches);
+      applyRivalPlacementPatches(selectedTeam.id, patches);
       await persistTeamLineup(selectedTeam.id, []);
       await supabase.from("jugadores_rivales").update({ role: 'Reserva' }).eq("equipo_rival_id", selectedTeam.id);
-      dedupeRivalPlayers(selectedTeam.squad || []).forEach((player) => updateRivalPlayerFlags(selectedTeam.id, player.name, { hiddenFromField: true }));
       await loadTeams();
       setDraggedPlayer(null);
       setSelectedTeamPlacementPlayerName('');
@@ -17531,14 +17625,7 @@ function App() {
   const saveSelectedTeamField = async () => {
     if (!selectedTeam) return;
     try {
-      const currentLineup = safeArray(selectedTeam.lineup);
-      const fallbackLineup = currentLineup.length
-        ? currentLineup
-        : dedupeRivalPlayers(selectedTeam.squad || [])
-            .filter((player) => player.role === 'Titular')
-            .slice(0, 11)
-            .map((player, index) => ({ ...player, slot: index, ...getFormationCoordinates(selectedTeam.system || '4-4-2')[index] }));
-      await persistTeamLineup(selectedTeam.id, fallbackLineup);
+      await persistTeamLineup(selectedTeam.id, sanitizeTacticalLineup(selectedTeam.lineup || []));
       setSaveStatus('Disposición guardada.');
       await loadTeams();
     } catch (saveLineupError) {
@@ -19665,7 +19752,7 @@ function App() {
                 const allRivalPlayers = dedupeRivalPlayers(selectedTeam.squad || []);
                 const rivalPlayers = allRivalPlayers.filter((player) => player.activeInSquad !== false);
                 const activeRivalPlayerNames = new Set(rivalPlayers.map((player) => normalizePlayerIdentityName(player.name)));
-                const manualPlacedStarters = rivalPlayers
+                const manualPlacedStarters = sanitizeTacticalLineup(rivalPlayers
                   .map((player) => ({ player, flags: getRivalPlayerFlags(selectedTeam.id, player.name) }))
                   .filter(({ flags }) => flags.fieldRole === 'Titular' && flags.slotIndex !== null && flags.slotIndex !== undefined && Number.isInteger(Number(flags.slotIndex)))
                   .map(({ player, flags }) => ({
@@ -19673,15 +19760,9 @@ function App() {
                     role: 'Titular',
                     slot: Number(flags.slotIndex),
                     ...getFormationCoordinates(selectedTeam.system || '4-4-2')[Number(flags.slotIndex)],
-                  }));
+                  })));
                 const activeStoredLineup = selectedTeamFieldLineup.filter((player) => activeRivalPlayerNames.has(normalizePlayerIdentityName(player.name)));
-                const baseFieldLineup = activeStoredLineup.length
-                  ? activeStoredLineup
-                  : rivalPlayers
-                    .filter((player) => player.role === 'Titular')
-                    .filter((player) => !getRivalPlayerFlags(selectedTeam.id, player.name).hiddenFromField)
-                    .slice(0, 11)
-                    .map((player, index) => ({ ...player, role: 'Titular', slot: index, ...getFormationCoordinates(selectedTeam.system || '4-4-2')[index] }));
+                const baseFieldLineup = activeStoredLineup;
                 const visualFieldLineup = (() => {
                   const bySlot = new Map();
                   const usedKeys = new Set();
@@ -19700,17 +19781,7 @@ function App() {
                 const starterKeys = new Set(visualFieldLineup.map(getRivalPlayerUniqueKey));
                 const starterNames = new Set(visualFieldLineup.map((player) => normalizePlayerIdentityName(player.name)));
                 const positionMatchesSlot = (position, role) => {
-                  const p = normalizePlayerIdentityName(position);
-                  const r = normalizePlayerIdentityName(role);
-                  if (!p) return false;
-                  if (/portero|por|gk/.test(p)) return /portero/.test(r);
-                  if (/lateral|carrilero|li|ld/.test(p)) return /lateral|carrilero/.test(r);
-                  if (/central|dfc/.test(p)) return /central/.test(r);
-                  if (/pivote|mediocentro|medio|interior|mc|mcd/.test(p)) return /pivote|medio|interior|mediocentro/.test(r);
-                  if (/extremo|banda|ed|ei/.test(p)) return /extremo/.test(r);
-                  if (/media punta|mediapunta|mp/.test(p)) return /mediapunta/.test(r);
-                  if (/delantero|punta|dc/.test(p)) return /delantero/.test(r);
-                  return r.includes(p) || p.includes(r);
+                  return isPlayerCompatibleWithRole({ position, specificPosition: position }, role, 80);
                 };
                 const assignedFieldKeys = new Set(starterKeys);
                 const assignedFieldNames = new Set(starterNames);
@@ -19733,13 +19804,7 @@ function App() {
                     assignedFieldKeys.add(getRivalPlayerUniqueKey(player));
                     assignedFieldNames.add(normalizePlayerIdentityName(player.name));
                   });
-                  const automatic = rivalPlayers
-                    .filter((player) => !assignedFieldKeys.has(getRivalPlayerUniqueKey(player)))
-                    .filter((player) => !assignedFieldNames.has(normalizePlayerIdentityName(player.name)))
-                    .filter((player) => !getRivalPlayerFlags(selectedTeam.id, player.name).fieldRole)
-                    .filter((player) => player.role !== 'Titular' && !getRivalPlayerFlags(selectedTeam.id, player.name).hiddenFromField)
-                    .filter((player) => positionMatchesSlot(player.specificPosition || player.position, slot.role));
-                  const row = placed.map((player) => player || automatic.shift() || null);
+                  const row = placed;
                   row.filter(Boolean).forEach((player) => {
                     assignedFieldKeys.add(getRivalPlayerUniqueKey(player));
                     assignedFieldNames.add(normalizePlayerIdentityName(player.name));
@@ -19805,14 +19870,16 @@ function App() {
                   return parts[parts.length - 1];
                 };
                 const getRosterFieldState = (player) => {
+                  if (player.activeInSquad === false || player.injured || player.suspended) return 'BAJA';
                   const flags = getRivalPlayerFlags(selectedTeam.id, player.name);
                   if (flags.fieldRole === 'Titular' || starterNames.has(normalizePlayerIdentityName(player.name))) return 'EN CAMPO';
                   if (flags.fieldRole === 'Reserva' || reserveNames.has(normalizePlayerIdentityName(player.name))) return 'RESERVA';
-                  return 'FUERA';
+                  return 'SIN COLOCAR';
                 };
                 const getRosterFieldStateClass = (state) => {
-                  if (state === 'EN CAMPO') return 'border-caudal-electric/25 bg-caudal-electric/10 text-caudal-electric';
-                  if (state === 'RESERVA') return 'border-white/12 bg-white/[0.06] text-slate-200';
+                  if (state === 'EN CAMPO') return 'border-emerald-300/30 bg-emerald-400/12 text-emerald-200';
+                  if (state === 'RESERVA') return 'border-amber-300/25 bg-amber-300/10 text-amber-100';
+                  if (state === 'BAJA') return 'border-red-300/25 bg-red-400/10 text-red-100';
                   return 'border-white/10 bg-white/[0.03] text-slate-500';
                 };
                 const positionLineOrder = (label) => {
@@ -19838,14 +19905,22 @@ function App() {
                   if (role === 'Reserva' && getRivalPlayerFlags(selectedTeam.id, player.name).fieldRole === 'Reserva') return 2;
                   return 3;
                 };
+                const rosterFilterOptions = [
+                  ['Todos', rivalPlayers.length],
+                  ['En campo', rivalPlayers.filter((player) => getRosterFieldState(player) === 'EN CAMPO').length],
+                  ['Reservas', rivalPlayers.filter((player) => getRosterFieldState(player) === 'RESERVA').length],
+                  ['Sin colocar', rivalPlayers.filter((player) => getRosterFieldState(player) === 'SIN COLOCAR').length],
+                  ['Bajas', rivalPlayers.filter((player) => getRosterFieldState(player) === 'BAJA').length],
+                  ['Histórico', allRivalPlayers.filter((player) => player.activeInSquad === false).length],
+                ];
                 const visibleRivalPlayers = (rivalRosterFilter === 'Histórico' ? allRivalPlayers : rivalPlayers).filter((player) => {
                   const search = normalizePlayerIdentityName(rivalRosterSearch);
                   const matchesSearch = !search || normalizePlayerIdentityName(`${player.name} ${player.position} ${player.number}`).includes(search);
                   if (!matchesSearch) return false;
-                  if (rivalRosterFilter === 'Titulares') return getRosterRoleLabel(player) === 'Titular';
-                  if (rivalRosterFilter === 'Reservas') return getRosterRoleLabel(player) === 'Reserva';
-                  if (rivalRosterFilter === 'Sin colocar') return getRivalPlayerFlags(selectedTeam.id, player.name).hiddenFromField || (!isPlayerPlaced(player) && !player.position);
-                  if (rivalRosterFilter === 'Bajas') return player.injured || player.suspended;
+                  if (rivalRosterFilter === 'En campo') return getRosterFieldState(player) === 'EN CAMPO';
+                  if (rivalRosterFilter === 'Reservas') return getRosterFieldState(player) === 'RESERVA';
+                  if (rivalRosterFilter === 'Sin colocar') return getRosterFieldState(player) === 'SIN COLOCAR';
+                  if (rivalRosterFilter === 'Bajas') return getRosterFieldState(player) === 'BAJA';
                   if (rivalRosterFilter === 'Histórico') return player.activeInSquad === false;
                   return true;
                 }).sort((a, b) =>
@@ -19996,11 +20071,8 @@ function App() {
                                 <option key={system} value={system}>{system}</option>
                               ))}
                             </select>
-                            <button type="button" onClick={arrangeSelectedTeam} className="rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-[#7aacff]">
-                              Colocar por sistema
-                            </button>
                             <button type="button" onClick={generateSelectedTeamAutoXI} className="rounded-2xl border border-caudal-electric/20 bg-caudal-electric/10 px-4 py-2 text-sm font-bold text-caudal-electric transition hover:bg-caudal-electric/15">
-                              Generar XI automático
+                              Autocolocar por posición
                             </button>
                             <button type="button" onClick={clearSelectedTeamField} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-slate-100 transition hover:bg-white/10">
                               Limpiar campo
@@ -20060,8 +20132,8 @@ function App() {
                                   handleDropOnLineupSlot(slotIndex);
                                 }}
                                 className={`group absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-2xl border px-2.5 py-1.5 text-center transition ${
-                                  slotPlayer ? `${isPresentationMode ? 'min-h-[5.7rem] w-[6.6rem] px-1.5 py-1' : 'min-h-20 min-w-32'} ${slotPlayer.isKey ? 'border-amber-200/80 bg-amber-200/[0.11] shadow-[0_0_0_1px_rgba(251,191,36,0.32),0_0_24px_rgba(250,204,21,0.30),0_10px_22px_rgba(0,0,0,0.24)]' : 'border-white/10 bg-slate-950/26 shadow-[0_8px_20px_rgba(0,0,0,0.18)]'} text-white` : `${teamFieldEditMode ? 'min-h-9 min-w-20 border-dashed border-white/12 bg-white/[0.012] text-white/30' : 'pointer-events-none hidden'}`
-                                } ${activeRivalDropSlot === `starter-${slotIndex}` ? 'ring-2 ring-caudal-electric/80 ring-offset-2 ring-offset-slate-950' : ''}`}
+                                  slotPlayer ? `${isPresentationMode ? 'min-h-[5.2rem] w-[5.6rem] px-1 py-1' : 'min-h-20 w-24'} ${slotPlayer.isKey ? 'border-amber-200/80 bg-amber-200/[0.11] shadow-[0_0_0_1px_rgba(251,191,36,0.32),0_0_24px_rgba(250,204,21,0.30),0_10px_22px_rgba(0,0,0,0.24)]' : 'border-white/10 bg-slate-950/26 shadow-[0_8px_20px_rgba(0,0,0,0.18)]'} text-white` : `${teamFieldEditMode ? 'min-h-9 min-w-20 border-dashed border-white/12 bg-white/[0.012] text-white/30' : 'pointer-events-none hidden'}`
+                                } ${slotPositionWarning ? 'ring-2 ring-orange-400/80 ring-offset-2 ring-offset-slate-950' : ''} ${activeRivalDropSlot === `starter-${slotIndex}` ? 'ring-2 ring-caudal-electric/80 ring-offset-2 ring-offset-slate-950' : ''}`}
                                 style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
                                 title={slotPlayer ? `${slotRole}: ${slotPlayer.name}` : slotRole}
                               >
@@ -20078,7 +20150,6 @@ function App() {
                                     >
                                       ×
                                     </button> : null}
-                                    {slotPlayer.isKey ? <span className={`absolute left-1/2 flex -translate-x-1/2 items-center justify-center rounded-full border border-amber-200/70 bg-amber-200 font-black text-slate-950 shadow-[0_0_16px_rgba(250,204,21,0.42)] ${isPresentationMode ? '-top-3 h-5 w-5 text-[10px]' : '-top-5 h-7 w-7 text-sm'}`}>?</span> : null}
                                     <span className={`absolute flex flex-col gap-0.5 ${isPresentationMode ? '-right-1 top-1' : '-right-2 top-2'}`}>
                                       {getRivalPlayerStatusIcons(selectedTeam.id, slotPlayer).filter(([, title]) => title !== 'Capitán').map(([icon, title, className]) => (
                                         <span key={title} title={title} className={`flex items-center justify-center rounded-md px-1 font-black leading-none ${isPresentationMode ? 'h-4 min-w-4 text-[8px]' : 'h-5 min-w-5 text-[10px]'} ${className}`}>{icon}</span>
@@ -20227,14 +20298,14 @@ function App() {
                           className="mt-4 w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white outline-none placeholder:text-slate-500 focus:border-caudal-electric/60"
                         />
                         <div className="mt-3 flex flex-wrap gap-1.5">
-                          {['Todos', 'Titulares', 'Reservas', 'Sin colocar', 'Bajas', 'Histórico'].map((filter) => (
+                          {rosterFilterOptions.map(([filter, count]) => (
                             <button
                               key={filter}
                               type="button"
                               onClick={() => setRivalRosterFilter(filter)}
                               className={`rounded-xl border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.08em] transition ${rivalRosterFilter === filter ? 'border-caudal-electric/40 bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-400 hover:text-white'}`}
                             >
-                              {filter}
+                              {filter} ({count})
                             </button>
                           ))}
                         </div>
@@ -20247,7 +20318,6 @@ function App() {
                                 <span className="h-px flex-1 bg-white/10" />
                               </div>
                               {group.players.map((player) => {
-                                const rosterRole = getRosterRoleLabel(player);
                                 const fieldState = getRosterFieldState(player);
                                 const fieldWarning = getPositionLocationWarning(player);
                                 return (
@@ -20258,7 +20328,7 @@ function App() {
                                       setTeamFieldEditMode(true);
                                       setDraggedPlayer(player);
                                     }}
-                                    className={`group flex items-center gap-2 rounded-xl border p-2 transition ${selectedTeamPlacementPlayerName === player.name ? 'border-caudal-electric/30 bg-caudal-electric/10' : 'border-white/10 bg-white/[0.032] hover:bg-white/[0.06]'}`}
+                                    className={`group flex items-center gap-2 rounded-xl border p-2 transition ${fieldState === 'EN CAMPO' ? 'opacity-70 hover:opacity-100' : ''} ${fieldWarning ? 'border-orange-400/55 bg-orange-400/[0.055]' : selectedTeamPlacementPlayerName === player.name ? 'border-caudal-electric/30 bg-caudal-electric/10' : 'border-white/10 bg-white/[0.032] hover:bg-white/[0.06]'}`}
                                   >
                                     <button
                                       type="button"
@@ -20268,6 +20338,7 @@ function App() {
                                       <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/[0.07] text-xs font-black text-white">
                                         <span className="absolute inset-0 flex items-center justify-center">{player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                                         {player.image ? <img src={player.image} alt={player.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="relative h-full w-full object-cover" /> : null}
+                                        {fieldState === 'EN CAMPO' ? <span className="absolute bottom-0.5 right-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-400 text-[10px] font-black text-slate-950 shadow">✓</span> : null}
                                       </span>
                                       <span className="min-w-0 flex-1">
                                         <span className="block truncate text-sm font-black text-white">
@@ -20278,10 +20349,7 @@ function App() {
                                             {player.position || 'Sin posición'}
                                           </span>
                                           <span className={`rounded-md border px-1.5 py-0.5 text-[8px] font-black uppercase ${getRosterFieldStateClass(fieldState)}`}>
-                                            {fieldState}
-                                          </span>
-                                          <span className="rounded-md border border-white/10 bg-white/[0.03] px-1.5 py-0.5 text-[8px] font-black uppercase text-slate-400">
-                                            {rosterRole || 'Sin colocar'}
+                                            {fieldState === 'EN CAMPO' ? '● EN CAMPO' : fieldState === 'RESERVA' ? '● RESERVA' : fieldState === 'BAJA' ? '● BAJA' : '○ SIN COLOCAR'}
                                           </span>
                                         </span>
                                         <span className="mt-1 flex flex-wrap items-center gap-1">
@@ -20302,7 +20370,7 @@ function App() {
                                         onClick={(event) => openFloatingMenu(event, { id: `rival-player-${getRivalPlayerUniqueKey(player)}`, type: 'rival-player' })}
                                         className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-sm font-black text-slate-300 transition hover:bg-white/10"
                                       >
-                                        ?
+                                        ⋯
                                       </button>
                                       {floatingMenu?.id === `rival-player-${getRivalPlayerUniqueKey(player)}` ? (
                                         <FloatingActionMenu anchorRect={floatingMenu.anchorRect} width={256} onClose={closeFloatingMenu}>
