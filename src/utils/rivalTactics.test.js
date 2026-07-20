@@ -29,7 +29,8 @@ assert.equal(isolatedSwap.find((player) => player.id === 'c').slot, 2, 'un inter
 
 assert.equal(sanitizeTacticalLineup([{ ...a, slot: 0 }, { ...b, slot: 0 }]).length, 1, 'se limpia una superposición previa');
 assert.equal(isPlayerCompatibleWithRole(a, 'Lateral derecho'), true);
-assert.equal(isPlayerCompatibleWithRole(a, 'Lateral izquierdo'), false, 'se respeta la pierna/banda específica');
+assert.equal(getPlayerRoleFitScore(a, 'Lateral derecho'), 100, 'la posición específica principal obtiene compatibilidad máxima');
+assert.equal(getPlayerRoleFitScore(a, 'Lateral izquierdo'), 40, 'misma posición natural con función distinta conserva compatibilidad baja');
 assert.ok(getPlayerRoleFitScore(b, 'Central derecho') > getPlayerRoleFitScore(b, 'Delantero'));
 
 const roles = ['Portero', 'Central derecho', 'Pivote', 'Delantero'];

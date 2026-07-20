@@ -10,9 +10,15 @@ assert.equal(isEmptyImportedField('Edad pendiente'), true);
 assert.equal(isEmptyImportedField('Reserva'), false);
 assert.equal(extractTransfermarktPlayerId('https://www.transfermarkt.es/a/profil/spieler/12345'), '12345');
 assert.equal(extractTransfermarktPlayerId('https://example.com/player/12345'), null);
-assert.deepEqual(normalizeTransfermarktPosition('Portero'), { position: 'Portero', specificPosition: 'Portero' });
-assert.deepEqual(normalizeTransfermarktPosition('Defensa central'), { position: 'Defensa', specificPosition: 'Defensa central' });
-assert.deepEqual(normalizeTransfermarktPosition('Mediocentro'), { position: 'Centrocampista', specificPosition: 'Mediocentro' });
-assert.deepEqual(normalizeTransfermarktPosition('Extremo derecho'), { position: 'Atacante', specificPosition: 'Extremo derecho' });
+assert.deepEqual(
+  (({ position, specificPosition }) => ({ position, specificPosition }))(normalizeTransfermarktPosition('Portero')),
+  { position: 'Portero', specificPosition: 'Portero' }
+);
+assert.equal(normalizeTransfermarktPosition('Defensa central').primarySpecificPosition, 'centre_back');
+assert.equal(normalizeTransfermarktPosition('Mediocentro').primaryNaturalPosition, 'midfielder');
+assert.deepEqual(
+  (({ position, specificPosition }) => ({ position, specificPosition }))(normalizeTransfermarktPosition('Extremo derecho')),
+  { position: 'Delantero', specificPosition: 'Extremo derecho' }
+);
 
 console.log('rivalPlayerImport tests passed');

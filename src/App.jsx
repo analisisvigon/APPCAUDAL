@@ -6,6 +6,7 @@ import { supabase } from './lib/supabase';
 import LibrarySection from './components/library/LibrarySection';
 import MatchVideoPlayer from './components/matches/MatchVideoPlayer';
 import MatchPrintTab from './components/print/MatchPrintTab';
+import PlayerDatabaseForm from './components/players/PlayerDatabaseForm';
 import AccordionSection from './components/shared/AccordionSection';
 import StatusMessage from './components/shared/StatusMessage';
 import {
@@ -17,6 +18,20 @@ import {
 } from './constants/postEventTypes';
 import { buildLeagueResultsDonut, calculateLeagueResults } from './utils/leagueResults';
 import { cleanImportedFieldValue, extractTransfermarktPlayerId, isEmptyImportedField, normalizeTransfermarktPosition } from './utils/rivalPlayerImport';
+import {
+  assignGlobalPlayerToTeam,
+  createBlankGlobalPlayer,
+  findGlobalPlayerMatches,
+  loadGlobalPlayerDatabase,
+  saveGlobalPlayerProfile,
+} from './utils/globalPlayerStore';
+import {
+  NATURAL_POSITION_OPTIONS,
+  getNaturalPositionLabel,
+  getPlayerPositionModel,
+  getSpecificPositionLabel,
+  mapExternalPositionToPlayerPositions,
+} from './constants/playerPositions';
 import {
   RIVAL_PLAYER_MANUAL_FIELDS,
   RIVAL_TEAM_SYNC_FIELDS,
@@ -1652,6 +1667,8 @@ const normalizeSupabaseQuickEvent = (event) => ({
 const normalizeSupabaseRivalPlayer = (player) => ({
   id: player.id ?? player.legacy_id ?? player.name,
   jugadorRivalId: player.jugador_rival_id ?? player.id ?? null,
+  globalPlayerId: player.global_player_id ?? player.globalPlayerId ?? null,
+  membershipId: player.membership_id ?? player.membershipId ?? null,
   legacyId: player.legacy_id ?? null,
   name: player.name ?? '',
   image: player.image ?? player.image_url ?? player.photo_url ?? player.avatar_url ?? player.profile_image ?? player.foto ?? '',
@@ -1662,6 +1679,10 @@ const normalizeSupabaseRivalPlayer = (player) => ({
   number: player.number ?? '',
   position: player.position ?? '',
   specificPosition: player.specific_position ?? player.specificPosition ?? '',
+  primaryNaturalPosition: player.primary_natural_position ?? player.primaryNaturalPosition ?? '',
+  secondaryNaturalPositions: player.secondary_natural_positions ?? player.secondaryNaturalPositions ?? [],
+  primarySpecificPosition: player.primary_specific_position ?? player.primarySpecificPosition ?? '',
+  secondarySpecificPositions: player.secondary_specific_positions ?? player.secondarySpecificPositions ?? [],
   dob: player.dob ?? player.birth_date ?? '',
   age: player.age ?? '',
   foot: player.foot ?? '',
@@ -2933,6 +2954,10 @@ const rivalPlayerFieldLabels = {
   number: 'Dorsal',
   position: 'Posición',
   specificPosition: 'Posición específica',
+  primaryNaturalPosition: 'Posición natural principal',
+  secondaryNaturalPositions: 'Posiciones naturales secundarias',
+  primarySpecificPosition: 'Posición específica principal',
+  secondarySpecificPositions: 'Posiciones específicas secundarias',
   dob: 'Fecha nacimiento',
   age: 'Edad',
   height: 'Altura',
@@ -2953,7 +2978,9 @@ const getBenchForStarter = (starter, benchChart = emptyDepthChart) => {
 const normalizeSquadEntry = (entry) => {
   if (typeof entry === 'string') {
     return {
-      id: entry,
+    id: entry,
+    globalPlayerId: null,
+    membershipId: null,
       name: entry,
     image: '',
     imageSource: '',
@@ -2964,6 +2991,10 @@ const normalizeSquadEntry = (entry) => {
     position: '',
     specificPosition: '',
     secondaryPositions: [],
+    primaryNaturalPosition: '',
+    secondaryNaturalPositions: [],
+    primarySpecificPosition: '',
+    secondarySpecificPositions: [],
     dob: '',
     age: '',
     foot: '',
@@ -2994,9 +3025,12 @@ const normalizeSquadEntry = (entry) => {
   }
 
   const name = cleanImportedFieldValue(entry.name, '');
+  const positionModel = getPlayerPositionModel(entry);
   return {
     id: entry.id ?? name,
     jugadorRivalId: entry.jugadorRivalId ?? entry.jugador_rival_id ?? null,
+    globalPlayerId: entry.globalPlayerId ?? entry.global_player_id ?? null,
+    membershipId: entry.membershipId ?? entry.membership_id ?? null,
     name,
     image: cleanImportedFieldValue(entry.image ?? entry.image_url ?? entry.photo_url ?? entry.avatar_url ?? entry.profile_image ?? entry.foto, ''),
     imageSource: cleanImportedFieldValue(entry.imageSource ?? entry.image_source, ''),
@@ -3007,11 +3041,22 @@ const normalizeSquadEntry = (entry) => {
     position: cleanImportedFieldValue(entry.position, ''),
     specificPosition: cleanImportedFieldValue(entry.specificPosition ?? entry.specific_position, ''),
     secondaryPositions: safeArray(entry.secondaryPositions ?? entry.secondary_positions ?? entry.alternativePositions ?? entry.alternative_positions),
+    primaryNaturalPosition: positionModel.primaryNaturalPosition,
+    secondaryNaturalPositions: positionModel.secondaryNaturalPositions,
+    primarySpecificPosition: positionModel.primarySpecificPosition,
+    secondarySpecificPositions: positionModel.secondarySpecificPositions,
+    positionSource: entry.positionSource ?? entry.position_source ?? '',
     dob: cleanImportedFieldValue(entry.dob ?? entry.birth_date, ''),
     age: cleanImportedFieldValue(entry.age, ''),
     foot: cleanImportedFieldValue(entry.foot, ''),
     height: cleanImportedFieldValue(entry.height, ''),
     notes: entry.notes ?? entry.observations ?? '',
+    scoutingSummary: entry.scoutingSummary ?? entry.scouting_summary ?? entry.notes ?? '',
+    sources: safeArray(entry.sources),
+    traits: safeArray(entry.traits),
+    memberships: safeArray(entry.memberships),
+    currentMemberships: safeArray(entry.currentMemberships),
+    teamId: entry.teamId ?? entry.team_id ?? '',
     role: entry.role ?? '',
     isKey: Boolean(entry.isKey),
     yellowRisk: Boolean(entry.yellowRisk),
@@ -3055,6 +3100,8 @@ const formatSquadText = (squad) =>
 
 const createBlankTeamPlayer = () => ({
   id: `manual-${Date.now()}`,
+  globalPlayerId: null,
+  membershipId: null,
   name: '',
   image: '',
   imageSource: '',
@@ -3064,11 +3111,21 @@ const createBlankTeamPlayer = () => ({
   number: '',
   position: '',
   specificPosition: '',
+  primaryNaturalPosition: '',
+  secondaryNaturalPositions: [],
+  primarySpecificPosition: '',
+  secondarySpecificPositions: [],
   dob: '',
   age: '',
   foot: '',
   height: '',
   notes: '',
+  scoutingSummary: '',
+  sources: [],
+  traits: [],
+  memberships: [],
+  currentMemberships: [],
+  teamId: '',
   role: '',
   isKey: false,
   yellowRisk: false,
@@ -3379,7 +3436,8 @@ const extractTransfermarktPlayers = (doc, baseUrl) => {
     const parsed = parseTransfermarktSquadRow(row, baseUrl, columnIndexes);
     const { name, image, sourceProfileUrl, rawPosition, age, number } = parsed;
     const externalPlayerId = extractTransfermarktPlayerId(sourceProfileUrl);
-    const { position, specificPosition } = normalizeImportedPosition(rawPosition);
+    const positionModel = normalizeImportedPosition(rawPosition);
+    const { position, specificPosition } = positionModel;
 
     if (
       name &&
@@ -3397,6 +3455,7 @@ const extractTransfermarktPlayers = (doc, baseUrl) => {
         externalPlayerId: externalPlayerId || '',
         number,
         rawPosition,
+        ...positionModel,
         position,
         specificPosition,
         age,
@@ -3443,7 +3502,8 @@ const extractTransfermarktPlayerProfile = (doc, baseUrl, player) => {
   const heightLabel = text.match(/(?:altura|größe|height)\s*:?\s*([^|]{0,30})/i)?.[1] || '';
   const footLabel = text.match(/(?:pie|fuß|foot)\s*:?\s*([^|]{0,30})/i)?.[1] || '';
   const positionLabel = text.match(/(?:posición|position)\s*:?\s*([^|]{0,55})/i)?.[1] || '';
-  const { position, specificPosition } = normalizeImportedPosition(positionLabel);
+  const positionModel = normalizeImportedPosition(positionLabel);
+  const { position, specificPosition } = positionModel;
   const portrait = doc.querySelector('.data-header__profile-container img, .data-header__profile-image, img[src*="/portrait/"]');
   const image = getImageSource(portrait, baseUrl);
   const number = text.match(/(?:dorsal|shirt number)\s*:?[#\s]*(\d{1,2})/i)?.[1] || '';
@@ -3455,6 +3515,7 @@ const extractTransfermarktPlayerProfile = (doc, baseUrl, player) => {
     foot: normalizeImportedFoot(footLabel) || player.foot,
     position: position || player.position,
     specificPosition: specificPosition || player.specificPosition,
+    ...(positionModel.primaryNaturalPosition ? positionModel : {}),
     image: image || player.image,
     imageSource: image ? 'imported' : player.imageSource,
     number: number || player.number,
@@ -3481,7 +3542,8 @@ const extractBesoccerPlayers = (doc, baseUrl) => {
     const height = normalizeImportedHeight(rowText);
     const foot = normalizeImportedFoot(rowText);
     const rawPosition = rowText.match(/\b(Portero|Goalkeeper|POR|GK|Defensa central|Centre-Back|Central|Lateral derecho|Lateral izquierdo|Pivote|Mediocentro|Mediapunta|Extremo derecho|Extremo izquierdo|Delantero centro|Delantero|Forward|Striker)\b/i)?.[1] || '';
-    const { position, specificPosition } = normalizeImportedPosition(rawPosition);
+    const positionModel = normalizeImportedPosition(rawPosition);
+    const { position, specificPosition } = positionModel;
     if (name && name.length > 2 && name.length < 45 && !/mas|más|comparar|partidos|trayectoria/i.test(name)) {
       byName.set(sourceProfileUrl || name, {
         id: sourceProfileUrl || name,
@@ -3489,6 +3551,7 @@ const extractBesoccerPlayers = (doc, baseUrl) => {
         image,
         imageSource: image ? 'imported' : '',
         sourceProfileUrl,
+        ...positionModel,
         number,
         position,
         specificPosition,
@@ -3554,8 +3617,9 @@ const extractBesoccerPlayersFromText = (text) => {
     const possibleAge = cells.find((cell) => /^\d{2}$/.test(cell) && Number(cell) >= 15 && Number(cell) <= 45 && cell !== number) || '';
     const height = normalizeImportedHeight(cells.join(' '));
     const foot = normalizeImportedFoot(cells.join(' '));
-    const { position, specificPosition } = normalizeImportedPosition(currentPosition);
-    if (name) byName.set(name, { id: name, name, image: '', number, position, specificPosition, age: possibleAge, height, foot, role: '', isKey: false });
+    const positionModel = normalizeImportedPosition(currentPosition);
+    const { position, specificPosition } = positionModel;
+    if (name) byName.set(name, { id: name, name, image: '', number, ...positionModel, position, specificPosition, age: possibleAge, height, foot, role: '', isKey: false });
   });
 
   return Array.from(byName.values());
@@ -3906,6 +3970,15 @@ function App() {
     saving: false,
   });
   const [selectedTeamId, setSelectedTeamId] = useState(null);
+  const [globalPlayers, setGlobalPlayers] = useState([]);
+  const [globalPlayersAvailable, setGlobalPlayersAvailable] = useState(true);
+  const [globalPlayersLoading, setGlobalPlayersLoading] = useState(false);
+  const [globalPlayersError, setGlobalPlayersError] = useState('');
+  const [globalPlayerStatus, setGlobalPlayerStatus] = useState('');
+  const [globalPlayerSearch, setGlobalPlayerSearch] = useState('');
+  const [globalPlayerPositionFilter, setGlobalPlayerPositionFilter] = useState('');
+  const [globalPlayerTeamFilter, setGlobalPlayerTeamFilter] = useState('');
+  const [globalPlayerTraitFilter, setGlobalPlayerTraitFilter] = useState('');
   const [draggedPlayer, setDraggedPlayer] = useState(null);
   const [importStatus, setImportStatus] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
@@ -4241,29 +4314,75 @@ function App() {
   const loadTeams = async () => {
     setTeamsLoading(true);
     setTeamsError('');
+    setGlobalPlayersLoading(true);
+    setGlobalPlayersError('');
 
     try {
-      const [teamsResponse, playersResponse, lineupResponse, benchResponse, syncHistoryResponse] = await Promise.all([
+      const [teamsResponse, playersResponse, lineupResponse, benchResponse, syncHistoryResponse, globalDatabase] = await Promise.all([
         supabase.from("equipos_rivales").select("*").order("name", { ascending: true }),
         supabase.from("jugadores_rivales").select("*").order("name", { ascending: true }),
         supabase.from("equipo_rival_alineacion").select("*").order("slot", { ascending: true }),
         supabase.from("equipo_rival_banquillo").select("*").order("slot", { ascending: true }),
         supabase.from("rival_sync_history").select("*").order("created_at", { ascending: false }),
+        loadGlobalPlayerDatabase(supabase),
       ]);
       const failed = [teamsResponse, playersResponse, lineupResponse, benchResponse].find((response) => response.error);
       if (failed) throw failed.error;
       if (syncHistoryResponse.error) console.warn('[RIVAL_SYNC_HISTORY_LOAD_WARNING]', syncHistoryResponse.error.message);
 
+      setGlobalPlayersAvailable(globalDatabase.available);
+      setGlobalPlayers(globalDatabase.players || []);
+      if (!globalDatabase.available) {
+        setGlobalPlayersError('Ejecuta supabase_global_players.sql para activar la base global. Mientras tanto se mantiene la lectura legacy.');
+      }
+
+      const globalPlayersById = new Map((globalDatabase.players || []).map((player) => [String(player.id), player]));
+      const playerWithMembership = (player, membership, legacyPlayer = null) => normalizeSquadEntry({
+        ...(legacyPlayer || {}),
+        ...player,
+        id: player.id,
+        globalPlayerId: player.id,
+        jugadorRivalId: legacyPlayer?.jugadorRivalId || null,
+        legacyId: legacyPlayer?.legacyId || null,
+        membershipId: membership?.id || legacyPlayer?.membershipId || null,
+        teamId: membership?.team_id || legacyPlayer?.teamId || '',
+        number: membership?.number ?? legacyPlayer?.number ?? '',
+        captain: membership?.captain ?? legacyPlayer?.captain ?? false,
+        isKey: membership?.is_key ?? legacyPlayer?.isKey ?? false,
+        observed: membership?.observed ?? legacyPlayer?.observed ?? false,
+        role: membership?.squad_role ?? legacyPlayer?.role ?? '',
+        fieldRole: membership?.tactical_role ?? legacyPlayer?.fieldRole ?? null,
+        slotIndex: membership?.tactical_slot ?? legacyPlayer?.slotIndex ?? null,
+        reserveIndex: membership?.tactical_reserve_slot ?? legacyPlayer?.reserveIndex ?? null,
+        activeInSquad: membership ? membership.is_current : legacyPlayer?.activeInSquad ?? true,
+        membership,
+      });
+
       const playersByTeam = (playersResponse.data || []).reduce((acc, player) => {
-        acc[player.equipo_rival_id] = [...(acc[player.equipo_rival_id] || []), normalizeSupabaseRivalPlayer(player)];
+        const legacyPlayer = normalizeSupabaseRivalPlayer(player);
+        const globalPlayer = legacyPlayer.globalPlayerId ? globalPlayersById.get(String(legacyPlayer.globalPlayerId)) : null;
+        const membership = globalPlayer?.memberships?.find((item) => item.id === legacyPlayer.membershipId)
+          || globalPlayer?.memberships?.find((item) => item.team_id === player.equipo_rival_id && item.is_current)
+          || null;
+        const resolvedPlayer = globalPlayer ? playerWithMembership(globalPlayer, membership, legacyPlayer) : legacyPlayer;
+        acc[player.equipo_rival_id] = [...(acc[player.equipo_rival_id] || []), resolvedPlayer];
         return acc;
       }, {});
+      (globalDatabase.players || []).forEach((globalPlayer) => {
+        globalPlayer.memberships.filter((membership) => membership.is_current).forEach((membership) => {
+          const teamPlayers = playersByTeam[membership.team_id] || [];
+          if (teamPlayers.some((player) => String(player.globalPlayerId || '') === String(globalPlayer.id))) return;
+          playersByTeam[membership.team_id] = [...teamPlayers, playerWithMembership(globalPlayer, membership)];
+        });
+      });
       Object.keys(playersByTeam).forEach((teamId) => {
         playersByTeam[teamId] = dedupeRivalPlayers(playersByTeam[teamId]);
       });
       const findLinkedRivalPlayer = (teamId, row) => {
         const teamPlayers = playersByTeam[teamId] || [];
         return (
+          teamPlayers.find((player) => row.membership_id && player.membershipId === row.membership_id) ||
+          teamPlayers.find((player) => row.global_player_id && player.globalPlayerId === row.global_player_id) ||
           teamPlayers.find((player) => row.jugador_rival_id && player.id === row.jugador_rival_id) ||
           teamPlayers.find((player) => row.jugador_rival_id && player.jugadorRivalId === row.jugador_rival_id) ||
           teamPlayers.find((player) => normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(row.player_name))
@@ -4326,6 +4445,7 @@ function App() {
       return [];
     } finally {
       setTeamsLoading(false);
+      setGlobalPlayersLoading(false);
     }
   };
 
@@ -4334,7 +4454,11 @@ function App() {
     if (deleteError) throw deleteError;
     const rows = sanitizeTacticalLineup(lineup || []).map((player, index) => ({
       equipo_rival_id: teamId,
-      jugador_rival_id: isUuid(player.id) ? player.id : null,
+      jugador_rival_id: isUuid(player.jugadorRivalId) ? player.jugadorRivalId : null,
+      ...(globalPlayersAvailable ? {
+        global_player_id: isUuid(player.globalPlayerId) ? player.globalPlayerId : null,
+        membership_id: isUuid(player.membershipId) ? player.membershipId : null,
+      } : {}),
       player_name: player.name,
       slot: Number.isInteger(player.slot) ? player.slot : index,
       role: player.role || 'Titular',
@@ -4355,7 +4479,11 @@ function App() {
         equipo_rival_id: teamId,
         starter_name: starterName,
         slot,
-        jugador_rival_id: player && isUuid(player.id) ? player.id : null,
+        jugador_rival_id: player && isUuid(player.jugadorRivalId) ? player.jugadorRivalId : null,
+        ...(globalPlayersAvailable ? {
+          global_player_id: player && isUuid(player.globalPlayerId) ? player.globalPlayerId : null,
+          membership_id: player && isUuid(player.membershipId) ? player.membershipId : null,
+        } : {}),
         player_name: player?.name || null,
         player_snapshot: player ? normalizeSquadEntry(player) : {},
       }))
@@ -4884,7 +5012,11 @@ function App() {
       slot: slotIndex,
       player_name: playerName,
       jugador_id: scope === 'pre_caudal' && isUuid(player?.id) ? player.id : null,
-      jugador_rival_id: scope === 'pre_rival' ? (isUuid(jugadorRivalId) ? jugadorRivalId : isUuid(player?.id) ? player.id : null) : null,
+      jugador_rival_id: scope === 'pre_rival' ? (isUuid(jugadorRivalId) ? jugadorRivalId : isUuid(player?.jugadorRivalId) ? player.jugadorRivalId : null) : null,
+      ...(globalPlayersAvailable ? {
+        global_player_id: scope === 'pre_rival' && isUuid(player?.globalPlayerId) ? player.globalPlayerId : null,
+        membership_id: scope === 'pre_rival' && isUuid(player?.membershipId) ? player.membershipId : null,
+      } : {}),
     };
     const { error: slotError } = await supabase
       .from("partido_alineacion_slots")
@@ -5319,15 +5451,21 @@ function App() {
     const current = safeArray(selectedRivalObservedScouting.collective[field]);
     updateObservedCollectiveProfile(field, current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
   };
-  const getObservedPlayerKey = (player) => String(player?.jugadorRivalId || player?.id || player?.name || '');
-  const getObservedPlayerProfile = (player) => ({
-    ...emptyObservedPlayerProfile,
-    ...(selectedRivalObservedScouting.playerProfiles[getObservedPlayerKey(player)] || {}),
-    position: selectedRivalObservedScouting.playerProfiles[getObservedPlayerKey(player)]?.position || '',
-    mainProfile: selectedRivalObservedScouting.playerProfiles[getObservedPlayerKey(player)]?.mainProfile || '',
-    secondaryProfile: selectedRivalObservedScouting.playerProfiles[getObservedPlayerKey(player)]?.secondaryProfile || '',
-    traits: safeArray(selectedRivalObservedScouting.playerProfiles[getObservedPlayerKey(player)]?.traits),
-  });
+  const getObservedPlayerKey = (player) => String(player?.globalPlayerId || player?.jugadorRivalId || player?.id || player?.name || '');
+  const getObservedPlayerProfile = (player) => {
+    const stored = selectedRivalObservedScouting.playerProfiles[getObservedPlayerKey(player)] || {};
+    const globalTraits = safeArray(player?.traits).map((trait) => trait.label).filter(Boolean);
+    return {
+      ...emptyObservedPlayerProfile,
+      ...stored,
+      position: stored.position || player?.specificPosition || player?.position || '',
+      mainProfile: stored.mainProfile || '',
+      secondaryProfile: stored.secondaryProfile || '',
+      foot: stored.foot || player?.foot || '',
+      notes: stored.notes || player?.scoutingSummary || '',
+      traits: Array.from(new Set([...safeArray(stored.traits), ...globalTraits])),
+    };
+  };
   const updateObservedPlayerProfile = (player, patch) => {
     const playerKey = getObservedPlayerKey(player);
     if (!playerKey) return;
@@ -7351,6 +7489,28 @@ function App() {
   };
   const getMicroPlanForProfile = (player, profile) => {
     const label = `${profile.mainProfile} ${profile.traits.join(' ')}`.toLowerCase();
+    const structuredTraits = safeArray(player?.traits);
+    if (structuredTraits.length) {
+      const strengths = structuredTraits.filter((trait) => trait.category === 'strength').map((trait) => trait.label);
+      const vulnerabilities = structuredTraits.filter((trait) => trait.category === 'vulnerability').map((trait) => trait.label);
+      const trends = structuredTraits.filter((trait) => trait.category === 'trend').map((trait) => trait.label);
+      const evidenceText = [
+        strengths.length ? `fortalezas: ${strengths.join(', ')}` : '',
+        vulnerabilities.length ? `vulnerabilidades: ${vulnerabilities.join(', ')}` : '',
+        trends.length ? `tendencias: ${trends.join(', ')}` : '',
+      ].filter(Boolean).join(' · ');
+      const evidenceLabel = normalizePlayerIdentityName(evidenceText);
+      const proposals = [];
+      if (/dominante.*aereo|juego aereo|fuerte en contacto/.test(evidenceLabel)) proposals.push('Evitar el duelo directo por arriba; preparar apoyo y segunda jugada.');
+      if (/sufre a la espalda|lento en espacios|lento.*transicion/.test(evidenceLabel)) proposals.push('Atraerle fuera de zona y atacar su espalda con una tercera carrera.');
+      if (/se precipita|salta.*presion|agresivo hacia delante/.test(evidenceLabel)) proposals.push('Fijar su salto y ocupar inmediatamente el espacio que abandona.');
+      if (/pierna no dominante|busca pierna dominante/.test(evidenceLabel) || player?.foot) proposals.push(`Orientar sus recepciones hacia ${player?.foot === 'Izquierda' ? 'la derecha' : player?.foot === 'Derecha' ? 'la izquierda' : 'su perfil menos cómodo'}.`);
+      if (/busca envio largo|abusa.*envio largo/.test(evidenceLabel)) proposals.push('Cerrar el apoyo corto y preparar el duelo y el segundo balón ante su envío largo.');
+      return {
+        reading: `Lectura basada en scouting registrado (${evidenceText}).`,
+        proposals: proposals.length ? proposals.slice(0, 4) : ['Usar las tendencias registradas como hipótesis y validarlas en sus primeras intervenciones.'],
+      };
+    }
     if (/rápido|espacio|ataca espalda|profundo/.test(label)) return {
       reading: 'Su amenaza registrada apunta a atacar profundidad o recibir con ventaja corriendo hacia adelante.',
       proposals: [
@@ -7406,7 +7566,7 @@ function App() {
       ],
     };
     return {
-      reading: `Existe información parcial de ${displayPlayerName(player) || player?.name || 'este jugador'}, pero no suficiente para definir una respuesta específica de perfil.`,
+      reading: `Propuesta general para ${player?.specificPosition || player?.position || 'este perfil'}. Perfil individual sin completar para ${displayPlayerName(player) || player?.name || 'este jugador'}.`,
       proposals: [
         'Usar los rasgos registrados como alerta, no como conclusión completa.',
         'Observar sus primeras acciones para confirmar tendencia.',
@@ -15419,12 +15579,15 @@ function App() {
     if (!selectedTeam) return;
     const currentPlayer = selectedTeam.squad.map(normalizeSquadEntry).find((player) => player.name === playerName);
     if (!currentPlayer) return;
-    if (field === 'isKey' && value) {
-      await supabase
-        .from("jugadores_rivales")
-        .update({ is_key: false })
-        .eq("equipo_rival_id", selectedTeam.id);
+    if (currentPlayer.membershipId && ['isKey', 'captain', 'observed', 'role'].includes(field)) {
+      const column = { isKey: 'is_key', captain: 'captain', observed: 'observed', role: 'squad_role' }[field];
+      if (field === 'isKey' && value) await supabase.from('player_team_memberships').update({ is_key: false }).eq('team_id', selectedTeam.id).eq('is_current', true);
+      const { error: membershipError } = await supabase.from('player_team_memberships').update({ [column]: value }).eq('id', currentPlayer.membershipId);
+      if (membershipError) console.error('Error actualizando afiliación del jugador global:', membershipError);
+      else await loadTeams();
+      return;
     }
+    if (field === 'isKey' && value) await supabase.from("jugadores_rivales").update({ is_key: false }).eq("equipo_rival_id", selectedTeam.id);
     const nextPlayerBase = { ...currentPlayer, [field]: value };
     const nextPlayer = {
       ...nextPlayerBase,
@@ -15445,10 +15608,18 @@ function App() {
   const handleSelectedTeamPlayerDelete = async (player) => {
     const activeTeam = getActiveRivalPlayerTeam();
     if (!activeTeam || !player?.name) return;
-    const playerId = isUuid(player.jugadorRivalId) ? player.jugadorRivalId : isUuid(player.id) ? player.id : null;
-    let deleteRequest = supabase.from("jugadores_rivales").delete().eq("equipo_rival_id", activeTeam.id);
-    deleteRequest = playerId ? deleteRequest.eq("id", playerId) : deleteRequest.eq("name", player.name);
-    const { error: deleteError } = await deleteRequest;
+    const normalizedPlayer = normalizeSquadEntry(player);
+    let deleteError = null;
+    if (normalizedPlayer.membershipId) {
+      const response = await supabase.from('player_team_memberships').update({ is_current: false, end_date: new Date().toISOString().slice(0, 10), tactical_role: null, tactical_slot: null, tactical_reserve_slot: null }).eq('id', normalizedPlayer.membershipId);
+      deleteError = response.error;
+    } else {
+      const playerId = isUuid(player.jugadorRivalId) ? player.jugadorRivalId : isUuid(player.id) ? player.id : null;
+      let deleteRequest = supabase.from("jugadores_rivales").delete().eq("equipo_rival_id", activeTeam.id);
+      deleteRequest = playerId ? deleteRequest.eq("id", playerId) : deleteRequest.eq("name", player.name);
+      const response = await deleteRequest;
+      deleteError = response.error;
+    }
     if (deleteError) {
       console.error('Error eliminando jugador rival en Supabase:', deleteError);
       setSaveStatus(deleteError.message || 'No se pudo eliminar el jugador rival.');
@@ -15478,7 +15649,7 @@ function App() {
   };
 
   const getRivalPlayerFlagKey = (teamId, playerName) => `${teamId || 'team'}::${normalizePlayerIdentityName(playerName)}`;
-  const getRivalPlayerUniqueKey = (player) => String(player?.jugadorRivalId || player?.id || normalizePlayerIdentityName(player?.name || ''));
+  const getRivalPlayerUniqueKey = (player) => String(player?.membershipId || player?.jugadorRivalId || player?.globalPlayerId || player?.id || normalizePlayerIdentityName(player?.name || ''));
   const getActiveRivalPlayerTeam = () => selectedTeam || teams.find((team) => team.id === editingTeamId) || null;
   const getRivalPlayerFlags = (teamId, playerName) => {
     const storedPlayer = teams.find((team) => String(team.id) === String(teamId))?.squad?.map(normalizeSquadEntry).find((player) => normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(playerName));
@@ -15514,22 +15685,29 @@ function App() {
   const persistRivalPlacementPatches = async (teamId, patches = []) => {
     if (!patches.length) return;
     const playerNames = Array.from(new Set(patches.map((patch) => patch.playerName).filter(Boolean)));
-    const { error: clearError } = await supabase
-      .from("jugadores_rivales")
-      .update({ tactical_role: null, tactical_slot: null, tactical_reserve_slot: null })
-      .eq("equipo_rival_id", teamId)
-      .in("name", playerNames);
-    if (clearError) throw clearError;
+    const teamPlayers = teams.find((team) => String(team.id) === String(teamId))?.squad?.map(normalizeSquadEntry) || [];
+    const patchPlayers = playerNames.map((name) => teamPlayers.find((player) => normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(name))).filter(Boolean);
+    const membershipIds = patchPlayers.map((player) => player.membershipId).filter(Boolean);
+    const legacyNames = patchPlayers.filter((player) => !player.membershipId).map((player) => player.name);
+    if (membershipIds.length) {
+      const { error } = await supabase.from('player_team_memberships').update({ tactical_role: null, tactical_slot: null, tactical_reserve_slot: null }).in('id', membershipIds);
+      if (error) throw error;
+    }
+    if (legacyNames.length) {
+      const { error } = await supabase.from("jugadores_rivales").update({ tactical_role: null, tactical_slot: null, tactical_reserve_slot: null }).eq("equipo_rival_id", teamId).in("name", legacyNames);
+      if (error) throw error;
+    }
     for (const { playerName, placement } of patches) {
-      const { error: placementError } = await supabase
-        .from("jugadores_rivales")
-        .update({
-          tactical_role: placement.fieldRole || null,
-          tactical_slot: placement.slotIndex !== null && placement.slotIndex !== undefined && placement.slotIndex !== '' && Number.isInteger(Number(placement.slotIndex)) ? Number(placement.slotIndex) : null,
-          tactical_reserve_slot: placement.fieldRole === 'Reserva' && [0, 1].includes(Number(placement.reserveIndex)) ? Number(placement.reserveIndex) : null,
-        })
-        .eq("equipo_rival_id", teamId)
-        .eq("name", playerName);
+      const targetPlayer = patchPlayers.find((player) => normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(playerName));
+      const values = {
+        tactical_role: placement.fieldRole || null,
+        tactical_slot: placement.slotIndex !== null && placement.slotIndex !== undefined && placement.slotIndex !== '' && Number.isInteger(Number(placement.slotIndex)) ? Number(placement.slotIndex) : null,
+        tactical_reserve_slot: placement.fieldRole === 'Reserva' && [0, 1].includes(Number(placement.reserveIndex)) ? Number(placement.reserveIndex) : null,
+      };
+      const request = targetPlayer?.membershipId
+        ? supabase.from('player_team_memberships').update(values).eq('id', targetPlayer.membershipId)
+        : supabase.from("jugadores_rivales").update(values).eq("equipo_rival_id", teamId).eq("name", playerName);
+      const { error: placementError } = await request;
       if (placementError) throw placementError;
     }
   };
@@ -15549,10 +15727,15 @@ function App() {
     ].filter(Boolean);
   };
 
-  const openRivalPlayerModal = (player = null) => {
+  const openRivalPlayerModal = (player = null, options = {}) => {
     const activeTeam = getActiveRivalPlayerTeam();
-    const normalized = player ? normalizeSquadEntry(player) : createBlankTeamPlayer();
-    const flags = activeTeam ? getRivalPlayerFlags(activeTeam.id, normalized.name) : {};
+    const contextTeamId = options.standalone
+      ? player?.membership?.team_id || player?.teamId || ''
+      : options.teamId || activeTeam?.id || editingTeamId || player?.teamId || '';
+    const normalized = player
+      ? normalizeSquadEntry(player)
+      : { ...createBlankGlobalPlayer(), teamId: contextTeamId };
+    const flags = contextTeamId && activeTeam ? getRivalPlayerFlags(activeTeam.id, normalized.name) : {};
     setRivalPlayerSaveError('');
     setRivalPlayerPhotoError('');
     setRivalPlayerSaving(false);
@@ -15560,13 +15743,16 @@ function App() {
       open: true,
       mode: player ? 'edit' : 'create',
       originalName: normalized.name || '',
-      teamId: activeTeam?.id || editingTeamId || null,
-      draft: { ...normalized, role: flags.hiddenFromField ? 'Sin colocar' : normalized.role, captain: Boolean(flags.captain || normalized.captain), observed: Boolean(flags.observed || normalized.observed) },
+      originalMembershipId: normalized.membershipId || null,
+      originalTeamId: contextTeamId || null,
+      teamId: contextTeamId || null,
+      allowDuplicateCreate: false,
+      draft: { ...normalized, photoUrl: normalized.photoUrl || normalized.image || '', teamId: contextTeamId, role: flags.hiddenFromField ? 'Sin colocar' : normalized.role, captain: Boolean(flags.captain || normalized.captain), observed: Boolean(flags.observed || normalized.observed) },
     });
   };
 
   const closeRivalPlayerModal = () => {
-    setRivalPlayerModal({ open: false, mode: 'create', originalName: '', teamId: null, draft: null });
+    setRivalPlayerModal({ open: false, mode: 'create', originalName: '', originalMembershipId: null, originalTeamId: null, teamId: null, draft: null });
     setRivalPlayerSaveError('');
     setRivalPlayerPhotoError('');
     setRivalPlayerSaving(false);
@@ -15576,40 +15762,32 @@ function App() {
   const updateRivalPlayerDraft = (field, value) => {
     setRivalPlayerModal((current) => ({
       ...current,
-      draft: { ...(current.draft || createBlankTeamPlayer()), [field]: value },
+      draft: {
+        ...(current.draft || createBlankGlobalPlayer()),
+        [field]: value,
+        ...(field === 'teamId' && value !== current.draft?.membership?.team_id ? { membershipId: null, membershipMode: 'replace' } : {}),
+      },
     }));
   };
 
   const handleRivalPlayerPhotoFileChange = async (event) => {
     const file = event.target.files?.[0];
     if (!file || !rivalPlayerModal.draft) return;
-    const teamId = rivalPlayerModal.teamId || selectedTeam?.id || editingTeamId;
-    if (!teamId) {
-      setRivalPlayerPhotoError('Guarda primero el rival para subir fotos de su plantilla.');
-      event.target.value = '';
-      return;
-    }
     setRivalPlayerPhotoUploading(true);
     setRivalPlayerPhotoError('');
     try {
-      const draft = normalizeSquadEntry(rivalPlayerModal.draft);
-      const playerFolderId = draft.jugadorRivalId || (isUuid(draft.id) ? draft.id : sanitizeStorageName(draft.name || 'jugador'));
+      const draft = rivalPlayerModal.draft;
+      const playerFolderId = draft.globalPlayerId || (isUuid(draft.id) ? draft.id : sanitizeStorageName(draft.name || 'jugador'));
       const publicUrl = await uploadPublicFile({
         bucket: 'rival-player-assets',
         file,
-        folder: [teamId, playerFolderId].filter(Boolean).join('/'),
+        folder: ['global', playerFolderId].filter(Boolean).join('/'),
       });
       const nextFieldSources = { ...(draft.fieldSources || {}), image: createFieldSource('manual_upload') };
       setRivalPlayerModal((current) => ({
         ...current,
-        draft: { ...(current.draft || createBlankTeamPlayer()), image: publicUrl, imageSource: 'manual_upload', fieldSources: nextFieldSources },
+        draft: { ...(current.draft || createBlankGlobalPlayer()), image: publicUrl, photoUrl: publicUrl, imageSource: 'manual_upload', fieldSources: nextFieldSources },
       }));
-      const playerId = isUuid(draft.jugadorRivalId) ? draft.jugadorRivalId : isUuid(draft.id) ? draft.id : null;
-      if (playerId) {
-        const { error: updateError } = await supabase.from("jugadores_rivales").update({ image: publicUrl, image_source: 'manual_upload', field_sources: nextFieldSources }).eq("id", playerId);
-        if (updateError) throw updateError;
-        await loadTeams();
-      }
     } catch (uploadError) {
       console.error('[RIVAL_PLAYER_PHOTO_ERROR]', uploadError);
       setRivalPlayerPhotoError(uploadError.message || 'No se ha podido subir la foto del jugador rival.');
@@ -15662,123 +15840,83 @@ function App() {
 
   const saveRivalPlayerFromModal = async (event) => {
     event.preventDefault();
-    const activeTeam = getActiveRivalPlayerTeam();
-    const teamId = rivalPlayerModal.teamId || activeTeam?.id;
-    if (!teamId || !rivalPlayerModal.draft?.name?.trim()) return;
+    if (!rivalPlayerModal.draft?.name?.trim()) return;
+    if (!globalPlayersAvailable) {
+      setRivalPlayerSaveError('La base global no está disponible. Ejecuta supabase_global_players.sql antes de crear o editar jugadores.');
+      return;
+    }
     setRivalPlayerSaving(true);
     setRivalPlayerSaveError('');
-    const wantsUnplaced = rivalPlayerModal.draft.role === 'Sin colocar';
-    const normalizedDraft = normalizeSquadEntry({ ...rivalPlayerModal.draft, role: wantsUnplaced ? 'Reserva' : rivalPlayerModal.draft.role, name: rivalPlayerModal.draft.name.trim() });
-    const originalPlayer = dedupeRivalPlayers(activeTeam?.squad || []).map(normalizeSquadEntry).find((player) => {
-      const draftId = normalizedDraft.jugadorRivalId || (isUuid(normalizedDraft.id) ? normalizedDraft.id : null);
-      const playerId = player.jugadorRivalId || (isUuid(player.id) ? player.id : null);
-      return draftId && playerId ? draftId === playerId : normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(rivalPlayerModal.originalName);
-    }) || {};
-    const imageManualSource = normalizedDraft.fieldSources?.image?.source === 'manual_upload' ? 'manual_upload' : 'manual_url';
-    const clearsTacticalPlacement = wantsUnplaced || (normalizedDraft.role === 'Reserva' && originalPlayer.fieldRole === 'Titular');
-    const draft = {
-      ...normalizedDraft,
-      fieldRole: clearsTacticalPlacement ? null : normalizedDraft.fieldRole,
-      slotIndex: clearsTacticalPlacement ? null : normalizedDraft.slotIndex,
-      reserveIndex: clearsTacticalPlacement ? null : normalizedDraft.reserveIndex,
-      fieldSources: markChangedFieldsManual({
-        current: rivalPlayerModal.mode === 'edit' ? originalPlayer : {},
-        next: normalizedDraft,
-        fields: RIVAL_PLAYER_MANUAL_FIELDS,
-        fieldSources: normalizedDraft.fieldSources,
-        sourceByField: { image: imageManualSource },
-      }),
-      imageSource: normalizedDraft.image && String(originalPlayer.image || '') !== String(normalizedDraft.image || '') ? imageManualSource : normalizedDraft.imageSource,
+    setGlobalPlayerStatus('');
+    const currentGlobalPlayer = globalPlayers.find((player) => String(player.id) === String(rivalPlayerModal.draft.globalPlayerId || rivalPlayerModal.draft.id)) || {};
+    const draftTeamId = rivalPlayerModal.draft.teamId || rivalPlayerModal.teamId || '';
+    const changedTeam = Boolean(
+      rivalPlayerModal.mode === 'edit'
+      && rivalPlayerModal.originalTeamId
+      && String(draftTeamId) !== String(rivalPlayerModal.originalTeamId)
+    );
+    const draftBase = {
+      ...rivalPlayerModal.draft,
+      name: rivalPlayerModal.draft.name.trim(),
+      teamId: draftTeamId,
+      membershipId: changedTeam ? null : rivalPlayerModal.draft.membershipId,
     };
-    const originalName = rivalPlayerModal.originalName || draft.name;
-    const normalizedDraftName = normalizePlayerIdentityName(draft.name);
-    const normalizedOriginalName = normalizePlayerIdentityName(originalName);
-    const teamSquad = activeTeam?.squad || [];
-    const duplicateName = rivalPlayerModal.mode === 'edit'
-      ? dedupeRivalPlayers(teamSquad).some((player) =>
-          normalizePlayerIdentityName(player.name) === normalizedDraftName
-          && normalizePlayerIdentityName(player.name) !== normalizedOriginalName
-        )
-      : dedupeRivalPlayers(teamSquad).some((player) => normalizePlayerIdentityName(player.name) === normalizedDraftName);
-    if (duplicateName) {
-      setRivalPlayerSaveError('Ya existe un jugador rival con ese nombre.');
+    const draft = {
+      ...draftBase,
+      fieldSources: markChangedFieldsManual({
+        current: rivalPlayerModal.mode === 'edit' ? currentGlobalPlayer : {},
+        next: draftBase,
+        fields: ['name', 'photoUrl', 'dob', 'age', 'height', 'foot', 'scoutingSummary', 'cardAlert', 'sentOffAlert', 'suspendedAlert', 'injuredAlert'],
+        fieldSources: draftBase.fieldSources || {},
+        sourceByField: { photoUrl: draftBase.imageSource === 'manual_upload' ? 'manual_upload' : 'manual_url' },
+      }),
+      positionSource: 'manual',
+    };
+    const matches = rivalPlayerModal.mode === 'create' ? findGlobalPlayerMatches(draft, globalPlayers) : [];
+    if (matches.some((match) => match.confidence === 'exact')) {
+      setRivalPlayerSaveError('Jugador encontrado en la base global. Vincula el perfil existente en lugar de crear un duplicado.');
+      setRivalPlayerSaving(false);
+      return;
+    }
+    if (matches.length && !rivalPlayerModal.allowDuplicateCreate) {
+      setRivalPlayerSaveError('Hay posibles coincidencias. Revísalas o confirma expresamente que se trata de otro jugador.');
       setRivalPlayerSaving(false);
       return;
     }
     try {
-      const payload = createRivalPlayerPayload(teamId, draft);
-      const playerId = isUuid(draft.jugadorRivalId) ? draft.jugadorRivalId : isUuid(draft.id) ? draft.id : null;
-      let request = null;
-      if (rivalPlayerModal.mode === 'edit') {
-        let updateRequest = supabase.from("jugadores_rivales").update(payload);
-        updateRequest = playerId ? updateRequest.eq("id", playerId) : updateRequest.eq("equipo_rival_id", teamId).eq("name", originalName);
-        request = updateRequest.select("*").single();
-      } else {
-        request = supabase.from("jugadores_rivales").insert(payload).select("*").single();
+      if (rivalPlayerModal.mode === 'edit' && !draft.teamId && rivalPlayerModal.originalMembershipId) {
+        const { error: unlinkError } = await supabase.from('player_team_memberships').update({ is_current: false, end_date: new Date().toISOString().slice(0, 10), tactical_role: null, tactical_slot: null, tactical_reserve_slot: null }).eq('id', rivalPlayerModal.originalMembershipId);
+        if (unlinkError) throw unlinkError;
       }
-      const { data: savedPlayer, error: savePlayerError } = await request;
-      if (savePlayerError) throw savePlayerError;
-      const savedDraft = normalizeSupabaseRivalPlayer(savedPlayer || draft);
-      await syncRivalPlayerPlacementSnapshots(teamId, originalName, savedDraft);
-      if (savedDraft.isKey) {
-        const otherPlayers = dedupeRivalPlayers(teamSquad).filter((player) => normalizePlayerIdentityName(player.name) !== normalizePlayerIdentityName(savedDraft.name));
-        await Promise.all(otherPlayers.map((player) => {
-          const otherPlayerId = isUuid(player.jugadorRivalId) ? player.jugadorRivalId : isUuid(player.id) ? player.id : null;
-          let clearRequest = supabase.from("jugadores_rivales").update({ is_key: false }).eq("equipo_rival_id", teamId);
-          clearRequest = otherPlayerId ? clearRequest.eq("id", otherPlayerId) : clearRequest.eq("name", player.name);
-          return clearRequest;
-        }));
-      }
-      const originalFlags = getRivalPlayerFlags(teamId, originalName);
-      const wasPlacedStarter = safeArray(activeTeam?.lineup).some((player) =>
-        [originalName, savedDraft.name].some((name) => normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(name))
-      );
-      const nextFlags = {
-        ...originalFlags,
-        captain: Boolean(rivalPlayerModal.draft.captain),
-        observed: Boolean(rivalPlayerModal.draft.observed),
-      };
-      if (wantsUnplaced) {
-        Object.assign(nextFlags, { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null });
-      } else if (savedDraft.role === 'Reserva' && (originalFlags.fieldRole === 'Titular' || wasPlacedStarter)) {
-        Object.assign(nextFlags, { hiddenFromField: false, fieldRole: null, slotIndex: null, reserveIndex: null });
-        if (selectedTeam?.id === teamId) {
-          await updateTeamLineup(
-            teamId,
-            (lineup) => removePlayerFromLineupItems(removePlayerFromLineupItems(lineup, originalName), savedDraft.name),
-            { demoteNames: [originalName, savedDraft.name] }
-          );
-        }
-      } else {
-        Object.assign(nextFlags, { hiddenFromField: false });
-      }
-      updateRivalPlayerFlags(teamId, savedDraft.name, nextFlags);
-      if (rivalPlayerModal.mode === 'edit' && originalName && normalizePlayerIdentityName(originalName) !== normalizePlayerIdentityName(savedDraft.name)) {
-        setRivalPlayerFlags((current) => {
-          const { [getRivalPlayerFlagKey(teamId, originalName)]: _removed, ...rest } = current;
-          return rest;
-        });
-      }
+      const globalId = await saveGlobalPlayerProfile(supabase, draft);
+      if (draft.isKey && draft.teamId) await supabase.from('player_team_memberships').update({ is_key: false }).eq('team_id', draft.teamId).eq('is_current', true).neq('player_id', globalId);
       await loadTeams();
-      setTeamFormState((current) => current && editingTeamId === teamId
-        ? {
-            ...current,
-            squad: rivalPlayerModal.mode === 'edit'
-              ? current.squad.map((player) => {
-                  const normalized = normalizeSquadEntry(player);
-                  const samePlayer = playerId
-                    ? (normalized.jugadorRivalId === playerId || normalized.id === playerId)
-                    : normalizePlayerIdentityName(normalized.name) === normalizedOriginalName;
-                  return samePlayer ? savedDraft : normalized;
-                })
-              : [...current.squad.map(normalizeSquadEntry), savedDraft],
-          }
-        : current
-      );
+      const genericSourceSaved = safeArray(draft.sources).some((source) => !['transfermarkt', 'besoccer'].includes(normalizePlayerIdentityName(source.sourceName)));
+      setGlobalPlayerStatus(genericSourceSaved ? 'Fuente guardada. Completa manualmente los datos que quieras conservar.' : 'Jugador global guardado correctamente.');
       closeRivalPlayerModal();
     } catch (savePlayerError) {
-      console.error('[RIVAL_PLAYER_SAVE_ERROR]', savePlayerError);
-      setRivalPlayerSaveError(savePlayerError.message || 'No se ha podido guardar el jugador rival.');
+      console.error('[GLOBAL_PLAYER_SAVE_ERROR]', savePlayerError);
+      setRivalPlayerSaveError(savePlayerError.message || 'No se ha podido guardar el jugador global.');
+    } finally {
+      setRivalPlayerSaving(false);
+    }
+  };
+
+  const linkExistingGlobalPlayerToTeam = async (player, mode = 'replace') => {
+    if (mode === 'review') {
+      openRivalPlayerModal(player, { standalone: true });
+      return;
+    }
+    const teamId = rivalPlayerModal.draft?.teamId || rivalPlayerModal.teamId || selectedTeam?.id || editingTeamId;
+    if (!player?.id || !teamId) return;
+    setRivalPlayerSaving(true);
+    setRivalPlayerSaveError('');
+    try {
+      await assignGlobalPlayerToTeam(supabase, { playerId: player.id, teamId, mode });
+      await loadTeams();
+      closeRivalPlayerModal();
+    } catch (linkError) {
+      setRivalPlayerSaveError(linkError.message || 'No se pudo vincular el jugador al equipo.');
     } finally {
       setRivalPlayerSaving(false);
     }
@@ -15909,38 +16047,48 @@ function App() {
         });
       }
 
-      if (!editingTeamId) {
-        const playerRows = squad.map((player) => createRivalPlayerPayload(teamId, normalizeSquadEntry(player)));
-        if (playerRows.length) {
-          const { data: insertedPlayers, error: playersError } = await supabase.from("jugadores_rivales").insert(playerRows).select("*");
-          if (playersError) throw playersError;
-          if (!insertedPlayers || insertedPlayers.length !== playerRows.length) throw new Error('No se han podido confirmar todos los jugadores nuevos.');
-          squad = insertedPlayers.map(normalizeSupabaseRivalPlayer);
+      if (squad.length && !globalPlayersAvailable) throw new Error('Ejecuta supabase_global_players.sql antes de guardar jugadores. No se crearán más registros legacy.');
+      const confirmedPlayers = [];
+      for (const squadPlayer of squad.map(normalizeSquadEntry)) {
+        let globalPlayer = squadPlayer.globalPlayerId
+          ? globalPlayers.find((player) => String(player.id) === String(squadPlayer.globalPlayerId))
+          : null;
+        if (!globalPlayer) {
+          const matches = findGlobalPlayerMatches(squadPlayer, globalPlayers);
+          const exact = matches.find((match) => match.confidence === 'exact');
+          if (exact) {
+            const linkedToThisTeam = exact.player.memberships.some((membership) => membership.team_id === teamId && membership.is_current);
+            const linkedElsewhere = exact.player.memberships.some((membership) => membership.team_id !== teamId && membership.is_current);
+            if (linkedElsewhere && !linkedToThisTeam) {
+              throw new Error(`${squadPlayer.name} ya existe en la base global y está vinculado a otro equipo. Revísalo en Jugadores y elige si actualizar el equipo actual o mantener ambas relaciones.`);
+            }
+            globalPlayer = exact.player;
+          } else if (matches.length) {
+            throw new Error(`Posible coincidencia para ${squadPlayer.name}. Revísala en la pestaña Jugadores antes de crear otro perfil.`);
+          }
         }
-      } else {
-        const currentPlayers = (currentTeam?.squad || []).map(normalizeSquadEntry);
-        const confirmedPlayers = [];
-        const currentByKey = new Map();
-        currentPlayers.forEach((player) => {
-          currentByKey.set(getRivalPlayerImportKey(player), player);
-          currentByKey.set(`name:${normalizePlayerIdentityName(player.name)}`, player);
-        });
-        for (const player of squad.map(normalizeSquadEntry)) {
-          const existing = currentByKey.get(getRivalPlayerImportKey(player)) || currentByKey.get(`name:${normalizePlayerIdentityName(player.name)}`);
-          const payload = rivalPlayerFormToDb(teamId, player);
-          const playerId = isUuid(player.jugadorRivalId) ? player.jugadorRivalId : isUuid(player.id) ? player.id : isUuid(existing?.jugadorRivalId) ? existing.jugadorRivalId : isUuid(existing?.id) ? existing.id : null;
-          const request = playerId
-            ? supabase.from("jugadores_rivales").update(payload).eq("id", playerId).select("*").single()
-            : existing?.name
-              ? supabase.from("jugadores_rivales").update(payload).eq("equipo_rival_id", teamId).eq("name", existing.name).select("*").single()
-              : supabase.from("jugadores_rivales").insert(payload).select("*").single();
-          const { data: confirmedPlayer, error: playerSaveError } = await request;
-          if (playerSaveError) throw new Error(`No se pudo guardar ${player.name}: ${playerSaveError.message}`);
-          if (!confirmedPlayer?.id) throw new Error(`No se ha podido actualizar el jugador ${player.name}.`);
-          confirmedPlayers.push(normalizeSupabaseRivalPlayer(confirmedPlayer));
-        }
-        squad = confirmedPlayers;
+        const positionModel = getPlayerPositionModel(squadPlayer);
+        const playerDraft = {
+          ...(globalPlayer || createBlankGlobalPlayer()),
+          ...squadPlayer,
+          id: globalPlayer?.id || null,
+          globalPlayerId: globalPlayer?.id || null,
+          teamId,
+          membershipId: globalPlayer?.memberships.find((membership) => membership.team_id === teamId && membership.is_current)?.id || squadPlayer.membershipId || null,
+          primaryNaturalPosition: positionModel.primaryNaturalPosition,
+          secondaryNaturalPositions: positionModel.secondaryNaturalPositions,
+          primarySpecificPosition: positionModel.primarySpecificPosition,
+          secondarySpecificPositions: positionModel.secondarySpecificPositions,
+          positionSource: squadPlayer.fieldSources?.primarySpecificPosition?.source || squadPlayer.fieldSources?.specificPosition?.source || globalPlayer?.positionSource || squadPlayer.externalSource || 'manual',
+          photoUrl: squadPlayer.image || globalPlayer?.photoUrl || '',
+          sources: globalPlayer?.sources?.length ? globalPlayer.sources : squadPlayer.sourceProfileUrl ? [{ url: squadPlayer.sourceProfileUrl, sourceName: squadPlayer.externalSource === 'transfermarkt' ? 'Transfermarkt' : squadPlayer.externalSource || 'Otro', isPrimary: true }] : [],
+          traits: globalPlayer?.traits || [],
+          memberships: globalPlayer?.memberships || [],
+        };
+        const globalId = await saveGlobalPlayerProfile(supabase, playerDraft);
+        confirmedPlayers.push({ ...playerDraft, id: globalId, globalPlayerId: globalId });
       }
+      squad = confirmedPlayers;
 
       if (pendingRivalSync) {
         const { error: historyError } = await supabase.from("rival_sync_history").insert({
@@ -16641,8 +16789,11 @@ function App() {
             .filter((player) => player.role === 'Titular' && !safeArray(options.demoteNames).includes(player.name))
             .map((player) => player.name);
       const titularNames = Array.from(new Set([...preservedStarterNames, ...lineupTitularNames]));
+      await supabase.from('player_team_memberships').update({ squad_role: 'Reserva' }).eq('team_id', teamId).eq('is_current', true);
       await supabase.from("jugadores_rivales").update({ role: 'Reserva' }).eq("equipo_rival_id", teamId);
       if (titularNames.length) {
+        const titularMembershipIds = dedupeRivalPlayers(team.squad || []).filter((player) => titularNames.includes(player.name)).map((player) => player.membershipId).filter(Boolean);
+        if (titularMembershipIds.length) await supabase.from('player_team_memberships').update({ squad_role: 'Titular' }).in('id', titularMembershipIds);
         await supabase.from("jugadores_rivales").update({ role: 'Titular' }).eq("equipo_rival_id", teamId).in("name", titularNames);
       }
       await loadTeams();
@@ -16950,11 +17101,10 @@ function App() {
   const setSelectedTeamPlayerRole = async (playerName, role) => {
     if (!selectedTeam) return;
     const currentPlayer = selectedTeam.squad.map(normalizeSquadEntry).find((player) => player.name === playerName) || { ...createBlankTeamPlayer(), name: playerName };
-    const { error: roleError } = await supabase
-      .from("jugadores_rivales")
-      .update({ role })
-      .eq("equipo_rival_id", selectedTeam.id)
-      .eq("name", playerName);
+    const roleRequest = currentPlayer.membershipId
+      ? supabase.from('player_team_memberships').update({ squad_role: role }).eq('id', currentPlayer.membershipId)
+      : supabase.from("jugadores_rivales").update({ role }).eq("equipo_rival_id", selectedTeam.id).eq("name", playerName);
+    const { error: roleError } = await roleRequest;
     if (roleError) {
       console.error('Error actualizando rol del jugador rival en Supabase:', roleError);
       return;
@@ -16972,11 +17122,10 @@ function App() {
     if (!selectedTeam) return;
     const currentPlayer = selectedTeam.squad.map(normalizeSquadEntry).find((player) => player.name === playerName);
     const nextIsKey = !currentPlayer?.isKey;
-    const { error: keyError } = await supabase
-      .from("jugadores_rivales")
-      .update({ is_key: nextIsKey })
-      .eq("equipo_rival_id", selectedTeam.id)
-      .eq("name", playerName);
+    const keyRequest = currentPlayer?.membershipId
+      ? supabase.from('player_team_memberships').update({ is_key: nextIsKey }).eq('id', currentPlayer.membershipId)
+      : supabase.from("jugadores_rivales").update({ is_key: nextIsKey }).eq("equipo_rival_id", selectedTeam.id).eq("name", playerName);
+    const { error: keyError } = await keyRequest;
     if (keyError) {
       console.error('Error marcando jugador clave rival en Supabase:', keyError);
       return;
@@ -17001,7 +17150,8 @@ function App() {
     try {
       await persistTeamBench(selectedTeam.id, nextBenchChart);
       await updateTeamLineup(selectedTeam.id, (lineup) => lineup.filter((player) => player.name !== droppedPlayer.name));
-      await supabase.from("jugadores_rivales").update({ role: 'Reserva' }).eq("equipo_rival_id", selectedTeam.id).eq("name", droppedPlayer.name);
+      if (droppedPlayer.membershipId) await supabase.from('player_team_memberships').update({ squad_role: 'Reserva' }).eq('id', droppedPlayer.membershipId);
+      else await supabase.from("jugadores_rivales").update({ role: 'Reserva' }).eq("equipo_rival_id", selectedTeam.id).eq("name", droppedPlayer.name);
       await loadTeams();
     } catch (benchError) {
       console.error('Error guardando banquillo rival en Supabase:', benchError);
@@ -17157,23 +17307,14 @@ function App() {
   const ensureManualRivalPlayer = async (player) => {
     const rivalTeam = getRivalBaseTeam();
     if (!rivalTeam?.id || !isUuid(rivalTeam.id)) return null;
-
-    const { data: existingRows, error: existingError } = await supabase
-      .from("jugadores_rivales")
-      .select("*")
-      .eq("equipo_rival_id", rivalTeam.id);
-    if (existingError) throw existingError;
-    const existingPlayer = (existingRows || []).find((row) => normalizePlayerIdentityName(row.name) === normalizePlayerIdentityName(player.name));
-    if (existingPlayer) return normalizeSupabaseRivalPlayer(existingPlayer);
-
-    const { data: insertedPlayer, error: insertError } = await supabase
-      .from("jugadores_rivales")
-      .insert(createRivalPlayerPayload(rivalTeam.id, { ...createBlankTeamPlayer(), ...player, role: 'Titular' }))
-      .select("*")
-      .single();
-    if (insertError) throw insertError;
+    if (!globalPlayersAvailable) throw new Error('La base global de jugadores no está disponible.');
+    const matches = findGlobalPlayerMatches(player, globalPlayers);
+    if (matches.length) throw new Error(`${player.name} puede existir en la base global. Revísalo en Jugadores antes de vincularlo.`);
+    const positionModel = mapExternalPositionToPlayerPositions(player.position);
+    const draft = { ...createBlankGlobalPlayer(), ...player, ...positionModel, id: null, globalPlayerId: null, teamId: rivalTeam.id, photoUrl: player.image || '', role: 'Titular' };
+    const globalId = await saveGlobalPlayerProfile(supabase, draft);
     await loadTeams();
-    return normalizeSupabaseRivalPlayer(insertedPlayer);
+    return { ...draft, id: globalId, globalPlayerId: globalId };
   };
 
   const addManualRivalPlayer = async () => {
@@ -17655,6 +17796,7 @@ function App() {
       await persistRivalPlacementPatches(selectedTeam.id, patches);
       applyRivalPlacementPatches(selectedTeam.id, patches);
       await persistTeamLineup(selectedTeam.id, []);
+      await supabase.from('player_team_memberships').update({ squad_role: 'Reserva' }).eq('team_id', selectedTeam.id).eq('is_current', true);
       await supabase.from("jugadores_rivales").update({ role: 'Reserva' }).eq("equipo_rival_id", selectedTeam.id);
       await loadTeams();
       setDraggedPlayer(null);
@@ -18324,7 +18466,7 @@ function App() {
   };
 
   const authUser = session?.user ?? null;
-  const desktopTabs = ['Inicio', 'Plantilla', 'Equipos', 'Partidos', 'Biblioteca', 'Rendimiento', 'Registro Delegado', 'Análisis Grupal'];
+  const desktopTabs = ['Inicio', 'Plantilla', 'Jugadores', 'Equipos', 'Partidos', 'Biblioteca', 'Rendimiento', 'Registro Delegado', 'Análisis Grupal'];
   const mobilePrimaryTabs = [
     ['Inicio', 'Inicio'],
     ['Partidos', 'Partidos'],
@@ -18332,7 +18474,7 @@ function App() {
     ['Registro Delegado', 'Deleg.'],
     ['Análisis Grupal', 'Análisis'],
   ];
-  const mobileMoreTabs = ['Equipos', 'Rendimiento', 'Biblioteca'];
+  const mobileMoreTabs = ['Jugadores', 'Equipos', 'Rendimiento', 'Biblioteca'];
   const goToTab = (tab) => {
     setActiveTab(tab);
     setIsMobileMoreOpen(false);
@@ -19741,6 +19883,67 @@ function App() {
           </main>
         ) : null}
 
+        {activeTab === 'Jugadores' ? (() => {
+          const normalizedSearch = normalizePlayerIdentityName(globalPlayerSearch);
+          const traitOptions = Array.from(new Set(globalPlayers.flatMap((player) => player.traits.map((trait) => trait.label)))).sort((a, b) => a.localeCompare(b, 'es'));
+          const visiblePlayers = globalPlayers.filter((player) => {
+            const positionModel = getPlayerPositionModel(player);
+            const currentTeamIds = player.memberships.filter((membership) => membership.is_current).map((membership) => membership.team_id);
+            const matchesSearch = !normalizedSearch || normalizePlayerIdentityName(`${player.name} ${player.position} ${player.specificPosition}`).includes(normalizedSearch);
+            const matchesPosition = !globalPlayerPositionFilter || [positionModel.primaryNaturalPosition, ...positionModel.secondaryNaturalPositions].includes(globalPlayerPositionFilter);
+            const matchesTeam = !globalPlayerTeamFilter || currentTeamIds.includes(globalPlayerTeamFilter);
+            const matchesTrait = !globalPlayerTraitFilter || player.traits.some((trait) => trait.label === globalPlayerTraitFilter);
+            return matchesSearch && matchesPosition && matchesTeam && matchesTrait;
+          });
+          return (
+            <main className="space-y-4">
+              <section className="rounded-[1.35rem] border border-white/10 bg-[#091428]/85 p-5 shadow-[0_18px_48px_rgba(0,0,0,0.20)]">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-caudal-electric">Categoría · conocimiento acumulado</p>
+                    <h2 className="mt-1 text-2xl font-black uppercase text-white">Base de datos de jugadores</h2>
+                    <p className="mt-1 text-sm font-semibold text-slate-500">Un perfil único aunque el futbolista cambie de club.</p>
+                  </div>
+                  <button type="button" onClick={() => openRivalPlayerModal(null, { standalone: true })} disabled={!globalPlayersAvailable} className="rounded-2xl bg-caudal-electric px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-50">Nuevo jugador</button>
+                </div>
+                <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                  <input type="search" value={globalPlayerSearch} onChange={(event) => setGlobalPlayerSearch(event.target.value)} className="field-input" placeholder="Buscar jugador" />
+                  <select value={globalPlayerPositionFilter} onChange={(event) => setGlobalPlayerPositionFilter(event.target.value)} className="field-input"><option value="">Todas las posiciones</option>{NATURAL_POSITION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+                  <select value={globalPlayerTeamFilter} onChange={(event) => setGlobalPlayerTeamFilter(event.target.value)} className="field-input"><option value="">Todos los equipos actuales</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select>
+                  <select value={globalPlayerTraitFilter} onChange={(event) => setGlobalPlayerTraitFilter(event.target.value)} className="field-input"><option value="">Todas las características</option>{traitOptions.map((trait) => <option key={trait} value={trait}>{trait}</option>)}</select>
+                </div>
+                {globalPlayersError ? <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/[0.08] px-3 py-2 text-xs font-bold text-amber-100">{globalPlayersError}</p> : null}
+                {globalPlayerStatus ? <p className="mt-3 rounded-xl border border-emerald-300/20 bg-emerald-300/[0.08] px-3 py-2 text-xs font-bold text-emerald-100">{globalPlayerStatus}</p> : null}
+              </section>
+
+              {globalPlayersLoading ? <div className="empty-state">Cargando base global…</div> : visiblePlayers.length ? (
+                <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {visiblePlayers.map((player) => {
+                    const currentTeams = player.memberships.filter((membership) => membership.is_current).map((membership) => teams.find((team) => team.id === membership.team_id)).filter(Boolean);
+                    const primaryMembership = player.memberships.find((membership) => membership.is_current) || null;
+                    return (
+                      <article key={player.id} className="group rounded-[1.2rem] border border-white/10 bg-[#091428]/82 p-4 shadow-[0_12px_32px_rgba(0,0,0,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30">
+                        <button type="button" onClick={() => openRivalPlayerModal(player, { standalone: true })} className="flex w-full items-start gap-3 text-left">
+                          <span className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.07] text-sm font-black text-white">
+                            <span>{getRivalPlayerInitials(player.name)}</span>{player.photoUrl ? <img src={player.photoUrl} alt={player.name} className="absolute inset-0 h-full w-full object-cover" /> : null}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-base font-black text-white">{player.name}</span>
+                            <span className="mt-1 block truncate text-xs font-bold text-caudal-electric">{currentTeams.length ? currentTeams.map((team) => cleanTeamDisplayName(team.name)).join(' · ') : 'Sin equipo asignado'}</span>
+                            <span className="mt-1 block text-[11px] font-semibold text-slate-400">{player.position || 'Sin posición natural'}{player.specificPosition ? ` · ${player.specificPosition}` : ''}</span>
+                            <span className="mt-1 block text-[10px] text-slate-500">{primaryMembership?.number ? `#${primaryMembership.number} · ` : ''}{player.dob ? `${calculateAge(player.dob)} años` : player.age ? `${player.age} años` : 'Edad sin registrar'}{player.foot ? ` · ${player.foot}` : ''}</span>
+                          </span>
+                        </button>
+                        {player.traits.length ? <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/[0.07] pt-3">{player.traits.slice(0, 3).map((trait) => <span key={`${trait.category}-${trait.label}`} className={`rounded-lg border px-2 py-1 text-[9px] font-bold ${trait.category === 'strength' ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100' : trait.category === 'vulnerability' ? 'border-red-300/20 bg-red-300/10 text-red-100' : 'border-sky-300/20 bg-sky-300/10 text-sky-100'}`}>{trait.label}</span>)}</div> : null}
+                      </article>
+                    );
+                  })}
+                </section>
+              ) : <div className="empty-state">No hay jugadores que coincidan con los filtros.</div>}
+            </main>
+          );
+        })() : null}
+
         {activeTab === 'Equipos' ? (
           <main className="space-y-4">
             <section className="rounded-[1.35rem] border border-white/10 bg-white/[0.04] px-4 py-3 shadow-[0_14px_40px_rgba(0,0,0,0.14)] backdrop-blur-md sm:px-5">
@@ -19799,6 +20002,7 @@ function App() {
                 const selectedTacticalPlayerSecondaryPositions = selectedTacticalPlayer
                   ? Array.from(new Set([
                     ...safeArray(selectedTacticalPlayer.secondaryPositions),
+                    ...safeArray(selectedTacticalPlayer.secondarySpecificPositions).map(getSpecificPositionLabel),
                     ...String(selectedTacticalPlayer.specificPosition || '').split(/[,;/|]+/),
                   ].map((value) => String(value || '').trim()).filter((value) =>
                     value && normalizePlayerIdentityName(value) !== normalizePlayerIdentityName(selectedTacticalPlayer.position)
@@ -20197,6 +20401,16 @@ function App() {
                                 <dt className="font-black uppercase tracking-[0.08em] text-slate-500">Altura</dt>
                                 <dd className="font-bold text-slate-100">{selectedTacticalPlayer.height || 'Sin registrar'}</dd>
                               </dl>
+                              {[
+                                ['Fortalezas', selectedTacticalPlayer.traits?.filter((trait) => trait.category === 'strength') || [], 'text-emerald-200'],
+                                ['Vulnerabilidades', selectedTacticalPlayer.traits?.filter((trait) => trait.category === 'vulnerability') || [], 'text-red-200'],
+                                ['Tendencias', selectedTacticalPlayer.traits?.filter((trait) => trait.category === 'trend') || [], 'text-sky-200'],
+                              ].filter(([, traits]) => traits.length).map(([label, traits, className]) => (
+                                <div key={label} className="mt-3 border-t border-white/[0.07] pt-2">
+                                  <p className={`text-[8px] font-black uppercase tracking-[0.12em] ${className}`}>{label}</p>
+                                  <p className="mt-1 text-[10px] font-semibold leading-relaxed text-slate-200">{traits.map((trait) => trait.label).join(' · ')}</p>
+                                </div>
+                              ))}
                             </aside>
                           ) : null}
                           {getFormationCoordinates(selectedTeam.system || '4-4-2').map((slot, slotIndex) => {
@@ -20205,7 +20419,7 @@ function App() {
                             const slotReservePlayers = reservePlayersBySlot[slotIndex] || [];
                             const slotPositionWarning = slotPlayer ? getPositionLocationWarning(slotPlayer, slotRole) : '';
                             const draggedFitScore = draggedPlayer ? getPlayerRoleFitScore(draggedPlayer, slotRole) : null;
-                            const draggedFitState = draggedFitScore === null ? '' : draggedFitScore >= 100 ? 'ideal' : draggedFitScore >= 55 ? 'acceptable' : 'incompatible';
+                            const draggedFitState = draggedFitScore === null ? '' : draggedFitScore >= 100 ? 'ideal' : draggedFitScore > 0 ? 'acceptable' : 'incompatible';
                             const draggedFitClass = draggedFitState === 'ideal'
                               ? 'ring-2 ring-emerald-400/90 ring-offset-2 ring-offset-slate-950 bg-emerald-400/15'
                               : draggedFitState === 'acceptable'
@@ -22977,6 +23191,23 @@ function App() {
                               <p className="mt-2 text-sm text-slate-400">
                                 Puesto seleccionado: <span className="font-semibold text-white">{getFormationRoles(getCurrentRivalSystem())[selectedRivalTacticalPlayerIndex]}</span>
                               </p>
+                              {(() => {
+                                const selectedName = getSelectedRivalLineupName();
+                                const selectedPlayer = getRivalAvailablePlayers().find((player) => normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(selectedName));
+                                if (!selectedPlayer) return null;
+                                const traitGroups = [
+                                  ['Fortalezas', selectedPlayer.traits?.filter((trait) => trait.category === 'strength') || [], 'text-emerald-200'],
+                                  ['Vulnerabilidades', selectedPlayer.traits?.filter((trait) => trait.category === 'vulnerability') || [], 'text-red-200'],
+                                  ['Tendencias', selectedPlayer.traits?.filter((trait) => trait.category === 'trend') || [], 'text-sky-200'],
+                                ].filter(([, traits]) => traits.length);
+                                return (
+                                  <div className="mt-3 rounded-2xl border border-rose-200/15 bg-rose-300/[0.06] p-3">
+                                    <p className="truncate text-sm font-black text-white">{selectedPlayer.name}</p>
+                                    <p className="mt-1 text-[10px] font-bold text-slate-400">{[selectedPlayer.specificPosition || selectedPlayer.position, selectedPlayer.foot].filter(Boolean).join(' · ')}</p>
+                                    {traitGroups.map(([label, traits, className]) => <div key={label} className="mt-2"><p className={`text-[8px] font-black uppercase tracking-[0.12em] ${className}`}>{label}</p><p className="mt-0.5 text-[10px] font-semibold leading-relaxed text-slate-200">{traits.map((trait) => trait.label).join(' · ')}</p></div>)}
+                                  </div>
+                                );
+                              })()}
                               <div className="mt-4 grid gap-2">
                                 <input
                                   value={newRivalManualPlayerName}
@@ -24310,6 +24541,28 @@ function App() {
       })() : null}
 
       {rivalPlayerModal.open ? (
+        <div className="fixed inset-0 z-[70] overflow-y-auto bg-black/65 px-3 py-4 backdrop-blur-sm sm:px-6">
+          <PlayerDatabaseForm
+            draft={rivalPlayerModal.draft || createBlankGlobalPlayer()}
+            mode={rivalPlayerModal.mode}
+            teams={teams}
+            saving={rivalPlayerSaving}
+            error={rivalPlayerSaveError}
+            photoUploading={rivalPlayerPhotoUploading}
+            photoError={rivalPlayerPhotoError}
+            matches={rivalPlayerModal.mode === 'create' ? findGlobalPlayerMatches(rivalPlayerModal.draft || {}, globalPlayers) : []}
+            onChange={updateRivalPlayerDraft}
+            onSubmit={saveRivalPlayerFromModal}
+            onCancel={closeRivalPlayerModal}
+            onPhotoChange={handleRivalPlayerPhotoFileChange}
+            onLinkExisting={linkExistingGlobalPlayerToTeam}
+            onAllowDuplicate={() => setRivalPlayerModal((current) => ({ ...current, allowDuplicateCreate: true }))}
+            onDelete={rivalPlayerModal.mode === 'edit' && (selectedTeam || editingTeamId) ? () => { requestSelectedTeamPlayerDelete(rivalPlayerModal.draft); closeRivalPlayerModal(); } : null}
+          />
+        </div>
+      ) : null}
+
+      {false && rivalPlayerModal.open ? (
         <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/60 px-4 py-6 backdrop-blur-sm sm:px-6">
           <form onSubmit={saveRivalPlayerFromModal} className="mx-auto max-w-2xl rounded-3xl border border-white/10 bg-caudal-950 p-5 shadow-[0_24px_90px_rgba(0,0,0,0.45)]">
             <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
@@ -24669,7 +24922,11 @@ function App() {
                               <p className="mt-1 text-xs text-slate-300">Actual: <span className="font-bold text-white">{String(change.from)}</span> · Origen: <span className="font-bold text-red-100">{change.currentSource || 'sin registrar'}</span></p>
                               <p className="text-xs text-slate-300">Importado: <span className="font-bold text-amber-100">{String(change.to)}</span></p>
                               <div className="mt-2 grid grid-cols-2 gap-2">
-                                {[['existing', 'Mantener actual'], ['incoming', 'Usar importado']].map(([value, label]) => (
+                                {[
+                                  ['existing', 'Mantener actual'],
+                                  ...(['primaryNaturalPosition', 'primarySpecificPosition'].includes(change.field) ? [['secondary', 'Añadir como secundaria']] : []),
+                                  ['incoming', 'Usar importado'],
+                                ].map(([value, label]) => (
                                   <button key={value} type="button" onClick={() => setRivalImportConflictResolution(item.playerKey, change.field, value)} className={`rounded-lg px-2 py-1.5 text-[10px] font-black transition ${rivalImportReview.conflictResolutions?.[item.playerKey]?.[change.field] === value ? 'bg-caudal-electric text-slate-950' : 'border border-white/10 bg-white/[0.05] text-slate-300 hover:bg-white/10'}`}>{label}</button>
                                 ))}
                               </div>

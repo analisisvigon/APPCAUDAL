@@ -5,6 +5,10 @@ export const RIVAL_PLAYER_SYNC_FIELDS = [
   'number',
   'position',
   'specificPosition',
+  'primaryNaturalPosition',
+  'secondaryNaturalPositions',
+  'primarySpecificPosition',
+  'secondarySpecificPositions',
   'dob',
   'age',
   'height',
@@ -22,6 +26,10 @@ export const RIVAL_PLAYER_MANUAL_FIELDS = [
   'number',
   'position',
   'specificPosition',
+  'primaryNaturalPosition',
+  'secondaryNaturalPositions',
+  'primarySpecificPosition',
+  'secondarySpecificPositions',
   'dob',
   'age',
   'height',
@@ -53,7 +61,12 @@ const valuesEqual = (left, right) => comparableValue(left) === comparableValue(r
 export const createFieldSource = (source, updatedAt = new Date().toISOString()) => ({ source, updatedAt });
 
 export const getFieldSource = (fieldSources, field) => {
-  const entry = fieldSources?.[field];
+  const fallbackField = ['primaryNaturalPosition', 'secondaryNaturalPositions'].includes(field)
+    ? 'position'
+    : ['primarySpecificPosition', 'secondarySpecificPositions'].includes(field)
+      ? 'specificPosition'
+      : field;
+  const entry = fieldSources?.[field] ?? fieldSources?.[fallbackField];
   if (typeof entry === 'string') return entry;
   return entry?.source || '';
 };
@@ -188,6 +201,14 @@ export const applyFieldSyncPlan = (plan, resolutions = {}) => {
   const next = { ...(plan?.next || plan?.current || {}), fieldSources: { ...(plan?.next?.fieldSources || plan?.current?.fieldSources || {}) } };
   (plan?.conflicts || []).forEach((change) => {
     const resolution = resolutions?.[change.field] || change.proposedResolution || 'existing';
+    if (resolution === 'secondary' && change.field === 'primaryNaturalPosition') {
+      next.secondaryNaturalPositions = Array.from(new Set([...(next.secondaryNaturalPositions || []), change.incomingValue])).filter((key) => key && key !== next.primaryNaturalPosition);
+      return;
+    }
+    if (resolution === 'secondary' && change.field === 'primarySpecificPosition') {
+      next.secondarySpecificPositions = Array.from(new Set([...(next.secondarySpecificPositions || []), change.incomingValue])).filter((key) => key && key !== next.primarySpecificPosition);
+      return;
+    }
     next[change.field] = resolveFieldConflict({
       currentValue: change.currentValue,
       incomingValue: change.incomingValue,

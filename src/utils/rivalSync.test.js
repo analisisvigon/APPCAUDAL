@@ -119,4 +119,19 @@ assert.deepEqual(unchangedSources, team.fieldSources, 'guardar sin editar no mar
 const reloadedSources = JSON.parse(JSON.stringify({ position: createFieldSource('manual', timestamp) }));
 assert.equal(isManualField(reloadedSources, 'position'), true, 'field_sources persiste tras serializar y recargar');
 
+const manualPositionPlan = buildFieldSyncPlan({
+  current: {
+    primaryNaturalPosition: 'midfielder', secondaryNaturalPositions: ['defender'],
+    primarySpecificPosition: 'holding_midfield', secondarySpecificPositions: ['centre_back'],
+    fieldSources: { position: createFieldSource('manual', timestamp), specificPosition: createFieldSource('manual', timestamp) },
+  },
+  incoming: { primaryNaturalPosition: 'midfielder', primarySpecificPosition: 'central_midfield' },
+  fields: ['primaryNaturalPosition', 'secondaryNaturalPositions', 'primarySpecificPosition', 'secondarySpecificPositions'],
+  source: 'transfermarkt', updatedAt: timestamp,
+});
+assert.equal(manualPositionPlan.conflicts.find((change) => change.field === 'primarySpecificPosition').category, 'manual');
+const addedSecondary = applyFieldSyncPlan(manualPositionPlan, { primarySpecificPosition: 'secondary' });
+assert.equal(addedSecondary.primarySpecificPosition, 'holding_midfield', 'la posición manual principal no se sobrescribe');
+assert.deepEqual(addedSecondary.secondarySpecificPositions, ['centre_back', 'central_midfield'], 'la posición importada puede añadirse como secundaria');
+
 console.log('rivalSync tests passed');

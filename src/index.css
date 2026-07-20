@@ -65,6 +65,14 @@ select option {
     @apply space-y-2 text-sm text-slate-300;
   }
 
+  .field-label {
+    @apply mb-1.5 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500;
+  }
+
+  .field-input {
+    @apply w-full rounded-xl border border-white/10 bg-white/[0.055] px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-white shadow-inner transition placeholder:text-slate-600 hover:border-white/20 focus:border-caudal-electric/60;
+  }
+
   .app-input,
   .app-select,
   .app-textarea {

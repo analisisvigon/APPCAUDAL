@@ -1,3 +1,5 @@
+import { getPlayerSlotCompatibility } from '../constants/playerPositions.js';
+
 const normalizeText = (value) => String(value || '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
@@ -59,6 +61,8 @@ const scorePositionValue = (positionValue, role) => {
 };
 
 export const getPlayerRoleFitScore = (player = {}, role = '') => {
+  const catalogScore = getPlayerSlotCompatibility(player, role);
+  if (catalogScore) return catalogScore;
   const specificPosition = player.specificPosition || player.specific_position;
   const specificScore = scorePositionValue(specificPosition, role);
   const naturalScore = scorePositionValue(player.position, role);
@@ -66,7 +70,7 @@ export const getPlayerRoleFitScore = (player = {}, role = '') => {
   return naturalScore;
 };
 
-export const isPlayerCompatibleWithRole = (player, role, minimumScore = 55) => getPlayerRoleFitScore(player, role) >= minimumScore;
+export const isPlayerCompatibleWithRole = (player, role, minimumScore = 40) => getPlayerRoleFitScore(player, role) >= minimumScore;
 
 const playerKey = (player = {}) => String(player.jugadorRivalId || player.id || normalizeText(player.name));
 
@@ -106,7 +110,7 @@ export const buildIntelligentLineup = ({
   coordinates = [],
   currentLineup = [],
   currentRoles = roles,
-  minimumScore = 55,
+  minimumScore = 40,
 }) => {
   const activePlayers = players.filter((player) => player?.activeInSquad !== false && !player?.injured && !player?.suspended);
   const currentByPlayer = new Map(sanitizeTacticalLineup(currentLineup, roles.length).map((player) => [playerKey(player), player]));
@@ -157,7 +161,7 @@ export const buildIntelligentReservePlacements = ({
   roles = [],
   currentPlacements = new Map(),
   currentRoles = roles,
-  minimumScore = 55,
+  minimumScore = 40,
   maxPerSlot = 2,
 }) => {
   const capacities = roles.map(() => maxPerSlot);
