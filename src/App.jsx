@@ -73,7 +73,6 @@ import {
   buildIntelligentLineup,
   buildIntelligentReservePlacements,
   getPlayerRoleFitScore,
-  isPlayerCompatibleWithRole,
   movePlayerInLineup,
   sanitizeTacticalLineup,
   getTacticalPlayerKey,
@@ -20449,9 +20448,6 @@ function App() {
                 })();
                 const starterKeys = new Set(visualFieldLineup.map(getRivalPlayerUniqueKey));
                 const starterNames = new Set(visualFieldLineup.map((player) => normalizePlayerIdentityName(player.name)));
-                const positionMatchesSlot = (position, role) => {
-                  return isPlayerCompatibleWithRole({ position, specificPosition: position }, role, 80);
-                };
                 const assignedFieldKeys = new Set(starterKeys);
                 const assignedFieldNames = new Set(starterNames);
                 const reservePlayersBySlot = getFormationSlots(selectedTeam.system || '4-4-2').map((slot, slotIndex) => {
@@ -20604,21 +20600,6 @@ function App() {
                 const isPresentationMode = !teamFieldEditMode;
                 const playerNumberLabel = (player) => player?.number ? String(player.number) : '';
                 const compactPlayerLabel = (player) => `${player?.number ? `${player.number} ` : ''}${displayPlayerName(player)}`;
-                const getCurrentFieldRoleForPlayer = (player) => {
-                  const playerId = getTacticalPlayerKey(player);
-                  if (!playerId) return '';
-                  const starter = visualFieldLineup.find((lineupPlayer) => getTacticalPlayerKey(lineupPlayer) === playerId);
-                  if (starter) return getFormationRoles(selectedTeam.system || '4-4-2')[Number(starter.slot)] || '';
-                  const reserveSlotIndex = reservePlayersBySlot.findIndex((row) =>
-                    row.some((reservePlayer) => reservePlayer && getTacticalPlayerKey(reservePlayer) === playerId)
-                  );
-                  return reserveSlotIndex >= 0 ? getFormationRoles(selectedTeam.system || '4-4-2')[reserveSlotIndex] || '' : '';
-                };
-                const getPositionLocationWarning = (player, currentRole = getCurrentFieldRoleForPlayer(player)) => {
-                  const naturalPosition = player?.specificPosition || player?.position;
-                  if (!naturalPosition || !currentRole || positionMatchesSlot(naturalPosition, currentRole)) return '';
-                  return `Posición natural: ${naturalPosition} · Ubicación actual: ${currentRole}`;
-                };
                 const presentationBenchPlayers = rivalPlayers
                   .filter((player) => !starterKeys.has(getRivalPlayerUniqueKey(player)))
                   .sort((a, b) =>
@@ -20866,7 +20847,6 @@ function App() {
                             const isDraggedSource = Boolean(slotPlayer && draggedPlayer && getRivalPlayerUniqueKey(slotPlayer) === getRivalPlayerUniqueKey(draggedPlayer));
                             const slotRole = getFormationRoles(selectedTeam.system || '4-4-2')[slotIndex] || `Posición ${slotIndex + 1}`;
                             const slotReservePlayers = reservePlayersBySlot[slotIndex] || [];
-                            const slotPositionWarning = slotPlayer ? getPositionLocationWarning(slotPlayer, slotRole) : '';
                             const draggedFitScore = draggedPlayer ? getPlayerRoleFitScore(draggedPlayer, slotRole) : null;
                             const draggedFitState = draggedFitScore === null ? '' : draggedFitScore >= 100 ? 'ideal' : draggedFitScore > 0 ? 'acceptable' : 'incompatible';
                             const draggedFitClass = draggedFitState === 'ideal'
@@ -20915,7 +20895,7 @@ function App() {
                                 }}
                                 className={`group absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-2xl border px-2.5 py-1.5 text-center transition-all duration-200 ease-out ${
                                   slotPlayer ? `${isPresentationMode ? 'min-h-[5.2rem] w-[5.6rem] px-1 py-1' : 'min-h-20 w-24'} ${slotPlayer.isKey ? 'border-amber-200/80 bg-amber-200/[0.11] shadow-[0_0_0_1px_rgba(251,191,36,0.32),0_0_24px_rgba(250,204,21,0.30),0_10px_22px_rgba(0,0,0,0.24)]' : 'border-white/10 bg-slate-950/26 shadow-[0_8px_20px_rgba(0,0,0,0.18)]'} text-white` : `${teamFieldEditMode ? 'min-h-9 min-w-20 border-dashed border-white/12 bg-white/[0.012] text-white/30' : 'pointer-events-none hidden'}`
-                                } ${slotPositionWarning && !draggedPlayer ? 'ring-2 ring-orange-400/80 ring-offset-2 ring-offset-slate-950' : ''} ${teamFieldEditMode && draggedPlayer ? draggedFitClass : ''} ${isDraggedSource ? 'scale-95 opacity-55' : ''} ${activeRivalDropSlot === `starter-${slotIndex}` ? 'scale-105' : ''}`}
+                                } ${teamFieldEditMode && draggedPlayer ? draggedFitClass : ''} ${isDraggedSource ? 'scale-95 opacity-55' : ''} ${activeRivalDropSlot === `starter-${slotIndex}` ? 'scale-105' : ''}`}
                                 style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
                                 title={slotPlayer ? `${slotRole}: ${slotPlayer.name}` : slotRole}
                               >
@@ -20966,11 +20946,6 @@ function App() {
                                       <span className="truncate">{displayPlayerName(slotPlayer)}</span>
                                       {getRivalPlayerFlags(selectedTeam.id, slotPlayer.name).captain || slotPlayer.captain ? <span title="Capitán" className="shrink-0 text-[10px] leading-none text-blue-200">©</span> : null}
                                     </span>
-                                    {teamFieldEditMode && slotPositionWarning ? (
-                                      <span className="mt-1 max-w-36 rounded-lg border border-amber-200/15 bg-amber-200/[0.08] px-1.5 py-1 text-[8px] font-bold normal-case leading-tight tracking-normal text-amber-100" title={slotPositionWarning}>
-                                        {slotPositionWarning}
-                                      </span>
-                                    ) : null}
                                     {isPresentationMode && slotReservePlayers.filter(Boolean).length ? (
                                       <span className="mt-0.5 flex max-w-28 flex-col gap-0.5 text-[8px] font-bold uppercase leading-tight text-slate-300/80">
                                         {slotReservePlayers.filter(Boolean).slice(0, 2).map((reservePlayer) => (
@@ -21144,7 +21119,6 @@ function App() {
                               </div>
                               {group.players.map((player) => {
                                 const fieldState = getRosterFieldState(player);
-                                const fieldWarning = getPositionLocationWarning(player);
                                 return (
                                   <div
                                     key={player.jugadorRivalId || player.id || player.name}
@@ -21158,7 +21132,7 @@ function App() {
                                       setDraggedPlayer(null);
                                       setActiveRivalDropSlot('');
                                     }}
-                                    className={`group flex items-center gap-2 rounded-xl border p-2 transition-all duration-200 ease-out ${fieldState === 'EN CAMPO' ? 'opacity-70 hover:opacity-100' : ''} ${fieldWarning ? 'border-orange-400/55 bg-orange-400/[0.055]' : player.isKey ? 'border-amber-200/50 bg-amber-300/[0.075]' : selectedTacticalRivalPlayerName === getRivalPlayerUniqueKey(player) || selectedTeamPlacementPlayerName === player.name ? 'border-caudal-electric/30 bg-caudal-electric/10' : 'border-white/10 bg-white/[0.032] hover:bg-white/[0.06]'}`}
+                                    className={`group flex items-center gap-2 rounded-xl border p-2 transition-all duration-200 ease-out ${fieldState === 'EN CAMPO' ? 'opacity-70 hover:opacity-100' : ''} ${player.isKey ? 'border-amber-200/50 bg-amber-300/[0.075]' : selectedTacticalRivalPlayerName === getRivalPlayerUniqueKey(player) || selectedTeamPlacementPlayerName === player.name ? 'border-caudal-electric/30 bg-caudal-electric/10' : 'border-white/10 bg-white/[0.032] hover:bg-white/[0.06]'}`}
                                   >
                                     <button
                                       type="button"
@@ -21187,11 +21161,6 @@ function App() {
                                             <span key={title} title={title} className={`flex h-4 min-w-4 items-center justify-center rounded px-1 text-[9px] font-black leading-none ${className}`}>{icon}</span>
                                           ))}
                                         </span>
-                                        {fieldWarning ? (
-                                          <span className="mt-1 block rounded-lg border border-amber-200/15 bg-amber-200/[0.07] px-2 py-1 text-[10px] font-bold leading-tight text-amber-100">
-                                            {fieldWarning}
-                                          </span>
-                                        ) : null}
                                       </span>
                                     </button>
                                     <button
