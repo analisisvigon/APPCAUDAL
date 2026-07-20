@@ -26,6 +26,8 @@ import {
   filterGlobalPlayers,
   findGlobalPlayerMatches,
   loadGlobalPlayerDatabase,
+  mergeGlobalPlayerProfiles,
+  removeGlobalPlayerFromCurrentTeam,
   saveGlobalPlayerProfile,
 } from './utils/globalPlayerStore';
 import {
@@ -46,6 +48,7 @@ import {
   buildRivalSyncPlan,
   createFieldSource,
   getRivalSyncPlayerKey,
+  isManualField,
   markChangedFieldsManual,
 } from './utils/rivalSync';
 import {
@@ -4005,6 +4008,7 @@ function App() {
   const [rivalSystemApplying, setRivalSystemApplying] = useState(false);
   const [editingTeamPlayerIndex, setEditingTeamPlayerIndex] = useState(null);
   const [rivalPlayerModal, setRivalPlayerModal] = useState({ open: false, mode: 'create', originalName: '', draft: null });
+  const [playerTeamManager, setPlayerTeamManager] = useState({ open: false, playerId: null, newTeamId: '', changeDate: '', saving: false, error: '' });
   const [rivalPlayerSaveError, setRivalPlayerSaveError] = useState('');
   const [rivalPlayerSaving, setRivalPlayerSaving] = useState(false);
   const [rivalPlayerPhotoError, setRivalPlayerPhotoError] = useState('');
@@ -15943,15 +15947,97 @@ function App() {
       return;
     }
     const teamId = rivalPlayerModal.draft?.teamId || rivalPlayerModal.teamId || selectedTeam?.id || editingTeamId;
-    if (!player?.id || !teamId) return;
+    const playerId = player?.globalPlayerId || player?.id;
+    if (!isUuid(playerId)) {
+      setRivalPlayerSaveError('Este perfil todavía es legacy. Abre su ficha y guárdalo primero para convertirlo en jugador global.');
+      return;
+    }
+    if (!teamId) return;
     setRivalPlayerSaving(true);
     setRivalPlayerSaveError('');
     try {
-      await assignGlobalPlayerToTeam(supabase, { playerId: player.id, teamId, mode });
+      await assignGlobalPlayerToTeam(supabase, { playerId, teamId, mode });
       await loadTeams();
+      setGlobalPlayerStatus(mode === 'replace' ? 'Jugador global vinculado sin crear duplicados.' : 'Relación de equipo actualizada.');
       closeRivalPlayerModal();
     } catch (linkError) {
       setRivalPlayerSaveError(linkError.message || 'No se pudo vincular el jugador al equipo.');
+    } finally {
+      setRivalPlayerSaving(false);
+    }
+  };
+
+  const openPlayerTeamManager = (player = rivalPlayerModal.draft) => {
+    const playerId = player?.globalPlayerId || player?.id;
+    if (!isUuid(playerId)) return;
+    setPlayerTeamManager({
+      open: true,
+      playerId,
+      newTeamId: '',
+      changeDate: new Date().toISOString().slice(0, 10),
+      saving: false,
+      error: '',
+    });
+  };
+
+  const closePlayerTeamManager = () => setPlayerTeamManager({ open: false, playerId: null, newTeamId: '', changeDate: '', saving: false, error: '' });
+
+  const confirmGlobalPlayerTeamChange = async () => {
+    if (!playerTeamManager.playerId || !playerTeamManager.newTeamId) return;
+    const managedPlayer = globalPlayers.find((player) => String(player.globalPlayerId || player.id) === String(playerTeamManager.playerId));
+    const currentMembership = managedPlayer?.memberships?.find((membership) => membership.is_current && !membership.legacy_compatible);
+    if (String(currentMembership?.team_id || '') === String(playerTeamManager.newTeamId)) {
+      setPlayerTeamManager((current) => ({ ...current, error: 'El jugador ya pertenece a ese equipo.' }));
+      return;
+    }
+    setPlayerTeamManager((current) => ({ ...current, saving: true, error: '' }));
+    try {
+      await assignGlobalPlayerToTeam(supabase, {
+        playerId: playerTeamManager.playerId,
+        teamId: playerTeamManager.newTeamId,
+        mode: 'replace',
+        startDate: playerTeamManager.changeDate,
+      });
+      await loadTeams();
+      setGlobalPlayerStatus('Equipo actualizado. La etapa anterior se conserva en el historial.');
+      closePlayerTeamManager();
+      closeRivalPlayerModal();
+    } catch (teamChangeError) {
+      setPlayerTeamManager((current) => ({ ...current, saving: false, error: teamChangeError.message || 'No se pudo cambiar el equipo.' }));
+    }
+  };
+
+  const removeManagedPlayerFromTeam = async () => {
+    if (!playerTeamManager.playerId) return;
+    setPlayerTeamManager((current) => ({ ...current, saving: true, error: '' }));
+    try {
+      await removeGlobalPlayerFromCurrentTeam(supabase, {
+        playerId: playerTeamManager.playerId,
+        endDate: playerTeamManager.changeDate,
+      });
+      await loadTeams();
+      setGlobalPlayerStatus('El jugador queda sin equipo. Su perfil y su historial se conservan.');
+      closePlayerTeamManager();
+      closeRivalPlayerModal();
+    } catch (removeTeamError) {
+      setPlayerTeamManager((current) => ({ ...current, saving: false, error: removeTeamError.message || 'No se pudo quitar el jugador del equipo.' }));
+    }
+  };
+
+  const mergeDuplicateGlobalPlayer = async (duplicatePlayer) => {
+    const keepPlayerId = rivalPlayerModal.draft?.globalPlayerId || rivalPlayerModal.draft?.id;
+    const mergePlayerId = duplicatePlayer?.globalPlayerId || duplicatePlayer?.id;
+    if (!isUuid(keepPlayerId) || !isUuid(mergePlayerId) || keepPlayerId === mergePlayerId) return;
+    if (!window.confirm(`Se conservará la ficha de ${rivalPlayerModal.draft?.name} y se integrarán el historial, posiciones, fuentes y características de ${duplicatePlayer.name}. ¿Continuar?`)) return;
+    setRivalPlayerSaving(true);
+    setRivalPlayerSaveError('');
+    try {
+      await mergeGlobalPlayerProfiles(supabase, { keepPlayerId, mergePlayerId });
+      await loadTeams();
+      setGlobalPlayerStatus('Perfiles fusionados. Se conserva un único jugador global y todo su historial.');
+      closeRivalPlayerModal();
+    } catch (mergeError) {
+      setRivalPlayerSaveError(mergeError.message || 'No se pudieron fusionar los perfiles.');
     } finally {
       setRivalPlayerSaving(false);
     }
@@ -16095,7 +16181,13 @@ function App() {
             const linkedToThisTeam = exact.player.memberships.some((membership) => membership.team_id === teamId && membership.is_current);
             const linkedElsewhere = exact.player.memberships.some((membership) => membership.team_id !== teamId && membership.is_current);
             if (linkedElsewhere && !linkedToThisTeam) {
-              throw new Error(`${squadPlayer.name} ya existe en la base global y está vinculado a otro equipo. Revísalo en Jugadores y elige si actualizar el equipo actual o mantener ambas relaciones.`);
+              const previousTeams = exact.player.memberships
+                .filter((membership) => membership.is_current)
+                .map((membership) => teams.find((team) => String(team.id) === String(membership.team_id))?.name)
+                .filter(Boolean)
+                .join(' · ');
+              const shouldMove = window.confirm(`${squadPlayer.name} ya existe en la Base de Datos Global y pertenece a ${previousTeams || 'otro equipo'}.\n\n¿Moverlo a ${data.name}? Se conservarán su ficha y todo el historial.`);
+              if (!shouldMove) throw new Error(`Importación detenida: ${squadPlayer.name} necesita una decisión de cambio de equipo.`);
             }
             globalPlayer = exact.player;
           } else if (matches.length) {
@@ -16103,21 +16195,49 @@ function App() {
           }
         }
         const positionModel = getPlayerPositionModel(squadPlayer);
+        const preserveGlobalPhoto = Boolean(globalPlayer?.photoUrl) && (
+          isManualField(globalPlayer.fieldSources, 'photoUrl')
+          || isManualField(globalPlayer.fieldSources, 'image')
+          || ['manual_upload', 'manual_url'].includes(globalPlayer.imageSource)
+        );
+        const incomingSource = squadPlayer.sourceProfileUrl ? {
+          url: squadPlayer.sourceProfileUrl,
+          sourceName: squadPlayer.externalSource === 'transfermarkt' ? 'Transfermarkt' : squadPlayer.externalSource || 'Otro',
+          isPrimary: !(globalPlayer?.sources || []).length,
+        } : null;
+        const mergedSources = [...(globalPlayer?.sources || []), ...(incomingSource ? [incomingSource] : [])]
+          .filter((source, index, items) => items.findIndex((item) => String(item.url).trim().toLowerCase() === String(source.url).trim().toLowerCase()) === index);
+        const targetMembership = globalPlayer?.memberships.find((membership) => membership.team_id === teamId && membership.is_current) || null;
         const playerDraft = {
           ...(globalPlayer || createBlankGlobalPlayer()),
           ...squadPlayer,
           id: globalPlayer?.id || null,
           globalPlayerId: globalPlayer?.id || null,
           teamId,
-          membershipId: globalPlayer?.memberships.find((membership) => membership.team_id === teamId && membership.is_current)?.id || squadPlayer.membershipId || null,
+          membershipId: globalPlayer ? targetMembership?.id || null : squadPlayer.membershipId || null,
           primaryNaturalPosition: positionModel.primaryNaturalPosition,
           secondaryNaturalPositions: positionModel.secondaryNaturalPositions,
           primarySpecificPosition: positionModel.primarySpecificPosition,
           secondarySpecificPositions: positionModel.secondarySpecificPositions,
           positionSource: squadPlayer.fieldSources?.primarySpecificPosition?.source || squadPlayer.fieldSources?.specificPosition?.source || globalPlayer?.positionSource || squadPlayer.externalSource || 'manual',
-          photoUrl: squadPlayer.image || globalPlayer?.photoUrl || '',
-          sources: globalPlayer?.sources?.length ? globalPlayer.sources : squadPlayer.sourceProfileUrl ? [{ url: squadPlayer.sourceProfileUrl, sourceName: squadPlayer.externalSource === 'transfermarkt' ? 'Transfermarkt' : squadPlayer.externalSource || 'Otro', isPrimary: true }] : [],
+          photoUrl: preserveGlobalPhoto ? globalPlayer.photoUrl : squadPlayer.image || globalPlayer?.photoUrl || '',
+          image: preserveGlobalPhoto ? globalPlayer.photoUrl : squadPlayer.image || globalPlayer?.photoUrl || '',
+          sources: mergedSources,
           traits: globalPlayer?.traits || [],
+          scoutingSummary: globalPlayer?.scoutingSummary || '',
+          notes: globalPlayer?.scoutingSummary || globalPlayer?.notes || '',
+          cardAlert: Boolean(globalPlayer?.cardAlert || squadPlayer.cardAlert),
+          sentOffAlert: Boolean(globalPlayer?.sentOffAlert || squadPlayer.sentOffAlert),
+          suspendedAlert: Boolean(globalPlayer?.suspendedAlert || squadPlayer.suspendedAlert),
+          injuredAlert: Boolean(globalPlayer?.injuredAlert || squadPlayer.injuredAlert),
+          captain: targetMembership ? Boolean(targetMembership.captain) : Boolean(squadPlayer.captain),
+          isKey: targetMembership ? Boolean(targetMembership.is_key) : Boolean(squadPlayer.isKey),
+          observed: targetMembership ? Boolean(targetMembership.observed) : Boolean(squadPlayer.observed),
+          role: targetMembership?.squad_role || squadPlayer.role || '',
+          fieldRole: targetMembership?.tactical_role ?? squadPlayer.fieldRole ?? null,
+          slotIndex: targetMembership?.tactical_slot ?? squadPlayer.slotIndex ?? null,
+          reserveIndex: targetMembership?.tactical_reserve_slot ?? squadPlayer.reserveIndex ?? null,
+          fieldSources: { ...(squadPlayer.fieldSources || {}), ...(globalPlayer?.fieldSources || {}) },
           memberships: globalPlayer?.memberships || [],
         };
         const globalId = await saveGlobalPlayerProfile(supabase, playerDraft);
@@ -16159,6 +16279,9 @@ function App() {
       setTeamEditMode(false);
       setEditingTeamPlayerIndex(null);
       if (syncHistoryWarning) setImportStatus(syncHistoryWarning);
+      else if (pendingRivalSync) setImportStatus(
+        `Jugadores nuevos: ${pendingRivalSync.newPlayers} · Jugadores actualizados: ${pendingRivalSync.updatedPlayers} · Jugadores ya existentes reutilizados: ${pendingRivalSync.reusedPlayers || 0} · Duplicados evitados: ${pendingRivalSync.duplicatesAvoided || 0} · Pendientes de revisión manual: ${pendingRivalSync.pendingManualReview || 0}`
+      );
       if (!editingTeamId) closeTeamForm();
     } catch (saveError) {
       console.error('[RIVAL_SAVE_ERROR]', { rivalId: editingTeamId, payload, error: saveError });
@@ -16683,6 +16806,9 @@ function App() {
       missingPlayers: rivalImportReview.playerPlan.missingPlayers.length,
       conflicts: (rivalImportReview.playerPlan.conflicts || []).reduce((total, conflict) => total + conflict.changes.length, 0) + (rivalImportReview.teamPlan?.conflicts?.length || 0),
       manualOverwrites,
+      reusedPlayers: Math.max(0, rivalImportReview.playerPlan.analyzedPlayers - rivalImportReview.playerPlan.newPlayers.length),
+      duplicatesAvoided: (rivalImportReview.playerPlan.ambiguousMatches || []).length,
+      pendingManualReview: (rivalImportReview.playerPlan.ambiguousMatches || []).length,
     });
     setRivalImportReview(null);
     setImportStatus('Datos importados aplicados al formulario. Revisa y guarda los cambios.');
@@ -24620,21 +24746,68 @@ function App() {
             draft={rivalPlayerModal.draft || createBlankGlobalPlayer()}
             mode={rivalPlayerModal.mode}
             teams={teams}
+            globalPlayers={globalPlayers}
             saving={rivalPlayerSaving}
             error={rivalPlayerSaveError}
             photoUploading={rivalPlayerPhotoUploading}
             photoError={rivalPlayerPhotoError}
-            matches={rivalPlayerModal.mode === 'create' ? findGlobalPlayerMatches(rivalPlayerModal.draft || {}, globalPlayers) : []}
+            matches={findGlobalPlayerMatches(rivalPlayerModal.draft || {}, globalPlayers).filter(({ player }) => String(player.globalPlayerId || player.id) !== String(rivalPlayerModal.draft?.globalPlayerId || rivalPlayerModal.draft?.id))}
             onChange={updateRivalPlayerDraft}
             onSubmit={saveRivalPlayerFromModal}
             onCancel={closeRivalPlayerModal}
             onPhotoChange={handleRivalPlayerPhotoFileChange}
             onLinkExisting={linkExistingGlobalPlayerToTeam}
             onAllowDuplicate={() => setRivalPlayerModal((current) => ({ ...current, allowDuplicateCreate: true }))}
+            onManageTeam={() => openPlayerTeamManager(rivalPlayerModal.draft)}
+            onMergeDuplicate={mergeDuplicateGlobalPlayer}
             onDelete={rivalPlayerModal.mode === 'edit' && (selectedTeam || editingTeamId) ? () => { requestSelectedTeamPlayerDelete(rivalPlayerModal.draft); closeRivalPlayerModal(); } : null}
           />
         </div>
       ) : null}
+
+      {playerTeamManager.open ? (() => {
+        const managedPlayer = globalPlayers.find((player) => String(player.globalPlayerId || player.id) === String(playerTeamManager.playerId));
+        const memberships = safeArray(managedPlayer?.memberships).filter((membership) => !membership.legacy_compatible);
+        const currentMembership = memberships.find((membership) => membership.is_current) || null;
+        const currentTeam = teams.find((team) => String(team.id) === String(currentMembership?.team_id));
+        const formatMembershipDate = (value) => value ? String(value).slice(0, 10).split('-').reverse().join('/') : 'fecha no registrada';
+        return (
+          <div className="fixed inset-0 z-[80] overflow-y-auto bg-black/70 px-3 py-5 backdrop-blur-sm sm:px-6">
+            <section className="mx-auto max-w-xl rounded-3xl border border-white/10 bg-caudal-950 p-5 shadow-[0_24px_90px_rgba(0,0,0,0.5)]">
+              <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Gestionar equipo</p>
+                  <h3 className="mt-1 text-xl font-black text-white">{managedPlayer?.name || 'Jugador global'}</h3>
+                </div>
+                <button type="button" onClick={closePlayerTeamManager} disabled={playerTeamManager.saving} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-slate-300">Cerrar</button>
+              </div>
+
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                <label><span className="field-label">Equipo actual</span><input readOnly value={currentTeam?.name || 'Sin equipo'} className="field-input opacity-80" /></label>
+                <label><span className="field-label">Nuevo equipo</span><select value={playerTeamManager.newTeamId} onChange={(event) => setPlayerTeamManager((current) => ({ ...current, newTeamId: event.target.value, error: '' }))} className="field-input"><option value="">Seleccionar equipo</option>{teams.filter((team) => String(team.id) !== String(currentTeam?.id || '')).map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>
+                <label className="sm:col-span-2"><span className="field-label">Fecha del cambio</span><input type="date" value={playerTeamManager.changeDate} onChange={(event) => setPlayerTeamManager((current) => ({ ...current, changeDate: event.target.value }))} className="field-input" /></label>
+              </div>
+
+              {playerTeamManager.error ? <p className="mt-3 rounded-xl border border-red-300/20 bg-red-400/10 px-3 py-2 text-xs font-bold text-red-100">{playerTeamManager.error}</p> : null}
+
+              <div className="mt-4 flex flex-wrap justify-between gap-2">
+                <div>{currentMembership ? <button type="button" onClick={removeManagedPlayerFromTeam} disabled={playerTeamManager.saving} className="rounded-xl border border-red-300/20 bg-red-400/10 px-4 py-2 text-xs font-black text-red-100 disabled:opacity-50">Quitar del equipo actual</button> : null}</div>
+                <button type="button" onClick={confirmGlobalPlayerTeamChange} disabled={playerTeamManager.saving || !playerTeamManager.newTeamId || !playerTeamManager.changeDate} className="rounded-xl bg-caudal-electric px-4 py-2 text-xs font-black text-slate-950 disabled:opacity-50">{playerTeamManager.saving ? 'Guardando…' : currentMembership ? 'Confirmar cambio' : 'Asignar equipo'}</button>
+              </div>
+
+              <div className="mt-5 border-t border-white/10 pt-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Historial</p>
+                <div className="mt-3 space-y-2">
+                  {memberships.length ? memberships.map((membership) => {
+                    const team = teams.find((item) => String(item.id) === String(membership.team_id));
+                    return <div key={membership.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs"><span className="font-bold text-white">{team?.name || 'Equipo eliminado'}</span><span className={membership.is_current ? 'font-black text-emerald-300' : 'text-slate-500'}>{membership.is_current ? `Desde ${formatMembershipDate(membership.start_date)}` : `Hasta ${formatMembershipDate(membership.end_date)}`}</span></div>;
+                  }) : <p className="text-xs font-semibold text-slate-500">Todavía no tiene etapas registradas.</p>}
+                </div>
+              </div>
+            </section>
+          </div>
+        );
+      })() : null}
 
       {false && rivalPlayerModal.open ? (
         <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/60 px-4 py-6 backdrop-blur-sm sm:px-6">

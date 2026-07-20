@@ -5,6 +5,7 @@ import {
   getSpecificOptionsForNaturalPositions,
 } from '../../constants/playerPositions';
 import { PLAYER_TRAIT_CATEGORIES, getPlayerTraitOptions } from '../../constants/playerScoutingCatalog';
+import { searchGlobalPlayersForTeam } from '../../utils/globalPlayerStore';
 
 const sourceNames = ['Transfermarkt', 'BeSoccer', 'Web del club', 'Otro'];
 
@@ -17,6 +18,7 @@ export default function PlayerDatabaseForm({
   photoUploading = false,
   photoError = '',
   matches = [],
+  globalPlayers = [],
   onChange,
   onSubmit,
   onCancel,
@@ -24,9 +26,22 @@ export default function PlayerDatabaseForm({
   onLinkExisting,
   onAllowDuplicate,
   onDelete,
+  onManageTeam,
+  onMergeDuplicate,
 }) {
   const [sourceDraft, setSourceDraft] = useState({ url: '', sourceName: 'Otro' });
   const [customTraits, setCustomTraits] = useState({ strength: '', vulnerability: '', trend: '' });
+  const [teamEntryMode, setTeamEntryMode] = useState(mode === 'create' && draft.teamId ? 'search' : 'create');
+  const [databaseSearch, setDatabaseSearch] = useState('');
+  const showTeamEntryChoice = mode === 'create' && Boolean(draft.teamId);
+  const databaseResults = useMemo(
+    () => searchGlobalPlayersForTeam(globalPlayers, teams, databaseSearch).slice(0, 12),
+    [globalPlayers, teams, databaseSearch],
+  );
+  const getCurrentTeams = (player) => (player.memberships || [])
+    .filter((membership) => membership.is_current)
+    .map((membership) => teams.find((team) => String(team.id) === String(membership.team_id)))
+    .filter(Boolean);
   const naturalKeys = [draft.primaryNaturalPosition, ...(draft.secondaryNaturalPositions || [])].filter(Boolean);
   const specificOptions = useMemo(() => getSpecificOptionsForNaturalPositions(naturalKeys), [naturalKeys.join('|')]);
   const selectedSpecific = [draft.primarySpecificPosition, ...(draft.secondarySpecificPositions || [])].filter(Boolean);
@@ -78,6 +93,50 @@ export default function PlayerDatabaseForm({
         <button type="button" onClick={onCancel} className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2 text-sm font-bold text-slate-300">Cerrar</button>
       </div>
 
+      {showTeamEntryChoice ? (
+        <section className="mt-5 rounded-2xl border border-caudal-electric/20 bg-caudal-electric/[0.05] p-4">
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => setTeamEntryMode('search')} className={`rounded-xl px-3 py-2 text-xs font-black ${teamEntryMode === 'search' ? 'bg-caudal-electric text-slate-950' : 'border border-white/10 bg-white/[0.04] text-slate-300'}`}>Buscar en base de datos</button>
+            <button type="button" onClick={() => setTeamEntryMode('create')} className={`rounded-xl px-3 py-2 text-xs font-black ${teamEntryMode === 'create' ? 'bg-caudal-electric text-slate-950' : 'border border-white/10 bg-white/[0.04] text-slate-300'}`}>Crear jugador nuevo</button>
+          </div>
+          {teamEntryMode === 'search' ? (
+            <div className="mt-4">
+              <input type="search" value={databaseSearch} onChange={(event) => setDatabaseSearch(event.target.value)} className="field-input" placeholder="Nombre, posición, equipo actual o anterior" autoFocus />
+              <div className="mt-3 max-h-[56vh] space-y-2 overflow-y-auto">
+                {databaseResults.length ? databaseResults.map((player) => {
+                  const currentTeams = getCurrentTeams(player);
+                  const alreadyInTarget = currentTeams.some((team) => String(team.id) === String(draft.teamId));
+                  const belongsElsewhere = currentTeams.length && !alreadyInTarget;
+                  const specificPosition = player.specificPosition || 'Sin posición específica';
+                  const canLink = Boolean(player.globalPlayerId);
+                  return (
+                    <article key={player.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="font-black text-white">{player.name}</p>
+                          <p className="mt-1 text-xs font-semibold text-slate-400">{specificPosition}</p>
+                          <p className="mt-1 text-[10px] font-bold text-caudal-electric">Equipo actual: {currentTeams.length ? currentTeams.map((team) => team.name).join(' · ') : 'Sin equipo'}</p>
+                          {belongsElsewhere ? <p className="mt-2 text-[10px] font-bold text-amber-100">Este jugador ya pertenece a {currentTeams.map((team) => team.name).join(' · ')}.</p> : null}
+                          {!canLink ? <p className="mt-2 text-[10px] font-bold text-amber-100">Perfil legacy pendiente de convertir. Abre la ficha antes de vincularlo.</p> : null}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {!alreadyInTarget && canLink ? <button type="button" onClick={() => onLinkExisting(player, 'replace')} className="rounded-lg bg-caudal-electric px-2.5 py-1.5 text-[10px] font-black text-slate-950">{belongsElsewhere ? 'Mover a este equipo' : 'Vincular'}</button> : null}
+                          {belongsElsewhere ? <button type="button" disabled title="El proyecto permite un único equipo actual" className="cursor-not-allowed rounded-lg border border-white/10 px-2.5 py-1.5 text-[10px] font-black text-slate-600">Mantener ambas relaciones</button> : null}
+                          {alreadyInTarget ? <span className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-2.5 py-1.5 text-[10px] font-black text-emerald-100">Ya vinculado</span> : null}
+                          <button type="button" onClick={() => onLinkExisting(player, 'review')} className="rounded-lg border border-white/10 px-2.5 py-1.5 text-[10px] font-black text-white">Ver ficha</button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                }) : <p className="rounded-xl border border-dashed border-white/10 px-3 py-5 text-center text-xs font-semibold text-slate-500">No hay jugadores que coincidan.</p>}
+              </div>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      <div className={showTeamEntryChoice && teamEntryMode === 'search' ? 'hidden' : ''}>
+
       <section className="mt-5 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
         <h4 className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Identidad</h4>
         <div className="mt-3 grid gap-4 md:grid-cols-[120px_1fr]">
@@ -95,26 +154,47 @@ export default function PlayerDatabaseForm({
             <label><span className="field-label">Dorsal</span><input value={draft.number || ''} onChange={(event) => onChange('number', event.target.value)} className="field-input" placeholder="Opcional" /></label>
             <label><span className="field-label">Pierna</span><select value={draft.foot || ''} onChange={(event) => onChange('foot', event.target.value)} className="field-input"><option value="">Sin registrar</option><option value="Derecha">Derecha</option><option value="Izquierda">Izquierda</option><option value="Ambas">Ambas</option></select></label>
             <label><span className="field-label">Altura</span><input value={draft.height || ''} onChange={(event) => onChange('height', event.target.value)} className="field-input" placeholder="Ej. 1,82 m" /></label>
-            <label className="sm:col-span-2"><span className="field-label">Equipo actual</span><select value={draft.teamId || ''} onChange={(event) => onChange('teamId', event.target.value)} className="field-input"><option value="">Sin equipo asignado</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>
+            {mode === 'edit' ? (
+              <div className="sm:col-span-2">
+                <span className="field-label">Equipo actual</span>
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5">
+                  <span className="text-sm font-bold text-white">{getCurrentTeams(draft).map((team) => team.name).join(' · ') || 'Sin equipo'}</span>
+                  {onManageTeam && draft.globalPlayerId ? <button type="button" onClick={onManageTeam} className="rounded-lg border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-1.5 text-[10px] font-black text-caudal-electric">Gestionar equipo</button> : null}
+                </div>
+              </div>
+            ) : <label className="sm:col-span-2"><span className="field-label">Equipo actual</span><select value={draft.teamId || ''} onChange={(event) => onChange('teamId', event.target.value)} className="field-input"><option value="">Sin equipo asignado</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>}
           </div>
         </div>
         {photoError ? <p className="mt-2 text-xs font-bold text-red-200">{photoError}</p> : null}
       </section>
 
-      {mode === 'create' && draft.name?.trim() && matches.length ? (
+      {draft.name?.trim() && matches.length ? (
         <section className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-300/[0.07] p-4">
           <h4 className="text-xs font-black text-amber-100">Posibles jugadores existentes</h4>
           <p className="mt-1 text-[10px] font-semibold text-amber-100/65">No se une automáticamente solo por nombre.</p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {matches.slice(0, 6).map(({ player, confidence, reason }) => (
-              <div key={player.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
-                <p className="font-black text-white">{player.name}</p>
-                <p className="mt-1 text-[10px] text-slate-400">{player.specificPosition || player.position || 'Sin posición'} · {confidence === 'exact' ? 'Coincidencia exacta' : 'Posible coincidencia'} ({reason})</p>
-                {draft.teamId ? <div className="mt-2 flex flex-wrap gap-1.5"><button type="button" onClick={() => onLinkExisting(player, 'replace')} className="rounded-lg bg-caudal-electric px-2.5 py-1.5 text-[10px] font-black text-slate-950">Actualizar equipo actual</button><button type="button" onClick={() => onLinkExisting(player, 'keep_both')} className="rounded-lg border border-white/10 px-2.5 py-1.5 text-[10px] font-black text-white">Mantener ambas</button><button type="button" onClick={() => onLinkExisting(player, 'review')} className="rounded-lg border border-amber-200/20 px-2.5 py-1.5 text-[10px] font-black text-amber-100">Revisar manualmente</button></div> : null}
-              </div>
-            ))}
+            {matches.slice(0, 6).map(({ player, confidence, reason }) => {
+              const currentTeams = getCurrentTeams(player);
+              const alreadyInTarget = currentTeams.some((team) => String(team.id) === String(draft.teamId));
+              const belongsElsewhere = currentTeams.length && !alreadyInTarget;
+              const canLink = Boolean(player.globalPlayerId);
+              return (
+                <div key={player.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                  <p className="text-[9px] font-black uppercase tracking-[0.12em] text-amber-100">{confidence === 'exact' ? 'Este jugador ya existe' : 'Posible duplicado'}</p>
+                  <p className="mt-1 font-black text-white">{player.name}</p>
+                  <p className="mt-1 text-[10px] text-slate-400">{player.specificPosition || player.position || 'Sin posición'} · {player.age ? `${player.age} años · ` : ''}{currentTeams.length ? currentTeams.map((team) => team.name).join(' · ') : 'Sin equipo'} ({reason})</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {draft.teamId && !alreadyInTarget && canLink ? <button type="button" onClick={() => onLinkExisting(player, 'replace')} className="rounded-lg bg-caudal-electric px-2.5 py-1.5 text-[10px] font-black text-slate-950">{belongsElsewhere ? 'Mover al equipo actual' : confidence === 'exact' ? 'Vincular al equipo actual' : 'Es el mismo jugador'}</button> : null}
+                    {alreadyInTarget ? <span className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-2.5 py-1.5 text-[10px] font-black text-emerald-100">Ya vinculado</span> : null}
+                    {belongsElsewhere ? <button type="button" disabled title="Solo se permite un equipo actual" className="cursor-not-allowed rounded-lg border border-white/10 px-2.5 py-1.5 text-[10px] font-black text-slate-600">Mantener ambas relaciones</button> : null}
+                    {mode === 'edit' && canLink && onMergeDuplicate ? <button type="button" onClick={() => onMergeDuplicate(player)} className="rounded-lg border border-red-300/20 bg-red-400/10 px-2.5 py-1.5 text-[10px] font-black text-red-100">Fusionar manualmente</button> : null}
+                    <button type="button" onClick={() => onLinkExisting(player, 'review')} className="rounded-lg border border-amber-200/20 px-2.5 py-1.5 text-[10px] font-black text-amber-100">Abrir ficha</button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          {!matches.some((match) => match.confidence === 'exact') && onAllowDuplicate ? <button type="button" onClick={onAllowDuplicate} className="mt-3 text-[10px] font-black text-amber-100 underline decoration-amber-200/30 underline-offset-4">He revisado las coincidencias: crear un jugador distinto</button> : null}
+          {mode === 'create' && !matches.some((match) => match.confidence === 'exact') && onAllowDuplicate ? <button type="button" onClick={onAllowDuplicate} className="mt-3 text-[10px] font-black text-amber-100 underline decoration-amber-200/30 underline-offset-4">He revisado las coincidencias: crear un jugador distinto</button> : null}
         </section>
       ) : null}
 
@@ -160,6 +240,7 @@ export default function PlayerDatabaseForm({
       <div className="mt-5 flex flex-wrap justify-between gap-2">
         <div>{mode === 'edit' && onDelete ? <button type="button" onClick={onDelete} disabled={saving} className="rounded-xl border border-red-300/20 bg-red-400/10 px-4 py-2 text-sm font-bold text-red-100">Eliminar perfil</button> : null}</div>
         <div className="flex gap-2"><button type="button" onClick={onCancel} className="rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2 text-sm font-bold text-slate-200">Cancelar</button><button type="submit" disabled={saving || photoUploading} className="rounded-xl bg-caudal-electric px-4 py-2 text-sm font-black text-slate-950 disabled:opacity-50">{saving ? 'Guardando…' : 'Guardar jugador'}</button></div>
+      </div>
       </div>
     </form>
   );

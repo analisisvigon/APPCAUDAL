@@ -15,6 +15,32 @@ const normalizeText = (value) => String(value || '')
 const safeArray = (value) => Array.isArray(value) ? value : [];
 const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
 
+const levenshteinDistance = (left, right) => {
+  if (!left) return right.length;
+  if (!right) return left.length;
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex];
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      current[rightIndex] = Math.min(
+        current[rightIndex - 1] + 1,
+        previous[rightIndex] + 1,
+        previous[rightIndex - 1] + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1),
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+  return previous[right.length];
+};
+
+const getNameSimilarity = (left, right) => {
+  const normalizedLeft = normalizeText(left).replace(/\s+/g, '');
+  const normalizedRight = normalizeText(right).replace(/\s+/g, '');
+  const longest = Math.max(normalizedLeft.length, normalizedRight.length);
+  if (!longest) return 0;
+  return 1 - (levenshteinDistance(normalizedLeft, normalizedRight) / longest);
+};
+
 const getPlayerSourceUrls = (player) => new Set([
   ...safeArray(player.sources).map((item) => item.url),
   player.sourceProfileUrl,
@@ -168,6 +194,25 @@ export const filterGlobalPlayers = (players = [], filters = {}) => {
   });
 };
 
+export const searchGlobalPlayersForTeam = (players = [], teams = [], query = '') => {
+  const normalizedQuery = normalizeText(query);
+  const teamById = new Map(safeArray(teams).map((team) => [String(team.id), team.name]));
+  return safeArray(players).filter((player) => {
+    if (!normalizedQuery) return true;
+    const model = getPlayerPositionModel(player);
+    const membershipTeams = safeArray(player.memberships).map((membership) => teamById.get(String(membership.team_id)) || '');
+    const searchable = normalizeText([
+      player.name,
+      getNaturalPositionLabel(model.primaryNaturalPosition),
+      ...model.secondaryNaturalPositions.map(getNaturalPositionLabel),
+      getSpecificPositionLabel(model.primarySpecificPosition),
+      ...model.secondarySpecificPositions.map(getSpecificPositionLabel),
+      ...membershipTeams,
+    ].join(' '));
+    return searchable.includes(normalizedQuery);
+  });
+};
+
 export const createBlankGlobalPlayer = () => ({
   id: null,
   name: '',
@@ -294,23 +339,31 @@ export const loadGlobalPlayerDatabase = async (client) => {
 
 export const findGlobalPlayerMatches = (candidate = {}, players = []) => {
   const name = normalizeText(candidate.name);
+  const candidateUrls = getPlayerSourceUrls(candidate);
   return players.map((player) => {
+    const sourceUrls = getPlayerSourceUrls(player);
+    if ([...candidateUrls].some((url) => sourceUrls.has(url))) return { player, confidence: 'exact', reason: 'profile_url', priority: 0 };
     if (candidate.externalSource && candidate.externalPlayerId
       && normalizeText(candidate.externalSource) === normalizeText(player.externalSource)
-      && String(candidate.externalPlayerId) === String(player.externalPlayerId)) return { player, confidence: 'exact', reason: 'external_id' };
-    const sourceUrls = new Set(safeArray(player.sources).map((item) => String(item.url || '').trim().toLowerCase()));
-    if (candidate.sourceProfileUrl && sourceUrls.has(String(candidate.sourceProfileUrl).trim().toLowerCase())) return { player, confidence: 'exact', reason: 'profile_url' };
-    if (name && normalizeText(player.name) === name && candidate.dob && player.dob === candidate.dob) return { player, confidence: 'exact', reason: 'name_dob' };
+      && String(candidate.externalPlayerId) === String(player.externalPlayerId)) return { player, confidence: 'exact', reason: 'external_id', priority: 1 };
+    if (name && normalizeText(player.name) === name && candidate.dob && player.dob === candidate.dob) return { player, confidence: 'exact', reason: 'name_dob', priority: 2 };
     if (name && normalizeText(player.name) === name) {
       const candidateModel = getPlayerPositionModel(candidate);
       const playerModel = getPlayerPositionModel(player);
+      const sameAgeAndSpecific = candidate.age && player.age
+        && String(candidate.age) === String(player.age)
+        && candidateModel.primarySpecificPosition
+        && candidateModel.primarySpecificPosition === playerModel.primarySpecificPosition;
+      if (sameAgeAndSpecific) return { player, confidence: 'possible', reason: 'name_age_specific', priority: 3 };
       const samePosition = candidateModel.primaryNaturalPosition && candidateModel.primaryNaturalPosition === playerModel.primaryNaturalPosition;
-      return { player, confidence: samePosition ? 'possible' : 'ambiguous', reason: samePosition ? 'name_position' : 'name_only' };
+      return { player, confidence: samePosition ? 'possible' : 'ambiguous', reason: samePosition ? 'name_position' : 'name_only', priority: samePosition ? 4 : 5 };
     }
+    if (name && getNameSimilarity(candidate.name, player.name) >= 0.86) return { player, confidence: 'ambiguous', reason: 'similar_name', priority: 6 };
     return null;
   }).filter(Boolean).sort((left, right) => (
     { exact: 0, possible: 1, ambiguous: 2 }[left.confidence]
     - { exact: 0, possible: 1, ambiguous: 2 }[right.confidence]
+    || (left.priority ?? 9) - (right.priority ?? 9)
   ));
 };
 
@@ -380,6 +433,26 @@ export const ensureGlobalPlayerTeamMembership = async (client, { playerId, teamI
   const membershipId = await assignGlobalPlayerToTeam(client, { playerId, teamId, mode, season, startDate });
   if (!membershipId) throw new Error('El jugador se guardó, pero Supabase no confirmó su relación activa con el equipo.');
   return membershipId;
+};
+
+export const removeGlobalPlayerFromCurrentTeam = async (client, { playerId, endDate = null }) => {
+  if (!playerId) throw new Error('Falta el jugador que se quiere dejar sin equipo.');
+  const { data, error } = await client.rpc('remove_global_player_from_current_team', {
+    p_player_id: playerId,
+    p_end_date: endDate || new Date().toISOString().slice(0, 10),
+  });
+  if (error) throw error;
+  return Number(data || 0);
+};
+
+export const mergeGlobalPlayerProfiles = async (client, { keepPlayerId, mergePlayerId }) => {
+  if (!keepPlayerId || !mergePlayerId || keepPlayerId === mergePlayerId) throw new Error('Selecciona dos perfiles globales diferentes para fusionarlos.');
+  const { data, error } = await client.rpc('merge_global_player_profiles', {
+    p_keep_player_id: keepPlayerId,
+    p_merge_player_id: mergePlayerId,
+  });
+  if (error) throw error;
+  return data;
 };
 
 export const globalPlayerFromImportedPlayer = (player = {}) => ({

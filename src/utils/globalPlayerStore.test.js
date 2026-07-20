@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
 import {
+  assignGlobalPlayerToTeam,
   buildGlobalPlayerCoverage,
   buildGlobalPlayerRpcPayload,
   ensureGlobalPlayerTeamMembership,
   filterGlobalPlayers,
   findGlobalPlayerMatches,
   globalPlayerFromImportedPlayer,
+  mergeGlobalPlayerProfiles,
+  removeGlobalPlayerFromCurrentTeam,
+  searchGlobalPlayersForTeam,
 } from './globalPlayerStore.js';
 
 const imported = globalPlayerFromImportedPlayer({
@@ -28,6 +32,9 @@ assert.deepEqual(sourcePayload.p_sources.map((item) => item.is_primary), [false,
 const existing = [{ id: 'global-1', name: 'Aitor Ferrero', dob: '1997-01-02', externalSource: 'transfermarkt', externalPlayerId: '123', sources: [] }];
 assert.equal(findGlobalPlayerMatches(imported, existing)[0].confidence, 'exact');
 assert.equal(findGlobalPlayerMatches({ name: 'Aitor Ferrero', dob: '1997-01-02' }, existing)[0].reason, 'name_dob');
+assert.equal(findGlobalPlayerMatches({ name: 'Sin nombre fiable', sources: [{ url: 'https://tm.test/123' }] }, [{ ...existing[0], sources: [{ url: 'https://tm.test/123' }] }])[0].reason, 'profile_url');
+assert.equal(findGlobalPlayerMatches({ name: 'Aitor Ferrero', age: '29', specificPosition: 'Defensa central' }, [{ ...existing[0], age: '29', specificPosition: 'Defensa central' }])[0].reason, 'name_age_specific');
+assert.equal(findGlobalPlayerMatches({ name: 'Aitor Ferero' }, existing)[0].reason, 'similar_name');
 
 const teamOne = { id: 'team-1', name: 'C.D. Lealtad' };
 const teamTwo = { id: 'team-2', name: "L'Entregu CF" };
@@ -73,6 +80,8 @@ assert.equal(filterGlobalPlayers(coverage.players, { naturalPosition: 'defender'
 assert.equal(filterGlobalPlayers(coverage.players, { specificPosition: 'holding_midfield' })[0].name, 'Álex Central');
 assert.equal(filterGlobalPlayers(coverage.players, { teamId: '__without_team__' })[0].name, 'Jugador Libre');
 assert.equal(filterGlobalPlayers(coverage.players, { search: 'alex', teamId: teamTwo.id, naturalPosition: 'defender', specificPosition: 'centre_back' }).length, 1);
+assert.equal(searchGlobalPlayersForTeam(coverage.players, [teamOne, teamTwo], 'lealtad')[0].name, 'Álex Central');
+assert.equal(searchGlobalPlayersForTeam(coverage.players, [teamOne, teamTwo], 'lateral derecho')[0].name, 'Lateral Legacy');
 
 let membershipRpcCalls = 0;
 const membershipClient = {
@@ -95,5 +104,48 @@ const membershipClient = {
 };
 assert.equal(await ensureGlobalPlayerTeamMembership(membershipClient, { playerId: 'global-defender', teamId: teamTwo.id }), 'membership-created');
 assert.equal(membershipRpcCalls, 1);
+
+const moveCalls = [];
+const moveClient = {
+  rpc: async (name, args) => {
+    moveCalls.push({ name, args });
+    return { data: 'new-stage-id', error: null };
+  },
+};
+assert.equal(await assignGlobalPlayerToTeam(moveClient, {
+  playerId: 'same-player-id', teamId: teamTwo.id, mode: 'replace', startDate: '2026-07-20',
+}), 'new-stage-id');
+assert.deepEqual(moveCalls[0], {
+  name: 'assign_global_player_to_team',
+  args: {
+    p_player_id: 'same-player-id', p_team_id: teamTwo.id, p_mode: 'replace', p_season: null, p_start_date: '2026-07-20',
+  },
+});
+
+const removalCalls = [];
+const removalClient = {
+  rpc: async (name, args) => {
+    removalCalls.push({ name, args });
+    return { data: 1, error: null };
+  },
+};
+assert.equal(await removeGlobalPlayerFromCurrentTeam(removalClient, { playerId: 'global-defender', endDate: '2026-07-20' }), 1);
+assert.deepEqual(removalCalls[0], {
+  name: 'remove_global_player_from_current_team',
+  args: { p_player_id: 'global-defender', p_end_date: '2026-07-20' },
+});
+
+const mergeCalls = [];
+const mergeClient = {
+  rpc: async (name, args) => {
+    mergeCalls.push({ name, args });
+    return { data: 'player-kept', error: null };
+  },
+};
+assert.equal(await mergeGlobalPlayerProfiles(mergeClient, { keepPlayerId: 'player-kept', mergePlayerId: 'player-merged' }), 'player-kept');
+assert.deepEqual(mergeCalls[0], {
+  name: 'merge_global_player_profiles',
+  args: { p_keep_player_id: 'player-kept', p_merge_player_id: 'player-merged' },
+});
 
 console.log('globalPlayerStore tests passed');
