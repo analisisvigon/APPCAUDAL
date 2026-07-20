@@ -36,6 +36,10 @@ import {
   resolveGoalParticipant,
 } from './utils/goalEvents';
 import {
+  getPlayerSourceFunctionUserMessage,
+  invokePlayerSourceAnalyzer,
+} from './utils/playerSourceFunction';
+import {
   assignGlobalPlayerToTeam,
   buildGlobalPlayerCoverage,
   createBlankGlobalPlayer,
@@ -15955,9 +15959,7 @@ function App() {
     setRivalPlayerSaveError('');
     updatePlayerSourceDraft(source.url, { analysisStatus: 'analyzing', analysisError: '' });
     try {
-      const { data, error: functionError } = await supabase.functions.invoke('analyze-player-source', { body: { url: parsedUrl.href } });
-      if (functionError) throw functionError;
-      if (!data?.ok) throw new Error(data?.error || 'No se pudo analizar la fuente.');
+      const data = await invokePlayerSourceAnalyzer(supabase, parsedUrl.href);
       const analyzedAt = data.analyzedAt || new Date().toISOString();
       const analysisStatus = data.status || (data.fields?.length ? 'data_found' : 'no_data');
       const analysisSummary = {
@@ -15973,13 +15975,13 @@ function App() {
       if (analysisStatus === 'no_data') setRivalPlayerSaveError('No se han podido extraer datos automáticamente. La fuente se conserva como referencia.');
       if (analysisStatus === 'not_player') setRivalPlayerSaveError('La página no parece ser una ficha individual de jugador. No se aplicarán datos dudosos.');
     } catch (analysisError) {
-      const message = analysisError.message || 'No se pudo acceder a la fuente.';
+      const message = getPlayerSourceFunctionUserMessage(analysisError);
       try {
         await persistPlayerSourceAnalysisState(source, { analysisStatus: 'access_error', analyzedAt: new Date().toISOString(), analysisError: message, analysisSummary: {} });
       } catch (statusError) {
         console.error('[PLAYER_SOURCE_STATUS_ERROR]', statusError);
       }
-      setRivalPlayerSaveError(`Error de acceso: ${message}`);
+      setRivalPlayerSaveError(message);
     } finally {
       setPlayerSourceAnalyzingUrl('');
     }

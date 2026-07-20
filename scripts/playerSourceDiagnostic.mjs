@@ -2,6 +2,7 @@ import fs from 'node:fs';
 
 import { createClient } from '@supabase/supabase-js';
 import { analyzePlayerSourceHtml } from '../supabase/functions/_shared/player-source-parser.js';
+import { classifyPlayerSourceFunctionError } from '../src/utils/playerSourceFunction.js';
 
 const envText = fs.readFileSync(new URL('../.env.local', import.meta.url), 'utf8');
 const env = Object.fromEntries(envText.split(/\r?\n/).map((line) => {
@@ -45,6 +46,26 @@ if (!source) {
 const url = new URL(source.url);
 if (url.protocol !== 'https:' || ['localhost', '127.0.0.1', '0.0.0.0'].includes(url.hostname)) throw new Error('La fuente guardada no supera la validación segura.');
 
+const functionResponse = await client.functions.invoke('analyze-player-source', { body: { url: url.href } });
+let functionDiagnostic;
+if (functionResponse.error) {
+  const classified = await classifyPlayerSourceFunctionError(functionResponse.error);
+  functionDiagnostic = {
+    reachable: false,
+    code: classified.code,
+    httpStatus: classified.status,
+    message: classified.message,
+    detail: classified.detail,
+  };
+} else {
+  functionDiagnostic = {
+    reachable: true,
+    requestId: functionResponse.data?.requestId || null,
+    result: functionResponse.data?.status || null,
+    error: functionResponse.data?.ok === false ? functionResponse.data?.error : null,
+  };
+}
+
 let diagnostic;
 try {
   const response = await fetch(url, {
@@ -77,6 +98,7 @@ console.log(JSON.stringify({
   found: true,
   player: player?.name || source.player_id,
   source: { url: source.url, sourceName: source.source_name, isPrimary: source.is_primary },
+  edgeFunction: functionDiagnostic,
   diagnostic,
 }, null, 2));
 }

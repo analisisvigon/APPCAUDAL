@@ -110,20 +110,36 @@ const fetchHtml = async (initialUrl: URL) => {
 };
 
 serve(async (request) => {
+  const requestId = crypto.randomUUID();
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
-  if (request.method !== 'POST') return jsonResponse({ ok: false, error: 'Método no permitido.' }, 405);
+  if (request.method !== 'POST') return jsonResponse({ ok: false, requestId, error: 'Método no permitido.' }, 405);
   try {
     const authorization = request.headers.get('authorization');
-    if (!authorization) return jsonResponse({ ok: false, error: 'Sesión requerida.' }, 401);
+    if (!authorization) {
+      console.warn(JSON.stringify({ event: 'player_source_auth_missing', requestId }));
+      return jsonResponse({ ok: false, requestId, error: 'Sesión requerida.' }, 401);
+    }
     const payload = await request.json();
     const sourceUrl = validateSourceUrl(payload?.url);
+    console.info(JSON.stringify({ event: 'player_source_analysis_started', requestId, hostname: sourceUrl.hostname }));
     const fetched = await fetchHtml(sourceUrl);
     const analysis = analyzePlayerSourceHtml({ ...fetched, sourceUrl: sourceUrl.href });
-    return jsonResponse({ ...analysis, accessed: true, analyzedAt: new Date().toISOString() });
+    console.info(JSON.stringify({
+      event: 'player_source_analysis_completed', requestId, hostname: sourceUrl.hostname,
+      status: analysis.status, pageType: analysis.pageType, fieldsFound: analysis.fields.length,
+    }));
+    return jsonResponse({ ...analysis, requestId, accessed: true, analyzedAt: new Date().toISOString() });
   } catch (error) {
+    const isTimeout = error instanceof Error && error.name === 'AbortError';
     const message = error instanceof Error && error.name === 'AbortError'
       ? 'La fuente tardó demasiado en responder.'
       : error instanceof Error ? error.message : 'No se pudo analizar la fuente.';
-    return jsonResponse({ ok: false, accessed: false, status: 'access_error', error: message });
+    const isValidationError = /URL|HTTPS|credenciales|locales|privad[ao]s/i.test(message);
+    const status = isTimeout ? 504 : isValidationError ? 400 : 502;
+    console.error(JSON.stringify({
+      event: 'player_source_analysis_failed', requestId, status,
+      errorName: error instanceof Error ? error.name : 'UnknownError', message,
+    }));
+    return jsonResponse({ ok: false, requestId, accessed: false, status: 'access_error', error: message }, status);
   }
 });

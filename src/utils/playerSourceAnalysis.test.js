@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 
 import { analyzePlayerSourceHtml } from '../../supabase/functions/_shared/player-source-parser.js';
+import {
+  classifyPlayerSourceFunctionError,
+  invokePlayerSourceAnalyzer,
+} from './playerSourceFunction.js';
 
 const profileHtml = `
 <!doctype html>
@@ -36,5 +40,32 @@ assert.equal(analyzePlayerSourceHtml({ html: teamHtml, sourceUrl: 'https://club.
 
 const transfermarktResult = analyzePlayerSourceHtml({ html: profileHtml, sourceUrl: 'https://www.transfermarkt.es/saul/profil/spieler/123' });
 assert.equal(transfermarktResult.sourceType, 'transfermarkt');
+
+const missingFunction = await classifyPlayerSourceFunctionError({
+  name: 'FunctionsHttpError',
+  context: new Response('{"message":"Function not found"}', { status: 404, headers: { 'content-type': 'application/json' } }),
+});
+assert.equal(missingFunction.code, 'not_deployed');
+assert.match(missingFunction.message, /no está desplegada/i);
+
+let invocationOptions;
+const successfulClient = {
+  auth: { getSession: async () => ({ data: { session: { access_token: 'session-jwt' } }, error: null }) },
+  functions: {
+    invoke: async (name, options) => {
+      assert.equal(name, 'analyze-player-source');
+      invocationOptions = options;
+      return { data: { ok: true, status: 'no_data', fields: [] }, error: null };
+    },
+  },
+};
+assert.equal((await invokePlayerSourceAnalyzer(successfulClient, 'https://example.test/player')).status, 'no_data');
+assert.equal(invocationOptions.headers.Authorization, 'Bearer session-jwt');
+assert.equal(invocationOptions.body.url, 'https://example.test/player');
+
+await assert.rejects(
+  invokePlayerSourceAnalyzer({ auth: { getSession: async () => ({ data: { session: null }, error: null }) } }, 'https://example.test/player'),
+  (error) => error.code === 'authentication',
+);
 
 console.log('playerSourceAnalysis tests passed');
