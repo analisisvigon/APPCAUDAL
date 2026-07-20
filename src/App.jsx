@@ -16,7 +16,7 @@ import {
   getPostEventTypeValue,
 } from './constants/postEventTypes';
 import { buildLeagueResultsDonut, calculateLeagueResults } from './utils/leagueResults';
-import { cleanImportedFieldValue, extractTransfermarktPlayerId, isEmptyImportedField, resolveImportedValue } from './utils/rivalPlayerImport';
+import { cleanImportedFieldValue, extractTransfermarktPlayerId, isEmptyImportedField, normalizeTransfermarktPosition, resolveImportedValue } from './utils/rivalPlayerImport';
 import './styles/print.css';
 
 const clubCrest =
@@ -335,6 +335,9 @@ class PreBlockErrorBoundary extends React.Component {
 
 const positions = [
   'Portero',
+  'Defensa',
+  'Centrocampista',
+  'Atacante',
   'Lateral derecho',
   'Lateral izquierdo',
   'Defensa central',
@@ -375,15 +378,15 @@ const squadGroups = [
   },
   {
     title: 'Defensas',
-    positions: ['Lateral derecho', 'Lateral izquierdo', 'Defensa central', 'Central derecho', 'Central izquierdo'],
+    positions: ['Defensa', 'Lateral derecho', 'Lateral izquierdo', 'Defensa central', 'Central derecho', 'Central izquierdo'],
   },
   {
     title: 'Mediocentros',
-    positions: ['Pivote', 'Mediocentro', 'Mediocentro ofensivo', 'Mediapunta'],
+    positions: ['Centrocampista', 'Pivote', 'Mediocentro', 'Mediocentro ofensivo', 'Mediapunta'],
   },
   {
     title: 'Delanteros',
-    positions: ['Extremo derecho', 'Extremo izquierdo', 'Delantero centro', 'Delantero'],
+    positions: ['Atacante', 'Extremo derecho', 'Extremo izquierdo', 'Delantero centro', 'Delantero'],
   },
 ];
 
@@ -395,26 +398,7 @@ const rivalSquadLineGroups = [
   { key: 'unknown', title: 'Sin posición' },
 ];
 
-const normalizeImportedPosition = (value) => {
-  const text = normalizePlayerIdentityName(value);
-  if (!text) return { position: '', specificPosition: '' };
-  const rules = [
-    [/^(por|pt|gk|goalkeeper|keeper|portero|arquero|guardameta)$/, 'Portero', ''],
-    [/(centre back|center back|central|defensa central|zaguero|dfc|cb)/, 'Defensa central', 'Defensa central'],
-    [/(left back|lateral izquierdo|li\b|lb\b)/, 'Lateral izquierdo', 'Lateral izquierdo'],
-    [/(right back|lateral derecho|ld\b|rb\b)/, 'Lateral derecho', 'Lateral derecho'],
-    [/(defensive midfield|mediocentro defensivo|medio defensivo|pivote|mcd|dm\b)/, 'Pivote', 'Pivote'],
-    [/(central midfield|mediocentro|centrocampista|medio centro|mc\b|cm\b)/, 'Mediocentro', 'Mediocentro'],
-    [/(attacking midfield|mediapunta|media punta|mp\b|am\b)/, 'Mediapunta', 'Mediapunta'],
-    [/(right winger|extremo derecho|ed\b|rw\b)/, 'Extremo derecho', 'Extremo derecho'],
-    [/(left winger|extremo izquierdo|ei\b|lw\b)/, 'Extremo izquierdo', 'Extremo izquierdo'],
-    [/(centre forward|center forward|delantero centro|delantero centro|dc\b|cf\b|striker|st\b)/, 'Delantero centro', 'Delantero centro'],
-    [/(delantero|forward|atacante|punta)/, 'Delantero', 'Delantero'],
-  ];
-  const found = rules.find(([pattern]) => pattern.test(text));
-  if (found) return { position: found[1], specificPosition: found[2] || value };
-  return { position: '', specificPosition: String(value || '').trim() };
-};
+const normalizeImportedPosition = (value) => normalizeTransfermarktPosition(value);
 
 const normalizeImportedHeight = (value) => {
   const text = String(value || '').replace(',', '.');
@@ -2863,7 +2847,7 @@ const getRivalPlayerNaturalLine = (position) => {
   if (!normalized) return 'unknown';
   if (/portero|arquero|goalkeeper/.test(normalized)) return 'goalkeepers';
   if (/lateral|central|defensa|carrilero|back/.test(normalized)) return 'defenders';
-  if (/pivote|medio|mediocentro|interior|volante|mediapunta/.test(normalized)) return 'midfielders';
+  if (/pivote|medio|mediocentro|centrocampista|interior|volante|mediapunta/.test(normalized)) return 'midfielders';
   if (/extremo|delantero|atacante|punta|winger|forward/.test(normalized)) return 'forwards';
   return 'unknown';
 };
@@ -3336,30 +3320,80 @@ const extractCrest = (doc, baseUrl) => {
   return getImageSource(crestImage, baseUrl) || resolveAssetUrl(metaImage || '', baseUrl);
 };
 
+const normalizeTransfermarktHeader = (value) => normalizePlayerIdentityName(value).replace(/[^a-z0-9#]+/g, ' ').trim();
+
+const getTransfermarktColumnIndexes = (table) => {
+  const headers = Array.from(table?.querySelectorAll('thead th') || []).map((header) => normalizeTransfermarktHeader(header.textContent || header.getAttribute('title') || ''));
+  const find = (...patterns) => headers.findIndex((header) => patterns.some((pattern) => pattern.test(header)));
+  return {
+    number: find(/^#$/, /dorsal/, /ruckennummer/, /shirt number/),
+    player: find(/jugador/, /^player$/, /spieler/),
+    age: find(/edad/, /^age$/, /alter/),
+    nationality: find(/nacionalidad/, /^nac\.?$/, /^nat\.?$/, /nationality/, /nation/),
+    contractUntil: find(/contrato/, /contract/, /vertrag/),
+    marketValue: find(/valor de mercado/, /market value/, /marktwert/),
+  };
+};
+
+const isTransfermarktPlaceholderPortrait = (url) => /default|kein[-_]?bild|no[-_]?photo|placeholder|avatar|\/portrait\/medium\/default/i.test(String(url || ''));
+
+const parseTransfermarktMarketValue = (value) => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text || text === '-') return { marketValueAmount: null, marketValueCurrency: null };
+  const numeric = Number((text.match(/[\d.,]+/)?.[0] || '').replace(/\./g, '').replace(',', '.'));
+  if (!Number.isFinite(numeric)) return { marketValueAmount: null, marketValueCurrency: null };
+  const multiplier = /(?:mil|k)\b/i.test(text) ? 1000 : /(?:mill\.?|mio\.?|m)\b/i.test(text) ? 1000000 : 1;
+  return { marketValueAmount: Math.round(numeric * multiplier), marketValueCurrency: /€|eur/i.test(text) ? 'EUR' : null };
+};
+
+const parseTransfermarktSquadRow = (row, baseUrl, columnIndexes = {}) => {
+  const cells = Array.from(row.children).filter((cell) => cell.tagName === 'TD');
+  const cellAt = (index) => index >= 0 ? cells[index] || null : null;
+  const nameLink = row.querySelector('td.hauptlink a[href*="/profil/spieler/"], td.hauptlink a[href*="/spieler/"], td.posrela a[href*="/spieler/"], a[href*="/profil/spieler/"]');
+  const playerCell = cellAt(columnIndexes.player) || nameLink?.closest('td.posrela') || nameLink?.closest('td');
+  const portrait = playerCell?.querySelector('img.bilderrahmen-fixed, img[src*="/portrait/"], img[data-src*="/portrait/"]') || row.querySelector('img.bilderrahmen-fixed');
+  const name = (nameLink?.textContent || portrait?.alt || '').replace(/\s+/g, ' ').trim();
+  const sourceProfileUrl = resolveAssetUrl(nameLink?.getAttribute('href') || '', baseUrl);
+  const rawImage = getImageSource(portrait, baseUrl);
+  const image = isTransfermarktPlaceholderPortrait(rawImage) ? '' : rawImage;
+  const positionNode = playerCell?.querySelector('table tr:nth-child(2) td, .hauptlink + table tr:nth-child(2) td, [class*="position"]');
+  const rawPosition = (positionNode?.textContent || Array.from(playerCell?.querySelectorAll('tr') || [])[1]?.textContent || '').replace(/\s+/g, ' ').trim();
+  const numberText = (cellAt(columnIndexes.number)?.textContent || row.querySelector('.rn_nummer')?.textContent || '').trim();
+  const parsedNumber = Number(numberText.match(/\d{1,2}/)?.[0]);
+  const ageCell = cellAt(columnIndexes.age) || cells.find((cell) => /^(edad|age|alter)$/i.test(cell.getAttribute('data-header') || cell.getAttribute('title') || ''));
+  const parsedAge = Number((ageCell?.textContent || '').trim());
+  const nationalityCell = cellAt(columnIndexes.nationality) || cells.find((cell) => cell.querySelector('img.flaggenrahmen'));
+  const nationalityImage = nationalityCell?.querySelector('img');
+  const nationality = (nationalityImage?.getAttribute('title') || nationalityImage?.alt || nationalityCell?.textContent || '').trim();
+  const nationalityCodeCandidate = nationalityImage?.getAttribute('data-country-code') || nationalityImage?.getAttribute('data-code') || nationalityImage?.alt || '';
+  const nationalityCode = /^[a-z]{2,3}$/i.test(nationalityCodeCandidate.trim()) ? nationalityCodeCandidate.trim().toUpperCase() : '';
+  const contractText = (cellAt(columnIndexes.contractUntil)?.textContent || '').trim();
+  const marketValueText = (cellAt(columnIndexes.marketValue)?.textContent || '').trim();
+  return {
+    number: Number.isInteger(parsedNumber) && parsedNumber > 0 && parsedNumber < 100 ? String(parsedNumber) : null,
+    name,
+    image: image || null,
+    sourceProfileUrl,
+    rawPosition,
+    age: Number.isInteger(parsedAge) && parsedAge > 14 && parsedAge < 60 ? parsedAge : null,
+    nationality: nationality || null,
+    nationalityCode: nationalityCode || null,
+    contractUntil: normalizeImportedDob(contractText) || null,
+    ...parseTransfermarktMarketValue(marketValueText),
+  };
+};
+
 const extractTransfermarktPlayers = (doc, baseUrl) => {
   const byName = new Map();
-  const rows = Array.from(doc.querySelectorAll('table.items tbody tr'));
+  const table = doc.querySelector('table.items');
+  const rows = Array.from(table?.querySelectorAll('tbody tr') || []);
+  const columnIndexes = getTransfermarktColumnIndexes(table);
 
   rows.forEach((row) => {
-    const nameLink =
-      row.querySelector('td.hauptlink a[href*="/profil/spieler/"]') ||
-      row.querySelector('td.hauptlink a[href*="/spieler/"]') ||
-      row.querySelector('td.hauptlink a');
-    const portrait = row.querySelector('img.bilderrahmen-fixed, img[src*="/portrait/"], img[data-src*="/portrait/"]');
-    const name = (nameLink?.textContent || portrait?.alt || '').replace(/\s+/g, ' ').trim();
-    const image = getImageSource(portrait, baseUrl);
-    const sourceProfileUrl = resolveAssetUrl(nameLink?.getAttribute('href') || '', baseUrl);
+    const parsed = parseTransfermarktSquadRow(row, baseUrl, columnIndexes);
+    const { name, image, sourceProfileUrl, rawPosition, age, number } = parsed;
     const externalPlayerId = extractTransfermarktPlayerId(sourceProfileUrl);
-    const number = row.querySelector('.rn_nummer')?.textContent?.replace(/\D/g, '') ?? '';
-    const rawPosition =
-      row.querySelector('td.posrela table tr:nth-child(2) td')?.textContent?.replace(/\s+/g, ' ').trim() ||
-      row.querySelector('td:nth-child(2) table tr:nth-child(2) td')?.textContent?.replace(/\s+/g, ' ').trim() ||
-      '';
     const { position, specificPosition } = normalizeImportedPosition(rawPosition);
-    const rowText = row.textContent?.replace(/\s+/g, ' ').trim() || '';
-    const age = rowText.match(/\((\d{1,2})\)/)?.[1] || '';
-    const height = normalizeImportedHeight(rowText);
-    const foot = normalizeImportedFoot(rowText);
 
     if (
       name &&
@@ -3371,23 +3405,37 @@ const extractTransfermarktPlayers = (doc, baseUrl) => {
         id: externalPlayerId ? `transfermarkt:${externalPlayerId}` : name,
         name,
         image,
-        imageSource: image ? 'imported' : '',
+        imageSource: image ? 'imported' : null,
         sourceProfileUrl,
         externalSource: 'transfermarkt',
         externalPlayerId: externalPlayerId || '',
         number,
+        rawPosition,
         position,
         specificPosition,
         age,
-        height,
-        foot,
+        height: '',
+        foot: '',
+        nationality: parsed.nationality,
+        nationalityCode: parsed.nationalityCode,
+        contractUntil: parsed.contractUntil,
+        marketValueAmount: parsed.marketValueAmount,
+        marketValueCurrency: parsed.marketValueCurrency,
         role: '',
         isKey: false,
       });
     }
   });
-
-  return Array.from(byName.values());
+  const players = Array.from(byName.values());
+  console.table(players.map((player) => ({ name: player.name, rawPosition: player.rawPosition, position: player.position, specificPosition: player.specificPosition, age: player.age, number: player.number })));
+  console.info('[TRANSFERMARKT_SQUAD_IMPORT]', {
+    total: players.length,
+    withName: players.filter((player) => player.name).length,
+    withPosition: players.filter((player) => player.position).length,
+    withAge: players.filter((player) => Number.isInteger(player.age)).length,
+    withNumber: players.filter((player) => player.number).length,
+  });
+  return players;
 };
 
 const normalizeImportedDob = (value) => {
@@ -19572,7 +19620,7 @@ function App() {
                     .filter((player) => !assignedFieldNames.has(normalizePlayerIdentityName(player.name)))
                     .filter((player) => !getRivalPlayerFlags(selectedTeam.id, player.name).fieldRole)
                     .filter((player) => player.role !== 'Titular' && !getRivalPlayerFlags(selectedTeam.id, player.name).hiddenFromField)
-                    .filter((player) => positionMatchesSlot(player.position, slot.role));
+                    .filter((player) => positionMatchesSlot(player.specificPosition || player.position, slot.role));
                   const row = placed.map((player) => player || automatic.shift() || null);
                   row.filter(Boolean).forEach((player) => {
                     assignedFieldKeys.add(getRivalPlayerUniqueKey(player));
@@ -19600,6 +19648,9 @@ function App() {
                   const normalized = normalizePlayerIdentityName(position);
                   if (!normalized) return 99;
                   if (normalized.includes('portero') || normalized === 'por') return 0;
+                  if (normalized === 'defensa') return 2;
+                  if (normalized === 'centrocampista') return 5;
+                  if (normalized === 'atacante') return 10;
                   if (normalized.includes('lateral derecho') || normalized.includes('carrilero derecho') || normalized === 'ld') return 1;
                   if (normalized.includes('central') || normalized.includes('dfc')) return 2;
                   if (normalized.includes('lateral izquierdo') || normalized.includes('carrilero izquierdo') || normalized === 'li') return 3;
@@ -19705,8 +19756,9 @@ function App() {
                   return reserveSlotIndex >= 0 ? getFormationRoles(selectedTeam.system || '4-4-2')[reserveSlotIndex] || '' : '';
                 };
                 const getPositionLocationWarning = (player, currentRole = getCurrentFieldRoleForPlayer(player)) => {
-                  if (!player?.position || !currentRole || positionMatchesSlot(player.position, currentRole)) return '';
-                  return `Posición natural: ${player.position} · Ubicación actual: ${currentRole}`;
+                  const naturalPosition = player?.specificPosition || player?.position;
+                  if (!naturalPosition || !currentRole || positionMatchesSlot(naturalPosition, currentRole)) return '';
+                  return `Posición natural: ${naturalPosition} · Ubicación actual: ${currentRole}`;
                 };
                 const presentationBenchPlayers = rivalPlayers
                   .filter((player) => !starterNames.has(normalizePlayerIdentityName(player.name)))
