@@ -376,7 +376,8 @@ and not exists (
 );
 
 -- Auditoría: coincidencias que requieren revisión humana antes de unir perfiles.
-create or replace view public.player_possible_duplicates as
+create or replace view public.player_possible_duplicates
+with (security_invoker = true) as
 select
   left_player.id as player_id,
   right_player.id as possible_duplicate_id,
@@ -392,6 +393,35 @@ join public.players_database right_player on left_player.id < right_player.id
 where (
   left_player.external_source is not null and left_player.external_source = right_player.external_source and left_player.external_player_id = right_player.external_player_id
 ) or left_player.dob = right_player.dob or (left_player.dob is null and right_player.dob is null);
+
+-- Auditoría operativa por rival. Permite comparar cobertura global y filas legacy pendientes.
+create or replace view public.global_player_coverage_by_team
+with (security_invoker = true) as
+select
+  team.id as team_id,
+  team.name as team_name,
+  (
+    select count(distinct membership.player_id)
+    from public.player_team_memberships membership
+    where membership.team_id = team.id and membership.is_current
+  ) as global_players_linked,
+  (
+    select count(*)
+    from public.jugadores_rivales legacy
+    where legacy.equipo_rival_id = team.id
+      and coalesce(legacy.active_in_squad, true)
+      and (
+        legacy.global_player_id is null
+        or not exists (
+          select 1
+          from public.player_team_memberships membership
+          where membership.player_id = legacy.global_player_id
+            and membership.team_id = team.id
+            and membership.is_current
+        )
+      )
+  ) as legacy_players_pending
+from public.equipos_rivales team;
 
 alter table public.players_database enable row level security;
 alter table public.player_team_memberships enable row level security;
@@ -564,6 +594,7 @@ commit;
 -- alter table public.equipo_rival_alineacion drop column if exists membership_id, drop column if exists global_player_id;
 -- alter table public.jugadores_rivales drop column if exists membership_id, drop column if exists global_player_id;
 -- drop view if exists public.player_possible_duplicates;
+-- drop view if exists public.global_player_coverage_by_team;
 -- drop table if exists public.legacy_rival_player_migration, public.player_scouting_traits, public.player_sources,
 --   public.player_positions, public.player_team_memberships, public.players_database;
 -- commit;

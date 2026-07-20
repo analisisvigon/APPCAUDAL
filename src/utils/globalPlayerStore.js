@@ -13,6 +13,160 @@ const normalizeText = (value) => String(value || '')
   .trim();
 
 const safeArray = (value) => Array.isArray(value) ? value : [];
+const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+
+const getPlayerSourceUrls = (player) => new Set([
+  ...safeArray(player.sources).map((item) => item.url),
+  player.sourceProfileUrl,
+  player.source_profile_url,
+].map((value) => String(value || '').trim().toLowerCase()).filter(Boolean));
+
+const findExactCoveragePlayer = (legacyPlayer, players) => {
+  const linkedId = legacyPlayer.globalPlayerId || legacyPlayer.global_player_id;
+  if (linkedId) {
+    const linked = players.find((player) => String(player.globalPlayerId || player.id) === String(linkedId));
+    if (linked) return linked;
+  }
+  const legacyExternalSource = normalizeText(legacyPlayer.externalSource || legacyPlayer.external_source);
+  const legacyExternalId = String(legacyPlayer.externalPlayerId || legacyPlayer.external_player_id || '').trim();
+  const legacyUrl = String(legacyPlayer.sourceProfileUrl || legacyPlayer.source_profile_url || '').trim().toLowerCase();
+  const legacyName = normalizeText(legacyPlayer.name);
+  return players.find((player) => {
+    if (legacyExternalSource && legacyExternalId
+      && normalizeText(player.externalSource) === legacyExternalSource
+      && String(player.externalPlayerId || '').trim() === legacyExternalId) return true;
+    if (legacyUrl && getPlayerSourceUrls(player).has(legacyUrl)) return true;
+    return Boolean(legacyName && legacyPlayer.dob && normalizeText(player.name) === legacyName && player.dob === legacyPlayer.dob);
+  }) || null;
+};
+
+const createLegacyMembership = (legacyPlayer, legacyId) => ({
+  id: `legacy-membership:${legacyId}`,
+  player_id: null,
+  team_id: legacyPlayer.teamId || legacyPlayer.equipo_rival_id || '',
+  is_current: legacyPlayer.activeInSquad !== false && legacyPlayer.active_in_squad !== false,
+  number: legacyPlayer.number || '',
+  captain: Boolean(legacyPlayer.captain),
+  is_key: Boolean(legacyPlayer.isKey || legacyPlayer.is_key),
+  observed: Boolean(legacyPlayer.observed),
+  squad_role: legacyPlayer.role || '',
+  tactical_role: legacyPlayer.fieldRole || legacyPlayer.tactical_role || null,
+  tactical_slot: legacyPlayer.slotIndex ?? legacyPlayer.tactical_slot ?? null,
+  tactical_reserve_slot: legacyPlayer.reserveIndex ?? legacyPlayer.tactical_reserve_slot ?? null,
+  legacy_compatible: true,
+});
+
+export const buildGlobalPlayerCoverage = ({ globalPlayers = [], legacyPlayers = [], teams = [] } = {}) => {
+  const players = globalPlayers.map((player) => ({
+    ...player,
+    memberships: safeArray(player.memberships).map((membership) => ({ ...membership })),
+    currentMemberships: safeArray(player.memberships).filter((membership) => membership.is_current).map((membership) => ({ ...membership })),
+  }));
+  const orphanLegacyPlayers = [];
+  const missingMemberships = [];
+
+  safeArray(legacyPlayers).forEach((legacyPlayer, index) => {
+    const legacyId = legacyPlayer.jugadorRivalId || legacyPlayer.legacyPlayerId || legacyPlayer.id || `row-${index}`;
+    const teamId = legacyPlayer.teamId || legacyPlayer.equipo_rival_id || '';
+    let player = findExactCoveragePlayer(legacyPlayer, players);
+    const matchedGlobal = Boolean(player && player.globalPlayerId);
+    if (!player) {
+      const model = getPlayerPositionModel(legacyPlayer);
+      const membership = createLegacyMembership(legacyPlayer, legacyId);
+      player = {
+        ...createBlankGlobalPlayer(),
+        ...legacyPlayer,
+        ...model,
+        id: `legacy:${legacyId}`,
+        globalPlayerId: null,
+        legacyPlayerId: legacyId,
+        jugadorRivalId: legacyId,
+        legacyCompatible: true,
+        photoUrl: legacyPlayer.photoUrl || legacyPlayer.image || '',
+        position: getNaturalPositionLabel(model.primaryNaturalPosition) || legacyPlayer.position || '',
+        specificPosition: getSpecificPositionLabel(model.primarySpecificPosition) || legacyPlayer.specificPosition || legacyPlayer.specific_position || '',
+        sources: legacyPlayer.sourceProfileUrl || legacyPlayer.source_profile_url ? [{
+          url: legacyPlayer.sourceProfileUrl || legacyPlayer.source_profile_url,
+          sourceName: legacyPlayer.externalSource || legacyPlayer.external_source || 'Fuente legacy',
+          isPrimary: true,
+        }] : [],
+        traits: safeArray(legacyPlayer.traits),
+        memberships: teamId ? [membership] : [],
+        currentMemberships: teamId && membership.is_current ? [membership] : [],
+        membership: teamId ? membership : null,
+        membershipId: null,
+        teamId: membership.is_current ? teamId : '',
+      };
+      players.push(player);
+      orphanLegacyPlayers.push(legacyPlayer);
+      return;
+    }
+
+    if (!teamId) return;
+    if (!matchedGlobal) orphanLegacyPlayers.push(legacyPlayer);
+    const hasTeamMembership = safeArray(player.memberships).some((membership) => (
+      String(membership.team_id) === String(teamId)
+      && membership.is_current === (legacyPlayer.activeInSquad !== false && legacyPlayer.active_in_squad !== false)
+    ));
+    if (!hasTeamMembership) {
+      const membership = createLegacyMembership(legacyPlayer, legacyId);
+      player.memberships.push(membership);
+      if (membership.is_current) player.currentMemberships.push(membership);
+      if (matchedGlobal) missingMemberships.push({ legacyPlayer, globalPlayer: player, membership });
+    }
+  });
+
+  const playersByTeam = Object.fromEntries(safeArray(teams).map((team) => {
+    const teamPlayers = players.filter((player) => safeArray(player.memberships).some((membership) => membership.is_current && String(membership.team_id) === String(team.id)));
+    return [team.id, {
+      teamId: team.id,
+      teamName: team.name,
+      linkedPlayers: teamPlayers.filter((player) => safeArray(player.memberships).some((membership) => (
+        membership.is_current && String(membership.team_id) === String(team.id) && !membership.legacy_compatible
+      ))).length,
+      legacyPending: teamPlayers.filter((player) => safeArray(player.memberships).some((membership) => (
+        membership.is_current && String(membership.team_id) === String(team.id) && membership.legacy_compatible
+      ))).length,
+      total: teamPlayers.length,
+    }];
+  }));
+
+  return {
+    players,
+    orphanLegacyPlayers,
+    missingMemberships,
+    playersByTeam,
+    stats: {
+      rivalTeams: safeArray(teams).length,
+      globalPlayers: globalPlayers.length,
+      activeMemberships: globalPlayers.flatMap((player) => safeArray(player.memberships)).filter((membership) => membership.is_current).length,
+      legacyPlayers: safeArray(legacyPlayers).length,
+      orphanLegacyPlayers: orphanLegacyPlayers.length,
+    },
+  };
+};
+
+export const filterGlobalPlayers = (players = [], filters = {}) => {
+  const normalizedSearch = normalizeText(filters.search);
+  return safeArray(players).filter((player) => {
+    const model = getPlayerPositionModel(player);
+    const naturalPositions = [model.primaryNaturalPosition, ...model.secondaryNaturalPositions].filter(Boolean);
+    const specificPositions = [model.primarySpecificPosition, ...model.secondarySpecificPositions].filter(Boolean);
+    const currentTeamIds = safeArray(player.memberships).filter((membership) => membership.is_current).map((membership) => String(membership.team_id));
+    const searchText = normalizeText([
+      player.name,
+      ...naturalPositions.map(getNaturalPositionLabel),
+      ...specificPositions.map(getSpecificPositionLabel),
+    ].join(' '));
+    const matchesSearch = !normalizedSearch || searchText.includes(normalizedSearch);
+    const matchesNatural = !filters.naturalPosition || naturalPositions.includes(filters.naturalPosition);
+    const matchesSpecific = !filters.specificPosition || specificPositions.includes(filters.specificPosition);
+    const matchesTeam = !filters.teamId
+      || (filters.teamId === '__without_team__' ? currentTeamIds.length === 0 : currentTeamIds.includes(String(filters.teamId)));
+    const matchesTrait = !filters.trait || safeArray(player.traits).some((trait) => trait.label === filters.trait);
+    return matchesSearch && matchesNatural && matchesSpecific && matchesTeam && matchesTrait;
+  });
+};
 
 export const createBlankGlobalPlayer = () => ({
   id: null,
@@ -172,7 +326,7 @@ export const buildGlobalPlayerRpcPayload = (draft = {}) => {
   ];
   return {
     p_player: {
-      id: draft.globalPlayerId || draft.id || null,
+      id: isUuid(draft.globalPlayerId || draft.id) ? (draft.globalPlayerId || draft.id) : null,
       name: String(draft.name || '').trim(), photoUrl: draft.photoUrl || draft.image || '', dob: draft.dob || '', age: draft.age || '',
       height: draft.height || '', foot: draft.foot || '', scoutingSummary: String(draft.scoutingSummary || draft.notes || '').slice(0, 500),
       cardAlert: Boolean(draft.cardAlert || draft.yellowRisk), sentOffAlert: Boolean(draft.sentOffAlert),
@@ -210,6 +364,22 @@ export const assignGlobalPlayerToTeam = async (client, { playerId, teamId, mode 
   });
   if (error) throw error;
   return data;
+};
+
+export const ensureGlobalPlayerTeamMembership = async (client, { playerId, teamId, mode = 'replace', season = '', startDate = null }) => {
+  if (!playerId || !teamId) throw new Error('Faltan el jugador o el equipo para crear la relación activa.');
+  const { data: existing, error: findError } = await client
+    .from('player_team_memberships')
+    .select('id')
+    .eq('player_id', playerId)
+    .eq('team_id', teamId)
+    .eq('is_current', true)
+    .maybeSingle();
+  if (findError) throw findError;
+  if (existing?.id) return existing.id;
+  const membershipId = await assignGlobalPlayerToTeam(client, { playerId, teamId, mode, season, startDate });
+  if (!membershipId) throw new Error('El jugador se guardó, pero Supabase no confirmó su relación activa con el equipo.');
+  return membershipId;
 };
 
 export const globalPlayerFromImportedPlayer = (player = {}) => ({

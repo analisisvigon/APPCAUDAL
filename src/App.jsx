@@ -20,13 +20,18 @@ import { buildLeagueResultsDonut, calculateLeagueResults } from './utils/leagueR
 import { cleanImportedFieldValue, extractTransfermarktPlayerId, isEmptyImportedField, normalizeTransfermarktPosition } from './utils/rivalPlayerImport';
 import {
   assignGlobalPlayerToTeam,
+  buildGlobalPlayerCoverage,
   createBlankGlobalPlayer,
+  ensureGlobalPlayerTeamMembership,
+  filterGlobalPlayers,
   findGlobalPlayerMatches,
   loadGlobalPlayerDatabase,
   saveGlobalPlayerProfile,
 } from './utils/globalPlayerStore';
 import {
+  SPECIFIC_POSITION_CATALOG,
   NATURAL_POSITION_OPTIONS,
+  getNaturalPositionForSpecific,
   getNaturalPositionLabel,
   getPlayerPositionModel,
   getSpecificPositionLabel,
@@ -3977,8 +3982,10 @@ function App() {
   const [globalPlayerStatus, setGlobalPlayerStatus] = useState('');
   const [globalPlayerSearch, setGlobalPlayerSearch] = useState('');
   const [globalPlayerPositionFilter, setGlobalPlayerPositionFilter] = useState('');
+  const [globalPlayerSpecificPositionFilter, setGlobalPlayerSpecificPositionFilter] = useState('');
   const [globalPlayerTeamFilter, setGlobalPlayerTeamFilter] = useState('');
   const [globalPlayerTraitFilter, setGlobalPlayerTraitFilter] = useState('');
+  const [globalPlayerFilterNotice, setGlobalPlayerFilterNotice] = useState('');
   const [draggedPlayer, setDraggedPlayer] = useState(null);
   const [importStatus, setImportStatus] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
@@ -4331,9 +4338,21 @@ function App() {
       if (syncHistoryResponse.error) console.warn('[RIVAL_SYNC_HISTORY_LOAD_WARNING]', syncHistoryResponse.error.message);
 
       setGlobalPlayersAvailable(globalDatabase.available);
-      setGlobalPlayers(globalDatabase.players || []);
       if (!globalDatabase.available) {
         setGlobalPlayersError('Ejecuta supabase_global_players.sql para activar la base global. Mientras tanto se mantiene la lectura legacy.');
+      }
+
+      const normalizedLegacyPlayers = (playersResponse.data || []).map((player) => normalizeSupabaseRivalPlayer(player));
+      const globalCoverage = buildGlobalPlayerCoverage({
+        globalPlayers: globalDatabase.players || [],
+        legacyPlayers: normalizedLegacyPlayers,
+        teams: teamsResponse.data || [],
+      });
+      setGlobalPlayers(globalCoverage.players);
+      if (globalDatabase.available && (globalCoverage.orphanLegacyPlayers.length || globalCoverage.missingMemberships.length)) {
+        setGlobalPlayersError(
+          `${globalCoverage.orphanLegacyPlayers.length} jugadores legacy se muestran en modo compatible y ${globalCoverage.missingMemberships.length} relaciones pendientes se han incorporado a la vista. Vuelve a ejecutar supabase_global_players.sql para persistir la reparación.`
+        );
       }
 
       const globalPlayersById = new Map((globalDatabase.players || []).map((player) => [String(player.id), player]));
@@ -15889,6 +15908,22 @@ function App() {
         if (unlinkError) throw unlinkError;
       }
       const globalId = await saveGlobalPlayerProfile(supabase, draft);
+      const membershipId = draft.teamId
+        ? await ensureGlobalPlayerTeamMembership(supabase, {
+          playerId: globalId,
+          teamId: draft.teamId,
+          mode: draft.membershipMode || 'replace',
+          season: draft.season || '',
+          startDate: draft.startDate || null,
+        })
+        : null;
+      if (draft.legacyPlayerId && isUuid(draft.legacyPlayerId)) {
+        const { error: legacyLinkError } = await supabase.from('jugadores_rivales').update({
+          global_player_id: globalId,
+          membership_id: membershipId,
+        }).eq('id', draft.legacyPlayerId);
+        if (legacyLinkError) throw legacyLinkError;
+      }
       if (draft.isKey && draft.teamId) await supabase.from('player_team_memberships').update({ is_key: false }).eq('team_id', draft.teamId).eq('is_current', true).neq('player_id', globalId);
       await loadTeams();
       const genericSourceSaved = safeArray(draft.sources).some((source) => !['transfermarkt', 'besoccer'].includes(normalizePlayerIdentityName(source.sourceName)));
@@ -16086,7 +16121,8 @@ function App() {
           memberships: globalPlayer?.memberships || [],
         };
         const globalId = await saveGlobalPlayerProfile(supabase, playerDraft);
-        confirmedPlayers.push({ ...playerDraft, id: globalId, globalPlayerId: globalId });
+        const membershipId = await ensureGlobalPlayerTeamMembership(supabase, { playerId: globalId, teamId });
+        confirmedPlayers.push({ ...playerDraft, id: globalId, globalPlayerId: globalId, membershipId });
       }
       squad = confirmedPlayers;
 
@@ -19884,16 +19920,34 @@ function App() {
         ) : null}
 
         {activeTab === 'Jugadores' ? (() => {
-          const normalizedSearch = normalizePlayerIdentityName(globalPlayerSearch);
           const traitOptions = Array.from(new Set(globalPlayers.flatMap((player) => player.traits.map((trait) => trait.label)))).sort((a, b) => a.localeCompare(b, 'es'));
-          const visiblePlayers = globalPlayers.filter((player) => {
-            const positionModel = getPlayerPositionModel(player);
-            const currentTeamIds = player.memberships.filter((membership) => membership.is_current).map((membership) => membership.team_id);
-            const matchesSearch = !normalizedSearch || normalizePlayerIdentityName(`${player.name} ${player.position} ${player.specificPosition}`).includes(normalizedSearch);
-            const matchesPosition = !globalPlayerPositionFilter || [positionModel.primaryNaturalPosition, ...positionModel.secondaryNaturalPositions].includes(globalPlayerPositionFilter);
-            const matchesTeam = !globalPlayerTeamFilter || currentTeamIds.includes(globalPlayerTeamFilter);
-            const matchesTrait = !globalPlayerTraitFilter || player.traits.some((trait) => trait.label === globalPlayerTraitFilter);
-            return matchesSearch && matchesPosition && matchesTeam && matchesTrait;
+          const specificPositionGroups = globalPlayerPositionFilter
+            ? [[globalPlayerPositionFilter, SPECIFIC_POSITION_CATALOG[globalPlayerPositionFilter] || []]]
+            : Object.entries(SPECIFIC_POSITION_CATALOG);
+          const hasActiveGlobalPlayerFilters = Boolean(globalPlayerSearch || globalPlayerPositionFilter || globalPlayerSpecificPositionFilter || globalPlayerTeamFilter || globalPlayerTraitFilter);
+          const changeNaturalPositionFilter = (value) => {
+            setGlobalPlayerPositionFilter(value);
+            if (globalPlayerSpecificPositionFilter && value && getNaturalPositionForSpecific(globalPlayerSpecificPositionFilter) !== value) {
+              setGlobalPlayerSpecificPositionFilter('');
+              setGlobalPlayerFilterNotice('El filtro específico se ha restablecido porque no pertenece a la posición natural seleccionada.');
+            } else {
+              setGlobalPlayerFilterNotice('');
+            }
+          };
+          const clearGlobalPlayerFilters = () => {
+            setGlobalPlayerSearch('');
+            setGlobalPlayerPositionFilter('');
+            setGlobalPlayerSpecificPositionFilter('');
+            setGlobalPlayerTeamFilter('');
+            setGlobalPlayerTraitFilter('');
+            setGlobalPlayerFilterNotice('');
+          };
+          const visiblePlayers = filterGlobalPlayers(globalPlayers, {
+            search: globalPlayerSearch,
+            naturalPosition: globalPlayerPositionFilter,
+            specificPosition: globalPlayerSpecificPositionFilter,
+            teamId: globalPlayerTeamFilter,
+            trait: globalPlayerTraitFilter,
           });
           return (
             <main className="space-y-4">
@@ -19906,12 +19960,25 @@ function App() {
                   </div>
                   <button type="button" onClick={() => openRivalPlayerModal(null, { standalone: true })} disabled={!globalPlayersAvailable} className="rounded-2xl bg-caudal-electric px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-50">Nuevo jugador</button>
                 </div>
-                <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
                   <input type="search" value={globalPlayerSearch} onChange={(event) => setGlobalPlayerSearch(event.target.value)} className="field-input" placeholder="Buscar jugador" />
-                  <select value={globalPlayerPositionFilter} onChange={(event) => setGlobalPlayerPositionFilter(event.target.value)} className="field-input"><option value="">Todas las posiciones</option>{NATURAL_POSITION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
-                  <select value={globalPlayerTeamFilter} onChange={(event) => setGlobalPlayerTeamFilter(event.target.value)} className="field-input"><option value="">Todos los equipos actuales</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select>
+                  <select aria-label="Posición natural" value={globalPlayerPositionFilter} onChange={(event) => changeNaturalPositionFilter(event.target.value)} className="field-input"><option value="">Todas las posiciones naturales</option>{NATURAL_POSITION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+                  <select aria-label="Posición específica" value={globalPlayerSpecificPositionFilter} onChange={(event) => { setGlobalPlayerSpecificPositionFilter(event.target.value); setGlobalPlayerFilterNotice(''); }} className="field-input">
+                    <option value="">Todas las posiciones específicas</option>
+                    {specificPositionGroups.map(([naturalKey, options]) => (
+                      <optgroup key={naturalKey} label={getNaturalPositionLabel(naturalKey)}>
+                        {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <select value={globalPlayerTeamFilter} onChange={(event) => setGlobalPlayerTeamFilter(event.target.value)} className="field-input"><option value="">Todos los equipos actuales</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}<option value="__without_team__">Sin equipo</option></select>
                   <select value={globalPlayerTraitFilter} onChange={(event) => setGlobalPlayerTraitFilter(event.target.value)} className="field-input"><option value="">Todas las características</option>{traitOptions.map((trait) => <option key={trait} value={trait}>{trait}</option>)}</select>
                 </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-black text-slate-300">{visiblePlayers.length} {visiblePlayers.length === 1 ? 'jugador' : 'jugadores'}</p>
+                  {hasActiveGlobalPlayerFilters ? <button type="button" onClick={clearGlobalPlayerFilters} className="text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric underline decoration-caudal-electric/30 underline-offset-4">Limpiar filtros</button> : null}
+                </div>
+                {globalPlayerFilterNotice ? <p className="mt-2 rounded-xl border border-amber-300/20 bg-amber-300/[0.07] px-3 py-2 text-xs font-bold text-amber-100">{globalPlayerFilterNotice}</p> : null}
                 {globalPlayersError ? <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/[0.08] px-3 py-2 text-xs font-bold text-amber-100">{globalPlayersError}</p> : null}
                 {globalPlayerStatus ? <p className="mt-3 rounded-xl border border-emerald-300/20 bg-emerald-300/[0.08] px-3 py-2 text-xs font-bold text-emerald-100">{globalPlayerStatus}</p> : null}
               </section>
@@ -19921,6 +19988,13 @@ function App() {
                   {visiblePlayers.map((player) => {
                     const currentTeams = player.memberships.filter((membership) => membership.is_current).map((membership) => teams.find((team) => team.id === membership.team_id)).filter(Boolean);
                     const primaryMembership = player.memberships.find((membership) => membership.is_current) || null;
+                    const positionModel = getPlayerPositionModel(player);
+                    const secondaryPositionCount = new Set([
+                      ...positionModel.secondarySpecificPositions,
+                      ...positionModel.secondaryNaturalPositions,
+                    ]).size;
+                    const naturalLabel = getNaturalPositionLabel(positionModel.primaryNaturalPosition) || player.position || 'Sin posición natural';
+                    const specificLabel = getSpecificPositionLabel(positionModel.primarySpecificPosition) || player.specificPosition || '';
                     return (
                       <article key={player.id} className="group rounded-[1.2rem] border border-white/10 bg-[#091428]/82 p-4 shadow-[0_12px_32px_rgba(0,0,0,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30">
                         <button type="button" onClick={() => openRivalPlayerModal(player, { standalone: true })} className="flex w-full items-start gap-3 text-left">
@@ -19930,7 +20004,7 @@ function App() {
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-base font-black text-white">{player.name}</span>
                             <span className="mt-1 block truncate text-xs font-bold text-caudal-electric">{currentTeams.length ? currentTeams.map((team) => cleanTeamDisplayName(team.name)).join(' · ') : 'Sin equipo asignado'}</span>
-                            <span className="mt-1 block text-[11px] font-semibold text-slate-400">{player.position || 'Sin posición natural'}{player.specificPosition ? ` · ${player.specificPosition}` : ''}</span>
+                            <span className="mt-1 block text-[11px] font-semibold text-slate-400">{naturalLabel}{specificLabel ? ` · ${specificLabel}` : ''}{secondaryPositionCount ? ` · +${secondaryPositionCount} ${secondaryPositionCount === 1 ? 'posición' : 'posiciones'}` : ''}</span>
                             <span className="mt-1 block text-[10px] text-slate-500">{primaryMembership?.number ? `#${primaryMembership.number} · ` : ''}{player.dob ? `${calculateAge(player.dob)} años` : player.age ? `${player.age} años` : 'Edad sin registrar'}{player.foot ? ` · ${player.foot}` : ''}</span>
                           </span>
                         </button>
