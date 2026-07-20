@@ -19,6 +19,15 @@ import {
 import { buildLeagueResultsDonut, calculateLeagueResults } from './utils/leagueResults';
 import { cleanImportedFieldValue, extractTransfermarktPlayerId, isEmptyImportedField, normalizeTransfermarktPosition } from './utils/rivalPlayerImport';
 import {
+  createGoalParticipantDbFields,
+  getGoalAssistant,
+  getGoalScorer,
+  goalParticipantMatchesPlayer,
+  hasGoalAssistant,
+  normalizeGoalParticipants,
+  resolveGoalParticipant,
+} from './utils/goalEvents';
+import {
   assignGlobalPlayerToTeam,
   buildGlobalPlayerCoverage,
   createBlankGlobalPlayer,
@@ -508,7 +517,9 @@ const defaultGoalAnalysisDraft = {
   half: '',
   minute: '',
   scorer: '',
+  scorerId: null,
   assistant: '',
+  assistantId: null,
   phase: '',
   subphase: '',
   shotZone: '',
@@ -1263,15 +1274,13 @@ const goalDbToForm = (row = {}) => ({
 });
 
 const normalizeSupabaseGoalEvent = (event) => ({
+  ...event,
   id: event.id,
-  partidoId: event.partido_id,
+  partidoId: event.partido_id || event.partidoId || '',
   type: event.type || '',
   half: event.half || '',
   minute: event.minute || '',
-  scorer: event.scorer || '',
-  scorerId: event.scorer_id || event.scorerId || null,
-  assistant: event.assistant || '',
-  assistantId: event.assistant_id || event.assistantId || null,
+  ...normalizeGoalParticipants(event),
   phase: event.phase || '',
   subphase: event.subphase || '',
   ...goalDbToForm(event),
@@ -1453,21 +1462,22 @@ const filterGoalEventDbPayload = (payload = {}) =>
   Object.fromEntries(Object.entries(payload).filter(([column]) => goalEventDbColumns.has(column)));
 
 const createGoalEventPayload = (partidoId, draft) => {
+  const participantFields = createGoalParticipantDbFields(draft);
   const rawPayload = {
     partido_id: partidoId,
     type: draft.type,
     half: draft.half,
     minute: draft.minute,
-    scorer: emptyToNull(draft.scorer),
-    assistant: emptyToNull(draft.assistant),
+    scorer: participantFields.scorer,
+    scorer_id: participantFields.scorer_id,
+    assistant: participantFields.assistant,
+    assistant_id: participantFields.assistant_id,
     phase: emptyToNull(draft.phase),
     subphase: emptyToNull(draft.subphase),
     ...goalFormToDb(draft),
     contact: emptyToNull(draft.contact),
     video_url: emptyToNull(draft.videoUrl),
   };
-  if (draft.scorerId) rawPayload.scorer_id = draft.scorerId;
-  if (draft.assistantId) rawPayload.assistant_id = draft.assistantId;
   return filterGoalEventDbPayload(rawPayload);
 };
 
@@ -4558,15 +4568,21 @@ function App() {
   };
 
   const loadPartidos = async () => {
-    const [{ data, error: partidosError }, quickEventsResponse, systemEventsResponse] = await Promise.all([
+    const [{ data, error: partidosError }, goalsResponse, quickEventsResponse, systemEventsResponse] = await Promise.all([
       supabase
         .from("partidos")
         .select("*")
         .order("date", { ascending: false, nullsFirst: false }),
+      supabase.from("partido_eventos_gol").select("*"),
       supabase.from("match_quick_events").select("*"),
       supabase.from("partido_eventos_sistema").select("*"),
     ]);
     if (partidosError) throw partidosError;
+    if (goalsResponse.error) throw goalsResponse.error;
+    const goalsByMatch = (goalsResponse.data || []).reduce((acc, event) => {
+      acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseGoalEvent(event)];
+      return acc;
+    }, {});
     const quickEventsByMatch = quickEventsResponse.error
       ? {}
       : (quickEventsResponse.data || []).reduce((acc, event) => {
@@ -4587,6 +4603,7 @@ function App() {
     }
     const nextMatches = (data || []).map((match) => ({
       ...normalizeSupabasePartido(match),
+      statsGoalEvents: goalsByMatch[match.id] || [],
       quickEvents: quickEventsByMatch[match.id] || [],
       systemEvents: systemEventsByMatch[match.id] || [],
     }));
@@ -5184,14 +5201,13 @@ function App() {
         ? supabase.from("match_quick_events").select("*").eq("jugador_id", player.id)
         : Promise.resolve({ data: [], error: null });
 
-      const [scoredResponse, assistedResponse, quickEventsResponse, ...statsResponses] = await Promise.all([
-        supabase.from("partido_eventos_gol").select("*").eq("scorer", player.name),
-        supabase.from("partido_eventos_gol").select("*").eq("assistant", player.name),
+      const [goalEventsResponse, quickEventsResponse, ...statsResponses] = await Promise.all([
+        supabase.from("partido_eventos_gol").select("*"),
         quickEventRequest,
         ...statsRequests,
       ]);
 
-      const failed = [scoredResponse, assistedResponse, ...statsResponses].find((response) => response.error);
+      const failed = [goalEventsResponse, ...statsResponses].find((response) => response.error);
       if (failed) throw failed.error;
       if (quickEventsResponse.error) {
         console.warn('No se pudieron cargar eventos rápidos de jugador; se continúa sin ellos:', {
@@ -5206,16 +5222,14 @@ function App() {
       });
       const statsRows = Array.from(statsByKey.values());
 
-      const goalEventsById = new Map();
-      [...(scoredResponse.data || []), ...(assistedResponse.data || [])].forEach((event) => {
-        goalEventsById.set(event.id, normalizeSupabaseGoalEvent(event));
-      });
-      const goalEvents = Array.from(goalEventsById.values());
+      const goalEvents = safeArray(goalEventsResponse.data)
+        .map(normalizeSupabaseGoalEvent)
+        .filter((event) => goalEventMatchesPlayer(event, player));
       const quickEvents = quickEventsResponse.error ? [] : (quickEventsResponse.data || []).map(normalizeSupabaseQuickEvent);
 
       const partidoIds = Array.from(new Set([
         ...statsRows.map((row) => row.partido_id),
-        ...[...(scoredResponse.data || []), ...(assistedResponse.data || [])].map((event) => event.partido_id),
+        ...goalEvents.map((event) => event.partidoId),
         ...quickEvents.map((event) => event.partidoId),
       ].filter(Boolean)));
 
@@ -9323,22 +9337,11 @@ function App() {
 
   const getStatsGoalEvents = () => selectedMatch?.statsGoalEvents || [];
   const goalEventMatchesPlayer = (event, player) => {
-    if (!event || !player) return false;
-    if (event.scorerId || event.assistantId) {
-      return event.scorerId === player.id || event.assistantId === player.id;
-    }
-    return event.scorer === player.name || event.assistant === player.name;
+    return goalParticipantMatchesPlayer(event, 'scorer', player)
+      || goalParticipantMatchesPlayer(event, 'assistant', player);
   };
-  const isGoalScoredByPlayer = (event, player) => {
-    if (!event || !player) return false;
-    if (event.scorerId) return event.scorerId === player.id;
-    return event.scorer === player.name;
-  };
-  const isGoalAssistedByPlayer = (event, player) => {
-    if (!event || !player) return false;
-    if (event.assistantId) return event.assistantId === player.id;
-    return event.assistant === player.name;
-  };
+  const isGoalScoredByPlayer = (event, player) => goalParticipantMatchesPlayer(event, 'scorer', player);
+  const isGoalAssistedByPlayer = (event, player) => goalParticipantMatchesPlayer(event, 'assistant', player);
   const getStatsScore = () => {
     const eventCaudalGoals = getStatsGoalEvents().filter((event) => event.type === 'Gol a favor').length;
     const eventRivalGoals = getStatsGoalEvents().filter((event) => event.type === 'Gol en contra').length;
@@ -10807,7 +10810,9 @@ function App() {
       summary: '',
       videoUrl: '',
       scorer: goalPlayerOptions[0]?.name || '',
+      scorerId: isUuid(goalPlayerOptions[0]?.id) ? goalPlayerOptions[0].id : null,
       assistant: '',
+      assistantId: null,
     });
     setIsGoalAnalysisOpen(true);
   };
@@ -10824,7 +10829,9 @@ function App() {
       half: goal.half || '',
       minute: goal.minute || '',
       scorer: goal.scorer || '',
+      scorerId: goal.scorerId || null,
       assistant: goal.assistant || '',
+      assistantId: goal.assistantId || null,
       phase: goal.phase || '',
       subphase: goal.subphase || '',
       attackType: goal.attackType || goal.phase || '',
@@ -10997,9 +11004,30 @@ function App() {
         return withAutoSummary({ ...prev, phase: value, subphase: goalPhaseOptions[value]?.[0] || '', attackType: inferredAttackType });
       }
       if (field === 'type' && value === 'Gol en contra') {
-        return withAutoSummary({ ...prev, type: value, scorer: '', assistant: '' });
+        return withAutoSummary({ ...prev, type: value, scorer: '', scorerId: null, assistant: '', assistantId: null });
       }
       return withAutoSummary({ ...prev, [field]: value });
+    });
+  };
+
+  const updateGoalParticipantDraft = (role, playerName) => {
+    if (statsError) setStatsError('');
+    const selectedPlayer = getGoalDraftPlayerOptions().find((player) => player.name === playerName)
+      || players.find((player) => player.name === playerName)
+      || null;
+    const idField = role === 'assistant' ? 'assistantId' : 'scorerId';
+    setGoalAnalysisDraft((previous) => {
+      const next = {
+        ...previous,
+        [role]: playerName || '',
+        [idField]: isUuid(selectedPlayer?.id) ? selectedPlayer.id : null,
+      };
+      return {
+        ...next,
+        summary: !previous.summary || previous.summary === buildGoalDraftSummary(previous)
+          ? buildGoalDraftSummary(next)
+          : next.summary,
+      };
     });
   };
 
@@ -11033,8 +11061,9 @@ function App() {
       minute: String(minute),
       summary: getExplicitGoalSummary(goalAnalysisDraft),
     };
-    const scorerPlayer = players.find((player) => player.name === payloadDraft.scorer);
-    const assistantPlayer = players.find((player) => player.name === payloadDraft.assistant);
+    const participantPlayers = dedupeRivalPlayers([...players, ...getGoalDraftPlayerOptions()]);
+    const scorerPlayer = resolveGoalParticipant(payloadDraft, 'scorer', participantPlayers);
+    const assistantPlayer = resolveGoalParticipant(payloadDraft, 'assistant', participantPlayers);
     payloadDraft.scorerId = isUuid(scorerPlayer?.id) ? scorerPlayer.id : null;
     payloadDraft.assistantId = isUuid(assistantPlayer?.id) ? assistantPlayer.id : null;
     const fullGoalPayload = createGoalEventPayload(selectedMatch.id, payloadDraft);
@@ -11056,6 +11085,22 @@ function App() {
       return;
     }
     const normalizedSavedGoal = normalizeSupabaseGoalEvent(saveResult.data || {});
+    const expectedAssistant = getGoalAssistant(payloadDraft);
+    const savedAssistant = getGoalAssistant(normalizedSavedGoal);
+    if (
+      (expectedAssistant.id || expectedAssistant.name)
+      && (
+        (!savedAssistant.id && !savedAssistant.name)
+        || !goalParticipantMatchesPlayer(normalizedSavedGoal, 'assistant', {
+          id: expectedAssistant.id,
+          name: expectedAssistant.name,
+        })
+      )
+    ) {
+      setStatsSaveStatus('');
+      setStatsError('Gol guardado sin la asistencia seleccionada. Revisa la migración supabase_goal_event_participants.sql antes de continuar.');
+      return;
+    }
     const expectedZones = goalFormToDb(payloadDraft);
     const savedZones = goalFormToDb(normalizedSavedGoal);
     const missingSavedZones = ['assist_zone', 'shot_zone', 'goal_zone'].filter((column) => expectedZones[column] && savedZones[column] !== expectedZones[column]);
@@ -13520,16 +13565,18 @@ function App() {
         .map((event) => {
           const side = getOfficialGoalSide(event);
           if (!side) return null;
+          const scorer = getGoalScorer(event);
+          const assistant = getGoalAssistant(event);
           return {
             id: event.id || `${match.id}-${event.minute || 'sin-minuto'}-${side}`,
             partidoId: event.partidoId || match.id,
             match,
             teamSide: side,
             type: event.type || null,
-            scorerId: event.scorerId || null,
-            scorerName: emptyToNull(event.scorer),
-            assistantId: event.assistantId || null,
-            assistantName: emptyToNull(event.assistant),
+            scorerId: scorer.id,
+            scorerName: emptyToNull(scorer.name),
+            assistantId: assistant.id,
+            assistantName: emptyToNull(assistant.name),
             minuteRaw: event.minute || '',
             minute: parseGoalMinute(event.minute),
             period: emptyToNull(event.half),
@@ -13566,7 +13613,7 @@ function App() {
       withContext: goals.filter((goal) => goal.goalContext).length,
       withFinishZone: goals.filter((goal) => goal.finishZone).length,
       withGoalZone: goals.filter((goal) => goal.goalMouthZone).length,
-      withAssist: forGoals.filter((goal) => goal.assistantId || goal.assistantName).length,
+      withAssist: forGoals.filter(hasGoalAssistant).length,
       forGoals: forGoals.length,
       againstGoals: goals.filter((goal) => goal.teamSide === 'against').length,
     };
@@ -13585,13 +13632,11 @@ function App() {
   const buildOfficialIndividualRankings = (officialGoals = [], scopedMatches = []) => {
     const playerKey = (player) => player?.id || normalizePlayerIdentityName(player?.name || '');
     const goalPlayerKey = (id, name) => id || normalizePlayerIdentityName(name || '');
-    const playersById = new Map(safeArray(players).filter((player) => player?.id).map((player) => [player.id, player]));
-    const playersByName = new Map(safeArray(players).filter((player) => player?.name).map((player) => [normalizePlayerIdentityName(player.name), player]));
-    const resolveOfficialPlayer = (id, name) => {
-      if (id && playersById.has(id)) return playersById.get(id);
-      const normalizedName = normalizePlayerIdentityName(name || '');
-      return normalizedName ? playersByName.get(normalizedName) || null : null;
-    };
+    const resolveOfficialPlayer = (role, id, name) => resolveGoalParticipant(
+      role === 'assistant' ? { assistantId: id, assistantName: name } : { scorerId: id, scorerName: name },
+      role,
+      safeArray(players)
+    );
     const rowsByKey = new Map(safeArray(players).map((player) => [playerKey(player), {
       key: playerKey(player),
       playerId: player.id || null,
@@ -13607,8 +13652,8 @@ function App() {
       ratingCount: 0,
     }]));
 
-    const ensureRow = (id, name) => {
-      const resolvedPlayer = resolveOfficialPlayer(id, name);
+    const ensureRow = (role, id, name) => {
+      const resolvedPlayer = resolveOfficialPlayer(role, id, name);
       const key = resolvedPlayer ? playerKey(resolvedPlayer) : goalPlayerKey(id, name);
       if (!key) return null;
       if (!rowsByKey.has(key)) {
@@ -13652,12 +13697,12 @@ function App() {
     });
 
     safeArray(officialGoals).filter((goal) => goal.teamSide === 'for').forEach((goal) => {
-      const scorer = ensureRow(goal.scorerId, goal.scorerName);
+      const scorer = ensureRow('scorer', goal.scorerId, goal.scorerName);
       if (scorer) {
         scorer.goals += 1;
         scorer.scoringMatches.add(goal.partidoId);
       }
-      const assistant = goal.assistantId || goal.assistantName ? ensureRow(goal.assistantId, goal.assistantName) : null;
+      const assistant = hasGoalAssistant(goal) ? ensureRow('assistant', goal.assistantId, goal.assistantName) : null;
       if (assistant) assistant.assists += 1;
     });
 
@@ -13687,14 +13732,9 @@ function App() {
   };
 
   const buildGoalConnectionRows = (officialGoals = []) => {
-    const playersById = new Map(safeArray(players).filter((player) => player?.id).map((player) => [player.id, player]));
-    const playersByName = new Map(safeArray(players).filter((player) => player?.name).map((player) => [normalizePlayerIdentityName(player.name), player]));
-    const resolve = (id, name) => id && playersById.has(id)
-      ? playersById.get(id)
-      : playersByName.get(normalizePlayerIdentityName(name || '')) || null;
-    return Object.values(safeArray(officialGoals).filter((goal) => goal.teamSide === 'for' && (goal.scorerName || goal.scorerId) && (goal.assistantName || goal.assistantId)).reduce((acc, goal) => {
-      const scorerPlayer = resolve(goal.scorerId, goal.scorerName);
-      const assistantPlayer = resolve(goal.assistantId, goal.assistantName);
+    return Object.values(safeArray(officialGoals).filter((goal) => goal.teamSide === 'for' && (goal.scorerName || goal.scorerId) && hasGoalAssistant(goal)).reduce((acc, goal) => {
+      const scorerPlayer = resolveGoalParticipant(goal, 'scorer', safeArray(players));
+      const assistantPlayer = resolveGoalParticipant(goal, 'assistant', safeArray(players));
       const scorer = scorerPlayer ? displayPlayerName(scorerPlayer) || scorerPlayer.name : goal.scorerName || goal.scorerId;
       const assistant = assistantPlayer ? displayPlayerName(assistantPlayer) || assistantPlayer.name : goal.assistantName || goal.assistantId;
       const key = `${assistantPlayer?.id || assistant}->${scorerPlayer?.id || scorer}`;
@@ -21838,7 +21878,7 @@ function App() {
           const goalTypeRows = buildOfficialGoalTypeRows(filteredOfficialGoals);
           const phaseFor = goalTypeRows.map((row) => ({ phase: row.context === 'Sin clasificar' ? 'Sin contexto registrado' : row.context, count: row.forCount }));
           const phaseAgainst = goalTypeRows.map((row) => ({ phase: row.context === 'Sin clasificar' ? 'Sin contexto registrado' : row.context, count: row.againstCount }));
-          const assistedGoalRows = goalForRows.filter((goal) => goal.assistantId || goal.assistantName);
+          const assistedGoalRows = goalForRows.filter(hasGoalAssistant);
           const assistZoneCounts = getOfficialGoalZoneCounts(assistedGoalRows, 'creationZone');
           const shotZoneCounts = getOfficialGoalZoneCounts(allGoalRows, 'finishZone');
           const goalZoneForCounts = getOfficialGoalZoneCounts(goalForRows, 'goalMouthZone');
@@ -21846,7 +21886,7 @@ function App() {
           const abpFor = { total: goalForRows.filter((goal) => goal.goalContext === 'ABP').length, corner: goalForRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Córner').length, directFreeKick: goalForRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Falta directa').length, penalty: goalForRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Penalti').length };
           const abpAgainst = { total: goalAgainstRows.filter((goal) => goal.goalContext === 'ABP').length, corner: goalAgainstRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Córner').length, directFreeKick: goalAgainstRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Falta directa').length, penalty: goalAgainstRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Penalti').length };
           const goalCoverage = buildOfficialGoalCoverage(filteredOfficialGoals);
-          const missingAssistCount = goalForRows.filter((goal) => !goal.assistantId && !goal.assistantName).length;
+          const missingAssistCount = goalForRows.filter((goal) => !hasGoalAssistant(goal)).length;
           const assistedWithoutZoneCount = assistedGoalRows.filter((goal) => !goal.creationZone).length;
           const missingFinishZoneCount = allGoalRows.filter((goal) => !goal.finishZone).length;
           const missingGoalZoneForCount = goalForRows.filter((goal) => !goal.goalMouthZone).length;
@@ -24590,14 +24630,14 @@ function App() {
                     <>
                       <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 lg:col-span-2">
                         <span>Goleador</span>
-                        <select value={goalAnalysisDraft.scorer} onChange={(event) => updateGoalAnalysisDraft('scorer', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white">
+                        <select value={goalAnalysisDraft.scorer} onChange={(event) => updateGoalParticipantDraft('scorer', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white">
                           <option value="">Seleccionar goleador</option>
                           {getGoalDraftPlayerOptions().map((player) => <option key={player.id || player.name} value={player.name}>{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</option>)}
                         </select>
                       </label>
                       <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 lg:col-span-2">
                         <span>Asistente</span>
-                        <select value={goalAnalysisDraft.assistant} onChange={(event) => updateGoalAnalysisDraft('assistant', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white">
+                        <select value={goalAnalysisDraft.assistant} onChange={(event) => updateGoalParticipantDraft('assistant', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white">
                           <option value="">Sin asistencia registrada</option>
                           {getGoalDraftPlayerOptions().map((player) => <option key={player.id || player.name} value={player.name}>{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</option>)}
                         </select>
@@ -24658,7 +24698,7 @@ function App() {
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Mapas</p>
                 <div className="mt-4 grid gap-4 lg:grid-cols-3">
                   <div>
-                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">Dónde se genera</p>
+                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">Zona de origen (no asigna asistente)</p>
                     {renderZoneGrid({ value: goalAnalysisDraft.assistZone, onChange: (zone) => updateGoalAnalysisDraft('assistZone', zone), compact: true, variant: 'start' })}
                   </div>
                   <div>
