@@ -109,6 +109,77 @@ comment on column public.jugadores_rivales.tactical_slot is
 comment on column public.jugadores_rivales.tactical_reserve_slot is
 'Hueco de reserva del puesto tactico: 0 o 1. Nunca se admite una tercera reserva.';
 
+-- Aplica un movimiento o intercambio tactico en una sola transaccion. Primero libera
+-- exclusivamente a los jugadores implicados y despues asigna sus destinos definitivos.
+create or replace function public.apply_rival_tactical_placements(
+  p_team_id uuid,
+  p_placements jsonb
+)
+returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  placement record;
+begin
+  if jsonb_typeof(coalesce(p_placements, '[]'::jsonb)) <> 'array' then
+    raise exception 'p_placements debe ser un array JSON';
+  end if;
+
+  update public.player_team_memberships membership
+  set tactical_role = null,
+      tactical_slot = null,
+      tactical_reserve_slot = null
+  where membership.team_id = p_team_id
+    and membership.is_current
+    and membership.id in (
+      select item.membership_id
+      from jsonb_to_recordset(coalesce(p_placements, '[]'::jsonb))
+        as item(membership_id uuid, rival_player_id uuid, tactical_role text, tactical_slot integer, tactical_reserve_slot integer)
+      where item.membership_id is not null
+    );
+
+  update public.jugadores_rivales player
+  set tactical_role = null,
+      tactical_slot = null,
+      tactical_reserve_slot = null
+  where player.equipo_rival_id = p_team_id
+    and player.id in (
+      select item.rival_player_id
+      from jsonb_to_recordset(coalesce(p_placements, '[]'::jsonb))
+        as item(membership_id uuid, rival_player_id uuid, tactical_role text, tactical_slot integer, tactical_reserve_slot integer)
+      where item.rival_player_id is not null
+    );
+
+  for placement in
+    select *
+    from jsonb_to_recordset(coalesce(p_placements, '[]'::jsonb))
+      as item(membership_id uuid, rival_player_id uuid, tactical_role text, tactical_slot integer, tactical_reserve_slot integer)
+  loop
+    if placement.membership_id is not null then
+      update public.player_team_memberships membership
+      set tactical_role = placement.tactical_role,
+          tactical_slot = placement.tactical_slot,
+          tactical_reserve_slot = placement.tactical_reserve_slot
+      where membership.id = placement.membership_id
+        and membership.team_id = p_team_id
+        and membership.is_current;
+      if not found then raise exception 'Membership tactico no encontrado: %', placement.membership_id; end if;
+    elsif placement.rival_player_id is not null then
+      update public.jugadores_rivales player
+      set tactical_role = placement.tactical_role,
+          tactical_slot = placement.tactical_slot,
+          tactical_reserve_slot = placement.tactical_reserve_slot
+      where player.id = placement.rival_player_id
+        and player.equipo_rival_id = p_team_id;
+      if not found then raise exception 'Jugador rival tactico no encontrado: %', placement.rival_player_id; end if;
+    else
+      raise exception 'Cada colocacion necesita membership_id o rival_player_id';
+    end if;
+  end loop;
+end $$;
+
 comment on column public.equipos_rivales.field_sources is
 'Origen y fecha de actualizacion por campo de identidad del rival: nombre, estadio, sistema, color y escudo.';
 

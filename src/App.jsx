@@ -52,6 +52,8 @@ import {
   markChangedFieldsManual,
 } from './utils/rivalSync';
 import {
+  applyPlayerMove,
+  buildTacticalPlacements,
   buildIntelligentLineup,
   buildIntelligentReservePlacements,
   getPlayerRoleFitScore,
@@ -2808,7 +2810,6 @@ const playerStatusBadges = (player) =>
     player.yellowRisk ? { label: 'AM', className: 'border border-yellow-200/35 bg-yellow-300/75 text-slate-950', title: 'No puede jugar por acumulación' } : null,
     player.suspended || player.expelled || player.red ? { label: 'RJ', className: 'border border-red-200/30 bg-red-700/80 text-red-50', title: 'No puede jugar por sanción' } : null,
     player.doubtful || player.physicalDoubt ? { label: 'DUDA', className: 'border border-sky-200/15 bg-sky-200/[0.08] text-sky-100', title: 'Duda física' } : null,
-    player.isKey ? { label: 'DEST', className: 'border border-amber-100/30 bg-amber-300/[0.14] text-amber-100', title: 'Jugador diferencial' } : null,
   ].filter(Boolean);
 
 const isUnavailableRivalPlayer = (player = {}) => Boolean(player.yellowRisk || player.suspended || player.injured || player.expelled || player.red);
@@ -2823,7 +2824,6 @@ const getPlayerTacticalBadges = (player) => {
   const position = normalizePlayerIdentityName(player.position || '');
   const primary = playerStatusBadges(player)[0] || null;
   const secondary =
-    player.isKey ? { label: 'Jugador clave', short: 'CLA', className: 'border-sky-200/20 bg-sky-200/[0.08] text-sky-100' } :
     player.isDifferential ? { label: 'Diferencial', short: 'DIF', className: 'border-emerald-200/25 bg-emerald-200/[0.10] text-emerald-100' } :
     position.includes('pivote') ? { label: 'Pivote', short: 'PIV', className: 'border-cyan-200/20 bg-cyan-200/[0.10] text-cyan-100' } :
     position.includes('delantero') ? { label: 'Referencia ofensiva', short: 'REF', className: 'border-emerald-200/20 bg-emerald-200/[0.10] text-emerald-100' } :
@@ -2835,7 +2835,7 @@ const getPlayerTacticalBadges = (player) => {
 const getPlayerFieldStyle = (player) => {
   const badges = getPlayerTacticalBadges(player).map((badge) => badge.short);
   if (badges.includes('EXP') || badges.includes('LES') || badges.includes('RJ')) return 'border-red-200/35 shadow-[0_0_0_1px_rgba(248,113,113,0.08),0_14px_30px_rgba(0,0,0,0.36)]';
-  if (badges.includes('DEST') || badges.includes('CLA')) return 'border-amber-200/55 shadow-[0_0_0_1px_rgba(251,191,36,0.10),0_16px_32px_rgba(0,0,0,0.38),0_0_18px_rgba(251,191,36,0.08)]';
+  if (badges.includes('DEST')) return 'border-amber-200/55 shadow-[0_0_0_1px_rgba(251,191,36,0.10),0_16px_32px_rgba(0,0,0,0.38),0_0_18px_rgba(251,191,36,0.08)]';
   if (badges.includes('DIF')) return 'border-emerald-200/55 shadow-[0_16px_34px_rgba(0,0,0,0.36)]';
   if (badges.includes('REF')) return 'border-emerald-200/45 shadow-[0_14px_32px_rgba(0,0,0,0.36)]';
   if (badges.includes('PIV')) return 'border-cyan-200/45 shadow-[0_14px_32px_rgba(0,0,0,0.36)]';
@@ -4194,6 +4194,7 @@ function App() {
       return {};
     }
   });
+  const [rivalTacticalUndo, setRivalTacticalUndo] = useState(null);
   const [rivalObservedScouting, setRivalObservedScouting] = useState(() => {
     try {
       if (typeof window === 'undefined') return {};
@@ -4245,6 +4246,7 @@ function App() {
   const postYoutubeIframeRef = useRef(null);
   const postYoutubePlayerRef = useRef(null);
   const postMatchVideoRef = useRef(null);
+  const rivalPlacementOperationRef = useRef(false);
 
   useEffect(() => {
     if (!delegatedTimerRunning) return undefined;
@@ -15604,13 +15606,11 @@ function App() {
     if (!currentPlayer) return;
     if (currentPlayer.membershipId && ['isKey', 'captain', 'observed', 'role'].includes(field)) {
       const column = { isKey: 'is_key', captain: 'captain', observed: 'observed', role: 'squad_role' }[field];
-      if (field === 'isKey' && value) await supabase.from('player_team_memberships').update({ is_key: false }).eq('team_id', selectedTeam.id).eq('is_current', true);
       const { error: membershipError } = await supabase.from('player_team_memberships').update({ [column]: value }).eq('id', currentPlayer.membershipId);
       if (membershipError) console.error('Error actualizando afiliación del jugador global:', membershipError);
       else await loadTeams();
       return;
     }
-    if (field === 'isKey' && value) await supabase.from("jugadores_rivales").update({ is_key: false }).eq("equipo_rival_id", selectedTeam.id);
     const nextPlayerBase = { ...currentPlayer, [field]: value };
     const nextPlayer = {
       ...nextPlayerBase,
@@ -15707,11 +15707,44 @@ function App() {
   };
   const persistRivalPlacementPatches = async (teamId, patches = []) => {
     if (!patches.length) return;
-    const playerNames = Array.from(new Set(patches.map((patch) => patch.playerName).filter(Boolean)));
     const teamPlayers = teams.find((team) => String(team.id) === String(teamId))?.squad?.map(normalizeSquadEntry) || [];
-    const patchPlayers = playerNames.map((name) => teamPlayers.find((player) => normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(name))).filter(Boolean);
+    const patchPlayers = patches.map((patch) => teamPlayers.find((player) =>
+      patch.playerId
+        ? getRivalPlayerUniqueKey(player) === String(patch.playerId)
+        : normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(patch.playerName)
+    )).filter(Boolean);
     const membershipIds = patchPlayers.map((player) => player.membershipId).filter(Boolean);
-    const legacyNames = patchPlayers.filter((player) => !player.membershipId).map((player) => player.name);
+    const legacyPlayers = patchPlayers.filter((player) => !player.membershipId);
+    const legacyIds = legacyPlayers.map((player) => player.jugadorRivalId || player.id).filter(isUuid);
+    const legacyNames = legacyPlayers.filter((player) => !isUuid(player.jugadorRivalId || player.id)).map((player) => player.name);
+    const atomicPlacements = patches.map((patch) => {
+      const targetPlayer = teamPlayers.find((player) =>
+        patch.playerId
+          ? getRivalPlayerUniqueKey(player) === String(patch.playerId)
+          : normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(patch.playerName)
+      );
+      if (!targetPlayer) return null;
+      const values = {
+        tactical_role: patch.placement.fieldRole || null,
+        tactical_slot: patch.placement.slotIndex !== null && patch.placement.slotIndex !== undefined && Number.isInteger(Number(patch.placement.slotIndex)) ? Number(patch.placement.slotIndex) : null,
+        tactical_reserve_slot: patch.placement.fieldRole === 'Reserva' && [0, 1].includes(Number(patch.placement.reserveIndex)) ? Number(patch.placement.reserveIndex) : null,
+      };
+      return {
+        membership_id: isUuid(targetPlayer.membershipId) ? targetPlayer.membershipId : null,
+        rival_player_id: !targetPlayer.membershipId && isUuid(targetPlayer.jugadorRivalId || targetPlayer.id) ? targetPlayer.jugadorRivalId || targetPlayer.id : null,
+        ...values,
+      };
+    }).filter((placement) => placement?.membership_id || placement?.rival_player_id);
+    if (atomicPlacements.length === patches.length) {
+      const { error: atomicError } = await supabase.rpc('apply_rival_tactical_placements', {
+        p_team_id: teamId,
+        p_placements: atomicPlacements,
+      });
+      if (!atomicError) return;
+      const missingFunction = atomicError.code === 'PGRST202'
+        || /apply_rival_tactical_placements|schema cache|function/i.test(atomicError.message || '') && /not find|does not exist|could not/i.test(atomicError.message || '');
+      if (!missingFunction) throw atomicError;
+    }
     if (membershipIds.length) {
       const { error } = await supabase.from('player_team_memberships').update({ tactical_role: null, tactical_slot: null, tactical_reserve_slot: null }).in('id', membershipIds);
       if (error) throw error;
@@ -15720,16 +15753,25 @@ function App() {
       const { error } = await supabase.from("jugadores_rivales").update({ tactical_role: null, tactical_slot: null, tactical_reserve_slot: null }).eq("equipo_rival_id", teamId).in("name", legacyNames);
       if (error) throw error;
     }
-    for (const { playerName, placement } of patches) {
-      const targetPlayer = patchPlayers.find((player) => normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(playerName));
+    if (legacyIds.length) {
+      const { error } = await supabase.from("jugadores_rivales").update({ tactical_role: null, tactical_slot: null, tactical_reserve_slot: null }).in("id", legacyIds);
+      if (error) throw error;
+    }
+    for (const { playerId, playerName, placement } of patches) {
+      const targetPlayer = playerId
+        ? patchPlayers.find((player) => getRivalPlayerUniqueKey(player) === String(playerId))
+        : patchPlayers.find((player) => normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(playerName));
       const values = {
         tactical_role: placement.fieldRole || null,
         tactical_slot: placement.slotIndex !== null && placement.slotIndex !== undefined && placement.slotIndex !== '' && Number.isInteger(Number(placement.slotIndex)) ? Number(placement.slotIndex) : null,
         tactical_reserve_slot: placement.fieldRole === 'Reserva' && [0, 1].includes(Number(placement.reserveIndex)) ? Number(placement.reserveIndex) : null,
       };
+      const legacyPlayerId = targetPlayer?.jugadorRivalId || targetPlayer?.id;
       const request = targetPlayer?.membershipId
         ? supabase.from('player_team_memberships').update(values).eq('id', targetPlayer.membershipId)
-        : supabase.from("jugadores_rivales").update(values).eq("equipo_rival_id", teamId).eq("name", playerName);
+        : isUuid(legacyPlayerId)
+          ? supabase.from("jugadores_rivales").update(values).eq("id", legacyPlayerId)
+          : supabase.from("jugadores_rivales").update(values).eq("equipo_rival_id", teamId).eq("name", playerName);
       const { error: placementError } = await request;
       if (placementError) throw placementError;
     }
@@ -15740,7 +15782,6 @@ function App() {
     const flags = getRivalPlayerFlags(teamId, player.name);
     const yellowCardsLabel = Number(player.yellowCardsCount) > 0 ? `${player.yellowCardsCount} amarillas` : 'Amonestaciones';
     return [
-      player.isKey ? ['DEST', 'Jugador destacado', 'bg-amber-200 text-slate-950'] : null,
       flags.captain || player.captain ? ['CAP', 'Capitán', 'bg-blue-300 text-slate-950'] : null,
       flags.observed || player.observed ? ['OBS', 'Observado', 'bg-sky-200 text-slate-950'] : null,
       player.injuredAlert || player.injured ? ['LES', 'Lesionado', 'bg-red-300 text-slate-950'] : null,
@@ -15928,7 +15969,6 @@ function App() {
         }).eq('id', draft.legacyPlayerId);
         if (legacyLinkError) throw legacyLinkError;
       }
-      if (draft.isKey && draft.teamId) await supabase.from('player_team_memberships').update({ is_key: false }).eq('team_id', draft.teamId).eq('is_current', true).neq('player_id', globalId);
       await loadTeams();
       const genericSourceSaved = safeArray(draft.sources).some((source) => !['transfermarkt', 'besoccer'].includes(normalizePlayerIdentityName(source.sourceName)));
       setGlobalPlayerStatus(genericSourceSaved ? 'Fuente guardada. Completa manualmente los datos que quieras conservar.' : 'Jugador global guardado correctamente.');
@@ -16985,7 +17025,7 @@ function App() {
         && normalizePlayerIdentityName(player.name) !== normalizePlayerIdentityName(excludedPlayerName);
     });
 
-  const placePlayer = async (playerOrId, targetSlotId) => {
+  const placePlayerLegacy = async (playerOrId, targetSlotId) => {
     if (!selectedTeam || !targetSlotId) return;
     const player = typeof playerOrId === 'string' ? findRivalPlayerByName(playerOrId) : playerOrId;
     if (!player?.name) return;
@@ -17079,7 +17119,7 @@ function App() {
     setSelectedTeamPlacementPlayerName('');
   };
 
-  const removeFromLineup = async (playerName) => {
+  const removeFromLineupLegacy = async (playerName) => {
     if (!selectedTeam) return;
     const patches = [{ playerName, placement: { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null } }];
     try {
@@ -17089,6 +17129,138 @@ function App() {
     } catch (placementError) {
       setSaveStatus(placementError.message || 'No se pudo quitar al jugador del campo.');
       return;
+    }
+  };
+
+  const buildCurrentRivalTacticalPlacements = (team = selectedTeam) => {
+    if (!team) return {};
+    const players = dedupeRivalPlayers(team.squad || []).map((entry) => {
+      const player = normalizeSquadEntry(entry);
+      const flags = getRivalPlayerFlags(team.id, player.name);
+      const hasStableIdentity = Boolean(player.membershipId || player.globalPlayerId || player.jugadorRivalId || isUuid(player.id));
+      return {
+        ...player,
+        fieldRole: hasStableIdentity ? player.fieldRole : flags.hiddenFromField ? null : flags.fieldRole ?? player.fieldRole,
+        slotIndex: hasStableIdentity ? player.slotIndex : flags.hiddenFromField ? null : flags.slotIndex ?? player.slotIndex,
+        reserveIndex: hasStableIdentity ? player.reserveIndex : flags.hiddenFromField ? null : flags.reserveIndex ?? player.reserveIndex,
+      };
+    });
+    return buildTacticalPlacements({ players, lineup: team.lineup || [] });
+  };
+
+  const placementToFlagPatch = (placement) => {
+    if (placement?.status === 'starter') return { hiddenFromField: false, fieldRole: 'Titular', slotIndex: placement.slotIndex, reserveIndex: null };
+    if (placement?.status === 'reserve') return { hiddenFromField: false, fieldRole: 'Reserva', slotIndex: placement.slotIndex, reserveIndex: placement.reserveOrder };
+    return { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null };
+  };
+
+  const persistCanonicalRivalPlacements = async ({ team, before, after, changedPlayerIds, rememberUndo = true }) => {
+    const teamPlayers = dedupeRivalPlayers(team.squad || []).map(normalizeSquadEntry);
+    const playerById = new Map(teamPlayers.map((player) => [getTacticalPlayerKey(player), player]));
+    const changedIds = Array.from(new Set(changedPlayerIds || [])).map(String).filter((id) => playerById.has(id));
+    if (!changedIds.length) return;
+    const patches = changedIds.map((id) => ({
+      playerId: id,
+      playerName: playerById.get(id).name,
+      placement: placementToFlagPatch(after[id]),
+    }));
+    const coordinates = getFormationCoordinates(team.system || '4-4-2');
+    const nextLineup = Object.entries(after).flatMap(([id, placement]) => {
+      const player = playerById.get(id);
+      if (!player || placement.status !== 'starter') return [];
+      return [{ ...player, role: 'Titular', slot: placement.slotIndex, ...(coordinates[placement.slotIndex] || {}) }];
+    }).sort((left, right) => left.slot - right.slot);
+
+    applyRivalPlacementPatches(team.id, patches);
+    setTeams((current) => current.map((item) => item.id === team.id ? {
+      ...item,
+      lineup: nextLineup,
+      squad: item.squad.map((entry) => {
+        const placement = after[getTacticalPlayerKey(normalizeSquadEntry(entry))];
+        if (!placement) return entry;
+        const flags = placementToFlagPatch(placement);
+        return { ...entry, fieldRole: flags.fieldRole, slotIndex: flags.slotIndex, reserveIndex: flags.reserveIndex };
+      }),
+    } : item));
+
+    try {
+      await persistRivalPlacementPatches(team.id, patches);
+      await persistTeamLineup(team.id, nextLineup);
+      if (rememberUndo) setRivalTacticalUndo({ teamId: team.id, placements: before });
+      await loadTeams();
+    } catch (error) {
+      await loadTeams();
+      throw error;
+    }
+  };
+
+  const placePlayer = async (playerOrId, targetSlotId) => {
+    if (!selectedTeam || !targetSlotId || rivalPlacementOperationRef.current) return;
+    const player = typeof playerOrId === 'string' ? findRivalPlayerByName(playerOrId) : playerOrId;
+    if (!player?.name) return;
+    const normalizedPlayer = normalizeSquadEntry(player);
+    const target = typeof targetSlotId === 'string' ? { type: targetSlotId } : targetSlotId;
+    const slotIndex = Number(target.slotIndex);
+    const destination = target.type === 'Titular' && Number.isInteger(slotIndex)
+      ? { status: 'starter', slotIndex }
+      : target.type === 'Reserva' && Number.isInteger(slotIndex) && [0, 1].includes(Number(target.reserveIndex ?? 0))
+        ? { status: 'reserve', slotIndex, reserveOrder: Number(target.reserveIndex ?? 0) }
+        : target.type === 'inactive'
+          ? { status: 'inactive' }
+          : { status: 'unplaced' };
+    const before = buildCurrentRivalTacticalPlacements(selectedTeam);
+    const result = applyPlayerMove({ placements: before, playerId: getTacticalPlayerKey(normalizedPlayer), destination });
+    setActiveRivalDropSlot('');
+    if (!result.changed) {
+      setDraggedPlayer(null);
+      return;
+    }
+
+    rivalPlacementOperationRef.current = true;
+    try {
+      await persistCanonicalRivalPlacements({
+        team: selectedTeam,
+        before,
+        after: result.placements,
+        changedPlayerIds: result.movedPlayerIds,
+      });
+      setSaveStatus(result.occupantPlayerId
+        ? 'Intercambio guardado: solo se han movido los dos jugadores implicados.'
+        : 'Movimiento guardado.');
+    } catch (placementError) {
+      console.error('[RIVAL_TACTICAL_PLACEMENT_ERROR]', placementError);
+      setSaveStatus(placementError.message || 'No se pudo completar el movimiento táctico.');
+    } finally {
+      rivalPlacementOperationRef.current = false;
+      setDraggedPlayer(null);
+      setSelectedTeamPlacementPlayerName('');
+    }
+  };
+
+  const removeFromLineup = async (playerName) => {
+    const player = findRivalPlayerByName(playerName);
+    if (player) await placePlayer(player, { type: 'list' });
+  };
+
+  const undoLastRivalTacticalMove = async () => {
+    if (!selectedTeam || rivalTacticalUndo?.teamId !== selectedTeam.id || rivalPlacementOperationRef.current) return;
+    const current = buildCurrentRivalTacticalPlacements(selectedTeam);
+    const previous = rivalTacticalUndo.placements;
+    const changedPlayerIds = Array.from(new Set([...Object.keys(current), ...Object.keys(previous)]))
+      .filter((id) => JSON.stringify(current[id]) !== JSON.stringify(previous[id]));
+    if (!changedPlayerIds.length) {
+      setRivalTacticalUndo(null);
+      return;
+    }
+    rivalPlacementOperationRef.current = true;
+    try {
+      await persistCanonicalRivalPlacements({ team: selectedTeam, before: current, after: previous, changedPlayerIds, rememberUndo: false });
+      setRivalTacticalUndo(null);
+      setSaveStatus('Último movimiento deshecho.');
+    } catch (error) {
+      setSaveStatus(error.message || 'No se pudo deshacer el movimiento.');
+    } finally {
+      rivalPlacementOperationRef.current = false;
     }
   };
 
@@ -17280,13 +17452,20 @@ function App() {
     }
   };
 
-  const toggleSelectedTeamKeyPlayer = async (playerName) => {
+  const toggleSelectedTeamKeyPlayer = async (playerOrName) => {
     if (!selectedTeam) return;
-    const currentPlayer = selectedTeam.squad.map(normalizeSquadEntry).find((player) => player.name === playerName);
+    const requestedKey = typeof playerOrName === 'string' ? '' : getRivalPlayerUniqueKey(playerOrName);
+    const playerName = typeof playerOrName === 'string' ? playerOrName : playerOrName?.name;
+    const currentPlayer = selectedTeam.squad.map(normalizeSquadEntry).find((player) =>
+      requestedKey ? getRivalPlayerUniqueKey(player) === requestedKey : player.name === playerName
+    );
+    if (!currentPlayer) return;
     const nextIsKey = !currentPlayer?.isKey;
     const keyRequest = currentPlayer?.membershipId
       ? supabase.from('player_team_memberships').update({ is_key: nextIsKey }).eq('id', currentPlayer.membershipId)
-      : supabase.from("jugadores_rivales").update({ is_key: nextIsKey }).eq("equipo_rival_id", selectedTeam.id).eq("name", playerName);
+      : isUuid(currentPlayer.jugadorRivalId || currentPlayer.id)
+        ? supabase.from("jugadores_rivales").update({ is_key: nextIsKey }).eq("id", currentPlayer.jugadorRivalId || currentPlayer.id)
+        : supabase.from("jugadores_rivales").update({ is_key: nextIsKey }).eq("equipo_rival_id", selectedTeam.id).eq("name", playerName);
     const { error: keyError } = await keyRequest;
     if (keyError) {
       console.error('Error marcando jugador clave rival en Supabase:', keyError);
@@ -20197,7 +20376,8 @@ function App() {
                 const allRivalPlayers = dedupeRivalPlayers(selectedTeam.squad || []);
                 const rivalPlayers = allRivalPlayers.filter((player) => player.activeInSquad !== false);
                 const selectedTacticalPlayer = rivalPlayers.find((player) =>
-                  normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(selectedTacticalRivalPlayerName)
+                  getRivalPlayerUniqueKey(player) === selectedTacticalRivalPlayerName
+                  || normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(selectedTacticalRivalPlayerName)
                 ) || null;
                 const selectedTacticalPlayerSecondaryPositions = selectedTacticalPlayer
                   ? Array.from(new Set([
@@ -20208,15 +20388,16 @@ function App() {
                     value && normalizePlayerIdentityName(value) !== normalizePlayerIdentityName(selectedTacticalPlayer.position)
                   )))
                   : [];
+                const canonicalTacticalPlacements = buildCurrentRivalTacticalPlacements(selectedTeam);
                 const activeRivalPlayerNames = new Set(rivalPlayers.map((player) => normalizePlayerIdentityName(player.name)));
                 const manualPlacedStarters = sanitizeTacticalLineup(rivalPlayers
-                  .map((player) => ({ player, flags: getRivalPlayerFlags(selectedTeam.id, player.name) }))
-                  .filter(({ flags }) => flags.fieldRole === 'Titular' && flags.slotIndex !== null && flags.slotIndex !== undefined && Number.isInteger(Number(flags.slotIndex)))
-                  .map(({ player, flags }) => ({
+                  .map((player) => ({ player, placement: canonicalTacticalPlacements[getTacticalPlayerKey(player)] }))
+                  .filter(({ placement }) => placement?.status === 'starter' && Number.isInteger(Number(placement.slotIndex)))
+                  .map(({ player, placement }) => ({
                     ...player,
                     role: 'Titular',
-                    slot: Number(flags.slotIndex),
-                    ...getFormationCoordinates(selectedTeam.system || '4-4-2')[Number(flags.slotIndex)],
+                    slot: Number(placement.slotIndex),
+                    ...getFormationCoordinates(selectedTeam.system || '4-4-2')[Number(placement.slotIndex)],
                   })));
                 const activeStoredLineup = selectedTeamFieldLineup.filter((player) => activeRivalPlayerNames.has(normalizePlayerIdentityName(player.name)));
                 const baseFieldLineup = activeStoredLineup;
@@ -20246,14 +20427,10 @@ function App() {
                 const reservePlayersBySlot = getFormationSlots(selectedTeam.system || '4-4-2').map((slot, slotIndex) => {
                   const placed = [0, 1].map((reserveIndex) =>
                     rivalPlayers.find((player) => {
-                      const flags = getRivalPlayerFlags(selectedTeam.id, player.name);
-                      return flags.fieldRole === 'Reserva'
-                        && flags.slotIndex !== null
-                        && flags.slotIndex !== undefined
-                        && flags.reserveIndex !== null
-                        && flags.reserveIndex !== undefined
-                        && Number(flags.slotIndex) === slotIndex
-                        && Number(flags.reserveIndex) === reserveIndex
+                      const placement = canonicalTacticalPlacements[getTacticalPlayerKey(player)];
+                      return placement?.status === 'reserve'
+                        && Number(placement.slotIndex) === slotIndex
+                        && Number(placement.reserveOrder) === reserveIndex
                         && !assignedFieldKeys.has(getRivalPlayerUniqueKey(player))
                         && !assignedFieldNames.has(normalizePlayerIdentityName(player.name));
                     }) || null
@@ -20270,7 +20447,7 @@ function App() {
                   return row;
                 });
                 const reserveNames = new Set(reservePlayersBySlot.flat().filter(Boolean).map((player) => normalizePlayerIdentityName(player.name)));
-                const isPlayerPlaced = (player) => starterNames.has(normalizePlayerIdentityName(player.name)) || reserveNames.has(normalizePlayerIdentityName(player.name));
+                const isPlayerPlaced = (player) => starterKeys.has(getRivalPlayerUniqueKey(player)) || assignedFieldKeys.has(getRivalPlayerUniqueKey(player));
                 const shortRoleLabel = (role) => {
                   const normalized = normalizePlayerIdentityName(role);
                   if (normalized.includes('portero')) return 'POR';
@@ -20329,9 +20506,9 @@ function App() {
                 };
                 const getRosterFieldState = (player) => {
                   if (player.activeInSquad === false || player.injured || player.suspended) return 'BAJA';
-                  const flags = getRivalPlayerFlags(selectedTeam.id, player.name);
-                  if (flags.fieldRole === 'Titular' || starterNames.has(normalizePlayerIdentityName(player.name))) return 'EN CAMPO';
-                  if (flags.fieldRole === 'Reserva' || reserveNames.has(normalizePlayerIdentityName(player.name))) return 'RESERVA';
+                  const placement = canonicalTacticalPlacements[getTacticalPlayerKey(player)];
+                  if (placement?.status === 'starter') return 'EN CAMPO';
+                  if (placement?.status === 'reserve') return 'RESERVA';
                   return 'SIN COLOCAR';
                 };
                 const getRosterFieldStateClass = (state) => {
@@ -20350,17 +20527,17 @@ function App() {
                   return 6;
                 };
                 const getRosterRoleLabel = (player) => {
-                  const flags = getRivalPlayerFlags(selectedTeam.id, player.name);
-                  if (isPlayerPlaced(player) || flags.fieldRole === 'Titular') return 'Titular';
-                  if (flags.fieldRole === 'Reserva') return 'Reserva';
-                  if (flags.hiddenFromField) return 'Sin colocar';
+                  const placement = canonicalTacticalPlacements[getTacticalPlayerKey(player)];
+                  if (placement?.status === 'starter') return 'Titular';
+                  if (placement?.status === 'reserve') return 'Reserva';
+                  if (placement?.status === 'unplaced') return 'Sin colocar';
                   return player.role || 'Reserva';
                 };
                 const rosterGroupValue = (player) => {
                   if (player.injured || player.suspended) return 4;
                   const role = getRosterRoleLabel(player);
                   if (role === 'Titular') return 1;
-                  if (role === 'Reserva' && getRivalPlayerFlags(selectedTeam.id, player.name).fieldRole === 'Reserva') return 2;
+                  if (role === 'Reserva' && canonicalTacticalPlacements[getTacticalPlayerKey(player)]?.status === 'reserve') return 2;
                   return 3;
                 };
                 const rosterFilterOptions = [
@@ -20398,12 +20575,12 @@ function App() {
                 const playerNumberLabel = (player) => player?.number ? String(player.number) : '';
                 const compactPlayerLabel = (player) => `${player?.number ? `${player.number} ` : ''}${displayPlayerName(player)}`;
                 const getCurrentFieldRoleForPlayer = (player) => {
-                  const playerName = normalizePlayerIdentityName(player?.name);
-                  if (!playerName) return '';
-                  const starter = visualFieldLineup.find((lineupPlayer) => normalizePlayerIdentityName(lineupPlayer.name) === playerName);
+                  const playerId = getTacticalPlayerKey(player);
+                  if (!playerId) return '';
+                  const starter = visualFieldLineup.find((lineupPlayer) => getTacticalPlayerKey(lineupPlayer) === playerId);
                   if (starter) return getFormationRoles(selectedTeam.system || '4-4-2')[Number(starter.slot)] || '';
                   const reserveSlotIndex = reservePlayersBySlot.findIndex((row) =>
-                    row.some((reservePlayer) => reservePlayer && normalizePlayerIdentityName(reservePlayer.name) === playerName)
+                    row.some((reservePlayer) => reservePlayer && getTacticalPlayerKey(reservePlayer) === playerId)
                   );
                   return reserveSlotIndex >= 0 ? getFormationRoles(selectedTeam.system || '4-4-2')[reserveSlotIndex] || '' : '';
                 };
@@ -20413,7 +20590,7 @@ function App() {
                   return `Posición natural: ${naturalPosition} · Ubicación actual: ${currentRole}`;
                 };
                 const presentationBenchPlayers = rivalPlayers
-                  .filter((player) => !starterNames.has(normalizePlayerIdentityName(player.name)))
+                  .filter((player) => !starterKeys.has(getRivalPlayerUniqueKey(player)))
                   .sort((a, b) =>
                     rosterGroupValue(a) - rosterGroupValue(b)
                     || positionOrderValue(a.position) - positionOrderValue(b.position)
@@ -20427,7 +20604,7 @@ function App() {
                   else groups.push({ label, players: [player] });
                   return groups;
                 }, []).sort((a, b) => positionLineOrder(a.label) - positionLineOrder(b.label));
-                const keyPlayer = rivalPlayers.find((player) => player.isKey) || null;
+                const keyPlayers = rivalPlayers.filter((player) => player.isKey);
                 const captainPlayer = rivalPlayers.find((player) => getRivalPlayerFlags(selectedTeam.id, player.name).captain || player.captain) || null;
                 const unavailablePlayers = rivalPlayers.filter((player) => player.injured || player.suspended);
                 const yellowRiskPlayers = rivalPlayers.filter((player) => player.yellowRisk);
@@ -20475,6 +20652,14 @@ function App() {
                         </button>
                         {teamFieldEditMode ? (
                           <>
+                            <button
+                              type="button"
+                              disabled={rivalTacticalUndo?.teamId !== selectedTeam.id}
+                              onClick={undoLastRivalTacticalMove}
+                              className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
+                            >
+                              Deshacer movimiento
+                            </button>
                             <button type="button" onClick={() => openTeamForm(selectedTeam)} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10">Editar</button>
                             <button type="button" onClick={() => setActiveTab('Partidos')} className="rounded-2xl border border-caudal-electric/20 bg-caudal-electric/10 px-4 py-2 text-sm font-bold text-caudal-electric transition hover:bg-caudal-electric/15">Crear PRE</button>
                             <button type="button" onClick={() => { if (window.confirm('¿Seguro que quieres eliminar este rival?')) handleTeamDelete(selectedTeam); }} className="rounded-2xl border border-red-300/15 bg-red-500/10 px-4 py-2 text-sm font-bold text-red-100 transition hover:bg-red-500/15">Eliminar rival</button>
@@ -20501,7 +20686,7 @@ function App() {
                     <div className={`rounded-2xl border border-white/10 bg-white/[0.035] ${isPresentationMode ? 'px-3 py-2' : 'p-4'}`}>
                       <div className={`flex flex-wrap items-center font-bold text-slate-200 ${isPresentationMode ? 'gap-x-4 gap-y-1 text-xs' : 'gap-2 text-sm'}`}>
                         <span className="font-black uppercase tracking-[0.16em] text-caudal-electric">Resumen rival</span>
-                        <span>DEST <strong className="text-white">{keyPlayer ? displayPlayerName(keyPlayer) : '-'}</strong></span>
+                        <span>DEST <strong className="text-white">{keyPlayers.length ? keyPlayers.map(displayPlayerName).join(', ') : '-'}</strong></span>
                         <span>© <strong className="text-white">{captainPlayer ? displayPlayerName(captainPlayer) : '-'}</strong></span>
                         <span>?? <strong className="text-white">{rivalPlayers.filter((player) => player.injured).length ? rivalPlayers.filter((player) => player.injured).map(displayPlayerName).join(', ') : '-'}</strong></span>
                         <span>?? <strong className="text-white">{rivalPlayers.filter((player) => player.suspended).length ? rivalPlayers.filter((player) => player.suspended).map(displayPlayerName).join(', ') : '-'}</strong></span>
@@ -20589,6 +20774,17 @@ function App() {
                                 </div>
                                 <button type="button" onClick={() => setSelectedTacticalRivalPlayerName('')} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.05] text-sm font-black text-slate-300 transition-all duration-200 hover:bg-white/10 hover:text-white" aria-label="Cerrar ficha táctica">×</button>
                               </div>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  toggleSelectedTeamKeyPlayer(selectedTacticalPlayer);
+                                }}
+                                className={`mt-3 flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-black transition-all duration-200 ${selectedTacticalPlayer.isKey ? 'border-amber-200/50 bg-amber-300/15 text-amber-100' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'}`}
+                              >
+                                <span aria-hidden="true">{selectedTacticalPlayer.isKey ? '★' : '☆'}</span>
+                                {selectedTacticalPlayer.isKey ? 'Quitar destacado' : 'Marcar como destacado'}
+                              </button>
                               <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-[10px]">
                                 <dt className="font-black uppercase tracking-[0.08em] text-slate-500">Natural</dt>
                                 <dd className="font-bold text-slate-100">{selectedTacticalPlayer.position || selectedTacticalPlayer.specificPosition || 'Sin registrar'}</dd>
@@ -20601,6 +20797,28 @@ function App() {
                                 <dt className="font-black uppercase tracking-[0.08em] text-slate-500">Altura</dt>
                                 <dd className="font-bold text-slate-100">{selectedTacticalPlayer.height || 'Sin registrar'}</dd>
                               </dl>
+                              <label className="mt-3 block border-t border-white/[0.07] pt-3 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
+                                Mover a...
+                                <select
+                                  defaultValue=""
+                                  onChange={(event) => {
+                                    const [type, slotIndex, reserveIndex] = event.target.value.split(':');
+                                    if (type === 'list') placePlayer(selectedTacticalPlayer, { type: 'list' });
+                                    if (type === 'Titular') placePlayer(selectedTacticalPlayer, { type, slotIndex: Number(slotIndex) });
+                                    if (type === 'Reserva') placePlayer(selectedTacticalPlayer, { type, slotIndex: Number(slotIndex), reserveIndex: Number(reserveIndex) });
+                                    event.target.value = '';
+                                  }}
+                                  className="mt-1.5 w-full rounded-xl border border-white/10 bg-slate-950 px-2.5 py-2 text-xs font-bold normal-case tracking-normal text-white"
+                                >
+                                  <option value="" disabled>Elegir destino</option>
+                                  <option value="list">Sin colocar</option>
+                                  {formationRoleOptions.flatMap((option) => [
+                                    <option key={`sheet-starter-${option.index}`} value={`Titular:${option.index}`}>Titular · {option.label}</option>,
+                                    <option key={`sheet-reserve-${option.index}-0`} value={`Reserva:${option.index}:0`}>Reserva 1 · {option.label}</option>,
+                                    <option key={`sheet-reserve-${option.index}-1`} value={`Reserva:${option.index}:1`}>Reserva 2 · {option.label}</option>,
+                                  ])}
+                                </select>
+                              </label>
                               {[
                                 ['Fortalezas', selectedTacticalPlayer.traits?.filter((trait) => trait.category === 'strength') || [], 'text-emerald-200'],
                                 ['Vulnerabilidades', selectedTacticalPlayer.traits?.filter((trait) => trait.category === 'vulnerability') || [], 'text-red-200'],
@@ -20615,6 +20833,7 @@ function App() {
                           ) : null}
                           {getFormationCoordinates(selectedTeam.system || '4-4-2').map((slot, slotIndex) => {
                             const slotPlayer = getLineupSlotMap(visualFieldLineup).get(slotIndex);
+                            const isDraggedSource = Boolean(slotPlayer && draggedPlayer && getRivalPlayerUniqueKey(slotPlayer) === getRivalPlayerUniqueKey(draggedPlayer));
                             const slotRole = getFormationRoles(selectedTeam.system || '4-4-2')[slotIndex] || `Posición ${slotIndex + 1}`;
                             const slotReservePlayers = reservePlayersBySlot[slotIndex] || [];
                             const slotPositionWarning = slotPlayer ? getPositionLocationWarning(slotPlayer, slotRole) : '';
@@ -20636,19 +20855,20 @@ function App() {
                                 onDragStart={() => {
                                   if (!teamFieldEditMode || !slotPlayer) return;
                                   setDraggedPlayer(slotPlayer);
-                                  setSelectedTacticalRivalPlayerName(slotPlayer.name);
+                                  setSelectedTacticalRivalPlayerName(getRivalPlayerUniqueKey(slotPlayer));
                                 }}
                                 onDragEnd={() => {
                                   setDraggedPlayer(null);
                                   setActiveRivalDropSlot('');
                                 }}
                                 onClick={() => {
-                                  if (!teamFieldEditMode && slotPlayer) return;
+                                  if (slotPlayer) {
+                                    if (teamFieldEditMode) setSelectedTacticalRivalPlayerName(getRivalPlayerUniqueKey(slotPlayer));
+                                    return;
+                                  }
                                   if (selectedTeamPlacementPlayerName) {
                                     setTeamFieldEditMode(true);
                                     assignSelectedTeamPlayerToSlot(slotIndex);
-                                  } else if (slotPlayer) {
-                                    setSelectedTacticalRivalPlayerName(slotPlayer.name);
                                   }
                                 }}
                                 onKeyDown={(event) => {
@@ -20665,13 +20885,15 @@ function App() {
                                 }}
                                 className={`group absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-2xl border px-2.5 py-1.5 text-center transition-all duration-200 ease-out ${
                                   slotPlayer ? `${isPresentationMode ? 'min-h-[5.2rem] w-[5.6rem] px-1 py-1' : 'min-h-20 w-24'} ${slotPlayer.isKey ? 'border-amber-200/80 bg-amber-200/[0.11] shadow-[0_0_0_1px_rgba(251,191,36,0.32),0_0_24px_rgba(250,204,21,0.30),0_10px_22px_rgba(0,0,0,0.24)]' : 'border-white/10 bg-slate-950/26 shadow-[0_8px_20px_rgba(0,0,0,0.18)]'} text-white` : `${teamFieldEditMode ? 'min-h-9 min-w-20 border-dashed border-white/12 bg-white/[0.012] text-white/30' : 'pointer-events-none hidden'}`
-                                } ${slotPositionWarning && !draggedPlayer ? 'ring-2 ring-orange-400/80 ring-offset-2 ring-offset-slate-950' : ''} ${teamFieldEditMode && draggedPlayer ? draggedFitClass : ''} ${activeRivalDropSlot === `starter-${slotIndex}` ? 'scale-105' : ''}`}
+                                } ${slotPositionWarning && !draggedPlayer ? 'ring-2 ring-orange-400/80 ring-offset-2 ring-offset-slate-950' : ''} ${teamFieldEditMode && draggedPlayer ? draggedFitClass : ''} ${isDraggedSource ? 'scale-95 opacity-55' : ''} ${activeRivalDropSlot === `starter-${slotIndex}` ? 'scale-105' : ''}`}
                                 style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
                                 title={slotPlayer ? `${slotRole}: ${slotPlayer.name}` : slotRole}
                               >
                                 {teamFieldEditMode && draggedPlayer ? (
                                   <span className={`absolute -top-6 rounded-md border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.08em] shadow ${draggedFitState === 'ideal' ? 'border-emerald-300/40 bg-emerald-950/95 text-emerald-200' : draggedFitState === 'acceptable' ? 'border-amber-200/40 bg-amber-950/95 text-amber-100' : 'border-red-300/40 bg-red-950/95 text-red-100'}`}>
-                                    {draggedFitState === 'ideal' ? 'Ideal' : draggedFitState === 'acceptable' ? 'Aceptable' : 'Incompatible'}
+                                    {activeRivalDropSlot === `starter-${slotIndex}`
+                                      ? slotPlayer && !isDraggedSource ? 'Intercambio' : 'Destino'
+                                      : draggedFitState === 'ideal' ? 'Ideal' : draggedFitState === 'acceptable' ? 'Aceptable' : 'Incompatible'}
                                   </span>
                                 ) : null}
                                 {slotPlayer ? (
@@ -20686,6 +20908,18 @@ function App() {
                                       title="Quitar del campo"
                                     >
                                       ×
+                                    </button> : null}
+                                    {teamFieldEditMode ? <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        toggleSelectedTeamKeyPlayer(slotPlayer);
+                                      }}
+                                      className={`absolute -left-2 -top-2 z-20 flex h-6 w-6 items-center justify-center rounded-full border text-sm leading-none shadow transition-all duration-200 ${slotPlayer.isKey ? 'border-amber-200/70 bg-amber-300 text-slate-950' : 'border-white/15 bg-slate-950/90 text-slate-400 hover:text-amber-200'}`}
+                                      title={slotPlayer.isKey ? 'Quitar destacado' : 'Marcar como destacado'}
+                                      aria-label={slotPlayer.isKey ? 'Quitar destacado' : 'Marcar como destacado'}
+                                    >
+                                      {slotPlayer.isKey ? '★' : '☆'}
                                     </button> : null}
                                     <span className={`absolute flex flex-col gap-0.5 ${isPresentationMode ? '-right-1 top-1' : '-right-2 top-2'}`}>
                                       {getRivalPlayerStatusIcons(selectedTeam.id, slotPlayer).filter(([, title]) => title !== 'Capitán').map(([icon, title, className]) => (
@@ -20735,7 +20969,7 @@ function App() {
                                           onDragStart={() => {
                                             if (!reservePlayer) return;
                                             setDraggedPlayer(reservePlayer);
-                                            setSelectedTacticalRivalPlayerName(reservePlayer.name);
+                                            setSelectedTacticalRivalPlayerName(getRivalPlayerUniqueKey(reservePlayer));
                                           }}
                                           onDragEnd={() => {
                                             setDraggedPlayer(null);
@@ -20743,7 +20977,7 @@ function App() {
                                           }}
                                           onClick={(event) => {
                                             event.stopPropagation();
-                                            if (reservePlayer) setSelectedTacticalRivalPlayerName(reservePlayer.name);
+                                            if (reservePlayer) setSelectedTacticalRivalPlayerName(getRivalPlayerUniqueKey(reservePlayer));
                                           }}
                                           onDragOver={(event) => event.preventDefault()}
                                           onDragEnter={() => setActiveRivalDropSlot(`reserve-${slotIndex}-${reserveIndex}`)}
@@ -20754,10 +20988,29 @@ function App() {
                                             setActiveRivalDropSlot('');
                                             assignRivalPlayerAsReserveAtSlot(slotIndex, reserveIndex);
                                           }}
-                                          className={`flex min-h-8 items-center gap-2 rounded-xl border px-2 py-1.5 text-left text-[10px] transition-all duration-200 ease-out ${reservePlayer ? 'border-white/12 bg-white/[0.06] text-slate-100' : 'border-dashed border-white/18 bg-white/[0.018] text-slate-500'} ${draggedPlayer ? draggedFitClass : ''} ${activeRivalDropSlot === `reserve-${slotIndex}-${reserveIndex}` ? 'scale-[1.03]' : ''}`}
+                                          className={`flex min-h-8 items-center gap-2 rounded-xl border px-2 py-1.5 text-left text-[10px] transition-all duration-200 ease-out ${reservePlayer?.isKey ? 'border-amber-200/55 bg-amber-300/[0.10] text-amber-50' : reservePlayer ? 'border-white/12 bg-white/[0.06] text-slate-100' : 'border-dashed border-white/18 bg-white/[0.018] text-slate-500'} ${draggedPlayer ? draggedFitClass : ''} ${activeRivalDropSlot === `reserve-${slotIndex}-${reserveIndex}` ? 'scale-[1.03]' : ''}`}
                                         >
                                           {reservePlayer ? (
                                             <>
+                                              <span
+                                                role="button"
+                                                tabIndex={0}
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  toggleSelectedTeamKeyPlayer(reservePlayer);
+                                                }}
+                                                onKeyDown={(event) => {
+                                                  if (event.key === 'Enter' || event.key === ' ') {
+                                                    event.preventDefault();
+                                                    event.stopPropagation();
+                                                    toggleSelectedTeamKeyPlayer(reservePlayer);
+                                                  }
+                                                }}
+                                                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-xs ${reservePlayer.isKey ? 'border-amber-200/60 bg-amber-300 text-slate-950' : 'border-white/10 bg-slate-950/50 text-slate-500 hover:text-amber-200'}`}
+                                                title={reservePlayer.isKey ? 'Quitar destacado' : 'Marcar como destacado'}
+                                              >
+                                                {reservePlayer.isKey ? '★' : '☆'}
+                                              </span>
                                               <span className="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/[0.08] text-[8px] font-black">
                                                 <span className="absolute inset-0 flex items-center justify-center">{reservePlayer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                                                 {reservePlayer.image ? <img src={reservePlayer.image} alt={reservePlayer.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="relative h-full w-full object-cover" /> : null}
@@ -20869,17 +21122,17 @@ function App() {
                                     onDragStart={() => {
                                       setTeamFieldEditMode(true);
                                       setDraggedPlayer(player);
-                                      setSelectedTacticalRivalPlayerName(player.name);
+                                      setSelectedTacticalRivalPlayerName(getRivalPlayerUniqueKey(player));
                                     }}
                                     onDragEnd={() => {
                                       setDraggedPlayer(null);
                                       setActiveRivalDropSlot('');
                                     }}
-                                    className={`group flex items-center gap-2 rounded-xl border p-2 transition-all duration-200 ease-out ${fieldState === 'EN CAMPO' ? 'opacity-70 hover:opacity-100' : ''} ${fieldWarning ? 'border-orange-400/55 bg-orange-400/[0.055]' : selectedTacticalRivalPlayerName === player.name || selectedTeamPlacementPlayerName === player.name ? 'border-caudal-electric/30 bg-caudal-electric/10' : 'border-white/10 bg-white/[0.032] hover:bg-white/[0.06]'}`}
+                                    className={`group flex items-center gap-2 rounded-xl border p-2 transition-all duration-200 ease-out ${fieldState === 'EN CAMPO' ? 'opacity-70 hover:opacity-100' : ''} ${fieldWarning ? 'border-orange-400/55 bg-orange-400/[0.055]' : player.isKey ? 'border-amber-200/50 bg-amber-300/[0.075]' : selectedTacticalRivalPlayerName === getRivalPlayerUniqueKey(player) || selectedTeamPlacementPlayerName === player.name ? 'border-caudal-electric/30 bg-caudal-electric/10' : 'border-white/10 bg-white/[0.032] hover:bg-white/[0.06]'}`}
                                   >
                                     <button
                                       type="button"
-                                      onClick={() => setSelectedTacticalRivalPlayerName(player.name)}
+                                      onClick={() => setSelectedTacticalRivalPlayerName(getRivalPlayerUniqueKey(player))}
                                       className="flex min-w-0 flex-1 items-center gap-2 text-left"
                                     >
                                       <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/[0.07] text-xs font-black text-white">
@@ -20910,6 +21163,18 @@ function App() {
                                           </span>
                                         ) : null}
                                       </span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        toggleSelectedTeamKeyPlayer(player);
+                                      }}
+                                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border text-base transition-all duration-200 ${player.isKey ? 'border-amber-200/50 bg-amber-300/15 text-amber-200' : 'border-white/10 bg-white/[0.04] text-slate-500 hover:text-amber-200'}`}
+                                      title={player.isKey ? 'Quitar destacado' : 'Marcar como destacado'}
+                                      aria-label={player.isKey ? 'Quitar destacado' : 'Marcar como destacado'}
+                                    >
+                                      {player.isKey ? '★' : '☆'}
                                     </button>
                                     <div className="relative shrink-0">
                                       <button
@@ -21037,7 +21302,7 @@ function App() {
                       {[
                         ['ALT', 'Altura', 'Por definir'],
                         ['PRS', 'Presión', 'Sin pauta'],
-                        ['CLA', 'Foco rival', dedupeRivalPlayers(selectedTeam.squad).find((player) => player.isKey)?.name || 'Sin marcar'],
+                        ['CLA', 'Foco rival', dedupeRivalPlayers(selectedTeam.squad).filter((player) => player.isKey).map(displayPlayerName).join(', ') || 'Sin marcar'],
                         ['ABP', 'Balón parado', 'Pendiente'],
                       ].map(([code, label, value]) => (
                         <div key={label} className="group rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2 transition hover:border-caudal-electric/20 hover:bg-white/[0.055]">
@@ -21072,7 +21337,10 @@ function App() {
                                   key={player.jugadorRivalId || player.id || normalizePlayerIdentityName(player.name)}
                                   draggable
                                   onDragStart={() => setDraggedPlayer(player)}
-                                  onClick={() => openTeamForm(selectedTeam)}
+                                  onClick={() => {
+                                    setTeamFieldEditMode(true);
+                                    setSelectedTacticalRivalPlayerName(getRivalPlayerUniqueKey(player));
+                                  }}
                                   className={`group flex w-full items-center gap-3 rounded-2xl border px-3 py-2 text-left text-sm transition hover:bg-white/[0.08] ${
                                     role === 'Titular' ? 'border-caudal-electric/[0.18] bg-caudal-electric/[0.055] text-slate-100' : 'border-white/10 bg-white/[0.035] text-slate-300'
                                   } ${
@@ -21090,6 +21358,17 @@ function App() {
                                       <span className="text-caudal-electric/85">{player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                                     )}
                                   </span>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      toggleSelectedTeamKeyPlayer(player);
+                                    }}
+                                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border text-base transition ${player.isKey ? 'border-amber-200/55 bg-amber-300/15 text-amber-200' : 'border-white/10 bg-white/[0.04] text-slate-500 hover:text-amber-200'}`}
+                                    title={player.isKey ? 'Quitar destacado' : 'Marcar como destacado'}
+                                  >
+                                    {player.isKey ? '★' : '☆'}
+                                  </button>
                                   <span className="min-w-0 flex-1">
                                     <span className="flex items-center gap-1">
                                       <span className="block truncate">{displayPlayerName(player)}</span>
@@ -21330,13 +21609,13 @@ function App() {
                           if (teamFieldEditMode) removeFromLineup(player.name);
                         }}
                         onClick={() => {
-                          if (teamFieldEditMode) toggleSelectedTeamKeyPlayer(player.name);
+                          if (teamFieldEditMode) setSelectedTacticalRivalPlayerName(getRivalPlayerUniqueKey(player));
                         }}
                         className={`group absolute flex w-24 -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center transition duration-300 ${teamFieldEditMode ? 'cursor-grab hover:-translate-y-[52%]' : 'cursor-default'} ${
                           player.isKey ? 'z-20' : 'z-10'
                         }`}
                         style={{ left: `${player.x}%`, top: `${player.y}%` }}
-                        title={teamFieldEditMode ? 'Arrastra para mover. Clic marca destacado. Doble clic quita del campo.' : player.name}
+                        title={teamFieldEditMode ? 'Arrastra para mover. Clic abre la ficha táctica. Doble clic quita del campo.' : player.name}
                       >
                         {teamFieldEditMode ? <span
                           onClick={(event) => {
@@ -21349,6 +21628,25 @@ function App() {
                           -
                         </span> : null}
                         <span className="pointer-events-none absolute top-[54px] h-4 w-14 rounded-full bg-black/30 blur-md" />
+                        {teamFieldEditMode ? <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toggleSelectedTeamKeyPlayer(player);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              toggleSelectedTeamKeyPlayer(player);
+                            }
+                          }}
+                          className={`absolute left-0 top-0 z-30 flex h-5 w-5 items-center justify-center rounded-full border text-xs shadow ${player.isKey ? 'border-amber-200/70 bg-amber-300 text-slate-950' : 'border-white/15 bg-slate-950/80 text-slate-400 hover:text-amber-200'}`}
+                          title={player.isKey ? 'Quitar destacado' : 'Marcar como destacado'}
+                        >
+                          {player.isKey ? '★' : '☆'}
+                        </span> : null}
                         <span
                           className={`relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.16),transparent_42%),linear-gradient(145deg,rgba(127,29,29,0.74),rgba(15,23,42,0.92))] text-sm font-black text-rose-100 transition duration-300 group-hover:scale-[1.03] ${fieldStyle}`}
                         >

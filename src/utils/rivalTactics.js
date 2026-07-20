@@ -72,7 +72,123 @@ export const getPlayerRoleFitScore = (player = {}, role = '') => {
 
 export const isPlayerCompatibleWithRole = (player, role, minimumScore = 40) => getPlayerRoleFitScore(player, role) >= minimumScore;
 
-const playerKey = (player = {}) => String(player.jugadorRivalId || player.id || normalizeText(player.name));
+const playerKey = (player = {}) => String(
+  player.membershipId
+  || player.membership_id
+  || player.globalPlayerId
+  || player.global_player_id
+  || player.jugadorRivalId
+  || player.jugador_rival_id
+  || player.id
+  || normalizeText(player.name)
+);
+
+export const TACTICAL_PLACEMENT_STATUS = Object.freeze({
+  STARTER: 'starter',
+  RESERVE: 'reserve',
+  UNPLACED: 'unplaced',
+  INACTIVE: 'inactive',
+});
+
+export const getStarterSlotId = (slotIndex) => `starter:${Number(slotIndex)}`;
+export const getReserveSlotId = (slotIndex, reserveOrder) => `reserve:${Number(slotIndex)}:${Number(reserveOrder)}`;
+
+const normalizePlacement = (placement = {}) => {
+  const status = Object.values(TACTICAL_PLACEMENT_STATUS).includes(placement.status)
+    ? placement.status
+    : TACTICAL_PLACEMENT_STATUS.UNPLACED;
+  if (status === TACTICAL_PLACEMENT_STATUS.STARTER) {
+    const slotIndex = Number(placement.slotIndex);
+    return Number.isInteger(slotIndex)
+      ? { status, slotIndex, slotId: placement.slotId || getStarterSlotId(slotIndex), reserveOrder: null, reserveSlotId: null }
+      : { status: TACTICAL_PLACEMENT_STATUS.UNPLACED, slotIndex: null, slotId: null, reserveOrder: null, reserveSlotId: null };
+  }
+  if (status === TACTICAL_PLACEMENT_STATUS.RESERVE) {
+    const slotIndex = Number(placement.slotIndex);
+    const reserveOrder = Number(placement.reserveOrder);
+    return Number.isInteger(slotIndex) && [0, 1].includes(reserveOrder)
+      ? {
+          status,
+          slotIndex,
+          slotId: placement.slotId || getStarterSlotId(slotIndex),
+          reserveOrder,
+          reserveSlotId: placement.reserveSlotId || getReserveSlotId(slotIndex, reserveOrder),
+        }
+      : { status: TACTICAL_PLACEMENT_STATUS.UNPLACED, slotIndex: null, slotId: null, reserveOrder: null, reserveSlotId: null };
+  }
+  return { status, slotIndex: null, slotId: null, reserveOrder: null, reserveSlotId: null };
+};
+
+const placementTargetKey = (placement = {}) => {
+  const normalized = normalizePlacement(placement);
+  if (normalized.status === TACTICAL_PLACEMENT_STATUS.STARTER) return normalized.slotId;
+  if (normalized.status === TACTICAL_PLACEMENT_STATUS.RESERVE) return normalized.reserveSlotId;
+  return null;
+};
+
+export const buildTacticalPlacements = ({ players = [], lineup = [] } = {}) => {
+  const placements = {};
+  const occupiedTargets = new Set();
+  const lineupByPlayer = new Map(sanitizeTacticalLineup(lineup).map((player) => [playerKey(player), player]));
+
+  players.forEach((player) => {
+    const id = playerKey(player);
+    if (!id) return;
+    const lineupPlayer = lineupByPlayer.get(id);
+    let placement;
+    if (player.activeInSquad === false) {
+      placement = normalizePlacement({ status: TACTICAL_PLACEMENT_STATUS.INACTIVE });
+    } else if (player.fieldRole === 'Titular' && Number.isInteger(Number(player.slotIndex))) {
+      placement = normalizePlacement({ status: TACTICAL_PLACEMENT_STATUS.STARTER, slotIndex: Number(player.slotIndex) });
+    } else if (player.fieldRole === 'Reserva' && Number.isInteger(Number(player.slotIndex)) && [0, 1].includes(Number(player.reserveIndex))) {
+      placement = normalizePlacement({ status: TACTICAL_PLACEMENT_STATUS.RESERVE, slotIndex: Number(player.slotIndex), reserveOrder: Number(player.reserveIndex) });
+    } else if (lineupPlayer && Number.isInteger(Number(lineupPlayer.slot))) {
+      placement = normalizePlacement({ status: TACTICAL_PLACEMENT_STATUS.STARTER, slotIndex: Number(lineupPlayer.slot) });
+    } else {
+      placement = normalizePlacement({ status: TACTICAL_PLACEMENT_STATUS.UNPLACED });
+    }
+    const targetKey = placementTargetKey(placement);
+    if (targetKey && occupiedTargets.has(targetKey)) placement = normalizePlacement({ status: TACTICAL_PLACEMENT_STATUS.UNPLACED });
+    else if (targetKey) occupiedTargets.add(targetKey);
+    placements[id] = placement;
+  });
+  return placements;
+};
+
+export const applyPlayerMove = ({ placements = {}, playerId, destination } = {}) => {
+  const id = String(playerId || '');
+  if (!id || !Object.prototype.hasOwnProperty.call(placements, id)) {
+    return { placements, changed: false, movedPlayerIds: [], occupantPlayerId: null, origin: null, destination: null };
+  }
+  const origin = normalizePlacement(placements[id]);
+  const target = normalizePlacement(destination);
+  const originTargetKey = placementTargetKey(origin);
+  const destinationTargetKey = placementTargetKey(target);
+  const sameDestination = origin.status === target.status
+    && originTargetKey === destinationTargetKey;
+  if (sameDestination) {
+    return { placements, changed: false, movedPlayerIds: [], occupantPlayerId: null, origin, destination: target };
+  }
+
+  const occupantEntry = destinationTargetKey
+    ? Object.entries(placements).find(([candidateId, placement]) => candidateId !== id && placementTargetKey(placement) === destinationTargetKey)
+    : null;
+  const occupantPlayerId = occupantEntry?.[0] || null;
+  const next = { ...placements, [id]: target };
+  if (occupantPlayerId) {
+    next[occupantPlayerId] = originTargetKey
+      ? origin
+      : normalizePlacement({ status: TACTICAL_PLACEMENT_STATUS.UNPLACED });
+  }
+  return {
+    placements: next,
+    changed: true,
+    movedPlayerIds: occupantPlayerId ? [id, occupantPlayerId] : [id],
+    occupantPlayerId,
+    origin,
+    destination: target,
+  };
+};
 
 export const sanitizeTacticalLineup = (lineup = [], maxSlots = 11) => {
   const usedPlayers = new Set();
