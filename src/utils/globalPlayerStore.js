@@ -15,6 +15,56 @@ const normalizeText = (value) => String(value || '')
 const safeArray = (value) => Array.isArray(value) ? value : [];
 const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
 
+const getNumericAge = (player = {}) => {
+  if (player.dob) {
+    const birthDate = new Date(`${player.dob}T00:00:00`);
+    if (!Number.isNaN(birthDate.getTime())) {
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const birthdayPending = today.getMonth() < birthDate.getMonth()
+        || (today.getMonth() === birthDate.getMonth() && today.getDate() < birthDate.getDate());
+      if (birthdayPending) age -= 1;
+      return age;
+    }
+  }
+  const parsed = Number.parseInt(String(player.age || '').replace(/[^0-9]/g, ''), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const getHeightCentimeters = (value) => {
+  const normalized = String(value || '').trim().replace(',', '.');
+  if (!normalized) return null;
+  const parsed = Number.parseFloat(normalized.replace(/[^0-9.]/g, ''));
+  if (!Number.isFinite(parsed)) return null;
+  return parsed < 3 ? Math.round(parsed * 100) : Math.round(parsed);
+};
+
+export const calculateGlobalPlayerProfileCompletion = (player = {}) => {
+  const model = getPlayerPositionModel(player);
+  const memberships = safeArray(player.memberships);
+  const checks = [
+    ['photo', Boolean(player.photoUrl || player.image)],
+    ['age', getNumericAge(player) !== null],
+    ['height', getHeightCentimeters(player.height) !== null],
+    ['foot', Boolean(String(player.foot || '').trim())],
+    ['naturalPosition', Boolean(model.primaryNaturalPosition)],
+    ['specificPosition', Boolean(model.primarySpecificPosition || model.secondarySpecificPositions.length)],
+    ['traits', safeArray(player.traits).length > 0],
+    ['team', memberships.some((membership) => membership.is_current)],
+    ['source', Boolean(player.externalPlayerId || player.sourceProfileUrl || safeArray(player.sources).length)],
+    ['scoutingSummary', Boolean(String(player.scoutingSummary || player.notes || '').trim())],
+  ];
+  const completed = checks.filter(([, present]) => present).length;
+  const percentage = Math.round((completed / checks.length) * 100);
+  return {
+    percentage,
+    completed,
+    total: checks.length,
+    missing: checks.filter(([, present]) => !present).map(([key]) => key),
+    label: percentage === 100 ? 'Completo' : percentage >= 70 ? 'Casi completo' : 'Faltan datos',
+  };
+};
+
 const levenshteinDistance = (left, right) => {
   if (!left) return right.length;
   if (!right) return left.length;
@@ -174,15 +224,23 @@ export const buildGlobalPlayerCoverage = ({ globalPlayers = [], legacyPlayers = 
 
 export const filterGlobalPlayers = (players = [], filters = {}) => {
   const normalizedSearch = normalizeText(filters.search);
+  const teamById = new Map(safeArray(filters.teams).map((team) => [String(team.id), team]));
   return safeArray(players).filter((player) => {
     const model = getPlayerPositionModel(player);
     const naturalPositions = [model.primaryNaturalPosition, ...model.secondaryNaturalPositions].filter(Boolean);
     const specificPositions = [model.primarySpecificPosition, ...model.secondarySpecificPositions].filter(Boolean);
-    const currentTeamIds = safeArray(player.memberships).filter((membership) => membership.is_current).map((membership) => String(membership.team_id));
+    const memberships = safeArray(player.memberships);
+    const currentMemberships = memberships.filter((membership) => membership.is_current);
+    const currentTeamIds = currentMemberships.map((membership) => String(membership.team_id));
+    const membershipTeamNames = memberships.map((membership) => teamById.get(String(membership.team_id))?.name || '');
     const searchText = normalizeText([
       player.name,
       ...naturalPositions.map(getNaturalPositionLabel),
       ...specificPositions.map(getSpecificPositionLabel),
+      ...membershipTeamNames,
+      ...safeArray(player.traits).map((trait) => trait.label),
+      player.scoutingSummary,
+      player.notes,
     ].join(' '));
     const matchesSearch = !normalizedSearch || searchText.includes(normalizedSearch);
     const matchesNatural = !filters.naturalPosition || naturalPositions.includes(filters.naturalPosition);
@@ -190,7 +248,26 @@ export const filterGlobalPlayers = (players = [], filters = {}) => {
     const matchesTeam = !filters.teamId
       || (filters.teamId === '__without_team__' ? currentTeamIds.length === 0 : currentTeamIds.includes(String(filters.teamId)));
     const matchesTrait = !filters.trait || safeArray(player.traits).some((trait) => trait.label === filters.trait);
-    return matchesSearch && matchesNatural && matchesSpecific && matchesTeam && matchesTrait;
+    const age = getNumericAge(player);
+    const matchesAge = (!filters.ageMin || (age !== null && age >= Number(filters.ageMin)))
+      && (!filters.ageMax || (age !== null && age <= Number(filters.ageMax)));
+    const height = getHeightCentimeters(player.height);
+    const matchesHeight = (!filters.heightMin || (height !== null && height >= Number(filters.heightMin)))
+      && (!filters.heightMax || (height !== null && height <= Number(filters.heightMax)));
+    const matchesFoot = !filters.foot || normalizeText(player.foot).includes(normalizeText(filters.foot));
+    const currentMembership = currentMemberships[0] || player.membership || {};
+    const matchesObserved = !filters.observed || Boolean(player.observed || currentMembership.observed);
+    const matchesKey = !filters.isKey || Boolean(player.isKey || currentMembership.is_key);
+    const matchesCaptain = !filters.captain || Boolean(player.captain || currentMembership.captain);
+    const matchesInjured = !filters.injured || Boolean(player.injured || player.injuredAlert);
+    const matchesSuspended = !filters.suspended || Boolean(player.suspended || player.suspendedAlert || player.sentOffAlert);
+    const matchesHistory = !filters.hasHistory || memberships.some((membership) => !membership.is_current);
+    const matchesPhoto = !filters.missingPhoto || !Boolean(player.photoUrl || player.image);
+    const completion = calculateGlobalPlayerProfileCompletion(player);
+    const matchesCompletion = !filters.incomplete || completion.percentage < 100;
+    return matchesSearch && matchesNatural && matchesSpecific && matchesTeam && matchesTrait
+      && matchesAge && matchesHeight && matchesFoot && matchesObserved && matchesKey && matchesCaptain
+      && matchesInjured && matchesSuspended && matchesHistory && matchesPhoto && matchesCompletion;
   });
 };
 

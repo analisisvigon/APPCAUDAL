@@ -3,6 +3,7 @@ import {
   assignGlobalPlayerToTeam,
   buildGlobalPlayerCoverage,
   buildGlobalPlayerRpcPayload,
+  calculateGlobalPlayerProfileCompletion,
   ensureGlobalPlayerTeamMembership,
   filterGlobalPlayers,
   findGlobalPlayerMatches,
@@ -80,6 +81,22 @@ assert.equal(filterGlobalPlayers(coverage.players, { naturalPosition: 'defender'
 assert.equal(filterGlobalPlayers(coverage.players, { specificPosition: 'holding_midfield' })[0].name, 'Álex Central');
 assert.equal(filterGlobalPlayers(coverage.players, { teamId: '__without_team__' })[0].name, 'Jugador Libre');
 assert.equal(filterGlobalPlayers(coverage.players, { search: 'alex', teamId: teamTwo.id, naturalPosition: 'defender', specificPosition: 'centre_back' }).length, 1);
+assert.equal(filterGlobalPlayers(coverage.players, { search: 'lealtad', teams: [teamOne, teamTwo] })[0].name, 'Álex Central');
+assert.equal(filterGlobalPlayers([{ ...globalDefender, foot: 'Derecho', height: '1,86 m', observed: true }], { foot: 'derech', heightMin: 180, heightMax: 190, observed: true }).length, 1);
+assert.equal(filterGlobalPlayers([{ ...globalDefender, injuredAlert: true }], { injured: true }).length, 1);
+assert.equal(filterGlobalPlayers([{ ...globalDefender, memberships: [{ ...globalDefender.memberships[0], is_current: false }] }], { hasHistory: true }).length, 1);
+assert.equal(filterGlobalPlayers([globalDefender], { missingPhoto: true, incomplete: true }).length, 1);
+const completeProfile = calculateGlobalPlayerProfileCompletion({
+  ...globalDefender,
+  photoUrl: 'https://example.test/player.jpg',
+  height: '186 cm',
+  foot: 'Derecho',
+  traits: [{ category: 'strength', label: 'Juego aéreo' }],
+  scoutingSummary: 'Central dominante.',
+  sources: [{ url: 'https://example.test/player' }],
+});
+assert.equal(completeProfile.percentage, 100);
+assert.equal(completeProfile.label, 'Completo');
 assert.equal(searchGlobalPlayersForTeam(coverage.players, [teamOne, teamTwo], 'lealtad')[0].name, 'Álex Central');
 assert.equal(searchGlobalPlayersForTeam(coverage.players, [teamOne, teamTwo], 'lateral derecho')[0].name, 'Lateral Legacy');
 

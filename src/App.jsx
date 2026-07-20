@@ -7,6 +7,7 @@ import LibrarySection from './components/library/LibrarySection';
 import MatchVideoPlayer from './components/matches/MatchVideoPlayer';
 import MatchPrintTab from './components/print/MatchPrintTab';
 import PlayerDatabaseForm from './components/players/PlayerDatabaseForm';
+import GlobalPlayerDatabase from './components/players/GlobalPlayerDatabase';
 import AccordionSection from './components/shared/AccordionSection';
 import StatusMessage from './components/shared/StatusMessage';
 import {
@@ -39,7 +40,6 @@ import {
   buildGlobalPlayerCoverage,
   createBlankGlobalPlayer,
   ensureGlobalPlayerTeamMembership,
-  filterGlobalPlayers,
   findGlobalPlayerMatches,
   loadGlobalPlayerDatabase,
   mergeGlobalPlayerProfiles,
@@ -47,9 +47,6 @@ import {
   saveGlobalPlayerProfile,
 } from './utils/globalPlayerStore';
 import {
-  SPECIFIC_POSITION_CATALOG,
-  NATURAL_POSITION_OPTIONS,
-  getNaturalPositionForSpecific,
   getNaturalPositionLabel,
   getPlayerPositionModel,
   getSpecificPositionLabel,
@@ -3986,12 +3983,6 @@ function App() {
   const [globalPlayersLoading, setGlobalPlayersLoading] = useState(false);
   const [globalPlayersError, setGlobalPlayersError] = useState('');
   const [globalPlayerStatus, setGlobalPlayerStatus] = useState('');
-  const [globalPlayerSearch, setGlobalPlayerSearch] = useState('');
-  const [globalPlayerPositionFilter, setGlobalPlayerPositionFilter] = useState('');
-  const [globalPlayerSpecificPositionFilter, setGlobalPlayerSpecificPositionFilter] = useState('');
-  const [globalPlayerTeamFilter, setGlobalPlayerTeamFilter] = useState('');
-  const [globalPlayerTraitFilter, setGlobalPlayerTraitFilter] = useState('');
-  const [globalPlayerFilterNotice, setGlobalPlayerFilterNotice] = useState('');
   const [draggedPlayer, setDraggedPlayer] = useState(null);
   const [importStatus, setImportStatus] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
@@ -15852,6 +15843,42 @@ function App() {
     setRivalPlayerPhotoUploading(false);
   };
 
+  const duplicateGlobalPlayerDraft = (player) => {
+    const normalized = normalizeSquadEntry(player || {});
+    setRivalPlayerSaveError('');
+    setRivalPlayerPhotoError('');
+    setRivalPlayerModal({
+      open: true,
+      mode: 'create',
+      originalName: '',
+      originalMembershipId: null,
+      originalTeamId: null,
+      teamId: null,
+      allowDuplicateCreate: true,
+      draft: {
+        ...createBlankGlobalPlayer(),
+        ...normalized,
+        id: null,
+        globalPlayerId: null,
+        legacyPlayerId: null,
+        membershipId: null,
+        membership: null,
+        memberships: [],
+        currentMemberships: [],
+        teamId: '',
+        number: '',
+        captain: false,
+        isKey: false,
+        observed: false,
+        dob: '',
+        externalSource: '',
+        externalPlayerId: '',
+        sources: [],
+        name: `${normalized.name || 'Jugador'} (copia)`,
+      },
+    });
+  };
+
   const updateRivalPlayerDraft = (field, value) => {
     setRivalPlayerModal((current) => ({
       ...current,
@@ -20253,105 +20280,25 @@ function App() {
           </main>
         ) : null}
 
-        {activeTab === 'Jugadores' ? (() => {
-          const traitOptions = Array.from(new Set(globalPlayers.flatMap((player) => player.traits.map((trait) => trait.label)))).sort((a, b) => a.localeCompare(b, 'es'));
-          const specificPositionGroups = globalPlayerPositionFilter
-            ? [[globalPlayerPositionFilter, SPECIFIC_POSITION_CATALOG[globalPlayerPositionFilter] || []]]
-            : Object.entries(SPECIFIC_POSITION_CATALOG);
-          const hasActiveGlobalPlayerFilters = Boolean(globalPlayerSearch || globalPlayerPositionFilter || globalPlayerSpecificPositionFilter || globalPlayerTeamFilter || globalPlayerTraitFilter);
-          const changeNaturalPositionFilter = (value) => {
-            setGlobalPlayerPositionFilter(value);
-            if (globalPlayerSpecificPositionFilter && value && getNaturalPositionForSpecific(globalPlayerSpecificPositionFilter) !== value) {
-              setGlobalPlayerSpecificPositionFilter('');
-              setGlobalPlayerFilterNotice('El filtro específico se ha restablecido porque no pertenece a la posición natural seleccionada.');
-            } else {
-              setGlobalPlayerFilterNotice('');
-            }
-          };
-          const clearGlobalPlayerFilters = () => {
-            setGlobalPlayerSearch('');
-            setGlobalPlayerPositionFilter('');
-            setGlobalPlayerSpecificPositionFilter('');
-            setGlobalPlayerTeamFilter('');
-            setGlobalPlayerTraitFilter('');
-            setGlobalPlayerFilterNotice('');
-          };
-          const visiblePlayers = filterGlobalPlayers(globalPlayers, {
-            search: globalPlayerSearch,
-            naturalPosition: globalPlayerPositionFilter,
-            specificPosition: globalPlayerSpecificPositionFilter,
-            teamId: globalPlayerTeamFilter,
-            trait: globalPlayerTraitFilter,
-          });
-          return (
-            <main className="space-y-4">
-              <section className="rounded-[1.35rem] border border-white/10 bg-[#091428]/85 p-5 shadow-[0_18px_48px_rgba(0,0,0,0.20)]">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-caudal-electric">Categoría · conocimiento acumulado</p>
-                    <h2 className="mt-1 text-2xl font-black uppercase text-white">Base de datos de jugadores</h2>
-                    <p className="mt-1 text-sm font-semibold text-slate-500">Un perfil único aunque el futbolista cambie de club.</p>
-                  </div>
-                  <button type="button" onClick={() => openRivalPlayerModal(null, { standalone: true })} disabled={!globalPlayersAvailable} className="rounded-2xl bg-caudal-electric px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-50">Nuevo jugador</button>
-                </div>
-                <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-                  <input type="search" value={globalPlayerSearch} onChange={(event) => setGlobalPlayerSearch(event.target.value)} className="field-input" placeholder="Buscar jugador" />
-                  <select aria-label="Posición natural" value={globalPlayerPositionFilter} onChange={(event) => changeNaturalPositionFilter(event.target.value)} className="field-input"><option value="">Todas las posiciones naturales</option>{NATURAL_POSITION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
-                  <select aria-label="Posición específica" value={globalPlayerSpecificPositionFilter} onChange={(event) => { setGlobalPlayerSpecificPositionFilter(event.target.value); setGlobalPlayerFilterNotice(''); }} className="field-input">
-                    <option value="">Todas las posiciones específicas</option>
-                    {specificPositionGroups.map(([naturalKey, options]) => (
-                      <optgroup key={naturalKey} label={getNaturalPositionLabel(naturalKey)}>
-                        {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                      </optgroup>
-                    ))}
-                  </select>
-                  <select value={globalPlayerTeamFilter} onChange={(event) => setGlobalPlayerTeamFilter(event.target.value)} className="field-input"><option value="">Todos los equipos actuales</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}<option value="__without_team__">Sin equipo</option></select>
-                  <select value={globalPlayerTraitFilter} onChange={(event) => setGlobalPlayerTraitFilter(event.target.value)} className="field-input"><option value="">Todas las características</option>{traitOptions.map((trait) => <option key={trait} value={trait}>{trait}</option>)}</select>
-                </div>
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs font-black text-slate-300">{visiblePlayers.length} {visiblePlayers.length === 1 ? 'jugador' : 'jugadores'}</p>
-                  {hasActiveGlobalPlayerFilters ? <button type="button" onClick={clearGlobalPlayerFilters} className="text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric underline decoration-caudal-electric/30 underline-offset-4">Limpiar filtros</button> : null}
-                </div>
-                {globalPlayerFilterNotice ? <p className="mt-2 rounded-xl border border-amber-300/20 bg-amber-300/[0.07] px-3 py-2 text-xs font-bold text-amber-100">{globalPlayerFilterNotice}</p> : null}
-                {globalPlayersError ? <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/[0.08] px-3 py-2 text-xs font-bold text-amber-100">{globalPlayersError}</p> : null}
-                {globalPlayerStatus ? <p className="mt-3 rounded-xl border border-emerald-300/20 bg-emerald-300/[0.08] px-3 py-2 text-xs font-bold text-emerald-100">{globalPlayerStatus}</p> : null}
-              </section>
-
-              {globalPlayersLoading ? <div className="empty-state">Cargando base global…</div> : visiblePlayers.length ? (
-                <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {visiblePlayers.map((player) => {
-                    const currentTeams = player.memberships.filter((membership) => membership.is_current).map((membership) => teams.find((team) => team.id === membership.team_id)).filter(Boolean);
-                    const primaryMembership = player.memberships.find((membership) => membership.is_current) || null;
-                    const positionModel = getPlayerPositionModel(player);
-                    const secondaryPositionCount = new Set([
-                      ...positionModel.secondarySpecificPositions,
-                      ...positionModel.secondaryNaturalPositions,
-                    ]).size;
-                    const naturalLabel = getNaturalPositionLabel(positionModel.primaryNaturalPosition) || player.position || 'Sin posición natural';
-                    const specificLabel = getSpecificPositionLabel(positionModel.primarySpecificPosition) || player.specificPosition || '';
-                    return (
-                      <article key={player.id} className="group rounded-[1.2rem] border border-white/10 bg-[#091428]/82 p-4 shadow-[0_12px_32px_rgba(0,0,0,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30">
-                        <button type="button" onClick={() => openRivalPlayerModal(player, { standalone: true })} className="flex w-full items-start gap-3 text-left">
-                          <span className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.07] text-sm font-black text-white">
-                            <span>{getRivalPlayerInitials(player.name)}</span>{player.photoUrl ? <img src={player.photoUrl} alt={player.name} className="absolute inset-0 h-full w-full object-cover" /> : null}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-base font-black text-white">{player.name}</span>
-                            <span className="mt-1 block truncate text-xs font-bold text-caudal-electric">{currentTeams.length ? currentTeams.map((team) => cleanTeamDisplayName(team.name)).join(' · ') : 'Sin equipo asignado'}</span>
-                            <span className="mt-1 block text-[11px] font-semibold text-slate-400">{naturalLabel}{specificLabel ? ` · ${specificLabel}` : ''}{secondaryPositionCount ? ` · +${secondaryPositionCount} ${secondaryPositionCount === 1 ? 'posición' : 'posiciones'}` : ''}</span>
-                            <span className="mt-1 block text-[10px] text-slate-500">{primaryMembership?.number ? `#${primaryMembership.number} · ` : ''}{player.dob ? `${calculateAge(player.dob)} años` : player.age ? `${player.age} años` : 'Edad sin registrar'}{player.foot ? ` · ${player.foot}` : ''}</span>
-                          </span>
-                        </button>
-                        {player.traits.length ? <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/[0.07] pt-3">{player.traits.slice(0, 3).map((trait) => <span key={`${trait.category}-${trait.label}`} className={`rounded-lg border px-2 py-1 text-[9px] font-bold ${trait.category === 'strength' ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100' : trait.category === 'vulnerability' ? 'border-red-300/20 bg-red-300/10 text-red-100' : 'border-sky-300/20 bg-sky-300/10 text-sky-100'}`}>{trait.label}</span>)}</div> : null}
-                      </article>
-                    );
-                  })}
-                </section>
-              ) : <div className="empty-state">No hay jugadores que coincidan con los filtros.</div>}
-            </main>
-          );
-        })() : null}
-
+        {activeTab === 'Jugadores' ? (
+          <GlobalPlayerDatabase
+            players={globalPlayers}
+            teams={teams}
+            loading={globalPlayersLoading}
+            available={globalPlayersAvailable}
+            error={globalPlayersError}
+            status={globalPlayerStatus}
+            onCreate={() => openRivalPlayerModal(null, { standalone: true })}
+            onEdit={(player) => openRivalPlayerModal(player, { standalone: true })}
+            onOpenProfile={(player) => openRivalPlayerModal(player, { standalone: true })}
+            onManageTeam={openPlayerTeamManager}
+            onDuplicate={duplicateGlobalPlayerDraft}
+            onOpenTeam={(team) => {
+              setSelectedTeamId(team.id);
+              setActiveTab('Equipos');
+            }}
+          />
+        ) : null}
         {activeTab === 'Equipos' ? (
           <main className="space-y-4">
             <section className="rounded-[1.35rem] border border-white/10 bg-white/[0.04] px-4 py-3 shadow-[0_14px_40px_rgba(0,0,0,0.14)] backdrop-blur-md sm:px-5">
