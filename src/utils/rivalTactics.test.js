@@ -11,11 +11,21 @@ import {
 const coordinates = Array.from({ length: 3 }, (_, slot) => ({ x: 10 + slot * 20, y: 50 }));
 const a = { id: 'a', name: 'A', position: 'Defensa', specificPosition: 'Lateral derecho', slot: 0 };
 const b = { id: 'b', name: 'B', position: 'Defensa', specificPosition: 'Defensa central', slot: 1 };
+const c = { id: 'c', name: 'C', position: 'Centrocampista', specificPosition: 'Mediocentro', slot: 2 };
 const swapped = movePlayerInLineup({ lineup: [a, b], player: a, targetSlot: 1, coordinates });
 assert.equal(swapped.find((player) => player.id === 'a').slot, 1);
 assert.equal(swapped.find((player) => player.id === 'b').slot, 0);
 assert.equal(new Set(swapped.map((player) => player.slot)).size, swapped.length, 'nunca hay dos jugadores en el mismo slot');
 assert.equal(new Set(swapped.map((player) => player.id)).size, swapped.length, 'nunca se duplica un jugador');
+
+const movedToEmpty = movePlayerInLineup({ lineup: [a, b], player: a, targetSlot: 2, coordinates });
+assert.deepEqual(movedToEmpty.map(({ id, slot }) => ({ id, slot })), [{ id: 'b', slot: 1 }, { id: 'a', slot: 2 }], 'mover a un hueco vacío solo mueve al jugador arrastrado');
+assert.equal(movedToEmpty.some((player) => player.slot === 0), false, 'el hueco de origen permanece vacío');
+
+const isolatedSwap = movePlayerInLineup({ lineup: [a, b, c], player: a, targetSlot: 1, coordinates });
+assert.equal(isolatedSwap.find((player) => player.id === 'a').slot, 1);
+assert.equal(isolatedSwap.find((player) => player.id === 'b').slot, 0);
+assert.equal(isolatedSwap.find((player) => player.id === 'c').slot, 2, 'un intercambio no recoloca a terceros');
 
 assert.equal(sanitizeTacticalLineup([{ ...a, slot: 0 }, { ...b, slot: 0 }]).length, 1, 'se limpia una superposición previa');
 assert.equal(isPlayerCompatibleWithRole(a, 'Lateral derecho'), true);
