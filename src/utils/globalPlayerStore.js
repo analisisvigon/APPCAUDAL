@@ -359,6 +359,7 @@ export const normalizeGlobalPlayer = (row = {}, related = {}) => {
     name: row.name || '',
     photoUrl: row.photo_url || '',
     image: row.photo_url || '',
+    imageSource: row.field_sources?.image?.source || row.field_sources?.photoUrl?.source || '',
     dob: row.dob || '',
     age: row.age || '',
     height: row.height || '',

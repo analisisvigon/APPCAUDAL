@@ -10,6 +10,7 @@ import {
   findGlobalPlayerMatches,
   globalPlayerFromImportedPlayer,
   mergeGlobalPlayerProfiles,
+  normalizeGlobalPlayer,
   removeGlobalPlayerFromCurrentTeam,
   searchGlobalPlayersForTeam,
 } from './globalPlayerStore.js';
@@ -22,6 +23,13 @@ assert.equal(payload.p_positions.find((item) => item.position_type === 'natural'
 assert.equal(payload.p_positions.some((item) => item.position_key === 'holding_midfield' && !item.is_primary), true);
 assert.equal(payload.p_sources.length, 1);
 assert.equal(buildGlobalPlayerRpcPayload({ name: 'Prioritario', scoutingPriority: 'very_high' }).p_player.scoutingPriority, 'very_high');
+const importedPhotoPayload = buildGlobalPlayerRpcPayload({
+  name: 'Foto externa',
+  photoUrl: 'https://project.supabase.co/storage/v1/object/public/rival-player-assets/global/player/photo.jpg',
+  fieldSources: { image: { source: 'imported_lapreferente', sourceUrl: 'https://www.lapreferente.com/J1/player.html', storageMode: 'storage' } },
+});
+assert.equal(importedPhotoPayload.p_player.fieldSources.image.source, 'imported_lapreferente');
+assert.equal(normalizeGlobalPlayer({ id: 'photo-player', name: 'Foto externa', photo_url: importedPhotoPayload.p_player.photoUrl, field_sources: importedPhotoPayload.p_player.fieldSources }).imageSource, 'imported_lapreferente');
 
 const sourcePayload = buildGlobalPlayerRpcPayload({
   name: 'Jugador con fuentes',

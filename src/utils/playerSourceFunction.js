@@ -53,6 +53,13 @@ export const getPlayerSourceFunctionUserMessage = (error) => {
   return `No se pudo conectar con el analizador. Motivo: ${reason}`;
 };
 
+export const getPlayerPhotoSource = (player = {}) => player.imageSource
+  || player.fieldSources?.image?.source
+  || player.fieldSources?.photoUrl?.source
+  || '';
+
+export const isManualPlayerPhoto = (player = {}) => ['manual', 'manual_upload', 'manual_url'].includes(getPlayerPhotoSource(player));
+
 export const invokePlayerSourceAnalyzer = async (client, sourceUrl, options = {}) => {
   const timeoutMs = options.timeoutMs || 25000;
   const { data: sessionData, error: sessionError } = await client.auth.getSession();
@@ -66,8 +73,12 @@ export const invokePlayerSourceAnalyzer = async (client, sourceUrl, options = {}
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const mode = options.mode || 'full_analysis';
+    const body = mode === 'store_photo'
+      ? { mode, photoUrl: options.photoUrl || sourceUrl, playerId: options.playerId || null }
+      : { mode, url: sourceUrl };
     const { data, error } = await client.functions.invoke(PLAYER_SOURCE_FUNCTION_NAME, {
-      body: { url: sourceUrl },
+      body,
       headers: { Authorization: `Bearer ${accessToken}` },
       signal: controller.signal,
     });

@@ -4040,6 +4040,7 @@ function App() {
   const [rivalPlayerPhotoUploading, setRivalPlayerPhotoUploading] = useState(false);
   const [playerSourceAnalysis, setPlayerSourceAnalysis] = useState(null);
   const [playerSourceAnalyzingUrl, setPlayerSourceAnalyzingUrl] = useState('');
+  const [playerSourcePhotoSaving, setPlayerSourcePhotoSaving] = useState(false);
   const [pendingRivalPlayerDelete, setPendingRivalPlayerDelete] = useState(null);
   const [rivalRosterSearch, setRivalRosterSearch] = useState('');
   const [rivalRosterFilter, setRivalRosterFilter] = useState('Todos');
@@ -15866,6 +15867,7 @@ function App() {
     setRivalPlayerSaving(false);
     setPlayerSourceAnalysis(null);
     setPlayerSourceAnalyzingUrl('');
+    setPlayerSourcePhotoSaving(false);
     setRivalPlayerModal({
       open: true,
       mode: player ? 'edit' : 'create',
@@ -15886,6 +15888,7 @@ function App() {
     setRivalPlayerPhotoUploading(false);
     setPlayerSourceAnalysis(null);
     setPlayerSourceAnalyzingUrl('');
+    setPlayerSourcePhotoSaving(false);
   };
 
   const updateRivalPlayerDraft = (field, value) => {
@@ -15961,6 +15964,106 @@ function App() {
       setRivalPlayerSaveError(message);
     } finally {
       setPlayerSourceAnalyzingUrl('');
+    }
+  };
+
+  const extractGlobalPlayerPhoto = async (source) => {
+    if (!source?.url || playerSourceAnalyzingUrl) return;
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(source.url);
+      if (parsedUrl.protocol !== 'https:') throw new Error('Solo se pueden analizar fuentes HTTPS.');
+    } catch (urlError) {
+      setRivalPlayerSaveError(urlError.message || 'La URL de la fuente no es válida.');
+      return;
+    }
+    setPlayerSourceAnalyzingUrl(source.url);
+    setPlayerSourceAnalysis(null);
+    setRivalPlayerSaveError('');
+    updatePlayerSourceDraft(source.url, { analysisStatus: 'analyzing', analysisError: '' });
+    try {
+      const data = await invokePlayerSourceAnalyzer(supabase, parsedUrl.href, { mode: 'photo_only' });
+      const analyzedAt = data.analyzedAt || new Date().toISOString();
+      const persistedStatus = data.status === 'photo_found' ? 'data_found' : data.status === 'not_player' ? 'not_player' : 'no_data';
+      const analysisSummary = {
+        mode: 'photo_only',
+        sourceType: data.sourceType || 'generic',
+        pageType: data.pageType || 'unknown',
+        canonicalUrl: data.canonicalUrl || parsedUrl.href,
+        photo: data.photo || null,
+        discarded: safeArray(data.discarded),
+      };
+      await persistPlayerSourceAnalysisState(source, { analysisStatus: persistedStatus, analyzedAt, analysisError: '', analysisSummary });
+      setPlayerSourceAnalysis({ ...data, mode: 'photo_only', sourceUrl: source.url, analyzedAt });
+      if (data.status === 'no_photo') setRivalPlayerSaveError('La página es accesible, pero no contiene una foto válida del jugador.');
+      if (data.status === 'not_player') setRivalPlayerSaveError('La página no parece ser una ficha individual de jugador.');
+    } catch (analysisError) {
+      const message = getPlayerSourceFunctionUserMessage(analysisError);
+      try {
+        await persistPlayerSourceAnalysisState(source, { analysisStatus: 'access_error', analyzedAt: new Date().toISOString(), analysisError: message, analysisSummary: { mode: 'photo_only' } });
+      } catch (statusError) {
+        console.error('[PLAYER_SOURCE_PHOTO_STATUS_ERROR]', statusError);
+      }
+      setRivalPlayerSaveError(message);
+    } finally {
+      setPlayerSourceAnalyzingUrl('');
+    }
+  };
+
+  const useExtractedGlobalPlayerPhoto = async (analysis, storageMode = 'storage') => {
+    if (!analysis?.photo?.url || playerSourcePhotoSaving) return;
+    setPlayerSourcePhotoSaving(true);
+    setRivalPlayerSaveError('');
+    try {
+      let photoUrl = analysis.photo.url;
+      let originalPhotoUrl = photoUrl;
+      if (storageMode === 'storage') {
+        const draft = rivalPlayerModal.draft || {};
+        const stored = await invokePlayerSourceAnalyzer(supabase, analysis.sourceUrl || photoUrl, {
+          mode: 'store_photo',
+          photoUrl,
+          playerId: draft.globalPlayerId || (isUuid(draft.id) ? draft.id : null),
+        });
+        photoUrl = stored.photo?.url || '';
+        originalPhotoUrl = stored.photo?.originalUrl || originalPhotoUrl;
+        if (!photoUrl) throw new Error('Supabase Storage no devolvió la URL pública de la copia.');
+      }
+      const importedSource = analysis.sourceType === 'lapreferente'
+        ? 'imported_lapreferente'
+        : analysis.sourceType === 'transfermarkt'
+          ? 'imported_transfermarkt'
+          : analysis.sourceType === 'besoccer' ? 'imported_besoccer' : 'imported_generic';
+      const updatedAt = new Date().toISOString();
+      setRivalPlayerModal((current) => {
+        const draft = current.draft || createBlankGlobalPlayer();
+        return {
+          ...current,
+          draft: {
+            ...draft,
+            photoUrl,
+            image: photoUrl,
+            imageSource: importedSource,
+            fieldSources: {
+              ...(draft.fieldSources || {}),
+              image: {
+                ...createFieldSource(importedSource, updatedAt),
+                sourceUrl: analysis.sourceUrl || analysis.canonicalUrl || '',
+                originalPhotoUrl,
+                storageMode,
+              },
+            },
+          },
+        };
+      });
+      setPlayerSourceAnalysis(null);
+      setGlobalPlayerStatus(storageMode === 'storage'
+        ? 'Copia guardada en APPCAUDAL y aplicada a la ficha. Pulsa “Guardar jugador” para confirmar.'
+        : 'Foto externa aplicada a la ficha. Pulsa “Guardar jugador” para confirmar.');
+    } catch (photoError) {
+      const normalizedError = photoError?.code ? getPlayerSourceFunctionUserMessage(photoError) : photoError?.message || 'No se ha podido aplicar la foto.';
+      setRivalPlayerSaveError(normalizedError);
+    } finally {
+      setPlayerSourcePhotoSaving(false);
     }
   };
 
@@ -16128,10 +16231,11 @@ function App() {
       teamId: draftTeamId,
       membershipId: changedTeam ? null : rivalPlayerModal.draft.membershipId,
     };
+    const importedPhoto = /^imported(?:_|$)/i.test(draftBase.imageSource || '');
     const manuallyMarkedFieldSources = markChangedFieldsManual({
       current: rivalPlayerModal.mode === 'edit' ? currentGlobalPlayer : {},
       next: draftBase,
-      fields: ['name', 'photoUrl', 'dob', 'age', 'height', 'foot', 'scoutingSummary', 'scoutingPriority', 'cardAlert', 'sentOffAlert', 'suspendedAlert', 'injuredAlert'],
+      fields: ['name', ...(importedPhoto ? [] : ['photoUrl']), 'dob', 'age', 'height', 'foot', 'scoutingSummary', 'scoutingPriority', 'cardAlert', 'sentOffAlert', 'suspendedAlert', 'injuredAlert'],
       fieldSources: draftBase.fieldSources || {},
       sourceByField: { photoUrl: draftBase.imageSource === 'manual_upload' ? 'manual_upload' : 'manual_url' },
     });
@@ -25259,9 +25363,12 @@ function App() {
             onMergeDuplicate={mergeDuplicateGlobalPlayer}
             sourceAnalysis={playerSourceAnalysis}
             analyzingSourceUrl={playerSourceAnalyzingUrl}
+            sourcePhotoSaving={playerSourcePhotoSaving}
             onAnalyzeSource={analyzeGlobalPlayerSource}
+            onExtractSourcePhoto={extractGlobalPlayerPhoto}
+            onUseExtractedPhoto={useExtractedGlobalPlayerPhoto}
             onApplySourceAnalysis={applyGlobalPlayerSourceAnalysis}
-            onCloseSourceAnalysis={() => setPlayerSourceAnalysis(null)}
+            onCloseSourceAnalysis={() => { setPlayerSourceAnalysis(null); setRivalPlayerSaveError(''); }}
             onDelete={rivalPlayerModal.mode === 'edit' && (selectedTeam || editingTeamId) ? () => { requestSelectedTeamPlayerDelete(rivalPlayerModal.draft); closeRivalPlayerModal(); } : null}
           />
         </div>

@@ -6,8 +6,9 @@ import {
 } from '../../constants/playerPositions';
 import { PLAYER_TRAIT_CATEGORIES, getPlayerTraitOptions } from '../../constants/playerScoutingCatalog';
 import { searchGlobalPlayersForTeam } from '../../utils/globalPlayerStore';
+import { isManualPlayerPhoto } from '../../utils/playerSourceFunction';
 
-const sourceNames = ['Transfermarkt', 'BeSoccer', 'Web del club', 'Otro'];
+const sourceNames = ['Transfermarkt', 'BeSoccer', 'LaPreferente', 'Web del club', 'Otro'];
 
 export default function PlayerDatabaseForm({
   draft,
@@ -30,7 +31,10 @@ export default function PlayerDatabaseForm({
   onMergeDuplicate,
   sourceAnalysis,
   analyzingSourceUrl = '',
+  sourcePhotoSaving = false,
   onAnalyzeSource,
+  onExtractSourcePhoto,
+  onUseExtractedPhoto,
   onApplySourceAnalysis,
   onCloseSourceAnalysis,
 }) {
@@ -39,6 +43,7 @@ export default function PlayerDatabaseForm({
   const [teamEntryMode, setTeamEntryMode] = useState(mode === 'create' && draft.teamId ? 'search' : 'create');
   const [databaseSearch, setDatabaseSearch] = useState('');
   const [sourceFieldSelection, setSourceFieldSelection] = useState({});
+  const [replaceExistingPhoto, setReplaceExistingPhoto] = useState(false);
   const showTeamEntryChoice = mode === 'create' && Boolean(draft.teamId);
   const databaseResults = useMemo(
     () => searchGlobalPlayersForTeam(globalPlayers, teams, databaseSearch).slice(0, 12),
@@ -71,7 +76,7 @@ export default function PlayerDatabaseForm({
   const addSource = () => {
     const url = sourceDraft.url.trim();
     if (!url || (draft.sources || []).some((source) => source.url === url)) return;
-    const detectedSourceName = /transfermarkt\./i.test(url) ? 'Transfermarkt' : /besoccer\./i.test(url) ? 'BeSoccer' : sourceDraft.sourceName;
+    const detectedSourceName = /transfermarkt\./i.test(url) ? 'Transfermarkt' : /besoccer\./i.test(url) ? 'BeSoccer' : /lapreferente\./i.test(url) ? 'LaPreferente' : sourceDraft.sourceName;
     onChange('sources', [...(draft.sources || []), { ...sourceDraft, sourceName: detectedSourceName, url, isPrimary: !(draft.sources || []).length, analysisStatus: 'not_analyzed', analyzedAt: '', analysisError: '', analysisSummary: {} }]);
     setSourceDraft({ url: '', sourceName: 'Otro' });
   };
@@ -85,8 +90,10 @@ export default function PlayerDatabaseForm({
     if (field === 'nationality' || field === 'canonicalUrl') return '';
     return draft[field] || (field === 'photoUrl' ? draft.image : '') || '';
   };
-  const sourceFieldKey = (field) => field === 'rawPosition' || field === 'secondaryPositions' ? 'position' : field;
+  const sourceFieldKey = (field) => field === 'rawPosition' || field === 'secondaryPositions' ? 'position' : field === 'photoUrl' ? 'image' : field;
   const hasManualSource = (field) => ['manual', 'manual_upload', 'manual_url'].includes(draft.fieldSources?.[sourceFieldKey(field)]?.source);
+  const currentPhotoUrl = draft.photoUrl || draft.image || '';
+  const manualPhotoProtected = isManualPlayerPhoto(draft);
 
   useEffect(() => {
     if (!sourceAnalysis?.fields) {
@@ -98,6 +105,9 @@ export default function PlayerDatabaseForm({
       !getCurrentSourceFieldValue(field.field) && !hasManualSource(field.field) && !['nationality', 'canonicalUrl'].includes(field.field),
     ])));
   }, [sourceAnalysis]);
+  useEffect(() => {
+    setReplaceExistingPhoto(false);
+  }, [sourceAnalysis?.requestId, sourceAnalysis?.sourceUrl]);
   const toggleSecondaryNatural = (key) => onChange(
     'secondaryNaturalPositions',
     (draft.secondaryNaturalPositions || []).includes(key)
@@ -283,6 +293,7 @@ export default function PlayerDatabaseForm({
                 <div className="flex flex-wrap gap-1.5">
                   <a href={source.url} target="_blank" rel="noreferrer" className="rounded-lg border border-white/10 px-2.5 py-1.5 text-[9px] font-black text-slate-300">Abrir enlace</a>
                   <button type="button" onClick={() => onAnalyzeSource?.(source)} disabled={Boolean(analyzingSourceUrl)} className="rounded-lg border border-caudal-electric/25 bg-caudal-electric/10 px-2.5 py-1.5 text-[9px] font-black text-caudal-electric disabled:opacity-50">{status === 'analyzing' ? 'Analizando…' : 'Analizar fuente'}</button>
+                  <button type="button" onClick={() => onExtractSourcePhoto?.(source)} disabled={Boolean(analyzingSourceUrl) || sourcePhotoSaving} className="rounded-lg border border-emerald-300/20 bg-emerald-300/[0.08] px-2.5 py-1.5 text-[9px] font-black text-emerald-200 disabled:opacity-50">{status === 'analyzing' ? 'Buscando foto…' : 'Extraer foto'}</button>
                   {!source.isPrimary ? <button type="button" onClick={() => markPrimarySource(source.url)} className="rounded-lg border border-white/10 px-2.5 py-1.5 text-[9px] font-black text-slate-300">Marcar principal</button> : null}
                   <button type="button" onClick={() => removeSource(source.url)} className="rounded-lg border border-red-300/15 px-2.5 py-1.5 text-[9px] font-black text-red-200">Quitar</button>
                 </div>
@@ -293,7 +304,56 @@ export default function PlayerDatabaseForm({
         <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_160px_auto]"><input type="url" value={sourceDraft.url} onChange={(event) => setSourceDraft((current) => ({ ...current, url: event.target.value }))} className="field-input" placeholder="https://…" /><select value={sourceDraft.sourceName} onChange={(event) => setSourceDraft((current) => ({ ...current, sourceName: event.target.value }))} className="field-input">{sourceNames.map((name) => <option key={name}>{name}</option>)}</select><button type="button" onClick={addSource} className="rounded-xl border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-xs font-black text-caudal-electric">Añadir fuente</button></div>
       </section>
 
-      {sourceAnalysis ? (
+      {sourceAnalysis?.mode === 'photo_only' ? (
+        <section className="mt-4 rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.045] p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300">Extracción de fotografía</p>
+              <p className="mt-1 text-xs font-semibold text-slate-400">{sourceAnalysis.sourceType === 'lapreferente' ? 'LaPreferente' : sourceAnalysis.sourceType || 'Fuente web'} · análisis exclusivo de imagen</p>
+            </div>
+            <button type="button" onClick={onCloseSourceAnalysis} disabled={sourcePhotoSaving} className="rounded-lg border border-white/10 px-2.5 py-1.5 text-[9px] font-black text-slate-300 disabled:opacity-50">Descartar</button>
+          </div>
+
+          {sourceAnalysis.status === 'not_player' ? <p className="mt-3 rounded-xl border border-orange-300/20 bg-orange-300/[0.08] px-3 py-2 text-xs font-bold text-orange-100">La página es accesible, pero no parece una ficha individual de jugador.</p> : null}
+          {sourceAnalysis.status === 'no_photo' ? <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/[0.08] px-3 py-2 text-xs font-bold text-amber-100">La página es accesible, pero no contiene una foto válida del jugador. Se han descartado logos, escudos, anuncios, banderas, placeholders e imágenes demasiado pequeñas.</p> : null}
+
+          {sourceAnalysis.photo ? (
+            <div className="mt-4 grid gap-4 md:grid-cols-[180px_1fr]">
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/20 p-2">
+                <img src={sourceAnalysis.photo.url} alt="Vista previa de la foto encontrada" className="aspect-square w-full rounded-xl object-cover" />
+              </div>
+              <div className="min-w-0">
+                <dl className="space-y-2 text-[10px]">
+                  <div><dt className="font-black uppercase text-slate-500">Fuente</dt><dd className="mt-0.5 font-bold text-white">{sourceAnalysis.sourceType === 'lapreferente' ? 'LaPreferente' : sourceAnalysis.sourceType || 'Web'}</dd></div>
+                  <div><dt className="font-black uppercase text-slate-500">Dimensiones verificadas</dt><dd className="mt-0.5 font-bold text-white">{sourceAnalysis.photo.width} × {sourceAnalysis.photo.height} px · {sourceAnalysis.photo.mimeType || 'imagen compatible'}</dd></div>
+                  <div><dt className="font-black uppercase text-slate-500">URL encontrada</dt><dd className="mt-0.5 break-all font-semibold text-slate-400">{sourceAnalysis.photo.url}</dd></div>
+                  <div><dt className="font-black uppercase text-slate-500">Evidencia</dt><dd className="mt-0.5 font-semibold text-slate-400">{sourceAnalysis.photo.evidence || 'Imagen principal de una ficha individual verificada.'}</dd></div>
+                </dl>
+
+                {currentPhotoUrl ? (
+                  <div className={`mt-4 rounded-xl border p-3 ${manualPhotoProtected ? 'border-amber-300/25 bg-amber-300/[0.07]' : 'border-white/10 bg-white/[0.03]'}`}>
+                    <p className={`text-xs font-black ${manualPhotoProtected ? 'text-amber-100' : 'text-white'}`}>{manualPhotoProtected ? 'La foto actual es manual y está protegida' : 'Ya existe una foto importada'}</p>
+                    <p className="mt-1 text-[10px] font-semibold text-slate-400">Se mantendrá por defecto. Para sustituirla debes confirmarlo expresamente.</p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <button type="button" onClick={() => setReplaceExistingPhoto(false)} className={`rounded-xl border px-3 py-2 text-[10px] font-black ${!replaceExistingPhoto ? 'border-white/25 bg-white/10 text-white' : 'border-white/10 text-slate-500'}`}>Mantener foto actual</button>
+                      <button type="button" onClick={() => setReplaceExistingPhoto(true)} className={`rounded-xl border px-3 py-2 text-[10px] font-black ${replaceExistingPhoto ? 'border-amber-300/35 bg-amber-300/10 text-amber-100' : 'border-white/10 text-slate-500'}`}>Sustituir por la encontrada</button>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => onUseExtractedPhoto?.(sourceAnalysis, 'storage')} disabled={sourcePhotoSaving || (Boolean(currentPhotoUrl) && !replaceExistingPhoto)} className="rounded-xl bg-emerald-300 px-4 py-2 text-xs font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">{sourcePhotoSaving ? 'Guardando copia…' : 'Guardar copia en APPCAUDAL'}</button>
+                  <button type="button" onClick={() => onUseExtractedPhoto?.(sourceAnalysis, 'external')} disabled={sourcePhotoSaving || (Boolean(currentPhotoUrl) && !replaceExistingPhoto)} className="rounded-xl border border-white/15 bg-white/[0.05] px-4 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-40">Usar enlace externo</button>
+                  <button type="button" onClick={onCloseSourceAnalysis} disabled={sourcePhotoSaving} className="rounded-xl border border-red-300/15 px-4 py-2 text-xs font-black text-red-200 disabled:opacity-50">Descartar</button>
+                </div>
+                <p className="mt-2 text-[9px] font-semibold text-slate-500">Recomendado: guardar una copia para que la foto no dependa de cambios futuros en la web externa.</p>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {sourceAnalysis && sourceAnalysis.mode !== 'photo_only' ? (
         <section className="mt-4 rounded-2xl border border-caudal-electric/20 bg-caudal-electric/[0.045] p-4">
           <div className="flex items-start justify-between gap-3">
             <div>

@@ -100,9 +100,182 @@ const isSafePortrait = (value) => {
 
 const sourceTypeFromUrl = (url) => {
   const hostname = new URL(url).hostname.toLowerCase();
+  if (hostname === 'lapreferente.com' || hostname.endsWith('.lapreferente.com')) return 'lapreferente';
   if (hostname.includes('transfermarkt.')) return 'transfermarkt';
   if (hostname.includes('besoccer.')) return 'besoccer';
   return 'generic';
+};
+
+const normalizeIdentityText = (value = '') => cleanText(value)
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim();
+
+const getTagAttribute = (tag, name) => {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return decodeEntities(
+    tag.match(new RegExp(`\\b${escaped}\\s*=\\s*["']([^"']*)["']`, 'i'))?.[1]
+      || tag.match(new RegExp(`\\b${escaped}\\s*=\\s*([^\\s>]+)`, 'i'))?.[1]
+      || '',
+  ).trim();
+};
+
+const getImageSource = (tag) => {
+  const direct = firstValue(
+    getTagAttribute(tag, 'data-original'),
+    getTagAttribute(tag, 'data-src'),
+    getTagAttribute(tag, 'data-lazy-src'),
+    getTagAttribute(tag, 'src'),
+  );
+  if (direct && !/^data:/i.test(direct)) return direct;
+  const srcset = getTagAttribute(tag, 'srcset');
+  if (!srcset) return '';
+  return srcset.split(',').map((item) => item.trim().split(/\s+/)[0]).filter(Boolean).at(-1) || '';
+};
+
+const parseDimension = (value) => {
+  const parsed = Number.parseInt(String(value || '').match(/\d+/)?.[0] || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+const imageRejectReason = ({ url, tag = '', width = null, height = null }) => {
+  const fingerprint = normalizeIdentityText(`${url} ${tag}`);
+  if (/\b(logo|crest|escudo|wappen|badge|banner|advert|publicidad|anuncio|ads?|flag|bandera|placeholder|default|sin foto|no photo|sprite|favicon|icono|icon|avatar|user empty|loader|loading|federacion|demarcacion)\b/.test(fingerprint)) {
+    return 'Imagen descartada por patrón de logo, publicidad, bandera, icono o placeholder.';
+  }
+  if (!/^https:\/\//i.test(url)) return 'Imagen descartada porque no utiliza HTTPS.';
+  if (width && height && (width < 150 || height < 150)) return 'Imagen descartada por no alcanzar 150 × 150 píxeles.';
+  if (width && height && (width / height > 2.6 || height / width > 2.6)) return 'Imagen descartada por proporción de banner.';
+  return '';
+};
+
+const confidenceFromScore = (score) => score >= 105 ? 'high' : score >= 70 ? 'medium' : 'low';
+
+const dedupePhotoCandidates = (candidates) => Array.from(candidates.reduce((map, candidate) => {
+  const key = candidate.url;
+  const previous = map.get(key);
+  if (!previous || candidate.score > previous.score) map.set(key, candidate);
+  return map;
+}, new Map()).values()).sort((left, right) => right.score - left.score);
+
+export const extractPlayerPhotoCandidates = ({ html, sourceUrl, finalUrl = sourceUrl }) => {
+  const sourceType = sourceTypeFromUrl(sourceUrl);
+  const canonicalUrl = getCanonical(html, finalUrl);
+  const declaredBase = html.match(/<base\b[^>]+href=["']([^"']+)["']/i)?.[1] || '';
+  const resolutionBaseUrl = normalizeUrl(declaredBase, finalUrl) || finalUrl;
+  const jsonLd = parseJsonLd(html);
+  const person = jsonLd.find((item) => hasType(item, 'Person')) || null;
+  const title = cleanText(html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '');
+  const heading = cleanText(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || '');
+  const description = firstValue(getMeta(html, 'description'), getMeta(html, 'og:description'));
+  const pageName = cleanText(firstValue(person?.name, heading, title.replace(/\s*(?:[-|:]|::).*$/, '')));
+  const normalizedName = normalizeIdentityText(pageName);
+  const isLaPreferentePlayerUrl = sourceType === 'lapreferente' && /\/(?:J\d+\/[^/?#]+\.html|index\.php\?[^#]*\bIDjugador=\d+)/i.test(finalUrl);
+  const profileEvidence = Boolean(
+    person
+    || isLaPreferentePlayerUrl
+    || (/ficha\s+(?:t[eé]cnica|del jugador)|ex[- ]?jugador de f[uú]tbol/i.test(normalizeIdentityText(description)) && /jugador/i.test(description)),
+  );
+  const candidates = [];
+  const discarded = [];
+
+  const addCandidate = ({ rawUrl, width = null, height = null, score = 0, evidence = '', selector = '', tag = '' }) => {
+    const url = normalizeUrl(rawUrl, resolutionBaseUrl);
+    const rejection = imageRejectReason({ url, tag, width, height });
+    if (rejection) {
+      if (url) discarded.push(`${rejection} ${url}`);
+      return;
+    }
+    candidates.push({
+      url,
+      width,
+      height,
+      score,
+      confidence: confidenceFromScore(score),
+      evidence: cleanText(evidence).slice(0, 240),
+      selector,
+    });
+  };
+
+  const personImage = firstValue(person?.image?.url, person?.image, person?.photo?.url, person?.photo);
+  if (personImage) addCandidate({ rawUrl: personImage, score: 145, evidence: 'JSON-LD Person.image', selector: 'script[type="application/ld+json"]' });
+
+  const imgPattern = /<img\b[^>]*>/gi;
+  let imageMatch;
+  let imageIndex = 0;
+  while ((imageMatch = imgPattern.exec(html))) {
+    const tag = imageMatch[0];
+    const rawUrl = getImageSource(tag);
+    if (!rawUrl) continue;
+    const width = parseDimension(getTagAttribute(tag, 'width'));
+    const height = parseDimension(getTagAttribute(tag, 'height'));
+    const alt = cleanText(firstValue(getTagAttribute(tag, 'alt'), getTagAttribute(tag, 'title')));
+    const identity = normalizeIdentityText(alt);
+    const classAndId = `${getTagAttribute(tag, 'class')} ${getTagAttribute(tag, 'id')}`;
+    const surrounding = cleanText(html.slice(Math.max(0, imageMatch.index - 700), Math.min(html.length, imageMatch.index + tag.length + 700)));
+    const normalizedSurrounding = normalizeIdentityText(surrounding);
+    let score = 0;
+    const evidence = [];
+    if (normalizedName && identity && (identity.includes(normalizedName) || normalizedName.includes(identity))) {
+      score += 105;
+      evidence.push(`alt/title asociado al jugador: ${alt}`);
+    }
+    if (/player|jugador|ficha|perfil|portrait|profile|foto/i.test(`${classAndId} ${rawUrl}`)) {
+      score += 55;
+      evidence.push('imagen situada en un bloque o ruta de jugador');
+    }
+    if (normalizedName && normalizedSurrounding.includes(normalizedName)) {
+      score += 35;
+      evidence.push('nombre del jugador próximo a la imagen');
+    }
+    if (width && height && width >= 150 && height >= 150) {
+      score += 25;
+      evidence.push(`dimensiones declaradas ${width} × ${height}`);
+    }
+    if (sourceType === 'lapreferente' && /\/imagenes\/jugadores\//i.test(rawUrl)) {
+      score += 70;
+      evidence.push('ruta específica de fotografías de jugadores de LaPreferente');
+    }
+    if (profileEvidence && score >= 55) addCandidate({ rawUrl, width, height, score, evidence: evidence.join('; '), selector: `img[${imageIndex}]`, tag });
+    imageIndex += 1;
+  }
+
+  const ogImage = getMeta(html, 'og:image');
+  if (ogImage && profileEvidence) {
+    const score = person ? 125 : isLaPreferentePlayerUrl ? 118 : 82;
+    addCandidate({
+      rawUrl: ogImage,
+      width: parseDimension(getMeta(html, 'og:image:width')),
+      height: parseDimension(getMeta(html, 'og:image:height')),
+      score,
+      evidence: isLaPreferentePlayerUrl
+        ? 'og:image de una URL canónica de ficha individual J{id} de LaPreferente'
+        : 'og:image de una ficha individual verificada',
+      selector: 'meta[property="og:image"]',
+    });
+  }
+
+  const safeCandidates = dedupePhotoCandidates(candidates).filter((candidate) => candidate.score >= 70);
+  const photo = safeCandidates[0] || null;
+  return {
+    ok: true,
+    status: photo ? 'photo_found' : profileEvidence ? 'no_photo' : 'not_player',
+    sourceType,
+    pageType: profileEvidence ? 'player_profile' : 'unknown',
+    canonicalUrl,
+    playerName: pageName,
+    photo,
+    candidates: safeCandidates,
+    discarded,
+  };
+};
+
+export const extractLaPreferentePlayerPhoto = ({ html, sourceUrl, finalUrl = sourceUrl }) => {
+  const result = extractPlayerPhotoCandidates({ html, sourceUrl, finalUrl });
+  if (result.sourceType !== 'lapreferente') return { ...result, status: 'unsupported_source', photo: null, candidates: [] };
+  return result;
 };
 
 const addField = (fields, field, value, confidence, sourceUrl, evidence) => {
