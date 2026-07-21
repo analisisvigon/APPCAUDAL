@@ -11,6 +11,7 @@ import {
 import {
   calculateGlobalPlayerProfileCompletion,
   filterGlobalPlayers,
+  getGlobalPlayerOrigin,
 } from '../../utils/globalPlayerStore';
 
 const VIEW_STORAGE_KEY = 'caudal-global-player-database-view-v1';
@@ -18,6 +19,7 @@ const EMPTY_FILTERS = {
   naturalPosition: '',
   specificPosition: '',
   teamId: '',
+  origin: '',
   trait: '',
   ageMin: '',
   ageMax: '',
@@ -44,6 +46,12 @@ const COMPLETION_FIELD_LABELS = {
   team: 'equipo actual',
   source: 'fuente',
   scoutingSummary: 'observaciones',
+};
+const ORIGIN_LABELS = {
+  caudal: 'C.D. Caudal',
+  rival: 'Equipo rival',
+  free: 'Sin equipo',
+  historical: 'Histórico',
 };
 
 const safeArray = (value) => Array.isArray(value) ? value : [];
@@ -122,12 +130,23 @@ function CompletionIndicator({ player, compact = false }) {
     : completion.percentage >= 70
       ? 'text-sky-200 bg-sky-300/10 border-sky-300/20'
       : 'text-amber-100 bg-amber-300/10 border-amber-300/20';
+  if (!compact) return <span title={`Perfil ${completion.percentage}% · Campos pendientes: ${completion.missing.map((field) => COMPLETION_FIELD_LABELS[field] || field).join(', ') || 'ninguno'}`} className={`inline-flex h-2.5 w-2.5 rounded-full border ${color}`} />;
   return (
     <span title={`Campos pendientes: ${completion.missing.map((field) => COMPLETION_FIELD_LABELS[field] || field).join(', ') || 'ninguno'}`} className={`${compact ? 'px-2 py-1' : 'px-2.5 py-1.5'} inline-flex items-center gap-1.5 rounded-xl border ${color}`}>
       <span className="text-xs font-black">{completion.percentage}%</span>
       {!compact ? <span className="text-[8px] font-black uppercase tracking-[0.12em]">{completion.label}</span> : null}
     </span>
   );
+}
+
+function OriginBadge({ player, teams }) {
+  const origin = getGlobalPlayerOrigin(player, teams);
+  const tone = origin === 'caudal'
+    ? 'border-sky-300/20 bg-sky-300/10 text-sky-100'
+    : origin === 'rival'
+      ? 'border-violet-300/20 bg-violet-300/10 text-violet-100'
+      : 'border-white/10 bg-white/[0.04] text-slate-400';
+  return <span className={`inline-flex rounded-lg border px-2 py-1 text-[9px] font-black ${tone}`}>{ORIGIN_LABELS[origin]}</span>;
 }
 
 function PlayerStatusBadges({ player }) {
@@ -175,7 +194,7 @@ const buildPlayerPresentation = (player, teamById) => {
   return { memberships, currentMembership, currentTeam, positionModel, naturalPosition, specificPositions };
 };
 
-function QuickActions({ player, currentTeam, onEdit, onOpenProfile, onManageTeam, onDuplicate, onOpenTeam, list = false }) {
+function QuickActions({ player, currentTeam, onEdit, onOpenProfile, onManageTeam, onOpenTeam, onViewHistory, list = false }) {
   const buttonClass = list
     ? 'rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-[9px] font-black text-slate-300 transition hover:border-caudal-electric/30 hover:text-white'
     : 'rounded-lg border border-white/10 bg-slate-950/90 px-2 py-1.5 text-[9px] font-black text-slate-200 shadow transition hover:border-caudal-electric/35 hover:text-white';
@@ -184,18 +203,24 @@ function QuickActions({ player, currentTeam, onEdit, onOpenProfile, onManageTeam
     callback?.(player);
   };
   return (
-    <span className={`flex flex-wrap gap-1 ${list ? '' : 'pointer-events-none absolute right-3 top-3 z-20 opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100'}`}>
-      <button type="button" onClick={(event) => run(event, onEdit)} className={buttonClass}>Editar</button>
-      <button type="button" onClick={(event) => run(event, onOpenProfile)} className={buttonClass}>Abrir ficha</button>
-      <button type="button" onClick={(event) => run(event, onManageTeam)} className={buttonClass}>Mover</button>
-      <button type="button" onClick={(event) => run(event, onDuplicate)} className={buttonClass}>Duplicar</button>
-      {currentTeam ? <button type="button" onClick={(event) => { event.stopPropagation(); onOpenTeam?.(currentTeam); }} className={buttonClass}>Abrir equipo</button> : null}
-    </span>
+    <div className={`flex items-center gap-1 ${list ? '' : 'pointer-events-none absolute right-3 top-3 z-20 opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100'}`}>
+      <button type="button" onClick={(event) => run(event, onOpenProfile)} className={buttonClass}>Abrir perfil</button>
+      <details onClick={(event) => event.stopPropagation()} className="relative">
+        <summary className={`${buttonClass} cursor-pointer list-none`}>•••</summary>
+        <div className="absolute right-0 top-full z-40 mt-1 grid min-w-36 gap-1 rounded-xl border border-white/10 bg-[#071225] p-1.5 shadow-2xl">
+          <button type="button" onClick={(event) => run(event, onEdit)} className={buttonClass}>Editar</button>
+          <button type="button" onClick={(event) => run(event, onManageTeam)} className={buttonClass}>Cambiar equipo</button>
+          {currentTeam ? <button type="button" onClick={(event) => { event.stopPropagation(); onOpenTeam?.(currentTeam); }} className={buttonClass}>Abrir equipo</button> : null}
+          <button type="button" onClick={(event) => run(event, onViewHistory)} className={buttonClass}>Ver historial</button>
+        </div>
+      </details>
+    </div>
   );
 }
 
 function PlayerGridCard({ player, teamById, onSelect, ...actions }) {
   const presentation = buildPlayerPresentation(player, teamById);
+  const teams = Array.from(teamById.values());
   const age = getAge(player);
   const unavailable = player.injured || player.injuredAlert || player.suspended || player.suspendedAlert;
   return (
@@ -224,7 +249,7 @@ function PlayerGridCard({ player, teamById, onSelect, ...actions }) {
 
       <div className="mt-3 min-h-[3.4rem]"><PlayerTraits player={player} /></div>
       <div className="mt-3 flex min-h-7 items-center justify-between gap-2 border-t border-white/[0.07] pt-3">
-        <PlayerStatusBadges player={player} />
+        <span className="flex flex-wrap gap-1"><PlayerStatusBadges player={player} /><OriginBadge player={player} teams={teams} /></span>
         <CompletionIndicator player={player} />
       </div>
     </article>
@@ -234,8 +259,9 @@ function PlayerGridCard({ player, teamById, onSelect, ...actions }) {
 function PlayerListRow({ player, teamById, onSelect, ...actions }) {
   const presentation = buildPlayerPresentation(player, teamById);
   const age = getAge(player);
+  const teams = Array.from(teamById.values());
   return (
-    <article role="button" tabIndex={0} onClick={() => onSelect(player)} onKeyDown={(event) => { if (event.key === 'Enter') onSelect(player); }} className="group grid gap-3 rounded-2xl border border-white/[0.08] bg-[#091428]/78 p-3 transition hover:border-caudal-electric/30 md:grid-cols-[minmax(220px,1.35fr)_minmax(170px,1fr)_minmax(170px,1fr)_auto] md:items-center">
+    <article role="button" tabIndex={0} onClick={() => onSelect(player)} onKeyDown={(event) => { if (event.key === 'Enter') onSelect(player); }} className="group grid gap-3 rounded-2xl border border-white/[0.08] bg-[#091428]/78 p-3 transition hover:border-caudal-electric/30 md:grid-cols-[minmax(190px,1.4fr)_minmax(145px,1fr)_minmax(130px,0.9fr)_70px_110px_88px_minmax(150px,auto)] md:items-center">
       <div className="flex min-w-0 items-center gap-3">
         <PlayerPhoto player={player} size="list" />
         <div className="min-w-0">
@@ -247,12 +273,12 @@ function PlayerListRow({ player, teamById, onSelect, ...actions }) {
       <div className="min-w-0">
         {presentation.naturalPosition ? <p className="truncate text-xs font-black text-slate-200">{presentation.naturalPosition}</p> : null}
         {presentation.specificPositions.length ? <p className="mt-0.5 truncate text-[10px] font-semibold text-caudal-electric">{presentation.specificPositions.join(' · ')}</p> : null}
-        <p className="mt-0.5 truncate text-[9px] font-semibold text-slate-500">{[age !== null ? `${age} años` : '', player.height, player.foot ? `Pie ${player.foot}` : ''].filter(Boolean).join(' · ')}</p>
+        <p className="mt-0.5 truncate text-[9px] font-semibold text-slate-500">{[player.height, player.foot ? `Pie ${player.foot}` : ''].filter(Boolean).join(' · ')}</p>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 md:justify-end">
-        <CompletionIndicator player={player} compact />
-        <QuickActions player={player} currentTeam={presentation.currentTeam} {...actions} list />
-      </div>
+      <span className="text-xs font-black text-slate-300">{age !== null ? age : '—'}</span>
+      <OriginBadge player={player} teams={teams} />
+      <CompletionIndicator player={player} compact />
+      <QuickActions player={player} currentTeam={presentation.currentTeam} {...actions} list />
     </article>
   );
 }
@@ -311,7 +337,7 @@ function PlayerQuickView({ player, teamById, onClose, onOpenProfile, onManageTea
           <section className="mt-4 rounded-2xl border border-dashed border-white/[0.08] p-4"><p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Último informe</p><p className="mt-2 text-xs font-semibold text-slate-500">{player.lastReport?.title || 'Sin informes vinculados al perfil global.'}</p></section>
 
           <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-white/10 pt-4">
-            <button type="button" onClick={() => { onClose(); onManageTeam(player); }} className="rounded-xl border border-white/10 px-4 py-2 text-xs font-black text-slate-200">Gestionar equipo</button>
+            <button type="button" onClick={() => { onClose(); onManageTeam(player); }} className="rounded-xl border border-white/10 px-4 py-2 text-xs font-black text-slate-200">Cambiar equipo</button>
             <button type="button" onClick={() => { onClose(); onOpenProfile(player); }} className="rounded-xl bg-caudal-electric px-4 py-2 text-xs font-black text-slate-950">Abrir ficha completa</button>
           </div>
         </div>
@@ -335,7 +361,6 @@ function GlobalPlayerDatabase({
   onEdit,
   onOpenProfile,
   onManageTeam,
-  onDuplicate,
   onOpenTeam,
 }) {
   const [search, setSearch] = useState('');
@@ -390,7 +415,7 @@ function GlobalPlayerDatabase({
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.24em] text-caudal-electric">Scouting · conocimiento global</p>
-            <h2 className="mt-1 text-2xl font-black text-white sm:text-3xl">Base de datos de jugadores</h2>
+            <h2 className="mt-1 text-2xl font-black text-white sm:text-3xl">Perfiles</h2>
             <p className="mt-1 max-w-2xl text-sm font-semibold text-slate-500">Perfiles únicos, historial de clubes y conocimiento acumulado del cuerpo técnico.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -403,11 +428,12 @@ function GlobalPlayerDatabase({
           </div>
         </div>
 
-        <div className="mt-5 grid gap-2 md:grid-cols-2 xl:grid-cols-6">
+        <div className="mt-5 grid gap-2 md:grid-cols-2 xl:grid-cols-7">
           <label className="relative md:col-span-2 xl:col-span-2"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">⌕</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} className="field-input pl-9" placeholder="Nombre, equipo, posición, característica, observación…" /></label>
           <select aria-label="Posición natural" value={filters.naturalPosition} onChange={(event) => changeNaturalPosition(event.target.value)} className="field-input"><option value="">Posición natural</option>{NATURAL_POSITION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
           <select aria-label="Posición específica" value={filters.specificPosition} onChange={(event) => { setFilter('specificPosition', event.target.value); setFilterNotice(''); }} className="field-input"><option value="">Posición específica</option>{specificPositionGroups.map(([naturalKey, options]) => <optgroup key={naturalKey} label={getNaturalPositionLabel(naturalKey)}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>)}</select>
           <select value={filters.teamId} onChange={(event) => setFilter('teamId', event.target.value)} className="field-input"><option value="">Equipo actual</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}<option value="__without_team__">Sin equipo</option></select>
+          <select aria-label="Procedencia" value={filters.origin} onChange={(event) => setFilter('origin', event.target.value)} className="field-input"><option value="">Todas las procedencias</option><option value="caudal">C.D. Caudal</option><option value="rival">Equipos rivales</option><option value="free">Sin equipo</option><option value="historical">Histórico</option></select>
           <select value={filters.trait} onChange={(event) => setFilter('trait', event.target.value)} className="field-input"><option value="">Característica</option>{traitOptions.map((trait) => <option key={trait} value={trait}>{trait}</option>)}</select>
         </div>
 
@@ -425,10 +451,11 @@ function GlobalPlayerDatabase({
 
       {loading ? <div className="empty-state">Cargando base global…</div> : renderedPlayers.length ? (
         <>
+          {viewMode === 'list' ? <div className="hidden px-3 text-[9px] font-black uppercase tracking-[0.13em] text-slate-500 md:grid md:grid-cols-[minmax(190px,1.4fr)_minmax(145px,1fr)_minmax(130px,0.9fr)_70px_110px_88px_minmax(150px,auto)] md:gap-3"><span>Jugador</span><span>Equipo actual</span><span>Posición</span><span>Edad</span><span>Procedencia</span><span>Perfil</span><span>Acciones</span></div> : null}
           <section className={viewMode === 'grid' ? 'grid gap-4 md:grid-cols-2 2xl:grid-cols-3' : 'space-y-2'}>
             {renderedPlayers.map((player) => viewMode === 'grid'
-              ? <PlayerGridCard key={player.id} player={player} teamById={teamById} onSelect={(item) => setSelectedPlayerId(item.id)} onEdit={onEdit} onOpenProfile={onOpenProfile} onManageTeam={onManageTeam} onDuplicate={onDuplicate} onOpenTeam={onOpenTeam} />
-              : <PlayerListRow key={player.id} player={player} teamById={teamById} onSelect={(item) => setSelectedPlayerId(item.id)} onEdit={onEdit} onOpenProfile={onOpenProfile} onManageTeam={onManageTeam} onDuplicate={onDuplicate} onOpenTeam={onOpenTeam} />)}
+              ? <PlayerGridCard key={player.id} player={player} teamById={teamById} onSelect={(item) => setSelectedPlayerId(item.id)} onEdit={onEdit} onOpenProfile={onOpenProfile} onManageTeam={onManageTeam} onOpenTeam={onOpenTeam} onViewHistory={(item) => setSelectedPlayerId(item.id)} />
+              : <PlayerListRow key={player.id} player={player} teamById={teamById} onSelect={(item) => setSelectedPlayerId(item.id)} onEdit={onEdit} onOpenProfile={onOpenProfile} onManageTeam={onManageTeam} onOpenTeam={onOpenTeam} onViewHistory={(item) => setSelectedPlayerId(item.id)} />)}
           </section>
           {visibleLimit < filteredPlayers.length ? <div className="flex justify-center"><button type="button" onClick={() => setVisibleLimit((current) => current + (viewMode === 'list' ? 200 : 120))} className="rounded-xl border border-white/10 bg-white/[0.04] px-5 py-2.5 text-xs font-black text-slate-200">Mostrar más · {filteredPlayers.length - visibleLimit} pendientes</button></div> : null}
         </>

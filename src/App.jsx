@@ -931,6 +931,9 @@ const consignaToneClass = {
 
 const normalizeSupabaseJugador = (player) => ({
   id: player.id,
+  globalPlayerId: player.global_player_id ?? player.globalPlayerId ?? null,
+  membershipId: player.membership_id ?? player.membershipId ?? null,
+  activeInSquad: player.active_in_squad !== false,
   name: player.name ?? player.nombre ?? '',
   shirtName: player.shirt_name ?? player.nombre_camiseta ?? player.short_name ?? '',
   dob: player.dob ?? player.fecha_nacimiento ?? '',
@@ -944,7 +947,7 @@ const normalizeSupabaseJugador = (player) => ({
 async function getJugadores() {
   const { data, error } = await supabase.from("jugadores").select("*")
   if (error) throw error
-  return (data || []).map(normalizeSupabaseJugador)
+  return (data || []).map(normalizeSupabaseJugador).filter((player) => player.activeInSquad !== false)
 }
 
 const createJugadorPayload = (formState) => ({
@@ -1808,6 +1811,8 @@ const rivalDbToForm = (row = {}) => ({
 const rivalDbToTeam = (row = {}, extras = {}) => ({
   ...extras,
   ...rivalDbToForm(row),
+  teamKind: row.team_kind || row.teamKind || 'rival',
+  isOwnClub: (row.team_kind || row.teamKind) === 'own',
   system: row.system || extras.system || '4-4-2',
 });
 
@@ -15430,11 +15435,19 @@ function App() {
       tendency,
       playerCount: players.length,
       sub23Count: players.filter((player) => calculateAge(player.dob) < 23).length,
-      rivalCount: teams.length,
+      rivalCount: teams.filter((team) => !team.isOwnClub).length,
     };
   }, [matches, players, teams, matchFilter]);
 
   const openForm = (player = null) => {
+    const ownClubTeam = teams.find((team) => team.isOwnClub || team.teamKind === 'own');
+    const linkedGlobalPlayer = player?.globalPlayerId
+      ? globalPlayers.find((profile) => String(profile.id) === String(player.globalPlayerId))
+      : null;
+    if (globalPlayersAvailable && ownClubTeam && (!player || linkedGlobalPlayer)) {
+      openRivalPlayerModal(linkedGlobalPlayer, { teamId: ownClubTeam.id });
+      return;
+    }
     setPlayerFormError('');
     setIsSavingPlayer(false);
     if (player) {
@@ -15875,42 +15888,6 @@ function App() {
     setPlayerSourceAnalyzingUrl('');
   };
 
-  const duplicateGlobalPlayerDraft = (player) => {
-    const normalized = normalizeSquadEntry(player || {});
-    setRivalPlayerSaveError('');
-    setRivalPlayerPhotoError('');
-    setRivalPlayerModal({
-      open: true,
-      mode: 'create',
-      originalName: '',
-      originalMembershipId: null,
-      originalTeamId: null,
-      teamId: null,
-      allowDuplicateCreate: true,
-      draft: {
-        ...createBlankGlobalPlayer(),
-        ...normalized,
-        id: null,
-        globalPlayerId: null,
-        legacyPlayerId: null,
-        membershipId: null,
-        membership: null,
-        memberships: [],
-        currentMemberships: [],
-        teamId: '',
-        number: '',
-        captain: false,
-        isKey: false,
-        observed: false,
-        dob: '',
-        externalSource: '',
-        externalPlayerId: '',
-        sources: [],
-        name: `${normalized.name || 'Jugador'} (copia)`,
-      },
-    });
-  };
-
   const updateRivalPlayerDraft = (field, value) => {
     setRivalPlayerModal((current) => ({
       ...current,
@@ -16198,6 +16175,9 @@ function App() {
         if (legacyLinkError) throw legacyLinkError;
       }
       await loadTeams();
+      const ownPlayers = await getJugadores();
+      setPlayers(ownPlayers);
+      setEmpty(ownPlayers.length === 0);
       const genericSourceSaved = safeArray(draft.sources).some((source) => !['transfermarkt', 'besoccer'].includes(normalizePlayerIdentityName(source.sourceName)));
       setGlobalPlayerStatus(genericSourceSaved ? 'Fuente guardada. Completa manualmente los datos que quieras conservar.' : 'Jugador global guardado correctamente.');
       closeRivalPlayerModal();
@@ -16226,6 +16206,9 @@ function App() {
     try {
       await assignGlobalPlayerToTeam(supabase, { playerId, teamId, mode });
       await loadTeams();
+      const ownPlayers = await getJugadores();
+      setPlayers(ownPlayers);
+      setEmpty(ownPlayers.length === 0);
       setGlobalPlayerStatus(mode === 'replace' ? 'Jugador global vinculado sin crear duplicados.' : 'Relación de equipo actualizada.');
       closeRivalPlayerModal();
     } catch (linkError) {
@@ -16267,6 +16250,9 @@ function App() {
         startDate: playerTeamManager.changeDate,
       });
       await loadTeams();
+      const ownPlayers = await getJugadores();
+      setPlayers(ownPlayers);
+      setEmpty(ownPlayers.length === 0);
       setGlobalPlayerStatus('Equipo actualizado. La etapa anterior se conserva en el historial.');
       closePlayerTeamManager();
       closeRivalPlayerModal();
@@ -16284,6 +16270,9 @@ function App() {
         endDate: playerTeamManager.changeDate,
       });
       await loadTeams();
+      const ownPlayers = await getJugadores();
+      setPlayers(ownPlayers);
+      setEmpty(ownPlayers.length === 0);
       setGlobalPlayerStatus('El jugador queda sin equipo. Su perfil y su historial se conservan.');
       closePlayerTeamManager();
       closeRivalPlayerModal();
@@ -16459,7 +16448,7 @@ function App() {
             }
             globalPlayer = exact.player;
           } else if (matches.length) {
-            throw new Error(`Posible coincidencia para ${squadPlayer.name}. Revísala en la pestaña Jugadores antes de crear otro perfil.`);
+            throw new Error(`Posible coincidencia para ${squadPlayer.name}. Revísala en la pestaña Perfiles antes de crear otro perfil.`);
           }
         }
         const positionModel = getPlayerPositionModel(squadPlayer);
@@ -17900,7 +17889,7 @@ function App() {
     if (!rivalTeam?.id || !isUuid(rivalTeam.id)) return null;
     if (!globalPlayersAvailable) throw new Error('La base global de jugadores no está disponible.');
     const matches = findGlobalPlayerMatches(player, globalPlayers);
-    if (matches.length) throw new Error(`${player.name} puede existir en la base global. Revísalo en Jugadores antes de vincularlo.`);
+    if (matches.length) throw new Error(`${player.name} puede existir en la base global. Revísalo en Perfiles antes de vincularlo.`);
     const positionModel = mapExternalPositionToPlayerPositions(player.position);
     const draft = { ...createBlankGlobalPlayer(), ...player, ...positionModel, id: null, globalPlayerId: null, teamId: rivalTeam.id, photoUrl: player.image || '', role: 'Titular' };
     const globalId = await saveGlobalPlayerProfile(supabase, draft);
@@ -19057,7 +19046,7 @@ function App() {
   };
 
   const authUser = session?.user ?? null;
-  const desktopTabs = ['Inicio', 'Plantilla', 'Jugadores', 'Equipos', 'Partidos', 'Biblioteca', 'Rendimiento', 'Registro Delegado', 'Análisis Grupal'];
+  const desktopTabs = ['Inicio', 'Plantilla', 'Perfiles', 'Equipos', 'Partidos', 'Biblioteca', 'Rendimiento', 'Registro Delegado', 'Análisis Grupal'];
   const mobilePrimaryTabs = [
     ['Inicio', 'Inicio'],
     ['Partidos', 'Partidos'],
@@ -19065,7 +19054,7 @@ function App() {
     ['Registro Delegado', 'Deleg.'],
     ['Análisis Grupal', 'Análisis'],
   ];
-  const mobileMoreTabs = ['Jugadores', 'Equipos', 'Rendimiento', 'Biblioteca'];
+  const mobileMoreTabs = ['Perfiles', 'Equipos', 'Rendimiento', 'Biblioteca'];
   const goToTab = (tab) => {
     setActiveTab(tab);
     setIsMobileMoreOpen(false);
@@ -20474,7 +20463,7 @@ function App() {
           </main>
         ) : null}
 
-        {activeTab === 'Jugadores' ? (
+        {activeTab === 'Perfiles' ? (
           <GlobalPlayerDatabase
             players={globalPlayers}
             teams={teams}
@@ -20486,8 +20475,11 @@ function App() {
             onEdit={(player) => openRivalPlayerModal(player, { standalone: true })}
             onOpenProfile={(player) => openRivalPlayerModal(player, { standalone: true })}
             onManageTeam={openPlayerTeamManager}
-            onDuplicate={duplicateGlobalPlayerDraft}
             onOpenTeam={(team) => {
+              if (team.isOwnClub || team.teamKind === 'own') {
+                setActiveTab('Plantilla');
+                return;
+              }
               setSelectedTeamId(team.id);
               setActiveTab('Equipos');
             }}
@@ -20505,7 +20497,7 @@ function App() {
                 {!selectedTeam ? (
                   <div className="rounded-2xl border border-white/10 bg-black/15 px-4 py-2">
                     <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Rivales</p>
-                    <p className="mt-1 text-sm font-black text-white">{teams.length}</p>
+                    <p className="mt-1 text-sm font-black text-white">{teams.filter((team) => !team.isOwnClub).length}</p>
                   </div>
                 ) : null}
                 <div className="flex shrink-0 flex-wrap gap-2">
@@ -21928,6 +21920,7 @@ function App() {
             ) : teams.length > 0 ? (() => {
               const search = normalizePlayerIdentityName(teamSearchTerm);
               const visibleTeams = teams
+                .filter((team) => !team.isOwnClub && team.teamKind !== 'own')
                 .filter((team) => {
                   if (!search) return true;
                   return normalizePlayerIdentityName(team.name).includes(search);

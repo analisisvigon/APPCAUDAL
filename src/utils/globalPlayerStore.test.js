@@ -6,6 +6,7 @@ import {
   calculateGlobalPlayerProfileCompletion,
   ensureGlobalPlayerTeamMembership,
   filterGlobalPlayers,
+  getGlobalPlayerOrigin,
   findGlobalPlayerMatches,
   globalPlayerFromImportedPlayer,
   mergeGlobalPlayerProfiles,
@@ -42,6 +43,7 @@ assert.equal(findGlobalPlayerMatches({ name: 'Aitor Ferero' }, existing)[0].reas
 
 const teamOne = { id: 'team-1', name: 'C.D. Lealtad' };
 const teamTwo = { id: 'team-2', name: "L'Entregu CF" };
+const ownTeam = { id: 'team-own', name: 'C.D. Caudal', teamKind: 'own' };
 const globalDefender = {
   id: 'global-defender', globalPlayerId: 'global-defender', name: 'Álex Central', dob: '1996-04-10',
   externalSource: 'transfermarkt', externalPlayerId: '100',
@@ -89,6 +91,12 @@ assert.equal(filterGlobalPlayers([{ ...globalDefender, foot: 'Derecho', height: 
 assert.equal(filterGlobalPlayers([{ ...globalDefender, injuredAlert: true }], { injured: true }).length, 1);
 assert.equal(filterGlobalPlayers([{ ...globalDefender, memberships: [{ ...globalDefender.memberships[0], is_current: false }] }], { hasHistory: true }).length, 1);
 assert.equal(filterGlobalPlayers([globalDefender], { missingPhoto: true, incomplete: true }).length, 1);
+const ownPlayer = { ...globalDefender, memberships: [{ id: 'membership-own', team_id: ownTeam.id, is_current: true }] };
+assert.equal(getGlobalPlayerOrigin(ownPlayer, [teamOne, ownTeam]), 'caudal');
+assert.equal(getGlobalPlayerOrigin(globalDefender, [teamOne, ownTeam]), 'rival');
+assert.equal(getGlobalPlayerOrigin(globalWithoutTeam, [teamOne, ownTeam]), 'free');
+assert.equal(getGlobalPlayerOrigin({ ...globalWithoutTeam, memberships: [{ team_id: teamOne.id, is_current: false }] }, [teamOne, ownTeam]), 'historical');
+assert.deepEqual(filterGlobalPlayers([ownPlayer, globalDefender, globalWithoutTeam], { origin: 'caudal', teams: [teamOne, ownTeam] }).map((player) => player.id), [ownPlayer.id]);
 const completeProfile = calculateGlobalPlayerProfileCompletion({
   ...globalDefender,
   photoUrl: 'https://example.test/player.jpg',

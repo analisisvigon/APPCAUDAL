@@ -12,6 +12,23 @@ const normalizeText = (value) => String(value || '')
   .replace(/[^a-z0-9]+/g, ' ')
   .trim();
 
+export const isOwnClubTeam = (team = {}) => {
+  if (team.isOwnClub || team.teamKind === 'own' || team.team_kind === 'own') return true;
+  const normalizedName = normalizeText(team.name).replace(/\s+/g, '');
+  return ['cdcaudal', 'caudaldeportivo', 'caudaldeportivodemieres'].includes(normalizedName);
+};
+
+export const getGlobalPlayerOrigin = (player = {}, teams = []) => {
+  const teamById = new Map(safeArray(teams).map((team) => [String(team.id), team]));
+  const memberships = safeArray(player.memberships);
+  const currentMembership = memberships.find((membership) => membership.is_current) || null;
+  if (currentMembership) {
+    const team = teamById.get(String(currentMembership.team_id));
+    return isOwnClubTeam(team) ? 'caudal' : 'rival';
+  }
+  return memberships.length ? 'historical' : 'free';
+};
+
 const safeArray = (value) => Array.isArray(value) ? value : [];
 const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
 
@@ -241,6 +258,8 @@ export const filterGlobalPlayers = (players = [], filters = {}) => {
       ...safeArray(player.traits).map((trait) => trait.label),
       player.scoutingSummary,
       player.notes,
+      player.foot,
+      player.height,
     ].join(' '));
     const matchesSearch = !normalizedSearch || searchText.includes(normalizedSearch);
     const matchesNatural = !filters.naturalPosition || naturalPositions.includes(filters.naturalPosition);
@@ -265,9 +284,10 @@ export const filterGlobalPlayers = (players = [], filters = {}) => {
     const matchesPhoto = !filters.missingPhoto || !Boolean(player.photoUrl || player.image);
     const completion = calculateGlobalPlayerProfileCompletion(player);
     const matchesCompletion = !filters.incomplete || completion.percentage < 100;
+    const matchesOrigin = !filters.origin || getGlobalPlayerOrigin(player, filters.teams) === filters.origin;
     return matchesSearch && matchesNatural && matchesSpecific && matchesTeam && matchesTrait
       && matchesAge && matchesHeight && matchesFoot && matchesObserved && matchesKey && matchesCaptain
-      && matchesInjured && matchesSuspended && matchesHistory && matchesPhoto && matchesCompletion;
+      && matchesInjured && matchesSuspended && matchesHistory && matchesPhoto && matchesCompletion && matchesOrigin;
   });
 };
 
