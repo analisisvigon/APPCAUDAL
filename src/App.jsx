@@ -20677,6 +20677,13 @@ function App() {
                   if (parts.length <= 1) return parts[0] || '';
                   return parts[parts.length - 1];
                 };
+                const getTacticalPlayerName = (player) => {
+                  const fullName = String(displayPlayerName(player) || player?.name || '').trim();
+                  const parts = fullName.split(/\s+/).filter(Boolean);
+                  if (parts.length <= 1) return fullName;
+                  const initial = parts[0].charAt(0).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+                  return `${initial}. ${parts[parts.length - 1]}`;
+                };
                 const getRosterFieldState = (player) => {
                   if (player.activeInSquad === false || player.injured || player.suspended) return 'BAJA';
                   const placement = canonicalTacticalPlacements[getTacticalPlayerKey(player)];
@@ -20754,7 +20761,6 @@ function App() {
                 }, []).sort((a, b) => a.order - b.order);
                 const isPresentationMode = !teamFieldEditMode;
                 const playerNumberLabel = (player) => player?.number ? String(player.number) : '';
-                const compactPlayerLabel = (player) => `${player?.number ? `${player.number} ` : ''}${displayPlayerName(player)}`;
                 const presentationBenchPlayers = rivalPlayers
                   .filter((player) => !starterKeys.has(getRivalPlayerUniqueKey(player)))
                   .sort((a, b) =>
@@ -21012,8 +21018,8 @@ function App() {
                                   <option value="list">Sin colocar</option>
                                   {formationRoleOptions.flatMap((option) => [
                                     <option key={`sheet-starter-${option.index}`} value={`Titular:${option.index}`}>Titular · {option.label}</option>,
-                                    <option key={`sheet-reserve-${option.index}-0`} value={`Reserva:${option.index}:0`}>Reserva 1 · {option.label}</option>,
-                                    <option key={`sheet-reserve-${option.index}-1`} value={`Reserva:${option.index}:1`}>Reserva 2 · {option.label}</option>,
+                                    <option key={`sheet-reserve-${option.index}-0`} value={`Reserva:${option.index}:0`}>Banco A · {option.label}</option>,
+                                    <option key={`sheet-reserve-${option.index}-1`} value={`Reserva:${option.index}:1`}>Banco B · {option.label}</option>,
                                   ])}
                                 </select>
                               </label>
@@ -21076,8 +21082,8 @@ function App() {
                                   setActiveRivalDropSlot('');
                                   handleDropOnLineupSlot(slotIndex);
                                 }}
-                                className={`group absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-2xl border px-2.5 py-1.5 text-center transition-all duration-200 ease-out ${
-                                  slotPlayer ? `${isPresentationMode ? 'min-h-[5.2rem] w-[5.6rem] px-1 py-1' : 'min-h-20 w-24'} ${slotPlayer.isKey ? 'border-amber-200/80 bg-amber-200/[0.11] shadow-[0_0_0_1px_rgba(251,191,36,0.32),0_0_24px_rgba(250,204,21,0.30),0_10px_22px_rgba(0,0,0,0.24)]' : 'border-white/10 bg-slate-950/26 shadow-[0_8px_20px_rgba(0,0,0,0.18)]'} text-white` : `${teamFieldEditMode ? 'min-h-9 min-w-20 border-dashed border-white/12 bg-white/[0.012] text-white/30' : 'pointer-events-none hidden'}`
+                                className={`group absolute flex h-[5.25rem] w-[5.6rem] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-start rounded-2xl border px-1 py-1 text-center transition-all duration-200 ease-out ${
+                                  slotPlayer ? `${slotPlayer.isKey ? 'border-amber-200/80 bg-amber-200/[0.11] shadow-[0_0_0_1px_rgba(251,191,36,0.32),0_0_24px_rgba(250,204,21,0.30),0_10px_22px_rgba(0,0,0,0.24)]' : 'border-white/10 bg-slate-950/26 shadow-[0_8px_20px_rgba(0,0,0,0.18)]'} text-white` : `${teamFieldEditMode ? 'border-dashed border-white/12 bg-white/[0.012] text-white/30' : 'pointer-events-none hidden'}`
                                 } ${teamFieldEditMode && draggedPlayer ? draggedFitClass : ''} ${isDraggedSource ? 'scale-95 opacity-55' : ''} ${activeRivalDropSlot === `starter-${slotIndex}` ? 'scale-105' : ''}`}
                                 style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
                                 title={slotPlayer ? `${slotRole}: ${slotPlayer.name}` : slotRole}
@@ -21119,25 +21125,16 @@ function App() {
                                         <span key={title} title={title} className={`flex items-center justify-center rounded-md px-1 font-black leading-none ${isPresentationMode ? 'h-4 min-w-4 text-[8px]' : 'h-5 min-w-5 text-[10px]'} ${className}`}>{icon}</span>
                                       ))}
                                     </span>
-                                    {isPresentationMode ? <span className="mb-0.5 max-w-[5.8rem] truncate text-[9px] font-black uppercase tracking-[0.10em] text-caudal-electric">{shortRoleLabel(slotRole)}</span> : null}
-                                    <span className={`relative items-center justify-center overflow-hidden border bg-white/[0.08] font-black ${isPresentationMode ? `flex h-11 w-11 rounded-xl text-sm ${slotPlayer.isKey ? 'border-amber-200/70 shadow-[0_0_18px_rgba(250,204,21,0.28)]' : 'border-white/10'}` : 'flex h-16 w-16 rounded-2xl border-white/10 text-lg'}`}>
+                                    <span className="mb-0.5 block w-full truncate whitespace-nowrap text-[8px] font-black uppercase tracking-[0.10em] text-caudal-electric">{shortRoleLabel(slotRole)}</span>
+                                    <span className={`relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-white/[0.08] text-sm font-black ${slotPlayer.isKey ? 'border-amber-200/70 shadow-[0_0_18px_rgba(250,204,21,0.28)]' : 'border-white/10'}`}>
                                       <span className="absolute inset-0 flex items-center justify-center">{slotPlayer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                                       {slotPlayer.image ? <img src={slotPlayer.image} alt={slotPlayer.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="relative h-full w-full object-cover" /> : null}
-                                      {playerNumberLabel(slotPlayer) ? <span className={`absolute left-0.5 top-0.5 z-10 rounded-md bg-slate-950/82 px-1 py-0.5 font-black leading-none text-white ${isPresentationMode ? 'text-[8px]' : 'text-[10px]'}`}>{playerNumberLabel(slotPlayer)}</span> : null}
+                                      {playerNumberLabel(slotPlayer) ? <span className="absolute left-0.5 top-0.5 z-10 rounded-md bg-slate-950/82 px-1 py-0.5 text-[8px] font-black leading-none text-white">{playerNumberLabel(slotPlayer)}</span> : null}
                                     </span>
-                                    <span className={`flex max-w-28 items-center justify-center gap-1 truncate font-black uppercase ${isPresentationMode ? 'mt-0.5 text-[10px]' : 'mt-1.5 text-[13px]'}`}>
-                                      <span className="truncate">{displayPlayerName(slotPlayer)}</span>
+                                    <span className="mt-0.5 flex w-full min-w-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap px-0.5 text-[9px] font-black uppercase leading-3">
+                                      <span className="block min-w-0 truncate" title={displayPlayerName(slotPlayer)}>{getTacticalPlayerName(slotPlayer)}</span>
                                       {getRivalPlayerFlags(selectedTeam.id, slotPlayer.name).captain || slotPlayer.captain ? <span title="Capitán" className="shrink-0 text-[10px] leading-none text-blue-200">©</span> : null}
                                     </span>
-                                    {isPresentationMode && slotReservePlayers.filter(Boolean).length ? (
-                                      <span className="mt-0.5 flex max-w-28 flex-col gap-0.5 text-[8px] font-bold uppercase leading-tight text-slate-300/80">
-                                        {slotReservePlayers.filter(Boolean).slice(0, 2).map((reservePlayer) => (
-                                          <span key={reservePlayer.jugadorRivalId || reservePlayer.id || reservePlayer.name} className="truncate">
-                                            {compactPlayerLabel(reservePlayer)}
-                                          </span>
-                                        ))}
-                                      </span>
-                                    ) : null}
                                   </>
                                 ) : (
                                   <>
@@ -21146,7 +21143,7 @@ function App() {
                                   </>
                                 )}
                                 {teamFieldEditMode ? (
-                                  <div className="absolute left-1/2 top-full z-30 mt-3 grid w-40 -translate-x-1/2 gap-1 rounded-2xl border border-white/10 bg-[#07111f]/95 p-1.5 shadow-[0_18px_38px_rgba(0,0,0,0.42)]">
+                                  <div className="absolute left-1/2 top-full z-30 mt-1.5 grid w-[5.6rem] -translate-x-1/2 gap-1" aria-label={`Reservas de ${slotRole}`}>
                                     {[0, 1].map((reserveIndex) => {
                                       const reservePlayer = slotReservePlayers[reserveIndex] || null;
                                       return (
@@ -21182,45 +21179,18 @@ function App() {
                                             setActiveRivalDropSlot('');
                                             assignRivalPlayerAsReserveAtSlot(slotIndex, reserveIndex);
                                           }}
-                                          className={`flex min-h-8 items-center gap-2 rounded-xl border px-2 py-1.5 text-left text-[10px] transition-all duration-200 ease-out ${reservePlayer?.isKey ? 'border-amber-200/55 bg-amber-300/[0.10] text-amber-50' : reservePlayer ? 'border-white/12 bg-white/[0.06] text-slate-100' : 'border-dashed border-white/18 bg-white/[0.018] text-slate-500'} ${draggedPlayer ? draggedFitClass : ''} ${activeRivalDropSlot === `reserve-${slotIndex}-${reserveIndex}` ? 'scale-[1.03]' : ''}`}
+                                          className={`flex h-7 w-full min-w-0 items-center gap-1.5 overflow-hidden rounded-lg border px-1.5 text-left transition-all duration-200 ease-out ${reservePlayer?.isKey ? 'border-amber-200/55 bg-[#111827]/95 text-amber-50' : reservePlayer ? 'border-white/12 bg-[#07111f]/95 text-slate-100 shadow-[0_5px_14px_rgba(0,0,0,0.28)]' : 'border-dashed border-white/16 bg-[#07111f]/38'} ${draggedPlayer ? draggedFitClass : ''} ${activeRivalDropSlot === `reserve-${slotIndex}-${reserveIndex}` ? 'scale-[1.03]' : ''}`}
+                                          aria-label={reservePlayer ? `Reserva: ${displayPlayerName(reservePlayer)}` : `Hueco de reserva vacío para ${slotRole}`}
                                         >
                                           {reservePlayer ? (
                                             <>
-                                              <span
-                                                role="button"
-                                                tabIndex={0}
-                                                onClick={(event) => {
-                                                  event.stopPropagation();
-                                                  toggleSelectedTeamKeyPlayer(reservePlayer);
-                                                }}
-                                                onKeyDown={(event) => {
-                                                  if (event.key === 'Enter' || event.key === ' ') {
-                                                    event.preventDefault();
-                                                    event.stopPropagation();
-                                                    toggleSelectedTeamKeyPlayer(reservePlayer);
-                                                  }
-                                                }}
-                                                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-xs ${reservePlayer.isKey ? 'border-amber-200/60 bg-amber-300 text-slate-950' : 'border-white/10 bg-slate-950/50 text-slate-500 hover:text-amber-200'}`}
-                                                title={reservePlayer.isKey ? 'Quitar destacado' : 'Marcar como destacado'}
-                                              >
-                                                {reservePlayer.isKey ? '★' : '☆'}
-                                              </span>
-                                              <span className="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/[0.08] text-[8px] font-black">
+                                              <span className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white/[0.08] text-[7px] font-black">
                                                 <span className="absolute inset-0 flex items-center justify-center">{reservePlayer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                                                 {reservePlayer.image ? <img src={reservePlayer.image} alt={reservePlayer.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="relative h-full w-full object-cover" /> : null}
                                               </span>
-                                              <span className="min-w-0">
-                                                <span className="block truncate font-black">Reserva {reserveIndex + 1}: {playerNumberLabel(reservePlayer)} {getShortSurname(reservePlayer)}</span>
-                                                <span className="mt-0.5 flex gap-0.5">
-                                                  {getRivalPlayerStatusIcons(selectedTeam.id, reservePlayer).slice(0, 3).map(([icon, title, className]) => (
-                                                    <span key={title} title={title} className={`flex h-3.5 min-w-3.5 items-center justify-center rounded px-0.5 text-[7px] font-black leading-none ${className}`}>{icon}</span>
-                                                  ))}
-                                                </span>
-                                              </span>
+                                              <span className="block min-w-0 flex-1 truncate whitespace-nowrap text-[8px] font-black uppercase leading-none" title={displayPlayerName(reservePlayer)}>{getTacticalPlayerName(reservePlayer)}</span>
                                             </>
-                                          ) : (
-                                            <span className="font-black uppercase">Reserva {reserveIndex + 1}</span>
-                                          )}
+                                          ) : null}
                                         </button>
                                       );
                                     })}
@@ -21240,12 +21210,12 @@ function App() {
                                     <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">{group.label}</p>
                                     <div className="mt-1 flex flex-wrap gap-1">
                                       {group.players.map((player) => (
-                                        <span key={player.jugadorRivalId || player.id || player.name} className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.035] px-1.5 py-0.5 text-[9px] font-black text-slate-100">
-                                          <span className="text-caudal-electric">{playerNumberLabel(player)}</span>
-                                          <span className="max-w-20 truncate uppercase">{displayPlayerName(player)}</span>
-                                          {getRivalPlayerStatusIcons(selectedTeam.id, player).slice(0, 2).map(([icon, title, className]) => (
-                                            <span key={title} title={title} className={`flex h-3 min-w-3 items-center justify-center rounded px-0.5 text-[6px] font-black leading-none ${className}`}>{icon}</span>
-                                          ))}
+                                        <span key={player.jugadorRivalId || player.id || player.name} className="inline-flex h-7 min-w-0 max-w-28 items-center gap-1.5 overflow-hidden rounded-md border border-white/10 bg-white/[0.035] px-1.5 text-[8px] font-black text-slate-100">
+                                          <span className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white/[0.07] text-[7px]">
+                                            <span>{String(player.name || '').split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
+                                            {player.image ? <img src={player.image} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} className="absolute inset-0 h-full w-full object-cover" /> : null}
+                                          </span>
+                                          <span className="block min-w-0 truncate whitespace-nowrap uppercase" title={displayPlayerName(player)}>{getTacticalPlayerName(player)}</span>
                                         </span>
                                       ))}
                                     </div>
@@ -21429,8 +21399,8 @@ function App() {
                                                   onChange={(event) => setRivalQuickPlacement((current) => ({ ...current, reserveIndex: Number(event.target.value) }))}
                                                   className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-2 py-1.5 text-xs font-bold text-white"
                                                 >
-                                                  <option value={0}>Reserva 1</option>
-                                                  <option value={1}>Reserva 2</option>
+                                                  <option value={0}>Hueco A</option>
+                                                  <option value={1}>Hueco B</option>
                                                 </select>
                                               </label>
                                             ) : null}
