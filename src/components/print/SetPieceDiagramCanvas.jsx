@@ -2,8 +2,8 @@ import { useMemo, useRef, useState } from 'react';
 
 const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, value));
 const snapValue = (value, enabled) => (enabled ? Math.round(value / 4) * 4 : value);
-const isArrow = (element) => ['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow'].includes(element?.type);
-const isResizableBox = (element) => ['zone', 'block', 'text_box'].includes(element?.type);
+const isArrow = (element) => ['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow', 'pass', 'long_pass', 'carry', 'press', 'cover', 'watch'].includes(element?.type);
+const isResizableBox = (element) => ['zone', 'block', 'text_box', 'rectangle', 'circle', 'oval'].includes(element?.type);
 
 const getPoint = (event, svg) => {
   const rect = svg.getBoundingClientRect();
@@ -151,9 +151,10 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
       <PitchLines fullField={fullField} />
 
       {elements.map((element) => {
+        if (element.hidden) return null;
         const selected = selectedId === element.id;
         if (isArrow(element)) {
-          const dashed = element.type === 'dashed_arrow' || element.dashed;
+          const dashed = ['dashed_arrow', 'long_pass', 'watch'].includes(element.type) || element.dashed;
           const curved = element.type === 'curved_arrow';
           const double = element.type === 'double_arrow';
           const midX = ((element.x1 || 0) + (element.x2 || 0)) / 2;
@@ -161,7 +162,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           const path = curved ? `M${element.x1} ${element.y1} Q${midX} ${midY} ${element.x2} ${element.y2}` : `M${element.x1} ${element.y1} L${element.x2} ${element.y2}`;
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
-              <path d={path} fill="none" stroke="currentColor" strokeWidth={selected ? 1.05 : 0.72} strokeDasharray={dashed ? '3 2.4' : ''} markerEnd="url(#diagram-arrow)" markerStart={double ? 'url(#diagram-arrow-start)' : ''} />
+              <path d={path} fill="none" stroke={element.color || 'currentColor'} strokeWidth={selected ? Math.max(1.05, element.strokeWidth || 0.72) : element.strokeWidth || 0.72} strokeDasharray={element.type === 'carry' ? '1 1.4' : dashed ? '3 2.4' : ''} markerEnd="url(#diagram-arrow)" markerStart={double ? 'url(#diagram-arrow-start)' : ''} />
               {selected && !readOnly ? (
                 <>
                   <circle cx={element.x1} cy={element.y1} r="2" fill="white" stroke="currentColor" strokeWidth="0.7" onPointerDown={(event) => startDrag(event, element, 'arrow-start')} />
@@ -190,7 +191,9 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
             .map((line) => (readOnly ? compactDiagramLabel(line, element.type === 'text_box' ? 24 : 18) : line));
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
-              <rect x={element.x} y={element.y} width={width} height={height} fill="white" stroke="currentColor" strokeWidth={selected ? 1.2 : 0.85} strokeDasharray={element.type === 'zone' ? '3 2' : ''} />
+              {['circle', 'oval'].includes(element.type)
+                ? <ellipse cx={(element.x || 0) + width / 2} cy={(element.y || 0) + height / 2} rx={width / 2} ry={height / 2} fill="rgba(250,204,21,0.16)" stroke={element.color || 'currentColor'} strokeWidth={selected ? 1.2 : 0.85} />
+                : <rect x={element.x} y={element.y} width={width} height={height} fill={element.type === 'zone' ? 'rgba(250,204,21,0.16)' : 'rgba(255,255,255,0.12)'} stroke={element.color || 'currentColor'} strokeWidth={selected ? 1.2 : 0.85} strokeDasharray={element.type === 'zone' ? '3 2' : ''} />}
               {lines.map((line, index) => (
                 <text key={`${element.id}-${index}`} x={(element.x || 0) + 2} y={(element.y || 0) + 5 + index * 4} fontSize={element.type === 'text_box' ? '2.8' : '3.1'} fontWeight={index === 0 ? '900' : '700'} fill="currentColor">
                   {line}
@@ -219,10 +222,12 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           );
         }
         const isOpponent = element.type === 'opponent';
+        const linkedPlayer = playersById.get(element.player_id);
+        const photo = linkedPlayer?.image || linkedPlayer?.image_url || linkedPlayer?.photo_url || '';
         const name = compactDiagramLabel(getPlayerName(element, playersById), readOnly ? 12 : 18);
         return (
           <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
-            <circle cx={element.x} cy={element.y} r={selected ? 2.8 : 2.45} fill={isOpponent ? 'white' : 'currentColor'} stroke="currentColor" strokeWidth="0.65" />
+            {photo && !element.numbersOnly ? <image href={photo} x={element.x - 3.2} y={element.y - 3.2} width="6.4" height="6.4" preserveAspectRatio="xMidYMid slice" /> : <circle cx={element.x} cy={element.y} r={selected ? 2.8 : 2.45} fill={isOpponent ? 'white' : 'currentColor'} stroke="currentColor" strokeWidth="0.65" />}
             <text x={element.x} y={element.y + 0.9} textAnchor="middle" fontSize="2.25" fontWeight="900" fill={isOpponent ? 'currentColor' : 'white'}>
               {element.label || ''}
             </text>

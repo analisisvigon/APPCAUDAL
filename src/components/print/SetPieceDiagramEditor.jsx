@@ -4,7 +4,7 @@ import SetPieceDiagramToolbar from './SetPieceDiagramToolbar';
 
 const createId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-const isArrow = (element) => ['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow'].includes(element?.type);
+const isArrow = (element) => ['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow', 'pass', 'long_pass', 'carry', 'press', 'cover', 'watch'].includes(element?.type);
 const isTextBox = (element) => ['text_box', 'block'].includes(element?.type);
 const cloneElements = (elements) => JSON.parse(JSON.stringify(elements || []));
 const quickConsignas = [
@@ -26,7 +26,12 @@ const createElement = (type) => {
   if (type === 'ball') return { id: createId(), type, x: 8, y: 8 };
   if (isArrow({ type })) return { id: createId(), type, x1: 20, y1: 46, x2: 44, y2: 26, dashed: type === 'dashed_arrow' };
   if (type === 'zone') return { id: createId(), type, x: 34, y: 18, width: 22, height: 12, label: 'Zona' };
+  if (type === 'rectangle') return { id: createId(), type, x: 34, y: 18, width: 22, height: 12, label: '' };
+  if (type === 'circle') return { id: createId(), type, x: 46, y: 28, width: 12, height: 12, label: '' };
+  if (type === 'oval') return { id: createId(), type, x: 38, y: 24, width: 24, height: 12, label: '' };
   if (type === 'text') return { id: createId(), type, x: 42, y: 40, label: 'Texto' };
+  if (type === 'number') return { id: createId(), type: 'text', x: 42, y: 40, label: '1' };
+  if (type === 'icon') return { id: createId(), type: 'text', x: 42, y: 40, label: '!' };
   if (type === 'block') return { id: createId(), type, x: 42, y: 34, width: 18, height: 8, label: 'BLOQUEO' };
   if (type === 'text_box') return { id: createId(), type, x: 58, y: 10, width: 32, height: 24, label: 'TEXTO' };
   if (type === 'opponent') return { id: createId(), type, x: 50, y: 17, label: 'R' };
@@ -310,6 +315,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
                 </div>
               ) : null}
               {isArrow(selectedElement) ? (
+                <div className="space-y-2">
                 <select
                   value={selectedElement.type}
                   onChange={(event) => updateSelected({ type: event.target.value, dashed: event.target.value === 'dashed_arrow' })}
@@ -319,12 +325,31 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
                   <option value="dashed_arrow">Discontinua</option>
                   <option value="curved_arrow">Curva</option>
                   <option value="double_arrow">Doble</option>
+                  <option value="pass">Pase</option>
+                  <option value="long_pass">Pase largo</option>
+                  <option value="carry">Conducción</option>
+                  <option value="press">Presión</option>
+                  <option value="cover">Cobertura</option>
+                  <option value="watch">Vigilancia</option>
                 </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="color" value={selectedElement.color || '#2563eb'} onChange={(event) => updateSelected({ color: event.target.value })} className="h-11 w-full rounded-xl bg-white/10 p-1" title="Color" />
+                  <select value={selectedElement.strokeWidth || 0.72} onChange={(event) => updateSelected({ strokeWidth: Number(event.target.value) })} className="rounded-xl bg-white px-3 text-sm font-bold text-slate-950">
+                    <option value="0.6">Fino</option><option value="1">Medio</option><option value="1.6">Grueso</option><option value="2.2">Muy grueso</option>
+                  </select>
+                </div>
+                </div>
               ) : null}
-              {['zone', 'block', 'text_box'].includes(selectedElement.type) ? (
+              {['zone', 'block', 'text_box', 'rectangle', 'circle', 'oval'].includes(selectedElement.type) ? (
                 <div className="grid grid-cols-2 gap-3">
                   <input type="number" value={selectedElement.width || 18} onChange={(event) => updateSelected({ width: Number(event.target.value) })} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
                   <input type="number" value={selectedElement.height || 10} onChange={(event) => updateSelected({ height: Number(event.target.value) })} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
+                </div>
+              ) : null}
+              {['player', 'opponent'].includes(selectedElement.type) ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => updateSelected({ hidden: !selectedElement.hidden })} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white">{selectedElement.hidden ? 'Mostrar' : 'Ocultar'}</button>
+                  <button type="button" onClick={() => updateSelected({ numbersOnly: !selectedElement.numbersOnly })} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white">{selectedElement.numbersOnly ? 'Mostrar foto' : 'Solo dorsal'}</button>
                 </div>
               ) : null}
               <button

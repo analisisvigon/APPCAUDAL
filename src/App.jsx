@@ -10,6 +10,7 @@ import PlayerDatabaseForm from './components/players/PlayerDatabaseForm';
 import GlobalPlayerDatabase from './components/players/GlobalPlayerDatabase';
 import AccordionSection from './components/shared/AccordionSection';
 import StatusMessage from './components/shared/StatusMessage';
+import TacticalPhaseEditor from './components/tactical/TacticalPhaseEditor';
 import {
   POST_EVENT_TYPES,
   buildPostEventTypesFromCatalog,
@@ -8435,6 +8436,13 @@ function App() {
                   ))}
                 </div>
               </div>
+              <TacticalPhaseEditor
+                initialBoards={safeObject(selectedPreAiAnalysis?.tacticalPhaseBoards)}
+                players={[...players, ...liveRivalPlayers]}
+                opponentKey={selectedMatchRivalTeam?.id || selectedMatch?.opponent || ''}
+                onSave={(tacticalPhaseBoards) => updatePreAiAnalysisPatch({ tacticalPhaseBoards })}
+              />
+              {false ? <>
               {renderFacingSystemsOverview()}
               <div className="mt-3 border-t border-white/10 pt-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -8484,6 +8492,7 @@ function App() {
                   )}
                 </div>
               </div>
+              </> : null}
             </section>
           </div>
         </div>
