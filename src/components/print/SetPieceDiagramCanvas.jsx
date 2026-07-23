@@ -93,7 +93,7 @@ function PitchLines({ fullField = false, verticalPitch = false, rivalSystem = ''
   );
 }
 
-export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, verticalPitch = false, rivalSystem = '', caudalSystem = '', drawingTool = '', onDirectPoint }) {
+export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, verticalPitch = false, rivalSystem = '', caudalSystem = '', drawingTool = '', onDirectPoint, onBeforeChange }) {
   const svgRef = useRef(null);
   const [drag, setDrag] = useState(null);
   const playersById = useMemo(() => new Map(players.map((player) => [player.id, player])), [players]);
@@ -138,9 +138,10 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
       });
       return;
     }
+    const avatarInset = verticalPitch && ['player', 'opponent'].includes(drag.element.type) ? 4 : 0;
     updateElement(drag.element.id, {
-      x: snapValue(clamp(drag.origin.x + dx, 0, maxX), snap),
-      y: snapValue(clamp(drag.origin.y + dy, 0, maxY), snap),
+      x: snapValue(clamp(drag.origin.x + dx, avatarInset, maxX - avatarInset), snap),
+      y: snapValue(clamp(drag.origin.y + dy, avatarInset, maxY - avatarInset), snap),
     });
   };
 
@@ -154,6 +155,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
     event.stopPropagation();
     onSelect(element.id);
     const point = getPoint(event, svgRef.current, maxX, maxY);
+    onBeforeChange?.(element);
     setDrag({ element, mode, start: point, origin: { ...element } });
   };
 
