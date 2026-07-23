@@ -10591,6 +10591,16 @@ function App() {
 
   const saveDelegatedEvent = async (jugadorIdOverride) => {
     if (!selectedMatch || !delegatedEventDraft) return;
+    if (delegatedEventDraft.eventId) {
+      await updateQuickEvent(delegatedEventDraft.eventId, {
+        minute: delegatedEventDraft.minute,
+        jugadorId: delegatedEventDraft.side === 'rival' ? '' : delegatedEventDraft.jugadorId,
+        tipoEvento: delegatedEventDraft.tipoEvento,
+        equipo: delegatedEventDraft.side,
+      });
+      setDelegatedEventDraft(null);
+      return;
+    }
     setDelegatedEventSaving(true);
     setStatsError('');
     setDelegatedEventFeedback('');
@@ -10642,7 +10652,9 @@ function App() {
     let optimisticId = '';
     try {
       const minute = Math.max(Number(delegatedElapsedSeconds || 0) > 0 ? 1 : 0, Math.min(130, Math.ceil(Number(delegatedElapsedSeconds || 0) / 60)));
+      optimisticId = crypto.randomUUID();
       const payload = {
+        id: optimisticId,
         partido_id: selectedMatch.id,
         jugador_id: definition.side === 'caudal' && isUuid(jugadorIdOverride) ? jugadorIdOverride : null,
         equipo: definition.side === 'neutral' ? 'caudal' : definition.side,
@@ -10650,28 +10662,23 @@ function App() {
         minuto: minute,
         reviewed: false,
       };
-      optimisticId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const optimisticEvent = normalizeSupabaseQuickEvent({ ...payload, id: optimisticId, created_at: new Date().toISOString() });
       setMatches((current) => current.map((match) => match.id === selectedMatch.id
         ? { ...match, delegatedDataStatus: 'Sin revisar', quickEvents: [...(match.quickEvents || []), optimisticEvent] }
         : match));
-      const { data, error } = await supabase.from("match_quick_events").insert(payload).select("*").single();
+      const { error } = await supabase.from("match_quick_events").insert(payload);
       if (error) throw error;
-      const savedEvent = normalizeSupabaseQuickEvent(data || payload);
-      setMatches((current) => current.map((match) => (
-        match.id === selectedMatch.id
-          ? { ...match, delegatedDataStatus: 'Sin revisar', quickEvents: (match.quickEvents || []).map((event) => event.id === optimisticId ? savedEvent : event) }
-          : match
-      )));
       await markDelegatedDataDirty(selectedMatch.id);
       const registeredPlayer = players.find((player) => player.id === jugadorIdOverride);
       setDelegatedEventDraft(null);
       setDelegatedEventFeedback(`✓ ${definition.side === 'rival' ? `${definition.label} del rival` : definition.label} registrada · ${registeredPlayer?.name || (definition.side === 'caudal' && definition.requiresPlayer ? 'Sin identificar' : '')} · ${minute}'`);
       window.setTimeout(() => setDelegatedEventFeedback(''), 2600);
     } catch (error) {
+      console.error('[QUICK_EVENT_SAVE]', error);
       console.error('Error guardando evento directo de Modo Delegado:', { definition, error });
       setMatches((current) => current.map((match) => match.id === selectedMatch.id ? { ...match, quickEvents: (match.quickEvents || []).filter((event) => event.id !== optimisticId) } : match));
-      setStatsError('No se pudo guardar el evento. Se ha revertido el registro.');
+      const errorDetail = [error?.code, error?.message, error?.details, error?.hint].filter(Boolean).join(' · ');
+      setStatsError(`No se pudo guardar el evento. Se ha revertido el registro.${errorDetail ? ` ${errorDetail}` : ''}`);
     } finally {
       setDelegatedEventSaving(false);
     }
@@ -10745,18 +10752,24 @@ function App() {
     })[0];
     if (!lastEvent) return;
     setDelegatedEventSaving(true);
-    const { error } = await supabase.from("match_quick_events").delete().eq("id", lastEvent.id);
-    if (error) {
-      console.error('Error deshaciendo último evento de Modo Delegado:', { lastEvent, error });
-      setStatsError(error.message || 'No se pudo deshacer el último evento.');
-      setDelegatedEventSaving(false);
-      return;
-    }
+    setStatsError('');
     setMatches((current) => current.map((match) => (
       match.id === selectedMatch.id
         ? { ...match, delegatedDataStatus: 'Sin revisar', quickEvents: (match.quickEvents || []).filter((event) => event.id !== lastEvent.id) }
         : match
     )));
+    const { error } = await supabase.from("match_quick_events").delete().eq("id", lastEvent.id);
+    if (error) {
+      console.error('[QUICK_EVENT_UNDO]', { event: lastEvent, error });
+      setMatches((current) => current.map((match) => (
+        match.id === selectedMatch.id && !(match.quickEvents || []).some((event) => event.id === lastEvent.id)
+          ? { ...match, quickEvents: [...(match.quickEvents || []), lastEvent] }
+          : match
+      )));
+      setStatsError(`No se pudo deshacer el evento; se ha restaurado. ${[error.code, error.message, error.details, error.hint].filter(Boolean).join(' · ')}`);
+      setDelegatedEventSaving(false);
+      return;
+    }
     await markDelegatedDataDirty(selectedMatch.id);
     setDelegatedEventFeedback(`Deshecho: ${getQuickEventLabel(lastEvent.tipoEvento)}`);
     window.setTimeout(() => setDelegatedEventFeedback((current) => (current.startsWith('Deshecho:') ? '' : current)), 1600);
@@ -10780,18 +10793,38 @@ function App() {
     if (fields.jugadorId !== undefined) payload.jugador_id = isUuid(fields.jugadorId) ? fields.jugadorId : null;
     if (fields.reviewed !== undefined) payload.reviewed = Boolean(fields.reviewed);
 
+    const previousEvent = (selectedMatch.quickEvents || []).find((event) => event.id === eventId);
+    if (!previousEvent) {
+      setPostError('El evento que se intenta editar ya no existe.');
+      setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
+      return;
+    }
+    const optimisticEvent = {
+      ...previousEvent,
+      tipoEvento: payload.tipo_evento ?? previousEvent.tipoEvento,
+      equipo: payload.equipo ?? previousEvent.equipo,
+      minute: payload.minuto !== undefined ? String(payload.minuto) : previousEvent.minute,
+      jugadorId: payload.jugador_id !== undefined ? payload.jugador_id : previousEvent.jugadorId,
+      reviewed: payload.reviewed !== undefined ? payload.reviewed : previousEvent.reviewed,
+    };
+    setMatches((current) => current.map((match) => match.id === selectedMatch.id
+      ? { ...match, delegatedDataStatus: 'Sin revisar', quickEvents: (match.quickEvents || []).map((event) => event.id === eventId ? optimisticEvent : event) }
+      : match));
+
     const { error } = await supabase.from("match_quick_events").update(payload).eq("id", eventId);
     if (error) {
-      console.error('Error actualizando evento rápido en Supabase:', { eventId, payload, error });
-      setPostError(error.message || 'No se pudo actualizar el evento rápido.');
+      console.error('[QUICK_EVENT_UPDATE]', { eventId, payload, error });
+      setMatches((current) => current.map((match) => match.id === selectedMatch.id
+        ? { ...match, quickEvents: (match.quickEvents || []).map((event) => event.id === eventId ? previousEvent : event) }
+        : match));
+      setPostError(`No se pudo actualizar el evento; se ha restaurado. ${[error.code, error.message, error.details, error.hint].filter(Boolean).join(' · ')}`);
       setQuickEventStatus('Error al guardar');
       setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
       return;
     }
     await markDelegatedDataDirty(selectedMatch.id);
-    await loadMatchPostData(selectedMatch.id);
-    setQuickEventStatus('Guardado ?');
-    window.setTimeout(() => setQuickEventStatus((current) => (current === 'Guardado ?' ? '' : current)), 2200);
+    setQuickEventStatus('Guardado ✓');
+    window.setTimeout(() => setQuickEventStatus((current) => (current === 'Guardado ✓' ? '' : current)), 2200);
     setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
   };
 
@@ -10799,19 +10832,30 @@ function App() {
     if (!selectedMatch || !eventId) return;
     setQuickEventStatus('Guardando...');
     setQuickEventSavingIds((current) => (current.includes(eventId) ? current : [...current, eventId]));
+    const previousEvent = (selectedMatch.quickEvents || []).find((event) => event.id === eventId);
+    if (!previousEvent) {
+      setPostError('El evento que se intenta eliminar ya no existe.');
+      setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
+      return;
+    }
+    setMatches((current) => current.map((match) => match.id === selectedMatch.id
+      ? { ...match, delegatedDataStatus: 'Sin revisar', quickEvents: (match.quickEvents || []).filter((event) => event.id !== eventId) }
+      : match));
     const { error } = await supabase.from("match_quick_events").delete().eq("id", eventId);
     if (error) {
-      console.error('Error borrando evento rápido en Supabase:', { eventId, error });
-      setPostError(error.message || 'No se pudo borrar el evento rápido.');
+      console.error('[QUICK_EVENT_DELETE]', { eventId, error });
+      setMatches((current) => current.map((match) => match.id === selectedMatch.id && !(match.quickEvents || []).some((event) => event.id === eventId)
+        ? { ...match, quickEvents: [...(match.quickEvents || []), previousEvent] }
+        : match));
+      setPostError(`No se pudo eliminar el evento; se ha restaurado. ${[error.code, error.message, error.details, error.hint].filter(Boolean).join(' · ')}`);
       setQuickEventStatus('Error al guardar');
       setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
       return;
     }
     setPendingQuickEventDeleteId(null);
     await markDelegatedDataDirty(selectedMatch.id);
-    await loadMatchPostData(selectedMatch.id);
-    setQuickEventStatus('Guardado ?');
-    window.setTimeout(() => setQuickEventStatus((current) => (current === 'Guardado ?' ? '' : current)), 2200);
+    setQuickEventStatus('Eliminado ✓');
+    window.setTimeout(() => setQuickEventStatus((current) => (current === 'Eliminado ✓' ? '' : current)), 2200);
     setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
   };
 
