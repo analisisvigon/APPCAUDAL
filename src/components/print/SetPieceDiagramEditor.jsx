@@ -182,14 +182,14 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.7fr)]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,4fr)_minmax(230px,1fr)]">
         <div className="space-y-3">
           <SetPieceDiagramToolbar onAdd={addElement} onDelete={deleteSelected} selectedElement={selectedElement} />
-          <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-white/5 p-3 text-xs font-bold text-white">
+          <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-white/5 p-2 text-xs font-bold text-white">
             <button type="button" title="Vuelve al paso anterior" onClick={undo} disabled={historyIndex <= 0} className="rounded-xl bg-white/10 px-3 py-2 disabled:opacity-40">Deshacer</button>
             <button type="button" title="Recupera el paso deshecho" onClick={redo} disabled={historyIndex >= history.length - 1} className="rounded-xl bg-white/10 px-3 py-2 disabled:opacity-40">Rehacer</button>
             <button type="button" onClick={duplicateSelected} disabled={!selectedElement} className="rounded-xl bg-white/10 px-3 py-2 disabled:opacity-40">Duplicar elemento</button>
-            <button type="button" title="Ayuda a colocar elementos en líneas o posiciones cercanas" onClick={() => setSnapEnabled((value) => !value)} className={`rounded-xl px-3 py-2 ${snapEnabled ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-white'}`}>Alinear / Imán</button>
+            <button type="button" title="Ayuda a colocar elementos en líneas o posiciones cercanas" onClick={() => setSnapEnabled((value) => !value)} className={`rounded-xl px-3 py-2 ${snapEnabled ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-white'}`}>Imán</button>
             <button type="button" title="Modo para construir secuencias simples de movimiento" onClick={() => setMovementMode((value) => !value)} className={`rounded-xl px-3 py-2 ${movementMode ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-white'}`}>Modo movimiento</button>
             <button type="button" onClick={addMovementSequence} className="rounded-xl bg-white/10 px-3 py-2">Secuencia 1-2-3</button>
             <button type="button" onClick={() => setZoom((value) => Math.max(0.75, Number((value - 0.1).toFixed(1))))} className="rounded-xl bg-white/10 px-3 py-2">-</button>
@@ -205,13 +205,13 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
                 onChange={updateElements}
                 players={players}
                 snap={snapEnabled}
-                fullField={String(diagram.tipo || '').includes('saque_inicio')}
+                fullField={String(diagram.id || '').startsWith('phase-') || String(diagram.tipo || '').includes('saque_inicio')}
               />
             </div>
           </div>
         </div>
 
-        <div className="space-y-4 rounded-3xl bg-white/5 p-4">
+        <div className="space-y-3 rounded-2xl bg-white/5 p-3">
           <input
             value={diagram.titulo || ''}
             onChange={(event) => updateDiagram({ titulo: event.target.value })}

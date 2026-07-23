@@ -8410,7 +8410,7 @@ function App() {
           </div>
 
           <div className="grid gap-4 xl:contents">
-            <section className="order-4 border border-white/10 bg-[#091428]/82 p-3 xl:col-start-2 xl:row-span-3 xl:row-start-1">
+            <section className="order-4 border border-white/10 bg-[#091428]/82 p-3 xl:col-span-2 xl:col-start-1">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Campo táctico</p>
@@ -8438,7 +8438,8 @@ function App() {
               </div>
               <TacticalPhaseEditor
                 initialBoards={safeObject(selectedPreAiAnalysis?.tacticalPhaseBoards)}
-                players={[...players, ...liveRivalPlayers]}
+                players={players}
+                rivalPlayers={liveRivalPlayers}
                 opponentKey={selectedMatchRivalTeam?.id || selectedMatch?.opponent || ''}
                 onSave={(tacticalPhaseBoards) => updatePreAiAnalysisPatch({ tacticalPhaseBoards })}
               />
