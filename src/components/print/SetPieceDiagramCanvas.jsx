@@ -93,6 +93,7 @@ function PitchLines({ fullField = false, verticalPitch = false, rivalSystem = ''
   );
 }
 
+// VISUAL CONTRACT: do not modify without running tactical-board visual tests.
 export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, verticalPitch = false, rivalSystem = '', caudalSystem = '', drawingTool = '', onDirectPoint, onBeforeChange }) {
   const svgRef = useRef(null);
   const [drag, setDrag] = useState(null);
