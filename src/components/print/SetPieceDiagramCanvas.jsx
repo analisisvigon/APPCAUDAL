@@ -93,7 +93,7 @@ function PitchLines({ fullField = false, verticalPitch = false, rivalSystem = ''
   );
 }
 
-export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, verticalPitch = false, rivalSystem = '', caudalSystem = '' }) {
+export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, verticalPitch = false, rivalSystem = '', caudalSystem = '', drawingTool = '', onDirectPoint }) {
   const svgRef = useRef(null);
   const [drag, setDrag] = useState(null);
   const playersById = useMemo(() => new Map(players.map((player) => [player.id, player])), [players]);
@@ -145,6 +145,11 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
   };
 
   const startDrag = (event, element, mode = 'move') => {
+    if (drawingTool && onDirectPoint) {
+      event.stopPropagation();
+      onDirectPoint({ element, x: element.x ?? element.x2, y: element.y ?? element.y2 });
+      return;
+    }
     if (readOnly || element.locked) return;
     event.stopPropagation();
     onSelect(element.id);
@@ -164,7 +169,15 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
       onPointerMove={handlePointerMove}
       onPointerUp={stopDrag}
       onPointerLeave={stopDrag}
-      onPointerDown={() => !readOnly && onSelect('')}
+      onPointerDown={(event) => {
+        if (readOnly) return;
+        if (drawingTool && onDirectPoint && svgRef.current) {
+          const point = getPoint(event, svgRef.current, maxX, maxY);
+          onDirectPoint({ element: null, ...point });
+          return;
+        }
+        onSelect('');
+      }}
     >
       <defs>
         <marker id="diagram-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="3.6" markerHeight="3.6" orient="auto-start-reverse">

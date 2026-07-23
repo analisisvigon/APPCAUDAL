@@ -8040,7 +8040,7 @@ function App() {
               </div>
             </section>
 
-            <section className="order-13 border border-white/10 bg-[#091428]/82 p-4">
+            {false ? <section className="order-13 border border-white/10 bg-[#091428]/82 p-4">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Evidencias observadas</p>
               <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(150px,170px)_minmax(150px,170px)]">
                 <input value={evidenceDraft.match} onChange={(event) => setEvidenceDraft((current) => ({ ...current, match: event.target.value }))} placeholder="Partido / contexto" className="h-11 min-w-0 border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500" />
@@ -8061,7 +8061,7 @@ function App() {
                   </div>
                 )) : <p className="text-sm font-semibold text-slate-500">Sin evidencias observadas. La IA no emitirá conclusiones fiables.</p>}
               </div>
-            </section>
+            </section> : null}
 
             <section className="order-4 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1">
               <div className="flex items-end justify-between gap-3">
