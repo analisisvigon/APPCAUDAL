@@ -5,11 +5,11 @@ const snapValue = (value, enabled) => (enabled ? Math.round(value / 4) * 4 : val
 const isArrow = (element) => ['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow', 'pass', 'long_pass', 'carry', 'press', 'cover', 'watch'].includes(element?.type);
 const isResizableBox = (element) => ['zone', 'block', 'text_box', 'rectangle', 'circle', 'oval'].includes(element?.type);
 
-const getPoint = (event, svg) => {
+const getPoint = (event, svg, maxX = 100, maxY = 72) => {
   const rect = svg.getBoundingClientRect();
   return {
-    x: clamp(((event.clientX - rect.left) / rect.width) * 100),
-    y: clamp(((event.clientY - rect.top) / rect.height) * 72, 0, 72),
+    x: clamp(((event.clientX - rect.left) / rect.width) * maxX, 0, maxX),
+    y: clamp(((event.clientY - rect.top) / rect.height) * maxY, 0, maxY),
   };
 };
 
@@ -40,7 +40,31 @@ const BallIcon = ({ x, y, selected }) => (
   </g>
 );
 
-function PitchLines({ fullField = false }) {
+function PitchLines({ fullField = false, verticalPitch = false, rivalSystem = '', caudalSystem = '' }) {
+  if (verticalPitch) {
+    return (
+      <>
+        <rect x="1" y="1" width="70" height="98" rx="0.8" fill="#0b4a36" stroke="white" strokeWidth="0.8" />
+        {[1, 15, 29, 43, 57].map((x, index) => (
+          <rect key={x} x={x} y="1" width="14" height="98" fill={index % 2 ? '#0d523c' : '#0b4935'} opacity="0.62" />
+        ))}
+        <rect x="1" y="1" width="70" height="98" rx="0.8" fill="none" stroke="white" strokeWidth="0.8" />
+        <line x1="1" y1="50" x2="71" y2="50" stroke="white" strokeWidth="0.55" />
+        <circle cx="36" cy="50" r="8.5" fill="none" stroke="white" strokeWidth="0.55" />
+        <circle cx="36" cy="50" r="0.7" fill="white" />
+        <rect x="18" y="1" width="36" height="17" fill="none" stroke="white" strokeWidth="0.65" />
+        <rect x="27" y="1" width="18" height="7" fill="none" stroke="white" strokeWidth="0.65" />
+        <rect x="31" y="-1.2" width="10" height="2.4" fill="none" stroke="white" strokeWidth="0.7" />
+        <path d="M28 18 Q36 25 44 18" fill="none" stroke="white" strokeWidth="0.55" />
+        <rect x="18" y="82" width="36" height="17" fill="none" stroke="white" strokeWidth="0.65" />
+        <rect x="27" y="92" width="18" height="7" fill="none" stroke="white" strokeWidth="0.65" />
+        <rect x="31" y="98.8" width="10" height="2.4" fill="none" stroke="white" strokeWidth="0.7" />
+        <path d="M28 82 Q36 75 44 82" fill="none" stroke="white" strokeWidth="0.55" />
+        <text x="3" y="5" fontSize="1.75" fontWeight="900" fill="rgba(255,255,255,.8)">RIVAL {rivalSystem}</text>
+        <text x="69" y="96.5" textAnchor="end" fontSize="1.75" fontWeight="900" fill="rgba(255,255,255,.8)">CAUDAL {caudalSystem}</text>
+      </>
+    );
+  }
   if (fullField) {
     return (
       <>
@@ -69,10 +93,12 @@ function PitchLines({ fullField = false }) {
   );
 }
 
-export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false }) {
+export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, verticalPitch = false, rivalSystem = '', caudalSystem = '' }) {
   const svgRef = useRef(null);
   const [drag, setDrag] = useState(null);
   const playersById = useMemo(() => new Map(players.map((player) => [player.id, player])), [players]);
+  const maxX = verticalPitch ? 72 : 100;
+  const maxY = verticalPitch ? 100 : 72;
 
   const updateElement = (id, fields) => {
     onChange(elements.map((element) => (element.id === id ? { ...element, ...fields } : element)));
@@ -80,16 +106,16 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
 
   const handlePointerMove = (event) => {
     if (!drag || readOnly || !svgRef.current) return;
-    const point = getPoint(event, svgRef.current);
+    const point = getPoint(event, svgRef.current, maxX, maxY);
     const dx = point.x - drag.start.x;
     const dy = point.y - drag.start.y;
 
     if (drag.mode === 'arrow-start') {
-      updateElement(drag.element.id, { x1: snapValue(clamp(drag.origin.x1 + dx), snap), y1: snapValue(clamp(drag.origin.y1 + dy, 0, 72), snap) });
+      updateElement(drag.element.id, { x1: snapValue(clamp(drag.origin.x1 + dx, 0, maxX), snap), y1: snapValue(clamp(drag.origin.y1 + dy, 0, maxY), snap) });
       return;
     }
     if (drag.mode === 'arrow-end') {
-      updateElement(drag.element.id, { x2: snapValue(clamp(drag.origin.x2 + dx), snap), y2: snapValue(clamp(drag.origin.y2 + dy, 0, 72), snap) });
+      updateElement(drag.element.id, { x2: snapValue(clamp(drag.origin.x2 + dx, 0, maxX), snap), y2: snapValue(clamp(drag.origin.y2 + dy, 0, maxY), snap) });
       return;
     }
     if (drag.mode === 'resize' && drag.element.type === 'block') {
@@ -105,16 +131,16 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
     }
     if (isArrow(drag.element)) {
       updateElement(drag.element.id, {
-        x1: snapValue(clamp(drag.origin.x1 + dx), snap),
-        y1: snapValue(clamp(drag.origin.y1 + dy, 0, 72), snap),
-        x2: snapValue(clamp(drag.origin.x2 + dx), snap),
-        y2: snapValue(clamp(drag.origin.y2 + dy, 0, 72), snap),
+        x1: snapValue(clamp(drag.origin.x1 + dx, 0, maxX), snap),
+        y1: snapValue(clamp(drag.origin.y1 + dy, 0, maxY), snap),
+        x2: snapValue(clamp(drag.origin.x2 + dx, 0, maxX), snap),
+        y2: snapValue(clamp(drag.origin.y2 + dy, 0, maxY), snap),
       });
       return;
     }
     updateElement(drag.element.id, {
-      x: snapValue(clamp(drag.origin.x + dx), snap),
-      y: snapValue(clamp(drag.origin.y + dy, 0, 72), snap),
+      x: snapValue(clamp(drag.origin.x + dx, 0, maxX), snap),
+      y: snapValue(clamp(drag.origin.y + dy, 0, maxY), snap),
     });
   };
 
@@ -122,7 +148,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
     if (readOnly || element.locked) return;
     event.stopPropagation();
     onSelect(element.id);
-    const point = getPoint(event, svgRef.current);
+    const point = getPoint(event, svgRef.current, maxX, maxY);
     setDrag({ element, mode, start: point, origin: { ...element } });
   };
 
@@ -132,7 +158,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
     <svg
       ref={svgRef}
       className="set-piece-diagram-canvas"
-      viewBox="0 0 100 72"
+      viewBox={verticalPitch ? '0 0 72 100' : '0 0 100 72'}
       role="img"
       aria-label="Editor tactico ABP"
       onPointerMove={handlePointerMove}
@@ -148,7 +174,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           <path d="M 10 0 L 0 5 L 10 10 z" fill="currentColor" />
         </marker>
       </defs>
-      <PitchLines fullField={fullField} />
+      <PitchLines fullField={fullField} verticalPitch={verticalPitch} rivalSystem={rivalSystem} caudalSystem={caudalSystem} />
 
       {elements.map((element) => {
         if (element.hidden) return null;
@@ -160,9 +186,15 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           const midX = ((element.x1 || 0) + (element.x2 || 0)) / 2;
           const midY = ((element.y1 || 0) + (element.y2 || 0)) / 2 - 12;
           const path = curved ? `M${element.x1} ${element.y1} Q${midX} ${midY} ${element.x2} ${element.y2}` : `M${element.x1} ${element.y1} L${element.x2} ${element.y2}`;
+          const markerId = `diagram-arrow-${String(element.id).replace(/[^a-zA-Z0-9_-]/g, '')}`;
+          const markerStartId = `${markerId}-start`;
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
-              <path d={path} fill="none" stroke={element.color || 'currentColor'} strokeWidth={selected ? Math.max(1.05, element.strokeWidth || 0.72) : element.strokeWidth || 0.72} strokeDasharray={element.type === 'carry' ? '1 1.4' : dashed ? '3 2.4' : ''} markerEnd="url(#diagram-arrow)" markerStart={double ? 'url(#diagram-arrow-start)' : ''} />
+              <defs>
+                <marker id={markerId} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="3.8" markerHeight="3.8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill={element.color || '#ef4444'} /></marker>
+                <marker id={markerStartId} viewBox="0 0 10 10" refX="2" refY="5" markerWidth="3.8" markerHeight="3.8" orient="auto-start-reverse"><path d="M 10 0 L 0 5 L 10 10 z" fill={element.color || '#ef4444'} /></marker>
+              </defs>
+              <path d={path} fill="none" stroke={element.color || '#ef4444'} strokeWidth={selected ? Math.max(1.15, element.strokeWidth || 1) : element.strokeWidth || 1} strokeDasharray={element.type === 'carry' ? '1 1.4' : dashed ? '3 2.4' : ''} markerEnd={`url(#${markerId})`} markerStart={double ? `url(#${markerStartId})` : ''} />
               {selected && !readOnly ? (
                 <>
                   <circle cx={element.x1} cy={element.y1} r="2" fill="white" stroke="currentColor" strokeWidth="0.7" onPointerDown={(event) => startDrag(event, element, 'arrow-start')} />
@@ -227,12 +259,12 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
         const name = compactDiagramLabel(getPlayerName(element, playersById), readOnly ? 12 : 18);
         return (
           <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
-            {photo && !element.numbersOnly ? <image href={photo} x={element.x - 3.2} y={element.y - 3.2} width="6.4" height="6.4" preserveAspectRatio="xMidYMid slice" /> : <circle cx={element.x} cy={element.y} r={selected ? 2.8 : 2.45} fill={isOpponent ? 'white' : 'currentColor'} stroke="currentColor" strokeWidth="0.65" />}
+            {photo && !element.numbersOnly ? <><circle cx={element.x} cy={element.y} r="3.7" fill={isOpponent ? '#f8fafc' : '#111827'} stroke={isOpponent ? '#f8fafc' : '#facc15'} strokeWidth="0.7" /><image href={photo} x={element.x - 3.2} y={element.y - 3.2} width="6.4" height="6.4" preserveAspectRatio="xMidYMid slice" /></> : <circle cx={element.x} cy={element.y} r={selected ? 3.1 : 2.75} fill={isOpponent ? 'white' : '#111827'} stroke={isOpponent ? '#111827' : '#facc15'} strokeWidth="0.75" />}
             <text x={element.x} y={element.y + 0.9} textAnchor="middle" fontSize="2.25" fontWeight="900" fill={isOpponent ? 'currentColor' : 'white'}>
               {element.label || ''}
             </text>
             {name ? (
-              <text x={element.x} y={element.y + 5.9} textAnchor="middle" fontSize={readOnly ? '1.45' : '1.75'} fontWeight="800" fill="currentColor">
+              <text x={element.x} y={element.y + 5.9} textAnchor="middle" fontSize={readOnly ? '1.45' : '1.75'} fontWeight="900" fill={verticalPitch ? 'white' : 'currentColor'} stroke={verticalPitch ? 'rgba(0,0,0,.65)' : 'none'} strokeWidth={verticalPitch ? '.25' : '0'} paintOrder="stroke">
                 {name.toUpperCase()}
               </text>
             ) : null}

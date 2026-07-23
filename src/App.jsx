@@ -8440,6 +8440,8 @@ function App() {
                 initialBoards={safeObject(selectedPreAiAnalysis?.tacticalPhaseBoards)}
                 players={players}
                 rivalPlayers={liveRivalPlayers}
+                caudalSystem={caudalSystem}
+                rivalSystem={rivalSystem}
                 opponentKey={selectedMatchRivalTeam?.id || selectedMatch?.opponent || ''}
                 onSave={(tacticalPhaseBoards) => updatePreAiAnalysisPatch({ tacticalPhaseBoards })}
               />

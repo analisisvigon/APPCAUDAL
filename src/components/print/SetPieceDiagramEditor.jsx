@@ -24,7 +24,7 @@ const quickConsignasStorageKey = 'caudal-print-quick-consignas-v2';
 
 const createElement = (type) => {
   if (type === 'ball') return { id: createId(), type, x: 8, y: 8 };
-  if (isArrow({ type })) return { id: createId(), type, x1: 20, y1: 46, x2: 44, y2: 26, dashed: type === 'dashed_arrow' };
+  if (isArrow({ type })) return { id: createId(), type, x1: 20, y1: 46, x2: 44, y2: 26, dashed: type === 'dashed_arrow', color: '#ef4444', strokeWidth: 1 };
   if (type === 'zone') return { id: createId(), type, x: 34, y: 18, width: 22, height: 12, label: 'Zona' };
   if (type === 'rectangle') return { id: createId(), type, x: 34, y: 18, width: 22, height: 12, label: '' };
   if (type === 'circle') return { id: createId(), type, x: 46, y: 28, width: 12, height: 12, label: '' };
@@ -38,7 +38,20 @@ const createElement = (type) => {
   return { id: createId(), type: 'player', x: 50, y: 35, label: '1', player_id: '' };
 };
 
-export default function SetPieceDiagramEditor({ diagram, players = [], onChange }) {
+export default function SetPieceDiagramEditor({
+  diagram,
+  players = [],
+  onChange,
+  verticalPitch = false,
+  rivalSystem = '',
+  caudalSystem = '',
+  hideQuickConsignas = false,
+  sidePanelTop = null,
+  panelCollapsed = false,
+  onTogglePanel,
+  initialZoom = 1,
+  onZoomChange,
+}) {
   const drawableElements = useMemo(
     () => (Array.isArray(diagram.elements) ? diagram.elements : []).filter((element) => element.type !== 'player_note'),
     [diagram.elements]
@@ -48,7 +61,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
   const [historyIndex, setHistoryIndex] = useState(0);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [movementMode, setMovementMode] = useState(false);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(initialZoom || 1);
   const [favoriteConsignas, setFavoriteConsignas] = useState(() => {
     if (typeof window === 'undefined') return ['Atacar primer palo', 'Vigilancia', 'Segunda jugada'];
     try {
@@ -103,6 +116,13 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
     setHistoryIndex(0);
     setSelectedId('');
   }, [diagram.id, diagram.tipo, diagram.orden]);
+
+  useEffect(() => setZoom(initialZoom || 1), [diagram.id, initialZoom]);
+
+  const changeZoom = (nextZoom) => {
+    setZoom(nextZoom);
+    onZoomChange?.(nextZoom);
+  };
 
   const updateSelected = (fields) => {
     if (!selectedElement) return;
@@ -182,7 +202,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,4fr)_minmax(230px,1fr)]">
+      <div className={`grid gap-4 ${panelCollapsed ? '' : 'xl:grid-cols-[minmax(0,3fr)_minmax(250px,1fr)]'}`}>
         <div className="space-y-3">
           <SetPieceDiagramToolbar onAdd={addElement} onDelete={deleteSelected} selectedElement={selectedElement} />
           <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-white/5 p-2 text-xs font-bold text-white">
@@ -192,11 +212,11 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
             <button type="button" title="Ayuda a colocar elementos en líneas o posiciones cercanas" onClick={() => setSnapEnabled((value) => !value)} className={`rounded-xl px-3 py-2 ${snapEnabled ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-white'}`}>Imán</button>
             <button type="button" title="Modo para construir secuencias simples de movimiento" onClick={() => setMovementMode((value) => !value)} className={`rounded-xl px-3 py-2 ${movementMode ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-white'}`}>Modo movimiento</button>
             <button type="button" onClick={addMovementSequence} className="rounded-xl bg-white/10 px-3 py-2">Secuencia 1-2-3</button>
-            <button type="button" onClick={() => setZoom((value) => Math.max(0.75, Number((value - 0.1).toFixed(1))))} className="rounded-xl bg-white/10 px-3 py-2">-</button>
+            <button type="button" onClick={() => changeZoom(Math.max(0.75, Number((zoom - 0.1).toFixed(1))))} className="rounded-xl bg-white/10 px-3 py-2">-</button>
             <span className="px-1 text-slate-300">{Math.round(zoom * 100)}%</span>
-            <button type="button" onClick={() => setZoom((value) => Math.min(1.6, Number((value + 0.1).toFixed(1))))} className="rounded-xl bg-white/10 px-3 py-2">+</button>
+            <button type="button" onClick={() => changeZoom(Math.min(1.6, Number((zoom + 0.1).toFixed(1))))} className="rounded-xl bg-white/10 px-3 py-2">+</button>
           </div>
-          <div className="overflow-auto rounded-3xl bg-white p-3 text-black">
+          <div className={`overflow-auto rounded-3xl p-2 text-white ${verticalPitch ? 'bg-[#061d16]' : 'bg-white text-black'}`}>
             <div style={{ width: `${zoom * 100}%`, minWidth: '100%' }}>
               <SetPieceDiagramCanvas
                 elements={drawableElements}
@@ -206,19 +226,29 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
                 players={players}
                 snap={snapEnabled}
                 fullField={String(diagram.id || '').startsWith('phase-') || String(diagram.tipo || '').includes('saque_inicio')}
+                verticalPitch={verticalPitch}
+                rivalSystem={rivalSystem}
+                caudalSystem={caudalSystem}
               />
             </div>
           </div>
         </div>
 
-        <div className="space-y-3 rounded-2xl bg-white/5 p-3">
+        {panelCollapsed ? (
+          <button type="button" onClick={onTogglePanel} className="fixed right-4 top-1/2 z-40 rounded-l-xl bg-caudal-electric px-3 py-4 text-xs font-black uppercase text-slate-950 shadow-xl">Abrir panel</button>
+        ) : <div className="space-y-3 rounded-2xl bg-white/5 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Panel de fase</p>
+            {onTogglePanel ? <button type="button" onClick={onTogglePanel} className="rounded-lg bg-white/10 px-2.5 py-1.5 text-[10px] font-black uppercase text-white">Plegar</button> : null}
+          </div>
+          {sidePanelTop}
           <input
             value={diagram.titulo || ''}
             onChange={(event) => updateDiagram({ titulo: event.target.value })}
             placeholder="Titulo de la jugada"
             className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500"
           />
-          <div className="space-y-3">
+          {!hideQuickConsignas ? <div className="space-y-3">
             <label className="block space-y-2">
               <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Consigna rápida</span>
               <textarea
@@ -250,7 +280,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
                 </div>
               ))}
             </div>
-          </div>
+          </div> : null}
 
           {selectedElement ? (
             <div className="space-y-3 rounded-2xl bg-black/20 p-4">
@@ -288,7 +318,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
                   {players.map((player) => <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>)}
                 </select>
               ) : null}
-              {['player', 'opponent'].includes(selectedElement.type) ? (
+              {!hideQuickConsignas && ['player', 'opponent'].includes(selectedElement.type) ? (
                 <div className="space-y-3">
                   <textarea
                     value={selectedElement.note || ''}
@@ -333,7 +363,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
                   <option value="watch">Vigilancia</option>
                 </select>
                 <div className="grid grid-cols-2 gap-2">
-                  <input type="color" value={selectedElement.color || '#2563eb'} onChange={(event) => updateSelected({ color: event.target.value })} className="h-11 w-full rounded-xl bg-white/10 p-1" title="Color" />
+                  <input type="color" value={selectedElement.color || '#ef4444'} onChange={(event) => updateSelected({ color: event.target.value })} className="h-11 w-full rounded-xl bg-white/10 p-1" title="Color" />
                   <select value={selectedElement.strokeWidth || 0.72} onChange={(event) => updateSelected({ strokeWidth: Number(event.target.value) })} className="rounded-xl bg-white px-3 text-sm font-bold text-slate-950">
                     <option value="0.6">Fino</option><option value="1">Medio</option><option value="1.6">Grueso</option><option value="2.2">Muy grueso</option>
                   </select>
@@ -363,7 +393,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
           ) : (
             <p className="rounded-2xl bg-black/20 p-4 text-sm text-slate-400">Selecciona un elemento del campo para editarlo.</p>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );
