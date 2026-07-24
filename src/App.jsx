@@ -84,6 +84,7 @@ import { getDefensiveBlockInitialPositions } from './utils/defensiveBlockPositio
 import {
   getOffensiveBuildUpPositions,
   getOffensiveCreationPositions,
+  getOffensiveDirectBuildUpPositions,
   getOffensiveFinishingPositions,
 } from './utils/offensivePhasePositions';
 import {
@@ -7833,13 +7834,14 @@ function App() {
       },
     }));
   };
-  const buildOffensiveInitialPlayerPositions = (situation, rivalSystem, caudalSystem) => {
+  const buildOffensiveInitialPlayerPositions = (situation, rivalSystem, caudalSystem, playStyle = 'combinative') => {
     const options = {
       rivalSystem,
       caudalSystem,
       rivalFormationSlots: getFormationSlots(rivalSystem, 'own'),
       caudalFormationSlots: getFormationSlots(caudalSystem, 'own'),
     };
+    if (situation === 'build_up' && playStyle === 'direct') return getOffensiveDirectBuildUpPositions(options);
     if (situation === 'build_up') return getOffensiveBuildUpPositions(options);
     if (situation === 'creation') return getOffensiveCreationPositions(options);
     if (situation === 'finishing') return getOffensiveFinishingPositions(options);
@@ -7861,7 +7863,7 @@ function App() {
       playStyle: offensivePlayStyle,
       rivalSystem,
       caudalSystem,
-      playerPositions: buildOffensiveInitialPlayerPositions(offensiveSituation, rivalSystem, caudalSystem),
+      playerPositions: buildOffensiveInitialPlayerPositions(offensiveSituation, rivalSystem, caudalSystem, offensivePlayStyle),
       arrows: [],
       description: '',
       createdAt: timestamp,
@@ -8138,10 +8140,11 @@ function App() {
           rivalSystem,
           caudalSystem
         )
-      : buildOffensiveInitialPlayerPositions(
+        : buildOffensiveInitialPlayerPositions(
           selectedDefensivePlay.offensiveSituation || offensiveSituation,
           rivalSystem,
-          caudalSystem
+          caudalSystem,
+          normalizeOffensivePlayStyle(selectedDefensivePlay.playStyle)
         );
     pushDefensiveUndoSnapshot();
     updateTacticalPlay(selectedDefensivePlay.id, {

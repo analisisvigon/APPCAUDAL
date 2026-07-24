@@ -17,6 +17,11 @@ export const OFFENSIVE_PHASE_LINE_HEIGHTS = Object.freeze({
   }),
 });
 
+export const OFFENSIVE_DIRECT_BUILD_UP_LINE_HEIGHTS = Object.freeze({
+  rival: Object.freeze({ goalkeeper: 13, defensiveLine: 31, attackingLine: 59 }),
+  caudal: Object.freeze({ goalkeeper: 91, defensiveLine: 74, attackingLine: 50 }),
+});
+
 const parseSystemLines = (system, outfieldPlayerCount) => {
   const parsed = String(system || '').match(/\d+/g)?.map(Number).filter((lineSize) => lineSize > 0);
   const requested = parsed?.length ? parsed : DEFAULT_SYSTEM_LINES;
@@ -90,6 +95,40 @@ export const getOffensiveBuildUpPositions = (options) => getOffensiveSituationPo
   ...options,
   offensiveSituation: 'build_up',
 });
+
+export const getOffensiveDirectBuildUpPositions = ({
+  rivalSystem,
+  caudalSystem,
+  rivalFormationSlots = [],
+  caudalFormationSlots = [],
+}) => {
+  const rivalPositions = buildTeamPositions({
+    team: 'rival',
+    system: rivalSystem,
+    formationSlots: rivalFormationSlots,
+    heights: OFFENSIVE_DIRECT_BUILD_UP_LINE_HEIGHTS.rival,
+  });
+  rivalFormationSlots.forEach((slot) => {
+    const role = String(slot?.role || '').toLowerCase();
+    if (!/lateral|carrilero/.test(role)) return;
+    const key = `rival:${slot.slot}`;
+    if (!rivalPositions[key]) return;
+    rivalPositions[key] = {
+      ...rivalPositions[key],
+      y: Math.min(95, rivalPositions[key].y + 6),
+    };
+  });
+  const caudalPositions = buildTeamPositions({
+    team: 'caudal',
+    system: caudalSystem,
+    formationSlots: caudalFormationSlots,
+    heights: OFFENSIVE_DIRECT_BUILD_UP_LINE_HEIGHTS.caudal,
+  });
+  return preventInitialPositionOverlaps({
+    ...rivalPositions,
+    ...caudalPositions,
+  });
+};
 
 export const getOffensiveCreationPositions = (options) => getOffensiveSituationPositions({
   ...options,
