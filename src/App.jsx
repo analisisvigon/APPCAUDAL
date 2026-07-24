@@ -84,6 +84,7 @@ import { getDefensiveBlockInitialPositions } from './utils/defensiveBlockPositio
 import {
   getOffensiveInitialPositions,
 } from './utils/offensivePhasePositions';
+import { getTransitionInitialPositions } from './utils/transitionPhasePositions';
 import {
   createTacticalTemplate,
   deleteTacticalTemplate,
@@ -8118,7 +8119,12 @@ function App() {
       behaviour: transitionBehaviour,
       rivalSystem,
       caudalSystem,
-      playerPositions: {},
+      playerPositions: buildTransitionInitialPlayerPositions(
+        transitionType,
+        transitionFieldZone,
+        rivalSystem,
+        caudalSystem
+      ),
       arrows: [],
       description: '',
       createdAt: timestamp,
@@ -8200,6 +8206,16 @@ function App() {
       caudalFormationSlots: getFormationSlots(caudalSystem, 'own'),
     });
   };
+  const buildTransitionInitialPlayerPositions = (nextTransitionType, fieldZone, rivalSystem, caudalSystem) => (
+    getTransitionInitialPositions({
+      transitionType: nextTransitionType,
+      fieldZone,
+      rivalSystem,
+      caudalSystem,
+      rivalFormationSlots: getFormationSlots(rivalSystem, 'own'),
+      caudalFormationSlots: getFormationSlots(caudalSystem, 'own'),
+    })
+  );
   const createOffensivePlay = () => {
     const defaultName = `Jugada ${offensivePlaysForSituation.length + 1}`;
     const requestedName = window.prompt('Nombre de la jugada', defaultName);
@@ -8493,12 +8509,19 @@ function App() {
           rivalSystem,
           caudalSystem
         )
-        : buildOffensiveInitialPlayerPositions(
-          selectedDefensivePlay.offensiveSituation || offensiveSituation,
-          rivalSystem,
-          caudalSystem,
-          normalizeOffensivePlayStyle(selectedDefensivePlay.playStyle)
-        );
+        : tacticalGamePhase === 'offensive'
+          ? buildOffensiveInitialPlayerPositions(
+            selectedDefensivePlay.offensiveSituation || offensiveSituation,
+            rivalSystem,
+            caudalSystem,
+            normalizeOffensivePlayStyle(selectedDefensivePlay.playStyle)
+          )
+          : buildTransitionInitialPlayerPositions(
+            selectedDefensivePlay.transitionType || transitionType,
+            selectedDefensivePlay.fieldZone || transitionFieldZone,
+            rivalSystem,
+            caudalSystem
+          );
     pushDefensiveUndoSnapshot();
     updateTacticalPlay(selectedDefensivePlay.id, {
       rivalSystem,
@@ -9991,7 +10014,7 @@ function App() {
                 ))}
                 <button type="button" disabled={!selectedDefensiveArrowId} onClick={deleteSelectedDefensiveArrow} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Borrar</button>
                 <button type="button" disabled={!defensiveUndoStack.length} onClick={undoDefensiveAction} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Deshacer</button>
-                <button type="button" disabled={!selectedDefensivePlay || tacticalGamePhase === 'transition'} onClick={resetDefensiveFormation} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Restablecer formación</button>
+                <button type="button" disabled={!selectedDefensivePlay} onClick={resetDefensiveFormation} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Restablecer formación</button>
               </div>
               {renderFacingSystemsOverview(true)}
             </section>
