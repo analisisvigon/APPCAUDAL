@@ -7318,18 +7318,69 @@ function App() {
     setTacticalTemplateSaving(true);
     setTacticalTemplateError('');
     try {
-      const template = await createTacticalTemplate(supabase, {
+      const values = {
         ...tacticalTemplateDraft,
         tags: tacticalTemplateDraft.tagsText.split(',').map((tag) => tag.trim()).filter(Boolean),
-      });
+      };
+      const template = tacticalTemplateDraft.id
+        ? await updateTacticalTemplate(supabase, tacticalTemplateDraft.id, values)
+        : await createTacticalTemplate(supabase, values);
       setTacticalTemplates((current) => [template, ...current.filter((item) => item.id !== template.id)]);
-      setTacticalTemplateNotice(`Plantilla guardada: ${template.name}.`);
+      setTacticalTemplateNotice(`${tacticalTemplateDraft.id ? 'Plantilla actualizada' : 'Plantilla guardada'}: ${template.name}.`);
       setTacticalTemplateDialog('');
     } catch (templateError) {
       console.error('[TACTICAL_TEMPLATE_CREATE]', templateError);
       setTacticalTemplateError(templateError.message || 'No se pudo guardar la plantilla.');
     } finally {
       setTacticalTemplateSaving(false);
+    }
+  };
+  const editTacticalTemplate = (template) => {
+    setTacticalTemplateDraft({
+      id: template.id,
+      name: template.name,
+      phase: template.phase,
+      situation: template.situation,
+      category: template.category || '',
+      tagsText: safeArray(template.tags).join(', '),
+      description: template.description || '',
+      baseRivalSystem: template.baseRivalSystem || '',
+      baseCaudalSystem: template.baseCaudalSystem || '',
+      playerPositions: JSON.parse(JSON.stringify(template.playerPositions || {})),
+      arrows: JSON.parse(JSON.stringify(template.arrows || [])),
+    });
+    setTacticalTemplateError('');
+    setTacticalTemplateDialog('edit');
+  };
+  const updateTacticalTemplateDrawingFromCurrentPlay = () => {
+    if (!selectedTacticalPlay) return;
+    const rivalSystem = getCurrentRivalSystem();
+    const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
+    setTacticalTemplateDraft((current) => ({
+      ...current,
+      baseRivalSystem: rivalSystem,
+      baseCaudalSystem: caudalSystem,
+      playerPositions: serializeSemanticPlayerPositions({
+        playerPositions: selectedTacticalPlay.playerPositions,
+        rivalSystem,
+        caudalSystem,
+        rivalFormationSlots: getFormationSlots(rivalSystem, 'own'),
+        caudalFormationSlots: getFormationSlots(caudalSystem, 'own'),
+      }),
+      arrows: serializeTemplateArrows(selectedTacticalPlay.arrows),
+    }));
+    setTacticalTemplateNotice('El formulario contiene ahora el dibujo de la jugada actual. Guarda para actualizar la plantilla.');
+  };
+  const removeTacticalTemplate = async (template) => {
+    if (!template || !window.confirm(`¿Eliminar la plantilla "${template.name}"? Las jugadas creadas desde ella permanecerán intactas.`)) return;
+    setTacticalTemplateError('');
+    try {
+      await deleteTacticalTemplate(supabase, template.id);
+      setTacticalTemplates((current) => current.filter((item) => item.id !== template.id));
+      setTacticalTemplateNotice(`Plantilla eliminada: ${template.name}. Las jugadas existentes no se han modificado.`);
+    } catch (templateError) {
+      console.error('[TACTICAL_TEMPLATE_DELETE]', templateError);
+      setTacticalTemplateError(templateError.message || 'No se pudo eliminar la plantilla.');
     }
   };
   const loadTacticalTemplateLibrary = async (dialog = 'load') => {
@@ -8940,6 +8991,7 @@ function App() {
                 <button type="button" onClick={openNewTacticalPlayDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Nueva jugada</button>
                 <button type="button" disabled={tacticalSaveStatus === 'Guardando'} onClick={tacticalGamePhase === 'defensive' ? saveDefensiveWorkspace : saveOffensiveWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
                 <button type="button" disabled={!selectedTacticalPlay} onClick={openSaveTacticalTemplateDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">Guardar como plantilla</button>
+                <button type="button" onClick={() => loadTacticalTemplateLibrary('library')} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300">Plantillas</button>
                 <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? duplicateDefensivePlay : duplicateOffensivePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
                 <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? deleteDefensivePlay : deleteOffensivePlay} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Eliminar</button>
                 {tacticalSaveStatus ? <span className={`self-center text-[9px] font-black uppercase tracking-[0.12em] ${tacticalSaveStatus === 'Error al guardar' ? 'text-red-200' : tacticalSaveStatus === 'Cambios sin guardar' ? 'text-amber-200' : 'text-slate-400'}`}>{tacticalSaveStatus}</span> : null}
@@ -9433,13 +9485,13 @@ function App() {
             </div>
           </div>
         ) : null}
-        {tacticalTemplateDialog === 'load' ? (
+        {['load', 'library'].includes(tacticalTemplateDialog) ? (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 p-4" role="dialog" aria-modal="true" aria-labelledby="load-tactical-template-title">
             <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto border border-white/10 bg-[#091428] p-5 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Biblioteca privada</p>
-                  <h3 id="load-tactical-template-title" className="mt-1 text-xl font-black text-white">Crear desde plantilla</h3>
+                  <h3 id="load-tactical-template-title" className="mt-1 text-xl font-black text-white">{tacticalTemplateDialog === 'load' ? 'Crear desde plantilla' : 'Gestionar plantillas'}</h3>
                 </div>
                 <button type="button" onClick={() => setTacticalTemplateDialog('')} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-black text-white">Cerrar</button>
               </div>
@@ -9456,31 +9508,40 @@ function App() {
               {tacticalTemplateError ? <p className="mt-5 border border-red-300/20 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-100">{tacticalTemplateError}</p> : null}
               <div className="mt-5 grid gap-3 md:grid-cols-2">
                 {filteredTacticalTemplates.map((template) => (
-                  <button key={template.id} type="button" onClick={() => createTacticalPlayFromTemplate(template)} className="border border-white/10 bg-white/[0.035] p-4 text-left transition hover:border-caudal-electric/30 hover:bg-caudal-electric/[0.06]">
+                  <article key={template.id} className="border border-white/10 bg-white/[0.035] p-4 text-left transition hover:border-caudal-electric/30 hover:bg-caudal-electric/[0.06]">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-black text-white">{template.name}</p>
                         <p className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{template.phase} · {template.situation}{template.category ? ` · ${template.category}` : ''}</p>
                       </div>
-                      <span className="shrink-0 bg-caudal-electric px-2 py-1 text-[9px] font-black uppercase text-slate-950">Usar</span>
                     </div>
                     <p className="mt-3 line-clamp-3 text-xs font-semibold leading-5 text-slate-300">{template.description || 'Sin descripción.'}</p>
                     {template.tags.length ? <div className="mt-3 flex flex-wrap gap-1">{template.tags.map((tag) => <span key={`${template.id}-${tag}`} className="border border-white/10 bg-black/20 px-2 py-1 text-[9px] font-bold text-slate-300">{tag}</span>)}</div> : null}
                     <p className="mt-3 text-[9px] font-bold uppercase tracking-[0.1em] text-slate-500">Base: {template.baseCaudalSystem || 'libre'} vs {template.baseRivalSystem || 'libre'}</p>
-                  </button>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {tacticalTemplateDialog === 'load' ? (
+                        <button type="button" onClick={() => createTacticalPlayFromTemplate(template)} className="bg-caudal-electric px-3 py-2 text-[9px] font-black uppercase text-slate-950">Usar plantilla</button>
+                      ) : (
+                        <>
+                          <button type="button" onClick={() => editTacticalTemplate(template)} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Editar</button>
+                          <button type="button" onClick={() => removeTacticalTemplate(template)} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100">Eliminar</button>
+                        </>
+                      )}
+                    </div>
+                  </article>
                 ))}
                 {!tacticalTemplateLoading && !filteredTacticalTemplates.length ? <p className="border border-dashed border-white/10 p-5 text-sm font-semibold text-slate-500 md:col-span-2">No hay plantillas que coincidan con los filtros.</p> : null}
               </div>
             </div>
           </div>
         ) : null}
-        {tacticalTemplateDialog === 'save' ? (
+        {['save', 'edit'].includes(tacticalTemplateDialog) ? (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 p-4" role="dialog" aria-modal="true" aria-labelledby="save-tactical-template-title">
             <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto border border-white/10 bg-[#091428] p-5 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Biblioteca privada</p>
-                  <h3 id="save-tactical-template-title" className="mt-1 text-xl font-black text-white">Guardar como plantilla</h3>
+                  <h3 id="save-tactical-template-title" className="mt-1 text-xl font-black text-white">{tacticalTemplateDialog === 'edit' ? 'Editar plantilla' : 'Guardar como plantilla'}</h3>
                 </div>
                 <button type="button" onClick={() => setTacticalTemplateDialog('')} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-black text-white">Cerrar</button>
               </div>
@@ -9520,10 +9581,15 @@ function App() {
                   <textarea rows={4} value={tacticalTemplateDraft.description} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, description: event.target.value }))} className="min-h-[110px] border border-white/10 bg-black/20 px-3 py-3 text-sm font-semibold normal-case leading-6 tracking-normal text-white outline-none" />
                 </label>
               </div>
+              {tacticalTemplateDialog === 'edit' ? (
+                <button type="button" disabled={!selectedTacticalPlay} onClick={updateTacticalTemplateDrawingFromCurrentPlay} className="mt-4 border border-caudal-electric/25 bg-caudal-electric/10 px-4 py-2.5 text-xs font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">
+                  Actualizar dibujo desde la jugada actual
+                </button>
+              ) : null}
               {tacticalTemplateError ? <p className="mt-4 border border-red-300/20 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-100">{tacticalTemplateError}</p> : null}
               <div className="mt-5 flex justify-end gap-2">
                 <button type="button" onClick={() => setTacticalTemplateDialog('')} className="border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs font-black uppercase text-white">Cancelar</button>
-                <button type="button" disabled={tacticalTemplateSaving} onClick={saveTacticalTemplateDraft} className="bg-caudal-electric px-4 py-2.5 text-xs font-black uppercase text-slate-950 disabled:opacity-50">{tacticalTemplateSaving ? 'Guardando...' : 'Guardar plantilla'}</button>
+                <button type="button" disabled={tacticalTemplateSaving} onClick={saveTacticalTemplateDraft} className="bg-caudal-electric px-4 py-2.5 text-xs font-black uppercase text-slate-950 disabled:opacity-50">{tacticalTemplateSaving ? 'Guardando...' : tacticalTemplateDialog === 'edit' ? 'Actualizar plantilla' : 'Guardar plantilla'}</button>
               </div>
             </div>
           </div>
