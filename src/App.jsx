@@ -82,10 +82,7 @@ import {
 } from './utils/rivalTactics';
 import { getDefensiveBlockInitialPositions } from './utils/defensiveBlockPositions';
 import {
-  getOffensiveBuildUpPositions,
-  getOffensiveCreationPositions,
-  getOffensiveDirectBuildUpPositions,
-  getOffensiveFinishingPositions,
+  getOffensiveInitialPositions,
 } from './utils/offensivePhasePositions';
 import {
   createTacticalTemplate,
@@ -7835,17 +7832,14 @@ function App() {
     }));
   };
   const buildOffensiveInitialPlayerPositions = (situation, rivalSystem, caudalSystem, playStyle = 'combinative') => {
-    const options = {
+    return getOffensiveInitialPositions({
+      offensiveSituation: situation,
+      playStyle,
       rivalSystem,
       caudalSystem,
       rivalFormationSlots: getFormationSlots(rivalSystem, 'own'),
       caudalFormationSlots: getFormationSlots(caudalSystem, 'own'),
-    };
-    if (situation === 'build_up' && playStyle === 'direct') return getOffensiveDirectBuildUpPositions(options);
-    if (situation === 'build_up') return getOffensiveBuildUpPositions(options);
-    if (situation === 'creation') return getOffensiveCreationPositions(options);
-    if (situation === 'finishing') return getOffensiveFinishingPositions(options);
-    return {};
+    });
   };
   const createOffensivePlay = () => {
     const defaultName = `Jugada ${offensivePlaysForSituation.length + 1}`;

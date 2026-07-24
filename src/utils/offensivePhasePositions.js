@@ -139,3 +139,13 @@ export const getOffensiveFinishingPositions = (options) => getOffensiveSituation
   ...options,
   offensiveSituation: 'finishing',
 });
+
+export const getOffensiveInitialPositions = (options) => {
+  if (options?.offensiveSituation === 'build_up' && options?.playStyle === 'direct') {
+    return getOffensiveDirectBuildUpPositions(options);
+  }
+  if (options?.offensiveSituation === 'build_up') return getOffensiveBuildUpPositions(options);
+  if (options?.offensiveSituation === 'creation') return getOffensiveCreationPositions(options);
+  if (options?.offensiveSituation === 'finishing') return getOffensiveFinishingPositions(options);
+  return {};
+};
