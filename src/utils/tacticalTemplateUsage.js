@@ -15,6 +15,7 @@ export const calculateTacticalTemplateUsages = (matchRows = []) => {
     const plays = [
       ...getWorkspacePlays(analysis, 'defensivePhaseV1').map((play) => ({ play, phase: 'defensive' })),
       ...getWorkspacePlays(analysis, 'offensivePhaseV1').map((play) => ({ play, phase: 'offensive' })),
+      ...getWorkspacePlays(analysis, 'transitionPhaseV1').map((play) => ({ play, phase: 'transition' })),
     ];
     plays.forEach(({ play, phase }) => {
       const templateId = getTemplateId(play);
@@ -41,7 +42,7 @@ export const calculateTacticalTemplateUsages = (matchRows = []) => {
         playId: String(play.id || ''),
         playName: String(play.name || 'Jugada'),
         phase,
-        situation: String(play.defensiveSituation || play.offensiveSituation || ''),
+        situation: String(play.defensiveSituation || play.offensiveSituation || play.transitionType || ''),
       });
     });
   });
