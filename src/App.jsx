@@ -86,6 +86,7 @@ import {
 } from './utils/offensivePhasePositions';
 import { getTransitionInitialPositions } from './utils/transitionPhasePositions';
 import {
+  getBallPositionKey,
   getDefaultSetPieceBallPosition,
   getSetPieceZonePoints,
   normalizeBallStartPosition,
@@ -1046,7 +1047,10 @@ const normalizeTransitionWorkspace = (value) => {
     plays,
   };
 };
-const getSetPieceContextKey = (setPieceType, setPieceAction) => `${setPieceType}:${setPieceAction}`;
+const getSetPieceActionContextKey = (setPieceType, setPieceAction) => `${setPieceType}:${setPieceAction}`;
+const getSetPieceContextKey = (setPieceType, setPieceAction, ballStartPosition) => (
+  `${getSetPieceActionContextKey(setPieceType, setPieceAction)}:${getBallPositionKey(ballStartPosition)}`
+);
 const createEmptySetPieceWorkspace = () => ({
   version: 1,
   activeSetPieceType: 'offensive_set_piece',
@@ -1054,6 +1058,7 @@ const createEmptySetPieceWorkspace = () => ({
     offensive_set_piece: 'corner',
     defensive_set_piece: 'corner',
   },
+  activeBallPositionByContext: {},
   activePlayIdByContext: {},
   plays: [],
 });
@@ -1075,6 +1080,10 @@ const normalizeSetPieceWorkspace = (value) => {
       name: String(play.name || 'Jugada'),
       setPieceType: play.setPieceType,
       setPieceAction: play.setPieceAction,
+      ballStartPosition: normalizeBallStartPosition(
+        play.ballStartPosition,
+        getDefaultSetPieceBallPosition(play.setPieceType, play.setPieceAction)
+      ),
       rivalSystem: String(play.rivalSystem || '4-4-2'),
       caudalSystem: String(play.caudalSystem || '4-4-2'),
       playerPositions: play.playerPositions && typeof play.playerPositions === 'object' && !Array.isArray(play.playerPositions)
@@ -1101,15 +1110,35 @@ const normalizeSetPieceWorkspace = (value) => {
     const savedAction = source.activeActionByType?.[typeOption.value];
     return [typeOption.value, validActions.has(savedAction) ? savedAction : 'corner'];
   }));
-  const activePlayIdByContext = Object.fromEntries(
+  const activeBallPositionByContext = Object.fromEntries(
     setPieceTypeOptions.flatMap((typeOption) => setPieceActionOptions.map((actionOption) => {
-      const contextKey = getSetPieceContextKey(typeOption.value, actionOption.value);
-      const savedId = source.activePlayIdByContext?.[contextKey];
-      const fallbackId = plays.find((play) => (
+      const actionContextKey = getSetPieceActionContextKey(typeOption.value, actionOption.value);
+      const fallbackPosition = plays.find((play) => (
         play.setPieceType === typeOption.value && play.setPieceAction === actionOption.value
+      ))?.ballStartPosition || getDefaultSetPieceBallPosition(typeOption.value, actionOption.value);
+      return [
+        actionContextKey,
+        normalizeBallStartPosition(source.activeBallPositionByContext?.[actionContextKey], fallbackPosition),
+      ];
+    }))
+  );
+  const activePlayIdByContext = Object.fromEntries(
+    plays.map((play) => {
+      const contextKey = getSetPieceContextKey(
+        play.setPieceType,
+        play.setPieceAction,
+        play.ballStartPosition
+      );
+      const legacyContextKey = getSetPieceActionContextKey(play.setPieceType, play.setPieceAction);
+      const savedId = source.activePlayIdByContext?.[contextKey]
+        || source.activePlayIdByContext?.[legacyContextKey];
+      const fallbackId = plays.find((candidate) => (
+        candidate.setPieceType === play.setPieceType
+        && candidate.setPieceAction === play.setPieceAction
+        && getBallPositionKey(candidate.ballStartPosition) === getBallPositionKey(play.ballStartPosition)
       ))?.id || '';
       return [contextKey, playIds.has(savedId) ? savedId : fallbackId];
-    }))
+    })
   );
   return {
     version: 1,
@@ -1117,6 +1146,7 @@ const normalizeSetPieceWorkspace = (value) => {
       ? source.activeSetPieceType
       : 'offensive_set_piece',
     activeActionByType,
+    activeBallPositionByContext,
     activePlayIdByContext,
     plays,
   };
@@ -4676,6 +4706,9 @@ function App() {
   const transitionEditVersionRef = useRef(0);
   const transitionSaveRequestRef = useRef(0);
   const transitionAutosaveTimerRef = useRef(null);
+  const setPieceEditVersionRef = useRef(0);
+  const setPieceSaveRequestRef = useRef(0);
+  const setPieceAutosaveTimerRef = useRef(null);
   const [tacticalTemplates, setTacticalTemplates] = useState([]);
   const [tacticalTemplateDialog, setTacticalTemplateDialog] = useState('');
   const [tacticalTemplateDraft, setTacticalTemplateDraft] = useState(emptyTacticalTemplateDraft);
@@ -6009,15 +6042,23 @@ function App() {
     setTransitionSaveStatus(storedTransitionWorkspace.plays.length ? 'Guardado' : '');
     transitionEditVersionRef.current = 0;
 
-    const emptySetPieceWorkspace = createEmptySetPieceWorkspace();
-    setSetPieceWorkspace(emptySetPieceWorkspace);
-    setSetPieceType(emptySetPieceWorkspace.activeSetPieceType);
-    setSetPieceAction(emptySetPieceWorkspace.activeActionByType[emptySetPieceWorkspace.activeSetPieceType]);
-    setSetPieceBallStartPosition(getDefaultSetPieceBallPosition(
-      emptySetPieceWorkspace.activeSetPieceType,
-      emptySetPieceWorkspace.activeActionByType[emptySetPieceWorkspace.activeSetPieceType]
-    ));
-    setSetPieceSaveStatus('');
+    setPieceSaveRequestRef.current += 1;
+    if (setPieceAutosaveTimerRef.current) {
+      window.clearTimeout(setPieceAutosaveTimerRef.current);
+      setPieceAutosaveTimerRef.current = null;
+    }
+    const storedSetPieceWorkspace = normalizeSetPieceWorkspace(selectedPreAiAnalysis?.setPiecePhaseV1);
+    const storedSetPieceType = storedSetPieceWorkspace.activeSetPieceType;
+    const storedSetPieceAction = storedSetPieceWorkspace.activeActionByType[storedSetPieceType];
+    const storedActionContextKey = getSetPieceActionContextKey(storedSetPieceType, storedSetPieceAction);
+    setSetPieceWorkspace(storedSetPieceWorkspace);
+    setSetPieceType(storedSetPieceType);
+    setSetPieceAction(storedSetPieceAction);
+    setSetPieceBallStartPosition(
+      storedSetPieceWorkspace.activeBallPositionByContext[storedActionContextKey]
+    );
+    setSetPieceSaveStatus(storedSetPieceWorkspace.plays.length ? 'Guardado' : '');
+    setPieceEditVersionRef.current = 0;
   }, [selectedMatch?.id]);
   const selectedMatchRivalTeam = useMemo(
     () => teams.find((team) => team.id === selectedMatch?.equipoRivalId) || findTeamByDisplayName(teams, selectedMatch?.opponent || ''),
@@ -7627,9 +7668,15 @@ function App() {
     || transitionPlaysForContext[0]?.id
     || '';
   const selectedTransitionPlay = transitionWorkspace.plays.find((play) => play.id === selectedTransitionPlayId) || null;
-  const setPiecePlayContextKey = getSetPieceContextKey(setPieceType, setPieceAction);
+  const setPiecePlayContextKey = getSetPieceContextKey(
+    setPieceType,
+    setPieceAction,
+    setPieceBallStartPosition
+  );
   const setPiecePlaysForContext = setPieceWorkspace.plays.filter((play) => (
-    play.setPieceType === setPieceType && play.setPieceAction === setPieceAction
+    play.setPieceType === setPieceType
+    && play.setPieceAction === setPieceAction
+    && getBallPositionKey(play.ballStartPosition) === getBallPositionKey(setPieceBallStartPosition)
   ));
   const selectedSetPiecePlayId = setPieceWorkspace.activePlayIdByContext?.[setPiecePlayContextKey]
     || setPiecePlaysForContext[0]?.id
@@ -8171,6 +8218,7 @@ function App() {
     }));
   };
   const markSetPieceUnsaved = () => {
+    setPieceEditVersionRef.current += 1;
     setSetPieceSaveStatus('Cambios sin guardar');
   };
   const updateSetPiecePlay = (playId, patch) => {
@@ -8460,9 +8508,14 @@ function App() {
     ))
       ? setPieceWorkspace.activeActionByType[nextSetPieceType]
       : 'corner';
+    const nextActionContextKey = getSetPieceActionContextKey(nextSetPieceType, nextAction);
+    const nextBallPosition = normalizeBallStartPosition(
+      setPieceWorkspace.activeBallPositionByContext?.[nextActionContextKey],
+      getDefaultSetPieceBallPosition(nextSetPieceType, nextAction)
+    );
     setSetPieceType(nextSetPieceType);
     setSetPieceAction(nextAction);
-    setSetPieceBallStartPosition(getDefaultSetPieceBallPosition(nextSetPieceType, nextAction));
+    setSetPieceBallStartPosition(nextBallPosition);
     markSetPieceUnsaved();
     setSetPieceWorkspace((current) => ({
       ...current,
@@ -8471,12 +8524,21 @@ function App() {
         ...current.activeActionByType,
         [nextSetPieceType]: nextAction,
       },
+      activeBallPositionByContext: {
+        ...current.activeBallPositionByContext,
+        [nextActionContextKey]: nextBallPosition,
+      },
     }));
   };
   const selectSetPieceAction = (nextAction) => {
     if (!setPieceActionOptions.some((option) => option.value === nextAction)) return;
+    const nextActionContextKey = getSetPieceActionContextKey(setPieceType, nextAction);
+    const nextBallPosition = normalizeBallStartPosition(
+      setPieceWorkspace.activeBallPositionByContext?.[nextActionContextKey],
+      getDefaultSetPieceBallPosition(setPieceType, nextAction)
+    );
     setSetPieceAction(nextAction);
-    setSetPieceBallStartPosition(getDefaultSetPieceBallPosition(setPieceType, nextAction));
+    setSetPieceBallStartPosition(nextBallPosition);
     markSetPieceUnsaved();
     setSetPieceWorkspace((current) => ({
       ...current,
@@ -8484,16 +8546,31 @@ function App() {
         ...current.activeActionByType,
         [setPieceType]: nextAction,
       },
+      activeBallPositionByContext: {
+        ...current.activeBallPositionByContext,
+        [nextActionContextKey]: nextBallPosition,
+      },
     }));
   };
   const selectSetPieceBallPosition = (position) => {
-    setSetPieceBallStartPosition(normalizeBallStartPosition(position));
+    const normalizedPosition = normalizeBallStartPosition(position);
+    const actionContextKey = getSetPieceActionContextKey(setPieceType, setPieceAction);
+    setSetPieceBallStartPosition(normalizedPosition);
+    markSetPieceUnsaved();
+    setSetPieceWorkspace((current) => ({
+      ...current,
+      activeBallPositionByContext: {
+        ...current.activeBallPositionByContext,
+        [actionContextKey]: normalizedPosition,
+      },
+    }));
   };
   const selectSetPiecePlay = (playId) => {
     if (!setPieceWorkspace.plays.some((play) => (
       play.id === playId
       && play.setPieceType === setPieceType
       && play.setPieceAction === setPieceAction
+      && getBallPositionKey(play.ballStartPosition) === getBallPositionKey(setPieceBallStartPosition)
     ))) return;
     markSetPieceUnsaved();
     setSetPieceWorkspace((current) => ({
@@ -8515,6 +8592,7 @@ function App() {
       name: String(requestedName || '').trim() || defaultName,
       setPieceType,
       setPieceAction,
+      ballStartPosition: { ...setPieceBallStartPosition },
       rivalSystem: getCurrentRivalSystem(),
       caudalSystem: selectedMatch?.preCaudalSystem || '4-4-2',
       playerPositions: {},
@@ -8531,6 +8609,10 @@ function App() {
         ...current.activeActionByType,
         [setPieceType]: setPieceAction,
       },
+      activeBallPositionByContext: {
+        ...current.activeBallPositionByContext,
+        [getSetPieceActionContextKey(setPieceType, setPieceAction)]: { ...setPieceBallStartPosition },
+      },
       activePlayIdByContext: {
         ...current.activePlayIdByContext,
         [setPiecePlayContextKey]: play.id,
@@ -8545,6 +8627,7 @@ function App() {
       ...selectedSetPiecePlay,
       id: createSetPiecePlayId(),
       name: `${selectedSetPiecePlay.name} · copia`,
+      ballStartPosition: { ...selectedSetPiecePlay.ballStartPosition },
       playerPositions: Object.fromEntries(
         Object.entries(selectedSetPiecePlay.playerPositions || {}).map(([key, position]) => [key, { ...position }])
       ),
@@ -8571,7 +8654,9 @@ function App() {
     if (!selectedSetPiecePlay || !window.confirm(`¿Eliminar "${selectedSetPiecePlay.name}"?`)) return;
     const remainingPlays = setPieceWorkspace.plays.filter((play) => play.id !== selectedSetPiecePlay.id);
     const nextPlay = remainingPlays.find((play) => (
-      play.setPieceType === setPieceType && play.setPieceAction === setPieceAction
+      play.setPieceType === setPieceType
+      && play.setPieceAction === setPieceAction
+      && getBallPositionKey(play.ballStartPosition) === getBallPositionKey(setPieceBallStartPosition)
     ));
     markSetPieceUnsaved();
     setSetPieceWorkspace((current) => ({
@@ -8910,6 +8995,60 @@ function App() {
     setTransitionSaveStatus(transitionEditVersionRef.current === savedEditVersion ? 'Guardado' : 'Cambios sin guardar');
     return true;
   };
+  const saveSetPieceWorkspace = async () => {
+    if (!selectedMatch) return false;
+    if (setPieceAutosaveTimerRef.current) {
+      window.clearTimeout(setPieceAutosaveTimerRef.current);
+      setPieceAutosaveTimerRef.current = null;
+    }
+    const savedEditVersion = setPieceEditVersionRef.current;
+    const saveRequestId = setPieceSaveRequestRef.current + 1;
+    setPieceSaveRequestRef.current = saveRequestId;
+    const actionContextKey = getSetPieceActionContextKey(setPieceType, setPieceAction);
+    const normalizedWorkspace = normalizeSetPieceWorkspace({
+      ...setPieceWorkspace,
+      activeSetPieceType: setPieceType,
+      activeActionByType: {
+        ...setPieceWorkspace.activeActionByType,
+        [setPieceType]: setPieceAction,
+      },
+      activeBallPositionByContext: {
+        ...setPieceWorkspace.activeBallPositionByContext,
+        [actionContextKey]: setPieceBallStartPosition,
+      },
+    });
+    const nextPreAiAnalysis = {
+      ...(selectedPreAiAnalysis || {}),
+      setPiecePhaseV1: normalizedWorkspace,
+    };
+    setSetPieceSaveStatus('Guardando');
+    const { error: setPieceSaveError } = await supabase
+      .from('partidos')
+      .update({ pre_ai_analysis: nextPreAiAnalysis })
+      .eq('id', selectedMatch.id);
+    if (setPieceSaveError) {
+      console.error('[SET_PIECE_PHASE_SAVE]', {
+        matchId: selectedMatch.id,
+        workspace: normalizedWorkspace,
+        error: setPieceSaveError,
+      });
+      if (setPieceSaveRequestRef.current === saveRequestId) {
+        setSetPieceSaveStatus(setPieceEditVersionRef.current === savedEditVersion ? 'Error al guardar' : 'Cambios sin guardar');
+      }
+      return false;
+    }
+    if (setPieceSaveRequestRef.current !== saveRequestId) {
+      setSetPieceSaveStatus('Cambios sin guardar');
+      return false;
+    }
+    setMatches((current) => current.map((match) => (
+      match.id === selectedMatch.id
+        ? { ...match, preAiAnalysis: nextPreAiAnalysis }
+        : match
+    )));
+    setSetPieceSaveStatus(setPieceEditVersionRef.current === savedEditVersion ? 'Guardado' : 'Cambios sin guardar');
+    return true;
+  };
   useEffect(() => {
     if (defensiveSaveStatus !== 'Cambios sin guardar' || !selectedMatch?.id) return undefined;
     if (defensiveAutosaveTimerRef.current) window.clearTimeout(defensiveAutosaveTimerRef.current);
@@ -8957,6 +9096,27 @@ function App() {
     transitionFieldZone,
     transitionBehaviour,
     transitionSaveStatus,
+    selectedMatch?.id,
+  ]);
+  useEffect(() => {
+    if (setPieceSaveStatus !== 'Cambios sin guardar' || !selectedMatch?.id) return undefined;
+    if (setPieceAutosaveTimerRef.current) window.clearTimeout(setPieceAutosaveTimerRef.current);
+    setPieceAutosaveTimerRef.current = window.setTimeout(() => {
+      setPieceAutosaveTimerRef.current = null;
+      saveSetPieceWorkspace();
+    }, 900);
+    return () => {
+      if (setPieceAutosaveTimerRef.current) {
+        window.clearTimeout(setPieceAutosaveTimerRef.current);
+        setPieceAutosaveTimerRef.current = null;
+      }
+    };
+  }, [
+    setPieceWorkspace,
+    setPieceType,
+    setPieceAction,
+    setPieceBallStartPosition,
+    setPieceSaveStatus,
     selectedMatch?.id,
   ]);
   const resetDefensiveFormation = () => {
@@ -10128,7 +10288,7 @@ function App() {
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <button type="button" onClick={openNewTacticalPlayDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Nueva jugada</button>
-                <button type="button" disabled={tacticalGamePhase === 'set_piece' || tacticalSaveStatus === 'Guardando'} onClick={tacticalGamePhase === 'defensive' ? saveDefensiveWorkspace : tacticalGamePhase === 'offensive' ? saveOffensiveWorkspace : saveTransitionWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
+                <button type="button" disabled={tacticalSaveStatus === 'Guardando'} onClick={tacticalGamePhase === 'defensive' ? saveDefensiveWorkspace : tacticalGamePhase === 'offensive' ? saveOffensiveWorkspace : tacticalGamePhase === 'transition' ? saveTransitionWorkspace : saveSetPieceWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
                 <button type="button" disabled={!selectedTacticalPlay || tacticalGamePhase === 'set_piece'} onClick={openSaveTacticalTemplateDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">Guardar como plantilla</button>
                 <button type="button" onClick={() => loadTacticalTemplateLibrary('library')} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300">Plantillas</button>
                 <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? duplicateDefensivePlay : tacticalGamePhase === 'offensive' ? duplicateOffensivePlay : tacticalGamePhase === 'transition' ? duplicateTransitionPlay : duplicateSetPiecePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
