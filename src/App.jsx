@@ -742,6 +742,14 @@ const offensiveSituationOptions = [
 ];
 const defensivePlayDescriptionPlaceholder = 'Describe qué hace el rival en esta situación: altura del bloque, distancia entre líneas, orientación de la presión, basculación, referencias, espacios que concede y comportamiento de cada línea...';
 const offensivePlayDescriptionPlaceholder = 'Describe cómo ataca el rival en esta situación: estructura de inicio, altura de laterales, posición de mediocentros, ocupación de amplitud, jugadores entre líneas, mecanismos de progresión, zonas de finalización y jugadores que atacan el área...';
+const offensivePlayStyleOptions = [
+  { value: 'combinative', label: 'Juego combinativo' },
+  { value: 'direct', label: 'Juego directo' },
+];
+const offensivePlayDescriptionPlaceholders = {
+  combinative: 'Describe cómo progresa el rival mediante apoyos, asociaciones, tercer hombre, ocupación de espacios, cambios de orientación y jugadores entre líneas...',
+  direct: 'Describe el objetivo del envío directo, jugador referencia, zonas de caída, prolongaciones, segunda jugada, ocupación alrededor del duelo y continuidad posterior...',
+};
 const emptyTacticalTemplateDraft = {
   id: '',
   name: '',
@@ -4380,6 +4388,7 @@ function App() {
   const [tacticalGamePhase, setTacticalGamePhase] = useState('defensive');
   const [defensiveSituation, setDefensiveSituation] = useState('mid_block');
   const [offensiveSituation, setOffensiveSituation] = useState('build_up');
+  const [offensivePlayStyle, setOffensivePlayStyle] = useState('combinative');
   const [defensiveWorkspace, setDefensiveWorkspace] = useState(createEmptyDefensiveWorkspace);
   const [offensiveWorkspace, setOffensiveWorkspace] = useState(createEmptyOffensiveWorkspace);
   const [defensiveTool, setDefensiveTool] = useState('move');
@@ -7680,6 +7689,10 @@ function App() {
     markOffensiveUnsaved();
     setOffensiveWorkspace((current) => ({ ...current, activeSituation: situation }));
   };
+  const selectOffensivePlayStyle = (playStyle) => {
+    if (!offensivePlayStyleOptions.some((option) => option.value === playStyle)) return;
+    setOffensivePlayStyle(playStyle);
+  };
   const selectOffensivePlay = (playId) => {
     if (!offensiveWorkspace.plays.some((play) => play.id === playId && play.offensiveSituation === offensiveSituation)) return;
     markOffensiveUnsaved();
@@ -8980,6 +8993,18 @@ function App() {
                       .map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
                 </label>
+                {tacticalGamePhase === 'offensive' ? (
+                  <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                    <span>Tipo de juego</span>
+                    <select
+                      value={offensivePlayStyle}
+                      onChange={(event) => selectOffensivePlayStyle(event.target.value)}
+                      className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
+                    >
+                      {offensivePlayStyleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </label>
+                ) : null}
                 <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
                   <span>Jugada</span>
                   <select
@@ -9017,7 +9042,7 @@ function App() {
                     else updateOffensivePlay(selectedTacticalPlay.id, { description: event.target.value });
                   }}
                   placeholder={selectedTacticalPlay
-                    ? tacticalGamePhase === 'defensive' ? defensivePlayDescriptionPlaceholder : offensivePlayDescriptionPlaceholder
+                    ? tacticalGamePhase === 'defensive' ? defensivePlayDescriptionPlaceholder : offensivePlayDescriptionPlaceholders[offensivePlayStyle]
                     : 'Crea una jugada para añadir su descripción.'}
                   disabled={!selectedTacticalPlay}
                   className="min-h-[120px] w-full resize-y border border-white/10 bg-black/20 px-3 py-3 text-sm font-semibold normal-case leading-6 tracking-normal text-white outline-none placeholder:text-slate-500"
