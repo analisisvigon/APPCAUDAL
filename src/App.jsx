@@ -7972,6 +7972,23 @@ function App() {
       activeTransitionType: nextTransitionType,
     }));
   };
+  const selectTransitionFieldZone = (nextFieldZone) => {
+    if (!transitionFieldZoneOptions.some((option) => option.value === nextFieldZone)) return;
+    const behaviourContextKey = getTransitionBehaviourContextKey(transitionType, nextFieldZone);
+    const nextBehaviour = normalizeTransitionBehaviour(
+      transitionType,
+      transitionWorkspace.activeBehaviourByContext?.[behaviourContextKey]
+    );
+    setTransitionFieldZone(nextFieldZone);
+    setTransitionBehaviour(nextBehaviour);
+    setTransitionWorkspace((current) => ({
+      ...current,
+      activeFieldZoneByType: {
+        ...current.activeFieldZoneByType,
+        [transitionType]: nextFieldZone,
+      },
+    }));
+  };
   const buildOffensiveInitialPlayerPositions = (situation, rivalSystem, caudalSystem, playStyle = 'combinative') => {
     return getOffensiveInitialPositions({
       offensiveSituation: situation,
@@ -9296,16 +9313,28 @@ function App() {
                   </label>
                 ) : null}
                 {tacticalGamePhase === 'transition' ? (
-                  <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
-                    <span>Tipo de transición</span>
-                    <select
-                      value={transitionType}
-                      onChange={(event) => selectTransitionType(event.target.value)}
-                      className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
-                    >
-                      {transitionTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                    </select>
-                  </label>
+                  <>
+                    <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                      <span>Tipo de transición</span>
+                      <select
+                        value={transitionType}
+                        onChange={(event) => selectTransitionType(event.target.value)}
+                        className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
+                      >
+                        {transitionTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                    </label>
+                    <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                      <span>{transitionType === 'offensive_transition' ? 'Zona de recuperación' : 'Zona de pérdida'}</span>
+                      <select
+                        value={transitionFieldZone}
+                        onChange={(event) => selectTransitionFieldZone(event.target.value)}
+                        className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
+                      >
+                        {transitionFieldZoneOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                    </label>
+                  </>
                 ) : null}
                 <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
                   <span>Jugada</span>
