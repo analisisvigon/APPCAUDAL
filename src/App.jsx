@@ -91,6 +91,7 @@ import {
   getSetPieceZonePoints,
   normalizeBallStartPosition,
 } from './utils/setPieceZones';
+import { getSetPieceInitialPositions } from './utils/setPiecePositions';
 import {
   createTacticalTemplate,
   deleteTacticalTemplate,
@@ -8595,7 +8596,13 @@ function App() {
       ballStartPosition: { ...setPieceBallStartPosition },
       rivalSystem: getCurrentRivalSystem(),
       caudalSystem: selectedMatch?.preCaudalSystem || '4-4-2',
-      playerPositions: {},
+      playerPositions: buildSetPieceInitialPlayerPositions(
+        setPieceType,
+        setPieceAction,
+        setPieceBallStartPosition,
+        getCurrentRivalSystem(),
+        selectedMatch?.preCaudalSystem || '4-4-2'
+      ),
       arrows: [],
       description: '',
       createdAt: timestamp,
@@ -8684,6 +8691,21 @@ function App() {
       fieldZone,
       rivalSystem,
       caudalSystem,
+      rivalFormationSlots: getFormationSlots(rivalSystem, 'own'),
+      caudalFormationSlots: getFormationSlots(caudalSystem, 'own'),
+    })
+  );
+  const buildSetPieceInitialPlayerPositions = (
+    nextSetPieceType,
+    nextSetPieceAction,
+    ballStartPosition,
+    rivalSystem,
+    caudalSystem
+  ) => (
+    getSetPieceInitialPositions({
+      setPieceType: nextSetPieceType,
+      setPieceAction: nextSetPieceAction,
+      ballStartPosition,
       rivalFormationSlots: getFormationSlots(rivalSystem, 'own'),
       caudalFormationSlots: getFormationSlots(caudalSystem, 'own'),
     })
@@ -9137,12 +9159,20 @@ function App() {
             caudalSystem,
             normalizeOffensivePlayStyle(selectedDefensivePlay.playStyle)
           )
-          : buildTransitionInitialPlayerPositions(
-            selectedDefensivePlay.transitionType || transitionType,
-            selectedDefensivePlay.fieldZone || transitionFieldZone,
-            rivalSystem,
-            caudalSystem
-          );
+          : tacticalGamePhase === 'transition'
+            ? buildTransitionInitialPlayerPositions(
+              selectedDefensivePlay.transitionType || transitionType,
+              selectedDefensivePlay.fieldZone || transitionFieldZone,
+              rivalSystem,
+              caudalSystem
+            )
+            : buildSetPieceInitialPlayerPositions(
+              selectedDefensivePlay.setPieceType || setPieceType,
+              selectedDefensivePlay.setPieceAction || setPieceAction,
+              selectedDefensivePlay.ballStartPosition || setPieceBallStartPosition,
+              rivalSystem,
+              caudalSystem
+            );
     pushDefensiveUndoSnapshot();
     updateTacticalPlay(selectedDefensivePlay.id, {
       rivalSystem,
@@ -10715,7 +10745,7 @@ function App() {
                 ))}
                 <button type="button" disabled={!selectedDefensiveArrowId} onClick={deleteSelectedDefensiveArrow} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Borrar</button>
                 <button type="button" disabled={!defensiveUndoStack.length} onClick={undoDefensiveAction} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Deshacer</button>
-                <button type="button" disabled={!selectedDefensivePlay || tacticalGamePhase === 'set_piece'} onClick={resetDefensiveFormation} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Restablecer formación</button>
+                <button type="button" disabled={!selectedDefensivePlay} onClick={resetDefensiveFormation} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Restablecer formación</button>
               </div>
               {renderFacingSystemsOverview(true)}
             </section>
