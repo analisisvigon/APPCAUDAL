@@ -10,13 +10,47 @@ import {
 } from './transitionPhasePositions.js';
 
 const buildFormationSlots = (system) => {
+  const rolesBySystem = {
+    '4-4-2': [
+      'Portero',
+      'Lateral izquierdo',
+      'Central izquierdo',
+      'Central derecho',
+      'Lateral derecho',
+      'Extremo izquierdo',
+      'Mediocentro',
+      'Mediocentro',
+      'Extremo derecho',
+      'Delantero',
+      'Delantero',
+    ],
+    '4-3-3': [
+      'Portero',
+      'Lateral izquierdo',
+      'Central izquierdo',
+      'Central derecho',
+      'Lateral derecho',
+      'Pivote',
+      'Interior izquierdo',
+      'Interior derecho',
+      'Extremo izquierdo',
+      'Delantero',
+      'Extremo derecho',
+    ],
+  };
+  const roles = rolesBySystem[system] || [];
   const lines = system.split('-').map(Number);
   const slots = [{ slot: 0, role: 'Portero', x: 50, y: 89 }];
   lines.forEach((lineSize, lineIndex) => {
     const margin = lineSize >= 5 ? 12 : lineSize === 4 ? 17 : lineSize === 3 ? 25 : lineSize === 2 ? 39 : 50;
     Array.from({ length: lineSize }, (_, playerIndex) => (
       lineSize === 1 ? 50 : margin + ((100 - margin * 2) * playerIndex) / (lineSize - 1)
-    )).forEach((x) => slots.push({ slot: slots.length, x, y: 75 - lineIndex * 25 }));
+    )).forEach((x) => slots.push({
+      slot: slots.length,
+      role: roles[slots.length] || '',
+      x,
+      y: 75 - lineIndex * 25,
+    }));
   });
   return slots;
 };
@@ -49,7 +83,16 @@ const presets = Object.fromEntries(contexts.map(([transitionType, fieldZone]) =>
   assert.equal(Object.keys(positions).length, 22, `${key} genera los 22 jugadores`);
   assert.equal(hasInitialPositionOverlap(positions), false, `${key} evita solapamientos`);
   if (fieldZone === 'attacking_half') {
-    assert.deepEqual(positions, highBlockPreset, `${key} reutiliza exactamente la distribución de bloque alto`);
+    assert.equal(positions['rival:0'].y, 8, `${key} conserva al portero rival en su portería`);
+    assert.equal(positions['caudal:0'].y, 92, `${key} conserva al portero del Caudal en su portería`);
+    assert.ok(
+      Array.from({ length: 10 }, (_, index) => positions[`rival:${index + 1}`].y).every((y) => y > 50),
+      `${key} sitúa a todos los jugadores de campo rivales en campo del Caudal`
+    );
+    assert.ok(
+      Array.from({ length: 10 }, (_, index) => positions[`caudal:${index + 1}`].y).every((y) => y >= 60),
+      `${key} mantiene al Caudal cerca de su propia portería`
+    );
   } else {
     assert.equal(
       positions['rival:0'].y,
@@ -94,6 +137,38 @@ assert.deepEqual(
   buildPreset('defensive_transition', 'attacking_half', 'counterpress'),
   buildPreset('defensive_transition', 'attacking_half', 'retreat'),
   'los comportamientos defensivos comparten preset dentro del mismo tipo y zona'
+);
+
+const mirroredRival442Slots = buildFormationSlots('4-4-2').map((slot) => ({
+  ...slot,
+  x: 100 - slot.x,
+}));
+['offensive_transition', 'defensive_transition'].forEach((nextTransitionType) => {
+  const attackingHalf442 = getTransitionInitialPositions({
+    transitionType: nextTransitionType,
+    fieldZone: 'attacking_half',
+    rivalSystem: '4-4-2',
+    caudalSystem: '4-4-2',
+    rivalFormationSlots: mirroredRival442Slots,
+    caudalFormationSlots: buildFormationSlots('4-4-2'),
+  });
+  assert.ok(attackingHalf442['rival:1'].x < 50, `${nextTransitionType}: LI rival permanece a la izquierda`);
+  assert.ok(attackingHalf442['rival:4'].x > 50, `${nextTransitionType}: LD rival permanece a la derecha`);
+  assert.ok(attackingHalf442['rival:2'].x < attackingHalf442['rival:3'].x, `${nextTransitionType}: central izquierdo conserva su perfil`);
+  assert.ok(attackingHalf442['rival:5'].x < 50, `${nextTransitionType}: EI rival permanece a la izquierda`);
+  assert.ok(attackingHalf442['rival:8'].x > 50, `${nextTransitionType}: ED rival permanece a la derecha`);
+  assert.ok(
+    Array.from({ length: 10 }, (_, index) => attackingHalf442[`rival:${index + 1}`].y).every((y) => y > 50),
+    `${nextTransitionType}: el 4-4-2 rival ocupa el campo del Caudal`
+  );
+});
+
+assert.ok(
+  Array.from({ length: 10 }, (_, index) => (
+    presets['offensive_transition:attacking_half'][`rival:${index + 1}`].y
+      > highBlockPreset[`rival:${index + 1}`].y
+  )).every(Boolean),
+  'Campo ofensivo parte del bloque alto y adelanta todo el bloque rival'
 );
 
 const transitionWorkspace = {

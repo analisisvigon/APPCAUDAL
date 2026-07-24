@@ -49,6 +49,70 @@ const lineHeight = (lineIndex, lineCount, defensiveLine, attackingLine) => {
   return Math.round((defensiveLine + ((attackingLine - defensiveLine) * lineIndex) / (lineCount - 1)) * 100) / 100;
 };
 
+const getRoleTacticalSide = (role) => {
+  const normalizedRole = String(role || '').toLowerCase();
+  if (normalizedRole.includes('izquier') || normalizedRole.includes('left')) return 'left';
+  if (normalizedRole.includes('derech') || normalizedRole.includes('right')) return 'right';
+  return '';
+};
+
+const normalizeTeamLateralities = (positions, team, formationSlots) => {
+  const normalized = { ...positions };
+  formationSlots.forEach((slot, fallbackSlot) => {
+    const slotId = Number.isInteger(Number(slot?.slot)) ? Number(slot.slot) : fallbackSlot;
+    const key = `${team}:${slotId}`;
+    const position = normalized[key];
+    const tacticalSide = getRoleTacticalSide(slot?.role);
+    if (!position || !tacticalSide) return;
+    const distanceFromCentre = Math.abs(Number(position.x) - 50);
+    normalized[key] = {
+      ...position,
+      x: tacticalSide === 'left'
+        ? 50 - distanceFromCentre
+        : 50 + distanceFromCentre,
+    };
+  });
+  return normalized;
+};
+
+const getAttackingHalfTransitionPositions = ({
+  rivalSystem,
+  caudalSystem,
+  rivalFormationSlots,
+  caudalFormationSlots,
+}) => {
+  const highBlockPositions = getHighBlockPositions({
+    rivalSystem,
+    caudalSystem,
+    rivalFormationSlots,
+    caudalFormationSlots,
+  });
+  const advancedPositions = Object.fromEntries(Object.entries(highBlockPositions).map(([key, position]) => {
+    const [team, slot] = key.split(':');
+    if (team === 'rival') {
+      return [
+        key,
+        {
+          ...position,
+          y: slot === '0' ? 8 : Math.max(56, Math.min(86, position.y + 11)),
+        },
+      ];
+    }
+    return [
+      key,
+      {
+        ...position,
+        y: slot === '0'
+          ? 92
+          : Math.max(60, Math.min(82, 60 + ((position.y - 45) * 22) / 35)),
+      },
+    ];
+  }));
+  return preventInitialPositionOverlaps(
+    normalizeTeamLateralities(advancedPositions, 'rival', rivalFormationSlots)
+  );
+};
+
 const buildTeamPositions = ({ team, system, formationSlots, heights, compactness }) => {
   const slots = [...formationSlots]
     .map((slot, fallbackSlot) => ({
@@ -87,7 +151,7 @@ export const getTransitionInitialPositions = ({
   caudalFormationSlots = [],
 }) => {
   if (fieldZone === 'attacking_half') {
-    return getHighBlockPositions({
+    return getAttackingHalfTransitionPositions({
       rivalSystem,
       caudalSystem,
       rivalFormationSlots,
