@@ -4693,6 +4693,7 @@ function App() {
   const [setPieceSaveStatus, setSetPieceSaveStatus] = useState('');
   const [defensiveTool, setDefensiveTool] = useState('move');
   const [draggingDefensivePlayer, setDraggingDefensivePlayer] = useState(null);
+  const [draggingSetPieceBall, setDraggingSetPieceBall] = useState(null);
   const [defensiveDrawingPreview, setDefensiveDrawingPreview] = useState(null);
   const [selectedDefensiveArrowId, setSelectedDefensiveArrowId] = useState('');
   const [defensiveUndoStack, setDefensiveUndoStack] = useState([]);
@@ -8061,6 +8062,7 @@ function App() {
         start: { ...arrow.start },
         end: { ...arrow.end },
       })),
+      ballStartPosition: play.ballStartPosition ? { ...play.ballStartPosition } : null,
     };
     setDefensiveUndoStack((current) => [...current.slice(-29), snapshot]);
   };
@@ -8094,6 +8096,47 @@ function App() {
   const endDefensivePlayerDrag = () => {
     if (!draggingDefensivePlayer) return;
     setDraggingDefensivePlayer(null);
+  };
+  const beginSetPieceBallDrag = (event) => {
+    if (
+      tacticalGamePhase !== 'set_piece'
+      || defensiveTool !== 'move'
+      || !selectedSetPiecePlay
+    ) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    pushDefensiveUndoSnapshot();
+    setDraggingSetPieceBall({ pointerId: event.pointerId });
+  };
+  const moveSetPieceBall = (event) => {
+    if (!draggingSetPieceBall || !selectedSetPiecePlay || defensiveTool !== 'move') return;
+    const position = getDefensivePointerPosition(event);
+    if (!position) return;
+    const actionContextKey = getSetPieceActionContextKey(setPieceType, setPieceAction);
+    const nextPlayContextKey = getSetPieceContextKey(setPieceType, setPieceAction, position);
+    setSetPieceBallStartPosition(position);
+    markSetPieceUnsaved();
+    setSetPieceWorkspace((current) => ({
+      ...current,
+      activeBallPositionByContext: {
+        ...current.activeBallPositionByContext,
+        [actionContextKey]: position,
+      },
+      activePlayIdByContext: {
+        ...current.activePlayIdByContext,
+        [nextPlayContextKey]: selectedSetPiecePlay.id,
+      },
+      plays: current.plays.map((play) => (
+        play.id === selectedSetPiecePlay.id
+          ? { ...play, ballStartPosition: position, updatedAt: new Date().toISOString() }
+          : play
+      )),
+    }));
+  };
+  const endSetPieceBallDrag = () => {
+    if (!draggingSetPieceBall) return;
+    setDraggingSetPieceBall(null);
   };
   const beginDefensiveDrawing = (event) => {
     if (!selectedDefensivePlay || !['pass', 'movement'].includes(defensiveTool)) {
@@ -8137,14 +8180,17 @@ function App() {
   };
   const handleDefensiveFieldPointerMove = (event) => {
     moveDefensivePlayer(event);
+    moveSetPieceBall(event);
     moveDefensiveDrawing(event);
   };
   const handleDefensiveFieldPointerEnd = (event) => {
     endDefensivePlayerDrag();
+    endSetPieceBallDrag();
     finishDefensiveDrawing(event);
   };
   const cancelDefensiveFieldPointer = () => {
     endDefensivePlayerDrag();
+    endSetPieceBallDrag();
     setDefensiveDrawingPreview(null);
   };
   const deleteSelectedDefensiveArrow = () => {
@@ -8162,7 +8208,24 @@ function App() {
     updateTacticalPlay(snapshot.playId, {
       playerPositions: snapshot.playerPositions,
       arrows: snapshot.arrows,
+      ...(snapshot.ballStartPosition ? { ballStartPosition: snapshot.ballStartPosition } : {}),
     });
+    if (tacticalGamePhase === 'set_piece' && snapshot.ballStartPosition) {
+      const actionContextKey = getSetPieceActionContextKey(setPieceType, setPieceAction);
+      const playContextKey = getSetPieceContextKey(setPieceType, setPieceAction, snapshot.ballStartPosition);
+      setSetPieceBallStartPosition(snapshot.ballStartPosition);
+      setSetPieceWorkspace((current) => ({
+        ...current,
+        activeBallPositionByContext: {
+          ...current.activeBallPositionByContext,
+          [actionContextKey]: snapshot.ballStartPosition,
+        },
+        activePlayIdByContext: {
+          ...current.activePlayIdByContext,
+          [playContextKey]: snapshot.playId,
+        },
+      }));
+    }
     setDefensiveUndoStack((current) => current.slice(0, -1));
     setSelectedDefensiveArrowId('');
   };
@@ -21132,6 +21195,22 @@ function App() {
         </div>
         {renderConnectionLayer()}
         {renderDefensiveDrawingLayer()}
+        {enableDefensiveEditing && tacticalGamePhase === 'set_piece' && selectedSetPiecePlay?.ballStartPosition ? (
+          <span
+            role="img"
+            aria-label="Balón"
+            title="Balón · arrastra con la herramienta Mover"
+            className="absolute z-[35] flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-grab select-none items-center justify-center rounded-full border-2 border-slate-950 bg-white text-base leading-none shadow-[0_4px_14px_rgba(0,0,0,0.55)] active:cursor-grabbing"
+            style={{
+              left: `${selectedSetPiecePlay.ballStartPosition.x}%`,
+              top: `${selectedSetPiecePlay.ballStartPosition.y}%`,
+              touchAction: 'none',
+            }}
+            onPointerDown={beginSetPieceBallDrag}
+          >
+            ⚽
+          </span>
+        ) : null}
         {layers.connections && selectedConnection ? (
           <div className={`absolute right-4 top-4 z-40 w-64 border px-3 py-3 text-xs shadow-2xl backdrop-blur ${selectedConnection.team === 'caudal' ? 'border-caudal-electric/35 bg-caudal-950/90 text-caudal-electric' : 'border-rose-300/35 bg-rose-950/90 text-rose-100'}`}>
             <div className="flex items-start justify-between gap-3">
