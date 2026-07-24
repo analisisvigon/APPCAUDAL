@@ -4454,6 +4454,7 @@ function App() {
   const [tacticalTemplateSearch, setTacticalTemplateSearch] = useState('');
   const [tacticalTemplatePhaseFilter, setTacticalTemplatePhaseFilter] = useState('');
   const [tacticalTemplateSituationFilter, setTacticalTemplateSituationFilter] = useState('');
+  const [tacticalTemplatePlayStyleFilter, setTacticalTemplatePlayStyleFilter] = useState('');
   const [tacticalTemplateCategoryFilter, setTacticalTemplateCategoryFilter] = useState('');
   const [tacticalTemplateUsages, setTacticalTemplateUsages] = useState({});
   const [rivalObservedScouting, setRivalObservedScouting] = useState(() => {
@@ -7455,6 +7456,7 @@ function App() {
     setTacticalTemplateSearch('');
     setTacticalTemplatePhaseFilter(tacticalGamePhase);
     setTacticalTemplateSituationFilter('');
+    setTacticalTemplatePlayStyleFilter(tacticalGamePhase === 'offensive' ? offensivePlayStyle : '');
     setTacticalTemplateCategoryFilter('');
     try {
       const [templates, usageRows] = await Promise.all([
@@ -7490,6 +7492,13 @@ function App() {
     const targetPlayStyle = targetPhase === 'offensive'
       ? normalizeOffensivePlayStyle(template.playStyle)
       : null;
+    const templateContextWarning = targetPhase === 'offensive' && (
+      tacticalGamePhase !== 'offensive'
+      || offensiveSituation !== targetSituation
+      || offensivePlayStyle !== targetPlayStyle
+    )
+      ? `Aviso: la plantilla pertenece a ${targetSituation} · ${offensivePlayStyleOptions.find((option) => option.value === targetPlayStyle)?.label || targetPlayStyle}. `
+      : '';
     const defaultName = template.name || 'Jugada desde plantilla';
     const requestedName = window.prompt('Nombre de la jugada', defaultName);
     if (requestedName === null) return;
@@ -7560,8 +7569,8 @@ function App() {
     setTacticalTemplateDialog('');
     setTacticalTemplateNotice(
       warnings.length
-        ? `Plantilla aplicada. ${warnings.length} ajuste${warnings.length === 1 ? '' : 's'} recomendado${warnings.length === 1 ? '' : 's'}: ${warnings.slice(0, 2).join(' ')}`
-        : `Plantilla aplicada: ${template.name}.`
+        ? `${templateContextWarning}Plantilla aplicada. ${warnings.length} ajuste${warnings.length === 1 ? '' : 's'} recomendado${warnings.length === 1 ? '' : 's'}: ${warnings.slice(0, 2).join(' ')}`
+        : `${templateContextWarning}Plantilla aplicada: ${template.name}.`
     );
   };
   const normalizedTacticalTemplateSearch = tacticalTemplateSearch.trim().toLowerCase();
@@ -7574,8 +7583,9 @@ function App() {
     ].some((value) => String(value || '').toLowerCase().includes(normalizedTacticalTemplateSearch));
     return matchesSearch
       && (!tacticalTemplatePhaseFilter || template.phase === tacticalTemplatePhaseFilter)
-      && (!tacticalTemplateSituationFilter || template.situation === tacticalTemplateSituationFilter)
-      && (!tacticalTemplateCategoryFilter || template.category === tacticalTemplateCategoryFilter);
+      && (!tacticalTemplateSituationFilter || template.situation.toLowerCase().includes(tacticalTemplateSituationFilter.trim().toLowerCase()))
+      && (!tacticalTemplatePlayStyleFilter || template.playStyle === tacticalTemplatePlayStyleFilter)
+      && (!tacticalTemplateCategoryFilter || template.category.toLowerCase().includes(tacticalTemplateCategoryFilter.trim().toLowerCase()));
   });
   const markDefensiveUnsaved = () => {
     defensiveEditVersionRef.current += 1;
@@ -9681,9 +9691,13 @@ function App() {
               </div>
               <div className="mt-5 grid gap-2 md:grid-cols-4">
                 <input value={tacticalTemplateSearch} onChange={(event) => setTacticalTemplateSearch(event.target.value)} placeholder="Buscar nombre, descripción o tag" className="h-11 border border-white/10 bg-black/20 px-3 text-sm text-white outline-none placeholder:text-slate-600 md:col-span-2" />
-                <select value={tacticalTemplatePhaseFilter} onChange={(event) => setTacticalTemplatePhaseFilter(event.target.value)} className="h-11 border border-white/10 bg-slate-950 px-3 text-sm font-semibold text-white">
+                <select value={tacticalTemplatePhaseFilter} onChange={(event) => { setTacticalTemplatePhaseFilter(event.target.value); if (event.target.value === 'defensive') setTacticalTemplatePlayStyleFilter(''); }} className="h-11 border border-white/10 bg-slate-950 px-3 text-sm font-semibold text-white">
                   <option value="">Todas las fases</option>
                   {tacticalGamePhaseOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+                <select value={tacticalTemplatePlayStyleFilter} disabled={tacticalTemplatePhaseFilter === 'defensive'} onChange={(event) => setTacticalTemplatePlayStyleFilter(event.target.value)} className="h-11 border border-white/10 bg-slate-950 px-3 text-sm font-semibold text-white disabled:opacity-40">
+                  <option value="">Todos los tipos</option>
+                  {offensivePlayStyleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
                 <input value={tacticalTemplateSituationFilter} onChange={(event) => setTacticalTemplateSituationFilter(event.target.value)} placeholder="Filtrar situación" className="h-11 border border-white/10 bg-black/20 px-3 text-sm text-white outline-none placeholder:text-slate-600" />
                 <input value={tacticalTemplateCategoryFilter} onChange={(event) => setTacticalTemplateCategoryFilter(event.target.value)} placeholder="Filtrar categoría" className="h-11 border border-white/10 bg-black/20 px-3 text-sm text-white outline-none placeholder:text-slate-600 md:col-span-2" />
@@ -9701,6 +9715,7 @@ function App() {
                         <p className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{template.phase} · {template.situation}{template.category ? ` · ${template.category}` : ''}</p>
                       </div>
                     </div>
+                    {template.phase === 'offensive' ? <p className="mt-2 text-[9px] font-black uppercase tracking-[0.1em] text-amber-200">{offensivePlayStyleOptions.find((option) => option.value === template.playStyle)?.label || 'Juego combinativo'}</p> : null}
                     <p className="mt-3 line-clamp-3 text-xs font-semibold leading-5 text-slate-300">{template.description || 'Sin descripción.'}</p>
                     {template.tags.length ? <div className="mt-3 flex flex-wrap gap-1">{template.tags.map((tag) => <span key={`${template.id}-${tag}`} className="border border-white/10 bg-black/20 px-2 py-1 text-[9px] font-bold text-slate-300">{tag}</span>)}</div> : null}
                     <p className="mt-3 text-[9px] font-bold uppercase tracking-[0.1em] text-slate-500">Base: {template.baseCaudalSystem || 'libre'} vs {template.baseRivalSystem || 'libre'}</p>
@@ -9763,7 +9778,7 @@ function App() {
                 </label>
                 <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
                   <span>Fase</span>
-                  <select value={tacticalTemplateDraft.phase} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, phase: event.target.value }))} className="h-11 border border-white/10 bg-slate-950 px-3 text-sm font-semibold normal-case tracking-normal text-white">
+                  <select value={tacticalTemplateDraft.phase} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, phase: event.target.value, playStyle: event.target.value === 'offensive' ? normalizeOffensivePlayStyle(current.playStyle) : null }))} className="h-11 border border-white/10 bg-slate-950 px-3 text-sm font-semibold normal-case tracking-normal text-white">
                     {tacticalGamePhaseOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
                 </label>
@@ -9771,6 +9786,14 @@ function App() {
                   <span>Situación</span>
                   <input value={tacticalTemplateDraft.situation} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, situation: event.target.value }))} className="h-11 border border-white/10 bg-black/20 px-3 text-sm font-semibold normal-case tracking-normal text-white outline-none" />
                 </label>
+                {tacticalTemplateDraft.phase === 'offensive' ? (
+                  <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                    <span>Tipo de juego</span>
+                    <select value={normalizeOffensivePlayStyle(tacticalTemplateDraft.playStyle)} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, playStyle: event.target.value }))} className="h-11 border border-white/10 bg-slate-950 px-3 text-sm font-semibold normal-case tracking-normal text-white">
+                      {offensivePlayStyleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </label>
+                ) : null}
                 <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
                   <span>Categoría</span>
                   <input value={tacticalTemplateDraft.category} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, category: event.target.value }))} placeholder="Opcional" className="h-11 border border-white/10 bg-black/20 px-3 text-sm font-semibold normal-case tracking-normal text-white outline-none placeholder:text-slate-600" />
