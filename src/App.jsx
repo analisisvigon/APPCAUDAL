@@ -81,7 +81,7 @@ import {
   getTacticalPlayerKey,
 } from './utils/rivalTactics';
 import { getDefensiveBlockInitialPositions } from './utils/defensiveBlockPositions';
-import { getOffensiveBuildUpPositions } from './utils/offensivePhasePositions';
+import { getOffensiveBuildUpPositions, getOffensiveCreationPositions } from './utils/offensivePhasePositions';
 import './styles/print.css';
 
 const clubCrest =
@@ -7429,13 +7429,15 @@ function App() {
     }));
   };
   const buildOffensiveInitialPlayerPositions = (situation, rivalSystem, caudalSystem) => {
-    if (situation !== 'build_up') return {};
-    return getOffensiveBuildUpPositions({
+    const options = {
       rivalSystem,
       caudalSystem,
       rivalFormationSlots: getFormationSlots(rivalSystem, 'own'),
       caudalFormationSlots: getFormationSlots(caudalSystem, 'own'),
-    });
+    };
+    if (situation === 'build_up') return getOffensiveBuildUpPositions(options);
+    if (situation === 'creation') return getOffensiveCreationPositions(options);
+    return {};
   };
   const createOffensivePlay = () => {
     const defaultName = `Jugada ${offensivePlaysForSituation.length + 1}`;
