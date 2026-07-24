@@ -98,6 +98,10 @@ import {
   serializeSemanticPlayerPositions,
   serializeTemplateArrows,
 } from './utils/tacticalTemplates';
+import {
+  calculateTacticalTemplateUsages,
+  loadTacticalTemplateUsageRows,
+} from './utils/tacticalTemplateUsage';
 import './styles/print.css';
 
 const clubCrest =
@@ -4402,6 +4406,7 @@ function App() {
   const [tacticalTemplatePhaseFilter, setTacticalTemplatePhaseFilter] = useState('');
   const [tacticalTemplateSituationFilter, setTacticalTemplateSituationFilter] = useState('');
   const [tacticalTemplateCategoryFilter, setTacticalTemplateCategoryFilter] = useState('');
+  const [tacticalTemplateUsages, setTacticalTemplateUsages] = useState({});
   const [rivalObservedScouting, setRivalObservedScouting] = useState(() => {
     try {
       if (typeof window === 'undefined') return {};
@@ -7392,8 +7397,12 @@ function App() {
     setTacticalTemplateSituationFilter('');
     setTacticalTemplateCategoryFilter('');
     try {
-      const templates = await listTacticalTemplates(supabase);
+      const [templates, usageRows] = await Promise.all([
+        listTacticalTemplates(supabase),
+        loadTacticalTemplateUsageRows(supabase),
+      ]);
       setTacticalTemplates(templates);
+      setTacticalTemplateUsages(calculateTacticalTemplateUsages(usageRows));
     } catch (templateError) {
       console.error('[TACTICAL_TEMPLATE_LIST]', templateError);
       setTacticalTemplateError(templateError.message || 'No se pudo cargar la biblioteca de plantillas.');
@@ -9507,7 +9516,9 @@ function App() {
               {tacticalTemplateLoading ? <p className="mt-5 text-sm font-semibold text-slate-400">Cargando plantillas...</p> : null}
               {tacticalTemplateError ? <p className="mt-5 border border-red-300/20 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-100">{tacticalTemplateError}</p> : null}
               <div className="mt-5 grid gap-3 md:grid-cols-2">
-                {filteredTacticalTemplates.map((template) => (
+                {filteredTacticalTemplates.map((template) => {
+                  const usage = tacticalTemplateUsages[template.id] || { playCount: 0, matchCount: 0, rivalCount: 0, details: [] };
+                  return (
                   <article key={template.id} className="border border-white/10 bg-white/[0.035] p-4 text-left transition hover:border-caudal-electric/30 hover:bg-caudal-electric/[0.06]">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -9518,6 +9529,30 @@ function App() {
                     <p className="mt-3 line-clamp-3 text-xs font-semibold leading-5 text-slate-300">{template.description || 'Sin descripción.'}</p>
                     {template.tags.length ? <div className="mt-3 flex flex-wrap gap-1">{template.tags.map((tag) => <span key={`${template.id}-${tag}`} className="border border-white/10 bg-black/20 px-2 py-1 text-[9px] font-bold text-slate-300">{tag}</span>)}</div> : null}
                     <p className="mt-3 text-[9px] font-bold uppercase tracking-[0.1em] text-slate-500">Base: {template.baseCaudalSystem || 'libre'} vs {template.baseRivalSystem || 'libre'}</p>
+                    <div className="mt-3 grid grid-cols-3 gap-1 text-center">
+                      {[
+                        ['Jugadas', usage.playCount],
+                        ['Partidos', usage.matchCount],
+                        ['Rivales', usage.rivalCount],
+                      ].map(([label, value]) => (
+                        <div key={`${template.id}-${label}`} className="border border-white/10 bg-black/20 px-2 py-2">
+                          <p className="text-sm font-black text-white">{value}</p>
+                          <p className="text-[8px] font-black uppercase tracking-[0.1em] text-slate-500">{label}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {tacticalTemplateDialog === 'library' && usage.details.length ? (
+                      <details className="mt-3 border border-white/10 bg-black/15 px-3 py-2">
+                        <summary className="cursor-pointer text-[9px] font-black uppercase tracking-[0.1em] text-slate-300">Ver partidos y rivales</summary>
+                        <div className="mt-2 max-h-28 space-y-1 overflow-y-auto">
+                          {usage.details.map((detail, index) => (
+                            <p key={`${template.id}-${detail.matchId}-${detail.playId}-${index}`} className="text-[10px] font-semibold text-slate-400">
+                              {detail.opponent}{detail.date ? ` · ${detail.date}` : ''} · {detail.playName}
+                            </p>
+                          ))}
+                        </div>
+                      </details>
+                    ) : null}
                     <div className="mt-4 flex flex-wrap gap-2">
                       {tacticalTemplateDialog === 'load' ? (
                         <button type="button" onClick={() => createTacticalPlayFromTemplate(template)} className="bg-caudal-electric px-3 py-2 text-[9px] font-black uppercase text-slate-950">Usar plantilla</button>
@@ -9529,7 +9564,8 @@ function App() {
                       )}
                     </div>
                   </article>
-                ))}
+                  );
+                })}
                 {!tacticalTemplateLoading && !filteredTacticalTemplates.length ? <p className="border border-dashed border-white/10 p-5 text-sm font-semibold text-slate-500 md:col-span-2">No hay plantillas que coincidan con los filtros.</p> : null}
               </div>
             </div>
