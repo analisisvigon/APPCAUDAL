@@ -4286,6 +4286,9 @@ function App() {
   const [selectedDefensiveArrowId, setSelectedDefensiveArrowId] = useState('');
   const [defensiveUndoStack, setDefensiveUndoStack] = useState([]);
   const [defensiveSaveStatus, setDefensiveSaveStatus] = useState('');
+  const defensiveEditVersionRef = useRef(0);
+  const defensiveSaveRequestRef = useRef(0);
+  const defensiveAutosaveTimerRef = useRef(null);
   const [rivalObservedScouting, setRivalObservedScouting] = useState(() => {
     try {
       if (typeof window === 'undefined') return {};
@@ -5553,10 +5556,16 @@ function App() {
     [selectedMatch?.preAiAnalysis]
   );
   useEffect(() => {
+    defensiveSaveRequestRef.current += 1;
+    if (defensiveAutosaveTimerRef.current) {
+      window.clearTimeout(defensiveAutosaveTimerRef.current);
+      defensiveAutosaveTimerRef.current = null;
+    }
     const storedWorkspace = normalizeDefensiveWorkspace(selectedPreAiAnalysis?.defensivePhaseV1);
     setDefensiveWorkspace(storedWorkspace);
     setDefensiveSituation(storedWorkspace.activeSituation);
     setDefensiveSaveStatus(storedWorkspace.plays.length ? 'Guardado' : '');
+    defensiveEditVersionRef.current = 0;
   }, [selectedMatch?.id]);
   const selectedMatchRivalTeam = useMemo(
     () => teams.find((team) => team.id === selectedMatch?.equipoRivalId) || findTeamByDisplayName(teams, selectedMatch?.opponent || ''),
@@ -7145,8 +7154,12 @@ function App() {
   const defensivePlaysForSituation = defensiveWorkspace.plays.filter((play) => play.defensiveSituation === defensiveSituation);
   const selectedDefensivePlayId = defensiveWorkspace.activePlayIdBySituation[defensiveSituation] || defensivePlaysForSituation[0]?.id || '';
   const selectedDefensivePlay = defensiveWorkspace.plays.find((play) => play.id === selectedDefensivePlayId) || null;
-  const updateDefensivePlay = (playId, patch) => {
+  const markDefensiveUnsaved = () => {
+    defensiveEditVersionRef.current += 1;
     setDefensiveSaveStatus('Cambios sin guardar');
+  };
+  const updateDefensivePlay = (playId, patch) => {
+    markDefensiveUnsaved();
     setDefensiveWorkspace((current) => ({
       ...current,
       plays: current.plays.map((play) => {
@@ -7278,10 +7291,12 @@ function App() {
   const selectDefensiveSituation = (situation) => {
     if (!defensiveSituationOptions.some((option) => option.value === situation)) return;
     setDefensiveSituation(situation);
+    markDefensiveUnsaved();
     setDefensiveWorkspace((current) => ({ ...current, activeSituation: situation }));
   };
   const selectDefensivePlay = (playId) => {
     if (!defensiveWorkspace.plays.some((play) => play.id === playId && play.defensiveSituation === defensiveSituation)) return;
+    markDefensiveUnsaved();
     setDefensiveWorkspace((current) => ({
       ...current,
       activePlayIdBySituation: {
@@ -7308,7 +7323,7 @@ function App() {
       createdAt: timestamp,
       updatedAt: timestamp,
     };
-    setDefensiveSaveStatus('Cambios sin guardar');
+    markDefensiveUnsaved();
     setDefensiveWorkspace((current) => ({
       ...current,
       activePlayIdBySituation: {
@@ -7330,7 +7345,7 @@ function App() {
       createdAt: timestamp,
       updatedAt: timestamp,
     };
-    setDefensiveSaveStatus('Cambios sin guardar');
+    markDefensiveUnsaved();
     setDefensiveWorkspace((current) => ({
       ...current,
       activePlayIdBySituation: {
@@ -7344,7 +7359,7 @@ function App() {
     if (!selectedDefensivePlay || !window.confirm(`¿Eliminar "${selectedDefensivePlay.name}"?`)) return;
     const remainingPlays = defensiveWorkspace.plays.filter((play) => play.id !== selectedDefensivePlay.id);
     const nextPlay = remainingPlays.find((play) => play.defensiveSituation === defensiveSituation);
-    setDefensiveSaveStatus('Cambios sin guardar');
+    markDefensiveUnsaved();
     setDefensiveWorkspace((current) => ({
       ...current,
       activePlayIdBySituation: {
@@ -7356,6 +7371,13 @@ function App() {
   };
   const saveDefensiveWorkspace = async () => {
     if (!selectedMatch) return false;
+    if (defensiveAutosaveTimerRef.current) {
+      window.clearTimeout(defensiveAutosaveTimerRef.current);
+      defensiveAutosaveTimerRef.current = null;
+    }
+    const savedEditVersion = defensiveEditVersionRef.current;
+    const saveRequestId = defensiveSaveRequestRef.current + 1;
+    defensiveSaveRequestRef.current = saveRequestId;
     const normalizedWorkspace = normalizeDefensiveWorkspace({
       ...defensiveWorkspace,
       activeSituation: defensiveSituation,
@@ -7375,7 +7397,13 @@ function App() {
         workspace: normalizedWorkspace,
         error: defensiveSaveError,
       });
-      setDefensiveSaveStatus('Error al guardar');
+      if (defensiveSaveRequestRef.current === saveRequestId) {
+        setDefensiveSaveStatus(defensiveEditVersionRef.current === savedEditVersion ? 'Error al guardar' : 'Cambios sin guardar');
+      }
+      return false;
+    }
+    if (defensiveSaveRequestRef.current !== saveRequestId) {
+      setDefensiveSaveStatus('Cambios sin guardar');
       return false;
     }
     setMatches((current) => current.map((match) => (
@@ -7383,9 +7411,32 @@ function App() {
         ? { ...match, preAiAnalysis: nextPreAiAnalysis }
         : match
     )));
-    setDefensiveWorkspace(normalizedWorkspace);
-    setDefensiveSaveStatus('Guardado');
+    setDefensiveSaveStatus(defensiveEditVersionRef.current === savedEditVersion ? 'Guardado' : 'Cambios sin guardar');
     return true;
+  };
+  useEffect(() => {
+    if (defensiveSaveStatus !== 'Cambios sin guardar' || !selectedMatch?.id) return undefined;
+    if (defensiveAutosaveTimerRef.current) window.clearTimeout(defensiveAutosaveTimerRef.current);
+    defensiveAutosaveTimerRef.current = window.setTimeout(() => {
+      defensiveAutosaveTimerRef.current = null;
+      saveDefensiveWorkspace();
+    }, 900);
+    return () => {
+      if (defensiveAutosaveTimerRef.current) {
+        window.clearTimeout(defensiveAutosaveTimerRef.current);
+        defensiveAutosaveTimerRef.current = null;
+      }
+    };
+  }, [defensiveWorkspace, defensiveSituation, defensiveSaveStatus, selectedMatch?.id]);
+  const resetDefensiveFormation = () => {
+    if (!selectedDefensivePlay) return;
+    if (['Cambios sin guardar', 'Guardando'].includes(defensiveSaveStatus) && !window.confirm('Hay cambios sin guardar. ¿Restablecer igualmente la formación?')) return;
+    pushDefensiveUndoSnapshot();
+    updateDefensivePlay(selectedDefensivePlay.id, {
+      rivalSystem: getCurrentRivalSystem(),
+      caudalSystem: selectedMatch?.preCaudalSystem || '4-4-2',
+      playerPositions: {},
+    });
   };
 
   const updateCaudalPreSystem = (system) => {
@@ -8727,7 +8778,7 @@ function App() {
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <button type="button" onClick={createDefensivePlay} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Nueva jugada</button>
-                  <button type="button" disabled={!selectedDefensivePlay || defensiveSaveStatus === 'Guardando'} onClick={saveDefensiveWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
+                  <button type="button" disabled={defensiveSaveStatus === 'Guardando'} onClick={saveDefensiveWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
                   <button type="button" disabled={!selectedDefensivePlay} onClick={duplicateDefensivePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
                   <button type="button" disabled={!selectedDefensivePlay} onClick={deleteDefensivePlay} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Eliminar</button>
                   {defensiveSaveStatus ? <span className={`self-center text-[9px] font-black uppercase tracking-[0.12em] ${defensiveSaveStatus === 'Error al guardar' ? 'text-red-200' : defensiveSaveStatus === 'Cambios sin guardar' ? 'text-amber-200' : 'text-slate-400'}`}>{defensiveSaveStatus}</span> : null}
@@ -8777,6 +8828,7 @@ function App() {
                 ))}
                 <button type="button" disabled={!selectedDefensiveArrowId} onClick={deleteSelectedDefensiveArrow} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Borrar</button>
                 <button type="button" disabled={!defensiveUndoStack.length} onClick={undoDefensiveAction} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Deshacer</button>
+                <button type="button" disabled={!selectedDefensivePlay} onClick={resetDefensiveFormation} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Restablecer formación</button>
               </div>
               {renderFacingSystemsOverview(true)}
               <label className="mt-3 grid gap-2 border-t border-white/10 pt-3 text-[10px] font-black uppercase tracking-[0.18em] text-white">
