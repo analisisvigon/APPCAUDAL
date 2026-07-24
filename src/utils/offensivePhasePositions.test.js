@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   OFFENSIVE_PHASE_LINE_HEIGHTS,
   getOffensiveBuildUpPositions,
@@ -78,5 +79,141 @@ assert.equal(finishing['caudal:0'].y, 92, 'el portero del Caudal permanece dentr
 assert.equal(averageY(finishing, 'caudal', 1, 4), 82, 'la defensa del Caudal protege el área');
 assert.equal(averageY(finishing, 'caudal', 5, 3), 67.5, 'los medios del Caudal protegen frontal e interiores');
 assert.equal(averageY(finishing, 'caudal', 8, 3), 53, 'los atacantes del Caudal quedan preparados para transición');
+
+const offensiveWorkspace = {
+  version: 1,
+  activeSituation: 'creation',
+  activePlayIdBySituation: {
+    build_up: 'offensive-build-up-1',
+    creation: 'offensive-creation-1',
+    finishing: 'offensive-finishing-1',
+  },
+  plays: [
+    {
+      id: 'offensive-build-up-1',
+      phase: 'offensive',
+      offensiveSituation: 'build_up',
+      name: 'Salida de tres',
+      rivalSystem: '4-4-2',
+      caudalSystem: '4-4-2',
+      playerPositions: buildUp,
+      arrows: [],
+      description: 'Inicio rival.',
+      createdAt: '2026-07-24T10:00:00.000Z',
+      updatedAt: '2026-07-24T10:00:00.000Z',
+    },
+    {
+      id: 'offensive-creation-1',
+      phase: 'offensive',
+      offensiveSituation: 'creation',
+      name: 'Juego entre líneas',
+      rivalSystem: '4-4-2',
+      caudalSystem: '4-3-3',
+      playerPositions: creation,
+      arrows: [],
+      description: 'Progresión rival.',
+      createdAt: '2026-07-24T10:01:00.000Z',
+      updatedAt: '2026-07-24T10:01:00.000Z',
+    },
+    {
+      id: 'offensive-finishing-1',
+      phase: 'offensive',
+      offensiveSituation: 'finishing',
+      name: 'Ataque del área',
+      rivalSystem: '5-3-2',
+      caudalSystem: '4-3-3',
+      playerPositions: finishing,
+      arrows: [],
+      description: 'Finalización rival.',
+      createdAt: '2026-07-24T10:02:00.000Z',
+      updatedAt: '2026-07-24T10:02:00.000Z',
+    },
+  ],
+};
+const defensiveWorkspace = {
+  version: 1,
+  activeSituation: 'low_block',
+  activePlayIdBySituation: { low_block: 'defensive-low-1' },
+  plays: [{
+    id: 'defensive-low-1',
+    defensiveSituation: 'low_block',
+    playerPositions: { 'rival:1': { x: 17, y: 18 } },
+    arrows: [{ id: 'defensive-arrow-1', type: 'movement', start: { x: 17, y: 18 }, end: { x: 25, y: 24 } }],
+    description: 'Dato defensivo existente.',
+    createdAt: '2026-07-20T10:00:00.000Z',
+    updatedAt: '2026-07-20T10:00:00.000Z',
+  }],
+};
+const combinedAnalysis = {
+  defensivePhaseV1: defensiveWorkspace,
+  offensivePhaseV1: offensiveWorkspace,
+};
+const defensiveSnapshot = JSON.stringify(combinedAnalysis.defensivePhaseV1);
+const movedCreation = {
+  ...combinedAnalysis.offensivePhaseV1.plays[1],
+  playerPositions: {
+    ...combinedAnalysis.offensivePhaseV1.plays[1].playerPositions,
+    'rival:5': { x: 47.25, y: 54.5 },
+    'caudal:6': { x: 55.75, y: 61.25 },
+  },
+  arrows: [{
+    id: 'offensive-arrow-1',
+    type: 'pass',
+    start: { x: 47.25, y: 54.5 },
+    end: { x: 62, y: 66 },
+  }],
+  description: 'Tercer hombre y cambio de orientación.',
+};
+const updatedAnalysis = {
+  ...combinedAnalysis,
+  offensivePhaseV1: {
+    ...combinedAnalysis.offensivePhaseV1,
+    plays: combinedAnalysis.offensivePhaseV1.plays.map((play) => (
+      play.id === movedCreation.id ? movedCreation : play
+    )),
+  },
+};
+const reloadedAnalysis = JSON.parse(JSON.stringify(updatedAnalysis));
+assert.deepEqual(reloadedAnalysis.offensivePhaseV1.plays[1].playerPositions['rival:5'], { x: 47.25, y: 54.5 });
+assert.deepEqual(reloadedAnalysis.offensivePhaseV1.plays[1].playerPositions['caudal:6'], { x: 55.75, y: 61.25 });
+assert.equal(reloadedAnalysis.offensivePhaseV1.plays[1].arrows[0].type, 'pass');
+assert.equal(reloadedAnalysis.offensivePhaseV1.plays[1].description, 'Tercer hombre y cambio de orientación.');
+assert.equal(JSON.stringify(reloadedAnalysis.defensivePhaseV1), defensiveSnapshot, 'la ofensiva no modifica la fase defensiva');
+assert.deepEqual(reloadedAnalysis.offensivePhaseV1.plays[0].playerPositions, buildUp, 'Creación no modifica Inicio');
+assert.deepEqual(reloadedAnalysis.offensivePhaseV1.plays[2].playerPositions, finishing, 'Creación no modifica Finalización');
+assert.equal(new Set(reloadedAnalysis.offensivePhaseV1.plays.map((play) => play.id)).size, 3, 'cada jugada mantiene un ID independiente');
+assert.deepEqual(
+  reloadedAnalysis.offensivePhaseV1.activePlayIdBySituation,
+  offensiveWorkspace.activePlayIdBySituation,
+  'cada situación conserva la jugada previamente abierta'
+);
+
+const resetCreation = {
+  ...movedCreation,
+  rivalSystem: '4-4-2',
+  caudalSystem: '4-3-3',
+  playerPositions: creation,
+};
+assert.equal(resetCreation.name, movedCreation.name, 'Restablecer conserva el nombre');
+assert.equal(resetCreation.description, movedCreation.description, 'Restablecer conserva la descripción');
+assert.deepEqual(resetCreation.arrows, movedCreation.arrows, 'Restablecer conserva pases y movimientos');
+assert.equal(resetCreation.phase, 'offensive', 'Restablecer conserva la fase');
+assert.equal(resetCreation.offensiveSituation, 'creation', 'Restablecer conserva la situación');
+
+const appSource = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
+assert.ok(appSource.includes('offensivePhaseV1: normalizedWorkspace'), 'la ofensiva se guarda en su propio espacio JSON');
+assert.ok(appSource.includes('defensivePhaseV1: normalizedWorkspace'), 'la persistencia defensiva continúa disponible');
+assert.ok(appSource.includes(".from('partidos')"), 'la persistencia ofensiva utiliza Supabase');
+const offensiveSaveSource = appSource.slice(
+  appSource.indexOf('const saveOffensiveWorkspace = async () => {'),
+  appSource.indexOf('useEffect(() => {', appSource.indexOf('const saveOffensiveWorkspace = async () => {'))
+);
+assert.equal(offensiveSaveSource.includes('localStorage'), false, 'la fase ofensiva no usa localStorage');
+assert.equal(
+  (appSource.match(/buildOffensiveInitialPlayerPositions\(/g) || []).length,
+  2,
+  'los presets ofensivos solo se calculan al crear y restablecer'
+);
+assert.ok(appSource.includes("tacticalGamePhase === 'defensive'\n      ? updateDefensivePlay(playId, patch)\n      : updateOffensivePlay(playId, patch)"), 'el motor de edición aísla ambos workspaces');
 
 console.log('offensivePhasePositions tests passed');
