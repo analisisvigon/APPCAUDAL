@@ -704,6 +704,12 @@ const emptyLineup = [];
 const emptyDepthChart = {};
 const rivalTacticalIdentityKey = 'caudal_rival_tactical_identity_v1';
 const rivalObservedScoutingKey = 'caudal-rival-observed-scouting-v1';
+const defensiveSituationOptions = [
+  { value: 'low_block', label: 'Bloque bajo' },
+  { value: 'mid_block', label: 'Bloque medio' },
+  { value: 'high_block', label: 'Bloque alto' },
+];
+const defensivePlayDescriptionPlaceholder = 'Describe qué hace el rival en esta situación: altura del bloque, distancia entre líneas, orientación de la presión, basculación, referencias, espacios que concede y comportamiento de cada línea...';
 const collectiveProfileOptions = {
   buildUp: ['Muy elaborada', 'Elaborada', 'Mixta', 'Directa', 'Muy directa'],
   blockHeight: ['Muy alta', 'Alta', 'Media', 'Baja', 'Muy baja'],
@@ -4225,6 +4231,8 @@ function App() {
     }
   });
   const [rivalTacticalUndo, setRivalTacticalUndo] = useState(null);
+  const [defensiveSituation, setDefensiveSituation] = useState('mid_block');
+  const [defensivePlayDescription, setDefensivePlayDescription] = useState('');
   const [rivalObservedScouting, setRivalObservedScouting] = useState(() => {
     try {
       if (typeof window === 'undefined') return {};
@@ -8387,6 +8395,19 @@ function App() {
 
           <div className="grid gap-4 xl:contents">
             <section className="order-4 border border-white/10 bg-[#091428]/82 p-3 xl:col-start-2 xl:row-span-3 xl:row-start-1">
+              <div className="mb-3 border-b border-white/10 pb-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Fase defensiva</p>
+                <label className="mt-2 grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                  <span>Situación defensiva</span>
+                  <select
+                    value={defensiveSituation}
+                    onChange={(event) => setDefensiveSituation(event.target.value)}
+                    className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
+                  >
+                    {defensiveSituationOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+              </div>
               <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Campo táctico</p>
@@ -8413,6 +8434,16 @@ function App() {
                 </div>
               </div>
               {renderFacingSystemsOverview()}
+              <label className="mt-3 grid gap-2 border-t border-white/10 pt-3 text-[10px] font-black uppercase tracking-[0.18em] text-white">
+                <span>Descripción de la jugada</span>
+                <textarea
+                  rows={5}
+                  value={defensivePlayDescription}
+                  onChange={(event) => setDefensivePlayDescription(event.target.value)}
+                  placeholder={defensivePlayDescriptionPlaceholder}
+                  className="min-h-[120px] w-full resize-y border border-white/10 bg-black/20 px-3 py-3 text-sm font-semibold normal-case leading-6 tracking-normal text-white outline-none placeholder:text-slate-500"
+                />
+              </label>
               <div className="mt-3 border-t border-white/10 pt-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Conexiones tácticas</p>
