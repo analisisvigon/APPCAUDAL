@@ -980,11 +980,48 @@ const normalizeTransitionWorkspace = (value) => {
       createdAt: String(play.createdAt || new Date().toISOString()),
       updatedAt: String(play.updatedAt || play.createdAt || new Date().toISOString()),
     }));
+  const playIds = new Set(plays.map((play) => play.id));
+  const activeFieldZoneByType = Object.fromEntries(
+    transitionTypeOptions.map((typeOption) => [
+      typeOption.value,
+      normalizeTransitionFieldZone(source.activeFieldZoneByType?.[typeOption.value]),
+    ])
+  );
+  const activeBehaviourByContext = Object.fromEntries(
+    transitionTypeOptions.flatMap((typeOption) => (
+      transitionFieldZoneOptions.map((zoneOption) => {
+        const contextKey = getTransitionBehaviourContextKey(typeOption.value, zoneOption.value);
+        return [
+          contextKey,
+          normalizeTransitionBehaviour(typeOption.value, source.activeBehaviourByContext?.[contextKey]),
+        ];
+      })
+    ))
+  );
+  const activePlayIdByContext = Object.fromEntries(
+    transitionTypeOptions.flatMap((typeOption) => (
+      transitionFieldZoneOptions.flatMap((zoneOption) => (
+        transitionBehaviourOptions[typeOption.value].map((behaviourOption) => {
+          const contextKey = getTransitionPlayContextKey(typeOption.value, zoneOption.value, behaviourOption.value);
+          const savedId = source.activePlayIdByContext?.[contextKey];
+          const fallbackId = plays.find((play) => (
+            play.transitionType === typeOption.value
+            && play.fieldZone === zoneOption.value
+            && play.behaviour === behaviourOption.value
+          ))?.id || '';
+          return [contextKey, playIds.has(savedId) ? savedId : fallbackId];
+        })
+      ))
+    ))
+  );
   return {
     ...createEmptyTransitionWorkspace(),
     ...source,
     version: 1,
     activeTransitionType: validTypes.has(source.activeTransitionType) ? source.activeTransitionType : 'offensive_transition',
+    activeFieldZoneByType,
+    activeBehaviourByContext,
+    activePlayIdByContext,
     plays,
   };
 };
@@ -4519,6 +4556,7 @@ function App() {
   const [transitionType, setTransitionType] = useState('offensive_transition');
   const [transitionFieldZone, setTransitionFieldZone] = useState('defensive_half');
   const [transitionBehaviour, setTransitionBehaviour] = useState('fast_attack');
+  const [transitionSaveStatus, setTransitionSaveStatus] = useState('');
   const [defensiveTool, setDefensiveTool] = useState('move');
   const [draggingDefensivePlayer, setDraggingDefensivePlayer] = useState(null);
   const [defensiveDrawingPreview, setDefensiveDrawingPreview] = useState(null);
@@ -7433,9 +7471,20 @@ function App() {
   ));
   const selectedOffensivePlayId = offensiveWorkspace.activePlayIdByContext?.[offensivePlayContextKey] || offensivePlaysForSituation[0]?.id || '';
   const selectedOffensivePlay = offensiveWorkspace.plays.find((play) => play.id === selectedOffensivePlayId) || null;
-  const transitionPlaysForContext = [];
-  const selectedTransitionPlayId = '';
-  const selectedTransitionPlay = null;
+  const transitionPlayContextKey = getTransitionPlayContextKey(
+    transitionType,
+    transitionFieldZone,
+    transitionBehaviour
+  );
+  const transitionPlaysForContext = transitionWorkspace.plays.filter((play) => (
+    play.transitionType === transitionType
+    && play.fieldZone === transitionFieldZone
+    && play.behaviour === transitionBehaviour
+  ));
+  const selectedTransitionPlayId = transitionWorkspace.activePlayIdByContext?.[transitionPlayContextKey]
+    || transitionPlaysForContext[0]?.id
+    || '';
+  const selectedTransitionPlay = transitionWorkspace.plays.find((play) => play.id === selectedTransitionPlayId) || null;
   const selectedTacticalPlay = tacticalGamePhase === 'defensive'
     ? selectedDefensivePhasePlay
     : tacticalGamePhase === 'offensive'
@@ -7456,7 +7505,7 @@ function App() {
     ? defensiveSaveStatus
     : tacticalGamePhase === 'offensive'
       ? offensiveSaveStatus
-      : '';
+      : transitionSaveStatus;
   const openSaveTacticalTemplateDialog = () => {
     if (!selectedTacticalPlay) return;
     const rivalSystem = getCurrentRivalSystem();
@@ -7586,7 +7635,8 @@ function App() {
   const createBlankTacticalPlay = () => {
     setTacticalTemplateDialog('');
     if (tacticalGamePhase === 'defensive') createDefensivePlay();
-    else createOffensivePlay();
+    else if (tacticalGamePhase === 'offensive') createOffensivePlay();
+    else createTransitionPlay();
   };
   const createTacticalPlayFromTemplate = (template) => {
     if (!selectedMatch || !template) return;
@@ -7782,7 +7832,11 @@ function App() {
     if (distance >= 2) {
       pushDefensiveUndoSnapshot();
       const arrow = {
-        id: tacticalGamePhase === 'defensive' ? createDefensivePlayId() : createOffensivePlayId(),
+        id: tacticalGamePhase === 'defensive'
+          ? createDefensivePlayId()
+          : tacticalGamePhase === 'offensive'
+            ? createOffensivePlayId()
+            : createTransitionPlayId(),
         type: defensiveDrawingPreview.type,
         start: defensiveDrawingPreview.start,
         end,
@@ -7860,10 +7914,26 @@ function App() {
       }),
     }));
   };
+  const markTransitionUnsaved = () => {
+    setTransitionSaveStatus('Cambios sin guardar');
+  };
+  const updateTransitionPlay = (playId, patch) => {
+    markTransitionUnsaved();
+    setTransitionWorkspace((current) => ({
+      ...current,
+      plays: current.plays.map((play) => {
+        if (play.id !== playId) return play;
+        const resolvedPatch = typeof patch === 'function' ? patch(play) : patch;
+        return { ...play, ...resolvedPatch, phase: 'transition', updatedAt: new Date().toISOString() };
+      }),
+    }));
+  };
   const updateTacticalPlay = (playId, patch) => (
     tacticalGamePhase === 'defensive'
       ? updateDefensivePlay(playId, patch)
-      : updateOffensivePlay(playId, patch)
+      : tacticalGamePhase === 'offensive'
+        ? updateOffensivePlay(playId, patch)
+        : updateTransitionPlay(playId, patch)
   );
   const selectOffensiveSituation = (situation) => {
     if (!offensiveSituationOptions.some((option) => option.value === situation)) return;
@@ -7967,9 +8037,18 @@ function App() {
     setTransitionType(nextTransitionType);
     setTransitionFieldZone(nextFieldZone);
     setTransitionBehaviour(nextBehaviour);
+    markTransitionUnsaved();
     setTransitionWorkspace((current) => ({
       ...current,
       activeTransitionType: nextTransitionType,
+      activeFieldZoneByType: {
+        ...current.activeFieldZoneByType,
+        [nextTransitionType]: nextFieldZone,
+      },
+      activeBehaviourByContext: {
+        ...current.activeBehaviourByContext,
+        [behaviourContextKey]: nextBehaviour,
+      },
     }));
   };
   const selectTransitionFieldZone = (nextFieldZone) => {
@@ -7981,12 +8060,134 @@ function App() {
     );
     setTransitionFieldZone(nextFieldZone);
     setTransitionBehaviour(nextBehaviour);
+    markTransitionUnsaved();
     setTransitionWorkspace((current) => ({
       ...current,
       activeFieldZoneByType: {
         ...current.activeFieldZoneByType,
         [transitionType]: nextFieldZone,
       },
+      activeBehaviourByContext: {
+        ...current.activeBehaviourByContext,
+        [behaviourContextKey]: nextBehaviour,
+      },
+    }));
+  };
+  const selectTransitionBehaviour = (nextBehaviour) => {
+    if (!transitionBehaviourOptions[transitionType]?.some((option) => option.value === nextBehaviour)) return;
+    const behaviourContextKey = getTransitionBehaviourContextKey(transitionType, transitionFieldZone);
+    setTransitionBehaviour(nextBehaviour);
+    markTransitionUnsaved();
+    setTransitionWorkspace((current) => ({
+      ...current,
+      activeBehaviourByContext: {
+        ...current.activeBehaviourByContext,
+        [behaviourContextKey]: nextBehaviour,
+      },
+    }));
+  };
+  const selectTransitionPlay = (playId) => {
+    if (!transitionWorkspace.plays.some((play) => (
+      play.id === playId
+      && play.transitionType === transitionType
+      && play.fieldZone === transitionFieldZone
+      && play.behaviour === transitionBehaviour
+    ))) return;
+    markTransitionUnsaved();
+    setTransitionWorkspace((current) => ({
+      ...current,
+      activePlayIdByContext: {
+        ...current.activePlayIdByContext,
+        [transitionPlayContextKey]: playId,
+      },
+    }));
+  };
+  const createTransitionPlay = () => {
+    const defaultName = `Jugada ${transitionPlaysForContext.length + 1}`;
+    const requestedName = window.prompt('Nombre de la jugada', defaultName);
+    if (requestedName === null) return;
+    const timestamp = new Date().toISOString();
+    const rivalSystem = getCurrentRivalSystem();
+    const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
+    const play = {
+      id: createTransitionPlayId(),
+      phase: 'transition',
+      name: String(requestedName || '').trim() || defaultName,
+      transitionType,
+      fieldZone: transitionFieldZone,
+      behaviour: transitionBehaviour,
+      rivalSystem,
+      caudalSystem,
+      playerPositions: {},
+      arrows: [],
+      description: '',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    markTransitionUnsaved();
+    setTransitionWorkspace((current) => ({
+      ...current,
+      activeTransitionType: transitionType,
+      activeFieldZoneByType: {
+        ...current.activeFieldZoneByType,
+        [transitionType]: transitionFieldZone,
+      },
+      activeBehaviourByContext: {
+        ...current.activeBehaviourByContext,
+        [getTransitionBehaviourContextKey(transitionType, transitionFieldZone)]: transitionBehaviour,
+      },
+      activePlayIdByContext: {
+        ...current.activePlayIdByContext,
+        [transitionPlayContextKey]: play.id,
+      },
+      plays: [...current.plays, play],
+    }));
+  };
+  const duplicateTransitionPlay = () => {
+    if (!selectedTransitionPlay) return;
+    const timestamp = new Date().toISOString();
+    const duplicate = {
+      ...selectedTransitionPlay,
+      id: createTransitionPlayId(),
+      name: `${selectedTransitionPlay.name} · copia`,
+      playerPositions: Object.fromEntries(
+        Object.entries(selectedTransitionPlay.playerPositions || {}).map(([key, position]) => [key, { ...position }])
+      ),
+      arrows: selectedTransitionPlay.arrows.map((arrow) => ({
+        ...arrow,
+        id: createTransitionPlayId(),
+        start: { ...arrow.start },
+        end: { ...arrow.end },
+      })),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    markTransitionUnsaved();
+    setTransitionWorkspace((current) => ({
+      ...current,
+      activePlayIdByContext: {
+        ...current.activePlayIdByContext,
+        [transitionPlayContextKey]: duplicate.id,
+      },
+      plays: [...current.plays, duplicate],
+    }));
+  };
+  const deleteTransitionPlay = () => {
+    if (!selectedTransitionPlay || !window.confirm(`¿Eliminar "${selectedTransitionPlay.name}"?`)) return;
+    const remainingPlays = transitionWorkspace.plays.filter((play) => play.id !== selectedTransitionPlay.id);
+    const nextPlay = remainingPlays.find((play) => (
+      play.transitionType === transitionType
+      && play.fieldZone === transitionFieldZone
+      && play.behaviour === transitionBehaviour
+    ));
+    markTransitionUnsaved();
+    setTransitionWorkspace((current) => ({
+      ...current,
+      activePlayIdByContext: {
+        ...current.activePlayIdByContext,
+        [transitionPlayContextKey]: nextPlay?.id || '',
+      },
+      plays: remainingPlays,
     }));
   };
   const buildOffensiveInitialPlayerPositions = (situation, rivalSystem, caudalSystem, playStyle = 'combinative') => {
@@ -9334,6 +9535,16 @@ function App() {
                         {transitionFieldZoneOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                       </select>
                     </label>
+                    <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                      <span>Comportamiento</span>
+                      <select
+                        value={transitionBehaviour}
+                        onChange={(event) => selectTransitionBehaviour(event.target.value)}
+                        className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
+                      >
+                        {transitionBehaviourOptions[transitionType].map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                    </label>
                   </>
                 ) : null}
                 <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
@@ -9343,7 +9554,9 @@ function App() {
                     onChange={(event) => (
                       tacticalGamePhase === 'defensive'
                         ? selectDefensivePlay(event.target.value)
-                        : selectOffensivePlay(event.target.value)
+                        : tacticalGamePhase === 'offensive'
+                          ? selectOffensivePlay(event.target.value)
+                          : selectTransitionPlay(event.target.value)
                     )}
                     className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
                   >
@@ -9353,12 +9566,12 @@ function App() {
                 </label>
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                <button type="button" disabled={tacticalGamePhase === 'transition'} onClick={openNewTacticalPlayDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">Nueva jugada</button>
+                <button type="button" onClick={openNewTacticalPlayDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Nueva jugada</button>
                 <button type="button" disabled={tacticalGamePhase === 'transition' || tacticalSaveStatus === 'Guardando'} onClick={tacticalGamePhase === 'defensive' ? saveDefensiveWorkspace : saveOffensiveWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
                 <button type="button" disabled={!selectedTacticalPlay} onClick={openSaveTacticalTemplateDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">Guardar como plantilla</button>
                 <button type="button" onClick={() => loadTacticalTemplateLibrary('library')} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300">Plantillas</button>
-                <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? duplicateDefensivePlay : duplicateOffensivePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
-                <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? deleteDefensivePlay : deleteOffensivePlay} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Eliminar</button>
+                <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? duplicateDefensivePlay : tacticalGamePhase === 'offensive' ? duplicateOffensivePlay : duplicateTransitionPlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
+                <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? deleteDefensivePlay : tacticalGamePhase === 'offensive' ? deleteOffensivePlay : deleteTransitionPlay} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Eliminar</button>
                 {tacticalSaveStatus ? <span className={`self-center text-[9px] font-black uppercase tracking-[0.12em] ${tacticalSaveStatus === 'Error al guardar' ? 'text-red-200' : tacticalSaveStatus === 'Cambios sin guardar' ? 'text-amber-200' : 'text-slate-400'}`}>{tacticalSaveStatus}</span> : null}
               </div>
               {tacticalTemplateNotice ? <p className="mt-2 text-[10px] font-bold text-emerald-200">{tacticalTemplateNotice}</p> : null}
@@ -9370,10 +9583,15 @@ function App() {
                   onChange={(event) => {
                     if (!selectedTacticalPlay) return;
                     if (tacticalGamePhase === 'defensive') updateDefensivePlay(selectedTacticalPlay.id, { description: event.target.value });
-                    else updateOffensivePlay(selectedTacticalPlay.id, { description: event.target.value });
+                    else if (tacticalGamePhase === 'offensive') updateOffensivePlay(selectedTacticalPlay.id, { description: event.target.value });
+                    else updateTransitionPlay(selectedTacticalPlay.id, { description: event.target.value });
                   }}
                   placeholder={selectedTacticalPlay
-                    ? tacticalGamePhase === 'defensive' ? defensivePlayDescriptionPlaceholder : offensivePlayDescriptionPlaceholders[offensivePlayStyle]
+                    ? tacticalGamePhase === 'defensive'
+                      ? defensivePlayDescriptionPlaceholder
+                      : tacticalGamePhase === 'offensive'
+                        ? offensivePlayDescriptionPlaceholders[offensivePlayStyle]
+                        : 'Describe el momento de recuperación o pérdida, la primera acción, los apoyos, la ocupación de espacios, la reacción inmediata y la continuidad de la transición...'
                     : 'Crea una jugada para añadir su descripción.'}
                   disabled={!selectedTacticalPlay}
                   className="min-h-[120px] w-full resize-y border border-white/10 bg-black/20 px-3 py-3 text-sm font-semibold normal-case leading-6 tracking-normal text-white outline-none placeholder:text-slate-500"
@@ -9773,7 +9991,7 @@ function App() {
                 ))}
                 <button type="button" disabled={!selectedDefensiveArrowId} onClick={deleteSelectedDefensiveArrow} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Borrar</button>
                 <button type="button" disabled={!defensiveUndoStack.length} onClick={undoDefensiveAction} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Deshacer</button>
-                <button type="button" disabled={!selectedDefensivePlay} onClick={resetDefensiveFormation} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Restablecer formación</button>
+                <button type="button" disabled={!selectedDefensivePlay || tacticalGamePhase === 'transition'} onClick={resetDefensiveFormation} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Restablecer formación</button>
               </div>
               {renderFacingSystemsOverview(true)}
             </section>
