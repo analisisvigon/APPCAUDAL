@@ -6,12 +6,12 @@ La implementación activa está formada por:
 
 ```text
 renderProfessionalSystemsPrep (App.jsx)
-└── SystemsTacticalBoardSection
+└── sección inline «Campo táctico» (App.jsx)
     └── TacticalPhaseEditor
         └── SetPieceDiagramCanvas
 ```
 
-`SystemsTacticalBoardSection` es la frontera entre el layout exterior de la página y la pizarra. Los paneles de resumen, perfil colectivo, comparador y preguntas tácticas pueden cambiar sin trasladar clases ni dimensiones al interior de esta sección.
+La sección permanece inline en `App.jsx`, exactamente como estaba antes del intento de extracción. No debe extraerse, sustituirse ni envolverse. Los paneles exteriores solo pueden cambiar si no se modifica ninguna línea de esta sección ni sus contenedores, grids, wrappers o clases.
 
 `renderFacingSystemsOverview` y el formulario antiguo de conexiones permanecen en `App.jsx` dentro de una rama constante falsa. Son código **LEGACY — not rendered**. No deben reactivarse ni eliminarse como parte de cambios visuales ordinarios.
 
@@ -116,7 +116,7 @@ Permitido sin tocar el canvas:
 
 Requiere aprobar capturas y métricas:
 
-- cambiar wrappers de `SystemsTacticalBoardSection`;
+- cambiar el wrapper o extraer la sección inline «Campo táctico» de `App.jsx`;
 - cambiar clases del campo;
 - modificar dimensiones o responsive;
 - cambiar jugadores, nombres, fotos o conexiones;

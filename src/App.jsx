@@ -10,7 +10,7 @@ import PlayerDatabaseForm from './components/players/PlayerDatabaseForm';
 import GlobalPlayerDatabase from './components/players/GlobalPlayerDatabase';
 import AccordionSection from './components/shared/AccordionSection';
 import StatusMessage from './components/shared/StatusMessage';
-import SystemsTacticalBoardSection from './components/tactical/SystemsTacticalBoardSection';
+import TacticalPhaseEditor from './components/tactical/TacticalPhaseEditor';
 import {
   POST_EVENT_TYPES,
   buildPostEventTypesFromCatalog,
@@ -8387,9 +8387,33 @@ function App() {
           </div>
 
           <div className="grid gap-4 xl:contents">
-            <SystemsTacticalBoardSection
-              fieldView={getFieldViewSettings()}
-              onToggleFieldLayer={(key) => updateFieldViewSettings({ layers: { [key]: !getFieldViewSettings().layers[key] } })}
+            <section className="order-4 border border-white/10 bg-[#091428]/82 p-3 xl:col-span-2 xl:col-start-1">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Campo táctico</p>
+                  <h4 className="mt-1 text-2xl font-black text-white">Pizarra de partido</h4>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    ['names', 'Nombres'],
+                    ['zones', 'Zonas'],
+                    ['badges', 'Alertas'],
+                    ['rival', 'Rival'],
+                    ['caudal', 'Caudal'],
+                    ['connections', 'Conexiones'],
+                  ].map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => updateFieldViewSettings({ layers: { [key]: !getFieldViewSettings().layers[key] } })}
+                      className={`border px-2.5 py-1.5 text-[10px] font-black uppercase ${getFieldViewSettings().layers[key] ? 'border-caudal-electric/25 bg-caudal-electric/10 text-caudal-electric' : 'border-white/10 bg-white/[0.035] text-slate-500'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <TacticalPhaseEditor
                 initialBoards={safeObject(selectedPreAiAnalysis?.tacticalPhaseBoards)}
                 players={players}
                 rivalPlayers={liveRivalPlayers}
@@ -8397,8 +8421,7 @@ function App() {
                 rivalSystem={rivalSystem}
                 opponentKey={selectedMatchRivalTeam?.id || selectedMatch?.opponent || ''}
                 onSave={(tacticalPhaseBoards) => updatePreAiAnalysisPatch({ tacticalPhaseBoards })}
-            >
-              {/* LEGACY — not rendered. Previous facing-systems board and connection editor. */}
+              />
               {false ? <>
               {renderFacingSystemsOverview()}
               <div className="mt-3 border-t border-white/10 pt-3">
@@ -8450,7 +8473,7 @@ function App() {
                 </div>
               </div>
               </> : null}
-            </SystemsTacticalBoardSection>
+            </section>
           </div>
         </div>
       </div>
