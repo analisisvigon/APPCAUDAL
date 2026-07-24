@@ -8039,29 +8039,6 @@ function App() {
               </div>
             </section>
 
-            <section className="order-13 border border-white/10 bg-[#091428]/82 p-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Evidencias observadas</p>
-              <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(150px,170px)_minmax(150px,170px)]">
-                <input value={evidenceDraft.match} onChange={(event) => setEvidenceDraft((current) => ({ ...current, match: event.target.value }))} placeholder="Partido / contexto" className="h-11 min-w-0 border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500" />
-                <input type="date" value={evidenceDraft.date} onChange={(event) => setEvidenceDraft((current) => ({ ...current, date: event.target.value }))} className="h-11 min-w-[150px] border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none" />
-                <select value={evidenceDraft.type} onChange={(event) => setEvidenceDraft((current) => ({ ...current, type: event.target.value }))} className="h-11 min-w-0 border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none">
-                  {evidenceTypeOptions.map((type) => <option key={type} value={type}>{type}</option>)}
-                </select>
-              </div>
-              <div className="mt-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_120px]">
-                <input value={evidenceDraft.observation} onChange={(event) => setEvidenceDraft((current) => ({ ...current, observation: event.target.value }))} placeholder="Descripción de la evidencia..." className="h-11 min-w-0 border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500" />
-                <button type="button" onClick={addObservedEvidence} className="h-11 bg-caudal-electric px-4 py-2 text-xs font-black uppercase text-slate-950">Añadir</button>
-              </div>
-              <div className="mt-3 space-y-2">
-                {evidences.length ? evidences.slice(0, 5).map((item) => (
-                  <div key={item.id} className="flex items-start justify-between gap-3 border-b border-white/8 pb-2">
-                    <p className="text-xs font-semibold leading-5 text-slate-200"><span className="font-black text-white">{item.type}</span> <span className="text-amber-100">({item.importance || 'Media'})</span>{item.match ? ` · ${item.match}` : ''}{item.date ? ` · ${item.date}` : ''}: {item.observation}</p>
-                    <button type="button" onClick={() => removeObservedEvidence(item.id)} className="text-[10px] font-black uppercase text-red-200">Borrar</button>
-                  </div>
-                )) : <p className="text-sm font-semibold text-slate-500">Sin evidencias observadas. La IA no emitirá conclusiones fiables.</p>}
-              </div>
-            </section>
-
             <section className="order-4 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1">
               <div className="flex items-end justify-between gap-3">
                 <div>
