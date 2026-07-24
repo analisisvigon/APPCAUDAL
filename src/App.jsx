@@ -710,6 +710,15 @@ const defensiveSituationOptions = [
   { value: 'mid_block', label: 'Bloque medio' },
   { value: 'high_block', label: 'Bloque alto' },
 ];
+const tacticalGamePhaseOptions = [
+  { value: 'defensive', label: 'Fase defensiva' },
+  { value: 'offensive', label: 'Fase ofensiva' },
+];
+const offensiveSituationOptions = [
+  { value: 'build_up', label: 'Inicio' },
+  { value: 'creation', label: 'Creación' },
+  { value: 'finishing', label: 'Finalización' },
+];
 const defensivePlayDescriptionPlaceholder = 'Describe qué hace el rival en esta situación: altura del bloque, distancia entre líneas, orientación de la presión, basculación, referencias, espacios que concede y comportamiento de cada línea...';
 const createDefensivePlayId = () => globalThis.crypto?.randomUUID?.() || `defensive-play-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 const createEmptyDefensiveWorkspace = () => ({
@@ -4279,7 +4288,9 @@ function App() {
     }
   });
   const [rivalTacticalUndo, setRivalTacticalUndo] = useState(null);
+  const [tacticalGamePhase, setTacticalGamePhase] = useState('defensive');
   const [defensiveSituation, setDefensiveSituation] = useState('mid_block');
+  const [offensiveSituation, setOffensiveSituation] = useState('build_up');
   const [defensiveWorkspace, setDefensiveWorkspace] = useState(createEmptyDefensiveWorkspace);
   const [defensiveTool, setDefensiveTool] = useState('move');
   const [draggingDefensivePlayer, setDraggingDefensivePlayer] = useState(null);
@@ -7154,7 +7165,8 @@ function App() {
 
   const defensivePlaysForSituation = defensiveWorkspace.plays.filter((play) => play.defensiveSituation === defensiveSituation);
   const selectedDefensivePlayId = defensiveWorkspace.activePlayIdBySituation[defensiveSituation] || defensivePlaysForSituation[0]?.id || '';
-  const selectedDefensivePlay = defensiveWorkspace.plays.find((play) => play.id === selectedDefensivePlayId) || null;
+  const selectedDefensivePhasePlay = defensiveWorkspace.plays.find((play) => play.id === selectedDefensivePlayId) || null;
+  const selectedDefensivePlay = tacticalGamePhase === 'defensive' ? selectedDefensivePhasePlay : null;
   const markDefensiveUnsaved = () => {
     defensiveEditVersionRef.current += 1;
     setDefensiveSaveStatus('Cambios sin guardar');
@@ -8425,42 +8437,60 @@ function App() {
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Análisis táctico</p>
               <div className="mt-3 grid gap-2">
                 <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
-                  <span>Situación defensiva</span>
+                  <span>Fase del juego</span>
                   <select
-                    value={defensiveSituation}
-                    onChange={(event) => selectDefensiveSituation(event.target.value)}
+                    value={tacticalGamePhase}
+                    onChange={(event) => setTacticalGamePhase(event.target.value)}
                     className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
                   >
-                    {defensiveSituationOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    {tacticalGamePhaseOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                  <span>{tacticalGamePhase === 'defensive' ? 'Situación defensiva' : 'Situación ofensiva'}</span>
+                  <select
+                    value={tacticalGamePhase === 'defensive' ? defensiveSituation : offensiveSituation}
+                    onChange={(event) => (
+                      tacticalGamePhase === 'defensive'
+                        ? selectDefensiveSituation(event.target.value)
+                        : setOffensiveSituation(event.target.value)
+                    )}
+                    className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
+                  >
+                    {(tacticalGamePhase === 'defensive' ? defensiveSituationOptions : offensiveSituationOptions)
+                      .map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
                 </label>
                 <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
                   <span>Jugada</span>
                   <select
-                    value={selectedDefensivePlayId}
-                    onChange={(event) => selectDefensivePlay(event.target.value)}
+                    value={tacticalGamePhase === 'defensive' ? selectedDefensivePlayId : ''}
+                    onChange={(event) => tacticalGamePhase === 'defensive' && selectDefensivePlay(event.target.value)}
+                    disabled={tacticalGamePhase !== 'defensive'}
                     className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
                   >
                     <option value="">Sin jugadas</option>
-                    {defensivePlaysForSituation.map((play) => <option key={play.id} value={play.id}>{play.name}</option>)}
+                    {tacticalGamePhase === 'defensive'
+                      ? defensivePlaysForSituation.map((play) => <option key={play.id} value={play.id}>{play.name}</option>)
+                      : null}
                   </select>
                 </label>
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                <button type="button" onClick={createDefensivePlay} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Nueva jugada</button>
-                <button type="button" disabled={defensiveSaveStatus === 'Guardando'} onClick={saveDefensiveWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
-                <button type="button" disabled={!selectedDefensivePlay} onClick={duplicateDefensivePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
-                <button type="button" disabled={!selectedDefensivePlay} onClick={deleteDefensivePlay} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Eliminar</button>
-                {defensiveSaveStatus ? <span className={`self-center text-[9px] font-black uppercase tracking-[0.12em] ${defensiveSaveStatus === 'Error al guardar' ? 'text-red-200' : defensiveSaveStatus === 'Cambios sin guardar' ? 'text-amber-200' : 'text-slate-400'}`}>{defensiveSaveStatus}</span> : null}
+                <button type="button" disabled={tacticalGamePhase !== 'defensive'} onClick={createDefensivePlay} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">Nueva jugada</button>
+                <button type="button" disabled={tacticalGamePhase !== 'defensive' || defensiveSaveStatus === 'Guardando'} onClick={saveDefensiveWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
+                <button type="button" disabled={tacticalGamePhase !== 'defensive' || !selectedDefensivePlay} onClick={duplicateDefensivePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
+                <button type="button" disabled={tacticalGamePhase !== 'defensive' || !selectedDefensivePlay} onClick={deleteDefensivePlay} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Eliminar</button>
+                {tacticalGamePhase === 'defensive' && defensiveSaveStatus ? <span className={`self-center text-[9px] font-black uppercase tracking-[0.12em] ${defensiveSaveStatus === 'Error al guardar' ? 'text-red-200' : defensiveSaveStatus === 'Cambios sin guardar' ? 'text-amber-200' : 'text-slate-400'}`}>{defensiveSaveStatus}</span> : null}
               </div>
               <label className="mt-4 grid gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-white">
                 <span>Descripción de la jugada</span>
                 <textarea
                   rows={5}
-                  value={selectedDefensivePlay?.description || ''}
+                  value={tacticalGamePhase === 'defensive' ? selectedDefensivePlay?.description || '' : ''}
                   onChange={(event) => selectedDefensivePlay && updateDefensivePlay(selectedDefensivePlay.id, { description: event.target.value })}
-                  placeholder={selectedDefensivePlay ? defensivePlayDescriptionPlaceholder : 'Crea una jugada defensiva para añadir su descripción.'}
-                  disabled={!selectedDefensivePlay}
+                  placeholder={tacticalGamePhase === 'defensive' && selectedDefensivePlay ? defensivePlayDescriptionPlaceholder : 'Crea una jugada para añadir su descripción.'}
+                  disabled={tacticalGamePhase !== 'defensive' || !selectedDefensivePlay}
                   className="min-h-[120px] w-full resize-y border border-white/10 bg-black/20 px-3 py-3 text-sm font-semibold normal-case leading-6 tracking-normal text-white outline-none placeholder:text-slate-500"
                 />
               </label>
