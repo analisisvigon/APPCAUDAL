@@ -927,6 +927,14 @@ const normalizeOffensiveWorkspace = (value) => {
 const getDefaultTransitionBehaviour = (transitionType) => (
   transitionType === 'defensive_transition' ? 'counterpress' : 'fast_attack'
 );
+const normalizeTransitionFieldZone = (value) => (
+  transitionFieldZoneOptions.some((option) => option.value === value) ? value : 'defensive_half'
+);
+const normalizeTransitionBehaviour = (transitionType, value) => (
+  transitionBehaviourOptions[transitionType]?.some((option) => option.value === value)
+    ? value
+    : getDefaultTransitionBehaviour(transitionType)
+);
 const getTransitionBehaviourContextKey = (transitionType, fieldZone) => `${transitionType}:${fieldZone}`;
 const getTransitionPlayContextKey = (transitionType, fieldZone, behaviour) => `${transitionType}:${fieldZone}:${behaviour}`;
 const createEmptyTransitionWorkspace = () => ({
@@ -944,11 +952,6 @@ const normalizeTransitionWorkspace = (value) => {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const validTypes = new Set(transitionTypeOptions.map((option) => option.value));
   const validZones = new Set(transitionFieldZoneOptions.map((option) => option.value));
-  const normalizeBehaviour = (transitionType, behaviour) => (
-    transitionBehaviourOptions[transitionType]?.some((option) => option.value === behaviour)
-      ? behaviour
-      : getDefaultTransitionBehaviour(transitionType)
-  );
   const plays = (Array.isArray(source.plays) ? source.plays : [])
     .filter((play) => play && typeof play === 'object' && play.id && validTypes.has(play.transitionType))
     .map((play) => ({
@@ -957,7 +960,7 @@ const normalizeTransitionWorkspace = (value) => {
       name: String(play.name || 'Jugada'),
       transitionType: play.transitionType,
       fieldZone: validZones.has(play.fieldZone) ? play.fieldZone : 'defensive_half',
-      behaviour: normalizeBehaviour(play.transitionType, play.behaviour),
+      behaviour: normalizeTransitionBehaviour(play.transitionType, play.behaviour),
       rivalSystem: String(play.rivalSystem || '4-4-2'),
       caudalSystem: String(play.caudalSystem || '4-4-2'),
       playerPositions: play.playerPositions && typeof play.playerPositions === 'object' && !Array.isArray(play.playerPositions) ? play.playerPositions : {},
@@ -7951,6 +7954,24 @@ function App() {
       },
     }));
   };
+  const selectTransitionType = (nextTransitionType) => {
+    if (!transitionTypeOptions.some((option) => option.value === nextTransitionType)) return;
+    const nextFieldZone = normalizeTransitionFieldZone(
+      transitionWorkspace.activeFieldZoneByType?.[nextTransitionType]
+    );
+    const behaviourContextKey = getTransitionBehaviourContextKey(nextTransitionType, nextFieldZone);
+    const nextBehaviour = normalizeTransitionBehaviour(
+      nextTransitionType,
+      transitionWorkspace.activeBehaviourByContext?.[behaviourContextKey]
+    );
+    setTransitionType(nextTransitionType);
+    setTransitionFieldZone(nextFieldZone);
+    setTransitionBehaviour(nextBehaviour);
+    setTransitionWorkspace((current) => ({
+      ...current,
+      activeTransitionType: nextTransitionType,
+    }));
+  };
   const buildOffensiveInitialPlayerPositions = (situation, rivalSystem, caudalSystem, playStyle = 'combinative') => {
     return getOffensiveInitialPositions({
       offensiveSituation: situation,
@@ -9271,6 +9292,18 @@ function App() {
                       className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
                     >
                       {offensivePlayStyleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </label>
+                ) : null}
+                {tacticalGamePhase === 'transition' ? (
+                  <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                    <span>Tipo de transición</span>
+                    <select
+                      value={transitionType}
+                      onChange={(event) => selectTransitionType(event.target.value)}
+                      className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
+                    >
+                      {transitionTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                     </select>
                   </label>
                 ) : null}
