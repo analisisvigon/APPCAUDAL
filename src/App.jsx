@@ -7777,8 +7777,11 @@ function App() {
     if (!offensivePlayStyleOptions.some((option) => option.value === playStyle)) return;
     if (playStyle === offensivePlayStyle) return;
     if (selectedOffensivePlay) {
+      const playAlreadyPersisted = normalizeOffensiveWorkspace(
+        selectedPreAiAnalysis?.offensivePhaseV1
+      ).plays.some((play) => play.id === selectedOffensivePlay.id);
       if (
-        offensiveSaveStatus === 'Guardado'
+        playAlreadyPersisted
         && !window.confirm(`¿Cambiar "${selectedOffensivePlay.name}" a ${offensivePlayStyleOptions.find((option) => option.value === playStyle)?.label}? No se moverán jugadores ni se borrarán flechas o texto.`)
       ) return;
       const previousContextKey = getOffensivePlayContextKey(offensiveSituation, offensivePlayStyle);

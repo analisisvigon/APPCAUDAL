@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  OFFENSIVE_DIRECT_BUILD_UP_LINE_HEIGHTS,
   OFFENSIVE_PHASE_LINE_HEIGHTS,
   getOffensiveBuildUpPositions,
   getOffensiveCreationPositions,
   getOffensiveFinishingPositions,
+  getOffensiveInitialPositions,
 } from './offensivePhasePositions.js';
 import { hasInitialPositionOverlap } from './defensiveBlockPositions.js';
 
@@ -40,6 +42,22 @@ assert.equal(averageY(buildUp, 'rival', 9, 2), 49, 'los atacantes rivales ocupan
 assert.equal(buildUp['caudal:0'].y, 91, 'el portero del Caudal protege su área');
 assert.equal(averageY(buildUp, 'caudal', 1, 4), 73, 'la defensa del Caudal queda retrasada');
 assert.equal(averageY(buildUp, 'caudal', 9, 2), 28, 'los delanteros del Caudal presionan la primera línea rival');
+
+const directBuildUp = getOffensiveInitialPositions({
+  offensiveSituation: 'build_up',
+  playStyle: 'direct',
+  rivalSystem: '4-4-2',
+  caudalSystem: '4-4-2',
+  rivalFormationSlots: buildFormationSlots('4-4-2'),
+  caudalFormationSlots: buildFormationSlots('4-4-2'),
+});
+assert.equal(Object.keys(directBuildUp).length, 22, 'Inicio directo genera los 22 jugadores');
+assert.equal(hasInitialPositionOverlap(directBuildUp), false, 'Inicio directo evita solapamientos exactos');
+assert.equal(directBuildUp['rival:0'].y, OFFENSIVE_DIRECT_BUILD_UP_LINE_HEIGHTS.rival.goalkeeper);
+assert.ok(averageY(directBuildUp, 'rival', 1, 4) > averageY(buildUp, 'rival', 1, 4), 'el bloque rival directo parte más alto');
+assert.ok(averageY(directBuildUp, 'rival', 9, 2) > averageY(buildUp, 'rival', 9, 2), 'los puntas rivales fijan más arriba');
+assert.ok(averageY(directBuildUp, 'caudal', 9, 2) > averageY(buildUp, 'caudal', 9, 2), 'el Caudal se prepara cerca de la caída y segunda jugada');
+assert.notDeepEqual(directBuildUp, buildUp, 'Inicio directo y combinativo usan presets diferentes');
 
 const creation = getOffensiveCreationPositions({
   rivalSystem: '4-4-2',
@@ -79,6 +97,42 @@ assert.equal(finishing['caudal:0'].y, 92, 'el portero del Caudal permanece dentr
 assert.equal(averageY(finishing, 'caudal', 1, 4), 82, 'la defensa del Caudal protege el área');
 assert.equal(averageY(finishing, 'caudal', 5, 3), 67.5, 'los medios del Caudal protegen frontal e interiores');
 assert.equal(averageY(finishing, 'caudal', 8, 3), 53, 'los atacantes del Caudal quedan preparados para transición');
+
+const creationCombinative = getOffensiveInitialPositions({
+  offensiveSituation: 'creation',
+  playStyle: 'combinative',
+  rivalSystem: '4-4-2',
+  caudalSystem: '4-3-3',
+  rivalFormationSlots: buildFormationSlots('4-4-2'),
+  caudalFormationSlots: buildFormationSlots('4-3-3'),
+});
+const creationDirect = getOffensiveInitialPositions({
+  offensiveSituation: 'creation',
+  playStyle: 'direct',
+  rivalSystem: '4-4-2',
+  caudalSystem: '4-3-3',
+  rivalFormationSlots: buildFormationSlots('4-4-2'),
+  caudalFormationSlots: buildFormationSlots('4-3-3'),
+});
+assert.deepEqual(creationDirect, creationCombinative, 'Creación comparte preset entre combinativo y directo');
+
+const finishingCombinative = getOffensiveInitialPositions({
+  offensiveSituation: 'finishing',
+  playStyle: 'combinative',
+  rivalSystem: '5-3-2',
+  caudalSystem: '4-3-3',
+  rivalFormationSlots: buildFormationSlots('5-3-2'),
+  caudalFormationSlots: buildFormationSlots('4-3-3'),
+});
+const finishingDirect = getOffensiveInitialPositions({
+  offensiveSituation: 'finishing',
+  playStyle: 'direct',
+  rivalSystem: '5-3-2',
+  caudalSystem: '4-3-3',
+  rivalFormationSlots: buildFormationSlots('5-3-2'),
+  caudalFormationSlots: buildFormationSlots('4-3-3'),
+});
+assert.deepEqual(finishingDirect, finishingCombinative, 'Finalización comparte preset entre combinativo y directo');
 
 const offensiveWorkspace = {
   version: 1,
@@ -200,10 +254,35 @@ assert.deepEqual(resetCreation.arrows, movedCreation.arrows, 'Restablecer conser
 assert.equal(resetCreation.phase, 'offensive', 'Restablecer conserva la fase');
 assert.equal(resetCreation.offensiveSituation, 'creation', 'Restablecer conserva la situación');
 
+const combinativeCreation = {
+  ...movedCreation,
+  id: 'creation-combinative',
+  playStyle: 'combinative',
+};
+const directCreation = {
+  ...movedCreation,
+  id: 'creation-direct',
+  playStyle: 'direct',
+};
+assert.notEqual(combinativeCreation.id, directCreation.id, 'Creación guarda jugadas independientes por tipo');
+assert.deepEqual(combinativeCreation.playerPositions, directCreation.playerPositions, 'las dos clasificaciones pueden partir del mismo preset');
+
+const manuallyReclassified = {
+  ...combinativeCreation,
+  playStyle: 'direct',
+};
+assert.deepEqual(manuallyReclassified.playerPositions, combinativeCreation.playerPositions, 'cambiar tipo no mueve jugadores');
+assert.deepEqual(manuallyReclassified.arrows, combinativeCreation.arrows, 'cambiar tipo no borra flechas');
+assert.equal(manuallyReclassified.description, combinativeCreation.description, 'cambiar tipo no borra la descripción');
+assert.equal(manuallyReclassified.name, combinativeCreation.name, 'cambiar tipo no cambia el nombre');
+
 const appSource = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 assert.ok(appSource.includes('offensivePhaseV1: normalizedWorkspace'), 'la ofensiva se guarda en su propio espacio JSON');
 assert.ok(appSource.includes('defensivePhaseV1: normalizedWorkspace'), 'la persistencia defensiva continúa disponible');
 assert.ok(appSource.includes(".from('partidos')"), 'la persistencia ofensiva utiliza Supabase');
+assert.ok(appSource.includes('playStyle: normalizeOffensivePlayStyle(play.playStyle)'), 'las jugadas antiguas sin playStyle se leen como combinative');
+assert.ok(appSource.includes('activePlayIdByContext'), 'la selección de jugadas se separa por situación y tipo');
+assert.ok(appSource.includes('selectedOffensivePlay.playStyle'), 'Restablecer usa el tipo guardado en la jugada');
 const offensiveSaveSource = appSource.slice(
   appSource.indexOf('const saveOffensiveWorkspace = async () => {'),
   appSource.indexOf('useEffect(() => {', appSource.indexOf('const saveOffensiveWorkspace = async () => {'))
