@@ -8403,6 +8403,18 @@ function App() {
               </div>
             </section>
 
+            <label className="order-4 grid gap-2 border border-white/10 bg-[#091428]/82 p-4 text-[10px] font-black uppercase tracking-[0.18em] text-white xl:col-start-1 xl:row-start-1">
+              <span>Análisis táctico</span>
+              <textarea
+                rows={5}
+                value={selectedDefensivePlay?.description || ''}
+                onChange={(event) => selectedDefensivePlay && updateDefensivePlay(selectedDefensivePlay.id, { description: event.target.value })}
+                placeholder={selectedDefensivePlay ? defensivePlayDescriptionPlaceholder : 'Crea una jugada defensiva para añadir su descripción.'}
+                disabled={!selectedDefensivePlay}
+                className="min-h-[120px] w-full resize-y border border-white/10 bg-black/20 px-3 py-3 text-sm font-semibold normal-case leading-6 tracking-normal text-white outline-none placeholder:text-slate-500"
+              />
+            </label>
+
             <section className="order-4 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1">
               <div className="flex items-end justify-between gap-3">
                 <div>
@@ -8831,17 +8843,6 @@ function App() {
                 <button type="button" disabled={!selectedDefensivePlay} onClick={resetDefensiveFormation} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Restablecer formación</button>
               </div>
               {renderFacingSystemsOverview(true)}
-              <label className="mt-3 grid gap-2 border-t border-white/10 pt-3 text-[10px] font-black uppercase tracking-[0.18em] text-white">
-                <span>Descripción de la jugada</span>
-                <textarea
-                  rows={5}
-                  value={selectedDefensivePlay?.description || ''}
-                  onChange={(event) => selectedDefensivePlay && updateDefensivePlay(selectedDefensivePlay.id, { description: event.target.value })}
-                  placeholder={selectedDefensivePlay ? defensivePlayDescriptionPlaceholder : 'Crea una jugada defensiva para añadir su descripción.'}
-                  disabled={!selectedDefensivePlay}
-                  className="min-h-[120px] w-full resize-y border border-white/10 bg-black/20 px-3 py-3 text-sm font-semibold normal-case leading-6 tracking-normal text-white outline-none placeholder:text-slate-500"
-                />
-              </label>
               <div className="mt-3 border-t border-white/10 pt-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Conexiones tácticas</p>
