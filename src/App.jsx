@@ -80,6 +80,7 @@ import {
   sanitizeTacticalLineup,
   getTacticalPlayerKey,
 } from './utils/rivalTactics';
+import { getDefensiveBlockInitialPositions } from './utils/defensiveBlockPositions';
 import './styles/print.css';
 
 const clubCrest =
@@ -7305,19 +7306,30 @@ function App() {
       },
     }));
   };
+  const buildDefensiveInitialPlayerPositions = (situation, rivalSystem, caudalSystem) => (
+    getDefensiveBlockInitialPositions({
+      defensiveSituation: situation,
+      rivalSystem,
+      caudalSystem,
+      rivalFormationSlots: getFormationSlots(rivalSystem, 'own'),
+      caudalFormationSlots: getFormationSlots(caudalSystem, 'own'),
+    })
+  );
   const createDefensivePlay = () => {
     const defaultName = `Jugada ${defensivePlaysForSituation.length + 1}`;
     const requestedName = window.prompt('Nombre de la jugada', defaultName);
     if (requestedName === null) return;
     const name = String(requestedName || '').trim() || defaultName;
     const timestamp = new Date().toISOString();
+    const rivalSystem = getCurrentRivalSystem();
+    const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
     const play = {
       id: createDefensivePlayId(),
       name,
       defensiveSituation,
-      rivalSystem: getCurrentRivalSystem(),
-      caudalSystem: selectedMatch?.preCaudalSystem || '4-4-2',
-      playerPositions: {},
+      rivalSystem,
+      caudalSystem,
+      playerPositions: buildDefensiveInitialPlayerPositions(defensiveSituation, rivalSystem, caudalSystem),
       arrows: [],
       description: '',
       createdAt: timestamp,
@@ -7430,12 +7442,18 @@ function App() {
   }, [defensiveWorkspace, defensiveSituation, defensiveSaveStatus, selectedMatch?.id]);
   const resetDefensiveFormation = () => {
     if (!selectedDefensivePlay) return;
-    if (['Cambios sin guardar', 'Guardando'].includes(defensiveSaveStatus) && !window.confirm('Hay cambios sin guardar. ¿Restablecer igualmente la formación?')) return;
+    if (!window.confirm('¿Restablecer las posiciones iniciales de ambos equipos para este bloque? La descripción, los pases y los movimientos se conservarán.')) return;
+    const rivalSystem = getCurrentRivalSystem();
+    const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
     pushDefensiveUndoSnapshot();
     updateDefensivePlay(selectedDefensivePlay.id, {
-      rivalSystem: getCurrentRivalSystem(),
-      caudalSystem: selectedMatch?.preCaudalSystem || '4-4-2',
-      playerPositions: {},
+      rivalSystem,
+      caudalSystem,
+      playerPositions: buildDefensiveInitialPlayerPositions(
+        selectedDefensivePlay.defensiveSituation || defensiveSituation,
+        rivalSystem,
+        caudalSystem
+      ),
     });
   };
 
