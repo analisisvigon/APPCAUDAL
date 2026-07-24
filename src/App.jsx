@@ -81,6 +81,7 @@ import {
   getTacticalPlayerKey,
 } from './utils/rivalTactics';
 import { getDefensiveBlockInitialPositions } from './utils/defensiveBlockPositions';
+import { getOffensiveBuildUpPositions } from './utils/offensivePhasePositions';
 import './styles/print.css';
 
 const clubCrest =
@@ -7231,11 +7232,11 @@ function App() {
   const defensivePlaysForSituation = defensiveWorkspace.plays.filter((play) => play.defensiveSituation === defensiveSituation);
   const selectedDefensivePlayId = defensiveWorkspace.activePlayIdBySituation[defensiveSituation] || defensivePlaysForSituation[0]?.id || '';
   const selectedDefensivePhasePlay = defensiveWorkspace.plays.find((play) => play.id === selectedDefensivePlayId) || null;
-  const selectedDefensivePlay = tacticalGamePhase === 'defensive' ? selectedDefensivePhasePlay : null;
   const offensivePlaysForSituation = offensiveWorkspace.plays.filter((play) => play.offensiveSituation === offensiveSituation);
   const selectedOffensivePlayId = offensiveWorkspace.activePlayIdBySituation[offensiveSituation] || offensivePlaysForSituation[0]?.id || '';
   const selectedOffensivePlay = offensiveWorkspace.plays.find((play) => play.id === selectedOffensivePlayId) || null;
   const selectedTacticalPlay = tacticalGamePhase === 'defensive' ? selectedDefensivePhasePlay : selectedOffensivePlay;
+  const selectedDefensivePlay = selectedTacticalPlay;
   const selectedTacticalPlayId = tacticalGamePhase === 'defensive' ? selectedDefensivePlayId : selectedOffensivePlayId;
   const tacticalPlaysForSituation = tacticalGamePhase === 'defensive' ? defensivePlaysForSituation : offensivePlaysForSituation;
   const tacticalSaveStatus = tacticalGamePhase === 'defensive' ? defensiveSaveStatus : offensiveSaveStatus;
@@ -7292,7 +7293,7 @@ function App() {
     if (!draggingDefensivePlayer || !selectedDefensivePlay || defensiveTool !== 'move') return;
     const position = getDefensivePointerPosition(event);
     if (!position) return;
-    updateDefensivePlay(selectedDefensivePlay.id, (play) => ({
+    updateTacticalPlay(selectedDefensivePlay.id, (play) => ({
       playerPositions: {
         ...play.playerPositions,
         [draggingDefensivePlayer.playerKey]: position,
@@ -7327,12 +7328,12 @@ function App() {
     if (distance >= 2) {
       pushDefensiveUndoSnapshot();
       const arrow = {
-        id: createDefensivePlayId(),
+        id: tacticalGamePhase === 'defensive' ? createDefensivePlayId() : createOffensivePlayId(),
         type: defensiveDrawingPreview.type,
         start: defensiveDrawingPreview.start,
         end,
       };
-      updateDefensivePlay(selectedDefensivePlay.id, (play) => ({ arrows: [...play.arrows, arrow] }));
+      updateTacticalPlay(selectedDefensivePlay.id, (play) => ({ arrows: [...play.arrows, arrow] }));
       setSelectedDefensiveArrowId(arrow.id);
     }
     setDefensiveDrawingPreview(null);
@@ -7353,7 +7354,7 @@ function App() {
     if (!selectedDefensivePlay || !selectedDefensiveArrowId) return;
     if (!selectedDefensivePlay.arrows.some((arrow) => arrow.id === selectedDefensiveArrowId)) return;
     pushDefensiveUndoSnapshot();
-    updateDefensivePlay(selectedDefensivePlay.id, (play) => ({
+    updateTacticalPlay(selectedDefensivePlay.id, (play) => ({
       arrows: play.arrows.filter((arrow) => arrow.id !== selectedDefensiveArrowId),
     }));
     setSelectedDefensiveArrowId('');
@@ -7361,7 +7362,7 @@ function App() {
   const undoDefensiveAction = () => {
     const snapshot = defensiveUndoStack[defensiveUndoStack.length - 1];
     if (!snapshot || snapshot.playId !== selectedDefensivePlay?.id) return;
-    updateDefensivePlay(snapshot.playId, {
+    updateTacticalPlay(snapshot.playId, {
       playerPositions: snapshot.playerPositions,
       arrows: snapshot.arrows,
     });
@@ -7372,7 +7373,7 @@ function App() {
     setSelectedDefensiveArrowId('');
     setDefensiveDrawingPreview(null);
     setDefensiveUndoStack([]);
-  }, [selectedDefensivePlayId]);
+  }, [selectedTacticalPlayId, tacticalGamePhase]);
   const selectDefensiveSituation = (situation) => {
     if (!defensiveSituationOptions.some((option) => option.value === situation)) return;
     setDefensiveSituation(situation);
@@ -7405,6 +7406,11 @@ function App() {
       }),
     }));
   };
+  const updateTacticalPlay = (playId, patch) => (
+    tacticalGamePhase === 'defensive'
+      ? updateDefensivePlay(playId, patch)
+      : updateOffensivePlay(playId, patch)
+  );
   const selectOffensiveSituation = (situation) => {
     if (!offensiveSituationOptions.some((option) => option.value === situation)) return;
     setOffensiveSituation(situation);
@@ -7422,20 +7428,31 @@ function App() {
       },
     }));
   };
+  const buildOffensiveInitialPlayerPositions = (situation, rivalSystem, caudalSystem) => {
+    if (situation !== 'build_up') return {};
+    return getOffensiveBuildUpPositions({
+      rivalSystem,
+      caudalSystem,
+      rivalFormationSlots: getFormationSlots(rivalSystem, 'own'),
+      caudalFormationSlots: getFormationSlots(caudalSystem, 'own'),
+    });
+  };
   const createOffensivePlay = () => {
     const defaultName = `Jugada ${offensivePlaysForSituation.length + 1}`;
     const requestedName = window.prompt('Nombre de la jugada', defaultName);
     if (requestedName === null) return;
     const name = String(requestedName || '').trim() || defaultName;
     const timestamp = new Date().toISOString();
+    const rivalSystem = getCurrentRivalSystem();
+    const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
     const play = {
       id: createOffensivePlayId(),
       phase: 'offensive',
       name,
       offensiveSituation,
-      rivalSystem: getCurrentRivalSystem(),
-      caudalSystem: selectedMatch?.preCaudalSystem || '4-4-2',
-      playerPositions: {},
+      rivalSystem,
+      caudalSystem,
+      playerPositions: buildOffensiveInitialPlayerPositions(offensiveSituation, rivalSystem, caudalSystem),
       arrows: [],
       description: '',
       createdAt: timestamp,
@@ -7686,15 +7703,22 @@ function App() {
     if (!window.confirm('¿Restablecer las posiciones iniciales de ambos equipos para este bloque? La descripción, los pases y los movimientos se conservarán.')) return;
     const rivalSystem = getCurrentRivalSystem();
     const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
+    const playerPositions = tacticalGamePhase === 'defensive'
+      ? buildDefensiveInitialPlayerPositions(
+          selectedDefensivePlay.defensiveSituation || defensiveSituation,
+          rivalSystem,
+          caudalSystem
+        )
+      : buildOffensiveInitialPlayerPositions(
+          selectedDefensivePlay.offensiveSituation || offensiveSituation,
+          rivalSystem,
+          caudalSystem
+        );
     pushDefensiveUndoSnapshot();
-    updateDefensivePlay(selectedDefensivePlay.id, {
+    updateTacticalPlay(selectedDefensivePlay.id, {
       rivalSystem,
       caudalSystem,
-      playerPositions: buildDefensiveInitialPlayerPositions(
-        selectedDefensivePlay.defensiveSituation || defensiveSituation,
-        rivalSystem,
-        caudalSystem
-      ),
+      playerPositions,
     });
   };
 
