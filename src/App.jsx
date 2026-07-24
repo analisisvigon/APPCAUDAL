@@ -713,9 +713,42 @@ const defensivePlayDescriptionPlaceholder = 'Describe qué hace el rival en esta
 const createDefensivePlayId = () => globalThis.crypto?.randomUUID?.() || `defensive-play-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 const createEmptyDefensiveWorkspace = () => ({
   version: 1,
+  activeSituation: 'mid_block',
   activePlayIdBySituation: {},
   plays: [],
 });
+const normalizeDefensiveWorkspace = (value) => {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const validSituations = new Set(defensiveSituationOptions.map((option) => option.value));
+  const plays = (Array.isArray(source.plays) ? source.plays : [])
+    .filter((play) => play && typeof play === 'object' && play.id && validSituations.has(play.defensiveSituation))
+    .map((play) => ({
+      id: String(play.id),
+      name: String(play.name || 'Jugada'),
+      defensiveSituation: play.defensiveSituation,
+      rivalSystem: String(play.rivalSystem || '4-4-2'),
+      caudalSystem: String(play.caudalSystem || '4-4-2'),
+      playerPositions: play.playerPositions && typeof play.playerPositions === 'object' && !Array.isArray(play.playerPositions) ? play.playerPositions : {},
+      arrows: Array.isArray(play.arrows) ? play.arrows : [],
+      description: String(play.description || ''),
+      createdAt: String(play.createdAt || new Date().toISOString()),
+      updatedAt: String(play.updatedAt || play.createdAt || new Date().toISOString()),
+    }));
+  const playIds = new Set(plays.map((play) => play.id));
+  const activePlayIdBySituation = Object.fromEntries(
+    defensiveSituationOptions.map((option) => {
+      const savedId = source.activePlayIdBySituation?.[option.value];
+      const fallbackId = plays.find((play) => play.defensiveSituation === option.value)?.id || '';
+      return [option.value, playIds.has(savedId) ? savedId : fallbackId];
+    })
+  );
+  return {
+    version: 1,
+    activeSituation: validSituations.has(source.activeSituation) ? source.activeSituation : 'mid_block',
+    activePlayIdBySituation,
+    plays,
+  };
+};
 const collectiveProfileOptions = {
   buildUp: ['Muy elaborada', 'Elaborada', 'Mixta', 'Directa', 'Muy directa'],
   blockHeight: ['Muy alta', 'Alta', 'Media', 'Baja', 'Muy baja'],
@@ -4241,6 +4274,7 @@ function App() {
   const [defensiveWorkspace, setDefensiveWorkspace] = useState(createEmptyDefensiveWorkspace);
   const [defensiveTool, setDefensiveTool] = useState('move');
   const [draggingDefensivePlayer, setDraggingDefensivePlayer] = useState(null);
+  const [defensiveSaveStatus, setDefensiveSaveStatus] = useState('');
   const [rivalObservedScouting, setRivalObservedScouting] = useState(() => {
     try {
       if (typeof window === 'undefined') return {};
@@ -5507,6 +5541,12 @@ function App() {
     () => normalizePreAiAnalysis(selectedMatch?.preAiAnalysis),
     [selectedMatch?.preAiAnalysis]
   );
+  useEffect(() => {
+    const storedWorkspace = normalizeDefensiveWorkspace(selectedPreAiAnalysis?.defensivePhaseV1);
+    setDefensiveWorkspace(storedWorkspace);
+    setDefensiveSituation(storedWorkspace.activeSituation);
+    setDefensiveSaveStatus(storedWorkspace.plays.length ? 'Guardado' : '');
+  }, [selectedMatch?.id]);
   const selectedMatchRivalTeam = useMemo(
     () => teams.find((team) => team.id === selectedMatch?.equipoRivalId) || findTeamByDisplayName(teams, selectedMatch?.opponent || ''),
     [teams, selectedMatch?.equipoRivalId, selectedMatch?.opponent]
@@ -7095,6 +7135,7 @@ function App() {
   const selectedDefensivePlayId = defensiveWorkspace.activePlayIdBySituation[defensiveSituation] || defensivePlaysForSituation[0]?.id || '';
   const selectedDefensivePlay = defensiveWorkspace.plays.find((play) => play.id === selectedDefensivePlayId) || null;
   const updateDefensivePlay = (playId, patch) => {
+    setDefensiveSaveStatus('Cambios sin guardar');
     setDefensiveWorkspace((current) => ({
       ...current,
       plays: current.plays.map((play) => {
@@ -7136,6 +7177,7 @@ function App() {
   const selectDefensiveSituation = (situation) => {
     if (!defensiveSituationOptions.some((option) => option.value === situation)) return;
     setDefensiveSituation(situation);
+    setDefensiveWorkspace((current) => ({ ...current, activeSituation: situation }));
   };
   const selectDefensivePlay = (playId) => {
     if (!defensiveWorkspace.plays.some((play) => play.id === playId && play.defensiveSituation === defensiveSituation)) return;
@@ -7165,6 +7207,7 @@ function App() {
       createdAt: timestamp,
       updatedAt: timestamp,
     };
+    setDefensiveSaveStatus('Cambios sin guardar');
     setDefensiveWorkspace((current) => ({
       ...current,
       activePlayIdBySituation: {
@@ -7186,6 +7229,7 @@ function App() {
       createdAt: timestamp,
       updatedAt: timestamp,
     };
+    setDefensiveSaveStatus('Cambios sin guardar');
     setDefensiveWorkspace((current) => ({
       ...current,
       activePlayIdBySituation: {
@@ -7199,6 +7243,7 @@ function App() {
     if (!selectedDefensivePlay || !window.confirm(`¿Eliminar "${selectedDefensivePlay.name}"?`)) return;
     const remainingPlays = defensiveWorkspace.plays.filter((play) => play.id !== selectedDefensivePlay.id);
     const nextPlay = remainingPlays.find((play) => play.defensiveSituation === defensiveSituation);
+    setDefensiveSaveStatus('Cambios sin guardar');
     setDefensiveWorkspace((current) => ({
       ...current,
       activePlayIdBySituation: {
@@ -7207,6 +7252,39 @@ function App() {
       },
       plays: remainingPlays,
     }));
+  };
+  const saveDefensiveWorkspace = async () => {
+    if (!selectedMatch) return false;
+    const normalizedWorkspace = normalizeDefensiveWorkspace({
+      ...defensiveWorkspace,
+      activeSituation: defensiveSituation,
+    });
+    const nextPreAiAnalysis = {
+      ...(selectedPreAiAnalysis || {}),
+      defensivePhaseV1: normalizedWorkspace,
+    };
+    setDefensiveSaveStatus('Guardando');
+    const { error: defensiveSaveError } = await supabase
+      .from('partidos')
+      .update({ pre_ai_analysis: nextPreAiAnalysis })
+      .eq('id', selectedMatch.id);
+    if (defensiveSaveError) {
+      console.error('[DEFENSIVE_PHASE_SAVE]', {
+        matchId: selectedMatch.id,
+        workspace: normalizedWorkspace,
+        error: defensiveSaveError,
+      });
+      setDefensiveSaveStatus('Error al guardar');
+      return false;
+    }
+    setMatches((current) => current.map((match) => (
+      match.id === selectedMatch.id
+        ? { ...match, preAiAnalysis: nextPreAiAnalysis }
+        : match
+    )));
+    setDefensiveWorkspace(normalizedWorkspace);
+    setDefensiveSaveStatus('Guardado');
+    return true;
   };
 
   const updateCaudalPreSystem = (system) => {
@@ -8548,8 +8626,10 @@ function App() {
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <button type="button" onClick={createDefensivePlay} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Nueva jugada</button>
+                  <button type="button" disabled={!selectedDefensivePlay || defensiveSaveStatus === 'Guardando'} onClick={saveDefensiveWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
                   <button type="button" disabled={!selectedDefensivePlay} onClick={duplicateDefensivePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
                   <button type="button" disabled={!selectedDefensivePlay} onClick={deleteDefensivePlay} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Eliminar</button>
+                  {defensiveSaveStatus ? <span className={`self-center text-[9px] font-black uppercase tracking-[0.12em] ${defensiveSaveStatus === 'Error al guardar' ? 'text-red-200' : defensiveSaveStatus === 'Cambios sin guardar' ? 'text-amber-200' : 'text-slate-400'}`}>{defensiveSaveStatus}</span> : null}
                 </div>
               </div>
               <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
