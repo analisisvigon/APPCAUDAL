@@ -86,6 +86,11 @@ import {
 } from './utils/offensivePhasePositions';
 import { getTransitionInitialPositions } from './utils/transitionPhasePositions';
 import {
+  getDefaultSetPieceBallPosition,
+  getSetPieceZonePoints,
+  normalizeBallStartPosition,
+} from './utils/setPieceZones';
+import {
   createTacticalTemplate,
   deleteTacticalTemplate,
   listTacticalTemplates,
@@ -4651,6 +4656,9 @@ function App() {
   const [setPieceWorkspace, setSetPieceWorkspace] = useState(createEmptySetPieceWorkspace);
   const [setPieceType, setSetPieceType] = useState('offensive_set_piece');
   const [setPieceAction, setSetPieceAction] = useState('corner');
+  const [setPieceBallStartPosition, setSetPieceBallStartPosition] = useState(() => (
+    getDefaultSetPieceBallPosition('offensive_set_piece', 'corner')
+  ));
   const [setPieceSaveStatus, setSetPieceSaveStatus] = useState('');
   const [defensiveTool, setDefensiveTool] = useState('move');
   const [draggingDefensivePlayer, setDraggingDefensivePlayer] = useState(null);
@@ -6005,6 +6013,10 @@ function App() {
     setSetPieceWorkspace(emptySetPieceWorkspace);
     setSetPieceType(emptySetPieceWorkspace.activeSetPieceType);
     setSetPieceAction(emptySetPieceWorkspace.activeActionByType[emptySetPieceWorkspace.activeSetPieceType]);
+    setSetPieceBallStartPosition(getDefaultSetPieceBallPosition(
+      emptySetPieceWorkspace.activeSetPieceType,
+      emptySetPieceWorkspace.activeActionByType[emptySetPieceWorkspace.activeSetPieceType]
+    ));
     setSetPieceSaveStatus('');
   }, [selectedMatch?.id]);
   const selectedMatchRivalTeam = useMemo(
@@ -7623,6 +7635,7 @@ function App() {
     || setPiecePlaysForContext[0]?.id
     || '';
   const selectedSetPiecePlay = setPieceWorkspace.plays.find((play) => play.id === selectedSetPiecePlayId) || null;
+  const setPieceZonePoints = getSetPieceZonePoints(setPieceType, setPieceAction);
   const selectedTacticalPlay = tacticalGamePhase === 'defensive'
     ? selectedDefensivePhasePlay
     : tacticalGamePhase === 'offensive'
@@ -8449,6 +8462,7 @@ function App() {
       : 'corner';
     setSetPieceType(nextSetPieceType);
     setSetPieceAction(nextAction);
+    setSetPieceBallStartPosition(getDefaultSetPieceBallPosition(nextSetPieceType, nextAction));
     markSetPieceUnsaved();
     setSetPieceWorkspace((current) => ({
       ...current,
@@ -8462,6 +8476,7 @@ function App() {
   const selectSetPieceAction = (nextAction) => {
     if (!setPieceActionOptions.some((option) => option.value === nextAction)) return;
     setSetPieceAction(nextAction);
+    setSetPieceBallStartPosition(getDefaultSetPieceBallPosition(setPieceType, nextAction));
     markSetPieceUnsaved();
     setSetPieceWorkspace((current) => ({
       ...current,
@@ -8470,6 +8485,9 @@ function App() {
         [setPieceType]: nextAction,
       },
     }));
+  };
+  const selectSetPieceBallPosition = (position) => {
+    setSetPieceBallStartPosition(normalizeBallStartPosition(position));
   };
   const selectSetPiecePlay = (playId) => {
     if (!setPieceWorkspace.plays.some((play) => (
@@ -10035,6 +10053,57 @@ function App() {
                         {setPieceActionOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                       </select>
                     </label>
+                    <div className="grid gap-1.5">
+                      <span className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Zona del balón</span>
+                      <svg
+                        viewBox="0 0 100 100"
+                        role="group"
+                        aria-label="Selector visual de la posición inicial del balón"
+                        className="h-40 w-full border border-white/10 bg-[#102616]"
+                      >
+                        <rect x="4" y="4" width="92" height="92" rx="2" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="1.2" />
+                        <line x1="4" y1="50" x2="96" y2="50" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8" />
+                        <circle cx="50" cy="50" r="10" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8" />
+                        <rect x="31" y="4" width="38" height="17" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8" />
+                        <rect x="31" y="79" width="38" height="17" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8" />
+                        {setPieceZonePoints.map((point) => {
+                          const selected = (
+                            Math.abs(point.position.x - setPieceBallStartPosition.x) < 0.1
+                            && Math.abs(point.position.y - setPieceBallStartPosition.y) < 0.1
+                          );
+                          return (
+                            <g
+                              key={point.id}
+                              role="button"
+                              tabIndex="0"
+                              aria-label={point.label}
+                              aria-pressed={selected}
+                              className="cursor-pointer outline-none"
+                              onClick={() => selectSetPieceBallPosition(point.position)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  selectSetPieceBallPosition(point.position);
+                                }
+                              }}
+                            >
+                              <circle
+                                cx={point.position.x}
+                                cy={point.position.y}
+                                r={selected ? 4.2 : 3.2}
+                                fill={selected ? '#4f8cff' : '#f8fafc'}
+                                stroke={selected ? '#bfdbfe' : '#0f172a'}
+                                strokeWidth="1.2"
+                              />
+                              <circle cx={point.position.x} cy={point.position.y} r="7" fill="transparent" />
+                            </g>
+                          );
+                        })}
+                      </svg>
+                      <span className="text-[9px] font-bold text-slate-400">
+                        Posición: {Math.round(setPieceBallStartPosition.x)}, {Math.round(setPieceBallStartPosition.y)}
+                      </span>
+                    </div>
                   </>
                 ) : null}
                 <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
