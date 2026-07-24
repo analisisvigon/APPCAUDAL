@@ -70,6 +70,17 @@ const highBlockPreset = getHighBlockPositions({
   rivalFormationSlots: buildFormationSlots('4-4-2'),
   caudalFormationSlots: buildFormationSlots('4-3-3'),
 });
+const normalizePresetGeometry = (positions) => Object.entries(positions)
+  .map(([key, position]) => ({
+    team: key.split(':')[0],
+    x: position.x,
+    y: position.y,
+  }))
+  .sort((left, right) => (
+    left.team.localeCompare(right.team)
+    || left.y - right.y
+    || left.x - right.x
+  ));
 
 const contexts = [
   ['offensive_transition', 'defensive_half'],
@@ -83,15 +94,10 @@ const presets = Object.fromEntries(contexts.map(([transitionType, fieldZone]) =>
   assert.equal(Object.keys(positions).length, 22, `${key} genera los 22 jugadores`);
   assert.equal(hasInitialPositionOverlap(positions), false, `${key} evita solapamientos`);
   if (fieldZone === 'attacking_half') {
-    assert.equal(positions['rival:0'].y, 8, `${key} conserva al portero rival en su portería`);
-    assert.equal(positions['caudal:0'].y, 92, `${key} conserva al portero del Caudal en su portería`);
-    assert.ok(
-      Array.from({ length: 10 }, (_, index) => positions[`rival:${index + 1}`].y).every((y) => y > 50),
-      `${key} sitúa a todos los jugadores de campo rivales en campo del Caudal`
-    );
-    assert.ok(
-      Array.from({ length: 10 }, (_, index) => positions[`caudal:${index + 1}`].y).every((y) => y >= 60),
-      `${key} mantiene al Caudal cerca de su propia portería`
+    assert.deepEqual(
+      normalizePresetGeometry(positions),
+      normalizePresetGeometry(highBlockPreset),
+      `${key} conserva exactamente la geometría normalizada del bloque alto`
     );
   } else {
     assert.equal(
@@ -139,37 +145,40 @@ assert.deepEqual(
   'los comportamientos defensivos comparten preset dentro del mismo tipo y zona'
 );
 
-const mirroredRival442Slots = buildFormationSlots('4-4-2').map((slot) => ({
-  ...slot,
-  x: 100 - slot.x,
-}));
+const rival442Slots = buildFormationSlots('4-4-2');
+const caudal442Slots = buildFormationSlots('4-4-2');
+const highBlock442 = getHighBlockPositions({
+  rivalSystem: '4-4-2',
+  caudalSystem: '4-4-2',
+  rivalFormationSlots: rival442Slots,
+  caudalFormationSlots: caudal442Slots,
+});
+const rivalSlotByRole = (role) => rival442Slots.find((slot) => slot.role === role).slot;
 ['offensive_transition', 'defensive_transition'].forEach((nextTransitionType) => {
   const attackingHalf442 = getTransitionInitialPositions({
     transitionType: nextTransitionType,
     fieldZone: 'attacking_half',
     rivalSystem: '4-4-2',
     caudalSystem: '4-4-2',
-    rivalFormationSlots: mirroredRival442Slots,
-    caudalFormationSlots: buildFormationSlots('4-4-2'),
+    rivalFormationSlots: rival442Slots,
+    caudalFormationSlots: caudal442Slots,
   });
-  assert.ok(attackingHalf442['rival:1'].x < 50, `${nextTransitionType}: LI rival permanece a la izquierda`);
-  assert.ok(attackingHalf442['rival:4'].x > 50, `${nextTransitionType}: LD rival permanece a la derecha`);
-  assert.ok(attackingHalf442['rival:2'].x < attackingHalf442['rival:3'].x, `${nextTransitionType}: central izquierdo conserva su perfil`);
-  assert.ok(attackingHalf442['rival:5'].x < 50, `${nextTransitionType}: EI rival permanece a la izquierda`);
-  assert.ok(attackingHalf442['rival:8'].x > 50, `${nextTransitionType}: ED rival permanece a la derecha`);
-  assert.ok(
-    Array.from({ length: 10 }, (_, index) => attackingHalf442[`rival:${index + 1}`].y).every((y) => y > 50),
-    `${nextTransitionType}: el 4-4-2 rival ocupa el campo del Caudal`
+  const positionForRole = (role) => attackingHalf442[`rival:${rivalSlotByRole(role)}`];
+  assert.deepEqual(
+    normalizePresetGeometry(attackingHalf442),
+    normalizePresetGeometry(highBlock442),
+    `${nextTransitionType}: Campo rival coincide con la geometría completa del bloque alto`
   );
+  assert.equal(positionForRole('Lateral derecho').x, 17, `${nextTransitionType}: Fran Álvarez (LD) ocupa el lateral visual izquierdo`);
+  assert.equal(positionForRole('Lateral izquierdo').x, 83, `${nextTransitionType}: Javi Álvarez (LI) ocupa el lateral visual derecho`);
+  assert.equal(positionForRole('Central derecho').x, 39, `${nextTransitionType}: central derecho ocupa el perfil visual izquierdo`);
+  assert.equal(positionForRole('Central izquierdo').x, 61, `${nextTransitionType}: central izquierdo ocupa el perfil visual derecho`);
+  assert.equal(positionForRole('Extremo derecho').x, 17, `${nextTransitionType}: ED ocupa la banda visual izquierda`);
+  assert.equal(positionForRole('Extremo izquierdo').x, 83, `${nextTransitionType}: EI ocupa la banda visual derecha`);
+  assert.ok(positionForRole('Lateral derecho').x < positionForRole('Lateral izquierdo').x);
+  assert.ok(positionForRole('Extremo derecho').x < positionForRole('Extremo izquierdo').x);
+  assert.ok(positionForRole('Central derecho').x < positionForRole('Central izquierdo').x);
 });
-
-assert.ok(
-  Array.from({ length: 10 }, (_, index) => (
-    presets['offensive_transition:attacking_half'][`rival:${index + 1}`].y
-      > highBlockPreset[`rival:${index + 1}`].y
-  )).every(Boolean),
-  'Campo ofensivo parte del bloque alto y adelanta todo el bloque rival'
-);
 
 const transitionWorkspace = {
   version: 1,
@@ -262,6 +271,10 @@ assert.ok(appSource.includes('transitionPhaseV1: normalizedWorkspace'), 'Transic
 assert.ok(appSource.includes("console.error('[TRANSITION_PHASE_SAVE]'"), 'el error de persistencia queda identificado');
 assert.ok(appSource.includes(".from('partidos')"), 'la persistencia usa Supabase');
 assert.ok(appSource.includes('sourceTemplateId: template.id'), 'las copias desde plantilla conservan la referencia de origen');
+assert.ok(
+  appSource.includes('getDefensivePlayerPosition(`rival:${rivalSlot.slot}`, baseSlot)'),
+  'la interfaz aplica las coordenadas finales al mismo slot que conserva nombre y fotografía del rival'
+);
 assert.equal(
   (appSource.match(/buildTransitionInitialPlayerPositions\(/g) || []).length,
   2,
