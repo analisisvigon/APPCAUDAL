@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { hasInitialPositionOverlap } from './defensiveBlockPositions.js';
+import {
+  getHighBlockPositions,
+  hasInitialPositionOverlap,
+} from './defensiveBlockPositions.js';
 import {
   TRANSITION_PRESET_HEIGHTS,
   getTransitionInitialPositions,
@@ -27,6 +30,12 @@ const buildPreset = (transitionType, fieldZone, behaviour) => getTransitionIniti
   rivalFormationSlots: buildFormationSlots('4-4-2'),
   caudalFormationSlots: buildFormationSlots('4-3-3'),
 });
+const highBlockPreset = getHighBlockPositions({
+  rivalSystem: '4-4-2',
+  caudalSystem: '4-3-3',
+  rivalFormationSlots: buildFormationSlots('4-4-2'),
+  caudalFormationSlots: buildFormationSlots('4-3-3'),
+});
 
 const contexts = [
   ['offensive_transition', 'defensive_half'],
@@ -39,16 +48,20 @@ const presets = Object.fromEntries(contexts.map(([transitionType, fieldZone]) =>
   const positions = buildPreset(transitionType, fieldZone);
   assert.equal(Object.keys(positions).length, 22, `${key} genera los 22 jugadores`);
   assert.equal(hasInitialPositionOverlap(positions), false, `${key} evita solapamientos`);
-  assert.equal(
-    positions['rival:0'].y,
-    TRANSITION_PRESET_HEIGHTS[transitionType][fieldZone].rival.goalkeeper,
-    `${key} coloca el portero rival a la altura prevista`
-  );
-  assert.equal(
-    positions['caudal:0'].y,
-    TRANSITION_PRESET_HEIGHTS[transitionType][fieldZone].caudal.goalkeeper,
-    `${key} coloca el portero del Caudal a la altura prevista`
-  );
+  if (fieldZone === 'attacking_half') {
+    assert.deepEqual(positions, highBlockPreset, `${key} reutiliza exactamente la distribución de bloque alto`);
+  } else {
+    assert.equal(
+      positions['rival:0'].y,
+      TRANSITION_PRESET_HEIGHTS[transitionType].defensive_half.rival.goalkeeper,
+      `${key} mantiene la altura previa del portero rival`
+    );
+    assert.equal(
+      positions['caudal:0'].y,
+      TRANSITION_PRESET_HEIGHTS[transitionType].defensive_half.caudal.goalkeeper,
+      `${key} mantiene la altura previa del portero del Caudal`
+    );
+  }
   return [key, positions];
 }));
 
@@ -61,6 +74,11 @@ assert.notDeepEqual(
   presets['defensive_transition:defensive_half'],
   presets['defensive_transition:attacking_half'],
   'la zona de pérdida cambia el preset defensivo'
+);
+assert.deepEqual(
+  presets['offensive_transition:attacking_half'],
+  presets['defensive_transition:attacking_half'],
+  'ambos tipos de transición reutilizan el mismo bloque alto en campo ofensivo'
 );
 assert.notDeepEqual(
   presets['offensive_transition:defensive_half'],

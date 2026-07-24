@@ -1,4 +1,7 @@
-import { preventInitialPositionOverlaps } from './defensiveBlockPositions.js';
+import {
+  getHighBlockPositions,
+  preventInitialPositionOverlaps,
+} from './defensiveBlockPositions.js';
 
 const DEFAULT_SYSTEM_LINES = [4, 4, 2];
 
@@ -83,6 +86,14 @@ export const getTransitionInitialPositions = ({
   rivalFormationSlots = [],
   caudalFormationSlots = [],
 }) => {
+  if (fieldZone === 'attacking_half') {
+    return getHighBlockPositions({
+      rivalSystem,
+      caudalSystem,
+      rivalFormationSlots,
+      caudalFormationSlots,
+    });
+  }
   const safeType = Object.hasOwn(TRANSITION_PRESET_HEIGHTS, transitionType)
     ? transitionType
     : 'offensive_transition';
