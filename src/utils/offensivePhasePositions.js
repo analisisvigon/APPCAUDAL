@@ -110,13 +110,20 @@ export const getOffensiveDirectBuildUpPositions = ({
   });
   rivalFormationSlots.forEach((slot) => {
     const role = String(slot?.role || '').toLowerCase();
-    if (!/lateral|carrilero/.test(role)) return;
     const key = `rival:${slot.slot}`;
     if (!rivalPositions[key]) return;
-    rivalPositions[key] = {
-      ...rivalPositions[key],
-      y: Math.min(95, rivalPositions[key].y + 6),
-    };
+    if (/central/.test(role)) {
+      rivalPositions[key] = {
+        ...rivalPositions[key],
+        x: Math.round((50 + (rivalPositions[key].x - 50) * 0.6) * 100) / 100,
+      };
+    }
+    if (/lateral|carrilero/.test(role)) {
+      rivalPositions[key] = {
+        ...rivalPositions[key],
+        y: Math.min(95, rivalPositions[key].y + 6),
+      };
+    }
   });
   const caudalPositions = buildTeamPositions({
     team: 'caudal',

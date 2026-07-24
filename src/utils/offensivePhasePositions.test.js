@@ -43,12 +43,15 @@ assert.equal(buildUp['caudal:0'].y, 91, 'el portero del Caudal protege su área'
 assert.equal(averageY(buildUp, 'caudal', 1, 4), 73, 'la defensa del Caudal queda retrasada');
 assert.equal(averageY(buildUp, 'caudal', 9, 2), 28, 'los delanteros del Caudal presionan la primera línea rival');
 
+const directRivalSlots = buildFormationSlots('4-4-2');
+['Portero', 'Lateral izquierdo', 'Central izquierdo', 'Central derecho', 'Lateral derecho']
+  .forEach((role, index) => { directRivalSlots[index].role = role; });
 const directBuildUp = getOffensiveInitialPositions({
   offensiveSituation: 'build_up',
   playStyle: 'direct',
   rivalSystem: '4-4-2',
   caudalSystem: '4-4-2',
-  rivalFormationSlots: buildFormationSlots('4-4-2'),
+  rivalFormationSlots: directRivalSlots,
   caudalFormationSlots: buildFormationSlots('4-4-2'),
 });
 assert.equal(Object.keys(directBuildUp).length, 22, 'Inicio directo genera los 22 jugadores');
@@ -57,6 +60,12 @@ assert.equal(directBuildUp['rival:0'].y, OFFENSIVE_DIRECT_BUILD_UP_LINE_HEIGHTS.
 assert.ok(averageY(directBuildUp, 'rival', 1, 4) > averageY(buildUp, 'rival', 1, 4), 'el bloque rival directo parte más alto');
 assert.ok(averageY(directBuildUp, 'rival', 9, 2) > averageY(buildUp, 'rival', 9, 2), 'los puntas rivales fijan más arriba');
 assert.ok(averageY(directBuildUp, 'caudal', 9, 2) > averageY(buildUp, 'caudal', 9, 2), 'el Caudal se prepara cerca de la caída y segunda jugada');
+assert.ok(
+  directBuildUp['rival:3'].x - directBuildUp['rival:2'].x
+    < buildUp['rival:3'].x - buildUp['rival:2'].x,
+  'los centrales rivales quedan más juntos para preparar el golpeo'
+);
+assert.ok(directBuildUp['rival:1'].y > directBuildUp['rival:2'].y, 'los laterales rivales parten algo más altos que los centrales');
 assert.notDeepEqual(directBuildUp, buildUp, 'Inicio directo y combinativo usan presets diferentes');
 
 const creation = getOffensiveCreationPositions({
