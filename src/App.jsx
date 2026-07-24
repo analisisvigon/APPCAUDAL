@@ -4571,6 +4571,9 @@ function App() {
   const offensiveEditVersionRef = useRef(0);
   const offensiveSaveRequestRef = useRef(0);
   const offensiveAutosaveTimerRef = useRef(null);
+  const transitionEditVersionRef = useRef(0);
+  const transitionSaveRequestRef = useRef(0);
+  const transitionAutosaveTimerRef = useRef(null);
   const [tacticalTemplates, setTacticalTemplates] = useState([]);
   const [tacticalTemplateDialog, setTacticalTemplateDialog] = useState('');
   const [tacticalTemplateDraft, setTacticalTemplateDraft] = useState(emptyTacticalTemplateDraft);
@@ -5877,6 +5880,29 @@ function App() {
     );
     setOffensiveSaveStatus(storedOffensiveWorkspace.plays.length ? 'Guardado' : '');
     offensiveEditVersionRef.current = 0;
+
+    transitionSaveRequestRef.current += 1;
+    if (transitionAutosaveTimerRef.current) {
+      window.clearTimeout(transitionAutosaveTimerRef.current);
+      transitionAutosaveTimerRef.current = null;
+    }
+    const storedTransitionWorkspace = normalizeTransitionWorkspace(selectedPreAiAnalysis?.transitionPhaseV1);
+    const storedTransitionType = storedTransitionWorkspace.activeTransitionType;
+    const storedTransitionFieldZone = normalizeTransitionFieldZone(
+      storedTransitionWorkspace.activeFieldZoneByType?.[storedTransitionType]
+    );
+    const storedTransitionBehaviour = normalizeTransitionBehaviour(
+      storedTransitionType,
+      storedTransitionWorkspace.activeBehaviourByContext?.[
+        getTransitionBehaviourContextKey(storedTransitionType, storedTransitionFieldZone)
+      ]
+    );
+    setTransitionWorkspace(storedTransitionWorkspace);
+    setTransitionType(storedTransitionType);
+    setTransitionFieldZone(storedTransitionFieldZone);
+    setTransitionBehaviour(storedTransitionBehaviour);
+    setTransitionSaveStatus(storedTransitionWorkspace.plays.length ? 'Guardado' : '');
+    transitionEditVersionRef.current = 0;
   }, [selectedMatch?.id]);
   const selectedMatchRivalTeam = useMemo(
     () => teams.find((team) => team.id === selectedMatch?.equipoRivalId) || findTeamByDisplayName(teams, selectedMatch?.opponent || ''),
@@ -7916,6 +7942,7 @@ function App() {
     }));
   };
   const markTransitionUnsaved = () => {
+    transitionEditVersionRef.current += 1;
     setTransitionSaveStatus('Cambios sin guardar');
   };
   const updateTransitionPlay = (playId, patch) => {
@@ -8470,6 +8497,59 @@ function App() {
     setOffensiveSaveStatus(offensiveEditVersionRef.current === savedEditVersion ? 'Guardado' : 'Cambios sin guardar');
     return true;
   };
+  const saveTransitionWorkspace = async () => {
+    if (!selectedMatch) return false;
+    if (transitionAutosaveTimerRef.current) {
+      window.clearTimeout(transitionAutosaveTimerRef.current);
+      transitionAutosaveTimerRef.current = null;
+    }
+    const savedEditVersion = transitionEditVersionRef.current;
+    const saveRequestId = transitionSaveRequestRef.current + 1;
+    transitionSaveRequestRef.current = saveRequestId;
+    const normalizedWorkspace = normalizeTransitionWorkspace({
+      ...transitionWorkspace,
+      activeTransitionType: transitionType,
+      activeFieldZoneByType: {
+        ...transitionWorkspace.activeFieldZoneByType,
+        [transitionType]: transitionFieldZone,
+      },
+      activeBehaviourByContext: {
+        ...transitionWorkspace.activeBehaviourByContext,
+        [getTransitionBehaviourContextKey(transitionType, transitionFieldZone)]: transitionBehaviour,
+      },
+    });
+    const nextPreAiAnalysis = {
+      ...(selectedPreAiAnalysis || {}),
+      transitionPhaseV1: normalizedWorkspace,
+    };
+    setTransitionSaveStatus('Guardando');
+    const { error: transitionSaveError } = await supabase
+      .from('partidos')
+      .update({ pre_ai_analysis: nextPreAiAnalysis })
+      .eq('id', selectedMatch.id);
+    if (transitionSaveError) {
+      console.error('[TRANSITION_PHASE_SAVE]', {
+        matchId: selectedMatch.id,
+        workspace: normalizedWorkspace,
+        error: transitionSaveError,
+      });
+      if (transitionSaveRequestRef.current === saveRequestId) {
+        setTransitionSaveStatus(transitionEditVersionRef.current === savedEditVersion ? 'Error al guardar' : 'Cambios sin guardar');
+      }
+      return false;
+    }
+    if (transitionSaveRequestRef.current !== saveRequestId) {
+      setTransitionSaveStatus('Cambios sin guardar');
+      return false;
+    }
+    setMatches((current) => current.map((match) => (
+      match.id === selectedMatch.id
+        ? { ...match, preAiAnalysis: nextPreAiAnalysis }
+        : match
+    )));
+    setTransitionSaveStatus(transitionEditVersionRef.current === savedEditVersion ? 'Guardado' : 'Cambios sin guardar');
+    return true;
+  };
   useEffect(() => {
     if (defensiveSaveStatus !== 'Cambios sin guardar' || !selectedMatch?.id) return undefined;
     if (defensiveAutosaveTimerRef.current) window.clearTimeout(defensiveAutosaveTimerRef.current);
@@ -8498,6 +8578,27 @@ function App() {
       }
     };
   }, [offensiveWorkspace, offensiveSituation, offensiveSaveStatus, selectedMatch?.id]);
+  useEffect(() => {
+    if (transitionSaveStatus !== 'Cambios sin guardar' || !selectedMatch?.id) return undefined;
+    if (transitionAutosaveTimerRef.current) window.clearTimeout(transitionAutosaveTimerRef.current);
+    transitionAutosaveTimerRef.current = window.setTimeout(() => {
+      transitionAutosaveTimerRef.current = null;
+      saveTransitionWorkspace();
+    }, 900);
+    return () => {
+      if (transitionAutosaveTimerRef.current) {
+        window.clearTimeout(transitionAutosaveTimerRef.current);
+        transitionAutosaveTimerRef.current = null;
+      }
+    };
+  }, [
+    transitionWorkspace,
+    transitionType,
+    transitionFieldZone,
+    transitionBehaviour,
+    transitionSaveStatus,
+    selectedMatch?.id,
+  ]);
   const resetDefensiveFormation = () => {
     if (!selectedDefensivePlay) return;
     if (!window.confirm('¿Restablecer las posiciones iniciales de ambos equipos para este bloque? La descripción, los pases y los movimientos se conservarán.')) return;
@@ -9590,7 +9691,7 @@ function App() {
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <button type="button" onClick={openNewTacticalPlayDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Nueva jugada</button>
-                <button type="button" disabled={tacticalGamePhase === 'transition' || tacticalSaveStatus === 'Guardando'} onClick={tacticalGamePhase === 'defensive' ? saveDefensiveWorkspace : saveOffensiveWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
+                <button type="button" disabled={tacticalSaveStatus === 'Guardando'} onClick={tacticalGamePhase === 'defensive' ? saveDefensiveWorkspace : tacticalGamePhase === 'offensive' ? saveOffensiveWorkspace : saveTransitionWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
                 <button type="button" disabled={!selectedTacticalPlay} onClick={openSaveTacticalTemplateDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">Guardar como plantilla</button>
                 <button type="button" onClick={() => loadTacticalTemplateLibrary('library')} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300">Plantillas</button>
                 <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? duplicateDefensivePlay : tacticalGamePhase === 'offensive' ? duplicateOffensivePlay : duplicateTransitionPlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
