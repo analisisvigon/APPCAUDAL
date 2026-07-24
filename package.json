@@ -11,7 +11,6 @@
     "test:rival-import": "node src/utils/rivalPlayerImport.test.js",
     "test:rival-sync": "node src/utils/rivalSync.test.js",
     "test:rival-tactics": "node src/utils/rivalTactics.test.js",
-    "test:tactical-board-visual": "node scripts/tacticalBoardVisualContract.mjs",
     "test:goal-events": "node src/utils/goalEvents.test.js",
     "test:match-status": "node src/utils/matchStatus.test.js",
     "test:player-positions": "node src/constants/playerPositions.test.js",
