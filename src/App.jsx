@@ -8403,17 +8403,50 @@ function App() {
               </div>
             </section>
 
-            <label className="order-4 grid gap-2 border border-white/10 bg-[#091428]/82 p-4 text-[10px] font-black uppercase tracking-[0.18em] text-white xl:col-start-1 xl:row-start-1">
-              <span>Análisis táctico</span>
-              <textarea
-                rows={5}
-                value={selectedDefensivePlay?.description || ''}
-                onChange={(event) => selectedDefensivePlay && updateDefensivePlay(selectedDefensivePlay.id, { description: event.target.value })}
-                placeholder={selectedDefensivePlay ? defensivePlayDescriptionPlaceholder : 'Crea una jugada defensiva para añadir su descripción.'}
-                disabled={!selectedDefensivePlay}
-                className="min-h-[120px] w-full resize-y border border-white/10 bg-black/20 px-3 py-3 text-sm font-semibold normal-case leading-6 tracking-normal text-white outline-none placeholder:text-slate-500"
-              />
-            </label>
+            <section className="order-4 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1 xl:row-start-1">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Análisis táctico</p>
+              <div className="mt-3 grid gap-2">
+                <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                  <span>Situación defensiva</span>
+                  <select
+                    value={defensiveSituation}
+                    onChange={(event) => selectDefensiveSituation(event.target.value)}
+                    className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
+                  >
+                    {defensiveSituationOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                  <span>Jugada</span>
+                  <select
+                    value={selectedDefensivePlayId}
+                    onChange={(event) => selectDefensivePlay(event.target.value)}
+                    className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
+                  >
+                    <option value="">Sin jugadas</option>
+                    {defensivePlaysForSituation.map((play) => <option key={play.id} value={play.id}>{play.name}</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <button type="button" onClick={createDefensivePlay} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Nueva jugada</button>
+                <button type="button" disabled={defensiveSaveStatus === 'Guardando'} onClick={saveDefensiveWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
+                <button type="button" disabled={!selectedDefensivePlay} onClick={duplicateDefensivePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
+                <button type="button" disabled={!selectedDefensivePlay} onClick={deleteDefensivePlay} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Eliminar</button>
+                {defensiveSaveStatus ? <span className={`self-center text-[9px] font-black uppercase tracking-[0.12em] ${defensiveSaveStatus === 'Error al guardar' ? 'text-red-200' : defensiveSaveStatus === 'Cambios sin guardar' ? 'text-amber-200' : 'text-slate-400'}`}>{defensiveSaveStatus}</span> : null}
+              </div>
+              <label className="mt-4 grid gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-white">
+                <span>Descripción de la jugada</span>
+                <textarea
+                  rows={5}
+                  value={selectedDefensivePlay?.description || ''}
+                  onChange={(event) => selectedDefensivePlay && updateDefensivePlay(selectedDefensivePlay.id, { description: event.target.value })}
+                  placeholder={selectedDefensivePlay ? defensivePlayDescriptionPlaceholder : 'Crea una jugada defensiva para añadir su descripción.'}
+                  disabled={!selectedDefensivePlay}
+                  className="min-h-[120px] w-full resize-y border border-white/10 bg-black/20 px-3 py-3 text-sm font-semibold normal-case leading-6 tracking-normal text-white outline-none placeholder:text-slate-500"
+                />
+              </label>
+            </section>
 
             <section className="order-4 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1">
               <div className="flex items-end justify-between gap-3">
@@ -8763,39 +8796,6 @@ function App() {
 
           <div className="grid gap-4 xl:contents">
             <section className="order-4 border border-white/10 bg-[#091428]/82 p-3 xl:col-start-2 xl:row-span-3 xl:row-start-1">
-              <div className="mb-3 border-b border-white/10 pb-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Fase defensiva</p>
-                <div className="mt-2 grid gap-2 md:grid-cols-2">
-                  <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
-                    <span>Situación defensiva</span>
-                    <select
-                      value={defensiveSituation}
-                      onChange={(event) => selectDefensiveSituation(event.target.value)}
-                      className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
-                    >
-                      {defensiveSituationOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                    </select>
-                  </label>
-                  <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
-                    <span>Jugada</span>
-                    <select
-                      value={selectedDefensivePlayId}
-                      onChange={(event) => selectDefensivePlay(event.target.value)}
-                      className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
-                    >
-                      <option value="">Sin jugadas</option>
-                      {defensivePlaysForSituation.map((play) => <option key={play.id} value={play.id}>{play.name}</option>)}
-                    </select>
-                  </label>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  <button type="button" onClick={createDefensivePlay} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Nueva jugada</button>
-                  <button type="button" disabled={defensiveSaveStatus === 'Guardando'} onClick={saveDefensiveWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
-                  <button type="button" disabled={!selectedDefensivePlay} onClick={duplicateDefensivePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
-                  <button type="button" disabled={!selectedDefensivePlay} onClick={deleteDefensivePlay} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Eliminar</button>
-                  {defensiveSaveStatus ? <span className={`self-center text-[9px] font-black uppercase tracking-[0.12em] ${defensiveSaveStatus === 'Error al guardar' ? 'text-red-200' : defensiveSaveStatus === 'Cambios sin guardar' ? 'text-amber-200' : 'text-slate-400'}`}>{defensiveSaveStatus}</span> : null}
-                </div>
-              </div>
               <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Campo táctico</p>
@@ -8843,7 +8843,8 @@ function App() {
                 <button type="button" disabled={!selectedDefensivePlay} onClick={resetDefensiveFormation} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Restablecer formación</button>
               </div>
               {renderFacingSystemsOverview(true)}
-              <div className="mt-3 border-t border-white/10 pt-3">
+            </section>
+            <div className="order-4 border border-white/10 bg-[#091428]/82 p-3 xl:col-span-2 xl:col-start-1 xl:row-start-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Conexiones tácticas</p>
                   <div className="flex flex-wrap gap-1.5">
@@ -8891,7 +8892,6 @@ function App() {
                   )}
                 </div>
               </div>
-            </section>
           </div>
         </div>
       </div>
