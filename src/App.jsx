@@ -732,6 +732,7 @@ const defensiveSituationOptions = [
 const tacticalGamePhaseOptions = [
   { value: 'defensive', label: 'Fase defensiva' },
   { value: 'offensive', label: 'Fase ofensiva' },
+  { value: 'transition', label: 'Transiciones' },
 ];
 const offensiveSituationOptions = [
   { value: 'build_up', label: 'Inicio' },
@@ -744,6 +745,24 @@ const offensivePlayStyleOptions = [
   { value: 'combinative', label: 'Juego combinativo' },
   { value: 'direct', label: 'Juego directo' },
 ];
+const transitionTypeOptions = [
+  { value: 'offensive_transition', label: 'Transición ofensiva' },
+  { value: 'defensive_transition', label: 'Transición defensiva' },
+];
+const transitionFieldZoneOptions = [
+  { value: 'defensive_half', label: 'Campo defensivo' },
+  { value: 'attacking_half', label: 'Campo ofensivo' },
+];
+const transitionBehaviourOptions = {
+  offensive_transition: [
+    { value: 'fast_attack', label: 'Ataque rápido' },
+    { value: 'keep_possession', label: 'Conservar y organizar' },
+  ],
+  defensive_transition: [
+    { value: 'counterpress', label: 'Presión tras pérdida' },
+    { value: 'retreat', label: 'Repliegue' },
+  ],
+};
 const offensivePlayDescriptionPlaceholders = {
   combinative: 'Describe cómo progresa el rival mediante apoyos, asociaciones, tercer hombre, ocupación de espacios, cambios de orientación y jugadores entre líneas...',
   direct: 'Describe el objetivo del envío directo, jugador referencia, zonas de caída, prolongaciones, segunda jugada, ocupación alrededor del duelo y continuidad posterior...',
@@ -764,6 +783,7 @@ const emptyTacticalTemplateDraft = {
 };
 const createDefensivePlayId = () => globalThis.crypto?.randomUUID?.() || `defensive-play-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 const createOffensivePlayId = () => globalThis.crypto?.randomUUID?.() || `offensive-play-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+const createTransitionPlayId = () => globalThis.crypto?.randomUUID?.() || `transition-play-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 const createEmptyDefensiveWorkspace = () => ({
   version: 1,
   activeSituation: 'mid_block',
@@ -901,6 +921,67 @@ const normalizeOffensiveWorkspace = (value) => {
     activePlayStyleBySituation,
     activePlayIdByContext,
     activePlayIdBySituation,
+    plays,
+  };
+};
+const getDefaultTransitionBehaviour = (transitionType) => (
+  transitionType === 'defensive_transition' ? 'counterpress' : 'fast_attack'
+);
+const getTransitionBehaviourContextKey = (transitionType, fieldZone) => `${transitionType}:${fieldZone}`;
+const getTransitionPlayContextKey = (transitionType, fieldZone, behaviour) => `${transitionType}:${fieldZone}:${behaviour}`;
+const createEmptyTransitionWorkspace = () => ({
+  version: 1,
+  activeTransitionType: 'offensive_transition',
+  activeFieldZoneByType: {
+    offensive_transition: 'defensive_half',
+    defensive_transition: 'defensive_half',
+  },
+  activeBehaviourByContext: {},
+  activePlayIdByContext: {},
+  plays: [],
+});
+const normalizeTransitionWorkspace = (value) => {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const validTypes = new Set(transitionTypeOptions.map((option) => option.value));
+  const validZones = new Set(transitionFieldZoneOptions.map((option) => option.value));
+  const normalizeBehaviour = (transitionType, behaviour) => (
+    transitionBehaviourOptions[transitionType]?.some((option) => option.value === behaviour)
+      ? behaviour
+      : getDefaultTransitionBehaviour(transitionType)
+  );
+  const plays = (Array.isArray(source.plays) ? source.plays : [])
+    .filter((play) => play && typeof play === 'object' && play.id && validTypes.has(play.transitionType))
+    .map((play) => ({
+      id: String(play.id),
+      phase: 'transition',
+      name: String(play.name || 'Jugada'),
+      transitionType: play.transitionType,
+      fieldZone: validZones.has(play.fieldZone) ? play.fieldZone : 'defensive_half',
+      behaviour: normalizeBehaviour(play.transitionType, play.behaviour),
+      rivalSystem: String(play.rivalSystem || '4-4-2'),
+      caudalSystem: String(play.caudalSystem || '4-4-2'),
+      playerPositions: play.playerPositions && typeof play.playerPositions === 'object' && !Array.isArray(play.playerPositions) ? play.playerPositions : {},
+      arrows: (Array.isArray(play.arrows) ? play.arrows : [])
+        .filter((arrow) => arrow && ['pass', 'movement'].includes(arrow.type) && arrow.id && arrow.start && arrow.end)
+        .map((arrow) => ({
+          id: String(arrow.id),
+          type: arrow.type,
+          start: { x: Number(arrow.start.x), y: Number(arrow.start.y) },
+          end: { x: Number(arrow.end.x), y: Number(arrow.end.y) },
+        }))
+        .filter((arrow) => [arrow.start.x, arrow.start.y, arrow.end.x, arrow.end.y].every(Number.isFinite)),
+      description: String(play.description || ''),
+      category: String(play.category || ''),
+      tags: (Array.isArray(play.tags) ? play.tags : []).filter((tag) => typeof tag === 'string'),
+      sourceTemplateId: String(play.sourceTemplateId || ''),
+      createdAt: String(play.createdAt || new Date().toISOString()),
+      updatedAt: String(play.updatedAt || play.createdAt || new Date().toISOString()),
+    }));
+  return {
+    ...createEmptyTransitionWorkspace(),
+    ...source,
+    version: 1,
+    activeTransitionType: validTypes.has(source.activeTransitionType) ? source.activeTransitionType : 'offensive_transition',
     plays,
   };
 };
@@ -4431,6 +4512,10 @@ function App() {
   const [offensivePlayStyle, setOffensivePlayStyle] = useState('combinative');
   const [defensiveWorkspace, setDefensiveWorkspace] = useState(createEmptyDefensiveWorkspace);
   const [offensiveWorkspace, setOffensiveWorkspace] = useState(createEmptyOffensiveWorkspace);
+  const [transitionWorkspace, setTransitionWorkspace] = useState(createEmptyTransitionWorkspace);
+  const [transitionType, setTransitionType] = useState('offensive_transition');
+  const [transitionFieldZone, setTransitionFieldZone] = useState('defensive_half');
+  const [transitionBehaviour, setTransitionBehaviour] = useState('fast_attack');
   const [defensiveTool, setDefensiveTool] = useState('move');
   const [draggingDefensivePlayer, setDraggingDefensivePlayer] = useState(null);
   const [defensiveDrawingPreview, setDefensiveDrawingPreview] = useState(null);
@@ -7345,11 +7430,30 @@ function App() {
   ));
   const selectedOffensivePlayId = offensiveWorkspace.activePlayIdByContext?.[offensivePlayContextKey] || offensivePlaysForSituation[0]?.id || '';
   const selectedOffensivePlay = offensiveWorkspace.plays.find((play) => play.id === selectedOffensivePlayId) || null;
-  const selectedTacticalPlay = tacticalGamePhase === 'defensive' ? selectedDefensivePhasePlay : selectedOffensivePlay;
+  const transitionPlaysForContext = [];
+  const selectedTransitionPlayId = '';
+  const selectedTransitionPlay = null;
+  const selectedTacticalPlay = tacticalGamePhase === 'defensive'
+    ? selectedDefensivePhasePlay
+    : tacticalGamePhase === 'offensive'
+      ? selectedOffensivePlay
+      : selectedTransitionPlay;
   const selectedDefensivePlay = selectedTacticalPlay;
-  const selectedTacticalPlayId = tacticalGamePhase === 'defensive' ? selectedDefensivePlayId : selectedOffensivePlayId;
-  const tacticalPlaysForSituation = tacticalGamePhase === 'defensive' ? defensivePlaysForSituation : offensivePlaysForSituation;
-  const tacticalSaveStatus = tacticalGamePhase === 'defensive' ? defensiveSaveStatus : offensiveSaveStatus;
+  const selectedTacticalPlayId = tacticalGamePhase === 'defensive'
+    ? selectedDefensivePlayId
+    : tacticalGamePhase === 'offensive'
+      ? selectedOffensivePlayId
+      : selectedTransitionPlayId;
+  const tacticalPlaysForSituation = tacticalGamePhase === 'defensive'
+    ? defensivePlaysForSituation
+    : tacticalGamePhase === 'offensive'
+      ? offensivePlaysForSituation
+      : transitionPlaysForContext;
+  const tacticalSaveStatus = tacticalGamePhase === 'defensive'
+    ? defensiveSaveStatus
+    : tacticalGamePhase === 'offensive'
+      ? offensiveSaveStatus
+      : '';
   const openSaveTacticalTemplateDialog = () => {
     if (!selectedTacticalPlay) return;
     const rivalSystem = getCurrentRivalSystem();
@@ -9141,6 +9245,7 @@ function App() {
                     {tacticalGamePhaseOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
                 </label>
+                {tacticalGamePhase !== 'transition' ? (
                 <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
                   <span>{tacticalGamePhase === 'defensive' ? 'Situación defensiva' : 'Situación ofensiva'}</span>
                   <select
@@ -9156,6 +9261,7 @@ function App() {
                       .map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
                 </label>
+                ) : null}
                 {tacticalGamePhase === 'offensive' ? (
                   <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
                     <span>Tipo de juego</span>
@@ -9185,8 +9291,8 @@ function App() {
                 </label>
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                <button type="button" onClick={openNewTacticalPlayDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Nueva jugada</button>
-                <button type="button" disabled={tacticalSaveStatus === 'Guardando'} onClick={tacticalGamePhase === 'defensive' ? saveDefensiveWorkspace : saveOffensiveWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
+                <button type="button" disabled={tacticalGamePhase === 'transition'} onClick={openNewTacticalPlayDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">Nueva jugada</button>
+                <button type="button" disabled={tacticalGamePhase === 'transition' || tacticalSaveStatus === 'Guardando'} onClick={tacticalGamePhase === 'defensive' ? saveDefensiveWorkspace : saveOffensiveWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
                 <button type="button" disabled={!selectedTacticalPlay} onClick={openSaveTacticalTemplateDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">Guardar como plantilla</button>
                 <button type="button" onClick={() => loadTacticalTemplateLibrary('library')} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300">Plantillas</button>
                 <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? duplicateDefensivePlay : duplicateOffensivePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
