@@ -138,6 +138,9 @@ const payload = buildTacticalTemplatePayload({
 });
 assert.equal(payload.name, 'Salida de tres');
 assert.equal(payload.play_style, 'direct');
+assert.equal(payload.transition_type, null);
+assert.equal(payload.field_zone, null);
+assert.equal(payload.behaviour, null);
 assert.deepEqual(payload.tags, ['pivote']);
 assert.equal(payload.is_public, false);
 assert.ok(!Object.hasOwn(payload, 'owner_id'), 'el insert confía en default auth.uid() y no envía owner_id');
@@ -180,11 +183,59 @@ assert.ok(!Object.hasOwn(insertedPayload, 'owner_id'));
 assert.equal(normalizeTacticalTemplate({ ...insertedPayload, id: 'reload-1' }).name, 'Plantilla persistente');
 assert.equal(normalizeTacticalTemplate({ id: 'legacy-offensive', phase: 'offensive', situation: 'build_up' }).playStyle, 'combinative');
 assert.equal(normalizeTacticalTemplate({ id: 'defensive', phase: 'defensive', situation: 'mid_block', play_style: 'direct' }).playStyle, null);
+const transitionPayload = buildTacticalTemplatePayload({
+  name: 'Ataque rápido tras robo',
+  phase: 'transition',
+  transitionType: 'offensive_transition',
+  fieldZone: 'defensive_half',
+  behaviour: 'fast_attack',
+  playerPositions: semanticExample,
+  arrows: portableArrows,
+});
+assert.equal(transitionPayload.situation, 'offensive_transition');
+assert.equal(transitionPayload.play_style, null);
+assert.equal(transitionPayload.transition_type, 'offensive_transition');
+assert.equal(transitionPayload.field_zone, 'defensive_half');
+assert.equal(transitionPayload.behaviour, 'fast_attack');
+const normalizedTransition = normalizeTacticalTemplate({
+  id: 'transition-template',
+  name: 'Repliegue',
+  phase: 'transition',
+  situation: 'defensive_transition',
+  transition_type: 'defensive_transition',
+  field_zone: 'attacking_half',
+  behaviour: 'retreat',
+});
+assert.equal(normalizedTransition.transitionType, 'defensive_transition');
+assert.equal(normalizedTransition.fieldZone, 'attacking_half');
+assert.equal(normalizedTransition.behaviour, 'retreat');
+const legacyTransition = normalizeTacticalTemplate({
+  id: 'legacy-transition',
+  phase: 'transition',
+  situation: 'defensive_transition',
+});
+assert.equal(legacyTransition.transitionType, 'defensive_transition');
+assert.equal(legacyTransition.fieldZone, 'defensive_half');
+assert.equal(legacyTransition.behaviour, 'counterpress');
 
 assert.throws(() => buildTacticalTemplatePayload({ phase: 'defensive', situation: 'mid_block' }), /nombre/i);
 assert.throws(() => buildTacticalTemplatePayload({ name: 'X', situation: 'mid_block' }), /fase/i);
 assert.throws(() => buildTacticalTemplatePayload({ name: 'X', phase: 'defensive' }), /situación/i);
 assert.throws(() => buildTacticalTemplatePayload({ name: 'X', phase: 'offensive', situation: 'build_up' }), /tipo de juego/i);
+assert.throws(
+  () => buildTacticalTemplatePayload({ name: 'X', phase: 'transition' }),
+  /tipo válido/i
+);
+assert.throws(
+  () => buildTacticalTemplatePayload({
+    name: 'X',
+    phase: 'transition',
+    transitionType: 'offensive_transition',
+    fieldZone: 'defensive_half',
+    behaviour: 'retreat',
+  }),
+  /comportamiento válido/i
+);
 
 const usage = calculateTacticalTemplateUsages([
   {
@@ -202,6 +253,14 @@ const usage = calculateTacticalTemplateUsages([
       offensivePhaseV1: {
         plays: [{ id: 'play-2', name: 'Salida', offensiveSituation: 'build_up', sourceTemplateId: 'template-1' }],
       },
+      transitionPhaseV1: {
+        plays: [{
+          id: 'play-transition-1',
+          name: 'Ataque rápido',
+          transitionType: 'offensive_transition',
+          sourceTemplateId: 'template-1',
+        }],
+      },
     },
   },
   {
@@ -215,12 +274,13 @@ const usage = calculateTacticalTemplateUsages([
     },
   },
 ]);
-assert.equal(usage['template-1'].playCount, 3);
+assert.equal(usage['template-1'].playCount, 4);
 assert.equal(usage['template-1'].matchCount, 2);
 assert.equal(usage['template-1'].rivalCount, 2);
 
 const migration = fs.readFileSync('supabase_tactical_play_templates.sql', 'utf8');
 const playStyleMigration = fs.readFileSync('supabase_tactical_play_templates_play_style.sql', 'utf8');
+const transitionMigration = fs.readFileSync('supabase_tactical_play_templates_transitions.sql', 'utf8');
 assert.match(migration, /owner_id uuid not null\s+default auth\.uid\(\)/);
 assert.match(migration, /references auth\.users\(id\)\s+on delete cascade/);
 assert.match(migration, /enable row level security/);
@@ -235,12 +295,26 @@ assert.doesNotMatch(migration, /\bplay_style\b/i, 'la migración original no se 
 assert.match(playStyleMigration, /add column if not exists play_style text null/);
 assert.match(playStyleMigration, /play_style in \('combinative', 'direct'\)/);
 assert.doesNotMatch(playStyleMigration, /training_library/i);
+assert.match(transitionMigration, /add column if not exists transition_type text null/);
+assert.match(transitionMigration, /add column if not exists field_zone text null/);
+assert.match(transitionMigration, /add column if not exists behaviour text null/);
+assert.match(transitionMigration, /offensive_transition/);
+assert.match(transitionMigration, /defensive_transition/);
+assert.match(transitionMigration, /fast_attack/);
+assert.match(transitionMigration, /counterpress/);
+assert.match(transitionMigration, /owner_id,\s+phase,\s+transition_type,\s+field_zone,\s+behaviour/);
+assert.doesNotMatch(transitionMigration, /create policy/i, 'la migración no cambia las RLS existentes');
+assert.doesNotMatch(transitionMigration, /training_library/i);
 
 const appSource = fs.readFileSync('src/App.jsx', 'utf8');
 assert.match(appSource, /defensivePhaseV1/);
 assert.match(appSource, /offensivePhaseV1/);
+assert.match(appSource, /transitionPhaseV1/);
 assert.match(appSource, /sourceTemplateId/);
 assert.match(appSource, /instantiateTemplateArrows/);
 assert.match(appSource, /tacticalTemplatePlayStyleFilter/);
+assert.match(appSource, /tacticalTemplateTransitionTypeFilter/);
+assert.match(appSource, /tacticalTemplateFieldZoneFilter/);
+assert.match(appSource, /tacticalTemplateBehaviourFilter/);
 
 console.log('Tactical template tests passed');

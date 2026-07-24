@@ -302,6 +302,8 @@ assert.equal(
   2,
   'los presets ofensivos solo se calculan al crear y restablecer'
 );
-assert.ok(appSource.includes("tacticalGamePhase === 'defensive'\n      ? updateDefensivePlay(playId, patch)\n      : updateOffensivePlay(playId, patch)"), 'el motor de edición aísla ambos workspaces');
+assert.ok(appSource.includes("? updateDefensivePlay(playId, patch)"), 'el motor de edición conserva el workspace defensivo');
+assert.ok(appSource.includes("? updateOffensivePlay(playId, patch)"), 'el motor de edición conserva el workspace ofensivo');
+assert.ok(appSource.includes(": updateTransitionPlay(playId, patch)"), 'el motor de edición enruta Transiciones a su propio workspace');
 
 console.log('offensivePhasePositions tests passed');
