@@ -304,6 +304,7 @@ assert.equal(
 );
 assert.ok(appSource.includes("? updateDefensivePlay(playId, patch)"), 'el motor de edición conserva el workspace defensivo');
 assert.ok(appSource.includes("? updateOffensivePlay(playId, patch)"), 'el motor de edición conserva el workspace ofensivo');
-assert.ok(appSource.includes(": updateTransitionPlay(playId, patch)"), 'el motor de edición enruta Transiciones a su propio workspace');
+assert.ok(appSource.includes("? updateTransitionPlay(playId, patch)"), 'el motor de edición enruta Transiciones a su propio workspace');
+assert.ok(appSource.includes(": updateSetPiecePlay(playId, patch)"), 'el motor de edición enruta ABP a su propio workspace');
 
 console.log('offensivePhasePositions tests passed');

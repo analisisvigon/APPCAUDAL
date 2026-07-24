@@ -22,6 +22,28 @@ const assignTeamPositions = (team, slots, coordinates) => Object.fromEntries(
 
 const point = (x, y) => ({ x: clamp(x), y: clamp(y) });
 
+const separateDensePositions = (positions) => {
+  const resolved = {};
+  const offsets = [
+    [0, 0],
+    [-8, 0], [8, 0], [0, -6], [0, 6],
+    [-8, -6], [8, -6], [-8, 6], [8, 6],
+    [-16, 0], [16, 0], [0, -12], [0, 12],
+    [-16, -6], [16, -6], [-16, 6], [16, 6],
+    [-8, -12], [8, -12], [-8, 12], [8, 12],
+    [-24, 0], [24, 0], [-16, -12], [16, -12], [-16, 12], [16, 12],
+  ];
+  Object.entries(positions).forEach(([key, source]) => {
+    const candidate = offsets
+      .map(([offsetX, offsetY]) => point(source.x + offsetX, source.y + offsetY))
+      .find((next) => Object.values(resolved).every((placed) => (
+        Math.abs(next.x - placed.x) >= 8 || Math.abs(next.y - placed.y) >= 5.5
+      )));
+    resolved[key] = candidate || point(source.x, source.y);
+  });
+  return resolved;
+};
+
 const buildSetPieceCoordinates = ({ setPieceType, setPieceAction, ballStartPosition }) => {
   const ball = normalizeBallStartPosition(ballStartPosition);
   const targetY = ball.y >= 50 ? 94 : 6;
@@ -163,8 +185,8 @@ export const getSetPieceInitialPositions = ({
   const attackingSlots = attackingTeam === 'rival' ? rivalFormationSlots : caudalFormationSlots;
   const defendingSlots = defendingTeam === 'rival' ? rivalFormationSlots : caudalFormationSlots;
 
-  return preventInitialPositionOverlaps({
+  return separateDensePositions(preventInitialPositionOverlaps({
     ...assignTeamPositions(attackingTeam, attackingSlots, coordinates.attacking),
     ...assignTeamPositions(defendingTeam, defendingSlots, coordinates.defending),
-  });
+  }));
 };

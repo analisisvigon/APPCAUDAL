@@ -141,6 +141,9 @@ assert.equal(payload.play_style, 'direct');
 assert.equal(payload.transition_type, null);
 assert.equal(payload.field_zone, null);
 assert.equal(payload.behaviour, null);
+assert.equal(payload.set_piece_type, null);
+assert.equal(payload.set_piece_action, null);
+assert.equal(payload.ball_start_position, null);
 assert.deepEqual(payload.tags, ['pivote']);
 assert.equal(payload.is_public, false);
 assert.ok(!Object.hasOwn(payload, 'owner_id'), 'el insert confía en default auth.uid() y no envía owner_id');
@@ -217,6 +220,31 @@ const legacyTransition = normalizeTacticalTemplate({
 assert.equal(legacyTransition.transitionType, 'defensive_transition');
 assert.equal(legacyTransition.fieldZone, 'defensive_half');
 assert.equal(legacyTransition.behaviour, 'counterpress');
+const setPiecePayload = buildTacticalTemplatePayload({
+  name: 'Córner primer palo',
+  phase: 'set_piece',
+  setPieceType: 'offensive_set_piece',
+  setPieceAction: 'corner',
+  ballStartPosition: { x: 5, y: 95 },
+  playerPositions: semanticExample,
+  arrows: portableArrows,
+});
+assert.equal(setPiecePayload.situation, 'offensive_set_piece');
+assert.equal(setPiecePayload.set_piece_type, 'offensive_set_piece');
+assert.equal(setPiecePayload.set_piece_action, 'corner');
+assert.deepEqual(setPiecePayload.ball_start_position, { x: 5, y: 95 });
+const normalizedSetPiece = normalizeTacticalTemplate({
+  id: 'set-piece-template',
+  name: 'Falta lateral',
+  phase: 'set_piece',
+  situation: 'defensive_set_piece',
+  set_piece_type: 'defensive_set_piece',
+  set_piece_action: 'wide_free_kick',
+  ball_start_position: { x: 93, y: 34 },
+});
+assert.equal(normalizedSetPiece.setPieceType, 'defensive_set_piece');
+assert.equal(normalizedSetPiece.setPieceAction, 'wide_free_kick');
+assert.deepEqual(normalizedSetPiece.ballStartPosition, { x: 93, y: 34 });
 
 assert.throws(() => buildTacticalTemplatePayload({ phase: 'defensive', situation: 'mid_block' }), /nombre/i);
 assert.throws(() => buildTacticalTemplatePayload({ name: 'X', situation: 'mid_block' }), /fase/i);
@@ -235,6 +263,19 @@ assert.throws(
     behaviour: 'retreat',
   }),
   /comportamiento válido/i
+);
+assert.throws(
+  () => buildTacticalTemplatePayload({ name: 'X', phase: 'set_piece' }),
+  /tipo válido/i
+);
+assert.throws(
+  () => buildTacticalTemplatePayload({
+    name: 'X',
+    phase: 'set_piece',
+    setPieceType: 'offensive_set_piece',
+    setPieceAction: 'invalid',
+  }),
+  /tipo de acción válido/i
 );
 
 const usage = calculateTacticalTemplateUsages([
@@ -261,6 +302,14 @@ const usage = calculateTacticalTemplateUsages([
           sourceTemplateId: 'template-1',
         }],
       },
+      setPiecePhaseV1: {
+        plays: [{
+          id: 'play-set-piece-1',
+          name: 'Córner',
+          setPieceType: 'offensive_set_piece',
+          sourceTemplateId: 'template-1',
+        }],
+      },
     },
   },
   {
@@ -274,13 +323,14 @@ const usage = calculateTacticalTemplateUsages([
     },
   },
 ]);
-assert.equal(usage['template-1'].playCount, 4);
+assert.equal(usage['template-1'].playCount, 5);
 assert.equal(usage['template-1'].matchCount, 2);
 assert.equal(usage['template-1'].rivalCount, 2);
 
 const migration = fs.readFileSync('supabase_tactical_play_templates.sql', 'utf8');
 const playStyleMigration = fs.readFileSync('supabase_tactical_play_templates_play_style.sql', 'utf8');
 const transitionMigration = fs.readFileSync('supabase_tactical_play_templates_transitions.sql', 'utf8');
+const setPieceMigration = fs.readFileSync('supabase_tactical_play_templates_set_piece.sql', 'utf8');
 assert.match(migration, /owner_id uuid not null\s+default auth\.uid\(\)/);
 assert.match(migration, /references auth\.users\(id\)\s+on delete cascade/);
 assert.match(migration, /enable row level security/);
@@ -305,11 +355,19 @@ assert.match(transitionMigration, /counterpress/);
 assert.match(transitionMigration, /owner_id,\s+phase,\s+transition_type,\s+field_zone,\s+behaviour/);
 assert.doesNotMatch(transitionMigration, /create policy/i, 'la migración no cambia las RLS existentes');
 assert.doesNotMatch(transitionMigration, /training_library/i);
+assert.match(setPieceMigration, /add column if not exists set_piece_type text null/);
+assert.match(setPieceMigration, /add column if not exists set_piece_action text null/);
+assert.match(setPieceMigration, /add column if not exists ball_start_position jsonb null/);
+assert.match(setPieceMigration, /jsonb_typeof\(ball_start_position -> 'x'\) = 'number'/);
+assert.match(setPieceMigration, /owner_id,\s+phase,\s+set_piece_type,\s+set_piece_action/);
+assert.doesNotMatch(setPieceMigration, /create policy/i, 'la migración ABP no cambia las RLS existentes');
+assert.doesNotMatch(setPieceMigration, /training_library/i);
 
 const appSource = fs.readFileSync('src/App.jsx', 'utf8');
 assert.match(appSource, /defensivePhaseV1/);
 assert.match(appSource, /offensivePhaseV1/);
 assert.match(appSource, /transitionPhaseV1/);
+assert.match(appSource, /setPiecePhaseV1/);
 assert.match(appSource, /sourceTemplateId/);
 assert.match(appSource, /instantiateTemplateArrows/);
 assert.match(appSource, /tacticalTemplatePlayStyleFilter/);

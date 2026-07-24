@@ -14,6 +14,7 @@
     "test:defensive-blocks": "node src/utils/defensiveBlockPositions.test.js",
     "test:offensive-phase": "node src/utils/offensivePhasePositions.test.js",
     "test:transition-phase": "node src/utils/transitionPhasePositions.test.js",
+    "test:set-pieces": "node src/utils/setPiecePositions.test.js",
     "test:tactical-templates": "node src/utils/tacticalTemplates.test.js",
     "test:goal-events": "node src/utils/goalEvents.test.js",
     "test:match-status": "node src/utils/matchStatus.test.js",
