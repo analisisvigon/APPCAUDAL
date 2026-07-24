@@ -710,6 +710,12 @@ const defensiveSituationOptions = [
   { value: 'high_block', label: 'Bloque alto' },
 ];
 const defensivePlayDescriptionPlaceholder = 'Describe qué hace el rival en esta situación: altura del bloque, distancia entre líneas, orientación de la presión, basculación, referencias, espacios que concede y comportamiento de cada línea...';
+const createDefensivePlayId = () => globalThis.crypto?.randomUUID?.() || `defensive-play-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+const createEmptyDefensiveWorkspace = () => ({
+  version: 1,
+  activePlayIdBySituation: {},
+  plays: [],
+});
 const collectiveProfileOptions = {
   buildUp: ['Muy elaborada', 'Elaborada', 'Mixta', 'Directa', 'Muy directa'],
   blockHeight: ['Muy alta', 'Alta', 'Media', 'Baja', 'Muy baja'],
@@ -4232,7 +4238,7 @@ function App() {
   });
   const [rivalTacticalUndo, setRivalTacticalUndo] = useState(null);
   const [defensiveSituation, setDefensiveSituation] = useState('mid_block');
-  const [defensivePlayDescription, setDefensivePlayDescription] = useState('');
+  const [defensiveWorkspace, setDefensiveWorkspace] = useState(createEmptyDefensiveWorkspace);
   const [rivalObservedScouting, setRivalObservedScouting] = useState(() => {
     try {
       if (typeof window === 'undefined') return {};
@@ -7083,6 +7089,95 @@ function App() {
     });
   };
 
+  const defensivePlaysForSituation = defensiveWorkspace.plays.filter((play) => play.defensiveSituation === defensiveSituation);
+  const selectedDefensivePlayId = defensiveWorkspace.activePlayIdBySituation[defensiveSituation] || defensivePlaysForSituation[0]?.id || '';
+  const selectedDefensivePlay = defensiveWorkspace.plays.find((play) => play.id === selectedDefensivePlayId) || null;
+  const updateDefensivePlay = (playId, patch) => {
+    setDefensiveWorkspace((current) => ({
+      ...current,
+      plays: current.plays.map((play) => (
+        play.id === playId
+          ? { ...play, ...patch, updatedAt: new Date().toISOString() }
+          : play
+      )),
+    }));
+  };
+  const selectDefensiveSituation = (situation) => {
+    if (!defensiveSituationOptions.some((option) => option.value === situation)) return;
+    setDefensiveSituation(situation);
+  };
+  const selectDefensivePlay = (playId) => {
+    if (!defensiveWorkspace.plays.some((play) => play.id === playId && play.defensiveSituation === defensiveSituation)) return;
+    setDefensiveWorkspace((current) => ({
+      ...current,
+      activePlayIdBySituation: {
+        ...current.activePlayIdBySituation,
+        [defensiveSituation]: playId,
+      },
+    }));
+  };
+  const createDefensivePlay = () => {
+    const defaultName = `Jugada ${defensivePlaysForSituation.length + 1}`;
+    const requestedName = window.prompt('Nombre de la jugada', defaultName);
+    if (requestedName === null) return;
+    const name = String(requestedName || '').trim() || defaultName;
+    const timestamp = new Date().toISOString();
+    const play = {
+      id: createDefensivePlayId(),
+      name,
+      defensiveSituation,
+      rivalSystem: getCurrentRivalSystem(),
+      caudalSystem: selectedMatch?.preCaudalSystem || '4-4-2',
+      playerPositions: {},
+      arrows: [],
+      description: '',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    setDefensiveWorkspace((current) => ({
+      ...current,
+      activePlayIdBySituation: {
+        ...current.activePlayIdBySituation,
+        [defensiveSituation]: play.id,
+      },
+      plays: [...current.plays, play],
+    }));
+  };
+  const duplicateDefensivePlay = () => {
+    if (!selectedDefensivePlay) return;
+    const timestamp = new Date().toISOString();
+    const duplicate = {
+      ...selectedDefensivePlay,
+      id: createDefensivePlayId(),
+      name: `${selectedDefensivePlay.name} · copia`,
+      playerPositions: { ...selectedDefensivePlay.playerPositions },
+      arrows: selectedDefensivePlay.arrows.map((arrow) => ({ ...arrow, id: createDefensivePlayId() })),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    setDefensiveWorkspace((current) => ({
+      ...current,
+      activePlayIdBySituation: {
+        ...current.activePlayIdBySituation,
+        [defensiveSituation]: duplicate.id,
+      },
+      plays: [...current.plays, duplicate],
+    }));
+  };
+  const deleteDefensivePlay = () => {
+    if (!selectedDefensivePlay || !window.confirm(`¿Eliminar "${selectedDefensivePlay.name}"?`)) return;
+    const remainingPlays = defensiveWorkspace.plays.filter((play) => play.id !== selectedDefensivePlay.id);
+    const nextPlay = remainingPlays.find((play) => play.defensiveSituation === defensiveSituation);
+    setDefensiveWorkspace((current) => ({
+      ...current,
+      activePlayIdBySituation: {
+        ...current.activePlayIdBySituation,
+        [defensiveSituation]: nextPlay?.id || '',
+      },
+      plays: remainingPlays,
+    }));
+  };
+
   const updateCaudalPreSystem = (system) => {
     if (!selectedMatch) return;
     const roles = getFormationRoles(system);
@@ -8397,16 +8492,34 @@ function App() {
             <section className="order-4 border border-white/10 bg-[#091428]/82 p-3 xl:col-start-2 xl:row-span-3 xl:row-start-1">
               <div className="mb-3 border-b border-white/10 pb-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Fase defensiva</p>
-                <label className="mt-2 grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
-                  <span>Situación defensiva</span>
-                  <select
-                    value={defensiveSituation}
-                    onChange={(event) => setDefensiveSituation(event.target.value)}
-                    className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
-                  >
-                    {defensiveSituationOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
-                </label>
+                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                  <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                    <span>Situación defensiva</span>
+                    <select
+                      value={defensiveSituation}
+                      onChange={(event) => selectDefensiveSituation(event.target.value)}
+                      className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
+                    >
+                      {defensiveSituationOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                    <span>Jugada</span>
+                    <select
+                      value={selectedDefensivePlayId}
+                      onChange={(event) => selectDefensivePlay(event.target.value)}
+                      className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
+                    >
+                      <option value="">Sin jugadas</option>
+                      {defensivePlaysForSituation.map((play) => <option key={play.id} value={play.id}>{play.name}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <button type="button" onClick={createDefensivePlay} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Nueva jugada</button>
+                  <button type="button" disabled={!selectedDefensivePlay} onClick={duplicateDefensivePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
+                  <button type="button" disabled={!selectedDefensivePlay} onClick={deleteDefensivePlay} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Eliminar</button>
+                </div>
               </div>
               <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -8438,9 +8551,10 @@ function App() {
                 <span>Descripción de la jugada</span>
                 <textarea
                   rows={5}
-                  value={defensivePlayDescription}
-                  onChange={(event) => setDefensivePlayDescription(event.target.value)}
-                  placeholder={defensivePlayDescriptionPlaceholder}
+                  value={selectedDefensivePlay?.description || ''}
+                  onChange={(event) => selectedDefensivePlay && updateDefensivePlay(selectedDefensivePlay.id, { description: event.target.value })}
+                  placeholder={selectedDefensivePlay ? defensivePlayDescriptionPlaceholder : 'Crea una jugada defensiva para añadir su descripción.'}
+                  disabled={!selectedDefensivePlay}
                   className="min-h-[120px] w-full resize-y border border-white/10 bg-black/20 px-3 py-3 text-sm font-semibold normal-case leading-6 tracking-normal text-white outline-none placeholder:text-slate-500"
                 />
               </label>
