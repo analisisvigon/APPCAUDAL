@@ -4239,6 +4239,8 @@ function App() {
   const [rivalTacticalUndo, setRivalTacticalUndo] = useState(null);
   const [defensiveSituation, setDefensiveSituation] = useState('mid_block');
   const [defensiveWorkspace, setDefensiveWorkspace] = useState(createEmptyDefensiveWorkspace);
+  const [defensiveTool, setDefensiveTool] = useState('move');
+  const [draggingDefensivePlayer, setDraggingDefensivePlayer] = useState(null);
   const [rivalObservedScouting, setRivalObservedScouting] = useState(() => {
     try {
       if (typeof window === 'undefined') return {};
@@ -7095,12 +7097,41 @@ function App() {
   const updateDefensivePlay = (playId, patch) => {
     setDefensiveWorkspace((current) => ({
       ...current,
-      plays: current.plays.map((play) => (
-        play.id === playId
-          ? { ...play, ...patch, updatedAt: new Date().toISOString() }
-          : play
-      )),
+      plays: current.plays.map((play) => {
+        if (play.id !== playId) return play;
+        const resolvedPatch = typeof patch === 'function' ? patch(play) : patch;
+        return { ...play, ...resolvedPatch, updatedAt: new Date().toISOString() };
+      }),
     }));
+  };
+  const getDefensivePlayerPosition = (playerKey, fallbackPosition) => {
+    const savedPosition = selectedDefensivePlay?.playerPositions?.[playerKey];
+    if (!savedPosition || !Number.isFinite(Number(savedPosition.x)) || !Number.isFinite(Number(savedPosition.y))) return fallbackPosition;
+    return { x: Number(savedPosition.x), y: Number(savedPosition.y) };
+  };
+  const beginDefensivePlayerDrag = (event, playerKey) => {
+    if (defensiveTool !== 'move' || !selectedDefensivePlay) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setDraggingDefensivePlayer({ playerKey, pointerId: event.pointerId });
+  };
+  const moveDefensivePlayer = (event) => {
+    if (!draggingDefensivePlayer || !selectedDefensivePlay || defensiveTool !== 'move') return;
+    const fieldBounds = event.currentTarget.getBoundingClientRect();
+    if (!fieldBounds.width || !fieldBounds.height) return;
+    const x = Math.max(2, Math.min(98, ((event.clientX - fieldBounds.left) / fieldBounds.width) * 100));
+    const y = Math.max(2, Math.min(98, ((event.clientY - fieldBounds.top) / fieldBounds.height) * 100));
+    updateDefensivePlay(selectedDefensivePlay.id, (play) => ({
+      playerPositions: {
+        ...play.playerPositions,
+        [draggingDefensivePlayer.playerKey]: { x, y },
+      },
+    }));
+  };
+  const endDefensivePlayerDrag = () => {
+    if (!draggingDefensivePlayer) return;
+    setDraggingDefensivePlayer(null);
   };
   const selectDefensiveSituation = (situation) => {
     if (!defensiveSituationOptions.some((option) => option.value === situation)) return;
@@ -8546,7 +8577,17 @@ function App() {
                   ))}
                 </div>
               </div>
-              {renderFacingSystemsOverview()}
+              <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={!selectedDefensivePlay}
+                  onClick={() => setDefensiveTool('move')}
+                  className={`border px-3 py-2 text-[9px] font-black uppercase ${defensiveTool === 'move' ? 'border-caudal-electric/30 bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300'} disabled:cursor-not-allowed disabled:opacity-40`}
+                >
+                  Mover
+                </button>
+              </div>
+              {renderFacingSystemsOverview(true)}
               <label className="mt-3 grid gap-2 border-t border-white/10 pt-3 text-[10px] font-black uppercase tracking-[0.18em] text-white">
                 <span>Descripción de la jugada</span>
                 <textarea
@@ -18474,7 +18515,7 @@ function App() {
     );
   };
 
-  const renderFacingSystemsOverview = () => {
+  const renderFacingSystemsOverview = (enableDefensiveEditing = false) => {
     if (!selectedMatch) {
       return (
         <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] p-6 text-sm text-slate-400">
@@ -18603,7 +18644,12 @@ function App() {
       </div>
     );
     return (
-      <div className="relative mx-auto aspect-[7/8.4] min-h-[560px] w-full max-w-4xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner">
+      <div
+        className="relative mx-auto aspect-[7/8.4] min-h-[560px] w-full max-w-4xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner"
+        onPointerMove={enableDefensiveEditing ? moveDefensivePlayer : undefined}
+        onPointerUp={enableDefensiveEditing ? endDefensivePlayerDrag : undefined}
+        onPointerCancel={enableDefensiveEditing ? endDefensivePlayerDrag : undefined}
+      >
         {layers.zones && showStaffDetails ? renderHudGroup(leftHud, 'left-4 top-1/2 -translate-y-1/2 flex-col items-start') : null}
         {layers.zones && showStaffDetails ? renderHudGroup(rightHud, 'right-4 top-1/2 -translate-y-1/2 flex-col items-end') : null}
         {layers.zones && showStaffDetails ? renderHudGroup(topHud, 'left-1/2 top-4 -translate-x-1/2 flex-row justify-center') : null}
@@ -18636,9 +18682,15 @@ function App() {
           </div>
         ) : null}
         {layers.rival ? rivalSlots.map((rivalSlot) => {
-          const slot = mapFormationSlotToFacingPitch(rivalSlot.coordinates || { x: 50, y: 50 }, 'rival', 0.42);
+          const baseSlot = mapFormationSlotToFacingPitch(rivalSlot.coordinates || { x: 50, y: 50 }, 'rival', 0.42);
+          const slot = enableDefensiveEditing ? getDefensivePlayerPosition(`rival:${rivalSlot.slot}`, baseSlot) : baseSlot;
           return (
-          <div key={`rival-overview-${rivalSlot.slot}-${rivalSlot.player?.name || rivalSlot.role}`} className="absolute z-30 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
+          <div
+            key={`rival-overview-${rivalSlot.slot}-${rivalSlot.player?.name || rivalSlot.role}`}
+            className="absolute z-30 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center"
+            style={{ left: `${slot.x}%`, top: `${slot.y}%`, touchAction: enableDefensiveEditing ? 'none' : undefined }}
+            onPointerDown={enableDefensiveEditing ? (event) => beginDefensivePlayerDrag(event, `rival:${rivalSlot.slot}`) : undefined}
+          >
             {(() => {
               const statusPlayer = rivalSlot.player || null;
               const unavailablePlayer = rivalSlot.unavailablePlayer || null;
@@ -18669,8 +18721,15 @@ function App() {
           </div>
           );
         }) : null}
-        {layers.caudal ? caudalCoordinates.map((slot, index) => (
-          <div key={`caudal-overview-${index}`} className="absolute z-30 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
+        {layers.caudal ? caudalCoordinates.map((baseSlot, index) => {
+          const slot = enableDefensiveEditing ? getDefensivePlayerPosition(`caudal:${index}`, baseSlot) : baseSlot;
+          return (
+          <div
+            key={`caudal-overview-${index}`}
+            className="absolute z-30 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center"
+            style={{ left: `${slot.x}%`, top: `${slot.y}%`, touchAction: enableDefensiveEditing ? 'none' : undefined }}
+            onPointerDown={enableDefensiveEditing ? (event) => beginDefensivePlayerDrag(event, `caudal:${index}`) : undefined}
+          >
             {(() => {
               const player = players.find((item) => item.name === caudalLineup[index]);
               return (
@@ -18683,7 +18742,8 @@ function App() {
               {caudalLineup[index] || caudalRoles[index] || `C${index + 1}`}
             </span> : null}
           </div>
-        )) : null}
+          );
+        }) : null}
       </div>
     );
   };
