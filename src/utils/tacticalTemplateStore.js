@@ -17,11 +17,19 @@ const normalizeTags = (value) => (
   ))
 );
 
-export const normalizeTacticalTemplate = (row = {}) => ({
+const normalizePlayStyle = (phase, value) => {
+  if (phase !== 'offensive') return null;
+  return value === 'direct' ? 'direct' : 'combinative';
+};
+
+export const normalizeTacticalTemplate = (row = {}) => {
+  const phase = String(row.phase || '');
+  return {
   id: String(row.id || ''),
   name: String(row.name || ''),
-  phase: String(row.phase || ''),
+  phase,
   situation: String(row.situation || ''),
+  playStyle: normalizePlayStyle(phase, row.play_style),
   category: row.category == null ? '' : String(row.category),
   description: String(row.description || ''),
   baseRivalSystem: row.base_rival_system == null ? '' : String(row.base_rival_system),
@@ -37,7 +45,8 @@ export const normalizeTacticalTemplate = (row = {}) => ({
   isPublic: row.is_public === true,
   createdAt: String(row.created_at || ''),
   updatedAt: String(row.updated_at || ''),
-});
+  };
+};
 
 export const buildTacticalTemplatePayload = (template = {}) => {
   const name = String(template.name || '').trim();
@@ -46,11 +55,18 @@ export const buildTacticalTemplatePayload = (template = {}) => {
   if (!name) throw new Error('La plantilla necesita un nombre.');
   if (!phase) throw new Error('La plantilla necesita una fase.');
   if (!situation) throw new Error('La plantilla necesita una situación.');
+  const playStyle = phase === 'offensive'
+    ? String(template.playStyle || '').trim()
+    : null;
+  if (phase === 'offensive' && !['combinative', 'direct'].includes(playStyle)) {
+    throw new Error('La plantilla ofensiva necesita un tipo de juego válido.');
+  }
 
   return {
     name,
     phase,
     situation,
+    play_style: playStyle,
     category: String(template.category || '').trim() || null,
     description: String(template.description || ''),
     base_rival_system: String(template.baseRivalSystem || '').trim() || null,
