@@ -11,6 +11,10 @@ export const OFFENSIVE_PHASE_LINE_HEIGHTS = Object.freeze({
     rival: Object.freeze({ goalkeeper: 16, defensiveLine: 36, attackingLine: 67 }),
     caudal: Object.freeze({ goalkeeper: 91, defensiveLine: 76, attackingLine: 43 }),
   }),
+  finishing: Object.freeze({
+    rival: Object.freeze({ goalkeeper: 30, defensiveLine: 52, attackingLine: 85 }),
+    caudal: Object.freeze({ goalkeeper: 92, defensiveLine: 82, attackingLine: 53 }),
+  }),
 });
 
 const parseSystemLines = (system, outfieldPlayerCount) => {
@@ -90,4 +94,9 @@ export const getOffensiveBuildUpPositions = (options) => getOffensiveSituationPo
 export const getOffensiveCreationPositions = (options) => getOffensiveSituationPositions({
   ...options,
   offensiveSituation: 'creation',
+});
+
+export const getOffensiveFinishingPositions = (options) => getOffensiveSituationPositions({
+  ...options,
+  offensiveSituation: 'finishing',
 });

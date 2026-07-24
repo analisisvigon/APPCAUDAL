@@ -3,6 +3,7 @@ import {
   OFFENSIVE_PHASE_LINE_HEIGHTS,
   getOffensiveBuildUpPositions,
   getOffensiveCreationPositions,
+  getOffensiveFinishingPositions,
 } from './offensivePhasePositions.js';
 import { hasInitialPositionOverlap } from './defensiveBlockPositions.js';
 
@@ -60,4 +61,22 @@ assert.ok(
   'las líneas de Creación quedan enfrentadas e intercaladas'
 );
 
-console.log('offensivePhasePositions build-up and creation tests passed');
+const finishing = getOffensiveFinishingPositions({
+  rivalSystem: '5-3-2',
+  caudalSystem: '4-3-3',
+  rivalFormationSlots: buildFormationSlots('5-3-2'),
+  caudalFormationSlots: buildFormationSlots('4-3-3'),
+});
+
+assert.equal(Object.keys(finishing).length, 22, 'Finalización genera los 22 jugadores');
+assert.equal(hasInitialPositionOverlap(finishing), false, 'Finalización no genera solapamientos');
+assert.equal(finishing['rival:0'].y, OFFENSIVE_PHASE_LINE_HEIGHTS.finishing.rival.goalkeeper);
+assert.equal(averageY(finishing, 'rival', 1, 5), 52, 'la línea de equilibrio rival sostiene la jugada');
+assert.equal(averageY(finishing, 'rival', 6, 3), 68.5, 'los medios rivales ocupan la frontal y la segunda línea');
+assert.equal(averageY(finishing, 'rival', 9, 2), 85, 'los delanteros rivales atacan el área del Caudal');
+assert.equal(finishing['caudal:0'].y, 92, 'el portero del Caudal permanece dentro de su área');
+assert.equal(averageY(finishing, 'caudal', 1, 4), 82, 'la defensa del Caudal protege el área');
+assert.equal(averageY(finishing, 'caudal', 5, 3), 67.5, 'los medios del Caudal protegen frontal e interiores');
+assert.equal(averageY(finishing, 'caudal', 8, 3), 53, 'los atacantes del Caudal quedan preparados para transición');
+
+console.log('offensivePhasePositions tests passed');

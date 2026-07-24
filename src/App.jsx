@@ -81,7 +81,11 @@ import {
   getTacticalPlayerKey,
 } from './utils/rivalTactics';
 import { getDefensiveBlockInitialPositions } from './utils/defensiveBlockPositions';
-import { getOffensiveBuildUpPositions, getOffensiveCreationPositions } from './utils/offensivePhasePositions';
+import {
+  getOffensiveBuildUpPositions,
+  getOffensiveCreationPositions,
+  getOffensiveFinishingPositions,
+} from './utils/offensivePhasePositions';
 import './styles/print.css';
 
 const clubCrest =
@@ -7437,6 +7441,7 @@ function App() {
     };
     if (situation === 'build_up') return getOffensiveBuildUpPositions(options);
     if (situation === 'creation') return getOffensiveCreationPositions(options);
+    if (situation === 'finishing') return getOffensiveFinishingPositions(options);
     return {};
   };
   const createOffensivePlay = () => {
