@@ -720,7 +720,9 @@ const offensiveSituationOptions = [
   { value: 'finishing', label: 'Finalización' },
 ];
 const defensivePlayDescriptionPlaceholder = 'Describe qué hace el rival en esta situación: altura del bloque, distancia entre líneas, orientación de la presión, basculación, referencias, espacios que concede y comportamiento de cada línea...';
+const offensivePlayDescriptionPlaceholder = 'Describe cómo ataca el rival en esta situación: estructura de inicio, altura de laterales, posición de mediocentros, ocupación de amplitud, jugadores entre líneas, mecanismos de progresión, zonas de finalización y jugadores que atacan el área...';
 const createDefensivePlayId = () => globalThis.crypto?.randomUUID?.() || `defensive-play-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+const createOffensivePlayId = () => globalThis.crypto?.randomUUID?.() || `offensive-play-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 const createEmptyDefensiveWorkspace = () => ({
   version: 1,
   activeSituation: 'mid_block',
@@ -763,6 +765,53 @@ const normalizeDefensiveWorkspace = (value) => {
   return {
     version: 1,
     activeSituation: validSituations.has(source.activeSituation) ? source.activeSituation : 'mid_block',
+    activePlayIdBySituation,
+    plays,
+  };
+};
+const createEmptyOffensiveWorkspace = () => ({
+  version: 1,
+  activeSituation: 'build_up',
+  activePlayIdBySituation: {},
+  plays: [],
+});
+const normalizeOffensiveWorkspace = (value) => {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const validSituations = new Set(offensiveSituationOptions.map((option) => option.value));
+  const plays = (Array.isArray(source.plays) ? source.plays : [])
+    .filter((play) => play && typeof play === 'object' && play.id && validSituations.has(play.offensiveSituation))
+    .map((play) => ({
+      id: String(play.id),
+      phase: 'offensive',
+      name: String(play.name || 'Jugada'),
+      offensiveSituation: play.offensiveSituation,
+      rivalSystem: String(play.rivalSystem || '4-4-2'),
+      caudalSystem: String(play.caudalSystem || '4-4-2'),
+      playerPositions: play.playerPositions && typeof play.playerPositions === 'object' && !Array.isArray(play.playerPositions) ? play.playerPositions : {},
+      arrows: (Array.isArray(play.arrows) ? play.arrows : [])
+        .filter((arrow) => arrow && ['pass', 'movement'].includes(arrow.type) && arrow.id && arrow.start && arrow.end)
+        .map((arrow) => ({
+          id: String(arrow.id),
+          type: arrow.type,
+          start: { x: Number(arrow.start.x), y: Number(arrow.start.y) },
+          end: { x: Number(arrow.end.x), y: Number(arrow.end.y) },
+        }))
+        .filter((arrow) => [arrow.start.x, arrow.start.y, arrow.end.x, arrow.end.y].every(Number.isFinite)),
+      description: String(play.description || ''),
+      createdAt: String(play.createdAt || new Date().toISOString()),
+      updatedAt: String(play.updatedAt || play.createdAt || new Date().toISOString()),
+    }));
+  const playIds = new Set(plays.map((play) => play.id));
+  const activePlayIdBySituation = Object.fromEntries(
+    offensiveSituationOptions.map((option) => {
+      const savedId = source.activePlayIdBySituation?.[option.value];
+      const fallbackId = plays.find((play) => play.offensiveSituation === option.value)?.id || '';
+      return [option.value, playIds.has(savedId) ? savedId : fallbackId];
+    })
+  );
+  return {
+    version: 1,
+    activeSituation: validSituations.has(source.activeSituation) ? source.activeSituation : 'build_up',
     activePlayIdBySituation,
     plays,
   };
@@ -4292,6 +4341,7 @@ function App() {
   const [defensiveSituation, setDefensiveSituation] = useState('mid_block');
   const [offensiveSituation, setOffensiveSituation] = useState('build_up');
   const [defensiveWorkspace, setDefensiveWorkspace] = useState(createEmptyDefensiveWorkspace);
+  const [offensiveWorkspace, setOffensiveWorkspace] = useState(createEmptyOffensiveWorkspace);
   const [defensiveTool, setDefensiveTool] = useState('move');
   const [draggingDefensivePlayer, setDraggingDefensivePlayer] = useState(null);
   const [defensiveDrawingPreview, setDefensiveDrawingPreview] = useState(null);
@@ -4301,6 +4351,10 @@ function App() {
   const defensiveEditVersionRef = useRef(0);
   const defensiveSaveRequestRef = useRef(0);
   const defensiveAutosaveTimerRef = useRef(null);
+  const [offensiveSaveStatus, setOffensiveSaveStatus] = useState('');
+  const offensiveEditVersionRef = useRef(0);
+  const offensiveSaveRequestRef = useRef(0);
+  const offensiveAutosaveTimerRef = useRef(null);
   const [rivalObservedScouting, setRivalObservedScouting] = useState(() => {
     try {
       if (typeof window === 'undefined') return {};
@@ -5578,6 +5632,17 @@ function App() {
     setDefensiveSituation(storedWorkspace.activeSituation);
     setDefensiveSaveStatus(storedWorkspace.plays.length ? 'Guardado' : '');
     defensiveEditVersionRef.current = 0;
+
+    offensiveSaveRequestRef.current += 1;
+    if (offensiveAutosaveTimerRef.current) {
+      window.clearTimeout(offensiveAutosaveTimerRef.current);
+      offensiveAutosaveTimerRef.current = null;
+    }
+    const storedOffensiveWorkspace = normalizeOffensiveWorkspace(selectedPreAiAnalysis?.offensivePhaseV1);
+    setOffensiveWorkspace(storedOffensiveWorkspace);
+    setOffensiveSituation(storedOffensiveWorkspace.activeSituation);
+    setOffensiveSaveStatus(storedOffensiveWorkspace.plays.length ? 'Guardado' : '');
+    offensiveEditVersionRef.current = 0;
   }, [selectedMatch?.id]);
   const selectedMatchRivalTeam = useMemo(
     () => teams.find((team) => team.id === selectedMatch?.equipoRivalId) || findTeamByDisplayName(teams, selectedMatch?.opponent || ''),
@@ -7167,6 +7232,13 @@ function App() {
   const selectedDefensivePlayId = defensiveWorkspace.activePlayIdBySituation[defensiveSituation] || defensivePlaysForSituation[0]?.id || '';
   const selectedDefensivePhasePlay = defensiveWorkspace.plays.find((play) => play.id === selectedDefensivePlayId) || null;
   const selectedDefensivePlay = tacticalGamePhase === 'defensive' ? selectedDefensivePhasePlay : null;
+  const offensivePlaysForSituation = offensiveWorkspace.plays.filter((play) => play.offensiveSituation === offensiveSituation);
+  const selectedOffensivePlayId = offensiveWorkspace.activePlayIdBySituation[offensiveSituation] || offensivePlaysForSituation[0]?.id || '';
+  const selectedOffensivePlay = offensiveWorkspace.plays.find((play) => play.id === selectedOffensivePlayId) || null;
+  const selectedTacticalPlay = tacticalGamePhase === 'defensive' ? selectedDefensivePhasePlay : selectedOffensivePlay;
+  const selectedTacticalPlayId = tacticalGamePhase === 'defensive' ? selectedDefensivePlayId : selectedOffensivePlayId;
+  const tacticalPlaysForSituation = tacticalGamePhase === 'defensive' ? defensivePlaysForSituation : offensivePlaysForSituation;
+  const tacticalSaveStatus = tacticalGamePhase === 'defensive' ? defensiveSaveStatus : offensiveSaveStatus;
   const markDefensiveUnsaved = () => {
     defensiveEditVersionRef.current += 1;
     setDefensiveSaveStatus('Cambios sin guardar');
@@ -7318,6 +7390,104 @@ function App() {
       },
     }));
   };
+  const markOffensiveUnsaved = () => {
+    offensiveEditVersionRef.current += 1;
+    setOffensiveSaveStatus('Cambios sin guardar');
+  };
+  const updateOffensivePlay = (playId, patch) => {
+    markOffensiveUnsaved();
+    setOffensiveWorkspace((current) => ({
+      ...current,
+      plays: current.plays.map((play) => {
+        if (play.id !== playId) return play;
+        const resolvedPatch = typeof patch === 'function' ? patch(play) : patch;
+        return { ...play, ...resolvedPatch, phase: 'offensive', updatedAt: new Date().toISOString() };
+      }),
+    }));
+  };
+  const selectOffensiveSituation = (situation) => {
+    if (!offensiveSituationOptions.some((option) => option.value === situation)) return;
+    setOffensiveSituation(situation);
+    markOffensiveUnsaved();
+    setOffensiveWorkspace((current) => ({ ...current, activeSituation: situation }));
+  };
+  const selectOffensivePlay = (playId) => {
+    if (!offensiveWorkspace.plays.some((play) => play.id === playId && play.offensiveSituation === offensiveSituation)) return;
+    markOffensiveUnsaved();
+    setOffensiveWorkspace((current) => ({
+      ...current,
+      activePlayIdBySituation: {
+        ...current.activePlayIdBySituation,
+        [offensiveSituation]: playId,
+      },
+    }));
+  };
+  const createOffensivePlay = () => {
+    const defaultName = `Jugada ${offensivePlaysForSituation.length + 1}`;
+    const requestedName = window.prompt('Nombre de la jugada', defaultName);
+    if (requestedName === null) return;
+    const name = String(requestedName || '').trim() || defaultName;
+    const timestamp = new Date().toISOString();
+    const play = {
+      id: createOffensivePlayId(),
+      phase: 'offensive',
+      name,
+      offensiveSituation,
+      rivalSystem: getCurrentRivalSystem(),
+      caudalSystem: selectedMatch?.preCaudalSystem || '4-4-2',
+      playerPositions: {},
+      arrows: [],
+      description: '',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    markOffensiveUnsaved();
+    setOffensiveWorkspace((current) => ({
+      ...current,
+      activePlayIdBySituation: {
+        ...current.activePlayIdBySituation,
+        [offensiveSituation]: play.id,
+      },
+      plays: [...current.plays, play],
+    }));
+  };
+  const duplicateOffensivePlay = () => {
+    if (!selectedOffensivePlay) return;
+    const timestamp = new Date().toISOString();
+    const duplicate = {
+      ...selectedOffensivePlay,
+      id: createOffensivePlayId(),
+      phase: 'offensive',
+      name: `${selectedOffensivePlay.name} · copia`,
+      playerPositions: { ...selectedOffensivePlay.playerPositions },
+      arrows: selectedOffensivePlay.arrows.map((arrow) => ({ ...arrow, id: createOffensivePlayId() })),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    markOffensiveUnsaved();
+    setOffensiveWorkspace((current) => ({
+      ...current,
+      activePlayIdBySituation: {
+        ...current.activePlayIdBySituation,
+        [offensiveSituation]: duplicate.id,
+      },
+      plays: [...current.plays, duplicate],
+    }));
+  };
+  const deleteOffensivePlay = () => {
+    if (!selectedOffensivePlay || !window.confirm(`¿Eliminar "${selectedOffensivePlay.name}"?`)) return;
+    const remainingPlays = offensiveWorkspace.plays.filter((play) => play.id !== selectedOffensivePlay.id);
+    const nextPlay = remainingPlays.find((play) => play.offensiveSituation === offensiveSituation);
+    markOffensiveUnsaved();
+    setOffensiveWorkspace((current) => ({
+      ...current,
+      activePlayIdBySituation: {
+        ...current.activePlayIdBySituation,
+        [offensiveSituation]: nextPlay?.id || '',
+      },
+      plays: remainingPlays,
+    }));
+  };
   const buildDefensiveInitialPlayerPositions = (situation, rivalSystem, caudalSystem) => (
     getDefensiveBlockInitialPositions({
       defensiveSituation: situation,
@@ -7438,6 +7608,51 @@ function App() {
     setDefensiveSaveStatus(defensiveEditVersionRef.current === savedEditVersion ? 'Guardado' : 'Cambios sin guardar');
     return true;
   };
+  const saveOffensiveWorkspace = async () => {
+    if (!selectedMatch) return false;
+    if (offensiveAutosaveTimerRef.current) {
+      window.clearTimeout(offensiveAutosaveTimerRef.current);
+      offensiveAutosaveTimerRef.current = null;
+    }
+    const savedEditVersion = offensiveEditVersionRef.current;
+    const saveRequestId = offensiveSaveRequestRef.current + 1;
+    offensiveSaveRequestRef.current = saveRequestId;
+    const normalizedWorkspace = normalizeOffensiveWorkspace({
+      ...offensiveWorkspace,
+      activeSituation: offensiveSituation,
+    });
+    const nextPreAiAnalysis = {
+      ...(selectedPreAiAnalysis || {}),
+      offensivePhaseV1: normalizedWorkspace,
+    };
+    setOffensiveSaveStatus('Guardando');
+    const { error: offensiveSaveError } = await supabase
+      .from('partidos')
+      .update({ pre_ai_analysis: nextPreAiAnalysis })
+      .eq('id', selectedMatch.id);
+    if (offensiveSaveError) {
+      console.error('[OFFENSIVE_PHASE_SAVE]', {
+        matchId: selectedMatch.id,
+        workspace: normalizedWorkspace,
+        error: offensiveSaveError,
+      });
+      if (offensiveSaveRequestRef.current === saveRequestId) {
+        setOffensiveSaveStatus(offensiveEditVersionRef.current === savedEditVersion ? 'Error al guardar' : 'Cambios sin guardar');
+      }
+      return false;
+    }
+    if (offensiveSaveRequestRef.current !== saveRequestId) {
+      setOffensiveSaveStatus('Cambios sin guardar');
+      return false;
+    }
+    setMatches((current) => current.map((match) => (
+      match.id === selectedMatch.id
+        ? { ...match, preAiAnalysis: nextPreAiAnalysis }
+        : match
+    )));
+    setOffensiveSaveStatus(offensiveEditVersionRef.current === savedEditVersion ? 'Guardado' : 'Cambios sin guardar');
+    return true;
+  };
   useEffect(() => {
     if (defensiveSaveStatus !== 'Cambios sin guardar' || !selectedMatch?.id) return undefined;
     if (defensiveAutosaveTimerRef.current) window.clearTimeout(defensiveAutosaveTimerRef.current);
@@ -7452,6 +7667,20 @@ function App() {
       }
     };
   }, [defensiveWorkspace, defensiveSituation, defensiveSaveStatus, selectedMatch?.id]);
+  useEffect(() => {
+    if (offensiveSaveStatus !== 'Cambios sin guardar' || !selectedMatch?.id) return undefined;
+    if (offensiveAutosaveTimerRef.current) window.clearTimeout(offensiveAutosaveTimerRef.current);
+    offensiveAutosaveTimerRef.current = window.setTimeout(() => {
+      offensiveAutosaveTimerRef.current = null;
+      saveOffensiveWorkspace();
+    }, 900);
+    return () => {
+      if (offensiveAutosaveTimerRef.current) {
+        window.clearTimeout(offensiveAutosaveTimerRef.current);
+        offensiveAutosaveTimerRef.current = null;
+      }
+    };
+  }, [offensiveWorkspace, offensiveSituation, offensiveSaveStatus, selectedMatch?.id]);
   const resetDefensiveFormation = () => {
     if (!selectedDefensivePlay) return;
     if (!window.confirm('¿Restablecer las posiciones iniciales de ambos equipos para este bloque? La descripción, los pases y los movimientos se conservarán.')) return;
@@ -8453,7 +8682,7 @@ function App() {
                     onChange={(event) => (
                       tacticalGamePhase === 'defensive'
                         ? selectDefensiveSituation(event.target.value)
-                        : setOffensiveSituation(event.target.value)
+                        : selectOffensiveSituation(event.target.value)
                     )}
                     className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
                   >
@@ -8464,33 +8693,40 @@ function App() {
                 <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
                   <span>Jugada</span>
                   <select
-                    value={tacticalGamePhase === 'defensive' ? selectedDefensivePlayId : ''}
-                    onChange={(event) => tacticalGamePhase === 'defensive' && selectDefensivePlay(event.target.value)}
-                    disabled={tacticalGamePhase !== 'defensive'}
+                    value={selectedTacticalPlayId}
+                    onChange={(event) => (
+                      tacticalGamePhase === 'defensive'
+                        ? selectDefensivePlay(event.target.value)
+                        : selectOffensivePlay(event.target.value)
+                    )}
                     className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
                   >
                     <option value="">Sin jugadas</option>
-                    {tacticalGamePhase === 'defensive'
-                      ? defensivePlaysForSituation.map((play) => <option key={play.id} value={play.id}>{play.name}</option>)
-                      : null}
+                    {tacticalPlaysForSituation.map((play) => <option key={play.id} value={play.id}>{play.name}</option>)}
                   </select>
                 </label>
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                <button type="button" disabled={tacticalGamePhase !== 'defensive'} onClick={createDefensivePlay} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">Nueva jugada</button>
-                <button type="button" disabled={tacticalGamePhase !== 'defensive' || defensiveSaveStatus === 'Guardando'} onClick={saveDefensiveWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
-                <button type="button" disabled={tacticalGamePhase !== 'defensive' || !selectedDefensivePlay} onClick={duplicateDefensivePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
-                <button type="button" disabled={tacticalGamePhase !== 'defensive' || !selectedDefensivePlay} onClick={deleteDefensivePlay} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Eliminar</button>
-                {tacticalGamePhase === 'defensive' && defensiveSaveStatus ? <span className={`self-center text-[9px] font-black uppercase tracking-[0.12em] ${defensiveSaveStatus === 'Error al guardar' ? 'text-red-200' : defensiveSaveStatus === 'Cambios sin guardar' ? 'text-amber-200' : 'text-slate-400'}`}>{defensiveSaveStatus}</span> : null}
+                <button type="button" onClick={tacticalGamePhase === 'defensive' ? createDefensivePlay : createOffensivePlay} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Nueva jugada</button>
+                <button type="button" disabled={tacticalSaveStatus === 'Guardando'} onClick={tacticalGamePhase === 'defensive' ? saveDefensiveWorkspace : saveOffensiveWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
+                <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? duplicateDefensivePlay : duplicateOffensivePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
+                <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? deleteDefensivePlay : deleteOffensivePlay} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Eliminar</button>
+                {tacticalSaveStatus ? <span className={`self-center text-[9px] font-black uppercase tracking-[0.12em] ${tacticalSaveStatus === 'Error al guardar' ? 'text-red-200' : tacticalSaveStatus === 'Cambios sin guardar' ? 'text-amber-200' : 'text-slate-400'}`}>{tacticalSaveStatus}</span> : null}
               </div>
               <label className="mt-4 grid gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-white">
                 <span>Descripción de la jugada</span>
                 <textarea
                   rows={5}
-                  value={tacticalGamePhase === 'defensive' ? selectedDefensivePlay?.description || '' : ''}
-                  onChange={(event) => selectedDefensivePlay && updateDefensivePlay(selectedDefensivePlay.id, { description: event.target.value })}
-                  placeholder={tacticalGamePhase === 'defensive' && selectedDefensivePlay ? defensivePlayDescriptionPlaceholder : 'Crea una jugada para añadir su descripción.'}
-                  disabled={tacticalGamePhase !== 'defensive' || !selectedDefensivePlay}
+                  value={selectedTacticalPlay?.description || ''}
+                  onChange={(event) => {
+                    if (!selectedTacticalPlay) return;
+                    if (tacticalGamePhase === 'defensive') updateDefensivePlay(selectedTacticalPlay.id, { description: event.target.value });
+                    else updateOffensivePlay(selectedTacticalPlay.id, { description: event.target.value });
+                  }}
+                  placeholder={selectedTacticalPlay
+                    ? tacticalGamePhase === 'defensive' ? defensivePlayDescriptionPlaceholder : offensivePlayDescriptionPlaceholder
+                    : 'Crea una jugada para añadir su descripción.'}
+                  disabled={!selectedTacticalPlay}
                   className="min-h-[120px] w-full resize-y border border-white/10 bg-black/20 px-3 py-3 text-sm font-semibold normal-case leading-6 tracking-normal text-white outline-none placeholder:text-slate-500"
                 />
               </label>
