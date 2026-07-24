@@ -86,6 +86,18 @@ import {
   getOffensiveCreationPositions,
   getOffensiveFinishingPositions,
 } from './utils/offensivePhasePositions';
+import {
+  createTacticalTemplate,
+  deleteTacticalTemplate,
+  listTacticalTemplates,
+  updateTacticalTemplate,
+} from './utils/tacticalTemplateStore';
+import {
+  adaptSemanticPlayerPositions,
+  instantiateTemplateArrows,
+  serializeSemanticPlayerPositions,
+  serializeTemplateArrows,
+} from './utils/tacticalTemplates';
 import './styles/print.css';
 
 const clubCrest =
@@ -726,6 +738,19 @@ const offensiveSituationOptions = [
 ];
 const defensivePlayDescriptionPlaceholder = 'Describe qué hace el rival en esta situación: altura del bloque, distancia entre líneas, orientación de la presión, basculación, referencias, espacios que concede y comportamiento de cada línea...';
 const offensivePlayDescriptionPlaceholder = 'Describe cómo ataca el rival en esta situación: estructura de inicio, altura de laterales, posición de mediocentros, ocupación de amplitud, jugadores entre líneas, mecanismos de progresión, zonas de finalización y jugadores que atacan el área...';
+const emptyTacticalTemplateDraft = {
+  id: '',
+  name: '',
+  phase: 'defensive',
+  situation: 'mid_block',
+  category: '',
+  tagsText: '',
+  description: '',
+  baseRivalSystem: '',
+  baseCaudalSystem: '',
+  playerPositions: {},
+  arrows: [],
+};
 const createDefensivePlayId = () => globalThis.crypto?.randomUUID?.() || `defensive-play-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 const createOffensivePlayId = () => globalThis.crypto?.randomUUID?.() || `offensive-play-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 const createEmptyDefensiveWorkspace = () => ({
@@ -756,6 +781,9 @@ const normalizeDefensiveWorkspace = (value) => {
         }))
         .filter((arrow) => [arrow.start.x, arrow.start.y, arrow.end.x, arrow.end.y].every(Number.isFinite)),
       description: String(play.description || ''),
+      category: String(play.category || ''),
+      tags: (Array.isArray(play.tags) ? play.tags : []).filter((tag) => typeof tag === 'string'),
+      sourceTemplateId: String(play.sourceTemplateId || ''),
       createdAt: String(play.createdAt || new Date().toISOString()),
       updatedAt: String(play.updatedAt || play.createdAt || new Date().toISOString()),
     }));
@@ -803,6 +831,9 @@ const normalizeOffensiveWorkspace = (value) => {
         }))
         .filter((arrow) => [arrow.start.x, arrow.start.y, arrow.end.x, arrow.end.y].every(Number.isFinite)),
       description: String(play.description || ''),
+      category: String(play.category || ''),
+      tags: (Array.isArray(play.tags) ? play.tags : []).filter((tag) => typeof tag === 'string'),
+      sourceTemplateId: String(play.sourceTemplateId || ''),
       createdAt: String(play.createdAt || new Date().toISOString()),
       updatedAt: String(play.updatedAt || play.createdAt || new Date().toISOString()),
     }));
@@ -4360,6 +4391,17 @@ function App() {
   const offensiveEditVersionRef = useRef(0);
   const offensiveSaveRequestRef = useRef(0);
   const offensiveAutosaveTimerRef = useRef(null);
+  const [tacticalTemplates, setTacticalTemplates] = useState([]);
+  const [tacticalTemplateDialog, setTacticalTemplateDialog] = useState('');
+  const [tacticalTemplateDraft, setTacticalTemplateDraft] = useState(emptyTacticalTemplateDraft);
+  const [tacticalTemplateLoading, setTacticalTemplateLoading] = useState(false);
+  const [tacticalTemplateSaving, setTacticalTemplateSaving] = useState(false);
+  const [tacticalTemplateError, setTacticalTemplateError] = useState('');
+  const [tacticalTemplateNotice, setTacticalTemplateNotice] = useState('');
+  const [tacticalTemplateSearch, setTacticalTemplateSearch] = useState('');
+  const [tacticalTemplatePhaseFilter, setTacticalTemplatePhaseFilter] = useState('');
+  const [tacticalTemplateSituationFilter, setTacticalTemplateSituationFilter] = useState('');
+  const [tacticalTemplateCategoryFilter, setTacticalTemplateCategoryFilter] = useState('');
   const [rivalObservedScouting, setRivalObservedScouting] = useState(() => {
     try {
       if (typeof window === 'undefined') return {};
@@ -7244,6 +7286,52 @@ function App() {
   const selectedTacticalPlayId = tacticalGamePhase === 'defensive' ? selectedDefensivePlayId : selectedOffensivePlayId;
   const tacticalPlaysForSituation = tacticalGamePhase === 'defensive' ? defensivePlaysForSituation : offensivePlaysForSituation;
   const tacticalSaveStatus = tacticalGamePhase === 'defensive' ? defensiveSaveStatus : offensiveSaveStatus;
+  const openSaveTacticalTemplateDialog = () => {
+    if (!selectedTacticalPlay) return;
+    const rivalSystem = getCurrentRivalSystem();
+    const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
+    const situation = tacticalGamePhase === 'defensive' ? defensiveSituation : offensiveSituation;
+    setTacticalTemplateDraft({
+      ...emptyTacticalTemplateDraft,
+      name: selectedTacticalPlay.name,
+      phase: tacticalGamePhase,
+      situation,
+      category: selectedTacticalPlay.category || '',
+      tagsText: safeArray(selectedTacticalPlay.tags).join(', '),
+      description: selectedTacticalPlay.description || '',
+      baseRivalSystem: rivalSystem,
+      baseCaudalSystem: caudalSystem,
+      playerPositions: serializeSemanticPlayerPositions({
+        playerPositions: selectedTacticalPlay.playerPositions,
+        rivalSystem,
+        caudalSystem,
+        rivalFormationSlots: getFormationSlots(rivalSystem, 'own'),
+        caudalFormationSlots: getFormationSlots(caudalSystem, 'own'),
+      }),
+      arrows: serializeTemplateArrows(selectedTacticalPlay.arrows),
+    });
+    setTacticalTemplateError('');
+    setTacticalTemplateNotice('');
+    setTacticalTemplateDialog('save');
+  };
+  const saveTacticalTemplateDraft = async () => {
+    setTacticalTemplateSaving(true);
+    setTacticalTemplateError('');
+    try {
+      const template = await createTacticalTemplate(supabase, {
+        ...tacticalTemplateDraft,
+        tags: tacticalTemplateDraft.tagsText.split(',').map((tag) => tag.trim()).filter(Boolean),
+      });
+      setTacticalTemplates((current) => [template, ...current.filter((item) => item.id !== template.id)]);
+      setTacticalTemplateNotice(`Plantilla guardada: ${template.name}.`);
+      setTacticalTemplateDialog('');
+    } catch (templateError) {
+      console.error('[TACTICAL_TEMPLATE_CREATE]', templateError);
+      setTacticalTemplateError(templateError.message || 'No se pudo guardar la plantilla.');
+    } finally {
+      setTacticalTemplateSaving(false);
+    }
+  };
   const markDefensiveUnsaved = () => {
     defensiveEditVersionRef.current += 1;
     setDefensiveSaveStatus('Cambios sin guardar');
@@ -8740,10 +8828,12 @@ function App() {
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <button type="button" onClick={tacticalGamePhase === 'defensive' ? createDefensivePlay : createOffensivePlay} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Nueva jugada</button>
                 <button type="button" disabled={tacticalSaveStatus === 'Guardando'} onClick={tacticalGamePhase === 'defensive' ? saveDefensiveWorkspace : saveOffensiveWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
+                <button type="button" disabled={!selectedTacticalPlay} onClick={openSaveTacticalTemplateDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">Guardar como plantilla</button>
                 <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? duplicateDefensivePlay : duplicateOffensivePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
                 <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? deleteDefensivePlay : deleteOffensivePlay} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Eliminar</button>
                 {tacticalSaveStatus ? <span className={`self-center text-[9px] font-black uppercase tracking-[0.12em] ${tacticalSaveStatus === 'Error al guardar' ? 'text-red-200' : tacticalSaveStatus === 'Cambios sin guardar' ? 'text-amber-200' : 'text-slate-400'}`}>{tacticalSaveStatus}</span> : null}
               </div>
+              {tacticalTemplateNotice ? <p className="mt-2 text-[10px] font-bold text-emerald-200">{tacticalTemplateNotice}</p> : null}
               <label className="mt-4 grid gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-white">
                 <span>Descripción de la jugada</span>
                 <textarea
@@ -9209,6 +9299,60 @@ function App() {
               </div>
           </div>
         </div>
+        {tacticalTemplateDialog === 'save' ? (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 p-4" role="dialog" aria-modal="true" aria-labelledby="save-tactical-template-title">
+            <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto border border-white/10 bg-[#091428] p-5 shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Biblioteca privada</p>
+                  <h3 id="save-tactical-template-title" className="mt-1 text-xl font-black text-white">Guardar como plantilla</h3>
+                </div>
+                <button type="button" onClick={() => setTacticalTemplateDialog('')} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-black text-white">Cerrar</button>
+              </div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  <span>Nombre</span>
+                  <input value={tacticalTemplateDraft.name} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, name: event.target.value }))} className="h-11 border border-white/10 bg-black/20 px-3 text-sm font-semibold normal-case tracking-normal text-white outline-none" />
+                </label>
+                <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  <span>Fase</span>
+                  <select value={tacticalTemplateDraft.phase} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, phase: event.target.value }))} className="h-11 border border-white/10 bg-slate-950 px-3 text-sm font-semibold normal-case tracking-normal text-white">
+                    {tacticalGamePhaseOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  <span>Situación</span>
+                  <input value={tacticalTemplateDraft.situation} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, situation: event.target.value }))} className="h-11 border border-white/10 bg-black/20 px-3 text-sm font-semibold normal-case tracking-normal text-white outline-none" />
+                </label>
+                <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  <span>Categoría</span>
+                  <input value={tacticalTemplateDraft.category} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, category: event.target.value }))} placeholder="Opcional" className="h-11 border border-white/10 bg-black/20 px-3 text-sm font-semibold normal-case tracking-normal text-white outline-none placeholder:text-slate-600" />
+                </label>
+                <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 sm:col-span-2">
+                  <span>Etiquetas</span>
+                  <input value={tacticalTemplateDraft.tagsText} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, tagsText: event.target.value }))} placeholder="salida de 3, pivote, laterales altos" className="h-11 border border-white/10 bg-black/20 px-3 text-sm font-semibold normal-case tracking-normal text-white outline-none placeholder:text-slate-600" />
+                </label>
+                <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  <span>Sistema rival base</span>
+                  <input value={tacticalTemplateDraft.baseRivalSystem} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, baseRivalSystem: event.target.value }))} placeholder="Referencia opcional" className="h-11 border border-white/10 bg-black/20 px-3 text-sm font-semibold normal-case tracking-normal text-white outline-none placeholder:text-slate-600" />
+                </label>
+                <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  <span>Sistema Caudal base</span>
+                  <input value={tacticalTemplateDraft.baseCaudalSystem} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, baseCaudalSystem: event.target.value }))} placeholder="Referencia opcional" className="h-11 border border-white/10 bg-black/20 px-3 text-sm font-semibold normal-case tracking-normal text-white outline-none placeholder:text-slate-600" />
+                </label>
+                <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 sm:col-span-2">
+                  <span>Descripción</span>
+                  <textarea rows={4} value={tacticalTemplateDraft.description} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, description: event.target.value }))} className="min-h-[110px] border border-white/10 bg-black/20 px-3 py-3 text-sm font-semibold normal-case leading-6 tracking-normal text-white outline-none" />
+                </label>
+              </div>
+              {tacticalTemplateError ? <p className="mt-4 border border-red-300/20 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-100">{tacticalTemplateError}</p> : null}
+              <div className="mt-5 flex justify-end gap-2">
+                <button type="button" onClick={() => setTacticalTemplateDialog('')} className="border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs font-black uppercase text-white">Cancelar</button>
+                <button type="button" disabled={tacticalTemplateSaving} onClick={saveTacticalTemplateDraft} className="bg-caudal-electric px-4 py-2.5 text-xs font-black uppercase text-slate-950 disabled:opacity-50">{tacticalTemplateSaving ? 'Guardando...' : 'Guardar plantilla'}</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     );
   };
