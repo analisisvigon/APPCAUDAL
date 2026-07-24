@@ -729,7 +729,15 @@ const normalizeDefensiveWorkspace = (value) => {
       rivalSystem: String(play.rivalSystem || '4-4-2'),
       caudalSystem: String(play.caudalSystem || '4-4-2'),
       playerPositions: play.playerPositions && typeof play.playerPositions === 'object' && !Array.isArray(play.playerPositions) ? play.playerPositions : {},
-      arrows: Array.isArray(play.arrows) ? play.arrows : [],
+      arrows: (Array.isArray(play.arrows) ? play.arrows : [])
+        .filter((arrow) => arrow && ['pass', 'movement'].includes(arrow.type) && arrow.id && arrow.start && arrow.end)
+        .map((arrow) => ({
+          id: String(arrow.id),
+          type: arrow.type,
+          start: { x: Number(arrow.start.x), y: Number(arrow.start.y) },
+          end: { x: Number(arrow.end.x), y: Number(arrow.end.y) },
+        }))
+        .filter((arrow) => [arrow.start.x, arrow.start.y, arrow.end.x, arrow.end.y].every(Number.isFinite)),
       description: String(play.description || ''),
       createdAt: String(play.createdAt || new Date().toISOString()),
       updatedAt: String(play.updatedAt || play.createdAt || new Date().toISOString()),
@@ -4274,6 +4282,9 @@ function App() {
   const [defensiveWorkspace, setDefensiveWorkspace] = useState(createEmptyDefensiveWorkspace);
   const [defensiveTool, setDefensiveTool] = useState('move');
   const [draggingDefensivePlayer, setDraggingDefensivePlayer] = useState(null);
+  const [defensiveDrawingPreview, setDefensiveDrawingPreview] = useState(null);
+  const [selectedDefensiveArrowId, setSelectedDefensiveArrowId] = useState('');
+  const [defensiveUndoStack, setDefensiveUndoStack] = useState([]);
   const [defensiveSaveStatus, setDefensiveSaveStatus] = useState('');
   const [rivalObservedScouting, setRivalObservedScouting] = useState(() => {
     try {
@@ -7150,23 +7161,43 @@ function App() {
     if (!savedPosition || !Number.isFinite(Number(savedPosition.x)) || !Number.isFinite(Number(savedPosition.y))) return fallbackPosition;
     return { x: Number(savedPosition.x), y: Number(savedPosition.y) };
   };
+  const pushDefensiveUndoSnapshot = (play = selectedDefensivePlay) => {
+    if (!play) return;
+    const snapshot = {
+      playId: play.id,
+      playerPositions: Object.fromEntries(Object.entries(play.playerPositions || {}).map(([key, position]) => [key, { ...position }])),
+      arrows: (play.arrows || []).map((arrow) => ({
+        ...arrow,
+        start: { ...arrow.start },
+        end: { ...arrow.end },
+      })),
+    };
+    setDefensiveUndoStack((current) => [...current.slice(-29), snapshot]);
+  };
+  const getDefensivePointerPosition = (event) => {
+    const fieldBounds = event.currentTarget.getBoundingClientRect();
+    if (!fieldBounds.width || !fieldBounds.height) return null;
+    return {
+      x: Math.max(1, Math.min(99, ((event.clientX - fieldBounds.left) / fieldBounds.width) * 100)),
+      y: Math.max(1, Math.min(99, ((event.clientY - fieldBounds.top) / fieldBounds.height) * 100)),
+    };
+  };
   const beginDefensivePlayerDrag = (event, playerKey) => {
     if (defensiveTool !== 'move' || !selectedDefensivePlay) return;
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture?.(event.pointerId);
+    pushDefensiveUndoSnapshot();
     setDraggingDefensivePlayer({ playerKey, pointerId: event.pointerId });
   };
   const moveDefensivePlayer = (event) => {
     if (!draggingDefensivePlayer || !selectedDefensivePlay || defensiveTool !== 'move') return;
-    const fieldBounds = event.currentTarget.getBoundingClientRect();
-    if (!fieldBounds.width || !fieldBounds.height) return;
-    const x = Math.max(2, Math.min(98, ((event.clientX - fieldBounds.left) / fieldBounds.width) * 100));
-    const y = Math.max(2, Math.min(98, ((event.clientY - fieldBounds.top) / fieldBounds.height) * 100));
+    const position = getDefensivePointerPosition(event);
+    if (!position) return;
     updateDefensivePlay(selectedDefensivePlay.id, (play) => ({
       playerPositions: {
         ...play.playerPositions,
-        [draggingDefensivePlayer.playerKey]: { x, y },
+        [draggingDefensivePlayer.playerKey]: position,
       },
     }));
   };
@@ -7174,6 +7205,76 @@ function App() {
     if (!draggingDefensivePlayer) return;
     setDraggingDefensivePlayer(null);
   };
+  const beginDefensiveDrawing = (event) => {
+    if (!selectedDefensivePlay || !['pass', 'movement'].includes(defensiveTool)) {
+      if (defensiveTool === 'select') setSelectedDefensiveArrowId('');
+      return;
+    }
+    const start = getDefensivePointerPosition(event);
+    if (!start) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setDefensiveDrawingPreview({ type: defensiveTool, start, end: start, pointerId: event.pointerId });
+  };
+  const moveDefensiveDrawing = (event) => {
+    if (!defensiveDrawingPreview) return;
+    const end = getDefensivePointerPosition(event);
+    if (!end) return;
+    setDefensiveDrawingPreview((current) => current ? { ...current, end } : null);
+  };
+  const finishDefensiveDrawing = (event) => {
+    if (!defensiveDrawingPreview || !selectedDefensivePlay) return;
+    const end = getDefensivePointerPosition(event) || defensiveDrawingPreview.end;
+    const distance = Math.hypot(end.x - defensiveDrawingPreview.start.x, end.y - defensiveDrawingPreview.start.y);
+    if (distance >= 2) {
+      pushDefensiveUndoSnapshot();
+      const arrow = {
+        id: createDefensivePlayId(),
+        type: defensiveDrawingPreview.type,
+        start: defensiveDrawingPreview.start,
+        end,
+      };
+      updateDefensivePlay(selectedDefensivePlay.id, (play) => ({ arrows: [...play.arrows, arrow] }));
+      setSelectedDefensiveArrowId(arrow.id);
+    }
+    setDefensiveDrawingPreview(null);
+  };
+  const handleDefensiveFieldPointerMove = (event) => {
+    moveDefensivePlayer(event);
+    moveDefensiveDrawing(event);
+  };
+  const handleDefensiveFieldPointerEnd = (event) => {
+    endDefensivePlayerDrag();
+    finishDefensiveDrawing(event);
+  };
+  const cancelDefensiveFieldPointer = () => {
+    endDefensivePlayerDrag();
+    setDefensiveDrawingPreview(null);
+  };
+  const deleteSelectedDefensiveArrow = () => {
+    if (!selectedDefensivePlay || !selectedDefensiveArrowId) return;
+    if (!selectedDefensivePlay.arrows.some((arrow) => arrow.id === selectedDefensiveArrowId)) return;
+    pushDefensiveUndoSnapshot();
+    updateDefensivePlay(selectedDefensivePlay.id, (play) => ({
+      arrows: play.arrows.filter((arrow) => arrow.id !== selectedDefensiveArrowId),
+    }));
+    setSelectedDefensiveArrowId('');
+  };
+  const undoDefensiveAction = () => {
+    const snapshot = defensiveUndoStack[defensiveUndoStack.length - 1];
+    if (!snapshot || snapshot.playId !== selectedDefensivePlay?.id) return;
+    updateDefensivePlay(snapshot.playId, {
+      playerPositions: snapshot.playerPositions,
+      arrows: snapshot.arrows,
+    });
+    setDefensiveUndoStack((current) => current.slice(0, -1));
+    setSelectedDefensiveArrowId('');
+  };
+  useEffect(() => {
+    setSelectedDefensiveArrowId('');
+    setDefensiveDrawingPreview(null);
+    setDefensiveUndoStack([]);
+  }, [selectedDefensivePlayId]);
   const selectDefensiveSituation = (situation) => {
     if (!defensiveSituationOptions.some((option) => option.value === situation)) return;
     setDefensiveSituation(situation);
@@ -8658,14 +8759,24 @@ function App() {
                 </div>
               </div>
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
-                <button
-                  type="button"
-                  disabled={!selectedDefensivePlay}
-                  onClick={() => setDefensiveTool('move')}
-                  className={`border px-3 py-2 text-[9px] font-black uppercase ${defensiveTool === 'move' ? 'border-caudal-electric/30 bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300'} disabled:cursor-not-allowed disabled:opacity-40`}
-                >
-                  Mover
-                </button>
+                {[
+                  ['move', 'Mover'],
+                  ['pass', 'Pase'],
+                  ['movement', 'Movimiento'],
+                  ['select', 'Seleccionar'],
+                ].map(([tool, label]) => (
+                  <button
+                    key={tool}
+                    type="button"
+                    disabled={!selectedDefensivePlay}
+                    onClick={() => setDefensiveTool(tool)}
+                    className={`border px-3 py-2 text-[9px] font-black uppercase ${defensiveTool === tool ? 'border-caudal-electric/30 bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300'} disabled:cursor-not-allowed disabled:opacity-40`}
+                  >
+                    {label}
+                  </button>
+                ))}
+                <button type="button" disabled={!selectedDefensiveArrowId} onClick={deleteSelectedDefensiveArrow} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Borrar</button>
+                <button type="button" disabled={!defensiveUndoStack.length} onClick={undoDefensiveAction} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Deshacer</button>
               </div>
               {renderFacingSystemsOverview(true)}
               <label className="mt-3 grid gap-2 border-t border-white/10 pt-3 text-[10px] font-black uppercase tracking-[0.18em] text-white">
@@ -18713,6 +18824,61 @@ function App() {
         </svg>
       );
     };
+    const renderDefensiveDrawingLayer = () => {
+      if (!enableDefensiveEditing || !selectedDefensivePlay) return null;
+      const arrows = selectedDefensivePlay.arrows || [];
+      const previewArrows = defensiveDrawingPreview ? [{ ...defensiveDrawingPreview, id: 'preview' }] : [];
+      return (
+        <svg className="pointer-events-none absolute inset-0 z-[25] h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <defs>
+            <marker id="defensive-play-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="strokeWidth">
+              <path d="M0,0 L7,3.5 L0,7 Z" fill="#e2e8f0" />
+            </marker>
+          </defs>
+          {[...arrows, ...previewArrows].map((arrow) => {
+            const selected = arrow.id === selectedDefensiveArrowId;
+            const isPreview = arrow.id === 'preview';
+            return (
+              <g
+                key={arrow.id}
+                className={isPreview ? 'pointer-events-none' : 'pointer-events-auto cursor-pointer'}
+                onPointerDown={isPreview ? undefined : (event) => {
+                  if (defensiveTool !== 'select') return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setSelectedDefensiveArrowId(arrow.id);
+                }}
+              >
+                <line
+                  x1={arrow.start.x}
+                  y1={arrow.start.y}
+                  x2={arrow.end.x}
+                  y2={arrow.end.y}
+                  stroke="#e2e8f0"
+                  strokeWidth={selected ? 3.4 : 2.4}
+                  strokeDasharray={arrow.type === 'movement' ? '8 6' : undefined}
+                  strokeLinecap="round"
+                  opacity={isPreview ? 0.6 : selected ? 1 : 0.88}
+                  markerEnd="url(#defensive-play-arrow)"
+                  vectorEffect="non-scaling-stroke"
+                />
+                {!isPreview ? (
+                  <line
+                    x1={arrow.start.x}
+                    y1={arrow.start.y}
+                    x2={arrow.end.x}
+                    y2={arrow.end.y}
+                    stroke="transparent"
+                    strokeWidth="8"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ) : null}
+              </g>
+            );
+          })}
+        </svg>
+      );
+    };
     const renderHudGroup = (items, className) => (
       <div className={`absolute z-10 flex gap-1.5 ${className}`}>
         {items.map(([label, value]) => (
@@ -18726,9 +18892,11 @@ function App() {
     return (
       <div
         className="relative mx-auto aspect-[7/8.4] min-h-[560px] w-full max-w-4xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner"
-        onPointerMove={enableDefensiveEditing ? moveDefensivePlayer : undefined}
-        onPointerUp={enableDefensiveEditing ? endDefensivePlayerDrag : undefined}
-        onPointerCancel={enableDefensiveEditing ? endDefensivePlayerDrag : undefined}
+        style={enableDefensiveEditing ? { touchAction: 'none' } : undefined}
+        onPointerDown={enableDefensiveEditing ? beginDefensiveDrawing : undefined}
+        onPointerMove={enableDefensiveEditing ? handleDefensiveFieldPointerMove : undefined}
+        onPointerUp={enableDefensiveEditing ? handleDefensiveFieldPointerEnd : undefined}
+        onPointerCancel={enableDefensiveEditing ? cancelDefensiveFieldPointer : undefined}
       >
         {layers.zones && showStaffDetails ? renderHudGroup(leftHud, 'left-4 top-1/2 -translate-y-1/2 flex-col items-start') : null}
         {layers.zones && showStaffDetails ? renderHudGroup(rightHud, 'right-4 top-1/2 -translate-y-1/2 flex-col items-end') : null}
@@ -18744,6 +18912,7 @@ function App() {
           <span>Caudal {caudalSystem}</span>
         </div>
         {renderConnectionLayer()}
+        {renderDefensiveDrawingLayer()}
         {layers.connections && selectedConnection ? (
           <div className={`absolute right-4 top-4 z-40 w-64 border px-3 py-3 text-xs shadow-2xl backdrop-blur ${selectedConnection.team === 'caudal' ? 'border-caudal-electric/35 bg-caudal-950/90 text-caudal-electric' : 'border-rose-300/35 bg-rose-950/90 text-rose-100'}`}>
             <div className="flex items-start justify-between gap-3">
