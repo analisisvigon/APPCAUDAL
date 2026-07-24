@@ -28,6 +28,19 @@ const transitionBehaviours = {
   offensive_transition: new Set(['fast_attack', 'keep_possession']),
   defensive_transition: new Set(['counterpress', 'retreat']),
 };
+const setPieceTypes = new Set(['offensive_set_piece', 'defensive_set_piece']);
+const setPieceActions = new Set(['corner', 'wide_free_kick', 'central_free_kick', 'throw_in']);
+
+const normalizeBallStartPosition = (phase, value) => {
+  if (phase !== 'set_piece') return null;
+  const x = Number(value?.x);
+  const y = Number(value?.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return { x: 5, y: 95 };
+  return {
+    x: Math.max(1, Math.min(99, Math.round(x * 100) / 100)),
+    y: Math.max(1, Math.min(99, Math.round(y * 100) / 100)),
+  };
+};
 
 const normalizeTransitionType = (phase, value, legacySituation = '') => {
   if (phase !== 'transition') return null;
@@ -50,6 +63,13 @@ const normalizeTransitionBehaviour = (phase, transitionType, value) => {
 export const normalizeTacticalTemplate = (row = {}) => {
   const phase = String(row.phase || '');
   const transitionType = normalizeTransitionType(phase, row.transition_type, row.situation);
+  const setPieceType = phase === 'set_piece' && setPieceTypes.has(row.set_piece_type)
+    ? row.set_piece_type
+    : phase === 'set_piece' && setPieceTypes.has(row.situation)
+      ? row.situation
+      : phase === 'set_piece'
+        ? 'offensive_set_piece'
+        : null;
   return {
   id: String(row.id || ''),
   name: String(row.name || ''),
@@ -59,6 +79,13 @@ export const normalizeTacticalTemplate = (row = {}) => {
   transitionType,
   fieldZone: normalizeTransitionFieldZone(phase, row.field_zone),
   behaviour: normalizeTransitionBehaviour(phase, transitionType, row.behaviour),
+  setPieceType,
+  setPieceAction: phase === 'set_piece' && setPieceActions.has(row.set_piece_action)
+    ? row.set_piece_action
+    : phase === 'set_piece'
+      ? 'corner'
+      : null,
+  ballStartPosition: normalizeBallStartPosition(phase, row.ball_start_position),
   category: row.category == null ? '' : String(row.category),
   description: String(row.description || ''),
   baseRivalSystem: row.base_rival_system == null ? '' : String(row.base_rival_system),
@@ -85,12 +112,25 @@ export const buildTacticalTemplatePayload = (template = {}) => {
     ? String(template.transitionType || '').trim()
     : null;
   const situation = phase === 'transition' ? transitionType : rawSituation;
+  const setPieceType = phase === 'set_piece'
+    ? String(template.setPieceType || '').trim()
+    : null;
+  const setPieceAction = phase === 'set_piece'
+    ? String(template.setPieceAction || '').trim()
+    : null;
+  if (phase === 'set_piece' && !setPieceTypes.has(setPieceType)) {
+    throw new Error('La plantilla ABP necesita un tipo válido.');
+  }
+  if (phase === 'set_piece' && !setPieceActions.has(setPieceAction)) {
+    throw new Error('La plantilla ABP necesita un tipo de acción válido.');
+  }
+  const resolvedSituation = phase === 'set_piece' ? setPieceType : situation;
   if (!name) throw new Error('La plantilla necesita un nombre.');
   if (!phase) throw new Error('La plantilla necesita una fase.');
   if (phase === 'transition' && !transitionTypes.has(transitionType)) {
     throw new Error('La plantilla de transición necesita un tipo válido.');
   }
-  if (!situation) throw new Error('La plantilla necesita una situación.');
+  if (!resolvedSituation) throw new Error('La plantilla necesita una situación.');
   const playStyle = phase === 'offensive'
     ? String(template.playStyle || '').trim()
     : null;
@@ -114,11 +154,14 @@ export const buildTacticalTemplatePayload = (template = {}) => {
   return {
     name,
     phase,
-    situation,
+    situation: resolvedSituation,
     play_style: playStyle,
     transition_type: transitionType,
     field_zone: fieldZone,
     behaviour,
+    set_piece_type: setPieceType,
+    set_piece_action: setPieceAction,
+    ball_start_position: normalizeBallStartPosition(phase, template.ballStartPosition),
     category: String(template.category || '').trim() || null,
     description: String(template.description || ''),
     base_rival_system: String(template.baseRivalSystem || '').trim() || null,

@@ -795,6 +795,9 @@ const emptyTacticalTemplateDraft = {
   transitionType: null,
   fieldZone: null,
   behaviour: null,
+  setPieceType: null,
+  setPieceAction: null,
+  ballStartPosition: null,
   category: '',
   tagsText: '',
   description: '',
@@ -7722,7 +7725,9 @@ function App() {
       ? defensiveSituation
       : tacticalGamePhase === 'offensive'
         ? offensiveSituation
-        : transitionType;
+        : tacticalGamePhase === 'transition'
+          ? transitionType
+          : setPieceType;
     setTacticalTemplateDraft({
       ...emptyTacticalTemplateDraft,
       name: selectedTacticalPlay.name,
@@ -7732,6 +7737,11 @@ function App() {
       transitionType: tacticalGamePhase === 'transition' ? transitionType : null,
       fieldZone: tacticalGamePhase === 'transition' ? transitionFieldZone : null,
       behaviour: tacticalGamePhase === 'transition' ? transitionBehaviour : null,
+      setPieceType: tacticalGamePhase === 'set_piece' ? setPieceType : null,
+      setPieceAction: tacticalGamePhase === 'set_piece' ? setPieceAction : null,
+      ballStartPosition: tacticalGamePhase === 'set_piece'
+        ? { ...selectedTacticalPlay.ballStartPosition }
+        : null,
       category: selectedTacticalPlay.category || '',
       tagsText: safeArray(selectedTacticalPlay.tags).join(', '),
       description: selectedTacticalPlay.description || '',
@@ -7781,6 +7791,11 @@ function App() {
       transitionType: template.phase === 'transition' ? template.transitionType : null,
       fieldZone: template.phase === 'transition' ? template.fieldZone : null,
       behaviour: template.phase === 'transition' ? template.behaviour : null,
+      setPieceType: template.phase === 'set_piece' ? template.setPieceType : null,
+      setPieceAction: template.phase === 'set_piece' ? template.setPieceAction : null,
+      ballStartPosition: template.phase === 'set_piece'
+        ? { ...template.ballStartPosition }
+        : null,
       category: template.category || '',
       tagsText: safeArray(template.tags).join(', '),
       description: template.description || '',
@@ -7808,6 +7823,9 @@ function App() {
         caudalFormationSlots: getFormationSlots(caudalSystem, 'own'),
       }),
       arrows: serializeTemplateArrows(selectedTacticalPlay.arrows),
+      ...(current.phase === 'set_piece'
+        ? { ballStartPosition: { ...selectedTacticalPlay.ballStartPosition } }
+        : {}),
     }));
     setTacticalTemplateNotice('El formulario contiene ahora el dibujo de la jugada actual. Guarda para actualizar la plantilla.');
   };
@@ -7862,14 +7880,14 @@ function App() {
   };
   const createTacticalPlayFromTemplate = (template) => {
     if (!selectedMatch || !template) return;
-    const targetPhase = ['defensive', 'offensive', 'transition'].includes(template.phase)
+    const targetPhase = ['defensive', 'offensive', 'transition', 'set_piece'].includes(template.phase)
       ? template.phase
       : 'defensive';
     const validSituationOptions = targetPhase === 'defensive'
       ? defensiveSituationOptions
       : offensiveSituationOptions;
     const fallbackSituation = targetPhase === 'defensive' ? defensiveSituation : offensiveSituation;
-    const targetSituation = targetPhase === 'transition'
+    const targetSituation = ['transition', 'set_piece'].includes(targetPhase)
       ? ''
       : validSituationOptions.some((option) => option.value === template.situation)
         ? template.situation
@@ -7887,6 +7905,20 @@ function App() {
     const targetBehaviour = targetPhase === 'transition'
       ? normalizeTransitionBehaviour(targetTransitionType, template.behaviour)
       : null;
+    const targetSetPieceType = targetPhase === 'set_piece'
+      && setPieceTypeOptions.some((option) => option.value === template.setPieceType)
+      ? template.setPieceType
+      : 'offensive_set_piece';
+    const targetSetPieceAction = targetPhase === 'set_piece'
+      && setPieceActionOptions.some((option) => option.value === template.setPieceAction)
+      ? template.setPieceAction
+      : 'corner';
+    const targetBallStartPosition = targetPhase === 'set_piece'
+      ? normalizeBallStartPosition(
+        template.ballStartPosition,
+        getDefaultSetPieceBallPosition(targetSetPieceType, targetSetPieceAction)
+      )
+      : null;
     const templateContextWarning = targetPhase === 'offensive' && (
       tacticalGamePhase !== 'offensive'
       || offensiveSituation !== targetSituation
@@ -7901,6 +7933,9 @@ function App() {
       || transitionBehaviour !== targetBehaviour
     )
       ? `Aviso: la plantilla pertenece a ${transitionTypeOptions.find((option) => option.value === targetTransitionType)?.label || targetTransitionType} · ${transitionFieldZoneOptions.find((option) => option.value === targetFieldZone)?.label || targetFieldZone} · ${transitionBehaviourOptions[targetTransitionType]?.find((option) => option.value === targetBehaviour)?.label || targetBehaviour}. `
+      : '';
+    const setPieceContextWarning = targetPhase === 'set_piece' && tacticalGamePhase !== 'set_piece'
+      ? `Aviso: la plantilla pertenece a ${setPieceTypeOptions.find((option) => option.value === targetSetPieceType)?.label || targetSetPieceType} · ${setPieceActionOptions.find((option) => option.value === targetSetPieceAction)?.label || targetSetPieceAction}. `
       : '';
     const defaultName = template.name || 'Jugada desde plantilla';
     const requestedName = window.prompt('Nombre de la jugada', defaultName);
@@ -7918,7 +7953,9 @@ function App() {
       ? createDefensivePlayId
       : targetPhase === 'offensive'
         ? createOffensivePlayId
-        : createTransitionPlayId;
+        : targetPhase === 'transition'
+          ? createTransitionPlayId
+          : createSetPiecePlayId;
     const timestamp = new Date().toISOString();
     const play = {
       id: createPlayId(),
@@ -7931,7 +7968,14 @@ function App() {
             fieldZone: targetFieldZone,
             behaviour: targetBehaviour,
           }
-          : { defensiveSituation: targetSituation }),
+          : targetPhase === 'set_piece'
+            ? {
+              phase: 'set_piece',
+              setPieceType: targetSetPieceType,
+              setPieceAction: targetSetPieceAction,
+              ballStartPosition: { ...targetBallStartPosition },
+            }
+            : { defensiveSituation: targetSituation }),
       name: String(requestedName || '').trim() || defaultName,
       rivalSystem,
       caudalSystem,
@@ -7979,7 +8023,7 @@ function App() {
         },
         plays: [...current.plays, play],
       }));
-    } else {
+    } else if (targetPhase === 'transition') {
       const behaviourContextKey = getTransitionBehaviourContextKey(targetTransitionType, targetFieldZone);
       const playContextKey = getTransitionPlayContextKey(
         targetTransitionType,
@@ -8007,12 +8051,40 @@ function App() {
         },
         plays: [...current.plays, play],
       }));
+    } else {
+      const actionContextKey = getSetPieceActionContextKey(targetSetPieceType, targetSetPieceAction);
+      const playContextKey = getSetPieceContextKey(
+        targetSetPieceType,
+        targetSetPieceAction,
+        targetBallStartPosition
+      );
+      setSetPieceType(targetSetPieceType);
+      setSetPieceAction(targetSetPieceAction);
+      setSetPieceBallStartPosition(targetBallStartPosition);
+      markSetPieceUnsaved();
+      setSetPieceWorkspace((current) => ({
+        ...current,
+        activeSetPieceType: targetSetPieceType,
+        activeActionByType: {
+          ...current.activeActionByType,
+          [targetSetPieceType]: targetSetPieceAction,
+        },
+        activeBallPositionByContext: {
+          ...current.activeBallPositionByContext,
+          [actionContextKey]: targetBallStartPosition,
+        },
+        activePlayIdByContext: {
+          ...current.activePlayIdByContext,
+          [playContextKey]: play.id,
+        },
+        plays: [...current.plays, play],
+      }));
     }
     setTacticalTemplateDialog('');
     setTacticalTemplateNotice(
       warnings.length
-        ? `${templateContextWarning}${transitionContextWarning}Plantilla aplicada. ${warnings.length} ajuste${warnings.length === 1 ? '' : 's'} recomendado${warnings.length === 1 ? '' : 's'}: ${warnings.slice(0, 2).join(' ')}`
-        : `${templateContextWarning}${transitionContextWarning}Plantilla aplicada: ${template.name}.`
+        ? `${templateContextWarning}${transitionContextWarning}${setPieceContextWarning}Plantilla aplicada. ${warnings.length} ajuste${warnings.length === 1 ? '' : 's'} recomendado${warnings.length === 1 ? '' : 's'}: ${warnings.slice(0, 2).join(' ')}`
+        : `${templateContextWarning}${transitionContextWarning}${setPieceContextWarning}Plantilla aplicada: ${template.name}.`
     );
   };
   const normalizedTacticalTemplateSearch = tacticalTemplateSearch.trim().toLowerCase();
@@ -10382,7 +10454,7 @@ function App() {
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <button type="button" onClick={openNewTacticalPlayDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Nueva jugada</button>
                 <button type="button" disabled={tacticalSaveStatus === 'Guardando'} onClick={tacticalGamePhase === 'defensive' ? saveDefensiveWorkspace : tacticalGamePhase === 'offensive' ? saveOffensiveWorkspace : tacticalGamePhase === 'transition' ? saveTransitionWorkspace : saveSetPieceWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
-                <button type="button" disabled={!selectedTacticalPlay || tacticalGamePhase === 'set_piece'} onClick={openSaveTacticalTemplateDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">Guardar como plantilla</button>
+                <button type="button" disabled={!selectedTacticalPlay} onClick={openSaveTacticalTemplateDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">Guardar como plantilla</button>
                 <button type="button" onClick={() => loadTacticalTemplateLibrary('library')} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300">Plantillas</button>
                 <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? duplicateDefensivePlay : tacticalGamePhase === 'offensive' ? duplicateOffensivePlay : tacticalGamePhase === 'transition' ? duplicateTransitionPlay : duplicateSetPiecePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
                 <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? deleteDefensivePlay : tacticalGamePhase === 'offensive' ? deleteOffensivePlay : tacticalGamePhase === 'transition' ? deleteTransitionPlay : deleteSetPiecePlay} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Eliminar</button>
@@ -10966,6 +11038,15 @@ function App() {
                         {transitionBehaviourOptions[template.transitionType]?.find((option) => option.value === template.behaviour)?.label || template.behaviour}
                       </p>
                     ) : null}
+                    {template.phase === 'set_piece' ? (
+                      <p className="mt-2 text-[9px] font-black uppercase tracking-[0.1em] text-amber-200">
+                        {setPieceTypeOptions.find((option) => option.value === template.setPieceType)?.label || template.setPieceType}
+                        {' · '}
+                        {setPieceActionOptions.find((option) => option.value === template.setPieceAction)?.label || template.setPieceAction}
+                        {' · '}
+                        balón {Math.round(template.ballStartPosition?.x || 0)}, {Math.round(template.ballStartPosition?.y || 0)}
+                      </p>
+                    ) : null}
                     <p className="mt-3 line-clamp-3 text-xs font-semibold leading-5 text-slate-300">{template.description || 'Sin descripción.'}</p>
                     {template.tags.length ? <div className="mt-3 flex flex-wrap gap-1">{template.tags.map((tag) => <span key={`${template.id}-${tag}`} className="border border-white/10 bg-black/20 px-2 py-1 text-[9px] font-bold text-slate-300">{tag}</span>)}</div> : null}
                     <p className="mt-3 text-[9px] font-bold uppercase tracking-[0.1em] text-slate-500">Base: {template.baseCaudalSystem || 'libre'} vs {template.baseRivalSystem || 'libre'}</p>
@@ -11033,22 +11114,40 @@ function App() {
                     const nextTransitionType = nextPhase === 'transition'
                       ? (current.transitionType || 'offensive_transition')
                       : null;
+                    const nextSetPieceType = nextPhase === 'set_piece'
+                      ? (current.setPieceType || 'offensive_set_piece')
+                      : null;
+                    const nextSetPieceAction = nextPhase === 'set_piece'
+                      ? (current.setPieceAction || 'corner')
+                      : null;
                     return {
                       ...current,
                       phase: nextPhase,
-                      situation: nextPhase === 'transition' ? nextTransitionType : current.situation,
+                      situation: nextPhase === 'transition'
+                        ? nextTransitionType
+                        : nextPhase === 'set_piece'
+                          ? nextSetPieceType
+                          : current.situation,
                       playStyle: nextPhase === 'offensive' ? normalizeOffensivePlayStyle(current.playStyle) : null,
                       transitionType: nextTransitionType,
                       fieldZone: nextPhase === 'transition' ? (current.fieldZone || 'defensive_half') : null,
                       behaviour: nextPhase === 'transition'
                         ? normalizeTransitionBehaviour(nextTransitionType, current.behaviour)
                         : null,
+                      setPieceType: nextSetPieceType,
+                      setPieceAction: nextSetPieceAction,
+                      ballStartPosition: nextPhase === 'set_piece'
+                        ? normalizeBallStartPosition(
+                          current.ballStartPosition,
+                          getDefaultSetPieceBallPosition(nextSetPieceType, nextSetPieceAction)
+                        )
+                        : null,
                     };
                   })} className="h-11 border border-white/10 bg-slate-950 px-3 text-sm font-semibold normal-case tracking-normal text-white">
                     {tacticalGamePhaseOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
                 </label>
-                {tacticalTemplateDraft.phase !== 'transition' ? (
+                {!['transition', 'set_piece'].includes(tacticalTemplateDraft.phase) ? (
                   <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
                     <span>Situación</span>
                     <input value={tacticalTemplateDraft.situation} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, situation: event.target.value }))} className="h-11 border border-white/10 bg-black/20 px-3 text-sm font-semibold normal-case tracking-normal text-white outline-none" />
@@ -11086,6 +11185,58 @@ function App() {
                       <select value={normalizeTransitionBehaviour(tacticalTemplateDraft.transitionType || 'offensive_transition', tacticalTemplateDraft.behaviour)} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, behaviour: event.target.value }))} className="h-11 border border-white/10 bg-slate-950 px-3 text-sm font-semibold normal-case tracking-normal text-white">
                         {transitionBehaviourOptions[tacticalTemplateDraft.transitionType || 'offensive_transition'].map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                       </select>
+                    </label>
+                  </>
+                ) : null}
+                {tacticalTemplateDraft.phase === 'set_piece' ? (
+                  <>
+                    <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                      <span>Tipo de ABP</span>
+                      <select value={tacticalTemplateDraft.setPieceType || 'offensive_set_piece'} onChange={(event) => setTacticalTemplateDraft((current) => {
+                        const nextType = event.target.value;
+                        const nextAction = current.setPieceAction || 'corner';
+                        return {
+                          ...current,
+                          situation: nextType,
+                          setPieceType: nextType,
+                          ballStartPosition: getDefaultSetPieceBallPosition(nextType, nextAction),
+                        };
+                      })} className="h-11 border border-white/10 bg-slate-950 px-3 text-sm font-semibold normal-case tracking-normal text-white">
+                        {setPieceTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                    </label>
+                    <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                      <span>Tipo de acción</span>
+                      <select value={tacticalTemplateDraft.setPieceAction || 'corner'} onChange={(event) => setTacticalTemplateDraft((current) => ({
+                        ...current,
+                        setPieceAction: event.target.value,
+                        ballStartPosition: getDefaultSetPieceBallPosition(
+                          current.setPieceType || 'offensive_set_piece',
+                          event.target.value
+                        ),
+                      }))} className="h-11 border border-white/10 bg-slate-950 px-3 text-sm font-semibold normal-case tracking-normal text-white">
+                        {setPieceActionOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                    </label>
+                    <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                      <span>Balón X</span>
+                      <input type="number" min="1" max="99" step="0.1" value={tacticalTemplateDraft.ballStartPosition?.x ?? 5} onChange={(event) => setTacticalTemplateDraft((current) => ({
+                        ...current,
+                        ballStartPosition: normalizeBallStartPosition({
+                          ...current.ballStartPosition,
+                          x: event.target.value,
+                        }),
+                      }))} className="h-11 border border-white/10 bg-black/20 px-3 text-sm font-semibold normal-case tracking-normal text-white outline-none" />
+                    </label>
+                    <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                      <span>Balón Y</span>
+                      <input type="number" min="1" max="99" step="0.1" value={tacticalTemplateDraft.ballStartPosition?.y ?? 95} onChange={(event) => setTacticalTemplateDraft((current) => ({
+                        ...current,
+                        ballStartPosition: normalizeBallStartPosition({
+                          ...current.ballStartPosition,
+                          y: event.target.value,
+                        }),
+                      }))} className="h-11 border border-white/10 bg-black/20 px-3 text-sm font-semibold normal-case tracking-normal text-white outline-none" />
                     </label>
                   </>
                 ) : null}
