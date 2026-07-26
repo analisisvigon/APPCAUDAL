@@ -49,59 +49,6 @@ const lineHeight = (lineIndex, lineCount, defensiveLine, attackingLine) => {
   return Math.round((defensiveLine + ((attackingLine - defensiveLine) * lineIndex) / (lineCount - 1)) * 100) / 100;
 };
 
-const normalizeRole = (role) => String(role || '')
-  .normalize('NFD')
-  .replace(/[\u0300-\u036f]/g, '')
-  .replace(/[_-]+/g, ' ')
-  .toLowerCase()
-  .trim();
-
-const getRoleTacticalSide = (role) => {
-  const normalizedRole = normalizeRole(role);
-  if (/\b(izquierdo|izquierda|left)\b/.test(normalizedRole)) return 'left';
-  if (/\b(derecho|derecha|right)\b/.test(normalizedRole)) return 'right';
-  return '';
-};
-
-const getRoleFamily = (role) => normalizeRole(role)
-  .replace(/\b(izquierdo|izquierda|left|derecho|derecha|right)\b/g, '')
-  .replace(/\s+/g, ' ')
-  .trim();
-
-const orientRivalSlotsFacingDown = (formationSlots) => {
-  const slots = formationSlots.map((slot, fallbackSlot) => ({
-    ...slot,
-    slot: Number.isInteger(Number(slot?.slot)) ? Number(slot.slot) : fallbackSlot,
-  }));
-  return slots.map((slot) => {
-    const tacticalSide = getRoleTacticalSide(slot.role);
-    if (!tacticalSide) return slot;
-    const oppositeSide = tacticalSide === 'right' ? 'left' : 'right';
-    const roleFamily = getRoleFamily(slot.role);
-    const oppositeVisualSlot = slots.find((candidate) => (
-      getRoleTacticalSide(candidate.role) === oppositeSide
-      && getRoleFamily(candidate.role) === roleFamily
-    ));
-    return oppositeVisualSlot
-      ? { ...slot, x: oppositeVisualSlot.x }
-      : slot;
-  });
-};
-
-const getAttackingHalfTransitionPositions = ({
-  rivalSystem,
-  caudalSystem,
-  rivalFormationSlots,
-  caudalFormationSlots,
-}) => (
-  getHighBlockPositions({
-    rivalSystem,
-    caudalSystem,
-    rivalFormationSlots: orientRivalSlotsFacingDown(rivalFormationSlots),
-    caudalFormationSlots,
-  })
-);
-
 const buildTeamPositions = ({ team, system, formationSlots, heights, compactness }) => {
   const slots = [...formationSlots]
     .map((slot, fallbackSlot) => ({
@@ -140,7 +87,7 @@ export const getTransitionInitialPositions = ({
   caudalFormationSlots = [],
 }) => {
   if (fieldZone === 'attacking_half') {
-    return getAttackingHalfTransitionPositions({
+    return getHighBlockPositions({
       rivalSystem,
       caudalSystem,
       rivalFormationSlots,

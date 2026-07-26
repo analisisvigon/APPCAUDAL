@@ -70,18 +70,6 @@ const highBlockPreset = getHighBlockPositions({
   rivalFormationSlots: buildFormationSlots('4-4-2'),
   caudalFormationSlots: buildFormationSlots('4-3-3'),
 });
-const normalizePresetGeometry = (positions) => Object.entries(positions)
-  .map(([key, position]) => ({
-    team: key.split(':')[0],
-    x: position.x,
-    y: position.y,
-  }))
-  .sort((left, right) => (
-    left.team.localeCompare(right.team)
-    || left.y - right.y
-    || left.x - right.x
-  ));
-
 const contexts = [
   ['offensive_transition', 'defensive_half'],
   ['offensive_transition', 'attacking_half'],
@@ -95,9 +83,9 @@ const presets = Object.fromEntries(contexts.map(([transitionType, fieldZone]) =>
   assert.equal(hasInitialPositionOverlap(positions), false, `${key} evita solapamientos`);
   if (fieldZone === 'attacking_half') {
     assert.deepEqual(
-      normalizePresetGeometry(positions),
-      normalizePresetGeometry(highBlockPreset),
-      `${key} conserva exactamente la geometría normalizada del bloque alto`
+      positions,
+      highBlockPreset,
+      `${key} conserva exactamente las claves y coordenadas del bloque alto`
     );
   } else {
     assert.equal(
@@ -165,19 +153,19 @@ const rivalSlotByRole = (role) => rival442Slots.find((slot) => slot.role === rol
   });
   const positionForRole = (role) => attackingHalf442[`rival:${rivalSlotByRole(role)}`];
   assert.deepEqual(
-    normalizePresetGeometry(attackingHalf442),
-    normalizePresetGeometry(highBlock442),
-    `${nextTransitionType}: Campo rival coincide con la geometría completa del bloque alto`
+    attackingHalf442,
+    highBlock442,
+    `${nextTransitionType}: Campo rival coincide por jugador y coordenada con bloque alto`
   );
-  assert.equal(positionForRole('Lateral derecho').x, 17, `${nextTransitionType}: Fran Álvarez (LD) ocupa el lateral visual izquierdo`);
-  assert.equal(positionForRole('Lateral izquierdo').x, 83, `${nextTransitionType}: Javi Álvarez (LI) ocupa el lateral visual derecho`);
-  assert.equal(positionForRole('Central derecho').x, 39, `${nextTransitionType}: central derecho ocupa el perfil visual izquierdo`);
-  assert.equal(positionForRole('Central izquierdo').x, 61, `${nextTransitionType}: central izquierdo ocupa el perfil visual derecho`);
-  assert.equal(positionForRole('Extremo derecho').x, 17, `${nextTransitionType}: ED ocupa la banda visual izquierda`);
-  assert.equal(positionForRole('Extremo izquierdo').x, 83, `${nextTransitionType}: EI ocupa la banda visual derecha`);
-  assert.ok(positionForRole('Lateral derecho').x < positionForRole('Lateral izquierdo').x);
-  assert.ok(positionForRole('Extremo derecho').x < positionForRole('Extremo izquierdo').x);
-  assert.ok(positionForRole('Central derecho').x < positionForRole('Central izquierdo').x);
+  assert.equal(positionForRole('Lateral derecho').x, 83, `${nextTransitionType}: el lateral derecho conserva la coordenada de Bloque alto`);
+  assert.equal(positionForRole('Lateral izquierdo').x, 17, `${nextTransitionType}: el lateral izquierdo conserva la coordenada de Bloque alto`);
+  assert.equal(positionForRole('Central derecho').x, 61, `${nextTransitionType}: el central derecho conserva la coordenada de Bloque alto`);
+  assert.equal(positionForRole('Central izquierdo').x, 39, `${nextTransitionType}: el central izquierdo conserva la coordenada de Bloque alto`);
+  assert.equal(positionForRole('Extremo derecho').x, 83, `${nextTransitionType}: el extremo derecho conserva la coordenada de Bloque alto`);
+  assert.equal(positionForRole('Extremo izquierdo').x, 17, `${nextTransitionType}: el extremo izquierdo conserva la coordenada de Bloque alto`);
+  assert.ok(positionForRole('Lateral derecho').x > positionForRole('Lateral izquierdo').x);
+  assert.ok(positionForRole('Extremo derecho').x > positionForRole('Extremo izquierdo').x);
+  assert.ok(positionForRole('Central derecho').x > positionForRole('Central izquierdo').x);
 });
 
 const transitionWorkspace = {
