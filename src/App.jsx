@@ -4693,6 +4693,9 @@ function App() {
   const [setPieceWorkspace, setSetPieceWorkspace] = useState(createEmptySetPieceWorkspace);
   const [setPieceType, setSetPieceType] = useState('offensive_set_piece');
   const [setPieceAction, setSetPieceAction] = useState('corner');
+  const [tacticalCaptureMode, setTacticalCaptureMode] = useState(false);
+  const [selectedFacingSystemsPlayer, setSelectedFacingSystemsPlayer] = useState(null);
+  const facingSystemsPlayerGestureRef = useRef({ longPressTimer: null, moved: false, playerKey: '' });
   const [setPieceBallStartPosition, setSetPieceBallStartPosition] = useState(() => (
     getDefaultSetPieceBallPosition('offensive_set_piece', 'corner')
   ));
@@ -8159,6 +8162,11 @@ function App() {
   };
   const moveDefensivePlayer = (event) => {
     if (!draggingDefensivePlayer || !selectedDefensivePlay || defensiveTool !== 'move') return;
+    facingSystemsPlayerGestureRef.current.moved = true;
+    if (facingSystemsPlayerGestureRef.current.longPressTimer) {
+      window.clearTimeout(facingSystemsPlayerGestureRef.current.longPressTimer);
+      facingSystemsPlayerGestureRef.current.longPressTimer = null;
+    }
     const position = getDefensivePointerPosition(event);
     if (!position) return;
     updateTacticalPlay(selectedDefensivePlay.id, (play) => ({
@@ -8170,10 +8178,16 @@ function App() {
   };
   const endDefensivePlayerDrag = () => {
     if (!draggingDefensivePlayer) return;
+    if (facingSystemsPlayerGestureRef.current.longPressTimer) {
+      window.clearTimeout(facingSystemsPlayerGestureRef.current.longPressTimer);
+      facingSystemsPlayerGestureRef.current.longPressTimer = null;
+    }
     setDraggingDefensivePlayer(null);
   };
   const beginSetPieceBallDrag = (event) => {
     if (
+      tacticalCaptureMode
+      ||
       tacticalGamePhase !== 'set_piece'
       || defensiveTool !== 'move'
       || !selectedSetPiecePlay
@@ -10845,6 +10859,19 @@ function App() {
                   <h4 className="mt-1 text-2xl font-black text-white">Pizarra de partido</h4>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTacticalCaptureMode((current) => !current);
+                      setSelectedFacingSystemsPlayer(null);
+                      setSelectedDefensiveArrowId('');
+                      setSelectedTacticalConnectionId('');
+                    }}
+                    className={`border px-2.5 py-1.5 text-[10px] font-black uppercase ${tacticalCaptureMode ? 'border-emerald-300/35 bg-emerald-400/15 text-emerald-100' : 'border-white/10 bg-white/[0.035] text-slate-300'}`}
+                  >
+                    {tacticalCaptureMode ? 'Salir de captura' : 'Modo captura'}
+                  </button>
+                  <div className={`flex flex-wrap gap-1.5 ${tacticalCaptureMode ? 'hidden' : ''}`}>
                   {[
                     ['names', 'Nombres'],
                     ['zones', 'Zonas'],
@@ -10862,9 +10889,10 @@ function App() {
                       {label}
                     </button>
                   ))}
+                  </div>
                 </div>
               </div>
-              <div className="mb-2 flex flex-wrap items-center gap-1.5">
+              <div className={`mb-2 flex flex-wrap items-center gap-1.5 ${tacticalCaptureMode ? 'hidden' : ''}`}>
                 {[
                   ['move', 'Mover'],
                   ['pass', 'Pase'],
@@ -21204,6 +21232,61 @@ function App() {
     navigateToFacingSystemsPlayer(destination);
   };
 
+  const beginFacingSystemsPlayerGesture = (event, rivalSlot, enableDefensiveEditing) => {
+    if (tacticalCaptureMode) return;
+    const player = rivalSlot.player;
+    const playerId = getFacingSystemsPlayerId(player);
+    const playerKey = `rival:${rivalSlot.slot}`;
+    const gesture = facingSystemsPlayerGestureRef.current;
+    if (gesture.longPressTimer) window.clearTimeout(gesture.longPressTimer);
+    gesture.moved = false;
+    gesture.playerKey = playerKey;
+    gesture.longPressTimer = null;
+    if (playerId && event.pointerType !== 'mouse' && !tacticalCaptureMode) {
+      gesture.longPressTimer = window.setTimeout(() => {
+        gesture.longPressTimer = null;
+        if (!gesture.moved && gesture.playerKey === playerKey) {
+          setSelectedFacingSystemsPlayer({ player, playerId });
+        }
+      }, 650);
+    }
+    if (enableDefensiveEditing) {
+      if (defensiveTool === 'move') beginDefensivePlayerDrag(event, playerKey);
+      else event.stopPropagation();
+    }
+  };
+
+  const finishFacingSystemsPlayerGesture = () => {
+    const gesture = facingSystemsPlayerGestureRef.current;
+    if (gesture.longPressTimer) {
+      window.clearTimeout(gesture.longPressTimer);
+      gesture.longPressTimer = null;
+    }
+  };
+
+  const selectFacingSystemsPlayer = (event, player) => {
+    event.stopPropagation();
+    const gesture = facingSystemsPlayerGestureRef.current;
+    if (gesture.moved || tacticalCaptureMode) {
+      gesture.moved = false;
+      return;
+    }
+    const playerId = getFacingSystemsPlayerId(player);
+    setSelectedFacingSystemsPlayer(playerId ? { player, playerId } : null);
+  };
+
+  const openFacingSystemsPlayerOnDoubleClick = (event, player) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const gesture = facingSystemsPlayerGestureRef.current;
+    if (gesture.moved || tacticalCaptureMode || !getFacingSystemsPlayerId(player)) {
+      gesture.moved = false;
+      return;
+    }
+    setSelectedFacingSystemsPlayer(null);
+    requestFacingSystemsPlayerProfile(player);
+  };
+
   const saveAndOpenFacingSystemsPlayer = async () => {
     if (!pendingFacingSystemsPlayer) return;
     const destination = pendingFacingSystemsPlayer;
@@ -21421,11 +21504,24 @@ function App() {
       <div
         className="relative mx-auto aspect-[7/8.4] min-h-[560px] w-full max-w-4xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner"
         style={enableDefensiveEditing ? { touchAction: 'none' } : undefined}
-        onPointerDown={enableDefensiveEditing ? beginDefensiveDrawing : undefined}
-        onPointerMove={enableDefensiveEditing ? handleDefensiveFieldPointerMove : undefined}
-        onPointerUp={enableDefensiveEditing ? handleDefensiveFieldPointerEnd : undefined}
-        onPointerCancel={enableDefensiveEditing ? cancelDefensiveFieldPointer : undefined}
+        onPointerDown={enableDefensiveEditing && !tacticalCaptureMode ? beginDefensiveDrawing : undefined}
+        onPointerMove={enableDefensiveEditing && !tacticalCaptureMode ? handleDefensiveFieldPointerMove : undefined}
+        onPointerUp={enableDefensiveEditing && !tacticalCaptureMode ? handleDefensiveFieldPointerEnd : undefined}
+        onPointerCancel={enableDefensiveEditing && !tacticalCaptureMode ? cancelDefensiveFieldPointer : undefined}
       >
+        {!tacticalCaptureMode && selectedFacingSystemsPlayer ? (
+          <div
+            className="absolute right-4 top-14 z-50 max-w-[calc(100%-2rem)] border border-caudal-electric/30 bg-caudal-950/95 px-3 py-2 shadow-2xl backdrop-blur"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="max-w-56 truncate text-[10px] font-black text-white">{selectedFacingSystemsPlayer.player?.name}</p>
+            <div className="mt-2 flex gap-2">
+              <button type="button" onClick={() => requestFacingSystemsPlayerProfile(selectedFacingSystemsPlayer.player)} className="bg-caudal-electric px-3 py-1.5 text-[9px] font-black uppercase text-slate-950">Ver ficha</button>
+              <button type="button" onClick={() => setSelectedFacingSystemsPlayer(null)} className="border border-white/10 px-3 py-1.5 text-[9px] font-black uppercase text-slate-300">Cerrar</button>
+            </div>
+          </div>
+        ) : null}
         {layers.zones && showStaffDetails ? renderHudGroup(leftHud, 'left-4 top-1/2 -translate-y-1/2 flex-col items-start') : null}
         {layers.zones && showStaffDetails ? renderHudGroup(rightHud, 'right-4 top-1/2 -translate-y-1/2 flex-col items-end') : null}
         {layers.zones && showStaffDetails ? renderHudGroup(topHud, 'left-1/2 top-4 -translate-x-1/2 flex-row justify-center') : null}
@@ -21457,7 +21553,7 @@ function App() {
             ⚽
           </span>
         ) : null}
-        {layers.connections && selectedConnection ? (
+        {!tacticalCaptureMode && layers.connections && selectedConnection ? (
           <div className={`absolute right-4 top-4 z-40 w-64 border px-3 py-3 text-xs shadow-2xl backdrop-blur ${selectedConnection.team === 'caudal' ? 'border-caudal-electric/35 bg-caudal-950/90 text-caudal-electric' : 'border-rose-300/35 bg-rose-950/90 text-rose-100'}`}>
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -21483,14 +21579,18 @@ function App() {
             key={`rival-overview-${rivalSlot.slot}-${rivalSlot.player?.name || rivalSlot.role}`}
             className="absolute z-30 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center"
             style={{ left: `${slot.x}%`, top: `${slot.y}%`, touchAction: enableDefensiveEditing ? 'none' : undefined }}
-            onPointerDown={enableDefensiveEditing ? (event) => beginDefensivePlayerDrag(event, `rival:${rivalSlot.slot}`) : undefined}
+            onPointerDown={(event) => beginFacingSystemsPlayerGesture(event, rivalSlot, enableDefensiveEditing)}
+            onPointerUp={finishFacingSystemsPlayerGesture}
+            onPointerCancel={finishFacingSystemsPlayerGesture}
+            onClick={(event) => selectFacingSystemsPlayer(event, rivalSlot.player)}
+            onDoubleClick={(event) => openFacingSystemsPlayerOnDoubleClick(event, rivalSlot.player)}
           >
             {(() => {
               const statusPlayer = rivalSlot.player || null;
               const unavailablePlayer = rivalSlot.unavailablePlayer || null;
               const badges = showStaffDetails && layers.badges && statusPlayer ? playerStatusBadges(statusPlayer) : [];
               return (
-                <span className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border bg-rose-500/80 text-[10px] font-black text-white shadow-[0_0_26px_rgba(244,63,94,0.20)] transition duration-300 ${unavailablePlayer ? `border-dashed ${getUnavailableVisualClass(unavailablePlayer)}` : 'border-rose-200'}`}>
+                <span className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border bg-rose-500/80 text-[10px] font-black text-white shadow-[0_0_26px_rgba(244,63,94,0.20)] transition duration-300 ${unavailablePlayer ? `border-dashed ${getUnavailableVisualClass(unavailablePlayer)}` : 'border-rose-200'} ${!tacticalCaptureMode && selectedFacingSystemsPlayer?.playerId === realPlayerId ? 'ring-4 ring-caudal-electric/45' : ''}`}>
                   {statusPlayer?.image ? <img src={statusPlayer.image} alt="" className="h-full w-full object-cover object-center" /> : rivalSlot.slot === 0 ? 'P' : rivalSlot.slot}
                   {badges.length ? (
                     <span className="absolute -right-7 -top-2 flex max-w-20 flex-wrap justify-end gap-1">
@@ -21512,28 +21612,6 @@ function App() {
             {layers.names ? <span className="max-w-24 truncate rounded-md bg-black/65 px-1.5 py-0.5 text-[8px] font-semibold text-white shadow-sm">
               {rivalSlot.player?.name || rivalSlot.role}
             </span> : null}
-            {realPlayerId ? (
-              <button
-                type="button"
-                title="Abrir la ficha existente en Equipos"
-                onPointerDown={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                }}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  requestFacingSystemsPlayerProfile(rivalSlot.player);
-                }}
-                className="rounded-md border border-rose-200/30 bg-slate-950/85 px-1.5 py-1 text-[7px] font-black uppercase tracking-[0.08em] text-white shadow-lg hover:bg-slate-900"
-              >
-                Ver ficha
-              </button>
-            ) : (
-              <span title="Jugador sin ficha asignada" className="rounded-md border border-white/10 bg-slate-950/55 px-1.5 py-1 text-[7px] font-bold text-white/40">
-                Jugador sin ficha asignada
-              </span>
-            )}
           </div>
           );
         }) : null}
