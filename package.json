@@ -16,6 +16,7 @@
     "test:transition-phase": "node src/utils/transitionPhasePositions.test.js",
     "test:set-pieces": "node src/utils/setPiecePositions.test.js",
     "test:tactical-templates": "node src/utils/tacticalTemplates.test.js",
+    "test:tactical-play-context": "node src/utils/tacticalPlayContext.test.js",
     "test:goal-events": "node src/utils/goalEvents.test.js",
     "test:match-status": "node src/utils/matchStatus.test.js",
     "test:player-positions": "node src/constants/playerPositions.test.js",
