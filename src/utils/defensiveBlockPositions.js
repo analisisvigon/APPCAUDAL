@@ -46,6 +46,11 @@ const interpolateLineHeight = (lineIndex, lineCount, defensiveLine, attackingLin
   return roundCoordinate(defensiveLine + ((attackingLine - defensiveLine) * lineIndex) / (lineCount - 1));
 };
 
+const orientRivalSlotsAttackingDown = (formationSlots) => formationSlots.map((slot) => ({
+  ...slot,
+  x: 100 - Number(slot?.x ?? 50),
+}));
+
 const buildTeamPositions = ({ team, system, formationSlots, lineHeights }) => {
   const sortedSlots = [...formationSlots]
     .map((slot, fallbackIndex) => ({ ...slot, slot: Number.isInteger(Number(slot?.slot)) ? Number(slot.slot) : fallbackIndex }))
@@ -132,10 +137,13 @@ export const getDefensiveBlockInitialPositions = ({
     ? defensiveSituation
     : 'mid_block';
   const lineHeights = DEFENSIVE_BLOCK_LINE_HEIGHTS[situation];
+  const resolvedRivalFormationSlots = situation === 'high_block'
+    ? orientRivalSlotsAttackingDown(rivalFormationSlots)
+    : rivalFormationSlots;
   const rivalPositions = buildTeamPositions({
     team: 'rival',
     system: rivalSystem,
-    formationSlots: rivalFormationSlots,
+    formationSlots: resolvedRivalFormationSlots,
     lineHeights: lineHeights.rival,
   });
   const caudalPositions = buildTeamPositions({

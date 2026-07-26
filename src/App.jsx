@@ -84,7 +84,11 @@ import { getDefensiveBlockInitialPositions } from './utils/defensiveBlockPositio
 import {
   getOffensiveInitialPositions,
 } from './utils/offensivePhasePositions';
-import { getTransitionInitialPositions } from './utils/transitionPhasePositions';
+import {
+  getTransitionInitialPositions,
+  normalizeTransitionFieldZone,
+  resolveRenderedTacticalPosition,
+} from './utils/transitionPhasePositions';
 import {
   getBallPositionKey,
   getDefaultSetPieceBallPosition,
@@ -952,9 +956,6 @@ const normalizeOffensiveWorkspace = (value) => {
 };
 const getDefaultTransitionBehaviour = (transitionType) => (
   transitionType === 'defensive_transition' ? 'counterpress' : 'fast_attack'
-);
-const normalizeTransitionFieldZone = (value) => (
-  transitionFieldZoneOptions.some((option) => option.value === value) ? value : 'defensive_half'
 );
 const normalizeTransitionBehaviour = (transitionType, value) => (
   transitionBehaviourOptions[transitionType]?.some((option) => option.value === value)
@@ -21327,6 +21328,19 @@ function App() {
     }
     const caudalSystem = selectedMatch.preCaudalSystem || '4-4-2';
     const rivalSystem = getCurrentRivalSystem();
+    const previewPlayerPositions = enableDefensiveEditing
+      && !selectedTacticalPlay
+      && tacticalGamePhase === 'transition'
+      ? buildTransitionInitialPlayerPositions(transitionType, transitionFieldZone, rivalSystem, caudalSystem)
+      : null;
+    const getRenderedPlayerPosition = (playerKey, fallbackPosition) => {
+      return resolveRenderedTacticalPosition({
+        playerKey,
+        savedPositions: selectedTacticalPlay?.playerPositions,
+        previewPositions: previewPlayerPositions,
+        fallbackPosition,
+      });
+    };
     const rivalSlots = getRivalFormationSlots();
     const caudalCoordinates = getFormationSlots(caudalSystem, 'own').map((slot) => mapFormationSlotToFacingPitch(slot, 'caudal', 0.42));
     const caudalRoles = safeArray(getFormationRoles(caudalSystem));
@@ -21572,7 +21586,7 @@ function App() {
         ) : null}
         {layers.rival ? rivalSlots.map((rivalSlot) => {
           const baseSlot = mapFormationSlotToFacingPitch(rivalSlot.coordinates || { x: 50, y: 50 }, 'rival', 0.42);
-          const slot = enableDefensiveEditing ? getDefensivePlayerPosition(`rival:${rivalSlot.slot}`, baseSlot) : baseSlot;
+          const slot = enableDefensiveEditing ? getRenderedPlayerPosition(`rival:${rivalSlot.slot}`, baseSlot) : baseSlot;
           const realPlayerId = getFacingSystemsPlayerId(rivalSlot.player);
           return (
           <div
@@ -21616,7 +21630,7 @@ function App() {
           );
         }) : null}
         {layers.caudal ? caudalCoordinates.map((baseSlot, index) => {
-          const slot = enableDefensiveEditing ? getDefensivePlayerPosition(`caudal:${index}`, baseSlot) : baseSlot;
+          const slot = enableDefensiveEditing ? getRenderedPlayerPosition(`caudal:${index}`, baseSlot) : baseSlot;
           return (
           <div
             key={`caudal-overview-${index}`}

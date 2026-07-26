@@ -7,6 +7,8 @@ import {
 import {
   TRANSITION_PRESET_HEIGHTS,
   getTransitionInitialPositions,
+  normalizeTransitionFieldZone,
+  resolveRenderedTacticalPosition,
 } from './transitionPhasePositions.js';
 
 const buildFormationSlots = (system) => {
@@ -132,6 +134,57 @@ assert.deepEqual(
   buildPreset('defensive_transition', 'attacking_half', 'retreat'),
   'los comportamientos defensivos comparten preset dentro del mismo tipo y zona'
 );
+assert.equal(normalizeTransitionFieldZone('attacking_half'), 'attacking_half');
+assert.equal(normalizeTransitionFieldZone('offensive_half'), 'defensive_half');
+
+['offensive_transition', 'defensive_transition'].forEach((nextTransitionType) => {
+  const attackingHalf = presets[`${nextTransitionType}:attacking_half`];
+  const defensiveHalf = presets[`${nextTransitionType}:defensive_half`];
+  const rivalOutfield = Object.entries(attackingHalf)
+    .filter(([key]) => key.startsWith('rival:') && key !== 'rival:0')
+    .map(([, position]) => position);
+  const rivalDefensiveHalfOutfield = Object.entries(defensiveHalf)
+    .filter(([key]) => key.startsWith('rival:') && key !== 'rival:0')
+    .map(([, position]) => position);
+  const caudalOutfield = Object.entries(attackingHalf)
+    .filter(([key]) => key.startsWith('caudal:') && key !== 'caudal:0')
+    .map(([, position]) => position);
+  const averageY = (positions) => positions.reduce((total, position) => total + position.y, 0) / positions.length;
+
+  assert.ok(
+    rivalOutfield.filter((position) => position.y > 50).length >= 6,
+    `${nextTransitionType}: al menos seis rivales de campo están en la mitad inferior`
+  );
+  assert.ok(
+    averageY(rivalOutfield) > averageY(rivalDefensiveHalfOutfield),
+    `${nextTransitionType}: Campo ofensivo adelanta longitudinalmente al rival respecto a Campo defensivo`
+  );
+  assert.ok(
+    caudalOutfield.filter((position) => position.y > 50).length >= 7,
+    `${nextTransitionType}: el Caudal queda agrupado cerca de su portería inferior`
+  );
+
+  assert.deepEqual(
+    resolveRenderedTacticalPosition({
+      playerKey: 'rival:4',
+      savedPositions: null,
+      previewPositions: attackingHalf,
+      fallbackPosition: { x: 50, y: 10 },
+    }),
+    attackingHalf['rival:4'],
+    `${nextTransitionType}: Sin jugadas renderiza la previsualización de Campo ofensivo`
+  );
+  assert.deepEqual(
+    resolveRenderedTacticalPosition({
+      playerKey: 'rival:4',
+      savedPositions: { 'rival:4': { x: 44, y: 46 } },
+      previewPositions: attackingHalf,
+      fallbackPosition: { x: 50, y: 10 },
+    }),
+    { x: 44, y: 46 },
+    `${nextTransitionType}: una jugada existente conserva sus coordenadas guardadas`
+  );
+});
 
 const rival442Slots = buildFormationSlots('4-4-2');
 const caudal442Slots = buildFormationSlots('4-4-2');
@@ -157,15 +210,15 @@ const rivalSlotByRole = (role) => rival442Slots.find((slot) => slot.role === rol
     highBlock442,
     `${nextTransitionType}: Campo rival coincide por jugador y coordenada con bloque alto`
   );
-  assert.equal(positionForRole('Lateral derecho').x, 83, `${nextTransitionType}: el lateral derecho conserva la coordenada de Bloque alto`);
-  assert.equal(positionForRole('Lateral izquierdo').x, 17, `${nextTransitionType}: el lateral izquierdo conserva la coordenada de Bloque alto`);
-  assert.equal(positionForRole('Central derecho').x, 61, `${nextTransitionType}: el central derecho conserva la coordenada de Bloque alto`);
-  assert.equal(positionForRole('Central izquierdo').x, 39, `${nextTransitionType}: el central izquierdo conserva la coordenada de Bloque alto`);
-  assert.equal(positionForRole('Extremo derecho').x, 83, `${nextTransitionType}: el extremo derecho conserva la coordenada de Bloque alto`);
-  assert.equal(positionForRole('Extremo izquierdo').x, 17, `${nextTransitionType}: el extremo izquierdo conserva la coordenada de Bloque alto`);
-  assert.ok(positionForRole('Lateral derecho').x > positionForRole('Lateral izquierdo').x);
-  assert.ok(positionForRole('Extremo derecho').x > positionForRole('Extremo izquierdo').x);
-  assert.ok(positionForRole('Central derecho').x > positionForRole('Central izquierdo').x);
+  assert.equal(positionForRole('Lateral derecho').x, 17, `${nextTransitionType}: LD queda en el lado izquierdo visual`);
+  assert.equal(positionForRole('Lateral izquierdo').x, 83, `${nextTransitionType}: LI queda en el lado derecho visual`);
+  assert.equal(positionForRole('Central derecho').x, 39, `${nextTransitionType}: central derecho queda en el perfil izquierdo`);
+  assert.equal(positionForRole('Central izquierdo').x, 61, `${nextTransitionType}: central izquierdo queda en el perfil derecho`);
+  assert.equal(positionForRole('Extremo derecho').x, 17, `${nextTransitionType}: ED queda en el lado izquierdo visual`);
+  assert.equal(positionForRole('Extremo izquierdo').x, 83, `${nextTransitionType}: EI queda en el lado derecho visual`);
+  assert.ok(positionForRole('Lateral derecho').x < positionForRole('Lateral izquierdo').x);
+  assert.ok(positionForRole('Extremo derecho').x < positionForRole('Extremo izquierdo').x);
+  assert.ok(positionForRole('Central derecho').x < positionForRole('Central izquierdo').x);
 });
 
 const transitionWorkspace = {
@@ -260,13 +313,25 @@ assert.ok(appSource.includes("console.error('[TRANSITION_PHASE_SAVE]'"), 'el err
 assert.ok(appSource.includes(".from('partidos')"), 'la persistencia usa Supabase');
 assert.ok(appSource.includes('sourceTemplateId: template.id'), 'las copias desde plantilla conservan la referencia de origen');
 assert.ok(
-  appSource.includes('getDefensivePlayerPosition(`rival:${rivalSlot.slot}`, baseSlot)'),
+  appSource.includes('getRenderedPlayerPosition(`rival:${rivalSlot.slot}`, baseSlot)'),
   'la interfaz aplica las coordenadas finales al mismo slot que conserva nombre y fotografía del rival'
 );
 assert.equal(
   (appSource.match(/buildTransitionInitialPlayerPositions\(/g) || []).length,
-  2,
-  'el preset de transición solo se calcula al crear y restablecer'
+  3,
+  'el preset de transición se calcula al previsualizar, crear y restablecer'
+);
+assert.ok(
+  appSource.includes("{ value: 'attacking_half', label: 'Campo ofensivo' }"),
+  'el selector visual Campo ofensivo usa el valor canónico attacking_half'
+);
+assert.ok(
+  appSource.includes('onChange={(event) => selectTransitionFieldZone(event.target.value)}'),
+  'el valor del selector llega a la selección de zona sin traducciones intermedias'
+);
+assert.ok(
+  appSource.includes('previewPositions: previewPlayerPositions'),
+  'Sin jugadas envía la previsualización activa al resolvedor de coordenadas finales'
 );
 const transitionSelectorSource = appSource.slice(
   appSource.indexOf('const selectTransitionType ='),

@@ -4,6 +4,24 @@ import {
 } from './defensiveBlockPositions.js';
 
 const DEFAULT_SYSTEM_LINES = [4, 4, 2];
+const TRANSITION_FIELD_ZONES = new Set(['defensive_half', 'attacking_half']);
+
+export const normalizeTransitionFieldZone = (value) => (
+  TRANSITION_FIELD_ZONES.has(value) ? value : 'defensive_half'
+);
+
+export const resolveRenderedTacticalPosition = ({
+  playerKey,
+  savedPositions,
+  previewPositions,
+  fallbackPosition,
+}) => {
+  const position = savedPositions?.[playerKey] || previewPositions?.[playerKey];
+  if (!position || !Number.isFinite(Number(position.x)) || !Number.isFinite(Number(position.y))) {
+    return fallbackPosition;
+  }
+  return { x: Number(position.x), y: Number(position.y) };
+};
 
 export const TRANSITION_PRESET_HEIGHTS = Object.freeze({
   offensive_transition: Object.freeze({
@@ -97,9 +115,7 @@ export const getTransitionInitialPositions = ({
   const safeType = Object.hasOwn(TRANSITION_PRESET_HEIGHTS, transitionType)
     ? transitionType
     : 'offensive_transition';
-  const safeZone = Object.hasOwn(TRANSITION_PRESET_HEIGHTS[safeType], fieldZone)
-    ? fieldZone
-    : 'defensive_half';
+  const safeZone = normalizeTransitionFieldZone(fieldZone);
   const heights = TRANSITION_PRESET_HEIGHTS[safeType][safeZone];
   const compactness = safeZone === 'attacking_half' ? 0.78 : 1;
   return preventInitialPositionOverlaps({
