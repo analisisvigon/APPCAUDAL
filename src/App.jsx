@@ -4538,6 +4538,8 @@ function App() {
   const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [matchViewSection, setMatchViewSection] = useState('PRE');
   const [preSubTab, setPreSubTab] = useState('Plan cuerpo técnico');
+  const [facingSystemsView, setFacingSystemsView] = useState('PIZARRA');
+  const [openTacticalQuestionCategory, setOpenTacticalQuestionCategory] = useState('Con balón');
   const [facingSystemsPlayerReturn, setFacingSystemsPlayerReturn] = useState(null);
   const [pendingFacingSystemsPlayer, setPendingFacingSystemsPlayer] = useState(null);
   const [facingSystemsPlayerNavigationError, setFacingSystemsPlayerNavigationError] = useState('');
@@ -10128,6 +10130,9 @@ function App() {
     const selectedMicroDetectedProfile = selectedMicroPlayer ? getMicroDetectedProfileLines(selectedMicroPlayer, selectedMicroProfile) : ['Perfil pendiente de completar.'];
     const selectedMicroStrengths = getMicroStrengthTraits(selectedMicroProfile);
     const selectedMicroWeaknesses = getMicroWeaknessTraits(selectedMicroProfile);
+    const selectedMicroTrends = safeArray(selectedMicroProfile.traits).filter((trait) => (
+      !selectedMicroStrengths.includes(trait) && !selectedMicroWeaknesses.includes(trait)
+    ));
     const selectedMicroHeight = selectedMicroPlayer ? getPlayerHeightValue(selectedMicroPlayer) : '';
     const selectedMicroPosition = selectedMicroPlayer ? getEffectiveMicroPosition(selectedMicroPlayer, selectedMicroProfile) : '';
     const selectedMicroBehaviourConfig = selectedMicroPlayer ? getMicroBehaviourConfig(selectedMicroPlayer, selectedMicroProfile) : null;
@@ -10166,6 +10171,19 @@ function App() {
       keyPlayers[0] ? `Vigilar ${displayPlayerName(keyPlayers[0])}` : '',
       collective.strengths.includes('ABP') ? 'Proteger segundo palo' : '',
     ]).slice(0, 3);
+    const priorityWatchPlan = uniq([
+      ...keyPlayers.map((player) => displayPlayerName(player)),
+      ...watchedPlayers.slice(0, 2).map((player) => displayPlayerName(player)),
+    ]).slice(0, 4);
+    const vigilancePlan = uniq([
+      ...splitLines(selectedMatch.prePlanAvoid),
+      ...priorityWatchPlan.map((playerName) => `Vigilar ${playerName}`),
+    ]).slice(0, 4);
+    const riskPlan = uniq([
+      ...safeArray(collective.weaknesses),
+      ...unavailablePlayers.map((player) => `${displayPlayerName(player)} no disponible`),
+    ]).slice(0, 4);
+    const matchKeysPlan = uniq(getMatchKeyLines()).slice(0, 4);
     const semitoneClass = {
       green: 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100',
       amber: 'border-amber-300/20 bg-amber-300/10 text-amber-100',
@@ -10227,16 +10245,31 @@ function App() {
           <div className="text-base font-black text-white">{caudalSystem} vs {rivalSystem}</div>
         </div>
 
-        <div className={`grid gap-4 ${isPreTalkMode ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(320px,0.32fr)_minmax(0,0.68fr)]'}`}>
+        <nav className="sticky top-14 z-20 overflow-x-auto border border-white/10 bg-[#081327]/95 p-1.5 backdrop-blur" aria-label="Secciones de Sistemas Enfrentados">
+          <div className="flex min-w-max gap-1.5">
+            {['PIZARRA', 'RIVAL', 'JUGADORES', 'PLAN DE PARTIDO'].map((view) => (
+              <button
+                key={view}
+                type="button"
+                onClick={() => setFacingSystemsView(view)}
+                className={`min-h-10 whitespace-nowrap px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] transition sm:text-xs ${facingSystemsView === view ? 'bg-caudal-electric text-slate-950' : 'border border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'}`}
+              >
+                {view}
+              </button>
+            ))}
+          </div>
+        </nav>
+
+        <div className={`grid gap-4 ${facingSystemsView === 'PIZARRA' && !isPreTalkMode ? 'xl:grid-cols-[minmax(320px,0.32fr)_minmax(0,0.68fr)]' : 'xl:grid-cols-2'}`}>
           <div className="grid gap-4 xl:contents">
-            <section className="order-1 border border-caudal-electric/15 bg-[#091428]/90 p-4 xl:col-span-2">
+            <section className={`order-1 border border-caudal-electric/15 bg-[#091428]/90 p-4 ${facingSystemsView !== 'RIVAL' ? 'hidden' : ''}`}>
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Resumen ejecutivo</p>
                   <h4 className="mt-1 text-xl font-black text-white">{selectedMatchRivalTeam?.name || selectedMatch.opponent || 'Rival'}</h4>
                 </div>
               </div>
-              <div className="mt-3 grid gap-2 text-xs font-bold text-slate-200 sm:grid-cols-2">
+              <div className="mt-3 grid gap-2 text-xs font-bold text-slate-200 sm:grid-cols-2 xl:grid-cols-3">
                 {[
                   ['Sistema', rivalSystem],
                   ['Salida', collective.buildUp || 'Sin información suficiente'],
@@ -10252,14 +10285,14 @@ function App() {
                 ))}
               </div>
             </section>
-            <section className="order-3 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2">
+            <section className={`order-3 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2 ${facingSystemsView !== 'RIVAL' ? 'hidden' : ''}`}>
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Perfil colectivo</p>
                   <p className="mt-1 text-xs font-bold text-slate-500">{sourceLabel}</p>
                 </div>
               </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {[
                   ['Salida de balón', 'buildUp', collectiveProfileOptions.buildUp],
                   ['Altura del bloque', 'blockHeight', collectiveProfileOptions.blockHeight],
@@ -10298,8 +10331,20 @@ function App() {
               </div>
             </section>
 
-            <section className="order-4 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1 xl:row-start-1">
+            <section className={`order-4 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1 xl:row-start-1 ${facingSystemsView !== 'PIZARRA' ? 'hidden' : ''}`}>
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Análisis táctico</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                  <span>Sistema Caudal</span>
+                  <select value={caudalSystem} onChange={(event) => updateCaudalPreSystem(event.target.value)} className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none">
+                    {gameSystems.filter((system) => system !== 'Otro').map((system) => <option key={system} value={system}>{system}</option>)}
+                  </select>
+                </label>
+                <div className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                  <span>Sistema rival</span>
+                  <div className="flex h-10 items-center border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white">{rivalSystem}</div>
+                </div>
+              </div>
               <div className="mt-3 grid gap-2">
                 <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
                   <span>Fase del juego</span>
@@ -10506,7 +10551,7 @@ function App() {
               </label>
             </section>
 
-            <section className="order-4 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1">
+            <section className={`order-2 border border-white/10 bg-[#091428]/82 p-4 ${facingSystemsView !== 'RIVAL' ? 'hidden' : ''}`}>
               <div className="flex items-end justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Comparador</p>
@@ -10527,7 +10572,7 @@ function App() {
               </div>
             </section>
 
-            <section className="order-5 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1">
+            <section className={`order-5 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2 ${facingSystemsView !== 'JUGADORES' ? 'hidden' : ''}`}>
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Duelos críticos</p>
               <div className="mt-4 space-y-2">
                 {(duelRows.length ? duelRows : [{ caudalName: 'Caudal', rivalName: liveRivalIdentity.mainThreat || 'Rival', tone: 'amber' }]).map((duel) => (
@@ -10541,17 +10586,21 @@ function App() {
               </div>
             </section>
 
-            <section className="order-6 border border-caudal-electric/15 bg-[#091428]/90 p-4">
+            <section className={`order-1 border border-caudal-electric/20 bg-[#091428]/95 p-5 xl:col-span-2 ${facingSystemsView !== 'PLAN DE PARTIDO' ? 'hidden' : ''}`}>
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Plan de partido</p>
-              <div className="mt-4 grid gap-5 md:grid-cols-2">
+              <div className="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
                 {renderPlanList('Con balón', attackPlan)}
                 {renderPlanList('Sin balón', defensePlan)}
                 {renderPlanList('Transición', transitionPlan)}
                 {renderPlanList('ABP', abpPlan)}
+                {renderPlanList('Vigilancias prioritarias', vigilancePlan)}
+                {renderPlanList('Jugadores a vigilar', priorityWatchPlan)}
+                {renderPlanList('Riesgos', riskPlan)}
+                {renderPlanList('Claves del partido', matchKeysPlan)}
               </div>
             </section>
 
-            <section className="order-2 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2">
+            <section className={`order-2 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2 ${!['JUGADORES', 'PLAN DE PARTIDO'].includes(facingSystemsView) ? 'hidden' : ''}`}>
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Pregunta táctica IA</p>
                 {selectedPreAiAnalysis?.tacticalQuestion?.confidence ? (
@@ -10561,9 +10610,9 @@ function App() {
                 ) : null}
               </div>
               <div className="mt-4 grid gap-3">
-                <div className="border border-caudal-electric/15 bg-caudal-electric/[0.035] p-3">
+                {facingSystemsView === 'JUGADORES' ? <div className="border border-caudal-electric/15 bg-caudal-electric/[0.035] p-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Micro</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Individual</p>
                     <div className="flex flex-wrap gap-1.5">
                       {['Todos', 'Amenazas', 'Vigilancias', 'Debilidades', 'Perfil pendiente'].map((filter) => (
                         <button
@@ -10621,6 +10670,15 @@ function App() {
                           <p className="mt-1 text-xs font-bold text-slate-400">{selectedMicroPlayer.position || 'Sin posición registrada'}</p>
                         </div>
                         <div className="flex flex-wrap gap-1.5">
+                          {getFacingSystemsPlayerId(selectedMicroPlayer) ? (
+                            <button
+                              type="button"
+                              onClick={() => requestFacingSystemsPlayerProfile(selectedMicroPlayer)}
+                              className="rounded-lg border border-caudal-electric/25 bg-caudal-electric/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-caudal-electric"
+                            >
+                              Ver ficha
+                            </button>
+                          ) : null}
                           <span className="rounded-lg border border-white/10 bg-white/[0.05] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-300">
                             {selectedMicroProfileState}
                           </span>
@@ -10724,7 +10782,7 @@ function App() {
                           ) : null}
                         </div>
 
-                        <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+                        <div className="grid min-w-0 gap-3 sm:grid-cols-3">
                           <div className="border border-white/10 bg-white/[0.03] p-3">
                             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Fortalezas</p>
                             <div className="mt-2 space-y-1">
@@ -10739,6 +10797,14 @@ function App() {
                               {selectedMicroWeaknesses.length ? selectedMicroWeaknesses.map((trait) => (
                                 <p key={trait} className="break-words text-xs font-semibold text-slate-200">• {trait}</p>
                               )) : <p className="text-xs font-semibold text-slate-500">Sin vulnerabilidades seleccionadas</p>}
+                            </div>
+                          </div>
+                          <div className="border border-white/10 bg-white/[0.03] p-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Tendencias</p>
+                            <div className="mt-2 space-y-1">
+                              {selectedMicroTrends.length ? selectedMicroTrends.map((trait) => (
+                                <p key={trait} className="break-words text-xs font-semibold text-slate-200">• {trait}</p>
+                              )) : <p className="text-xs font-semibold text-slate-500">Sin información suficiente</p>}
                             </div>
                           </div>
                         </div>
@@ -10801,11 +10867,18 @@ function App() {
                   ) : (
                     <p className="mt-3 border border-dashed border-white/10 px-3 py-3 text-sm font-semibold text-slate-500">Sin jugadores disponibles para análisis Micro.</p>
                   )}
-                </div>
-                {tacticalQuestionGroups.map(([group, mode, questions]) => (
+                </div> : null}
+                {facingSystemsView === 'PLAN DE PARTIDO' ? tacticalQuestionGroups.map(([group, mode, questions]) => (
                   <div key={group} className="border border-white/10 bg-white/[0.025] p-3">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{group}</p>
-                    <div className="mt-2 grid gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setOpenTacticalQuestionCategory((current) => current === group ? '' : group)}
+                      className="flex w-full items-center justify-between gap-3 text-left text-[10px] font-black uppercase tracking-[0.18em] text-slate-300"
+                    >
+                      <span>{group}</span>
+                      <span className="text-caudal-electric">{openTacticalQuestionCategory === group ? '−' : '+'}</span>
+                    </button>
+                    {openTacticalQuestionCategory === group ? <div className="mt-2 grid gap-2">
                       {questions.map((question) => {
                         const active = selectedPreAiAnalysis?.tacticalQuestion?.question === question && !selectedPreAiAnalysis?.tacticalQuestion?.playerKey;
                         const sourceType = selectedPreAiAnalysis?.tacticalQuestion?.sourceType;
@@ -10845,14 +10918,14 @@ function App() {
                           </div>
                         );
                       })}
-                    </div>
+                    </div> : null}
                   </div>
-                ))}
+                )) : null}
               </div>
             </section>
           </div>
 
-          <div className="grid gap-4 xl:contents">
+          <div className={`grid gap-4 xl:contents ${facingSystemsView !== 'PIZARRA' ? 'hidden' : ''}`}>
             <section className="order-4 border border-white/10 bg-[#091428]/82 p-3 xl:col-start-2 xl:row-span-3 xl:row-start-1">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
                 <div>
