@@ -4537,6 +4537,9 @@ function App() {
   const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [matchViewSection, setMatchViewSection] = useState('PRE');
   const [preSubTab, setPreSubTab] = useState('Plan cuerpo técnico');
+  const [facingSystemsPlayerReturn, setFacingSystemsPlayerReturn] = useState(null);
+  const [pendingFacingSystemsPlayer, setPendingFacingSystemsPlayer] = useState(null);
+  const [facingSystemsPlayerNavigationError, setFacingSystemsPlayerNavigationError] = useState('');
   const [isPreTalkMode, setIsPreTalkMode] = useState(false);
   const [manualConsignaDraft, setManualConsignaDraft] = useState('');
   const [preKeyDraft, setPreKeyDraft] = useState('');
@@ -18023,12 +18026,12 @@ function App() {
   };
 
   useEffect(() => {
-    if (activeTab !== 'Partidos') {
+    if (activeTab !== 'Partidos' && !facingSystemsPlayerReturn?.matchId) {
       setMatchView('lista_partidos');
       setSelectedMatchId(null);
       setMatchViewSection('PRE');
     }
-  }, [activeTab]);
+  }, [activeTab, facingSystemsPlayerReturn?.matchId]);
 
   useEffect(() => {
     setSelectedTimelineAction(null);
@@ -21139,6 +21142,98 @@ function App() {
     );
   };
 
+  const getFacingSystemsPlayerId = (player) =>
+    [player?.globalPlayerId, player?.jugadorRivalId, player?.id].find((id) => isUuid(id)) || '';
+
+  const getFacingSystemsSaveStatus = () => {
+    if (tacticalGamePhase === 'offensive') return offensiveSaveStatus;
+    if (tacticalGamePhase === 'transition') return transitionSaveStatus;
+    if (tacticalGamePhase === 'set_piece') return setPieceSaveStatus;
+    return defensiveSaveStatus;
+  };
+
+  const saveFacingSystemsWorkspace = () => {
+    if (tacticalGamePhase === 'offensive') return saveOffensiveWorkspace();
+    if (tacticalGamePhase === 'transition') return saveTransitionWorkspace();
+    if (tacticalGamePhase === 'set_piece') return saveSetPieceWorkspace();
+    return saveDefensiveWorkspace();
+  };
+
+  const navigateToFacingSystemsPlayer = ({ teamId, playerId }) => {
+    const targetTeam = teams.find((team) => String(team.id) === String(teamId));
+    const targetPlayer = targetTeam?.squad?.map(normalizeSquadEntry).find((player) =>
+      [player.globalPlayerId, player.jugadorRivalId, player.id]
+        .filter(Boolean)
+        .some((id) => String(id) === String(playerId))
+    );
+    if (!targetTeam || !targetPlayer) {
+      setFacingSystemsPlayerNavigationError('No se ha podido abrir la ficha real de este jugador.');
+      return;
+    }
+    setFacingSystemsPlayerNavigationError('');
+    setFacingSystemsPlayerReturn({
+      matchId: selectedMatch.id,
+      teamId,
+      playerId,
+      matchView,
+      matchViewSection,
+      preSubTab,
+      tacticalGamePhase,
+      defensiveSituation,
+      offensiveSituation,
+      transitionType,
+      transitionFieldZone,
+      transitionBehaviour,
+      setPieceType,
+      setPieceAction,
+    });
+    setSelectedTeamId(teamId);
+    setActiveTab('Equipos');
+    openRivalPlayerModal(targetPlayer, { teamId });
+  };
+
+  const requestFacingSystemsPlayerProfile = (player) => {
+    const teamId = selectedMatchRivalTeam?.id || getRivalBaseTeam()?.id || '';
+    const playerId = getFacingSystemsPlayerId(player);
+    if (!teamId || !playerId) return;
+    const destination = { teamId, playerId };
+    if (getFacingSystemsSaveStatus() === 'Cambios sin guardar') {
+      setPendingFacingSystemsPlayer(destination);
+      return;
+    }
+    navigateToFacingSystemsPlayer(destination);
+  };
+
+  const saveAndOpenFacingSystemsPlayer = async () => {
+    if (!pendingFacingSystemsPlayer) return;
+    const destination = pendingFacingSystemsPlayer;
+    const saved = await saveFacingSystemsWorkspace();
+    if (!saved) return;
+    setPendingFacingSystemsPlayer(null);
+    navigateToFacingSystemsPlayer(destination);
+  };
+
+  const returnToFacingSystems = async () => {
+    if (!facingSystemsPlayerReturn) return;
+    const context = facingSystemsPlayerReturn;
+    if (rivalPlayerModal.open) closeRivalPlayerModal();
+    await loadTeams();
+    setSelectedMatchId(context.matchId);
+    setMatchView(context.matchView || 'pre_partido');
+    setMatchViewSection(context.matchViewSection || 'PRE');
+    setPreSubTab('Sistemas enfrentados');
+    setTacticalGamePhase(context.tacticalGamePhase);
+    setDefensiveSituation(context.defensiveSituation);
+    setOffensiveSituation(context.offensiveSituation);
+    setTransitionType(context.transitionType);
+    setTransitionFieldZone(context.transitionFieldZone);
+    setTransitionBehaviour(context.transitionBehaviour);
+    setSetPieceType(context.setPieceType);
+    setSetPieceAction(context.setPieceAction);
+    setActiveTab('Partidos');
+    setFacingSystemsPlayerReturn(null);
+  };
+
   const renderFacingSystemsOverview = (enableDefensiveEditing = false) => {
     if (!selectedMatch) {
       return (
@@ -21382,6 +21477,7 @@ function App() {
         {layers.rival ? rivalSlots.map((rivalSlot) => {
           const baseSlot = mapFormationSlotToFacingPitch(rivalSlot.coordinates || { x: 50, y: 50 }, 'rival', 0.42);
           const slot = enableDefensiveEditing ? getDefensivePlayerPosition(`rival:${rivalSlot.slot}`, baseSlot) : baseSlot;
+          const realPlayerId = getFacingSystemsPlayerId(rivalSlot.player);
           return (
           <div
             key={`rival-overview-${rivalSlot.slot}-${rivalSlot.player?.name || rivalSlot.role}`}
@@ -21416,6 +21512,28 @@ function App() {
             {layers.names ? <span className="max-w-24 truncate rounded-md bg-black/65 px-1.5 py-0.5 text-[8px] font-semibold text-white shadow-sm">
               {rivalSlot.player?.name || rivalSlot.role}
             </span> : null}
+            {realPlayerId ? (
+              <button
+                type="button"
+                title="Abrir la ficha existente en Equipos"
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  requestFacingSystemsPlayerProfile(rivalSlot.player);
+                }}
+                className="rounded-md border border-rose-200/30 bg-slate-950/85 px-1.5 py-1 text-[7px] font-black uppercase tracking-[0.08em] text-white shadow-lg hover:bg-slate-900"
+              >
+                Ver ficha
+              </button>
+            ) : (
+              <span title="Jugador sin ficha asignada" className="rounded-md border border-white/10 bg-slate-950/55 px-1.5 py-1 text-[7px] font-bold text-white/40">
+                Jugador sin ficha asignada
+              </span>
+            )}
           </div>
           );
         }) : null}
@@ -28348,6 +28466,47 @@ function App() {
             onCloseSourceAnalysis={() => { setPlayerSourceAnalysis(null); setRivalPlayerSaveError(''); }}
             onDelete={rivalPlayerModal.mode === 'edit' && (selectedTeam || editingTeamId) ? () => { requestSelectedTeamPlayerDelete(rivalPlayerModal.draft); closeRivalPlayerModal(); } : null}
           />
+        </div>
+      ) : null}
+
+      {facingSystemsPlayerReturn && activeTab === 'Equipos' ? (
+        <button
+          type="button"
+          onClick={returnToFacingSystems}
+          className="fixed left-3 top-3 z-[90] rounded-xl border border-caudal-electric/35 bg-caudal-950/95 px-3 py-2 text-xs font-black text-caudal-electric shadow-2xl backdrop-blur sm:left-5 sm:top-5"
+        >
+          ← Volver a Sistemas Enfrentados
+        </button>
+      ) : null}
+
+      {facingSystemsPlayerNavigationError ? (
+        <div className="fixed bottom-4 left-1/2 z-[95] -translate-x-1/2 rounded-xl border border-red-300/25 bg-red-950/95 px-4 py-3 text-sm font-bold text-red-100 shadow-2xl">
+          {facingSystemsPlayerNavigationError}
+        </div>
+      ) : null}
+
+      {pendingFacingSystemsPlayer ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 p-4" role="dialog" aria-modal="true" aria-labelledby="facing-player-unsaved-title">
+          <section className="w-full max-w-md rounded-2xl border border-amber-300/20 bg-[#091428] p-5 shadow-2xl">
+            <h3 id="facing-player-unsaved-title" className="text-lg font-black text-white">Tienes cambios sin guardar en esta jugada.</h3>
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+              <button type="button" onClick={() => setPendingFacingSystemsPlayer(null)} className="rounded-xl border border-white/10 px-4 py-2 text-sm font-bold text-slate-300">Cancelar</button>
+              <button
+                type="button"
+                onClick={() => {
+                  const destination = pendingFacingSystemsPlayer;
+                  setPendingFacingSystemsPlayer(null);
+                  navigateToFacingSystemsPlayer(destination);
+                }}
+                className="rounded-xl border border-amber-300/25 bg-amber-300/10 px-4 py-2 text-sm font-black text-amber-100"
+              >
+                Abrir sin guardar
+              </button>
+              <button type="button" onClick={saveAndOpenFacingSystemsPlayer} className="rounded-xl bg-caudal-electric px-4 py-2 text-sm font-black text-slate-950">
+                Guardar y abrir ficha
+              </button>
+            </div>
+          </section>
         </div>
       ) : null}
 
