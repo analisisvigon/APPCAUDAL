@@ -9,6 +9,7 @@ import MatchPrintTab from './components/print/MatchPrintTab';
 import PlayerDatabaseForm from './components/players/PlayerDatabaseForm';
 import GlobalPlayerDatabase from './components/players/GlobalPlayerDatabase';
 import AccordionSection from './components/shared/AccordionSection';
+import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
 import {
   POST_EVENT_TYPES,
@@ -24817,8 +24818,8 @@ function App() {
                                   ? 'ring-2 ring-red-400/90 ring-offset-2 ring-offset-slate-950 bg-red-400/15'
                                   : '';
                             return (
+                              <PlayerNameTooltip key={`${selectedTeam.system || 'base'}-${slotIndex}`} player={slotPlayer}>
                               <div
-                                key={`${selectedTeam.system || 'base'}-${slotIndex}`}
                                 role="button"
                                 tabIndex={0}
                                 draggable={teamFieldEditMode && Boolean(slotPlayer)}
@@ -24909,7 +24910,7 @@ function App() {
                                       {playerNumberLabel(slotPlayer) ? <span className="absolute left-0.5 top-0.5 z-10 rounded-md bg-slate-950/82 px-1 py-0.5 text-[8px] font-black leading-none text-white">{playerNumberLabel(slotPlayer)}</span> : null}
                                     </span>
                                     <span className="mt-0.5 flex w-full min-w-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap px-0.5 text-[9px] font-black uppercase leading-3">
-                                      <span className="block min-w-0 truncate" title={displayPlayerName(slotPlayer)}>{getTacticalPlayerName(slotPlayer)}</span>
+                                      <span className="block min-w-0 truncate">{getTacticalPlayerName(slotPlayer)}</span>
                                       {getRivalPlayerFlags(selectedTeam.id, slotPlayer.name).captain || slotPlayer.captain ? <span title="Capitán" className="shrink-0 text-[10px] leading-none text-blue-200">©</span> : null}
                                     </span>
                                   </>
@@ -24924,8 +24925,8 @@ function App() {
                                     {[0, 1].map((reserveIndex) => {
                                       const reservePlayer = slotReservePlayers[reserveIndex] || null;
                                       return (
+                                        <PlayerNameTooltip key={`${slotIndex}-reserve-panel-${reserveIndex}`} player={reservePlayer}>
                                         <button
-                                          key={`${slotIndex}-reserve-panel-${reserveIndex}`}
                                           type="button"
                                           draggable={Boolean(reservePlayer)}
                                           onDragStart={() => {
@@ -24965,15 +24966,17 @@ function App() {
                                                 <span className="absolute inset-0 flex items-center justify-center">{reservePlayer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                                                 {reservePlayer.image ? <img src={reservePlayer.image} alt={reservePlayer.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="relative h-full w-full object-cover" /> : null}
                                               </span>
-                                              <span className="block min-w-0 flex-1 truncate whitespace-nowrap text-[8px] font-black uppercase leading-none" title={displayPlayerName(reservePlayer)}>{getTacticalPlayerName(reservePlayer)}</span>
+                                              <span className="block min-w-0 flex-1 truncate whitespace-nowrap text-[8px] font-black uppercase leading-none">{getTacticalPlayerName(reservePlayer)}</span>
                                             </>
                                           ) : null}
                                         </button>
+                                        </PlayerNameTooltip>
                                       );
                                     })}
                                   </div>
                                 ) : null}
                               </div>
+                              </PlayerNameTooltip>
                             );
                           })}
                         </div>
@@ -24987,13 +24990,15 @@ function App() {
                                     <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">{group.label}</p>
                                     <div className="mt-1 flex flex-wrap gap-1">
                                       {group.players.map((player) => (
-                                        <span key={player.jugadorRivalId || player.id || player.name} className="inline-flex h-7 min-w-0 max-w-28 items-center gap-1.5 overflow-hidden rounded-md border border-white/10 bg-white/[0.035] px-1.5 text-[8px] font-black text-slate-100">
+                                        <PlayerNameTooltip key={player.jugadorRivalId || player.id || player.name} player={player}>
+                                        <span className="inline-flex h-7 min-w-0 max-w-28 items-center gap-1.5 overflow-hidden rounded-md border border-white/10 bg-white/[0.035] px-1.5 text-[8px] font-black text-slate-100">
                                           <span className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white/[0.07] text-[7px]">
                                             <span>{getPlayerInitials(player)}</span>
                                             {player.image ? <img src={player.image} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} className="absolute inset-0 h-full w-full object-cover" /> : null}
                                           </span>
-                                          <span className="block min-w-0 truncate whitespace-nowrap uppercase" title={displayPlayerName(player)}>{getTacticalPlayerName(player)}</span>
+                                          <span className="block min-w-0 truncate whitespace-nowrap uppercase">{getTacticalPlayerName(player)}</span>
                                         </span>
+                                        </PlayerNameTooltip>
                                       ))}
                                     </div>
                                   </div>
@@ -25057,8 +25062,8 @@ function App() {
                                 const fieldState = getRosterFieldState(player);
                                 const positionPresentation = getPlayerPositionPresentation(player);
                                 return (
+                                  <PlayerNameTooltip key={player.jugadorRivalId || player.id || player.name} player={player}>
                                   <div
-                                    key={player.jugadorRivalId || player.id || player.name}
                                     draggable
                                     onClick={() => setSelectedTacticalRivalPlayerName(getRivalPlayerUniqueKey(player))}
                                     onDoubleClick={(event) => {
@@ -25193,6 +25198,7 @@ function App() {
                                       ) : null}
                                     </div>
                                   </div>
+                                  </PlayerNameTooltip>
                                 );
                               })}
                             </div>

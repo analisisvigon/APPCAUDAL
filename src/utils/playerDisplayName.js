@@ -10,6 +10,18 @@ export const getPlayerDisplayName = (player = {}) => {
   || 'Jugador';
 };
 
+export const getPlayerTooltipText = (player) => {
+  if (!player || typeof player !== 'object') return '';
+  const hasName = [
+    player.shirtName,
+    player.shirt_name,
+    player.shortName,
+    player.short_name,
+    player.name,
+  ].some((value) => cleanName(value));
+  return hasName ? getPlayerDisplayName(player) : '';
+};
+
 export const playerMatchesNameQuery = (player = {}, query = '') => {
   const source = player && typeof player === 'object' ? player : {};
   const normalize = (value) => cleanName(value)

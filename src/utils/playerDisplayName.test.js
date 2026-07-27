@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { getPlayerDisplayName, playerMatchesNameQuery } from './playerDisplayName.js';
+import { getPlayerDisplayName, getPlayerTooltipText, playerMatchesNameQuery } from './playerDisplayName.js';
 
 const porto = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -15,6 +15,11 @@ assert.equal(getPlayerDisplayName({ name: 'Agustín Porto', shirtName: '   ' }),
 assert.equal(getPlayerDisplayName({ shortName: 'Porto', name: 'Agustín Porto' }), 'Porto');
 assert.equal(getPlayerDisplayName({}), 'Jugador');
 assert.equal(getPlayerDisplayName(null), 'Jugador');
+assert.equal(getPlayerTooltipText(porto), 'Agus Porto');
+assert.equal(getPlayerTooltipText({ name: 'Agustín Porto', shirtName: ' ' }), 'Agustín Porto');
+assert.equal(getPlayerTooltipText({}), '');
+assert.equal(getPlayerTooltipText(null), '');
+assert.equal(getPlayerTooltipText({ number: 20 }), '');
 assert.equal(playerMatchesNameQuery(porto, 'Agustín'), true);
 assert.equal(playerMatchesNameQuery(porto, 'Agus'), true);
 assert.equal(playerMatchesNameQuery(porto, 'Porto'), true);
