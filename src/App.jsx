@@ -82,6 +82,10 @@ import {
 } from './utils/rivalTactics';
 import { getDefensiveBlockInitialPositions } from './utils/defensiveBlockPositions';
 import {
+  buildDefensiveOffensiveRivalBoard,
+  hasLegacyDefensiveOffensiveOrientation,
+} from './utils/defensiveOffensiveBoard';
+import {
   getOffensiveInitialPositions,
 } from './utils/offensivePhasePositions';
 import {
@@ -8148,6 +8152,20 @@ function App() {
       coordinates: { x: slot.x, y: slot.y },
     }))
   );
+  const selectedDefensiveOffensiveRivalBoard = ['defensive', 'offensive'].includes(tacticalGamePhase)
+    ? buildDefensiveOffensiveRivalBoard({
+      phase: tacticalGamePhase,
+      rivalSlots: getTacticalBoardRivalFormationSlots(),
+      savedPositions: selectedTacticalPlay?.playerPositions,
+      getFallbackPosition: (slot) => mapFormationSlotToFacingPitch(
+        slot.coordinates || { x: 50, y: 50 },
+        'rival',
+        0.42
+      ),
+    })
+    : [];
+  const selectedPlayHasLegacyRivalOrientation = Boolean(selectedTacticalPlay)
+    && hasLegacyDefensiveOffensiveOrientation(selectedDefensiveOffensiveRivalBoard);
   const getDefensivePlayerPosition = (playerKey, fallbackPosition) => {
     const savedPosition = selectedDefensivePlay?.playerPositions?.[playerKey];
     if (!savedPosition || !Number.isFinite(Number(savedPosition.x)) || !Number.isFinite(Number(savedPosition.y))) return fallbackPosition;
@@ -11273,6 +11291,11 @@ function App() {
                 <button type="button" disabled={!selectedDefensiveArrowId} onClick={deleteSelectedDefensiveArrow} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Borrar</button>
                 <button type="button" disabled={!defensiveUndoStack.length} onClick={undoDefensiveAction} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Deshacer</button>
                 <button type="button" disabled={!selectedDefensivePlay} onClick={resetDefensiveFormation} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Restablecer formación</button>
+                {selectedPlayHasLegacyRivalOrientation ? (
+                  <span className="border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-[9px] font-black uppercase text-amber-100">
+                    Orientación antigua detectada · usa Restablecer formación
+                  </span>
+                ) : null}
               </div>
               {renderFacingSystemsOverview(true)}
             </section>
@@ -21702,6 +21725,21 @@ function App() {
       });
     };
     const rivalSlots = getTacticalBoardRivalFormationSlots();
+    const defensiveOffensiveRivalBoard = enableDefensiveEditing
+      ? buildDefensiveOffensiveRivalBoard({
+        phase: tacticalGamePhase,
+        rivalSlots,
+        savedPositions: selectedTacticalPlay?.playerPositions,
+        getFallbackPosition: (slot) => mapFormationSlotToFacingPitch(
+          slot.coordinates || { x: 50, y: 50 },
+          'rival',
+          0.42
+        ),
+      })
+      : [];
+    const defensiveOffensiveRivalBoardBySlot = new Map(
+      defensiveOffensiveRivalBoard.map((entry) => [entry.slot, entry])
+    );
     const caudalCoordinates = getFormationSlots(caudalSystem, 'own').map((slot) => mapFormationSlotToFacingPitch(slot, 'caudal', 0.42));
     const caudalRoles = safeArray(getFormationRoles(caudalSystem));
     const caudalLineup = safeArray(selectedMatch.preCaudalLineup);
@@ -21745,7 +21783,8 @@ function App() {
       { ...slot, label: caudalLineup[index] || caudalRoles[index] || `C${index + 1}`, team: 'caudal' },
     ]));
     const rivalPlayerPositions = new Map(rivalSlots.map((rivalSlot) => {
-      const slot = mapFormationSlotToFacingPitch(rivalSlot.coordinates || { x: 50, y: 50 }, 'rival', 0.42);
+      const slot = defensiveOffensiveRivalBoardBySlot.get(rivalSlot.slot)?.position
+        || mapFormationSlotToFacingPitch(rivalSlot.coordinates || { x: 50, y: 50 }, 'rival', 0.42);
       const label = rivalSlot.player?.name || rivalSlot.role || `R${rivalSlot.slot + 1}`;
       return [normalizePlayerIdentityName(label), { ...slot, label, team: 'rival' }];
     }));
@@ -21946,7 +21985,9 @@ function App() {
         ) : null}
         {layers.rival ? rivalSlots.map((rivalSlot) => {
           const baseSlot = mapFormationSlotToFacingPitch(rivalSlot.coordinates || { x: 50, y: 50 }, 'rival', 0.42);
-          const slot = enableDefensiveEditing ? getRenderedPlayerPosition(`rival:${rivalSlot.slot}`, baseSlot) : baseSlot;
+          const phaseBoardPosition = defensiveOffensiveRivalBoardBySlot.get(rivalSlot.slot)?.position;
+          const slot = phaseBoardPosition
+            || (enableDefensiveEditing ? getRenderedPlayerPosition(`rival:${rivalSlot.slot}`, baseSlot) : baseSlot);
           const realPlayerId = getFacingSystemsPlayerId(rivalSlot.player);
           return (
           <div
