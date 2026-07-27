@@ -36,6 +36,16 @@ import {
   resolveGoalParticipant,
 } from './utils/goalEvents';
 import {
+  buildDelegatedPlayerOptions,
+  buildDelegatedQuickEventDbPayload,
+  delegatedEventMatchesPlayer,
+  getCanonicalPlayerId,
+  getDelegatedEventPlayerId,
+  normalizeDelegatedQuickEvent,
+  resolveDelegatedEventPlayer,
+  resolveDelegatedPlayer,
+} from './utils/delegatedEventIdentity';
+import {
   getPlayerSourceFunctionUserMessage,
   invokePlayerSourceAnalyzer,
 } from './utils/playerSourceFunction';
@@ -617,6 +627,7 @@ const emptyMatchForm = {
   statsSystem: '4-4-2',
   statsLineup: [],
   statsCalledPlayers: [],
+  statsCalledPlayerIds: {},
   statsPlayerData: {},
   captainPlayerId: null,
   preNotes: '',
@@ -2092,7 +2103,7 @@ const aggregateQuickEventStats = (events = [], { side = 'caudal', playerId = '',
   const stats = createEmptyEventStats();
   const sourceEvents = safeArray(events).filter((event) => {
     if (side && getQuickEventSide(event) !== side) return false;
-    if (scope === 'player' && (!playerId || event.jugadorId !== playerId)) return false;
+    if (scope === 'player' && (!playerId || getDelegatedEventPlayerId(event) !== playerId)) return false;
     return true;
   });
   sourceEvents.forEach((event) => {
@@ -2139,16 +2150,8 @@ const getMatchOperationalStatus = (match) => {
   return { label: 'CERRADO', className: 'border-white/15 bg-white/[0.055] text-slate-300' };
 };
 
-const normalizeSupabaseQuickEvent = (event) => ({
-  id: event.id,
-  partidoId: event.partido_id,
-  jugadorId: event.jugador_id || null,
-  equipo: event.equipo || 'caudal',
-  tipoEvento: event.tipo_evento || '',
-  minute: String(event.minuto ?? ''),
-  reviewed: Boolean(event.reviewed),
-  createdAt: event.created_at || '',
-});
+const normalizeSupabaseQuickEvent = (event, playerCatalog = []) =>
+  normalizeDelegatedQuickEvent(event, playerCatalog);
 
 const normalizeSupabaseRivalPlayer = (player) => ({
   id: player.id ?? player.legacy_id ?? player.name,
@@ -3652,6 +3655,7 @@ const normalizeMatch = (match) => {
     ...merged,
     preAiAnalysis: normalizePreAiAnalysis(merged.preAiAnalysis),
     statsCalledPlayers: safeArray(merged.statsCalledPlayers),
+    statsCalledPlayerIds: safeObject(merged.statsCalledPlayerIds),
     preCaudalLineup: safeArray(merged.preCaudalLineup),
     preRivalLineup: safeArray(merged.preRivalLineup),
     preRivalLineupPlayers: safeArray(merged.preRivalLineupPlayers),
@@ -5143,7 +5147,7 @@ function App() {
     const quickEventsByMatch = quickEventsResponse.error
       ? {}
       : (quickEventsResponse.data || []).reduce((acc, event) => {
-          acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseQuickEvent(event)];
+          acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseQuickEvent(event, players)];
           return acc;
         }, {});
     if (quickEventsResponse.error) {
@@ -5247,6 +5251,7 @@ function App() {
           injured: Boolean(row.injured),
           rating: row.rating || '',
           replacementName: row.replacement_name || '',
+          jugadorId: row.jugador_id || null,
         };
         acc[row.partido_id] = current;
         return acc;
@@ -5258,7 +5263,7 @@ function App() {
       const quickEventsByMatch = quickEventsResponse.error
         ? {}
         : (quickEventsResponse.data || []).reduce((acc, event) => {
-            acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseQuickEvent(event)];
+            acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseQuickEvent(event, nextPlayers)];
             return acc;
           }, {});
       const systemEventsByMatch = systemEventsResponse.error
@@ -5393,7 +5398,7 @@ function App() {
         error: quickEventsResponse.error,
       });
     } else {
-      quickEvents = (quickEventsResponse.data || []).map(normalizeSupabaseQuickEvent);
+      quickEvents = (quickEventsResponse.data || []).map((event) => normalizeSupabaseQuickEvent(event, players));
     }
     const systemEvents = await loadSystemEventsForMatch(partidoId);
 
@@ -5454,6 +5459,9 @@ function App() {
     const detailedMatch = {
       ...normalizeSupabasePartido(partidoResponse.data),
       statsCalledPlayers: (convocadosResponse.data || []).map((row) => row.player_name),
+      statsCalledPlayerIds: Object.fromEntries((convocadosResponse.data || [])
+        .filter((row) => row.player_name && isUuid(row.jugador_id))
+        .map((row) => [row.player_name, row.jugador_id])),
       statsPlayerData,
       statsGoalEvents: (goalsResponse.data || []).map(normalizeSupabaseGoalEvent),
       systemEvents,
@@ -5520,6 +5528,9 @@ function App() {
       const detailedMatch = {
         ...normalizeSupabasePartido(partidoResponse.data),
         statsCalledPlayers: (convocadosResponse.data || []).map((row) => row.player_name),
+        statsCalledPlayerIds: Object.fromEntries((convocadosResponse.data || [])
+          .filter((row) => row.player_name && isUuid(row.jugador_id))
+          .map((row) => [row.player_name, row.jugador_id])),
         preCaudalLineup,
         preRivalLineup,
         preRivalLineupPlayers,
@@ -5573,6 +5584,7 @@ function App() {
           injured: Boolean(row.injured),
           rating: row.rating || '',
           replacementName: row.replacement_name || '',
+          jugadorId: row.jugador_id || null,
         };
       });
 
@@ -5589,7 +5601,7 @@ function App() {
         });
         setPostError(`No se pudieron cargar los eventos rápidos: ${quickEventsResponse.error.message || 'error desconocido'}`);
       } else {
-        quickEvents = (quickEventsResponse.data || []).map(normalizeSupabaseQuickEvent);
+        quickEvents = (quickEventsResponse.data || []).map((event) => normalizeSupabaseQuickEvent(event, players));
       }
       const systemEvents = await loadSystemEventsForMatch(partidoId);
 
@@ -5688,6 +5700,7 @@ function App() {
           injured: Boolean(row.injured),
           rating: row.rating || '',
           replacementName: row.replacement_name || '',
+          jugadorId: row.jugador_id || null,
         };
         acc[row.partido_id] = current;
         return acc;
@@ -5714,7 +5727,7 @@ function App() {
       }, {});
 
       const quickEventsByMatch = quickEventsRows.reduce((acc, event) => {
-        acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseQuickEvent(event)];
+        acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseQuickEvent(event, players)];
         return acc;
       }, {});
 
@@ -5797,7 +5810,9 @@ function App() {
       const goalEvents = safeArray(goalEventsResponse.data)
         .map(normalizeSupabaseGoalEvent)
         .filter((event) => goalEventMatchesPlayer(event, player));
-      const quickEvents = quickEventsResponse.error ? [] : (quickEventsResponse.data || []).map(normalizeSupabaseQuickEvent);
+      const quickEvents = quickEventsResponse.error
+        ? []
+        : (quickEventsResponse.data || []).map((event) => normalizeSupabaseQuickEvent(event, players));
 
       const partidoIds = Array.from(new Set([
         ...statsRows.map((row) => row.partido_id),
@@ -6617,8 +6632,9 @@ function App() {
     if (postEventsResponse.error) console.warn('[LITO_OPTIONAL_SOURCE_ERROR]', postEventsResponse.error);
 
     const normalizedMatches = (matchesResponse.data || []).map(normalizeSupabasePartido);
+    const normalizedPlayers = (playersResponse.data || []).map(normalizeSupabaseJugador);
     const quickEventsByMatch = (quickEventsResponse.data || []).reduce((acc, event) => {
-      const normalized = normalizeSupabaseQuickEvent(event);
+      const normalized = normalizeSupabaseQuickEvent(event, normalizedPlayers);
       acc[normalized.partidoId] = [...(acc[normalized.partidoId] || []), normalized];
       return acc;
     }, {});
@@ -6643,7 +6659,7 @@ function App() {
       goals: (goalsResponse.data || []).map(normalizeSupabaseGoalEvent),
       stats: statsResponse.data || [],
       teams: (teamsResponse.data || []).map((team) => ({ ...mapSnakeRowToCamel(team), id: team.id, name: cleanTeamDisplayName(team.name || ''), system: team.system || '' })),
-      players: (playersResponse.data || []).map(normalizeSupabaseJugador),
+      players: normalizedPlayers,
     };
   };
 
@@ -6919,9 +6935,10 @@ function App() {
     if (intent === 'steals') {
       const validMatchIds = new Set(context.matches.filter(isDelegatedDataValidated).map((match) => match.id));
       const totals = context.matches.flatMap((match) => safeArray(match.quickEvents))
-        .filter((event) => validMatchIds.has(event.partidoId) && getQuickEventBaseType(event.tipoEvento) === 'robo' && getQuickEventSide(event) === 'caudal' && event.jugadorId)
+        .filter((event) => validMatchIds.has(event.partidoId) && getQuickEventBaseType(event.tipoEvento) === 'robo' && getQuickEventSide(event) === 'caudal' && getDelegatedEventPlayerId(event))
         .reduce((acc, event) => {
-          acc[event.jugadorId] = (acc[event.jugadorId] || 0) + 1;
+          const playerId = getDelegatedEventPlayerId(event);
+          acc[playerId] = (acc[playerId] || 0) + 1;
           return acc;
         }, {});
       const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
@@ -12207,7 +12224,7 @@ function App() {
   const isPostClipLinked = (eventId) => getPostAnalysisLinks().some((link) => link.eventId === eventId);
 
   const openQuickTacticalPanel = (event, definition) => {
-    const playerName = players.find((player) => player.id === event.jugadorId)?.name || '';
+    const playerName = resolveDelegatedEventPlayer(event, players).player?.name || event.playerName || '';
     setPostTacticalPanel({
       source: 'quick',
       quickEventId: event.id,
@@ -12865,6 +12882,14 @@ function App() {
       .map((name) => playersByName.get(name) || { id: name, name, number: '', position: '', image: '' })
       .filter((player) => player?.name);
   };
+
+  const getDelegatedPlayerOptions = () => buildDelegatedPlayerOptions({
+    players,
+    calledPlayerNames: getStatsCalledPlayerNames(),
+    calledPlayerIds: selectedMatch?.statsCalledPlayerIds,
+    statsPlayerData: selectedMatch?.statsPlayerData,
+    lineupNames: selectedMatch?.statsLineup,
+  });
 
   const refreshStatsFromSupabase = async (partidoId, reason = 'estadísticas') => {
     try {
@@ -13807,20 +13832,20 @@ function App() {
     setStatsError('');
     setDelegatedEventFeedback('');
     try {
-      const calledPlayers = getStatsCalledPlayers();
       const selectedJugadorId = jugadorIdOverride !== undefined ? jugadorIdOverride : delegatedEventDraft.jugadorId;
       const minute = delegatedEventDraft.eventId
         ? Math.max(0, Math.min(130, Number(delegatedEventDraft.minute) || 0))
         : Math.max(Number(delegatedElapsedSeconds || 0) > 0 ? 1 : 0, Math.min(130, Math.ceil(Number(delegatedElapsedSeconds || 0) / 60)));
-      const selectedPlayer = players.find((player) => player.id === selectedJugadorId);
-      const payload = {
-        partido_id: selectedMatch.id,
-        jugador_id: delegatedEventDraft.side === 'caudal' && isUuid(selectedJugadorId) ? selectedJugadorId : null,
-        equipo: delegatedEventDraft.side === 'neutral' ? 'caudal' : delegatedEventDraft.side,
-        tipo_evento: getQuickEventBaseType(delegatedEventDraft.tipoEvento),
-        minuto: minute,
+      const selectedPlayer = resolveDelegatedPlayer(selectedJugadorId, players).player;
+      const payload = buildDelegatedQuickEventDbPayload({
+        partidoId: selectedMatch.id,
+        playerReference: selectedJugadorId,
+        players,
+        team: delegatedEventDraft.side,
+        eventType: getQuickEventBaseType(delegatedEventDraft.tipoEvento),
+        minute,
         reviewed: false,
-      };
+      });
       const request = delegatedEventDraft.eventId
         ? supabase.from("match_quick_events").update(payload).eq("id", delegatedEventDraft.eventId)
         : supabase.from("match_quick_events").insert(payload);
@@ -13855,23 +13880,28 @@ function App() {
     try {
       const minute = Math.max(Number(delegatedElapsedSeconds || 0) > 0 ? 1 : 0, Math.min(130, Math.ceil(Number(delegatedElapsedSeconds || 0) / 60)));
       optimisticId = crypto.randomUUID();
-      const payload = {
+      const payload = buildDelegatedQuickEventDbPayload({
         id: optimisticId,
-        partido_id: selectedMatch.id,
-        jugador_id: definition.side === 'caudal' && isUuid(jugadorIdOverride) ? jugadorIdOverride : null,
-        equipo: definition.side === 'neutral' ? 'caudal' : definition.side,
-        tipo_evento: getQuickEventBaseType(definition.tipoEvento),
-        minuto: minute,
+        partidoId: selectedMatch.id,
+        playerReference: jugadorIdOverride,
+        players,
+        team: definition.side,
+        eventType: getQuickEventBaseType(definition.tipoEvento),
+        minute,
         reviewed: false,
-      };
-      const optimisticEvent = normalizeSupabaseQuickEvent({ ...payload, id: optimisticId, created_at: new Date().toISOString() });
+      });
+      const optimisticEvent = normalizeSupabaseQuickEvent(
+        { ...payload, id: optimisticId, created_at: new Date().toISOString() },
+        players,
+      );
       setMatches((current) => current.map((match) => match.id === selectedMatch.id
         ? { ...match, delegatedDataStatus: 'Sin revisar', quickEvents: [...(match.quickEvents || []), optimisticEvent] }
         : match));
       const { error } = await supabase.from("match_quick_events").insert(payload);
       if (error) throw error;
       await markDelegatedDataDirty(selectedMatch.id);
-      const registeredPlayer = players.find((player) => player.id === jugadorIdOverride);
+      await refreshStatsFromSupabase(selectedMatch.id, 'evento de Modo Delegado');
+      const registeredPlayer = resolveDelegatedPlayer(jugadorIdOverride, players).player;
       setDelegatedEventDraft(null);
       setDelegatedEventFeedback(`✓ ${definition.side === 'rival' ? `${definition.label} del rival` : definition.label} registrada · ${registeredPlayer?.name || (definition.side === 'caudal' && definition.requiresPlayer ? 'Sin identificar' : '')} · ${minute}'`);
       window.setTimeout(() => setDelegatedEventFeedback(''), 2600);
@@ -13992,7 +14022,17 @@ function App() {
     }
     if (fields.equipo !== undefined) payload.equipo = fields.equipo;
     if (fields.minute !== undefined) payload.minuto = Math.max(0, Math.min(130, Number(fields.minute) || 0));
-    if (fields.jugadorId !== undefined) payload.jugador_id = isUuid(fields.jugadorId) ? fields.jugadorId : null;
+    if (fields.jugadorId !== undefined) {
+      const playerIdentity = resolveDelegatedPlayer(fields.jugadorId, players);
+      if (fields.jugadorId && !playerIdentity.playerId) {
+        setPostError('El jugador seleccionado no tiene un jugador_id canónico. No se ha modificado el evento.');
+        setQuickEventStatus('Error al guardar');
+        setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
+        return;
+      }
+      payload.jugador_id = playerIdentity.playerId;
+    }
+    if (payload.equipo === 'rival') payload.jugador_id = null;
     if (fields.reviewed !== undefined) payload.reviewed = Boolean(fields.reviewed);
 
     const previousEvent = (selectedMatch.quickEvents || []).find((event) => event.id === eventId);
@@ -14006,6 +14046,7 @@ function App() {
       tipoEvento: payload.tipo_evento ?? previousEvent.tipoEvento,
       equipo: payload.equipo ?? previousEvent.equipo,
       minute: payload.minuto !== undefined ? String(payload.minuto) : previousEvent.minute,
+      playerId: payload.jugador_id !== undefined ? payload.jugador_id : getDelegatedEventPlayerId(previousEvent),
       jugadorId: payload.jugador_id !== undefined ? payload.jugador_id : previousEvent.jugadorId,
       reviewed: payload.reviewed !== undefined ? payload.reviewed : previousEvent.reviewed,
     };
@@ -14025,6 +14066,7 @@ function App() {
       return;
     }
     await markDelegatedDataDirty(selectedMatch.id);
+    await refreshStatsFromSupabase(selectedMatch.id, 'edición de evento del Modo Delegado');
     setQuickEventStatus('Guardado ✓');
     window.setTimeout(() => setQuickEventStatus((current) => (current === 'Guardado ✓' ? '' : current)), 2200);
     setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
@@ -14556,7 +14598,6 @@ function App() {
       .filter((definition) => eventOrder.includes(definition.tipoEvento))
       .sort((a, b) => eventOrder.indexOf(a.tipoEvento) - eventOrder.indexOf(b.tipoEvento));
     const momentumEvents = delegatedEventDefinitions.filter((definition) => ['momento_dominamos', 'momento_igualado', 'momento_sufriendo'].includes(definition.tipoEvento));
-    const calledPlayers = getStatsCalledPlayers();
     const orderedDelegatedEvents = getDelegatedEvents()
       .slice()
       .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')) || Number(b.minute || 0) - Number(a.minute || 0));
@@ -14565,7 +14606,9 @@ function App() {
       ? orderedDelegatedEvents.filter((event) => importantEventIds.includes(event.id))
       : orderedDelegatedEvents;
     const recentEvents = visibleDelegatedEvents.slice(0, showAllDelegatedEvents ? 60 : 5);
-    const playersById = new Map(players.map((player) => [player.id, player]));
+    const playersById = new Map(players
+      .map((player) => [getCanonicalPlayerId(player), player])
+      .filter(([playerId]) => playerId));
     const liveSummary = getQuickEventSummary(getDelegatedEvents(), delegatedElapsedSeconds);
     const momentumSegments = getDelegatedMomentumSegments();
     const officialScore = getStatsScore();
@@ -14654,9 +14697,11 @@ function App() {
       if (rivalSignal >= caudalSignal + 3) return 'Sufriendo';
       return 'Igualado';
     })();
-    const playerOptions = [...calledPlayers].sort((a, b) => {
-      const aIndex = recentDelegatedPlayerIds.indexOf(a.id);
-      const bIndex = recentDelegatedPlayerIds.indexOf(b.id);
+    const playerOptions = getDelegatedPlayerOptions().sort((a, b) => {
+      const aId = getCanonicalPlayerId(a);
+      const bId = getCanonicalPlayerId(b);
+      const aIndex = recentDelegatedPlayerIds.indexOf(aId);
+      const bIndex = recentDelegatedPlayerIds.indexOf(bId);
       if (aIndex >= 0 || bIndex >= 0) return (aIndex >= 0 ? aIndex : 99) - (bIndex >= 0 ? bIndex : 99);
       const roleOrder = { Titular: 0, Suplente: 1 };
       const roleDiff = (roleOrder[getStatsPlayerData(a.name).role] ?? 2) - (roleOrder[getStatsPlayerData(b.name).role] ?? 2);
@@ -14664,8 +14709,11 @@ function App() {
     });
     const getTopPlayerByEvent = (tipoEvento) => {
       const counts = getDelegatedEvents()
-        .filter((event) => event.tipoEvento === tipoEvento && event.jugadorId)
-        .reduce((acc, event) => ({ ...acc, [event.jugadorId]: (acc[event.jugadorId] || 0) + 1 }), {});
+        .filter((event) => event.tipoEvento === tipoEvento && getDelegatedEventPlayerId(event))
+        .reduce((acc, event) => {
+          const playerId = getDelegatedEventPlayerId(event);
+          return { ...acc, [playerId]: (acc[playerId] || 0) + 1 };
+        }, {});
       const top = Object.entries(counts).sort((a, b) => Number(b[1]) - Number(a[1]))[0];
       const player = top ? playersById.get(top[0]) : null;
       return player ? { name: displayPlayerName(player), count: top[1] } : null;
@@ -14876,7 +14924,7 @@ function App() {
               <div className="mt-3 max-h-[360px] space-y-2 overflow-y-auto pr-1">
                 {recentEvents.length ? recentEvents.map((event) => {
                   const definition = getDelegatedDefinitionForEvent(event);
-                  const playerName = playersById.get(event.jugadorId)?.name || '';
+                  const playerName = resolveDelegatedEventPlayer(event, players).player?.name || event.playerName || '';
                   const important = importantEventIds.includes(event.id);
                   const isConfirmingDelete = pendingQuickEventDeleteId === event.id;
                   const eventSide = getQuickEventSide(event);
@@ -14897,9 +14945,9 @@ function App() {
                       </div>
                       <details className="mt-2">
                         <summary className="cursor-pointer text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Controles</summary>
-                        {definition?.side === 'caudal' && calledPlayers.length ? (
+                        {definition?.side === 'caudal' && playerOptions.length ? (
                           <select
-                            value={event.jugadorId || ''}
+                            value={getDelegatedEventPlayerId(event) || ''}
                             onChange={(changeEvent) => updateDelegatedEventPlayer(event.id, changeEvent.target.value)}
                             className="mt-2 w-full rounded-lg bg-white px-2 py-1 text-[11px] font-bold text-slate-950"
                           >
@@ -14922,7 +14970,7 @@ function App() {
                               label: getQuickEventLabel(event.tipoEvento),
                               side: getQuickEventSide(event),
                               minute: event.minute || delegatedMinute || '0',
-                              jugadorId: event.jugadorId || '',
+                              jugadorId: getDelegatedEventPlayerId(event) || '',
                             })}
                             className="rounded-lg bg-white/10 px-2 py-1 text-[10px] font-black text-slate-300"
                           >
@@ -15017,9 +15065,11 @@ function App() {
                   <select
                     disabled={delegatedEventSaving}
                     value={delegatedEventDraft.jugadorId}
-                    onChange={(event) => delegatedEventDraft.eventId
-                      ? setDelegatedEventDraft((current) => ({ ...current, jugadorId: event.target.value }))
-                      : saveDelegatedEventDirect(delegatedEventDraft, event.target.value)}
+                    onChange={(event) => {
+                      const selectedJugadorId = event.target.value;
+                      setDelegatedEventDraft((current) => ({ ...current, jugadorId: selectedJugadorId }));
+                      if (!delegatedEventDraft.eventId) saveDelegatedEventDirect(delegatedEventDraft, selectedJugadorId);
+                    }}
                     className="w-full rounded-2xl bg-white px-4 py-4 text-base font-black text-slate-950"
                   >
                     <option value="">Seleccionar jugador</option>
@@ -15920,7 +15970,7 @@ function App() {
       </div>
     );
     const convertQuickToTacticalEvent = (event, definition) => {
-      const playerName = players.find((player) => player.id === event.jugadorId)?.name || '';
+      const playerName = resolveDelegatedEventPlayer(event, players).player?.name || event.playerName || '';
       setNewEventDraft({
         minute: event.minute || '',
         type: definition?.label || selectedEventType || '',
@@ -16044,7 +16094,7 @@ function App() {
                   const isSaving = quickEventSavingIds.includes(event.id);
                   const isConfirmingDelete = pendingQuickEventDeleteId === event.id;
                   const tone = getPostEventTone(definition?.label || getQuickEventLabel(event.tipoEvento));
-                  const playerName = players.find((player) => player.id === event.jugadorId)?.name || '';
+                  const playerName = resolveDelegatedEventPlayer(event, players).player?.name || event.playerName || '';
                   return (
                     <div key={event.id} className={`rounded-3xl border p-4 transition ${event.reviewed ? 'border-emerald-400/25 bg-emerald-400/10 shadow-[0_0_28px_rgba(16,185,129,0.08)]' : 'border-white/10 bg-[#0f1e38]/85 hover:border-caudal-electric/25'}`}>
                       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -16088,7 +16138,7 @@ function App() {
                         </select>
                         <select
                           value={isRival ? 'rival' : 'caudal'}
-                          onChange={(changeEvent) => updateQuickEvent(event.id, { equipo: changeEvent.target.value, jugadorId: changeEvent.target.value === 'rival' ? '' : event.jugadorId })}
+                          onChange={(changeEvent) => updateQuickEvent(event.id, { equipo: changeEvent.target.value, jugadorId: changeEvent.target.value === 'rival' ? '' : getDelegatedEventPlayerId(event) })}
                           disabled={isSaving}
                           className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white"
                         >
@@ -16096,13 +16146,13 @@ function App() {
                           <option value="rival">Rival</option>
                         </select>
                         <select
-                          value={event.jugadorId || ''}
+                          value={getDelegatedEventPlayerId(event) || ''}
                           disabled={isRival || isSaving}
                           onChange={(changeEvent) => updateQuickEvent(event.id, { jugadorId: changeEvent.target.value })}
                           className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white disabled:text-slate-500"
                         >
                           <option value="">{isRival ? 'Evento rival' : 'Sin jugador'}</option>
-                          {getStatsCalledPlayers().map((player) => (
+                          {getDelegatedPlayerOptions().map((player) => (
                             <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
                           ))}
                         </select>
@@ -16774,7 +16824,7 @@ function App() {
       .map((event) => ({ ...event, match: playerProfileData?.partidosById?.[event.partidoId] }))
       .filter((event) => event.match)
       .filter((event) => playerDelegatedScope === 'Todos los registros' || isDelegatedDataValidated(event.match))
-      .filter((event) => event.jugadorId === player.id && getQuickEventSide(event) === 'caudal')
+      .filter((event) => delegatedEventMatchesPlayer(event, player, players) && getQuickEventSide(event) === 'caudal')
       .filter((event) => filterMatchesByCompetitionCatalog([event.match], getCompetitionFilterKey(playerCompetitionFilter)).length)
       .filter((event) => playerVenueFilter === 'Todos' || (playerVenueFilter === 'Local' ? event.match.isHome : !event.match.isHome));
     const orderedMatchIds = [...new Map(
@@ -22334,22 +22384,22 @@ function App() {
       registeredMatches: visibleMatches.length,
       validatedMatches: visibleMatches.filter(isDelegatedDataValidated).length,
       events: visibleEvents.length,
-      unidentified: visibleIndividualEvents.filter((event) => !event.jugadorId).length,
+      unidentified: visibleIndividualEvents.filter((event) => !getDelegatedEventPlayerId(event)).length,
       coveredMinutes: visibleMatches.reduce((sum, match) => sum + getCoveredMinutes(match.quickEvents), 0),
-      playersWithEvents: new Set(visibleEvents.filter((event) => getQuickEventSide(event) === 'caudal' && event.jugadorId).map((event) => event.jugadorId)).size,
+      playersWithEvents: new Set(visibleEvents.filter((event) => getQuickEventSide(event) === 'caudal' && getDelegatedEventPlayerId(event)).map(getDelegatedEventPlayerId)).size,
     };
     const analysisIndividualEvents = getIndividualEvents(rankingEvents);
     const analysisSummary = {
       registeredMatches: analysisMatches.length,
       validatedMatches: analysisMatches.filter(isDelegatedDataValidated).length,
       events: rankingEvents.length,
-      unidentified: analysisIndividualEvents.filter((event) => !event.jugadorId).length,
+      unidentified: analysisIndividualEvents.filter((event) => !getDelegatedEventPlayerId(event)).length,
       coveredMinutes: analysisMatches.reduce((sum, match) => sum + getCoveredMinutes(match.quickEvents), 0),
       coveredPeriods: analysisMatches.reduce((sum, match) => sum + getCoveredPeriods(match.quickEvents).length, 0),
-      playersWithEvents: new Set(rankingEvents.filter((event) => getQuickEventSide(event) === 'caudal' && event.jugadorId).map((event) => event.jugadorId)).size,
+      playersWithEvents: new Set(rankingEvents.filter((event) => getQuickEventSide(event) === 'caudal' && getDelegatedEventPlayerId(event)).map(getDelegatedEventPlayerId)).size,
     };
     const playerRows = players.map((player) => {
-      const events = rankingEvents.filter((event) => event.jugadorId === player.id && getQuickEventSide(event) === 'caudal');
+      const events = rankingEvents.filter((event) => delegatedEventMatchesPlayer(event, player, players) && getQuickEventSide(event) === 'caudal');
       const stats = aggregateQuickEventStats(events, { side: 'caudal', playerId: player.id, scope: 'player' });
       return { player, stats, matches: new Set(events.map((event) => event.partidoId)).size };
     });
@@ -22433,8 +22483,8 @@ function App() {
     const auditMatch = (match) => {
       const events = safeArray(match.quickEvents);
       const individualEvents = getIndividualEvents(events);
-      const unidentified = individualEvents.filter((event) => !event.jugadorId).length;
-      const caudalUnidentified = individualEvents.filter((event) => getQuickEventSide(event) === 'caudal' && !event.jugadorId).length;
+      const unidentified = individualEvents.filter((event) => !getDelegatedEventPlayerId(event)).length;
+      const caudalUnidentified = individualEvents.filter((event) => getQuickEventSide(event) === 'caudal' && !getDelegatedEventPlayerId(event)).length;
       const invalidTypes = events.filter((event) => !EVENT_STAT_EFFECTS[getQuickEventBaseType(event.tipoEvento)]).length;
       const unreviewed = events.filter((event) => !event.reviewed).length;
       const minutes = events.map((event) => Number(event.minute || 0)).filter((minute) => Number.isFinite(minute));
