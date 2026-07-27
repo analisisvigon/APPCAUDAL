@@ -70,6 +70,7 @@ import {
 } from './utils/globalPlayerStore';
 import {
   getNaturalPositionLabel,
+  getPlayerPositionLabel,
   getPlayerPositionPresentation,
   getPlayerPositionModel,
   getPositionLineKey,
@@ -215,6 +216,10 @@ function UsersIcon() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true" className="h-4 w-4 shrink-0"><path strokeLinecap="round" strokeLinejoin="round" d="M16 20v-1.5a4.5 4.5 0 0 0-4.5-4.5h-3A4.5 4.5 0 0 0 4 18.5V20M10 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM16 11a3 3 0 0 0 0-6M17 14a4 4 0 0 1 3 3.87V20" /></svg>;
 }
 
+function SearchIcon() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true" className="h-4 w-4"><circle cx="11" cy="11" r="6.5" /><path strokeLinecap="round" d="m16 16 4 4" /></svg>;
+}
+
 function TeamLogo({ src, alt, teamName = '', size = 'md', className = '' }) {
   const [imageFailed, setImageFailed] = useState(false);
   useEffect(() => setImageFailed(false), [src]);
@@ -236,7 +241,7 @@ function RivalCard({ rival, playerCount, accent, menuOpen, onOpen, onEdit, onDel
         <div className="min-w-0 flex-1 pt-0.5">
           <div className="flex items-start justify-between gap-2">
             <h3 className="line-clamp-2 [overflow-wrap:normal] [word-break:normal] text-[1.18rem] font-black uppercase leading-[1.12] text-white">{displayName}</h3>
-            <button type="button" aria-label={`Acciones de ${displayName}`} onClick={onMenuOpen} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xl font-black leading-none text-slate-400 transition hover:bg-white/10 hover:text-white">⋯</button>
+            <button type="button" aria-label={`Acciones de ${displayName}`} title={`Acciones de ${displayName}`} onClick={onMenuOpen} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xl font-black leading-none text-slate-400 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70">⋮</button>
           </div>
           <p className="mt-2 flex items-start gap-1.5 text-sm font-semibold leading-5 text-slate-400"><LocationIcon /><span>{String(rival.stadium || '').trim() || 'Estadio sin registrar'}</span></p>
           <p className="mt-1.5 flex items-center gap-1.5 text-sm font-bold text-slate-300"><UsersIcon /><span>{playerCount > 0 ? `${playerCount} ${playerCount === 1 ? 'jugador' : 'jugadores'}` : 'Plantilla sin registrar'}</span></p>
@@ -1422,6 +1427,11 @@ const normalizeSupabaseJugador = (player) => ({
   dob: player.dob ?? player.fecha_nacimiento ?? '',
   number: Number(player.number ?? player.dorsal) || 0,
   position: player.position ?? player.posicion ?? '',
+  specificPosition: player.specific_position ?? player.specificPosition ?? '',
+  primaryNaturalPosition: player.primary_natural_position ?? player.primaryNaturalPosition ?? '',
+  secondaryNaturalPositions: player.secondary_natural_positions ?? player.secondaryNaturalPositions ?? [],
+  primarySpecificPosition: player.primary_specific_position ?? player.primarySpecificPosition ?? '',
+  secondarySpecificPositions: player.secondary_specific_positions ?? player.secondarySpecificPositions ?? [],
   foot: player.foot ?? player.pierna ?? '',
   image: player.image ?? player.imagen ?? '',
   originalImage: player.original_image ?? player.originalImage ?? '',
@@ -3234,7 +3244,7 @@ const getUnplacedTeamStarters = (team) => {
   );
 };
 
-const getPlayerMeta = (player) => [player.position, player.age ? `${player.age} años` : ''].filter(Boolean).join(' · ');
+const getPlayerMeta = (player) => [getPlayerPositionLabel(player), player.age ? `${player.age} años` : ''].filter(Boolean).join(' · ');
 const displayPlayerName = getPlayerDisplayName;
 const getPlayerInitials = (player = {}) => {
   const source = getPlayerDisplayName(player);
@@ -18740,11 +18750,32 @@ function App() {
       ],
     };
   }, [matches, players, staffStatusByPlayerId]);
+  const rosterDisplayPlayers = useMemo(() => {
+    const globalById = new Map(globalPlayers.map((player) => [String(player.globalPlayerId || player.id), player]));
+    return players.map((player) => {
+      const globalPlayer = player.globalPlayerId
+        ? globalById.get(String(player.globalPlayerId))
+        : null;
+      if (!globalPlayer) return player;
+      return {
+        ...player,
+        specificPosition: player.specificPosition || globalPlayer.specificPosition || '',
+        primaryNaturalPosition: player.primaryNaturalPosition || globalPlayer.primaryNaturalPosition || '',
+        secondaryNaturalPositions: player.secondaryNaturalPositions?.length
+          ? player.secondaryNaturalPositions
+          : globalPlayer.secondaryNaturalPositions || [],
+        primarySpecificPosition: player.primarySpecificPosition || globalPlayer.primarySpecificPosition || '',
+        secondarySpecificPositions: player.secondarySpecificPositions?.length
+          ? player.secondarySpecificPositions
+          : globalPlayer.secondarySpecificPositions || [],
+      };
+    });
+  }, [globalPlayers, players]);
   const visiblePlayers = useMemo(() => {
     const search = normalizePlayerIdentityName(playerSearchTerm);
-    return players.filter((player) => {
+    return rosterDisplayPlayers.filter((player) => {
       const status = staffStatusByPlayerId.get(player.id) || {};
-      const haystack = normalizePlayerIdentityName([player.name, player.shirtName, player.position, player.foot, displayDorsal(player.number)].filter(Boolean).join(' '));
+      const haystack = normalizePlayerIdentityName([player.name, player.shirtName, player.position, getPlayerPositionLabel(player), player.foot, displayDorsal(player.number)].filter(Boolean).join(' '));
       const matchesSearch = !search || haystack.includes(search);
       const matchesFilter =
         playerQuickFilter === 'Todos' ||
@@ -18753,7 +18784,7 @@ function App() {
         (playerQuickFilter === 'Alertas' && (status.injured || status.suspended || status.highLoad || status.touched));
       return matchesSearch && matchesFilter;
     });
-  }, [playerQuickFilter, playerSearchTerm, players, staffStatusByPlayerId]);
+  }, [playerQuickFilter, playerSearchTerm, rosterDisplayPlayers, staffStatusByPlayerId]);
   const groupedPlayers = useMemo(
     () =>
       squadGroups.map((group) => ({
@@ -23998,10 +24029,10 @@ function App() {
                 </div>
                 <div className="grid gap-2 sm:grid-cols-4 xl:min-w-[560px]">
                   {[
-                    ['??', 'Total plantilla', squadSummary.total, 'border-white/10 bg-white/[0.05] text-white'],
-                    ['?', 'Disponibles reales', squadSummary.available, 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100'],
-                    ['?', 'Lesionados', squadSummary.injured, 'border-red-200/20 bg-red-300/10 text-red-100'],
-                    ['?', 'Sancionados', squadSummary.suspended, 'border-slate-200/20 bg-slate-200/10 text-slate-200'],
+                    ['PL', 'Total plantilla', squadSummary.total, 'border-white/10 bg-white/[0.05] text-white'],
+                    ['OK', 'Disponibles reales', squadSummary.available, 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100'],
+                    ['LES', 'Lesionados', squadSummary.injured, 'border-red-200/20 bg-red-300/10 text-red-100'],
+                    ['SAN', 'Sancionados', squadSummary.suspended, 'border-slate-200/20 bg-slate-200/10 text-slate-200'],
                   ].map(([icon, label, value, tone]) => (
                     <div key={label} className={`rounded-2xl border px-3 py-2 ${tone}`}>
                       <p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-65">{icon} {label}</p>
@@ -24156,6 +24187,8 @@ function App() {
                           const inBaseEleven = rosterDashboard.baseEleven.some((item) => item.player.id === player.id);
                           const statusLabel = staffStatus.suspended ? 'Sancionado' : staffStatus.injured ? 'Lesionado' : '';
                           const statusClass = statusLabel === 'Lesionado' ? 'bg-red-300 text-slate-950' : 'bg-slate-300 text-slate-950';
+                          const positionLabel = getPlayerPositionLabel(player);
+                          const ageLabel = player.dob ? `${calculateAge(player.dob)} años` : 'Edad no indicada';
                           return (
                             <tr key={player.id} onClick={() => setSelectedPlayerProfileId(player.id)} className="cursor-pointer border-t border-white/10 transition hover:bg-white/[0.06]">
                               <td className="px-4 py-3 font-black text-caudal-electric">#{displayDorsal(player.number)}</td>
@@ -24167,19 +24200,19 @@ function App() {
                                   <span className="font-black text-white">{displayPlayerName(player)}</span>
                                 </div>
                               </td>
-                              <td className="px-4 py-3 text-slate-300">{player.position || '-'}</td>
-                              <td className="px-4 py-3 text-slate-300">{calculateAge(player.dob)} años</td>
+                              <td className="px-4 py-3 text-slate-300">{positionLabel}</td>
+                              <td className="px-4 py-3 text-slate-300" title={player.dob ? undefined : 'Falta indicar la fecha de nacimiento'}>{ageLabel}</td>
                               <td className="px-4 py-3">
                                 {statusLabel ? <span className={`rounded-xl px-2.5 py-1 text-xs font-black ${statusClass}`}>{statusLabel}</span> : <span className="text-slate-600">-</span>}
                               </td>
                               <td className="px-4 py-3">
                                 <div className="flex flex-wrap gap-1.5">
-                                  {inBaseEleven ? <span className="rounded-lg border border-white/10 bg-white/[0.06] px-2 py-1 text-[10px] font-bold text-white">? Titular habitual</span> : null}
+                                  {inBaseEleven ? <span className="rounded-lg border border-white/10 bg-white/[0.06] px-2 py-1 text-[10px] font-bold text-white">Titular habitual</span> : null}
                                   {staffStatus.captain ? <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">Capitán</span> : null}
-                                  {rosterDashboard.launcherPlayerIds.has(player.id) ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">?? Lanzador</span> : null}
-                                  {rosterRow.yellow ? <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">?? Amonestado</span> : null}
-                                  {staffStatus.injured ? <span className="rounded-lg border border-red-200/20 bg-red-300/10 px-2 py-1 text-[10px] font-bold text-red-100">?? Lesionado</span> : null}
-                                  {staffStatus.sub23 ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">?? Sub-23</span> : null}
+                                  {rosterDashboard.launcherPlayerIds.has(player.id) ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">Lanzador</span> : null}
+                                  {rosterRow.yellow ? <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">Amonestado</span> : null}
+                                  {staffStatus.injured ? <span className="rounded-lg border border-red-200/20 bg-red-300/10 px-2 py-1 text-[10px] font-bold text-red-100">Lesionado</span> : null}
+                                  {staffStatus.sub23 ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">Sub-23</span> : null}
                                 </div>
                               </td>
                               <td className="px-4 py-3 font-bold text-white">{rosterRow.minutes ? `${rosterRow.minutes}'` : '-'}</td>
@@ -24209,23 +24242,34 @@ function App() {
                           : 'border-slate-200/20 bg-slate-200/10 text-slate-200';
                         const minutesLabel = `${Number(rosterRow.minutes || 0)}'`;
                         const startsLabel = rosterRow.starts ? `${rosterRow.starts} TIT` : 'Sin participar';
-                        const footLabel = player.foot || 'No disponible';
+                        const footLabel = player.foot || 'Pierna no indicada';
+                        const positionLabel = getPlayerPositionLabel(player);
+                        const hasSpecificPosition = Boolean(
+                          player.primarySpecificPosition
+                          || player.primary_specific_position
+                          || player.specificPosition
+                          || player.specific_position
+                        );
+                        const ageLabel = player.dob ? `${calculateAge(player.dob)} años` : 'Edad no indicada';
                         const tacticalChips = [
-                          inBaseEleven || rosterRow.starts >= 2 ? ['? Titular habitual', 'border-white/12 bg-white/[0.06] text-white'] : null,
+                          inBaseEleven || rosterRow.starts >= 2 ? ['Titular habitual', 'border-white/12 bg-white/[0.06] text-white'] : null,
                           staffStatus.captain ? ['Capitán', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
-                          rosterDashboard.launcherPlayerIds.has(player.id) ? ['?? Lanzador', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
-                          rosterRow.yellow ? ['?? Amonestado', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
-                          staffStatus.injured ? ['?? Lesionado', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
-                          staffStatus.sub23 ? ['?? Sub-23', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
+                          rosterDashboard.launcherPlayerIds.has(player.id) ? ['Lanzador', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
+                          rosterRow.yellow ? ['Amonestado', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
+                          staffStatus.injured ? ['Lesionado', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
+                          staffStatus.sub23 ? ['Sub-23', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
                         ].filter(Boolean);
                         return (
-                        <article key={player.id} onClick={() => setSelectedPlayerProfileId(player.id)} className="group relative min-h-[112px] cursor-pointer rounded-[1rem] border border-white/10 bg-[#0a1425]/86 p-3 shadow-[0_10px_24px_rgba(0,0,0,0.13)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c] hover:shadow-[0_14px_34px_rgba(0,0,0,0.20)] focus-within:border-caudal-electric/40">
+                        <PlayerNameTooltip key={player.id} player={player}>
+                        <article onClick={() => setSelectedPlayerProfileId(player.id)} className="group relative min-h-[112px] cursor-pointer rounded-[1rem] border border-white/10 bg-[#0a1425]/86 p-3 shadow-[0_10px_24px_rgba(0,0,0,0.13)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c] hover:shadow-[0_14px_34px_rgba(0,0,0,0.20)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/60 focus-within:border-caudal-electric/40">
                           <button
                             type="button"
                             onClick={(event) => openFloatingMenu(event, { id: `player-card-${player.id}`, type: 'player-card' })}
-                            className="absolute right-2 top-2 z-20 flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-black/25 text-base font-black leading-none text-slate-300 transition hover:bg-white/10 hover:text-white"
+                            className="absolute right-2 top-2 z-20 flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-black/25 text-lg font-black leading-none text-slate-300 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70"
+                            aria-label="Abrir acciones del jugador"
+                            title="Acciones del jugador"
                           >
-                            ?
+                            ⋮
                           </button>
                           {floatingMenu?.id === `player-card-${player.id}` ? (
                             <FloatingActionMenu anchorRect={floatingMenu.anchorRect} width={144} onClose={closeFloatingMenu}>
@@ -24233,14 +24277,19 @@ function App() {
                               <button type="button" onClick={() => runMenuAction(() => handleDelete(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar</button>
                             </FloatingActionMenu>
                           ) : null}
-                          <div className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-start gap-3 pr-8">
+                          <div className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-start gap-3 pr-11">
                             <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.16),rgba(255,255,255,0.055)_42%,rgba(212,0,0,0.12))] text-sm font-black text-slate-100 shadow-[0_8px_18px_rgba(0,0,0,0.18)] transition duration-200 group-hover:scale-[1.02]">
                               <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-xs" />
                             </div>
                             <div className="min-w-0 pr-1">
                               <h3 className="line-clamp-2 [overflow-wrap:normal] [word-break:normal] text-[17px] font-black leading-[1.12] text-white">{displayPlayerName(player)}</h3>
-                              <p className="mt-1 line-clamp-1 [overflow-wrap:normal] [word-break:normal] text-[12px] font-bold leading-snug text-slate-300">{player.position || 'Sin demarcación'}</p>
-                              <p className="mt-0.5 text-[10px] font-semibold text-slate-500">{calculateAge(player.dob)} años</p>
+                              <p
+                                className="mt-1 line-clamp-1 [overflow-wrap:normal] [word-break:normal] text-[12px] font-bold leading-snug text-slate-300"
+                                title={hasSpecificPosition ? positionLabel : 'Falta indicar la posición específica'}
+                              >
+                                {positionLabel}
+                              </p>
+                              <p className="mt-0.5 text-[10px] font-semibold text-slate-500" title={player.dob ? undefined : 'Falta indicar la fecha de nacimiento'}>{ageLabel}</p>
                             </div>
                             <p className="mt-0.5 rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2.5 py-1 text-[12px] font-black text-caudal-electric">#{displayDorsal(player.number)}</p>
                           </div>
@@ -24252,9 +24301,10 @@ function App() {
                           </div>
                           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-2 text-[11px] font-semibold text-slate-500">
                             <span>{minutesLabel} · {startsLabel}</span>
-                            <span>Pie {footLabel}</span>
+                            <span title={player.foot ? undefined : 'Falta indicar la pierna dominante'}>{footLabel}</span>
                           </div>
                         </article>
+                        </PlayerNameTooltip>
                         );
                       })}
                     </div>
@@ -24325,7 +24375,7 @@ function App() {
               {!selectedTeam ? (
                 <div className="mt-3">
                   <label className="relative block">
-                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-500">?</span>
+                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"><SearchIcon /></span>
                     <input
                       value={teamSearchTerm}
                       onChange={(event) => setTeamSearchTerm(event.target.value)}
@@ -24662,9 +24712,9 @@ function App() {
                         <span className="font-black uppercase tracking-[0.16em] text-caudal-electric">Resumen rival</span>
                         <span>DEST <strong className="text-white">{keyPlayers.length ? keyPlayers.map(displayPlayerName).join(', ') : '-'}</strong></span>
                         <span>© <strong className="text-white">{captainPlayer ? displayPlayerName(captainPlayer) : '-'}</strong></span>
-                        <span>?? <strong className="text-white">{rivalPlayers.filter((player) => player.injured).length ? rivalPlayers.filter((player) => player.injured).map(displayPlayerName).join(', ') : '-'}</strong></span>
-                        <span>?? <strong className="text-white">{rivalPlayers.filter((player) => player.suspended).length ? rivalPlayers.filter((player) => player.suspended).map(displayPlayerName).join(', ') : '-'}</strong></span>
-                        <span>?? <strong className="text-white">{yellowRiskPlayers.length ? yellowRiskPlayers.map(displayPlayerName).join(', ') : '-'}</strong></span>
+                        <span>Lesionados: <strong className="text-white">{rivalPlayers.filter((player) => player.injured).length ? rivalPlayers.filter((player) => player.injured).map(displayPlayerName).join(', ') : '-'}</strong></span>
+                        <span>Sancionados: <strong className="text-white">{rivalPlayers.filter((player) => player.suspended).length ? rivalPlayers.filter((player) => player.suspended).map(displayPlayerName).join(', ') : '-'}</strong></span>
+                        <span>Riesgo de amarillas: <strong className="text-white">{yellowRiskPlayers.length ? yellowRiskPlayers.map(displayPlayerName).join(', ') : '-'}</strong></span>
                         <span>Reservas: <strong className="text-white">{presentationBenchPlayers.length}</strong></span>
                         <span>Sistema: <strong className="text-white">{selectedTeam.system || 'Pendiente'}</strong></span>
                       </div>
@@ -25128,7 +25178,7 @@ function App() {
                                         </span>
                                         <span className="mt-1 flex flex-wrap items-center gap-1">
                                           {positionPresentation.label ? <span title={positionPresentation.label} className={`rounded-md border px-1.5 py-0.5 text-[9px] font-black uppercase ${positionChipClass(player)}`}>
-                                            {positionPresentation.short}
+                                            {positionPresentation.label}
                                           </span> : null}
                                           <span className={`rounded-md border px-1.5 py-0.5 text-[8px] font-black uppercase ${getRosterFieldStateClass(fieldState)}`}>
                                             {fieldState === 'EN CAMPO' ? '● TITULAR' : fieldState === 'RESERVA' ? '● RESERVA' : fieldState === 'BAJA' ? '● BAJA' : '○ SIN COLOCAR'}
@@ -25158,9 +25208,11 @@ function App() {
                                       <button
                                         type="button"
                                         onClick={(event) => openFloatingMenu(event, { id: `rival-player-${getRivalPlayerUniqueKey(player)}`, type: 'rival-player' })}
-                                        className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-sm font-black text-slate-300 transition hover:bg-white/10"
+                                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-lg font-black text-slate-300 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70"
+                                        aria-label="Abrir acciones del jugador"
+                                        title="Acciones del jugador"
                                       >
-                                        ⋯
+                                        ⋮
                                       </button>
                                       {floatingMenu?.id === `rival-player-${getRivalPlayerUniqueKey(player)}` ? (
                                         <FloatingActionMenu anchorRect={floatingMenu.anchorRect} width={256} onClose={closeFloatingMenu}>

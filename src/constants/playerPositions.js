@@ -89,6 +89,37 @@ export const getNaturalPositionLabel = (key) => naturalLabelByKey.get(key) || ''
 export const getSpecificPositionLabel = (key) => specificLabelByKey.get(key) || '';
 export const getNaturalPositionForSpecific = (key) => naturalBySpecific.get(key) || '';
 
+const getReadableSpecificPosition = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw || ['null', 'undefined'].includes(raw.toLowerCase())) return '';
+  const directLabel = getSpecificPositionLabel(raw);
+  if (directLabel) return directLabel;
+  const mapped = mapExternalPositionToPlayerPositions(raw);
+  const mappedLabel = getSpecificPositionLabel(mapped.primarySpecificPosition);
+  if (!mappedLabel) return /^[a-z0-9]+(?:_[a-z0-9]+)+$/i.test(raw) ? '' : raw;
+  const normalizedRaw = normalizePositionText(raw);
+  const normalizedMapped = normalizePositionText(mappedLabel);
+  const rawWordCount = normalizedRaw.split(' ').filter(Boolean).length;
+  const mappedWordCount = normalizedMapped.split(' ').filter(Boolean).length;
+  return rawWordCount > mappedWordCount && normalizedRaw.includes(normalizedMapped)
+    ? raw
+    : mappedLabel;
+};
+
+export const getPlayerPositionLabel = (player = {}) => {
+  const specificPosition = player.primarySpecificPosition
+    || player.primary_specific_position
+    || player.specificPosition
+    || player.specific_position;
+  const readableSpecificPosition = getReadableSpecificPosition(specificPosition);
+  if (readableSpecificPosition) return readableSpecificPosition;
+  const naturalPosition = player.primaryNaturalPosition
+    || player.primary_natural_position
+    || player.position;
+  if (!naturalPosition || ['null', 'undefined'].includes(String(naturalPosition).trim().toLowerCase())) return 'Posición no indicada';
+  return getNaturalPositionLabel(naturalPosition) || String(naturalPosition).trim() || 'Posición no indicada';
+};
+
 const POSITION_PRESENTATION = {
   goalkeeper: { short: 'POR', group: 'PORTEROS', order: 0 },
   sweeper_keeper: { short: 'POR-L', group: 'PORTEROS', order: 0 },
@@ -134,7 +165,7 @@ export const getPlayerPositionPresentation = (player = {}) => {
     ...presentation,
     specificKey,
     naturalKey,
-    label: getSpecificPositionLabel(specificKey) || getNaturalPositionLabel(naturalKey) || '',
+    label: getPlayerPositionLabel(player),
   };
 };
 

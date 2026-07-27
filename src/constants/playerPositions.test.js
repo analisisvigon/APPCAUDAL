@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  getPlayerPositionLabel,
   getPlayerPositionPresentation,
   getPlayerSlotCompatibility,
   mapExternalPositionToPlayerPositions,
@@ -36,5 +37,30 @@ assert.deepEqual(getPlayerPositionPresentation({
 });
 assert.equal(getPlayerPositionPresentation({ position: 'Defensa' }).group, 'DEFENSAS');
 assert.equal(getPlayerPositionPresentation({ specificPosition: 'Extremo izquierdo', position: 'Delantero' }).short, 'EI');
+
+assert.equal(getPlayerPositionLabel({
+  name: 'Borja Rodríguez',
+  position: 'Defensa',
+  primarySpecificPosition: 'left_back',
+}), 'Lateral izquierdo');
+assert.equal(getPlayerPositionLabel({
+  name: 'I. Delgado',
+  position: 'Defensa',
+  specific_position: 'right_back',
+}), 'Lateral derecho');
+assert.equal(getPlayerPositionLabel({
+  name: 'Agustín Porto',
+  position: 'Centrocampista',
+  primarySpecificPosition: 'holding_midfield',
+}), 'Pivote');
+assert.equal(getPlayerPositionLabel({
+  name: 'Kike Fanjul',
+  position: 'Centrocampista',
+}), 'Centrocampista');
+assert.equal(getPlayerPositionLabel({ position: 'Defensa', specificPosition: 'Central' }), 'Defensa central');
+assert.equal(getPlayerPositionLabel({ position: 'Centrocampista', specificPosition: 'Pivote defensivo' }), 'Pivote defensivo');
+assert.equal(getPlayerPositionLabel({ position: 'Defensa', specificPosition: 'unknown_internal_code' }), 'Defensa');
+assert.equal(getPlayerPositionLabel({ position: 'null' }), 'Posición no indicada');
+assert.equal(getPlayerPositionLabel({}), 'Posición no indicada');
 
 console.log('playerPositions tests passed');
