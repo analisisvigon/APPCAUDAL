@@ -1,3 +1,5 @@
+import { getPlayerDisplayName } from '../../utils/playerDisplayName';
+
 const formatDate = (value) => {
   if (!value) return 'Fecha pendiente';
   const date = new Date(value);
@@ -8,7 +10,7 @@ const formatDate = (value) => {
 const getTakerName = (entry, playersById) => {
   if (entry?.nombre_manual) return entry.nombre_manual;
   const player = playersById.get(entry?.jugador_id);
-  return player?.shirtName || player?.name || '';
+  return player ? getPlayerDisplayName(player) : '';
 };
 
 export default function SetPieceTakersPrintSheet({ match, sections = [], takers = [], players = [] }) {

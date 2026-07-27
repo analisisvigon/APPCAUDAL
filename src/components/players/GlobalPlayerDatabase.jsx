@@ -233,6 +233,7 @@ function PlayerGridCard({ player, teamById, onSelect, ...actions }) {
             <span title={unavailable ? 'No disponible' : 'Disponible'} className={`h-2 w-2 shrink-0 rounded-full ${unavailable ? 'bg-red-400' : 'bg-emerald-400'}`} />
             <h3 className="truncate text-lg font-black leading-tight text-white">{player.name}</h3>
           </div>
+          {player.shirtName ? <p className="mt-1 truncate text-[10px] font-bold text-caudal-electric">Nombre en camiseta: {player.shirtName}</p> : null}
           <div className="mt-2"><TeamIdentity team={presentation.currentTeam} compact /></div>
         </div>
       </div>
@@ -266,6 +267,7 @@ function PlayerListRow({ player, teamById, onSelect, ...actions }) {
         <PlayerPhoto player={player} size="list" />
         <div className="min-w-0">
           <p className="truncate text-sm font-black text-white">{player.name}</p>
+          {player.shirtName ? <p className="mt-0.5 truncate text-[9px] font-bold text-caudal-electric">{player.shirtName}</p> : null}
           <div className="mt-1"><PlayerStatusBadges player={player} /></div>
         </div>
       </div>
@@ -304,6 +306,7 @@ function PlayerQuickView({ player, teamById, onClose, onOpenProfile, onManageTea
             <PlayerPhoto player={player} size="preview" />
             <div className="min-w-0 flex-1">
               <h2 className="text-2xl font-black text-white">{player.name}</h2>
+              {player.shirtName ? <p className="mt-1 text-xs font-bold text-caudal-electric">Nombre en camiseta: {player.shirtName}</p> : null}
               <div className="mt-3"><TeamIdentity team={presentation.currentTeam} /></div>
               <div className="mt-3 flex flex-wrap gap-2"><PlayerStatusBadges player={player} /><CompletionIndicator player={player} /></div>
             </div>
@@ -429,7 +432,7 @@ function GlobalPlayerDatabase({
         </div>
 
         <div className="mt-5 grid gap-2 md:grid-cols-2 xl:grid-cols-7">
-          <label className="relative md:col-span-2 xl:col-span-2"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">⌕</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} className="field-input pl-9" placeholder="Nombre, equipo, posición, característica, observación…" /></label>
+          <label className="relative md:col-span-2 xl:col-span-2"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">⌕</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} className="field-input pl-9" placeholder="Nombre completo o en camiseta, equipo, posición, característica…" /></label>
           <select aria-label="Posición natural" value={filters.naturalPosition} onChange={(event) => changeNaturalPosition(event.target.value)} className="field-input"><option value="">Posición natural</option>{NATURAL_POSITION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
           <select aria-label="Posición específica" value={filters.specificPosition} onChange={(event) => { setFilter('specificPosition', event.target.value); setFilterNotice(''); }} className="field-input"><option value="">Posición específica</option>{specificPositionGroups.map(([naturalKey, options]) => <optgroup key={naturalKey} label={getNaturalPositionLabel(naturalKey)}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>)}</select>
           <select value={filters.teamId} onChange={(event) => setFilter('teamId', event.target.value)} className="field-input"><option value="">Equipo actual</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}<option value="__without_team__">Sin equipo</option></select>

@@ -1,3 +1,5 @@
+import { getPlayerDisplayName } from './playerDisplayName.js';
+
 const safeArray = (value) => Array.isArray(value) ? value : [];
 const safeObject = (value) => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 const clean = (value) => String(value ?? '').trim();
@@ -166,7 +168,7 @@ export const calculateLocalNumericalSuperiority = (positions) => {
 };
 
 const getPlayerId = (player) => clean(player?.globalPlayerId || player?.jugadorRivalId || player?.id);
-const getPlayerName = (player) => clean(player?.name);
+const getPlayerName = (player) => clean(getPlayerDisplayName(player));
 const getPlayerTraits = (player, category) => safeArray(player?.traits)
   .filter((trait) => normalize(trait?.category) === normalize(category))
   .map((trait) => clean(trait?.label))

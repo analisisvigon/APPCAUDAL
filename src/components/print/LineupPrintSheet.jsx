@@ -1,5 +1,6 @@
 import FootballPitchPrint from './FootballPitchPrint';
 import PlayerShirt from './PlayerShirt';
+import { getPlayerDisplayName } from '../../utils/playerDisplayName';
 
 const formatDate = (value) => {
   if (!value) return 'Fecha pendiente';
@@ -55,7 +56,7 @@ export default function LineupPrintSheet({ match, starters = [], bench = [], coo
             {sortedBench.length ? sortedBench.map((player) => (
               <div key={player.id || player.name} className="print-bench-row">
                 <strong>{player.number || player.dorsal || '-'}</strong>
-                <span>{player.shirtName || player.shirt_name || player.shortName || player.name}{player.id === captainPlayerId || player.isCaptain ? ' (C)' : ''}</span>
+                <span>{getPlayerDisplayName(player)}{player.id === captainPlayerId || player.isCaptain ? ' (C)' : ''}</span>
               </div>
             )) : (
               <p className="print-empty">No hay suplentes seleccionados</p>

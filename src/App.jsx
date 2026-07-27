@@ -50,6 +50,7 @@ import {
   reconcileDelegatedEvent,
   saveDelegatedEventWithSync,
 } from './utils/delegatedEventSaveFlow';
+import { getPlayerDisplayName } from './utils/playerDisplayName';
 import {
   getPlayerSourceFunctionUserMessage,
   invokePlayerSourceAnalyzer,
@@ -2153,6 +2154,7 @@ const normalizeSupabaseRivalPlayer = (player) => ({
   membershipId: player.membership_id ?? player.membershipId ?? null,
   legacyId: player.legacy_id ?? null,
   name: player.name ?? '',
+  shirtName: player.shirt_name ?? player.shirtName ?? player.short_name ?? player.shortName ?? '',
   image: player.image ?? player.image_url ?? player.photo_url ?? player.avatar_url ?? player.profile_image ?? player.foto ?? '',
   imageSource: player.image_source ?? player.imageSource ?? '',
   sourceProfileUrl: player.source_profile_url ?? player.sourceProfileUrl ?? player.profileUrl ?? '',
@@ -3229,17 +3231,9 @@ const getUnplacedTeamStarters = (team) => {
 };
 
 const getPlayerMeta = (player) => [player.position, player.age ? `${player.age} años` : ''].filter(Boolean).join(' · ');
-const displayPlayerName = (player) => {
-  const preferred = String(player?.shirtName || player?.shirt_name || player?.shortName || player?.short_name || '').trim();
-  if (preferred) return preferred;
-  const parts = String(player?.name || '').trim().split(/\s+/).filter(Boolean);
-  if (parts.length <= 1) return parts[0] || '';
-  const last = parts[parts.length - 1];
-  if (last.length <= 9) return `${parts[0][0]}. ${last}`;
-  return `${parts[0]} ${last[0]}.`;
-};
+const displayPlayerName = getPlayerDisplayName;
 const getPlayerInitials = (player = {}) => {
-  const source = String(player.shirtName || player.name || 'Jugador').trim();
+  const source = getPlayerDisplayName(player);
   return source.split(/\s+/).filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'JC';
 };
 const getPlayerPortraitUrl = (player = {}) => player.originalImage || player.original_image || player.image || '';
@@ -3464,6 +3458,7 @@ const normalizeSquadEntry = (entry) => {
     globalPlayerId: null,
     membershipId: null,
       name: entry,
+    shirtName: '',
     image: '',
     imageSource: '',
     sourceProfileUrl: '',
@@ -3514,6 +3509,7 @@ const normalizeSquadEntry = (entry) => {
     globalPlayerId: entry.globalPlayerId ?? entry.global_player_id ?? null,
     membershipId: entry.membershipId ?? entry.membership_id ?? null,
     name,
+    shirtName: cleanImportedFieldValue(entry.shirtName ?? entry.shirt_name ?? entry.shortName ?? entry.short_name, ''),
     image: cleanImportedFieldValue(entry.image ?? entry.image_url ?? entry.photo_url ?? entry.avatar_url ?? entry.profile_image ?? entry.foto, ''),
     imageSource: cleanImportedFieldValue(entry.imageSource ?? entry.image_source, ''),
     sourceProfileUrl: cleanImportedFieldValue(entry.sourceProfileUrl ?? entry.source_profile_url ?? entry.profileUrl, ''),
@@ -3562,6 +3558,17 @@ const normalizeSquadEntry = (entry) => {
     slotIndex: entry.slotIndex ?? entry.tactical_slot ?? null,
     reserveIndex: entry.reserveIndex ?? entry.tactical_reserve_slot ?? null,
   };
+};
+
+const createTacticalPlayerSnapshot = (player) => {
+  const {
+    shirtName: _shirtName,
+    shirt_name: _shirtNameSnake,
+    shortName: _shortName,
+    short_name: _shortNameSnake,
+    ...snapshot
+  } = normalizeSquadEntry(player);
+  return snapshot;
 };
 
 const parseSquadText = (value) =>
@@ -4412,6 +4419,27 @@ const renderTacticalBlock = (block) => (
 function App() {
   const [activeTab, setActiveTab] = useState('Inicio');
   const [players, setPlayers] = useState([]);
+  const getStoredPlayerDisplayName = (storedName, fallback = 'Jugador') => {
+    const normalizedStoredName = normalizePlayerIdentityName(storedName);
+    const player = normalizedStoredName ? players.find((candidate) => [
+      candidate.name,
+      candidate.shirtName,
+      candidate.shirt_name,
+      candidate.shortName,
+      candidate.short_name,
+    ].some((name) => name && normalizePlayerIdentityName(name) === normalizedStoredName)) : null;
+    return player ? displayPlayerName(player) : String(storedName || '').trim() || fallback;
+  };
+  const getReferencedPlayerDisplayName = (playerId, storedName, fallback = 'Jugador') => {
+    const player = playerId ? players.find((candidate) => [
+      candidate.id,
+      candidate.globalPlayerId,
+      candidate.global_player_id,
+      candidate.legacyId,
+      candidate.legacy_id,
+    ].some((id) => id && String(id) === String(playerId))) : null;
+    return player ? displayPlayerName(player) : getStoredPlayerDisplayName(storedName, fallback);
+  };
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [session, setSession] = useState(null);
@@ -5053,7 +5081,7 @@ function App() {
       role: player.role || 'Titular',
       x: player.x ?? null,
       y: player.y ?? null,
-      player_snapshot: normalizeSquadEntry(player),
+      player_snapshot: createTacticalPlayerSnapshot(player),
     }));
     if (!rows.length) return;
     const { error: insertError } = await supabase.from("equipo_rival_alineacion").insert(rows);
@@ -5074,7 +5102,7 @@ function App() {
           membership_id: player && isUuid(player.membershipId) ? player.membershipId : null,
         } : {}),
         player_name: player?.name || null,
-        player_snapshot: player ? normalizeSquadEntry(player) : {},
+        player_snapshot: player ? createTacticalPlayerSnapshot(player) : {},
       }))
     );
     if (!rows.length) return;
@@ -6266,7 +6294,7 @@ function App() {
   const liveRivalPreFields = useMemo(() => {
     const mapped = mapRivalIdentityToPre(liveRivalIdentity);
     const keyPlayers = liveRivalPlayers.filter((player) => player.isKey).map((player) => player.name);
-    const unavailable = liveRivalPlayers.filter((player) => player.injured || player.suspended || player.doubtful).map((player) => `${player.name} (${playerStatusBadges(player).map((badge) => badge.label).join('/')})`);
+    const unavailable = liveRivalPlayers.filter((player) => player.injured || player.suspended || player.doubtful).map((player) => `${displayPlayerName(player)} (${playerStatusBadges(player).map((badge) => badge.label).join('/')})`);
     return {
       ...mapped,
       preRivalBaseSystem: selectedMatchRivalTeam?.system || mapped.preRivalBaseSystem,
@@ -6685,7 +6713,7 @@ function App() {
   const resolveLitoPlayer = (context, question, fallbackName = '') => {
     const candidates = context.players.map((player) => ({
       player,
-      names: [player.name, player.shirtName].filter(Boolean).map(normalizeLitoText),
+      names: [player.name, player.shirtName, player.shirt_name, player.shortName, player.short_name].filter(Boolean).map(normalizeLitoText),
     }));
     const questionText = normalizeLitoText([question, fallbackName].filter(Boolean).join(' '));
     const exact = candidates.find(({ names }) => names.some((name) => name && questionText.split(' ').includes(name)));
@@ -6703,7 +6731,7 @@ function App() {
       if (byName) return { status: 'found', player: byName.player };
     }
     if (scored.length > 1 && scored[0].score === scored[1].score) {
-      return { status: 'ambiguous', options: scored.slice(0, 4).map((item) => item.player.name) };
+      return { status: 'ambiguous', options: scored.slice(0, 4).map((item) => displayPlayerName(item.player)) };
     }
     return scored[0] ? { status: 'found', player: scored[0].player } : { status: 'missing' };
   };
@@ -6786,7 +6814,7 @@ function App() {
     const clips = safeArray(match.events).slice(0, 4).map((event) => `${event.minute || '-'}' ${event.typeLabel || event.type}: ${event.description || 'sin descripción'}`);
     return [
       `${formatLitoMatchName(match)} terminó ${getLitoMatchScoreText(match)}.`,
-      goals.length ? `Goles Caudal: ${goals.map((goal) => `${goal.scorer || 'sin goleador'}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.` : 'No hay goles a favor registrados para ese partido.',
+      goals.length ? `Goles Caudal: ${goals.map((goal) => `${getReferencedPlayerDisplayName(goal.scorerId, goal.scorer, 'sin goleador')}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.` : 'No hay goles a favor registrados para ese partido.',
       ...postLines,
       clips.length ? `Clips POST: ${clips.join(' · ')}` : '',
       !postLines.length && !clips.length ? 'No hay todavía un análisis POST guardado.' : '',
@@ -6824,7 +6852,7 @@ function App() {
       ].find(([, pattern]) => pattern.test(normalizedQuestion))?.[0];
       if (!requestedGroup) return missing('Dime qué posición quieres consultar: porteros, defensas, centrocampistas o delanteros.', 'Plantilla');
       const playersByGroup = context.players.filter((player) => getLitoPositionGroup(player.position) === requestedGroup);
-      return litoResponse(`Tenemos ${playersByGroup.length} ${requestedGroup}${playersByGroup.length ? `: ${playersByGroup.map((player) => player.name).join(', ')}.` : '.'}`, { source: 'Plantilla', context: responseContext });
+      return litoResponse(`Tenemos ${playersByGroup.length} ${requestedGroup}${playersByGroup.length ? `: ${playersByGroup.map((player) => displayPlayerName(player)).join(', ')}.` : '.'}`, { source: 'Plantilla', context: responseContext });
     }
 
     if (intent === 'played_matches') {
@@ -6845,14 +6873,14 @@ function App() {
       if (matchesForGoals.length > 1) return litoResponse(`Tengo varios partidos contra ${rivalResult.rival}. ¿Te refieres a ${formatLitoAmbiguousMatches(matchesForGoals)}?`, { source: 'Partidos', context: responseContext });
       const goals = getLitoGoalsForMatch(context, matchesForGoals[0]);
       if (!goals.length) return missing('No hay goles a favor registrados para ese partido.', 'Goles');
-      return litoResponse(`Contra ${formatLitoMatchName(matchesForGoals[0])} marcaron: ${goals.map((goal) => `${goal.scorer || 'Sin goleador'}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.`, { source: 'Goles', context: { ...responseContext, lastMatchId: matchesForGoals[0].id, lastPlayerName: goals[0]?.scorer || '' } });
+      return litoResponse(`Contra ${formatLitoMatchName(matchesForGoals[0])} marcaron: ${goals.map((goal) => `${getReferencedPlayerDisplayName(goal.scorerId, goal.scorer, 'Sin goleador')}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.`, { source: 'Goles', context: { ...responseContext, lastMatchId: matchesForGoals[0].id, lastPlayerName: goals[0]?.scorer || '' } });
     }
 
     if (intent === 'last_match') {
       const match = getLitoLastMatch(context);
       if (!match) return missing('No hay últimos partidos jugados registrados.', 'Partidos');
       const goals = getLitoGoalsForMatch(context, match);
-      return litoResponse(`El último partido fue contra ${formatLitoMatchName(match)} y quedó ${getLitoMatchScoreText(match)}. ${goals.length ? `Goles Caudal: ${goals.map((goal) => goal.scorer).filter(Boolean).join(', ')}.` : 'No tengo goleadores a favor registrados.'}`, { source: 'Partidos y goles', context: { ...responseContext, lastMatchId: match.id, lastPlayerName: goals[0]?.scorer || '' } });
+      return litoResponse(`El último partido fue contra ${formatLitoMatchName(match)} y quedó ${getLitoMatchScoreText(match)}. ${goals.length ? `Goles Caudal: ${goals.map((goal) => getReferencedPlayerDisplayName(goal.scorerId, goal.scorer, '')).filter(Boolean).join(', ')}.` : 'No tengo goleadores a favor registrados.'}`, { source: 'Partidos y goles', context: { ...responseContext, lastMatchId: match.id, lastPlayerName: goals[0]?.scorer || '' } });
     }
 
     if (intent === 'match_result' || intent === 'match_summary') {
@@ -6868,7 +6896,7 @@ function App() {
       if (!match) return missing('No localizo ese partido en los datos guardados.', 'Partidos');
       const goals = getLitoGoalsForMatch(context, match);
       if (!goals.length) return missing(`No hay goles a favor guardados para ${formatLitoMatchName(match)}.`, 'Goles');
-      return litoResponse(`Contra ${formatLitoMatchName(match)} marcaron: ${goals.map((goal) => `${goal.scorer || 'Sin goleador'}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.`, { source: 'Goles', context: { ...responseContext, lastMatchId: match.id, lastPlayerName: goals[0]?.scorer || '' } });
+      return litoResponse(`Contra ${formatLitoMatchName(match)} marcaron: ${goals.map((goal) => `${getReferencedPlayerDisplayName(goal.scorerId, goal.scorer, 'Sin goleador')}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.`, { source: 'Goles', context: { ...responseContext, lastMatchId: match.id, lastPlayerName: goals[0]?.scorer || '' } });
     }
 
     if (intent === 'goal_contact') {
@@ -6877,17 +6905,18 @@ function App() {
       if (playerResult.status === 'ambiguous') return missing(`¿A qué jugador te refieres: ${playerResult.options.join(', ')}?`, 'Goles');
       if (playerResult.status !== 'found') return missing('Necesito saber de qué jugador hablamos para consultar el golpeo.', 'Goles');
       const playerName = playerResult.player.name;
+      const visiblePlayerName = displayPlayerName(playerResult.player);
       const goals = context.goals.filter((goal) => goal.type === 'Gol a favor' && normalizeLitoText(goal.scorer) === normalizeLitoText(playerName));
       const scopedGoals = matchResult.status === 'found' ? goals.filter((goal) => goal.partidoId === matchResult.match.id) : goals;
       if (scopedGoals.length > 1 && matchResult.status !== 'found') {
         const options = scopedGoals.map((goal) => context.matches.find((match) => match.id === goal.partidoId)).filter(Boolean);
-        return litoResponse(`${playerName} tiene varios goles registrados. ¿Te refieres a ${formatLitoAmbiguousMatches(options)}?`, { source: 'Goles', context: { ...responseContext, lastPlayerName: playerName } });
+        return litoResponse(`${visiblePlayerName} tiene varios goles registrados. ¿Te refieres a ${formatLitoAmbiguousMatches(options)}?`, { source: 'Goles', context: { ...responseContext, lastPlayerName: playerName } });
       }
       const goal = scopedGoals[0];
-      if (!goal) return missing(`No tengo goles registrados de ${playerName} en ese contexto.`, 'Goles');
+      if (!goal) return missing(`No tengo goles registrados de ${visiblePlayerName} en ese contexto.`, 'Goles');
       const match = context.matches.find((item) => item.id === goal.partidoId);
-      if (!goal.contact) return litoResponse(`${playerName} marcó${goal.minute ? ` en el minuto ${goal.minute}` : ''}${match ? ` contra ${match.opponent}` : ''}, pero la pierna o contacto del golpeo no fue registrado.`, { source: 'Goles', context: { ...responseContext, lastMatchId: goal.partidoId, lastPlayerName: playerName } });
-      return litoResponse(`${playerName} marcó con: ${goal.contact}.`, { source: 'Goles', context: { ...responseContext, lastMatchId: goal.partidoId, lastPlayerName: playerName } });
+      if (!goal.contact) return litoResponse(`${visiblePlayerName} marcó${goal.minute ? ` en el minuto ${goal.minute}` : ''}${match ? ` contra ${match.opponent}` : ''}, pero la pierna o contacto del golpeo no fue registrado.`, { source: 'Goles', context: { ...responseContext, lastMatchId: goal.partidoId, lastPlayerName: playerName } });
+      return litoResponse(`${visiblePlayerName} marcó con: ${goal.contact}.`, { source: 'Goles', context: { ...responseContext, lastMatchId: goal.partidoId, lastPlayerName: playerName } });
     }
 
     if (intent === 'system_vs_rival') {
@@ -6918,7 +6947,7 @@ function App() {
       }, {});
       if (playerResult.status === 'found' && !/mas|minutos tiene quien|quien tiene/.test(normalizedQuestion)) {
         const total = totals[playerResult.player.name] || 0;
-        return litoResponse(`${playerResult.player.name} tiene ${total} minutos registrados.`, { source: 'Estadísticas de jugador', context: { ...responseContext, lastPlayerName: playerResult.player.name } });
+        return litoResponse(`${displayPlayerName(playerResult.player)} tiene ${total} minutos registrados.`, { source: 'Estadísticas de jugador', context: { ...responseContext, lastPlayerName: playerResult.player.name } });
       }
       if (playerResult.status === 'ambiguous') return missing(`¿A qué jugador te refieres: ${playerResult.options.join(', ')}?`, 'Estadísticas de jugador');
       const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
@@ -6938,7 +6967,7 @@ function App() {
       const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
       if (!top) return missing('No hay robos validados en el Registro Delegado.', 'Registro Delegado validado');
       const player = context.players.find((item) => item.id === top[0]);
-      return litoResponse(`El jugador con más robos validados es ${player?.name || 'jugador no identificado'}, con ${top[1]}.`, { source: 'Registro Delegado validado', context: { ...responseContext, lastPlayerName: player?.name || '' } });
+      return litoResponse(`El jugador con más robos validados es ${player ? displayPlayerName(player) : 'jugador no identificado'}, con ${top[1]}.`, { source: 'Registro Delegado validado', context: { ...responseContext, lastPlayerName: player?.name || '' } });
     }
 
     if (intent === 'rivals_442') {
@@ -7235,7 +7264,7 @@ function App() {
     const intensity = dashboard.totalLoad > 6000 ? 'alta' : dashboard.totalLoad > 3000 ? 'media-alta' : 'controlada';
     const peakText = dashboard.peak?.load ? ` Pico de carga en ${dashboard.peak.session.md_label || dashboard.peak.session.session_date}.` : '';
     const riskText = dashboard.riskRows.length
-      ? ` ${dashboard.riskRows.slice(0, 4).map((row) => row.player.name).join(', ')} presentan indicadores a vigilar.`
+      ? ` ${dashboard.riskRows.slice(0, 4).map((row) => displayPlayerName(row.player)).join(', ')} presentan indicadores a vigilar.`
       : ' Sin alertas relevantes en el semáforo PF.';
     const wellnessText = dashboard.avgWellness
       ? ` Wellness grupal medio ${dashboard.avgWellness.toFixed(1)}/10.`
@@ -7597,7 +7626,7 @@ function App() {
     if (identity.mainThreat) reading.risks.push(`Amenaza principal: ${identity.mainThreat}; vigilancia sobre ${firstThreat}.`);
     if (identity.offensiveFocus) reading.protectZones.push(`Proteger foco ofensivo rival: ${identity.offensiveFocus}.`);
     if (identity.pressureType) reading.adjustments.push(`Ajuste sobre presión ${identity.pressureType}: salida con apoyo cercano y lado débil preparado.`);
-    if (alertPlayers.length) reading.advantages.push(`Forzar decisiones sobre jugadores marcados: ${alertPlayers.slice(0, 3).map((player) => `${player.name} ${playerStatusBadges(player).map((badge) => badge.label).join('/')}`).join(', ')}.`);
+    if (alertPlayers.length) reading.advantages.push(`Forzar decisiones sobre jugadores marcados: ${alertPlayers.slice(0, 3).map((player) => `${displayPlayerName(player)} ${playerStatusBadges(player).map((badge) => badge.label).join('/')}`).join(', ')}.`);
 
     Object.keys(reading).forEach((key) => {
       if (!reading[key].length) reading[key].push(`${caudalSystem} vs ${rivalSystem}: lectura basada en bloque ${identity.blockHeight}, presión ${identity.pressureType} y amenaza ${identity.mainThreat}.`);
@@ -10181,7 +10210,7 @@ function App() {
 
     keyPlayers.slice(0, 3).forEach((player) => {
       add(
-        `Vigilancia sobre ${player.name}`,
+        `Vigilancia sobre ${displayPlayerName(player)}`,
         `${player.position || 'Jugador clave'} marcado como DEST; encaja con amenaza ${identity.mainThreat}.`,
         'Contacto previo, orientar hacia fuera y cobertura interior antes del salto.',
         'alerta',
@@ -10190,7 +10219,7 @@ function App() {
     });
     doubtfulPlayers.slice(0, 2).forEach((player) => {
       add(
-        `Probar físicamente a ${player.name}`,
+        `Probar físicamente a ${displayPlayerName(player)}`,
         `${player.position || 'Jugador'} marcado como DUDA; medir si puede repetir esfuerzos.`,
         'Alternar ritmo, cambios de orientación y carreras a su espalda sin regalar transición.',
         'ofensiva',
@@ -12110,7 +12139,7 @@ function App() {
     const formatGoal = (event) => {
       const minute = event.minute ? `minuto ${event.minute}` : '';
       const side = event.type === 'Gol a favor' ? 'gol a favor' : event.type === 'Gol en contra' ? 'gol en contra' : 'gol';
-      const author = event.type === 'Gol a favor' && event.scorer ? ` de ${event.scorer}` : '';
+      const author = event.type === 'Gol a favor' && event.scorer ? ` de ${getReferencedPlayerDisplayName(event.scorerId, event.scorer)}` : '';
       const phase = event.attackType || event.phase || event.subphase || '';
       return [minute, `${side}${author}`, phase ? `mediante ${String(phase).toLowerCase()}` : ''].filter(Boolean).join(', ');
     };
@@ -12688,19 +12717,19 @@ function App() {
         tone: meta.tone,
         icon: meta.icon,
         badgeIcon: meta.badgeIcon,
-        title: isGoalFor ? event.scorer || 'Gol Caudal' : selectedMatch?.opponent || 'Gol rival',
-        playerName: isGoalFor ? event.scorer || 'Sin goleador' : selectedMatch?.opponent || 'Rival',
+        title: isGoalFor ? getReferencedPlayerDisplayName(event.scorerId, event.scorer, 'Gol Caudal') : selectedMatch?.opponent || 'Gol rival',
+        playerName: isGoalFor ? getReferencedPlayerDisplayName(event.scorerId, event.scorer, 'Sin goleador') : selectedMatch?.opponent || 'Rival',
         playerId: isGoalFor ? event.scorerId : null,
-        secondaryPlayerName: isGoalFor ? event.assistant || '' : '',
+        secondaryPlayerName: isGoalFor ? getReferencedPlayerDisplayName(event.assistantId, event.assistant, '') : '',
         secondaryPlayerId: isGoalFor ? event.assistantId : null,
-        subtitle: isGoalFor && event.assistant ? `Asistencia: ${event.assistant}` : '',
+        subtitle: isGoalFor && event.assistant ? `Asistencia: ${getReferencedPlayerDisplayName(event.assistantId, event.assistant)}` : '',
         detail: contextLine,
         meta: [
           event.assistZone ? `Genera: ${getZoneLabel(event.assistZone)}` : '',
           event.goalZone ? `Entra: ${getZoneLabel(event.goalZone, { goal: true })}` : '',
         ].filter(Boolean).join(' · '),
         timelineLines: [
-          isGoalFor && event.assistant ? `Asistencia: ${event.assistant}` : '',
+          isGoalFor && event.assistant ? `Asistencia: ${getReferencedPlayerDisplayName(event.assistantId, event.assistant)}` : '',
           contextLine,
         ].filter(Boolean),
       };
@@ -12723,12 +12752,12 @@ function App() {
         icon: meta.icon,
         badgeIcon: meta.badgeIcon,
         title: meta.label,
-        playerName: event.outPlayer,
-        secondaryPlayerName: event.inPlayer,
-        subtitle: `Sale ${event.outPlayer}`,
-        detail: `Entra ${event.inPlayer}`,
+        playerName: getStoredPlayerDisplayName(event.outPlayer),
+        secondaryPlayerName: getStoredPlayerDisplayName(event.inPlayer),
+        subtitle: `Sale ${getStoredPlayerDisplayName(event.outPlayer)}`,
+        detail: `Entra ${getStoredPlayerDisplayName(event.inPlayer)}`,
         meta: `Cambio · ${event.minute}'`,
-        timelineLines: [`Sale ${event.outPlayer}`, `Entra ${event.inPlayer}`],
+        timelineLines: [`Sale ${getStoredPlayerDisplayName(event.outPlayer)}`, `Entra ${getStoredPlayerDisplayName(event.inPlayer)}`],
       };
     });
     const playerIncidents = getStatsCalledPlayers().flatMap((player) => {
@@ -12756,8 +12785,8 @@ function App() {
           icon: meta.icon,
           badgeIcon: meta.badgeIcon,
           title: meta.label,
-          playerName: player.name,
-          subtitle: player.name,
+          playerName: displayPlayerName(player),
+          subtitle: displayPlayerName(player),
           detail: event.detail,
           meta: event.minute ? `${event.minute}'` : 'Minuto pendiente',
           timelineLines: [event.detail].filter(Boolean),
@@ -13301,19 +13330,19 @@ function App() {
     };
     const caudalGoalText = goals
       .filter((event) => event.type === 'Gol a favor')
-      .map((event) => `${event.minute ? `${event.minute}': ` : ''}${event.scorer || 'Caudal'} marca tras ${describeGoalContext(event)}${event.assistant ? `. Asistencia de ${event.assistant}` : ''}`);
+      .map((event) => `${event.minute ? `${event.minute}': ` : ''}${getReferencedPlayerDisplayName(event.scorerId, event.scorer, 'Caudal')} marca tras ${describeGoalContext(event)}${event.assistant ? `. Asistencia de ${getReferencedPlayerDisplayName(event.assistantId, event.assistant)}` : ''}`);
     const againstGoalText = goals
       .filter((event) => event.type === 'Gol en contra')
       .map((event) => `${event.minute ? `${event.minute}': ` : ''}gol encajado tras ${describeGoalContext(event)}`);
     const cardText = getStatsCalledPlayers().flatMap((player) => {
       const stats = getStatsPlayerData(player.name);
       return [
-        stats.yellow ? `${player.name} amarilla${stats.yellowCount > 1 ? ` x${stats.yellowCount}` : ''}` : null,
-        stats.red ? `${player.name} roja` : null,
-        stats.injured ? `${player.name} lesión` : null,
+        stats.yellow ? `${displayPlayerName(player)} amarilla${stats.yellowCount > 1 ? ` x${stats.yellowCount}` : ''}` : null,
+        stats.red ? `${displayPlayerName(player)} roja` : null,
+        stats.injured ? `${displayPlayerName(player)} lesión` : null,
       ].filter(Boolean);
     });
-    const substitutionText = getStatsSubstitutionEvents().map((event) => `${event.minute}': entra ${event.inPlayer} por ${event.outPlayer}`);
+    const substitutionText = getStatsSubstitutionEvents().map((event) => `${event.minute}': entra ${getStoredPlayerDisplayName(event.inPlayer)} por ${getStoredPlayerDisplayName(event.outPlayer)}`);
     return [
       `${score.caudal === score.rival ? 'Empate' : score.caudal > score.rival ? 'Victoria' : 'Derrota'} ${score.caudal}-${score.rival}.`,
       caudalGoalText.length ? `Resumen ofensivo: ${caudalGoalText.join('; ')}.` : 'Resumen ofensivo: sin goles registrados a favor.',
@@ -13908,7 +13937,7 @@ function App() {
       const registeredPlayer = resolveDelegatedPlayer(jugadorIdOverride, players).player;
       setDelegatedEventDraft(null);
       if (saveResult.status === 'saved') {
-        setDelegatedEventFeedback(`✓ ${definition.side === 'rival' ? `${definition.label} del rival` : definition.label} registrada · ${registeredPlayer?.name || (definition.side === 'caudal' && definition.requiresPlayer ? 'Sin identificar' : '')} · ${minute}'`);
+        setDelegatedEventFeedback(`✓ ${definition.side === 'rival' ? `${definition.label} del rival` : definition.label} registrada · ${registeredPlayer ? getPlayerDisplayName(registeredPlayer) : definition.side === 'caudal' && definition.requiresPlayer ? 'Sin identificar' : ''} · ${minute}'`);
       } else if (saveResult.status === 'saved-reloaded') {
         console.warn('[QUICK_EVENT_LOCAL_SYNC_RECOVERED]', {
           eventId: saveResult.savedEvent?.id,
@@ -14940,7 +14969,8 @@ function App() {
               <div className="mt-3 max-h-[360px] space-y-2 overflow-y-auto pr-1">
                 {recentEvents.length ? recentEvents.map((event) => {
                   const definition = getDelegatedDefinitionForEvent(event);
-                  const playerName = resolveDelegatedEventPlayer(event, players).player?.name || event.playerName || '';
+                  const eventPlayer = resolveDelegatedEventPlayer(event, players).player;
+                  const playerName = eventPlayer ? getPlayerDisplayName(eventPlayer) : event.playerName || '';
                   const important = importantEventIds.includes(event.id);
                   const isConfirmingDelete = pendingQuickEventDeleteId === event.id;
                   const eventSide = getQuickEventSide(event);
@@ -14969,7 +14999,7 @@ function App() {
                           >
                             <option value="">Añadir jugador</option>
                             {playerOptions.map((player) => (
-                              <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
+                              <option key={player.id} value={player.id}>{player.number || '-'} · {getPlayerDisplayName(player)}</option>
                             ))}
                           </select>
                         ) : null}
@@ -15090,7 +15120,7 @@ function App() {
                   >
                     <option value="">Seleccionar jugador</option>
                     {playerOptions.map((player) => (
-                      <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
+                      <option key={player.id} value={player.id}>{player.number || '-'} · {getPlayerDisplayName(player)}</option>
                     ))}
                   </select>
                 ) : (
@@ -16110,7 +16140,8 @@ function App() {
                   const isSaving = quickEventSavingIds.includes(event.id);
                   const isConfirmingDelete = pendingQuickEventDeleteId === event.id;
                   const tone = getPostEventTone(definition?.label || getQuickEventLabel(event.tipoEvento));
-                  const playerName = resolveDelegatedEventPlayer(event, players).player?.name || event.playerName || '';
+                  const eventPlayer = resolveDelegatedEventPlayer(event, players).player;
+                  const playerName = eventPlayer ? getPlayerDisplayName(eventPlayer) : event.playerName || '';
                   return (
                     <div key={event.id} className={`rounded-3xl border p-4 transition ${event.reviewed ? 'border-emerald-400/25 bg-emerald-400/10 shadow-[0_0_28px_rgba(16,185,129,0.08)]' : 'border-white/10 bg-[#0f1e38]/85 hover:border-caudal-electric/25'}`}>
                       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -16169,7 +16200,7 @@ function App() {
                         >
                           <option value="">{isRival ? 'Evento rival' : 'Sin jugador'}</option>
                           {getDelegatedPlayerOptions().map((player) => (
-                            <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
+                            <option key={player.id} value={player.id}>{player.number || '-'} · {getPlayerDisplayName(player)}</option>
                           ))}
                         </select>
                         </div>
@@ -17169,7 +17200,7 @@ function App() {
 
   const generatePlayerReport = (player, aggregate) => {
     setPlayerReport({
-      general: `${player.name} acumula ${aggregate.played} partidos, ${aggregate.minutes}' y ${aggregate.directGoalParticipation} participaciones directas de gol en el filtro actual. En eventos rápidos: ${aggregate.quick.shots} tiros, ${aggregate.quick.recoveries} recuperaciones y ${aggregate.quick.losses} pérdidas.`,
+      general: `${displayPlayerName(player)} acumula ${aggregate.played} partidos, ${aggregate.minutes}' y ${aggregate.directGoalParticipation} participaciones directas de gol en el filtro actual. En eventos rápidos: ${aggregate.quick.shots} tiros, ${aggregate.quick.recoveries} recuperaciones y ${aggregate.quick.losses} pérdidas.`,
       strengths: aggregate.quick.recoveries > aggregate.quick.losses ? 'Buen balance presión/pérdida: recupera más de lo que pierde en los eventos registrados.' : aggregate.goals || aggregate.assists ? 'Aporta producción ofensiva medible: revisar sus acciones de gol/asistencia para repetir zonas y sociedades.' : 'Sin producción ofensiva registrada: valorar influencia sin balón, continuidad y ocupación de zonas.',
       improve: aggregate.quick.losses >= 5 ? 'Acumula pérdidas: revisar zonas, apoyos y perfil corporal en últimos partidos.' : aggregate.yellow || aggregate.red ? 'Controlar acciones disciplinarias y momentos de riesgo competitivo.' : 'Aumentar presencia en acciones decisivas si su rol lo permite.',
       trend: aggregate.quick.recent.slice(0, 3).length ? `Últimos eventos rápidos: ${aggregate.quick.recent.slice(0, 3).map((event) => `${getQuickEventLabel(event.tipoEvento)} vs ${event.match.opponent}`).join(', ')}.` : aggregate.rows.slice(-3).length ? `Últimos ${aggregate.rows.slice(-3).length} partidos registrados: ${aggregate.rows.slice(-3).reduce((sum, row) => sum + row.minutes, 0)} minutos.` : 'Sin tendencia reciente registrada.',
@@ -18023,7 +18054,7 @@ function App() {
     if (secondHalfAgainst > firstHalfAgainst) addAlert('Caída defensiva en segunda parte.', 'media', 'defensiva', 'creciente', secondHalfAgainst);
     if (abpFor >= Math.max(2, groupData.goalsFor * 0.35)) addAlert('La ABP ofensiva está dando goles.', 'leve', 'ofensiva', 'creciente', abpFor);
     if (awaySummary.played >= 2 && Number(awaySummary.pointsPerGame) < Number(localSummary.pointsPerGame)) addAlert('El equipo baja rendimiento fuera de casa.', 'media', 'competitiva', 'estable', awaySummary.played);
-    if (topMinutes && topMinutes.minutePct >= 80) addAlert(`Alta carga de minutos en ${topMinutes.player.name}.`, 'leve', 'gestión', 'creciente', topMinutes.minutePct);
+    if (topMinutes && topMinutes.minutePct >= 80) addAlert(`Alta carga de minutos en ${displayPlayerName(topMinutes.player)}.`, 'leve', 'gestión', 'creciente', topMinutes.minutePct);
     if (cardsLast >= 8) addAlert('Demasiadas tarjetas recientes.', 'media', 'competitiva', 'creciente', cardsLast);
     if (quickSummary.rivalShots >= 10 && Number(quickSummary.concededDanger.replace('%', '')) >= 45) addAlert('Concedemos mucho tiro a puerta.', 'alta', 'defensiva', 'creciente', quickSummary.rivalShotsOnTarget);
     if (quickSummary.shots >= 10 && Number(quickSummary.shotAccuracy.replace('%', '')) < 35) addAlert('Baja eficacia de tiro.', 'media', 'ofensiva', 'estable', `${quickSummary.shotAccuracy}`);
@@ -18443,7 +18474,7 @@ function App() {
               <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-caudal-electric/60 bg-caudal-950/80 text-[10px] font-black text-white sm:h-14 sm:w-14 sm:rounded-2xl sm:border-2 sm:text-xs">
                 {player ? <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" /> : index + 1}
               </div>
-              <span className="max-w-[54px] truncate rounded-lg bg-black/60 px-1.5 py-0.5 text-[8px] font-black text-white sm:max-w-[90px] sm:rounded-xl sm:px-2 sm:py-1 sm:text-[10px]">{player?.name || slot.label}</span>
+              <span className="max-w-[54px] truncate rounded-lg bg-black/60 px-1.5 py-0.5 text-[8px] font-black text-white sm:max-w-[90px] sm:rounded-xl sm:px-2 sm:py-1 sm:text-[10px]">{player ? displayPlayerName(player) : slot.label}</span>
               {row?.primaryRole ? (
                 <span className="max-w-[58px] truncate rounded-lg bg-caudal-electric/90 px-1.5 py-0.5 text-[7px] font-black text-slate-950 sm:max-w-[96px] sm:rounded-xl sm:px-2 sm:text-[9px]" title={`Rol más jugado: ${row.primaryRole}${row.idealSlotFallback ? ' (fallback plantilla)' : ''}`}>
                   {row.idealSlotFallback ? `${slot.label}*` : row.primaryRole}
@@ -18478,7 +18509,7 @@ function App() {
                     {player?.name ? <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" /> : index + 1}
                   </div>
                   <span className="max-w-[72px] truncate rounded-lg bg-black/70 px-1.5 py-0.5 text-[8px] font-black text-white sm:max-w-[104px] sm:rounded-xl sm:px-2 sm:py-1 sm:text-[10px]">
-                    {player?.number ? `#${player.number} ` : ''}{player?.name || slot.label}
+                    {player?.number ? `#${player.number} ` : ''}{player ? displayPlayerName(player) : slot.label}
                   </span>
                   {row?.minutes ? <span className="rounded-lg bg-caudal-electric px-1.5 py-0.5 text-[7px] font-black text-slate-950 sm:text-[9px]">{row.minutes} min</span> : null}
                 </div>
@@ -18493,8 +18524,8 @@ function App() {
             return (
               <div key={`alt-${slot.id}`} className="rounded-2xl bg-white/5 px-3 py-3">
                 <p className="text-xs font-black uppercase tracking-[0.12em] text-white">{slot.label}</p>
-                <p className="mt-1 text-sm font-bold text-caudal-electric">{row.playerName} · {row.minutes} min</p>
-                {alternatives[0] ? <p className="mt-1 text-xs font-semibold text-slate-400">Alternativa: {alternatives[0].playerName} · {alternatives[0].minutes} min</p> : null}
+                <p className="mt-1 text-sm font-bold text-caudal-electric">{displayPlayerName(row.player)} · {row.minutes} min</p>
+                {alternatives[0] ? <p className="mt-1 text-xs font-semibold text-slate-400">Alternativa: {displayPlayerName(alternatives[0].player)} · {alternatives[0].minutes} min</p> : null}
               </div>
             );
           })}
@@ -19535,7 +19566,7 @@ function App() {
   const syncRivalPlayerPlacementSnapshots = async (teamId, originalName, draft) => {
     const currentName = draft.name;
     const previousName = originalName || currentName;
-    const playerSnapshot = normalizeSquadEntry(draft);
+    const playerSnapshot = createTacticalPlayerSnapshot(draft);
     const linkedPlayerId = isUuid(draft.jugadorRivalId) ? draft.jugadorRivalId : isUuid(draft.id) ? draft.id : null;
     const lineupUpdate = {
       jugador_rival_id: linkedPlayerId,
@@ -20094,7 +20125,7 @@ function App() {
     const keyPlayers = squad.filter((player) => player.isKey).map((player) => player.name);
     const unavailable = squad
       .filter((player) => player.injured || player.suspended || player.doubtful)
-      .map((player) => `${player.name} (${playerStatusBadges(player).map((badge) => badge.label).join('/')})`);
+      .map((player) => `${displayPlayerName(player)} (${playerStatusBadges(player).map((badge) => badge.label).join('/')})`);
     const lineup = safeArray(team.lineup)
       .sort((a, b) => Number(a.slot ?? 0) - Number(b.slot ?? 0))
       .map((entry) => normalizeSquadEntry(entry).name)
@@ -22291,7 +22322,7 @@ function App() {
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <select value={wellnessDraft.jugadorId} onChange={(event) => setWellnessDraft((current) => ({ ...current, jugadorId: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
                 <option value="">Jugador</option>
-                {players.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}
+                {players.map((player) => <option key={player.id} value={player.id}>{displayPlayerName(player)}</option>)}
               </select>
               <input type="date" value={wellnessDraft.entryDate} onChange={(event) => setWellnessDraft((current) => ({ ...current, entryDate: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
               {[
@@ -22318,7 +22349,7 @@ function App() {
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <select value={rpeDraft.jugadorId} onChange={(event) => setRpeDraft((current) => ({ ...current, jugadorId: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
                 <option value="">Jugador</option>
-                {players.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}
+                {players.map((player) => <option key={player.id} value={player.id}>{displayPlayerName(player)}</option>)}
               </select>
               <select value={rpeDraft.sessionId} onChange={(event) => setRpeDraft((current) => ({ ...current, sessionId: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
                 <option value="">Sesión</option>
@@ -24000,7 +24031,7 @@ function App() {
                               onClick={() => setSelectedPlayerProfileId(item.player.id)}
                               className="rounded-lg bg-white/[0.055] px-2 py-1 text-left text-xs font-bold text-white transition hover:bg-white/[0.10]"
                             >
-                              <span className="mr-1 text-caudal-electric">{item.role}</span>{item.player.shirtName || item.player.name}
+                              <span className="mr-1 text-caudal-electric">{item.role}</span>{getPlayerDisplayName(item.player)}
                             </button>
                           )) : <span className="px-2 py-1 text-xs text-slate-600">Sin jugador</span>}
                         </div>
@@ -24025,7 +24056,7 @@ function App() {
                           className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-left transition enabled:hover:border-caudal-electric/25 enabled:hover:bg-white/[0.07] disabled:cursor-default"
                         >
                           <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{item.label}</p>
-                          <p className="mt-1 truncate text-sm font-black text-white">{player?.shirtName || player?.name || 'Sin datos'}</p>
+                          <p className="mt-1 truncate text-sm font-black text-white">{player ? getPlayerDisplayName(player) : 'Sin datos'}</p>
                           <p className="text-xs font-bold text-caudal-electric">{item.value}</p>
                         </button>
                       );
@@ -24109,7 +24140,7 @@ function App() {
                                   <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/[0.06] text-xs font-black text-white">
                                     <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" />
                                   </span>
-                                  <span className="font-black text-white">{player.name}</span>
+                                  <span className="font-black text-white">{displayPlayerName(player)}</span>
                                 </div>
                               </td>
                               <td className="px-4 py-3 text-slate-300">{player.position || '-'}</td>
@@ -24183,7 +24214,7 @@ function App() {
                               <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-xs" />
                             </div>
                             <div className="min-w-0 pr-1">
-                              <h3 className="line-clamp-2 [overflow-wrap:normal] [word-break:normal] text-[17px] font-black leading-[1.12] text-white">{player.name}</h3>
+                              <h3 className="line-clamp-2 [overflow-wrap:normal] [word-break:normal] text-[17px] font-black leading-[1.12] text-white">{displayPlayerName(player)}</h3>
                               <p className="mt-1 line-clamp-1 [overflow-wrap:normal] [word-break:normal] text-[12px] font-bold leading-snug text-slate-300">{player.position || 'Sin demarcación'}</p>
                               <p className="mt-0.5 text-[10px] font-semibold text-slate-500">{calculateAge(player.dob)} años</p>
                             </div>
@@ -24428,11 +24459,7 @@ function App() {
                   return parts[parts.length - 1];
                 };
                 const getTacticalPlayerName = (player) => {
-                  const fullName = String(displayPlayerName(player) || player?.name || '').trim();
-                  const parts = fullName.split(/\s+/).filter(Boolean);
-                  if (parts.length <= 1) return fullName;
-                  const initial = parts[0].charAt(0).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
-                  return `${initial}. ${parts[parts.length - 1]}`;
+                  return displayPlayerName(player);
                 };
                 const getRosterFieldState = (player) => {
                   if (player.activeInSquad === false || player.injured || player.suspended) return 'BAJA';
@@ -24962,7 +24989,7 @@ function App() {
                                       {group.players.map((player) => (
                                         <span key={player.jugadorRivalId || player.id || player.name} className="inline-flex h-7 min-w-0 max-w-28 items-center gap-1.5 overflow-hidden rounded-md border border-white/10 bg-white/[0.035] px-1.5 text-[8px] font-black text-slate-100">
                                           <span className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white/[0.07] text-[7px]">
-                                            <span>{String(player.name || '').split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
+                                            <span>{getPlayerInitials(player)}</span>
                                             {player.image ? <img src={player.image} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} className="absolute inset-0 h-full w-full object-cover" /> : null}
                                           </span>
                                           <span className="block min-w-0 truncate whitespace-nowrap uppercase" title={displayPlayerName(player)}>{getTacticalPlayerName(player)}</span>
@@ -25061,7 +25088,7 @@ function App() {
                                       className="flex min-w-0 flex-1 items-center gap-2 text-left"
                                     >
                                       <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/[0.07] text-xs font-black text-white">
-                                        <span className="absolute inset-0 flex items-center justify-center">{player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
+                                        <span className="absolute inset-0 flex items-center justify-center">{getPlayerInitials(player)}</span>
                                         {player.image ? <img src={player.image} alt={player.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="relative h-full w-full object-cover" /> : null}
                                         {fieldState === 'EN CAMPO' ? <span className="absolute bottom-0.5 right-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-400 text-[10px] font-black text-slate-950 shadow">✓</span> : null}
                                       </span>
@@ -25280,7 +25307,7 @@ function App() {
                                     {player.image ? (
                                       <img src={player.image} alt={player.name} className="h-full w-full scale-[1.18] object-cover object-top" />
                                     ) : (
-                                      <span className="text-caudal-electric/85">{player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
+                                      <span className="text-caudal-electric/85">{getPlayerInitials(player)}</span>
                                     )}
                                   </span>
                                   <button
@@ -25584,7 +25611,7 @@ function App() {
                           {player.image ? (
                             <img src={player.image} alt={player.name} className="h-full w-full scale-[1.14] object-cover object-top" />
                           ) : (
-                            <span className="relative z-10">{player.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
+                            <span className="relative z-10">{getPlayerInitials(player)}</span>
                           )}
                         </span>
                         {teamFieldViewMode === 'STAFF' && tacticalBadges.length ? (
@@ -25596,7 +25623,7 @@ function App() {
                             ))}
                           </span>
                         ) : null}
-                        <span className="mt-0.5 flex max-w-24 items-center gap-1 rounded-md bg-slate-950/45 px-1.5 py-0.5 text-[11px] font-semibold leading-tight text-white shadow-sm" title={player.name}>
+                        <span className="mt-0.5 flex max-w-24 items-center gap-1 rounded-md bg-slate-950/45 px-1.5 py-0.5 text-[11px] font-semibold leading-tight text-white shadow-sm" title={displayPlayerName(player)}>
                           <span className="truncate">{displayPlayerName(player)}</span>
                         </span>
                         {(getBenchForStarter(player, selectedTeam.benchChart).length || (teamFieldEditMode && teamFieldViewMode === 'STAFF')) ? <div
@@ -26487,9 +26514,9 @@ function App() {
                           priority: 1,
                           icon: meta.badgeIcon,
                           side: isGoalFor ? 'caudal' : 'rival',
-                          label: isGoalFor ? (event.scorer || 'Caudal') : (match.opponent || 'Rival'),
+                          label: isGoalFor ? getReferencedPlayerDisplayName(event.scorerId, event.scorer, 'Caudal') : (match.opponent || 'Rival'),
                           typeLabel: meta.label,
-                          assist: isGoalFor ? event.assistant || '' : '',
+                          assist: isGoalFor ? getReferencedPlayerDisplayName(event.assistantId, event.assistant, '') : '',
                         };
                       }),
                       ...Object.entries(match.statsPlayerData || {}).flatMap(([name, stats]) => [
@@ -26964,7 +26991,7 @@ function App() {
                                                           <PlayerPortrait player={player} className="h-full w-full" imgClassName="h-full w-full object-cover object-center" fallbackTextClassName="text-[8px]" />
                                                         </button>
                                                         <button type="button" onClick={() => updateCaudalLineupSlot(selectedTacticalPlayerIndex, player.name)} className="min-w-0 flex-1 text-left">
-                                                          <span className="block truncate font-black text-white">{player.number ? `#${player.number} ` : ''}{player.name}{isCaptain ? ' ©' : ''}</span>
+                                                          <span className="block truncate font-black text-white">{player.number ? `#${player.number} ` : ''}{displayPlayerName(player)}{isCaptain ? ' ©' : ''}</span>
                                                           <span className="mt-0.5 block truncate text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">{player.position || 'Sin posición'}</span>
                                                         </button>
                                                         <button type="button" onClick={() => updateMatchCaptain(isCaptain ? '' : player.id)} className={`rounded-md px-1.5 py-1 text-[9px] font-black ${isCaptain ? 'bg-blue-200 text-slate-950' : 'bg-white/10 text-slate-300 opacity-70 group-hover:opacity-100'}`}>©</button>
@@ -27176,7 +27203,7 @@ function App() {
                               <div className="mt-3 flex flex-wrap gap-2">
                                 {liveRivalMarkedPlayers.length ? liveRivalMarkedPlayers.slice(0, 8).map((player) => (
                                   <span key={player.name} className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.045] px-2.5 py-1.5 text-xs font-bold text-slate-100">
-                                    {player.name}
+                                    {displayPlayerName(player)}
                                     {playerStatusBadges(player).slice(0, 3).map((badge) => (
                                       <span key={badge.label} title={badge.title} className={`rounded px-1 text-[8px] font-black ${badge.className}`}>{badge.label}</span>
                                     ))}
@@ -27631,7 +27658,7 @@ function App() {
                                       onClick={() => updateCaudalLineupSlot(selectedTacticalPlayerIndex, player.name)}
                                       className={`w-full min-w-0 rounded-2xl px-3 py-3 text-left text-sm transition ${isCurrent ? 'bg-caudal-electric text-slate-950' : isAssigned ? 'bg-white/10 text-slate-300' : 'bg-white/5 text-white hover:bg-white/10'}`}
                                     >
-                                      <span className="block truncate font-semibold">{player.name}</span>
+                                      <span className="block truncate font-semibold">{displayPlayerName(player)}</span>
                                       <span className={`mt-1 block text-xs ${isCurrent ? 'text-slate-800' : 'text-slate-500'}`}>
                                         {[player.position, player.foot].filter(Boolean).join(' · ')}
                                       </span>
@@ -27657,7 +27684,7 @@ function App() {
                                 ].filter(([, traits]) => traits.length);
                                 return (
                                   <div className="mt-3 rounded-2xl border border-rose-200/15 bg-rose-300/[0.06] p-3">
-                                    <p className="truncate text-sm font-black text-white">{selectedPlayer.name}</p>
+                                    <p className="truncate text-sm font-black text-white">{displayPlayerName(selectedPlayer)}</p>
                                     <p className="mt-1 text-[10px] font-bold text-slate-400">{[selectedPlayer.specificPosition || selectedPlayer.position, selectedPlayer.foot].filter(Boolean).join(' · ')}</p>
                                     {traitGroups.map(([label, traits, className]) => <div key={label} className="mt-2"><p className={`text-[8px] font-black uppercase tracking-[0.12em] ${className}`}>{label}</p><p className="mt-0.5 text-[10px] font-semibold leading-relaxed text-slate-200">{traits.map((trait) => trait.label).join(' · ')}</p></div>)}
                                   </div>
@@ -27691,7 +27718,7 @@ function App() {
                                         className={`w-full min-w-0 rounded-2xl px-3 py-3 text-left text-sm transition ${isCurrent ? 'bg-rose-300 text-rose-950' : isAssigned ? 'bg-white/10 text-slate-300' : 'bg-white/5 text-white hover:bg-white/10'}`}
                                       >
                                         <span className="flex items-center gap-1">
-                                          <span className="block min-w-0 truncate font-semibold">{player.name}</span>
+                                          <span className="block min-w-0 truncate font-semibold">{displayPlayerName(player)}</span>
                                           {playerStatusBadges(player).slice(0, 3).map((badge) => (
                                             <span key={badge.label} title={badge.title} className={`inline-flex min-h-4 items-center rounded-md px-1 text-[8px] font-black ${badge.className}`}>
                                               {badge.label}
@@ -27749,13 +27776,13 @@ function App() {
                                   <div>
                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                       <div>
-                                        <h5 className="text-xl font-black text-white">{playerAdvice.playerName}</h5>
+                                        <h5 className="text-xl font-black text-white">{displayPlayerName(players.find((player) => player.name === playerAdvice.playerName) || { name: playerAdvice.playerName })}</h5>
                                         <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-caudal-electric">{playerAdvice.role}</p>
                                       </div>
                                       {getSelectedRivalLineupName() ? (
                                         <div className="rounded-2xl bg-rose-300/10 px-4 py-3 text-right">
                                           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-rose-200">Rival seleccionado</p>
-                                          <p className="mt-1 text-sm font-bold text-white">{getSelectedRivalLineupName()}</p>
+                                          <p className="mt-1 text-sm font-bold text-white">{displayPlayerName(getRivalAvailablePlayers().find((player) => player.name === getSelectedRivalLineupName()) || { name: getSelectedRivalLineupName() })}</p>
                                         </div>
                                       ) : (
                                         <div className="rounded-2xl bg-white/5 px-4 py-3 text-right">
@@ -27945,7 +27972,7 @@ function App() {
                           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Goles Caudal</p>
                           <div className="mt-3 space-y-2 text-sm text-slate-300">
                             {getStatsGoalEvents().filter((event) => event.type === 'Gol a favor').length ? getStatsGoalEvents().filter((event) => event.type === 'Gol a favor').map((event) => (
-                              <p key={event.id}>{event.minute}' ? {event.scorer || 'Sin goleador'} · {event.subphase}{event.assistant ? ` · ?? ${event.assistant}` : ''}</p>
+                              <p key={event.id}>{event.minute}' ? {getReferencedPlayerDisplayName(event.scorerId, event.scorer, 'Sin goleador')} · {event.subphase}{event.assistant ? ` · ?? ${getReferencedPlayerDisplayName(event.assistantId, event.assistant)}` : ''}</p>
                             )) : <p>Sin goles registrados.</p>}
                           </div>
                         </div>
@@ -27965,7 +27992,7 @@ function App() {
                                 const stats = getStatsPlayerData(player.name);
                                 return (
                                   <p key={player.id}>
-                                    {player.name} {stats.yellow ? `??${stats.yellowCount > 1 ? stats.yellowCount : ''}` : ''}{stats.red ? ' ??' : ''}{stats.injured ? ' ??' : ''}
+                                    {displayPlayerName(player)} {stats.yellow ? `??${stats.yellowCount > 1 ? stats.yellowCount : ''}` : ''}{stats.red ? ' ??' : ''}{stats.injured ? ' ??' : ''}
                                   </p>
                                 );
                               })
@@ -28060,7 +28087,7 @@ function App() {
                           >
                             <option value="">Sin capitán</option>
                             {(getStatsCalledPlayers().length ? getStatsCalledPlayers() : players).map((player) => (
-                              <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>
+                              <option key={player.id} value={player.id}>{player.number || '-'} · {displayPlayerName(player)}</option>
                             ))}
                           </select>
                         </label>
@@ -28108,7 +28135,7 @@ function App() {
                                     <div className="flex items-center gap-3">
                                       <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-sm font-black text-white">{player.number || '-'}</span>
                                       <div className="min-w-0 flex-1">
-                                        <p className="truncate text-sm font-bold">{player.name}</p>
+                                        <p className="truncate text-sm font-bold">{displayPlayerName(player)}</p>
                                         <p className="text-xs uppercase tracking-[0.14em] text-slate-500">{stats.role}</p>
                                       </div>
                                       <button type="button" onClick={() => removeStatsCalledPlayer(player.name)} className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100">
@@ -28175,13 +28202,13 @@ function App() {
                               const substituteMinutes = stats.role === 'Suplente' ? getStatsSubstituteMinutes(player.name) : 0;
                               const displayedMinutes = substituteMinutes || stats.minutes;
                               const enteredAsSub = substituteMinutes > 0;
-                              const rowSummary = `${player.name}: ${displayedMinutes || 0}' · G${stats.goals} A${stats.assists}${stats.yellow ? ` · AM ${stats.yellowCount}` : ''}${stats.red ? ' · RJ' : ''}${stats.injured ? ' · LES' : ''}`;
+                              const rowSummary = `${displayPlayerName(player)}: ${displayedMinutes || 0}' · G${stats.goals} A${stats.assists}${stats.yellow ? ` · AM ${stats.yellowCount}` : ''}${stats.red ? ' · RJ' : ''}${stats.injured ? ' · LES' : ''}`;
                               return (
                                 <tr key={player.id} title={rowSummary} className={`group transition hover:bg-white/[0.07] ${stats.red ? 'bg-red-500/[0.06]' : stats.injured ? 'bg-rose-500/[0.06]' : enteredAsSub ? 'bg-emerald-400/[0.05]' : stats.role === 'Titular' ? 'bg-caudal-electric/10' : 'bg-white/[0.02]'}`}>
                                   <td className={`sticky left-0 z-10 border-t border-white/10 px-3 py-2 font-bold text-white shadow-[8px_0_18px_rgba(0,0,0,0.22)] transition group-hover:bg-[#10213f] ${stats.red ? 'bg-[#1c1220]' : stats.injured ? 'bg-[#171525]' : stats.role === 'Titular' ? 'bg-[#0d1f3b]' : 'bg-[#091428]'}`}>
                                     <div className="flex items-center gap-2">
                                       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/10 text-[11px] font-black text-white">{player.number || '-'}</span>
-                                      <span className="truncate">{player.name}</span>
+                                      <span className="truncate">{displayPlayerName(player)}</span>
                                     </div>
                                   </td>
                                   <td className="border-t border-white/10 px-2 py-2 text-center text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{enteredAsSub ? 'Entrado' : stats.role}</td>
@@ -28196,7 +28223,7 @@ function App() {
                                     >
                                       <option value="">{canReplace ? `Sale ${minutes}' · entra...` : enteredAsSub ? `Entra · ${displayedMinutes}'` : 'Sin cambio'}</option>
                                       {getStatsReplacementOptions(player.name).map((replacement) => (
-                                        <option key={replacement.id} value={replacement.name}>{replacement.name}</option>
+                                        <option key={replacement.id} value={replacement.name}>{displayPlayerName(replacement)}</option>
                                       ))}
                                     </select>
                                   </td>
@@ -28788,7 +28815,7 @@ function App() {
                             <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" />
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-bold">{player.name}</span>
+                            <span className="block truncate text-sm font-bold">{displayPlayerName(player)}</span>
                             <span className="mt-0.5 block truncate text-xs text-slate-500">{player.position || 'Sin posición'} · {status}</span>
                           </span>
                         </div>

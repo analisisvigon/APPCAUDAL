@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { getPlayerDisplayName } from '../../utils/playerDisplayName';
 import SetPieceDiagramCanvas from './SetPieceDiagramCanvas';
 import SetPieceDiagramToolbar from './SetPieceDiagramToolbar';
 
@@ -274,13 +275,13 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
                     updateSelected({
                       player_id: event.target.value,
                       label: player?.number ? String(player.number) : selectedElement.label,
-                      name: player?.shirt_name || player?.shirtName || player?.shortName || player?.name || selectedElement.name || '',
+                      name: player ? '' : selectedElement.name || '',
                     });
                   }}
                   className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-sm font-bold text-slate-950"
                 >
                   <option value="">Vincular jugador</option>
-                  {players.map((player) => <option key={player.id} value={player.id}>{player.number || '-'} · {player.name}</option>)}
+                  {players.map((player) => <option key={player.id} value={player.id}>{player.number || '-'} · {getPlayerDisplayName(player)}</option>)}
                 </select>
               ) : null}
               {['player', 'opponent'].includes(selectedElement.type) ? (

@@ -1,9 +1,10 @@
-const getDisplayName = (player) =>
-  player?.shirtName || player?.shirt_name || player?.shortName || player?.name || player?.label || '';
+import { getPlayerDisplayName } from '../../utils/playerDisplayName';
 
 export default function PlayerShirt({ player, kit = 'home', goalkeeper = false, compact = false, captain = false }) {
   const number = player?.number || player?.dorsal || '';
-  const name = getDisplayName(player);
+  const name = player?.name || player?.shirtName || player?.shirt_name || player?.shortName
+    ? getPlayerDisplayName(player)
+    : player?.label || '';
   const kitClass = goalkeeper ? 'goalkeeper' : kit === 'away' ? 'away' : 'home';
 
   return (

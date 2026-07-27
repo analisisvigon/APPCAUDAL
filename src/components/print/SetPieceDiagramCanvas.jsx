@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { getPlayerDisplayName } from '../../utils/playerDisplayName';
 
 const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, value));
 const snapValue = (value, enabled) => (enabled ? Math.round(value / 4) * 4 : value);
@@ -15,7 +16,7 @@ const getPoint = (event, svg) => {
 
 const getPlayerName = (element, playersById) => {
   const player = playersById.get(element.player_id);
-  return element.name || player?.shirt_name || player?.shirtName || player?.shortName || player?.name || '';
+  return player ? getPlayerDisplayName(player) : element.name || '';
 };
 
 const splitLines = (value) => String(value || '').split('\n').slice(0, 12);

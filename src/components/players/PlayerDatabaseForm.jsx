@@ -140,7 +140,7 @@ export default function PlayerDatabaseForm({
           </div>
           {teamEntryMode === 'search' ? (
             <div className="mt-4">
-              <input type="search" value={databaseSearch} onChange={(event) => setDatabaseSearch(event.target.value)} className="field-input" placeholder="Nombre, posición, equipo actual o anterior" autoFocus />
+              <input type="search" value={databaseSearch} onChange={(event) => setDatabaseSearch(event.target.value)} className="field-input" placeholder="Nombre completo o en camiseta, posición, equipo actual o anterior" autoFocus />
               <div className="mt-3 max-h-[56vh] space-y-2 overflow-y-auto">
                 {databaseResults.length ? databaseResults.map((player) => {
                   const currentTeams = getCurrentTeams(player);
@@ -188,6 +188,11 @@ export default function PlayerDatabaseForm({
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="sm:col-span-2"><span className="field-label">Nombre</span><input required value={draft.name || ''} onChange={(event) => onChange('name', event.target.value)} className="field-input" placeholder="Nombre del futbolista" /></label>
+            <label className="sm:col-span-2">
+              <span className="field-label">Nombre en camiseta</span>
+              <input value={draft.shirtName || ''} onChange={(event) => onChange('shirtName', event.target.value)} className="field-input" placeholder="Ej. Agus Porto, Kike, Jandro, Fran A." />
+              <span className="mt-1 block text-[10px] leading-4 text-slate-500">Se mostrará en pizarras, estadísticas e informes. Si está vacío, se usará el nombre del jugador.</span>
+            </label>
             <label><span className="field-label">Fecha de nacimiento</span><input type="date" value={draft.dob || ''} onChange={(event) => onChange('dob', event.target.value)} className="field-input" /></label>
             <label><span className="field-label">Edad si no hay fecha</span><input value={draft.age || ''} onChange={(event) => onChange('age', event.target.value)} className="field-input" placeholder="Ej. 24" /></label>
             <label><span className="field-label">Dorsal</span><input value={draft.number || ''} onChange={(event) => onChange('number', event.target.value)} className="field-input" placeholder="Opcional" /></label>

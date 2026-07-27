@@ -12,6 +12,7 @@ import {
   mergeGlobalPlayerProfiles,
   normalizeGlobalPlayer,
   removeGlobalPlayerFromCurrentTeam,
+  saveGlobalPlayerProfile,
   searchGlobalPlayersForTeam,
 } from './globalPlayerStore.js';
 
@@ -23,6 +24,8 @@ assert.equal(payload.p_positions.find((item) => item.position_type === 'natural'
 assert.equal(payload.p_positions.some((item) => item.position_key === 'holding_midfield' && !item.is_primary), true);
 assert.equal(payload.p_sources.length, 1);
 assert.equal(buildGlobalPlayerRpcPayload({ name: 'Prioritario', scoutingPriority: 'very_high' }).p_player.scoutingPriority, 'very_high');
+assert.equal(buildGlobalPlayerRpcPayload({ name: 'Agustín Porto', shirtName: ' Agus Porto ' }).p_player.shirtName, 'Agus Porto');
+assert.equal(normalizeGlobalPlayer({ id: 'porto', name: 'Agustín Porto', shirt_name: 'Agus Porto' }).shirtName, 'Agus Porto');
 const importedPhotoPayload = buildGlobalPlayerRpcPayload({
   name: 'Foto externa',
   photoUrl: 'https://project.supabase.co/storage/v1/object/public/rival-player-assets/global/player/photo.jpg',
@@ -118,6 +121,31 @@ assert.equal(completeProfile.percentage, 100);
 assert.equal(completeProfile.label, 'Completo');
 assert.equal(searchGlobalPlayersForTeam(coverage.players, [teamOne, teamTwo], 'lealtad')[0].name, 'Álex Central');
 assert.equal(searchGlobalPlayersForTeam(coverage.players, [teamOne, teamTwo], 'lateral derecho')[0].name, 'Lateral Legacy');
+assert.equal(searchGlobalPlayersForTeam([{ ...globalDefender, shirtName: 'Alex C.' }], [teamOne, teamTwo], 'alex c.')[0].name, 'Álex Central');
+assert.equal(filterGlobalPlayers([{ ...globalDefender, shirtName: 'Alex C.' }], { search: 'alex c.' })[0].name, 'Álex Central');
+
+const savedGlobalId = '11111111-1111-4111-8111-111111111111';
+const shirtNameUpdates = [];
+const saveClient = {
+  rpc: async (name, args) => {
+    assert.equal(name, 'save_global_player_profile');
+    assert.equal(args.p_player.shirtName, 'Agus Porto');
+    return { data: savedGlobalId, error: null };
+  },
+  from: (table) => {
+    assert.equal(table, 'players_database');
+    return {
+      update: (patch) => ({
+        eq: async (column, value) => {
+          shirtNameUpdates.push({ patch, column, value });
+          return { error: null };
+        },
+      }),
+    };
+  },
+};
+assert.equal(await saveGlobalPlayerProfile(saveClient, { name: 'Agustín Porto', shirtName: ' Agus Porto ' }), savedGlobalId);
+assert.deepEqual(shirtNameUpdates, [{ patch: { shirt_name: 'Agus Porto' }, column: 'id', value: savedGlobalId }]);
 
 let membershipRpcCalls = 0;
 const membershipClient = {

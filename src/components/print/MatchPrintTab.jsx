@@ -6,6 +6,7 @@ import SetPieceDiagramCanvas from './SetPieceDiagramCanvas';
 import SetPieceDiagramEditor from './SetPieceDiagramEditor';
 import SetPieceDiagramPrintSheet from './SetPieceDiagramPrintSheet';
 import SetPieceTakersPrintSheet from './SetPieceTakersPrintSheet';
+import { getPlayerDisplayName } from '../../utils/playerDisplayName';
 
 const setPieceSections = [
   { id: 'penaltis', label: 'Penaltis' },
@@ -114,7 +115,7 @@ const normalizeText = (value) =>
 const toPrintPlayer = (player, fallbackName = '') => ({
   ...(player || {}),
   name: player?.name || fallbackName,
-  shirtName: player?.shirtName || player?.shirt_name || player?.shortName || fallbackName || player?.name || '',
+  shirtName: player ? getPlayerDisplayName(player) : fallbackName,
 });
 
 const getPlayerNameFromEntry = (entry) => {
@@ -1365,7 +1366,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                           className="rounded-2xl border border-white/10 bg-white px-4 py-3 text-sm font-bold text-slate-950"
                         >
                           <option value="">Jugador plantilla</option>
-                          {players.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}
+                          {players.map((player) => <option key={player.id} value={player.id}>{getPlayerDisplayName(player)}</option>)}
                         </select>
                         <input
                           value={entry.nombre_manual || ''}

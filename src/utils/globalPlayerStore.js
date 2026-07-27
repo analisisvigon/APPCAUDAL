@@ -252,6 +252,7 @@ export const filterGlobalPlayers = (players = [], filters = {}) => {
     const membershipTeamNames = memberships.map((membership) => teamById.get(String(membership.team_id))?.name || '');
     const searchText = normalizeText([
       player.name,
+      player.shirtName,
       ...naturalPositions.map(getNaturalPositionLabel),
       ...specificPositions.map(getSpecificPositionLabel),
       ...membershipTeamNames,
@@ -300,6 +301,7 @@ export const searchGlobalPlayersForTeam = (players = [], teams = [], query = '')
     const membershipTeams = safeArray(player.memberships).map((membership) => teamById.get(String(membership.team_id)) || '');
     const searchable = normalizeText([
       player.name,
+      player.shirtName,
       getNaturalPositionLabel(model.primaryNaturalPosition),
       ...model.secondaryNaturalPositions.map(getNaturalPositionLabel),
       getSpecificPositionLabel(model.primarySpecificPosition),
@@ -313,6 +315,7 @@ export const searchGlobalPlayersForTeam = (players = [], teams = [], query = '')
 export const createBlankGlobalPlayer = () => ({
   id: null,
   name: '',
+  shirtName: '',
   photoUrl: '',
   dob: '',
   age: '',
@@ -357,6 +360,7 @@ export const normalizeGlobalPlayer = (row = {}, related = {}) => {
     id: row.id,
     globalPlayerId: row.id,
     name: row.name || '',
+    shirtName: row.shirt_name || '',
     photoUrl: row.photo_url || '',
     image: row.photo_url || '',
     imageSource: row.field_sources?.image?.source || row.field_sources?.photoUrl?.source || '',
@@ -487,7 +491,8 @@ export const buildGlobalPlayerRpcPayload = (draft = {}) => {
   return {
     p_player: {
       id: isUuid(draft.globalPlayerId || draft.id) ? (draft.globalPlayerId || draft.id) : null,
-      name: String(draft.name || '').trim(), photoUrl: draft.photoUrl || draft.image || '', dob: draft.dob || '', age: draft.age || '',
+      name: String(draft.name || '').trim(), shirtName: String(draft.shirtName || draft.shirt_name || '').trim(),
+      photoUrl: draft.photoUrl || draft.image || '', dob: draft.dob || '', age: draft.age || '',
       height: draft.height || '', foot: draft.foot || '', scoutingSummary: String(draft.scoutingSummary || draft.notes || '').slice(0, 500),
       scoutingPriority: draft.scoutingPriority || '',
       cardAlert: Boolean(draft.cardAlert || draft.yellowRisk), sentOffAlert: Boolean(draft.sentOffAlert),
@@ -520,6 +525,17 @@ export const saveGlobalPlayerProfile = async (client, draft) => {
   const payload = buildGlobalPlayerRpcPayload(draft);
   const { data, error } = await client.rpc('save_global_player_profile', payload);
   if (error) throw error;
+  const { error: shirtNameError } = await client
+    .from('players_database')
+    .update({ shirt_name: payload.p_player.shirtName || null })
+    .eq('id', data);
+  if (shirtNameError) {
+    const missingColumn = /shirt_name|schema cache|column .* does not exist/i.test(shirtNameError.message || '');
+    if (missingColumn) {
+      throw new Error('El perfil se guardó, pero falta aplicar supabase_players_database_shirt_name.sql para guardar Nombre en camiseta.');
+    }
+    throw shirtNameError;
+  }
   return data;
 };
 
