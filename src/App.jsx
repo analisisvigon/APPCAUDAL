@@ -11338,7 +11338,13 @@ function App() {
                   </span>
                 ) : null}
               </div>
-              {renderFacingSystemsOverview(true)}
+              <div
+                className="tactical-board-scroll"
+                tabIndex={0}
+                aria-label="Pizarra táctica desplazable en pantallas pequeñas"
+              >
+                {renderFacingSystemsOverview(true)}
+              </div>
             </section>
             <div className="order-4 border border-white/10 bg-[#091428]/82 p-3 xl:col-span-2 xl:col-start-1 xl:row-start-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -11351,7 +11357,7 @@ function App() {
                     ))}
                   </div>
                 </div>
-                <div className="mt-3 grid gap-2 md:grid-cols-[90px_1fr_1fr_130px_100px]">
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-[90px_1fr_1fr_130px_100px]">
                   <select value={tacticalConnectionDraft.team} onChange={(event) => updateTacticalConnectionDraft({ team: event.target.value, origin: '', destination: '' })} className="border border-white/10 bg-black/20 px-2 py-2 text-xs font-bold text-white">
                     <option value="rival">Rival</option>
                     <option value="caudal">Caudal</option>
@@ -11371,9 +11377,9 @@ function App() {
                     {['Baja', 'Media', 'Alta'].map((intensity) => <option key={intensity} value={intensity}>{intensity}</option>)}
                   </select>
                 </div>
-                <div className="mt-2 flex gap-2">
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                   <input value={tacticalConnectionDraft.comment} onChange={(event) => updateTacticalConnectionDraft({ comment: event.target.value })} placeholder="Observación opcional: cuándo aparece esta conexión..." className="min-w-0 flex-1 border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none placeholder:text-slate-500" />
-                  <button type="button" onClick={addTacticalConnection} className="bg-caudal-electric px-4 py-2 text-[10px] font-black uppercase text-slate-950">Añadir</button>
+                  <button type="button" onClick={addTacticalConnection} className="min-h-11 bg-caudal-electric px-4 py-2 text-[10px] font-black uppercase text-slate-950">Añadir</button>
                 </div>
                 <div className="mt-3 max-h-32 space-y-1.5 overflow-y-auto pr-1">
                   {visibleTacticalConnections.length ? visibleTacticalConnections.slice(0, 8).map((connection) => (
@@ -11392,7 +11398,7 @@ function App() {
         </div>
         {tacticalTemplateDialog === 'new' ? (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 p-4" role="dialog" aria-modal="true" aria-labelledby="new-tactical-play-title">
-            <div className="w-full max-w-md border border-white/10 bg-[#091428] p-5 shadow-2xl">
+            <div className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto border border-white/10 bg-[#091428] p-5 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Sistemas enfrentados</p>
@@ -14784,7 +14790,7 @@ function App() {
     const momentumTimeline = getQuickEventsByMinuteRange(getDelegatedEvents());
 
     return (
-      <div className="space-y-4">
+      <div className="delegated-responsive-surface space-y-4">
         {showDelegatedCompactBar ? (
           <div className="sticky top-2 z-30 flex min-h-12 items-center justify-between gap-2 rounded-2xl border border-white/10 bg-[#071225]/95 px-3 py-2 shadow-glow backdrop-blur-md">
             <span className="font-mono text-lg font-black text-white">{clockMinutes}:{clockSeconds}</span>
@@ -14803,13 +14809,13 @@ function App() {
             </div>
             <div className={`rounded-3xl border p-4 text-center ${stateClass}`}>
               <p className="text-xs font-black uppercase tracking-[0.22em] opacity-75">{delegatedMatchState}</p>
-              <p className="mt-1 font-mono text-7xl font-black leading-none text-white sm:text-8xl">
-                {clockMinutes}<span className="text-5xl sm:text-6xl">:{clockSeconds}</span>
+              <p className="mt-1 font-mono text-5xl font-black leading-none text-white min-[430px]:text-6xl sm:text-8xl">
+                {clockMinutes}<span className="text-3xl min-[430px]:text-4xl sm:text-6xl">:{clockSeconds}</span>
               </p>
               <div className="mt-3 flex items-center justify-center gap-2">
-                <button type="button" onClick={() => updateDelegatedMinute(Number(delegatedMinute || 0) - 1)} disabled={delegatedMatchState === 'FINALIZADO'} className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-xl font-black text-white disabled:opacity-35">-</button>
+                <button type="button" onClick={() => updateDelegatedMinute(Number(delegatedMinute || 0) - 1)} disabled={delegatedMatchState === 'FINALIZADO'} className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-xl font-black text-white disabled:opacity-35">-</button>
                 <span className="rounded-xl bg-black/30 px-4 py-2 text-base font-black text-white">{delegatedMinute}' {addedTimeLabel}</span>
-                <button type="button" onClick={() => updateDelegatedMinute(Number(delegatedMinute || 0) + 1)} disabled={delegatedMatchState === 'FINALIZADO'} className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-xl font-black text-white disabled:opacity-35">+</button>
+                <button type="button" onClick={() => updateDelegatedMinute(Number(delegatedMinute || 0) + 1)} disabled={delegatedMatchState === 'FINALIZADO'} className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-xl font-black text-white disabled:opacity-35">+</button>
               </div>
             </div>
             <div className="space-y-3">
@@ -14817,7 +14823,7 @@ function App() {
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Marcador</p>
                 <p className="mt-1 text-2xl font-black uppercase text-white">Caudal {liveCaudalScore} - {liveRivalScore} {selectedMatch?.opponent || 'Rival'}</p>
               </div>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2 min-[430px]:grid-cols-3">
                 <button type="button" onClick={delegatedTimerRunning ? () => setDelegatedTimerRunning(false) : startDelegatedMatch} disabled={delegatedMatchState === 'FINALIZADO'} className="min-h-11 rounded-2xl bg-emerald-300 px-3 py-2 text-xs font-black uppercase tracking-[0.10em] text-slate-950 disabled:cursor-not-allowed disabled:opacity-35">{delegatedTimerRunning ? 'Pausar' : Number(delegatedElapsedSeconds) > 0 ? 'Reanudar' : 'Iniciar'}</button>
                 <button type="button" onClick={pauseDelegatedTimerForHalftime} disabled={delegatedMatchState !== 'EN JUEGO'} className="min-h-11 rounded-2xl bg-yellow-300 px-3 py-2 text-xs font-black uppercase tracking-[0.10em] text-slate-950 disabled:cursor-not-allowed disabled:opacity-35">Descanso</button>
                 <button type="button" onClick={startDelegatedSecondHalf} disabled={delegatedMatchState !== 'DESCANSO'} className="min-h-11 rounded-2xl bg-caudal-electric px-3 py-2 text-xs font-black uppercase tracking-[0.10em] text-slate-950 disabled:cursor-not-allowed disabled:opacity-35">2ª parte</button>
@@ -14904,7 +14910,7 @@ function App() {
                   <h5 className="text-xs font-black uppercase tracking-[0.16em] text-slate-300">Eventos por tramo</h5>
                   <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Eventos por tramo</span>
                 </div>
-                <div className="grid grid-cols-6 gap-1.5">
+                <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
                   {momentumTimeline.map((range) => {
                     const maxRange = Math.max(1, range.caudal, range.rival);
                     return (
@@ -15042,7 +15048,7 @@ function App() {
 
         {delegatedTimeDraft ? (
           <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/70 p-4">
-            <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-caudal-950 p-5 shadow-glow">
+            <div className="max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto rounded-3xl border border-white/10 bg-caudal-950 p-5 shadow-glow">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.16em] text-caudal-electric">Ajustar tiempo</p>
@@ -15158,7 +15164,7 @@ function App() {
     const matchEvents = getStatsMatchEvents();
     return (
       <div
-        className="relative aspect-[7/8.9] min-h-[640px] overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner"
+        className="responsive-pitch-canvas relative aspect-[7/8.9] min-h-[640px] overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner"
         onDragOver={(event) => event.preventDefault()}
         onDrop={() => {
           if (!draggedPlayer) return;
@@ -15516,7 +15522,7 @@ function App() {
                 <button type="button" onClick={openStatsCallupPanel} className="bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Añadir convocados</button>
               </div>
             </div>
-            <div className="mt-4">{renderStatsPitch()}</div>
+            <div className="responsive-pitch-scroll mt-4 overflow-x-auto">{renderStatsPitch()}</div>
           </section>
 
           <section className="border border-white/10 bg-[#091428]/82 p-4 shadow-glow">
@@ -21631,8 +21637,8 @@ function App() {
     };
 
     return (
-      <div className="overflow-hidden rounded-3xl border border-white/10 bg-[#0b5b3f] p-3 shadow-inner">
-        <div className="relative mx-auto aspect-[7/10] min-h-[620px] max-w-[560px] overflow-hidden rounded-2xl border-2 border-white/60 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_50%,transparent_50%),linear-gradient(0deg,rgba(255,255,255,0.05)_50%,transparent_50%)] bg-[length:20%_100%,100%_14.2%]">
+      <div className="responsive-pitch-scroll overflow-x-auto rounded-3xl border border-white/10 bg-[#0b5b3f] p-3 shadow-inner">
+        <div className="responsive-pitch-canvas relative mx-auto aspect-[7/10] min-h-[620px] max-w-[560px] overflow-hidden rounded-2xl border-2 border-white/60 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_50%,transparent_50%),linear-gradient(0deg,rgba(255,255,255,0.05)_50%,transparent_50%)] bg-[length:20%_100%,100%_14.2%]">
           <div className="absolute left-0 right-0 top-1/2 h-px bg-white/60" />
           <div className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/60" />
           <div className="absolute left-1/2 top-0 h-24 w-48 -translate-x-1/2 rounded-b-3xl border-x-2 border-b-2 border-white/60" />
@@ -22013,7 +22019,7 @@ function App() {
     );
     return (
       <div
-        className="relative mx-auto aspect-[7/8.4] min-h-[560px] w-full max-w-4xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner"
+        className="facing-tactical-board relative mx-auto aspect-[7/8.4] min-h-[560px] w-full max-w-4xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner"
         style={enableDefensiveEditing ? { touchAction: 'none' } : undefined}
         onPointerDown={enableDefensiveEditing && !tacticalCaptureMode ? beginDefensiveDrawing : undefined}
         onPointerMove={enableDefensiveEditing && !tacticalCaptureMode ? handleDefensiveFieldPointerMove : undefined}
@@ -22560,7 +22566,7 @@ function App() {
     };
 
     return (
-      <main className="space-y-6">
+      <main className="delegated-registry space-y-6">
         <section className="rounded-3xl border border-white/5 bg-[#091428]/90 p-6 shadow-glow">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
@@ -22719,9 +22725,9 @@ function App() {
               {eventTimelineRows.length ? (
                 <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
                   <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Eventos por partido</p>
-                  <div className="mt-4 flex h-48 items-end gap-2 overflow-hidden rounded-2xl bg-black/15 px-3 py-4">
+                  <div className="mt-4 flex h-48 items-end gap-2 overflow-x-auto rounded-2xl bg-black/15 px-3 py-4">
                     {eventTimelineRows.map((row) => (
-                      <div key={row.match.id} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-2">
+                      <div key={row.match.id} className="flex min-w-16 flex-1 flex-col items-center justify-end gap-2">
                         <span className="text-xs font-black text-white">{row.events}</span>
                         <div className={`w-full max-w-10 rounded-t-xl ${row.status === 'Validado' ? 'bg-emerald-300' : row.status === 'Revisado' ? 'bg-yellow-300' : row.status === 'Descartado' ? 'bg-red-300' : 'bg-slate-500'}`} style={{ height: `${Math.max(12, (row.events / maxTimelineEvents) * 135)}px` }} title={row.label} />
                         <span className="max-w-full truncate text-[10px] font-bold text-slate-500">{row.match.opponent || 'Rival'}</span>
@@ -22918,15 +22924,15 @@ function App() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-caudal-950 via-caudal-900 to-[#05101f] text-slate-100">
       {splashScreen}
-      <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-4 pb-28 pt-6 sm:px-6 sm:pb-8 lg:px-8">
-        <header className="mb-6 flex flex-col gap-4 rounded-3xl border border-white/5 bg-white/5 p-5 shadow-glow backdrop-blur-md sm:flex-row sm:items-center sm:justify-between">
+      <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-4 pb-40 pt-6 min-[430px]:pb-28 sm:px-6 lg:px-8 xl:pb-8">
+        <header className="mb-6 flex flex-col gap-4 rounded-3xl border border-white/5 bg-white/5 p-5 shadow-glow backdrop-blur-md xl:flex-row xl:items-center xl:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.34em] text-slate-400">Entrenador</p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">C.D. Caudal de Mieres</h1>
             <p className="mt-1 text-sm text-slate-400">Mieres, Asturias</p>
           </div>
-          <div className="flex w-full flex-col gap-3 sm:w-auto sm:items-end">
-            <div className="flex w-full flex-col gap-3 rounded-2xl border border-white/10 bg-caudal-950/40 p-3 sm:w-auto sm:min-w-72 sm:flex-row sm:items-center sm:justify-end">
+          <div className="flex w-full flex-col gap-3 xl:w-auto xl:items-end">
+            <div className="flex w-full flex-col gap-3 rounded-2xl border border-white/10 bg-caudal-950/40 p-3 sm:flex-row sm:items-center sm:justify-end xl:w-auto xl:min-w-72">
               <div className="min-w-0 text-sm text-slate-300 sm:text-right">
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Sesión iniciada</p>
                 <p className="truncate font-semibold text-white">{authUser.email}</p>
@@ -22948,7 +22954,7 @@ function App() {
                 Cerrar sesión
               </button>
             </div>
-            <nav className="hidden flex-wrap gap-3 sm:flex sm:justify-end">
+            <nav className="hidden flex-wrap gap-3 xl:flex xl:justify-end">
               {desktopTabs.map((tab) => (
                 <button
                   key={tab}
@@ -22967,7 +22973,7 @@ function App() {
           </div>
         </header>
 
-        <nav className="fixed inset-x-3 bottom-3 z-50 rounded-3xl border border-white/10 bg-[#071225]/95 p-2 shadow-glow backdrop-blur-md sm:hidden">
+        <nav className="fixed inset-x-3 bottom-3 z-50 max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-3xl border border-white/10 bg-[#071225]/95 p-2 shadow-glow backdrop-blur-md xl:hidden">
           {isMobileMoreOpen ? (
             <div className="mb-2 grid grid-cols-2 gap-2 rounded-2xl bg-white/5 p-2">
               {mobileMoreTabs.map((tab) => (
@@ -22992,7 +22998,7 @@ function App() {
               </button>
             </div>
           ) : null}
-          <div className="grid grid-cols-5 gap-1">
+          <div className="grid grid-cols-3 gap-1 min-[430px]:grid-cols-6">
             {mobilePrimaryTabs.map(([tab, label]) => (
               <button
                 key={tab}
@@ -24704,12 +24710,13 @@ function App() {
                             </p>
                           </div>
                         ) : null}
+                        <div className="team-field-scroll-shell">
                         <div
                           onDragOver={(event) => {
                             if (teamFieldEditMode) event.preventDefault();
                           }}
                           onDragLeave={() => setActiveRivalDropSlot('')}
-                          className={`relative mx-auto w-full overflow-visible rounded-[1.8rem] border border-white/[0.08] bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.07),transparent_17%),repeating-linear-gradient(90deg,rgba(17,86,63,0.72)_0,rgba(17,86,63,0.72)_12.5%,rgba(13,72,55,0.76)_12.5%,rgba(13,72,55,0.76)_25%),linear-gradient(180deg,#104735_0%,#0b3b31_48%,#082c27_100%)] shadow-[0_24px_76px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.05)] ${isPresentationMode ? 'aspect-[7/6.25] min-h-[330px] max-h-[430px] max-w-[760px]' : 'aspect-[7/8.2] min-h-[440px] max-w-[900px]'}`}
+                          className={`team-tactical-field relative mx-auto w-full overflow-visible rounded-[1.8rem] border border-white/[0.08] bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.07),transparent_17%),repeating-linear-gradient(90deg,rgba(17,86,63,0.72)_0,rgba(17,86,63,0.72)_12.5%,rgba(13,72,55,0.76)_12.5%,rgba(13,72,55,0.76)_25%),linear-gradient(180deg,#104735_0%,#0b3b31_48%,#082c27_100%)] shadow-[0_24px_76px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.05)] ${isPresentationMode ? 'aspect-[7/6.25] min-h-[330px] max-h-[430px] max-w-[760px]' : 'aspect-[7/8.2] min-h-[440px] max-w-[900px]'}`}
                         >
                           <div className="absolute inset-4 rounded-[28px] border border-white/22" />
                           <div className="absolute left-4 right-4 top-1/2 h-px bg-white/18" />
@@ -24979,6 +24986,7 @@ function App() {
                               </PlayerNameTooltip>
                             );
                           })}
+                        </div>
                         </div>
                         {isPresentationMode ? (
                           <div className="mx-auto mt-2 w-full max-w-[900px]">
@@ -26934,8 +26942,8 @@ function App() {
                                 </div>
                               </div>
                               <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(260px,3fr)]">
-                                <div className="rounded-3xl border border-white/10 bg-[#0b5b3f] p-3">
-                                  <div className="relative mx-auto aspect-[7/8.4] min-h-[560px] max-w-[760px] overflow-hidden rounded-2xl border-2 border-white/55 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_50%,transparent_50%),linear-gradient(0deg,rgba(255,255,255,0.05)_50%,transparent_50%)] bg-[length:20%_100%,100%_14.2%]">
+                                <div className="responsive-pitch-scroll overflow-x-auto rounded-3xl border border-white/10 bg-[#0b5b3f] p-3">
+                                  <div className="responsive-pitch-canvas relative mx-auto aspect-[7/8.4] min-h-[560px] max-w-[760px] overflow-hidden rounded-2xl border-2 border-white/55 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_50%,transparent_50%),linear-gradient(0deg,rgba(255,255,255,0.05)_50%,transparent_50%)] bg-[length:20%_100%,100%_14.2%]">
                                     <div className="absolute left-0 right-0 top-1/2 h-px bg-white/55" />
                                     <div className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/55" />
                                     <div className="absolute bottom-0 left-1/2 h-24 w-48 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/55" />
@@ -28097,7 +28105,7 @@ function App() {
                             ))}
                           </select>
                         </label>
-                        <div className="mt-5">{renderStatsPitch()}</div>
+                        <div className="responsive-pitch-scroll mt-5 overflow-x-auto">{renderStatsPitch()}</div>
                       </div>
                       <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -28323,7 +28331,7 @@ function App() {
           <button
             type="button"
             onClick={() => setIsLitoOpen(true)}
-            className="fixed bottom-5 right-5 z-40 hidden items-center gap-3 rounded-full border border-caudal-electric/30 bg-[#091428] px-5 py-4 text-sm font-black text-white shadow-[0_18px_45px_rgba(0,0,0,0.45)] transition hover:-translate-y-0.5 hover:border-caudal-electric/60 hover:bg-[#0f1e38] sm:flex"
+            className="fixed bottom-5 right-5 z-40 hidden items-center gap-3 rounded-full border border-caudal-electric/30 bg-[#091428] px-5 py-4 text-sm font-black text-white shadow-[0_18px_45px_rgba(0,0,0,0.45)] transition hover:-translate-y-0.5 hover:border-caudal-electric/60 hover:bg-[#0f1e38] xl:flex"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-caudal-electric text-sm font-black text-slate-950">Li</span>
             Lito
@@ -28728,9 +28736,9 @@ function App() {
       ) : null}
 
       {isStatsCallupPanelOpen ? (
-        <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 px-4 py-6 backdrop-blur-sm sm:px-6">
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6">
           <div className="mx-auto flex h-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-caudal-950 shadow-glow">
-            <div className="flex flex-col gap-4 border-b border-white/10 px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex flex-col gap-4 border-b border-white/10 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6 sm:py-5">
               <div>
                 <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Estadísticas</p>
                 <h3 className="mt-2 text-xl font-semibold text-white">Añadir convocados</h3>
@@ -28883,7 +28891,7 @@ function App() {
           originalImage: formState.originalImage,
         };
         return (
-        <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 px-4 py-5 backdrop-blur-sm sm:px-6">
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-5">
           <div className="mx-auto flex h-full max-w-5xl flex-col overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#07111f] shadow-[0_28px_90px_rgba(0,0,0,0.42)]">
             <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
               <div>
@@ -29079,7 +29087,7 @@ function App() {
 
       {pendingFacingSystemsPlayer ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 p-4" role="dialog" aria-modal="true" aria-labelledby="facing-player-unsaved-title">
-          <section className="w-full max-w-md rounded-2xl border border-amber-300/20 bg-[#091428] p-5 shadow-2xl">
+          <section className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-amber-300/20 bg-[#091428] p-5 shadow-2xl">
             <h3 id="facing-player-unsaved-title" className="text-lg font-black text-white">Tienes cambios sin guardar en esta jugada.</h3>
             <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
               <button type="button" onClick={() => setPendingFacingSystemsPlayer(null)} className="rounded-xl border border-white/10 px-4 py-2 text-sm font-bold text-slate-300">Cancelar</button>
@@ -29350,7 +29358,7 @@ function App() {
             : 'border-red-200/20 bg-red-300/10 text-red-100';
         const rivalAutoSummary = `Equipo que prioriza ataques por ${teamFormState.strongSide}, bloque ${teamFormState.blockHeight} y presión de ${teamFormState.pressureType}. Su principal amenaza son ${teamFormState.mainThreat}. Ritmo ofensivo ${teamFormState.attackingRhythm}, con foco en ${teamFormState.offensiveFocus}. Presenta vulnerabilidad en ${teamFormState.detectedWeakness}.`;
         return (
-        <div className="fixed inset-0 z-50 overflow-hidden bg-black/50 px-4 py-6 backdrop-blur-sm sm:px-6">
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black/50 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6">
           <div className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-caudal-950 shadow-[0_24px_90px_rgba(0,0,0,0.45)]">
             <div className="flex items-center justify-between border-b border-white/10 px-5 py-4 sm:px-6">
               <div>
@@ -29652,7 +29660,7 @@ function App() {
       })() : null}
 
       {isMatchPanelOpen ? (
-        <div className="fixed inset-0 z-50 overflow-hidden bg-black/50 px-4 py-6 backdrop-blur-sm sm:px-6">
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black/50 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6">
           <div className="mx-auto flex h-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-caudal-950 shadow-glow">
             <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
               <div>

@@ -238,6 +238,33 @@ table {
   white-space: nowrap;
 }
 
+.tactical-board-scroll,
+.team-field-scroll-shell,
+.responsive-pitch-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(79, 140, 255, 0.58) rgba(255, 255, 255, 0.06);
+}
+
+.tactical-board-scroll::-webkit-scrollbar,
+.team-field-scroll-shell::-webkit-scrollbar,
+.responsive-pitch-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+
+.tactical-board-scroll::-webkit-scrollbar-thumb,
+.team-field-scroll-shell::-webkit-scrollbar-thumb,
+.responsive-pitch-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(79, 140, 255, 0.58);
+}
+
+.tactical-board-scroll:focus-visible {
+  border-radius: 1.5rem;
+}
+
 .goal-3x3-pair > * {
   min-width: 0;
 }
@@ -315,7 +342,47 @@ table {
     @apply space-y-4;
   }
 
-  .set-piece-diagram-canvas {
+  .set-piece-diagram-editor-canvas {
     min-width: 620px;
+  }
+
+  .delegated-registry > section {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 639px) {
+  .facing-tactical-board,
+  .team-tactical-field,
+  .responsive-pitch-canvas {
+    min-width: 560px;
+  }
+
+  .facing-tactical-board {
+    min-height: 672px;
+  }
+
+  .team-tactical-field {
+    min-height: 500px;
+  }
+
+  .player-database-form .sticky > div:last-child {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (pointer: coarse) {
+  .tactical-board-scroll button,
+  .team-field-scroll-shell button,
+  .player-database-form button,
+  .player-database-form summary {
+    min-height: 44px;
+  }
+
+  .delegated-responsive-surface button,
+  .delegated-responsive-surface summary,
+  .delegated-registry button {
+    min-height: 44px;
   }
 }

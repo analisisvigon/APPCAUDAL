@@ -224,7 +224,7 @@ function PlayerGridCard({ player, teamById, onSelect, ...actions }) {
   const age = getAge(player);
   const unavailable = player.injured || player.injuredAlert || player.suspended || player.suspendedAlert;
   return (
-    <article role="button" tabIndex={0} onClick={() => onSelect(player)} onKeyDown={(event) => { if (event.key === 'Enter') onSelect(player); }} className="group relative min-h-[25rem] overflow-hidden rounded-[1.45rem] border border-white/10 bg-[#091428]/90 p-4 text-left shadow-[0_16px_42px_rgba(0,0,0,0.22)] transition duration-200 hover:-translate-y-1 hover:border-caudal-electric/35 hover:shadow-[0_20px_50px_rgba(0,0,0,0.28)]">
+    <article role="button" tabIndex={0} onClick={() => onSelect(player)} onKeyDown={(event) => { if (event.key === 'Enter') onSelect(player); }} className="group relative min-h-[25rem] overflow-visible rounded-[1.45rem] border border-white/10 bg-[#091428]/90 p-4 text-left shadow-[0_16px_42px_rgba(0,0,0,0.22)] transition duration-200 hover:-translate-y-1 hover:border-caudal-electric/35 hover:shadow-[0_20px_50px_rgba(0,0,0,0.28)]">
       <QuickActions player={player} currentTeam={presentation.currentTeam} {...actions} />
       <div className="flex items-start gap-4">
         <PlayerPhoto player={player} />
@@ -262,7 +262,7 @@ function PlayerListRow({ player, teamById, onSelect, ...actions }) {
   const age = getAge(player);
   const teams = Array.from(teamById.values());
   return (
-    <article role="button" tabIndex={0} onClick={() => onSelect(player)} onKeyDown={(event) => { if (event.key === 'Enter') onSelect(player); }} className="group grid gap-3 rounded-2xl border border-white/[0.08] bg-[#091428]/78 p-3 transition hover:border-caudal-electric/30 md:grid-cols-[minmax(190px,1.4fr)_minmax(145px,1fr)_minmax(130px,0.9fr)_70px_110px_88px_minmax(150px,auto)] md:items-center">
+    <article role="button" tabIndex={0} onClick={() => onSelect(player)} onKeyDown={(event) => { if (event.key === 'Enter') onSelect(player); }} className="group grid gap-3 rounded-2xl border border-white/[0.08] bg-[#091428]/78 p-3 transition hover:border-caudal-electric/30 xl:grid-cols-[minmax(190px,1.4fr)_minmax(145px,1fr)_minmax(130px,0.9fr)_70px_110px_88px_minmax(150px,auto)] xl:items-center">
       <div className="flex min-w-0 items-center gap-3">
         <PlayerPhoto player={player} size="list" />
         <div className="min-w-0">
@@ -454,7 +454,7 @@ function GlobalPlayerDatabase({
 
       {loading ? <div className="empty-state">Cargando base global…</div> : renderedPlayers.length ? (
         <>
-          {viewMode === 'list' ? <div className="hidden px-3 text-[9px] font-black uppercase tracking-[0.13em] text-slate-500 md:grid md:grid-cols-[minmax(190px,1.4fr)_minmax(145px,1fr)_minmax(130px,0.9fr)_70px_110px_88px_minmax(150px,auto)] md:gap-3"><span>Jugador</span><span>Equipo actual</span><span>Posición</span><span>Edad</span><span>Procedencia</span><span>Perfil</span><span>Acciones</span></div> : null}
+          {viewMode === 'list' ? <div className="hidden px-3 text-[9px] font-black uppercase tracking-[0.13em] text-slate-500 xl:grid xl:grid-cols-[minmax(190px,1.4fr)_minmax(145px,1fr)_minmax(130px,0.9fr)_70px_110px_88px_minmax(150px,auto)] xl:gap-3"><span>Jugador</span><span>Equipo actual</span><span>Posición</span><span>Edad</span><span>Procedencia</span><span>Perfil</span><span>Acciones</span></div> : null}
           <section className={viewMode === 'grid' ? 'grid gap-4 md:grid-cols-2 2xl:grid-cols-3' : 'space-y-2'}>
             {renderedPlayers.map((player) => viewMode === 'grid'
               ? <PlayerGridCard key={player.id} player={player} teamById={teamById} onSelect={(item) => setSelectedPlayerId(item.id)} onEdit={onEdit} onOpenProfile={onOpenProfile} onManageTeam={onManageTeam} onOpenTeam={onOpenTeam} onViewHistory={(item) => setSelectedPlayerId(item.id)} />

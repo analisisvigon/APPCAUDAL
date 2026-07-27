@@ -21,7 +21,7 @@ const walk = (dir) => {
   return entries.flatMap((entry) => {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      return IGNORED_DIRS.has(entry.name) ? [] : walk(fullPath);
+      return IGNORED_DIRS.has(entry.name) || entry.name.startsWith('.chrome-') ? [] : walk(fullPath);
     }
     return CHECKED_EXTENSIONS.has(path.extname(entry.name)) ? [fullPath] : [];
   });

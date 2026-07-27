@@ -132,7 +132,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
   return (
     <svg
       ref={svgRef}
-      className="set-piece-diagram-canvas"
+      className={`set-piece-diagram-canvas ${readOnly ? 'set-piece-diagram-preview-canvas' : 'set-piece-diagram-editor-canvas'}`}
       viewBox="0 0 100 72"
       role="img"
       aria-label="Editor tactico ABP"

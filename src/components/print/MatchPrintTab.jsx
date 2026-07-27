@@ -1794,7 +1794,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                   onClick={() => loadLibraryItemIntoDiagram(item)}
                   className="rounded-3xl border border-white/5 bg-white/5 p-4 text-left transition hover:border-caudal-electric/40 hover:bg-white/10"
                 >
-                  <div className="grid grid-cols-[120px_1fr] gap-4">
+                  <div className="grid gap-4 sm:grid-cols-[120px_1fr]">
                     <div className="rounded-2xl bg-white p-2 text-black">
                       <SetPieceDiagramCanvas elements={item.elements || []} readOnly />
                     </div>

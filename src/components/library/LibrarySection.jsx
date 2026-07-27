@@ -214,7 +214,7 @@ export default function LibrarySection({ players = [] }) {
           <div className="grid gap-3">
             {filteredItems.map((item) => (
               <button key={item.id} type="button" onClick={() => editItem(item)} className={`rounded-3xl border p-4 text-left transition ${selectedId === item.id ? 'border-caudal-electric bg-caudal-electric/10' : 'border-white/5 bg-white/5 hover:bg-white/10'}`}>
-                <div className="grid grid-cols-[120px_1fr] gap-4">
+                <div className="grid gap-4 sm:grid-cols-[120px_1fr]">
                   <div className="rounded-2xl bg-white p-2 text-black">
                     <SetPieceDiagramCanvas elements={item.elements || []} readOnly />
                   </div>

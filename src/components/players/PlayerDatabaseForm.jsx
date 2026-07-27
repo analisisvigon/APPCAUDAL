@@ -122,16 +122,17 @@ export default function PlayerDatabaseForm({
   );
 
   return (
-    <form onSubmit={onSubmit} className="mx-auto max-h-[92vh] max-w-4xl overflow-y-auto rounded-3xl border border-white/10 bg-caudal-950 p-5 shadow-[0_24px_90px_rgba(0,0,0,0.45)]">
-      <div className="flex items-start justify-between gap-4">
+    <form onSubmit={onSubmit} className="player-database-form mx-auto flex max-h-[calc(100dvh-1.5rem)] max-w-4xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-caudal-950 shadow-[0_24px_90px_rgba(0,0,0,0.45)] sm:max-h-[92vh]">
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 bg-caudal-950/95 p-4 backdrop-blur sm:gap-4 sm:p-5">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.2em] text-caudal-electric">Base de datos de jugadores</p>
           <h3 className="mt-1 text-xl font-black text-white">{mode === 'edit' ? 'Editar jugador global' : 'Nuevo jugador global'}</h3>
           <p className="mt-1 text-xs font-semibold text-slate-500">El mismo perfil se utiliza en Equipos, Sistemas Enfrentados, PRE y Lito.</p>
         </div>
-        <button type="button" onClick={onCancel} className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2 text-sm font-bold text-slate-300">Cerrar</button>
+        <button type="button" onClick={onCancel} className="min-h-11 shrink-0 rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2 text-sm font-bold text-slate-300">Cerrar</button>
       </div>
 
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 sm:px-5 sm:pb-5">
       {showTeamEntryChoice ? (
         <section className="mt-5 rounded-2xl border border-caudal-electric/20 bg-caudal-electric/[0.05] p-4">
           <div className="grid grid-cols-2 gap-2">
@@ -396,9 +397,10 @@ export default function PlayerDatabaseForm({
       {draft.memberships?.length ? <section className="mt-4 rounded-2xl border border-white/10 bg-white/[0.025] p-4"><h4 className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Historial de equipos</h4><div className="mt-3 space-y-2">{draft.memberships.map((membership) => { const team = teams.find((item) => item.id === membership.team_id); return <div key={membership.id} className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-black/15 px-3 py-2 text-xs"><span className="font-bold text-white">{membership.season || 'Temporada sin indicar'} · {team?.name || 'Equipo'}</span><span className={membership.is_current ? 'font-black text-emerald-300' : 'text-slate-500'}>{membership.is_current ? 'Actual' : membership.end_date || 'Finalizada'}</span></div>; })}</div></section> : null}
 
       {error ? <p className="mt-4 rounded-xl border border-red-300/20 bg-red-400/10 px-3 py-2 text-sm font-bold text-red-100">{error}</p> : null}
-      <div className="mt-5 flex flex-wrap justify-between gap-2">
+      <div className="sticky bottom-0 z-10 -mx-4 mt-5 flex flex-col gap-2 border-t border-white/10 bg-caudal-950/95 px-4 pb-[max(0rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:-mx-5 sm:flex-row sm:flex-wrap sm:justify-between sm:px-5">
         <div>{mode === 'edit' && onDelete ? <button type="button" onClick={onDelete} disabled={saving} className="rounded-xl border border-red-300/20 bg-red-400/10 px-4 py-2 text-sm font-bold text-red-100">Eliminar perfil</button> : null}</div>
         <div className="flex gap-2"><button type="button" onClick={onCancel} className="rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2 text-sm font-bold text-slate-200">Cancelar</button><button type="submit" disabled={saving || photoUploading} className="rounded-xl bg-caudal-electric px-4 py-2 text-sm font-black text-slate-950 disabled:opacity-50">{saving ? 'Guardando…' : 'Guardar jugador'}</button></div>
+      </div>
       </div>
       </div>
     </form>
