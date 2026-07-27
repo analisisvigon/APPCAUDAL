@@ -6,6 +6,7 @@ import { supabase } from './lib/supabase';
 import LibrarySection from './components/library/LibrarySection';
 import MatchVideoPlayer from './components/matches/MatchVideoPlayer';
 import MatchPrintTab from './components/print/MatchPrintTab';
+import TacticalEvidencePanel from './components/tactical/TacticalEvidencePanel';
 import PlayerDatabaseForm from './components/players/PlayerDatabaseForm';
 import GlobalPlayerDatabase from './components/players/GlobalPlayerDatabase';
 import AccordionSection from './components/shared/AccordionSection';
@@ -130,11 +131,13 @@ import {
   serializeTemplateArrows,
 } from './utils/tacticalTemplates';
 import { orientFormationSlotsForTacticalBoard } from './utils/tacticalOrientation';
+import { buildTacticalPlayContext } from './utils/tacticalPlayContext';
 import {
-  buildPlayerTacticalParticipation,
-  buildTacticalEvidenceSummary,
-  buildTacticalPlayContext,
-} from './utils/tacticalPlayContext';
+  buildTacticalEvidenceEngine,
+  createEmptyTacticalEvidenceReport,
+  getPlayerTacticalEvidence,
+  selectTacticalEvidenceForQuestion,
+} from './utils/tacticalEvidenceEngine';
 import {
   calculateTacticalTemplateUsages,
   loadTacticalTemplateUsageRows,
@@ -4726,6 +4729,8 @@ function App() {
   const [defensiveWorkspace, setDefensiveWorkspace] = useState(createEmptyDefensiveWorkspace);
   const [offensiveWorkspace, setOffensiveWorkspace] = useState(createEmptyOffensiveWorkspace);
   const [transitionWorkspace, setTransitionWorkspace] = useState(createEmptyTransitionWorkspace);
+  const [tacticalEvidenceReport, setTacticalEvidenceReport] = useState(createEmptyTacticalEvidenceReport);
+  const tacticalEvidenceMatchIdRef = useRef(null);
   const [transitionType, setTransitionType] = useState('offensive_transition');
   const [transitionFieldZone, setTransitionFieldZone] = useState('defensive_half');
   const [transitionBehaviour, setTransitionBehaviour] = useState('fast_attack');
@@ -9547,10 +9552,10 @@ function App() {
       role: caudalRoles[index] || '',
     }));
     const playGroups = [
-      ['defensive', normalizeDefensiveWorkspace(selectedPreAiAnalysis?.defensivePhaseV1).plays],
-      ['offensive', normalizeOffensiveWorkspace(selectedPreAiAnalysis?.offensivePhaseV1).plays],
-      ['transition', normalizeTransitionWorkspace(selectedPreAiAnalysis?.transitionPhaseV1).plays],
-      ['set_piece', normalizeSetPieceWorkspace(selectedPreAiAnalysis?.setPiecePhaseV1).plays],
+      ['defensive', defensiveWorkspace.plays],
+      ['offensive', offensiveWorkspace.plays],
+      ['transition', transitionWorkspace.plays],
+      ['set_piece', setPieceWorkspace.plays],
     ];
     return playGroups.flatMap(([phase, plays]) => plays.map((play) => buildTacticalPlayContext({
       matchId: selectedMatch.id,
@@ -9565,6 +9570,40 @@ function App() {
     })));
   };
 
+  useEffect(() => {
+    if (!selectedMatch) {
+      tacticalEvidenceMatchIdRef.current = null;
+      setTacticalEvidenceReport(createEmptyTacticalEvidenceReport());
+      return undefined;
+    }
+    if (tacticalEvidenceMatchIdRef.current !== selectedMatch.id) {
+      tacticalEvidenceMatchIdRef.current = selectedMatch.id;
+      setTacticalEvidenceReport(createEmptyTacticalEvidenceReport());
+    }
+    const hasPendingPlayChanges = [
+      defensiveSaveStatus,
+      offensiveSaveStatus,
+      transitionSaveStatus,
+      setPieceSaveStatus,
+    ].some((status) => ['Cambios sin guardar', 'Guardando', 'Error al guardar'].includes(status));
+    if (hasPendingPlayChanges) return undefined;
+    const timer = window.setTimeout(() => {
+      setTacticalEvidenceReport(buildTacticalEvidenceEngine(getSavedTacticalPlayContexts(), { team: 'rival' }));
+    }, 140);
+    return () => window.clearTimeout(timer);
+  }, [
+    selectedMatch?.id,
+    selectedMatch?.preCaudalSystem,
+    defensiveWorkspace.plays,
+    offensiveWorkspace.plays,
+    transitionWorkspace.plays,
+    setPieceWorkspace.plays,
+    defensiveSaveStatus,
+    offensiveSaveStatus,
+    transitionSaveStatus,
+    setPieceSaveStatus,
+  ]);
+
   const buildTacticalQuestionAnswer = (mode, question, context = {}) => {
     const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
     const rivalSystem = getCurrentRivalSystem();
@@ -9572,11 +9611,11 @@ function App() {
     const rival = getSystemStructure(rivalSystem);
     const safeQuestion = String(question || '');
     const q = safeQuestion.toLowerCase();
-    const tacticalContexts = getSavedTacticalPlayContexts();
-    const tacticalSummary = buildTacticalEvidenceSummary(tacticalContexts, {
-      question: safeQuestion,
-      playerId: context.playerKey || '',
-    });
+    const tacticalSummary = selectTacticalEvidenceForQuestion(
+      tacticalEvidenceReport,
+      safeQuestion,
+      { playerId: context.playerKey || '' }
+    );
     const collective = selectedRivalObservedScouting.collective;
     const relevantEvidenceTypes = /abp|estrategia/.test(q)
       ? ['ABP']
@@ -9596,10 +9635,13 @@ function App() {
       .map((player) => ({ player, profile: getObservedPlayerProfile(player) }))
       .filter(({ profile }) => profile.speed || profile.technique || profile.aerial || profile.oneVsOne || profile.defensiveWork || profile.foot || profile.traits.length || profile.notes);
     const usesIndividualProfiles = mode === 'Micro' || /jugador|duelo|vigilar|marca/i.test(safeQuestion);
+    const realMatchEventCount = safeArray(selectedMatch?.quickEvents).length
+      + safeArray(selectedMatch?.statsGoalEvents).length;
     const sources = [
       Object.values(collective).some((value) => Array.isArray(value) ? value.length : Boolean(value)) ? 'Perfil colectivo' : null,
       usesIndividualProfiles && profiledPlayers.length ? 'Perfil jugador' : null,
       evidences.length ? 'Evidencias observadas' : null,
+      realMatchEventCount ? 'Estadísticas reales' : null,
       caudalSystem && rivalSystem ? 'Sistema enfrentado' : null,
     ].filter(Boolean);
     const hasTacticalSourceType = (type) => tacticalSummary.sources.some((source) => source.type === type);
@@ -9607,6 +9649,7 @@ function App() {
       sources.includes('Perfil colectivo') && !hasTacticalSourceType('collective_profile') ? { type: 'collective_profile', id: selectedMatchRivalTeam?.id || 'collective', label: 'Perfil colectivo' } : null,
       sources.includes('Perfil jugador') && !hasTacticalSourceType('player_profile') ? { type: 'player_profile', id: context.playerKey || 'profiled-players', label: 'Perfil de jugador' } : null,
       sources.includes('Evidencias observadas') ? { type: 'observed_evidence', id: selectedMatch.id, label: 'Evidencias observadas' } : null,
+      sources.includes('Estadísticas reales') ? { type: 'match_statistics', id: selectedMatch.id, label: `${realMatchEventCount} eventos reales del partido` } : null,
       sources.includes('Sistema enfrentado') ? { type: 'facing_systems', id: selectedMatch.id, label: `${caudalSystem} vs ${rivalSystem}` } : null,
     ].filter(Boolean);
     const answerSources = [...new Map(
@@ -9617,7 +9660,7 @@ function App() {
     const hasRegisteredScouting = sources.some((source) => source !== 'Sistema enfrentado');
     const tacticalEvidenceIsVisualOnly = tacticalSummary.sources.length > 0
       && tacticalSummary.sources.every((source) => ['board_evidence', 'tactical_play'].includes(source.type));
-    const hasSpecificScouting = hasRegisteredScouting || tacticalSummary.contexts.length > 0;
+    const hasSpecificScouting = hasRegisteredScouting || tacticalSummary.evidence.length > 0;
     const confidence = hasSpecificScouting
       ? evidenceWeight >= 7 && sources.length >= 3 ? 'Alta' : evidenceWeight >= 3 || sources.length >= 3 ? 'Media' : 'Baja'
       : 'General';
@@ -9669,51 +9712,21 @@ function App() {
         tacticalPlayIds: tacticalSummary.contexts.map((item) => item.playId).filter(Boolean),
       };
     };
-    const generalPrinciplesByQuestion = () => {
-      if (/presión|presion|iniciar/.test(q)) return [
-        'Definir una primera altura de presión coherente con nuestro sistema antes de saltar.',
-        'Orientar la salida hacia una zona donde podamos cerrar pase interior y pase atrás.',
-        'Activar el salto solo con señal común: mal control, pase horizontal o recepción de espaldas.',
-      ];
-      if (/vigilancias|proteger|zonas/.test(q)) return [
-        'Asegurar vigilancia preventiva por detrás de la línea de balón.',
-        'Proteger carril central antes de perseguir fuera de zona.',
-        'Mantener coberturas cortas cuando el lateral o el central exterior salten.',
-      ];
-      if (/pérdida|perdida|tras pérdida|transición/.test(q)) return [
-        'Tras pérdida, cerrar primero pase interior y receptor de cara.',
-        'Si no hay opción de robo inmediato, temporizar y reorganizar el bloque.',
-        'Evitar que la primera presión se convierta en saltos individuales sin cobertura.',
-      ];
-      if (/recuperación|recuperacion|castigamos/.test(q)) return [
-        'Buscar primer pase hacia delante si hay receptor perfilado.',
-        'Atacar el intervalo más cercano antes de que el rival vuelva a organizarse.',
-        'Si no hay ventaja clara, asegurar posesión y cambiar orientación.',
-      ];
-      if (/estrategia|abp/.test(q)) return [
-        'Asignar responsabilidades claras: zona, marca y rechace frontal.',
-        'Proteger segundo palo y zona de caída tras despeje.',
-        'En ataque, bloquear legalmente para liberar un rematador o una segunda jugada.',
-      ];
-      if (/superioridades|espacios|progresamos|estructura|balón|balon/.test(q)) return [
-        `Como principio general frente a un ${rivalSystem}, mover rápido para obligar a bascular.`,
-        'Fijar una línea antes de atacar el siguiente intervalo.',
-        'Buscar tercer hombre o recepción entre líneas cuando el pase directo esté tapado.',
-        'Evitar pérdidas interiores si no hay vigilancia preparada.',
-      ];
-      return [
-        `Aplicar principios generales contra ${rivalSystem} sin atribuir comportamientos concretos al rival.`,
-        'Priorizar decisiones simples, coberturas cercanas y ocupación racional de espacios.',
-        'Validar la propuesta con vídeo o evidencias antes de convertirla en consigna específica.',
-      ];
-    };
     const generalAnswer = () => formatAnswer({
-      title: 'RECOMENDACIÓN TÁCTICA GENERAL',
-      confidenceLabel: tacticalSummary.contexts.length ? tacticalSummary.confidence : 'General',
-      sourceLabel: 'general',
-      analysis: `No existen suficientes evidencias para describir cómo actúa específicamente este rival. La orientación siguiente usa principios tácticos generales frente a un ${rivalSystem}, no conclusiones del scouting.`,
-      proposals: generalPrinciplesByQuestion(),
-      answerSourceText: 'Recomendación táctica general',
+      title: 'INFORMACIÓN INSUFICIENTE',
+      confidenceLabel: tacticalSummary.contexts.length ? tacticalSummary.confidence : 'Baja',
+      sourceLabel: tacticalSummary.contexts.length ? 'evidence' : 'insufficient',
+      analysis: tacticalSummary.contexts.length
+        ? tacticalSummary.conclusion
+        : 'No existen perfiles, estadísticas ni jugadas relevantes suficientes para emitir una conclusión táctica sobre este rival.',
+      proposals: [
+        tacticalSummary.contexts.length
+          ? tacticalSummary.proposedAction
+          : 'Registrar evidencias reales antes de convertir una hipótesis en una recomendación.',
+      ],
+      answerSourceText: tacticalSummary.sources.length
+        ? tacticalSummary.sources.map((source) => `• ${source.label}`).join('\n')
+        : 'Sin fuentes suficientes',
     });
 
     if (!hasSpecificScouting) return generalAnswer();
@@ -9726,11 +9739,11 @@ function App() {
       if (!targetPlayer) {
         return formatAnswer({
           title: 'PERFIL NO IDENTIFICADO',
-          confidenceLabel: 'General',
-          sourceLabel: 'general',
+          confidenceLabel: 'Baja',
+          sourceLabel: 'insufficient',
           analysis: 'Sin información individual registrada.',
-          proposals: ['Seleccionar o registrar un jugador rival antes de preparar el duelo Micro.', ...getMicroGeneralScenarios(null)],
-          answerSourceText: 'Recomendación táctica general',
+          proposals: ['Seleccionar o registrar un jugador rival antes de preparar el duelo Micro.'],
+          answerSourceText: 'Sin fuentes individuales suficientes',
         });
       }
       const profile = getObservedPlayerProfile(targetPlayer);
@@ -9739,20 +9752,17 @@ function App() {
       if (certainty === 'PERFIL NO IDENTIFICADO') {
         return formatAnswer({
           title: certainty,
-          confidenceLabel: 'General',
-          sourceLabel: 'general',
+          confidenceLabel: 'Baja',
+          sourceLabel: 'insufficient',
           analysis: [
             'DATOS OBSERVADOS',
             'Sin información individual registrada.',
             '',
             'LECTURA TÁCTICA',
             `No existe información suficiente para determinar el perfil concreto de ${displayPlayerName(targetPlayer) || targetPlayer.name}.`,
-            '',
-            'POSIBLES ESCENARIOS',
-            ...getMicroGeneralScenarios(targetPlayer).map((item) => `• ${item}`),
           ].join('\n'),
           proposals: ['Completar el perfil individual para convertir estas opciones en un plan específico.'],
-          answerSourceText: 'Recomendación táctica general',
+          answerSourceText: 'Sin fuentes individuales suficientes',
         });
       }
       const plan = getMicroPlanForProfile(targetPlayer, profile);
@@ -9834,6 +9844,7 @@ function App() {
       });
     }
     if (q.includes('ajuste') || q.includes('progresamos')) {
+      if (!collective.pressureType && !collective.weaknesses.length && !evidences.length && !tacticalSummary.evidence.length) return generalAnswer();
       return formatAnswer({
         title: 'ANÁLISIS BASADO EN EL SCOUTING',
         sourceLabel: 'scouting',
@@ -10276,11 +10287,10 @@ function App() {
       .map((player) => ({ player, profile: getObservedPlayerProfile(player) }))
       .filter(({ profile }) => profile.speed || profile.technique || profile.aerial || profile.oneVsOne || profile.defensiveWork || profile.foot || profile.traits.length || String(profile.notes || '').trim());
     const hasCollectiveData = Object.values(collective).some((value) => Array.isArray(value) ? value.length : Boolean(value));
-    const savedTacticalPlayContexts = getSavedTacticalPlayContexts();
-    const rivalTacticalPattern = buildTacticalEvidenceSummary(savedTacticalPlayContexts, {
-      question: '¿Cómo progresa el rival con balón y qué conexiones repite?',
-      team: 'rival',
-    });
+    const rivalTacticalPattern = selectTacticalEvidenceForQuestion(
+      tacticalEvidenceReport,
+      '¿Cómo progresa el rival con balón y qué conexiones repite?'
+    );
     const splitLines = (value) => String(value || '').split(/\r?\n|•/).map((item) => String(item || '').trim()).filter(Boolean);
     const uniq = (items) => [...new Set(safeArray(items).map((item) => String(item || '').trim()).filter(Boolean))];
     const rivalConnectionOptions = getRivalFormationSlots().map((slot) => slot.player?.name || slot.role || `R${Number(slot.slot || 0) + 1}`).filter(Boolean);
@@ -10321,8 +10331,8 @@ function App() {
     const selectedMicroProfile = selectedMicroPlayer ? getObservedPlayerProfile(selectedMicroPlayer) : emptyObservedPlayerProfile;
     const selectedMicroKey = selectedMicroPlayer ? getObservedPlayerKey(selectedMicroPlayer) : '';
     const selectedMicroParticipation = selectedMicroKey
-      ? buildPlayerTacticalParticipation(savedTacticalPlayContexts, selectedMicroKey)
-      : { playCount: 0, plays: [], phases: [], connections: [], movements: 0, passesAsLauncher: 0, passesAsReceiver: 0, roles: [], observations: [] };
+      ? getPlayerTacticalEvidence(tacticalEvidenceReport, selectedMicroKey)
+      : getPlayerTacticalEvidence(tacticalEvidenceReport, '');
     const selectedMicroTags = selectedMicroPlayer ? getMicroPlayerTags(selectedMicroPlayer) : [];
     const selectedMicroProfileState = getMicroProfileState(selectedMicroProfile);
     const selectedMicroDetectedProfile = selectedMicroPlayer ? getMicroDetectedProfileLines(selectedMicroPlayer, selectedMicroProfile) : ['Perfil pendiente de completar.'];
@@ -10411,14 +10421,14 @@ function App() {
       };
     };
     const tacticalPlanEvidence = {
-      'Con balón': addSavedQuestionEvidence('Con balón', buildTacticalEvidenceSummary(savedTacticalPlayContexts, { question: '¿Cómo progresamos con balón?' })),
-      'Sin balón': addSavedQuestionEvidence('Sin balón', buildTacticalEvidenceSummary(savedTacticalPlayContexts, { question: '¿Dónde presionamos y qué protegemos sin balón?' })),
-      'Transición': addSavedQuestionEvidence('Transición', buildTacticalEvidenceSummary(savedTacticalPlayContexts, { question: '¿Qué hacemos en transiciones tras pérdida y recuperación?' })),
-      ABP: addSavedQuestionEvidence('ABP', buildTacticalEvidenceSummary(savedTacticalPlayContexts, { question: '¿Qué hacemos en ABP y estrategia?' })),
-      'Vigilancias prioritarias': addSavedQuestionEvidence('Vigilancias prioritarias', buildTacticalEvidenceSummary(savedTacticalPlayContexts, { question: '¿Qué vigilancias debemos priorizar?' })),
-      'Jugadores a vigilar': addSavedQuestionEvidence('Jugadores a vigilar', buildTacticalEvidenceSummary(savedTacticalPlayContexts, { question: '¿Qué jugadores debemos vigilar?' })),
-      Riesgos: addSavedQuestionEvidence('Riesgos', buildTacticalEvidenceSummary(savedTacticalPlayContexts, { question: '¿Qué riesgos debemos evitar?' })),
-      'Claves del partido': addSavedQuestionEvidence('Claves del partido', buildTacticalEvidenceSummary(savedTacticalPlayContexts, { question: '¿Cuáles son las claves del partido?' })),
+      'Con balón': addSavedQuestionEvidence('Con balón', tacticalEvidenceReport.planRecommendations['Con balón']),
+      'Sin balón': addSavedQuestionEvidence('Sin balón', tacticalEvidenceReport.planRecommendations['Sin balón']),
+      'Transición': addSavedQuestionEvidence('Transición', tacticalEvidenceReport.planRecommendations.Transición),
+      ABP: addSavedQuestionEvidence('ABP', tacticalEvidenceReport.planRecommendations.ABP),
+      'Vigilancias prioritarias': addSavedQuestionEvidence('Vigilancias prioritarias', tacticalEvidenceReport.planRecommendations['Vigilancias prioritarias']),
+      'Jugadores a vigilar': addSavedQuestionEvidence('Jugadores a vigilar', tacticalEvidenceReport.planRecommendations['Jugadores a vigilar']),
+      Riesgos: addSavedQuestionEvidence('Riesgos', tacticalEvidenceReport.planRecommendations.Riesgos),
+      'Claves del partido': addSavedQuestionEvidence('Claves del partido', tacticalEvidenceReport.planRecommendations['Claves del partido']),
     };
     const semitoneClass = {
       green: 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100',
@@ -10497,7 +10507,7 @@ function App() {
 
         <nav className="sticky top-14 z-20 overflow-x-auto border border-white/10 bg-[#081327]/95 p-1.5 backdrop-blur" aria-label="Secciones de Sistemas Enfrentados">
           <div className="flex min-w-max gap-1.5">
-            {['PIZARRA', 'RIVAL', 'JUGADORES', 'PLAN DE PARTIDO'].map((view) => (
+            {['PIZARRA', 'RIVAL', 'JUGADORES', 'PLAN DE PARTIDO', 'EVIDENCIAS'].map((view) => (
               <button
                 key={view}
                 type="button"
@@ -10511,6 +10521,7 @@ function App() {
         </nav>
 
         <div className={`grid gap-4 ${facingSystemsView === 'PIZARRA' && !isPreTalkMode ? 'xl:grid-cols-[minmax(320px,0.32fr)_minmax(0,0.68fr)]' : 'xl:grid-cols-2'}`}>
+          {facingSystemsView === 'EVIDENCIAS' ? <TacticalEvidencePanel report={tacticalEvidenceReport} /> : null}
           <div className="grid gap-4 xl:contents">
             <section className={`order-1 border border-caudal-electric/15 bg-[#091428]/90 p-4 ${facingSystemsView !== 'RIVAL' ? 'hidden' : ''}`}>
               <div className="flex items-center justify-between gap-3">
@@ -10994,16 +11005,22 @@ function App() {
                             </div>
                             <div className="border border-white/8 bg-black/15 p-2">
                               <span className="block text-[9px] font-black uppercase text-slate-500">Rol dibujado</span>
-                              {selectedMicroParticipation.roles.join(' · ') || 'Participación visual'}
+                              {selectedMicroParticipation.roles.map((role) => `${role.label} (${role.count})`).join(' · ') || 'Sin rol inferible'}
                             </div>
                             <div className="border border-white/8 bg-black/15 p-2">
                               <span className="block text-[9px] font-black uppercase text-slate-500">Acciones</span>
-                              {selectedMicroParticipation.movements} movimientos · {selectedMicroParticipation.passesAsLauncher} pases · {selectedMicroParticipation.passesAsReceiver} recepciones
+                              {selectedMicroParticipation.connectionsCreated} conexiones creadas · {selectedMicroParticipation.connectionsReceived} recibidas
                             </div>
                             <div className="border border-white/8 bg-black/15 p-2">
-                              <span className="block text-[9px] font-black uppercase text-slate-500">Conexiones registradas</span>
+                              <span className="block text-[9px] font-black uppercase text-slate-500">Movimientos habituales</span>
+                              {selectedMicroParticipation.movementTypes.length
+                                ? selectedMicroParticipation.movementTypes.map((movement) => `${movement.label} (${movement.count})`).join(' · ')
+                                : 'Sin movimiento clasificable'}
+                            </div>
+                            <div className="border border-white/8 bg-black/15 p-2 md:col-span-2">
+                              <span className="block text-[9px] font-black uppercase text-slate-500">Conexiones</span>
                               {selectedMicroParticipation.connections.length
-                                ? selectedMicroParticipation.connections.map((connection) => `${connection.origin} → ${connection.destination}`).join(' · ')
+                                ? selectedMicroParticipation.connections.map((connection) => `${connection.label} (${connection.count})`).join(' · ')
                                 : 'Sin conexión vinculada'}
                             </div>
                             {selectedMicroParticipation.plays.map((play) => (
@@ -11171,7 +11188,7 @@ function App() {
                                       {selectedPreAiAnalysis.tacticalQuestion?.confidence || 'General'}
                                     </span>
                                     <span className={`rounded-lg border px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${sourceType === 'scouting' ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100' : 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'}`}>
-                                      {sourceType === 'scouting' ? 'Scouting individual' : sourceType === 'visual' ? 'Pizarra · pendiente de validar' : 'Principio general'}
+                                      {sourceType === 'scouting' ? 'Scouting individual' : sourceType === 'visual' ? 'Pizarra · pendiente de validar' : sourceType === 'evidence' ? 'Evidencias tácticas' : 'Información insuficiente'}
                                     </span>
                                   </div>
                                   <div className="whitespace-pre-line text-sm font-semibold leading-6 text-slate-100">{tacticalAnswer}</div>
@@ -11244,7 +11261,7 @@ function App() {
                                     {selectedPreAiAnalysis.tacticalQuestion?.confidence || 'General'}
                                   </span>
                                   <span className={`rounded-lg border px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${sourceType === 'scouting' ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100' : 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'}`}>
-                                    {sourceType === 'scouting' ? 'Scouting real' : sourceType === 'visual' ? 'Pizarra · pendiente de validar' : 'Principio general'}
+                                    {sourceType === 'scouting' ? 'Scouting real' : sourceType === 'visual' ? 'Pizarra · pendiente de validar' : sourceType === 'evidence' ? 'Evidencias tácticas' : 'Información insuficiente'}
                                   </span>
                                 </div>
                                 <div className="whitespace-pre-line text-sm font-semibold leading-6 text-slate-100">

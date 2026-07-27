@@ -19,6 +19,7 @@
     "test:tactical-templates": "node src/utils/tacticalTemplates.test.js",
     "test:tactical-orientation": "node src/utils/tacticalOrientation.test.js",
     "test:tactical-play-context": "node src/utils/tacticalPlayContext.test.js",
+    "test:tactical-evidence": "node src/utils/tacticalEvidenceEngine.test.js",
     "test:goal-events": "node src/utils/goalEvents.test.js",
     "test:delegated-events": "node src/utils/delegatedEventIdentity.test.js",
     "test:delegated-save-flow": "node src/utils/delegatedEventSaveFlow.test.js",
