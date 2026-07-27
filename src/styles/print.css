@@ -25,6 +25,10 @@
   flex: 0 0 auto;
 }
 
+.lineup-print-sheet.lineup-match-sheet {
+  padding: 6mm;
+}
+
 .print-sheet-a4 {
   width: 210mm;
   height: 297mm;
@@ -34,11 +38,10 @@
 
 .print-sheet-header {
   display: grid;
-  grid-template-columns: 1fr 52mm;
-  gap: 4mm;
-  border-bottom: 1.5pt solid #000;
-  height: 20mm;
-  padding-bottom: 2mm;
+  grid-template-columns: minmax(0, 1fr) 88mm;
+  align-items: center;
+  gap: 6mm;
+  height: 18mm;
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -53,7 +56,7 @@
 
 .print-sheet-header h1 {
   margin: 0;
-  font-size: 15pt;
+  font-size: 17pt;
   line-height: 1.05;
   text-transform: uppercase;
 }
@@ -66,16 +69,32 @@
   overflow: hidden;
 }
 
+.print-sheet-header .print-sheet-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.4mm 4mm;
+  border: 0;
+  padding: 0;
+  font-size: 7.3pt;
+  line-height: 1.15;
+  overflow: hidden;
+}
+
+.print-sheet-header .print-sheet-meta p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .print-sheet-meta p {
   margin: 0;
 }
 
 .print-lineup-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 54mm;
-  gap: 3mm;
-  height: 267mm;
-  margin-top: 3mm;
+  grid-template-columns: minmax(0, 1fr) 43mm;
+  gap: 4mm;
+  height: 261mm;
+  margin-top: 5mm;
   align-items: stretch;
   justify-items: stretch;
   overflow: hidden;
@@ -83,61 +102,10 @@
   break-inside: avoid;
 }
 
-.lineup-print-keys {
-  display: grid;
-  grid-template-columns: 34mm 1fr;
-  gap: 3mm;
-  min-height: 16mm;
-  margin-top: 2mm;
-  border: 1pt solid #000;
-  padding: 1.5mm 2mm;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-
-.lineup-print-keys h2,
-.lineup-staff-notes h2 {
-  margin: 0;
-  font-size: 8pt;
-  line-height: 1.1;
-  text-transform: uppercase;
-}
-
-.lineup-print-keys p {
-  margin: 0 0 0.8mm;
-  font-size: 8.4pt;
-  line-height: 1.15;
-  font-weight: 700;
-}
-
-.lineup-print-keys + .print-lineup-layout {
-  height: 248mm;
-}
-
-.lineup-print-keys + .print-lineup-layout .print-pitch,
-.lineup-print-keys + .print-lineup-layout .print-bench {
-  height: 248mm;
-}
-
-.lineup-staff-notes {
-  margin-top: 2mm;
-  border-top: 1pt solid #000;
-  padding-top: 2mm;
-}
-
-.lineup-staff-notes p {
-  margin: 0 0 1mm;
-  border-bottom: 0.5pt solid #999;
-  padding-bottom: 1mm;
-  font-size: 7.2pt;
-  line-height: 1.15;
-  font-weight: 700;
-}
-
 .print-pitch {
   position: relative;
   width: 100%;
-  height: 267mm;
+  height: 261mm;
   border: 1.5pt solid #000;
   background: #fff;
   overflow: hidden;
@@ -418,9 +386,10 @@
 }
 
 .print-bench {
-  border: 1pt solid #000;
-  padding: 2mm;
-  height: 267mm;
+  border: 0;
+  border-left: 1pt solid #000;
+  padding: 0 0 0 3mm;
+  height: 261mm;
   box-sizing: border-box;
   overflow: hidden;
   page-break-inside: avoid;
@@ -428,15 +397,15 @@
 }
 
 .print-bench h2 {
-  margin: 0 0 2mm;
-  font-size: 11pt;
+  margin: 0 0 2.5mm;
+  font-size: 10pt;
   text-transform: uppercase;
 }
 
 .print-bench-list {
   display: grid;
   gap: 0;
-  max-height: 257mm;
+  max-height: 247mm;
   overflow: hidden;
 }
 
@@ -445,7 +414,7 @@
   grid-template-columns: 8mm 1fr;
   align-items: start;
   gap: 1.3mm;
-  border-bottom: 0.9pt solid #000;
+  border-bottom: 0.5pt solid #999;
   min-height: 8mm;
   padding: 0.8mm 0;
   font-size: 7.1pt;
@@ -596,12 +565,6 @@
   font-size: 7pt;
   font-weight: 900;
   text-transform: uppercase;
-}
-
-.lineup-print-footer {
-  right: 5mm;
-  bottom: 3mm;
-  left: 5mm;
 }
 
 .talk-vestuario .operational-print-header h1 {
@@ -1359,6 +1322,10 @@
     break-after: avoid;
     break-inside: avoid;
     page: portrait;
+  }
+
+  .lineup-print-sheet.lineup-match-sheet {
+    padding: 6mm !important;
   }
 
   .printing-dossier .lineup-print-sheet {

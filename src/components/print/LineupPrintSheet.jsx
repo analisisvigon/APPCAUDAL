@@ -3,7 +3,7 @@ import PlayerShirt from './PlayerShirt';
 import { getPlayerDisplayName } from '../../utils/playerDisplayName';
 
 const formatDate = (value) => {
-  if (!value) return 'Fecha pendiente';
+  if (!value) return 'Sin información';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
@@ -15,38 +15,22 @@ const getBenchNumber = (player) => {
   return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
 };
 
-export default function LineupPrintSheet({ match, starters = [], bench = [], coordinates = [], system = '4-4-2', kit = 'home', captainPlayerId = null, matchKeys = [], staffNotes = [], dossierType = 'Staff', pageNumber = 1, totalPages = 1 }) {
+export default function LineupPrintSheet({ match, starters = [], bench = [], coordinates = [], system = '4-4-2', kit = 'home', captainPlayerId = null }) {
   const sortedBench = [...bench].sort((a, b) => getBenchNumber(a) - getBenchNumber(b));
-  const keys = (matchKeys.length ? matchKeys : [match?.planClave, match?.planObjetivo, match?.prePlanAdjustment])
-    .flatMap((value) => String(value || '').split('\n'))
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, 3);
 
   return (
-    <article className={`lineup-print-sheet print-sheet-a4 lineup-dossier-${String(dossierType || 'Staff').toLowerCase().replace(/\s+/g, '-')}`}>
+    <article className="lineup-print-sheet print-sheet-a4 lineup-match-sheet">
       <header className="print-sheet-header">
         <div>
-          <p className="print-sheet-kicker">C.D. Caudal de Mieres</p>
-          <h1>{match?.isHome ? `C.D. Caudal - ${match?.opponent || 'Rival'}` : `${match?.opponent || 'Rival'} - C.D. Caudal`}</h1>
+          <h1>C.D. Caudal de Mieres</h1>
         </div>
         <div className="print-sheet-meta">
-          <p><strong>Rival:</strong> {match?.opponent || 'Sin rival'}</p>
+          <p><strong>Rival:</strong> {match?.opponent || 'Sin información'}</p>
           <p><strong>Fecha:</strong> {formatDate(match?.date)}</p>
           <p><strong>Sistema:</strong> {system}</p>
-          <p><strong>Uso:</strong> {dossierType}</p>
           <p><strong>Equipación:</strong> {kit === 'away' ? 'Suplente / amarilla a rayas' : 'Titular / blanca'}</p>
         </div>
       </header>
-
-      <section className="lineup-print-keys">
-        <h2>Claves del partido</h2>
-        <div>
-          {(keys.length ? keys : ['Clave principal pendiente', 'Ajuste de banquillo pendiente', 'Riesgo rival pendiente']).map((key, index) => (
-            <p key={`${key}-${index}`}><strong>{index + 1}.</strong> {key}</p>
-          ))}
-        </div>
-      </section>
 
       <section className="print-lineup-layout">
         <FootballPitchPrint players={starters} coordinates={coordinates} kit={kit} />
@@ -62,18 +46,8 @@ export default function LineupPrintSheet({ match, starters = [], bench = [], coo
               <p className="print-empty">No hay suplentes seleccionados</p>
             )}
           </div>
-          <div className="lineup-staff-notes">
-            <h2>Notas staff</h2>
-            {(staffNotes.length ? staffNotes : ['Vigilancias', 'Cambios previstos', 'Riesgos']).slice(0, 5).map((note, index) => (
-              <p key={`${note}-${index}`}>{note}</p>
-            ))}
-          </div>
         </aside>
       </section>
-      <footer className="operational-print-footer lineup-print-footer">
-        <span>C.D. Caudal · {match?.opponent || 'Rival'}</span>
-        <strong>{pageNumber}/{totalPages}</strong>
-      </footer>
     </article>
   );
 }

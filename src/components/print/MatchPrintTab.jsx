@@ -64,7 +64,7 @@ const createDefaultOffensiveNote = (type) => createDefaultSetPieceNote(type, off
 const createDefaultDefensiveNote = (type) => createDefaultSetPieceNote(type, defensiveSetPieceTypes, defaultDefensiveRoles);
 
 const dossierPageDefinitions = [
-  { id: 'lineup', label: 'Alineacion', icon: 'XI', use: 'once, banquillo y claves' },
+  { id: 'lineup', label: 'Alineacion', icon: 'XI', use: 'once y banquillo' },
   { id: 'keys', label: 'Claves del partido', icon: 'CL', use: '4-6 ideas de vestuario' },
   { id: 'takers', label: 'Lanzadores', icon: 'LZ', use: 'balon parado rapido' },
   { id: 'offensive', label: 'ABP ofensiva', icon: 'AB+', use: 'jugadas a favor' },
@@ -1716,11 +1716,6 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                   system={printData.system}
                   kit={kit}
                   captainPlayerId={captainPlayerId}
-                  matchKeys={getMatchKeys()}
-                  staffNotes={getStaffNotes()}
-                  dossierType="Dossier"
-                  pageNumber={pageNumber}
-                  totalPages={activeSheetCount}
                 />
               )] : [];
             }
