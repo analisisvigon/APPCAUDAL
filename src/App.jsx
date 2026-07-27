@@ -108,6 +108,7 @@ import {
   serializeSemanticPlayerPositions,
   serializeTemplateArrows,
 } from './utils/tacticalTemplates';
+import { orientFormationSlotsForTacticalBoard } from './utils/tacticalOrientation';
 import {
   buildPlayerTacticalParticipation,
   buildTacticalEvidenceSummary,
@@ -8133,6 +8134,20 @@ function App() {
       }),
     }));
   };
+
+  const getTacticalBoardRivalFormationSlots = () => (
+    orientFormationSlotsForTacticalBoard({
+      team: 'rival',
+      formationSlots: getRivalFormationSlots().map((slot) => ({
+        ...slot,
+        x: slot.coordinates?.x,
+        y: slot.coordinates?.y,
+      })),
+    }).map((slot) => ({
+      ...slot,
+      coordinates: { x: slot.x, y: slot.y },
+    }))
+  );
   const getDefensivePlayerPosition = (playerKey, fallbackPosition) => {
     const savedPosition = selectedDefensivePlay?.playerPositions?.[playerKey];
     if (!savedPosition || !Number.isFinite(Number(savedPosition.x)) || !Number.isFinite(Number(savedPosition.y))) return fallbackPosition;
@@ -10120,7 +10135,7 @@ function App() {
     const rivalSystem = getCurrentRivalSystem();
     const caudalRoles = getFormationRoles(caudalSystem);
     const caudalLineup = getCaudalPitchNames(selectedMatch?.preCaudalLineup || [], [], caudalRoles);
-    const rivalSlots = getRivalFormationSlots();
+    const rivalSlots = getTacticalBoardRivalFormationSlots();
     const rivalLineup = rivalSlots.map((slot) => slot.player?.name || slot.role || '');
     const identity = liveRivalIdentity;
     const availableXiPlayers = rivalSlots.map((slot) => slot.player).filter(Boolean).filter((player) => !isUnavailableRivalPlayer(player));
@@ -21439,7 +21454,7 @@ function App() {
     if (!selectedMatch) return null;
     const toCaudalHalf = (position) => ({ x: 10 + position.x * 0.8, y: 50 + position.y * 0.44 });
     const toRivalHalf = (position) => ({ x: 10 + position.x * 0.8, y: 50 - position.y * 0.44 });
-    const rivalSlots = getRivalFormationSlots();
+    const rivalSlots = getTacticalBoardRivalFormationSlots();
     const caudalCoordinates = getFormationCoordinates(selectedMatch.preCaudalSystem || '4-4-2').map(toCaudalHalf);
     const rivalCoordinates = rivalSlots.map((slot) => toRivalHalf(slot.coordinates || { x: 50, y: 50 }));
     const caudalRoles = getFormationRoles(selectedMatch.preCaudalSystem || '4-4-2');
@@ -21686,7 +21701,7 @@ function App() {
         fallbackPosition,
       });
     };
-    const rivalSlots = getRivalFormationSlots();
+    const rivalSlots = getTacticalBoardRivalFormationSlots();
     const caudalCoordinates = getFormationSlots(caudalSystem, 'own').map((slot) => mapFormationSlotToFacingPitch(slot, 'caudal', 0.42));
     const caudalRoles = safeArray(getFormationRoles(caudalSystem));
     const caudalLineup = safeArray(selectedMatch.preCaudalLineup);

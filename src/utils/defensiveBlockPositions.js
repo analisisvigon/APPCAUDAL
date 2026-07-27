@@ -1,3 +1,8 @@
+import {
+  enforceTacticalPlayerPositionOrientation,
+  orientFormationSlotsForTacticalBoard,
+} from './tacticalOrientation.js';
+
 const DEFAULT_SYSTEM_LINES = [4, 4, 2];
 const MIN_HORIZONTAL_SEPARATION = 8;
 const MIN_VERTICAL_SEPARATION = 5.5;
@@ -46,13 +51,9 @@ const interpolateLineHeight = (lineIndex, lineCount, defensiveLine, attackingLin
   return roundCoordinate(defensiveLine + ((attackingLine - defensiveLine) * lineIndex) / (lineCount - 1));
 };
 
-const orientRivalSlotsAttackingDown = (formationSlots) => formationSlots.map((slot) => ({
-  ...slot,
-  x: 100 - Number(slot?.x ?? 50),
-}));
-
 const buildTeamPositions = ({ team, system, formationSlots, lineHeights }) => {
-  const sortedSlots = [...formationSlots]
+  const orientedSlots = orientFormationSlotsForTacticalBoard({ formationSlots, team });
+  const sortedSlots = [...orientedSlots]
     .map((slot, fallbackIndex) => ({ ...slot, slot: Number.isInteger(Number(slot?.slot)) ? Number(slot.slot) : fallbackIndex }))
     .sort((left, right) => left.slot - right.slot);
   if (!sortedSlots.length) return {};
@@ -137,13 +138,10 @@ export const getDefensiveBlockInitialPositions = ({
     ? defensiveSituation
     : 'mid_block';
   const lineHeights = DEFENSIVE_BLOCK_LINE_HEIGHTS[situation];
-  const resolvedRivalFormationSlots = situation === 'high_block'
-    ? orientRivalSlotsAttackingDown(rivalFormationSlots)
-    : rivalFormationSlots;
   const rivalPositions = buildTeamPositions({
     team: 'rival',
     system: rivalSystem,
-    formationSlots: resolvedRivalFormationSlots,
+    formationSlots: rivalFormationSlots,
     lineHeights: lineHeights.rival,
   });
   const caudalPositions = buildTeamPositions({
@@ -152,9 +150,13 @@ export const getDefensiveBlockInitialPositions = ({
     formationSlots: caudalFormationSlots,
     lineHeights: lineHeights.caudal,
   });
-  return preventInitialPositionOverlaps({
-    ...rivalPositions,
-    ...caudalPositions,
+  return enforceTacticalPlayerPositionOrientation({
+    playerPositions: preventInitialPositionOverlaps({
+      ...rivalPositions,
+      ...caudalPositions,
+    }),
+    rivalFormationSlots,
+    caudalFormationSlots,
   });
 };
 

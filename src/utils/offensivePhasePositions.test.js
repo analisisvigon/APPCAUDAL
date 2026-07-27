@@ -61,8 +61,8 @@ assert.ok(averageY(directBuildUp, 'rival', 1, 4) > averageY(buildUp, 'rival', 1,
 assert.ok(averageY(directBuildUp, 'rival', 9, 2) > averageY(buildUp, 'rival', 9, 2), 'los puntas rivales fijan más arriba');
 assert.ok(averageY(directBuildUp, 'caudal', 9, 2) > averageY(buildUp, 'caudal', 9, 2), 'el Caudal se prepara cerca de la caída y segunda jugada');
 assert.ok(
-  directBuildUp['rival:3'].x - directBuildUp['rival:2'].x
-    < buildUp['rival:3'].x - buildUp['rival:2'].x,
+  Math.abs(directBuildUp['rival:3'].x - directBuildUp['rival:2'].x)
+    < Math.abs(buildUp['rival:3'].x - buildUp['rival:2'].x),
   'los centrales rivales quedan más juntos para preparar el golpeo'
 );
 assert.ok(directBuildUp['rival:1'].y > directBuildUp['rival:2'].y, 'los laterales rivales parten algo más altos que los centrales');

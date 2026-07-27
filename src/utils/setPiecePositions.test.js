@@ -89,8 +89,8 @@ const rivalOutfieldDistances = Array.from({ length: 10 }, (_, index) => (
 ));
 assert.equal(
   rivalOutfieldDistances.indexOf(Math.min(...rivalOutfieldDistances)),
-  0,
-  'el jugador rival más cercano queda configurado como lanzador en ABP ofensiva'
+  3,
+  'el slot derecho táctico del rival ocupa el lado izquierdo visual y queda como lanzador'
 );
 
 const defensiveCorner = buildPreset('defensive_set_piece', 'corner', defensiveCornerZones[0].position);

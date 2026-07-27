@@ -2,6 +2,10 @@ import {
   getHighBlockPositions,
   preventInitialPositionOverlaps,
 } from './defensiveBlockPositions.js';
+import {
+  enforceTacticalPlayerPositionOrientation,
+  orientFormationSlotsForTacticalBoard,
+} from './tacticalOrientation.js';
 
 const DEFAULT_SYSTEM_LINES = [4, 4, 2];
 const TRANSITION_FIELD_ZONES = new Set(['defensive_half', 'attacking_half']);
@@ -68,7 +72,8 @@ const lineHeight = (lineIndex, lineCount, defensiveLine, attackingLine) => {
 };
 
 const buildTeamPositions = ({ team, system, formationSlots, heights, compactness }) => {
-  const slots = [...formationSlots]
+  const orientedSlots = orientFormationSlotsForTacticalBoard({ formationSlots, team });
+  const slots = [...orientedSlots]
     .map((slot, fallbackSlot) => ({
       ...slot,
       slot: Number.isInteger(Number(slot?.slot)) ? Number(slot.slot) : fallbackSlot,
@@ -118,20 +123,24 @@ export const getTransitionInitialPositions = ({
   const safeZone = normalizeTransitionFieldZone(fieldZone);
   const heights = TRANSITION_PRESET_HEIGHTS[safeType][safeZone];
   const compactness = safeZone === 'attacking_half' ? 0.78 : 1;
-  return preventInitialPositionOverlaps({
-    ...buildTeamPositions({
-      team: 'rival',
-      system: rivalSystem,
-      formationSlots: rivalFormationSlots,
-      heights: heights.rival,
-      compactness,
+  return enforceTacticalPlayerPositionOrientation({
+    playerPositions: preventInitialPositionOverlaps({
+      ...buildTeamPositions({
+        team: 'rival',
+        system: rivalSystem,
+        formationSlots: rivalFormationSlots,
+        heights: heights.rival,
+        compactness,
+      }),
+      ...buildTeamPositions({
+        team: 'caudal',
+        system: caudalSystem,
+        formationSlots: caudalFormationSlots,
+        heights: heights.caudal,
+        compactness,
+      }),
     }),
-    ...buildTeamPositions({
-      team: 'caudal',
-      system: caudalSystem,
-      formationSlots: caudalFormationSlots,
-      heights: heights.caudal,
-      compactness,
-    }),
+    rivalFormationSlots,
+    caudalFormationSlots,
   });
 };

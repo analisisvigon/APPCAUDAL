@@ -1,4 +1,8 @@
 import { preventInitialPositionOverlaps } from './defensiveBlockPositions.js';
+import {
+  enforceTacticalPlayerPositionOrientation,
+  orientFormationSlotsForTacticalBoard,
+} from './tacticalOrientation.js';
 
 const DEFAULT_SYSTEM_LINES = [4, 4, 2];
 
@@ -43,7 +47,8 @@ const interpolateHeight = (lineIndex, lineCount, defensiveLine, attackingLine) =
 };
 
 const buildTeamPositions = ({ team, system, formationSlots, heights }) => {
-  const sortedSlots = [...formationSlots]
+  const orientedSlots = orientFormationSlotsForTacticalBoard({ formationSlots, team });
+  const sortedSlots = [...orientedSlots]
     .map((slot, index) => ({ ...slot, slot: Number.isInteger(Number(slot?.slot)) ? Number(slot.slot) : index }))
     .sort((left, right) => left.slot - right.slot);
   if (!sortedSlots.length) return {};
@@ -75,19 +80,23 @@ const getOffensiveSituationPositions = ({
 }) => {
   const heights = OFFENSIVE_PHASE_LINE_HEIGHTS[offensiveSituation];
   if (!heights) return {};
-  return preventInitialPositionOverlaps({
-    ...buildTeamPositions({
-      team: 'rival',
-      system: rivalSystem,
-      formationSlots: rivalFormationSlots,
-      heights: heights.rival,
+  return enforceTacticalPlayerPositionOrientation({
+    playerPositions: preventInitialPositionOverlaps({
+      ...buildTeamPositions({
+        team: 'rival',
+        system: rivalSystem,
+        formationSlots: rivalFormationSlots,
+        heights: heights.rival,
+      }),
+      ...buildTeamPositions({
+        team: 'caudal',
+        system: caudalSystem,
+        formationSlots: caudalFormationSlots,
+        heights: heights.caudal,
+      }),
     }),
-    ...buildTeamPositions({
-      team: 'caudal',
-      system: caudalSystem,
-      formationSlots: caudalFormationSlots,
-      heights: heights.caudal,
-    }),
+    rivalFormationSlots,
+    caudalFormationSlots,
   });
 };
 
@@ -131,9 +140,13 @@ export const getOffensiveDirectBuildUpPositions = ({
     formationSlots: caudalFormationSlots,
     heights: OFFENSIVE_DIRECT_BUILD_UP_LINE_HEIGHTS.caudal,
   });
-  return preventInitialPositionOverlaps({
-    ...rivalPositions,
-    ...caudalPositions,
+  return enforceTacticalPlayerPositionOrientation({
+    playerPositions: preventInitialPositionOverlaps({
+      ...rivalPositions,
+      ...caudalPositions,
+    }),
+    rivalFormationSlots,
+    caudalFormationSlots,
   });
 };
 

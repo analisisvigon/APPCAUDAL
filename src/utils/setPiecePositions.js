@@ -1,22 +1,20 @@
 import { preventInitialPositionOverlaps } from './defensiveBlockPositions.js';
 import { normalizeBallStartPosition } from './setPieceZones.js';
+import {
+  assignCoordinatesWithTacticalOrientation,
+  enforceTacticalPlayerPositionOrientation,
+} from './tacticalOrientation.js';
 
 const clamp = (value) => Math.max(5, Math.min(95, Math.round(value * 100) / 100));
 
-const normalizeSlots = (slots) => [...slots]
-  .map((slot, fallbackSlot) => ({
-    ...slot,
-    slot: Number.isInteger(Number(slot?.slot)) ? Number(slot.slot) : fallbackSlot,
-  }))
-  .sort((left, right) => left.slot - right.slot);
-
 const assignTeamPositions = (team, slots, coordinates) => Object.fromEntries(
-  normalizeSlots(slots).map((slot, index) => [
-    `${team}:${slot.slot}`,
-    {
-      x: clamp(coordinates[index]?.x ?? 50),
-      y: clamp(coordinates[index]?.y ?? 50),
-    },
+  Object.entries(assignCoordinatesWithTacticalOrientation({
+    team,
+    formationSlots: slots,
+    coordinates,
+  })).map(([key, position]) => [
+    key,
+    { x: clamp(position.x), y: clamp(position.y) },
   ])
 );
 
@@ -24,7 +22,7 @@ const point = (x, y) => ({ x: clamp(x), y: clamp(y) });
 
 const separateDensePositions = (positions) => {
   const resolved = {};
-  const offsets = [
+  const preferredOffsets = [
     [0, 0],
     [-8, 0], [8, 0], [0, -6], [0, 6],
     [-8, -6], [8, -6], [-8, 6], [8, 6],
@@ -33,6 +31,10 @@ const separateDensePositions = (positions) => {
     [-8, -12], [8, -12], [-8, 12], [8, 12],
     [-24, 0], [24, 0], [-16, -12], [16, -12], [-16, 12], [16, 12],
   ];
+  const fallbackOffsets = [-30, -24, -18, -12, -6, 0, 6, 12, 18, 24, 30]
+    .flatMap((offsetY) => [-40, -32, -24, -16, -8, 0, 8, 16, 24, 32, 40]
+      .map((offsetX) => [offsetX, offsetY]));
+  const offsets = [...preferredOffsets, ...fallbackOffsets];
   Object.entries(positions).forEach(([key, source]) => {
     const candidate = offsets
       .map(([offsetX, offsetY]) => point(source.x + offsetX, source.y + offsetY))
@@ -185,8 +187,16 @@ export const getSetPieceInitialPositions = ({
   const attackingSlots = attackingTeam === 'rival' ? rivalFormationSlots : caudalFormationSlots;
   const defendingSlots = defendingTeam === 'rival' ? rivalFormationSlots : caudalFormationSlots;
 
-  return separateDensePositions(preventInitialPositionOverlaps({
-    ...assignTeamPositions(attackingTeam, attackingSlots, coordinates.attacking),
-    ...assignTeamPositions(defendingTeam, defendingSlots, coordinates.defending),
-  }));
+  return enforceTacticalPlayerPositionOrientation({
+    playerPositions: separateDensePositions(
+      preventInitialPositionOverlaps(
+        separateDensePositions(preventInitialPositionOverlaps({
+          ...assignTeamPositions(attackingTeam, attackingSlots, coordinates.attacking),
+          ...assignTeamPositions(defendingTeam, defendingSlots, coordinates.defending),
+        }))
+      )
+    ),
+    rivalFormationSlots,
+    caudalFormationSlots,
+  });
 };

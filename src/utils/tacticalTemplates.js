@@ -1,4 +1,8 @@
 import { getFootballRoleFamily } from './rivalTactics.js';
+import {
+  getVisualSlotForTacticalRole,
+  orientFormationSlotsForTacticalBoard,
+} from './tacticalOrientation.js';
 
 const normalizeText = (value) => String(value || '')
   .normalize('NFD')
@@ -16,14 +20,11 @@ const parseSystemLines = (system, outfieldCount) => {
   return outfieldCount === 10 ? [4, 4, 2] : [outfieldCount];
 };
 
-const getRoleSide = (role, x) => {
-  const normalized = normalizeText(role);
-  if (/izquier|_li$|^li_|_ei$|^ei_/.test(normalized)) return 'left';
-  if (/derech|_ld$|^ld_|_ed$|^ed_/.test(normalized)) return 'right';
-  if (Number(x) < 42) return 'left';
-  if (Number(x) > 58) return 'right';
-  return 'center';
-};
+const getRoleSide = (team, role, x) => getVisualSlotForTacticalRole({
+  role,
+  fallbackX: x,
+  attacksToward: team === 'rival' ? 'down' : 'up',
+}).replace('visual_', '');
 
 const getLineName = (lineIndex, lineCount) => {
   if (lineIndex === 0) return 'defensive';
@@ -32,7 +33,8 @@ const getLineName = (lineIndex, lineCount) => {
 };
 
 export const buildSemanticRoleDescriptors = (team, system, formationSlots = []) => {
-  const sortedSlots = [...formationSlots]
+  const orientedSlots = orientFormationSlotsForTacticalBoard({ formationSlots, team });
+  const sortedSlots = [...orientedSlots]
     .map((slot, fallbackSlot) => ({
       ...slot,
       slot: Number.isInteger(Number(slot?.slot)) ? Number(slot.slot) : fallbackSlot,
@@ -63,7 +65,7 @@ export const buildSemanticRoleDescriptors = (team, system, formationSlots = []) 
     lineSlots.forEach((slot) => {
       const role = normalizeText(slot.role || 'Jugador');
       const roleFamily = getFootballRoleFamily(slot.role || '');
-      const side = getRoleSide(slot.role, slot.x);
+      const side = getRoleSide(team, slot.role, slot.x);
       const line = getLineName(lineIndex, lines.length);
       const occurrenceKey = `${role}:${line}:${side}`;
       const ordinal = (occurrenceByKey.get(occurrenceKey) || 0) + 1;
@@ -140,7 +142,7 @@ const areFamiliesCompatible = (source, target) => (
 );
 
 const getMatchTier = (source, target) => {
-  if (source.role === target.role && source.side === target.side) return 1;
+  if (source.role === target.role) return 1;
   if (source.roleFamily === target.roleFamily && source.side === target.side) return 2;
   if (source.line === target.line && areFamiliesCompatible(source.roleFamily, target.roleFamily)) return 3;
   return 4;
