@@ -46,6 +46,11 @@ import {
   resolveDelegatedPlayer,
 } from './utils/delegatedEventIdentity';
 import {
+  DELEGATED_EVENT_STAT_EFFECTS,
+  reconcileDelegatedEvent,
+  saveDelegatedEventWithSync,
+} from './utils/delegatedEventSaveFlow';
+import {
   getPlayerSourceFunctionUserMessage,
   invokePlayerSourceAnalyzer,
 } from './utils/playerSourceFunction';
@@ -1997,19 +2002,7 @@ const normalizeSupabasePostEvent = (event) => ({
   videoSeconds: Number(event.video_seconds || 0),
 });
 
-const EVENT_STAT_EFFECTS = {
-  gol: { team: { goals: 1, shots: 1, shotsOnTarget: 1 }, player: { goals: 1, shots: 1, shotsOnTarget: 1 } },
-  tiro: { team: { shots: 1 }, player: { shots: 1 } },
-  tiro_puerta: { team: { shots: 1, shotsOnTarget: 1 }, player: { shots: 1, shotsOnTarget: 1 } },
-  regate: { team: { dribbles: 1 }, player: { dribbles: 1 } },
-  centro: { team: { crosses: 1 }, player: { crosses: 1 } },
-  perdida: { team: { turnovers: 1 }, player: { turnovers: 1 } },
-  robo: { team: { steals: 1 }, player: { steals: 1 } },
-  recuperacion: { team: { recoveries: 1 }, player: { recoveries: 1 } },
-  falta_realizada: { team: { foulsCommitted: 1 }, player: { foulsCommitted: 1 } },
-  falta_recibida: { team: { foulsReceived: 1 }, player: { foulsReceived: 1 } },
-  corner: { team: { corners: 1 }, player: {} },
-};
+const EVENT_STAT_EFFECTS = DELEGATED_EVENT_STAT_EFFECTS;
 
 const EVENT_STAT_FIELDS = [
   { key: 'goals', label: 'Goles', individualLabel: 'Gol', group: 'Producción ofensiva' },
@@ -4534,6 +4527,7 @@ function App() {
   const [delegatedEventDraft, setDelegatedEventDraft] = useState(null);
   const [delegatedTimeDraft, setDelegatedTimeDraft] = useState(null);
   const [delegatedEventSaving, setDelegatedEventSaving] = useState(false);
+  const delegatedEventSaveInFlightRef = useRef(false);
   const [delegatedEventFeedback, setDelegatedEventFeedback] = useState('');
   const [quickEventStatus, setQuickEventStatus] = useState('');
   const [quickEventSavingIds, setQuickEventSavingIds] = useState([]);
@@ -13816,6 +13810,30 @@ function App() {
     setDelegatedTimerRunning(true);
   };
 
+  const persistDelegatedQuickEvent = async (payload) => {
+    const { data, error: insertError } = await supabase
+      .from("match_quick_events")
+      .insert(payload)
+      .select("*")
+      .single();
+    if (insertError) throw insertError;
+    if (!data?.id) throw new Error('Supabase no devolvió el evento guardado.');
+    return normalizeSupabaseQuickEvent(data, players);
+  };
+
+  const syncPersistedDelegatedEvent = async (matchId, savedEvent, optimisticId = '') => {
+    setMatches((current) => current.map((match) => match.id === matchId
+      ? {
+        ...match,
+        delegatedDataStatus: 'Sin revisar',
+        quickEvents: reconcileDelegatedEvent(match.quickEvents, savedEvent, optimisticId),
+      }
+      : match));
+    await markDelegatedDataDirty(matchId);
+    const refreshed = await refreshStatsFromSupabase(matchId, 'evento de Modo Delegado');
+    if (!refreshed) throw new Error('No se pudo confirmar el evento recargando el partido.');
+  };
+
   const saveDelegatedEvent = async (jugadorIdOverride) => {
     if (!selectedMatch || !delegatedEventDraft) return;
     if (delegatedEventDraft.eventId) {
@@ -13828,51 +13846,17 @@ function App() {
       setDelegatedEventDraft(null);
       return;
     }
-    setDelegatedEventSaving(true);
-    setStatsError('');
-    setDelegatedEventFeedback('');
-    try {
-      const selectedJugadorId = jugadorIdOverride !== undefined ? jugadorIdOverride : delegatedEventDraft.jugadorId;
-      const minute = delegatedEventDraft.eventId
-        ? Math.max(0, Math.min(130, Number(delegatedEventDraft.minute) || 0))
-        : Math.max(Number(delegatedElapsedSeconds || 0) > 0 ? 1 : 0, Math.min(130, Math.ceil(Number(delegatedElapsedSeconds || 0) / 60)));
-      const selectedPlayer = resolveDelegatedPlayer(selectedJugadorId, players).player;
-      const payload = buildDelegatedQuickEventDbPayload({
-        partidoId: selectedMatch.id,
-        playerReference: selectedJugadorId,
-        players,
-        team: delegatedEventDraft.side,
-        eventType: getQuickEventBaseType(delegatedEventDraft.tipoEvento),
-        minute,
-        reviewed: false,
-      });
-      const request = delegatedEventDraft.eventId
-        ? supabase.from("match_quick_events").update(payload).eq("id", delegatedEventDraft.eventId)
-        : supabase.from("match_quick_events").insert(payload);
-      const { error } = await request;
-      if (error) throw error;
-      setDelegatedEventDraft(null);
-      setDelegatedEventFeedback(`${delegatedEventDraft.label} guardado en ${String(minute).padStart(2, '0')}:00${selectedPlayer ? ` · ${selectedPlayer.name}` : delegatedEventDraft.side === 'rival' && delegatedEventDraft.requiresPlayer ? ' · Jugador no identificado' : ''}`);
-      await markDelegatedDataDirty(selectedMatch.id);
-      await refreshStatsFromSupabase(selectedMatch.id, 'evento de Modo Delegado');
-    } catch (error) {
-      console.error('Error guardando evento de Modo Delegado en Supabase:', {
-        matchId: selectedMatch?.id,
-        draft: delegatedEventDraft,
-        error,
-      });
-      setStatsError(error.message || 'No se pudo guardar el evento del Modo Delegado.');
-    } finally {
-      setDelegatedEventSaving(false);
-    }
+    const selectedJugadorId = jugadorIdOverride !== undefined ? jugadorIdOverride : delegatedEventDraft.jugadorId;
+    await saveDelegatedEventDirect(delegatedEventDraft, selectedJugadorId);
   };
 
   const saveDelegatedEventDirect = async (definition, jugadorIdOverride) => {
-    if (!selectedMatch || !definition || delegatedEventSaving) return;
+    if (!selectedMatch || !definition || delegatedEventSaveInFlightRef.current) return;
     if (definition.side === 'caudal' && definition.requiresPlayer && jugadorIdOverride === undefined) {
       openDelegatedEventModal(definition);
       return;
     }
+    delegatedEventSaveInFlightRef.current = true;
     setDelegatedEventSaving(true);
     setStatsError('');
     setDelegatedEventFeedback('');
@@ -13897,21 +13881,59 @@ function App() {
       setMatches((current) => current.map((match) => match.id === selectedMatch.id
         ? { ...match, delegatedDataStatus: 'Sin revisar', quickEvents: [...(match.quickEvents || []), optimisticEvent] }
         : match));
-      const { error } = await supabase.from("match_quick_events").insert(payload);
-      if (error) throw error;
-      await markDelegatedDataDirty(selectedMatch.id);
-      await refreshStatsFromSupabase(selectedMatch.id, 'evento de Modo Delegado');
+      const saveResult = await saveDelegatedEventWithSync({
+        persist: () => persistDelegatedQuickEvent(payload),
+        syncLocal: (savedEvent) => syncPersistedDelegatedEvent(selectedMatch.id, savedEvent, optimisticId),
+        reload: () => loadMatchStatsData(selectedMatch.id),
+      });
+
+      if (saveResult.status === 'insert-error') {
+        console.error('[QUICK_EVENT_INSERT]', { definition, payload, error: saveResult.insertError });
+        setMatches((current) => current.map((match) => match.id === selectedMatch.id
+          ? { ...match, quickEvents: (match.quickEvents || []).filter((event) => event.id !== optimisticId) }
+          : match));
+        const errorDetail = [
+          saveResult.insertError?.code,
+          saveResult.insertError?.message,
+          saveResult.insertError?.details,
+          saveResult.insertError?.hint,
+        ].filter(Boolean).join(' · ');
+        setStatsError(`No se pudo guardar el evento.${errorDetail ? ` ${errorDetail}` : ''}`);
+        return;
+      }
+
+      setMatches((current) => current.map((match) => match.id === selectedMatch.id
+        ? { ...match, quickEvents: reconcileDelegatedEvent(match.quickEvents, saveResult.savedEvent, optimisticId) }
+        : match));
       const registeredPlayer = resolveDelegatedPlayer(jugadorIdOverride, players).player;
       setDelegatedEventDraft(null);
-      setDelegatedEventFeedback(`✓ ${definition.side === 'rival' ? `${definition.label} del rival` : definition.label} registrada · ${registeredPlayer?.name || (definition.side === 'caudal' && definition.requiresPlayer ? 'Sin identificar' : '')} · ${minute}'`);
+      if (saveResult.status === 'saved') {
+        setDelegatedEventFeedback(`✓ ${definition.side === 'rival' ? `${definition.label} del rival` : definition.label} registrada · ${registeredPlayer?.name || (definition.side === 'caudal' && definition.requiresPlayer ? 'Sin identificar' : '')} · ${minute}'`);
+      } else if (saveResult.status === 'saved-reloaded') {
+        console.warn('[QUICK_EVENT_LOCAL_SYNC_RECOVERED]', {
+          eventId: saveResult.savedEvent?.id,
+          localError: saveResult.localError,
+        });
+        setDelegatedEventFeedback('El evento se guardó y se han recargado los datos del partido.');
+      } else {
+        console.error('[QUICK_EVENT_LOCAL_SYNC_FAILED]', {
+          eventId: saveResult.savedEvent?.id,
+          localError: saveResult.localError,
+          reloadError: saveResult.reloadError,
+        });
+        setStatsError('El evento se guardó, pero no se pudo actualizar la pantalla. Vuelve a abrir el partido para recargarlo.');
+      }
       window.setTimeout(() => setDelegatedEventFeedback(''), 2600);
     } catch (error) {
-      console.error('[QUICK_EVENT_SAVE]', error);
-      console.error('Error guardando evento directo de Modo Delegado:', { definition, error });
-      setMatches((current) => current.map((match) => match.id === selectedMatch.id ? { ...match, quickEvents: (match.quickEvents || []).filter((event) => event.id !== optimisticId) } : match));
-      const errorDetail = [error?.code, error?.message, error?.details, error?.hint].filter(Boolean).join(' · ');
-      setStatsError(`No se pudo guardar el evento. Se ha revertido el registro.${errorDetail ? ` ${errorDetail}` : ''}`);
+      console.error('[QUICK_EVENT_VALIDATION]', { definition, jugadorIdOverride, error });
+      if (optimisticId) {
+        setMatches((current) => current.map((match) => match.id === selectedMatch.id
+          ? { ...match, quickEvents: (match.quickEvents || []).filter((event) => event.id !== optimisticId) }
+          : match));
+      }
+      setStatsError(error.message || 'No se pudo registrar el evento.');
     } finally {
+      delegatedEventSaveInFlightRef.current = false;
       setDelegatedEventSaving(false);
     }
   };
@@ -14116,9 +14138,6 @@ function App() {
     setMatches((current) => current.map((match) => (
       match.id === matchId ? { ...match, delegatedDataStatus: status } : match
     )));
-    setSelectedMatch((current) => (
-      current?.id === matchId ? { ...current, delegatedDataStatus: status } : current
-    ));
     setDelegatedStatusSavingId('');
   };
 
@@ -14127,9 +14146,6 @@ function App() {
     setMatches((current) => current.map((match) => (
       match.id === matchId ? { ...match, delegatedDataStatus: 'Sin revisar' } : match
     )));
-    setSelectedMatch((current) => (
-      current?.id === matchId ? { ...current, delegatedDataStatus: 'Sin revisar' } : current
-    ));
     const { error } = await supabase.from("partidos").update({ delegated_data_status: 'Sin revisar' }).eq("id", matchId);
     if (error) console.warn('No se pudo marcar el Registro Delegado como Sin revisar:', error);
   };
