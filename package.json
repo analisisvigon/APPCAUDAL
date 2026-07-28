@@ -17,6 +17,7 @@
     "test:transition-phase": "node src/utils/transitionPhasePositions.test.js",
     "test:set-pieces": "node src/utils/setPiecePositions.test.js",
     "test:set-piece-dimensions": "node src/utils/setPieceElementDimensions.test.js",
+    "test:set-piece-interactions": "node src/utils/setPieceEditorInteractions.test.js",
     "test:tactical-templates": "node src/utils/tacticalTemplates.test.js",
     "test:tactical-orientation": "node src/utils/tacticalOrientation.test.js",
     "test:tactical-play-context": "node src/utils/tacticalPlayContext.test.js",

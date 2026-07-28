@@ -5,6 +5,7 @@ import {
   normalizeSetPieceDimensionValue,
   normalizeSetPieceElementDimensions,
 } from '../../utils/setPieceElementDimensions';
+import { getSetPieceHistoryAction } from '../../utils/setPieceEditorInteractions';
 import SetPieceDiagramCanvas from './SetPieceDiagramCanvas';
 import SetPieceDiagramToolbar from './SetPieceDiagramToolbar';
 
@@ -127,15 +128,11 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
 
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if (!event.ctrlKey) return;
-      const key = event.key.toLowerCase();
-      if (key === 'z' && event.shiftKey) {
-        event.preventDefault();
-        redo();
-      } else if (key === 'z') {
-        event.preventDefault();
-        undo();
-      }
+      const action = getSetPieceHistoryAction(event);
+      if (!action) return;
+      event.preventDefault();
+      if (action === 'redo') redo();
+      else undo();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);

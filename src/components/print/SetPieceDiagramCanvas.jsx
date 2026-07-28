@@ -4,6 +4,7 @@ import {
   normalizeSetPieceDimensionValue,
   normalizeSetPieceElementDimensions,
 } from '../../utils/setPieceElementDimensions';
+import { getSetPieceElementInteraction } from '../../utils/setPieceEditorInteractions';
 
 const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, value));
 const snapValue = (value, enabled) => (enabled ? Math.round(value / 4) * 4 : value);
@@ -141,9 +142,11 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
   };
 
   const startDrag = (event, element, mode = 'move') => {
-    if (readOnly || element.locked) return;
+    const interaction = getSetPieceElementInteraction({ readOnly, locked: element.locked });
+    if (!interaction.selectable) return;
     event.stopPropagation();
     onSelect(element.id);
+    if (!interaction.draggable) return;
     const point = getPoint(event, svgRef.current);
     setDrag({ element, mode, start: point, origin: { ...element } });
   };
