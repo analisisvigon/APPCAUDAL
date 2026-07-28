@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getPlayerDisplayName } from '../../utils/playerDisplayName';
+import {
+  getSetPieceDimensionRange,
+  normalizeSetPieceDimensionValue,
+  normalizeSetPieceElementDimensions,
+} from '../../utils/setPieceElementDimensions';
 import SetPieceDiagramCanvas from './SetPieceDiagramCanvas';
 import SetPieceDiagramToolbar from './SetPieceDiagramToolbar';
 
@@ -43,7 +48,6 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
   const [history, setHistory] = useState([cloneElements(drawableElements)]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [snapEnabled, setSnapEnabled] = useState(true);
-  const [movementMode, setMovementMode] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [favoriteConsignas, setFavoriteConsignas] = useState(() => {
     if (typeof window === 'undefined') return ['Atacar primer palo', 'Vigilancia', 'Segunda jugada'];
@@ -161,8 +165,9 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
       copy.x = Math.min(100, (copy.x || 0) + 4);
       copy.y = Math.min(72, (copy.y || 0) + 4);
     }
-    updateElements([...drawableElements, copy]);
-    setSelectedId(copy.id);
+    const normalizedCopy = normalizeSetPieceElementDimensions(copy);
+    updateElements([...drawableElements, normalizedCopy]);
+    setSelectedId(normalizedCopy.id);
   };
 
   const addMovementSequence = () => {
@@ -175,6 +180,9 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
     ];
     updateElements([...drawableElements, ...sequence]);
   };
+
+  const selectedWidthRange = selectedElement ? getSetPieceDimensionRange(selectedElement, 'width') : null;
+  const selectedHeightRange = selectedElement ? getSetPieceDimensionRange(selectedElement, 'height') : null;
 
   return (
     <div className="space-y-3">
@@ -243,15 +251,6 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
                   Más acciones
                 </summary>
                 <div className="absolute right-0 top-[calc(100%+0.4rem)] z-30 grid w-56 gap-1.5 rounded-2xl border border-white/10 bg-[#0b1629] p-2 shadow-2xl">
-                  <button
-                    type="button"
-                    aria-pressed={movementMode}
-                    title="Modo para construir secuencias simples de movimiento"
-                    onClick={() => setMovementMode((value) => !value)}
-                    className={`rounded-xl px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 ${movementMode ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-white hover:bg-white/15'}`}
-                  >
-                    Modo movimiento
-                  </button>
                   <button
                     type="button"
                     onClick={addMovementSequence}
@@ -435,16 +434,50 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
                   </select>
                 </label>
               ) : null}
-              {['zone', 'block', 'text_box'].includes(selectedElement.type) ? (
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="space-y-2">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Ancho</span>
-                    <input type="number" value={selectedElement.width || 18} onChange={(event) => updateSelected({ width: Number(event.target.value) })} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70" />
-                  </label>
-                  <label className="space-y-2">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Alto</span>
-                    <input type="number" value={selectedElement.height || 10} onChange={(event) => updateSelected({ height: Number(event.target.value) })} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70" />
-                  </label>
+              {selectedWidthRange || selectedHeightRange ? (
+                <div className={`grid gap-3 ${selectedWidthRange && selectedHeightRange ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                  {selectedWidthRange ? (
+                    <label className="space-y-2">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Ancho</span>
+                      <input
+                        type="number"
+                        min={selectedWidthRange.min}
+                        max={selectedWidthRange.max}
+                        step="1"
+                        value={selectedElement.width ?? selectedWidthRange.defaultValue}
+                        onChange={(event) => updateSelected({
+                          width: normalizeSetPieceDimensionValue(
+                            selectedElement,
+                            'width',
+                            event.target.value,
+                            selectedElement.width
+                          ),
+                        })}
+                        className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70"
+                      />
+                    </label>
+                  ) : null}
+                  {selectedHeightRange ? (
+                    <label className="space-y-2">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Alto</span>
+                      <input
+                        type="number"
+                        min={selectedHeightRange.min}
+                        max={selectedHeightRange.max}
+                        step="1"
+                        value={selectedElement.height ?? selectedHeightRange.defaultValue}
+                        onChange={(event) => updateSelected({
+                          height: normalizeSetPieceDimensionValue(
+                            selectedElement,
+                            'height',
+                            event.target.value,
+                            selectedElement.height
+                          ),
+                        })}
+                        className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70"
+                      />
+                    </label>
+                  ) : null}
                 </div>
               ) : null}
               <button
@@ -465,10 +498,11 @@ export default function SetPieceDiagramEditor({ diagram, players = [], onChange 
                 </button>
                 <button
                   type="button"
+                  aria-label="Eliminar elemento"
                   onClick={deleteSelected}
-                  className="rounded-2xl bg-red-500/15 px-3 py-3 text-xs font-bold text-red-100 transition hover:bg-red-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/70"
+                  className="min-h-11 rounded-2xl bg-red-500/15 px-3 py-3 text-xs font-bold text-red-100 transition hover:bg-red-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/70"
                 >
-                  Eliminar
+                  Eliminar elemento
                 </button>
               </div>
             </section>

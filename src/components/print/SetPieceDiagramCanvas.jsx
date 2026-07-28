@@ -1,5 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
 import { getPlayerDisplayName } from '../../utils/playerDisplayName';
+import {
+  normalizeSetPieceDimensionValue,
+  normalizeSetPieceElementDimensions,
+} from '../../utils/setPieceElementDimensions';
 
 const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, value));
 const snapValue = (value, enabled) => (enabled ? Math.round(value / 4) * 4 : value);
@@ -94,13 +98,30 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
       return;
     }
     if (drag.mode === 'resize' && drag.element.type === 'block') {
-      updateElement(drag.element.id, { width: snapValue(clamp((drag.origin.width || 8) + dx, 5, 16), snap) });
+      updateElement(drag.element.id, {
+        width: normalizeSetPieceDimensionValue(
+          drag.origin,
+          'width',
+          snapValue((drag.origin.width || 8) + dx, snap),
+          drag.origin.width
+        ),
+      });
       return;
     }
     if (drag.mode === 'resize') {
       updateElement(drag.element.id, {
-        width: snapValue(clamp((drag.origin.width || 18) + dx, 4, 90), snap),
-        height: snapValue(clamp((drag.origin.height || 10) + dy, 4, 60), snap),
+        width: normalizeSetPieceDimensionValue(
+          drag.origin,
+          'width',
+          snapValue((drag.origin.width || 18) + dx, snap),
+          drag.origin.width
+        ),
+        height: normalizeSetPieceDimensionValue(
+          drag.origin,
+          'height',
+          snapValue((drag.origin.height || 10) + dy, snap),
+          drag.origin.height
+        ),
       });
       return;
     }
@@ -153,6 +174,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
 
       {elements.map((element) => {
         const selected = selectedId === element.id;
+        const renderedElement = normalizeSetPieceElementDimensions(element);
         if (isArrow(element)) {
           const dashed = element.type === 'dashed_arrow' || element.dashed;
           const curved = element.type === 'curved_arrow';
@@ -173,7 +195,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           );
         }
         if (element.type === 'block') {
-          const radius = Math.max(1.9, Math.min(5.2, (element.width || 7) / 2));
+          const radius = Math.max(1.9, Math.min(5.2, (renderedElement.width || 7) / 2));
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
               <circle cx={element.x} cy={element.y} r={radius} fill="white" stroke="currentColor" strokeWidth={selected ? 1.3 : 1} />
@@ -185,8 +207,8 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           );
         }
         if (isResizableBox(element)) {
-          const width = element.width || (element.type === 'text_box' ? 30 : 18);
-          const height = element.height || (element.type === 'text_box' ? 18 : 10);
+          const width = renderedElement.width || (element.type === 'text_box' ? 30 : 18);
+          const height = renderedElement.height || (element.type === 'text_box' ? 18 : 10);
           const lines = splitLines(element.label || (element.type === 'block' ? 'BLOQUEO' : ''))
             .map((line) => (readOnly ? compactDiagramLabel(line, element.type === 'text_box' ? 24 : 18) : line));
           return (
