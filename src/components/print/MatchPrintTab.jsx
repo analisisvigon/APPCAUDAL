@@ -88,6 +88,79 @@ const buildDossierPagesFromPreset = (presetKey = 'matchday') => {
   return ordered.map((page) => ({ ...page, active: preset.pages.includes(page.id) }));
 };
 
+function SetPieceActionsMenu({ label, children }) {
+  return (
+    <details className="group relative">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center rounded-2xl bg-white/10 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 [&::-webkit-details-marker]:hidden">
+        {label}
+      </summary>
+      <div className="absolute right-0 top-[calc(100%+0.5rem)] z-40 grid w-60 gap-1.5 rounded-2xl border border-white/10 bg-[#0b1629] p-2 shadow-2xl">
+        {children}
+      </div>
+    </details>
+  );
+}
+
+function SetPieceEditorHeader({
+  title,
+  description,
+  saving,
+  hasDiagrams,
+  onAdd,
+  onSave,
+  onDuplicate,
+  onDuplicateFromMatch,
+  onDelete,
+  onMirrorHorizontal,
+  onMirrorVertical,
+  onSaveToLibrary,
+  onLoadFromLibrary,
+}) {
+  const menuActionClass = 'rounded-xl bg-white/10 px-3 py-2.5 text-left text-xs font-bold text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 disabled:cursor-not-allowed disabled:opacity-40';
+
+  return (
+    <div className="rounded-2xl border border-white/5 bg-black/15 p-3">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">{title}</h4>
+          <p className="mt-1 max-w-3xl text-sm leading-5 text-slate-400">{description}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onAdd}
+            disabled={saving}
+            className="min-h-11 rounded-2xl bg-white px-4 py-2.5 text-xs font-black text-slate-950 transition hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Añadir jugada
+          </button>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving || !hasDiagrams}
+            className="min-h-11 rounded-2xl bg-caudal-electric px-4 py-2.5 text-xs font-black text-slate-950 transition hover:bg-[#7aacff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {saving ? 'Guardando...' : 'Guardar jugada'}
+          </button>
+          <SetPieceActionsMenu label="Gestionar">
+            <button type="button" onClick={onDuplicate} disabled={saving || !hasDiagrams} className={menuActionClass}>Duplicar jugada actual</button>
+            <button type="button" onClick={onDuplicateFromMatch} className={menuActionClass}>Copiar desde otro partido</button>
+            <button type="button" onClick={onDelete} disabled={saving || !hasDiagrams} className="rounded-xl bg-red-500/15 px-3 py-2.5 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/70 disabled:cursor-not-allowed disabled:opacity-40">Eliminar jugada</button>
+          </SetPieceActionsMenu>
+          <SetPieceActionsMenu label="Biblioteca">
+            <button type="button" onClick={onSaveToLibrary} disabled={saving || !hasDiagrams} className={menuActionClass}>Guardar en biblioteca</button>
+            <button type="button" onClick={onLoadFromLibrary} className={menuActionClass}>Cargar desde biblioteca</button>
+          </SetPieceActionsMenu>
+          <SetPieceActionsMenu label="Transformar">
+            <button type="button" onClick={onMirrorHorizontal} disabled={saving || !hasDiagrams} className={menuActionClass}>Espejo horizontal</button>
+            <button type="button" onClick={onMirrorVertical} disabled={saving || !hasDiagrams} className={menuActionClass}>Espejo vertical</button>
+          </SetPieceActionsMenu>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const createDefaultDiagram = (type, order, definitions) => {
   const definition = definitions.find((item) => item.id === type);
   return {
@@ -214,6 +287,12 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
   useEffect(() => {
     setCaptainPlayerId(match?.captainPlayerId || '');
   }, [match?.captainPlayerId, match?.id]);
+
+  useEffect(() => {
+    if (!diagramStatus) return undefined;
+    const timeoutId = window.setTimeout(() => setDiagramStatus(''), 3600);
+    return () => window.clearTimeout(timeoutId);
+  }, [diagramStatus]);
 
   useEffect(() => {
     const loadSetPieceTakers = async () => {
@@ -1385,107 +1464,55 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
       ) : null}
 
       {printView === 'abp_ofensiva' ? (
-        <div data-print-workspace="true" className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Editor visual ABP ofensiva</h4>
-              <p className="mt-2 text-sm text-slate-400">Diseña la jugada con círculos, balón, flechas, líneas discontinuas y zonas. Se imprimen 2 jugadas por hoja.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => addDiagram('offensive')}
-                disabled={diagramSaving}
-                className="rounded-2xl bg-white px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Añadir jugada
-              </button>
-              <button
-                type="button"
-                onClick={() => duplicateCurrentDiagram('offensive')}
-                disabled={diagramSaving || !getTypeDiagrams('offensive').length}
-                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Duplicar jugada
-              </button>
-              <button
-                type="button"
-                onClick={() => mirrorCurrentDiagram('offensive', 'horizontal')}
-                disabled={diagramSaving || !getTypeDiagrams('offensive').length}
-                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Espejo H
-              </button>
-              <button
-                type="button"
-                onClick={() => mirrorCurrentDiagram('offensive', 'vertical')}
-                disabled={diagramSaving || !getTypeDiagrams('offensive').length}
-                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Espejo V
-              </button>
-              <button
-                type="button"
-                onClick={() => deleteCurrentDiagram('offensive')}
-                disabled={diagramSaving || !getTypeDiagrams('offensive').length}
-                className="rounded-2xl bg-red-500/15 px-5 py-3 text-sm font-bold text-red-100 transition hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Eliminar jugada
-              </button>
-              <button
-                type="button"
-                onClick={() => saveCurrentDiagramToLibrary('offensive')}
-                disabled={diagramSaving || !getTypeDiagrams('offensive').length}
-                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Guardar en biblioteca
-              </button>
-              <button
-                type="button"
-                onClick={() => openLibraryModal('offensive')}
-                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15"
-              >
-                Cargar desde biblioteca
-              </button>
-              <button
-                type="button"
-                onClick={() => saveCurrentDiagram('offensive')}
-                disabled={diagramSaving || !getTypeDiagrams('offensive').length}
-                className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {diagramSaving ? 'Guardando...' : 'Guardar jugada'}
-              </button>
-            </div>
-          </div>
+        <div data-print-workspace="true" className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-3 shadow-glow sm:p-6">
+          <SetPieceEditorHeader
+            title="Editor visual ABP ofensiva"
+            description="Diseña la jugada con círculos, balón, flechas, líneas discontinuas y zonas. Se imprimen 2 jugadas por hoja."
+            saving={diagramSaving}
+            hasDiagrams={Boolean(getTypeDiagrams('offensive').length)}
+            onAdd={() => addDiagram('offensive')}
+            onSave={() => saveCurrentDiagram('offensive')}
+            onDuplicate={() => duplicateCurrentDiagram('offensive')}
+            onDuplicateFromMatch={() => openDuplicateModal('offensive')}
+            onDelete={() => deleteCurrentDiagram('offensive')}
+            onMirrorHorizontal={() => mirrorCurrentDiagram('offensive', 'horizontal')}
+            onMirrorVertical={() => mirrorCurrentDiagram('offensive', 'vertical')}
+            onSaveToLibrary={() => saveCurrentDiagramToLibrary('offensive')}
+            onLoadFromLibrary={() => openLibraryModal('offensive')}
+          />
           {diagramLoading ? <p className="mt-4 text-sm text-slate-400">Cargando diagramas desde Supabase...</p> : null}
           {diagramError ? <p className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-100">{diagramError}</p> : null}
-          {diagramStatus ? <p className="mt-4 rounded-2xl bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">{diagramStatus}</p> : null}
-          <div className="mt-4">
-            <button type="button" onClick={() => openDuplicateModal('offensive')} className="rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15">
-              Duplicar ABP OFENSIVA
-            </button>
-          </div>
-          <div className="mt-5 flex flex-wrap gap-2">
-            {offensiveSetPieceTypes.map((type) => (
-              <button
-                key={type.id}
-                type="button"
-                onClick={() => setOffensiveType(type.id)}
-                className={`rounded-2xl px-4 py-2 text-xs font-black uppercase tracking-[0.12em] ${offensiveType === type.id ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}
-              >
-                {type.label}
-              </button>
-            ))}
-            {getDiagramOrders('offensive').map((order) => (
-              <button
-                key={`off-${order}`}
-                type="button"
-                onClick={() => setOffensiveDiagramOrder(order)}
-                className={`rounded-2xl px-4 py-2 text-xs font-black uppercase tracking-[0.12em] ${offensiveDiagramOrder === order ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}
-              >
-                Jugada {order}
-              </button>
-            ))}
+          <div className="mt-4 grid gap-3 rounded-2xl border border-white/5 bg-white/[0.025] p-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+            <div>
+              <p className="mb-2 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Tipo de ABP</p>
+              <div className="flex flex-wrap gap-2">
+                {offensiveSetPieceTypes.map((type) => (
+                  <button
+                    key={type.id}
+                    type="button"
+                    onClick={() => setOffensiveType(type.id)}
+                    className={`min-h-9 rounded-xl px-3 py-2 text-[11px] font-black uppercase tracking-[0.1em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 ${offensiveType === type.id ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}
+                  >
+                    {type.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Jugadas</p>
+              <div className="flex flex-wrap gap-2">
+                {getDiagramOrders('offensive').map((order) => (
+                  <button
+                    key={`off-${order}`}
+                    type="button"
+                    onClick={() => setOffensiveDiagramOrder(order)}
+                    className={`min-h-9 rounded-xl px-3 py-2 text-[11px] font-black uppercase tracking-[0.1em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 ${offensiveDiagramOrder === order ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}
+                  >
+                    Jugada {order}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           {!getTypeDiagrams('offensive').length ? (
             <p className="mt-4 rounded-2xl bg-white/5 px-4 py-3 text-sm text-slate-400">Sin jugadas para este tipo. Pulsa Añadir jugada para empezar.</p>
@@ -1503,128 +1530,81 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
       ) : null}
 
       {printView === 'abp_defensiva' ? (
-        <div data-print-workspace="true" className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Editor visual ABP defensiva</h4>
-              <p className="mt-2 text-sm text-slate-400">Diferencia equipo propio y rival, añade zonas, flechas y trayectorias. Se imprimen 2 jugadas por hoja.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => addDiagram('defensive')}
-                disabled={diagramSaving}
-                className="rounded-2xl bg-white px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Añadir jugada
-              </button>
-              <button
-                type="button"
-                onClick={() => duplicateCurrentDiagram('defensive')}
-                disabled={diagramSaving || !getTypeDiagrams('defensive').length}
-                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Duplicar jugada
-              </button>
-              <button
-                type="button"
-                onClick={() => mirrorCurrentDiagram('defensive', 'horizontal')}
-                disabled={diagramSaving || !getTypeDiagrams('defensive').length}
-                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Espejo H
-              </button>
-              <button
-                type="button"
-                onClick={() => mirrorCurrentDiagram('defensive', 'vertical')}
-                disabled={diagramSaving || !getTypeDiagrams('defensive').length}
-                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Espejo V
-              </button>
-              <button
-                type="button"
-                onClick={() => deleteCurrentDiagram('defensive')}
-                disabled={diagramSaving || !getTypeDiagrams('defensive').length}
-                className="rounded-2xl bg-red-500/15 px-5 py-3 text-sm font-bold text-red-100 transition hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Eliminar jugada
-              </button>
-              <button
-                type="button"
-                onClick={() => saveCurrentDiagramToLibrary('defensive')}
-                disabled={diagramSaving || !getTypeDiagrams('defensive').length}
-                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Guardar en biblioteca
-              </button>
-              <button
-                type="button"
-                onClick={() => openLibraryModal('defensive')}
-                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15"
-              >
-                Cargar desde biblioteca
-              </button>
-              <button
-                type="button"
-                onClick={() => saveCurrentDiagram('defensive')}
-                disabled={diagramSaving || !getTypeDiagrams('defensive').length}
-                className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {diagramSaving ? 'Guardando...' : 'Guardar jugada'}
-              </button>
-            </div>
-          </div>
+        <div data-print-workspace="true" className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-3 shadow-glow sm:p-6">
+          <SetPieceEditorHeader
+            title="Editor visual ABP defensiva"
+            description="Diferencia equipo propio y rival, añade zonas, flechas y trayectorias. Se imprimen 2 jugadas por hoja."
+            saving={diagramSaving}
+            hasDiagrams={Boolean(getTypeDiagrams('defensive').length)}
+            onAdd={() => addDiagram('defensive')}
+            onSave={() => saveCurrentDiagram('defensive')}
+            onDuplicate={() => duplicateCurrentDiagram('defensive')}
+            onDuplicateFromMatch={() => openDuplicateModal('defensive')}
+            onDelete={() => deleteCurrentDiagram('defensive')}
+            onMirrorHorizontal={() => mirrorCurrentDiagram('defensive', 'horizontal')}
+            onMirrorVertical={() => mirrorCurrentDiagram('defensive', 'vertical')}
+            onSaveToLibrary={() => saveCurrentDiagramToLibrary('defensive')}
+            onLoadFromLibrary={() => openLibraryModal('defensive')}
+          />
           {diagramLoading ? <p className="mt-4 text-sm text-slate-400">Cargando diagramas desde Supabase...</p> : null}
           {diagramError ? <p className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-100">{diagramError}</p> : null}
-          {diagramStatus ? <p className="mt-4 rounded-2xl bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">{diagramStatus}</p> : null}
-          <div className="mt-4">
-            <button type="button" onClick={() => openDuplicateModal('defensive')} className="rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15">
-              Duplicar ABP DEFENSIVA
-            </button>
+          <div className="mt-4 grid gap-3 rounded-2xl border border-white/5 bg-white/[0.025] p-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+            <div>
+              <p className="mb-2 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Tipo de ABP</p>
+              <div className="flex flex-wrap gap-2">
+                {defensiveSetPieceTypes.map((type) => (
+                  <button
+                    key={type.id}
+                    type="button"
+                    onClick={() => setDefensiveType(type.id)}
+                    className={`min-h-9 rounded-xl px-3 py-2 text-[11px] font-black uppercase tracking-[0.1em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 ${defensiveType === type.id ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}
+                  >
+                    {type.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Jugadas</p>
+              <div className="flex flex-wrap gap-2">
+                {getDiagramOrders('defensive').map((order) => (
+                  <button
+                    key={`def-${order}`}
+                    type="button"
+                    onClick={() => setDefensiveDiagramOrder(order)}
+                    className={`min-h-9 rounded-xl px-3 py-2 text-[11px] font-black uppercase tracking-[0.1em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 ${defensiveDiagramOrder === order ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}
+                  >
+                    Jugada {order}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {[
-              ['marca_individual', 'Marca individual'],
-              ['posibles_rematadores', 'Posibles rematadores'],
-              ['rechace', 'Rechace'],
-              ['rechace_corto', 'Rechace y corto'],
-              ['marca_rechace', 'Marca y rechace'],
-              ['zona_defensiva', 'Zona defensiva'],
-            ].map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => addDefensiveQuickElement(id)}
-                disabled={!getTypeDiagrams('defensive').length}
-                className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="mt-5 flex flex-wrap gap-2">
-            {defensiveSetPieceTypes.map((type) => (
-              <button
-                key={type.id}
-                type="button"
-                onClick={() => setDefensiveType(type.id)}
-                className={`rounded-2xl px-4 py-2 text-xs font-black uppercase tracking-[0.12em] ${defensiveType === type.id ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}
-              >
-                {type.label}
-              </button>
-            ))}
-            {getDiagramOrders('defensive').map((order) => (
-              <button
-                key={`def-${order}`}
-                type="button"
-                onClick={() => setDefensiveDiagramOrder(order)}
-                className={`rounded-2xl px-4 py-2 text-xs font-black uppercase tracking-[0.12em] ${defensiveDiagramOrder === order ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}
-              >
-                Jugada {order}
-              </button>
-            ))}
-          </div>
+          <details className="mt-3 rounded-2xl border border-white/5 bg-white/[0.025]">
+            <summary className="cursor-pointer list-none px-4 py-3 text-xs font-bold text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 [&::-webkit-details-marker]:hidden">
+              Añadir organización defensiva
+            </summary>
+            <div className="flex flex-wrap gap-2 border-t border-white/5 p-3">
+              {[
+                ['marca_individual', 'Marca individual'],
+                ['posibles_rematadores', 'Posibles rematadores'],
+                ['rechace', 'Rechace'],
+                ['rechace_corto', 'Rechace y corto'],
+                ['marca_rechace', 'Marca y rechace'],
+                ['zona_defensiva', 'Zona defensiva'],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => addDefensiveQuickElement(id)}
+                  disabled={!getTypeDiagrams('defensive').length}
+                  className="min-h-9 rounded-xl bg-white/10 px-3 py-2 text-[11px] font-black uppercase tracking-[0.1em] text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </details>
           {!getTypeDiagrams('defensive').length ? (
             <p className="mt-4 rounded-2xl bg-white/5 px-4 py-3 text-sm text-slate-400">Sin jugadas para este tipo. Pulsa Añadir jugada para empezar.</p>
           ) : null}
@@ -1759,6 +1739,12 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
               />
             )];
           })}
+        </div>
+      ) : null}
+
+      {diagramStatus ? (
+        <div className="print-hidden fixed bottom-5 right-5 z-[90] max-w-sm rounded-2xl border border-emerald-300/20 bg-[#10241f] px-4 py-3 text-sm font-semibold text-emerald-100 shadow-2xl" role="status" aria-live="polite">
+          {diagramStatus}
         </div>
       ) : null}
 
