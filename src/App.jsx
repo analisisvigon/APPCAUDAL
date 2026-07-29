@@ -3329,6 +3329,78 @@ const PerformanceStatusRing = ({
   );
 };
 
+const PerformanceMetricPortrait = ({
+  player = {},
+  label = 'RPE',
+  value = null,
+  max = 10,
+  color = '#fcd34d',
+  status = 'sin_datos',
+  categorical = false,
+}) => {
+  const radius = 84;
+  const circumference = 2 * Math.PI * radius;
+  const normalizedValue = Number.isFinite(value) && max > 0
+    ? Math.min(max, Math.max(0, value))
+    : null;
+  const progress = normalizedValue === null ? 0 : normalizedValue / max;
+  const statusStroke = {
+    prioridad: '#fb7185',
+    vigilar: '#fbbf24',
+    sin_alertas: '#34d399',
+    sin_datos: '#64748b',
+  }[status] || '#64748b';
+
+  return (
+    <div className="relative mx-auto h-56 w-56" aria-label={`${label}: ${value === null ? 'sin información' : value}`}>
+      <div className="absolute inset-6 rounded-full blur-2xl" style={{ backgroundColor: `${categorical ? statusStroke : color}18` }} />
+      <svg viewBox="0 0 200 200" className="absolute inset-0 h-full w-full -rotate-90 overflow-visible" aria-hidden="true">
+        <circle cx="100" cy="100" r={radius} fill="none" stroke="rgba(148,163,184,0.13)" strokeWidth="10" />
+        {categorical ? (
+          <circle
+            cx="100"
+            cy="100"
+            r={radius}
+            fill="none"
+            stroke={statusStroke}
+            strokeWidth={status === 'prioridad' ? 13 : 10}
+            strokeDasharray={status === 'sin_datos' ? '10 12' : status === 'vigilar' ? '88 18' : undefined}
+            strokeLinecap="round"
+          />
+        ) : normalizedValue !== null ? (
+          <circle
+            cx="100"
+            cy="100"
+            r={radius}
+            fill="none"
+            stroke={color}
+            strokeWidth="12"
+            strokeDasharray={circumference}
+            strokeDashoffset={circumference * (1 - progress)}
+            strokeLinecap="round"
+            className="transition-all duration-700 ease-out"
+          />
+        ) : (
+          <circle cx="100" cy="100" r={radius} fill="none" stroke="#64748b" strokeWidth="8" strokeDasharray="8 12" strokeLinecap="round" />
+        )}
+      </svg>
+      <div className="absolute inset-[30px] overflow-hidden rounded-full border-4 border-[#07111f] bg-white shadow-[0_18px_45px_rgba(0,0,0,0.38)]">
+        <PlayerPortrait
+          player={player}
+          className="h-full w-full"
+          imgClassName="h-full w-full object-cover object-center"
+          fallbackTextClassName="text-3xl"
+        />
+      </div>
+      <span
+        className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded-full border border-white/10 bg-[#07111f]/95 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white shadow-lg"
+      >
+        {label}
+      </span>
+    </div>
+  );
+};
+
 const PerformanceWeeklyChart = ({ days = [], selectedDate = '' }) => {
   const width = 700;
   const height = 248;
@@ -4855,6 +4927,8 @@ function App() {
   const [performancePlayerSearch, setPerformancePlayerSearch] = useState('');
   const [performanceStatusFilter, setPerformanceStatusFilter] = useState('todos');
   const [performanceSelectedPlayerId, setPerformanceSelectedPlayerId] = useState('');
+  const [performanceIndividualMetric, setPerformanceIndividualMetric] = useState('rpe');
+  const [performanceHistoryExpanded, setPerformanceHistoryExpanded] = useState(false);
   const [performanceMenuRect, setPerformanceMenuRect] = useState(null);
   const [rpeSyncPending, setRpeSyncPending] = useState([]);
   const [pendingRpeSessionById, setPendingRpeSessionById] = useState({});
@@ -6229,6 +6303,21 @@ function App() {
     if (activeTab !== 'Rendimiento') return;
     loadPerformanceData();
   }, [activeTab, performanceWeekStart]);
+
+  useEffect(() => {
+    if (!performanceSelectedPlayerId || typeof document === 'undefined') return undefined;
+    setPerformanceHistoryExpanded(false);
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setPerformanceSelectedPlayerId('');
+    };
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [performanceSelectedPlayerId]);
 
   useEffect(() => {
     if (!isMatchPanelOpen || editingMatchId || matchStadiumManuallyEdited || !matchFormState.isHome || matchFormState.stadium || !ownClubStadium) return;
@@ -23256,6 +23345,36 @@ function App() {
         ))}
       </span>
     );
+    const renderIndividualTrend = ({ label, trend, lowerIsBetter }) => {
+      if (!trend) {
+        return (
+          <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5">
+            <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+            <p className="mt-1 text-sm font-black text-slate-500">Sin tendencia</p>
+          </div>
+        );
+      }
+      const up = trend.direction === 'sube';
+      const stable = trend.direction === 'estable';
+      const favorable = stable || (lowerIsBetter ? !up : up);
+      return (
+        <div className={`rounded-xl border px-3 py-2.5 ${
+          stable
+            ? 'border-white/[0.06] bg-white/[0.025]'
+            : favorable
+              ? 'border-emerald-300/15 bg-emerald-300/[0.055]'
+              : 'border-amber-300/15 bg-amber-300/[0.055]'
+        }`}>
+          <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+          <p className={`mt-1 flex items-center gap-1.5 text-sm font-black ${
+            stable ? 'text-slate-300' : favorable ? 'text-emerald-200' : 'text-amber-100'
+          }`}>
+            <span className="text-base">{stable ? '→' : up ? '⬆' : '⬇'}</span>
+            {stable ? 'Estable' : `${trend.delta > 0 ? '+' : '−'}${Math.abs(trend.delta).toFixed(1)}`}
+          </p>
+        </div>
+      );
+    };
     const statusOptions = [
       ['todos', 'Todos'],
       ['prioridad', 'Prioridad'],
@@ -23306,6 +23425,154 @@ function App() {
       .filter(Boolean)
       .sort((left, right) => statusPresentation[left.status].rank - statusPresentation[right.status].rank);
     const selectedPlayerRow = dashboard.rows.find((row) => row.player.id === performanceSelectedPlayerId) || null;
+    const selectedPlayerWellnessHistory = selectedPlayerRow
+      ? [...previousWellnessEntries, ...wellnessEntries]
+        .filter((entry) => entry.jugador_id === selectedPlayerRow.player.id)
+        .sort((left, right) => String(left.entry_date).localeCompare(String(right.entry_date)))
+      : [];
+    const selectedPlayerRpeHistory = selectedPlayerRow
+      ? [...previousRpeEntries, ...rpeEntries]
+        .filter((entry) => entry.jugador_id === selectedPlayerRow.player.id)
+        .sort((left, right) => String(left.entry_date).localeCompare(String(right.entry_date)))
+      : [];
+    const latestSelectedWellness = selectedPlayerWellnessHistory[selectedPlayerWellnessHistory.length - 1] || null;
+    const latestSelectedRpe = selectedPlayerRpeHistory[selectedPlayerRpeHistory.length - 1] || null;
+    const previousSelectedRpe = selectedPlayerRpeHistory[selectedPlayerRpeHistory.length - 2] || null;
+    const selectedPlayerCurrentWellness = wellnessEntries.filter((entry) => entry.jugador_id === selectedPlayerRow?.player.id);
+    const averageField = (entries, field, transform = (value) => value) => {
+      const values = entries
+        .map((entry) => transform(getPerformanceNumber(entry[field])))
+        .filter((value) => value !== null && Number.isFinite(value));
+      return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+    };
+    const getFieldTrend = (entries, field) => {
+      const values = entries
+        .map((entry) => getPerformanceNumber(entry[field]))
+        .filter((value) => value !== null);
+      return getPerformanceTrend(values);
+    };
+    const selectedMetricOptions = [
+      {
+        key: 'rpe',
+        label: 'RPE',
+        value: getPerformanceNumber(latestSelectedRpe?.rpe),
+        average: selectedPlayerRow?.avgRpe ?? null,
+        color: '#fcd34d',
+        entry: latestSelectedRpe,
+      },
+      {
+        key: 'wellness',
+        label: 'Wellness',
+        value: getWellnessScore(latestSelectedWellness),
+        average: selectedPlayerRow?.avgWellness ?? null,
+        color: '#7dd3fc',
+        entry: latestSelectedWellness,
+      },
+      {
+        key: 'sleep',
+        label: 'Sueño',
+        value: getPerformanceNumber(latestSelectedWellness?.sleep_quality),
+        average: averageField(selectedPlayerCurrentWellness, 'sleep_quality'),
+        color: '#a5b4fc',
+        entry: latestSelectedWellness,
+      },
+      {
+        key: 'fatigue',
+        label: 'Fatiga',
+        value: getPerformanceNumber(latestSelectedWellness?.fatigue),
+        average: averageField(selectedPlayerCurrentWellness, 'fatigue'),
+        color: '#fb923c',
+        entry: latestSelectedWellness,
+      },
+      {
+        key: 'soreness',
+        label: 'Dolor muscular',
+        value: getPerformanceNumber(latestSelectedWellness?.muscle_soreness),
+        average: averageField(selectedPlayerCurrentWellness, 'muscle_soreness'),
+        color: '#fb7185',
+        entry: latestSelectedWellness,
+      },
+      {
+        key: 'stress',
+        label: 'Estrés',
+        value: getPerformanceNumber(latestSelectedWellness?.stress),
+        average: averageField(selectedPlayerCurrentWellness, 'stress'),
+        color: '#f0abfc',
+        entry: latestSelectedWellness,
+      },
+      {
+        key: 'mood',
+        label: 'Ánimo',
+        value: getPerformanceNumber(latestSelectedWellness?.mood),
+        average: averageField(selectedPlayerCurrentWellness, 'mood'),
+        color: '#6ee7b7',
+        entry: latestSelectedWellness,
+      },
+      {
+        key: 'general',
+        label: 'Estado general',
+        value: null,
+        average: null,
+        color: '#5ce1e6',
+        entry: [latestSelectedWellness, latestSelectedRpe]
+          .filter(Boolean)
+          .sort((left, right) => String(left.updated_at || left.entry_date).localeCompare(String(right.updated_at || right.entry_date)))
+          .pop() || null,
+        categorical: true,
+      },
+    ];
+    const selectedMetric = selectedMetricOptions.find((metric) => metric.key === performanceIndividualMetric) || selectedMetricOptions[0];
+    const formatRecordTimestamp = (entry) => {
+      if (!entry) return 'Sin actualización';
+      const timestamp = entry.submitted_at || entry.updated_at || entry.created_at;
+      if (!timestamp) return formatLongDate(entry.entry_date);
+      const date = new Date(timestamp);
+      if (Number.isNaN(date.getTime())) return formatLongDate(entry.entry_date);
+      const today = new Date();
+      const sameDay = date.getFullYear() === today.getFullYear() &&
+        date.getMonth() === today.getMonth() &&
+        date.getDate() === today.getDate();
+      const time = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' }).format(date);
+      return sameDay
+        ? `Hoy ${time}`
+        : `${new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: '2-digit' }).format(date)} · ${time}`;
+    };
+    const selectedWellnessIndicators = [
+      { key: 'sleep_quality', label: 'Sueño', icon: '☾', value: getPerformanceNumber(latestSelectedWellness?.sleep_quality), color: '#a5b4fc', suffix: '/10' },
+      { key: 'fatigue', label: 'Fatiga', icon: '◆', value: getPerformanceNumber(latestSelectedWellness?.fatigue), color: '#fb923c', suffix: '/10' },
+      { key: 'muscle_soreness', label: 'Dolor muscular', icon: '◒', value: getPerformanceNumber(latestSelectedWellness?.muscle_soreness), color: '#fb7185', suffix: '/10' },
+      { key: 'stress', label: 'Estrés', icon: '≈', value: getPerformanceNumber(latestSelectedWellness?.stress), color: '#f0abfc', suffix: '/10' },
+      { key: 'mood', label: 'Ánimo', icon: '✦', value: getPerformanceNumber(latestSelectedWellness?.mood), color: '#6ee7b7', suffix: '/10' },
+      { key: 'weight', label: 'Peso', icon: '⚖', value: getPerformanceNumber(latestSelectedWellness?.weight), color: '#94a3b8', suffix: ' kg', numericOnly: true },
+    ];
+    const selectedHistoryByDate = [...selectedPlayerWellnessHistory, ...selectedPlayerRpeHistory].reduce((history, entry) => {
+      if (!entry.entry_date) return history;
+      const current = history[entry.entry_date] || { entryDate: entry.entry_date, wellness: null, rpe: null };
+      if (Object.prototype.hasOwnProperty.call(entry, 'health_ratio') || Object.prototype.hasOwnProperty.call(entry, 'sleep_quality')) {
+        current.wellness = entry;
+      }
+      if (Object.prototype.hasOwnProperty.call(entry, 'rpe')) current.rpe = entry;
+      history[entry.entry_date] = current;
+      return history;
+    }, {});
+    const selectedHistoryRows = Object.values(selectedHistoryByDate)
+      .sort((left, right) => right.entryDate.localeCompare(left.entryDate));
+    const formatHistoryDate = (entryDate) => {
+      const activity = getPerformanceActivity(entryDate, 'registro');
+      if (activity.days === 0) return 'Hoy';
+      if (activity.days === 1) return 'Hace 1 día';
+      if (activity.days !== null && activity.days <= 7) return `Hace ${activity.days} días`;
+      return formatLongDate(entryDate);
+    };
+    const selectedIndividualTrends = [
+      { label: 'Wellness', trend: selectedPlayerRow?.wellnessTrend, lowerIsBetter: false },
+      { label: 'Fatiga', trend: getFieldTrend(selectedPlayerCurrentWellness, 'fatigue'), lowerIsBetter: true },
+      { label: 'Ánimo', trend: getFieldTrend(selectedPlayerCurrentWellness, 'mood'), lowerIsBetter: false },
+      { label: 'Estrés', trend: getFieldTrend(selectedPlayerCurrentWellness, 'stress'), lowerIsBetter: true },
+    ];
+    const selectedGlobalProfile = selectedPlayerRow?.player.globalPlayerId
+      ? globalPlayers.find((profile) => String(profile.id) === String(selectedPlayerRow.player.globalPlayerId))
+      : null;
     const playerMapClipboardText = [
       'form_name\tjugador_id\tname',
       ...players.map((player) => `${player.google_forms_name || player.shirt_name || player.name}\t${player.id}\t${player.name}`),
@@ -23842,52 +24109,307 @@ function App() {
           ) : null}
         </section>
 
-        {selectedPlayerRow ? (
-          <section className="rounded-[1.75rem] border border-caudal-electric/15 bg-gradient-to-br from-caudal-electric/[0.07] to-[#091428] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-6">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-              <PerformanceStatusRing
-                player={selectedPlayerRow.player}
-                status={selectedPlayerRow.status}
-                tooltip={selectedPlayerRow.tooltip}
-                signals={selectedPlayerRow.signals}
-                size="lg"
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="truncate text-xl font-black text-white">{displayPlayerName(selectedPlayerRow.player)}</h3>
-                  <span className={`rounded-full border px-2.5 py-1 text-[9px] font-black uppercase ${statusPresentation[selectedPlayerRow.status].badge}`}>
-                    {selectedPlayerRow.statusLabel}
-                  </span>
+        {selectedPlayerRow && typeof document !== 'undefined' ? createPortal(
+          <div
+            className="fixed inset-0 z-[9998] flex justify-end bg-[#020712]/75 backdrop-blur-sm"
+            onMouseDown={() => setPerformanceSelectedPlayerId('')}
+          >
+            <aside
+              className="h-full w-full max-w-[1120px] overflow-y-auto border-l border-white/10 bg-[#07111f] shadow-[-30px_0_90px_rgba(0,0,0,0.48)]"
+              onMouseDown={(event) => event.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Análisis individual de ${displayPlayerName(selectedPlayerRow.player)}`}
+            >
+              <div className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b border-white/[0.07] bg-[#07111f]/95 px-4 py-3 backdrop-blur-xl sm:px-6">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.22em] text-caudal-electric">Rendimiento · Análisis individual</p>
+                  <p className="mt-0.5 text-sm font-black text-white">{displayPlayerName(selectedPlayerRow.player)}</p>
                 </div>
-                <p className="mt-2 text-sm text-slate-300">{selectedPlayerRow.reasons.join(' · ')}</p>
-                <div className="mt-3">{renderActivityBadges(selectedPlayerRow)}</div>
-                <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold text-slate-400">
-                  <span className="rounded-xl bg-black/15 px-3 py-2">Wellness {selectedPlayerRow.latestWellnessScore === null ? '—' : selectedPlayerRow.latestWellnessScore.toFixed(1)}</span>
-                  <span className="rounded-xl bg-black/15 px-3 py-2">RPE {selectedPlayerRow.latestRpe === null ? '—' : selectedPlayerRow.latestRpe.toFixed(1)}</span>
-                  <span className="rounded-xl bg-black/15 px-3 py-2">Última respuesta {formatShortDate(selectedPlayerRow.lastResponseDate)}</span>
-                </div>
-              </div>
-              <div className="flex shrink-0 flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedPlayerProfileId(selectedPlayerRow.player.id);
-                    setActiveTab('Plantilla');
-                  }}
-                  className="rounded-xl bg-caudal-electric px-4 py-2.5 text-xs font-black text-slate-950"
-                >
-                  Abrir ficha
-                </button>
                 <button
                   type="button"
                   onClick={() => setPerformanceSelectedPlayerId('')}
-                  className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs font-black text-slate-300"
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-lg font-black text-slate-300 transition hover:bg-white/10 hover:text-white"
+                  aria-label="Cerrar análisis individual"
                 >
-                  Cerrar
+                  ×
                 </button>
               </div>
-            </div>
-          </section>
+
+              <div className="grid gap-5 p-4 sm:p-6 xl:grid-cols-[330px_minmax(0,1fr)]">
+                <div className="space-y-4 xl:sticky xl:top-[82px] xl:self-start">
+                  <section className="overflow-hidden rounded-[1.75rem] border border-white/[0.08] bg-gradient-to-b from-white/[0.055] to-white/[0.018] p-5 text-center">
+                    <label className="mx-auto block max-w-52 text-left">
+                      <span className="mb-1.5 block text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Mostrar aro</span>
+                      <select
+                        value={performanceIndividualMetric}
+                        onChange={(event) => setPerformanceIndividualMetric(event.target.value)}
+                        className="w-full rounded-xl border border-white/10 bg-[#0b182b] px-3 py-2.5 text-sm font-black text-white outline-none transition focus:border-caudal-electric/45"
+                      >
+                        {selectedMetricOptions.map((metric) => <option key={metric.key} value={metric.key}>{metric.label}</option>)}
+                      </select>
+                    </label>
+
+                    <div className="mt-4">
+                      <PerformanceMetricPortrait
+                        player={selectedPlayerRow.player}
+                        label={selectedMetric.label}
+                        value={selectedMetric.value}
+                        color={selectedMetric.color}
+                        status={selectedPlayerRow.status}
+                        categorical={selectedMetric.categorical}
+                      />
+                    </div>
+
+                    <h2 className="mt-2 text-2xl font-black tracking-tight text-white">{displayPlayerName(selectedPlayerRow.player)}</h2>
+                    <p className="mt-1 text-xs font-bold text-slate-500">
+                      {[getPlayerPositionLabel(selectedPlayerRow.player), selectedPlayerRow.player.number ? `Dorsal ${selectedPlayerRow.player.number}` : ''].filter(Boolean).join(' · ') || 'Jugador de la plantilla'}
+                    </p>
+                    <span className={`mt-3 inline-flex rounded-full border px-3 py-1 text-[9px] font-black uppercase ${statusPresentation[selectedPlayerRow.status].badge}`}>
+                      {selectedPlayerRow.statusLabel}
+                    </span>
+
+                    <div className="mt-5 grid grid-cols-2 gap-2 text-left">
+                      <div className="rounded-xl border border-white/[0.06] bg-black/15 p-3">
+                        <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">Valor actual</p>
+                        <p className="mt-1 text-xl font-black text-white">
+                          {selectedMetric.categorical
+                            ? selectedPlayerRow.statusLabel
+                            : selectedMetric.value === null
+                              ? '—'
+                              : `${selectedMetric.value.toFixed(1)}/10`}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-white/[0.06] bg-black/15 p-3">
+                        <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">Media semanal</p>
+                        <p className="mt-1 text-xl font-black text-white">
+                          {selectedMetric.categorical
+                            ? 'Reglas PF'
+                            : selectedMetric.average === null
+                              ? '—'
+                              : selectedMetric.average.toFixed(1)}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-[10px] font-bold text-slate-500">
+                      Última actualización · {formatRecordTimestamp(selectedMetric.entry)}
+                    </p>
+                  </section>
+
+                  <section className={`rounded-2xl border p-4 ${statusPresentation[selectedPlayerRow.status].badge}`}>
+                    <p className="text-[9px] font-black uppercase tracking-[0.16em] opacity-70">Estado físico</p>
+                    <p className="mt-1 text-lg font-black">{selectedPlayerRow.statusLabel}</p>
+                    <p className="mt-2 text-xs font-bold leading-5 opacity-85">
+                      {selectedPlayerRow.reasons.join(' · ')}
+                    </p>
+                  </section>
+
+                  <section className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
+                    <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Actividad de formularios</p>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      {[
+                        ['Wellness', selectedPlayerRow.activity.wellness],
+                        ['RPE', selectedPlayerRow.activity.rpe],
+                      ].map(([label, activity]) => (
+                        <div key={label} className={`rounded-xl border p-3 ${activityBadgeClass[activity.level]}`}>
+                          <p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-70">{label}</p>
+                          <p className="mt-1 text-sm font-black">{activity.fullLabel.replace(`${label}: `, '')}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <div className="grid gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPerformanceHistoryExpanded(true);
+                        setTimeout(() => document.getElementById('performance-individual-history')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+                      }}
+                      className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs font-black text-white transition hover:bg-white/10"
+                    >
+                      Ver historial completo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPerformanceSelectedPlayerId('');
+                        setSelectedPlayerProfileId(selectedPlayerRow.player.id);
+                        setActiveTab('Plantilla');
+                      }}
+                      className="rounded-xl bg-caudal-electric px-4 py-2.5 text-xs font-black text-slate-950 transition hover:brightness-105"
+                    >
+                      Abrir ficha del jugador
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!selectedGlobalProfile}
+                      onClick={() => {
+                        if (!selectedGlobalProfile) return;
+                        setPerformanceSelectedPlayerId('');
+                        setActiveTab('Perfiles');
+                        openRivalPlayerModal(selectedGlobalProfile, { standalone: true });
+                      }}
+                      title={selectedGlobalProfile ? 'Abrir perfil global' : 'Este jugador no tiene un perfil global vinculado'}
+                      className="rounded-xl border border-white/10 bg-white/[0.025] px-4 py-2.5 text-xs font-black text-slate-300 transition hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-35"
+                    >
+                      Ir al perfil
+                    </button>
+                  </div>
+                </div>
+
+                <div className="min-w-0 space-y-4">
+                  <section className="rounded-[1.75rem] border border-white/[0.07] bg-white/[0.025] p-4 sm:p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[9px] font-black uppercase tracking-[0.18em] text-sky-300">Wellness</p>
+                        <h3 className="mt-1 text-lg font-black text-white">Indicadores de la última respuesta</h3>
+                      </div>
+                      <p className="text-xs font-bold text-slate-500">{formatRecordTimestamp(latestSelectedWellness)}</p>
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      {selectedWellnessIndicators.map((indicator) => (
+                        <div key={indicator.key} className="rounded-2xl border border-white/[0.06] bg-black/10 p-3.5">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="flex items-center gap-2 text-xs font-black text-white">
+                              <span style={{ color: indicator.color }} className="text-base" aria-hidden="true">{indicator.icon}</span>
+                              {indicator.label}
+                            </p>
+                            <p className="text-sm font-black text-white">
+                              {indicator.value === null ? '—' : `${indicator.value.toFixed(1)}${indicator.suffix}`}
+                            </p>
+                          </div>
+                          {indicator.numericOnly ? (
+                            <p className="mt-3 text-[10px] text-slate-500">Valor registrado, sin escala artificial.</p>
+                          ) : (
+                            <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.07]">
+                              <div
+                                className="h-full rounded-full transition-all duration-700"
+                                style={{
+                                  width: `${indicator.value === null ? 0 : Math.max(0, Math.min(100, indicator.value * 10))}%`,
+                                  backgroundColor: indicator.color,
+                                }}
+                              />
+                            </div>
+                          )}
+                          {indicator.key === 'sleep_quality' && getPerformanceNumber(latestSelectedWellness?.sleep_hours) !== null ? (
+                            <p className="mt-2 text-[10px] font-bold text-slate-500">{getPerformanceNumber(latestSelectedWellness.sleep_hours).toFixed(1)} horas registradas</p>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="rounded-[1.75rem] border border-amber-300/10 bg-amber-300/[0.035] p-4 sm:p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[9px] font-black uppercase tracking-[0.18em] text-amber-200">RPE</p>
+                        <p className="mt-1 text-4xl font-black text-white">{getPerformanceNumber(latestSelectedRpe?.rpe)?.toFixed(1) || '—'}</p>
+                        <p className="mt-1 text-xs font-bold text-slate-500">Escala de percepción 1–10</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Respecto al registro anterior</p>
+                        {getPerformanceNumber(latestSelectedRpe?.rpe) !== null && getPerformanceNumber(previousSelectedRpe?.rpe) !== null ? (
+                          <p className={`mt-1 text-lg font-black ${
+                            getPerformanceNumber(latestSelectedRpe.rpe) - getPerformanceNumber(previousSelectedRpe.rpe) > 0
+                              ? 'text-amber-100'
+                              : 'text-sky-200'
+                          }`}>
+                            {getPerformanceNumber(latestSelectedRpe.rpe) - getPerformanceNumber(previousSelectedRpe.rpe) > 0 ? '⬆ +' : '⬇ '}
+                            {(getPerformanceNumber(latestSelectedRpe.rpe) - getPerformanceNumber(previousSelectedRpe.rpe)).toFixed(1)}
+                          </p>
+                        ) : <p className="mt-1 text-sm font-bold text-slate-500">Sin comparación</p>}
+                      </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-10 gap-1.5">
+                      {Array.from({ length: 10 }, (_, index) => (
+                        <span
+                          key={index}
+                          className={`h-2.5 rounded-full ${
+                            getPerformanceNumber(latestSelectedRpe?.rpe) !== null && index < Math.round(getPerformanceNumber(latestSelectedRpe.rpe))
+                              ? 'bg-amber-300'
+                              : 'bg-white/[0.07]'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <div className="mt-4 rounded-xl border border-white/[0.06] bg-black/10 p-3">
+                      <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Comentario RPE</p>
+                      <p className="mt-1.5 text-sm leading-6 text-slate-200">{String(latestSelectedRpe?.comment || '').trim() || 'Sin comentario registrado.'}</p>
+                    </div>
+                  </section>
+
+                  <section className="rounded-[1.75rem] border border-white/[0.07] bg-white/[0.025] p-4 sm:p-5">
+                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Comentarios y molestias</p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                      {[
+                        ['Comentario Wellness', latestSelectedWellness?.comment],
+                        ['Comentario RPE', latestSelectedRpe?.comment],
+                        ['Molestias', latestSelectedWellness?.discomfort],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded-xl border border-white/[0.06] bg-black/10 p-3">
+                          <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+                          <p className="mt-2 text-xs leading-5 text-slate-300">{String(value || '').trim() || 'Sin información.'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="rounded-[1.75rem] border border-white/[0.07] bg-white/[0.025] p-4 sm:p-5">
+                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-caudal-electric">Tendencia semanal</p>
+                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {selectedIndividualTrends.map(renderIndividualTrend)}
+                    </div>
+                  </section>
+
+                  <section id="performance-individual-history" className="scroll-mt-20 rounded-[1.75rem] border border-white/[0.07] bg-white/[0.025] p-4 sm:p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[9px] font-black uppercase tracking-[0.18em] text-caudal-electric">Historial</p>
+                        <h3 className="mt-1 text-lg font-black text-white">Últimos registros</h3>
+                        <p className="mt-0.5 text-[10px] text-slate-500">Semana seleccionada y semana anterior</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPerformanceHistoryExpanded((current) => !current)}
+                        className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 transition hover:text-white"
+                      >
+                        {performanceHistoryExpanded ? 'Ver menos' : 'Ver todo'}
+                      </button>
+                    </div>
+                    {selectedHistoryRows.length ? (
+                      <div className="relative mt-4 space-y-2 before:absolute before:bottom-4 before:left-[7px] before:top-4 before:w-px before:bg-white/10">
+                        {selectedHistoryRows.slice(0, performanceHistoryExpanded ? selectedHistoryRows.length : 5).map((history) => (
+                          <div key={history.entryDate} className="relative grid grid-cols-[16px_minmax(0,1fr)] gap-3">
+                            <span className="relative z-10 mt-4 h-3.5 w-3.5 rounded-full border-2 border-[#07111f] bg-caudal-electric" />
+                            <div className="rounded-xl border border-white/[0.06] bg-black/10 px-3 py-2.5">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-xs font-black text-white">{formatHistoryDate(history.entryDate)}</p>
+                                <p className="text-[9px] font-bold text-slate-600">{formatShortDate(history.entryDate)}</p>
+                              </div>
+                              <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-bold">
+                                <span className={history.wellness ? 'text-sky-200' : 'text-slate-600'}>
+                                  {history.wellness ? `Wellness ${getWellnessScore(history.wellness)?.toFixed(1) || '—'}` : 'Sin respuesta Wellness'}
+                                </span>
+                                <span className={history.rpe ? 'text-amber-100' : 'text-slate-600'}>
+                                  {history.rpe ? `RPE ${getPerformanceNumber(history.rpe.rpe)?.toFixed(1) || '—'}` : 'Sin respuesta RPE'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-4 rounded-xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">
+                        Sin registros en las dos semanas cargadas.
+                      </div>
+                    )}
+                  </section>
+                </div>
+              </div>
+            </aside>
+          </div>,
+          document.body
         ) : null}
 
         <section className="rounded-[1.75rem] border border-white/[0.07] bg-[#091428] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-6">
