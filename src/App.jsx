@@ -4647,6 +4647,7 @@ function App() {
     today.setDate(today.getDate() - day + 1);
     return today.toISOString().slice(0, 10);
   });
+  // Fase 1: estado y mutaciones legacy conservados sin carga ni exposición en la UI.
   const [trainingSessions, setTrainingSessions] = useState([]);
   const [wellnessEntries, setWellnessEntries] = useState([]);
   const [rpeEntries, setRpeEntries] = useState([]);
@@ -7070,13 +7071,7 @@ function App() {
     const weekEnd = addDays(performanceWeekStart, 6);
 
     try {
-      const [sessionsResponse, wellnessResponse, rpeResponse, pendingRpeResponse, statsResponse] = await Promise.all([
-        supabase
-          .from('training_sessions')
-          .select('*')
-          .gte('session_date', performanceWeekStart)
-          .lte('session_date', weekEnd)
-          .order('session_date', { ascending: true }),
+      const [wellnessResponse, rpeResponse, statsResponse] = await Promise.all([
         supabase
           .from('wellness_entries')
           .select('*')
@@ -7090,26 +7085,18 @@ function App() {
           .lte('entry_date', weekEnd)
           .order('entry_date', { ascending: true }),
         supabase
-          .from('rpe_sync_pending')
-          .select('*')
-          .gte('entry_date', performanceWeekStart)
-          .lte('entry_date', weekEnd)
-          .order('entry_date', { ascending: true }),
-        supabase
           .from('partido_estadisticas_jugador')
           .select('player_name,minutes')
       ]);
 
-      const failed = [sessionsResponse, wellnessResponse, rpeResponse, pendingRpeResponse, statsResponse].find((response) => response.error);
+      const failed = [wellnessResponse, rpeResponse, statsResponse].find((response) => response.error);
       if (failed) {
         console.error('Error cargando Rendimiento desde Supabase:', failed.error);
         throw failed.error;
       }
 
-      setTrainingSessions(sessionsResponse.data || []);
       setWellnessEntries(wellnessResponse.data || []);
       setRpeEntries(rpeResponse.data || []);
-      setRpeSyncPending(pendingRpeResponse.data || []);
       setPerformanceMatchStats(statsResponse.data || []);
     } catch (loadError) {
       console.error('Error cargando Rendimiento:', loadError);
@@ -7119,6 +7106,7 @@ function App() {
     }
   };
 
+  // Compatibilidad legacy de Fase 1. Estos handlers ya no tienen controles visibles.
   const saveTrainingSession = async (event) => {
     event.preventDefault();
     setPerformanceStatus('');
@@ -7251,11 +7239,11 @@ function App() {
 
   const getPerformancePlayerRows = () => players.map((player) => {
     const wellness = wellnessEntries.filter((entry) => entry.jugador_id === player.id);
-    const rpes = rpeEntries.filter((entry) => entry.jugador_id === player.id);
+    const rpes = rpeEntries
+      .filter((entry) => entry.jugador_id === player.id)
+      .sort((left, right) => String(left.entry_date).localeCompare(String(right.entry_date)));
     const latestWellness = [...wellness].sort((a, b) => String(b.entry_date).localeCompare(String(a.entry_date)))[0];
     const wellnessScores = wellness.map(getWellnessScore).filter((score) => score !== null);
-    const totalLoad = rpes.reduce((sum, entry) => sum + normalizePerformanceNumber(entry.load ?? normalizePerformanceNumber(entry.duration_minutes) * normalizePerformanceNumber(entry.rpe)), 0);
-    const totalMinutes = rpes.reduce((sum, entry) => sum + normalizePerformanceNumber(entry.duration_minutes), 0);
     const avgRpe = rpes.length ? rpes.reduce((sum, entry) => sum + normalizePerformanceNumber(entry.rpe), 0) / rpes.length : 0;
     const repeatedHighRpe = rpes.filter((entry) => normalizePerformanceNumber(entry.rpe) >= 8).length >= 2;
     const hasDiscomfort = Boolean([latestWellness?.discomfort, latestWellness?.comment, ...rpes.map((entry) => entry.comment)].join(' ').match(/molest|dolor|carga|tocado|fatiga/i));
@@ -7280,9 +7268,8 @@ function App() {
       wellness,
       latestWellness,
       wellnessScore: wellnessScores.length ? wellnessScores.reduce((sum, score) => sum + score, 0) / wellnessScores.length : null,
-      totalLoad,
-      totalMinutes,
       avgRpe,
+      rpeEvolution: rpes,
       status,
       matchMinutes,
       repeatedHighRpe,
@@ -7292,27 +7279,46 @@ function App() {
 
   const getPerformanceDashboard = () => {
     const rows = getPerformancePlayerRows();
-    const totalLoad = rows.reduce((sum, row) => sum + row.totalLoad, 0);
-    const totalVolume = rows.reduce((sum, row) => sum + row.totalMinutes, 0);
     const rpeValues = rpeEntries.map((entry) => normalizePerformanceNumber(entry.rpe)).filter(Boolean);
     const wellnessScores = rows.map((row) => row.wellnessScore).filter((score) => score !== null);
-    const dailyLoad = trainingSessions.map((session) => {
-      const load = rpeEntries
-        .filter((entry) => entry.session_id === session.id)
-        .reduce((sum, entry) => sum + normalizePerformanceNumber(entry.load ?? normalizePerformanceNumber(entry.duration_minutes) * normalizePerformanceNumber(entry.rpe)), 0);
-      return { session, load };
-    });
-    const peak = [...dailyLoad].sort((a, b) => b.load - a.load)[0];
+    const dailyRpeByDate = rpeEntries.reduce((groups, entry) => {
+      const entryDate = entry.entry_date || '';
+      if (!entryDate) return groups;
+      const current = groups[entryDate] || { entryDate, entries: [] };
+      current.entries.push(entry);
+      groups[entryDate] = current;
+      return groups;
+    }, {});
+    const dailyRpe = Object.values(dailyRpeByDate)
+      .map((day) => {
+        const values = day.entries.map((entry) => normalizePerformanceNumber(entry.rpe)).filter(Boolean);
+        const highEntries = day.entries.filter((entry) => normalizePerformanceNumber(entry.rpe) >= 8);
+        return {
+          ...day,
+          responseCount: day.entries.length,
+          avgRpe: values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0,
+          maxRpe: values.length ? Math.max(...values) : 0,
+          highEntries,
+          comments: day.entries
+            .filter((entry) => String(entry.comment || '').trim())
+            .map((entry) => ({
+              jugadorId: entry.jugador_id,
+              comment: String(entry.comment).trim(),
+            })),
+        };
+      })
+      .sort((left, right) => left.entryDate.localeCompare(right.entryDate));
+    const peak = [...dailyRpe].sort((left, right) => right.avgRpe - left.avgRpe)[0];
     const riskRows = rows.filter((row) => row.status !== 'verde');
     return {
       rows,
-      totalLoad,
-      totalVolume,
+      responseCount: rpeEntries.length,
       avgRpe: rpeValues.length ? rpeValues.reduce((sum, value) => sum + value, 0) / rpeValues.length : 0,
+      maxRpe: rpeValues.length ? Math.max(...rpeValues) : 0,
+      highRpeCount: rpeValues.filter((value) => value >= 8).length,
       avgWellness: wellnessScores.length ? wellnessScores.reduce((sum, value) => sum + value, 0) / wellnessScores.length : null,
-      dailyLoad,
+      dailyRpe,
       peak,
-      topLoad: [...rows].sort((a, b) => b.totalLoad - a.totalLoad).slice(0, 5),
       topFatigue: [...rows].sort((a, b) => normalizePerformanceNumber(b.latestWellness?.fatigue) - normalizePerformanceNumber(a.latestWellness?.fatigue)).slice(0, 5),
       riskRows,
     };
@@ -7320,15 +7326,17 @@ function App() {
 
   const getPerformanceReport = () => {
     const dashboard = getPerformanceDashboard();
-    const intensity = dashboard.totalLoad > 6000 ? 'alta' : dashboard.totalLoad > 3000 ? 'media-alta' : 'controlada';
-    const peakText = dashboard.peak?.load ? ` Pico de carga en ${dashboard.peak.session.md_label || dashboard.peak.session.session_date}.` : '';
+    const intensity = dashboard.avgRpe >= 8 ? 'alta' : dashboard.avgRpe >= 6 ? 'media-alta' : 'controlada';
+    const peakText = dashboard.peak?.avgRpe
+      ? ` Pico de RPE medio ${dashboard.peak.avgRpe.toFixed(1)}/10 el ${dashboard.peak.entryDate}.`
+      : '';
     const riskText = dashboard.riskRows.length
       ? ` ${dashboard.riskRows.slice(0, 4).map((row) => displayPlayerName(row.player)).join(', ')} presentan indicadores a vigilar.`
       : ' Sin alertas relevantes en el semáforo PF.';
     const wellnessText = dashboard.avgWellness
       ? ` Wellness grupal medio ${dashboard.avgWellness.toFixed(1)}/10.`
       : ' Sin wellness suficiente para valorar tendencia grupal.';
-    return `Microciclo con carga ${intensity}.${peakText}${riskText}${wellnessText}`;
+    return `Microciclo con percepción de esfuerzo ${intensity}.${peakText}${riskText}${wellnessText}`;
   };
 
   useEffect(() => {
@@ -18699,13 +18707,12 @@ function App() {
     const recentMatches = [...matches]
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
       .slice(0, 5);
-    const highLoadThreshold = Math.max(900, ...performancePlayerRows.map((row) => row.totalLoad).sort((a, b) => b - a).slice(0, 3), 0);
     return new Map(players.map((player) => {
       const recentStats = recentMatches.map((match) => match.statsPlayerData?.[player.name]).filter(Boolean);
       const performanceRow = performanceRowByPlayerId.get(player.id);
       const injured = recentStats.some((stats) => stats.injured);
       const suspended = recentStats.some((stats) => stats.red);
-      const highLoad = Boolean(performanceRow?.totalLoad >= highLoadThreshold && performanceRow?.totalLoad > 0);
+      const highLoad = Boolean(performanceRow?.repeatedHighRpe);
       const touched = Boolean(performanceRow?.hasDiscomfort || performanceRow?.status === 'amarillo');
       return [player.id, {
         captain: matches.some((match) => match.captainPlayerId === player.id),
@@ -22310,7 +22317,6 @@ function App() {
       amarillo: 'border-amber-300/20 bg-amber-300/10 text-amber-100',
       rojo: 'border-red-300/25 bg-red-500/10 text-red-100',
     };
-    const mdOptions = ['MD+1', 'MD-4', 'MD-3', 'MD-2', 'MD-1', 'MD'];
     const playerMapRows = players.map((player) => ({
       form_name: player.name,
       jugador_id: player.id,
@@ -22338,7 +22344,7 @@ function App() {
             <div>
               <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Rendimiento</p>
               <h2 className="mt-2 text-3xl font-semibold text-white">Control PF del microciclo</h2>
-              <p className="mt-2 text-sm text-slate-400">Wellness, RPE, carga interna y alertas simples sincronizadas con Supabase.</p>
+              <p className="mt-2 text-sm text-slate-400">Wellness, RPE diario y alertas simples sincronizadas con Supabase.</p>
             </div>
             <label className="space-y-2 text-sm text-slate-300">
               <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Inicio semana</span>
@@ -22354,10 +22360,10 @@ function App() {
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {[
-            ['Carga semanal', Math.round(dashboard.totalLoad), 'UA'],
+            ['Respuestas RPE', dashboard.responseCount, ''],
             ['RPE medio', dashboard.avgRpe ? dashboard.avgRpe.toFixed(1) : '-', '/10'],
-            ['Wellness medio', dashboard.avgWellness ? dashboard.avgWellness.toFixed(1) : '-', '/10'],
-            ['Volumen total', Math.round(dashboard.totalVolume), 'min'],
+            ['RPE máximo', dashboard.maxRpe || '-', '/10'],
+            ['RPE altos', dashboard.highRpeCount, '≥ 8'],
           ].map(([label, value, suffix]) => (
             <div key={label} className="rounded-3xl border border-white/5 bg-[#091428]/80 p-5 shadow-glow">
               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{label}</p>
@@ -22366,36 +22372,36 @@ function App() {
           ))}
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-          <form onSubmit={saveTrainingSession} className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Crear sesión</h3>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <input type="date" value={performanceSessionDraft.sessionDate} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, sessionDate: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
-              <select value={performanceSessionDraft.mdLabel} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, mdLabel: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
-                {mdOptions.map((option) => <option key={option} value={option}>{option}</option>)}
-              </select>
-              <input value={performanceSessionDraft.title} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Título sesión" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
-              <input type="number" min="0" value={performanceSessionDraft.plannedDuration} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, plannedDuration: event.target.value }))} placeholder="Duración planificada" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
-            </div>
-            <textarea value={performanceSessionDraft.notes} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Notas de la sesión" className="mt-4 min-h-[90px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
-            <button type="submit" className="mt-4 w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950">Guardar sesión</button>
-          </form>
-
-          <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Resumen por día</h3>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {mdOptions.map((md) => {
-                const sessions = trainingSessions.filter((session) => session.md_label === md);
-                const load = sessions.reduce((sum, session) => sum + dashboard.dailyLoad.filter((item) => item.session.id === session.id).reduce((acc, item) => acc + item.load, 0), 0);
-                return (
-                  <div key={md} className="rounded-2xl bg-white/5 p-4">
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">{md}</p>
-                    <p className="mt-2 text-2xl font-black text-white">{Math.round(load)}</p>
-                    <p className="mt-1 text-xs text-slate-500">{sessions.length} sesiones</p>
+        <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
+          <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">RPE por fecha</h3>
+          <div className="mt-5 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+            {dashboard.dailyRpe.map((day) => (
+              <div key={day.entryDate} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">{day.entryDate}</p>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                  <div><p className="text-xl font-black text-white">{day.responseCount}</p><p className="text-[10px] uppercase text-slate-500">Respuestas</p></div>
+                  <div><p className="text-xl font-black text-white">{day.avgRpe ? day.avgRpe.toFixed(1) : '-'}</p><p className="text-[10px] uppercase text-slate-500">Media</p></div>
+                  <div><p className="text-xl font-black text-white">{day.maxRpe || '-'}</p><p className="text-[10px] uppercase text-slate-500">Máximo</p></div>
+                </div>
+                <p className="mt-3 text-xs text-slate-400">
+                  RPE alto: {day.highEntries.length
+                    ? day.highEntries.map((entry) => getPerformancePlayerName(entry.jugador_id)).join(', ')
+                    : 'ninguno'}
+                </p>
+                {day.comments.length ? (
+                  <div className="mt-3 space-y-1 border-t border-white/10 pt-3 text-xs text-slate-300">
+                    {day.comments.map((entry, index) => (
+                      <p key={`${day.entryDate}-${entry.jugadorId}-${index}`}>
+                        <span className="font-bold text-white">{getPerformancePlayerName(entry.jugadorId)}:</span> {entry.comment}
+                      </p>
+                    ))}
                   </div>
-                );
-              })}
-            </div>
+                ) : null}
+              </div>
+            ))}
+            {!dashboard.dailyRpe.length ? (
+              <p className="text-sm text-slate-400">No hay respuestas RPE en esta semana.</p>
+            ) : null}
           </div>
         </div>
 
@@ -22429,7 +22435,7 @@ function App() {
           </div>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div>
           <form onSubmit={saveWellnessEntry} className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
             <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Wellness diario</h3>
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -22456,84 +22462,40 @@ function App() {
             <textarea value={wellnessDraft.comment} onChange={(event) => setWellnessDraft((current) => ({ ...current, comment: event.target.value }))} placeholder="Comentario libre" className="mt-4 min-h-[80px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
             <button type="submit" className="mt-4 w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950">Guardar wellness</button>
           </form>
-
-          <form onSubmit={saveRpeEntry} className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">RPE post-entrenamiento</h3>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <select value={rpeDraft.jugadorId} onChange={(event) => setRpeDraft((current) => ({ ...current, jugadorId: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
-                <option value="">Jugador</option>
-                {players.map((player) => <option key={player.id} value={player.id}>{displayPlayerName(player)}</option>)}
-              </select>
-              <select value={rpeDraft.sessionId} onChange={(event) => setRpeDraft((current) => ({ ...current, sessionId: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
-                <option value="">Sesión</option>
-                {trainingSessions.map((session) => <option key={session.id} value={session.id}>{session.md_label || session.session_date} · {session.title || session.session_type}</option>)}
-              </select>
-              <input type="number" min="0" value={rpeDraft.durationMinutes} onChange={(event) => setRpeDraft((current) => ({ ...current, durationMinutes: event.target.value }))} placeholder="Duración minutos" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
-              <input type="number" min="1" max="10" value={rpeDraft.rpe} onChange={(event) => setRpeDraft((current) => ({ ...current, rpe: event.target.value }))} placeholder="RPE 1-10" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
-            </div>
-            <p className="mt-3 rounded-2xl bg-white/5 px-4 py-3 text-sm text-slate-300">Carga automática: <span className="font-black text-white">{normalizePerformanceNumber(rpeDraft.durationMinutes) * normalizePerformanceNumber(rpeDraft.rpe)}</span></p>
-            <textarea value={rpeDraft.comment} onChange={(event) => setRpeDraft((current) => ({ ...current, comment: event.target.value }))} placeholder="Comentario libre" className="mt-4 min-h-[90px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
-            <button type="submit" className="mt-4 w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950">Guardar RPE</button>
-          </form>
         </div>
-
-        {rpeSyncPending.length > 0 && (
-          <div className="rounded-3xl border border-amber-400/20 bg-[#091428]/80 p-6 shadow-glow">
-            <div>
-              <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">RPE pendientes de asociación</h3>
-              <p className="mt-2 text-sm text-slate-400">Selecciona manualmente una sesión de la misma fecha. Hasta entonces el RPE no se incluye en las cargas.</p>
-            </div>
-            <div className="mt-5 space-y-3">
-              {rpeSyncPending.map((pending) => {
-                const sameDaySessions = trainingSessions.filter((session) => session.session_date === pending.entry_date);
-                return (
-                  <div key={pending.id} className="grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(240px,1fr)_auto] lg:items-center">
-                    <div>
-                      <p className="font-bold text-white">{getPerformancePlayerName(pending.jugador_id)}</p>
-                      <p className="mt-1 text-xs text-slate-400">{pending.entry_date} · RPE {pending.rpe}</p>
-                      <p className="mt-1 text-xs text-amber-300">{pending.error || 'Asociación pendiente.'}</p>
-                    </div>
-                    <select
-                      value={pendingRpeSessionById[pending.id] || ''}
-                      onChange={(event) => setPendingRpeSessionById((current) => ({ ...current, [pending.id]: event.target.value }))}
-                      className="rounded-2xl border border-white/10 bg-[#0f1e38] px-4 py-3 text-sm text-white"
-                    >
-                      <option value="">Selecciona sesión del {pending.entry_date}</option>
-                      {sameDaySessions.map((session) => (
-                        <option key={session.id} value={session.id}>
-                          {session.title || session.session_type} · {session.planned_duration || 0} min
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => resolvePendingRpe(pending)}
-                      disabled={!pendingRpeSessionById[pending.id]}
-                      className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      Asociar
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
           <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Semáforo PF y evolución individual</h3>
           <div className="mt-5 overflow-x-auto">
-            <table className="w-full min-w-[920px] text-left text-sm">
+            <table className="w-full min-w-[1120px] text-left text-sm">
               <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
-                <tr>{['Jugador', 'Estado', 'Carga', 'RPE medio', 'Wellness', 'Peso', 'Min partido', 'Molestias'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}</tr>
+                <tr>{['Jugador', 'Estado', 'Respuestas', 'RPE medio', 'Evolución diaria', 'Wellness', 'Peso', 'Min partido', 'Molestias'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}</tr>
               </thead>
               <tbody>
                 {dashboard.rows.map((row) => (
                   <tr key={row.player.id} className="border-t border-white/10">
                     <td className="px-3 py-4 font-bold text-white">{row.player.name}</td>
                     <td className="px-3 py-4"><span className={`rounded-full border px-3 py-1 text-xs font-black uppercase ${statusClass[row.status]}`}>{row.status}</span></td>
-                    <td className="px-3 py-4 text-white">{Math.round(row.totalLoad)}</td>
+                    <td className="px-3 py-4 text-white">{row.rpeEvolution.length}</td>
                     <td className="px-3 py-4 text-white">{row.avgRpe ? row.avgRpe.toFixed(1) : '-'}</td>
+                    <td className="px-3 py-4">
+                      <div className="flex min-w-[220px] flex-wrap gap-2">
+                        {row.rpeEvolution.map((entry) => (
+                          <span
+                            key={entry.id || `${entry.entry_date}-${entry.rpe}`}
+                            title={entry.comment || ''}
+                            className={`rounded-full border px-2.5 py-1 text-xs font-black ${
+                              normalizePerformanceNumber(entry.rpe) >= 8
+                                ? 'border-red-300/25 bg-red-500/10 text-red-100'
+                                : 'border-white/10 bg-white/5 text-slate-200'
+                            }`}
+                          >
+                            {entry.entry_date.slice(5)} · {entry.rpe}
+                          </span>
+                        ))}
+                        {!row.rpeEvolution.length ? <span className="text-slate-500">-</span> : null}
+                      </div>
+                    </td>
                     <td className="px-3 py-4 text-white">{row.wellnessScore ? row.wellnessScore.toFixed(1) : '-'}</td>
                     <td className="px-3 py-4 text-white">{row.latestWellness?.weight || '-'}</td>
                     <td className="px-3 py-4 text-white">{row.matchMinutes}</td>

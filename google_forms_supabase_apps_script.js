@@ -38,9 +38,9 @@
  * - RPE
  * - Comentario
  *
- * Si existe una columna legacy Código sesión, se resuelve primero contra form_code.
- * Sin código, la fecha de Marca temporal solo se acepta si existe exactamente una
- * training_session en ese día.
+ * El RPE se guarda como dato diario. La marca temporal de Google Forms determina
+ * entry_date en la zona horaria del Sheet y submitted_at conserva el instante completo.
+ * training_sessions y session_id se mantienen en Supabase solo como compatibilidad legacy.
  *
  * Triggers:
  * 1. En el Google Sheet del Wellness:
@@ -61,7 +61,7 @@
  *
  * Importación histórica RPE:
  * - Ejecuta manualmente importAllRpeHistory desde Apps Script.
- * - Puede repetirse: el upsert por jugador_id + session_id evita duplicados.
+ * - Puede repetirse: el upsert por jugador_id + entry_date evita duplicados.
  */
 
 const TECHNICAL_COLUMNS = ['Supabase status', 'Supabase session_id', 'Supabase error', 'Supabase synced_at'];
@@ -106,9 +106,10 @@ function onRpeSubmit(e) {
   let submission = null;
   const diagnostic = {
     receivedName: '',
-    receivedSession: '',
+    receivedTimestamp: '',
+    rawRpe: '',
     playerResolution: null,
-    sessionResolution: null,
+    payload: null,
   };
   try {
     submission = readSubmittedSheetRow(e);
@@ -116,48 +117,38 @@ function onRpeSubmit(e) {
     assertRpeHeaders(row);
     const playerName = getFirstValue(row, PLAYER_HEADER_CANDIDATES);
     diagnostic.receivedName = playerName;
-    diagnostic.receivedSession = String(
-      getFirstValue(row, RPE_SESSION_CODE_HEADERS)
-      || getFirstValue(row, TIMESTAMP_HEADER_CANDIDATES)
-      || ''
-    ).trim();
+    diagnostic.receivedTimestamp = getFirstValue(row, TIMESTAMP_HEADER_CANDIDATES);
+    diagnostic.rawRpe = getFirstValue(row, RPE_HEADER_CANDIDATES);
     const player = findPlayerIdByFormName(playerName);
     if (!player) {
       throw new Error(`Jugador no encontrado en public.jugadores: "${playerName}". No se inserta RPE.`);
     }
     diagnostic.playerResolution = player;
 
-    const sessionResolution = resolveTrainingSessionForRpe(fetchTrainingSessionsForRpe(), row);
-    diagnostic.sessionResolution = sessionResolution;
-    const session = sessionResolution.session;
-    const rpeValue = toRpeValue(getFirstValue(row, RPE_HEADER_CANDIDATES));
-    const comment = getFirstValue(row, RPE_COMMENT_HEADER_CANDIDATES) || '';
-    const payload = {
-      jugador_id: player.jugador_id,
-      session_id: session.id,
-      entry_date: session.session_date,
-      duration_minutes: toInt(session.planned_duration, 0),
-      rpe: rpeValue,
-      comment,
-    };
-
-    requireFields(payload, ['jugador_id', 'session_id', 'entry_date', 'rpe'], 'rpe');
-    upsertSupabase('rpe_entries', payload, 'jugador_id,session_id');
+    const payload = buildDailyRpePayload(
+      row,
+      player.jugador_id,
+      getSheetTimeZone(submission.sheet),
+      player.club_id
+    );
+    diagnostic.payload = payload;
+    requireFields(payload, ['jugador_id', 'entry_date', 'submitted_at', 'rpe'], 'rpe diario');
+    upsertSupabase('rpe_entries', payload, getDailyRpeConflictTarget(payload));
     logRpeResolution('onRpeSubmit', {
       receivedName: playerName,
       player,
-      sessionResolution,
+      payload,
     });
-    deleteSupabase('rpe_sync_pending', `jugador_id=eq.${encodeURIComponent(player.jugador_id)}&entry_date=eq.${encodeURIComponent(session.session_date)}`);
-    setSubmissionSyncState(submission, { status: 'SYNCED', sessionId: session.id, error: '', syncedAt: new Date() });
+    setSubmissionSyncState(submission, { status: 'SYNCED', sessionId: '', error: '', syncedAt: new Date() });
     console.log('RPE sincronizado con Supabase', payload);
   } catch (error) {
     logRpeHistoryErrors([buildRpeImportFailure({
       rowNumber: submission?.rowNumber || '',
       receivedName: diagnostic.receivedName,
-      receivedSession: diagnostic.receivedSession,
+      receivedTimestamp: diagnostic.receivedTimestamp,
+      rawRpe: diagnostic.rawRpe,
       playerResolution: diagnostic.playerResolution,
-      sessionResolution: diagnostic.sessionResolution,
+      payload: diagnostic.payload,
       error,
       players: [],
     })]);
@@ -284,14 +275,13 @@ function importAllRpeHistory() {
     values: Object.fromEntries(technical.headers.map((header, columnIndex) => [String(header).trim(), row[columnIndex]])),
   }));
   const players = fetchPlayersForForms();
-  const sessions = fetchTrainingSessionsForRpe();
-  const plan = buildRpeHistoryImportPlan(rowItems, players, sessions);
+  const plan = buildRpeHistoryImportPlan(rowItems, players, getSheetTimeZone(sheet));
   const syncStates = {};
 
   plan.failures.forEach((failure) => {
     syncStates[failure.rowNumber] = {
       status: 'ERROR',
-      sessionId: failure.sessionId || '',
+      sessionId: '',
       error: failure.error,
       syncedAt: '',
     };
@@ -305,7 +295,7 @@ function importAllRpeHistory() {
       group.rowDetails.forEach((detail) => {
         syncStates[detail.rowNumber] = {
           status: 'SYNCED',
-          sessionId: group.payload.session_id,
+          sessionId: '',
           error: '',
           syncedAt,
         };
@@ -313,7 +303,7 @@ function importAllRpeHistory() {
         logRpeResolution('importAllRpeHistory', {
           receivedName: detail.receivedName,
           player: detail.playerResolution,
-          sessionResolution: detail.sessionResolution,
+          payload: group.payload,
         });
       });
     });
@@ -325,15 +315,14 @@ function importAllRpeHistory() {
       const failure = buildRpeImportFailure({
         rowNumber: detail.rowNumber,
         receivedName: detail.receivedName,
-        receivedSession: detail.sessionResolution.received_session,
         playerResolution: detail.playerResolution,
-        sessionResolution: detail.sessionResolution,
+        payload: group.payload,
         error: message,
       });
       plan.failures.push(failure);
       syncStates[detail.rowNumber] = {
         status: 'ERROR',
-        sessionId: group.payload.session_id,
+        sessionId: '',
         error: failure.error,
         syncedAt: '',
       };
@@ -342,7 +331,11 @@ function importAllRpeHistory() {
   for (let offset = 0; offset < plan.groups.length; offset += RPE_IMPORT_BATCH_SIZE) {
     const groups = plan.groups.slice(offset, offset + RPE_IMPORT_BATCH_SIZE);
     try {
-      upsertSupabase('rpe_entries', groups.map((group) => group.payload), 'jugador_id,session_id');
+      upsertSupabase(
+        'rpe_entries',
+        groups.map((group) => group.payload),
+        getDailyRpeConflictTarget(groups[0] && groups[0].payload)
+      );
       markGroupsAsSynced(groups);
     } catch (batchError) {
       console.warn('Falló un lote RPE; se reintenta cada clave individualmente.', {
@@ -352,7 +345,7 @@ function importAllRpeHistory() {
       });
       groups.forEach((group) => {
         try {
-          upsertSupabase('rpe_entries', group.payload, 'jugador_id,session_id');
+          upsertSupabase('rpe_entries', group.payload, getDailyRpeConflictTarget(group.payload));
           markGroupsAsSynced([group]);
         } catch (rowError) {
           markGroupAsFailed(group, rowError);
@@ -430,6 +423,111 @@ function deleteSupabase(table, query) {
   });
 }
 
+function getSheetTimeZone(sheet) {
+  try {
+    const spreadsheet = sheet && typeof sheet.getParent === 'function' ? sheet.getParent() : null;
+    const spreadsheetTimeZone = spreadsheet && typeof spreadsheet.getSpreadsheetTimeZone === 'function'
+      ? spreadsheet.getSpreadsheetTimeZone()
+      : '';
+    if (spreadsheetTimeZone) return spreadsheetTimeZone;
+  } catch (error) {
+    console.warn('No se pudo leer la zona horaria del Sheet; se usa la del proyecto Apps Script.', error);
+  }
+  return Session.getScriptTimeZone();
+}
+
+function buildDailyRpePayload(row, playerId, timeZone, clubId) {
+  const receivedTimestamp = getFirstValue(row || {}, TIMESTAMP_HEADER_CANDIDATES);
+  const submittedDate = parseRpeSubmittedDate(receivedTimestamp, timeZone);
+  if (!submittedDate) {
+    throw new Error(`Fecha RPE inválida: "${String(receivedTimestamp || '').trim()}".`);
+  }
+  const entryDate = Utilities.formatDate(
+    submittedDate,
+    timeZone || Session.getScriptTimeZone(),
+    'yyyy-MM-dd'
+  );
+  if (!isValidIsoDate(entryDate)) {
+    throw new Error(`Fecha RPE inválida: "${String(receivedTimestamp || '').trim()}".`);
+  }
+  const payload = {
+    jugador_id: playerId,
+    entry_date: entryDate,
+    submitted_at: submittedDate.toISOString(),
+    rpe: toRpeValue(getFirstValue(row || {}, RPE_HEADER_CANDIDATES)),
+    comment: getFirstValue(row || {}, RPE_COMMENT_HEADER_CANDIDATES) || '',
+  };
+  if (clubId) payload.club_id = clubId;
+  return payload;
+}
+
+function parseRpeSubmittedDate(value, timeZone) {
+  if (!value) return null;
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  const text = String(value).trim();
+  if (!text) return null;
+  const zone = timeZone || Session.getScriptTimeZone();
+  const spanishTimestamp = text.match(
+    /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
+  );
+  if (spanishTimestamp) {
+    const year = Number(spanishTimestamp[3]);
+    const month = Number(spanishTimestamp[2]);
+    const day = Number(spanishTimestamp[1]);
+    const hour = Number(spanishTimestamp[4] || 0);
+    const minute = Number(spanishTimestamp[5] || 0);
+    const second = Number(spanishTimestamp[6] || 0);
+    const calendarCheck = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+    if (
+      calendarCheck.getUTCFullYear() !== year
+      || calendarCheck.getUTCMonth() !== month - 1
+      || calendarCheck.getUTCDate() !== day
+      || hour > 23
+      || minute > 59
+      || second > 59
+    ) {
+      return null;
+    }
+  }
+  const formats = [
+    'dd/MM/yyyy HH:mm:ss',
+    'dd/MM/yyyy H:mm:ss',
+    'dd/MM/yyyy HH:mm',
+    'dd/MM/yyyy',
+    'yyyy-MM-dd HH:mm:ss',
+    "yyyy-MM-dd'T'HH:mm:ss",
+    'yyyy-MM-dd',
+  ];
+  if (Utilities && typeof Utilities.parseDate === 'function') {
+    for (const format of formats) {
+      try {
+        const parsed = Utilities.parseDate(text, zone, format);
+        if (parsed && !Number.isNaN(parsed.getTime())) return parsed;
+      } catch {
+        // Prueba el siguiente formato admitido.
+      }
+    }
+  }
+
+  if (spanishTimestamp) {
+    return new Date(Date.UTC(
+      Number(spanishTimestamp[3]),
+      Number(spanishTimestamp[2]) - 1,
+      Number(spanishTimestamp[1]),
+      Number(spanishTimestamp[4] || 0),
+      Number(spanishTimestamp[5] || 0),
+      Number(spanishTimestamp[6] || 0)
+    ));
+  }
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+// Compatibilidad legacy de Fase 1. Ningún flujo RPE activo llama a estas funciones.
 function fetchTrainingSessionsForRpe() {
   return supabaseFetch('training_sessions?select=id,session_date,planned_duration,title,session_type,form_code&order=session_date.asc,created_at.asc&limit=5000', {
     method: 'get',
@@ -494,14 +592,38 @@ function toRpeValue(value) {
 function findPlayerIdByFormName(formName) {
   const submittedName = String(formName || '').trim();
   if (!submittedName) return null;
-  return resolvePlayerByFormName(fetchPlayersForForms(), submittedName);
+  const players = fetchPlayersForForms();
+  return addPlayerClubContext(resolvePlayerByFormName(players, submittedName), players);
 }
 
 function fetchPlayersForForms() {
-  return supabaseFetch(
-    'jugadores?select=id,name,shirt_name,google_forms_name&order=id.asc&limit=1000',
-    { method: 'get' }
-  ) || [];
+  try {
+    return supabaseFetch(
+      'jugadores?select=id,name,shirt_name,google_forms_name,club_id&order=id.asc&limit=1000',
+      { method: 'get' }
+    ) || [];
+  } catch (error) {
+    if (!/club_id/i.test(String(error && error.message ? error.message : error))) throw error;
+    return supabaseFetch(
+      'jugadores?select=id,name,shirt_name,google_forms_name&order=id.asc&limit=1000',
+      { method: 'get' }
+    ) || [];
+  }
+}
+
+function addPlayerClubContext(resolution, players) {
+  if (!resolution) return null;
+  const player = (Array.isArray(players) ? players : [])
+    .find((candidate) => candidate.id === resolution.jugador_id);
+  return player && player.club_id
+    ? { ...resolution, club_id: player.club_id }
+    : resolution;
+}
+
+function getDailyRpeConflictTarget(payload) {
+  return payload && payload.club_id
+    ? 'club_id,jugador_id,entry_date'
+    : 'jugador_id,entry_date';
 }
 
 function resolvePlayerByFormName(players, formName) {
@@ -909,7 +1031,7 @@ function logPlayerResolution(context, receivedName, resolution) {
   });
 }
 
-function buildRpeHistoryImportPlan(rowItems, players, sessions) {
+function buildRpeHistoryImportPlan(rowItems, players, timeZone) {
   const groupsByKey = {};
   const failures = [];
   let skipped = 0;
@@ -918,40 +1040,38 @@ function buildRpeHistoryImportPlan(rowItems, players, sessions) {
     const row = item.values || {};
     const playerName = getFirstValue(row, PLAYER_HEADER_CANDIDATES);
     const rawRpe = getFirstValue(row, RPE_HEADER_CANDIDATES);
-    const receivedCode = getFirstValue(row, RPE_SESSION_CODE_HEADERS);
-    const receivedDate = getFirstValue(row, TIMESTAMP_HEADER_CANDIDATES);
-    const receivedSession = String(receivedCode || receivedDate || '').trim();
-    if (!playerName && !rawRpe && !receivedSession) {
+    const receivedTimestamp = getFirstValue(row, TIMESTAMP_HEADER_CANDIDATES);
+    if (!playerName && !rawRpe && !receivedTimestamp) {
       skipped += 1;
       return;
     }
 
     let playerResolution = null;
-    let sessionResolution = null;
+    let payload = null;
     try {
-      playerResolution = resolvePlayerByFormName(players, playerName);
+      playerResolution = addPlayerClubContext(
+        resolvePlayerByFormName(players, playerName),
+        players
+      );
       if (!playerResolution) {
         throw new Error(`Jugador no encontrado en public.jugadores: "${playerName}". No se inserta RPE.`);
       }
-      sessionResolution = resolveTrainingSessionForRpe(sessions, row);
-      const rpe = toRpeValue(rawRpe);
-      const session = sessionResolution.session;
-      const payload = {
-        jugador_id: playerResolution.jugador_id,
-        session_id: session.id,
-        entry_date: session.session_date,
-        duration_minutes: toInt(session.planned_duration, 0),
-        rpe,
-        comment: getFirstValue(row, RPE_COMMENT_HEADER_CANDIDATES) || '',
-      };
-      requireFields(payload, ['jugador_id', 'session_id', 'entry_date', 'rpe'], 'rpe');
-      const key = `${payload.jugador_id}|${payload.session_id}`;
+      payload = buildDailyRpePayload(
+        row,
+        playerResolution.jugador_id,
+        timeZone,
+        playerResolution.club_id
+      );
+      requireFields(payload, ['jugador_id', 'entry_date', 'submitted_at', 'rpe'], 'rpe diario');
+      const key = `${payload.club_id || ''}|${payload.jugador_id}|${payload.entry_date}`;
       const existing = groupsByKey[key];
       const rowDetail = {
         rowNumber: item.rowNumber,
         receivedName: String(playerName || '').trim(),
         playerResolution,
-        sessionResolution,
+        entryDate: payload.entry_date,
+        submittedAt: payload.submitted_at,
+        rpe: payload.rpe,
       };
       groupsByKey[key] = {
         payload,
@@ -962,9 +1082,10 @@ function buildRpeHistoryImportPlan(rowItems, players, sessions) {
       failures.push(buildRpeImportFailure({
         rowNumber: item.rowNumber,
         receivedName: playerName,
-        receivedSession,
+        receivedTimestamp,
+        rawRpe,
         playerResolution,
-        sessionResolution,
+        payload,
         error,
         players,
       }));
@@ -1007,9 +1128,10 @@ function buildRpeImportFailure(details) {
     receivedName: String(details.receivedName || '').trim(),
     playerId: details.playerResolution?.jugador_id || '',
     playerMatchRule: details.playerResolution?.match_rule || rawError?.match_rule || '',
-    receivedSession: rawError?.received_session || details.receivedSession || '',
-    sessionId: details.sessionResolution?.session?.id || '',
-    sessionMatchRule: details.sessionResolution?.match_rule || rawError?.session_rule || '',
+    receivedTimestamp: String(details.receivedTimestamp || '').trim(),
+    entryDate: details.payload?.entry_date || '',
+    submittedAt: details.payload?.submitted_at || '',
+    rpe: details.payload?.rpe ?? details.rawRpe ?? '',
     category,
     error: message,
     expectedPlayers,
@@ -1090,9 +1212,9 @@ function logRpeResolution(context, details) {
     received_name: String(details.receivedName || '').trim(),
     jugador_id: details.player.jugador_id,
     jugador_match_rule: details.player.match_rule,
-    received_session: details.sessionResolution.received_session,
-    session_id: details.sessionResolution.session.id,
-    session_match_rule: details.sessionResolution.match_rule,
+    entry_date: details.payload.entry_date,
+    submitted_at: details.payload.submitted_at,
+    rpe: details.payload.rpe,
   });
 }
 
@@ -1111,16 +1233,12 @@ function logRpeHistoryErrors(failures) {
       `Nombre recibido: ${failure.receivedName || '(vacío)'}`,
       `Jugador resuelto: ${failure.playerId || '(sin resolver)'}`,
       `Regla jugador: ${failure.playerMatchRule || '(ninguna)'}`,
-      `Sesión recibida: ${failure.receivedSession || '(vacía)'}`,
-      `session_id resuelto: ${failure.sessionId || '(sin resolver)'}`,
-      `Regla sesión: ${failure.sessionMatchRule || '(ninguna)'}`,
+      `Marca temporal recibida: ${failure.receivedTimestamp || '(vacía)'}`,
+      `entry_date: ${failure.entryDate || '(sin resolver)'}`,
+      `submitted_at: ${failure.submittedAt || '(sin resolver)'}`,
+      `RPE: ${failure.rpe === '' ? '(sin resolver)' : failure.rpe}`,
       `Motivo: ${failure.category} · ${failure.error}`,
     ];
-    if (failure.sessionCandidates.length) {
-      lines.push(`Sesiones candidatas: ${failure.sessionCandidates.map((session) =>
-        `${session.id} [${session.form_code || 'sin form_code'} · ${session.session_date} · ${session.title || 'sin título'}]`
-      ).join(' | ')}`);
-    }
     console.error(lines.join('\n'));
   });
 }

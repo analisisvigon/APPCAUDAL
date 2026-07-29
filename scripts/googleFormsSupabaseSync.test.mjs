@@ -8,6 +8,10 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(scriptDirectory, '..');
 const sourcePath = path.join(projectRoot, 'google_forms_supabase_apps_script.js');
 const source = fs.readFileSync(sourcePath, 'utf8');
+const appSource = fs.readFileSync(path.join(projectRoot, 'src', 'App.jsx'), 'utf8');
+const rendimientoSchemaSource = fs.readFileSync(path.join(projectRoot, 'supabase_rendimiento.sql'), 'utf8');
+const migrationSource = fs.readFileSync(path.join(projectRoot, 'supabase_rpe_daily_phase1.sql'), 'utf8');
+const rollbackSource = fs.readFileSync(path.join(projectRoot, 'supabase_rpe_daily_phase1_rollback.sql'), 'utf8');
 
 const requestedUrls = [];
 let supabasePlayers = [
@@ -67,8 +71,15 @@ const sandbox = {
     },
   },
   Utilities: {
-    formatDate(date) {
-      return date.toISOString().slice(0, 10);
+    formatDate(date, timeZone) {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timeZone || 'Europe/Madrid',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(date);
+      const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+      return `${values.year}-${values.month}-${values.day}`;
     },
     sleep() {},
   },
@@ -82,54 +93,29 @@ const sandbox = {
 vm.createContext(sandbox);
 vm.runInContext(source, sandbox, { filename: sourcePath });
 
-const trainingSessions = [
-  { id: 'session-code', form_code: 'RPE-MD3', session_date: '2026-07-29', planned_duration: 75, title: 'MD-3' },
-  { id: 'session-date', form_code: null, session_date: '2026-07-30', planned_duration: 80, title: 'MD-2' },
-  { id: 'session-multi-1', form_code: null, session_date: '2026-07-31', planned_duration: 60, title: 'Mañana' },
-  { id: 'session-multi-2', form_code: null, session_date: '2026-07-31', planned_duration: 45, title: 'Tarde' },
-];
-
+const madridMidnightPayload = sandbox.buildDailyRpePayload({
+  'Marca temporal': new Date('2026-07-28T22:30:00.000Z'),
+  'Nombre y apellidos.': 'VIGON',
+  'RPE': '7',
+  'Comentario': 'Trabajo correcto',
+}, '00000000-0000-0000-0000-000000000001', 'Europe/Madrid');
+assert.equal(madridMidnightPayload.entry_date, '2026-07-29', 'La fecha diaria debe usar la zona horaria del Sheet.');
+assert.equal(madridMidnightPayload.submitted_at, '2026-07-28T22:30:00.000Z', 'Debe conservar el instante completo.');
+assert.equal(madridMidnightPayload.rpe, 7);
+assert.equal(madridMidnightPayload.comment, 'Trabajo correcto');
+assert.equal('session_id' in madridMidnightPayload, false, 'El payload diario no debe escribir session_id.');
+assert.equal('duration_minutes' in madridMidnightPayload, false, 'No debe inventar duración.');
+const clubDailyPayload = sandbox.buildDailyRpePayload({
+  'Marca temporal': new Date('2026-07-29T08:00:00.000Z'),
+  'RPE': '6',
+}, 'player-club-a', 'Europe/Madrid', 'club-a');
+assert.equal(clubDailyPayload.club_id, 'club-a');
 assert.equal(
-  sandbox.resolveTrainingSessionForRpe(trainingSessions, {
-    'Código sesión': 'RPE-MD3',
-    'Marca temporal': '30/07/2026 10:00:00',
-  }).match_rule,
-  'EXACT_FORM_CODE',
-  'form_code exacto debe tener prioridad sobre la fecha.'
+  sandbox.getDailyRpeConflictTarget(clubDailyPayload),
+  'club_id,jugador_id,entry_date',
+  'Si el club ya existe, la clave diaria debe mantener su aislamiento.'
 );
-
-assert.equal(
-  sandbox.resolveTrainingSessionForRpe(trainingSessions, {
-    'Marca temporal': '30/07/2026 10:00:00',
-  }).session.id,
-  'session-date',
-  'Sin código debe aceptar una única sesión en la fecha.'
-);
-
-assert.throws(
-  () => sandbox.resolveTrainingSessionForRpe(trainingSessions, {
-    'Código sesión': 'CODIGO-INEXISTENTE',
-    'Marca temporal': '30/07/2026 10:00:00',
-  }),
-  /No existe training_session con form_code exacto/,
-  'Un código recibido pero inexistente no debe hacer fallback por fecha.'
-);
-
-assert.throws(
-  () => sandbox.resolveTrainingSessionForRpe(trainingSessions, {
-    'Marca temporal': '01/08/2026 10:00:00',
-  }),
-  /No existe training_session para la fecha/,
-  'Una fecha sin sesión debe bloquearse.'
-);
-
-assert.throws(
-  () => sandbox.resolveTrainingSessionForRpe(trainingSessions, {
-    'Marca temporal': '31/07/2026 10:00:00',
-  }),
-  /Sesión ambigua/,
-  'Varias sesiones en la fecha deben bloquearse.'
-);
+assert.equal(sandbox.getDailyRpeConflictTarget(madridMidnightPayload), 'jugador_id,entry_date');
 
 assert.equal(sandbox.toRpeValue('7'), 7, 'Debe aceptar RPE enteros entre 1 y 10.');
 assert.throws(() => sandbox.toRpeValue('0'), /RPE inválido/);
@@ -300,11 +286,11 @@ assert.doesNotThrow(
 const genericRpePlan = sandbox.buildRpeHistoryImportPlan(
   [{ rowNumber: 2, values: genericRpeHeaders }],
   supabasePlayers,
-  trainingSessions
+  'Europe/Madrid'
 );
 assert.equal(genericRpePlan.groups.length, 1);
 assert.equal(genericRpePlan.groups[0].payload.jugador_id, 'player-davo');
-assert.equal(genericRpePlan.groups[0].payload.session_id, 'session-code');
+assert.equal(genericRpePlan.groups[0].payload.entry_date, '2026-07-29');
 assert.equal(genericRpePlan.groups[0].payload.rpe, 8);
 assert.equal(genericRpePlan.groups[0].payload.comment, 'Sesión exigente');
 assert.doesNotThrow(() => sandbox.assertRpeHeaders({
@@ -367,7 +353,6 @@ const rpeHistoryRows = [
     values: {
       'Marca temporal': '29/07/2026 10:00:00',
       'Nombre y apellidos.': 'VIGON',
-      'Código sesión': 'RPE-MD3',
       'RPE': '6',
     },
   },
@@ -376,8 +361,8 @@ const rpeHistoryRows = [
     values: {
       'Marca temporal': '29/07/2026 10:15:00',
       'Nombre y apellidos.': 'VIGON',
-      'Código sesión': 'RPE-MD3',
       'RPE': '8',
+      'Comentario': 'Prevalece la última',
     },
   },
   {
@@ -393,22 +378,21 @@ const rpeHistoryRows = [
     values: {
       'Marca temporal': '29/07/2026 10:00:00',
       'Nombre y apellidos.': 'Jairo',
-      'Código sesión': 'RPE-MD3',
       'RPE': '11',
     },
   },
   {
     rowNumber: 6,
     values: {
-      'Marca temporal': '01/08/2026 10:00:00',
-      'Nombre y apellidos.': 'Jairo',
+      'Marca temporal': '30/07/2026 10:00:00',
+      'Nombre y apellidos.': 'Jugador inexistente',
       'RPE': '5',
     },
   },
   {
     rowNumber: 7,
     values: {
-      'Marca temporal': '31/07/2026 10:00:00',
+      'Marca temporal': 'fecha imposible',
       'Nombre y apellidos.': 'Jairo',
       'RPE': '5',
     },
@@ -416,24 +400,27 @@ const rpeHistoryRows = [
   { rowNumber: 8, values: {} },
 ];
 
-const rpeHistoryPlan = sandbox.buildRpeHistoryImportPlan(rpeHistoryRows, supabasePlayers, trainingSessions);
-assert.equal(rpeHistoryPlan.groups.length, 2, 'Debe crear un grupo por jugador_id + session_id.');
+const rpeHistoryPlan = sandbox.buildRpeHistoryImportPlan(rpeHistoryRows, supabasePlayers, 'Europe/Madrid');
+assert.equal(rpeHistoryPlan.groups.length, 2, 'Debe crear un grupo por jugador_id + entry_date.');
 assert.equal(rpeHistoryPlan.groups[0].payload.rpe, 8, 'La última fila duplicada debe prevalecer.');
-assert.equal(rpeHistoryPlan.groups[0].payload.duration_minutes, 75, 'Debe utilizar planned_duration.');
+assert.equal(rpeHistoryPlan.groups[0].payload.comment, 'Prevalece la última');
+assert.equal(rpeHistoryPlan.groups[0].payload.entry_date, '2026-07-29');
+assert.equal('session_id' in rpeHistoryPlan.groups[0].payload, false);
+assert.equal('duration_minutes' in rpeHistoryPlan.groups[0].payload, false);
 assert.deepEqual(
   JSON.parse(JSON.stringify(rpeHistoryPlan.groups[0].rowNumbers)),
   [2, 3],
   'Las filas duplicadas deben compartir el mismo upsert.'
 );
 assert.equal(rpeHistoryPlan.duplicatesMerged, 1);
-assert.equal(rpeHistoryPlan.failures.length, 3, 'Debe continuar tras RPE inválido y errores de sesión.');
+assert.equal(rpeHistoryPlan.failures.length, 3, 'Debe continuar tras errores de RPE, jugador y fecha.');
 assert.deepEqual(
   JSON.parse(JSON.stringify(rpeHistoryPlan.failures.map((failure) => failure.category))),
-  ['RPE_INVALIDO', 'SESION_NO_ENCONTRADA', 'SESION_AMBIGUA']
+  ['RPE_INVALIDO', 'JUGADOR_NO_ENCONTRADO', 'FECHA_INVALIDA']
 );
 assert.equal(rpeHistoryPlan.skipped, 1);
 
-const repeatedRpeHistoryPlan = sandbox.buildRpeHistoryImportPlan(rpeHistoryRows, supabasePlayers, trainingSessions);
+const repeatedRpeHistoryPlan = sandbox.buildRpeHistoryImportPlan(rpeHistoryRows, supabasePlayers, 'Europe/Madrid');
 assert.deepEqual(
   JSON.parse(JSON.stringify(repeatedRpeHistoryPlan.groups.map((group) => group.payload))),
   JSON.parse(JSON.stringify(rpeHistoryPlan.groups.map((group) => group.payload))),
@@ -561,21 +548,28 @@ assert.deepEqual(
 );
 
 assert.match(source, /function importAllRpeHistory\(\)/, 'Debe existir una importación histórica RPE manual.');
-assert.match(
-  source,
-  /select=id,session_date,planned_duration,title,session_type,form_code/,
-  'La resolución RPE debe cargar form_code, fecha y planned_duration.'
+const onRpeSubmitSource = source.slice(
+  source.indexOf('function onRpeSubmit'),
+  source.indexOf('function importAllWellnessHistory')
+);
+const importRpeSource = source.slice(
+  source.indexOf('function importAllRpeHistory'),
+  source.indexOf('function getSupabaseConfig')
 );
 assert.match(
-  source,
-  /upsertSupabase\('rpe_entries', groups\.map\(\(group\) => group\.payload\), 'jugador_id,session_id'\)/,
-  'El histórico RPE debe usar upsert por lotes con la clave real.'
+  onRpeSubmitSource,
+  /upsertSupabase\('rpe_entries', payload, getDailyRpeConflictTarget\(payload\)\)/,
+  'Las respuestas nuevas deben usar la clave diaria.'
 );
 assert.match(
-  source,
-  /resolveTrainingSessionForRpe\(sessions, row\)/,
-  'El histórico RPE debe reutilizar el mismo resolvedor de sesión.'
+  importRpeSource,
+  /groups\.map\(\(group\) => group\.payload\),\s+getDailyRpeConflictTarget/,
+  'El histórico RPE debe usar upsert diario por lotes.'
 );
+assert.doesNotMatch(onRpeSubmitSource, /training_sessions|rpe_sync_pending|session_id/);
+assert.doesNotMatch(importRpeSource, /training_sessions|rpe_sync_pending|session_id/);
+assert.match(source, /function buildDailyRpePayload\(/);
+assert.match(source, /submitted_at: submittedDate\.toISOString\(\)/);
 assert.match(source, /Cabeceras detectadas:/, 'Los errores de cabeceras deben indicar las cabeceras detectadas.');
 assert.doesNotMatch(source, /jugadores_map/, 'El script no debe depender de una hoja jugadores_map.');
 assert.match(source, /function importAllWellnessHistory\(\)/, 'Debe existir una importación histórica manual.');
@@ -589,4 +583,35 @@ assert.ok(
 );
 assert.match(source, /Supabase status/, 'El script debe crear las columnas técnicas.');
 
-console.log('Google Forms -> Supabase sync: Wellness y RPE idempotentes, resolución segura y cabeceras reales validadas.');
+const loadPerformanceSource = appSource.slice(
+  appSource.indexOf('const loadPerformanceData'),
+  appSource.indexOf('const saveTrainingSession')
+);
+const performanceUiSource = appSource.slice(
+  appSource.indexOf('const renderPerformanceSection'),
+  appSource.indexOf('const renderDelegatedRegistrySection')
+);
+assert.doesNotMatch(loadPerformanceSource, /\.from\('training_sessions'\)|\.from\('rpe_sync_pending'\)/);
+assert.match(loadPerformanceSource, /\.from\('rpe_entries'\)/);
+assert.match(performanceUiSource, /RPE por fecha/);
+assert.match(performanceUiSource, /Evolución diaria/);
+assert.doesNotMatch(performanceUiSource, /Crear sesión|Carga semanal|Volumen total|Carga automática|RPE pendientes de asociación/);
+assert.doesNotMatch(performanceUiSource, /session_id|duration_minutes|planned_duration/);
+assert.match(appSource, /entry\.entry_date/, 'Los registros legacy deben visualizarse por entry_date sin depender de session_id.');
+
+assert.doesNotMatch(
+  rendimientoSchemaSource.match(/create table if not exists public\.rpe_entries \([\s\S]*?\n\);/)?.[0] || '',
+  /\bclub_id\b/,
+  'El esquema actual no tiene club_id en rpe_entries.'
+);
+assert.match(migrationSource, /add column if not exists submitted_at timestamptz/);
+assert.match(migrationSource, /alter column session_id drop not null/);
+assert.match(migrationSource, /unique \(jugador_id, entry_date\)/);
+assert.match(migrationSource, /unique \(club_id, jugador_id, entry_date\)/, 'La migración debe aislar por club solo si la columna ya existe.');
+assert.match(migrationSource, /rpe_entries_daily_phase1_backup/);
+assert.doesNotMatch(migrationSource, /drop\s+table|drop\s+column|drop\s+policy/i);
+assert.doesNotMatch(migrationSource, /drop\s+constraint\s+.*session_id_fkey/i);
+assert.match(rollbackSource, /Rollback bloqueado: existen rpe_entries diarios sin session_id/);
+assert.doesNotMatch(rollbackSource, /drop\s+table|drop\s+column|drop\s+policy/i);
+
+console.log('Google Forms -> Supabase: RPE diario idempotente, zona horaria, compatibilidad legacy y UI sin sesiones validados.');
