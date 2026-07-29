@@ -11,16 +11,12 @@
  * - SUPABASE_URL: https://xxxxx.supabase.co
  * - SUPABASE_SERVICE_ROLE_KEY: service_role key privada de Supabase
  *
- * Hoja auxiliar obligatoria: jugadores_map
- * Columnas:
- * - form_name
- * - jugador_id
- * - name
+ * El jugador se resuelve directamente contra public.jugadores.name en Supabase.
+ * El valor debe coincidir exactamente con el nombre mostrado en Google Forms.
  *
  * Form Wellness diario. Columnas esperadas/recomendadas:
  * - Fecha
- * - Nombre y apellidos
- *   Debe ser un desplegable con los nombres usados en jugadores_map.form_name.
+ * - Nombre y apellidos.
  * - Horas de sueño
  * - Sueño o Calidad del sueño
  * - Fatiga
@@ -37,7 +33,7 @@
  *
  * Form RPE post-entrenamiento. Columnas esperadas:
  * - Marca temporal (la añade Google Forms automáticamente)
- * - Nombre y apellidos
+ * - Nombre y apellidos.
  * - RPE
  * - Comentario
  *
@@ -59,7 +55,6 @@
  *    event type: On form submit
  */
 
-const PLAYERS_MAP_SHEET = 'jugadores_map';
 const TECHNICAL_COLUMNS = ['Supabase status', 'Supabase session_id', 'Supabase error', 'Supabase synced_at'];
 const FORMULA_RETRY_COUNT = 3;
 const FORMULA_RETRY_DELAY_MS = 250;
@@ -69,30 +64,13 @@ function onWellnessSubmit(e) {
   try {
     submission = readSubmittedSheetRow(e, { waitForHeader: 'Ratio salud' });
     const row = submission.values;
-    const playerName = getFirstValue(row, ['Nombre y apellidos', 'Jugador', 'Nombre']);
+    const playerName = getFirstValue(row, ['Nombre y apellidos.', 'Nombre y apellidos', 'Jugador', 'Nombre']);
     const player = findPlayerIdByFormName(playerName);
     if (!player) {
-      throw new Error(`Jugador no encontrado en jugadores_map: "${playerName}". No se inserta wellness.`);
+      throw new Error(`Jugador no encontrado en public.jugadores: "${playerName}". No se inserta wellness.`);
     }
 
-    const sleepValue = getFirstValue(row, ['Calidad del sueño', 'Calidad del sueno', 'Sueño', 'Sueno']);
-    const sorenessValue = getFirstValue(row, ['Dolor muscular', 'Molestias']);
-    const moodValue = getFirstValue(row, ['Estado de ánimo', 'Estado de animo', 'Ánimo', 'Animo']);
-
-    const payload = {
-      jugador_id: player.jugador_id,
-      entry_date: toIsoDate(getFirstValue(row, ['Fecha'])),
-      sleep_hours: toNullableNumber(getFirstValue(row, ['Horas de sueño', 'Horas de sueno', 'Horas sueño', 'Horas sueno'])),
-      sleep_quality: toWellnessScale(sleepValue, 'sleep'),
-      fatigue: toWellnessScale(getFirstValue(row, ['Fatiga']), 'high-is-bad'),
-      muscle_soreness: toWellnessScale(sorenessValue, 'discomfort'),
-      stress: toWellnessScale(getFirstValue(row, ['Estrés', 'Estres']), 'high-is-bad'),
-      mood: toWellnessScale(moodValue, 'mood'),
-      weight: toNullableNumber(getFirstValue(row, ['Peso'])),
-      discomfort: getFirstValue(row, ['Molestias']) || '',
-      comment: getFirstValue(row, ['Comentario', 'Comentarios']) || '',
-      health_ratio: toHealthRatio(getFirstValue(row, ['Ratio salud'])),
-    };
+    const payload = buildWellnessPayload(row, player.jugador_id);
 
     requireFields(payload, ['jugador_id', 'entry_date'], 'wellness');
     upsertSupabase('wellness_entries', payload, 'jugador_id,entry_date');
@@ -112,10 +90,10 @@ function onRpeSubmit(e) {
   try {
     submission = readSubmittedSheetRow(e);
     const row = submission.values;
-    const playerName = getFirstValue(row, ['Nombre y apellidos', 'Jugador', 'Nombre']);
+    const playerName = getFirstValue(row, ['Nombre y apellidos.', 'Nombre y apellidos', 'Jugador', 'Nombre']);
     const player = findPlayerIdByFormName(playerName);
     if (!player) {
-      throw new Error(`Jugador no encontrado en jugadores_map: "${playerName}". No se inserta RPE.`);
+      throw new Error(`Jugador no encontrado en public.jugadores: "${playerName}". No se inserta RPE.`);
     }
 
     const responseDate = toIsoDate(getFirstValue(row, ['Marca temporal', 'Timestamp']));
@@ -241,29 +219,61 @@ function classifyTrainingSessionMatch(sessions) {
 }
 
 function findPlayerIdByFormName(formName) {
-  const normalized = normalizeName(formName);
-  if (!normalized) return null;
+  const exactName = String(formName || '').trim();
+  if (!exactName) return null;
 
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PLAYERS_MAP_SHEET);
-  if (!sheet) {
-    throw new Error(`No existe la hoja auxiliar "${PLAYERS_MAP_SHEET}".`);
+  const rows = supabaseFetch(
+    `jugadores?select=id,name&name=eq.${encodeURIComponent(exactName)}&limit=2`,
+    { method: 'get' }
+  ) || [];
+  if (rows.length > 1) {
+    throw new Error(`Hay varios jugadores en public.jugadores con el nombre exacto "${exactName}". No se puede asociar de forma segura.`);
   }
-
-  const values = sheet.getDataRange().getValues();
-  const headers = values.shift().map((header) => String(header).trim());
-  const formNameIndex = headers.indexOf('form_name');
-  const playerIdIndex = headers.indexOf('jugador_id');
-  const nameIndex = headers.indexOf('name');
-  if (formNameIndex === -1 || playerIdIndex === -1 || nameIndex === -1) {
-    throw new Error('jugadores_map debe tener columnas: form_name, jugador_id, name.');
-  }
-
-  const row = values.find((item) => normalizeName(item[formNameIndex]) === normalized || normalizeName(item[nameIndex]) === normalized);
+  const row = rows[0];
   if (!row) return null;
   return {
-    form_name: row[formNameIndex],
-    jugador_id: row[playerIdIndex],
-    name: row[nameIndex],
+    jugador_id: row.id,
+    name: row.name,
+  };
+}
+
+function buildWellnessPayload(row, playerId) {
+  const sleepValue = getFirstValue(row, [
+    'Calidad del sueño',
+    'Calidad del sueno',
+    '¿Qué tal dormiste anoche?',
+    'Sueño',
+    'Sueno',
+  ]);
+  const sorenessValue = getFirstValue(row, [
+    'Daño muscular',
+    'Dano muscular',
+    '¿Cuánto te duelen los músculos hoy?',
+    'Dolor muscular',
+    'Molestias',
+  ]);
+  const moodValue = getFirstValue(row, [
+    'Estado de ánimo.',
+    'Estado de ánimo',
+    'Estado de animo.',
+    'Estado de animo',
+    'Ánimo',
+    'Animo',
+  ]);
+
+  return {
+    jugador_id: playerId,
+    entry_date: toIsoDate(getFirstValue(row, ['Fecha'])),
+    sleep_hours: toNullableNumber(getFirstValue(row, ['Horas de sueño', 'Horas de sueno', 'Horas sueño', 'Horas sueno'])),
+    sleep_quality: toWellnessScale(sleepValue, 'sleep'),
+    fatigue: toWellnessScale(getFirstValue(row, ['¿Cómo de fatigado estás hoy?', 'Fatiga']), 'high-is-bad'),
+    muscle_soreness: toWellnessScale(sorenessValue, 'discomfort'),
+    stress: toWellnessScale(getFirstValue(row, ['¿Cómo de estresado estás hoy?', 'Estrés', 'Estres']), 'high-is-bad'),
+    mood: toWellnessScale(moodValue, 'mood'),
+    weight: toNullableNumber(getFirstValue(row, ['¿Cuál tu peso hoy?', 'Peso'])),
+    discomfort: getFirstValue(row, ['Especificar la molestia en caso de tener alguna', 'Molestias']) || '',
+    comment: getFirstValue(row, ['Información personal: (molestias, comentarios)', 'Comentario', 'Comentarios']) || '',
+    health_ratio: toHealthRatio(getFirstValue(row, ['Ratio salud'])),
   };
 }
 
