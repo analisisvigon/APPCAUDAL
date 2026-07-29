@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "node scripts/googleFormsSupabaseSync.test.mjs",
     "test:league-results": "node src/utils/leagueResults.test.js",
     "test:competition-filters": "node src/utils/competitionFilters.test.js",
     "test:club-core-sql": "node scripts/clubCoreSqlAudit.test.mjs",

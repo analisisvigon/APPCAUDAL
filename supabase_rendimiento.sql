@@ -24,6 +24,7 @@ create table if not exists public.wellness_entries (
   weight numeric,
   discomfort text,
   comment text,
+  health_ratio numeric check (health_ratio between 0 and 10),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (jugador_id, entry_date)
@@ -43,6 +44,36 @@ create table if not exists public.rpe_entries (
   unique (jugador_id, session_id)
 );
 
+create table if not exists public.rpe_sync_pending (
+  id uuid primary key default gen_random_uuid(),
+  jugador_id uuid not null references public.jugadores(id) on delete cascade,
+  entry_date date not null,
+  rpe int not null check (rpe between 1 and 10),
+  comment text,
+  candidate_count int not null default 0 check (candidate_count >= 0),
+  error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (jugador_id, entry_date)
+);
+
+alter table public.wellness_entries
+add column if not exists health_ratio numeric;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'wellness_entries_health_ratio_check'
+      and conrelid = 'public.wellness_entries'::regclass
+  ) then
+    alter table public.wellness_entries
+      add constraint wellness_entries_health_ratio_check
+      check (health_ratio between 0 and 10);
+  end if;
+end;
+$$;
+
 create index if not exists training_sessions_date_idx on public.training_sessions(session_date);
 create index if not exists training_sessions_microcycle_idx on public.training_sessions(microcycle_label);
 alter table public.training_sessions
@@ -55,6 +86,8 @@ create index if not exists wellness_entries_jugador_date_idx on public.wellness_
 create index if not exists rpe_entries_date_idx on public.rpe_entries(entry_date);
 create index if not exists rpe_entries_jugador_date_idx on public.rpe_entries(jugador_id, entry_date);
 create index if not exists rpe_entries_session_idx on public.rpe_entries(session_id);
+create index if not exists rpe_sync_pending_date_idx on public.rpe_sync_pending(entry_date);
+create index if not exists rpe_sync_pending_player_date_idx on public.rpe_sync_pending(jugador_id, entry_date);
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -76,9 +109,20 @@ create trigger set_rpe_entries_updated_at
 before update on public.rpe_entries
 for each row execute function public.set_updated_at();
 
+drop trigger if exists set_rpe_sync_pending_updated_at on public.rpe_sync_pending;
+create trigger set_rpe_sync_pending_updated_at
+before update on public.rpe_sync_pending
+for each row execute function public.set_updated_at();
+
 alter table public.training_sessions enable row level security;
 alter table public.wellness_entries enable row level security;
 alter table public.rpe_entries enable row level security;
+alter table public.rpe_sync_pending enable row level security;
+
+revoke all on table public.rpe_sync_pending from anon;
+revoke all on table public.rpe_sync_pending from public;
+grant select, insert, update, delete on table public.rpe_sync_pending to authenticated;
+grant all on table public.rpe_sync_pending to service_role;
 
 drop policy if exists "Authenticated staff can read training sessions" on public.training_sessions;
 create policy "Authenticated staff can read training sessions"
@@ -115,6 +159,19 @@ using (true);
 drop policy if exists "Authenticated staff can write rpe entries" on public.rpe_entries;
 create policy "Authenticated staff can write rpe entries"
 on public.rpe_entries for all
+to authenticated
+using (true)
+with check (true);
+
+drop policy if exists "Authenticated staff can read pending RPE sync" on public.rpe_sync_pending;
+create policy "Authenticated staff can read pending RPE sync"
+on public.rpe_sync_pending for select
+to authenticated
+using (true);
+
+drop policy if exists "Authenticated staff can write pending RPE sync" on public.rpe_sync_pending;
+create policy "Authenticated staff can write pending RPE sync"
+on public.rpe_sync_pending for all
 to authenticated
 using (true)
 with check (true);

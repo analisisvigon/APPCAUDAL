@@ -4646,12 +4646,13 @@ function App() {
   const [trainingSessions, setTrainingSessions] = useState([]);
   const [wellnessEntries, setWellnessEntries] = useState([]);
   const [rpeEntries, setRpeEntries] = useState([]);
+  const [rpeSyncPending, setRpeSyncPending] = useState([]);
+  const [pendingRpeSessionById, setPendingRpeSessionById] = useState({});
   const [performanceMatchStats, setPerformanceMatchStats] = useState([]);
   const [performanceSessionDraft, setPerformanceSessionDraft] = useState({
     sessionDate: new Date().toISOString().slice(0, 10),
     microcycleLabel: '',
     mdLabel: 'MD-4',
-    formCode: '',
     title: '',
     sessionType: 'Entrenamiento',
     plannedDuration: '',
@@ -7040,6 +7041,10 @@ function App() {
 
   const getWellnessScore = (entry) => {
     if (!entry) return null;
+    const syncedHealthRatio = Number(String(entry.health_ratio ?? '').replace(',', '.'));
+    if (Number.isFinite(syncedHealthRatio) && syncedHealthRatio >= 0 && syncedHealthRatio <= 10) {
+      return syncedHealthRatio;
+    }
     const values = [
       entry.sleep_quality,
       entry.mood,
@@ -7060,7 +7065,7 @@ function App() {
     const weekEnd = addDays(performanceWeekStart, 6);
 
     try {
-      const [sessionsResponse, wellnessResponse, rpeResponse, statsResponse] = await Promise.all([
+      const [sessionsResponse, wellnessResponse, rpeResponse, pendingRpeResponse, statsResponse] = await Promise.all([
         supabase
           .from('training_sessions')
           .select('*')
@@ -7080,11 +7085,17 @@ function App() {
           .lte('entry_date', weekEnd)
           .order('entry_date', { ascending: true }),
         supabase
+          .from('rpe_sync_pending')
+          .select('*')
+          .gte('entry_date', performanceWeekStart)
+          .lte('entry_date', weekEnd)
+          .order('entry_date', { ascending: true }),
+        supabase
           .from('partido_estadisticas_jugador')
           .select('player_name,minutes')
       ]);
 
-      const failed = [sessionsResponse, wellnessResponse, rpeResponse, statsResponse].find((response) => response.error);
+      const failed = [sessionsResponse, wellnessResponse, rpeResponse, pendingRpeResponse, statsResponse].find((response) => response.error);
       if (failed) {
         console.error('Error cargando Rendimiento desde Supabase:', failed.error);
         throw failed.error;
@@ -7093,6 +7104,7 @@ function App() {
       setTrainingSessions(sessionsResponse.data || []);
       setWellnessEntries(wellnessResponse.data || []);
       setRpeEntries(rpeResponse.data || []);
+      setRpeSyncPending(pendingRpeResponse.data || []);
       setPerformanceMatchStats(statsResponse.data || []);
     } catch (loadError) {
       console.error('Error cargando Rendimiento:', loadError);
@@ -7110,7 +7122,6 @@ function App() {
       session_date: performanceSessionDraft.sessionDate,
       microcycle_label: performanceSessionDraft.microcycleLabel || `Semana ${performanceWeekStart}`,
       md_label: performanceSessionDraft.mdLabel,
-      form_code: performanceSessionDraft.formCode || null,
       title: performanceSessionDraft.title || performanceSessionDraft.sessionType,
       session_type: performanceSessionDraft.sessionType,
       planned_duration: performanceSessionDraft.plannedDuration ? Number(performanceSessionDraft.plannedDuration) : null,
@@ -7123,7 +7134,7 @@ function App() {
       return;
     }
     setPerformanceStatus('Sesión guardada en Supabase.');
-    setPerformanceSessionDraft((current) => ({ ...current, formCode: '', title: '', plannedDuration: '', notes: '' }));
+    setPerformanceSessionDraft((current) => ({ ...current, title: '', plannedDuration: '', notes: '' }));
     await loadPerformanceData();
   };
 
@@ -7186,6 +7197,50 @@ function App() {
       return;
     }
     setPerformanceStatus('RPE guardado en Supabase.');
+    await loadPerformanceData();
+  };
+
+  const resolvePendingRpe = async (pending) => {
+    const sessionId = pendingRpeSessionById[pending.id] || '';
+    const session = trainingSessions.find((item) => item.id === sessionId);
+    if (!session || session.session_date !== pending.entry_date) {
+      setPerformanceError('Selecciona una sesión de la misma fecha para resolver el RPE.');
+      return;
+    }
+
+    setPerformanceStatus('');
+    setPerformanceError('');
+    const payload = {
+      jugador_id: pending.jugador_id,
+      session_id: session.id,
+      entry_date: session.session_date,
+      duration_minutes: Number(session.planned_duration || 0),
+      rpe: Number(pending.rpe),
+      comment: pending.comment || '',
+    };
+    const { error: rpeError } = await supabase
+      .from('rpe_entries')
+      .upsert(payload, { onConflict: 'jugador_id,session_id' });
+    if (rpeError) {
+      setPerformanceError(rpeError.message || 'No se pudo resolver el RPE pendiente.');
+      return;
+    }
+
+    const { error: pendingDeleteError } = await supabase
+      .from('rpe_sync_pending')
+      .delete()
+      .eq('id', pending.id);
+    if (pendingDeleteError) {
+      setPerformanceError(pendingDeleteError.message || 'El RPE se guardó, pero no se pudo cerrar el pendiente.');
+      return;
+    }
+
+    setPendingRpeSessionById((current) => {
+      const next = { ...current };
+      delete next[pending.id];
+      return next;
+    });
+    setPerformanceStatus('RPE pendiente asociado a la sesión.');
     await loadPerformanceData();
   };
 
@@ -22295,13 +22350,9 @@ function App() {
               <select value={performanceSessionDraft.mdLabel} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, mdLabel: event.target.value }))} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
                 {mdOptions.map((option) => <option key={option} value={option}>{option}</option>)}
               </select>
-              <input value={performanceSessionDraft.formCode} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, formCode: event.target.value }))} placeholder="RPE-2026-05-08-MD3" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
               <input value={performanceSessionDraft.title} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Título sesión" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
               <input type="number" min="0" value={performanceSessionDraft.plannedDuration} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, plannedDuration: event.target.value }))} placeholder="Duración planificada" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
             </div>
-            <p className="mt-3 rounded-2xl bg-white/5 px-4 py-3 text-xs text-slate-400">
-              Código para Google Forms RPE: <span className="font-bold text-white">{performanceSessionDraft.formCode || 'RPE-YYYY-MM-DD-MD3'}</span>
-            </p>
             <textarea value={performanceSessionDraft.notes} onChange={(event) => setPerformanceSessionDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Notas de la sesión" className="mt-4 min-h-[90px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500" />
             <button type="submit" className="mt-4 w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950">Guardar sesión</button>
           </form>
@@ -22401,6 +22452,49 @@ function App() {
             <button type="submit" className="mt-4 w-full rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950">Guardar RPE</button>
           </form>
         </div>
+
+        {rpeSyncPending.length > 0 && (
+          <div className="rounded-3xl border border-amber-400/20 bg-[#091428]/80 p-6 shadow-glow">
+            <div>
+              <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">RPE pendientes de asociación</h3>
+              <p className="mt-2 text-sm text-slate-400">Selecciona manualmente una sesión de la misma fecha. Hasta entonces el RPE no se incluye en las cargas.</p>
+            </div>
+            <div className="mt-5 space-y-3">
+              {rpeSyncPending.map((pending) => {
+                const sameDaySessions = trainingSessions.filter((session) => session.session_date === pending.entry_date);
+                return (
+                  <div key={pending.id} className="grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(240px,1fr)_auto] lg:items-center">
+                    <div>
+                      <p className="font-bold text-white">{getPerformancePlayerName(pending.jugador_id)}</p>
+                      <p className="mt-1 text-xs text-slate-400">{pending.entry_date} · RPE {pending.rpe}</p>
+                      <p className="mt-1 text-xs text-amber-300">{pending.error || 'Asociación pendiente.'}</p>
+                    </div>
+                    <select
+                      value={pendingRpeSessionById[pending.id] || ''}
+                      onChange={(event) => setPendingRpeSessionById((current) => ({ ...current, [pending.id]: event.target.value }))}
+                      className="rounded-2xl border border-white/10 bg-[#0f1e38] px-4 py-3 text-sm text-white"
+                    >
+                      <option value="">Selecciona sesión del {pending.entry_date}</option>
+                      {sameDaySessions.map((session) => (
+                        <option key={session.id} value={session.id}>
+                          {session.title || session.session_type} · {session.planned_duration || 0} min
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => resolvePendingRpe(pending)}
+                      disabled={!pendingRpeSessionById[pending.id]}
+                      className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Asociar
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
           <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Semáforo PF y evolución individual</h3>
