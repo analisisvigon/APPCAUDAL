@@ -3329,6 +3329,94 @@ const PerformanceStatusRing = ({
   );
 };
 
+const PerformanceResponseActivityBadge = ({
+  formType,
+  lastResponseDate = '',
+  daysSinceResponse = null,
+  compact = false,
+  showTooltip = true,
+  invalidDate = false,
+  className = '',
+}) => {
+  const formLabel = formType === 'wellness' ? 'Wellness' : 'RPE';
+  const formatDate = (value) => {
+    const [year, month, day] = String(value || '').slice(0, 10).split('-');
+    return year && month && day ? `${day}/${month}/${year}` : '';
+  };
+  const neverResponded = !lastResponseDate && !invalidDate;
+  const level = invalidDate
+    ? 'revisar'
+    : neverResponded
+      ? 'alta'
+      : daysSinceResponse === 0
+        ? 'correcto'
+        : daysSinceResponse === 1
+          ? 'neutro'
+          : daysSinceResponse <= 3
+            ? 'suave'
+            : daysSinceResponse <= 6
+              ? 'media'
+              : 'alta';
+  const presentation = {
+    correcto: {
+      icon: '●',
+      label: compact ? `${formLabel} hoy` : 'Respondido hoy',
+      detail: 'hoy',
+      classes: 'border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-100',
+    },
+    neutro: {
+      icon: '●',
+      label: compact ? `${formLabel} ayer` : 'Respondido ayer',
+      detail: 'ayer',
+      classes: 'border-slate-300/15 bg-slate-300/[0.055] text-slate-200',
+    },
+    suave: {
+      icon: '⏳',
+      label: compact ? `${daysSinceResponse} días sin ${formLabel}` : `Hace ${daysSinceResponse} días`,
+      detail: `hace ${daysSinceResponse} días`,
+      classes: 'border-yellow-300/20 bg-yellow-300/[0.07] text-yellow-100',
+    },
+    media: {
+      icon: '⚠',
+      label: compact ? `${daysSinceResponse} días sin ${formLabel}` : `Hace ${daysSinceResponse} días`,
+      detail: `hace ${daysSinceResponse} días`,
+      classes: 'border-orange-300/25 bg-orange-300/[0.09] text-orange-100',
+    },
+    alta: {
+      icon: '🚨',
+      label: neverResponded
+        ? compact ? `${formLabel} nunca respondido` : 'Nunca respondió'
+        : compact ? `${daysSinceResponse} días sin ${formLabel}` : `Hace ${daysSinceResponse} días`,
+      detail: neverResponded ? 'nunca respondió' : `hace ${daysSinceResponse} días`,
+      classes: 'border-rose-300/25 bg-rose-300/[0.09] text-rose-100',
+    },
+    revisar: {
+      icon: '⚠',
+      label: compact ? `Revisar fecha de ${formLabel}` : 'Revisar fecha',
+      detail: 'fecha futura',
+      classes: 'border-violet-300/25 bg-violet-300/[0.08] text-violet-100',
+    },
+  }[level];
+  const tooltip = invalidDate
+    ? `Último ${formLabel}: ${formatDate(lastResponseDate)} · revisar fecha futura`
+    : neverResponded
+      ? `Último ${formLabel}: nunca respondió · no existen registros disponibles`
+      : `Último ${formLabel}: ${formatDate(lastResponseDate)} · ${presentation.detail}`;
+
+  return (
+    <span
+      title={showTooltip ? tooltip : undefined}
+      aria-label={tooltip}
+      className={`inline-flex max-w-full items-center gap-1.5 rounded-lg border font-black leading-none ${presentation.classes} ${
+        compact ? 'px-2 py-1 text-[9px]' : 'px-3 py-2 text-sm'
+      } ${className}`}
+    >
+      <span className={compact ? 'text-[10px]' : 'text-sm'} aria-hidden="true">{presentation.icon}</span>
+      <span className="whitespace-nowrap">{presentation.label}</span>
+    </span>
+  );
+};
+
 const PerformanceMetricPortrait = ({
   player = {},
   label = 'RPE',
@@ -4938,6 +5026,8 @@ function App() {
   const [performanceSelectedDate, setPerformanceSelectedDate] = useState('');
   const [performancePlayerSearch, setPerformancePlayerSearch] = useState('');
   const [performanceStatusFilter, setPerformanceStatusFilter] = useState('todos');
+  const [performancePlayerSort, setPerformancePlayerSort] = useState('estado_fisico');
+  const [performanceNoticePlayerIds, setPerformanceNoticePlayerIds] = useState([]);
   const [performanceSelectedPlayerId, setPerformanceSelectedPlayerId] = useState('');
   const [performanceIndividualMetric, setPerformanceIndividualMetric] = useState('rpe');
   const [performanceHistoryExpanded, setPerformanceHistoryExpanded] = useState(false);
@@ -7754,30 +7844,87 @@ function App() {
     return { direction: delta > 0 ? 'sube' : 'baja', delta };
   };
 
-  const getPerformanceActivity = (lastDate, shortLabel) => {
+  const getPerformanceActivity = (lastDate, formType) => {
+    const formLabel = formType === 'wellness' ? 'Wellness' : formType === 'rpe' ? 'RPE' : String(formType || 'Formulario');
     if (!lastDate) {
       return {
+        lastResponseDate: '',
         days: null,
+        daysSinceResponse: null,
         level: 'alta',
-        compactLabel: `Sin ${shortLabel}`,
-        fullLabel: `Sin respuestas de ${shortLabel}`,
+        invalidDate: false,
+        neverResponded: true,
+        compactLabel: `Sin ${formLabel}`,
+        fullLabel: `${formLabel}: nunca respondió`,
       };
     }
-    const [lastYear, lastMonth, lastDay] = String(lastDate).slice(0, 10).split('-').map(Number);
+
+    const normalizedDate = String(lastDate).slice(0, 10);
+    const dateParts = normalizedDate.split('-').map(Number);
+    const [lastYear, lastMonth, lastDay] = dateParts;
+    const parsedUtc = Date.UTC(lastYear, lastMonth - 1, lastDay);
+    const parsedDate = new Date(parsedUtc);
+    const validDate = dateParts.length === 3 &&
+      Number.isFinite(parsedUtc) &&
+      parsedDate.getUTCFullYear() === lastYear &&
+      parsedDate.getUTCMonth() === lastMonth - 1 &&
+      parsedDate.getUTCDate() === lastDay;
+
+    if (!validDate) {
+      return {
+        lastResponseDate: normalizedDate,
+        days: null,
+        daysSinceResponse: null,
+        level: 'revisar',
+        invalidDate: true,
+        neverResponded: false,
+        compactLabel: `Revisar ${formLabel}`,
+        fullLabel: `${formLabel}: revisar fecha`,
+      };
+    }
+
     const now = new Date();
     const todayUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-    const lastUtc = Date.UTC(lastYear, lastMonth - 1, lastDay);
-    const days = Math.max(0, Math.round((todayUtc - lastUtc) / 86400000));
-    const level = days === 0 ? 'hoy' : days === 1 ? 'reciente' : days <= 3 ? 'suave' : days <= 6 ? 'media' : 'alta';
+    const rawDays = Math.round((todayUtc - parsedUtc) / 86400000);
+    if (rawDays < 0) {
+      return {
+        lastResponseDate: normalizedDate,
+        days: null,
+        daysSinceResponse: null,
+        level: 'revisar',
+        invalidDate: true,
+        neverResponded: false,
+        compactLabel: `Revisar ${formLabel}`,
+        fullLabel: `${formLabel}: fecha futura`,
+      };
+    }
+
+    const level = rawDays === 0
+      ? 'hoy'
+      : rawDays === 1
+        ? 'reciente'
+        : rawDays <= 3
+          ? 'suave'
+          : rawDays <= 6
+            ? 'media'
+            : 'alta';
     return {
-      days,
+      lastResponseDate: normalizedDate,
+      days: rawDays,
+      daysSinceResponse: rawDays,
       level,
-      compactLabel: days === 0 ? `${shortLabel} hoy` : days === 1 ? `${shortLabel} ayer` : `${days}d sin ${shortLabel}`,
-      fullLabel: days === 0
-        ? `${shortLabel}: hoy`
-        : days === 1
-          ? `${shortLabel}: hace 1 día`
-          : `${shortLabel}: hace ${days} días`,
+      invalidDate: false,
+      neverResponded: false,
+      compactLabel: rawDays === 0
+        ? `${formLabel} hoy`
+        : rawDays === 1
+          ? `${formLabel} ayer`
+          : `${rawDays} días sin ${formLabel}`,
+      fullLabel: rawDays === 0
+        ? `${formLabel}: hoy`
+        : rawDays === 1
+          ? `${formLabel}: ayer`
+          : `${formLabel}: hace ${rawDays} días`,
     };
   };
 
@@ -7838,14 +7985,8 @@ function App() {
         ? `Calidad del sueño ${latestWellness.sleep_quality}`
         : '',
     ].filter(Boolean) : [];
-    const wellnessActivity = getPerformanceActivity(performanceLastResponses.wellness[player.id], 'W');
-    const rpeActivity = getPerformanceActivity(performanceLastResponses.rpe[player.id], 'RPE');
-    const activityHigh = includeActivity && [wellnessActivity, rpeActivity].some((activity) => (
-      activity.days === null || activity.days >= 7
-    ));
-    const activityWatch = includeActivity && !activityHigh && [wellnessActivity, rpeActivity].some((activity) => (
-      activity.days !== null && activity.days >= 2
-    ));
+    const wellnessActivity = getPerformanceActivity(performanceLastResponses.wellness[player.id], 'wellness');
+    const rpeActivity = getPerformanceActivity(performanceLastResponses.rpe[player.id], 'rpe');
     const hasRawWellnessData = wellness.some((entry) => (
       [
         entry.sleep_hours,
@@ -7859,13 +8000,12 @@ function App() {
       String(entry.comment || '').trim()
     ));
     const hasData = scoredWellness.length > 0 || validRpes.length > 0 || hasRawWellnessData;
-    const priority = Boolean(combinedEntry || veryLowWellnessEntries.length || activityHigh);
+    const priority = Boolean(combinedEntry || veryLowWellnessEntries.length);
     const watch = !priority && Boolean(
       highRpeEntries.length ||
       lowWellnessEntries.length ||
       discomfortEntries.length ||
-      rawWellnessSignals.length ||
-      activityWatch
+      rawWellnessSignals.length
     );
     const status = priority ? 'prioridad' : watch ? 'vigilar' : !hasData ? 'sin_datos' : 'sin_alertas';
     const reasons = [];
@@ -7886,9 +8026,6 @@ function App() {
     }
     if (rawWellnessSignals.length) reasons.push(rawWellnessSignals.join(' · '));
     if (discomfortEntries.length) reasons.push(discomfortEntries[discomfortEntries.length - 1].text);
-    if (activityHigh || activityWatch) {
-      reasons.push(`${wellnessActivity.fullLabel} · ${rpeActivity.fullLabel}`);
-    }
     if (status === 'sin_alertas') reasons.push('Datos disponibles sin indicadores');
     if (status === 'sin_datos') reasons.push('Sin datos esta semana');
     const statusLabel = {
@@ -7909,9 +8046,65 @@ function App() {
       lowWellnessEntries.length || veryLowWellnessEntries.length || rawWellnessSignals.length ? 'wellness' : null,
       highRpeEntries.length ? 'rpe' : null,
       discomfortEntries.length ? 'molestias' : null,
-      includeActivity && (wellnessActivity.days === null || wellnessActivity.days >= 2) ? 'wellness' : null,
-      includeActivity && (rpeActivity.days === null || rpeActivity.days >= 2) ? 'rpe' : null,
     ].filter(Boolean))];
+    const activityValues = [wellnessActivity, rpeActivity];
+    const wellnessPending = wellnessActivity.invalidDate || wellnessActivity.neverResponded || wellnessActivity.days > 0;
+    const rpePending = rpeActivity.invalidDate || rpeActivity.neverResponded || rpeActivity.days > 0;
+    const neverResponded = activityValues.some((activity) => activity.neverResponded);
+    const hasInvalidDate = activityValues.some((activity) => activity.invalidDate);
+    const requiresNotice = includeActivity && activityValues.some((activity) => (
+      activity.neverResponded || activity.days >= 4
+    ));
+    const activityAlertReasons = [];
+    if (wellnessActivity.invalidDate) activityAlertReasons.push('Fecha de Wellness pendiente de revisión');
+    else if (wellnessActivity.neverResponded) activityAlertReasons.push('Wellness nunca respondido');
+    else if (wellnessActivity.days >= 4) activityAlertReasons.push(`${wellnessActivity.days} días sin Wellness`);
+    if (rpeActivity.invalidDate) activityAlertReasons.push('Fecha de RPE pendiente de revisión');
+    else if (rpeActivity.neverResponded) activityAlertReasons.push('RPE nunca respondido');
+    else if (rpeActivity.days >= 4) activityAlertReasons.push(`${rpeActivity.days} días sin RPE`);
+    const bothFormsOverdue = (
+      wellnessActivity.neverResponded || wellnessActivity.days >= 4
+    ) && (
+      rpeActivity.neverResponded || rpeActivity.days >= 4
+    );
+    if (bothFormsOverdue) activityAlertReasons.unshift('Sin respuestas de ambos formularios');
+    const numericDays = activityValues
+      .map((activity) => activity.days)
+      .filter((days) => Number.isFinite(days));
+    const maxDaysWithoutResponse = neverResponded
+      ? Number.POSITIVE_INFINITY
+      : hasInvalidDate
+        ? Number.MAX_SAFE_INTEGER
+        : Math.max(0, ...numericDays);
+    const activityStatus = hasInvalidDate
+      ? 'revisar_fecha'
+      : wellnessPending && rpePending
+        ? 'faltan_ambos'
+        : wellnessPending
+          ? 'falta_wellness'
+          : rpePending
+            ? 'falta_rpe'
+            : 'al_dia';
+    const activityStatusLabel = {
+      revisar_fecha: 'Revisar fecha registrada',
+      faltan_ambos: bothFormsOverdue ? 'Sin actividad reciente' : 'Faltan Wellness y RPE',
+      falta_wellness: wellnessActivity.neverResponded
+        ? 'Wellness nunca respondido'
+        : wellnessActivity.days === 1
+          ? 'Falta Wellness desde ayer'
+          : `${wellnessActivity.days} días sin Wellness`,
+      falta_rpe: rpeActivity.neverResponded
+        ? 'RPE nunca respondido'
+        : rpeActivity.days === 1
+          ? 'Falta RPE desde ayer'
+          : `${rpeActivity.days} días sin RPE`,
+      al_dia: 'Formularios al día',
+    }[activityStatus];
+    const actualResponseDates = [
+      ...responseDates,
+      wellnessActivity.lastResponseDate,
+      rpeActivity.lastResponseDate,
+    ].filter(Boolean).sort();
 
     return {
       player,
@@ -7933,20 +8126,27 @@ function App() {
       tooltip: [
         statusLabel,
         ...reasons,
-        includeActivity && !activityHigh && !activityWatch
+        includeActivity
           ? `Actividad · ${wellnessActivity.fullLabel} · ${rpeActivity.fullLabel}`
           : '',
       ].filter(Boolean).join(' · '),
       reasons,
       signals,
       evidenceDate: evidenceDates[evidenceDates.length - 1] || responseDates[responseDates.length - 1] || '',
-      lastResponseDate: responseDates[responseDates.length - 1] || '',
+      lastResponseDate: actualResponseDates[actualResponseDates.length - 1] || '',
       latestRelevantText: discomfortEntries[discomfortEntries.length - 1]?.text || '',
       activity: {
         wellness: wellnessActivity,
         rpe: rpeActivity,
-        high: activityHigh,
-        watch: activityWatch,
+        wellnessPending,
+        rpePending,
+        neverResponded,
+        hasInvalidDate,
+        requiresNotice,
+        maxDaysWithoutResponse,
+        status: activityStatus,
+        statusLabel: activityStatusLabel,
+        alertReasons: activityAlertReasons,
       },
       repeatedHighRpe: highRpeEntries.length >= 2,
       hasDiscomfort: discomfortEntries.length > 0,
@@ -8012,9 +8212,24 @@ function App() {
         status: hasPrioritySignal ? 'prioridad' : hasWatchSignal ? 'vigilar' : 'sin_alertas',
       };
     });
-    const alertRows = rows.filter((row) => row.status === 'prioridad' || row.status === 'vigilar');
+    const alertRows = rows
+      .filter((row) => (
+        row.status === 'prioridad' ||
+        row.status === 'vigilar' ||
+        row.activity.requiresNotice
+      ))
+      .sort((left, right) => {
+        const leftPhysicalRank = left.status === 'prioridad' ? 0 : left.status === 'vigilar' ? 1 : 2;
+        const rightPhysicalRank = right.status === 'prioridad' ? 0 : right.status === 'vigilar' ? 1 : 2;
+        if (leftPhysicalRank !== rightPhysicalRank) return leftPhysicalRank - rightPhysicalRank;
+        return right.activity.maxDaysWithoutResponse - left.activity.maxDaysWithoutResponse;
+      });
     const priorityCount = rows.filter((row) => row.status === 'prioridad').length;
     const watchCount = rows.filter((row) => row.status === 'vigilar').length;
+    const upToDateCount = rows.filter((row) => row.activity.status === 'al_dia').length;
+    const wellnessPendingCount = rows.filter((row) => row.activity.wellnessPending).length;
+    const rpePendingCount = rows.filter((row) => row.activity.rpePending).length;
+    const requiresNoticeCount = rows.filter((row) => row.activity.requiresNotice).length;
     const peak = days
       .filter((day) => day.avgRpe !== null)
       .sort((left, right) => right.avgRpe - left.avgRpe)[0] || null;
@@ -8025,7 +8240,12 @@ function App() {
       alertRows,
       priorityCount,
       watchCount,
-      alertCount: alertRows.length,
+      upToDateCount,
+      wellnessPendingCount,
+      rpePendingCount,
+      requiresNoticeCount,
+      alertCount: priorityCount + watchCount,
+      attentionCount: alertRows.length,
       rpeResponseCount: rpeSource.length,
       wellnessResponseCount: wellnessSource.length,
       responseCount: rpeSource.length + wellnessSource.length,
@@ -23334,26 +23554,20 @@ function App() {
         </span>
       );
     };
-    const activityBadgeClass = {
-      hoy: 'border-emerald-300/15 bg-emerald-300/[0.06] text-emerald-200',
-      reciente: 'border-slate-300/10 bg-slate-300/[0.05] text-slate-300',
-      suave: 'border-yellow-300/15 bg-yellow-300/[0.07] text-yellow-100',
-      media: 'border-orange-300/20 bg-orange-300/[0.08] text-orange-100',
-      alta: 'border-rose-300/20 bg-rose-300/[0.08] text-rose-100',
-    };
     const renderActivityBadges = (row, compact = false) => (
       <span className="flex flex-wrap gap-1">
-        {[row.activity.wellness, row.activity.rpe].map((activity, index) => (
-          <span
-            key={index ? 'rpe' : 'wellness'}
-            title={activity.fullLabel}
-            className={`inline-flex items-center gap-1 rounded-md border font-black ${activityBadgeClass[activity.level]} ${
-              compact ? 'px-1.5 py-0.5 text-[8px]' : 'px-2 py-1 text-[9px]'
-            }`}
-          >
-            <span aria-hidden="true">{activity.level === 'alta' ? '!' : activity.level === 'media' ? '⌛' : '●'}</span>
-            {activity.compactLabel}
-          </span>
+        {[
+          ['wellness', row.activity.wellness],
+          ['rpe', row.activity.rpe],
+        ].map(([formType, activity]) => (
+          <PerformanceResponseActivityBadge
+            key={formType}
+            formType={formType}
+            lastResponseDate={activity.lastResponseDate}
+            daysSinceResponse={activity.daysSinceResponse}
+            invalidDate={activity.invalidDate}
+            compact={compact}
+          />
         ))}
       </span>
     );
@@ -23389,16 +23603,54 @@ function App() {
     };
     const statusOptions = [
       ['todos', 'Todos'],
-      ['prioridad', 'Prioridad'],
+      ['prioridad_fisica', 'Prioridad física'],
       ['vigilar', 'Vigilar'],
-      ['sin_alertas', 'Sin alertas'],
-      ['sin_datos', 'Sin datos'],
+      ['formularios_pendientes', 'Formularios pendientes'],
+      ['4_mas_dias', '4+ días sin responder'],
+      ['sin_wellness', 'Sin Wellness'],
+      ['sin_rpe', 'Sin RPE'],
+      ['nunca_respondieron', 'Nunca respondieron'],
+    ];
+    const sortOptions = [
+      ['estado_fisico', 'Estado físico'],
+      ['mas_dias', 'Más días sin responder'],
+      ['nombre', 'Nombre'],
+      ['ultima_respuesta', 'Última respuesta'],
     ];
     const normalizedSearch = normalizePlayerIdentityName(performancePlayerSearch);
+    const matchesPerformanceFilter = (row) => ({
+      todos: true,
+      prioridad_fisica: row.status === 'prioridad',
+      vigilar: row.status === 'vigilar',
+      formularios_pendientes: row.activity.wellnessPending || row.activity.rpePending,
+      '4_mas_dias': row.activity.requiresNotice,
+      sin_wellness: row.activity.wellnessPending,
+      sin_rpe: row.activity.rpePending,
+      nunca_respondieron: row.activity.neverResponded,
+    }[performanceStatusFilter] ?? true);
+    const activitySortValue = (row) => {
+      if (row.activity.neverResponded) return Number.MAX_SAFE_INTEGER;
+      if (row.activity.hasInvalidDate) return Number.MAX_SAFE_INTEGER - 1;
+      return row.activity.maxDaysWithoutResponse;
+    };
+    const comparePerformanceRows = (left, right) => {
+      if (performancePlayerSort === 'mas_dias') {
+        return activitySortValue(right) - activitySortValue(left) ||
+          displayPlayerName(left.player).localeCompare(displayPlayerName(right.player), 'es');
+      }
+      if (performancePlayerSort === 'nombre') {
+        return displayPlayerName(left.player).localeCompare(displayPlayerName(right.player), 'es');
+      }
+      if (performancePlayerSort === 'ultima_respuesta') {
+        return String(right.lastResponseDate || '').localeCompare(String(left.lastResponseDate || '')) ||
+          displayPlayerName(left.player).localeCompare(displayPlayerName(right.player), 'es');
+      }
+      return statusPresentation[left.status].rank - statusPresentation[right.status].rank ||
+        activitySortValue(right) - activitySortValue(left) ||
+        displayPlayerName(left.player).localeCompare(displayPlayerName(right.player), 'es');
+    };
     const filteredRows = dashboard.rows
-      .filter((row) => (
-        performanceStatusFilter === 'todos' || row.status === performanceStatusFilter
-      ))
+      .filter(matchesPerformanceFilter)
       .filter((row) => {
         if (!normalizedSearch) return true;
         return normalizePlayerIdentityName([
@@ -23408,10 +23660,7 @@ function App() {
           row.player.number,
         ].filter(Boolean).join(' ')).includes(normalizedSearch);
       })
-      .sort((left, right) => (
-        statusPresentation[left.status].rank - statusPresentation[right.status].rank ||
-        displayPlayerName(left.player).localeCompare(displayPlayerName(right.player), 'es')
-      ));
+      .sort(comparePerformanceRows);
     const selectedDayPlayerIds = [...new Set([
       ...(selectedDay?.rpeEntries || []).map((entry) => entry.jugador_id),
       ...(selectedDay?.wellnessEntries || []).map((entry) => entry.jugador_id),
@@ -23618,6 +23867,21 @@ function App() {
         ? `Hoy ${time}`
         : `${new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: '2-digit' }).format(date)} · ${time}`;
     };
+    const selectedPlayerNoticeMarked = selectedPlayerRow
+      ? performanceNoticePlayerIds.includes(selectedPlayerRow.player.id)
+      : false;
+    const formatLastActivityDetail = (activity, entry) => {
+      if (activity.invalidDate) return `Fecha registrada: ${formatShortDate(activity.lastResponseDate)} · revisar`;
+      if (activity.neverResponded) return 'No existen registros disponibles';
+      const timestamp = entry?.entry_date === activity.lastResponseDate
+        ? entry.submitted_at || entry.updated_at || entry.created_at
+        : '';
+      if (!timestamp) return `Última respuesta: ${formatShortDate(activity.lastResponseDate)}`;
+      const parsed = new Date(timestamp);
+      if (Number.isNaN(parsed.getTime())) return `Última respuesta: ${formatShortDate(activity.lastResponseDate)}`;
+      const time = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' }).format(parsed);
+      return `Última respuesta: ${formatShortDate(activity.lastResponseDate)} · ${time}`;
+    };
     const interpretWellnessValue = (key, value) => {
       if (value === null) return 'Sin dato';
       if (key === 'sleep_quality' || key === 'mood') {
@@ -23739,7 +24003,7 @@ function App() {
         accent: 'from-sky-300/20',
       },
       {
-        label: 'Jugadores en alerta',
+        label: 'Estado físico a revisar',
         icon: '⚠',
         value: dashboard.hasEvaluableData ? String(dashboard.alertCount) : 'Sin información',
         suffix: '',
@@ -23921,6 +24185,22 @@ function App() {
           ))}
         </div>
 
+        <section
+          aria-label="Cumplimiento de formularios"
+          className="flex flex-col gap-3 rounded-2xl border border-white/[0.07] bg-[#091428] px-4 py-3 shadow-[0_12px_30px_rgba(0,0,0,0.12)] sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-[0.18em] text-caudal-electric">Cumplimiento de formularios</p>
+            <p className="mt-0.5 text-xs text-slate-500">Lectura operativa independiente del estado físico</p>
+          </div>
+          <div className="grid grid-cols-2 gap-x-5 gap-y-2 text-xs sm:flex sm:flex-wrap sm:items-center">
+            <span className="font-bold text-emerald-200"><strong className="mr-1 text-base font-black text-white">{dashboard.upToDateCount}</strong> al día</span>
+            <span className="font-bold text-amber-100"><strong className="mr-1 text-base font-black text-white">{dashboard.rpePendingCount}</strong> sin RPE</span>
+            <span className="font-bold text-amber-100"><strong className="mr-1 text-base font-black text-white">{dashboard.wellnessPendingCount}</strong> sin Wellness</span>
+            <span className="font-bold text-rose-100"><strong className="mr-1 text-base font-black text-white">{dashboard.requiresNoticeCount}</strong> requiere aviso</span>
+          </div>
+        </section>
+
         <section aria-label="RPE por fecha · Resumen por día" className="rounded-[1.75rem] border border-white/[0.07] bg-[#091428] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-6">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
@@ -24005,7 +24285,7 @@ function App() {
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-300">Atención prioritaria</p>
                 <h3 className="mt-1 text-lg font-black text-white">Indicadores a revisar</h3>
               </div>
-              {dashboard.hasEvaluableData ? <span className="text-2xl font-black text-white">{dashboard.alertCount}</span> : null}
+              <span className="text-2xl font-black text-white">{dashboard.attentionCount}</span>
             </div>
             {dashboard.alertRows.length ? (
               <div className="mt-4 max-h-[330px] space-y-2 overflow-y-auto pr-1">
@@ -24018,11 +24298,25 @@ function App() {
                   >
                     <PerformanceStatusRing player={row.player} status={row.status} tooltip={row.tooltip} signals={row.signals} size="md" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-base font-black leading-tight text-white">{displayPlayerName(row.player)}</span>
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-base font-black leading-tight text-white">{displayPlayerName(row.player)}</span>
+                        {performanceNoticePlayerIds.includes(row.player.id) ? (
+                          <span className="shrink-0 rounded-full border border-amber-300/20 bg-amber-300/[0.08] px-1.5 py-0.5 text-[7px] font-black uppercase text-amber-100">
+                            Avisar
+                          </span>
+                        ) : null}
+                      </span>
                       <span className="mt-1 flex flex-wrap items-center gap-1.5">
-                        <span className={`rounded-full border px-2 py-0.5 text-[8px] font-black uppercase ${statusPresentation[row.status].badge}`}>
-                          {statusPresentation[row.status].label}
-                        </span>
+                        {row.status === 'prioridad' || row.status === 'vigilar' ? (
+                          <span className={`rounded-full border px-2 py-0.5 text-[8px] font-black uppercase ${statusPresentation[row.status].badge}`}>
+                            Estado físico · {statusPresentation[row.status].label}
+                          </span>
+                        ) : null}
+                        {row.activity.requiresNotice ? (
+                          <span className="rounded-full border border-rose-300/20 bg-rose-300/[0.07] px-2 py-0.5 text-[8px] font-black uppercase text-rose-100">
+                            Falta de respuesta
+                          </span>
+                        ) : null}
                         {renderActivityBadges(row, true)}
                       </span>
                       <span className="mt-1.5 flex items-center gap-3 text-[11px] font-bold text-slate-300">
@@ -24030,8 +24324,17 @@ function App() {
                         <span>⚡ RPE {row.latestRpe === null ? '—' : row.latestRpe.toFixed(1)}</span>
                       </span>
                       <span className="mt-1 flex min-w-0 items-center justify-between gap-2 text-[10px] text-slate-500">
-                        <span className="truncate">{row.latestRelevantText || row.reasons[0]}</span>
-                        <span className="shrink-0 font-bold">{formatShortDate(row.evidenceDate)}</span>
+                        <span className="truncate">
+                          {[
+                            row.status === 'prioridad' || row.status === 'vigilar'
+                              ? `Físico: ${row.latestRelevantText || row.reasons[0]}`
+                              : '',
+                            row.activity.requiresNotice
+                              ? `Actividad: ${row.activity.alertReasons.join(' · ')}`
+                              : '',
+                          ].filter(Boolean).join(' · ')}
+                        </span>
+                        <span className="shrink-0 font-bold">{formatShortDate(row.evidenceDate || row.lastResponseDate)}</span>
                       </span>
                     </span>
                   </button>
@@ -24039,9 +24342,9 @@ function App() {
               </div>
             ) : (
               <div className="mt-5 rounded-2xl border border-dashed border-white/10 px-5 py-10 text-center">
-                <p className="text-sm font-bold text-slate-300">{dashboard.hasEvaluableData ? 'Sin jugadores en alerta' : 'Sin información esta semana'}</p>
+                <p className="text-sm font-bold text-slate-300">Sin jugadores que requieran revisión</p>
                 <p className="mt-1 text-xs text-slate-500">
-                  {dashboard.hasEvaluableData ? 'Los datos disponibles no activan indicadores.' : 'Las alertas aparecerán cuando lleguen datos evaluables.'}
+                  No hay indicadores físicos ni retrasos de cuatro o más días.
                 </p>
               </div>
             )}
@@ -24117,6 +24420,14 @@ function App() {
               >
                 {statusOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
+              <select
+                value={performancePlayerSort}
+                onChange={(event) => setPerformancePlayerSort(event.target.value)}
+                className="rounded-xl border border-white/10 bg-[#0c1930] px-3 py-2.5 text-sm font-bold text-slate-200 outline-none focus:border-caudal-electric/40"
+                aria-label="Ordenar seguimiento individual"
+              >
+                {sortOptions.map(([value, label]) => <option key={value} value={value}>Orden: {label}</option>)}
+              </select>
             </div>
           </div>
 
@@ -24144,7 +24455,14 @@ function App() {
                       <div className="flex min-w-0 items-center gap-3">
                         <PerformanceStatusRing player={row.player} status={row.status} tooltip={row.tooltip} signals={row.signals} size="sm" />
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-black text-white">{displayPlayerName(row.player)}</p>
+                          <p className="flex min-w-0 items-center gap-2">
+                            <span className="truncate text-sm font-black text-white">{displayPlayerName(row.player)}</span>
+                            {performanceNoticePlayerIds.includes(row.player.id) ? (
+                              <span className="shrink-0 rounded-full border border-amber-300/20 bg-amber-300/[0.08] px-1.5 py-0.5 text-[7px] font-black uppercase text-amber-100">
+                                Avisar
+                              </span>
+                            ) : null}
+                          </p>
                           <p className="mt-0.5 text-[10px] font-bold text-slate-500">
                             {[row.player.number ? `#${row.player.number}` : '', getPlayerPositionLabel(row.player)].filter(Boolean).join(' · ') || 'Plantilla'}
                           </p>
@@ -24193,7 +24511,14 @@ function App() {
                 <div className="flex items-center gap-3">
                   <PerformanceStatusRing player={row.player} status={row.status} tooltip={row.tooltip} signals={row.signals} size="md" />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-black text-white">{displayPlayerName(row.player)}</span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-sm font-black text-white">{displayPlayerName(row.player)}</span>
+                      {performanceNoticePlayerIds.includes(row.player.id) ? (
+                        <span className="shrink-0 rounded-full border border-amber-300/20 bg-amber-300/[0.08] px-1.5 py-0.5 text-[7px] font-black uppercase text-amber-100">
+                          Avisar
+                        </span>
+                      ) : null}
+                    </span>
                     <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${statusPresentation[row.status].badge}`}>
                       {row.statusLabel}
                     </span>
@@ -24280,9 +24605,20 @@ function App() {
                     <p className="mt-1 text-xs font-bold text-slate-500">
                       {[getPlayerPositionLabel(selectedPlayerRow.player), selectedPlayerRow.player.number ? `Dorsal ${selectedPlayerRow.player.number}` : ''].filter(Boolean).join(' · ') || 'Jugador de la plantilla'}
                     </p>
-                    <span className={`mt-3 inline-flex rounded-full border px-3 py-1 text-[9px] font-black uppercase ${statusPresentation[selectedPlayerRow.status].badge}`}>
-                      {selectedPhysicalStatusLabel}
-                    </span>
+                    <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+                      <span className={`inline-flex rounded-full border px-3 py-1 text-[9px] font-black uppercase ${statusPresentation[selectedPlayerRow.status].badge}`}>
+                        Estado físico · {selectedPhysicalStatusLabel}
+                      </span>
+                      <span className={`inline-flex rounded-full border px-3 py-1 text-[9px] font-black uppercase ${
+                        selectedPlayerRow.activity.status === 'al_dia'
+                          ? 'border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-100'
+                          : selectedPlayerRow.activity.requiresNotice
+                            ? 'border-rose-300/20 bg-rose-300/[0.07] text-rose-100'
+                            : 'border-amber-300/20 bg-amber-300/[0.07] text-amber-100'
+                      }`}>
+                        Actividad · {selectedPlayerRow.activity.statusLabel}
+                      </span>
+                    </div>
 
                     <div className="mt-5 grid grid-cols-2 gap-2 text-left">
                       <div className="rounded-xl border border-white/[0.06] bg-black/15 p-3">
@@ -24335,26 +24671,65 @@ function App() {
                     <div className="border-t border-white/[0.07] p-4">
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Actividad de formularios</p>
-                        <span className={`rounded-full border px-2 py-0.5 text-[8px] font-black uppercase ${selectedFormActivity.className}`}>
-                          {selectedFormActivity.label}
+                        <span className={`rounded-full border px-2 py-0.5 text-[8px] font-black uppercase ${
+                          selectedPlayerRow.activity.status === 'al_dia'
+                            ? 'border-emerald-300/15 bg-emerald-300/[0.06] text-emerald-100'
+                            : selectedPlayerRow.activity.requiresNotice
+                              ? 'border-rose-300/20 bg-rose-300/[0.07] text-rose-100'
+                              : 'border-amber-300/15 bg-amber-300/[0.06] text-amber-100'
+                        }`}>
+                          {selectedPlayerRow.activity.statusLabel}
                         </span>
                       </div>
-                      <p className="mt-1.5 text-xs font-bold text-slate-300">{selectedFormActivity.detail}</p>
-                      <div className="mt-3 grid grid-cols-2 gap-2">
+                      <p className="mt-1.5 text-[10px] font-bold text-slate-500">
+                        Día seleccionado · {selectedFormActivity.label} · {selectedFormActivity.detail}
+                      </p>
+                      <div className="mt-3 grid gap-2">
                         {[
-                          ['Wellness', selectedPlayerRow.activity.wellness],
-                          ['RPE', selectedPlayerRow.activity.rpe],
-                        ].map(([label, activity]) => (
-                          <div key={label} className={`rounded-lg border px-2.5 py-2 ${activityBadgeClass[activity.level]}`}>
-                            <p className="text-[8px] font-black uppercase tracking-[0.1em] opacity-65">Último {label}</p>
-                            <p className="mt-0.5 text-[11px] font-black">{activity.fullLabel.replace(`${label}: `, '')}</p>
+                          ['wellness', selectedPlayerRow.activity.wellness, latestSelectedWellness],
+                          ['rpe', selectedPlayerRow.activity.rpe, latestSelectedRpe],
+                        ].map(([formType, activity, entry]) => (
+                          <div key={formType} className="rounded-xl border border-white/[0.06] bg-black/10 p-3">
+                            <p className="mb-2 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                              {formType === 'wellness' ? 'Wellness' : 'RPE'}
+                            </p>
+                            <PerformanceResponseActivityBadge
+                              formType={formType}
+                              lastResponseDate={activity.lastResponseDate}
+                              daysSinceResponse={activity.daysSinceResponse}
+                              invalidDate={activity.invalidDate}
+                            />
+                            <p className="mt-2 text-[10px] font-bold text-slate-500">
+                              {formatLastActivityDetail(activity, entry)}
+                            </p>
                           </div>
                         ))}
                       </div>
+                      {selectedPlayerRow.activity.alertReasons.length ? (
+                        <p className="mt-3 text-[10px] font-bold leading-4 text-rose-100">
+                          Requiere revisión · {selectedPlayerRow.activity.alertReasons.join(' · ')}
+                        </p>
+                      ) : null}
                     </div>
                   </section>
 
                   <div className="grid gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPerformanceNoticePlayerIds((current) => (
+                        current.includes(selectedPlayerRow.player.id)
+                          ? current.filter((playerId) => playerId !== selectedPlayerRow.player.id)
+                          : [...current, selectedPlayerRow.player.id]
+                      ))}
+                      className={`rounded-xl border px-4 py-2.5 text-xs font-black transition ${
+                        selectedPlayerNoticeMarked
+                          ? 'border-amber-300/25 bg-amber-300/[0.10] text-amber-100'
+                          : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/10 hover:text-white'
+                      }`}
+                      title="Marca visual local; no envía ninguna notificación"
+                    >
+                      {selectedPlayerNoticeMarked ? 'Marcado para avisar' : 'Marcar para avisar'}
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
