@@ -14,6 +14,7 @@ export default function PlayerDatabaseForm({
   draft,
   mode = 'create',
   teams = [],
+  showGoogleFormsName = false,
   saving = false,
   error = '',
   photoUploading = false,
@@ -194,6 +195,13 @@ export default function PlayerDatabaseForm({
               <input value={draft.shirtName || ''} onChange={(event) => onChange('shirtName', event.target.value)} className="field-input" placeholder="Ej. Agus Porto, Kike, Jandro, Fran A." />
               <span className="mt-1 block text-[10px] leading-4 text-slate-500">Se mostrará en pizarras, estadísticas e informes. Si está vacío, se usará el nombre del jugador.</span>
             </label>
+            {showGoogleFormsName ? (
+              <label className="sm:col-span-2">
+                <span className="field-label">Nombre en Google Forms</span>
+                <input value={draft.googleFormsName || ''} onChange={(event) => onChange('googleFormsName', event.target.value)} className="field-input" placeholder="Solo si es distinto, por ejemplo VIGON" />
+                <span className="mt-1 block text-[10px] leading-4 text-slate-600">Opcional. Si está vacío, se utilizará el nombre completo del jugador.</span>
+              </label>
+            ) : null}
             <label><span className="field-label">Fecha de nacimiento</span><input type="date" value={draft.dob || ''} onChange={(event) => onChange('dob', event.target.value)} className="field-input" /></label>
             <label><span className="field-label">Edad si no hay fecha</span><input value={draft.age || ''} onChange={(event) => onChange('age', event.target.value)} className="field-input" placeholder="Ej. 24" /></label>
             <label><span className="field-label">Dorsal</span><input value={draft.number || ''} onChange={(event) => onChange('number', event.target.value)} className="field-input" placeholder="Opcional" /></label>

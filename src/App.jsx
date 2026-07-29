@@ -1429,6 +1429,7 @@ const normalizeSupabaseJugador = (player) => ({
   membershipId: player.membership_id ?? player.membershipId ?? null,
   activeInSquad: player.active_in_squad !== false,
   name: player.name ?? player.nombre ?? '',
+  googleFormsName: player.google_forms_name ?? player.googleFormsName ?? '',
   shirtName: player.shirt_name ?? player.nombre_camiseta ?? player.short_name ?? '',
   dob: player.dob ?? player.fecha_nacimiento ?? '',
   number: Number(player.number ?? player.dorsal) || 0,
@@ -1451,6 +1452,7 @@ async function getJugadores() {
 
 const createJugadorPayload = (formState) => ({
   name: formState.name.trim() || 'Jugador sin nombre',
+  google_forms_name: formState.googleFormsName.trim() || null,
   shirt_name: formState.shirtName.trim(),
   dob: formState.dob,
   number: Number(formState.number) || 0,
@@ -3455,6 +3457,7 @@ const normalizeSquadEntry = (entry) => {
     globalPlayerId: null,
     membershipId: null,
       name: entry,
+    googleFormsName: '',
     shirtName: '',
     image: '',
     imageSource: '',
@@ -3506,6 +3509,7 @@ const normalizeSquadEntry = (entry) => {
     globalPlayerId: entry.globalPlayerId ?? entry.global_player_id ?? null,
     membershipId: entry.membershipId ?? entry.membership_id ?? null,
     name,
+    googleFormsName: cleanImportedFieldValue(entry.googleFormsName ?? entry.google_forms_name, ''),
     shirtName: cleanImportedFieldValue(entry.shirtName ?? entry.shirt_name ?? entry.shortName ?? entry.short_name, ''),
     image: cleanImportedFieldValue(entry.image ?? entry.image_url ?? entry.photo_url ?? entry.avatar_url ?? entry.profile_image ?? entry.foto, ''),
     imageSource: cleanImportedFieldValue(entry.imageSource ?? entry.image_source, ''),
@@ -4807,6 +4811,7 @@ function App() {
   const [idealSystem, setIdealSystem] = useState('');
   const [formState, setFormState] = useState({
     name: '',
+    googleFormsName: '',
     shirtName: '',
     dob: '',
     number: '',
@@ -18935,7 +18940,10 @@ function App() {
       ? globalPlayers.find((profile) => String(profile.id) === String(player.globalPlayerId))
       : null;
     if (globalPlayersAvailable && ownClubTeam && (!player || linkedGlobalPlayer)) {
-      openRivalPlayerModal(linkedGlobalPlayer, { teamId: ownClubTeam.id });
+      openRivalPlayerModal(
+        linkedGlobalPlayer ? { ...linkedGlobalPlayer, googleFormsName: player?.googleFormsName || '' } : null,
+        { teamId: ownClubTeam.id }
+      );
       return;
     }
     setPlayerFormError('');
@@ -18944,6 +18952,7 @@ function App() {
       setEditingId(player.id);
       setFormState({
         name: player.name,
+        googleFormsName: player.googleFormsName || '',
         shirtName: player.shirtName || player.name,
         dob: player.dob,
         number: player.number,
@@ -18956,6 +18965,7 @@ function App() {
       setEditingId(null);
       setFormState({
         name: '',
+        googleFormsName: '',
         shirtName: '',
         dob: '',
         number: '',
@@ -19760,6 +19770,20 @@ function App() {
           startDate: draft.startDate || null,
         })
         : null;
+      const draftTeam = teams.find((team) => String(team.id) === String(draft.teamId));
+      if (draftTeam?.isOwnClub || draftTeam?.teamKind === 'own') {
+        const { error: googleFormsNameError } = await supabase
+          .from('jugadores')
+          .update({ google_forms_name: String(draft.googleFormsName || '').trim() || null })
+          .eq('global_player_id', globalId);
+        if (googleFormsNameError) {
+          const missingColumn = /google_forms_name|schema cache|column .* does not exist/i.test(googleFormsNameError.message || '');
+          if (missingColumn) {
+            throw new Error('El jugador se guardó, pero falta ejecutar supabase_google_forms_player_name.sql.');
+          }
+          throw googleFormsNameError;
+        }
+      }
       if (draft.legacyPlayerId && isUuid(draft.legacyPlayerId)) {
         const { error: legacyLinkError } = await supabase.from('jugadores_rivales').update({
           global_player_id: globalId,
@@ -29067,6 +29091,11 @@ function App() {
                         <span>Nombre camiseta</span>
                         <input name="shirtName" value={formState.shirtName} onChange={handleChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm uppercase tracking-normal text-white outline-none transition placeholder:text-slate-500 focus:border-caudal-electric/60" placeholder="Ej. PABLO" />
                       </label>
+                      <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 sm:col-span-2">
+                        <span>Nombre en Google Forms</span>
+                        <input name="googleFormsName" value={formState.googleFormsName} onChange={handleChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white outline-none transition placeholder:text-slate-500 focus:border-caudal-electric/60" placeholder="Solo si es distinto, por ejemplo VIGON" />
+                        <span className="block text-[10px] normal-case tracking-normal text-slate-600">Opcional. Si está vacío, se utilizará el nombre completo.</span>
+                      </label>
                       <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                         <span>Fecha nacimiento</span>
                         <input required type="date" name="dob" value={formState.dob} onChange={handleChange} className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white outline-none transition focus:border-caudal-electric/60" />
@@ -29188,6 +29217,13 @@ function App() {
             draft={rivalPlayerModal.draft || createBlankGlobalPlayer()}
             mode={rivalPlayerModal.mode}
             teams={teams}
+            showGoogleFormsName={teams.some((team) => (
+              (team.isOwnClub || team.teamKind === 'own')
+              && (
+                String(team.id) === String(rivalPlayerModal.draft?.teamId)
+                || safeArray(rivalPlayerModal.draft?.memberships).some((membership) => membership.is_current && String(membership.team_id) === String(team.id))
+              )
+            ))}
             globalPlayers={globalPlayers}
             saving={rivalPlayerSaving}
             error={rivalPlayerSaveError}

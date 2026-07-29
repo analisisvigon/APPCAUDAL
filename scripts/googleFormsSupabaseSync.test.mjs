@@ -10,6 +10,18 @@ const sourcePath = path.join(projectRoot, 'google_forms_supabase_apps_script.js'
 const source = fs.readFileSync(sourcePath, 'utf8');
 
 const requestedUrls = [];
+let supabasePlayers = [
+  {
+    id: '00000000-0000-0000-0000-000000000001',
+    name: 'Miguel Vigón',
+    google_forms_name: 'VIGON',
+  },
+  {
+    id: '00000000-0000-0000-0000-000000000002',
+    name: 'Álex',
+    google_forms_name: null,
+  },
+];
 
 const sandbox = {
   console,
@@ -30,9 +42,8 @@ const sandbox = {
   UrlFetchApp: {
     fetch(url) {
       requestedUrls.push(url);
-      const isKnownPlayer = url.includes('name=eq.Jugador%20conocido');
-      const body = isKnownPlayer
-        ? JSON.stringify([{ id: '00000000-0000-0000-0000-000000000001', name: 'Jugador conocido' }])
+      const body = url.includes('/rest/v1/jugadores?')
+        ? JSON.stringify(supabasePlayers)
         : '[]';
       return {
         getResponseCode() {
@@ -95,12 +106,48 @@ assert.equal(
 );
 
 assert.deepEqual(
-  JSON.parse(JSON.stringify(sandbox.findPlayerIdByFormName('Jugador conocido'))),
+  JSON.parse(JSON.stringify(sandbox.findPlayerIdByFormName('  vígon  '))),
   {
     jugador_id: '00000000-0000-0000-0000-000000000001',
-    name: 'Jugador conocido',
+    name: 'Miguel Vigón',
+    google_forms_name: 'VIGON',
   },
-  'El jugador debe resolverse directamente desde public.jugadores.'
+  'google_forms_name debe tener prioridad e ignorar mayúsculas, tildes y espacios.'
+);
+
+assert.deepEqual(
+  JSON.parse(JSON.stringify(sandbox.findPlayerIdByFormName(' alex '))),
+  {
+    jugador_id: '00000000-0000-0000-0000-000000000002',
+    name: 'Álex',
+    google_forms_name: null,
+  },
+  'Debe usar jugadores.name cuando google_forms_name está vacío.'
+);
+
+assert.equal(
+  sandbox.resolvePlayerByFormName([
+    { id: 'alias-only', name: 'Miguel Vigón', google_forms_name: 'VIGON' },
+  ], 'Miguel Vigón'),
+  null,
+  'Si google_forms_name está configurado, el nombre normal no debe actuar también como fallback.'
+);
+
+assert.equal(
+  sandbox.resolvePlayerByFormName([
+    { id: 'partial', name: 'Miguel Vigón', google_forms_name: null },
+  ], 'Miguel'),
+  null,
+  'Nunca debe aceptar coincidencias parciales.'
+);
+
+assert.throws(
+  () => sandbox.resolvePlayerByFormName([
+    { id: 'alias', name: 'Miguel Vigón', google_forms_name: 'VIGON' },
+    { id: 'fallback', name: 'Vígon', google_forms_name: null },
+  ], ' vigón '),
+  /Coincidencia ambigua/,
+  'Debe bloquear la sincronización si alias y fallback producen más de un candidato.'
 );
 
 const realWellnessHeaders = {
@@ -151,9 +198,9 @@ assert.match(source, /session_date=eq\.\$\{encoded\}/, 'La búsqueda RPE debe fi
 assert.doesNotMatch(source, /findTrainingSessionByFormCode/, 'El flujo nuevo no debe depender de form_code.');
 assert.doesNotMatch(source, /jugadores_map/, 'El script no debe depender de una hoja jugadores_map.');
 assert.ok(
-  requestedUrls.some((url) => url.includes('/rest/v1/jugadores?select=id,name&name=eq.')),
+  requestedUrls.some((url) => url.includes('/rest/v1/jugadores?select=id,name,google_forms_name')),
   'La identificación debe consultar directamente public.jugadores.'
 );
 assert.match(source, /Supabase status/, 'El script debe crear las columnas técnicas.');
 
-console.log('Google Forms -> Supabase sync: asociación, cabeceras reales y 6 escenarios validados.');
+console.log('Google Forms -> Supabase sync: alias, fallback, ambigüedad, cabeceras reales y 6 escenarios validados.');

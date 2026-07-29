@@ -11,8 +11,9 @@
  * - SUPABASE_URL: https://xxxxx.supabase.co
  * - SUPABASE_SERVICE_ROLE_KEY: service_role key privada de Supabase
  *
- * El jugador se resuelve directamente contra public.jugadores.name en Supabase.
- * El valor debe coincidir exactamente con el nombre mostrado en Google Forms.
+ * El jugador se resuelve directamente contra public.jugadores en Supabase.
+ * Se usa google_forms_name cuando está configurado y name únicamente como fallback.
+ * La comparación ignora mayúsculas, tildes y espacios sobrantes, pero nunca es parcial.
  *
  * Form Wellness diario. Columnas esperadas/recomendadas:
  * - Fecha
@@ -219,21 +220,34 @@ function classifyTrainingSessionMatch(sessions) {
 }
 
 function findPlayerIdByFormName(formName) {
-  const exactName = String(formName || '').trim();
-  if (!exactName) return null;
-
+  const submittedName = String(formName || '').trim();
+  if (!submittedName) return null;
   const rows = supabaseFetch(
-    `jugadores?select=id,name&name=eq.${encodeURIComponent(exactName)}&limit=2`,
+    'jugadores?select=id,name,google_forms_name&order=id.asc&limit=1000',
     { method: 'get' }
   ) || [];
-  if (rows.length > 1) {
-    throw new Error(`Hay varios jugadores en public.jugadores con el nombre exacto "${exactName}". No se puede asociar de forma segura.`);
+  return resolvePlayerByFormName(rows, submittedName);
+}
+
+function resolvePlayerByFormName(players, formName) {
+  const normalizedFormName = normalizeName(formName);
+  if (!normalizedFormName) return null;
+
+  const matches = (Array.isArray(players) ? players : []).filter((player) => {
+    const normalizedGoogleFormsName = normalizeName(player.google_forms_name);
+    const normalizedCandidate = normalizedGoogleFormsName || normalizeName(player.name);
+    return normalizedCandidate === normalizedFormName;
+  });
+
+  if (matches.length > 1) {
+    throw new Error(`Coincidencia ambigua para "${String(formName || '').trim()}": ${matches.length} jugadores compatibles en public.jugadores.`);
   }
-  const row = rows[0];
+  const row = matches[0];
   if (!row) return null;
   return {
     jugador_id: row.id,
     name: row.name,
+    google_forms_name: row.google_forms_name || null,
   };
 }
 
