@@ -65,10 +65,11 @@
  */
 
 const TECHNICAL_COLUMNS = ['Supabase status', 'Supabase session_id', 'Supabase error', 'Supabase synced_at'];
-const PLAYER_HEADER_CANDIDATES = ['Nombre y apellidos.', 'Nombre y apellidos', 'Jugador', 'Nombre'];
-const RPE_HEADER_CANDIDATES = ['RPE', 'RPE (1-10)', 'RPE 1-10'];
+const PLAYER_HEADER_CANDIDATES = ['Nombre y apellidos.', 'Nombre y apellidos', 'Nombre del jugador', 'Jugador', 'Nombre', 'Columna 3'];
+const RPE_HEADER_CANDIDATES = ['RPE', 'RPE (1-10)', 'RPE 1-10', 'Columna 4'];
 const RPE_SESSION_CODE_HEADERS = ['Código sesión', 'Codigo sesion', 'Código de sesión', 'Codigo de sesion', 'form_code'];
-const TIMESTAMP_HEADER_CANDIDATES = ['Marca temporal', 'Timestamp', 'Fecha'];
+const TIMESTAMP_HEADER_CANDIDATES = ['Marca temporal', 'Timestamp', 'Fecha', 'Columna 1'];
+const RPE_COMMENT_HEADER_CANDIDATES = ['Comentario', 'Comentarios', 'Columna 5'];
 const FORMULA_RETRY_COUNT = 3;
 const FORMULA_RETRY_DELAY_MS = 250;
 const WELLNESS_IMPORT_BATCH_SIZE = 100;
@@ -130,7 +131,7 @@ function onRpeSubmit(e) {
     diagnostic.sessionResolution = sessionResolution;
     const session = sessionResolution.session;
     const rpeValue = toRpeValue(getFirstValue(row, RPE_HEADER_CANDIDATES));
-    const comment = getFirstValue(row, ['Comentario', 'Comentarios']) || '';
+    const comment = getFirstValue(row, RPE_COMMENT_HEADER_CANDIDATES) || '';
     const payload = {
       jugador_id: player.jugador_id,
       session_id: session.id,
@@ -941,7 +942,7 @@ function buildRpeHistoryImportPlan(rowItems, players, sessions) {
         entry_date: session.session_date,
         duration_minutes: toInt(session.planned_duration, 0),
         rpe,
-        comment: getFirstValue(row, ['Comentario', 'Comentarios']) || '',
+        comment: getFirstValue(row, RPE_COMMENT_HEADER_CANDIDATES) || '',
       };
       requireFields(payload, ['jugador_id', 'session_id', 'entry_date', 'rpe'], 'rpe');
       const key = `${payload.jugador_id}|${payload.session_id}`;
@@ -1050,6 +1051,18 @@ function findRpeResponseSheet(spreadsheet) {
     const headers = lastColumn ? sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0] : [];
     return { sheet, headers };
   });
+  const activeSheet = typeof spreadsheet.getActiveSheet === 'function' ? spreadsheet.getActiveSheet() : null;
+  const namedCandidates = inspected.filter(({ sheet }) =>
+    normalizeName(sheet.getName()).includes('rpe')
+  );
+  if (namedCandidates.length) {
+    const activeNamedCandidate = activeSheet
+      ? namedCandidates.find(({ sheet }) => sheet.getSheetId() === activeSheet.getSheetId())
+      : null;
+    if (activeNamedCandidate) return activeNamedCandidate.sheet;
+    if (namedCandidates.length === 1) return namedCandidates[0].sheet;
+    throw new Error(`Hay varias hojas cuyo nombre contiene "RPE": ${namedCandidates.map(({ sheet }) => sheet.getName()).join(', ')}. Activa la hoja que quieres importar.`);
+  }
   const candidates = inspected.filter(({ headers }) =>
     hasCandidateHeader(headers, PLAYER_HEADER_CANDIDATES)
     && hasCandidateHeader(headers, RPE_HEADER_CANDIDATES)
@@ -1061,7 +1074,6 @@ function findRpeResponseSheet(spreadsheet) {
     ).join(' ; ');
     throw new Error(`No se encontró una hoja RPE compatible. Cabeceras detectadas: ${detected || '(ninguna hoja)'}.`);
   }
-  const activeSheet = typeof spreadsheet.getActiveSheet === 'function' ? spreadsheet.getActiveSheet() : null;
   const activeCandidate = activeSheet
     ? candidates.find(({ sheet }) => sheet.getSheetId() === activeSheet.getSheetId())
     : null;

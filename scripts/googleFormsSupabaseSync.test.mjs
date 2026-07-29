@@ -286,6 +286,81 @@ assert.throws(
   'Una cabecera RPE desconocida debe mostrar las cabeceras detectadas.'
 );
 
+const genericRpeHeaders = {
+  'Columna 1': '29/07/2026 10:00:00',
+  'Columna 3': 'Davo',
+  'Columna 4': '8',
+  'Columna 5': 'Sesión exigente',
+  'Dorsal': '9',
+};
+assert.doesNotThrow(
+  () => sandbox.assertRpeHeaders(genericRpeHeaders),
+  'Debe reconocer las cabeceras genéricas de la hoja RPE real.'
+);
+const genericRpePlan = sandbox.buildRpeHistoryImportPlan(
+  [{ rowNumber: 2, values: genericRpeHeaders }],
+  supabasePlayers,
+  trainingSessions
+);
+assert.equal(genericRpePlan.groups.length, 1);
+assert.equal(genericRpePlan.groups[0].payload.jugador_id, 'player-davo');
+assert.equal(genericRpePlan.groups[0].payload.session_id, 'session-code');
+assert.equal(genericRpePlan.groups[0].payload.rpe, 8);
+assert.equal(genericRpePlan.groups[0].payload.comment, 'Sesión exigente');
+assert.doesNotThrow(() => sandbox.assertRpeHeaders({
+  'Marca temporal': '',
+  'Nombre del jugador': '',
+  'RPE': '',
+}));
+
+function makeSheet(name, id, headers) {
+  return {
+    getName() {
+      return name;
+    },
+    getSheetId() {
+      return id;
+    },
+    getLastColumn() {
+      return headers.length;
+    },
+    getRange() {
+      return {
+        getDisplayValues() {
+          return [headers];
+        },
+      };
+    },
+  };
+}
+
+const namedRpeSheet = makeSheet('Respuestas RPE', 1, ['Cabecera desconocida']);
+const genericHeaderSheet = makeSheet('Respuestas de formulario 1', 2, ['Columna 1', 'Dorsal', 'Columna 3', 'Columna 4', 'Columna 5']);
+assert.equal(
+  sandbox.findRpeResponseSheet({
+    getSheets() {
+      return [genericHeaderSheet, namedRpeSheet];
+    },
+    getActiveSheet() {
+      return genericHeaderSheet;
+    },
+  }),
+  namedRpeSheet,
+  'El nombre de hoja que contiene RPE debe tener prioridad incluso con cabeceras no descriptivas.'
+);
+assert.equal(
+  sandbox.findRpeResponseSheet({
+    getSheets() {
+      return [genericHeaderSheet];
+    },
+    getActiveSheet() {
+      return genericHeaderSheet;
+    },
+  }),
+  genericHeaderSheet,
+  'Sin nombre RPE debe detectar la hoja por Columna 1, Columna 3 y Columna 4.'
+);
+
 const rpeHistoryRows = [
   {
     rowNumber: 2,
