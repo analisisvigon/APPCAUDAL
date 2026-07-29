@@ -3417,6 +3417,73 @@ const PerformanceResponseActivityBadge = ({
   );
 };
 
+const PERFORMANCE_WELLNESS_METRICS = {
+  health_ratio: { label: 'Wellness', direction: 'positive' },
+  sleep_quality: { label: 'Sueño', direction: 'positive' },
+  mood: { label: 'Ánimo', direction: 'positive' },
+  fatigue: { label: 'Fatiga', direction: 'negative' },
+  stress: { label: 'Estrés', direction: 'negative' },
+  muscle_soreness: { label: 'Dolor muscular', direction: 'negative' },
+};
+
+const getPerformanceWellnessVisualState = (metricKey, value) => {
+  const metric = PERFORMANCE_WELLNESS_METRICS[metricKey];
+  if (!metric || value === null || value === undefined || String(value).trim() === '') return null;
+  const rawValue = Number(String(value).replace(',', '.'));
+  if (!Number.isFinite(rawValue) || rawValue < 1 || rawValue > 10) return null;
+  const normalizedValue = metric.direction === 'negative' ? 11 - rawValue : rawValue;
+  const range = normalizedValue >= 9
+    ? {
+      key: 'excellent',
+      label: 'Excelente',
+      color: '#10b981',
+      textClass: 'text-emerald-300',
+      surfaceClass: 'border-emerald-300/20 bg-emerald-300/[0.07]',
+    }
+    : normalizedValue >= 7
+      ? {
+        key: 'good',
+        label: 'Bueno',
+        color: '#34d399',
+        textClass: 'text-emerald-200',
+        surfaceClass: 'border-emerald-300/15 bg-emerald-300/[0.05]',
+      }
+      : normalizedValue >= 5
+        ? {
+          key: 'watch',
+          label: 'Vigilar',
+          color: '#facc15',
+          textClass: 'text-yellow-200',
+          surfaceClass: 'border-yellow-300/20 bg-yellow-300/[0.06]',
+        }
+        : normalizedValue >= 3
+          ? {
+            key: 'bad',
+            label: 'Malo',
+            color: '#fb923c',
+            textClass: 'text-orange-200',
+            surfaceClass: 'border-orange-300/20 bg-orange-300/[0.07]',
+          }
+          : {
+            key: 'priority',
+            label: 'Prioridad',
+            color: '#f43f5e',
+            textClass: 'text-rose-200',
+            surfaceClass: 'border-rose-300/25 bg-rose-300/[0.08]',
+          };
+  return {
+    ...range,
+    metricKey,
+    metricLabel: metric.label,
+    direction: metric.direction,
+    rawValue,
+    normalizedValue,
+    directionText: metric.direction === 'negative'
+      ? 'Escala visual invertida: un valor real más bajo representa un estado mejor.'
+      : 'Escala visual directa: un valor real más alto representa un estado mejor.',
+  };
+};
+
 const PerformanceMetricPortrait = ({
   player = {},
   label = 'RPE',
@@ -7909,14 +7976,12 @@ function App() {
     const avgRpe = rpes.length ? rpes.reduce((sum, entry) => sum + normalizePerformanceNumber(entry.rpe), 0) / rpes.length : 0;
     const repeatedHighRpe = rpes.filter((entry) => normalizePerformanceNumber(entry.rpe) >= 8).length >= 2;
     const hasDiscomfort = Boolean([latestWellness?.discomfort, latestWellness?.comment, ...rpes.map((entry) => entry.comment)].join(' ').match(/molest|dolor|carga|tocado|fatiga/i));
-    const red = latestWellness && (
-      normalizePerformanceNumber(latestWellness.fatigue) >= 8 ||
-      normalizePerformanceNumber(latestWellness.muscle_soreness) >= 8 ||
-      normalizePerformanceNumber(latestWellness.stress) >= 8 ||
-      normalizePerformanceNumber(latestWellness.sleep_quality) <= 2
-    );
+    const wellnessVisualStates = Object.keys(PERFORMANCE_WELLNESS_METRICS)
+      .map((metricKey) => getPerformanceWellnessVisualState(metricKey, latestWellness?.[metricKey]))
+      .filter(Boolean);
+    const red = wellnessVisualStates.some((state) => state.key === 'priority');
     const yellow = !red && (
-      normalizePerformanceNumber(latestWellness?.sleep_quality) <= 3 ||
+      wellnessVisualStates.some((state) => state.key === 'bad' || state.key === 'watch') ||
       repeatedHighRpe ||
       hasDiscomfort
     );
@@ -8120,8 +8185,8 @@ function App() {
     const latestRpeItem = validRpes[validRpes.length - 1] || null;
     const summaryObservation = getPerformanceSummaryObservation(wellness, rpes);
     const highRpeEntries = validRpes.filter((item) => item.value >= 8);
-    const lowWellnessEntries = scoredWellness.filter((item) => item.value < 6);
-    const veryLowWellnessEntries = scoredWellness.filter((item) => item.value <= 3);
+    const lowWellnessEntries = scoredWellness.filter((item) => item.value < 7);
+    const veryLowWellnessEntries = scoredWellness.filter((item) => item.value <= 2);
     const combinedEntry = highRpeEntries
       .map((rpeItem) => {
         const wellnessItem = lowWellnessEntries.find((item) => (
@@ -8147,14 +8212,18 @@ function App() {
           : null
       )),
     ].filter(Boolean).sort((left, right) => left.entryDate.localeCompare(right.entryDate));
-    const rawWellnessSignals = latestWellness ? [
-      getPerformanceNumber(latestWellness.fatigue) >= 8 ? `Fatiga ${latestWellness.fatigue}` : '',
-      getPerformanceNumber(latestWellness.muscle_soreness) >= 8 ? `Dolor muscular ${latestWellness.muscle_soreness}` : '',
-      getPerformanceNumber(latestWellness.stress) >= 8 ? `Estrés ${latestWellness.stress}` : '',
-      getPerformanceNumber(latestWellness.sleep_quality) !== null && getPerformanceNumber(latestWellness.sleep_quality) <= 2
-        ? `Calidad del sueño ${latestWellness.sleep_quality}`
-        : '',
-    ].filter(Boolean) : [];
+    const latestWellnessVisualStates = latestWellness
+      ? Object.keys(PERFORMANCE_WELLNESS_METRICS)
+        .filter((metricKey) => metricKey !== 'health_ratio')
+        .map((metricKey) => getPerformanceWellnessVisualState(metricKey, latestWellness[metricKey]))
+        .filter(Boolean)
+      : [];
+    const priorityWellnessSignals = latestWellnessVisualStates.filter((state) => state.key === 'priority');
+    const rawWellnessSignals = latestWellnessVisualStates
+      .filter((state) => ['priority', 'bad', 'watch'].includes(state.key))
+      .map((state) => `${state.metricLabel} ${state.rawValue.toFixed(1)}/10 · ${state.label}${
+        state.direction === 'negative' ? ' · escala visual invertida' : ''
+      }`);
     const wellnessActivity = getPerformanceActivity(performanceLastResponses.wellness[player.id], 'wellness');
     const rpeActivity = getPerformanceActivity(performanceLastResponses.rpe[player.id], 'rpe');
     const hasRawWellnessData = wellness.some((entry) => (
@@ -8170,7 +8239,7 @@ function App() {
       String(entry.comment || '').trim()
     ));
     const hasData = scoredWellness.length > 0 || validRpes.length > 0 || hasRawWellnessData;
-    const priority = Boolean(combinedEntry || veryLowWellnessEntries.length);
+    const priority = Boolean(combinedEntry || veryLowWellnessEntries.length || priorityWellnessSignals.length);
     const watch = !priority && Boolean(
       highRpeEntries.length ||
       lowWellnessEntries.length ||
@@ -8348,6 +8417,7 @@ function App() {
     ].filter(Boolean))];
     const priorityPlayerIds = new Set();
     const watchPlayerIds = new Set();
+    const wellnessIndicatorDetails = new Set();
     const reasonCounts = {
       combined: 0,
       veryLowWellness: 0,
@@ -8355,6 +8425,7 @@ function App() {
       highRpe: 0,
       lowWellness: 0,
       relevantDiscomfort: 0,
+      priorityIndicator: 0,
       physicalIndicator: 0,
     };
 
@@ -8371,40 +8442,49 @@ function App() {
         String(entry.discomfort || '').trim() ||
         isPerformanceRelevantText(entry.comment)
       )) || playerRpe.some((entry) => isPerformanceRelevantText(entry.comment));
-      const hasPhysicalIndicator = playerWellness.some((entry) => (
-        getPerformanceNumber(entry.fatigue) >= 8 ||
-        getPerformanceNumber(entry.muscle_soreness) >= 8 ||
-        getPerformanceNumber(entry.stress) >= 8 ||
-        (
-          getPerformanceNumber(entry.sleep_quality) !== null &&
-          getPerformanceNumber(entry.sleep_quality) <= 2
-        )
+      const wellnessIndicatorStates = playerWellness.flatMap((entry) => (
+        Object.keys(PERFORMANCE_WELLNESS_METRICS)
+          .filter((metricKey) => metricKey !== 'health_ratio')
+          .map((metricKey) => getPerformanceWellnessVisualState(metricKey, entry[metricKey]))
+          .filter(Boolean)
       ));
+      const hasPriorityIndicator = wellnessIndicatorStates.some((state) => state.key === 'priority');
+      const hasPhysicalIndicator = wellnessIndicatorStates.some((state) => (
+        ['priority', 'bad', 'watch'].includes(state.key)
+      ));
+      wellnessIndicatorStates
+        .filter((state) => ['priority', 'bad', 'watch'].includes(state.key))
+        .forEach((state) => wellnessIndicatorDetails.add(
+          `${state.metricLabel} ${state.rawValue.toFixed(1)}/10 → ${state.label}${
+            state.direction === 'negative' ? ' (escala visual invertida)' : ''
+          }`
+        ));
       const combinedConcern = highestRpe !== null && highestRpe >= 8 &&
         lowestWellness !== null && lowestWellness < 5;
-      const veryLowWellness = lowestWellness !== null && lowestWellness <= 3;
+      const veryLowWellness = lowestWellness !== null && lowestWellness <= 2;
       const discomfortWithPhysicalConcern = hasRelevantDiscomfort && (
         highestRpe >= 8 ||
-        (lowestWellness !== null && lowestWellness < 6) ||
+        (lowestWellness !== null && lowestWellness < 7) ||
         hasPhysicalIndicator
       );
 
-      if (combinedConcern || veryLowWellness || discomfortWithPhysicalConcern) {
+      if (combinedConcern || veryLowWellness || hasPriorityIndicator || discomfortWithPhysicalConcern) {
         priorityPlayerIds.add(playerId);
         if (combinedConcern) reasonCounts.combined += 1;
         if (veryLowWellness) reasonCounts.veryLowWellness += 1;
+        if (hasPriorityIndicator) reasonCounts.priorityIndicator += 1;
         if (discomfortWithPhysicalConcern) reasonCounts.physicalConcern += 1;
         return;
       }
 
       const watch = highestRpe >= 8 ||
-        (lowestWellness !== null && lowestWellness < 6) ||
+        (lowestWellness !== null && lowestWellness < 7) ||
         hasRelevantDiscomfort ||
         hasPhysicalIndicator;
       if (watch) {
         watchPlayerIds.add(playerId);
         if (highestRpe >= 8) reasonCounts.highRpe += 1;
-        if (lowestWellness !== null && lowestWellness < 6) reasonCounts.lowWellness += 1;
+        if (lowestWellness !== null && lowestWellness < 7) reasonCounts.lowWellness += 1;
         if (hasRelevantDiscomfort) reasonCounts.relevantDiscomfort += 1;
         if (hasPhysicalIndicator) reasonCounts.physicalIndicator += 1;
       }
@@ -8413,11 +8493,13 @@ function App() {
     const reasons = [];
     if (reasonCounts.combined) reasons.push(`RPE alto y Wellness bajo en ${reasonCounts.combined} ${reasonCounts.combined === 1 ? 'jugador' : 'jugadores'}`);
     if (reasonCounts.veryLowWellness) reasons.push(`Wellness muy bajo en ${reasonCounts.veryLowWellness} ${reasonCounts.veryLowWellness === 1 ? 'jugador' : 'jugadores'}`);
+    if (reasonCounts.priorityIndicator) reasons.push(`Indicadores Wellness en prioridad en ${reasonCounts.priorityIndicator} ${reasonCounts.priorityIndicator === 1 ? 'jugador' : 'jugadores'}`);
     if (reasonCounts.physicalConcern) reasons.push(`Molestia registrada junto a indicadores físicos en ${reasonCounts.physicalConcern} ${reasonCounts.physicalConcern === 1 ? 'jugador' : 'jugadores'}`);
     if (reasonCounts.highRpe) reasons.push(`RPE alto en ${reasonCounts.highRpe} ${reasonCounts.highRpe === 1 ? 'jugador' : 'jugadores'}`);
     if (reasonCounts.lowWellness) reasons.push(`Wellness bajo en ${reasonCounts.lowWellness} ${reasonCounts.lowWellness === 1 ? 'jugador' : 'jugadores'}`);
     if (reasonCounts.relevantDiscomfort) reasons.push(`${reasonCounts.relevantDiscomfort} ${reasonCounts.relevantDiscomfort === 1 ? 'molestia o comentario físico relevante' : 'molestias o comentarios físicos relevantes'}`);
     if (reasonCounts.physicalIndicator) reasons.push(`Indicadores físicos a vigilar en ${reasonCounts.physicalIndicator} ${reasonCounts.physicalIndicator === 1 ? 'jugador' : 'jugadores'}`);
+    if (wellnessIndicatorDetails.size) reasons.push([...wellnessIndicatorDetails].slice(0, 4).join(' · '));
     if (!reasons.length) reasons.push('Respuestas disponibles sin indicadores de vigilancia');
 
     const status = priorityPlayerIds.size ? 'red' : watchPlayerIds.size ? 'orange' : 'green';
@@ -24146,6 +24228,10 @@ function App() {
           green: 'sin_alertas',
           gray: 'sin_datos',
         }[playerDayStatus.status];
+        const hasWellnessVisualAlert = Object.keys(PERFORMANCE_WELLNESS_METRICS).some((metricKey) => {
+          const visualState = getPerformanceWellnessVisualState(metricKey, wellnessEntry?.[metricKey]);
+          return visualState && ['priority', 'bad', 'watch'].includes(visualState.key);
+        });
         return {
           ...row,
           status: playerStatus,
@@ -24153,7 +24239,7 @@ function App() {
           reasons: playerDayStatus.reasons,
           tooltip: `${playerDayStatus.label} · ${playerDayStatus.reasons.join(' · ')} · Actividad actual: ${row.activity.statusLabel}`,
           signals: [
-            getWellnessScore(wellnessEntry) !== null && getWellnessScore(wellnessEntry) < 6 ? 'wellness' : null,
+            hasWellnessVisualAlert ? 'wellness' : null,
             getPerformanceNumber(rpeEntry?.rpe) >= 8 ? 'rpe' : null,
             comments.some((comment) => isPerformanceRelevantText(comment)) ? 'molestias' : null,
           ].filter(Boolean),
@@ -24223,6 +24309,7 @@ function App() {
         color: '#7dd3fc',
         entry: selectedDayWellness,
         unit: '/10',
+        wellnessMetricKey: 'health_ratio',
       },
       {
         key: 'sleep',
@@ -24232,6 +24319,7 @@ function App() {
         color: '#a5b4fc',
         entry: selectedDayWellness,
         unit: '/10',
+        wellnessMetricKey: 'sleep_quality',
       },
       {
         key: 'fatigue',
@@ -24241,6 +24329,7 @@ function App() {
         color: '#fb923c',
         entry: selectedDayWellness,
         unit: '/10',
+        wellnessMetricKey: 'fatigue',
       },
       {
         key: 'soreness',
@@ -24250,6 +24339,7 @@ function App() {
         color: '#fb7185',
         entry: selectedDayWellness,
         unit: '/10',
+        wellnessMetricKey: 'muscle_soreness',
       },
       {
         key: 'stress',
@@ -24259,6 +24349,7 @@ function App() {
         color: '#f0abfc',
         entry: selectedDayWellness,
         unit: '/10',
+        wellnessMetricKey: 'stress',
       },
       {
         key: 'mood',
@@ -24268,6 +24359,7 @@ function App() {
         color: '#6ee7b7',
         entry: selectedDayWellness,
         unit: '/10',
+        wellnessMetricKey: 'mood',
       },
       {
         key: 'weight',
@@ -24294,6 +24386,11 @@ function App() {
       },
     ];
     const selectedMetric = selectedMetricOptions.find((metric) => metric.key === performanceIndividualMetric) || selectedMetricOptions[0];
+    const selectedMetricWellnessState = selectedMetric.wellnessMetricKey
+      ? getPerformanceWellnessVisualState(selectedMetric.wellnessMetricKey, selectedMetric.value)
+      : null;
+    const selectedMetricRingValue = selectedMetricWellnessState?.normalizedValue ?? selectedMetric.value;
+    const selectedMetricRingColor = selectedMetricWellnessState?.color || selectedMetric.color;
     const selectedMetricActivity = selectedMetric.key === 'rpe'
       ? selectedPlayerRow?.activity.rpe
       : selectedPlayerRow?.activity.wellness;
@@ -24308,7 +24405,9 @@ function App() {
       ? `Estado general · ${selectedPlayerRow?.status === 'sin_datos' ? 'Sin datos suficientes' : selectedPlayerRow?.statusLabel}`
       : selectedMetric.value === null
         ? 'Sin dato'
-        : `${selectedMetric.label} · ${selectedMetric.value.toFixed(1)}${selectedMetric.unit}`;
+        : `${selectedMetric.label} · ${selectedMetric.value.toFixed(1)}${selectedMetric.unit}${
+          selectedMetricWellnessState ? ` · ${selectedMetricWellnessState.label}` : ''
+        }`;
     const selectedDayHasRpe = getPerformanceNumber(selectedDayRpe?.rpe) !== null;
     const selectedDayHasWellness = Boolean(selectedDayWellness);
     const selectedFormActivity = selectedDayHasRpe && selectedDayHasWellness
@@ -24351,31 +24450,30 @@ function App() {
       const time = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' }).format(parsed);
       return `Última respuesta: ${formatShortDate(activity.lastResponseDate)} · ${time}`;
     };
-    const interpretWellnessValue = (key, value) => {
-      if (value === null) return 'Sin dato';
-      if (key === 'sleep_quality' || key === 'mood') {
-        if (value >= 8) return 'Muy bueno';
-        if (value >= 5) return 'Moderado';
-        return 'Bajo';
-      }
-      if (key === 'fatigue' || key === 'muscle_soreness' || key === 'stress') {
-        if (value >= 8) return 'Elevado';
-        if (value >= 5) return 'Moderado';
-        return 'Bajo';
-      }
-      return 'Valor registrado';
-    };
     const selectedWellnessIndicators = [
-      { key: 'sleep_quality', label: 'Sueño', icon: '☾', value: getPerformanceNumber(selectedDayWellness?.sleep_quality), color: '#a5b4fc', suffix: '/10' },
-      { key: 'fatigue', label: 'Fatiga', icon: '◆', value: getPerformanceNumber(selectedDayWellness?.fatigue), color: '#fb923c', suffix: '/10' },
-      { key: 'muscle_soreness', label: 'Dolor muscular', icon: '◒', value: getPerformanceNumber(selectedDayWellness?.muscle_soreness), color: '#fb7185', suffix: '/10' },
-      { key: 'stress', label: 'Estrés', icon: '≈', value: getPerformanceNumber(selectedDayWellness?.stress), color: '#f0abfc', suffix: '/10' },
-      { key: 'mood', label: 'Ánimo', icon: '✦', value: getPerformanceNumber(selectedDayWellness?.mood), color: '#6ee7b7', suffix: '/10' },
+      { key: 'sleep_quality', label: 'Sueño', icon: '☾', value: getPerformanceNumber(selectedDayWellness?.sleep_quality), suffix: '/10' },
+      { key: 'fatigue', label: 'Fatiga', icon: '◆', value: getPerformanceNumber(selectedDayWellness?.fatigue), suffix: '/10' },
+      { key: 'muscle_soreness', label: 'Dolor muscular', icon: '◒', value: getPerformanceNumber(selectedDayWellness?.muscle_soreness), suffix: '/10' },
+      { key: 'stress', label: 'Estrés', icon: '≈', value: getPerformanceNumber(selectedDayWellness?.stress), suffix: '/10' },
+      { key: 'mood', label: 'Ánimo', icon: '✦', value: getPerformanceNumber(selectedDayWellness?.mood), suffix: '/10' },
       { key: 'weight', label: 'Peso', icon: '⚖', value: getPerformanceNumber(selectedDayWellness?.weight), color: '#94a3b8', suffix: ' kg', numericOnly: true },
-    ].map((indicator) => ({
-      ...indicator,
-      interpretation: indicator.numericOnly ? (indicator.value === null ? 'Sin dato' : 'Valor registrado') : interpretWellnessValue(indicator.key, indicator.value),
-    }));
+    ].map((indicator) => {
+      const visualState = indicator.numericOnly
+        ? null
+        : getPerformanceWellnessVisualState(indicator.key, indicator.value);
+      return {
+        ...indicator,
+        visualState,
+        normalizedValue: visualState?.normalizedValue ?? null,
+        color: visualState?.color || indicator.color || '#64748b',
+        interpretation: indicator.numericOnly
+          ? indicator.value === null ? 'Sin dato' : 'Valor registrado'
+          : visualState?.label || 'Sin dato',
+        tooltip: visualState
+          ? `${indicator.label} ${visualState.rawValue.toFixed(1)}/10 · Interpretación: ${visualState.label} · Estado visual ${visualState.normalizedValue.toFixed(1)}/10. ${visualState.directionText}`
+          : `${indicator.label}: sin dato`,
+      };
+    });
     const selectedHistoryByDate = [...selectedPlayerWellnessHistory, ...selectedPlayerRpeHistory].reduce((history, entry) => {
       if (!entry.entry_date) return history;
       const current = history[entry.entry_date] || { entryDate: entry.entry_date, wellness: null, rpe: null };
@@ -24390,13 +24488,16 @@ function App() {
       .sort((left, right) => right.entryDate.localeCompare(left.entryDate));
     const getHistoryIndicators = (wellness) => {
       if (!wellness) return [];
-      return [
-        getPerformanceNumber(wellness.sleep_quality) !== null ? `Sueño ${getPerformanceNumber(wellness.sleep_quality).toFixed(1)}` : null,
-        getPerformanceNumber(wellness.fatigue) >= 5 ? `Fatiga ${getPerformanceNumber(wellness.fatigue).toFixed(1)}` : null,
-        getPerformanceNumber(wellness.muscle_soreness) >= 5 ? `Dolor muscular ${getPerformanceNumber(wellness.muscle_soreness).toFixed(1)}` : null,
-        getPerformanceNumber(wellness.stress) >= 5 ? `Estrés ${getPerformanceNumber(wellness.stress).toFixed(1)}` : null,
-        getPerformanceNumber(wellness.mood) !== null ? `Ánimo ${getPerformanceNumber(wellness.mood).toFixed(1)}` : null,
-      ].filter(Boolean);
+      return ['sleep_quality', 'fatigue', 'muscle_soreness', 'stress', 'mood']
+        .map((metricKey) => getPerformanceWellnessVisualState(metricKey, wellness[metricKey]))
+        .filter((state) => (
+          state &&
+          (
+            state.direction === 'positive' ||
+            ['priority', 'bad', 'watch'].includes(state.key)
+          )
+        ))
+        .map((state) => `${state.metricLabel} ${state.rawValue.toFixed(1)} (${state.label})`);
     };
     const getHistoryComment = (history) => {
       const comment = [
@@ -25306,18 +25407,28 @@ function App() {
                       </select>
                     </label>
 
-                    <div className="mt-4">
+                    <div
+                      className="mt-4"
+                      title={selectedMetricWellnessState
+                        ? `${selectedMetric.label} ${selectedMetricWellnessState.rawValue.toFixed(1)}/10 · Interpretación: ${selectedMetricWellnessState.label} · Estado visual ${selectedMetricWellnessState.normalizedValue.toFixed(1)}/10. ${selectedMetricWellnessState.directionText}`
+                        : undefined}
+                    >
                       <PerformanceMetricPortrait
                         player={selectedPlayerRow.player}
                         label={selectedMetric.label}
-                        value={selectedMetric.value}
-                        color={selectedMetric.color}
+                        value={selectedMetricRingValue}
+                        color={selectedMetricRingColor}
                         status={selectedPlayerRow.status}
                         categorical={selectedMetric.categorical}
                         staticValue={selectedMetric.staticValue}
                         valueText={selectedMetricValueText}
                       />
                     </div>
+                    {selectedMetricWellnessState ? (
+                      <p className={`mt-2 text-[10px] font-black uppercase tracking-[0.12em] ${selectedMetricWellnessState.textClass}`}>
+                        Interpretación · {selectedMetricWellnessState.label}
+                      </p>
+                    ) : null}
 
                     <h2 className="mt-2 text-2xl font-black tracking-tight text-white">{displayPlayerName(selectedPlayerRow.player)}</h2>
                     <p className="mt-1 text-xs font-bold text-slate-500">
@@ -25489,7 +25600,15 @@ function App() {
                     ) : null}
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       {selectedWellnessIndicators.map((indicator) => (
-                        <div key={indicator.key} className="rounded-2xl border border-white/[0.06] bg-black/10 p-3.5">
+                        <div
+                          key={indicator.key}
+                          title={indicator.tooltip}
+                          className={`rounded-2xl border p-3.5 ${
+                            indicator.visualState
+                              ? indicator.visualState.surfaceClass
+                              : 'border-white/[0.06] bg-black/10'
+                          }`}
+                        >
                           <div className="flex items-center justify-between gap-3">
                             <p className="flex items-center gap-2 text-xs font-black text-white">
                               <span style={{ color: indicator.color }} className="text-base" aria-hidden="true">{indicator.icon}</span>
@@ -25500,13 +25619,7 @@ function App() {
                             </p>
                           </div>
                           <p className={`mt-2 text-[9px] font-black uppercase tracking-[0.12em] ${
-                            indicator.value === null
-                              ? 'text-slate-500'
-                              : indicator.interpretation === 'Elevado'
-                                ? 'text-amber-200'
-                                : indicator.interpretation === 'Muy bueno'
-                                  ? 'text-emerald-200'
-                                  : 'text-slate-400'
+                            indicator.visualState?.textClass || (indicator.value === null ? 'text-slate-500' : 'text-slate-400')
                           }`}>{indicator.interpretation}</p>
                           {indicator.numericOnly ? (
                             indicator.value === null ? (
@@ -25525,12 +25638,17 @@ function App() {
                               <div
                                 className="h-full rounded-full transition-all duration-700"
                                 style={{
-                                  width: `${indicator.value === null ? 0 : Math.max(0, Math.min(100, indicator.value * 10))}%`,
+                                  width: `${indicator.normalizedValue === null ? 0 : Math.max(0, Math.min(100, indicator.normalizedValue * 10))}%`,
                                   backgroundColor: indicator.color,
                                 }}
                               />
                             </div>
                           )}
+                          {indicator.visualState ? (
+                            <p className="mt-2 text-[9px] leading-4 text-slate-500">
+                              Valor real {indicator.visualState.rawValue.toFixed(1)}/10 · estado visual {indicator.visualState.normalizedValue.toFixed(1)}/10
+                            </p>
+                          ) : null}
                           {indicator.key === 'sleep_quality' && getPerformanceNumber(selectedDayWellness?.sleep_hours) !== null ? (
                             <p className="mt-2 text-[10px] font-bold text-slate-500">{getPerformanceNumber(selectedDayWellness.sleep_hours).toFixed(1)} horas registradas</p>
                           ) : null}
