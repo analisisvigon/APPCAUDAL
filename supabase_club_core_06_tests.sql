@@ -182,6 +182,10 @@ select pg_temp.assert_true(
   (select count(*) = 1 from public.clubs),
   'usuario de Club B solo ve su club'
 );
+select pg_temp.assert_true(
+  (select count(*) = 0 from public.club_member_permissions),
+  'usuario externo no ve permisos de Club A'
+);
 
 set local request.jwt.claim.sub = '';
 select pg_temp.assert_true(
@@ -257,6 +261,43 @@ select pg_temp.assert_fails(
   ),
   'admin no modifica permisos de owner'
 ) from club_core_test_context;
+
+-- UPDATE autorizado y bloqueo de traslado entre memberships.
+update public.club_member_permissions
+set permission_key = 'rpe_individual_read'
+where membership_id = (
+  select id
+  from public.club_memberships
+  where club_id = (select club_a from club_core_test_context)
+    and user_id = (select staff_a from club_core_test_context)
+);
+select pg_temp.assert_true(
+  exists (
+    select 1
+    from public.club_member_permissions permission
+    join public.club_memberships membership
+      on membership.id = permission.membership_id
+    where membership.club_id = club_a
+      and membership.user_id = staff_a
+      and permission.permission_key = 'rpe_individual_read'
+  ),
+  'admin actualiza un permiso autorizado'
+) from club_core_test_context;
+select pg_temp.assert_fails(
+  format(
+    'update public.club_member_permissions set membership_id=(select id from public.club_memberships where club_id=%L and user_id=%L) where membership_id=(select id from public.club_memberships where club_id=%L and user_id=%L)',
+    club_a, viewer_a, club_a, staff_a
+  ),
+  'UPDATE no traslada permisos entre memberships'
+) from club_core_test_context;
+update public.club_member_permissions
+set permission_key = 'performance_aggregate_read'
+where membership_id = (
+  select id
+  from public.club_memberships
+  where club_id = (select club_a from club_core_test_context)
+    and user_id = (select staff_a from club_core_test_context)
+);
 
 -- DELETE directo autorizado: admin elimina y vuelve a conceder el permiso.
 delete from public.club_member_permissions

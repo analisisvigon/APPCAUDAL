@@ -38,8 +38,23 @@ assert.match(functions, /Un usuario no puede gestionar sus propios permisos/i);
 assert.match(functions, /tg_op = 'DELETE' and pg_trigger_depth\(\) > 1/i);
 assert.match(functions, /ON DELETE CASCADE/i);
 assert.match(cascadeFix, /tg_op = 'DELETE' and pg_trigger_depth\(\) > 1/i);
+assert.match(cascadeFix, /confdeltype = 'c'/i);
+assert.match(cascadeFix, /El trigger guard_club_permission_mutation debe existir y estar activo/i);
 assert.match(cascadeFix, /alter function public\.guard_club_permission_mutation\(\) owner to postgres/i);
 assert.match(cascadeFix, /from public, anon, authenticated/i);
+for (const helper of [
+  'is_club_member\\(uuid\\)',
+  'has_club_role\\(uuid, text\\[\\]\\)',
+  'can_edit_club_data\\(uuid\\)',
+  'can_manage_club\\(uuid\\)',
+  'has_club_permission\\(uuid, text\\)',
+]) {
+  assert.match(cascadeFix, new RegExp(`grant execute on function public\\.${helper} to authenticated`, 'i'));
+}
+assert.match(cascadeFix, /grant select, update on table public\.clubs to authenticated/i);
+assert.match(cascadeFix, /on table public\.club_memberships to authenticated/i);
+assert.match(cascadeFix, /on table public\.club_member_permissions to authenticated/i);
+assert.doesNotMatch(cascadeFix, /grant [^;]+ to (anon|public)/i);
 assert.match(functions, /revoke all on function public\.lock_club_memberships\(uuid\) from public, anon, authenticated/i);
 
 const clubPolicySection = rls.split('on public.club_memberships')[0];
@@ -52,6 +67,8 @@ assert.match(integrationTests, /rollback;/i);
 assert.match(integrationTests, /ultimo owner no se elimina/i);
 assert.match(integrationTests, /usuario no se concede permisos/i);
 assert.match(integrationTests, /la cascada elimina permisos sin dejar huerfanos/i);
+assert.match(integrationTests, /admin actualiza un permiso autorizado/i);
+assert.match(integrationTests, /UPDATE no traslada permisos entre memberships/i);
 assert.doesNotMatch(
   `${tables}\n${functions}\n${rls}`,
   /alter table public\.(partidos|jugadores|competitions|training_sessions|wellness_entries|rpe_entries)/i

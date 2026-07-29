@@ -124,9 +124,9 @@ using (
   )
 );
 
-revoke all on table public.clubs from anon;
-revoke all on table public.club_memberships from anon;
-revoke all on table public.club_member_permissions from anon;
+revoke all on table public.clubs from public, anon;
+revoke all on table public.club_memberships from public, anon;
+revoke all on table public.club_member_permissions from public, anon;
 
 grant select, update on table public.clubs to authenticated;
 grant select, insert, update, delete on table public.club_memberships to authenticated;
