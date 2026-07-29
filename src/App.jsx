@@ -24803,8 +24803,14 @@ function App() {
 
         </section>
 
-        <div className="grid items-stretch gap-5 xl:grid-cols-[1.35fr_0.85fr]">
-          <section aria-label="Evolución diaria de RPE y Wellness" className="rounded-[1.75rem] border border-white/[0.07] bg-[#091428] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-6">
+        <div className={`grid items-stretch gap-5 xl:grid-cols-[1.35fr_0.85fr] ${
+          performanceChartPeriod === 'season'
+            ? 'xl:h-[790px]'
+            : performanceChartPeriod === 'month'
+              ? 'xl:h-[700px]'
+              : 'xl:h-[640px]'
+        }`}>
+          <section aria-label="Evolución diaria de RPE y Wellness" className="h-full min-h-0 rounded-[1.75rem] border border-white/[0.07] bg-[#091428] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Evolución</p>
@@ -24924,7 +24930,7 @@ function App() {
             </div>
           </section>
 
-          <section className="flex h-full min-h-0 flex-col rounded-[1.75rem] border border-white/[0.07] bg-[#091428] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-6">
+          <section className="flex h-full min-h-0 max-h-[70vh] flex-col overflow-hidden rounded-[1.75rem] border border-white/[0.07] bg-[#091428] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-6 xl:max-h-none">
             <div className="flex shrink-0 items-end justify-between gap-3">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-300">Atención prioritaria</p>
@@ -24933,7 +24939,7 @@ function App() {
               <span className="text-2xl font-black text-white">{dashboard.attentionCount}</span>
             </div>
             {dashboard.alertRows.length ? (
-              <div className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 [scrollbar-color:rgba(148,163,184,0.28)_transparent] [scrollbar-width:thin] max-xl:max-h-[70vh]">
+              <div className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 [scrollbar-color:rgba(148,163,184,0.28)_transparent] [scrollbar-width:thin]">
                 {dashboard.alertRows.map((row) => (
                   <button
                     key={row.player.id}
