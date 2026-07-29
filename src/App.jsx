@@ -7860,12 +7860,51 @@ function App() {
     await loadPerformanceData();
   };
 
+  const getPerformanceSummaryObservation = (wellnessSource = [], rpeSource = []) => {
+    const compareEntries = (left, right) => (
+      String(left.entry_date || '').localeCompare(String(right.entry_date || '')) ||
+      String(left.submitted_at || left.updated_at || left.created_at || '').localeCompare(
+        String(right.submitted_at || right.updated_at || right.created_at || '')
+      )
+    );
+    const latestWellness = [...wellnessSource].sort(compareEntries).pop() || null;
+    const latestRpe = [...rpeSource].sort(compareEntries).pop() || null;
+    const rpeComment = String(latestRpe?.comment || '').trim();
+    const wellnessDiscomfort = String(latestWellness?.discomfort || '').trim();
+    const wellnessComment = String(latestWellness?.comment || '').trim();
+    const wellnessText = wellnessDiscomfort || wellnessComment;
+    const rpeDate = String(latestRpe?.entry_date || '');
+    const wellnessDate = String(latestWellness?.entry_date || '');
+
+    if (rpeComment && (!wellnessText || rpeDate >= wellnessDate)) {
+      return { text: rpeComment, source: 'Comentario RPE', entryDate: rpeDate };
+    }
+    if (wellnessText) {
+      return {
+        text: wellnessText,
+        source: wellnessDiscomfort ? 'Molestias' : 'Comentario Wellness',
+        entryDate: wellnessDate,
+      };
+    }
+    if (rpeComment) {
+      return { text: rpeComment, source: 'Comentario RPE', entryDate: rpeDate };
+    }
+    return { text: '', source: '', entryDate: '' };
+  };
+
+  const truncatePerformanceSummaryText = (value, maxLength = 96) => {
+    const text = String(value || '').trim();
+    if (text.length <= maxLength) return text;
+    return `${text.slice(0, maxLength - 3).trimEnd()}...`;
+  };
+
   const getLegacyPerformancePlayerRows = () => players.map((player) => {
     const wellness = wellnessEntries.filter((entry) => entry.jugador_id === player.id);
     const rpes = rpeEntries
       .filter((entry) => entry.jugador_id === player.id)
       .sort((left, right) => String(left.entry_date).localeCompare(String(right.entry_date)));
     const latestWellness = [...wellness].sort((a, b) => String(b.entry_date).localeCompare(String(a.entry_date)))[0];
+    const summaryObservation = getPerformanceSummaryObservation(wellness, rpes);
     const wellnessScores = wellness.map(getWellnessScore).filter((score) => score !== null);
     const avgRpe = rpes.length ? rpes.reduce((sum, entry) => sum + normalizePerformanceNumber(entry.rpe), 0) / rpes.length : 0;
     const repeatedHighRpe = rpes.filter((entry) => normalizePerformanceNumber(entry.rpe) >= 8).length >= 2;
@@ -7890,6 +7929,7 @@ function App() {
       player,
       wellness,
       latestWellness,
+      summaryObservation,
       wellnessScore: wellnessScores.length ? wellnessScores.reduce((sum, score) => sum + score, 0) / wellnessScores.length : null,
       avgRpe,
       rpeEvolution: rpes,
@@ -8078,6 +8118,7 @@ function App() {
     const latestWellness = wellness[wellness.length - 1] || null;
     const latestWellnessItem = scoredWellness[scoredWellness.length - 1] || null;
     const latestRpeItem = validRpes[validRpes.length - 1] || null;
+    const summaryObservation = getPerformanceSummaryObservation(wellness, rpes);
     const highRpeEntries = validRpes.filter((item) => item.value >= 8);
     const lowWellnessEntries = scoredWellness.filter((item) => item.value < 6);
     const veryLowWellnessEntries = scoredWellness.filter((item) => item.value <= 3);
@@ -8240,6 +8281,7 @@ function App() {
       wellness,
       rpeEvolution: rpes,
       latestWellness,
+      summaryObservation,
       latestWellnessScore: latestWellnessItem?.value ?? null,
       latestRpe: latestRpeItem?.value ?? null,
       avgWellness: scoredWellness.length
@@ -23794,7 +23836,7 @@ function App() {
           <div className="mt-5 overflow-x-auto">
             <table className="w-full min-w-[1120px] text-left text-sm">
               <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
-                <tr>{['Jugador', 'Estado', 'Respuestas', 'RPE medio', 'Evolución diaria', 'Wellness', 'Peso', 'Min partido', 'Molestias'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}</tr>
+                <tr>{['Jugador', 'Estado', 'Respuestas', 'RPE medio', 'Evolución diaria', 'Wellness', 'Peso', 'Min partido', 'Observaciones'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}</tr>
               </thead>
               <tbody>
                 {dashboard.rows.map((row) => (
@@ -23824,7 +23866,12 @@ function App() {
                     <td className="px-3 py-4 text-white">{row.wellnessScore ? row.wellnessScore.toFixed(1) : '-'}</td>
                     <td className="px-3 py-4 text-white">{row.latestWellness?.weight || '-'}</td>
                     <td className="px-3 py-4 text-white">{row.matchMinutes}</td>
-                    <td className="px-3 py-4 text-slate-300">{row.latestWellness?.discomfort || row.latestWellness?.comment || '-'}</td>
+                    <td
+                      title={row.summaryObservation.text || undefined}
+                      className="max-w-[260px] px-3 py-4 text-slate-300"
+                    >
+                      <span className="block truncate">{truncatePerformanceSummaryText(row.summaryObservation.text) || '—'}</span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -25101,7 +25148,7 @@ function App() {
                   <th className="w-[9%] px-3 py-3">Wellness</th>
                   <th className="w-[9%] px-3 py-3">RPE</th>
                   <th className="w-[18%] px-3 py-3">Tendencia</th>
-                  <th className="w-[16%] px-3 py-3">Molestias</th>
+                  <th className="w-[16%] px-3 py-3">Observaciones</th>
                   <th className="w-[9%] px-3 py-3">Última</th>
                 </tr>
               </thead>
@@ -25152,7 +25199,12 @@ function App() {
                       </span>
                     </td>
                     <td className="px-3 py-2">
-                      <p className="line-clamp-2 text-xs leading-5 text-slate-400">{row.latestRelevantText || '—'}</p>
+                      <p
+                        title={row.summaryObservation.text || undefined}
+                        className="line-clamp-2 text-xs leading-5 text-slate-400"
+                      >
+                        {truncatePerformanceSummaryText(row.summaryObservation.text) || '—'}
+                      </p>
                     </td>
                     <td className="px-3 py-2 text-xs font-bold text-slate-300">{formatShortDate(row.lastResponseDate)}</td>
                   </tr>
@@ -25196,7 +25248,12 @@ function App() {
                   {renderTrendBadge(row.wellnessTrend, 'Wellness')}
                   {renderTrendBadge(row.rpeTrend, 'RPE')}
                 </span>
-                <p className="mt-3 truncate text-xs text-slate-500">{row.latestRelevantText || row.reasons[0]}</p>
+                <p
+                  title={row.summaryObservation.text || undefined}
+                  className="mt-3 truncate text-xs text-slate-500"
+                >
+                  {truncatePerformanceSummaryText(row.summaryObservation.text) || '—'}
+                </p>
               </button>
             ))}
           </div>
