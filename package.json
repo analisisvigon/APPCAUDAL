@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "test:league-results": "node src/utils/leagueResults.test.js",
+    "test:competition-filters": "node src/utils/competitionFilters.test.js",
     "test:encoding": "node src/utils/encodingAudit.test.js",
     "test:rival-import": "node src/utils/rivalPlayerImport.test.js",
     "test:rival-sync": "node src/utils/rivalSync.test.js",

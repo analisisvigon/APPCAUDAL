@@ -21,6 +21,12 @@ import {
 } from './constants/postEventTypes';
 import { buildLeagueResultsDonut, calculateLeagueResults } from './utils/leagueResults';
 import {
+  DEFAULT_COMPETITION_TYPES,
+  filterMatchesByCompetition,
+  getCompetitionFilterKey,
+  normalizeCompetitionKey,
+} from './utils/competitionFilters';
+import {
   getMatchOutcome,
   getMatchScore,
   getMatchStatus,
@@ -1480,14 +1486,23 @@ const normalizeCatalogText = (value) =>
     .replace(/[\u0300-\u036f]/g, '');
 
 const COMPETITION_META = {
-  all: {
-    key: 'all',
+  season: {
+    key: 'season',
     label: 'Temporada',
     title: 'Resultados de la temporada',
     shortTitle: 'Temporada',
     icon: 'TR',
     logoUrl: '',
     emptyMessage: 'Aun no hay partidos jugados en la muestra seleccionada.',
+  },
+  all: {
+    key: 'all',
+    label: 'Todos',
+    title: 'Todos los partidos',
+    shortTitle: 'Todos',
+    icon: 'TD',
+    logoUrl: '',
+    emptyMessage: 'Aun no hay partidos en la muestra seleccionada.',
   },
   league: {
     key: 'league',
@@ -1536,34 +1551,6 @@ const COMPETITION_META = {
   },
 };
 
-const mapCompetitionTextToKey = (source) => {
-  const text = normalizeCatalogText(source);
-  if (!text) return 'other';
-  if (['liga', 'league', 'regular', 'campeonato'].includes(text) || /\bliga\b/.test(text)) return 'league';
-  if (text.includes('rfef') || (text.includes('copa') && !text.includes('play'))) return 'copa_rfef';
-  if (text.includes('playoff') || text.includes('play off') || text.includes('promocion')) return 'playoff';
-  if (text.includes('amistoso') || text.includes('friendly')) return 'friendly';
-  return 'other';
-};
-
-const normalizeCompetitionKey = (matchOrValue = {}) => {
-  const candidates = isPlainObject(matchOrValue)
-    ? [
-        matchOrValue.competitionKey,
-        matchOrValue.competition_id,
-        matchOrValue.competitionId,
-        matchOrValue.competition,
-        matchOrValue.type,
-      ]
-    : [matchOrValue];
-  for (const source of candidates) {
-    if (!hasRealValue(source)) continue;
-    const key = mapCompetitionTextToKey(source);
-    if (key !== 'other') return key;
-  }
-  return 'other';
-};
-
 const getCompetitionMeta = (key) => COMPETITION_META[key] || COMPETITION_META.other;
 
 const getCompetitionPanelClass = (competitionKey) => ({
@@ -1571,6 +1558,7 @@ const getCompetitionPanelClass = (competitionKey) => ({
   copa_rfef: 'border-amber-300/20 bg-amber-300/[0.10] text-amber-100',
   playoff: 'border-violet-300/20 bg-violet-300/[0.10] text-violet-100',
   friendly: 'border-slate-300/15 bg-slate-300/[0.08] text-slate-200',
+  season: 'border-caudal-electric/20 bg-caudal-electric/[0.08] text-caudal-electric',
   all: 'border-caudal-electric/20 bg-caudal-electric/[0.08] text-caudal-electric',
   other: 'border-white/10 bg-white/[0.055] text-slate-200',
 }[competitionKey] || 'border-white/10 bg-white/[0.055] text-slate-200');
@@ -1585,13 +1573,6 @@ const getMatchCompetition = (match = {}) => {
   };
 };
 
-const getCompetitionFilterKey = (filter) => {
-  const normalized = normalizeCatalogText(filter);
-  if (!normalized || normalized === 'todos') return 'all';
-  if (normalized === 'copa') return 'copa_rfef';
-  return normalizeCompetitionKey(normalized);
-};
-
 const buildDefaultCompetitionCatalog = () =>
   competitionOptions.map((competition) => {
     const meta = getCompetitionMeta(competition.value);
@@ -1603,6 +1584,7 @@ const buildDefaultCompetitionCatalog = () =>
       shortName: meta.shortTitle,
       icon: meta.icon,
       logoUrl: meta.logoUrl || '',
+      competitionType: DEFAULT_COMPETITION_TYPES[competition.value] || '',
       isActive: true,
     };
   });
@@ -1619,6 +1601,7 @@ const normalizeSupabaseCompetition = (competition = {}) => {
     icon: competition.fallback_icon || competition.fallbackIcon || meta.icon,
     logoUrl: competition.logo_url || competition.logoUrl || meta.logoUrl || '',
     season: competition.season || '',
+    competitionType: competition.competition_type || competition.competitionType || '',
     isActive: competition.is_active ?? competition.isActive ?? true,
   };
 };
@@ -4582,7 +4565,7 @@ function App() {
   const [editingTeamId, setEditingTeamId] = useState(null);
   const [editingMatchId, setEditingMatchId] = useState(null);
   const [matchFormAutoStatus, setMatchFormAutoStatus] = useState('');
-  const [matchFilter, setMatchFilter] = useState('Todos');
+  const [matchFilter, setMatchFilter] = useState('Temporada');
   const [matchSections, setMatchSections] = useState({});
   const [matchView, setMatchView] = useState('lista_partidos');
   const [selectedMatchId, setSelectedMatchId] = useState(null);
@@ -4650,7 +4633,7 @@ function App() {
   const [statsCallupSaving, setStatsCallupSaving] = useState(false);
   const [statsCallupError, setStatsCallupError] = useState('');
   const [selectedPlayerProfileId, setSelectedPlayerProfileId] = useState(null);
-  const [playerCompetitionFilter, setPlayerCompetitionFilter] = useState('Todos');
+  const [playerCompetitionFilter, setPlayerCompetitionFilter] = useState('Temporada');
   const [performanceLoading, setPerformanceLoading] = useState(false);
   const [performanceError, setPerformanceError] = useState('');
   const [performanceStatus, setPerformanceStatus] = useState('');
@@ -4807,7 +4790,7 @@ function App() {
   const [playerProfileData, setPlayerProfileData] = useState(null);
   const [playerProfileLoading, setPlayerProfileLoading] = useState(false);
   const [playerProfileError, setPlayerProfileError] = useState('');
-  const [groupCompetitionFilter, setGroupCompetitionFilter] = useState('Todos');
+  const [groupCompetitionFilter, setGroupCompetitionFilter] = useState('Temporada');
   const [groupContextFilter, setGroupContextFilter] = useState('Todos');
   const [groupQuickReviewedOnly, setGroupQuickReviewedOnly] = useState(true);
   const [groupRankingTab, setGroupRankingTab] = useState('Goles');
@@ -5127,13 +5110,13 @@ function App() {
   };
 
   const competitionFilterOptions = useMemo(
-    () => ['Todos', ...competitions.map((competition) => competition.label)],
+    () => ['Temporada', 'Todos', ...competitions.map((competition) => competition.label)],
     [competitions]
   );
 
   const getCompetitionFilterIdentity = (filter) => {
     const key = getCompetitionFilterKey(filter);
-    if (key === 'all') return COMPETITION_META.all;
+    if (key === 'season' || key === 'all') return COMPETITION_META[key];
     return getCompetitionFromCatalog(key);
   };
 
@@ -5145,7 +5128,7 @@ function App() {
   };
 
   const filterMatchesByCompetitionCatalog = (rows = [], competitionKey = 'all') =>
-    safeArray(rows).filter((match) => competitionKey === 'all' || getCompetitionFromCatalog(match).key === competitionKey);
+    filterMatchesByCompetition(rows, competitionKey, competitions);
 
   const loadCompetitions = async () => {
     const { data, error } = await supabase
@@ -17258,7 +17241,7 @@ function App() {
     return {
       key,
       meta,
-      accepts: (match) => key === 'all' || normalizeCompetitionKey(match) === key,
+      accepts: (match) => filterMatchesByCompetition([match], key, competitions).length > 0,
     };
   };
 
@@ -17463,7 +17446,7 @@ function App() {
       .filter(isOfficialPlayedMatch)
       .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
     const competitionKey = getCompetitionFilterKey(groupCompetitionFilter);
-    if (competitionKey !== 'all') scoped = scoped.filter((match) => normalizeCompetitionKey(match) === competitionKey);
+    scoped = filterMatchesByCompetition(scoped, competitionKey, competitions);
     if (groupContextFilter === 'Local') scoped = scoped.filter((match) => match.isHome);
     if (groupContextFilter === 'Visitante') scoped = scoped.filter((match) => !match.isHome);
     return scoped;
