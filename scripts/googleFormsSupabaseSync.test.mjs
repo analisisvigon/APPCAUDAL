@@ -150,6 +150,51 @@ assert.throws(
   'Debe bloquear la sincronización si alias y fallback producen más de un candidato.'
 );
 
+const historyPlan = sandbox.buildWellnessHistoryImportPlan([
+  {
+    rowNumber: 2,
+    values: {
+      'Marca temporal': '29/07/2026 08:15:00',
+      'Nombre y apellidos.': 'VIGON',
+      'Ratio salud': '8,5',
+    },
+  },
+  {
+    rowNumber: 3,
+    values: {
+      'Marca temporal': '29/07/2026 08:30:00',
+      'Nombre y apellidos.': '  vígon ',
+      'Ratio salud': '9,0',
+    },
+  },
+  {
+    rowNumber: 4,
+    values: {
+      'Marca temporal': '29/07/2026 09:00:00',
+      'Nombre y apellidos.': 'Miguel',
+      'Ratio salud': '7,5',
+    },
+  },
+  {
+    rowNumber: 5,
+    values: {},
+  },
+], supabasePlayers);
+
+assert.equal(historyPlan.groups.length, 1, 'El histórico debe agrupar por jugador_id y fecha.');
+assert.deepEqual(
+  JSON.parse(JSON.stringify(historyPlan.groups[0].rowNumbers)),
+  [2, 3],
+  'Las filas duplicadas deben quedar asociadas al mismo upsert.'
+);
+assert.equal(historyPlan.groups[0].payload.jugador_id, '00000000-0000-0000-0000-000000000001');
+assert.equal(historyPlan.groups[0].payload.entry_date, '2026-07-29');
+assert.equal(historyPlan.groups[0].payload.health_ratio, 9, 'La última fila duplicada debe ser la versión importada.');
+assert.equal(historyPlan.duplicatesMerged, 1, 'Debe contabilizar el duplicado absorbido.');
+assert.equal(historyPlan.failures.length, 1, 'Una coincidencia parcial debe quedar como error.');
+assert.equal(historyPlan.failures[0].rowNumber, 4);
+assert.equal(historyPlan.skipped, 1, 'Las filas completamente vacías deben ignorarse.');
+
 const realWellnessHeaders = {
   'Fecha': '29/07/2026',
   'Nombre y apellidos.': 'Jugador conocido',
@@ -197,10 +242,12 @@ assert.deepEqual(
 assert.match(source, /session_date=eq\.\$\{encoded\}/, 'La búsqueda RPE debe filtrar training_sessions por fecha.');
 assert.doesNotMatch(source, /findTrainingSessionByFormCode/, 'El flujo nuevo no debe depender de form_code.');
 assert.doesNotMatch(source, /jugadores_map/, 'El script no debe depender de una hoja jugadores_map.');
+assert.match(source, /function importAllWellnessHistory\(\)/, 'Debe existir una importación histórica manual.');
+assert.match(source, /upsertSupabase\('wellness_entries', groups\.map/, 'El histórico debe usar upsert por lotes.');
 assert.ok(
   requestedUrls.some((url) => url.includes('/rest/v1/jugadores?select=id,name,google_forms_name')),
   'La identificación debe consultar directamente public.jugadores.'
 );
 assert.match(source, /Supabase status/, 'El script debe crear las columnas técnicas.');
 
-console.log('Google Forms -> Supabase sync: alias, fallback, ambigüedad, cabeceras reales y 6 escenarios validados.');
+console.log('Google Forms -> Supabase sync: histórico idempotente, alias, fallback, ambigüedad y cabeceras reales validados.');

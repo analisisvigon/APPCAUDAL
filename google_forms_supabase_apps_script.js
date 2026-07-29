@@ -54,11 +54,16 @@
  *    function: onRpeSubmit
  *    event source: From spreadsheet
  *    event type: On form submit
+ *
+ * Importación histórica Wellness:
+ * - Ejecuta manualmente importAllWellnessHistory desde Apps Script.
+ * - Puede repetirse: el upsert por jugador_id + entry_date evita duplicados.
  */
 
 const TECHNICAL_COLUMNS = ['Supabase status', 'Supabase session_id', 'Supabase error', 'Supabase synced_at'];
 const FORMULA_RETRY_COUNT = 3;
 const FORMULA_RETRY_DELAY_MS = 250;
+const WELLNESS_IMPORT_BATCH_SIZE = 100;
 
 function onWellnessSubmit(e) {
   let submission = null;
@@ -151,6 +156,86 @@ function onRpeSubmit(e) {
   }
 }
 
+function importAllWellnessHistory() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = findWellnessResponseSheet(spreadsheet);
+  const technical = ensureTechnicalColumns(sheet);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    const emptySummary = { sheet: sheet.getName(), rows: 0, upserted: 0, duplicatesMerged: 0, errors: 0 };
+    console.log('Histórico Wellness: no hay filas para importar.', emptySummary);
+    return emptySummary;
+  }
+
+  SpreadsheetApp.flush();
+  const rows = sheet.getRange(2, 1, lastRow - 1, technical.lastColumn).getValues();
+  const rowItems = rows.map((row, index) => ({
+    rowNumber: index + 2,
+    values: Object.fromEntries(technical.headers.map((header, columnIndex) => [String(header).trim(), row[columnIndex]])),
+  }));
+  const plan = buildWellnessHistoryImportPlan(rowItems, fetchPlayersForForms());
+  const syncStates = {};
+
+  plan.failures.forEach((failure) => {
+    syncStates[failure.rowNumber] = {
+      status: 'ERROR',
+      sessionId: '',
+      error: failure.error,
+      syncedAt: '',
+    };
+  });
+
+  let upserted = 0;
+  let syncedRows = 0;
+  for (let offset = 0; offset < plan.groups.length; offset += WELLNESS_IMPORT_BATCH_SIZE) {
+    const groups = plan.groups.slice(offset, offset + WELLNESS_IMPORT_BATCH_SIZE);
+    try {
+      upsertSupabase('wellness_entries', groups.map((group) => group.payload), 'jugador_id,entry_date');
+      const syncedAt = new Date();
+      groups.forEach((group) => {
+        group.rowNumbers.forEach((rowNumber) => {
+          syncStates[rowNumber] = {
+            status: 'SYNCED',
+            sessionId: '',
+            error: '',
+            syncedAt,
+          };
+          syncedRows += 1;
+        });
+      });
+      upserted += groups.length;
+    } catch (error) {
+      const message = error.message || String(error);
+      groups.forEach((group) => {
+        group.rowNumbers.forEach((rowNumber) => {
+          syncStates[rowNumber] = {
+            status: 'ERROR',
+            sessionId: '',
+            error: message,
+            syncedAt: '',
+          };
+        });
+      });
+      plan.failures.push(...groups.flatMap((group) =>
+        group.rowNumbers.map((rowNumber) => ({ rowNumber, error: message }))
+      ));
+    }
+  }
+  writeHistorySyncStates(sheet, technical.columns, lastRow, syncStates);
+
+  const summary = {
+    sheet: sheet.getName(),
+    rows: rowItems.length,
+    syncedRows,
+    upserted,
+    duplicatesMerged: plan.duplicatesMerged,
+    skipped: plan.skipped,
+    errors: plan.failures.length,
+  };
+  console.log('Histórico Wellness importado.', summary);
+  return summary;
+}
+
 function getSupabaseConfig() {
   const properties = PropertiesService.getScriptProperties();
   const url = properties.getProperty('SUPABASE_URL');
@@ -222,11 +307,14 @@ function classifyTrainingSessionMatch(sessions) {
 function findPlayerIdByFormName(formName) {
   const submittedName = String(formName || '').trim();
   if (!submittedName) return null;
-  const rows = supabaseFetch(
+  return resolvePlayerByFormName(fetchPlayersForForms(), submittedName);
+}
+
+function fetchPlayersForForms() {
+  return supabaseFetch(
     'jugadores?select=id,name,google_forms_name&order=id.asc&limit=1000',
     { method: 'get' }
   ) || [];
-  return resolvePlayerByFormName(rows, submittedName);
 }
 
 function resolvePlayerByFormName(players, formName) {
@@ -277,7 +365,7 @@ function buildWellnessPayload(row, playerId) {
 
   return {
     jugador_id: playerId,
-    entry_date: toIsoDate(getFirstValue(row, ['Fecha'])),
+    entry_date: toIsoDate(getFirstValue(row, ['Fecha', 'Marca temporal', 'Timestamp'])),
     sleep_hours: toNullableNumber(getFirstValue(row, ['Horas de sueño', 'Horas de sueno', 'Horas sueño', 'Horas sueno'])),
     sleep_quality: toWellnessScale(sleepValue, 'sleep'),
     fatigue: toWellnessScale(getFirstValue(row, ['¿Cómo de fatigado estás hoy?', 'Fatiga']), 'high-is-bad'),
@@ -289,6 +377,76 @@ function buildWellnessPayload(row, playerId) {
     comment: getFirstValue(row, ['Información personal: (molestias, comentarios)', 'Comentario', 'Comentarios']) || '',
     health_ratio: toHealthRatio(getFirstValue(row, ['Ratio salud'])),
   };
+}
+
+function buildWellnessHistoryImportPlan(rowItems, players) {
+  const groupsByKey = {};
+  const failures = [];
+  let skipped = 0;
+
+  (Array.isArray(rowItems) ? rowItems : []).forEach((item) => {
+    const row = item.values || {};
+    const playerName = getFirstValue(row, ['Nombre y apellidos.', 'Nombre y apellidos', 'Jugador', 'Nombre']);
+    const entryDate = getFirstValue(row, ['Fecha', 'Marca temporal', 'Timestamp']);
+    if (!playerName && !entryDate) {
+      skipped += 1;
+      return;
+    }
+
+    try {
+      const player = resolvePlayerByFormName(players, playerName);
+      if (!player) {
+        throw new Error(`Jugador no encontrado en public.jugadores: "${playerName}". No se inserta wellness.`);
+      }
+      const payload = buildWellnessPayload(row, player.jugador_id);
+      requireFields(payload, ['jugador_id', 'entry_date'], 'wellness');
+      const key = `${payload.jugador_id}|${payload.entry_date}`;
+      const existing = groupsByKey[key];
+      groupsByKey[key] = {
+        payload,
+        rowNumbers: existing ? [...existing.rowNumbers, item.rowNumber] : [item.rowNumber],
+      };
+    } catch (error) {
+      failures.push({
+        rowNumber: item.rowNumber,
+        error: error.message || String(error),
+      });
+    }
+  });
+
+  const groups = Object.values(groupsByKey);
+  return {
+    groups,
+    failures,
+    skipped,
+    duplicatesMerged: groups.reduce((total, group) => total + Math.max(0, group.rowNumbers.length - 1), 0),
+  };
+}
+
+function findWellnessResponseSheet(spreadsheet) {
+  if (!spreadsheet || typeof spreadsheet.getSheets !== 'function') {
+    throw new Error('No se pudo acceder al Google Sheet de Wellness.');
+  }
+  const candidates = spreadsheet.getSheets().filter((sheet) => {
+    const lastColumn = sheet.getLastColumn();
+    if (!lastColumn) return false;
+    const headers = sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
+    const normalizedHeaders = headers.map(normalizeName);
+    const hasPlayer = ['Nombre y apellidos.', 'Nombre y apellidos', 'Jugador', 'Nombre']
+      .some((header) => normalizedHeaders.includes(normalizeName(header)));
+    return hasPlayer && normalizedHeaders.includes(normalizeName('Ratio salud'));
+  });
+  if (!candidates.length) {
+    throw new Error('No se encontró una hoja con las cabeceras de Wellness.');
+  }
+  const activeSheet = typeof spreadsheet.getActiveSheet === 'function' ? spreadsheet.getActiveSheet() : null;
+  if (activeSheet && candidates.some((sheet) => sheet.getSheetId() === activeSheet.getSheetId())) {
+    return activeSheet;
+  }
+  if (candidates.length > 1) {
+    throw new Error('Hay varias hojas compatibles con Wellness. Activa la hoja que quieres importar y vuelve a ejecutar.');
+  }
+  return candidates[0];
 }
 
 function getNamedValues(e) {
@@ -364,6 +522,28 @@ function setSubmissionSyncState(submission, state) {
   Object.entries(values).forEach(([header, value]) => {
     const column = submission.columns[header];
     if (column) submission.sheet.getRange(submission.rowNumber, column).setValue(value);
+  });
+}
+
+function writeHistorySyncStates(sheet, columns, lastRow, statesByRow) {
+  const fields = {
+    'Supabase status': 'status',
+    'Supabase session_id': 'sessionId',
+    'Supabase error': 'error',
+    'Supabase synced_at': 'syncedAt',
+  };
+  Object.entries(fields).forEach(([header, stateField]) => {
+    const column = columns[header];
+    if (!column || lastRow < 2) return;
+    const range = sheet.getRange(2, column, lastRow - 1, 1);
+    const values = range.getValues();
+    Object.entries(statesByRow).forEach(([rowNumber, state]) => {
+      const index = Number(rowNumber) - 2;
+      if (index >= 0 && index < values.length) {
+        values[index][0] = state[stateField] || '';
+      }
+    });
+    range.setValues(values);
   });
 }
 
