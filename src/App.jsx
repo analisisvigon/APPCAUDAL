@@ -3249,6 +3249,166 @@ const PlayerPortrait = ({ player = {}, className = '', imgClassName = 'h-full w-
     <PlayerAvatarFallback player={player} className={className} textClassName={fallbackTextClassName} />
   );
 };
+const PerformanceStatusRing = ({
+  player = {},
+  status = 'sin_datos',
+  tooltip = 'Sin datos esta semana',
+  signals = [],
+  size = 'md',
+}) => {
+  const sizeClass = {
+    sm: 'h-11 w-11',
+    md: 'h-14 w-14',
+    lg: 'h-20 w-20',
+  }[size] || 'h-14 w-14';
+  const insetClass = {
+    sm: 'inset-[5px]',
+    md: 'inset-[6px]',
+    lg: 'inset-[8px]',
+  }[size] || 'inset-[6px]';
+  const signalOrder = ['wellness', 'rpe', 'molestias'];
+  const signalColors = {
+    wellness: '#38bdf8',
+    rpe: '#f59e0b',
+    molestias: '#fb7185',
+  };
+
+  return (
+    <span
+      className={`relative inline-flex shrink-0 items-center justify-center ${sizeClass}`}
+      title={tooltip}
+      aria-label={tooltip}
+    >
+      <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full -rotate-90" aria-hidden="true">
+        <circle cx="50" cy="50" r="44" fill="none" stroke="rgba(148,163,184,0.16)" strokeWidth="7" />
+        {status === 'prioridad' ? (
+          <>
+            <circle cx="50" cy="50" r="44" fill="none" stroke="#fb7185" strokeWidth="8" />
+            <circle cx="50" cy="50" r="36.5" fill="none" stroke="rgba(251,113,133,0.42)" strokeWidth="2.5" />
+          </>
+        ) : null}
+        {status === 'vigilar' ? signalOrder.map((signal, index) => (
+          <circle
+            key={signal}
+            cx="50"
+            cy="50"
+            r="44"
+            fill="none"
+            stroke={signals.includes(signal) ? signalColors[signal] : 'rgba(148,163,184,0.18)'}
+            strokeWidth={signals.includes(signal) ? 7 : 4}
+            strokeLinecap="round"
+            strokeDasharray="72 205"
+            strokeDashoffset={index * -92}
+          />
+        )) : null}
+        {status === 'sin_alertas' ? (
+          <circle cx="50" cy="50" r="44" fill="none" stroke="#34d399" strokeWidth="5" />
+        ) : null}
+        {status === 'sin_datos' ? (
+          <circle
+            cx="50"
+            cy="50"
+            r="44"
+            fill="none"
+            stroke="rgba(148,163,184,0.55)"
+            strokeWidth="4"
+            strokeDasharray="7 8"
+            strokeLinecap="round"
+          />
+        ) : null}
+      </svg>
+      <span className={`absolute overflow-hidden rounded-full border border-slate-950/80 bg-white ${insetClass}`}>
+        <PlayerPortrait
+          player={player}
+          className="h-full w-full"
+          imgClassName="h-full w-full object-cover object-center"
+          fallbackTextClassName={size === 'lg' ? 'text-sm' : 'text-[10px]'}
+        />
+      </span>
+    </span>
+  );
+};
+
+const PerformanceWeeklyChart = ({ days = [] }) => {
+  const width = 700;
+  const height = 248;
+  const plot = { left: 42, right: 18, top: 18, bottom: 42 };
+  const plotWidth = width - plot.left - plot.right;
+  const plotHeight = height - plot.top - plot.bottom;
+  const xFor = (index) => plot.left + ((plotWidth / Math.max(days.length - 1, 1)) * index);
+  const yFor = (value) => plot.top + ((10 - value) / 10) * plotHeight;
+  const buildSegments = (key) => {
+    const segments = [];
+    let current = [];
+    days.forEach((day, index) => {
+      const value = day[key];
+      if (Number.isFinite(value)) {
+        current.push(`${xFor(index)},${yFor(value)}`);
+      } else if (current.length) {
+        segments.push(current);
+        current = [];
+      }
+    });
+    if (current.length) segments.push(current);
+    return segments;
+  };
+  const rpeSegments = buildSegments('avgRpe');
+  const wellnessSegments = buildSegments('avgWellness');
+  const hasRpe = rpeSegments.length > 0;
+  const hasWellness = wellnessSegments.length > 0;
+
+  if (!hasRpe && !hasWellness) {
+    return (
+      <div className="flex min-h-56 items-center justify-center rounded-2xl border border-dashed border-white/10 bg-black/10 px-6 text-center text-sm text-slate-500">
+        Sin respuestas suficientes para mostrar la evolución semanal.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap gap-4 text-xs font-bold text-slate-400">
+        {hasRpe ? <span className="inline-flex items-center gap-2"><span className="h-0.5 w-6 bg-amber-300" />RPE medio</span> : null}
+        {hasWellness ? <span className="inline-flex items-center gap-2"><span className="w-6 border-t-2 border-dashed border-sky-300" />Wellness medio</span> : null}
+      </div>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="h-auto w-full overflow-visible"
+        role="img"
+        aria-label="Evolución diaria de RPE y Wellness en escala de cero a diez"
+      >
+        {[0, 2.5, 5, 7.5, 10].map((value) => (
+          <g key={value}>
+            <line
+              x1={plot.left}
+              x2={width - plot.right}
+              y1={yFor(value)}
+              y2={yFor(value)}
+              stroke="rgba(148,163,184,0.14)"
+              strokeWidth="1"
+            />
+            <text x={plot.left - 10} y={yFor(value) + 4} textAnchor="end" fill="#64748b" fontSize="11">{value}</text>
+          </g>
+        ))}
+        {rpeSegments.map((points, index) => (
+          <polyline key={`rpe-${index}`} points={points.join(' ')} fill="none" stroke="#fcd34d" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+        ))}
+        {wellnessSegments.map((points, index) => (
+          <polyline key={`wellness-${index}`} points={points.join(' ')} fill="none" stroke="#7dd3fc" strokeWidth="4" strokeDasharray="8 7" strokeLinecap="round" strokeLinejoin="round" />
+        ))}
+        {days.map((day, index) => (
+          <g key={day.entryDate}>
+            {Number.isFinite(day.avgRpe) ? <circle cx={xFor(index)} cy={yFor(day.avgRpe)} r="5" fill="#fcd34d" stroke="#091428" strokeWidth="3" /> : null}
+            {Number.isFinite(day.avgWellness) ? <rect x={xFor(index) - 4.5} y={yFor(day.avgWellness) - 4.5} width="9" height="9" rx="2" fill="#7dd3fc" stroke="#091428" strokeWidth="2.5" /> : null}
+            <text x={xFor(index)} y={height - 14} textAnchor="middle" fill="#94a3b8" fontSize="11" fontWeight="700">
+              {day.shortDay}
+            </text>
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+};
 const PlayerIdentity = ({ player = {}, name = '', meta = '', size = 'sm' }) => {
   const avatarSize = size === 'xs' ? 'h-8 w-8 rounded-lg' : 'h-10 w-10 rounded-xl';
   const displayName = player?.name ? displayPlayerName(player) || player.name : name || 'Jugador no identificado';
@@ -4651,9 +4811,17 @@ function App() {
   const [trainingSessions, setTrainingSessions] = useState([]);
   const [wellnessEntries, setWellnessEntries] = useState([]);
   const [rpeEntries, setRpeEntries] = useState([]);
+  const [previousWellnessEntries, setPreviousWellnessEntries] = useState([]);
+  const [previousRpeEntries, setPreviousRpeEntries] = useState([]);
+  const [performanceLastSyncedAt, setPerformanceLastSyncedAt] = useState('');
+  const [performanceSelectedDate, setPerformanceSelectedDate] = useState('');
+  const [performancePlayerSearch, setPerformancePlayerSearch] = useState('');
+  const [performanceStatusFilter, setPerformanceStatusFilter] = useState('todos');
+  const [performanceSelectedPlayerId, setPerformanceSelectedPlayerId] = useState('');
+  const [performanceMenuRect, setPerformanceMenuRect] = useState(null);
   const [rpeSyncPending, setRpeSyncPending] = useState([]);
   const [pendingRpeSessionById, setPendingRpeSessionById] = useState({});
-  const [performanceMatchStats, setPerformanceMatchStats] = useState([]);
+  const [performanceMatchStats] = useState([]);
   const [performanceSessionDraft, setPerformanceSessionDraft] = useState({
     sessionDate: new Date().toISOString().slice(0, 10),
     microcycleLabel: '',
@@ -7033,9 +7201,12 @@ function App() {
   };
 
   const addDays = (dateString, days) => {
-    const date = new Date(`${dateString}T00:00:00`);
+    const date = new Date(`${dateString}T12:00:00`);
     date.setDate(date.getDate() + days);
-    return date.toISOString().slice(0, 10);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const performanceWeekEnd = addDays(performanceWeekStart, 6);
@@ -7045,21 +7216,19 @@ function App() {
     return Number.isFinite(number) ? number : 0;
   };
 
+  const getPerformanceNumber = (value) => {
+    if (value === null || value === undefined || String(value).trim() === '') return null;
+    const number = Number(String(value).replace(',', '.'));
+    return Number.isFinite(number) ? number : null;
+  };
+
   const getWellnessScore = (entry) => {
     if (!entry) return null;
-    const syncedHealthRatio = Number(String(entry.health_ratio ?? '').replace(',', '.'));
-    if (Number.isFinite(syncedHealthRatio) && syncedHealthRatio >= 0 && syncedHealthRatio <= 10) {
+    const syncedHealthRatio = getPerformanceNumber(entry.health_ratio);
+    if (syncedHealthRatio !== null && syncedHealthRatio >= 0 && syncedHealthRatio <= 10) {
       return syncedHealthRatio;
     }
-    const values = [
-      entry.sleep_quality,
-      entry.mood,
-      11 - normalizePerformanceNumber(entry.fatigue),
-      11 - normalizePerformanceNumber(entry.muscle_soreness),
-      11 - normalizePerformanceNumber(entry.stress),
-    ].map(Number).filter((value) => Number.isFinite(value) && value > 0);
-    if (!values.length) return null;
-    return values.reduce((sum, value) => sum + value, 0) / values.length;
+    return null;
   };
 
   const getPerformancePlayerName = (playerId) =>
@@ -7069,9 +7238,18 @@ function App() {
     setPerformanceLoading(true);
     setPerformanceError('');
     const weekEnd = addDays(performanceWeekStart, 6);
+    const previousWeekStart = addDays(performanceWeekStart, -7);
+    const previousWeekEnd = addDays(performanceWeekStart, -1);
 
     try {
-      const [wellnessResponse, rpeResponse, statsResponse] = await Promise.all([
+      const [
+        wellnessResponse,
+        rpeResponse,
+        previousWellnessResponse,
+        previousRpeResponse,
+        latestWellnessResponse,
+        latestRpeResponse,
+      ] = await Promise.all([
         supabase
           .from('wellness_entries')
           .select('*')
@@ -7085,19 +7263,64 @@ function App() {
           .lte('entry_date', weekEnd)
           .order('entry_date', { ascending: true }),
         supabase
-          .from('partido_estadisticas_jugador')
-          .select('player_name,minutes')
+          .from('wellness_entries')
+          .select('*')
+          .gte('entry_date', previousWeekStart)
+          .lte('entry_date', previousWeekEnd)
+          .order('entry_date', { ascending: true }),
+        supabase
+          .from('rpe_entries')
+          .select('*')
+          .gte('entry_date', previousWeekStart)
+          .lte('entry_date', previousWeekEnd)
+          .order('entry_date', { ascending: true }),
+        supabase
+          .from('wellness_entries')
+          .select('updated_at')
+          .not('updated_at', 'is', null)
+          .order('updated_at', { ascending: false })
+          .limit(1),
+        supabase
+          .from('rpe_entries')
+          .select('updated_at')
+          .not('updated_at', 'is', null)
+          .order('updated_at', { ascending: false })
+          .limit(1),
       ]);
 
-      const failed = [wellnessResponse, rpeResponse, statsResponse].find((response) => response.error);
+      const failed = [
+        wellnessResponse,
+        rpeResponse,
+        previousWellnessResponse,
+        previousRpeResponse,
+        latestWellnessResponse,
+        latestRpeResponse,
+      ].find((response) => response.error);
       if (failed) {
         console.error('Error cargando Rendimiento desde Supabase:', failed.error);
         throw failed.error;
       }
 
-      setWellnessEntries(wellnessResponse.data || []);
-      setRpeEntries(rpeResponse.data || []);
-      setPerformanceMatchStats(statsResponse.data || []);
+      const nextWellnessEntries = wellnessResponse.data || [];
+      const nextRpeEntries = rpeResponse.data || [];
+      setWellnessEntries(nextWellnessEntries);
+      setRpeEntries(nextRpeEntries);
+      setPreviousWellnessEntries(previousWellnessResponse.data || []);
+      setPreviousRpeEntries(previousRpeResponse.data || []);
+
+      const syncCandidates = [
+        latestWellnessResponse.data?.[0]?.updated_at,
+        latestRpeResponse.data?.[0]?.updated_at,
+      ].filter(Boolean);
+      setPerformanceLastSyncedAt(syncCandidates.sort((left, right) => (
+        new Date(right).getTime() - new Date(left).getTime()
+      ))[0] || '');
+
+      const responseDates = [...nextWellnessEntries, ...nextRpeEntries]
+        .map((entry) => entry.entry_date)
+        .filter(Boolean)
+        .sort();
+      setPerformanceSelectedDate(responseDates[responseDates.length - 1] || performanceWeekStart);
     } catch (loadError) {
       console.error('Error cargando Rendimiento:', loadError);
       setPerformanceError(loadError.message || 'No se pudo cargar Rendimiento. Revisa que hayas ejecutado supabase_rendimiento.sql.');
@@ -7237,7 +7460,7 @@ function App() {
     await loadPerformanceData();
   };
 
-  const getPerformancePlayerRows = () => players.map((player) => {
+  const getLegacyPerformancePlayerRows = () => players.map((player) => {
     const wellness = wellnessEntries.filter((entry) => entry.jugador_id === player.id);
     const rpes = rpeEntries
       .filter((entry) => entry.jugador_id === player.id)
@@ -7277,8 +7500,8 @@ function App() {
     };
   });
 
-  const getPerformanceDashboard = () => {
-    const rows = getPerformancePlayerRows();
+  const getLegacyPerformanceDashboard = () => {
+    const rows = getLegacyPerformancePlayerRows();
     const rpeValues = rpeEntries.map((entry) => normalizePerformanceNumber(entry.rpe)).filter(Boolean);
     const wellnessScores = rows.map((row) => row.wellnessScore).filter((score) => score !== null);
     const dailyRpeByDate = rpeEntries.reduce((groups, entry) => {
@@ -7324,8 +7547,8 @@ function App() {
     };
   };
 
-  const getPerformanceReport = () => {
-    const dashboard = getPerformanceDashboard();
+  const getLegacyPerformanceReport = () => {
+    const dashboard = getLegacyPerformanceDashboard();
     const intensity = dashboard.avgRpe >= 8 ? 'alta' : dashboard.avgRpe >= 6 ? 'media-alta' : 'controlada';
     const peakText = dashboard.peak?.avgRpe
       ? ` Pico de RPE medio ${dashboard.peak.avgRpe.toFixed(1)}/10 el ${dashboard.peak.entryDate}.`
@@ -7337,6 +7560,232 @@ function App() {
       ? ` Wellness grupal medio ${dashboard.avgWellness.toFixed(1)}/10.`
       : ' Sin wellness suficiente para valorar tendencia grupal.';
     return `Microciclo con percepción de esfuerzo ${intensity}.${peakText}${riskText}${wellnessText}`;
+  };
+
+  const isPerformanceRelevantText = (value) => (
+    /molest|dolor|fatiga|cansan|tocado|sobrecarga|rigidez|contract|golpe/i.test(String(value || '').trim())
+  );
+
+  const getPerformanceTrend = (values = []) => {
+    if (values.length < 2) return null;
+    const delta = values[values.length - 1] - values[values.length - 2];
+    if (Math.abs(delta) < 0.05) return { direction: 'estable', delta: 0 };
+    return { direction: delta > 0 ? 'sube' : 'baja', delta };
+  };
+
+  const getPerformancePlayerRows = (wellnessSource = wellnessEntries, rpeSource = rpeEntries) => players.map((player) => {
+    const wellness = wellnessSource
+      .filter((entry) => entry.jugador_id === player.id)
+      .sort((left, right) => String(left.entry_date).localeCompare(String(right.entry_date)));
+    const rpes = rpeSource
+      .filter((entry) => entry.jugador_id === player.id)
+      .sort((left, right) => String(left.entry_date).localeCompare(String(right.entry_date)));
+    const scoredWellness = wellness
+      .map((entry) => ({ entry, value: getWellnessScore(entry) }))
+      .filter((item) => item.value !== null);
+    const validRpes = rpes
+      .map((entry) => ({ entry, value: getPerformanceNumber(entry.rpe) }))
+      .filter((item) => item.value !== null && item.value >= 1 && item.value <= 10);
+    const latestWellness = wellness[wellness.length - 1] || null;
+    const latestWellnessItem = scoredWellness[scoredWellness.length - 1] || null;
+    const latestRpeItem = validRpes[validRpes.length - 1] || null;
+    const highRpeEntries = validRpes.filter((item) => item.value >= 8);
+    const lowWellnessEntries = scoredWellness.filter((item) => item.value < 6);
+    const veryLowWellnessEntries = scoredWellness.filter((item) => item.value <= 3);
+    const combinedEntry = highRpeEntries
+      .map((rpeItem) => {
+        const wellnessItem = lowWellnessEntries.find((item) => (
+          item.entry.entry_date === rpeItem.entry.entry_date && item.value < 5
+        ));
+        return wellnessItem ? { rpeItem, wellnessItem, entryDate: rpeItem.entry.entry_date } : null;
+      })
+      .filter(Boolean)
+      .sort((left, right) => left.entryDate.localeCompare(right.entryDate))
+      .pop() || null;
+    const discomfortEntries = [
+      ...wellness.flatMap((entry) => [
+        String(entry.discomfort || '').trim()
+          ? { entryDate: entry.entry_date, text: String(entry.discomfort).trim() }
+          : null,
+        isPerformanceRelevantText(entry.comment)
+          ? { entryDate: entry.entry_date, text: String(entry.comment).trim() }
+          : null,
+      ]),
+      ...rpes.map((entry) => (
+        isPerformanceRelevantText(entry.comment)
+          ? { entryDate: entry.entry_date, text: String(entry.comment).trim() }
+          : null
+      )),
+    ].filter(Boolean).sort((left, right) => left.entryDate.localeCompare(right.entryDate));
+    const rawWellnessSignals = latestWellness ? [
+      getPerformanceNumber(latestWellness.fatigue) >= 8 ? `Fatiga ${latestWellness.fatigue}` : '',
+      getPerformanceNumber(latestWellness.muscle_soreness) >= 8 ? `Daño muscular ${latestWellness.muscle_soreness}` : '',
+      getPerformanceNumber(latestWellness.stress) >= 8 ? `Estrés ${latestWellness.stress}` : '',
+      getPerformanceNumber(latestWellness.sleep_quality) !== null && getPerformanceNumber(latestWellness.sleep_quality) <= 2
+        ? `Calidad del sueño ${latestWellness.sleep_quality}`
+        : '',
+    ].filter(Boolean) : [];
+    const hasRawWellnessData = wellness.some((entry) => (
+      [
+        entry.sleep_hours,
+        entry.sleep_quality,
+        entry.fatigue,
+        entry.muscle_soreness,
+        entry.stress,
+        entry.mood,
+      ].some((value) => getPerformanceNumber(value) !== null) ||
+      String(entry.discomfort || '').trim() ||
+      String(entry.comment || '').trim()
+    ));
+    const hasData = scoredWellness.length > 0 || validRpes.length > 0 || hasRawWellnessData;
+    const priority = Boolean(combinedEntry || veryLowWellnessEntries.length);
+    const watch = !priority && Boolean(
+      highRpeEntries.length ||
+      lowWellnessEntries.length ||
+      discomfortEntries.length ||
+      rawWellnessSignals.length
+    );
+    const status = !hasData ? 'sin_datos' : priority ? 'prioridad' : watch ? 'vigilar' : 'sin_alertas';
+    const reasons = [];
+    if (combinedEntry) {
+      reasons.push(`Wellness ${combinedEntry.wellnessItem.value.toFixed(1)} · RPE ${combinedEntry.rpeItem.value.toFixed(1)} · ${combinedEntry.entryDate.slice(5).split('-').reverse().join('/')}`);
+    } else if (veryLowWellnessEntries.length) {
+      const item = veryLowWellnessEntries[veryLowWellnessEntries.length - 1];
+      reasons.push(`Wellness ${item.value.toFixed(1)} · ${item.entry.entry_date.slice(5).split('-').reverse().join('/')}`);
+    } else {
+      if (highRpeEntries.length) {
+        const item = highRpeEntries[highRpeEntries.length - 1];
+        reasons.push(`RPE ${item.value.toFixed(1)} · ${item.entry.entry_date.slice(5).split('-').reverse().join('/')}`);
+      }
+      if (lowWellnessEntries.length) {
+        const item = lowWellnessEntries[lowWellnessEntries.length - 1];
+        reasons.push(`Wellness ${item.value.toFixed(1)} · ${item.entry.entry_date.slice(5).split('-').reverse().join('/')}`);
+      }
+    }
+    if (rawWellnessSignals.length) reasons.push(rawWellnessSignals.join(' · '));
+    if (discomfortEntries.length) reasons.push(discomfortEntries[discomfortEntries.length - 1].text);
+    if (status === 'sin_alertas') reasons.push('Datos disponibles sin indicadores');
+    if (status === 'sin_datos') reasons.push('Sin datos esta semana');
+    const statusLabel = {
+      prioridad: 'Prioridad',
+      vigilar: 'Vigilar',
+      sin_alertas: 'Sin alertas',
+      sin_datos: 'Sin datos',
+    }[status];
+    const evidenceDates = [
+      combinedEntry?.entryDate,
+      veryLowWellnessEntries[veryLowWellnessEntries.length - 1]?.entry.entry_date,
+      highRpeEntries[highRpeEntries.length - 1]?.entry.entry_date,
+      lowWellnessEntries[lowWellnessEntries.length - 1]?.entry.entry_date,
+      discomfortEntries[discomfortEntries.length - 1]?.entryDate,
+    ].filter(Boolean).sort();
+    const responseDates = [...wellness, ...rpes].map((entry) => entry.entry_date).filter(Boolean).sort();
+    const signals = [
+      lowWellnessEntries.length || veryLowWellnessEntries.length || rawWellnessSignals.length ? 'wellness' : null,
+      highRpeEntries.length ? 'rpe' : null,
+      discomfortEntries.length ? 'molestias' : null,
+    ].filter(Boolean);
+
+    return {
+      player,
+      wellness,
+      rpeEvolution: rpes,
+      latestWellness,
+      latestWellnessScore: latestWellnessItem?.value ?? null,
+      latestRpe: latestRpeItem?.value ?? null,
+      avgWellness: scoredWellness.length
+        ? scoredWellness.reduce((sum, item) => sum + item.value, 0) / scoredWellness.length
+        : null,
+      avgRpe: validRpes.length
+        ? validRpes.reduce((sum, item) => sum + item.value, 0) / validRpes.length
+        : null,
+      wellnessTrend: getPerformanceTrend(scoredWellness.map((item) => item.value)),
+      rpeTrend: getPerformanceTrend(validRpes.map((item) => item.value)),
+      status,
+      statusLabel,
+      tooltip: `${statusLabel} · ${reasons.join(' · ')}`,
+      reasons,
+      signals,
+      evidenceDate: evidenceDates[evidenceDates.length - 1] || responseDates[responseDates.length - 1] || '',
+      lastResponseDate: responseDates[responseDates.length - 1] || '',
+      latestRelevantText: discomfortEntries[discomfortEntries.length - 1]?.text || '',
+      repeatedHighRpe: highRpeEntries.length >= 2,
+      hasDiscomfort: discomfortEntries.length > 0,
+      hasData,
+    };
+  });
+
+  const getPerformanceDashboard = (
+    wellnessSource = wellnessEntries,
+    rpeSource = rpeEntries,
+    weekStart = performanceWeekStart
+  ) => {
+    const rows = getPerformancePlayerRows(wellnessSource, rpeSource);
+    const rpeValues = rpeSource
+      .map((entry) => getPerformanceNumber(entry.rpe))
+      .filter((value) => value !== null && value >= 1 && value <= 10);
+    const wellnessValues = wellnessSource
+      .map(getWellnessScore)
+      .filter((value) => value !== null);
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const entryDate = addDays(weekStart, index);
+      const dayRpeEntries = rpeSource.filter((entry) => entry.entry_date === entryDate);
+      const dayWellnessEntries = wellnessSource.filter((entry) => entry.entry_date === entryDate);
+      const dayRpeValues = dayRpeEntries
+        .map((entry) => getPerformanceNumber(entry.rpe))
+        .filter((value) => value !== null && value >= 1 && value <= 10);
+      const dayWellnessValues = dayWellnessEntries
+        .map(getWellnessScore)
+        .filter((value) => value !== null);
+      const relevantEntries = [
+        ...dayRpeEntries.filter((entry) => String(entry.comment || '').trim()),
+        ...dayWellnessEntries.filter((entry) => (
+          String(entry.discomfort || '').trim() || String(entry.comment || '').trim()
+        )),
+      ];
+      const date = new Date(`${entryDate}T12:00:00`);
+      return {
+        entryDate,
+        shortDay: new Intl.DateTimeFormat('es-ES', { weekday: 'short' }).format(date).replace('.', '').toUpperCase(),
+        dayLabel: new Intl.DateTimeFormat('es-ES', { weekday: 'long' }).format(date),
+        rpeEntries: dayRpeEntries,
+        wellnessEntries: dayWellnessEntries,
+        rpeResponseCount: dayRpeEntries.length,
+        wellnessResponseCount: dayWellnessEntries.length,
+        avgRpe: dayRpeValues.length ? dayRpeValues.reduce((sum, value) => sum + value, 0) / dayRpeValues.length : null,
+        maxRpe: dayRpeValues.length ? Math.max(...dayRpeValues) : null,
+        highRpeCount: dayRpeValues.filter((value) => value >= 8).length,
+        avgWellness: dayWellnessValues.length ? dayWellnessValues.reduce((sum, value) => sum + value, 0) / dayWellnessValues.length : null,
+        relevantCount: relevantEntries.length,
+        hasData: dayRpeEntries.length > 0 || dayWellnessEntries.length > 0,
+      };
+    });
+    const alertRows = rows.filter((row) => row.status === 'prioridad' || row.status === 'vigilar');
+    const priorityCount = rows.filter((row) => row.status === 'prioridad').length;
+    const watchCount = rows.filter((row) => row.status === 'vigilar').length;
+    const peak = days
+      .filter((day) => day.avgRpe !== null)
+      .sort((left, right) => right.avgRpe - left.avgRpe)[0] || null;
+
+    return {
+      rows,
+      days,
+      alertRows,
+      priorityCount,
+      watchCount,
+      alertCount: alertRows.length,
+      rpeResponseCount: rpeSource.length,
+      wellnessResponseCount: wellnessSource.length,
+      responseCount: rpeSource.length + wellnessSource.length,
+      avgRpe: rpeValues.length ? rpeValues.reduce((sum, value) => sum + value, 0) / rpeValues.length : null,
+      avgWellness: wellnessValues.length ? wellnessValues.reduce((sum, value) => sum + value, 0) / wellnessValues.length : null,
+      peak,
+      commentCount: days.reduce((sum, day) => sum + day.relevantCount, 0),
+      hasData: rpeSource.length > 0 || wellnessSource.length > 0,
+      hasRpeData: rpeValues.length > 0,
+      hasWellnessData: wellnessValues.length > 0,
+      hasEvaluableData: rows.some((row) => row.hasData),
+    };
   };
 
   useEffect(() => {
@@ -18698,7 +19147,15 @@ function App() {
     }
   }, [isMatchPanelOpen, matchFormSection]);
 
-  const performancePlayerRows = useMemo(() => getPerformancePlayerRows(), [players, wellnessEntries, rpeEntries, performanceMatchStats]);
+  const performanceDashboard = useMemo(
+    () => getPerformanceDashboard(wellnessEntries, rpeEntries, performanceWeekStart),
+    [players, wellnessEntries, rpeEntries, performanceWeekStart]
+  );
+  const previousPerformanceDashboard = useMemo(
+    () => getPerformanceDashboard(previousWellnessEntries, previousRpeEntries, addDays(performanceWeekStart, -7)),
+    [players, previousWellnessEntries, previousRpeEntries, performanceWeekStart]
+  );
+  const performancePlayerRows = performanceDashboard.rows;
   const performanceRowByPlayerId = useMemo(
     () => new Map(performancePlayerRows.map((row) => [row.player.id, row])),
     [performancePlayerRows]
@@ -18713,7 +19170,11 @@ function App() {
       const injured = recentStats.some((stats) => stats.injured);
       const suspended = recentStats.some((stats) => stats.red);
       const highLoad = Boolean(performanceRow?.repeatedHighRpe);
-      const touched = Boolean(performanceRow?.hasDiscomfort || performanceRow?.status === 'amarillo');
+      const touched = Boolean(
+        performanceRow?.hasDiscomfort ||
+        performanceRow?.status === 'vigilar' ||
+        performanceRow?.status === 'prioridad'
+      );
       return [player.id, {
         captain: matches.some((match) => match.captainPlayerId === player.id),
         injured,
@@ -22310,8 +22771,8 @@ function App() {
     }
   };
 
-  const renderPerformanceSection = () => {
-    const dashboard = getPerformanceDashboard();
+  const renderLegacyPerformanceSection = () => {
+    const dashboard = getLegacyPerformanceDashboard();
     const statusClass = {
       verde: 'border-emerald-300/20 bg-emerald-400/10 text-emerald-200',
       amarillo: 'border-amber-300/20 bg-amber-300/10 text-amber-100',
@@ -22509,8 +22970,698 @@ function App() {
 
         <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
           <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Informe semanal PF</h3>
-          <p className="mt-4 rounded-3xl bg-[#0f1e38]/80 p-5 text-sm leading-7 text-slate-200">{getPerformanceReport()}</p>
+          <p className="mt-4 rounded-3xl bg-[#0f1e38]/80 p-5 text-sm leading-7 text-slate-200">{getLegacyPerformanceReport()}</p>
         </div>
+      </section>
+    );
+  };
+
+  const renderPerformanceSection = () => {
+    const dashboard = performanceDashboard;
+    const previousDashboard = previousPerformanceDashboard;
+    const selectedDay = dashboard.days.find((day) => day.entryDate === performanceSelectedDate) || dashboard.days[0];
+    const statusPresentation = {
+      prioridad: {
+        label: 'Prioridad',
+        badge: 'border-rose-300/30 bg-rose-400/10 text-rose-100',
+        dot: 'bg-rose-400',
+        rank: 0,
+      },
+      vigilar: {
+        label: 'Vigilar',
+        badge: 'border-amber-300/30 bg-amber-300/10 text-amber-100',
+        dot: 'bg-amber-300',
+        rank: 1,
+      },
+      sin_alertas: {
+        label: 'Sin alertas',
+        badge: 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100',
+        dot: 'bg-emerald-300',
+        rank: 2,
+      },
+      sin_datos: {
+        label: 'Sin datos',
+        badge: 'border-slate-400/20 bg-slate-400/5 text-slate-400',
+        dot: 'bg-slate-500',
+        rank: 3,
+      },
+    };
+    const formatShortDate = (value) => {
+      if (!value) return '—';
+      const [year, month, day] = String(value).slice(0, 10).split('-');
+      return year && month && day ? `${day}/${month}` : '—';
+    };
+    const formatLongDate = (value) => {
+      if (!value) return 'Sin información';
+      const date = new Date(`${String(value).slice(0, 10)}T12:00:00`);
+      return new Intl.DateTimeFormat('es-ES', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+      }).format(date);
+    };
+    const formatSyncDate = (value) => {
+      if (!value) return 'Sin sincronización registrada';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return 'Sin sincronización registrada';
+      return new Intl.DateTimeFormat('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(date);
+    };
+    const formatComparison = (current, previous, options = {}) => {
+      const { decimals = 1, invertPositive = false, enabled = true } = options;
+      if (!enabled || current === null || previous === null || current === undefined || previous === undefined) {
+        return { label: 'Sin comparación disponible', className: 'text-slate-500' };
+      }
+      const delta = current - previous;
+      if (Math.abs(delta) < (decimals ? 0.05 : 0.5)) {
+        return { label: 'Sin cambios respecto a la anterior', className: 'text-slate-400' };
+      }
+      const positive = delta > 0;
+      const favorable = invertPositive ? !positive : positive;
+      return {
+        label: `${positive ? '↑' : '↓'} ${Math.abs(delta).toFixed(decimals)} vs. semana anterior`,
+        className: favorable ? 'text-emerald-300' : 'text-amber-200',
+      };
+    };
+    const formatTrend = (trend, metric) => {
+      if (!trend) return '—';
+      if (trend.direction === 'estable') return `${metric} →`;
+      const arrow = trend.direction === 'sube' ? '↑' : '↓';
+      return `${metric} ${arrow}${Math.abs(trend.delta).toFixed(1)}`;
+    };
+    const statusOptions = [
+      ['todos', 'Todos'],
+      ['prioridad', 'Prioridad'],
+      ['vigilar', 'Vigilar'],
+      ['sin_alertas', 'Sin alertas'],
+      ['sin_datos', 'Sin datos'],
+    ];
+    const normalizedSearch = normalizePlayerIdentityName(performancePlayerSearch);
+    const filteredRows = dashboard.rows
+      .filter((row) => (
+        performanceStatusFilter === 'todos' || row.status === performanceStatusFilter
+      ))
+      .filter((row) => {
+        if (!normalizedSearch) return true;
+        return normalizePlayerIdentityName([
+          displayPlayerName(row.player),
+          row.player.name,
+          row.player.shirt_name,
+          row.player.number,
+        ].filter(Boolean).join(' ')).includes(normalizedSearch);
+      })
+      .sort((left, right) => (
+        statusPresentation[left.status].rank - statusPresentation[right.status].rank ||
+        displayPlayerName(left.player).localeCompare(displayPlayerName(right.player), 'es')
+      ));
+    const selectedDayPlayerIds = [...new Set([
+      ...(selectedDay?.rpeEntries || []).map((entry) => entry.jugador_id),
+      ...(selectedDay?.wellnessEntries || []).map((entry) => entry.jugador_id),
+    ])];
+    const selectedDayRows = selectedDayPlayerIds
+      .map((playerId) => {
+        const row = dashboard.rows.find((item) => item.player.id === playerId);
+        if (!row) return null;
+        const rpeEntry = selectedDay.rpeEntries.find((entry) => entry.jugador_id === playerId);
+        const wellnessEntry = selectedDay.wellnessEntries.find((entry) => entry.jugador_id === playerId);
+        const comments = [
+          wellnessEntry?.discomfort,
+          wellnessEntry?.comment,
+          rpeEntry?.comment,
+        ].map((value) => String(value || '').trim()).filter(Boolean);
+        return {
+          ...row,
+          dayRpe: getPerformanceNumber(rpeEntry?.rpe),
+          dayWellness: getWellnessScore(wellnessEntry),
+          dayComments: comments,
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => statusPresentation[left.status].rank - statusPresentation[right.status].rank);
+    const selectedPlayerRow = dashboard.rows.find((row) => row.player.id === performanceSelectedPlayerId) || null;
+    const playerMapClipboardText = [
+      'form_name\tjugador_id\tname',
+      ...players.map((player) => `${player.google_forms_name || player.shirt_name || player.name}\t${player.id}\t${player.name}`),
+    ].join('\n');
+    const copyPlayersMap = async () => {
+      try {
+        await navigator.clipboard.writeText(playerMapClipboardText);
+        setPerformanceStatus('Mapa de jugadores copiado.');
+        setPerformanceError('');
+      } catch (copyError) {
+        console.error('Error copiando mapa de jugadores:', copyError);
+        setPerformanceError('No se pudo copiar el mapa de jugadores desde el navegador.');
+      } finally {
+        setPerformanceMenuRect(null);
+      }
+    };
+    const selectWeekFromDate = (value) => {
+      if (!value) return;
+      const date = new Date(`${value}T12:00:00`);
+      const day = date.getDay() || 7;
+      setPerformanceWeekStart(addDays(value, 1 - day));
+    };
+    const comparisonEnabled = dashboard.hasEvaluableData && previousDashboard.hasEvaluableData;
+    const responseComparisonEnabled = dashboard.hasData && previousDashboard.hasData;
+    const kpis = [
+      {
+        label: 'RPE medio',
+        value: dashboard.avgRpe === null ? 'Sin respuestas' : dashboard.avgRpe.toFixed(1),
+        suffix: dashboard.avgRpe === null ? '' : '/10',
+        secondary: dashboard.rpeResponseCount
+          ? `${dashboard.rpeResponseCount} respuestas RPE`
+          : 'Sin respuestas RPE',
+        comparison: formatComparison(dashboard.avgRpe, previousDashboard.avgRpe, {
+          invertPositive: true,
+          enabled: dashboard.hasRpeData && previousDashboard.hasRpeData,
+        }),
+        accent: 'from-amber-300/20',
+      },
+      {
+        label: 'Wellness medio',
+        value: dashboard.avgWellness === null ? 'Sin información' : dashboard.avgWellness.toFixed(1),
+        suffix: dashboard.avgWellness === null ? '' : '/10',
+        secondary: dashboard.wellnessResponseCount
+          ? `${dashboard.wellnessResponseCount} respuestas Wellness`
+          : 'Sin Ratio salud disponible',
+        comparison: formatComparison(dashboard.avgWellness, previousDashboard.avgWellness, {
+          enabled: dashboard.hasWellnessData && previousDashboard.hasWellnessData,
+        }),
+        accent: 'from-sky-300/20',
+      },
+      {
+        label: 'Jugadores en alerta',
+        value: dashboard.hasEvaluableData ? String(dashboard.alertCount) : 'Sin información',
+        suffix: '',
+        secondary: dashboard.hasEvaluableData
+          ? `${dashboard.priorityCount} prioridad · ${dashboard.watchCount} vigilar`
+          : 'Sin datos evaluables esta semana',
+        comparison: formatComparison(dashboard.alertCount, previousDashboard.alertCount, {
+          decimals: 0,
+          invertPositive: true,
+          enabled: comparisonEnabled,
+        }),
+        accent: 'from-rose-300/20',
+      },
+      {
+        label: 'Respuestas recibidas',
+        value: dashboard.hasData ? String(dashboard.responseCount) : 'Sin respuestas',
+        suffix: '',
+        secondary: dashboard.hasData
+          ? `${dashboard.rpeResponseCount} RPE · ${dashboard.wellnessResponseCount} Wellness`
+          : 'RPE y Wellness pendientes',
+        comparison: formatComparison(dashboard.responseCount, previousDashboard.responseCount, {
+          decimals: 0,
+          enabled: responseComparisonEnabled,
+        }),
+        accent: 'from-emerald-300/20',
+      },
+    ];
+    const generalState = !dashboard.hasEvaluableData
+      ? 'Sin información suficiente'
+      : dashboard.priorityCount
+        ? 'Hay casos que requieren revisión prioritaria'
+        : dashboard.watchCount
+          ? 'Hay indicadores que conviene vigilar'
+          : 'No se observan indicadores de alerta';
+
+    return (
+      <section className="space-y-5">
+        <header className="relative overflow-hidden rounded-[2rem] border border-white/[0.07] bg-[#081426] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.22)] sm:p-7">
+          <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-caudal-electric/[0.08] blur-3xl" />
+          <div className="relative flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.28em] text-caudal-electric">Rendimiento</p>
+              <h2 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">Control físico del microciclo</h2>
+              <p className="mt-2 text-sm text-slate-400">Estado diario del equipo a partir de Wellness y RPE.</p>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex items-center rounded-2xl border border-white/10 bg-white/[0.04] p-1.5">
+                <button
+                  type="button"
+                  onClick={() => setPerformanceWeekStart(addDays(performanceWeekStart, -7))}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl text-lg font-black text-slate-300 transition hover:bg-white/10 hover:text-white"
+                  aria-label="Semana anterior"
+                  title="Semana anterior"
+                >
+                  ←
+                </button>
+                <label className="min-w-0 flex-1 px-2 text-center sm:min-w-48">
+                  <span className="block text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Semana seleccionada</span>
+                  <span className="mt-0.5 block text-sm font-black capitalize text-white">
+                    {formatShortDate(performanceWeekStart)} — {formatShortDate(performanceWeekEnd)}
+                  </span>
+                  <input
+                    type="date"
+                    value={performanceWeekStart}
+                    onChange={(event) => selectWeekFromDate(event.target.value)}
+                    className="sr-only"
+                    aria-label="Seleccionar semana"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setPerformanceWeekStart(addDays(performanceWeekStart, 7))}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl text-lg font-black text-slate-300 transition hover:bg-white/10 hover:text-white"
+                  aria-label="Semana siguiente"
+                  title="Semana siguiente"
+                >
+                  →
+                </button>
+              </div>
+              <label className="group flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 sm:min-w-44">
+                <span>
+                  <span className="block text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Cambiar semana</span>
+                  <span className="mt-0.5 block text-xs font-bold text-slate-300">Elegir fecha</span>
+                </span>
+                <span className="text-base text-caudal-electric">▣</span>
+                <input
+                  type="date"
+                  value={performanceWeekStart}
+                  onChange={(event) => selectWeekFromDate(event.target.value)}
+                  className="absolute h-px w-px opacity-0"
+                  aria-label="Elegir una fecha de la semana"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={(event) => setPerformanceMenuRect(event.currentTarget.getBoundingClientRect())}
+                className="flex h-12 w-12 items-center justify-center self-end rounded-2xl border border-white/10 bg-white/[0.04] text-xl font-black tracking-[0.12em] text-slate-300 transition hover:bg-white/10 hover:text-white sm:self-auto"
+                aria-label="Más opciones de Rendimiento"
+                title="Más opciones"
+              >
+                •••
+              </button>
+            </div>
+          </div>
+          <div className="relative mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-white/[0.07] pt-4 text-xs text-slate-500">
+            <span className="inline-flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,0.7)]" />
+              Última sincronización: <strong className="font-bold text-slate-300">{formatSyncDate(performanceLastSyncedAt)}</strong>
+            </span>
+            <span>Datos procedentes de Google Forms</span>
+          </div>
+        </header>
+
+        {performanceMenuRect ? (
+          <FloatingActionMenu anchorRect={performanceMenuRect} width={252} onClose={() => setPerformanceMenuRect(null)}>
+            <button
+              type="button"
+              onClick={copyPlayersMap}
+              className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-bold text-slate-200 transition hover:bg-white/10"
+            >
+              Copiar mapa de jugadores
+              <span className="text-caudal-electric">⧉</span>
+            </button>
+          </FloatingActionMenu>
+        ) : null}
+
+        {performanceError ? <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-5 py-4 text-sm text-rose-100">{performanceError}</div> : null}
+        {performanceStatus ? <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-5 py-4 text-sm text-emerald-100">{performanceStatus}</div> : null}
+        {performanceLoading ? <div className="rounded-2xl border border-white/[0.06] bg-[#091428] px-5 py-4 text-sm text-slate-400">Actualizando datos de Rendimiento…</div> : null}
+
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          {kpis.map((kpi) => (
+            <article key={kpi.label} className="relative overflow-hidden rounded-3xl border border-white/[0.07] bg-[#091428] p-4 shadow-[0_16px_40px_rgba(0,0,0,0.16)] sm:p-5">
+              <div className={`pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b ${kpi.accent} to-transparent opacity-50`} />
+              <div className="relative">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{kpi.label}</p>
+                <p className={`mt-3 font-black tracking-tight text-white ${String(kpi.value).length > 8 ? 'text-lg sm:text-xl' : 'text-2xl sm:text-3xl'}`}>
+                  {kpi.value} {kpi.suffix ? <span className="text-sm text-slate-500">{kpi.suffix}</span> : null}
+                </p>
+                <p className="mt-2 text-[11px] font-bold text-slate-400">{kpi.secondary}</p>
+                <p className={`mt-3 text-[10px] font-bold ${kpi.comparison.className}`}>{kpi.comparison.label}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <section aria-label="RPE por fecha · Resumen por día" className="rounded-[1.75rem] border border-white/[0.07] bg-[#091428] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-6">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Resumen por día</p>
+              <h3 className="mt-1 text-lg font-black text-white">Pulso diario del equipo</h3>
+            </div>
+            <p className="text-xs text-slate-500">Selecciona un día para consultar el detalle</p>
+          </div>
+          <div className="-mx-1 mt-5 flex snap-x gap-3 overflow-x-auto px-1 pb-3">
+            {dashboard.days.map((day) => (
+              <button
+                key={day.entryDate}
+                type="button"
+                onClick={() => setPerformanceSelectedDate(day.entryDate)}
+                className={`min-w-[188px] snap-start rounded-2xl border p-4 text-left transition sm:min-w-[205px] ${
+                  selectedDay?.entryDate === day.entryDate
+                    ? 'border-caudal-electric/45 bg-caudal-electric/[0.09] shadow-[0_0_0_1px_rgba(92,225,230,0.08)]'
+                    : 'border-white/[0.07] bg-white/[0.025] hover:border-white/15 hover:bg-white/[0.05]'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">{day.shortDay}</p>
+                    <p className="mt-1 text-sm font-black capitalize text-white">{formatShortDate(day.entryDate)}</p>
+                  </div>
+                  <span className={`mt-1 h-2.5 w-2.5 rounded-full ${day.hasData ? 'bg-emerald-300' : 'bg-slate-700'}`} />
+                </div>
+                {day.hasData ? (
+                  <>
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xl font-black text-white">{day.rpeResponseCount || '—'}</p>
+                        <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-500">Respuestas RPE</p>
+                      </div>
+                      <div>
+                        <p className="text-xl font-black text-white">{day.avgRpe === null ? '—' : day.avgRpe.toFixed(1)}</p>
+                        <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-500">RPE medio</p>
+                      </div>
+                      <div>
+                        <p className="text-base font-black text-white">{day.maxRpe === null ? '—' : day.maxRpe.toFixed(1)}</p>
+                        <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-500">Máximo</p>
+                      </div>
+                      <div>
+                        <p className="text-base font-black text-white">{day.highRpeCount}</p>
+                        <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-500">RPE altos</p>
+                      </div>
+                    </div>
+                    <p className="mt-4 border-t border-white/[0.07] pt-3 text-[10px] font-bold text-slate-400">
+                      {day.relevantCount
+                        ? `${day.relevantCount} comentarios o molestias`
+                        : 'Sin comentarios relevantes'}
+                    </p>
+                  </>
+                ) : (
+                  <div className="mt-7 rounded-xl border border-dashed border-white/10 px-3 py-5 text-center text-xs font-bold text-slate-500">
+                    Sin respuestas
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-3 rounded-2xl border border-white/[0.07] bg-black/10 p-4 sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Detalle seleccionado</p>
+                <h4 className="mt-1 text-base font-black capitalize text-white">{formatLongDate(selectedDay?.entryDate)}</h4>
+              </div>
+              {selectedDay?.hasData ? (
+                <p className="text-xs font-bold text-slate-400">
+                  {selectedDay.rpeResponseCount} RPE · {selectedDay.wellnessResponseCount} Wellness
+                </p>
+              ) : null}
+            </div>
+            {selectedDayRows.length ? (
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                {selectedDayRows.map((row) => (
+                  <button
+                    key={row.player.id}
+                    type="button"
+                    onClick={() => setPerformanceSelectedPlayerId(row.player.id)}
+                    className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3 text-left transition hover:border-caudal-electric/25 hover:bg-white/[0.05]"
+                  >
+                    <PerformanceStatusRing player={row.player} status={row.status} tooltip={row.tooltip} signals={row.signals} size="sm" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-black text-white">{displayPlayerName(row.player)}</span>
+                      <span className="mt-1 block text-xs text-slate-400">
+                        Wellness {row.dayWellness === null ? '—' : row.dayWellness.toFixed(1)} · RPE {row.dayRpe === null ? '—' : row.dayRpe.toFixed(1)}
+                      </span>
+                      {row.dayComments.length ? <span className="mt-1 block truncate text-xs text-slate-500">{row.dayComments.join(' · ')}</span> : null}
+                    </span>
+                    <span className={`rounded-full border px-2.5 py-1 text-[9px] font-black uppercase ${statusPresentation[row.status].badge}`}>
+                      {statusPresentation[row.status].label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">
+                Sin información para este día.
+              </div>
+            )}
+          </div>
+        </section>
+
+        <div className="grid gap-5 xl:grid-cols-[1.35fr_0.85fr]">
+          <section aria-label="Evolución diaria de RPE y Wellness" className="rounded-[1.75rem] border border-white/[0.07] bg-[#091428] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-6">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Evolución semanal</p>
+            <div className="mt-1 flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="text-lg font-black text-white">RPE y Wellness por día</h3>
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Escala real 0–10</p>
+            </div>
+            <div className="mt-5">
+              <PerformanceWeeklyChart days={dashboard.days} />
+            </div>
+          </section>
+
+          <section className="rounded-[1.75rem] border border-white/[0.07] bg-[#091428] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-6">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-300">Atención prioritaria</p>
+                <h3 className="mt-1 text-lg font-black text-white">Indicadores a revisar</h3>
+              </div>
+              {dashboard.hasEvaluableData ? <span className="text-2xl font-black text-white">{dashboard.alertCount}</span> : null}
+            </div>
+            {dashboard.alertRows.length ? (
+              <div className="mt-5 max-h-[360px] space-y-3 overflow-y-auto pr-1">
+                {dashboard.alertRows.map((row) => (
+                  <button
+                    key={row.player.id}
+                    type="button"
+                    onClick={() => setPerformanceSelectedPlayerId(row.player.id)}
+                    className="flex w-full items-start gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3 text-left transition hover:border-white/15 hover:bg-white/[0.05]"
+                  >
+                    <PerformanceStatusRing player={row.player} status={row.status} tooltip={row.tooltip} signals={row.signals} size="md" />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="truncate text-sm font-black text-white">{displayPlayerName(row.player)}</span>
+                        <span className={`rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${statusPresentation[row.status].badge}`}>
+                          {statusPresentation[row.status].label}
+                        </span>
+                      </span>
+                      <span className="mt-1.5 block text-xs font-bold text-slate-300">
+                        Wellness {row.latestWellnessScore === null ? '—' : row.latestWellnessScore.toFixed(1)}
+                        {' · '}RPE {row.latestRpe === null ? '—' : row.latestRpe.toFixed(1)}
+                      </span>
+                      <span className="mt-1 block text-xs text-slate-500">
+                        {row.latestRelevantText || row.reasons[0]}{row.evidenceDate ? ` · ${formatShortDate(row.evidenceDate)}` : ''}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-5 rounded-2xl border border-dashed border-white/10 px-5 py-10 text-center">
+                <p className="text-sm font-bold text-slate-300">{dashboard.hasEvaluableData ? 'Sin jugadores en alerta' : 'Sin información esta semana'}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {dashboard.hasEvaluableData ? 'Los datos disponibles no activan indicadores.' : 'Las alertas aparecerán cuando lleguen datos evaluables.'}
+                </p>
+              </div>
+            )}
+          </section>
+        </div>
+
+        <section className="rounded-[1.75rem] border border-white/[0.07] bg-[#091428] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Seguimiento individual</p>
+              <h3 className="mt-1 text-lg font-black text-white">Semáforo PF y evolución</h3>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <label className="relative min-w-0 sm:w-64">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">⌕</span>
+                <input
+                  value={performancePlayerSearch}
+                  onChange={(event) => setPerformancePlayerSearch(event.target.value)}
+                  placeholder="Buscar jugador"
+                  className="w-full rounded-xl border border-white/10 bg-white/[0.04] py-2.5 pl-9 pr-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-caudal-electric/40"
+                />
+              </label>
+              <select
+                value={performanceStatusFilter}
+                onChange={(event) => setPerformanceStatusFilter(event.target.value)}
+                className="rounded-xl border border-white/10 bg-[#0c1930] px-3 py-2.5 text-sm font-bold text-slate-200 outline-none focus:border-caudal-electric/40"
+              >
+                {statusOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-5 hidden overflow-hidden rounded-2xl border border-white/[0.07] lg:block">
+            <table className="w-full table-fixed text-left">
+              <thead className="bg-white/[0.035] text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                <tr>
+                  <th className="w-[24%] px-4 py-3.5">Jugador</th>
+                  <th className="w-[13%] px-3 py-3.5">Estado</th>
+                  <th className="w-[10%] px-3 py-3.5">Wellness</th>
+                  <th className="w-[10%] px-3 py-3.5">RPE</th>
+                  <th className="w-[16%] px-3 py-3.5">Tendencia</th>
+                  <th className="w-[17%] px-3 py-3.5">Molestias</th>
+                  <th className="w-[10%] px-3 py-3.5">Última respuesta</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/[0.06]">
+                {filteredRows.map((row) => (
+                  <tr
+                    key={row.player.id}
+                    onClick={() => setPerformanceSelectedPlayerId(row.player.id)}
+                    className="cursor-pointer bg-transparent transition hover:bg-white/[0.035]"
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <PerformanceStatusRing player={row.player} status={row.status} tooltip={row.tooltip} signals={row.signals} size="sm" />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black text-white">{displayPlayerName(row.player)}</p>
+                          <p className="mt-0.5 text-[10px] font-bold text-slate-500">
+                            {[row.player.number ? `#${row.player.number}` : '', getPlayerPositionLabel(row.player)].filter(Boolean).join(' · ') || 'Plantilla'}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span title={row.tooltip} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase ${statusPresentation[row.status].badge}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${statusPresentation[row.status].dot}`} />
+                        {row.statusLabel}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <p className="text-sm font-black text-white">{row.latestWellnessScore === null ? '—' : row.latestWellnessScore.toFixed(1)}</p>
+                      <p className="text-[10px] text-slate-500">{row.avgWellness === null ? '' : `Media ${row.avgWellness.toFixed(1)}`}</p>
+                    </td>
+                    <td className="px-3 py-3">
+                      <p className="text-sm font-black text-white">{row.latestRpe === null ? '—' : row.latestRpe.toFixed(1)}</p>
+                      <p className="text-[10px] text-slate-500">{row.avgRpe === null ? '' : `Media ${row.avgRpe.toFixed(1)}`}</p>
+                    </td>
+                    <td className="px-3 py-3 text-[11px] font-bold text-slate-300">
+                      <span className="block">{formatTrend(row.wellnessTrend, 'W')}</span>
+                      <span className="mt-0.5 block">{formatTrend(row.rpeTrend, 'RPE')}</span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <p className="line-clamp-2 text-xs leading-5 text-slate-400">{row.latestRelevantText || '—'}</p>
+                    </td>
+                    <td className="px-3 py-3 text-xs font-bold text-slate-300">{formatShortDate(row.lastResponseDate)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-5 grid gap-3 lg:hidden">
+            {filteredRows.map((row) => (
+              <button
+                key={row.player.id}
+                type="button"
+                onClick={() => setPerformanceSelectedPlayerId(row.player.id)}
+                className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 text-left transition hover:border-caudal-electric/25"
+              >
+                <div className="flex items-center gap-3">
+                  <PerformanceStatusRing player={row.player} status={row.status} tooltip={row.tooltip} signals={row.signals} size="md" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-black text-white">{displayPlayerName(row.player)}</span>
+                    <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${statusPresentation[row.status].badge}`}>
+                      {row.statusLabel}
+                    </span>
+                  </span>
+                  <span className="text-lg text-slate-600">›</span>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-2 rounded-xl bg-black/10 p-3 text-center">
+                  <div><span className="block text-sm font-black text-white">{row.latestWellnessScore === null ? '—' : row.latestWellnessScore.toFixed(1)}</span><span className="text-[9px] uppercase text-slate-500">Wellness</span></div>
+                  <div><span className="block text-sm font-black text-white">{row.latestRpe === null ? '—' : row.latestRpe.toFixed(1)}</span><span className="text-[9px] uppercase text-slate-500">RPE</span></div>
+                  <div><span className="block text-sm font-black text-white">{formatShortDate(row.lastResponseDate)}</span><span className="text-[9px] uppercase text-slate-500">Última</span></div>
+                </div>
+                <p className="mt-3 truncate text-xs text-slate-500">{row.latestRelevantText || row.reasons[0]}</p>
+              </button>
+            ))}
+          </div>
+
+          {!filteredRows.length ? (
+            <div className="mt-5 rounded-2xl border border-dashed border-white/10 px-5 py-10 text-center text-sm text-slate-500">
+              No hay jugadores que coincidan con la búsqueda y el filtro.
+            </div>
+          ) : null}
+        </section>
+
+        {selectedPlayerRow ? (
+          <section className="rounded-[1.75rem] border border-caudal-electric/15 bg-gradient-to-br from-caudal-electric/[0.07] to-[#091428] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-6">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+              <PerformanceStatusRing
+                player={selectedPlayerRow.player}
+                status={selectedPlayerRow.status}
+                tooltip={selectedPlayerRow.tooltip}
+                signals={selectedPlayerRow.signals}
+                size="lg"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="truncate text-xl font-black text-white">{displayPlayerName(selectedPlayerRow.player)}</h3>
+                  <span className={`rounded-full border px-2.5 py-1 text-[9px] font-black uppercase ${statusPresentation[selectedPlayerRow.status].badge}`}>
+                    {selectedPlayerRow.statusLabel}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm text-slate-300">{selectedPlayerRow.reasons.join(' · ')}</p>
+                <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold text-slate-400">
+                  <span className="rounded-xl bg-black/15 px-3 py-2">Wellness {selectedPlayerRow.latestWellnessScore === null ? '—' : selectedPlayerRow.latestWellnessScore.toFixed(1)}</span>
+                  <span className="rounded-xl bg-black/15 px-3 py-2">RPE {selectedPlayerRow.latestRpe === null ? '—' : selectedPlayerRow.latestRpe.toFixed(1)}</span>
+                  <span className="rounded-xl bg-black/15 px-3 py-2">Última respuesta {formatShortDate(selectedPlayerRow.lastResponseDate)}</span>
+                </div>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPlayerProfileId(selectedPlayerRow.player.id);
+                    setActiveTab('Plantilla');
+                  }}
+                  className="rounded-xl bg-caudal-electric px-4 py-2.5 text-xs font-black text-slate-950"
+                >
+                  Abrir ficha
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPerformanceSelectedPlayerId('')}
+                  className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs font-black text-slate-300"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        <section className="rounded-[1.75rem] border border-white/[0.07] bg-[#091428] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-6">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Lectura de la semana</p>
+          <h3 className="mt-1 text-lg font-black text-white">{generalState}</h3>
+          {dashboard.hasEvaluableData ? (
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl border border-white/[0.06] bg-white/[0.025] p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Mayor RPE diario</p>
+                <p className="mt-2 text-sm font-black capitalize text-white">
+                  {dashboard.peak ? `${formatLongDate(dashboard.peak.entryDate)} · ${dashboard.peak.avgRpe.toFixed(1)}` : 'Sin respuestas RPE'}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-white/[0.06] bg-white/[0.025] p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Jugadores en alerta</p>
+                <p className="mt-2 text-sm font-black text-white">{dashboard.alertCount} de {players.length}</p>
+              </div>
+              <div className="rounded-2xl border border-white/[0.06] bg-white/[0.025] p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Wellness medio</p>
+                <p className="mt-2 text-sm font-black text-white">{dashboard.avgWellness === null ? 'Sin Ratio salud' : `${dashboard.avgWellness.toFixed(1)}/10`}</p>
+              </div>
+              <div className="rounded-2xl border border-white/[0.06] bg-white/[0.025] p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Comentarios y molestias</p>
+                <p className="mt-2 text-sm font-black text-white">{dashboard.commentCount || 'Sin registros destacados'}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-5 rounded-2xl border border-dashed border-white/10 px-5 py-9 text-center text-sm text-slate-500">
+              La lectura se completará cuando se reciban respuestas de Wellness o RPE.
+            </div>
+          )}
+        </section>
       </section>
     );
   };
