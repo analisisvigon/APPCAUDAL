@@ -14,6 +14,7 @@ let supabasePlayers = [
   {
     id: '00000000-0000-0000-0000-000000000001',
     name: 'Miguel Vigón',
+    shirt_name: null,
     google_forms_name: 'VIGON',
   },
   {
@@ -23,11 +24,11 @@ let supabasePlayers = [
   },
   { id: 'player-albuquerque', name: 'Roberto Albuquerque', google_forms_name: null },
   { id: 'player-jairo', name: 'Jairo Cárcaba', google_forms_name: null },
-  { id: 'player-alejandro', name: 'Alejandro González', google_forms_name: null },
+  { id: 'player-alejandro', name: 'Alex González', shirt_name: 'Alex Glez', google_forms_name: null },
   { id: 'player-agustin', name: 'Agustín Porto', google_forms_name: null },
   { id: 'player-oscar', name: 'Óscar Fernández', google_forms_name: null },
   { id: 'player-acerete', name: 'Cristian Acerete', google_forms_name: null },
-  { id: 'player-davo', name: 'Davo Fernández', google_forms_name: null },
+  { id: 'player-davo', name: 'DAVID FERNÁNDEZ', shirt_name: 'Davo', google_forms_name: null },
   { id: 'player-isaac', name: 'Isaac Martín', google_forms_name: null },
   { id: 'player-lucas', name: 'Lucas Suárez', google_forms_name: null },
   { id: 'player-mario', name: 'Mario Rodríguez', google_forms_name: null },
@@ -174,11 +175,12 @@ assert.throws(
 const expectedAutomaticMatches = [
   ['Albuquerque', 'player-albuquerque', 'TOKEN_SUBSET_OF_PLAYER_NAME'],
   ['Jairo', 'player-jairo', 'TOKEN_SUBSET_OF_PLAYER_NAME'],
-  ['Alex Glez', 'player-alejandro', 'TOKEN_SUBSET_OF_PLAYER_NAME'],
+  ['Alex Glez', 'player-alejandro', 'EXACT_SHIRT_NAME'],
+  ['Alex Glex', 'player-alejandro', 'STRICT_TYPO_DISTANCE_1_SHIRT_NAME'],
   ['Agus', 'player-agustin', 'TOKEN_SUBSET_OF_PLAYER_NAME'],
   [' Óscar--fdez. ', 'player-oscar', 'TOKEN_SUBSET_OF_PLAYER_NAME'],
-  ['Acertete', 'player-acerete', 'STRICT_TYPO_DISTANCE_1'],
-  ['Davo', 'player-davo', 'TOKEN_SUBSET_OF_PLAYER_NAME'],
+  ['Acertete', 'player-acerete', 'STRICT_TYPO_DISTANCE_1_PLAYER_NAME'],
+  ['Davo', 'player-davo', 'EXACT_SHIRT_NAME'],
   ['Isaac Martín Jaro', 'player-isaac', 'PLAYER_NAME_SUBSET_OF_FORMS'],
   ['Lucas Suárez Estrada', 'player-lucas', 'PLAYER_NAME_SUBSET_OF_FORMS'],
   ['Mario rguez', 'player-mario', 'TOKEN_SUBSET_OF_PLAYER_NAME'],
@@ -189,6 +191,12 @@ expectedAutomaticMatches.forEach(([receivedName, expectedId, expectedRule]) => {
   assert.equal(resolution?.jugador_id, expectedId, `Debe resolver de forma segura "${receivedName}".`);
   assert.equal(resolution?.match_rule, expectedRule, `Debe registrar la regla usada para "${receivedName}".`);
 });
+
+assert.equal(
+  sandbox.resolvePlayerByFormName(supabasePlayers, 'Glez')?.match_rule,
+  'TOKEN_SUBSET_OF_SHIRT_NAME',
+  'Las reglas por tokens deben considerar shirt_name.'
+);
 
 assert.throws(
   () => sandbox.resolvePlayerByFormName([
@@ -281,6 +289,7 @@ assert.deepEqual(
   [{
     id: '00000000-0000-0000-0000-000000000001',
     name: 'Miguel Vigón',
+    shirt_name: null,
     google_forms_name: 'VIGON',
   }],
   'El diagnóstico debe sugerir el jugador esperado sin utilizarlo para asociar.'

@@ -12,7 +12,7 @@
  * - SUPABASE_SERVICE_ROLE_KEY: service_role key privada de Supabase
  *
  * El jugador se resuelve directamente contra public.jugadores en Supabase.
- * Se usa google_forms_name cuando está configurado y name únicamente como fallback.
+ * Prioridad de nombres: google_forms_name, shirt_name y name.
  * La comparación ignora mayúsculas, tildes y espacios sobrantes, pero nunca es parcial.
  *
  * Form Wellness diario. Columnas esperadas/recomendadas:
@@ -347,6 +347,12 @@ function resolvePlayerByFormName(players, formName) {
   const aliasResult = resolveUniquePlayerCandidate(aliasMatches, formName, 'EXACT_GOOGLE_FORMS_NAME');
   if (aliasResult) return aliasResult;
 
+  const exactShirtNameMatches = rows.filter((player) =>
+    normalizePlayerName(player.shirt_name) === normalizedFormName
+  );
+  const exactShirtNameResult = resolveUniquePlayerCandidate(exactShirtNameMatches, formName, 'EXACT_SHIRT_NAME');
+  if (exactShirtNameResult) return exactShirtNameResult;
+
   const exactNameMatches = rows.filter((player) =>
     normalizePlayerName(player.name) === normalizedFormName
   );
@@ -355,22 +361,37 @@ function resolvePlayerByFormName(players, formName) {
 
   const receivedTokens = getCanonicalPlayerTokens(formName);
   const tokenMatches = rows.map((player) => {
-    const playerTokens = getCanonicalPlayerTokens(player.name);
-    const formsIsSubset = isTokenSubset(receivedTokens, playerTokens);
-    const playerIsSubset = playerTokens.length >= 2 && isTokenSubset(playerTokens, receivedTokens);
-    if (!formsIsSubset && !playerIsSubset) return null;
-    return {
-      player,
-      rule: formsIsSubset ? 'TOKEN_SUBSET_OF_PLAYER_NAME' : 'PLAYER_NAME_SUBSET_OF_FORMS',
-    };
+    const sources = [
+      { value: player.shirt_name, label: 'SHIRT_NAME' },
+      { value: player.name, label: 'PLAYER_NAME' },
+    ];
+    for (const source of sources) {
+      const playerTokens = getCanonicalPlayerTokens(source.value);
+      const formsIsSubset = isTokenSubset(receivedTokens, playerTokens);
+      const playerIsSubset = playerTokens.length >= 2 && isTokenSubset(playerTokens, receivedTokens);
+      if (formsIsSubset || playerIsSubset) {
+        return {
+          player,
+          rule: formsIsSubset
+            ? `TOKEN_SUBSET_OF_${source.label}`
+            : `${source.label}_SUBSET_OF_FORMS`,
+        };
+      }
+    }
+    return null;
   }).filter(Boolean);
   const tokenResult = resolveUniquePlayerCandidateEntries(tokenMatches, formName, 'TOKEN_MATCH');
   if (tokenResult) return tokenResult;
 
-  const typoMatches = rows.filter((player) =>
-    isStrictTypoTokenMatch(receivedTokens, getCanonicalPlayerTokens(player.name))
-  );
-  return resolveUniquePlayerCandidate(typoMatches, formName, 'STRICT_TYPO_DISTANCE_1');
+  const typoMatches = rows.map((player) => {
+    const sources = [
+      { value: player.shirt_name, label: 'SHIRT_NAME' },
+      { value: player.name, label: 'PLAYER_NAME' },
+    ];
+    const source = sources.find((candidate) => isStrictTypoNameMatch(formName, candidate.value));
+    return source ? { player, rule: `STRICT_TYPO_DISTANCE_1_${source.label}` } : null;
+  }).filter(Boolean);
+  return resolveUniquePlayerCandidateEntries(typoMatches, formName, 'STRICT_TYPO_DISTANCE_1');
 }
 
 function resolveUniquePlayerCandidate(matches, formName, rule) {
@@ -414,10 +435,12 @@ function getCanonicalPlayerTokens(value) {
     alex: 'alejandro',
     agus: 'agustin',
   };
-  return normalizePlayerName(value)
-    .split(' ')
-    .filter(Boolean)
+  return getNormalizedPlayerTokens(value)
     .map((token) => replacements[token] || token);
+}
+
+function getNormalizedPlayerTokens(value) {
+  return normalizePlayerName(value).split(' ').filter(Boolean);
 }
 
 function isTokenSubset(subset, complete) {
@@ -444,7 +467,14 @@ function isStrictTypoTokenMatch(receivedTokens, playerTokens) {
     }
     const minimumLength = receivedTokens.length === 1 ? 7 : 6;
     const typoIndex = available.findIndex((playerToken) =>
-      Math.min(receivedToken.length, playerToken.length) >= minimumLength
+      (
+        Math.min(receivedToken.length, playerToken.length) >= minimumLength
+        || (
+          receivedTokens.length > 1
+          && receivedToken.length === playerToken.length
+          && ['fdez', 'glez', 'rguez'].includes(playerToken)
+        )
+      )
       && damerauLevenshteinDistance(receivedToken, playerToken) === 1
     );
     if (typoIndex === -1 || typoCount >= 1) return false;
@@ -452,6 +482,17 @@ function isStrictTypoTokenMatch(receivedTokens, playerTokens) {
     typoCount += 1;
   }
   return typoCount === 1;
+}
+
+function isStrictTypoNameMatch(receivedName, playerName) {
+  if (!normalizePlayerName(playerName)) return false;
+  return isStrictTypoTokenMatch(
+    getCanonicalPlayerTokens(receivedName),
+    getCanonicalPlayerTokens(playerName)
+  ) || isStrictTypoTokenMatch(
+    getNormalizedPlayerTokens(receivedName),
+    getNormalizedPlayerTokens(playerName)
+  );
 }
 
 function damerauLevenshteinDistance(leftValue, rightValue) {
@@ -613,6 +654,7 @@ function findExpectedPlayersForAlias(players, receivedName) {
   const exactCompatible = rows.filter((player) => {
     const normalizedAlias = normalizePlayerName(player.google_forms_name);
     return normalizedAlias === normalizedReceivedName
+      || normalizePlayerName(player.shirt_name) === normalizedReceivedName
       || normalizePlayerName(player.name) === normalizedReceivedName;
   });
   const diagnosticCandidates = exactCompatible.length ? exactCompatible : rows.filter((player) => {
@@ -637,6 +679,7 @@ function formatDiagnosticPlayerCandidates(players) {
   return (Array.isArray(players) ? players : []).map((player) => ({
     id: player.id,
     name: player.name || '',
+    shirt_name: player.shirt_name || null,
     google_forms_name: player.google_forms_name || null,
   }));
 }
@@ -672,7 +715,7 @@ function logWellnessHistoryErrors(failures) {
   rows.forEach((failure, index) => {
     const expected = failure.expectedPlayers && failure.expectedPlayers.length
       ? failure.expectedPlayers.map((player) =>
-        `${player.name} [id=${player.id}; google_forms_name=${player.google_forms_name || 'NULL'}]`
+        `${player.name} [id=${player.id}; shirt_name=${player.shirt_name || 'NULL'}; google_forms_name=${player.google_forms_name || 'NULL'}]`
       ).join(' | ')
       : 'Sin candidato claro en public.jugadores.';
     const lines = [
