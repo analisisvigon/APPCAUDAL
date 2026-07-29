@@ -3337,6 +3337,8 @@ const PerformanceMetricPortrait = ({
   color = '#fcd34d',
   status = 'sin_datos',
   categorical = false,
+  staticValue = false,
+  valueText = '',
 }) => {
   const radius = 84;
   const circumference = 2 * Math.PI * radius;
@@ -3352,7 +3354,7 @@ const PerformanceMetricPortrait = ({
   }[status] || '#64748b';
 
   return (
-    <div className="relative mx-auto h-56 w-56" aria-label={`${label}: ${value === null ? 'sin información' : value}`}>
+    <div className="relative mx-auto h-56 w-56" aria-label={valueText || `${label}: ${value === null ? 'sin información' : value}`}>
       <div className="absolute inset-6 rounded-full blur-2xl" style={{ backgroundColor: `${categorical ? statusStroke : color}18` }} />
       <svg viewBox="0 0 200 200" className="absolute inset-0 h-full w-full -rotate-90 overflow-visible" aria-hidden="true">
         <circle cx="100" cy="100" r={radius} fill="none" stroke="rgba(148,163,184,0.13)" strokeWidth="10" />
@@ -3365,6 +3367,16 @@ const PerformanceMetricPortrait = ({
             stroke={statusStroke}
             strokeWidth={status === 'prioridad' ? 13 : 10}
             strokeDasharray={status === 'sin_datos' ? '10 12' : status === 'vigilar' ? '88 18' : undefined}
+            strokeLinecap="round"
+          />
+        ) : staticValue && normalizedValue !== null ? (
+          <circle
+            cx="100"
+            cy="100"
+            r={radius}
+            fill="none"
+            stroke={color}
+            strokeWidth="10"
             strokeLinecap="round"
           />
         ) : normalizedValue !== null ? (
@@ -3393,9 +3405,9 @@ const PerformanceMetricPortrait = ({
         />
       </div>
       <span
-        className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded-full border border-white/10 bg-[#07111f]/95 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white shadow-lg"
+        className="absolute bottom-0 left-1/2 min-w-max -translate-x-1/2 rounded-full border border-white/10 bg-[#07111f]/95 px-3 py-1.5 text-[10px] font-black text-white shadow-lg"
       >
-        {label}
+        {valueText || label}
       </span>
     </div>
   );
@@ -7855,7 +7867,7 @@ function App() {
       rawWellnessSignals.length ||
       activityWatch
     );
-    const status = !hasData ? 'sin_datos' : priority ? 'prioridad' : watch ? 'vigilar' : 'sin_alertas';
+    const status = priority ? 'prioridad' : watch ? 'vigilar' : !hasData ? 'sin_datos' : 'sin_alertas';
     const reasons = [];
     if (combinedEntry) {
       reasons.push(`Wellness ${combinedEntry.wellnessItem.value.toFixed(1)} · RPE ${combinedEntry.rpeItem.value.toFixed(1)} · ${combinedEntry.entryDate.slice(5).split('-').reverse().join('/')}`);
@@ -23404,6 +23416,16 @@ function App() {
       ...(selectedDay?.rpeEntries || []).map((entry) => entry.jugador_id),
       ...(selectedDay?.wellnessEntries || []).map((entry) => entry.jugador_id),
     ])];
+    const openPerformancePlayer = (playerId) => {
+      const hasRpe = selectedDay?.rpeEntries.some((entry) => (
+        entry.jugador_id === playerId && getPerformanceNumber(entry.rpe) !== null
+      ));
+      const hasWellness = selectedDay?.wellnessEntries.some((entry) => (
+        entry.jugador_id === playerId && getWellnessScore(entry) !== null
+      ));
+      setPerformanceIndividualMetric(hasRpe ? 'rpe' : hasWellness ? 'wellness' : 'general');
+      setPerformanceSelectedPlayerId(playerId);
+    };
     const selectedDayRows = selectedDayPlayerIds
       .map((playerId) => {
         const row = dashboard.rows.find((item) => item.player.id === playerId);
@@ -23425,6 +23447,12 @@ function App() {
       .filter(Boolean)
       .sort((left, right) => statusPresentation[left.status].rank - statusPresentation[right.status].rank);
     const selectedPlayerRow = dashboard.rows.find((row) => row.player.id === performanceSelectedPlayerId) || null;
+    const selectedDayWellness = selectedPlayerRow
+      ? selectedDay?.wellnessEntries.find((entry) => entry.jugador_id === selectedPlayerRow.player.id) || null
+      : null;
+    const selectedDayRpe = selectedPlayerRow
+      ? selectedDay?.rpeEntries.find((entry) => entry.jugador_id === selectedPlayerRow.player.id) || null
+      : null;
     const selectedPlayerWellnessHistory = selectedPlayerRow
       ? [...previousWellnessEntries, ...wellnessEntries]
         .filter((entry) => entry.jugador_id === selectedPlayerRow.player.id)
@@ -23437,7 +23465,15 @@ function App() {
       : [];
     const latestSelectedWellness = selectedPlayerWellnessHistory[selectedPlayerWellnessHistory.length - 1] || null;
     const latestSelectedRpe = selectedPlayerRpeHistory[selectedPlayerRpeHistory.length - 1] || null;
-    const previousSelectedRpe = selectedPlayerRpeHistory[selectedPlayerRpeHistory.length - 2] || null;
+    const previousSelectedRpe = selectedPlayerRpeHistory
+      .filter((entry) => entry.entry_date < (selectedDay?.entryDate || '9999-12-31'))
+      .pop() || null;
+    const selectedDayRpeValue = getPerformanceNumber(selectedDayRpe?.rpe);
+    const latestAvailableRpeValue = getPerformanceNumber(latestSelectedRpe?.rpe);
+    const previousSelectedRpeValue = getPerformanceNumber(previousSelectedRpe?.rpe);
+    const selectedRpeDelta = selectedDayRpeValue !== null && previousSelectedRpeValue !== null
+      ? selectedDayRpeValue - previousSelectedRpeValue
+      : null;
     const selectedPlayerCurrentWellness = wellnessEntries.filter((entry) => entry.jugador_id === selectedPlayerRow?.player.id);
     const averageField = (entries, field, transform = (value) => value) => {
       const values = entries
@@ -23455,58 +23491,75 @@ function App() {
       {
         key: 'rpe',
         label: 'RPE',
-        value: getPerformanceNumber(latestSelectedRpe?.rpe),
+        value: getPerformanceNumber(selectedDayRpe?.rpe),
         average: selectedPlayerRow?.avgRpe ?? null,
         color: '#fcd34d',
-        entry: latestSelectedRpe,
+        entry: selectedDayRpe,
+        unit: '/10',
       },
       {
         key: 'wellness',
         label: 'Wellness',
-        value: getWellnessScore(latestSelectedWellness),
+        value: getWellnessScore(selectedDayWellness),
         average: selectedPlayerRow?.avgWellness ?? null,
         color: '#7dd3fc',
-        entry: latestSelectedWellness,
+        entry: selectedDayWellness,
+        unit: '/10',
       },
       {
         key: 'sleep',
         label: 'Sueño',
-        value: getPerformanceNumber(latestSelectedWellness?.sleep_quality),
+        value: getPerformanceNumber(selectedDayWellness?.sleep_quality),
         average: averageField(selectedPlayerCurrentWellness, 'sleep_quality'),
         color: '#a5b4fc',
-        entry: latestSelectedWellness,
+        entry: selectedDayWellness,
+        unit: '/10',
       },
       {
         key: 'fatigue',
         label: 'Fatiga',
-        value: getPerformanceNumber(latestSelectedWellness?.fatigue),
+        value: getPerformanceNumber(selectedDayWellness?.fatigue),
         average: averageField(selectedPlayerCurrentWellness, 'fatigue'),
         color: '#fb923c',
-        entry: latestSelectedWellness,
+        entry: selectedDayWellness,
+        unit: '/10',
       },
       {
         key: 'soreness',
         label: 'Dolor muscular',
-        value: getPerformanceNumber(latestSelectedWellness?.muscle_soreness),
+        value: getPerformanceNumber(selectedDayWellness?.muscle_soreness),
         average: averageField(selectedPlayerCurrentWellness, 'muscle_soreness'),
         color: '#fb7185',
-        entry: latestSelectedWellness,
+        entry: selectedDayWellness,
+        unit: '/10',
       },
       {
         key: 'stress',
         label: 'Estrés',
-        value: getPerformanceNumber(latestSelectedWellness?.stress),
+        value: getPerformanceNumber(selectedDayWellness?.stress),
         average: averageField(selectedPlayerCurrentWellness, 'stress'),
         color: '#f0abfc',
-        entry: latestSelectedWellness,
+        entry: selectedDayWellness,
+        unit: '/10',
       },
       {
         key: 'mood',
         label: 'Ánimo',
-        value: getPerformanceNumber(latestSelectedWellness?.mood),
+        value: getPerformanceNumber(selectedDayWellness?.mood),
         average: averageField(selectedPlayerCurrentWellness, 'mood'),
         color: '#6ee7b7',
-        entry: latestSelectedWellness,
+        entry: selectedDayWellness,
+        unit: '/10',
+      },
+      {
+        key: 'weight',
+        label: 'Peso',
+        value: getPerformanceNumber(selectedDayWellness?.weight),
+        average: averageField(selectedPlayerCurrentWellness, 'weight'),
+        color: '#94a3b8',
+        entry: selectedDayWellness,
+        unit: ' kg',
+        staticValue: true,
       },
       {
         key: 'general',
@@ -23514,14 +23567,42 @@ function App() {
         value: null,
         average: null,
         color: '#5ce1e6',
-        entry: [latestSelectedWellness, latestSelectedRpe]
+        entry: [selectedDayWellness, selectedDayRpe]
           .filter(Boolean)
           .sort((left, right) => String(left.updated_at || left.entry_date).localeCompare(String(right.updated_at || right.entry_date)))
           .pop() || null,
         categorical: true,
+        unit: '',
       },
     ];
     const selectedMetric = selectedMetricOptions.find((metric) => metric.key === performanceIndividualMetric) || selectedMetricOptions[0];
+    const selectedMetricActivity = selectedMetric.key === 'rpe'
+      ? selectedPlayerRow?.activity.rpe
+      : selectedPlayerRow?.activity.wellness;
+    const selectedMetricMissingReason = selectedMetric.value !== null || selectedMetric.categorical
+      ? ''
+      : selectedMetric.key === 'rpe'
+        ? 'Sin respuesta de RPE'
+        : !selectedDayWellness
+          ? 'Sin respuesta de Wellness'
+          : `Sin dato de ${selectedMetric.label} en Wellness`;
+    const selectedMetricValueText = selectedMetric.categorical
+      ? `Estado general · ${selectedPlayerRow?.status === 'sin_datos' ? 'Sin datos suficientes' : selectedPlayerRow?.statusLabel}`
+      : selectedMetric.value === null
+        ? 'Sin dato'
+        : `${selectedMetric.label} · ${selectedMetric.value.toFixed(1)}${selectedMetric.unit}`;
+    const selectedDayHasRpe = getPerformanceNumber(selectedDayRpe?.rpe) !== null;
+    const selectedDayHasWellness = Boolean(selectedDayWellness);
+    const selectedFormActivity = selectedDayHasRpe && selectedDayHasWellness
+      ? { label: 'Completo', detail: 'Wellness y RPE recibidos para el día seleccionado', className: 'border-emerald-300/15 bg-emerald-300/[0.06] text-emerald-100' }
+      : selectedDayHasWellness
+        ? { label: 'Falta RPE', detail: 'Wellness recibido · sin respuesta de RPE', className: 'border-amber-300/15 bg-amber-300/[0.06] text-amber-100' }
+        : selectedDayHasRpe
+          ? { label: 'Falta Wellness', detail: 'RPE recibido · sin respuesta de Wellness', className: 'border-amber-300/15 bg-amber-300/[0.06] text-amber-100' }
+          : { label: 'Sin respuestas', detail: 'No hay Wellness ni RPE para el día seleccionado', className: 'border-slate-400/15 bg-slate-400/[0.04] text-slate-300' };
+    const selectedPhysicalStatusLabel = selectedPlayerRow?.status === 'sin_datos'
+      ? 'Sin datos suficientes'
+      : selectedPlayerRow?.statusLabel;
     const formatRecordTimestamp = (entry) => {
       if (!entry) return 'Sin actualización';
       const timestamp = entry.submitted_at || entry.updated_at || entry.created_at;
@@ -23537,14 +23618,31 @@ function App() {
         ? `Hoy ${time}`
         : `${new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: '2-digit' }).format(date)} · ${time}`;
     };
+    const interpretWellnessValue = (key, value) => {
+      if (value === null) return 'Sin dato';
+      if (key === 'sleep_quality' || key === 'mood') {
+        if (value >= 8) return 'Muy bueno';
+        if (value >= 5) return 'Moderado';
+        return 'Bajo';
+      }
+      if (key === 'fatigue' || key === 'muscle_soreness' || key === 'stress') {
+        if (value >= 8) return 'Elevado';
+        if (value >= 5) return 'Moderado';
+        return 'Bajo';
+      }
+      return 'Valor registrado';
+    };
     const selectedWellnessIndicators = [
-      { key: 'sleep_quality', label: 'Sueño', icon: '☾', value: getPerformanceNumber(latestSelectedWellness?.sleep_quality), color: '#a5b4fc', suffix: '/10' },
-      { key: 'fatigue', label: 'Fatiga', icon: '◆', value: getPerformanceNumber(latestSelectedWellness?.fatigue), color: '#fb923c', suffix: '/10' },
-      { key: 'muscle_soreness', label: 'Dolor muscular', icon: '◒', value: getPerformanceNumber(latestSelectedWellness?.muscle_soreness), color: '#fb7185', suffix: '/10' },
-      { key: 'stress', label: 'Estrés', icon: '≈', value: getPerformanceNumber(latestSelectedWellness?.stress), color: '#f0abfc', suffix: '/10' },
-      { key: 'mood', label: 'Ánimo', icon: '✦', value: getPerformanceNumber(latestSelectedWellness?.mood), color: '#6ee7b7', suffix: '/10' },
-      { key: 'weight', label: 'Peso', icon: '⚖', value: getPerformanceNumber(latestSelectedWellness?.weight), color: '#94a3b8', suffix: ' kg', numericOnly: true },
-    ];
+      { key: 'sleep_quality', label: 'Sueño', icon: '☾', value: getPerformanceNumber(selectedDayWellness?.sleep_quality), color: '#a5b4fc', suffix: '/10' },
+      { key: 'fatigue', label: 'Fatiga', icon: '◆', value: getPerformanceNumber(selectedDayWellness?.fatigue), color: '#fb923c', suffix: '/10' },
+      { key: 'muscle_soreness', label: 'Dolor muscular', icon: '◒', value: getPerformanceNumber(selectedDayWellness?.muscle_soreness), color: '#fb7185', suffix: '/10' },
+      { key: 'stress', label: 'Estrés', icon: '≈', value: getPerformanceNumber(selectedDayWellness?.stress), color: '#f0abfc', suffix: '/10' },
+      { key: 'mood', label: 'Ánimo', icon: '✦', value: getPerformanceNumber(selectedDayWellness?.mood), color: '#6ee7b7', suffix: '/10' },
+      { key: 'weight', label: 'Peso', icon: '⚖', value: getPerformanceNumber(selectedDayWellness?.weight), color: '#94a3b8', suffix: ' kg', numericOnly: true },
+    ].map((indicator) => ({
+      ...indicator,
+      interpretation: indicator.numericOnly ? (indicator.value === null ? 'Sin dato' : 'Valor registrado') : interpretWellnessValue(indicator.key, indicator.value),
+    }));
     const selectedHistoryByDate = [...selectedPlayerWellnessHistory, ...selectedPlayerRpeHistory].reduce((history, entry) => {
       if (!entry.entry_date) return history;
       const current = history[entry.entry_date] || { entryDate: entry.entry_date, wellness: null, rpe: null };
@@ -23557,6 +23655,24 @@ function App() {
     }, {});
     const selectedHistoryRows = Object.values(selectedHistoryByDate)
       .sort((left, right) => right.entryDate.localeCompare(left.entryDate));
+    const getHistoryIndicators = (wellness) => {
+      if (!wellness) return [];
+      return [
+        getPerformanceNumber(wellness.sleep_quality) !== null ? `Sueño ${getPerformanceNumber(wellness.sleep_quality).toFixed(1)}` : null,
+        getPerformanceNumber(wellness.fatigue) >= 5 ? `Fatiga ${getPerformanceNumber(wellness.fatigue).toFixed(1)}` : null,
+        getPerformanceNumber(wellness.muscle_soreness) >= 5 ? `Dolor muscular ${getPerformanceNumber(wellness.muscle_soreness).toFixed(1)}` : null,
+        getPerformanceNumber(wellness.stress) >= 5 ? `Estrés ${getPerformanceNumber(wellness.stress).toFixed(1)}` : null,
+        getPerformanceNumber(wellness.mood) !== null ? `Ánimo ${getPerformanceNumber(wellness.mood).toFixed(1)}` : null,
+      ].filter(Boolean);
+    };
+    const getHistoryComment = (history) => {
+      const comment = [
+        history.wellness?.discomfort,
+        history.wellness?.comment,
+        history.rpe?.comment,
+      ].map((value) => String(value || '').trim()).filter(Boolean).join(' · ');
+      return comment.length > 120 ? `${comment.slice(0, 117)}…` : comment;
+    };
     const formatHistoryDate = (entryDate) => {
       const activity = getPerformanceActivity(entryDate, 'registro');
       if (activity.days === 0) return 'Hoy';
@@ -23570,9 +23686,6 @@ function App() {
       { label: 'Ánimo', trend: getFieldTrend(selectedPlayerCurrentWellness, 'mood'), lowerIsBetter: false },
       { label: 'Estrés', trend: getFieldTrend(selectedPlayerCurrentWellness, 'stress'), lowerIsBetter: true },
     ];
-    const selectedGlobalProfile = selectedPlayerRow?.player.globalPlayerId
-      ? globalPlayers.find((profile) => String(profile.id) === String(selectedPlayerRow.player.globalPlayerId))
-      : null;
     const playerMapClipboardText = [
       'form_name\tjugador_id\tname',
       ...players.map((player) => `${player.google_forms_name || player.shirt_name || player.name}\t${player.id}\t${player.name}`),
@@ -23900,7 +24013,7 @@ function App() {
                   <button
                     key={row.player.id}
                     type="button"
-                    onClick={() => setPerformanceSelectedPlayerId(row.player.id)}
+                    onClick={() => openPerformancePlayer(row.player.id)}
                     className="flex w-full items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-2.5 text-left transition hover:border-white/15 hover:bg-white/[0.05]"
                   >
                     <PerformanceStatusRing player={row.player} status={row.status} tooltip={row.tooltip} signals={row.signals} size="md" />
@@ -23953,7 +24066,7 @@ function App() {
                 <button
                   key={row.player.id}
                   type="button"
-                  onClick={() => setPerformanceSelectedPlayerId(row.player.id)}
+                  onClick={() => openPerformancePlayer(row.player.id)}
                   className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border border-white/[0.07] bg-white/[0.025] px-2.5 py-2 text-left transition hover:border-caudal-electric/25 hover:bg-white/[0.05]"
                 >
                   <PerformanceStatusRing player={row.player} status={row.status} tooltip={row.tooltip} signals={row.signals} size="sm" />
@@ -24024,7 +24137,7 @@ function App() {
                 {filteredRows.map((row) => (
                   <tr
                     key={row.player.id}
-                    onClick={() => setPerformanceSelectedPlayerId(row.player.id)}
+                    onClick={() => openPerformancePlayer(row.player.id)}
                     className="group cursor-pointer transition [&>td]:bg-white/[0.018] [&>td]:transition [&>td:first-child]:rounded-l-xl [&>td:last-child]:rounded-r-xl hover:[&>td]:bg-white/[0.045]"
                   >
                     <td className="px-4 py-2">
@@ -24074,7 +24187,7 @@ function App() {
               <button
                 key={row.player.id}
                 type="button"
-                onClick={() => setPerformanceSelectedPlayerId(row.player.id)}
+                onClick={() => openPerformancePlayer(row.player.id)}
                 className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3 text-left transition hover:border-caudal-electric/25"
               >
                 <div className="flex items-center gap-3">
@@ -24158,6 +24271,8 @@ function App() {
                         color={selectedMetric.color}
                         status={selectedPlayerRow.status}
                         categorical={selectedMetric.categorical}
+                        staticValue={selectedMetric.staticValue}
+                        valueText={selectedMetricValueText}
                       />
                     </div>
 
@@ -24166,7 +24281,7 @@ function App() {
                       {[getPlayerPositionLabel(selectedPlayerRow.player), selectedPlayerRow.player.number ? `Dorsal ${selectedPlayerRow.player.number}` : ''].filter(Boolean).join(' · ') || 'Jugador de la plantilla'}
                     </p>
                     <span className={`mt-3 inline-flex rounded-full border px-3 py-1 text-[9px] font-black uppercase ${statusPresentation[selectedPlayerRow.status].badge}`}>
-                      {selectedPlayerRow.statusLabel}
+                      {selectedPhysicalStatusLabel}
                     </span>
 
                     <div className="mt-5 grid grid-cols-2 gap-2 text-left">
@@ -24174,10 +24289,10 @@ function App() {
                         <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">Valor actual</p>
                         <p className="mt-1 text-xl font-black text-white">
                           {selectedMetric.categorical
-                            ? selectedPlayerRow.statusLabel
+                            ? selectedPhysicalStatusLabel
                             : selectedMetric.value === null
-                              ? '—'
-                              : `${selectedMetric.value.toFixed(1)}/10`}
+                              ? 'Sin dato'
+                              : `${selectedMetric.value.toFixed(1)}${selectedMetric.unit}`}
                         </p>
                       </div>
                       <div className="rounded-xl border border-white/[0.06] bg-black/15 p-3">
@@ -24186,50 +24301,60 @@ function App() {
                           {selectedMetric.categorical
                             ? 'Reglas PF'
                             : selectedMetric.average === null
-                              ? '—'
-                              : selectedMetric.average.toFixed(1)}
+                              ? 'Sin dato'
+                              : `${selectedMetric.average.toFixed(1)}${selectedMetric.unit}`}
                         </p>
                       </div>
                     </div>
                     <p className="mt-3 text-[10px] font-bold text-slate-500">
                       Última actualización · {formatRecordTimestamp(selectedMetric.entry)}
                     </p>
+                    {selectedMetricMissingReason ? (
+                      <div className="mt-3 rounded-xl border border-dashed border-slate-400/20 bg-slate-400/[0.04] px-3 py-2 text-left">
+                        <p className="text-xs font-black text-slate-300">{selectedMetricMissingReason}</p>
+                        <p className="mt-0.5 text-[10px] text-slate-500">
+                          {selectedMetricActivity?.fullLabel || 'Sin respuesta anterior disponible'}
+                        </p>
+                      </div>
+                    ) : null}
                   </section>
 
-                  <section className={`rounded-2xl border p-4 ${statusPresentation[selectedPlayerRow.status].badge}`}>
-                    <p className="text-[9px] font-black uppercase tracking-[0.16em] opacity-70">Estado físico</p>
-                    <p className="mt-1 text-lg font-black">{selectedPlayerRow.statusLabel}</p>
-                    <p className="mt-2 text-xs font-bold leading-5 opacity-85">
-                      {selectedPlayerRow.reasons.join(' · ')}
-                    </p>
-                  </section>
-
-                  <section className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
-                    <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Actividad de formularios</p>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      {[
-                        ['Wellness', selectedPlayerRow.activity.wellness],
-                        ['RPE', selectedPlayerRow.activity.rpe],
-                      ].map(([label, activity]) => (
-                        <div key={label} className={`rounded-xl border p-3 ${activityBadgeClass[activity.level]}`}>
-                          <p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-70">{label}</p>
-                          <p className="mt-1 text-sm font-black">{activity.fullLabel.replace(`${label}: `, '')}</p>
+                  <section className="overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.025]">
+                    <div className={`p-4 ${statusPresentation[selectedPlayerRow.status].badge}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-[0.16em] opacity-70">Estado físico</p>
+                          <p className="mt-1 text-lg font-black">{selectedPhysicalStatusLabel}</p>
                         </div>
-                      ))}
+                        <span className="mt-1 h-2.5 w-2.5 rounded-full bg-current opacity-70" />
+                      </div>
+                      <p className="mt-2 text-xs font-bold leading-5 opacity-85">
+                        {selectedPlayerRow.reasons.join(' · ')}
+                      </p>
+                    </div>
+                    <div className="border-t border-white/[0.07] p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Actividad de formularios</p>
+                        <span className={`rounded-full border px-2 py-0.5 text-[8px] font-black uppercase ${selectedFormActivity.className}`}>
+                          {selectedFormActivity.label}
+                        </span>
+                      </div>
+                      <p className="mt-1.5 text-xs font-bold text-slate-300">{selectedFormActivity.detail}</p>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        {[
+                          ['Wellness', selectedPlayerRow.activity.wellness],
+                          ['RPE', selectedPlayerRow.activity.rpe],
+                        ].map(([label, activity]) => (
+                          <div key={label} className={`rounded-lg border px-2.5 py-2 ${activityBadgeClass[activity.level]}`}>
+                            <p className="text-[8px] font-black uppercase tracking-[0.1em] opacity-65">Último {label}</p>
+                            <p className="mt-0.5 text-[11px] font-black">{activity.fullLabel.replace(`${label}: `, '')}</p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </section>
 
                   <div className="grid gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPerformanceHistoryExpanded(true);
-                        setTimeout(() => document.getElementById('performance-individual-history')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
-                      }}
-                      className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs font-black text-white transition hover:bg-white/10"
-                    >
-                      Ver historial completo
-                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -24243,17 +24368,13 @@ function App() {
                     </button>
                     <button
                       type="button"
-                      disabled={!selectedGlobalProfile}
                       onClick={() => {
-                        if (!selectedGlobalProfile) return;
-                        setPerformanceSelectedPlayerId('');
-                        setActiveTab('Perfiles');
-                        openRivalPlayerModal(selectedGlobalProfile, { standalone: true });
+                        setPerformanceHistoryExpanded(true);
+                        setTimeout(() => document.getElementById('performance-individual-history')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
                       }}
-                      title={selectedGlobalProfile ? 'Abrir perfil global' : 'Este jugador no tiene un perfil global vinculado'}
-                      className="rounded-xl border border-white/10 bg-white/[0.025] px-4 py-2.5 text-xs font-black text-slate-300 transition hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-35"
+                      className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs font-black text-white transition hover:bg-white/10"
                     >
-                      Ir al perfil
+                      Ver historial completo
                     </button>
                   </div>
                 </div>
@@ -24265,8 +24386,14 @@ function App() {
                         <p className="text-[9px] font-black uppercase tracking-[0.18em] text-sky-300">Wellness</p>
                         <h3 className="mt-1 text-lg font-black text-white">Indicadores de la última respuesta</h3>
                       </div>
-                      <p className="text-xs font-bold text-slate-500">{formatRecordTimestamp(latestSelectedWellness)}</p>
+                      <p className="text-xs font-bold text-slate-500">{formatRecordTimestamp(selectedDayWellness)}</p>
                     </div>
+                    {!selectedDayWellness ? (
+                      <div className="mt-3 rounded-xl border border-dashed border-sky-300/15 bg-sky-300/[0.025] px-3 py-2">
+                        <p className="text-xs font-black text-slate-300">Sin respuesta de Wellness para el día seleccionado</p>
+                        <p className="mt-0.5 text-[10px] text-slate-500">{selectedPlayerRow.activity.wellness.fullLabel}</p>
+                      </div>
+                    ) : null}
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       {selectedWellnessIndicators.map((indicator) => (
                         <div key={indicator.key} className="rounded-2xl border border-white/[0.06] bg-black/10 p-3.5">
@@ -24276,11 +24403,30 @@ function App() {
                               {indicator.label}
                             </p>
                             <p className="text-sm font-black text-white">
-                              {indicator.value === null ? '—' : `${indicator.value.toFixed(1)}${indicator.suffix}`}
+                              {indicator.value === null ? 'Sin dato' : `${indicator.value.toFixed(1)}${indicator.suffix}`}
                             </p>
                           </div>
+                          <p className={`mt-2 text-[9px] font-black uppercase tracking-[0.12em] ${
+                            indicator.value === null
+                              ? 'text-slate-500'
+                              : indicator.interpretation === 'Elevado'
+                                ? 'text-amber-200'
+                                : indicator.interpretation === 'Muy bueno'
+                                  ? 'text-emerald-200'
+                                  : 'text-slate-400'
+                          }`}>{indicator.interpretation}</p>
                           {indicator.numericOnly ? (
-                            <p className="mt-3 text-[10px] text-slate-500">Valor registrado, sin escala artificial.</p>
+                            indicator.value === null ? (
+                              <div className="mt-3 rounded-lg border border-dashed border-slate-400/15 px-2 py-1.5 text-[9px] font-bold text-slate-600">
+                                {selectedDayWellness ? 'Sin dato de Peso' : 'Sin respuesta de Wellness'}
+                              </div>
+                            ) : (
+                              <p className="mt-3 text-[10px] text-slate-500">Valor registrado, sin escala artificial.</p>
+                            )
+                          ) : indicator.value === null ? (
+                            <div className="mt-3 rounded-lg border border-dashed border-slate-400/15 px-2 py-1.5 text-[9px] font-bold text-slate-600">
+                              {selectedDayWellness ? `Sin dato de ${indicator.label}` : 'Sin respuesta de Wellness'}
+                            </div>
                           ) : (
                             <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.07]">
                               <div
@@ -24292,60 +24438,79 @@ function App() {
                               />
                             </div>
                           )}
-                          {indicator.key === 'sleep_quality' && getPerformanceNumber(latestSelectedWellness?.sleep_hours) !== null ? (
-                            <p className="mt-2 text-[10px] font-bold text-slate-500">{getPerformanceNumber(latestSelectedWellness.sleep_hours).toFixed(1)} horas registradas</p>
+                          {indicator.key === 'sleep_quality' && getPerformanceNumber(selectedDayWellness?.sleep_hours) !== null ? (
+                            <p className="mt-2 text-[10px] font-bold text-slate-500">{getPerformanceNumber(selectedDayWellness.sleep_hours).toFixed(1)} horas registradas</p>
                           ) : null}
                         </div>
                       ))}
                     </div>
                   </section>
 
-                  <section className="rounded-[1.75rem] border border-amber-300/10 bg-amber-300/[0.035] p-4 sm:p-5">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div>
-                        <p className="text-[9px] font-black uppercase tracking-[0.18em] text-amber-200">RPE</p>
-                        <p className="mt-1 text-4xl font-black text-white">{getPerformanceNumber(latestSelectedRpe?.rpe)?.toFixed(1) || '—'}</p>
-                        <p className="mt-1 text-xs font-bold text-slate-500">Escala de percepción 1–10</p>
+                  {selectedDayRpeValue !== null ? (
+                    <section className="rounded-[1.75rem] border border-amber-300/10 bg-amber-300/[0.035] p-4 sm:p-5">
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-[0.18em] text-amber-200">RPE</p>
+                          <p className="mt-1 text-4xl font-black text-white">{selectedDayRpeValue.toFixed(1)}</p>
+                          <p className="mt-1 text-xs font-bold text-slate-500">Escala de percepción 1–10 · {formatRecordTimestamp(selectedDayRpe)}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Respecto al registro anterior</p>
+                          {selectedRpeDelta !== null ? (
+                            <p className={`mt-1 text-lg font-black ${
+                              selectedRpeDelta > 0 ? 'text-amber-100' : selectedRpeDelta < 0 ? 'text-sky-200' : 'text-slate-300'
+                            }`}>
+                              {selectedRpeDelta > 0 ? '⬆ +' : selectedRpeDelta < 0 ? '⬇ −' : '→ '}
+                              {Math.abs(selectedRpeDelta).toFixed(1)}
+                            </p>
+                          ) : <p className="mt-1 text-sm font-bold text-slate-500">Sin comparación</p>}
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Respecto al registro anterior</p>
-                        {getPerformanceNumber(latestSelectedRpe?.rpe) !== null && getPerformanceNumber(previousSelectedRpe?.rpe) !== null ? (
-                          <p className={`mt-1 text-lg font-black ${
-                            getPerformanceNumber(latestSelectedRpe.rpe) - getPerformanceNumber(previousSelectedRpe.rpe) > 0
-                              ? 'text-amber-100'
-                              : 'text-sky-200'
-                          }`}>
-                            {getPerformanceNumber(latestSelectedRpe.rpe) - getPerformanceNumber(previousSelectedRpe.rpe) > 0 ? '⬆ +' : '⬇ '}
-                            {(getPerformanceNumber(latestSelectedRpe.rpe) - getPerformanceNumber(previousSelectedRpe.rpe)).toFixed(1)}
+                      <div className="mt-4 grid grid-cols-10 gap-1.5">
+                        {Array.from({ length: 10 }, (_, index) => (
+                          <span
+                            key={index}
+                            className={`h-2.5 rounded-full ${
+                              index < Math.round(selectedDayRpeValue) ? 'bg-amber-300' : 'bg-white/[0.07]'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <div className="mt-4 rounded-xl border border-white/[0.06] bg-black/10 p-3">
+                        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Comentario RPE</p>
+                        <p className="mt-1.5 text-sm leading-6 text-slate-200">{String(selectedDayRpe?.comment || '').trim() || 'Sin comentario registrado.'}</p>
+                      </div>
+                    </section>
+                  ) : (
+                    <section className="rounded-[1.5rem] border border-dashed border-amber-300/15 bg-amber-300/[0.025] p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-[0.18em] text-amber-200">RPE · Sin dato</p>
+                          <h3 className="mt-1 text-base font-black text-white">Sin respuesta de RPE para {formatLongDate(selectedDay?.entryDate)}</h3>
+                          <p className="mt-1 text-xs font-bold text-slate-500">{selectedPlayerRow.activity.rpe.fullLabel}</p>
+                        </div>
+                        <div className="rounded-xl border border-white/[0.06] bg-black/10 px-4 py-2.5 sm:text-right">
+                          <p className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-500">Último RPE disponible</p>
+                          <p className="mt-1 text-lg font-black text-white">
+                            {latestAvailableRpeValue === null ? 'Valor no cargado' : `${latestAvailableRpeValue.toFixed(1)}/10`}
                           </p>
-                        ) : <p className="mt-1 text-sm font-bold text-slate-500">Sin comparación</p>}
+                          {latestSelectedRpe?.entry_date || performanceLastResponses.rpe[selectedPlayerRow.player.id] ? (
+                            <p className="text-[10px] text-slate-500">
+                              {formatLongDate(latestSelectedRpe?.entry_date || performanceLastResponses.rpe[selectedPlayerRow.player.id])}
+                            </p>
+                          ) : <p className="text-[10px] text-slate-500">Sin respuesta anterior</p>}
+                        </div>
                       </div>
-                    </div>
-                    <div className="mt-4 grid grid-cols-10 gap-1.5">
-                      {Array.from({ length: 10 }, (_, index) => (
-                        <span
-                          key={index}
-                          className={`h-2.5 rounded-full ${
-                            getPerformanceNumber(latestSelectedRpe?.rpe) !== null && index < Math.round(getPerformanceNumber(latestSelectedRpe.rpe))
-                              ? 'bg-amber-300'
-                              : 'bg-white/[0.07]'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                    <div className="mt-4 rounded-xl border border-white/[0.06] bg-black/10 p-3">
-                      <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Comentario RPE</p>
-                      <p className="mt-1.5 text-sm leading-6 text-slate-200">{String(latestSelectedRpe?.comment || '').trim() || 'Sin comentario registrado.'}</p>
-                    </div>
-                  </section>
+                    </section>
+                  )}
 
                   <section className="rounded-[1.75rem] border border-white/[0.07] bg-white/[0.025] p-4 sm:p-5">
                     <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Comentarios y molestias</p>
                     <div className="mt-3 grid gap-3 md:grid-cols-3">
                       {[
-                        ['Comentario Wellness', latestSelectedWellness?.comment],
-                        ['Comentario RPE', latestSelectedRpe?.comment],
-                        ['Molestias', latestSelectedWellness?.discomfort],
+                        ['Comentario Wellness', selectedDayWellness?.comment],
+                        ['Comentario RPE', selectedDayRpe?.comment],
+                        ['Molestias', selectedDayWellness?.discomfort],
                       ].map(([label, value]) => (
                         <div key={label} className="rounded-xl border border-white/[0.06] bg-black/10 p-3">
                           <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
@@ -24389,12 +24554,22 @@ function App() {
                               </div>
                               <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-bold">
                                 <span className={history.wellness ? 'text-sky-200' : 'text-slate-600'}>
-                                  {history.wellness ? `Wellness ${getWellnessScore(history.wellness)?.toFixed(1) || '—'}` : 'Sin respuesta Wellness'}
+                                  {history.wellness ? `Wellness ${getWellnessScore(history.wellness)?.toFixed(1) || 'Sin dato'}` : 'Sin respuesta Wellness'}
                                 </span>
                                 <span className={history.rpe ? 'text-amber-100' : 'text-slate-600'}>
-                                  {history.rpe ? `RPE ${getPerformanceNumber(history.rpe.rpe)?.toFixed(1) || '—'}` : 'Sin respuesta RPE'}
+                                  {history.rpe ? `RPE ${getPerformanceNumber(history.rpe.rpe)?.toFixed(1) || 'Sin dato'}` : 'Sin respuesta RPE'}
                                 </span>
                               </div>
+                              {getHistoryIndicators(history.wellness).length ? (
+                                <p className="mt-1.5 text-[10px] font-bold text-slate-500">
+                                  {getHistoryIndicators(history.wellness).join(' · ')}
+                                </p>
+                              ) : null}
+                              {getHistoryComment(history) ? (
+                                <p className="mt-1.5 truncate text-[10px] leading-4 text-slate-400" title={getHistoryComment(history)}>
+                                  {getHistoryComment(history)}
+                                </p>
+                              ) : null}
                             </div>
                           </div>
                         ))}
