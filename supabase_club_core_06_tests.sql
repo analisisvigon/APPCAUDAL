@@ -203,6 +203,12 @@ select pg_temp.assert_fails(
 ) from club_core_test_context;
 insert into public.club_memberships (club_id, user_id, role)
 select club_a, staff_a, 'staff' from club_core_test_context;
+insert into public.club_member_permissions (membership_id, permission_key)
+select membership.id, 'performance_aggregate_read'
+from public.club_memberships membership
+join club_core_test_context context
+  on context.club_a = membership.club_id
+ and context.staff_a = membership.user_id;
 
 select pg_temp.assert_fails(
   format(
@@ -235,6 +241,13 @@ select pg_temp.assert_fails(
   ),
   'usuario no se concede permisos'
 ) from club_core_test_context;
+select pg_temp.assert_fails(
+  format(
+    'delete from public.club_member_permissions where membership_id=(select id from public.club_memberships where club_id=%L and user_id=%L)',
+    club_a, staff_a
+  ),
+  'usuario no elimina directamente sus propios permisos'
+) from club_core_test_context;
 
 select pg_temp.set_test_user(admin_a) from club_core_test_context;
 select pg_temp.assert_fails(
@@ -244,6 +257,39 @@ select pg_temp.assert_fails(
   ),
   'admin no modifica permisos de owner'
 ) from club_core_test_context;
+
+-- DELETE directo autorizado: admin elimina y vuelve a conceder el permiso.
+delete from public.club_member_permissions
+where membership_id = (
+  select id
+  from public.club_memberships
+  where club_id = (select club_a from club_core_test_context)
+    and user_id = (select staff_a from club_core_test_context)
+);
+insert into public.club_member_permissions (membership_id, permission_key)
+select membership.id, 'performance_aggregate_read'
+from public.club_memberships membership
+join club_core_test_context context
+  on context.club_a = membership.club_id
+ and context.staff_a = membership.user_id;
+
+-- Regresion ON DELETE CASCADE: el guard hijo debe aceptar exclusivamente la
+-- cascada interna y no debe dejar permisos huerfanos.
+delete from public.club_memberships
+where club_id = (select club_a from club_core_test_context)
+  and user_id = (select staff_a from club_core_test_context);
+reset role;
+select pg_temp.assert_true(
+  not exists (
+    select 1
+    from public.club_member_permissions permission
+    left join public.club_memberships membership
+      on membership.id = permission.membership_id
+    where membership.id is null
+  ),
+  'la cascada elimina permisos sin dejar huerfanos'
+);
+set local role authenticated;
 
 -- Ultimo owner: Club B solo tiene un owner activo.
 select pg_temp.set_test_user(outsider_b) from club_core_test_context;

@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 const read = (name) => readFileSync(resolve(name), 'utf8');
 const tables = read('supabase_club_core_01_tables.sql');
 const functions = read('supabase_club_core_02_functions.sql');
+const cascadeFix = read('supabase_club_core_02b_permission_cascade_fix.sql');
 const rls = read('supabase_club_core_03_rls.sql');
 const initialClub = read('supabase_club_core_04_initial_club.sql');
 const initialMembers = read('supabase_club_core_05_initial_members.sql');
@@ -34,6 +35,11 @@ assert.match(functions, /pg_advisory_xact_lock/i);
 assert.match(functions, /El club debe conservar al menos un owner activo/i);
 assert.match(functions, /Un usuario no puede elevarse ni reactivarse/i);
 assert.match(functions, /Un usuario no puede gestionar sus propios permisos/i);
+assert.match(functions, /tg_op = 'DELETE' and pg_trigger_depth\(\) > 1/i);
+assert.match(functions, /ON DELETE CASCADE/i);
+assert.match(cascadeFix, /tg_op = 'DELETE' and pg_trigger_depth\(\) > 1/i);
+assert.match(cascadeFix, /alter function public\.guard_club_permission_mutation\(\) owner to postgres/i);
+assert.match(cascadeFix, /from public, anon, authenticated/i);
 assert.match(functions, /revoke all on function public\.lock_club_memberships\(uuid\) from public, anon, authenticated/i);
 
 const clubPolicySection = rls.split('on public.club_memberships')[0];
@@ -45,6 +51,7 @@ assert.match(initialMembers, /No se configuraron miembros/);
 assert.match(integrationTests, /rollback;/i);
 assert.match(integrationTests, /ultimo owner no se elimina/i);
 assert.match(integrationTests, /usuario no se concede permisos/i);
+assert.match(integrationTests, /la cascada elimina permisos sin dejar huerfanos/i);
 assert.doesNotMatch(
   `${tables}\n${functions}\n${rls}`,
   /alter table public\.(partidos|jugadores|competitions|training_sessions|wellness_entries|rpe_entries)/i

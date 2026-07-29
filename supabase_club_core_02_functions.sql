@@ -253,21 +253,45 @@ declare
   target_membership public.club_memberships%rowtype;
   actor_role text;
 begin
+  if tg_op = 'UPDATE' and new.membership_id <> old.membership_id then
+    -- Se comprueban ambos extremos para distinguir una referencia inexistente
+    -- de un intento de trasladar el permiso. El traslado sigue prohibido.
+    perform 1
+    from public.club_memberships membership
+    where membership.id = old.membership_id;
+    if not found then
+      raise exception 'Membership original inexistente' using errcode = '23503';
+    end if;
+
+    perform 1
+    from public.club_memberships membership
+    where membership.id = new.membership_id;
+    if not found then
+      raise exception 'Membership nueva inexistente' using errcode = '23503';
+    end if;
+
+    raise exception 'No se puede trasladar un permiso entre memberships'
+      using errcode = '23514';
+  end if;
+
   select *
     into target_membership
   from public.club_memberships membership
   where membership.id = target_membership_id;
 
   if not found then
+    -- ON DELETE CASCADE se ejecuta desde el trigger FK que esta eliminando la
+    -- membership padre. En ese caso el trigger hijo tiene profundidad > 1 y
+    -- el padre ya no es consultable. Ambas condiciones son obligatorias:
+    -- un DELETE directo (profundidad 1) nunca evita las comprobaciones.
+    if tg_op = 'DELETE' and pg_trigger_depth() > 1 then
+      return old;
+    end if;
+
     raise exception 'Membership inexistente' using errcode = '23503';
   end if;
 
   perform public.lock_club_memberships(target_membership.club_id);
-
-  if tg_op = 'UPDATE' and new.membership_id <> old.membership_id then
-    raise exception 'No se puede trasladar un permiso entre memberships'
-      using errcode = '23514';
-  end if;
 
   if actor_id is not null then
     select membership.role
