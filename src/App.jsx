@@ -3501,19 +3501,55 @@ const PerformanceMetricPortrait = ({
   );
 };
 
-const PerformanceWeeklyChart = ({ days = [], selectedDate = '' }) => {
+const PERFORMANCE_SPORTS_SEASON_START_MONTH = 7;
+
+const formatPerformanceDateKey = (date) => [
+  date.getFullYear(),
+  String(date.getMonth() + 1).padStart(2, '0'),
+  String(date.getDate()).padStart(2, '0'),
+].join('-');
+
+const getPerformanceSportsSeason = (value = new Date()) => {
+  const date = value instanceof Date ? new Date(value) : new Date(`${String(value).slice(0, 10)}T12:00:00`);
+  const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
+  const startYear = safeDate.getMonth() + 1 >= PERFORMANCE_SPORTS_SEASON_START_MONTH
+    ? safeDate.getFullYear()
+    : safeDate.getFullYear() - 1;
+  return {
+    key: String(startYear),
+    label: `${startYear}/${String(startYear + 1).slice(-2)}`,
+    startDate: `${startYear}-07-01`,
+    endDate: `${startYear + 1}-06-30`,
+  };
+};
+
+const getPerformanceNaturalWeekStart = (value) => {
+  const date = value instanceof Date ? new Date(value) : new Date(`${String(value).slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return '';
+  const day = date.getDay() || 7;
+  date.setDate(date.getDate() - day + 1);
+  return formatPerformanceDateKey(date);
+};
+
+const PerformanceEvolutionChart = ({
+  points = [],
+  selectedKey = '',
+  period = 'week',
+  onSelect = null,
+  emptyLabel = 'Sin respuestas suficientes para mostrar la evolución.',
+}) => {
   const width = 700;
   const height = 248;
   const plot = { left: 42, right: 18, top: 18, bottom: 42 };
   const plotWidth = width - plot.left - plot.right;
   const plotHeight = height - plot.top - plot.bottom;
-  const xFor = (index) => plot.left + ((plotWidth / Math.max(days.length - 1, 1)) * index);
+  const xFor = (index) => plot.left + ((plotWidth / Math.max(points.length - 1, 1)) * index);
   const yFor = (value) => plot.top + ((10 - value) / 10) * plotHeight;
   const buildSegments = (key) => {
     const segments = [];
     let current = [];
-    days.forEach((day, index) => {
-      const value = day[key];
+    points.forEach((point, index) => {
+      const value = point[key];
       if (Number.isFinite(value)) {
         current.push(`${xFor(index)},${yFor(value)}`);
       } else if (current.length) {
@@ -3532,7 +3568,7 @@ const PerformanceWeeklyChart = ({ days = [], selectedDate = '' }) => {
   if (!hasRpe && !hasWellness) {
     return (
       <div className="flex min-h-56 items-center justify-center rounded-2xl border border-dashed border-white/10 bg-black/10 px-6 text-center text-sm text-slate-500">
-        Sin respuestas suficientes para mostrar la evolución semanal.
+        {emptyLabel}
       </div>
     );
   }
@@ -3547,7 +3583,7 @@ const PerformanceWeeklyChart = ({ days = [], selectedDate = '' }) => {
         viewBox={`0 0 ${width} ${height}`}
         className="h-auto w-full overflow-visible"
         role="img"
-        aria-label="Evolución diaria de RPE y Wellness en escala de cero a diez"
+        aria-label={`Evolución de RPE y Wellness en vista ${period} y escala de cero a diez`}
       >
         <defs>
           <linearGradient id="performance-rpe-area" x1="0" x2="0" y1="0" y2="1">
@@ -3559,9 +3595,9 @@ const PerformanceWeeklyChart = ({ days = [], selectedDate = '' }) => {
             <stop offset="100%" stopColor="#7dd3fc" stopOpacity="0" />
           </linearGradient>
         </defs>
-        {days.map((day, index) => day.entryDate === selectedDate ? (
+        {points.map((point, index) => point.key === selectedKey ? (
           <rect
-            key={`selected-${day.entryDate}`}
+            key={`selected-${point.key}`}
             x={Math.max(plot.left, xFor(index) - 30)}
             y={plot.top}
             width="60"
@@ -3604,13 +3640,27 @@ const PerformanceWeeklyChart = ({ days = [], selectedDate = '' }) => {
         {wellnessSegments.map((points, index) => (
           <polyline key={`wellness-${index}`} points={points.join(' ')} fill="none" stroke="#7dd3fc" strokeWidth="5" strokeDasharray="10 7" strokeLinecap="round" strokeLinejoin="round" className="transition-all duration-500" />
         ))}
-        {days.map((day, index) => (
-          <g key={day.entryDate}>
-            {Number.isFinite(day.avgRpe) ? <circle cx={xFor(index)} cy={yFor(day.avgRpe)} r={day.entryDate === selectedDate ? 8 : 6.5} fill="#fcd34d" stroke="#091428" strokeWidth="3" className="transition-all duration-300" /> : null}
-            {Number.isFinite(day.avgWellness) ? <rect x={xFor(index) - (day.entryDate === selectedDate ? 7 : 5.5)} y={yFor(day.avgWellness) - (day.entryDate === selectedDate ? 7 : 5.5)} width={day.entryDate === selectedDate ? 14 : 11} height={day.entryDate === selectedDate ? 14 : 11} rx="3" fill="#7dd3fc" stroke="#091428" strokeWidth="2.5" className="transition-all duration-300" /> : null}
-            <text x={xFor(index)} y={height - 14} textAnchor="middle" fill={day.entryDate === selectedDate ? '#5ce1e6' : '#94a3b8'} fontSize={day.entryDate === selectedDate ? '12' : '11'} fontWeight="800">
-              {day.shortDay}
+        {points.map((point, index) => (
+          <g
+            key={point.key}
+            role={onSelect ? 'button' : undefined}
+            tabIndex={onSelect && point.hasData ? 0 : undefined}
+            className={onSelect && point.hasData ? 'cursor-pointer outline-none' : ''}
+            onClick={() => point.hasData && onSelect?.(point)}
+            onKeyDown={(event) => {
+              if (point.hasData && (event.key === 'Enter' || event.key === ' ')) {
+                event.preventDefault();
+                onSelect?.(point);
+              }
+            }}
+          >
+            <title>{point.tooltip || point.label}</title>
+            {Number.isFinite(point.avgRpe) ? <circle cx={xFor(index)} cy={yFor(point.avgRpe)} r={point.key === selectedKey ? 8 : 6.5} fill="#fcd34d" stroke="#091428" strokeWidth="3" className="transition-all duration-300" /> : null}
+            {Number.isFinite(point.avgWellness) ? <rect x={xFor(index) - (point.key === selectedKey ? 7 : 5.5)} y={yFor(point.avgWellness) - (point.key === selectedKey ? 7 : 5.5)} width={point.key === selectedKey ? 14 : 11} height={point.key === selectedKey ? 14 : 11} rx="3" fill="#7dd3fc" stroke="#091428" strokeWidth="2.5" className="transition-all duration-300" /> : null}
+            {point.axisLabel ? <text x={xFor(index)} y={height - 14} textAnchor="middle" fill={point.key === selectedKey ? '#5ce1e6' : '#94a3b8'} fontSize={point.key === selectedKey ? '12' : '11'} fontWeight="800">
+              {point.axisLabel}
             </text>
+              : null}
           </g>
         ))}
       </svg>
@@ -5031,6 +5081,13 @@ function App() {
   const [performanceSelectedPlayerId, setPerformanceSelectedPlayerId] = useState('');
   const [performanceIndividualMetric, setPerformanceIndividualMetric] = useState('rpe');
   const [performanceHistoryExpanded, setPerformanceHistoryExpanded] = useState(false);
+  const [performanceChartPeriod, setPerformanceChartPeriod] = useState('week');
+  const [performanceChartMonth, setPerformanceChartMonth] = useState(() => formatPerformanceDateKey(new Date()).slice(0, 7));
+  const [performanceChartSeasonKey, setPerformanceChartSeasonKey] = useState(() => getPerformanceSportsSeason().key);
+  const [performancePeriodEntries, setPerformancePeriodEntries] = useState({ key: '', wellness: [], rpe: [] });
+  const [performancePeriodLoading, setPerformancePeriodLoading] = useState(false);
+  const [performanceDayTooltipDate, setPerformanceDayTooltipDate] = useState('');
+  const performancePeriodCacheRef = useRef(new Map());
   const [performanceMenuRect, setPerformanceMenuRect] = useState(null);
   const [rpeSyncPending, setRpeSyncPending] = useState([]);
   const [pendingRpeSessionById, setPendingRpeSessionById] = useState({});
@@ -6407,6 +6464,11 @@ function App() {
   }, [activeTab, performanceWeekStart]);
 
   useEffect(() => {
+    if (activeTab !== 'Rendimiento' || performanceChartPeriod === 'week') return;
+    loadPerformancePeriodData(performanceChartPeriod);
+  }, [activeTab, performanceChartPeriod, performanceChartMonth, performanceChartSeasonKey]);
+
+  useEffect(() => {
     if (!performanceSelectedPlayerId || typeof document === 'undefined') return undefined;
     setPerformanceHistoryExpanded(false);
     const previousOverflow = document.body.style.overflow;
@@ -7462,6 +7524,69 @@ function App() {
   const getPerformancePlayerName = (playerId) =>
     players.find((player) => player.id === playerId)?.name || 'Jugador';
 
+  const loadPerformanceEntriesRange = async (tableName, startDate, endDate) => {
+    const pageSize = 1000;
+    const entries = [];
+    let from = 0;
+    while (true) {
+      const response = await supabase
+        .from(tableName)
+        .select('*')
+        .gte('entry_date', startDate)
+        .lte('entry_date', endDate)
+        .order('entry_date', { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (response.error) throw response.error;
+      const page = response.data || [];
+      entries.push(...page);
+      if (page.length < pageSize) break;
+      from += pageSize;
+    }
+    return entries;
+  };
+
+  const loadPerformancePeriodData = async (period) => {
+    let range;
+    if (period === 'month') {
+      const [year, month] = performanceChartMonth.split('-').map(Number);
+      const lastDay = new Date(year, month, 0).getDate();
+      range = {
+        key: `month:${performanceChartMonth}`,
+        startDate: `${performanceChartMonth}-01`,
+        endDate: `${performanceChartMonth}-${String(lastDay).padStart(2, '0')}`,
+      };
+    } else {
+      const season = getPerformanceSportsSeason(`${performanceChartSeasonKey}-07-01`);
+      range = {
+        key: `season:${season.key}`,
+        startDate: season.startDate,
+        endDate: season.endDate,
+      };
+    }
+    const cached = performancePeriodCacheRef.current.get(range.key);
+    if (cached) {
+      setPerformancePeriodEntries(cached);
+      return;
+    }
+
+    setPerformancePeriodLoading(true);
+    setPerformanceError('');
+    try {
+      const [wellness, rpe] = await Promise.all([
+        loadPerformanceEntriesRange('wellness_entries', range.startDate, range.endDate),
+        loadPerformanceEntriesRange('rpe_entries', range.startDate, range.endDate),
+      ]);
+      const nextPeriod = { ...range, wellness, rpe };
+      performancePeriodCacheRef.current.set(range.key, nextPeriod);
+      setPerformancePeriodEntries(nextPeriod);
+    } catch (loadError) {
+      console.error('Error cargando el periodo de Rendimiento:', loadError);
+      setPerformanceError(loadError.message || 'No se pudo cargar el periodo de Rendimiento.');
+    } finally {
+      setPerformancePeriodLoading(false);
+    }
+  };
+
   const loadPerformanceData = async () => {
     setPerformanceLoading(true);
     setPerformanceError('');
@@ -7591,7 +7716,11 @@ function App() {
         .map((entry) => entry.entry_date)
         .filter(Boolean)
         .sort();
-      setPerformanceSelectedDate(responseDates[responseDates.length - 1] || performanceWeekStart);
+      setPerformanceSelectedDate((current) => (
+        current >= performanceWeekStart && current <= weekEnd
+          ? current
+          : responseDates[responseDates.length - 1] || performanceWeekStart
+      ));
     } catch (loadError) {
       console.error('Error cargando Rendimiento:', loadError);
       setPerformanceError(loadError.message || 'No se pudo cargar Rendimiento. Revisa que hayas ejecutado supabase_rendimiento.sql.');
@@ -7979,7 +8108,7 @@ function App() {
     ].filter(Boolean).sort((left, right) => left.entryDate.localeCompare(right.entryDate));
     const rawWellnessSignals = latestWellness ? [
       getPerformanceNumber(latestWellness.fatigue) >= 8 ? `Fatiga ${latestWellness.fatigue}` : '',
-      getPerformanceNumber(latestWellness.muscle_soreness) >= 8 ? `Daño muscular ${latestWellness.muscle_soreness}` : '',
+      getPerformanceNumber(latestWellness.muscle_soreness) >= 8 ? `Dolor muscular ${latestWellness.muscle_soreness}` : '',
       getPerformanceNumber(latestWellness.stress) >= 8 ? `Estrés ${latestWellness.stress}` : '',
       getPerformanceNumber(latestWellness.sleep_quality) !== null && getPerformanceNumber(latestWellness.sleep_quality) <= 2
         ? `Calidad del sueño ${latestWellness.sleep_quality}`
@@ -8154,6 +8283,117 @@ function App() {
     };
   });
 
+  const getPerformanceDayStatus = ({
+    entryDate = '',
+    wellnessEntries: dayWellnessEntries = [],
+    rpeEntries: dayRpeEntries = [],
+  }) => {
+    const responseCount = dayWellnessEntries.length + dayRpeEntries.length;
+    if (!responseCount) {
+      return {
+        status: 'gray',
+        label: 'Sin datos',
+        reasons: ['No existen respuestas de Wellness ni RPE'],
+        priorityCount: 0,
+        watchCount: 0,
+        responseCount: 0,
+      };
+    }
+
+    const playerIds = [...new Set([
+      ...dayWellnessEntries.map((entry) => entry.jugador_id),
+      ...dayRpeEntries.map((entry) => entry.jugador_id),
+    ].filter(Boolean))];
+    const priorityPlayerIds = new Set();
+    const watchPlayerIds = new Set();
+    const reasonCounts = {
+      combined: 0,
+      veryLowWellness: 0,
+      physicalConcern: 0,
+      highRpe: 0,
+      lowWellness: 0,
+      relevantDiscomfort: 0,
+      physicalIndicator: 0,
+    };
+
+    playerIds.forEach((playerId) => {
+      const playerWellness = dayWellnessEntries.filter((entry) => entry.jugador_id === playerId);
+      const playerRpe = dayRpeEntries.filter((entry) => entry.jugador_id === playerId);
+      const wellnessValues = playerWellness.map(getWellnessScore).filter((value) => value !== null);
+      const rpeValues = playerRpe
+        .map((entry) => getPerformanceNumber(entry.rpe))
+        .filter((value) => value !== null && value >= 1 && value <= 10);
+      const lowestWellness = wellnessValues.length ? Math.min(...wellnessValues) : null;
+      const highestRpe = rpeValues.length ? Math.max(...rpeValues) : null;
+      const hasRelevantDiscomfort = playerWellness.some((entry) => (
+        String(entry.discomfort || '').trim() ||
+        isPerformanceRelevantText(entry.comment)
+      )) || playerRpe.some((entry) => isPerformanceRelevantText(entry.comment));
+      const hasPhysicalIndicator = playerWellness.some((entry) => (
+        getPerformanceNumber(entry.fatigue) >= 8 ||
+        getPerformanceNumber(entry.muscle_soreness) >= 8 ||
+        getPerformanceNumber(entry.stress) >= 8 ||
+        (
+          getPerformanceNumber(entry.sleep_quality) !== null &&
+          getPerformanceNumber(entry.sleep_quality) <= 2
+        )
+      ));
+      const combinedConcern = highestRpe !== null && highestRpe >= 8 &&
+        lowestWellness !== null && lowestWellness < 5;
+      const veryLowWellness = lowestWellness !== null && lowestWellness <= 3;
+      const discomfortWithPhysicalConcern = hasRelevantDiscomfort && (
+        highestRpe >= 8 ||
+        (lowestWellness !== null && lowestWellness < 6) ||
+        hasPhysicalIndicator
+      );
+
+      if (combinedConcern || veryLowWellness || discomfortWithPhysicalConcern) {
+        priorityPlayerIds.add(playerId);
+        if (combinedConcern) reasonCounts.combined += 1;
+        if (veryLowWellness) reasonCounts.veryLowWellness += 1;
+        if (discomfortWithPhysicalConcern) reasonCounts.physicalConcern += 1;
+        return;
+      }
+
+      const watch = highestRpe >= 8 ||
+        (lowestWellness !== null && lowestWellness < 6) ||
+        hasRelevantDiscomfort ||
+        hasPhysicalIndicator;
+      if (watch) {
+        watchPlayerIds.add(playerId);
+        if (highestRpe >= 8) reasonCounts.highRpe += 1;
+        if (lowestWellness !== null && lowestWellness < 6) reasonCounts.lowWellness += 1;
+        if (hasRelevantDiscomfort) reasonCounts.relevantDiscomfort += 1;
+        if (hasPhysicalIndicator) reasonCounts.physicalIndicator += 1;
+      }
+    });
+
+    const reasons = [];
+    if (reasonCounts.combined) reasons.push(`RPE alto y Wellness bajo en ${reasonCounts.combined} ${reasonCounts.combined === 1 ? 'jugador' : 'jugadores'}`);
+    if (reasonCounts.veryLowWellness) reasons.push(`Wellness muy bajo en ${reasonCounts.veryLowWellness} ${reasonCounts.veryLowWellness === 1 ? 'jugador' : 'jugadores'}`);
+    if (reasonCounts.physicalConcern) reasons.push(`Molestia registrada junto a indicadores físicos en ${reasonCounts.physicalConcern} ${reasonCounts.physicalConcern === 1 ? 'jugador' : 'jugadores'}`);
+    if (reasonCounts.highRpe) reasons.push(`RPE alto en ${reasonCounts.highRpe} ${reasonCounts.highRpe === 1 ? 'jugador' : 'jugadores'}`);
+    if (reasonCounts.lowWellness) reasons.push(`Wellness bajo en ${reasonCounts.lowWellness} ${reasonCounts.lowWellness === 1 ? 'jugador' : 'jugadores'}`);
+    if (reasonCounts.relevantDiscomfort) reasons.push(`${reasonCounts.relevantDiscomfort} ${reasonCounts.relevantDiscomfort === 1 ? 'molestia o comentario físico relevante' : 'molestias o comentarios físicos relevantes'}`);
+    if (reasonCounts.physicalIndicator) reasons.push(`Indicadores físicos a vigilar en ${reasonCounts.physicalIndicator} ${reasonCounts.physicalIndicator === 1 ? 'jugador' : 'jugadores'}`);
+    if (!reasons.length) reasons.push('Respuestas disponibles sin indicadores de vigilancia');
+
+    const status = priorityPlayerIds.size ? 'red' : watchPlayerIds.size ? 'orange' : 'green';
+    return {
+      status,
+      label: {
+        red: 'Prioridad',
+        orange: 'Vigilancia',
+        green: 'Sin alertas',
+      }[status],
+      reasons,
+      priorityCount: priorityPlayerIds.size,
+      watchCount: watchPlayerIds.size,
+      responseCount,
+      entryDate,
+    };
+  };
+
   const getPerformanceDashboard = (
     wellnessSource = wellnessEntries,
     rpeSource = rpeEntries,
@@ -8178,25 +8418,23 @@ function App() {
       const dayWellnessValues = dayWellnessEntries
         .map(getWellnessScore)
         .filter((value) => value !== null);
-      const relevantEntries = [
+      const commentEntries = [
         ...dayRpeEntries.filter((entry) => String(entry.comment || '').trim()),
         ...dayWellnessEntries.filter((entry) => (
           String(entry.discomfort || '').trim() || String(entry.comment || '').trim()
         )),
       ];
-      const lowWellnessValues = dayWellnessValues.filter((value) => value < 6);
-      const hasPrioritySignal = dayWellnessValues.some((value) => value <= 3) || (
-        dayRpeValues.some((value) => value >= 8) &&
-        dayWellnessValues.some((value) => value < 5)
-      );
-      const hasWatchSignal = !hasPrioritySignal && (
-        dayRpeValues.some((value) => value >= 8) ||
-        lowWellnessValues.length > 0 ||
-        relevantEntries.length > 0
-      );
+      const dayStatus = getPerformanceDayStatus({
+        entryDate,
+        wellnessEntries: dayWellnessEntries,
+        rpeEntries: dayRpeEntries,
+      });
       const date = new Date(`${entryDate}T12:00:00`);
       return {
+        key: entryDate,
         entryDate,
+        label: new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: '2-digit', month: '2-digit' }).format(date),
+        axisLabel: new Intl.DateTimeFormat('es-ES', { weekday: 'short' }).format(date).replace('.', '').toUpperCase(),
         shortDay: new Intl.DateTimeFormat('es-ES', { weekday: 'short' }).format(date).replace('.', '').toUpperCase(),
         dayLabel: new Intl.DateTimeFormat('es-ES', { weekday: 'long' }).format(date),
         rpeEntries: dayRpeEntries,
@@ -8207,10 +8445,19 @@ function App() {
         maxRpe: dayRpeValues.length ? Math.max(...dayRpeValues) : null,
         highRpeCount: dayRpeValues.filter((value) => value >= 8).length,
         avgWellness: dayWellnessValues.length ? dayWellnessValues.reduce((sum, value) => sum + value, 0) / dayWellnessValues.length : null,
-        relevantCount: relevantEntries.length,
+        relevantCount: commentEntries.length,
         hasData: dayRpeEntries.length > 0 || dayWellnessEntries.length > 0,
-        status: hasPrioritySignal ? 'prioridad' : hasWatchSignal ? 'vigilar' : 'sin_alertas',
+        dayStatus,
       };
+    });
+    days.forEach((day) => {
+      day.tooltip = [
+        `${day.label} · ${day.dayStatus.label}`,
+        `${day.dayStatus.priorityCount} prioridad · ${day.dayStatus.watchCount} en vigilancia`,
+        `RPE medio ${day.avgRpe === null ? 'sin dato' : day.avgRpe.toFixed(1)} · Wellness medio ${day.avgWellness === null ? 'sin dato' : day.avgWellness.toFixed(1)}`,
+        `${day.dayStatus.responseCount} respuestas`,
+        `Motivo principal: ${day.dayStatus.reasons[0]}`,
+      ].join('\n');
     });
     const alertRows = rows
       .filter((row) => (
@@ -8233,6 +8480,8 @@ function App() {
     const peak = days
       .filter((day) => day.avgRpe !== null)
       .sort((left, right) => right.avgRpe - left.avgRpe)[0] || null;
+    const redDayCount = days.filter((day) => day.dayStatus.status === 'red').length;
+    const orangeDayCount = days.filter((day) => day.dayStatus.status === 'orange').length;
 
     return {
       rows,
@@ -8244,6 +8493,8 @@ function App() {
       wellnessPendingCount,
       rpePendingCount,
       requiresNoticeCount,
+      redDayCount,
+      orangeDayCount,
       alertCount: priorityCount + watchCount,
       attentionCount: alertRows.length,
       rpeResponseCount: rpeSource.length,
@@ -8264,6 +8515,105 @@ function App() {
       hasWellnessData: wellnessValues.length > 0,
       hasEvaluableData: rows.some((row) => row.hasData),
     };
+  };
+
+  const buildPerformanceDailySeries = (wellnessSource, rpeSource, startDate, endDate) => {
+    const points = [];
+    let entryDate = startDate;
+    while (entryDate <= endDate) {
+      const dayWellnessEntries = wellnessSource.filter((entry) => entry.entry_date === entryDate);
+      const dayRpeEntries = rpeSource.filter((entry) => entry.entry_date === entryDate);
+      const rpeValues = dayRpeEntries
+        .map((entry) => getPerformanceNumber(entry.rpe))
+        .filter((value) => value !== null && value >= 1 && value <= 10);
+      const wellnessValues = dayWellnessEntries.map(getWellnessScore).filter((value) => value !== null);
+      const dayStatus = getPerformanceDayStatus({
+        entryDate,
+        wellnessEntries: dayWellnessEntries,
+        rpeEntries: dayRpeEntries,
+      });
+      const date = new Date(`${entryDate}T12:00:00`);
+      const dayOfMonth = date.getDate();
+      const avgRpe = rpeValues.length ? rpeValues.reduce((sum, value) => sum + value, 0) / rpeValues.length : null;
+      const avgWellness = wellnessValues.length ? wellnessValues.reduce((sum, value) => sum + value, 0) / wellnessValues.length : null;
+      points.push({
+        key: entryDate,
+        entryDate,
+        label: new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: '2-digit', month: '2-digit' }).format(date),
+        axisLabel: dayOfMonth === 1 || dayOfMonth % 4 === 1 || entryDate === endDate ? String(dayOfMonth) : '',
+        avgRpe,
+        avgWellness,
+        hasData: dayStatus.responseCount > 0,
+        rpeResponseCount: dayRpeEntries.length,
+        wellnessResponseCount: dayWellnessEntries.length,
+        dayStatus,
+        tooltip: [
+          new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }).format(date),
+          `Estado físico del día: ${dayStatus.label}`,
+          `RPE medio: ${avgRpe === null ? 'sin dato' : avgRpe.toFixed(1)} · Wellness medio: ${avgWellness === null ? 'sin dato' : avgWellness.toFixed(1)}`,
+          `${dayStatus.responseCount} respuestas`,
+          `Motivo: ${dayStatus.reasons[0]}`,
+        ].join('\n'),
+      });
+      entryDate = addDays(entryDate, 1);
+    }
+    return points;
+  };
+
+  const buildPerformanceSeasonSeries = (wellnessSource, rpeSource, season) => {
+    const points = [];
+    let weekStart = getPerformanceNaturalWeekStart(season.startDate);
+    while (weekStart <= season.endDate) {
+      const weekEnd = addDays(weekStart, 6);
+      const rangeStart = weekStart < season.startDate ? season.startDate : weekStart;
+      const rangeEnd = weekEnd > season.endDate ? season.endDate : weekEnd;
+      const weekWellness = wellnessSource.filter((entry) => entry.entry_date >= rangeStart && entry.entry_date <= rangeEnd);
+      const weekRpe = rpeSource.filter((entry) => entry.entry_date >= rangeStart && entry.entry_date <= rangeEnd);
+      const rpeValues = weekRpe
+        .map((entry) => getPerformanceNumber(entry.rpe))
+        .filter((value) => value !== null && value >= 1 && value <= 10);
+      const wellnessValues = weekWellness.map(getWellnessScore).filter((value) => value !== null);
+      const weekRows = getPerformancePlayerRows(weekWellness, weekRpe, { includeActivity: false });
+      const wellnessPlayerIds = new Set(weekWellness.map((entry) => entry.jugador_id).filter(Boolean));
+      const rpePlayerIds = new Set(weekRpe.map((entry) => entry.jugador_id).filter(Boolean));
+      const bothFormPlayerCount = [...wellnessPlayerIds].filter((playerId) => rpePlayerIds.has(playerId)).length;
+      const dailySeries = buildPerformanceDailySeries(weekWellness, weekRpe, rangeStart, rangeEnd);
+      const avgRpe = rpeValues.length ? rpeValues.reduce((sum, value) => sum + value, 0) / rpeValues.length : null;
+      const avgWellness = wellnessValues.length ? wellnessValues.reduce((sum, value) => sum + value, 0) / wellnessValues.length : null;
+      points.push({
+        key: weekStart,
+        weekStart,
+        weekEnd,
+        rangeStart,
+        rangeEnd,
+        label: `${rangeStart.slice(8, 10)}/${rangeStart.slice(5, 7)}–${rangeEnd.slice(8, 10)}/${rangeEnd.slice(5, 7)}`,
+        axisLabel: '',
+        avgRpe,
+        avgWellness,
+        hasData: weekWellness.length > 0 || weekRpe.length > 0,
+        responseCount: weekWellness.length + weekRpe.length,
+        priorityCount: weekRows.filter((row) => row.status === 'prioridad').length,
+        watchCount: weekRows.filter((row) => row.status === 'vigilar').length,
+        redDayCount: dailySeries.filter((day) => day.dayStatus.status === 'red').length,
+        orangeDayCount: dailySeries.filter((day) => day.dayStatus.status === 'orange').length,
+        wellnessPlayerCount: wellnessPlayerIds.size,
+        rpePlayerCount: rpePlayerIds.size,
+        bothFormPlayerCount,
+      });
+      weekStart = addDays(weekStart, 7);
+    }
+    const labelStep = Math.max(1, Math.ceil(points.length / 10));
+    return points.map((point, index) => ({
+      ...point,
+      axisLabel: index % labelStep === 0 || index === points.length - 1 ? point.label : '',
+      tooltip: [
+        `Semana ${point.label}`,
+        `RPE medio: ${point.avgRpe === null ? 'sin dato' : point.avgRpe.toFixed(1)} · Wellness medio: ${point.avgWellness === null ? 'sin dato' : point.avgWellness.toFixed(1)}`,
+        `${point.responseCount} respuestas`,
+        `Estado físico: ${point.priorityCount} prioridad · ${point.watchCount} vigilancia`,
+        `Cumplimiento: ${point.bothFormPlayerCount} jugadores con ambos formularios`,
+      ].join('\n'),
+    }));
   };
 
   useEffect(() => {
@@ -19633,6 +19983,42 @@ function App() {
     () => getPerformanceDashboard(previousWellnessEntries, previousRpeEntries, addDays(performanceWeekStart, -7)),
     [players, previousWellnessEntries, previousRpeEntries, performanceWeekStart]
   );
+  const performanceActiveSeason = useMemo(
+    () => getPerformanceSportsSeason(`${performanceChartSeasonKey}-07-01`),
+    [performanceChartSeasonKey]
+  );
+  const performanceExpectedPeriodKey = performanceChartPeriod === 'month'
+    ? `month:${performanceChartMonth}`
+    : performanceChartPeriod === 'season'
+      ? `season:${performanceActiveSeason.key}`
+      : 'week';
+  const performanceChartPoints = useMemo(() => {
+    if (performanceChartPeriod === 'week') return performanceDashboard.days;
+    if (performancePeriodEntries.key !== performanceExpectedPeriodKey) return [];
+    if (performanceChartPeriod === 'month') {
+      const [year, month] = performanceChartMonth.split('-').map(Number);
+      const lastDay = new Date(year, month, 0).getDate();
+      return buildPerformanceDailySeries(
+        performancePeriodEntries.wellness,
+        performancePeriodEntries.rpe,
+        `${performanceChartMonth}-01`,
+        `${performanceChartMonth}-${String(lastDay).padStart(2, '0')}`
+      );
+    }
+    return buildPerformanceSeasonSeries(
+      performancePeriodEntries.wellness,
+      performancePeriodEntries.rpe,
+      performanceActiveSeason
+    );
+  }, [
+    performanceChartPeriod,
+    performanceChartMonth,
+    performanceActiveSeason.key,
+    performanceExpectedPeriodKey,
+    performancePeriodEntries,
+    performanceDashboard.days,
+    players,
+  ]);
   const performancePlayerRows = performanceDashboard.rows;
   const performanceRowByPlayerId = useMemo(
     () => new Map(performancePlayerRows.map((row) => [row.player.id, row])),
@@ -23458,12 +23844,6 @@ function App() {
     const dashboard = performanceDashboard;
     const previousDashboard = previousPerformanceDashboard;
     const selectedDay = dashboard.days.find((day) => day.entryDate === performanceSelectedDate) || dashboard.days[0];
-    const nowForPerformance = new Date();
-    const performanceToday = [
-      nowForPerformance.getFullYear(),
-      String(nowForPerformance.getMonth() + 1).padStart(2, '0'),
-      String(nowForPerformance.getDate()).padStart(2, '0'),
-    ].join('-');
     const statusPresentation = {
       prioridad: {
         label: 'Prioridad',
@@ -23488,6 +23868,28 @@ function App() {
         badge: 'border-slate-400/20 bg-slate-400/5 text-slate-400',
         dot: 'bg-slate-500',
         rank: 3,
+      },
+    };
+    const dayStatusPresentation = {
+      green: {
+        label: 'Sin alertas',
+        dot: 'bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,0.65)]',
+        badge: 'border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-100',
+      },
+      orange: {
+        label: 'Vigilancia',
+        dot: 'bg-amber-300 shadow-[0_0_12px_rgba(252,211,77,0.4)]',
+        badge: 'border-amber-300/20 bg-amber-300/[0.07] text-amber-100',
+      },
+      red: {
+        label: 'Prioridad',
+        dot: 'bg-rose-400 shadow-[0_0_12px_rgba(251,113,133,0.55)]',
+        badge: 'border-rose-300/25 bg-rose-300/[0.08] text-rose-100',
+      },
+      gray: {
+        label: 'Sin datos',
+        dot: 'border border-dashed border-slate-500 bg-transparent',
+        badge: 'border-slate-400/15 bg-slate-400/[0.04] text-slate-400',
       },
     };
     const formatShortDate = (value) => {
@@ -23686,8 +24088,28 @@ function App() {
           wellnessEntry?.comment,
           rpeEntry?.comment,
         ].map((value) => String(value || '').trim()).filter(Boolean);
+        const playerDayStatus = getPerformanceDayStatus({
+          entryDate: selectedDay.entryDate,
+          wellnessEntries: wellnessEntry ? [wellnessEntry] : [],
+          rpeEntries: rpeEntry ? [rpeEntry] : [],
+        });
+        const playerStatus = {
+          red: 'prioridad',
+          orange: 'vigilar',
+          green: 'sin_alertas',
+          gray: 'sin_datos',
+        }[playerDayStatus.status];
         return {
           ...row,
+          status: playerStatus,
+          statusLabel: statusPresentation[playerStatus].label,
+          reasons: playerDayStatus.reasons,
+          tooltip: `${playerDayStatus.label} · ${playerDayStatus.reasons.join(' · ')} · Actividad actual: ${row.activity.statusLabel}`,
+          signals: [
+            getWellnessScore(wellnessEntry) !== null && getWellnessScore(wellnessEntry) < 6 ? 'wellness' : null,
+            getPerformanceNumber(rpeEntry?.rpe) >= 8 ? 'rpe' : null,
+            comments.some((comment) => isPerformanceRelevantText(comment)) ? 'molestias' : null,
+          ].filter(Boolean),
           dayRpe: getPerformanceNumber(rpeEntry?.rpe),
           dayWellness: getWellnessScore(wellnessEntry),
           dayComments: comments,
@@ -24032,13 +24454,91 @@ function App() {
         accent: 'from-emerald-300/20',
       },
     ];
-    const generalState = !dashboard.hasEvaluableData
+    const generalState = !dashboard.hasData
       ? 'Sin información suficiente'
-      : dashboard.priorityCount
-        ? 'Hay casos que requieren revisión prioritaria'
-        : dashboard.watchCount
-          ? 'Hay indicadores que conviene vigilar'
+      : dashboard.redDayCount
+        ? 'El microciclo contiene días con indicadores prioritarios'
+        : dashboard.orangeDayCount
+          ? 'El microciclo contiene días con indicadores de vigilancia'
           : 'No se observan indicadores de alerta';
+    const currentSportsSeason = getPerformanceSportsSeason();
+    const seasonStartYears = [...new Set([
+      Number(currentSportsSeason.key),
+      Number(performanceChartSeasonKey),
+      ...Array.from({ length: 5 }, (_, index) => Number(currentSportsSeason.key) - index),
+    ])].filter(Number.isFinite).sort((left, right) => right - left);
+    const changePerformanceMonth = (delta) => {
+      const [year, month] = performanceChartMonth.split('-').map(Number);
+      const next = new Date(year, month - 1 + delta, 1);
+      setPerformanceChartMonth(formatPerformanceDateKey(next).slice(0, 7));
+    };
+    const selectedChartKey = performanceChartPeriod === 'season'
+      ? performanceWeekStart
+      : performanceSelectedDate;
+    const selectPerformanceChartPoint = (point) => {
+      if (performanceChartPeriod === 'season') {
+        setPerformanceWeekStart(point.weekStart);
+        setPerformanceSelectedDate(point.rangeStart);
+        setPerformanceChartPeriod('week');
+        return;
+      }
+      setPerformanceSelectedDate(point.entryDate);
+      setPerformanceDayTooltipDate(point.entryDate);
+      if (performanceChartPeriod === 'month') {
+        setPerformanceWeekStart(getPerformanceNaturalWeekStart(point.entryDate));
+      }
+    };
+    const periodDataPoints = performanceChartPoints.filter((point) => point.hasData);
+    const getSeriesTrendText = (points, key) => {
+      const values = points.map((point) => point[key]).filter(Number.isFinite);
+      if (values.length < 2) return 'Sin datos suficientes';
+      const delta = values[values.length - 1] - values[0];
+      if (Math.abs(delta) < 0.05) return 'Estable en el periodo';
+      return `${delta > 0 ? '↑' : '↓'} ${Math.abs(delta).toFixed(1)} entre el primer y el último dato`;
+    };
+    const monthWeekGroups = performanceChartPeriod === 'month'
+      ? Object.values(performanceChartPoints.reduce((groups, point) => {
+        const weekStart = getPerformanceNaturalWeekStart(point.entryDate);
+        const group = groups[weekStart] || { weekStart, points: [] };
+        group.points.push(point);
+        groups[weekStart] = group;
+        return groups;
+      }, {})).map((group) => {
+        const values = group.points.map((point) => point.avgRpe).filter(Number.isFinite);
+        return {
+          ...group,
+          avgRpe: values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null,
+        };
+      })
+      : [];
+    const highestMonthWeek = monthWeekGroups
+      .filter((week) => week.avgRpe !== null)
+      .sort((left, right) => right.avgRpe - left.avgRpe)[0] || null;
+    const seasonHighestWeeks = performanceChartPeriod === 'season'
+      ? [...periodDataPoints].filter((point) => point.avgRpe !== null).sort((left, right) => right.avgRpe - left.avgRpe).slice(0, 2)
+      : [];
+    const firstSeasonDataWeek = performanceChartPeriod === 'season' ? periodDataPoints[0] : null;
+    const lastSeasonDataWeek = performanceChartPeriod === 'season' ? periodDataPoints[periodDataPoints.length - 1] : null;
+    const periodSummary = performanceChartPeriod === 'week'
+      ? [
+        ['Día más exigente', dashboard.peak ? `${formatShortDate(dashboard.peak.entryDate)} · RPE ${dashboard.peak.avgRpe.toFixed(1)}` : 'Sin RPE'],
+        ['RPE medio', dashboard.avgRpe === null ? 'Sin dato' : dashboard.avgRpe.toFixed(1)],
+        ['Wellness medio', dashboard.avgWellness === null ? 'Sin dato' : dashboard.avgWellness.toFixed(1)],
+      ]
+      : performanceChartPeriod === 'month'
+        ? [
+          ['Semana con mayor RPE', highestMonthWeek ? `${formatShortDate(highestMonthWeek.weekStart)} · ${highestMonthWeek.avgRpe.toFixed(1)}` : 'Sin RPE'],
+          ['Tendencia Wellness', getSeriesTrendText(performanceChartPoints, 'avgWellness')],
+          ['Días con alertas', `${performanceChartPoints.filter((point) => ['red', 'orange'].includes(point.dayStatus.status)).length}`],
+        ]
+        : [
+          ['Tendencia general', `RPE: ${getSeriesTrendText(performanceChartPoints, 'avgRpe')} · Wellness: ${getSeriesTrendText(performanceChartPoints, 'avgWellness')}`],
+          ['Semanas con mayor RPE', seasonHighestWeeks.length ? seasonHighestWeeks.map((week) => `${week.label} (${week.avgRpe.toFixed(1)})`).join(' · ') : 'Sin RPE'],
+          ['Evolución del cumplimiento', firstSeasonDataWeek && lastSeasonDataWeek ? `${firstSeasonDataWeek.bothFormPlayerCount} → ${lastSeasonDataWeek.bothFormPlayerCount} jugadores con ambos formularios` : 'Sin datos suficientes'],
+          ['Semanas con alertas', `${periodDataPoints.filter((point) => point.redDayCount || point.orangeDayCount).length}`],
+        ];
+    const activeDayTooltip = dashboard.days.find((day) => day.entryDate === performanceDayTooltipDate) || null;
+    const activeChartPoint = performanceChartPoints.find((point) => point.key === selectedChartKey) || null;
 
     return (
       <section className="space-y-5">
@@ -24112,34 +24612,63 @@ function App() {
           <nav aria-label="Navegación del microciclo" className="relative mt-5 grid grid-cols-7 gap-1 rounded-2xl border border-white/[0.07] bg-black/15 p-1.5 sm:gap-2">
             {dashboard.days.map((day) => {
               const selected = day.entryDate === selectedDay?.entryDate;
-              const future = day.entryDate > performanceToday;
-              const dotClass = future
-                ? 'border border-slate-600 bg-transparent'
-                : !day.hasData
-                  ? 'border border-dashed border-slate-500 bg-transparent'
-                  : day.status === 'prioridad'
-                    ? 'bg-rose-400 shadow-[0_0_12px_rgba(251,113,133,0.55)]'
-                    : day.status === 'vigilar'
-                      ? 'bg-amber-300'
-                      : 'bg-emerald-300';
+              const dayPresentation = dayStatusPresentation[day.dayStatus.status];
               return (
                 <button
                   key={`cycle-${day.entryDate}`}
                   type="button"
-                  onClick={() => setPerformanceSelectedDate(day.entryDate)}
+                  onClick={() => {
+                    setPerformanceSelectedDate(day.entryDate);
+                    setPerformanceDayTooltipDate((current) => current === day.entryDate ? '' : day.entryDate);
+                  }}
                   className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 transition ${
                     selected ? 'bg-caudal-electric/[0.10] text-white ring-1 ring-caudal-electric/25' : 'text-slate-500 hover:bg-white/[0.05] hover:text-slate-300'
                   }`}
                   aria-current={selected ? 'date' : undefined}
-                  title={`${formatLongDate(day.entryDate)} · ${day.hasData ? `${day.rpeResponseCount + day.wellnessResponseCount} respuestas` : 'Sin respuestas'}`}
+                  title={`${day.tooltip}\n\nCumplimiento actual de formularios:\n${dashboard.upToDateCount} al día · ${dashboard.requiresNoticeCount} requieren aviso por falta de respuesta`}
                 >
                   <span className="text-[9px] font-black uppercase tracking-[0.1em] sm:text-[10px]">{day.shortDay}</span>
-                  <span className={`h-2.5 w-2.5 rounded-full transition-all ${dotClass} ${selected ? 'scale-125' : ''}`} />
+                  <span className={`h-2.5 w-2.5 rounded-full transition-all ${dayPresentation.dot} ${selected ? 'scale-125' : ''}`} />
                   <span className="hidden text-[8px] font-bold sm:block">{formatShortDate(day.entryDate)}</span>
                 </button>
               );
             })}
           </nav>
+          <div className="relative mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[9px] font-black uppercase tracking-[0.11em] text-slate-400">
+            {[
+              ['green', 'Verde · Sin alertas'],
+              ['orange', 'Naranja · Vigilancia'],
+              ['red', 'Rojo · Prioridad'],
+              ['gray', 'Gris · Sin datos'],
+            ].map(([status, label]) => (
+              <span key={status} className="inline-flex items-center gap-1.5">
+                <span className={`h-2.5 w-2.5 rounded-full ${dayStatusPresentation[status].dot}`} />
+                {label}
+              </span>
+            ))}
+          </div>
+          {activeDayTooltip ? (
+            <div className="relative mt-3 grid gap-3 rounded-2xl border border-white/[0.08] bg-black/20 p-3 text-left sm:grid-cols-[1.2fr_0.8fr]">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-caudal-electric">Estado físico del día</p>
+                <p className="mt-1 text-sm font-black capitalize text-white">{activeDayTooltip.label} · {activeDayTooltip.dayStatus.label}</p>
+                <p className="mt-1 text-xs font-bold text-slate-300">
+                  {activeDayTooltip.dayStatus.priorityCount} prioridad · {activeDayTooltip.dayStatus.watchCount} en vigilancia
+                </p>
+                <p className="mt-1 text-[10px] leading-4 text-slate-500">{activeDayTooltip.dayStatus.reasons.join(' · ')}</p>
+                <p className="mt-1 text-[10px] font-bold text-slate-400">
+                  RPE medio {activeDayTooltip.avgRpe === null ? 'sin dato' : activeDayTooltip.avgRpe.toFixed(1)} · Wellness medio {activeDayTooltip.avgWellness === null ? 'sin dato' : activeDayTooltip.avgWellness.toFixed(1)} · {activeDayTooltip.dayStatus.responseCount} respuestas
+                </p>
+              </div>
+              <div className="border-t border-white/[0.07] pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-amber-200">Cumplimiento actual de formularios</p>
+                <p className="mt-1 text-xs font-bold text-slate-300">{dashboard.upToDateCount} al día · {dashboard.requiresNoticeCount} requieren aviso</p>
+                <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                  Falta de respuesta: {dashboard.wellnessPendingCount} sin Wellness · {dashboard.rpePendingCount} sin RPE. Esta actividad actual no modifica el color histórico.
+                </p>
+              </div>
+            </div>
+          ) : null}
           <div className="relative mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-white/[0.07] pt-4 text-xs text-slate-500">
             <span className="inline-flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,0.7)]" />
@@ -24214,7 +24743,10 @@ function App() {
               <button
                 key={day.entryDate}
                 type="button"
-                onClick={() => setPerformanceSelectedDate(day.entryDate)}
+                onClick={() => {
+                  setPerformanceSelectedDate(day.entryDate);
+                  setPerformanceDayTooltipDate(day.entryDate);
+                }}
                 className={`min-w-[166px] snap-start rounded-2xl border p-3 text-left transition sm:min-w-[178px] ${
                   selectedDay?.entryDate === day.entryDate
                     ? 'border-caudal-electric/45 bg-caudal-electric/[0.09] shadow-[0_0_0_1px_rgba(92,225,230,0.08)]'
@@ -24226,10 +24758,14 @@ function App() {
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">{day.shortDay}</p>
                     <p className="mt-1 text-sm font-black capitalize text-white">{formatShortDate(day.entryDate)}</p>
                   </div>
-                  <span className={`mt-1 h-2.5 w-2.5 rounded-full ${
-                    !day.hasData ? 'bg-slate-700' : day.status === 'prioridad' ? 'bg-rose-400' : day.status === 'vigilar' ? 'bg-amber-300' : 'bg-emerald-300'
-                  }`} />
+                  <span
+                    title={day.tooltip}
+                    className={`mt-1 h-2.5 w-2.5 rounded-full ${dayStatusPresentation[day.dayStatus.status].dot}`}
+                  />
                 </div>
+                <p className={`mt-2 inline-flex rounded-full border px-2 py-0.5 text-[8px] font-black uppercase ${dayStatusPresentation[day.dayStatus.status].badge}`}>
+                  {day.dayStatus.label}
+                </p>
                 {day.hasData ? (
                   <>
                     <div className="mt-3 grid grid-cols-2 gap-2">
@@ -24269,13 +24805,122 @@ function App() {
 
         <div className="grid gap-5 xl:grid-cols-[1.35fr_0.85fr]">
           <section aria-label="Evolución diaria de RPE y Wellness" className="rounded-[1.75rem] border border-white/[0.07] bg-[#091428] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-6">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Evolución semanal</p>
-            <div className="mt-1 flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="text-lg font-black text-white">RPE y Wellness por día</h3>
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Escala real 0–10</p>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Evolución</p>
+                <h3 className="mt-1 text-lg font-black text-white">
+                  {performanceChartPeriod === 'season' ? 'RPE y Wellness por semana' : 'RPE y Wellness por día'}
+                </h3>
+                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Escala real 0–10 · sin convertir ausencias en cero</p>
+              </div>
+              <div>
+                <p className="mb-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Periodo</p>
+                <div className="inline-flex rounded-xl border border-white/10 bg-black/15 p-1">
+                  {[
+                    ['week', 'Semana'],
+                    ['month', 'Mes'],
+                    ['season', 'Temporada'],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setPerformanceChartPeriod(value)}
+                      className={`rounded-lg px-2.5 py-1.5 text-[10px] font-black transition sm:px-3 ${
+                        performanceChartPeriod === value
+                          ? 'bg-caudal-electric text-slate-950'
+                          : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-            <div className="mt-5">
-              <PerformanceWeeklyChart days={dashboard.days} selectedDate={selectedDay?.entryDate} />
+
+            {performanceChartPeriod === 'month' ? (
+              <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-black/10 p-2">
+                <button type="button" onClick={() => changePerformanceMonth(-1)} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 transition hover:bg-white/10 hover:text-white" aria-label="Mes anterior">←</button>
+                <label className="text-center">
+                  <span className="block text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">Mes y año</span>
+                  <input
+                    type="month"
+                    value={performanceChartMonth}
+                    onChange={(event) => setPerformanceChartMonth(event.target.value)}
+                    className="mt-0.5 bg-transparent text-center text-sm font-black text-white outline-none"
+                  />
+                </label>
+                <button type="button" onClick={() => changePerformanceMonth(1)} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 transition hover:bg-white/10 hover:text-white" aria-label="Mes siguiente">→</button>
+              </div>
+            ) : null}
+
+            {performanceChartPeriod === 'season' ? (
+              <label className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-black/10 px-3 py-2">
+                <span>
+                  <span className="block text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">Temporada deportiva</span>
+                  <span className="mt-0.5 block text-[10px] text-slate-500">1 de julio–30 de junio</span>
+                </span>
+                <select
+                  value={performanceChartSeasonKey}
+                  onChange={(event) => setPerformanceChartSeasonKey(event.target.value)}
+                  className="rounded-lg border border-white/10 bg-[#0c1930] px-3 py-2 text-sm font-black text-white outline-none"
+                >
+                  {seasonStartYears.map((startYear) => {
+                    const season = getPerformanceSportsSeason(`${startYear}-07-01`);
+                    return <option key={season.key} value={season.key}>{season.label}</option>;
+                  })}
+                </select>
+              </label>
+            ) : null}
+
+            <div className="mt-5 overflow-x-auto">
+              {performancePeriodLoading && performanceChartPeriod !== 'week' && !performanceChartPoints.length ? (
+                <div className="flex min-h-56 items-center justify-center rounded-2xl border border-white/[0.06] bg-black/10 text-sm font-bold text-slate-500">
+                  Cargando datos reales del periodo…
+                </div>
+              ) : (
+                <div className={performanceChartPeriod === 'month' ? 'min-w-[620px] sm:min-w-0' : ''}>
+                  <PerformanceEvolutionChart
+                    points={performanceChartPoints}
+                    selectedKey={selectedChartKey}
+                    period={performanceChartPeriod}
+                    onSelect={selectPerformanceChartPoint}
+                    emptyLabel={`Sin respuestas suficientes en ${
+                      performanceChartPeriod === 'week'
+                        ? 'la semana'
+                        : performanceChartPeriod === 'month'
+                          ? 'el mes'
+                          : `la temporada ${performanceActiveSeason.label}`
+                    }.`}
+                  />
+                </div>
+              )}
+            </div>
+
+            {activeChartPoint ? (
+              <div className="mt-3 grid gap-3 rounded-xl border border-white/[0.07] bg-black/10 p-3 sm:grid-cols-[1.2fr_0.8fr]">
+                <div>
+                  <p className="text-[8px] font-black uppercase tracking-[0.14em] text-caudal-electric">
+                    {performanceChartPeriod === 'season' ? 'Semana seleccionada' : 'Estado físico del día'}
+                  </p>
+                  <p className="mt-1 whitespace-pre-line text-[10px] font-bold leading-5 text-slate-300">{activeChartPoint.tooltip}</p>
+                </div>
+                <div className="border-t border-white/[0.06] pt-3 sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0">
+                  <p className="text-[8px] font-black uppercase tracking-[0.14em] text-amber-200">Cumplimiento actual de formularios</p>
+                  <p className="mt-1 text-[10px] font-bold leading-5 text-slate-400">
+                    {dashboard.upToDateCount} al día · {dashboard.requiresNoticeCount} requieren aviso por falta de respuesta.
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
+            <div className={`mt-4 grid gap-2 ${periodSummary.length > 3 ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+              {periodSummary.map(([label, value]) => (
+                <div key={label} className="rounded-xl border border-white/[0.06] bg-black/10 p-3">
+                  <p className="text-[8px] font-black uppercase tracking-[0.13em] text-slate-500">{label}</p>
+                  <p className="mt-1 text-xs font-black leading-5 text-slate-200">{value}</p>
+                </div>
+              ))}
             </div>
           </section>
 
@@ -24356,11 +25001,21 @@ function App() {
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Detalle del día</p>
               <h3 className="mt-1 text-base font-black capitalize text-white">{formatLongDate(selectedDay?.entryDate)}</h3>
+              {selectedDay ? (
+                <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                  Estado físico del día · {selectedDay.dayStatus.reasons.join(' · ')}
+                </p>
+              ) : null}
             </div>
-            {selectedDay?.hasData ? (
-              <p className="text-xs font-bold text-slate-400">
-                {selectedDay.rpeResponseCount} RPE · {selectedDay.wellnessResponseCount} Wellness
-              </p>
+            {selectedDay ? (
+              <div className="text-right">
+                <span className={`inline-flex rounded-full border px-2.5 py-1 text-[9px] font-black uppercase ${dayStatusPresentation[selectedDay.dayStatus.status].badge}`}>
+                  {selectedDay.dayStatus.label}
+                </span>
+                <p className="mt-1 text-xs font-bold text-slate-400">
+                  {selectedDay.rpeResponseCount} RPE · {selectedDay.wellnessResponseCount} Wellness
+                </p>
+              </div>
             ) : null}
           </div>
           {selectedDayRows.length ? (
@@ -24967,7 +25622,7 @@ function App() {
             <span aria-hidden="true">▤</span>
             Lectura de la semana
           </p>
-          {dashboard.hasEvaluableData ? (
+          {dashboard.hasData ? (
             <div className="mt-4 grid gap-5 xl:grid-cols-[0.72fr_1.28fr]">
               <div className="rounded-2xl border border-caudal-electric/15 bg-gradient-to-br from-caudal-electric/[0.09] to-transparent p-5">
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Estado general</p>
@@ -24981,16 +25636,16 @@ function App() {
               <div className="grid gap-0 divide-y divide-white/[0.07]">
                 {[
                   [
-                    'Prioridad',
-                    dashboard.priorityCount
-                      ? `${dashboard.priorityCount} ${dashboard.priorityCount === 1 ? 'jugador requiere' : 'jugadores requieren'} revisión prioritaria.`
-                      : 'Ningún jugador requiere revisión prioritaria.',
+                    'Días en prioridad',
+                    dashboard.redDayCount
+                      ? `${dashboard.redDayCount} ${dashboard.redDayCount === 1 ? 'día presenta' : 'días presentan'} indicadores físicos prioritarios.`
+                      : 'Ningún día presenta indicadores físicos prioritarios.',
                   ],
                   [
-                    'Vigilancia',
-                    dashboard.watchCount
-                      ? `${dashboard.watchCount} ${dashboard.watchCount === 1 ? 'jugador presenta' : 'jugadores presentan'} indicadores de seguimiento.`
-                      : 'No hay jugadores con indicadores de vigilancia.',
+                    'Días en vigilancia',
+                    dashboard.orangeDayCount
+                      ? `${dashboard.orangeDayCount} ${dashboard.orangeDayCount === 1 ? 'día presenta' : 'días presentan'} indicadores de vigilancia.`
+                      : 'No hay días con indicadores de vigilancia.',
                   ],
                   [
                     'Día más exigente',
