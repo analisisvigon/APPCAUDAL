@@ -173,7 +173,8 @@ function importAllWellnessHistory() {
     rowNumber: index + 2,
     values: Object.fromEntries(technical.headers.map((header, columnIndex) => [String(header).trim(), row[columnIndex]])),
   }));
-  const plan = buildWellnessHistoryImportPlan(rowItems, fetchPlayersForForms());
+  const players = fetchPlayersForForms();
+  const plan = buildWellnessHistoryImportPlan(rowItems, players);
   const syncStates = {};
 
   plan.failures.forEach((failure) => {
@@ -217,7 +218,13 @@ function importAllWellnessHistory() {
         });
       });
       plan.failures.push(...groups.flatMap((group) =>
-        group.rowNumbers.map((rowNumber) => ({ rowNumber, error: message }))
+        group.rowDetails.map((detail) => buildWellnessImportFailure({
+          rowNumber: detail.rowNumber,
+          receivedName: detail.receivedName,
+          receivedDate: detail.receivedDate,
+          error: getWellnessPayloadDiagnostic(group.payload, detail.receivedDate) || message,
+          players,
+        }))
       ));
     }
   }
@@ -233,6 +240,7 @@ function importAllWellnessHistory() {
     errors: plan.failures.length,
   };
   console.log('Histórico Wellness importado.', summary);
+  logWellnessHistoryErrors(plan.failures);
   return summary;
 }
 
@@ -312,7 +320,7 @@ function findPlayerIdByFormName(formName) {
 
 function fetchPlayersForForms() {
   return supabaseFetch(
-    'jugadores?select=id,name,google_forms_name&order=id.asc&limit=1000',
+    'jugadores?select=id,name,shirt_name,google_forms_name&order=id.asc&limit=1000',
     { method: 'get' }
   ) || [];
 }
@@ -402,15 +410,24 @@ function buildWellnessHistoryImportPlan(rowItems, players) {
       requireFields(payload, ['jugador_id', 'entry_date'], 'wellness');
       const key = `${payload.jugador_id}|${payload.entry_date}`;
       const existing = groupsByKey[key];
+      const rowDetail = {
+        rowNumber: item.rowNumber,
+        receivedName: String(playerName || '').trim(),
+        receivedDate: entryDate,
+      };
       groupsByKey[key] = {
         payload,
         rowNumbers: existing ? [...existing.rowNumbers, item.rowNumber] : [item.rowNumber],
+        rowDetails: existing ? [...existing.rowDetails, rowDetail] : [rowDetail],
       };
     } catch (error) {
-      failures.push({
+      failures.push(buildWellnessImportFailure({
         rowNumber: item.rowNumber,
+        receivedName: playerName,
+        receivedDate: entryDate,
         error: error.message || String(error),
-      });
+        players,
+      }));
     }
   });
 
@@ -421,6 +438,104 @@ function buildWellnessHistoryImportPlan(rowItems, players) {
     skipped,
     duplicatesMerged: groups.reduce((total, group) => total + Math.max(0, group.rowNumbers.length - 1), 0),
   };
+}
+
+function buildWellnessImportFailure(details) {
+  const message = String(details.error || 'Error desconocido.');
+  const receivedName = String(details.receivedName || '').trim();
+  let category = 'DATO_INVALIDO';
+  if (/coincidencia ambigua/i.test(message)) category = 'ALIAS_AMBIGUO';
+  else if (/jugador no encontrado/i.test(message)) category = 'JUGADOR_NO_ENCONTRADO';
+  else if (/fecha|entry_date|date\/time field value out of range/i.test(message)) category = 'FECHA_INVALIDA';
+  else if (/supabase error/i.test(message)) category = 'ERROR_SUPABASE';
+
+  const aliasProblem = category === 'ALIAS_AMBIGUO' || category === 'JUGADOR_NO_ENCONTRADO';
+  const expectedPlayers = aliasProblem
+    ? findExpectedPlayersForAlias(details.players, receivedName)
+    : [];
+  return {
+    rowNumber: details.rowNumber,
+    receivedName,
+    receivedDate: details.receivedDate || '',
+    category,
+    error: message,
+    expectedPlayers,
+  };
+}
+
+function findExpectedPlayersForAlias(players, receivedName) {
+  const normalizedReceivedName = normalizeName(receivedName);
+  if (!normalizedReceivedName) return [];
+  const rows = Array.isArray(players) ? players : [];
+  const exactCompatible = rows.filter((player) => {
+    const normalizedAlias = normalizeName(player.google_forms_name);
+    return (normalizedAlias || normalizeName(player.name)) === normalizedReceivedName;
+  });
+  const diagnosticCandidates = exactCompatible.length ? exactCompatible : rows.filter((player) => {
+    const normalizedName = normalizeName(player.name);
+    const normalizedShirtName = normalizeName(player.shirt_name);
+    const nameTokens = normalizedName.split(' ').filter(Boolean);
+    return normalizedName === normalizedReceivedName
+      || normalizedShirtName === normalizedReceivedName
+      || nameTokens.includes(normalizedReceivedName);
+  });
+  const seen = {};
+  return diagnosticCandidates.filter((player) => {
+    const key = String(player.id || player.name || '');
+    if (seen[key]) return false;
+    seen[key] = true;
+    return true;
+  }).map((player) => ({
+    id: player.id,
+    name: player.name || '',
+    google_forms_name: player.google_forms_name || null,
+  }));
+}
+
+function getWellnessPayloadDiagnostic(payload, receivedDate) {
+  if (!isValidIsoDate(payload && payload.entry_date)) {
+    return `Fecha inválida recibida: "${String(receivedDate || payload?.entry_date || '').trim()}".`;
+  }
+  return '';
+}
+
+function isValidIsoDate(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+}
+
+function logWellnessHistoryErrors(failures) {
+  const rows = (Array.isArray(failures) ? failures : [])
+    .slice()
+    .sort((left, right) => Number(left.rowNumber || 0) - Number(right.rowNumber || 0));
+  if (!rows.length) {
+    console.log('Histórico Wellness: ninguna fila con error.');
+    return;
+  }
+  console.error(`Histórico Wellness: informe completo de ${rows.length} errores.`);
+  rows.forEach((failure, index) => {
+    const expected = failure.expectedPlayers && failure.expectedPlayers.length
+      ? failure.expectedPlayers.map((player) =>
+        `${player.name} [id=${player.id}; google_forms_name=${player.google_forms_name || 'NULL'}]`
+      ).join(' | ')
+      : 'Sin candidato claro en public.jugadores.';
+    const lines = [
+      `Error ${index + 1}/${rows.length} · fila ${failure.rowNumber}`,
+      `Nombre recibido desde Google Forms: ${failure.receivedName || '(vacío)'}`,
+      `Motivo exacto: ${failure.category} · ${failure.error}`,
+    ];
+    if (failure.category === 'ALIAS_AMBIGUO' || failure.category === 'JUGADOR_NO_ENCONTRADO') {
+      lines.push(`Jugador esperado en public.jugadores: ${expected}`);
+    }
+    console.error(lines.join('\n'));
+  });
 }
 
 function findWellnessResponseSheet(spreadsheet) {
