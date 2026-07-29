@@ -80,6 +80,7 @@ function onWellnessSubmit(e) {
 
     requireFields(payload, ['jugador_id', 'entry_date'], 'wellness');
     upsertSupabase('wellness_entries', payload, 'jugador_id,entry_date');
+    logPlayerResolution('onWellnessSubmit', playerName, player);
     setSubmissionSyncState(submission, { status: 'SYNCED', sessionId: '', error: '', syncedAt: new Date() });
     console.log('Wellness sincronizado con Supabase', payload);
   } catch (error) {
@@ -122,6 +123,7 @@ function onRpeSubmit(e) {
         candidate_count: sessions.length,
         error: pendingError,
       }, 'jugador_id,entry_date');
+      logPlayerResolution('onRpeSubmit:pending', playerName, player);
       setSubmissionSyncState(submission, {
         status: match.status === 'NO_SESSION' ? 'PENDING_NO_SESSION' : 'PENDING_MULTIPLE_SESSIONS',
         sessionId: '',
@@ -144,6 +146,7 @@ function onRpeSubmit(e) {
 
     requireFields(payload, ['jugador_id', 'session_id', 'entry_date', 'rpe'], 'rpe');
     upsertSupabase('rpe_entries', payload, 'jugador_id,session_id');
+    logPlayerResolution('onRpeSubmit:synced', playerName, player);
     deleteSupabase('rpe_sync_pending', `jugador_id=eq.${encodeURIComponent(player.jugador_id)}&entry_date=eq.${encodeURIComponent(responseDate)}`);
     setSubmissionSyncState(submission, { status: 'SYNCED', sessionId: session.id, error: '', syncedAt: new Date() });
     console.log('RPE sincronizado con Supabase', payload);
@@ -202,6 +205,14 @@ function importAllWellnessHistory() {
             syncedAt,
           };
           syncedRows += 1;
+        });
+        group.rowDetails.forEach((detail) => {
+          logPlayerResolution('importAllWellnessHistory', detail.receivedName, {
+            jugador_id: group.payload.jugador_id,
+            name: detail.matchedPlayerName,
+            google_forms_name: detail.googleFormsName,
+            match_rule: detail.matchRule,
+          });
         });
       });
       upserted += groups.length;
@@ -326,25 +337,149 @@ function fetchPlayersForForms() {
 }
 
 function resolvePlayerByFormName(players, formName) {
-  const normalizedFormName = normalizeName(formName);
+  const normalizedFormName = normalizePlayerName(formName);
   if (!normalizedFormName) return null;
+  const rows = Array.isArray(players) ? players : [];
 
-  const matches = (Array.isArray(players) ? players : []).filter((player) => {
-    const normalizedGoogleFormsName = normalizeName(player.google_forms_name);
-    const normalizedCandidate = normalizedGoogleFormsName || normalizeName(player.name);
-    return normalizedCandidate === normalizedFormName;
-  });
+  const aliasMatches = rows.filter((player) =>
+    normalizePlayerName(player.google_forms_name) === normalizedFormName
+  );
+  const aliasResult = resolveUniquePlayerCandidate(aliasMatches, formName, 'EXACT_GOOGLE_FORMS_NAME');
+  if (aliasResult) return aliasResult;
 
-  if (matches.length > 1) {
-    throw new Error(`Coincidencia ambigua para "${String(formName || '').trim()}": ${matches.length} jugadores compatibles en public.jugadores.`);
+  const exactNameMatches = rows.filter((player) =>
+    normalizePlayerName(player.name) === normalizedFormName
+  );
+  const exactNameResult = resolveUniquePlayerCandidate(exactNameMatches, formName, 'EXACT_PLAYER_NAME');
+  if (exactNameResult) return exactNameResult;
+
+  const receivedTokens = getCanonicalPlayerTokens(formName);
+  const tokenMatches = rows.map((player) => {
+    const playerTokens = getCanonicalPlayerTokens(player.name);
+    const formsIsSubset = isTokenSubset(receivedTokens, playerTokens);
+    const playerIsSubset = playerTokens.length >= 2 && isTokenSubset(playerTokens, receivedTokens);
+    if (!formsIsSubset && !playerIsSubset) return null;
+    return {
+      player,
+      rule: formsIsSubset ? 'TOKEN_SUBSET_OF_PLAYER_NAME' : 'PLAYER_NAME_SUBSET_OF_FORMS',
+    };
+  }).filter(Boolean);
+  const tokenResult = resolveUniquePlayerCandidateEntries(tokenMatches, formName, 'TOKEN_MATCH');
+  if (tokenResult) return tokenResult;
+
+  const typoMatches = rows.filter((player) =>
+    isStrictTypoTokenMatch(receivedTokens, getCanonicalPlayerTokens(player.name))
+  );
+  return resolveUniquePlayerCandidate(typoMatches, formName, 'STRICT_TYPO_DISTANCE_1');
+}
+
+function resolveUniquePlayerCandidate(matches, formName, rule) {
+  const entries = (Array.isArray(matches) ? matches : []).map((player) => ({ player, rule }));
+  return resolveUniquePlayerCandidateEntries(entries, formName, rule);
+}
+
+function resolveUniquePlayerCandidateEntries(entries, formName, ambiguityRule) {
+  if (entries.length > 1) {
+    const error = new Error(`Coincidencia ambigua para "${String(formName || '').trim()}" mediante ${ambiguityRule}: ${entries.length} jugadores compatibles en public.jugadores.`);
+    error.match_rule = ambiguityRule;
+    error.candidates = entries.map((entry) => entry.player);
+    throw error;
   }
-  const row = matches[0];
-  if (!row) return null;
+  if (!entries.length) return null;
+  const entry = entries[0];
+  const row = entry.player;
   return {
     jugador_id: row.id,
     name: row.name,
     google_forms_name: row.google_forms_name || null,
+    match_rule: entry.rule,
   };
+}
+
+function normalizePlayerName(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getCanonicalPlayerTokens(value) {
+  const replacements = {
+    fdez: 'fernandez',
+    glez: 'gonzalez',
+    rguez: 'rodriguez',
+    alex: 'alejandro',
+    agus: 'agustin',
+  };
+  return normalizePlayerName(value)
+    .split(' ')
+    .filter(Boolean)
+    .map((token) => replacements[token] || token);
+}
+
+function isTokenSubset(subset, complete) {
+  if (!subset.length || !complete.length) return false;
+  const available = complete.slice();
+  return subset.every((token) => {
+    const index = available.indexOf(token);
+    if (index === -1) return false;
+    available.splice(index, 1);
+    return true;
+  });
+}
+
+function isStrictTypoTokenMatch(receivedTokens, playerTokens) {
+  if (!receivedTokens.length || !playerTokens.length) return false;
+  const available = playerTokens.slice();
+  let typoCount = 0;
+
+  for (const receivedToken of receivedTokens) {
+    const exactIndex = available.indexOf(receivedToken);
+    if (exactIndex !== -1) {
+      available.splice(exactIndex, 1);
+      continue;
+    }
+    const minimumLength = receivedTokens.length === 1 ? 7 : 6;
+    const typoIndex = available.findIndex((playerToken) =>
+      Math.min(receivedToken.length, playerToken.length) >= minimumLength
+      && damerauLevenshteinDistance(receivedToken, playerToken) === 1
+    );
+    if (typoIndex === -1 || typoCount >= 1) return false;
+    available.splice(typoIndex, 1);
+    typoCount += 1;
+  }
+  return typoCount === 1;
+}
+
+function damerauLevenshteinDistance(leftValue, rightValue) {
+  const left = String(leftValue || '');
+  const right = String(rightValue || '');
+  const matrix = Array.from({ length: left.length + 1 }, () => Array(right.length + 1).fill(0));
+  for (let row = 0; row <= left.length; row += 1) matrix[row][0] = row;
+  for (let column = 0; column <= right.length; column += 1) matrix[0][column] = column;
+
+  for (let row = 1; row <= left.length; row += 1) {
+    for (let column = 1; column <= right.length; column += 1) {
+      const cost = left[row - 1] === right[column - 1] ? 0 : 1;
+      matrix[row][column] = Math.min(
+        matrix[row - 1][column] + 1,
+        matrix[row][column - 1] + 1,
+        matrix[row - 1][column - 1] + cost
+      );
+      if (
+        row > 1
+        && column > 1
+        && left[row - 1] === right[column - 2]
+        && left[row - 2] === right[column - 1]
+      ) {
+        matrix[row][column] = Math.min(matrix[row][column], matrix[row - 2][column - 2] + cost);
+      }
+    }
+  }
+  return matrix[left.length][right.length];
 }
 
 function buildWellnessPayload(row, playerId) {
@@ -414,6 +549,9 @@ function buildWellnessHistoryImportPlan(rowItems, players) {
         rowNumber: item.rowNumber,
         receivedName: String(playerName || '').trim(),
         receivedDate: entryDate,
+        matchedPlayerName: player.name,
+        googleFormsName: player.google_forms_name,
+        matchRule: player.match_rule,
       };
       groupsByKey[key] = {
         payload,
@@ -425,7 +563,7 @@ function buildWellnessHistoryImportPlan(rowItems, players) {
         rowNumber: item.rowNumber,
         receivedName: playerName,
         receivedDate: entryDate,
-        error: error.message || String(error),
+        error,
         players,
       }));
     }
@@ -441,7 +579,8 @@ function buildWellnessHistoryImportPlan(rowItems, players) {
 }
 
 function buildWellnessImportFailure(details) {
-  const message = String(details.error || 'Error desconocido.');
+  const rawError = details.error;
+  const message = String(rawError?.message || rawError || 'Error desconocido.');
   const receivedName = String(details.receivedName || '').trim();
   let category = 'DATO_INVALIDO';
   if (/coincidencia ambigua/i.test(message)) category = 'ALIAS_AMBIGUO';
@@ -451,7 +590,11 @@ function buildWellnessImportFailure(details) {
 
   const aliasProblem = category === 'ALIAS_AMBIGUO' || category === 'JUGADOR_NO_ENCONTRADO';
   const expectedPlayers = aliasProblem
-    ? findExpectedPlayersForAlias(details.players, receivedName)
+    ? formatDiagnosticPlayerCandidates(
+      Array.isArray(rawError?.candidates) && rawError.candidates.length
+        ? rawError.candidates
+        : findExpectedPlayersForAlias(details.players, receivedName)
+    )
     : [];
   return {
     rowNumber: details.rowNumber,
@@ -464,20 +607,22 @@ function buildWellnessImportFailure(details) {
 }
 
 function findExpectedPlayersForAlias(players, receivedName) {
-  const normalizedReceivedName = normalizeName(receivedName);
+  const normalizedReceivedName = normalizePlayerName(receivedName);
   if (!normalizedReceivedName) return [];
   const rows = Array.isArray(players) ? players : [];
   const exactCompatible = rows.filter((player) => {
-    const normalizedAlias = normalizeName(player.google_forms_name);
-    return (normalizedAlias || normalizeName(player.name)) === normalizedReceivedName;
+    const normalizedAlias = normalizePlayerName(player.google_forms_name);
+    return normalizedAlias === normalizedReceivedName
+      || normalizePlayerName(player.name) === normalizedReceivedName;
   });
   const diagnosticCandidates = exactCompatible.length ? exactCompatible : rows.filter((player) => {
-    const normalizedName = normalizeName(player.name);
-    const normalizedShirtName = normalizeName(player.shirt_name);
-    const nameTokens = normalizedName.split(' ').filter(Boolean);
+    const normalizedName = normalizePlayerName(player.name);
+    const normalizedShirtName = normalizePlayerName(player.shirt_name);
+    const nameTokens = getCanonicalPlayerTokens(player.name);
+    const receivedTokens = getCanonicalPlayerTokens(receivedName);
     return normalizedName === normalizedReceivedName
       || normalizedShirtName === normalizedReceivedName
-      || nameTokens.includes(normalizedReceivedName);
+      || receivedTokens.some((token) => nameTokens.includes(token));
   });
   const seen = {};
   return diagnosticCandidates.filter((player) => {
@@ -485,7 +630,11 @@ function findExpectedPlayersForAlias(players, receivedName) {
     if (seen[key]) return false;
     seen[key] = true;
     return true;
-  }).map((player) => ({
+  });
+}
+
+function formatDiagnosticPlayerCandidates(players) {
+  return (Array.isArray(players) ? players : []).map((player) => ({
     id: player.id,
     name: player.name || '',
     google_forms_name: player.google_forms_name || null,
@@ -535,6 +684,17 @@ function logWellnessHistoryErrors(failures) {
       lines.push(`Jugador esperado en public.jugadores: ${expected}`);
     }
     console.error(lines.join('\n'));
+  });
+}
+
+function logPlayerResolution(context, receivedName, resolution) {
+  console.log('Resolución automática de jugador.', {
+    context,
+    received_name: String(receivedName || '').trim(),
+    jugador_id: resolution.jugador_id,
+    jugador_name: resolution.name,
+    google_forms_name: resolution.google_forms_name || null,
+    match_rule: resolution.match_rule,
   });
 }
 

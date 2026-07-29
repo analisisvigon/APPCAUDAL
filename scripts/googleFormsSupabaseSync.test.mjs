@@ -21,6 +21,16 @@ let supabasePlayers = [
     name: 'Álex',
     google_forms_name: null,
   },
+  { id: 'player-albuquerque', name: 'Roberto Albuquerque', google_forms_name: null },
+  { id: 'player-jairo', name: 'Jairo Cárcaba', google_forms_name: null },
+  { id: 'player-alejandro', name: 'Alejandro González', google_forms_name: null },
+  { id: 'player-agustin', name: 'Agustín Porto', google_forms_name: null },
+  { id: 'player-oscar', name: 'Óscar Fernández', google_forms_name: null },
+  { id: 'player-acerete', name: 'Cristian Acerete', google_forms_name: null },
+  { id: 'player-davo', name: 'Davo Fernández', google_forms_name: null },
+  { id: 'player-isaac', name: 'Isaac Martín', google_forms_name: null },
+  { id: 'player-lucas', name: 'Lucas Suárez', google_forms_name: null },
+  { id: 'player-mario', name: 'Mario Rodríguez', google_forms_name: null },
 ];
 
 const sandbox = {
@@ -111,6 +121,7 @@ assert.deepEqual(
     jugador_id: '00000000-0000-0000-0000-000000000001',
     name: 'Miguel Vigón',
     google_forms_name: 'VIGON',
+    match_rule: 'EXACT_GOOGLE_FORMS_NAME',
   },
   'google_forms_name debe tener prioridad e ignorar mayúsculas, tildes y espacios.'
 );
@@ -121,6 +132,7 @@ assert.deepEqual(
     jugador_id: '00000000-0000-0000-0000-000000000002',
     name: 'Álex',
     google_forms_name: null,
+    match_rule: 'EXACT_PLAYER_NAME',
   },
   'Debe usar jugadores.name cuando google_forms_name está vacío.'
 );
@@ -128,26 +140,96 @@ assert.deepEqual(
 assert.equal(
   sandbox.resolvePlayerByFormName([
     { id: 'alias-only', name: 'Miguel Vigón', google_forms_name: 'VIGON' },
-  ], 'Miguel Vigón'),
-  null,
-  'Si google_forms_name está configurado, el nombre normal no debe actuar también como fallback.'
+  ], 'Miguel Vigón').match_rule,
+  'EXACT_PLAYER_NAME',
+  'El nombre completo exacto debe seguir funcionando aunque exista alias.'
 );
 
 assert.equal(
   sandbox.resolvePlayerByFormName([
     { id: 'partial', name: 'Miguel Vigón', google_forms_name: null },
-  ], 'Miguel'),
+  ], 'Mig'),
   null,
-  'Nunca debe aceptar coincidencias parciales.'
+  'Nunca debe aceptar fragmentos internos que no sean tokens completos.'
+);
+
+assert.equal(
+  sandbox.resolvePlayerByFormName([
+    { id: 'alias', name: 'Miguel Vigón', google_forms_name: 'VIGON' },
+    { id: 'fallback', name: 'Vígon', google_forms_name: null },
+  ], ' vigón ').jugador_id,
+  'alias',
+  'El alias manual exacto debe tener prioridad sobre niveles posteriores.'
 );
 
 assert.throws(
   () => sandbox.resolvePlayerByFormName([
-    { id: 'alias', name: 'Miguel Vigón', google_forms_name: 'VIGON' },
-    { id: 'fallback', name: 'Vígon', google_forms_name: null },
-  ], ' vigón '),
+    { id: 'alias-1', name: 'Miguel Vigón', google_forms_name: 'VIGON' },
+    { id: 'alias-2', name: 'Otro jugador', google_forms_name: ' vígon ' },
+  ], 'VIGON'),
   /Coincidencia ambigua/,
-  'Debe bloquear la sincronización si alias y fallback producen más de un candidato.'
+  'Debe bloquear alias manuales duplicados.'
+);
+
+const expectedAutomaticMatches = [
+  ['Albuquerque', 'player-albuquerque', 'TOKEN_SUBSET_OF_PLAYER_NAME'],
+  ['Jairo', 'player-jairo', 'TOKEN_SUBSET_OF_PLAYER_NAME'],
+  ['Alex Glez', 'player-alejandro', 'TOKEN_SUBSET_OF_PLAYER_NAME'],
+  ['Agus', 'player-agustin', 'TOKEN_SUBSET_OF_PLAYER_NAME'],
+  [' Óscar--fdez. ', 'player-oscar', 'TOKEN_SUBSET_OF_PLAYER_NAME'],
+  ['Acertete', 'player-acerete', 'STRICT_TYPO_DISTANCE_1'],
+  ['Davo', 'player-davo', 'TOKEN_SUBSET_OF_PLAYER_NAME'],
+  ['Isaac Martín Jaro', 'player-isaac', 'PLAYER_NAME_SUBSET_OF_FORMS'],
+  ['Lucas Suárez Estrada', 'player-lucas', 'PLAYER_NAME_SUBSET_OF_FORMS'],
+  ['Mario rguez', 'player-mario', 'TOKEN_SUBSET_OF_PLAYER_NAME'],
+];
+
+expectedAutomaticMatches.forEach(([receivedName, expectedId, expectedRule]) => {
+  const resolution = sandbox.resolvePlayerByFormName(supabasePlayers, receivedName);
+  assert.equal(resolution?.jugador_id, expectedId, `Debe resolver de forma segura "${receivedName}".`);
+  assert.equal(resolution?.match_rule, expectedRule, `Debe registrar la regla usada para "${receivedName}".`);
+});
+
+assert.throws(
+  () => sandbox.resolvePlayerByFormName([
+    { id: 'jairo-1', name: 'Jairo Cárcaba', google_forms_name: null },
+    { id: 'jairo-2', name: 'Jairo López', google_forms_name: null },
+  ], 'Jairo'),
+  /Coincidencia ambigua/,
+  'Un nombre único compartido por dos jugadores debe bloquearse.'
+);
+
+assert.throws(
+  () => sandbox.resolvePlayerByFormName([
+    { id: 'fernandez-1', name: 'Óscar Fernández', google_forms_name: null },
+    { id: 'fernandez-2', name: 'Davo Fernández', google_forms_name: null },
+  ], 'Fdez'),
+  /Coincidencia ambigua/,
+  'Una abreviatura de apellido compartida por dos jugadores debe bloquearse.'
+);
+
+assert.throws(
+  () => sandbox.resolvePlayerByFormName([
+    { id: 'typo-1', name: 'Cristian Acerete', google_forms_name: null },
+    { id: 'typo-2', name: 'Juan Acerteta', google_forms_name: null },
+  ], 'Acertete'),
+  /Coincidencia ambigua/,
+  'Dos candidatos a distancia tipográfica estricta deben bloquearse.'
+);
+
+assert.equal(
+  sandbox.resolvePlayerByFormName([{ id: 'short', name: 'Davi Fernández', google_forms_name: null }], 'Davo'),
+  null,
+  'No debe corregir errores tipográficos en tokens cortos.'
+);
+assert.ok(
+  sandbox.damerauLevenshteinDistance('acerete', 'acxxete') > 1,
+  'El caso negativo debe superar el umbral tipográfico.'
+);
+assert.equal(
+  sandbox.resolvePlayerByFormName([{ id: 'distance-2', name: 'Cristian Acerete', google_forms_name: null }], 'Acxxete'),
+  null,
+  'No debe aceptar diferencias tipográficas superiores a uno.'
 );
 
 const historyPlan = sandbox.buildWellnessHistoryImportPlan([
@@ -171,7 +253,7 @@ const historyPlan = sandbox.buildWellnessHistoryImportPlan([
     rowNumber: 4,
     values: {
       'Marca temporal': '29/07/2026 09:00:00',
-      'Nombre y apellidos.': 'Miguel',
+      'Nombre y apellidos.': 'VIGON CF',
       'Ratio salud': '7,5',
     },
   },
@@ -191,7 +273,7 @@ assert.equal(historyPlan.groups[0].payload.jugador_id, '00000000-0000-0000-0000-
 assert.equal(historyPlan.groups[0].payload.entry_date, '2026-07-29');
 assert.equal(historyPlan.groups[0].payload.health_ratio, 9, 'La última fila duplicada debe ser la versión importada.');
 assert.equal(historyPlan.duplicatesMerged, 1, 'Debe contabilizar el duplicado absorbido.');
-assert.equal(historyPlan.failures.length, 1, 'Una coincidencia parcial debe quedar como error.');
+assert.equal(historyPlan.failures.length, 1, 'Un nombre no resoluble debe quedar como error.');
 assert.equal(historyPlan.failures[0].rowNumber, 4);
 assert.equal(historyPlan.failures[0].category, 'JUGADOR_NO_ENCONTRADO');
 assert.deepEqual(
