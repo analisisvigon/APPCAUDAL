@@ -24142,12 +24142,69 @@ function App() {
       ['sin_rpe', 'Sin RPE'],
       ['nunca_respondieron', 'Nunca respondieron'],
     ];
-    const sortOptions = [
-      ['estado_fisico', 'Estado físico'],
-      ['mas_dias', 'Más días sin responder'],
-      ['nombre', 'Nombre'],
-      ['ultima_respuesta', 'Última respuesta'],
+    const sortOptionGroups = [
+      {
+        label: 'General',
+        options: [
+          ['estado_fisico', 'Estado físico'],
+          ['ultima_respuesta', 'Última respuesta'],
+          ['nombre', 'Nombre'],
+        ],
+      },
+      {
+        label: 'Wellness',
+        options: [
+          ['wellness_bajo', 'Wellness más bajo'],
+          ['wellness_alto', 'Wellness más alto'],
+        ],
+      },
+      {
+        label: 'RPE',
+        options: [
+          ['rpe_alto', 'Mayor RPE'],
+          ['rpe_bajo', 'Menor RPE'],
+        ],
+      },
+      {
+        label: 'Indicadores Wellness',
+        options: [
+          ['sueno_peor', 'Peor sueño'],
+          ['sueno_mejor', 'Mejor sueño'],
+          ['fatiga_alta', 'Mayor fatiga'],
+          ['fatiga_baja', 'Menor fatiga'],
+          ['dolor_alto', 'Mayor dolor muscular'],
+          ['dolor_bajo', 'Menor dolor muscular'],
+          ['estres_alto', 'Mayor estrés'],
+          ['estres_bajo', 'Menor estrés'],
+          ['animo_peor', 'Peor estado de ánimo'],
+          ['animo_mejor', 'Mejor estado de ánimo'],
+          ['peso_alto', 'Mayor peso'],
+          ['peso_bajo', 'Menor peso'],
+        ],
+      },
+      {
+        label: 'Cumplimiento',
+        options: [
+          ['dias_sin_rpe', 'Más días sin RPE'],
+          ['dias_sin_wellness', 'Más días sin Wellness'],
+          ['nunca_respondieron', 'Nunca respondieron'],
+        ],
+      },
     ];
+    const performanceSortIndicatorKey = {
+      sueno_peor: 'sleep_quality',
+      sueno_mejor: 'sleep_quality',
+      fatiga_alta: 'fatigue',
+      fatiga_baja: 'fatigue',
+      dolor_alto: 'muscle_soreness',
+      dolor_bajo: 'muscle_soreness',
+      estres_alto: 'stress',
+      estres_bajo: 'stress',
+      animo_peor: 'mood',
+      animo_mejor: 'mood',
+      peso_alto: 'weight',
+      peso_bajo: 'weight',
+    }[performancePlayerSort] || '';
     const normalizedSearch = normalizePlayerIdentityName(performancePlayerSearch);
     const matchesPerformanceFilter = (row) => ({
       todos: true,
@@ -24159,26 +24216,86 @@ function App() {
       sin_rpe: row.activity.rpePending,
       nunca_respondieron: row.activity.neverResponded,
     }[performanceStatusFilter] ?? true);
-    const activitySortValue = (row) => {
-      if (row.activity.neverResponded) return Number.MAX_SAFE_INTEGER;
-      if (row.activity.hasInvalidDate) return Number.MAX_SAFE_INTEGER - 1;
-      return row.activity.maxDaysWithoutResponse;
+    const getLatestWellnessMetricValue = (row, metricKey) => {
+      for (let index = row.wellness.length - 1; index >= 0; index -= 1) {
+        const value = getPerformanceNumber(row.wellness[index]?.[metricKey]);
+        const isValid = metricKey === 'weight'
+          ? value !== null && value > 0
+          : value !== null && value >= 1 && value <= 10;
+        if (isValid) return value;
+      }
+      return null;
+    };
+    const compareNullableValues = (leftValue, rightValue, direction = 'asc') => {
+      const leftMissing = leftValue === null || leftValue === undefined || Number.isNaN(leftValue);
+      const rightMissing = rightValue === null || rightValue === undefined || Number.isNaN(rightValue);
+      if (leftMissing && rightMissing) return 0;
+      if (leftMissing) return 1;
+      if (rightMissing) return -1;
+      if (leftValue === rightValue) return 0;
+      return direction === 'desc' ? rightValue - leftValue : leftValue - rightValue;
+    };
+    const compareNullableDates = (leftValue, rightValue, direction = 'desc') => {
+      if (!leftValue && !rightValue) return 0;
+      if (!leftValue) return 1;
+      if (!rightValue) return -1;
+      const comparison = String(leftValue).localeCompare(String(rightValue));
+      return direction === 'desc' ? -comparison : comparison;
     };
     const comparePerformanceRows = (left, right) => {
-      if (performancePlayerSort === 'mas_dias') {
-        return activitySortValue(right) - activitySortValue(left) ||
-          displayPlayerName(left.player).localeCompare(displayPlayerName(right.player), 'es');
+      const wellnessMetricSorts = {
+        sueno_peor: ['sleep_quality', 'asc'],
+        sueno_mejor: ['sleep_quality', 'desc'],
+        fatiga_alta: ['fatigue', 'desc'],
+        fatiga_baja: ['fatigue', 'asc'],
+        dolor_alto: ['muscle_soreness', 'desc'],
+        dolor_bajo: ['muscle_soreness', 'asc'],
+        estres_alto: ['stress', 'desc'],
+        estres_bajo: ['stress', 'asc'],
+        animo_peor: ['mood', 'asc'],
+        animo_mejor: ['mood', 'desc'],
+        peso_alto: ['weight', 'desc'],
+        peso_bajo: ['weight', 'asc'],
+      };
+      const wellnessMetricSort = wellnessMetricSorts[performancePlayerSort];
+      if (wellnessMetricSort) {
+        const [metricKey, direction] = wellnessMetricSort;
+        return compareNullableValues(
+          getLatestWellnessMetricValue(left, metricKey),
+          getLatestWellnessMetricValue(right, metricKey),
+          direction
+        );
+      }
+      if (performancePlayerSort === 'wellness_bajo') {
+        return compareNullableValues(left.latestWellnessScore, right.latestWellnessScore, 'asc');
+      }
+      if (performancePlayerSort === 'wellness_alto') {
+        return compareNullableValues(left.latestWellnessScore, right.latestWellnessScore, 'desc');
+      }
+      if (performancePlayerSort === 'rpe_alto') {
+        return compareNullableValues(left.latestRpe, right.latestRpe, 'desc');
+      }
+      if (performancePlayerSort === 'rpe_bajo') {
+        return compareNullableValues(left.latestRpe, right.latestRpe, 'asc');
+      }
+      if (performancePlayerSort === 'dias_sin_rpe') {
+        return compareNullableValues(left.activity.rpe.days, right.activity.rpe.days, 'desc');
+      }
+      if (performancePlayerSort === 'dias_sin_wellness') {
+        return compareNullableValues(left.activity.wellness.days, right.activity.wellness.days, 'desc');
+      }
+      if (performancePlayerSort === 'nunca_respondieron') {
+        const leftNeverResponded = left.activity.wellness.neverResponded && left.activity.rpe.neverResponded;
+        const rightNeverResponded = right.activity.wellness.neverResponded && right.activity.rpe.neverResponded;
+        return Number(rightNeverResponded) - Number(leftNeverResponded);
       }
       if (performancePlayerSort === 'nombre') {
         return displayPlayerName(left.player).localeCompare(displayPlayerName(right.player), 'es');
       }
       if (performancePlayerSort === 'ultima_respuesta') {
-        return String(right.lastResponseDate || '').localeCompare(String(left.lastResponseDate || '')) ||
-          displayPlayerName(left.player).localeCompare(displayPlayerName(right.player), 'es');
+        return compareNullableDates(left.lastResponseDate, right.lastResponseDate);
       }
-      return statusPresentation[left.status].rank - statusPresentation[right.status].rank ||
-        activitySortValue(right) - activitySortValue(left) ||
-        displayPlayerName(left.player).localeCompare(displayPlayerName(right.player), 'es');
+      return statusPresentation[left.status].rank - statusPresentation[right.status].rank;
     };
     const filteredRows = dashboard.rows
       .filter(matchesPerformanceFilter)
@@ -24191,7 +24308,12 @@ function App() {
           row.player.number,
         ].filter(Boolean).join(' ')).includes(normalizedSearch);
       })
-      .sort(comparePerformanceRows);
+      .map((row, stableIndex) => ({ row, stableIndex }))
+      .sort((left, right) => (
+        comparePerformanceRows(left.row, right.row) ||
+        left.stableIndex - right.stableIndex
+      ))
+      .map(({ row }) => row);
     const selectedDayPlayerIds = [...new Set([
       ...(selectedDay?.rpeEntries || []).map((entry) => entry.jugador_id),
       ...(selectedDay?.wellnessEntries || []).map((entry) => entry.jugador_id),
@@ -24464,6 +24586,7 @@ function App() {
       return {
         ...indicator,
         visualState,
+        isAnalyzed: performanceSortIndicatorKey === indicator.key,
         normalizedValue: visualState?.normalizedValue ?? null,
         color: visualState?.color || indicator.color || '#64748b',
         interpretation: indicator.numericOnly
@@ -25229,14 +25352,23 @@ function App() {
               >
                 {statusOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
-              <select
-                value={performancePlayerSort}
-                onChange={(event) => setPerformancePlayerSort(event.target.value)}
-                className="rounded-xl border border-white/10 bg-[#0c1930] px-3 py-2.5 text-sm font-bold text-slate-200 outline-none focus:border-caudal-electric/40"
-                aria-label="Ordenar seguimiento individual"
-              >
-                {sortOptions.map(([value, label]) => <option key={value} value={value}>Orden: {label}</option>)}
-              </select>
+              <label className="relative min-w-[210px]">
+                <span className="pointer-events-none absolute left-3 top-1.5 z-10 text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">
+                  Analizar por
+                </span>
+                <select
+                  value={performancePlayerSort}
+                  onChange={(event) => setPerformancePlayerSort(event.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-[#0c1930] pb-2 pl-3 pr-8 pt-5 text-sm font-bold text-slate-200 outline-none focus:border-caudal-electric/40"
+                  aria-label="Analizar por"
+                >
+                  {sortOptionGroups.map((group) => (
+                    <optgroup key={group.label} label={group.label.toUpperCase()}>
+                      {group.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              </label>
             </div>
           </div>
 
@@ -25607,6 +25739,10 @@ function App() {
                             indicator.visualState
                               ? indicator.visualState.surfaceClass
                               : 'border-white/[0.06] bg-black/10'
+                          } ${
+                            indicator.isAnalyzed
+                              ? 'ring-1 ring-caudal-electric/50 shadow-[0_0_24px_rgba(33,224,255,0.08)]'
+                              : ''
                           }`}
                         >
                           <div className="flex items-center justify-between gap-3">
@@ -25614,9 +25750,16 @@ function App() {
                               <span style={{ color: indicator.color }} className="text-base" aria-hidden="true">{indicator.icon}</span>
                               {indicator.label}
                             </p>
-                            <p className="text-sm font-black text-white">
-                              {indicator.value === null ? 'Sin dato' : `${indicator.value.toFixed(1)}${indicator.suffix}`}
-                            </p>
+                            <div className="text-right">
+                              {indicator.isAnalyzed ? (
+                                <p className="mb-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-caudal-electric">
+                                  Analizando
+                                </p>
+                              ) : null}
+                              <p className="text-sm font-black text-white">
+                                {indicator.value === null ? 'Sin dato' : `${indicator.value.toFixed(1)}${indicator.suffix}`}
+                              </p>
+                            </div>
                           </div>
                           <p className={`mt-2 text-[9px] font-black uppercase tracking-[0.12em] ${
                             indicator.visualState?.textClass || (indicator.value === null ? 'text-slate-500' : 'text-slate-400')
