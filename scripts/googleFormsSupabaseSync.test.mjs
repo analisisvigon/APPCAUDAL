@@ -14,6 +14,7 @@ const migrationSource = fs.readFileSync(path.join(projectRoot, 'supabase_rpe_dai
 const rollbackSource = fs.readFileSync(path.join(projectRoot, 'supabase_rpe_daily_phase1_rollback.sql'), 'utf8');
 
 const requestedUrls = [];
+const requestedFetches = [];
 let supabasePlayers = [
   {
     id: '00000000-0000-0000-0000-000000000001',
@@ -55,8 +56,9 @@ const sandbox = {
     },
   },
   UrlFetchApp: {
-    fetch(url) {
+    fetch(url, options = {}) {
       requestedUrls.push(url);
+      requestedFetches.push({ url, options });
       const body = url.includes('/rest/v1/jugadores?')
         ? JSON.stringify(supabasePlayers)
         : '[]';
@@ -125,6 +127,11 @@ assert.throws(() => sandbox.toRpeValue('7,5'), /RPE inválido/);
 assert.equal(sandbox.toHealthRatio('8,5'), 8.5, 'Debe convertir la coma decimal.');
 assert.equal(sandbox.toHealthRatio('9,25'), 9.25, 'Debe conservar los decimales del ratio.');
 assert.equal(sandbox.toHealthRatio(''), null, 'Un ratio vacío debe sincronizarse como NULL.');
+assert.equal(sandbox.toNullableNumber('80,4'), 80.4, 'Debe convertir el peso con coma decimal.');
+assert.equal(sandbox.toNullableNumber('80.4'), 80.4, 'Debe aceptar el peso con punto decimal.');
+assert.equal(sandbox.toNullableNumber(80.4), 80.4, 'Debe aceptar un número nativo de Google Sheets.');
+assert.equal(sandbox.toNullableNumber(''), null, 'Un peso vacío debe mantenerse como NULL.');
+assert.equal(sandbox.toNullableNumber('   '), null, 'Un peso visualmente vacío nunca debe convertirse en cero.');
 
 assert.equal(
   sandbox.findPlayerIdByFormName('Jugador inexistente'),
@@ -518,6 +525,42 @@ const realWellnessHeaders = {
   'Información personal: (molestias, comentarios)': 'Carga controlada.',
   'Ratio salud': '8,5',
 };
+
+assert.equal(
+  sandbox.findWellnessWeightColumnIndex(['Fecha', 'Nombre y apellidos.', '¿Cuál tu peso hoy?', 'Ratio salud']),
+  3,
+  'El detector debe devolver el índice 1-based de la cabecera real de peso.'
+);
+assert.equal(
+  sandbox.findWellnessWeightColumnIndex(['Fecha', '¿Cuál\u200B tu peso hoy?', 'Ratio salud']),
+  2,
+  'El detector debe tolerar caracteres invisibles sin aceptar coincidencias parciales.'
+);
+
+[
+  ['80,4', 80.4],
+  ['80.4', 80.4],
+  [80.4, 80.4],
+  ['', null],
+].forEach(([rawWeight, expectedWeight]) => {
+  const payload = sandbox.buildWellnessPayload({
+    Fecha: '30/07/2026',
+    '¿Cuál tu peso hoy?': rawWeight,
+  }, 'player-marcos');
+  assert.equal(payload.weight, expectedWeight, `Debe mapear correctamente el peso ${JSON.stringify(rawWeight)}.`);
+});
+
+const wellnessPayloadSent = sandbox.buildWellnessPayload({
+  Fecha: '30/07/2026',
+  '¿Cuál tu peso hoy?': '80,4',
+}, 'player-marcos');
+sandbox.upsertSupabase('wellness_entries', wellnessPayloadSent, 'jugador_id,entry_date');
+const wellnessUpsertRequest = requestedFetches.at(-1);
+assert.equal(
+  JSON.parse(wellnessUpsertRequest.options.payload).weight,
+  80.4,
+  'El JSON enviado a Supabase debe conservar weight como número decimal.'
+);
 
 assert.equal(
   sandbox.getFirstValue(realWellnessHeaders, ['Nombre y apellidos.', 'Nombre y apellidos']),

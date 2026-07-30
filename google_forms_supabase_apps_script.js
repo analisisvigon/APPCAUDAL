@@ -66,6 +66,12 @@
 
 const TECHNICAL_COLUMNS = ['Supabase status', 'Supabase session_id', 'Supabase error', 'Supabase synced_at'];
 const PLAYER_HEADER_CANDIDATES = ['Nombre y apellidos.', 'Nombre y apellidos', 'Nombre del jugador', 'Jugador', 'Nombre', 'Columna 3'];
+const WELLNESS_WEIGHT_HEADER_CANDIDATES = [
+  '¿Cuál tu peso hoy?',
+  '¿Cuál es tu peso hoy?',
+  'Peso hoy',
+  'Peso',
+];
 const RPE_HEADER_CANDIDATES = ['RPE', 'RPE (1-10)', 'RPE 1-10', 'Columna 4'];
 const RPE_SESSION_CODE_HEADERS = ['Código sesión', 'Codigo sesion', 'Código de sesión', 'Codigo de sesion', 'form_code'];
 const TIMESTAMP_HEADER_CANDIDATES = ['Marca temporal', 'Timestamp', 'Fecha', 'Columna 1'];
@@ -846,7 +852,7 @@ function buildWellnessPayload(row, playerId) {
     muscle_soreness: toWellnessScale(sorenessValue, 'discomfort'),
     stress: toWellnessScale(getFirstValue(row, ['¿Cómo de estresado estás hoy?', 'Estrés', 'Estres']), 'high-is-bad'),
     mood: toWellnessScale(moodValue, 'mood'),
-    weight: toNullableNumber(getFirstValue(row, ['¿Cuál tu peso hoy?', 'Peso'])),
+    weight: toNullableNumber(getWellnessWeightValue(row)),
     discomfort: getFirstValue(row, ['Especificar la molestia en caso de tener alguna', 'Molestias']) || '',
     comment: getFirstValue(row, ['Información personal: (molestias, comentarios)', 'Comentario', 'Comentarios']) || '',
     health_ratio: toHealthRatio(getFirstValue(row, ['Ratio salud'])),
@@ -1164,6 +1170,65 @@ function hasCandidateHeader(headers, candidates) {
   return candidates.some((candidate) => normalizedHeaders.includes(normalizeName(candidate)));
 }
 
+function normalizeWellnessWeightHeader(value) {
+  return normalizeName(value)
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/[¿?]/g, '')
+    .trim();
+}
+
+function findWellnessWeightColumnIndex(headers) {
+  const normalizedCandidates = WELLNESS_WEIGHT_HEADER_CANDIDATES.map(normalizeWellnessWeightHeader);
+  const index = (Array.isArray(headers) ? headers : []).findIndex((header) => (
+    normalizedCandidates.includes(normalizeWellnessWeightHeader(header))
+  ));
+  return index < 0 ? 0 : index + 1;
+}
+
+function getWellnessWeightValue(row) {
+  const exactValue = getFirstValue(row || {}, WELLNESS_WEIGHT_HEADER_CANDIDATES);
+  if (exactValue !== '') return exactValue;
+
+  const normalizedCandidates = WELLNESS_WEIGHT_HEADER_CANDIDATES.map(normalizeWellnessWeightHeader);
+  const match = Object.entries(row || {}).find(([header, value]) => (
+    normalizedCandidates.includes(normalizeWellnessWeightHeader(header))
+    && value !== ''
+    && value !== null
+    && value !== undefined
+  ));
+  return match ? match[1] : '';
+}
+
+function inspectWellnessWeightColumn() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = findWellnessResponseSheet(spreadsheet);
+  const technical = ensureTechnicalColumns(sheet);
+  const columnIndex = findWellnessWeightColumnIndex(technical.headers);
+  if (!columnIndex) {
+    throw new Error(`No se encontró la cabecera de peso. Cabeceras detectadas: ${technical.headers.join(' | ')}`);
+  }
+
+  const lastRow = sheet.getLastRow();
+  const sampleCount = Math.min(Math.max(0, lastRow - 1), 10);
+  const startRow = Math.max(2, lastRow - sampleCount + 1);
+  const range = sampleCount ? sheet.getRange(startRow, columnIndex, sampleCount, 1) : null;
+  const rawValues = range ? range.getValues() : [];
+  const displayValues = range ? range.getDisplayValues() : [];
+  const result = {
+    sheet: sheet.getName(),
+    header: technical.headers[columnIndex - 1],
+    columnIndex,
+    samples: rawValues.map((row, index) => ({
+      rowNumber: startRow + index,
+      raw: row[0],
+      display: displayValues[index][0],
+      parsed: toNullableNumber(row[0]),
+    })),
+  };
+  console.log('Auditoría columna peso Wellness', result);
+  return result;
+}
+
 function findRpeResponseSheet(spreadsheet) {
   if (!spreadsheet || typeof spreadsheet.getSheets !== 'function') {
     throw new Error('No se pudo acceder al Google Sheet de RPE.');
@@ -1408,7 +1473,9 @@ function toIsoDate(value) {
 
 function toNullableNumber(value) {
   if (value === '' || value === null || value === undefined) return null;
-  const number = Number(String(value).replace(',', '.'));
+  const text = String(value).trim();
+  if (!text) return null;
+  const number = Number(text.replace(/,/g, '.'));
   return Number.isFinite(number) ? number : null;
 }
 
