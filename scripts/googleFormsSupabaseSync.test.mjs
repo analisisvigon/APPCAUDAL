@@ -532,6 +532,16 @@ assert.equal(
   'El detector debe devolver el índice 1-based de la cabecera real de peso.'
 );
 assert.equal(
+  sandbox.findWellnessWeightColumnIndex(['Fecha', 'Nombre y apellidos.', '¿Cuál tu peso hoy?.', 'Ratio salud']),
+  3,
+  'Debe detectar explícitamente la cabecera real de peso con punto después del interrogante.'
+);
+assert.equal(
+  sandbox.normalizeWellnessWeightHeader('  ¿CUÁL TU PESO HOY?.  '),
+  sandbox.normalizeWellnessWeightHeader('¿Cuál tu peso hoy?'),
+  'La normalización debe ignorar espacios, mayúsculas, tildes y puntuación terminal.'
+);
+assert.equal(
   sandbox.findWellnessWeightColumnIndex(['Fecha', '¿Cuál\u200B tu peso hoy?', 'Ratio salud']),
   2,
   'El detector debe tolerar caracteres invisibles sin aceptar coincidencias parciales.'

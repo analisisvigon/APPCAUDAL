@@ -67,6 +67,7 @@
 const TECHNICAL_COLUMNS = ['Supabase status', 'Supabase session_id', 'Supabase error', 'Supabase synced_at'];
 const PLAYER_HEADER_CANDIDATES = ['Nombre y apellidos.', 'Nombre y apellidos', 'Nombre del jugador', 'Jugador', 'Nombre', 'Columna 3'];
 const WELLNESS_WEIGHT_HEADER_CANDIDATES = [
+  '¿Cuál tu peso hoy?.',
   '¿Cuál tu peso hoy?',
   '¿Cuál es tu peso hoy?',
   'Peso hoy',
@@ -1174,6 +1175,7 @@ function normalizeWellnessWeightHeader(value) {
   return normalizeName(value)
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
     .replace(/[¿?]/g, '')
+    .replace(/[\s.,;:!¡¿?…]+$/g, '')
     .trim();
 }
 
