@@ -16118,7 +16118,7 @@ function App() {
   };
 
   const renderDelegatedStatsMode = () => {
-    const eventOrder = ['tiro', 'tiro_puerta', 'regate', 'centro', 'perdida', 'robo', 'recuperacion', 'corner', 'falta_realizada', 'falta_recibida'];
+    const eventOrder = ['tiro', 'tiro_puerta', 'centro', 'robo', 'perdida', 'falta_realizada', 'falta_recibida', 'corner'];
     const delegatedEventGroups = ['Finalización', 'Ataque', 'Posesión', 'Faltas'];
     const caudalEvents = delegatedEventDefinitions
       .filter((definition) => definition.category === 'principal' && definition.side === 'caudal')
@@ -16222,8 +16222,8 @@ function App() {
       if (liveSummary.shots >= liveSummary.rivalShots + 3 && Number(liveSummary.shotAccuracy.replace('%', '')) < 35) {
         return 'Dominamos';
       }
-      const caudalSignal = liveSummary.shots + (liveSummary.shotsOnTarget * 2) + liveSummary.recoveries - liveSummary.losses;
-      const rivalSignal = liveSummary.rivalShots + (liveSummary.rivalShotsOnTarget * 2) + liveSummary.rivalRecoveries - liveSummary.rivalLosses;
+      const caudalSignal = liveSummary.shots + (liveSummary.shotsOnTarget * 2) + liveSummary.steals - liveSummary.losses;
+      const rivalSignal = liveSummary.rivalShots + (liveSummary.rivalShotsOnTarget * 2) + liveSummary.rivalSteals - liveSummary.rivalLosses;
       if (caudalSignal >= rivalSignal + 3) return 'Dominamos';
       if (rivalSignal >= caudalSignal + 3) return 'Sufriendo';
       return 'Igualado';
@@ -16251,22 +16251,19 @@ function App() {
     };
     const standoutRows = [
       ['Más tiros', getTopPlayerByEvent('tiro_puerta')],
-      ['Más recuperaciones', getTopPlayerByEvent('recuperacion')],
-      ['Más regates', getTopPlayerByEvent('regate')],
     ];
     const liveBars = [
       ['Tiros', liveSummary.shots, liveSummary.rivalShots],
       ['Tiros puerta', liveSummary.shotsOnTarget, liveSummary.rivalShotsOnTarget],
-      ['Regates', liveSummary.dribbles, liveSummary.rivalDribbles],
       ['Centros', liveSummary.crosses, liveSummary.rivalCrosses],
       ['Robos', liveSummary.steals, liveSummary.rivalSteals],
-      ['Recuperaciones', liveSummary.recoveries, liveSummary.rivalRecoveries],
       ['Pérdidas', liveSummary.losses, liveSummary.rivalLosses],
       ['Córners', liveSummary.corners, liveSummary.rivalCorners],
       ['Faltas realizadas', liveSummary.fouls, liveSummary.rivalFouls],
       ['Faltas recibidas', liveSummary.foulsReceived, liveSummary.rivalFoulsReceived],
     ];
     const momentumTimeline = getQuickEventsByMinuteRange(getDelegatedEvents());
+    const delegatedTimerControlClass = 'flex h-11 min-w-[92px] w-full items-center justify-center whitespace-nowrap rounded-2xl px-3 py-2 text-center text-[10px] font-black uppercase leading-none tracking-[0.10em] disabled:cursor-not-allowed disabled:opacity-35 sm:text-xs';
 
     return (
       <div className="delegated-responsive-surface space-y-4">
@@ -16303,12 +16300,12 @@ function App() {
                 <p className="mt-1 text-2xl font-black uppercase text-white">Caudal {liveCaudalScore} - {liveRivalScore} {selectedMatch?.opponent || 'Rival'}</p>
               </div>
               <div className="grid grid-cols-2 gap-2 min-[430px]:grid-cols-3">
-                <button type="button" onClick={delegatedTimerRunning ? () => setDelegatedTimerRunning(false) : startDelegatedMatch} disabled={delegatedMatchState === 'FINALIZADO'} className="min-h-11 rounded-2xl bg-emerald-300 px-3 py-2 text-xs font-black uppercase tracking-[0.10em] text-slate-950 disabled:cursor-not-allowed disabled:opacity-35">{delegatedTimerRunning ? 'Pausar' : Number(delegatedElapsedSeconds) > 0 ? 'Reanudar' : 'Iniciar'}</button>
-                <button type="button" onClick={pauseDelegatedTimerForHalftime} disabled={delegatedMatchState !== 'EN JUEGO'} className="min-h-11 rounded-2xl bg-yellow-300 px-3 py-2 text-xs font-black uppercase tracking-[0.10em] text-slate-950 disabled:cursor-not-allowed disabled:opacity-35">Descanso</button>
-                <button type="button" onClick={startDelegatedSecondHalf} disabled={delegatedMatchState !== 'DESCANSO'} className="min-h-11 rounded-2xl bg-caudal-electric px-3 py-2 text-xs font-black uppercase tracking-[0.10em] text-slate-950 disabled:cursor-not-allowed disabled:opacity-35">2ª parte</button>
-                <button type="button" onClick={finishDelegatedMatch} disabled={delegatedMatchState === 'PROGRAMADO' || delegatedMatchState === 'FINALIZADO'} className="min-h-11 rounded-2xl bg-slate-500 px-3 py-2 text-xs font-black uppercase tracking-[0.10em] text-white disabled:cursor-not-allowed disabled:opacity-35">Final</button>
-                <button type="button" onClick={resetDelegatedTimer} className="min-h-11 rounded-2xl bg-white/10 px-3 py-2 text-xs font-black uppercase tracking-[0.10em] text-slate-200">Reset</button>
-                <button type="button" onClick={() => setDelegatedTimeDraft({ minutes: clockMinutes, seconds: Number(clockSeconds) })} disabled={delegatedMatchState === 'FINALIZADO'} className="min-h-11 whitespace-nowrap rounded-2xl bg-white/10 px-3 py-2 text-xs font-black uppercase tracking-[0.10em] text-slate-200 disabled:cursor-not-allowed disabled:opacity-35">Ajustar tiempo</button>
+                <button type="button" onClick={delegatedTimerRunning ? () => setDelegatedTimerRunning(false) : startDelegatedMatch} disabled={delegatedMatchState === 'FINALIZADO'} className={`${delegatedTimerControlClass} bg-emerald-300 text-slate-950`}>{delegatedTimerRunning ? 'Pausar' : Number(delegatedElapsedSeconds) > 0 ? 'Reanudar' : 'Iniciar'}</button>
+                <button type="button" onClick={pauseDelegatedTimerForHalftime} disabled={delegatedMatchState !== 'EN JUEGO'} className={`${delegatedTimerControlClass} bg-yellow-300 text-slate-950`}>Descanso</button>
+                <button type="button" onClick={startDelegatedSecondHalf} disabled={delegatedMatchState !== 'DESCANSO'} className={`${delegatedTimerControlClass} bg-caudal-electric text-slate-950`}>2ª parte</button>
+                <button type="button" onClick={finishDelegatedMatch} disabled={delegatedMatchState === 'PROGRAMADO' || delegatedMatchState === 'FINALIZADO'} className={`${delegatedTimerControlClass} bg-slate-500 text-white`}>Final</button>
+                <button type="button" onClick={resetDelegatedTimer} className={`${delegatedTimerControlClass} bg-white/10 text-slate-200`}>Reset</button>
+                <button type="button" onClick={() => setDelegatedTimeDraft({ minutes: clockMinutes, seconds: Number(clockSeconds) })} disabled={delegatedMatchState === 'FINALIZADO'} className={`${delegatedTimerControlClass} bg-white/10 text-slate-200`}>Ajustar tiempo</button>
               </div>
             </div>
           </div>
@@ -16337,14 +16334,14 @@ function App() {
                 <button type="button" onClick={() => setDelegatedSide('caudal')} className={`min-h-11 rounded-2xl border px-4 py-2 text-sm font-black uppercase ${delegatedSide === 'caudal' ? 'border-caudal-electric bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/5 text-caudal-electric'}`}>Caudal</button>
                 <button type="button" onClick={() => setDelegatedSide('rival')} className={`min-h-11 rounded-2xl border px-4 py-2 text-sm font-black uppercase ${delegatedSide === 'rival' ? 'border-red-300 bg-red-300 text-slate-950' : 'border-white/10 bg-white/5 text-red-200'}`}>Rival</button>
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-2">
+              <div className="mt-3 grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">
                 {(delegatedSide === 'caudal' ? caudalEvents : rivalEvents).map((definition) => (
                   <button
                     key={definition.key}
                     type="button"
                     onClick={() => saveDelegatedEventDirect(definition)}
                     disabled={delegatedEventSaving}
-                    className={`min-h-[52px] rounded-2xl border px-3 py-2 text-left transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${getDelegatedToneClass(definition.tone)}`}
+                    className={`h-14 rounded-2xl border px-3 py-2 text-left transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${getDelegatedToneClass(definition.tone)}`}
                   >
                     <span className="text-[10px] font-black uppercase tracking-[0.12em] opacity-70">{getActionIcon(definition.tipoEvento)}</span>
                     <span className="ml-2 text-sm font-black leading-tight">{definition.label}</span>
@@ -16404,7 +16401,7 @@ function App() {
                   })}
                 </div>
               </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <div className="mt-3 grid gap-2">
                 {standoutRows.map(([label, top]) => (
                   <div key={label} className="rounded-2xl bg-white/5 p-3">
                     <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
