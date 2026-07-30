@@ -16263,7 +16263,7 @@ function App() {
       ['Faltas recibidas', liveSummary.foulsReceived, liveSummary.rivalFoulsReceived],
     ];
     const momentumTimeline = getQuickEventsByMinuteRange(getDelegatedEvents());
-    const delegatedTimerControlClass = 'flex h-11 min-w-[92px] w-full items-center justify-center whitespace-nowrap rounded-2xl px-3 py-2 text-center text-[10px] font-black uppercase leading-none tracking-[0.10em] disabled:cursor-not-allowed disabled:opacity-35 sm:text-xs';
+    const delegatedTimerControlClass = 'flex h-11 min-w-0 w-full items-center justify-center whitespace-nowrap rounded-2xl px-3 py-2 text-center text-xs font-black uppercase leading-none tracking-[0.10em] disabled:cursor-not-allowed disabled:opacity-35';
 
     return (
       <div className="delegated-responsive-surface space-y-4">
@@ -16299,7 +16299,7 @@ function App() {
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Marcador</p>
                 <p className="mt-1 text-2xl font-black uppercase text-white">Caudal {liveCaudalScore} - {liveRivalScore} {selectedMatch?.opponent || 'Rival'}</p>
               </div>
-              <div className="grid grid-cols-2 gap-2 min-[430px]:grid-cols-3">
+              <div className="grid w-full grid-cols-2 items-stretch gap-2">
                 <button type="button" onClick={delegatedTimerRunning ? () => setDelegatedTimerRunning(false) : startDelegatedMatch} disabled={delegatedMatchState === 'FINALIZADO'} className={`${delegatedTimerControlClass} bg-emerald-300 text-slate-950`}>{delegatedTimerRunning ? 'Pausar' : Number(delegatedElapsedSeconds) > 0 ? 'Reanudar' : 'Iniciar'}</button>
                 <button type="button" onClick={pauseDelegatedTimerForHalftime} disabled={delegatedMatchState !== 'EN JUEGO'} className={`${delegatedTimerControlClass} bg-yellow-300 text-slate-950`}>Descanso</button>
                 <button type="button" onClick={startDelegatedSecondHalf} disabled={delegatedMatchState !== 'DESCANSO'} className={`${delegatedTimerControlClass} bg-caudal-electric text-slate-950`}>2ª parte</button>
