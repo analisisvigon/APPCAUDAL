@@ -24206,6 +24206,163 @@ function App() {
       peso_alto: 'weight',
       peso_bajo: 'weight',
     }[performancePlayerSort] || '';
+    const performanceAnalysisDefinitions = {
+      ultima_respuesta: {
+        mode: 'activity_overall',
+        label: 'Última respuesta',
+        trendLabel: 'Actividad',
+      },
+      wellness_bajo: {
+        mode: 'metric',
+        source: 'wellness',
+        metricKey: 'health_ratio',
+        label: 'Wellness',
+        unit: '/10',
+        direction: 'positive',
+      },
+      wellness_alto: {
+        mode: 'metric',
+        source: 'wellness',
+        metricKey: 'health_ratio',
+        label: 'Wellness',
+        unit: '/10',
+        direction: 'positive',
+      },
+      rpe_alto: {
+        mode: 'metric',
+        source: 'rpe',
+        metricKey: 'rpe',
+        label: 'RPE',
+        unit: '/10',
+        direction: 'neutral',
+      },
+      rpe_bajo: {
+        mode: 'metric',
+        source: 'rpe',
+        metricKey: 'rpe',
+        label: 'RPE',
+        unit: '/10',
+        direction: 'neutral',
+      },
+      sueno_peor: {
+        mode: 'metric',
+        source: 'wellness',
+        metricKey: 'sleep_quality',
+        label: 'Sueño',
+        unit: '/10',
+        direction: 'positive',
+      },
+      sueno_mejor: {
+        mode: 'metric',
+        source: 'wellness',
+        metricKey: 'sleep_quality',
+        label: 'Sueño',
+        unit: '/10',
+        direction: 'positive',
+      },
+      fatiga_alta: {
+        mode: 'metric',
+        source: 'wellness',
+        metricKey: 'fatigue',
+        label: 'Fatiga',
+        unit: '/10',
+        direction: 'negative',
+      },
+      fatiga_baja: {
+        mode: 'metric',
+        source: 'wellness',
+        metricKey: 'fatigue',
+        label: 'Fatiga',
+        unit: '/10',
+        direction: 'negative',
+      },
+      dolor_alto: {
+        mode: 'metric',
+        source: 'wellness',
+        metricKey: 'muscle_soreness',
+        label: 'Dolor muscular',
+        unit: '/10',
+        direction: 'negative',
+      },
+      dolor_bajo: {
+        mode: 'metric',
+        source: 'wellness',
+        metricKey: 'muscle_soreness',
+        label: 'Dolor muscular',
+        unit: '/10',
+        direction: 'negative',
+      },
+      estres_alto: {
+        mode: 'metric',
+        source: 'wellness',
+        metricKey: 'stress',
+        label: 'Estrés',
+        unit: '/10',
+        direction: 'negative',
+      },
+      estres_bajo: {
+        mode: 'metric',
+        source: 'wellness',
+        metricKey: 'stress',
+        label: 'Estrés',
+        unit: '/10',
+        direction: 'negative',
+      },
+      animo_peor: {
+        mode: 'metric',
+        source: 'wellness',
+        metricKey: 'mood',
+        label: 'Ánimo',
+        unit: '/10',
+        direction: 'positive',
+      },
+      animo_mejor: {
+        mode: 'metric',
+        source: 'wellness',
+        metricKey: 'mood',
+        label: 'Ánimo',
+        unit: '/10',
+        direction: 'positive',
+      },
+      peso_alto: {
+        mode: 'metric',
+        source: 'wellness',
+        metricKey: 'weight',
+        label: 'Peso',
+        unit: ' kg',
+        direction: 'neutral',
+      },
+      peso_bajo: {
+        mode: 'metric',
+        source: 'wellness',
+        metricKey: 'weight',
+        label: 'Peso',
+        unit: ' kg',
+        direction: 'neutral',
+      },
+      dias_sin_rpe: {
+        mode: 'activity',
+        formType: 'rpe',
+        label: 'Último RPE',
+        trendLabel: 'Actividad RPE',
+      },
+      dias_sin_wellness: {
+        mode: 'activity',
+        formType: 'wellness',
+        label: 'Último Wellness',
+        trendLabel: 'Actividad Wellness',
+      },
+      nunca_respondieron: {
+        mode: 'activity_overall',
+        label: 'Cumplimiento',
+        trendLabel: 'Actividad',
+      },
+    };
+    const performanceAnalysisDefinition = performanceAnalysisDefinitions[performancePlayerSort] || {
+      mode: 'base',
+      label: 'Estado físico',
+    };
+    const isDynamicPerformanceAnalysis = performanceAnalysisDefinition.mode !== 'base';
     const normalizedSearch = normalizePlayerIdentityName(performancePlayerSearch);
     const matchesPerformanceFilter = (row) => ({
       todos: true,
@@ -24226,6 +24383,113 @@ function App() {
         if (isValid) return value;
       }
       return null;
+    };
+    const getPerformanceMetricSamples = (row, definition) => {
+      const sourceEntries = definition.source === 'rpe' ? row.rpeEvolution : row.wellness;
+      return sourceEntries
+        .map((entry) => {
+          const value = definition.metricKey === 'health_ratio'
+            ? getWellnessScore(entry)
+            : getPerformanceNumber(entry?.[definition.metricKey]);
+          const valid = definition.metricKey === 'weight'
+            ? value !== null && value > 0
+            : definition.metricKey === 'health_ratio'
+              ? value !== null && value >= 0 && value <= 10
+              : value !== null && value >= 1 && value <= 10;
+          return valid ? { value, entryDate: entry.entry_date, entry } : null;
+        })
+        .filter(Boolean);
+    };
+    const getPerformanceMetricInterpretation = (definition, value) => {
+      if (value === null || definition.metricKey === 'weight' || definition.metricKey === 'rpe') return '';
+      if (definition.metricKey === 'health_ratio') {
+        if (value >= 9) return 'Excelente';
+        if (value >= 7) return 'Bueno';
+        if (value >= 5) return 'Vigilar';
+        if (value >= 3) return 'Malo';
+        return 'Prioridad';
+      }
+      if (definition.direction === 'negative') {
+        if (value >= 9) return 'Muy alto';
+        if (value >= 7) return 'Alto';
+        if (value >= 5) return 'Moderado';
+        if (value >= 3) return 'Bajo';
+        return 'Muy bajo';
+      }
+      if (value >= 9) return 'Muy bueno';
+      if (value >= 7) return 'Bueno';
+      if (value >= 5) return 'Moderado';
+      if (value >= 3) return 'Bajo';
+      return 'Muy bajo';
+    };
+    const getPerformanceAnalysisSummary = (row) => {
+      if (performanceAnalysisDefinition.mode === 'metric') {
+        const samples = getPerformanceMetricSamples(row, performanceAnalysisDefinition);
+        const latest = samples[samples.length - 1] || null;
+        const average = samples.length >= 2
+          ? samples.reduce((sum, sample) => sum + sample.value, 0) / samples.length
+          : null;
+        return {
+          mode: 'metric',
+          current: latest?.value ?? null,
+          average,
+          trend: samples.length >= 2 ? getPerformanceTrend(samples.map((sample) => sample.value)) : null,
+          interpretation: getPerformanceMetricInterpretation(
+            performanceAnalysisDefinition,
+            latest?.value ?? null
+          ),
+          lastResponseDate: latest?.entryDate || '',
+        };
+      }
+      if (performanceAnalysisDefinition.mode === 'activity') {
+        const activity = row.activity[performanceAnalysisDefinition.formType];
+        return {
+          mode: 'activity',
+          activity,
+          lastResponseDate: activity.lastResponseDate || '',
+        };
+      }
+      if (performanceAnalysisDefinition.mode === 'activity_overall') {
+        return {
+          mode: 'activity_overall',
+          lastResponseDate: row.lastResponseDate || '',
+          activity: row.activity,
+        };
+      }
+      return { mode: 'base' };
+    };
+    const formatPerformanceAnalysisValue = (value) => (
+      value === null ? '—' : `${value.toFixed(1)}${performanceAnalysisDefinition.unit || ''}`
+    );
+    const formatPerformanceActivityDays = (activity) => {
+      if (!activity || activity.invalidDate) return 'Revisar fecha';
+      if (activity.neverResponded) return 'Nunca respondió';
+      if (activity.days === 0) return 'Respondió hoy';
+      if (activity.days === 1) return '1 día sin responder';
+      return `${activity.days} días sin responder`;
+    };
+    const renderPerformanceAnalysisTrend = (summary) => {
+      if (!summary.trend) {
+        return <span className="text-sm font-black text-slate-600">—</span>;
+      }
+      const stable = summary.trend.direction === 'estable';
+      const rises = summary.trend.direction === 'sube';
+      const favorable = stable || performanceAnalysisDefinition.direction === 'neutral'
+        ? null
+        : performanceAnalysisDefinition.direction === 'negative'
+          ? !rises
+          : rises;
+      const classes = stable || favorable === null
+        ? 'border-slate-400/15 bg-slate-400/[0.05] text-slate-300'
+        : favorable
+          ? 'border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-200'
+          : 'border-amber-300/20 bg-amber-300/[0.07] text-amber-100';
+      return (
+        <span className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-black ${classes}`}>
+          <span className="text-sm">{stable ? '→' : rises ? '⬆' : '⬇'}</span>
+          {stable ? 'Estable' : `${summary.trend.delta > 0 ? '+' : '−'}${Math.abs(summary.trend.delta).toFixed(1)}`}
+        </span>
+      );
     };
     const compareNullableValues = (leftValue, rightValue, direction = 'asc') => {
       const leftMissing = leftValue === null || leftValue === undefined || Number.isNaN(leftValue);
@@ -25383,119 +25647,251 @@ function App() {
             <table className="w-full table-fixed border-separate border-spacing-y-1 text-left">
               <thead className="bg-white/[0.035] text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
                 <tr>
-                  <th className="w-[27%] px-4 py-3">Jugador</th>
-                  <th className="w-[12%] px-3 py-3">Estado</th>
-                  <th className="w-[9%] px-3 py-3">Wellness</th>
-                  <th className="w-[9%] px-3 py-3">RPE</th>
-                  <th className="w-[18%] px-3 py-3">Tendencia</th>
-                  <th className="w-[16%] px-3 py-3">Observaciones</th>
-                  <th className="w-[9%] px-3 py-3">Última</th>
+                  {isDynamicPerformanceAnalysis ? (
+                    <>
+                      <th className="w-[26%] px-4 py-3">Jugador</th>
+                      <th className="w-[12%] px-3 py-3">Estado</th>
+                      <th className="w-[20%] bg-caudal-electric/[0.055] px-3 py-3 text-caudal-electric">
+                        {performanceAnalysisDefinition.label}
+                      </th>
+                      <th className="w-[16%] px-3 py-3">
+                        {performanceAnalysisDefinition.trendLabel || `Tendencia ${performanceAnalysisDefinition.label}`}
+                      </th>
+                      <th className="w-[18%] px-3 py-3">Observaciones</th>
+                      <th className="w-[8%] px-3 py-3">Última respuesta</th>
+                    </>
+                  ) : (
+                    <>
+                      <th className="w-[27%] px-4 py-3">Jugador</th>
+                      <th className="w-[12%] px-3 py-3">Estado</th>
+                      <th className="w-[9%] px-3 py-3">Wellness</th>
+                      <th className="w-[9%] px-3 py-3">RPE</th>
+                      <th className="w-[18%] px-3 py-3">Tendencia</th>
+                      <th className="w-[16%] px-3 py-3">Observaciones</th>
+                      <th className="w-[9%] px-3 py-3">Última</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.map((row) => (
-                  <tr
-                    key={row.player.id}
-                    onClick={() => openPerformancePlayer(row.player.id)}
-                    className="group cursor-pointer transition [&>td]:bg-white/[0.018] [&>td]:transition [&>td:first-child]:rounded-l-xl [&>td:last-child]:rounded-r-xl hover:[&>td]:bg-white/[0.045]"
-                  >
-                    <td className="px-4 py-2">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <PerformanceStatusRing player={row.player} status={row.status} tooltip={row.tooltip} signals={row.signals} size="sm" />
-                        <div className="min-w-0">
-                          <p className="flex min-w-0 items-center gap-2">
-                            <span className="truncate text-sm font-black text-white">{displayPlayerName(row.player)}</span>
-                            {performanceNoticePlayerIds.includes(row.player.id) ? (
-                              <span className="shrink-0 rounded-full border border-amber-300/20 bg-amber-300/[0.08] px-1.5 py-0.5 text-[7px] font-black uppercase text-amber-100">
-                                Avisar
-                              </span>
-                            ) : null}
-                          </p>
-                          <p className="mt-0.5 text-[10px] font-bold text-slate-500">
-                            {[row.player.number ? `#${row.player.number}` : '', getPlayerPositionLabel(row.player)].filter(Boolean).join(' · ') || 'Plantilla'}
-                          </p>
-                          <span className="mt-1 block">{renderActivityBadges(row, true)}</span>
+                {filteredRows.map((row) => {
+                  const analysis = getPerformanceAnalysisSummary(row);
+                  return (
+                    <tr
+                      key={row.player.id}
+                      onClick={() => openPerformancePlayer(row.player.id)}
+                      className="group cursor-pointer transition [&>td]:bg-white/[0.018] [&>td]:transition [&>td:first-child]:rounded-l-xl [&>td:last-child]:rounded-r-xl hover:[&>td]:bg-white/[0.045]"
+                    >
+                      <td className="px-4 py-2">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <PerformanceStatusRing player={row.player} status={row.status} tooltip={row.tooltip} signals={row.signals} size="sm" />
+                          <div className="min-w-0">
+                            <p className="flex min-w-0 items-center gap-2">
+                              <span className="truncate text-sm font-black text-white">{displayPlayerName(row.player)}</span>
+                              {performanceNoticePlayerIds.includes(row.player.id) ? (
+                                <span className="shrink-0 rounded-full border border-amber-300/20 bg-amber-300/[0.08] px-1.5 py-0.5 text-[7px] font-black uppercase text-amber-100">
+                                  Avisar
+                                </span>
+                              ) : null}
+                            </p>
+                            <p className="mt-0.5 text-[10px] font-bold text-slate-500">
+                              {[row.player.number ? `#${row.player.number}` : '', getPlayerPositionLabel(row.player)].filter(Boolean).join(' · ') || 'Plantilla'}
+                            </p>
+                            <span className="mt-1 block">{renderActivityBadges(row, true)}</span>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <span title={row.tooltip} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase ${statusPresentation[row.status].badge}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${statusPresentation[row.status].dot}`} />
-                        {row.statusLabel}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <p className="text-sm font-black text-white">{row.latestWellnessScore === null ? '—' : row.latestWellnessScore.toFixed(1)}</p>
-                      <p className="text-[10px] text-slate-500">{row.avgWellness === null ? '' : `Media ${row.avgWellness.toFixed(1)}`}</p>
-                    </td>
-                    <td className="px-3 py-2">
-                      <p className="text-sm font-black text-white">{row.latestRpe === null ? '—' : row.latestRpe.toFixed(1)}</p>
-                      <p className="text-[10px] text-slate-500">{row.avgRpe === null ? '' : `Media ${row.avgRpe.toFixed(1)}`}</p>
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className="flex flex-col items-start gap-1">
-                        {renderTrendBadge(row.wellnessTrend, 'Wellness')}
-                        {renderTrendBadge(row.rpeTrend, 'RPE')}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <p
-                        title={row.summaryObservation.text || undefined}
-                        className="line-clamp-2 text-xs leading-5 text-slate-400"
-                      >
-                        {truncatePerformanceSummaryText(row.summaryObservation.text) || '—'}
-                      </p>
-                    </td>
-                    <td className="px-3 py-2 text-xs font-bold text-slate-300">{formatShortDate(row.lastResponseDate)}</td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span title={row.tooltip} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase ${statusPresentation[row.status].badge}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${statusPresentation[row.status].dot}`} />
+                          {row.statusLabel}
+                        </span>
+                      </td>
+                      {isDynamicPerformanceAnalysis ? (
+                        <>
+                          <td className="!bg-caudal-electric/[0.055] px-3 py-2 shadow-[inset_2px_0_rgba(33,224,255,0.28)]">
+                            {analysis.mode === 'metric' ? (
+                              <>
+                                <p className="text-base font-black text-white">{formatPerformanceAnalysisValue(analysis.current)}</p>
+                                <p className="mt-0.5 text-[10px] text-slate-400">
+                                  Media semanal {analysis.average === null ? '—' : formatPerformanceAnalysisValue(analysis.average)}
+                                </p>
+                                {analysis.interpretation ? (
+                                  <p className="mt-1 text-[9px] font-black uppercase tracking-[0.1em] text-caudal-electric">
+                                    {analysis.interpretation}
+                                  </p>
+                                ) : null}
+                              </>
+                            ) : analysis.mode === 'activity' ? (
+                              <>
+                                <p className="text-sm font-black text-white">{formatShortDate(analysis.lastResponseDate)}</p>
+                                <p className="mt-1 text-[10px] font-bold text-slate-400">{formatPerformanceActivityDays(analysis.activity)}</p>
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-sm font-black text-white">{formatShortDate(analysis.lastResponseDate)}</p>
+                                <p className="mt-1 text-[10px] font-bold text-slate-400">{row.activity.statusLabel}</p>
+                              </>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {analysis.mode === 'metric'
+                              ? renderPerformanceAnalysisTrend(analysis)
+                              : analysis.mode === 'activity'
+                                ? (
+                                  <PerformanceResponseActivityBadge
+                                    formType={performanceAnalysisDefinition.formType}
+                                    lastResponseDate={analysis.activity.lastResponseDate}
+                                    daysSinceResponse={analysis.activity.daysSinceResponse}
+                                    invalidDate={analysis.activity.invalidDate}
+                                    compact
+                                  />
+                                )
+                                : renderActivityBadges(row, true)}
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="px-3 py-2">
+                            <p className="text-sm font-black text-white">{row.latestWellnessScore === null ? '—' : row.latestWellnessScore.toFixed(1)}</p>
+                            <p className="text-[10px] text-slate-500">{row.avgWellness === null ? '' : `Media ${row.avgWellness.toFixed(1)}`}</p>
+                          </td>
+                          <td className="px-3 py-2">
+                            <p className="text-sm font-black text-white">{row.latestRpe === null ? '—' : row.latestRpe.toFixed(1)}</p>
+                            <p className="text-[10px] text-slate-500">{row.avgRpe === null ? '' : `Media ${row.avgRpe.toFixed(1)}`}</p>
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className="flex flex-col items-start gap-1">
+                              {renderTrendBadge(row.wellnessTrend, 'Wellness')}
+                              {renderTrendBadge(row.rpeTrend, 'RPE')}
+                            </span>
+                          </td>
+                        </>
+                      )}
+                      <td className="px-3 py-2">
+                        <p
+                          title={row.summaryObservation.text || undefined}
+                          className="line-clamp-2 text-xs leading-5 text-slate-400"
+                        >
+                          {truncatePerformanceSummaryText(row.summaryObservation.text) || '—'}
+                        </p>
+                      </td>
+                      <td className="px-3 py-2 text-xs font-bold text-slate-300">{formatShortDate(row.lastResponseDate)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
           <div className="mt-5 grid gap-3 lg:hidden">
-            {filteredRows.map((row) => (
-              <button
-                key={row.player.id}
-                type="button"
-                onClick={() => openPerformancePlayer(row.player.id)}
-                className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3 text-left transition hover:border-caudal-electric/25"
-              >
-                <div className="flex items-center gap-3">
-                  <PerformanceStatusRing player={row.player} status={row.status} tooltip={row.tooltip} signals={row.signals} size="md" />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="truncate text-sm font-black text-white">{displayPlayerName(row.player)}</span>
-                      {performanceNoticePlayerIds.includes(row.player.id) ? (
-                        <span className="shrink-0 rounded-full border border-amber-300/20 bg-amber-300/[0.08] px-1.5 py-0.5 text-[7px] font-black uppercase text-amber-100">
-                          Avisar
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${statusPresentation[row.status].badge}`}>
-                      {row.statusLabel}
-                    </span>
-                    <span className="mt-1.5 block">{renderActivityBadges(row, true)}</span>
-                  </span>
-                  <span className="text-lg text-slate-600">›</span>
-                </div>
-                <div className="mt-4 grid grid-cols-3 gap-2 rounded-xl bg-black/10 p-3 text-center">
-                  <div><span className="block text-sm font-black text-white">{row.latestWellnessScore === null ? '—' : row.latestWellnessScore.toFixed(1)}</span><span className="text-[9px] uppercase text-slate-500">Wellness</span></div>
-                  <div><span className="block text-sm font-black text-white">{row.latestRpe === null ? '—' : row.latestRpe.toFixed(1)}</span><span className="text-[9px] uppercase text-slate-500">RPE</span></div>
-                  <div><span className="block text-sm font-black text-white">{formatShortDate(row.lastResponseDate)}</span><span className="text-[9px] uppercase text-slate-500">Última</span></div>
-                </div>
-                <span className="mt-2 flex flex-wrap gap-1.5">
-                  {renderTrendBadge(row.wellnessTrend, 'Wellness')}
-                  {renderTrendBadge(row.rpeTrend, 'RPE')}
-                </span>
-                <p
-                  title={row.summaryObservation.text || undefined}
-                  className="mt-3 truncate text-xs text-slate-500"
+            {filteredRows.map((row) => {
+              const analysis = getPerformanceAnalysisSummary(row);
+              return (
+                <button
+                  key={row.player.id}
+                  type="button"
+                  onClick={() => openPerformancePlayer(row.player.id)}
+                  className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3 text-left transition hover:border-caudal-electric/25"
                 >
-                  {truncatePerformanceSummaryText(row.summaryObservation.text) || '—'}
-                </p>
-              </button>
-            ))}
+                  <div className="flex items-center gap-3">
+                    <PerformanceStatusRing player={row.player} status={row.status} tooltip={row.tooltip} signals={row.signals} size="md" />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-sm font-black text-white">{displayPlayerName(row.player)}</span>
+                        {performanceNoticePlayerIds.includes(row.player.id) ? (
+                          <span className="shrink-0 rounded-full border border-amber-300/20 bg-amber-300/[0.08] px-1.5 py-0.5 text-[7px] font-black uppercase text-amber-100">
+                            Avisar
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${statusPresentation[row.status].badge}`}>
+                        {row.statusLabel}
+                      </span>
+                      <span className="mt-1.5 block">{renderActivityBadges(row, true)}</span>
+                    </span>
+                    <span className="text-lg text-slate-600">›</span>
+                  </div>
+                  {isDynamicPerformanceAnalysis ? (
+                    <div className="mt-4 rounded-xl border border-caudal-electric/15 bg-caudal-electric/[0.05] p-3 shadow-[inset_2px_0_rgba(33,224,255,0.3)]">
+                      {analysis.mode === 'metric' ? (
+                        <>
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-caudal-electric">
+                                {performanceAnalysisDefinition.label}
+                              </p>
+                              <p className="mt-1 text-2xl font-black text-white">{formatPerformanceAnalysisValue(analysis.current)}</p>
+                              {analysis.interpretation ? (
+                                <p className="mt-0.5 text-[10px] font-black uppercase text-slate-300">{analysis.interpretation}</p>
+                              ) : null}
+                            </div>
+                            <div className="text-right">
+                              <p className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-500">Media semanal</p>
+                              <p className="mt-1 text-sm font-black text-slate-200">
+                                {analysis.average === null ? '—' : formatPerformanceAnalysisValue(analysis.average)}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/[0.07] pt-2.5">
+                            <span className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
+                              Tendencia
+                            </span>
+                            {renderPerformanceAnalysisTrend(analysis)}
+                          </div>
+                        </>
+                      ) : analysis.mode === 'activity' ? (
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-[0.14em] text-caudal-electric">
+                              {performanceAnalysisDefinition.label}
+                            </p>
+                            <p className="mt-1 text-xl font-black text-white">{formatShortDate(analysis.lastResponseDate)}</p>
+                            <p className="mt-1 text-[10px] font-bold text-slate-300">{formatPerformanceActivityDays(analysis.activity)}</p>
+                          </div>
+                          <PerformanceResponseActivityBadge
+                            formType={performanceAnalysisDefinition.formType}
+                            lastResponseDate={analysis.activity.lastResponseDate}
+                            daysSinceResponse={analysis.activity.daysSinceResponse}
+                            invalidDate={analysis.activity.invalidDate}
+                            compact
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-[0.14em] text-caudal-electric">
+                              {performanceAnalysisDefinition.label}
+                            </p>
+                            <p className="mt-1 text-xl font-black text-white">{formatShortDate(analysis.lastResponseDate)}</p>
+                            <p className="mt-1 text-[10px] font-bold text-slate-300">{row.activity.statusLabel}</p>
+                          </div>
+                          <span className="max-w-[145px]">{renderActivityBadges(row, true)}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-4 grid grid-cols-3 gap-2 rounded-xl bg-black/10 p-3 text-center">
+                        <div><span className="block text-sm font-black text-white">{row.latestWellnessScore === null ? '—' : row.latestWellnessScore.toFixed(1)}</span><span className="text-[9px] uppercase text-slate-500">Wellness</span></div>
+                        <div><span className="block text-sm font-black text-white">{row.latestRpe === null ? '—' : row.latestRpe.toFixed(1)}</span><span className="text-[9px] uppercase text-slate-500">RPE</span></div>
+                        <div><span className="block text-sm font-black text-white">{formatShortDate(row.lastResponseDate)}</span><span className="text-[9px] uppercase text-slate-500">Última</span></div>
+                      </div>
+                      <span className="mt-2 flex flex-wrap gap-1.5">
+                        {renderTrendBadge(row.wellnessTrend, 'Wellness')}
+                        {renderTrendBadge(row.rpeTrend, 'RPE')}
+                      </span>
+                    </>
+                  )}
+                  <p
+                    title={row.summaryObservation.text || undefined}
+                    className="mt-3 truncate text-xs text-slate-500"
+                  >
+                    {truncatePerformanceSummaryText(row.summaryObservation.text) || '—'}
+                  </p>
+                </button>
+              );
+            })}
           </div>
 
           {!filteredRows.length ? (
