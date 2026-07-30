@@ -1,6 +1,55 @@
 const UPDATE_CREATION_TOLERANCE_MS = 5000;
+const DEFAULT_MODULE_LIMIT = 6;
 
 const asArray = (value) => (Array.isArray(value) ? value : []);
+
+const SOURCE_MODULE_KEYS = Object.freeze({
+  wellness_entries: 'performance',
+  rpe_entries: 'performance',
+  training_sessions: 'performance',
+  partidos: 'matches',
+  jugadores: 'squad',
+  equipos_rivales: 'teams',
+});
+
+const MODULE_CONFIG = Object.freeze({
+  performance: {
+    name: 'Rendimiento',
+    tab: 'Rendimiento',
+    typeOrder: [
+      'Registro de Wellness recibido',
+      'Registro de RPE recibido',
+      'Sesión de entrenamiento creada',
+    ],
+  },
+  matches: {
+    name: 'Partidos',
+    tab: 'Partidos',
+    typeOrder: ['Partido creado', 'Partido actualizado'],
+  },
+  squad: {
+    name: 'Plantilla',
+    tab: 'Plantilla',
+    typeOrder: ['Jugador añadido', 'Jugador actualizado'],
+  },
+  teams: {
+    name: 'Equipos',
+    tab: 'Equipos',
+    typeOrder: ['Rival creado', 'Rival actualizado'],
+  },
+});
+
+const TYPE_SUMMARIES = Object.freeze({
+  'Registro de Wellness recibido': ['respuesta Wellness', 'respuestas Wellness'],
+  'Registro de RPE recibido': ['respuesta RPE', 'respuestas RPE'],
+  'Sesión de entrenamiento creada': ['sesión creada', 'sesiones creadas'],
+  'Partido creado': ['partido creado', 'partidos creados'],
+  'Partido actualizado': ['partido actualizado', 'partidos actualizados'],
+  'Jugador añadido': ['jugador añadido', 'jugadores añadidos'],
+  'Jugador actualizado': ['jugador actualizado', 'jugadores actualizados'],
+  'Rival creado': ['rival creado', 'rivales creados'],
+  'Rival actualizado': ['rival actualizado', 'rivales actualizados'],
+});
 
 const parseTimestamp = (value) => {
   if (!value) return null;
@@ -20,6 +69,31 @@ const formatStoredDate = (value) => {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : '';
 };
 
+const getModuleKey = (source) => SOURCE_MODULE_KEYS[source] || null;
+
+const buildActivity = ({
+  row,
+  source,
+  type,
+  entity,
+  description,
+  timestamp,
+}) => {
+  const moduleKey = getModuleKey(source);
+  if (!moduleKey || !timestamp) return null;
+  const entityId = firstValue(row, ['id']) || entity;
+
+  return {
+    id: `${source}:${entityId}:${type}:${timestamp.toISOString()}`,
+    source,
+    moduleKey,
+    type,
+    entity,
+    description,
+    timestamp: timestamp.toISOString(),
+  };
+};
+
 const buildEntityActivity = ({
   row,
   source,
@@ -36,18 +110,15 @@ const buildEntityActivity = ({
     updatedAt &&
     updatedAt.getTime() - createdAt.getTime() > UPDATE_CREATION_TOLERANCE_MS
   );
-  const timestamp = isReliableUpdate ? updatedAt : createdAt;
-  const type = isReliableUpdate ? updatedLabel : createdLabel;
-  const entityId = firstValue(row, ['id']) || entity;
 
-  return {
-    id: `${source}:${entityId}:${type}:${timestamp.toISOString()}`,
+  return buildActivity({
+    row,
     source,
-    type,
+    type: isReliableUpdate ? updatedLabel : createdLabel,
     entity,
     description,
-    timestamp: timestamp.toISOString(),
-  };
+    timestamp: isReliableUpdate ? updatedAt : createdAt,
+  });
 };
 
 const buildCreatedActivity = ({
@@ -57,19 +128,14 @@ const buildCreatedActivity = ({
   entity,
   description,
   timestampKeys = ['created_at', 'createdAt'],
-}) => {
-  const timestamp = parseTimestamp(firstValue(row, timestampKeys));
-  if (!timestamp) return null;
-  const entityId = firstValue(row, ['id']) || entity;
-  return {
-    id: `${source}:${entityId}:${type}:${timestamp.toISOString()}`,
-    source,
-    type,
-    entity,
-    description,
-    timestamp: timestamp.toISOString(),
-  };
-};
+}) => buildActivity({
+  row,
+  source,
+  type,
+  entity,
+  description,
+  timestamp: parseTimestamp(firstValue(row, timestampKeys)),
+});
 
 const matchEntity = (match) => {
   const opponent = firstValue(match, ['opponent', 'rival']) || 'Rival';
@@ -89,6 +155,68 @@ const sessionEntity = (session) => (
   firstValue(session, ['title', 'session_type', 'sessionType']) || 'Sesión de entrenamiento'
 );
 
+const formatSummaryCount = (type, count) => {
+  const labels = TYPE_SUMMARIES[type];
+  if (!labels || count <= 0) return '';
+  return `${count} ${count === 1 ? labels[0] : labels[1]}`;
+};
+
+export const groupRecentActivity = (events = [], { limit = DEFAULT_MODULE_LIMIT } = {}) => {
+  const uniqueEvents = new Map();
+  asArray(events).filter(Boolean).forEach((event) => {
+    if (
+      event?.id &&
+      event?.moduleKey &&
+      MODULE_CONFIG[event.moduleKey] &&
+      !uniqueEvents.has(event.id)
+    ) {
+      uniqueEvents.set(event.id, event);
+    }
+  });
+
+  const groups = new Map();
+  uniqueEvents.forEach((event) => {
+    const current = groups.get(event.moduleKey) || [];
+    current.push(event);
+    groups.set(event.moduleKey, current);
+  });
+
+  return [...groups.entries()]
+    .map(([moduleKey, moduleEvents]) => {
+      const config = MODULE_CONFIG[moduleKey];
+      const sortedEvents = [...moduleEvents].sort((left, right) => (
+        new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime() ||
+        left.id.localeCompare(right.id)
+      ));
+      const counts = sortedEvents.reduce((result, event) => {
+        result[event.type] = (result[event.type] || 0) + 1;
+        return result;
+      }, {});
+      const summaryParts = config.typeOrder
+        .map((type) => formatSummaryCount(type, counts[type] || 0))
+        .filter(Boolean);
+      const latestEvent = sortedEvents[0];
+
+      return {
+        id: `recent-activity:${moduleKey}`,
+        moduleKey,
+        moduleName: config.name,
+        tab: config.tab,
+        summary: summaryParts.join(' · '),
+        timestamp: latestEvent.timestamp,
+        eventCount: sortedEvents.length,
+        counts,
+        events: sortedEvents,
+      };
+    })
+    .filter((group) => group.summary)
+    .sort((left, right) => (
+      new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime() ||
+      left.moduleKey.localeCompare(right.moduleKey)
+    ))
+    .slice(0, Math.max(0, Number(limit) || 0));
+};
+
 export const buildRecentActivity = ({
   matches = [],
   teams = [],
@@ -96,7 +224,7 @@ export const buildRecentActivity = ({
   trainingSessions = [],
   wellnessEntries = [],
   rpeEntries = [],
-} = {}, { limit = 5 } = {}) => {
+} = {}, options = {}) => {
   const playerNames = new Map(asArray(players).map((player) => [
     String(firstValue(player, ['id']) || ''),
     playerEntity(player),
@@ -169,17 +297,7 @@ export const buildRecentActivity = ({
     }));
   });
 
-  const uniqueActivities = new Map();
-  activities.filter(Boolean).forEach((activity) => {
-    if (!uniqueActivities.has(activity.id)) uniqueActivities.set(activity.id, activity);
-  });
-
-  return [...uniqueActivities.values()]
-    .sort((left, right) => (
-      new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime() ||
-      left.id.localeCompare(right.id)
-    ))
-    .slice(0, Math.max(0, Number(limit) || 0));
+  return groupRecentActivity(activities, options);
 };
 
 export const formatRecentActivityTime = (timestamp, nowValue = Date.now()) => {
@@ -206,4 +324,3 @@ export const formatRecentActivityTime = (timestamp, nowValue = Date.now()) => {
     minute: '2-digit',
   }).format(date);
 };
-

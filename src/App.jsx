@@ -27391,19 +27391,34 @@ function App() {
 
             <section className="rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]">
               <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Actividad reciente</h3>
-              <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+              <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
                 {safeArray(homeDashboard.activity).length ? safeArray(homeDashboard.activity).map((item) => (
-                  <div key={item.id} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm transition hover:bg-white/[0.07]">
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => goToTab(item.tab)}
+                    aria-label={`Abrir ${item.moduleName}. ${item.summary}. Última actividad: ${formatRecentActivityTime(item.timestamp)}`}
+                    className="group flex min-w-0 items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-left text-sm transition hover:border-caudal-electric/25 hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b1424]"
+                  >
                     <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-caudal-electric" />
-                    <div className="min-w-0">
-                      <p className="font-bold text-white">{item.type}</p>
-                      <p className="mt-0.5 truncate text-xs font-semibold text-slate-300" title={item.entity}>{item.entity}</p>
-                      <p className="mt-1 truncate text-[10px] text-slate-500" title={`${item.description} · ${new Date(item.timestamp).toLocaleString('es-ES')}`}>
-                        {item.description} · {formatRecentActivityTime(item.timestamp)}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Actividad en</p>
+                      <p className="font-bold text-white transition group-hover:text-caudal-electric">{item.moduleName}</p>
+                      <p
+                        className="mt-1 break-words text-xs font-semibold leading-4 text-slate-300 sm:line-clamp-2"
+                        title={item.summary}
+                      >
+                        {item.summary}
+                      </p>
+                      <p
+                        className="mt-1 truncate text-[10px] text-slate-500"
+                        title={`Última actividad: ${new Date(item.timestamp).toLocaleString('es-ES')}`}
+                      >
+                        Última actividad: {formatRecentActivityTime(item.timestamp)}
                       </p>
                     </div>
-                  </div>
-                )) : <p className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-sm text-slate-400 md:col-span-2 xl:col-span-5">Todavía no hay actividad reciente.</p>}
+                  </button>
+                )) : <p className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-sm text-slate-400 md:col-span-2 xl:col-span-4">Todavía no hay actividad reciente.</p>}
               </div>
             </section>
 
