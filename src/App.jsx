@@ -5307,8 +5307,15 @@ function App() {
   const [groupRankingTab, setGroupRankingTab] = useState('Goles');
   const [expandedSystemXi, setExpandedSystemXi] = useState('');
   const [delegatedStatusFilter, setDelegatedStatusFilter] = useState('Todos');
-  const [delegatedRankingScope, setDelegatedRankingScope] = useState('Solo validados');
   const [delegatedStatusSavingId, setDelegatedStatusSavingId] = useState('');
+  const [delegatedAnalysisTeamFilter, setDelegatedAnalysisTeamFilter] = useState('todos');
+  const [delegatedAnalysisPlayerFilter, setDelegatedAnalysisPlayerFilter] = useState('');
+  const [delegatedAnalysisEventFilter, setDelegatedAnalysisEventFilter] = useState('todos');
+  const [delegatedAnalysisPeriodFilter, setDelegatedAnalysisPeriodFilter] = useState('todos');
+  const [delegatedEvolutionEventType, setDelegatedEvolutionEventType] = useState('tiro');
+  const [delegatedQuickPlayerId, setDelegatedQuickPlayerId] = useState('');
+  const [delegatedExpandedRanking, setDelegatedExpandedRanking] = useState('');
+  const [delegatedSelectedMatchIds, setDelegatedSelectedMatchIds] = useState([]);
   const [groupAssistFilter, setGroupAssistFilter] = useState('Todas');
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [groupShotFilter, setGroupShotFilter] = useState('Ambos');
@@ -26404,7 +26411,35 @@ function App() {
   };
 
   const renderDelegatedRegistrySection = () => {
-    const matchesWithDelegatedEvents = matches.filter((match) => safeArray(match.quickEvents).length);
+    const delegatedAnalysisEventCatalog = [
+      { type: 'tiro', label: 'Tiros', statKey: 'shots', icon: '◌' },
+      { type: 'tiro_puerta', label: 'Tiros a puerta', statKey: 'shotsOnTarget', icon: '◎' },
+      { type: 'centro', label: 'Centros', statKey: 'crosses', icon: '↗' },
+      { type: 'robo', label: 'Robos', statKey: 'steals', icon: '◆' },
+      { type: 'perdida', label: 'Pérdidas', statKey: 'turnovers', icon: '×' },
+      { type: 'corner', label: 'Córners', statKey: 'corners', icon: '⌜' },
+      { type: 'falta_realizada', label: 'Faltas realizadas', statKey: 'foulsCommitted', icon: '!' },
+      { type: 'falta_recibida', label: 'Faltas recibidas', statKey: 'foulsReceived', icon: '+' },
+    ];
+    const delegatedAnalysisTypeSet = new Set(delegatedAnalysisEventCatalog.map((item) => item.type));
+    const isDelegatedAnalysisEvent = (event) => delegatedAnalysisTypeSet.has(getQuickEventBaseType(event.tipoEvento));
+    const delegatedPeriodLabels = ['0-15', '15-30', '30-45', '45-60', '60-75', '75-90', '90+'];
+    const getDelegatedPeriodKey = (event) => {
+      const minute = Number(event.minute || 0);
+      if (minute < 15) return '0-15';
+      if (minute < 30) return '15-30';
+      if (minute < 45) return '30-45';
+      if (minute < 60) return '45-60';
+      if (minute < 75) return '60-75';
+      if (minute < 90) return '75-90';
+      return '90+';
+    };
+    const getDelegatedAnalysisPlayerId = (event) => (
+      getDelegatedEventPlayerId(event)
+      || players.find((player) => delegatedEventMatchesPlayer(event, player, players))?.id
+      || ''
+    );
+    const matchesWithDelegatedEvents = matches.filter((match) => safeArray(match.quickEvents).some(isDelegatedAnalysisEvent));
     const statusCounts = matchesWithDelegatedEvents.reduce((acc, match) => {
       const status = getDelegatedDataStatus(match);
       acc[status] = (acc[status] || 0) + 1;
@@ -26413,12 +26448,14 @@ function App() {
     const visibleMatches = matchesWithDelegatedEvents
       .filter((match) => delegatedStatusFilter === 'Todos' || getDelegatedDataStatus(match) === delegatedStatusFilter)
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-    const analysisMatches = visibleMatches.filter((match) => (
-      delegatedRankingScope === 'Todos los registros'
-        ? true
-        : isDelegatedDataValidated(match)
-    ));
-    const rankingEvents = analysisMatches.flatMap((match) => safeArray(match.quickEvents).map((event) => ({ ...event, match })));
+    const analysisMatches = visibleMatches.filter(isDelegatedDataValidated);
+    const rankingEvents = analysisMatches
+      .flatMap((match) => safeArray(match.quickEvents).map((event) => ({ ...event, match })))
+      .filter((event) => event.reviewed && isDelegatedAnalysisEvent(event))
+      .filter((event) => delegatedAnalysisTeamFilter === 'todos' || getQuickEventSide(event) === delegatedAnalysisTeamFilter)
+      .filter((event) => !delegatedAnalysisPlayerFilter || getDelegatedAnalysisPlayerId(event) === delegatedAnalysisPlayerFilter)
+      .filter((event) => delegatedAnalysisEventFilter === 'todos' || getQuickEventBaseType(event.tipoEvento) === delegatedAnalysisEventFilter)
+      .filter((event) => delegatedAnalysisPeriodFilter === 'todos' || getDelegatedPeriodKey(event) === delegatedAnalysisPeriodFilter);
     const collectiveSummary = getQuickEventSummary(rankingEvents);
     const getCoveredMinutes = (events = []) => {
       const minutes = safeArray(events)
@@ -26431,137 +26468,225 @@ function App() {
       safeArray(events).some((event) => Number(event.minute || 0) >= 45) ? '2T' : null,
     ].filter(Boolean);
     const getIndividualEvents = (events = []) => safeArray(events).filter((event) => Object.keys(EVENT_STAT_EFFECTS[getQuickEventBaseType(event.tipoEvento)]?.player || {}).length);
-    const visibleEvents = visibleMatches.flatMap((match) => safeArray(match.quickEvents).map((event) => ({ ...event, match })));
-    const visibleIndividualEvents = getIndividualEvents(visibleEvents);
-    const visibleSummary = {
-      registeredMatches: visibleMatches.length,
-      validatedMatches: visibleMatches.filter(isDelegatedDataValidated).length,
-      events: visibleEvents.length,
-      unidentified: visibleIndividualEvents.filter((event) => !getDelegatedEventPlayerId(event)).length,
-      coveredMinutes: visibleMatches.reduce((sum, match) => sum + getCoveredMinutes(match.quickEvents), 0),
-      playersWithEvents: new Set(visibleEvents.filter((event) => getQuickEventSide(event) === 'caudal' && getDelegatedEventPlayerId(event)).map(getDelegatedEventPlayerId)).size,
-    };
-    const analysisIndividualEvents = getIndividualEvents(rankingEvents);
-    const analysisSummary = {
-      registeredMatches: analysisMatches.length,
-      validatedMatches: analysisMatches.filter(isDelegatedDataValidated).length,
-      events: rankingEvents.length,
-      unidentified: analysisIndividualEvents.filter((event) => !getDelegatedEventPlayerId(event)).length,
-      coveredMinutes: analysisMatches.reduce((sum, match) => sum + getCoveredMinutes(match.quickEvents), 0),
-      coveredPeriods: analysisMatches.reduce((sum, match) => sum + getCoveredPeriods(match.quickEvents).length, 0),
-      playersWithEvents: new Set(rankingEvents.filter((event) => getQuickEventSide(event) === 'caudal' && getDelegatedEventPlayerId(event)).map(getDelegatedEventPlayerId)).size,
-    };
+    const visibleEvents = visibleMatches.flatMap((match) => safeArray(match.quickEvents)
+      .filter(isDelegatedAnalysisEvent)
+      .map((event) => ({ ...event, match })));
+    const delegatedPlayerEventMap = rankingEvents.reduce((map, event) => {
+      if (getQuickEventSide(event) !== 'caudal') return map;
+      const playerId = getDelegatedAnalysisPlayerId(event);
+      if (!playerId) return map;
+      const currentEvents = map.get(playerId) || [];
+      currentEvents.push(event);
+      map.set(playerId, currentEvents);
+      return map;
+    }, new Map());
     const playerRows = players.map((player) => {
-      const events = rankingEvents.filter((event) => delegatedEventMatchesPlayer(event, player, players) && getQuickEventSide(event) === 'caudal');
-      const stats = aggregateQuickEventStats(events, { side: 'caudal', playerId: player.id, scope: 'player' });
-      return { player, stats, matches: new Set(events.map((event) => event.partidoId)).size };
+      const events = delegatedPlayerEventMap.get(player.id) || [];
+      const countType = (type) => events.filter((event) => getQuickEventBaseType(event.tipoEvento) === type).length;
+      const shotsOnTarget = countType('tiro_puerta');
+      const stats = {
+        shots: countType('tiro') + shotsOnTarget,
+        shotsOnTarget,
+        crosses: countType('centro'),
+        steals: countType('robo'),
+        turnovers: countType('perdida'),
+        foulsCommitted: countType('falta_realizada'),
+        foulsReceived: countType('falta_recibida'),
+        corners: countType('corner'),
+      };
+      return { player, stats, events, matches: new Set(events.map((event) => event.partidoId)).size };
     });
     const getTopPlayerRows = (fieldKey) => {
       const rows = playerRows
-        .map((row, index) => ({ ...row, sourceIndex: index, value: Number(row.stats[fieldKey] || 0) }))
+        .map((row, index) => {
+          const metric = delegatedAnalysisEventCatalog.find((item) => item.statKey === fieldKey);
+          const metricEvents = row.events.filter((event) => {
+            const type = getQuickEventBaseType(event.tipoEvento);
+            return fieldKey === 'shots' ? ['tiro', 'tiro_puerta'].includes(type) : type === metric?.type;
+          });
+          return {
+            ...row,
+            sourceIndex: index,
+            value: Number(row.stats[fieldKey] || 0),
+            latestMinute: metricEvents.length ? Math.max(...metricEvents.map((event) => Number(event.minute || 0))) : -1,
+          };
+        })
         .filter((row) => row.value > 0)
-        .sort((a, b) => b.value - a.value);
-      const topValues = [...new Set(rows.map((row) => row.value))].slice(0, 3);
-      return rows
-        .filter((row) => topValues.includes(row.value))
-        .map((row) => ({ ...row, rank: topValues.indexOf(row.value) + 1 }));
+        .sort((a, b) => (
+          b.value - a.value ||
+          b.latestMinute - a.latestMinute ||
+          displayPlayerName(a.player).localeCompare(displayPlayerName(b.player), 'es')
+        ));
+      return rows.map((row, index) => ({ ...row, rank: index + 1 }));
     };
     const metricComparisonRows = [
-      'goals',
       'shots',
       'shotsOnTarget',
-      'dribbles',
       'crosses',
-      'turnovers',
       'steals',
-      'recoveries',
+      'turnovers',
+      'corners',
       'foulsCommitted',
       'foulsReceived',
-      'corners',
     ].map((key) => {
       const field = EVENT_STAT_FIELDS.find((item) => item.key === key);
       const caudal = Number(collectiveSummary.stats?.[key] || 0);
       const rival = Number(collectiveSummary.rivalStats?.[key] || 0);
       return { key, label: field?.label || key, caudal, rival, max: Math.max(caudal, rival, 1) };
-    }).filter((row) => row.caudal || row.rival);
-    const offensiveRows = [
-      ['Goles', collectiveSummary.goals],
-      ['Tiros', collectiveSummary.shots],
-      ['Tiros a puerta', collectiveSummary.shotsOnTarget],
-      ['Regates', collectiveSummary.dribbles],
-      ['Centros', collectiveSummary.crosses],
-      ['Corners', collectiveSummary.corners],
-    ].filter(([, value]) => Number(value || 0) > 0);
-    const possessionRows = [
-      ['Perdidas', collectiveSummary.losses],
-      ['Robos', collectiveSummary.steals],
-      ['Recuperaciones', collectiveSummary.recoveries],
-    ].filter(([, value]) => Number(value || 0) > 0);
-    const shotAccuracyText = collectiveSummary.shots
-      ? `${collectiveSummary.shotsOnTarget} de ${collectiveSummary.shots} · ${Math.round((collectiveSummary.shotsOnTarget / collectiveSummary.shots) * 100)}%`
-      : 'No disponible';
-    const possessionBalance = Number(collectiveSummary.steals || 0) + Number(collectiveSummary.recoveries || 0) - Number(collectiveSummary.losses || 0);
-    const possessionBalanceText = `${possessionBalance > 0 ? '+' : ''}${possessionBalance} · ${collectiveSummary.steals} robos, ${collectiveSummary.recoveries} recuperaciones, ${collectiveSummary.losses} perdidas`;
+    });
     const individualRankingGroups = [
-      ['Mas tiros', 'shots'],
-      ['Mas tiros a puerta', 'shotsOnTarget'],
-      ['Mas regates', 'dribbles'],
-      ['Mas centros', 'crosses'],
-      ['Mas robos', 'steals'],
-      ['Mas recuperaciones', 'recoveries'],
-      ['Mas perdidas', 'turnovers'],
-      ['Mas faltas recibidas', 'foulsReceived'],
-      ['Mas faltas realizadas', 'foulsCommitted'],
+      ['Más tiros', 'shots'],
+      ['Más tiros a puerta', 'shotsOnTarget'],
+      ['Más centros', 'crosses'],
+      ['Más robos', 'steals'],
+      ['Más pérdidas', 'turnovers'],
+      ['Más faltas recibidas', 'foulsReceived'],
+      ['Más faltas realizadas', 'foulsCommitted'],
+      ['Más córners lanzados', 'corners'],
     ].map(([label, key]) => ({ label, key, rows: getTopPlayerRows(key) })).filter((group) => group.rows.length);
-    const eventTimelineRows = analysisMatches
-      .slice()
-      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
-      .map((match) => {
-        const events = safeArray(match.quickEvents);
-        return {
-          match,
-          status: getDelegatedDataStatus(match),
-          events: events.length,
-          label: `${matchDisplayDate(match.date)} · ${match.opponent || 'Rival'}`,
-        };
-      })
-      .filter((row) => row.events > 0);
-    const maxTimelineEvents = Math.max(1, ...eventTimelineRows.map((row) => row.events));
-    const renderMetricCard = (label, value) => (
-      <div key={label} className="rounded-2xl border border-white/5 bg-white/[0.045] p-4">
-        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
-        <p className="mt-2 text-2xl font-black text-white">{value}</p>
-      </div>
-    );
+    const summaryComparisonCards = metricComparisonRows.map((row) => ({
+      ...row,
+      difference: row.caudal - row.rival,
+    }));
+    const derivedIndicators = [
+      {
+        label: 'Precisión de tiro',
+        caudal: collectiveSummary.shots ? Math.round((collectiveSummary.shotsOnTarget / collectiveSummary.shots) * 100) : null,
+        rival: collectiveSummary.rivalShots ? Math.round((collectiveSummary.rivalShotsOnTarget / collectiveSummary.rivalShots) * 100) : null,
+        unit: '%',
+        formula: 'Tiros a puerta ÷ tiros',
+      },
+      {
+        label: 'Balance robos − pérdidas',
+        caudal: Number(collectiveSummary.steals || 0) - Number(collectiveSummary.losses || 0),
+        rival: Number(collectiveSummary.rivalSteals || 0) - Number(collectiveSummary.rivalLosses || 0),
+        unit: '',
+        formula: 'Robos − pérdidas',
+      },
+      {
+        label: 'Comparativa ofensiva',
+        caudal: Number(collectiveSummary.shots || 0) + Number(collectiveSummary.crosses || 0) + Number(collectiveSummary.corners || 0),
+        rival: Number(collectiveSummary.rivalShots || 0) + Number(collectiveSummary.rivalCrosses || 0) + Number(collectiveSummary.rivalCorners || 0),
+        unit: '',
+        formula: 'Tiros + centros + córners',
+      },
+      {
+        label: 'Comparativa defensiva',
+        caudal: Number(collectiveSummary.steals || 0) + Number(collectiveSummary.fouls || 0),
+        rival: Number(collectiveSummary.rivalSteals || 0) + Number(collectiveSummary.rivalFouls || 0),
+        unit: '',
+        formula: 'Robos + faltas realizadas',
+      },
+    ];
+    const evolutionRows = delegatedPeriodLabels.map((period) => {
+      const events = rankingEvents.filter((event) => (
+        getDelegatedPeriodKey(event) === period &&
+        getQuickEventBaseType(event.tipoEvento) === delegatedEvolutionEventType
+      ));
+      return {
+        period,
+        caudal: events.filter((event) => getQuickEventSide(event) === 'caudal').length,
+        rival: events.filter((event) => getQuickEventSide(event) === 'rival').length,
+      };
+    });
+    const maxEvolutionValue = Math.max(1, ...evolutionRows.flatMap((row) => [row.caudal, row.rival]));
+    const momentumRows = rankingEvents.slice().sort((left, right) => (
+      String(left.match?.date || '').localeCompare(String(right.match?.date || '')) ||
+      Number(left.minute || 0) - Number(right.minute || 0) ||
+      String(left.createdAt || '').localeCompare(String(right.createdAt || ''))
+    ));
+    const registryQuality = {
+      registered: visibleEvents.length,
+      validated: visibleEvents.filter((event) => event.reviewed && getDelegatedDataStatus(event.match) === 'Validado').length,
+      pending: visibleEvents.filter((event) => (
+        getDelegatedDataStatus(event.match) !== 'Descartado' &&
+        !(event.reviewed && getDelegatedDataStatus(event.match) === 'Validado')
+      )).length,
+      discarded: visibleEvents.filter((event) => getDelegatedDataStatus(event.match) === 'Descartado').length,
+    };
+    registryQuality.percent = registryQuality.registered
+      ? Math.round((registryQuality.validated / registryQuality.registered) * 100)
+      : 0;
+    const quickPlayerRow = delegatedQuickPlayerId
+      ? playerRows.find((row) => row.player.id === delegatedQuickPlayerId) || null
+      : null;
+    const quickPlayerLastMinute = quickPlayerRow?.events.length
+      ? Math.max(...quickPlayerRow.events.map((event) => Number(event.minute || 0)))
+      : null;
     const auditMatch = (match) => {
-      const events = safeArray(match.quickEvents);
+      const events = safeArray(match.quickEvents).filter(isDelegatedAnalysisEvent);
       const individualEvents = getIndividualEvents(events);
-      const unidentified = individualEvents.filter((event) => !getDelegatedEventPlayerId(event)).length;
-      const caudalUnidentified = individualEvents.filter((event) => getQuickEventSide(event) === 'caudal' && !getDelegatedEventPlayerId(event)).length;
-      const invalidTypes = events.filter((event) => !EVENT_STAT_EFFECTS[getQuickEventBaseType(event.tipoEvento)]).length;
+      const unidentified = individualEvents.filter((event) => !getDelegatedAnalysisPlayerId(event)).length;
+      const caudalUnidentified = individualEvents.filter((event) => getQuickEventSide(event) === 'caudal' && !getDelegatedAnalysisPlayerId(event)).length;
       const unreviewed = events.filter((event) => !event.reviewed).length;
+      const validated = events.length - unreviewed;
       const minutes = events.map((event) => Number(event.minute || 0)).filter((minute) => Number.isFinite(minute));
       const coveredMinutes = getCoveredMinutes(events);
       const periods = getCoveredPeriods(events);
-      const quickScore = getQuickEventSummary(events);
-      const officialScore = getMatchScoreData(match);
       const checks = [
         unreviewed ? `${unreviewed} eventos sin revisar` : null,
         caudalUnidentified ? `${caudalUnidentified} eventos de Caudal sin jugador` : null,
         unidentified && !caudalUnidentified ? `${unidentified} eventos sin jugador identificado` : null,
-        invalidTypes ? `${invalidTypes} tipos fuera del catálogo` : null,
-        quickScore.goals !== officialScore.caudalGoals ? `Goles Caudal delegado ${quickScore.goals} / oficial ${officialScore.caudalGoals}` : null,
-        quickScore.rivalGoals !== officialScore.rivalGoals ? `Goles rival delegado ${quickScore.rivalGoals} / oficial ${officialScore.rivalGoals}` : null,
       ].filter(Boolean);
       return {
         events,
+        validated,
+        pending: unreviewed,
+        validatedPercent: events.length ? Math.round((validated / events.length) * 100) : 0,
         unidentified,
         coveredMinutes,
         coverageLabel: coveredMinutes ? `${coveredMinutes} de 90 minutos` : 'Sin minutos',
         duration: minutes.length ? `${Math.min(...minutes)}'-${Math.max(...minutes)}'` : 'Sin minutos',
         periods: periods.join(' · ') || 'Sin periodo',
+        lastReview: match.delegatedReviewedAt || match.delegated_reviewed_at || '',
         checks,
       };
+    };
+    const renderDelegatedRankingRows = (group, compact = false) => {
+      const maxValue = Math.max(1, ...group.rows.map((row) => row.value));
+      const visibleRows = compact ? group.rows.slice(0, 3) : group.rows;
+      return (
+        <div className="mt-3 space-y-2">
+          {visibleRows.map((row) => (
+            <button
+              key={`${group.key}-${row.player.id}`}
+              type="button"
+              onClick={() => setDelegatedQuickPlayerId(row.player.id)}
+              className="grid w-full grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2 rounded-xl px-2 py-2 text-left transition hover:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-caudal-electric/40"
+            >
+              <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${
+                row.rank === 1 ? 'bg-yellow-300 text-yellow-950' :
+                row.rank === 2 ? 'bg-slate-200 text-slate-800' :
+                row.rank === 3 ? 'bg-amber-700 text-amber-50' :
+                'bg-white/10 text-slate-400'
+              }`}>{row.rank <= 3 ? ['🥇', '🥈', '🥉'][row.rank - 1] : row.rank}</span>
+              <span className="h-9 w-9 overflow-hidden rounded-full border border-white/10 bg-slate-900">
+                <PlayerPortrait player={row.player} className="h-full w-full" fallbackTextClassName="text-[9px]" />
+              </span>
+              <span className="min-w-0">
+                <span className="flex items-center gap-2">
+                  <span className="truncate text-sm font-black text-white">{displayPlayerName(row.player) || row.player.name}</span>
+                  {row.player.number || row.player.dorsal ? <span className="shrink-0 text-[10px] font-black text-slate-500">#{row.player.number || row.player.dorsal}</span> : null}
+                </span>
+                <span className="mt-1 block h-1.5 rounded-full bg-white/10">
+                  <span className="block h-1.5 rounded-full bg-caudal-electric" style={{ width: `${Math.max(8, (row.value / maxValue) * 100)}%` }} />
+                </span>
+              </span>
+              <span className="text-right">
+                <span className="block text-sm font-black text-caudal-electric">{row.value}</span>
+                <span className="block text-[9px] font-bold text-slate-500">últ. {row.latestMinute}'</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      );
+    };
+    const updateSelectedDelegatedMatchesStatus = async (status) => {
+      const selectedIds = delegatedSelectedMatchIds.filter((matchId) => visibleMatches.some((match) => match.id === matchId));
+      for (const matchId of selectedIds) {
+        await updateDelegatedDataStatus(matchId, status);
+      }
+      setDelegatedSelectedMatchIds([]);
     };
 
     return (
@@ -26570,8 +26695,8 @@ function App() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-caudal-electric">Registro Delegado</p>
-              <h2 className="mt-2 text-3xl font-black uppercase tracking-[0.08em] text-white">Datos en vivo</h2>
-              <p className="mt-2 max-w-3xl text-sm text-slate-400">Datos procedentes del registro delegado. Capa independiente: no alimenta rankings oficiales salvo partidos marcados como Validados.</p>
+              <h2 className="mt-2 text-3xl font-black uppercase tracking-[0.08em] text-white">Análisis del registro</h2>
+              <p className="mt-2 max-w-3xl text-sm text-slate-400">Lectura exclusiva de las ocho acciones del delegado. No incorpora métricas del Análisis Grupal ni estimaciones.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {DELEGATED_DATA_FILTERS.map((filter) => (
@@ -26579,22 +26704,11 @@ function App() {
               ))}
             </div>
           </div>
-          {visibleEvents.length ? (
-            <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-              {[
-                ['Partidos registrados', visibleSummary.registeredMatches],
-                ['Partidos validados', visibleSummary.validatedMatches],
-                ['Eventos registrados', visibleSummary.events],
-                ['Sin identificar', visibleSummary.unidentified],
-                ['Minutos cubiertos', visibleSummary.coveredMinutes],
-                ['Jugadores con eventos', visibleSummary.playersWithEvents],
-              ].map(([label, value]) => renderMetricCard(label, value))}
-            </div>
-          ) : (
+          {!visibleEvents.length ? (
             <div className="empty-state mt-5">
               <p className="font-bold text-slate-200">Sin datos registrados</p>
             </div>
-          )}
+          ) : null}
           <div className="mt-4 flex flex-wrap gap-2">
             {DELEGATED_DATA_STATUSES.map((status) => (
               <span key={status} className={`rounded-2xl border px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${getDelegatedStatusTone(status)}`}>{status}: {statusCounts[status] || 0}</span>
@@ -26603,170 +26717,189 @@ function App() {
         </section>
 
         <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-4">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Panel de analisis delegado</p>
-              <p className="mt-1 text-sm text-slate-400">Datos procedentes del registro delegado · {delegatedRankingScope}. Filtro de estado: {delegatedStatusFilter}.</p>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Panel de análisis delegado</p>
+              <p className="mt-1 text-sm text-slate-400">Solo eventos validados del Registro Delegado. Filtro de estado de partido: {delegatedStatusFilter}.</p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {['Solo validados', 'Todos los registros'].map((scope) => (
-                <button key={scope} type="button" onClick={() => setDelegatedRankingScope(scope)} className={`rounded-2xl px-3 py-2 text-xs font-black uppercase tracking-[0.12em] ${delegatedRankingScope === scope ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}>{scope}</button>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+              <select value={delegatedAnalysisTeamFilter} onChange={(event) => setDelegatedAnalysisTeamFilter(event.target.value)} className="rounded-xl border border-white/10 bg-[#0c1930] px-3 py-2 text-xs font-bold text-white">
+                <option value="todos">Todos los equipos</option><option value="caudal">Caudal</option><option value="rival">Rival</option>
+              </select>
+              <select value={delegatedAnalysisPlayerFilter} onChange={(event) => setDelegatedAnalysisPlayerFilter(event.target.value)} className="rounded-xl border border-white/10 bg-[#0c1930] px-3 py-2 text-xs font-bold text-white">
+                <option value="">Todos los jugadores</option>
+                {players.map((player) => <option key={player.id} value={player.id}>{displayPlayerName(player)}</option>)}
+              </select>
+              <select value={delegatedAnalysisEventFilter} onChange={(event) => setDelegatedAnalysisEventFilter(event.target.value)} className="rounded-xl border border-white/10 bg-[#0c1930] px-3 py-2 text-xs font-bold text-white">
+                <option value="todos">Todos los eventos</option>
+                {delegatedAnalysisEventCatalog.map((item) => <option key={item.type} value={item.type}>{item.label}</option>)}
+              </select>
+              <select value={delegatedAnalysisPeriodFilter} onChange={(event) => setDelegatedAnalysisPeriodFilter(event.target.value)} className="rounded-xl border border-white/10 bg-[#0c1930] px-3 py-2 text-xs font-bold text-white">
+                <option value="todos">Todo el partido</option>
+                {delegatedPeriodLabels.map((period) => <option key={period} value={period}>{period}'</option>)}
+              </select>
+              <div className="rounded-xl border border-emerald-300/15 bg-emerald-300/[0.06] px-3 py-2 text-center text-xs font-black text-emerald-100">{rankingEvents.length} validados</div>
+            </div>
+          </div>
+          <div className="mt-5 rounded-3xl border border-white/5 bg-white/[0.04] p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Calidad del registro</p>
+                <p className="mt-1 text-xs text-slate-500">Trazabilidad de los eventos visibles en el filtro de estado.</p>
+              </div>
+              <p className="text-3xl font-black text-emerald-200">{registryQuality.percent}%</p>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                ['Registrados', registryQuality.registered, 'text-white'],
+                ['Validados', registryQuality.validated, 'text-emerald-200'],
+                ['Pendientes', registryQuality.pending, 'text-yellow-200'],
+                ['Descartados', registryQuality.discarded, 'text-red-200'],
+              ].map(([label, value, tone]) => (
+                <div key={label} className="rounded-2xl bg-black/15 p-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
+                  <p className={`mt-1 text-2xl font-black ${tone}`}>{value}</p>
+                </div>
               ))}
+            </div>
+            <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+              <div className="h-full rounded-full bg-emerald-300 transition-all" style={{ width: `${registryQuality.percent}%` }} />
             </div>
           </div>
           {rankingEvents.length ? (
             <div className="mt-5 space-y-5">
-              <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-                <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Comparativa de eventos</p>
-                  <div className="mt-4 space-y-3">
-                    {metricComparisonRows.map((row) => (
-                      <div key={row.key} className="grid grid-cols-[minmax(6rem,1fr)_auto_minmax(8rem,1.35fr)_auto] items-center gap-3 rounded-2xl bg-black/15 px-3 py-2 max-sm:grid-cols-[1fr_auto_auto]">
-                        <span className="text-sm font-bold text-slate-300">{row.label}</span>
-                        <span className="text-sm font-black text-caudal-electric">{row.caudal}</span>
-                        <div className="flex h-7 items-center gap-1.5 max-sm:col-span-3 max-sm:order-last">
-                          <div className="flex-1">
-                            <div className="h-2 rounded-full bg-white/10">
-                              <div className="h-2 rounded-full bg-caudal-electric" style={{ width: `${Math.max(6, (row.caudal / row.max) * 100)}%` }} />
-                            </div>
-                          </div>
-                          <div className="flex-1">
-                            <div className="h-2 rounded-full bg-white/10">
-                              <div className="h-2 rounded-full bg-red-300" style={{ width: `${Math.max(6, (row.rival / row.max) * 100)}%` }} />
-                            </div>
-                          </div>
-                        </div>
-                        <span className="text-sm font-black text-red-200">{row.rival}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-3 text-xs font-bold text-slate-400">
-                    <span className="inline-flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-caudal-electric" />Caudal</span>
-                    <span className="inline-flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-red-300" />Rival</span>
+              <div>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Resumen comparativo</p>
+                  <div className="flex gap-3 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                    <span className="text-caudal-electric">Caudal</span><span className="text-red-200">Rival</span>
                   </div>
                 </div>
-
-                <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Produccion ofensiva</p>
-                  <div className="mt-4 grid gap-2">
-                    {offensiveRows.map(([label, value]) => {
-                      const maxValue = Math.max(1, ...offensiveRows.map(([, rowValue]) => Number(rowValue || 0)));
-                      return (
-                        <div key={label} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl bg-black/15 px-3 py-2">
-                          <span className="text-sm font-bold text-slate-300">{label}</span>
-                          <span className="text-sm font-black text-white">{value}</span>
-                          <div className="col-span-2 h-2 rounded-full bg-white/10">
-                            <div className="h-2 rounded-full bg-caudal-electric" style={{ width: `${Math.max(7, (Number(value || 0) / maxValue) * 100)}%` }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <div className="rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.07] p-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">Precision de tiro</p>
-                      <p className="mt-1 text-lg font-black text-white">{shotAccuracyText}</p>
-                    </div>
-                  </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {summaryComparisonCards.map((row) => (
+                    <article key={row.key} className="rounded-2xl border border-white/5 bg-white/[0.04] p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="flex h-9 min-w-9 items-center justify-center rounded-xl bg-caudal-electric/10 px-2 text-[10px] font-black text-caudal-electric">
+                          {delegatedAnalysisEventCatalog.find((item) => item.statKey === row.key)?.icon || 'EV'}
+                        </span>
+                        <span className={`rounded-xl px-2 py-1 text-xs font-black ${row.difference > 0 ? 'bg-emerald-300/10 text-emerald-200' : row.difference < 0 ? 'bg-red-300/10 text-red-200' : 'bg-white/10 text-slate-300'}`}>
+                          {row.difference > 0 ? '+' : ''}{row.difference}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-xs font-black uppercase tracking-[0.12em] text-slate-400">{row.label}</p>
+                      <div className="mt-2 flex items-end justify-between">
+                        <span className="text-2xl font-black text-caudal-electric">{row.caudal}</span>
+                        <span className="text-xs font-bold text-slate-600">vs</span>
+                        <span className="text-2xl font-black text-red-200">{row.rival}</span>
+                      </div>
+                    </article>
+                  ))}
                 </div>
               </div>
 
               <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
                 <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Recuperacion y posesion</p>
-                  <div className="mt-4 grid gap-2">
-                    {possessionRows.map(([label, value]) => {
-                      const maxValue = Math.max(1, ...possessionRows.map(([, rowValue]) => Number(rowValue || 0)));
-                      return (
-                        <div key={label} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl bg-black/15 px-3 py-2">
-                          <span className="text-sm font-bold text-slate-300">{label}</span>
-                          <span className="text-sm font-black text-white">{value}</span>
-                          <div className="col-span-2 h-2 rounded-full bg-white/10">
-                            <div className="h-2 rounded-full bg-emerald-300" style={{ width: `${Math.max(7, (Number(value || 0) / maxValue) * 100)}%` }} />
-                          </div>
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Indicadores derivados</p>
+                  <p className="mt-1 text-xs text-slate-500">Operaciones simples sobre los eventos registrados; la fórmula siempre queda visible.</p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                    {derivedIndicators.map((indicator) => (
+                      <div key={indicator.label} className="rounded-2xl bg-black/15 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{indicator.label}</p>
+                        <div className="mt-2 flex items-center justify-between gap-3">
+                          <span className="text-lg font-black text-caudal-electric">{indicator.caudal == null ? '—' : `${indicator.caudal}${indicator.unit}`}</span>
+                          <span className="text-[10px] font-bold text-slate-600">CAU · RIV</span>
+                          <span className="text-lg font-black text-red-200">{indicator.rival == null ? '—' : `${indicator.rival}${indicator.unit}`}</span>
                         </div>
-                      );
-                    })}
-                    <div className="rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.07] p-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-200">Balance de acciones de posesion</p>
-                      <p className="mt-1 text-lg font-black text-white">{possessionBalanceText}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Impacto individual</p>
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    {individualRankingGroups.map((group) => {
-                      const maxValue = Math.max(1, ...group.rows.map((row) => row.value));
-                      return (
-                        <div key={group.key} className="rounded-2xl bg-black/15 p-3">
-                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{group.label}</p>
-                          <div className="mt-3 space-y-2">
-                            {group.rows.map((row) => (
-                              <div key={`${group.key}-${row.player.id}`} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
-                                <span className="text-xs font-black text-slate-500">{row.rank}.</span>
-                                <div className="min-w-0">
-                                  <p className="truncate text-sm font-black text-white">{displayPlayerName(row.player) || row.player.name}</p>
-                                  <div className="mt-1 h-1.5 rounded-full bg-white/10">
-                                    <div className="h-1.5 rounded-full bg-caudal-electric" style={{ width: `${Math.max(8, (row.value / maxValue) * 100)}%` }} />
-                                  </div>
-                                </div>
-                                <span className="text-sm font-black text-caudal-electric">{row.value}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {eventTimelineRows.length ? (
-                <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Eventos por partido</p>
-                  <div className="mt-4 flex h-48 items-end gap-2 overflow-x-auto rounded-2xl bg-black/15 px-3 py-4">
-                    {eventTimelineRows.map((row) => (
-                      <div key={row.match.id} className="flex min-w-16 flex-1 flex-col items-center justify-end gap-2">
-                        <span className="text-xs font-black text-white">{row.events}</span>
-                        <div className={`w-full max-w-10 rounded-t-xl ${row.status === 'Validado' ? 'bg-emerald-300' : row.status === 'Revisado' ? 'bg-yellow-300' : row.status === 'Descartado' ? 'bg-red-300' : 'bg-slate-500'}`} style={{ height: `${Math.max(12, (row.events / maxTimelineEvents) * 135)}px` }} title={row.label} />
-                        <span className="max-w-full truncate text-[10px] font-bold text-slate-500">{row.match.opponent || 'Rival'}</span>
+                        <p className="mt-2 text-[10px] font-semibold text-slate-500">{indicator.formula}</p>
                       </div>
                     ))}
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-3 text-xs font-bold text-slate-400">
-                    <span className="inline-flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-emerald-300" />Validado</span>
-                    <span className="inline-flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-yellow-300" />Revisado</span>
-                    <span className="inline-flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-slate-500" />Sin revisar</span>
-                    <span className="inline-flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-red-300" />Descartado</span>
-                  </div>
                 </div>
-              ) : null}
 
-              <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
-                <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Cobertura del registro</p>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                  {[
-                    ['Partidos con registro', analysisSummary.registeredMatches],
-                    ['Partidos validados', `${analysisSummary.validatedMatches} de ${analysisSummary.registeredMatches}`],
-                    ['Minutos cubiertos', analysisSummary.coveredMinutes],
-                    ['Periodos cubiertos', analysisSummary.coveredPeriods],
-                    ['Sin identificar', analysisSummary.unidentified],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-2xl bg-black/15 p-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
-                      <p className="mt-1 text-lg font-black text-white">{value}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4">
-                  <div className="flex items-center justify-between gap-3 text-xs font-bold text-slate-400">
-                    <span>{analysisSummary.validatedMatches} de {analysisSummary.registeredMatches} partidos validados</span>
+                <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Rankings individuales</p>
+                  <p className="mt-1 text-xs text-slate-500">Desempate por última acción y después por nombre. Pulsa un jugador para ver su ficha rápida.</p>
+                  {!individualRankingGroups.length ? <p className="mt-4 rounded-2xl bg-black/15 p-4 text-sm font-semibold text-slate-400">No hay eventos validados con jugador asociado para estos filtros.</p> : null}
+                  <div className="mt-4 hidden gap-3 md:grid md:grid-cols-2">
+                    {individualRankingGroups.map((group) => (
+                      <div key={group.key} className="rounded-2xl bg-black/15 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{group.label}</p>
+                        {renderDelegatedRankingRows(group)}
+                      </div>
+                    ))}
                   </div>
-                  <div className="mt-2 h-2 rounded-full bg-white/10">
-                    <div className="h-2 rounded-full bg-emerald-300" style={{ width: `${analysisSummary.registeredMatches ? (analysisSummary.validatedMatches / analysisSummary.registeredMatches) * 100 : 0}%` }} />
+                  <div className="mt-4 space-y-2 md:hidden">
+                    {individualRankingGroups.map((group) => {
+                      const expanded = delegatedExpandedRanking === group.key;
+                      return (
+                        <div key={group.key} className="overflow-hidden rounded-2xl bg-black/15">
+                          <button type="button" onClick={() => setDelegatedExpandedRanking(expanded ? '' : group.key)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left">
+                            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-300">{group.label}</span>
+                            <span className="text-xs font-black text-caudal-electric">{expanded ? '−' : '+'}</span>
+                          </button>
+                          {expanded ? <div className="border-t border-white/5 px-2 pb-3">{renderDelegatedRankingRows(group)}</div> : (
+                            <div className="border-t border-white/5 px-2 pb-3">{renderDelegatedRankingRows(group, true)}</div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
+
+              <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+                <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Evolución por tramos</p>
+                      <p className="mt-1 text-xs text-slate-500">Comparación cronológica Caudal · Rival.</p>
+                    </div>
+                    <select value={delegatedEvolutionEventType} onChange={(event) => setDelegatedEvolutionEventType(event.target.value)} className="rounded-xl border border-white/10 bg-[#0c1930] px-3 py-2 text-xs font-bold text-white">
+                      {delegatedAnalysisEventCatalog.filter((item) => ['tiro', 'centro', 'robo', 'perdida', 'corner'].includes(item.type)).map((item) => (
+                        <option key={item.type} value={item.type}>{item.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="mt-5 flex h-56 min-w-[34rem] items-end gap-3 overflow-hidden rounded-2xl bg-black/15 px-4 pb-4 pt-8 max-sm:min-w-0 max-sm:gap-1.5 max-sm:px-2">
+                    {evolutionRows.map((row) => (
+                      <div key={row.period} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-2">
+                        <div className="flex h-36 w-full items-end justify-center gap-1">
+                          <div title={`Caudal · ${row.caudal}`} className="w-3 max-w-[42%] rounded-t-md bg-caudal-electric sm:w-5" style={{ height: `${row.caudal ? Math.max(8, (row.caudal / maxEvolutionValue) * 100) : 2}%` }} />
+                          <div title={`Rival · ${row.rival}`} className="w-3 max-w-[42%] rounded-t-md bg-red-300 sm:w-5" style={{ height: `${row.rival ? Math.max(8, (row.rival / maxEvolutionValue) * 100) : 2}%` }} />
+                        </div>
+                        <span className="text-[9px] font-black text-slate-500 sm:text-[10px]">{row.period}'</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex gap-4 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                    <span className="inline-flex items-center gap-2"><span className="h-2 w-4 rounded-full bg-caudal-electric" />Caudal</span>
+                    <span className="inline-flex items-center gap-2"><span className="h-2 w-4 rounded-full bg-red-300" />Rival</span>
+                  </div>
+                </div>
+
+                <div className="flex min-h-0 flex-col rounded-3xl border border-white/5 bg-white/[0.04] p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Momentum del partido</p>
+                  <p className="mt-1 text-xs text-slate-500">Secuencia real de los eventos validados.</p>
+                  <div className="mt-4 max-h-72 space-y-2 overflow-y-auto pr-1">
+                    {momentumRows.map((event) => {
+                      const catalogItem = delegatedAnalysisEventCatalog.find((item) => item.type === getQuickEventBaseType(event.tipoEvento));
+                      const player = players.find((candidate) => candidate.id === getDelegatedAnalysisPlayerId(event));
+                      const isCaudal = getQuickEventSide(event) === 'caudal';
+                      return (
+                        <div key={`${event.match?.id}-${event.id}`} className="grid grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-3 rounded-2xl bg-black/15 px-3 py-2">
+                          <span className={`rounded-lg px-2 py-1 text-[10px] font-black ${isCaudal ? 'bg-caudal-electric/15 text-caudal-electric' : 'bg-red-300/15 text-red-200'}`}>{Number(event.minute || 0)}'</span>
+                          <span className="text-[9px] font-black text-slate-500">{catalogItem?.icon || 'EV'}</span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-xs font-black text-white">{catalogItem?.label || 'Evento'} · {isCaudal ? 'Caudal' : 'Rival'}</span>
+                            <span className="block truncate text-[10px] font-semibold text-slate-500">{player ? displayPlayerName(player) : 'Sin jugador'} · {event.match?.opponent || 'Rival'}</span>
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
             </div>
           ) : (
             <div className="empty-state mt-5">
@@ -26776,20 +26909,57 @@ function App() {
         </section>
 
         <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Validación por partido</p>
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Validación por partido</p>
+              <p className="mt-1 text-xs text-slate-500">La selección múltiple conserva la lógica existente: cambia el estado completo de cada partido.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setDelegatedSelectedMatchIds((current) => current.length === visibleMatches.length ? [] : visibleMatches.map((match) => match.id))}
+                className="rounded-xl bg-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300 hover:bg-white/15"
+              >
+                {delegatedSelectedMatchIds.length === visibleMatches.length && visibleMatches.length ? 'Quitar selección' : 'Seleccionar visibles'}
+              </button>
+              {['Validado', 'Descartado'].map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  disabled={!delegatedSelectedMatchIds.length || Boolean(delegatedStatusSavingId)}
+                  onClick={() => updateSelectedDelegatedMatchesStatus(status)}
+                  className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-40 ${
+                    status === 'Validado' ? 'bg-emerald-300 text-emerald-950' : 'bg-red-300 text-red-950'
+                  }`}
+                >
+                  {status} ({delegatedSelectedMatchIds.length})
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="mt-5 grid gap-4">
             {visibleMatches.length ? visibleMatches.map((match) => {
               const status = getDelegatedDataStatus(match);
               const audit = auditMatch(match);
+              const isSelected = delegatedSelectedMatchIds.includes(match.id);
               return (
-                <div key={match.id} className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
+                <div key={match.id} className={`rounded-3xl border p-5 transition ${isSelected ? 'border-caudal-electric/50 bg-caudal-electric/[0.06]' : 'border-white/5 bg-white/[0.04]'}`}>
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                    <div>
+                    <div className="flex min-w-0 items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => setDelegatedSelectedMatchIds((current) => current.includes(match.id) ? current.filter((id) => id !== match.id) : [...current, match.id])}
+                        className="mt-1 h-5 w-5 shrink-0 accent-caudal-electric"
+                        aria-label={`Seleccionar partido contra ${match.opponent || 'Rival'}`}
+                      />
+                      <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-lg font-black text-white">{match.opponent || 'Rival'}</p>
                         <span className={`rounded-2xl border px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${getDelegatedStatusTone(status)}`}>{status}</span>
                       </div>
                       <p className="mt-1 text-sm text-slate-500">{matchDisplayDate(match.date)} · {getCompetitionFromCatalog(match).label || 'Partido'} · {getMatchScoreLabel(match)}</p>
+                      </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {DELEGATED_DATA_STATUSES.map((nextStatus) => (
@@ -26797,13 +26967,14 @@ function App() {
                       ))}
                     </div>
                   </div>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
                     {[
-                      ['Eventos', audit.events.length],
+                      ['Eventos totales', audit.events.length],
+                      ['Validados', `${audit.validated} · ${audit.validatedPercent}%`],
+                      ['Pendientes', audit.pending],
                       ['Sin identificar', audit.unidentified],
-                      ['Duracion cubierta', audit.coverageLabel],
-                      ['Periodos', audit.periods],
-                      ['Comprobaciones', audit.checks.length || 'Sin alertas'],
+                      ['Duración cubierta', audit.coverageLabel],
+                      ['Última revisión', audit.lastReview ? matchDisplayDate(audit.lastReview) : 'No registrada'],
                     ].map(([label, value]) => (
                       <div key={label} className="rounded-2xl bg-black/15 p-3">
                         <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
@@ -26813,12 +26984,13 @@ function App() {
                   </div>
                   <div className="mt-4">
                     <div className="flex items-center justify-between gap-3 text-xs font-bold text-slate-400">
-                      <span>Cobertura por duracion real</span>
-                      <span>{audit.coverageLabel}</span>
+                      <span>Validación de eventos</span>
+                      <span>{audit.validated} de {audit.events.length} · {audit.validatedPercent}%</span>
                     </div>
                     <div className="mt-2 h-2 rounded-full bg-white/10">
-                      <div className="h-2 rounded-full bg-caudal-electric" style={{ width: `${Math.min(100, (audit.coveredMinutes / 90) * 100)}%` }} />
+                      <div className="h-2 rounded-full bg-emerald-300" style={{ width: `${audit.validatedPercent}%` }} />
                     </div>
+                    <p className="mt-2 text-[10px] font-semibold text-slate-600">Cobertura temporal: {audit.coverageLabel} · {audit.periods}</p>
                   </div>
                   {audit.checks.length ? (
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -26836,6 +27008,49 @@ function App() {
             )}
           </div>
         </section>
+        {quickPlayerRow ? (
+          <div className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-950/75 p-3 backdrop-blur-sm sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-label={`Ficha rápida de ${displayPlayerName(quickPlayerRow.player)}`}>
+            <button type="button" aria-label="Cerrar ficha rápida" onClick={() => setDelegatedQuickPlayerId('')} className="absolute inset-0 cursor-default" />
+            <article className="relative z-10 max-h-[88dvh] w-full max-w-2xl overflow-y-auto rounded-[2rem] border border-white/10 bg-[#091428] p-5 shadow-[0_30px_100px_rgba(0,0,0,0.55)] sm:p-7">
+              <button type="button" onClick={() => setDelegatedQuickPlayerId('')} className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-lg font-black text-white hover:bg-white/15" aria-label="Cerrar">×</button>
+              <div className="flex items-center gap-4 pr-12">
+                <div className="h-20 w-20 shrink-0 overflow-hidden rounded-3xl border border-caudal-electric/25 bg-slate-900">
+                  <PlayerPortrait player={quickPlayerRow.player} className="h-full w-full" fallbackTextClassName="text-lg" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Ficha rápida · Registro Delegado</p>
+                  <h3 className="mt-1 truncate text-2xl font-black text-white">{displayPlayerName(quickPlayerRow.player)}</h3>
+                  <p className="mt-1 text-sm font-semibold text-slate-500">
+                    {quickPlayerRow.player.position || 'Sin posición'}
+                    {quickPlayerRow.player.number || quickPlayerRow.player.dorsal ? ` · #${quickPlayerRow.player.number || quickPlayerRow.player.dorsal}` : ''}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {delegatedAnalysisEventCatalog.map((item) => (
+                  <div key={item.type} className="rounded-2xl border border-white/5 bg-white/[0.045] p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-black text-caudal-electric">{item.icon}</span>
+                      <span className="text-2xl font-black text-white">{quickPlayerRow.stats[item.statKey] || 0}</span>
+                    </div>
+                    <p className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{item.label}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl bg-black/20 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Última acción</p>
+                  <p className="mt-1 text-xl font-black text-white">{quickPlayerLastMinute == null ? 'Sin eventos' : `${quickPlayerLastMinute}'`}</p>
+                </div>
+                <div className="rounded-2xl bg-black/20 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Partidos con registro</p>
+                  <p className="mt-1 text-xl font-black text-white">{quickPlayerRow.matches}</p>
+                </div>
+              </div>
+              <p className="mt-4 text-xs leading-5 text-slate-500">Esta ficha contiene únicamente acciones validadas procedentes del Registro Delegado y respeta los filtros activos.</p>
+            </article>
+          </div>
+        ) : null}
       </main>
     );
   };
