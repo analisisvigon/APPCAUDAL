@@ -3405,14 +3405,14 @@ const PerformanceResponseActivityBadge = ({
 
   return (
     <span
-      title={showTooltip ? tooltip : undefined}
+      title={showTooltip ? `${presentation.label} · ${tooltip}` : undefined}
       aria-label={tooltip}
-      className={`inline-flex max-w-full items-center gap-1.5 rounded-lg border font-black leading-none ${presentation.classes} ${
-        compact ? 'px-2 py-1 text-[9px]' : 'px-3 py-2 text-sm'
+      className={`inline-flex min-w-0 max-w-full items-center overflow-hidden whitespace-nowrap rounded-lg border font-black leading-none ${presentation.classes} ${
+        compact ? 'gap-1 px-1.5 py-1 text-[8px]' : 'gap-1.5 px-3 py-2 text-sm'
       } ${className}`}
     >
-      <span className={compact ? 'text-[10px]' : 'text-sm'} aria-hidden="true">{presentation.icon}</span>
-      <span className="whitespace-nowrap">{presentation.label}</span>
+      <span className={`shrink-0 ${compact ? 'text-[9px]' : 'text-sm'}`} aria-hidden="true">{presentation.icon}</span>
+      <span className="min-w-0 truncate whitespace-nowrap">{presentation.label}</span>
     </span>
   );
 };
@@ -24085,8 +24085,8 @@ function App() {
         </span>
       );
     };
-    const renderActivityBadges = (row, compact = false) => (
-      <span className="flex flex-wrap gap-1">
+    const renderActivityBadges = (row, compact = false, fixedLayout = false) => (
+      <span className={fixedLayout ? 'grid min-w-0 grid-cols-2 gap-1 sm:grid-cols-1' : 'flex flex-wrap gap-1'}>
         {[
           ['wellness', row.activity.wellness],
           ['rpe', row.activity.rpe],
@@ -24098,6 +24098,7 @@ function App() {
             daysSinceResponse={activity.daysSinceResponse}
             invalidDate={activity.invalidDate}
             compact={compact}
+            className={fixedLayout ? 'w-full justify-start' : ''}
           />
         ))}
       </span>
@@ -25296,13 +25297,13 @@ function App() {
             ) : null}
           </div>
           {selectedDayRows.length ? (
-            <div className="mt-3 grid gap-2 lg:grid-cols-2">
+            <div className="mt-3 grid auto-rows-fr gap-2 lg:grid-cols-2">
               {selectedDayRows.map((row) => (
                 <button
                   key={row.player.id}
                   type="button"
                   onClick={() => openPerformancePlayer(row.player.id)}
-                  className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border border-white/[0.07] bg-white/[0.025] px-2.5 py-2 text-left transition hover:border-caudal-electric/25 hover:bg-white/[0.05]"
+                  className="grid h-28 min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-1.5 overflow-hidden rounded-xl border border-white/[0.07] bg-white/[0.025] px-2.5 py-2 text-left transition hover:border-caudal-electric/25 hover:bg-white/[0.05] sm:h-20 sm:grid-cols-[auto_minmax(0,1fr)_9rem] sm:gap-y-0"
                 >
                   <PerformanceStatusRing player={row.player} status={row.status} tooltip={row.tooltip} signals={row.signals} size="sm" />
                   <span className="min-w-0">
@@ -25315,10 +25316,16 @@ function App() {
                     <span className="mt-0.5 block text-[10px] font-bold text-slate-400">
                       Wellness {row.dayWellness === null ? '—' : row.dayWellness.toFixed(1)} · RPE {row.dayRpe === null ? '—' : row.dayRpe.toFixed(1)}
                     </span>
-                    {row.dayComments.length ? <span className="mt-0.5 block truncate text-[9px] text-slate-500">{row.dayComments.join(' · ')}</span> : null}
-                    <span className="mt-1 block sm:hidden">{renderActivityBadges(row, true)}</span>
+                    <span
+                      title={row.dayComments.length ? row.dayComments.join(' · ') : undefined}
+                      className={`mt-0.5 block h-3 truncate text-[9px] text-slate-500 ${row.dayComments.length ? '' : 'invisible'}`}
+                    >
+                      {row.dayComments.length ? row.dayComments.join(' · ') : 'Sin observaciones'}
+                    </span>
                   </span>
-                  <span className="hidden max-w-28 sm:block">{renderActivityBadges(row, true)}</span>
+                  <span className="col-span-2 min-w-0 sm:col-span-1 sm:w-36">
+                    {renderActivityBadges(row, true, true)}
+                  </span>
                 </button>
               ))}
             </div>
