@@ -33,6 +33,7 @@ import {
   getMatchStatusPresentation,
   parseLocalMatchDate,
 } from './utils/matchStatus';
+import { buildRecentActivity, formatRecentActivityTime } from './utils/recentActivity';
 import { cleanImportedFieldValue, extractTransfermarktPlayerId, isEmptyImportedField, normalizeTransfermarktPosition } from './utils/rivalPlayerImport';
 import {
   createGoalParticipantDbFields,
@@ -4958,6 +4959,8 @@ function App() {
   const [isUploadingTeamCrest, setIsUploadingTeamCrest] = useState(false);
   const [homeLoading, setHomeLoading] = useState(false);
   const [homeError, setHomeError] = useState('');
+  const [homeRecentActivity, setHomeRecentActivity] = useState([]);
+  const [homeActivityRefreshVersion, setHomeActivityRefreshVersion] = useState(0);
   const [homePhrase, setHomePhrase] = useState(defaultHomePhrase);
   const [homePhraseDraft, setHomePhraseDraft] = useState(defaultHomePhrase);
   const [isEditingHomePhrase, setIsEditingHomePhrase] = useState(false);
@@ -5763,7 +5766,19 @@ function App() {
     setHomeError('');
 
     try {
-      const [partidosResponse, jugadoresResponse, equiposResponse, statsResponse, goalsResponse, quickEventsResponse, systemEventsResponse, postEventsResponse] = await Promise.all([
+      const [
+        partidosResponse,
+        jugadoresResponse,
+        equiposResponse,
+        statsResponse,
+        goalsResponse,
+        quickEventsResponse,
+        systemEventsResponse,
+        postEventsResponse,
+        trainingSessionsResponse,
+        wellnessResponse,
+        rpeResponse,
+      ] = await Promise.all([
         supabase.from("partidos").select("*").order("date", { ascending: true, nullsFirst: false }),
         supabase.from("jugadores").select("*").order("name", { ascending: true }),
         supabase.from("equipos_rivales").select("*").order("name", { ascending: true }),
@@ -5772,12 +5787,22 @@ function App() {
         supabase.from("match_quick_events").select("*"),
         supabase.from("partido_eventos_sistema").select("*"),
         supabase.from("partido_eventos_post").select("*"),
+        supabase.from("training_sessions").select("*").order("created_at", { ascending: false }).limit(25),
+        supabase.from("wellness_entries").select("*").order("created_at", { ascending: false }).limit(25),
+        supabase.from("rpe_entries").select("*").order("created_at", { ascending: false }).limit(25),
       ]);
       const failed = [partidosResponse, jugadoresResponse, equiposResponse, statsResponse, goalsResponse].find((response) => response.error);
       if (failed) throw failed.error;
       if (quickEventsResponse.error) {
         console.warn('No se pudieron cargar eventos rápidos para Inicio; se continúa sin avisos:', quickEventsResponse.error);
       }
+      [
+        ['training_sessions', trainingSessionsResponse],
+        ['wellness_entries', wellnessResponse],
+        ['rpe_entries', rpeResponse],
+      ].forEach(([source, response]) => {
+        if (response.error) console.warn(`[HOME_RECENT_ACTIVITY] No se pudo consultar ${source}:`, response.error);
+      });
 
       const nextPlayers = (jugadoresResponse.data || []).map(normalizeSupabaseJugador);
       const statsByMatch = (statsResponse.data || []).reduce((acc, row) => {
@@ -5827,10 +5852,19 @@ function App() {
         events: postEventsByMatch[match.id] || [],
       }));
       const baseTeams = (equiposResponse.data || []).map((team) => rivalDbToTeam(team));
+      const nextRecentActivity = buildRecentActivity({
+        matches: partidosResponse.data || [],
+        players: jugadoresResponse.data || [],
+        teams: equiposResponse.data || [],
+        trainingSessions: trainingSessionsResponse.error ? [] : trainingSessionsResponse.data || [],
+        wellnessEntries: wellnessResponse.error ? [] : wellnessResponse.data || [],
+        rpeEntries: rpeResponse.error ? [] : rpeResponse.data || [],
+      });
 
       setPlayers(nextPlayers);
       setEmpty(nextPlayers.length === 0);
       setMatches(nextMatches);
+      setHomeRecentActivity(nextRecentActivity);
       setTeams((currentTeams) =>
         baseTeams.map((team) => {
           const currentTeam = currentTeams.find((item) => item.id === team.id);
@@ -5848,6 +5882,7 @@ function App() {
     } catch (dashboardError) {
       console.error('Error cargando Inicio desde Supabase:', dashboardError);
       setHomeError(dashboardError.message || 'No se pudo cargar el dashboard de Inicio.');
+      setHomeRecentActivity([]);
       return null;
     } finally {
       setHomeLoading(false);
@@ -6525,7 +6560,10 @@ function App() {
     if (activeTab !== 'Inicio') return;
     loadHomeDashboardData();
     loadHomePhrase();
-  }, [activeTab]);
+    const refreshHomeOnFocus = () => loadHomeDashboardData();
+    window.addEventListener('focus', refreshHomeOnFocus);
+    return () => window.removeEventListener('focus', refreshHomeOnFocus);
+  }, [activeTab, homeActivityRefreshVersion]);
 
   useEffect(() => {
     if (activeTab !== 'Análisis Grupal') return;
@@ -7826,6 +7864,7 @@ function App() {
     setPerformanceStatus('Sesión guardada en Supabase.');
     setPerformanceSessionDraft((current) => ({ ...current, title: '', plannedDuration: '', notes: '' }));
     await loadPerformanceData();
+    setHomeActivityRefreshVersion((current) => current + 1);
   };
 
   const saveWellnessEntry = async (event) => {
@@ -7859,6 +7898,7 @@ function App() {
     }
     setPerformanceStatus('Wellness guardado en Supabase.');
     await loadPerformanceData();
+    setHomeActivityRefreshVersion((current) => current + 1);
   };
 
   const saveRpeEntry = async (event) => {
@@ -7888,6 +7928,7 @@ function App() {
     }
     setPerformanceStatus('RPE guardado en Supabase.');
     await loadPerformanceData();
+    setHomeActivityRefreshVersion((current) => current + 1);
   };
 
   const resolvePendingRpe = async (pending) => {
@@ -20361,28 +20402,13 @@ function App() {
             ? 'Estable'
             : 'A corregir';
     const nextOpponentTeam = nextMatch ? findTeamByDisplayName(teams, nextMatch.opponent) : null;
-    const hasNextRival = Boolean(
-      nextOpponentTeam?.system ||
-      nextOpponentTeam?.squad?.length ||
-      nextMatch?.preRivalReportText ||
-      nextMatch?.preRivalStyle ||
-      nextMatch?.preRivalStrengths ||
-      nextMatch?.preRivalWeaknesses
-    );
-    const activityCandidates = [
-      nextMatch ? { label: 'Partido creado', detail: `${nextMatch.opponent || 'Rival'} · ${matchDisplayDate(nextMatch.date)}` } : null,
-      nextMatch && hasNextRival ? { label: 'Rival actualizado', detail: nextMatch.opponent || 'Próximo partido' } : null,
-      nextMatch?.postVideoLink ? { label: 'Vídeo añadido', detail: nextMatch.opponent || 'Próximo partido' } : null,
-      lastMatch ? { label: 'Último resultado guardado', detail: getMatchScoreLabel(lastMatch) } : null,
-      players.length ? { label: 'Jugador añadido', detail: displayPlayerName(players[players.length - 1]) || players[players.length - 1].name } : null,
-    ].filter(Boolean).slice(0, 5);
 
     return {
       scopedMatches,
       nextMatch,
       nextOpponentTeam,
       lastMatch,
-      activity: activityCandidates,
+      activity: homeRecentActivity,
       balance,
       leagueResults: calculateLeagueResults(matches),
       recent,
@@ -20392,7 +20418,7 @@ function App() {
       sub23Count: players.filter((player) => calculateAge(player.dob) < 23).length,
       rivalCount: teams.filter((team) => !team.isOwnClub).length,
     };
-  }, [matches, players, teams, matchFilter]);
+  }, [homeRecentActivity, matches, players, teams, matchFilter]);
 
   const openForm = (player = null) => {
     const ownClubTeam = teams.find((team) => team.isOwnClub || team.teamKind === 'own');
@@ -21402,6 +21428,7 @@ function App() {
       setPlayers(jugadores);
       setEmpty(jugadores.length === 0);
       setError(null);
+      setHomeActivityRefreshVersion((current) => current + 1);
       closeForm();
     } catch (saveError) {
       setPlayerFormError(saveError.message || 'No se pudo guardar el jugador');
@@ -21609,6 +21636,7 @@ function App() {
         squad: squad.map(normalizeSquadEntry),
       }));
       await loadTeams();
+      setHomeActivityRefreshVersion((current) => current + 1);
       setSelectedTeamId(teamId);
       setTeamEditMode(false);
       setEditingTeamPlayerIndex(null);
@@ -22023,6 +22051,7 @@ function App() {
       }
 
       await loadPartidos();
+      setHomeActivityRefreshVersion((current) => current + 1);
       setMatchSubmitSuccess('Encuentro guardado correctamente.');
       setSaveStatus('Encuentro guardado correctamente.');
       closeMatchForm();
@@ -27364,14 +27393,17 @@ function App() {
               <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Actividad reciente</h3>
               <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
                 {safeArray(homeDashboard.activity).length ? safeArray(homeDashboard.activity).map((item) => (
-                  <div key={`${item.label}-${item.detail}`} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm transition hover:bg-white/[0.07]">
+                  <div key={item.id} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm transition hover:bg-white/[0.07]">
                     <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-caudal-electric" />
                     <div className="min-w-0">
-                      <p className="font-bold text-white">{item.label}</p>
-                      <p className="truncate text-xs text-slate-500">{item.detail}</p>
+                      <p className="font-bold text-white">{item.type}</p>
+                      <p className="mt-0.5 truncate text-xs font-semibold text-slate-300" title={item.entity}>{item.entity}</p>
+                      <p className="mt-1 truncate text-[10px] text-slate-500" title={`${item.description} · ${new Date(item.timestamp).toLocaleString('es-ES')}`}>
+                        {item.description} · {formatRecentActivityTime(item.timestamp)}
+                      </p>
                     </div>
                   </div>
-                )) : <p className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-sm text-slate-400 md:col-span-2 xl:col-span-5">Sin actividad reciente guardada.</p>}
+                )) : <p className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-sm text-slate-400 md:col-span-2 xl:col-span-5">Todavía no hay actividad reciente.</p>}
               </div>
             </section>
 

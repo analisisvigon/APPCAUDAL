@@ -30,6 +30,7 @@
     "test:delegated-save-flow": "node src/utils/delegatedEventSaveFlow.test.js",
     "test:player-display-name": "node src/utils/playerDisplayName.test.js",
     "test:match-status": "node src/utils/matchStatus.test.js",
+    "test:recent-activity": "node src/utils/recentActivity.test.js",
     "test:player-positions": "node src/constants/playerPositions.test.js",
     "test:global-players": "node src/utils/globalPlayerStore.test.js",
     "test:player-source-analysis": "node src/utils/playerSourceAnalysis.test.js",
