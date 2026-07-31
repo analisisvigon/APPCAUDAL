@@ -720,6 +720,164 @@ assert.equal(
   'El informe debe identificar fechas inválidas.'
 );
 
+const currentWellnessHeaders = [
+  'Marca temporal',
+  'Nombre y apellidos.',
+  '¿Cuál tu peso hoy?.',
+  '¿Qué tal dormiste anoche?',
+  'Calidad del sueño',
+  '¿Cuánto te duelen los músculos hoy?',
+  'Daño muscular',
+  'Especificar la molestia en caso de tener alguna.',
+  '¿Cómo de fatigado estás hoy?',
+  '¿Cómo de estresado estás hoy?',
+  'Estado de ánimo.',
+  'Información personal: (molestias, comentarios, etc.).',
+  'Ratio salud',
+];
+const borjaRawRow = [
+  '31/07/2026 08:34:58',
+  'Borja Rodríguez',
+  80.4,
+  'Bien',
+  8,
+  'Nada',
+  1,
+  'Cuádriceps derecho',
+  2,
+  5,
+  7,
+  'Todo bien',
+  8.5,
+];
+const borjaDisplayRow = borjaRawRow.map(String);
+const currentWellnessFields = sandbox.resolveRequiredWellnessFields(
+  currentWellnessHeaders,
+  borjaRawRow,
+  borjaDisplayRow
+);
+assert.deepEqual(
+  JSON.parse(JSON.stringify({
+    sleep: {
+      found: currentWellnessFields.sleep_quality.found,
+      index: currentWellnessFields.sleep_quality.index,
+      header: currentWellnessFields.sleep_quality.header,
+      rawValue: currentWellnessFields.sleep_quality.rawValue,
+      displayValue: currentWellnessFields.sleep_quality.displayValue,
+    },
+    discomfort: {
+      found: currentWellnessFields.discomfort.found,
+      index: currentWellnessFields.discomfort.index,
+      header: currentWellnessFields.discomfort.header,
+      rawValue: currentWellnessFields.discomfort.rawValue,
+      displayValue: currentWellnessFields.discomfort.displayValue,
+    },
+    comment: {
+      found: currentWellnessFields.comment.found,
+      index: currentWellnessFields.comment.index,
+      header: currentWellnessFields.comment.header,
+      rawValue: currentWellnessFields.comment.rawValue,
+      displayValue: currentWellnessFields.comment.displayValue,
+    },
+  })),
+  {
+    sleep: {
+      found: true,
+      index: 5,
+      header: 'Calidad del sueño',
+      rawValue: 8,
+      displayValue: '8',
+    },
+    discomfort: {
+      found: true,
+      index: 8,
+      header: 'Especificar la molestia en caso de tener alguna.',
+      rawValue: 'Cuádriceps derecho',
+      displayValue: 'Cuádriceps derecho',
+    },
+    comment: {
+      found: true,
+      index: 12,
+      header: 'Información personal: (molestias, comentarios, etc.).',
+      rawValue: 'Todo bien',
+      displayValue: 'Todo bien',
+    },
+  },
+  'La estructura actual de Wellness debe resolver los tres índices 1-based sin mezclar campos.'
+);
+const borjaPayload = sandbox.buildWellnessPayload(
+  Object.fromEntries(currentWellnessHeaders.map((header, index) => [header, borjaRawRow[index]])),
+  'player-borja',
+  'Europe/Madrid',
+  currentWellnessFields
+);
+assert.equal(borjaPayload.entry_date, '2026-07-31');
+assert.equal(borjaPayload.sleep_quality, 8);
+assert.equal(borjaPayload.discomfort, 'Cuádriceps derecho');
+assert.equal(borjaPayload.comment, 'Todo bien');
+
+const invisibleWellnessHeaders = currentWellnessHeaders.map((header) => {
+  if (header === 'Calidad del sueño') return '  CALIDAD\u200B DEL   SUEÑO...  ';
+  if (header.startsWith('Especificar la molestia')) {
+    return '\uFEFFEspecificar la molestia en caso de tener alguna...';
+  }
+  if (header.startsWith('Información personal')) {
+    return 'Información personal: (molestias, comentarios, etc.).\u2060';
+  }
+  return header;
+});
+const invisibleFields = sandbox.resolveRequiredWellnessFields(
+  invisibleWellnessHeaders,
+  borjaRawRow,
+  borjaDisplayRow
+);
+assert.equal(invisibleFields.sleep_quality.index, 5);
+assert.equal(invisibleFields.discomfort.index, 8);
+assert.equal(invisibleFields.comment.index, 12);
+assert.equal(
+  sandbox.normalizeWellnessHeader('CALIDAD\u200B DEL SUEÑO...'),
+  sandbox.normalizeWellnessHeader('Calidad del sueño'),
+  'La normalización debe ignorar invisibles, tildes, mayúsculas y puntuación terminal.'
+);
+
+const emptyRequiredFields = sandbox.resolveRequiredWellnessFields(
+  currentWellnessHeaders,
+  borjaRawRow.map((value, index) => ([4, 7, 11].includes(index) ? '' : value)),
+  borjaDisplayRow.map((value, index) => ([4, 7, 11].includes(index) ? '' : value))
+);
+assert.equal(emptyRequiredFields.sleep_quality.found, true);
+assert.equal(emptyRequiredFields.sleep_quality.state, 'EMPTY_CELL');
+assert.equal(emptyRequiredFields.discomfort.state, 'EMPTY_CELL');
+assert.equal(emptyRequiredFields.comment.state, 'EMPTY_CELL');
+const emptyPayload = sandbox.buildWellnessPayload(
+  Object.fromEntries(currentWellnessHeaders.map((header, index) => [
+    header,
+    [4, 7, 11].includes(index) ? '' : borjaRawRow[index],
+  ])),
+  'player-borja',
+  'Europe/Madrid',
+  emptyRequiredFields
+);
+assert.equal(emptyPayload.sleep_quality, null);
+assert.equal(emptyPayload.discomfort, '');
+assert.equal(emptyPayload.comment, '');
+
+const missingCommentHeaders = currentWellnessHeaders.filter((header) =>
+  !header.startsWith('Información personal')
+);
+const missingCommentFields = sandbox.resolveRequiredWellnessFields(missingCommentHeaders);
+assert.equal(missingCommentFields.comment.found, false);
+assert.equal(missingCommentFields.comment.state, 'COLUMN_NOT_FOUND');
+assert.throws(
+  () => sandbox.assertRequiredWellnessColumns(
+    missingCommentFields,
+    missingCommentHeaders,
+    'Respuestas Wellness'
+  ),
+  /Importación Wellness bloqueada.*comment.*Cabeceras detectadas/,
+  'Una cabecera ausente debe detener todo el flujo antes de construir un payload parcial.'
+);
+
 const realWellnessHeaders = {
   'Fecha': '29/07/2026',
   'Nombre y apellidos.': 'Jugador conocido',
@@ -861,6 +1019,10 @@ const wellnessPreviewSource = source.slice(
   source.indexOf('function previewWellnessHistoryCorrection'),
   source.indexOf('function importAllRpeHistory')
 );
+const wellnessInspectorSource = source.slice(
+  source.indexOf('function inspectWellnessRowByPlayerAndDate'),
+  source.indexOf('function findRpeResponseSheet')
+);
 assert.doesNotMatch(
   wellnessImportSource,
   /deleteSupabase\(/,
@@ -870,6 +1032,21 @@ assert.doesNotMatch(
   wellnessPreviewSource,
   /upsertSupabase\(|updateSupabaseById\(|deleteSupabase\(|setValues\(|setValue\(/,
   'La previsualización Wellness debe ser estrictamente de solo lectura.'
+);
+assert.doesNotMatch(
+  wellnessInspectorSource,
+  /supabaseFetch\(|fetchPlayersForForms\(|upsertSupabase\(|updateSupabaseById\(|deleteSupabase\(|setValues\(|setValue\(|ensureTechnicalColumns\(/,
+  'El inspector de Borja no debe escribir ni realizar requests a Supabase.'
+);
+assert.ok(
+  wellnessImportSource.indexOf('assertRequiredWellnessColumns(')
+    < wellnessImportSource.indexOf('fetchPlayersForForms()'),
+  'La importación debe validar las cabeceras antes de cualquier request de jugadores.'
+);
+assert.ok(
+  wellnessImportSource.indexOf('assertRequiredWellnessColumns(')
+    < wellnessImportSource.indexOf("upsertSupabase('wellness_entries'"),
+  'Ningún upsert puede ejecutarse antes de validar todas las columnas obligatorias.'
 );
 assert.doesNotMatch(
   wellnessHistoryAuditSource,

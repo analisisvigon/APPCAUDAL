@@ -80,11 +80,21 @@ const RPE_HEADER_CANDIDATES = ['RPE', 'RPE (1-10)', 'RPE 1-10', 'Columna 4'];
 const RPE_SESSION_CODE_HEADERS = ['Código sesión', 'Codigo sesion', 'Código de sesión', 'Codigo de sesion', 'form_code'];
 const TIMESTAMP_HEADER_CANDIDATES = ['Marca temporal', 'Timestamp', 'Fecha', 'Columna 1'];
 const RPE_COMMENT_HEADER_CANDIDATES = ['Comentario', 'Comentarios', 'Columna 5'];
+const WELLNESS_SLEEP_QUALITY_HEADER_CANDIDATES = [
+  'Calidad del sueño',
+  'Calidad del sueno',
+  '¿Qué tal dormiste anoche?',
+  'Sueño',
+  'Sueno',
+];
 const WELLNESS_DISCOMFORT_HEADER_CANDIDATES = [
+  'Especificar la molestia en caso de tener alguna.',
   'Especificar la molestia en caso de tener alguna',
   'Molestias',
 ];
 const WELLNESS_COMMENT_HEADER_CANDIDATES = [
+  'Información personal: (molestias, comentarios, etc.).',
+  'Información personal: (molestias, comentarios, etc.)',
   'Información personal: (molestias, comentarios)',
   'Comentario',
   'Comentarios',
@@ -119,6 +129,16 @@ function onWellnessSubmit(e) {
   try {
     submission = readSubmittedSheetRow(e, { waitForHeader: 'Ratio salud' });
     const row = submission.values;
+    const wellnessFields = resolveRequiredWellnessFields(
+      submission.headers,
+      submission.rawValues,
+      submission.displayValues
+    );
+    assertRequiredWellnessColumns(
+      wellnessFields,
+      submission.headers,
+      submission.sheet.getName()
+    );
     const playerName = getFirstValue(row, ['Nombre y apellidos.', 'Nombre y apellidos', 'Jugador', 'Nombre']);
     const player = findPlayerIdByFormName(playerName);
     if (!player) {
@@ -128,7 +148,8 @@ function onWellnessSubmit(e) {
     const payload = buildWellnessPayload(
       row,
       player.jugador_id,
-      getSheetTimeZone(submission.sheet)
+      getSheetTimeZone(submission.sheet),
+      wellnessFields
     );
 
     requireFields(payload, ['jugador_id', 'entry_date'], 'wellness');
@@ -225,6 +246,11 @@ function importAllWellnessHistory() {
   }
 
   SpreadsheetApp.flush();
+  assertRequiredWellnessColumns(
+    resolveRequiredWellnessFields(technical.headers),
+    technical.headers,
+    sheet.getName()
+  );
   const rowItems = readWellnessHistoryRows(sheet, technical.headers, technical.lastColumn);
   const players = fetchPlayersForForms();
   const historyPlan = buildWellnessHistoryImportPlan(rowItems, players, getSheetTimeZone(sheet));
@@ -326,6 +352,11 @@ function previewWellnessHistoryCorrection() {
   const headers = lastColumn
     ? sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0]
     : [];
+  assertRequiredWellnessColumns(
+    resolveRequiredWellnessFields(headers),
+    headers,
+    sheet.getName()
+  );
   const rowItems = readWellnessHistoryRows(sheet, headers, lastColumn);
   const players = fetchPlayersForForms();
   const historyPlan = buildWellnessHistoryImportPlan(rowItems, players, getSheetTimeZone(sheet));
@@ -925,14 +956,11 @@ function damerauLevenshteinDistance(leftValue, rightValue) {
   return matrix[left.length][right.length];
 }
 
-function buildWellnessPayload(row, playerId, timeZone) {
-  const sleepValue = getFirstValue(row, [
-    'Calidad del sueño',
-    'Calidad del sueno',
-    '¿Qué tal dormiste anoche?',
-    'Sueño',
-    'Sueno',
-  ]);
+function buildWellnessPayload(row, playerId, timeZone, resolvedWellnessFields) {
+  const fields = resolvedWellnessFields || resolveRequiredWellnessFieldsFromObject(row);
+  const sleepValue = fields.sleep_quality.found
+    ? fields.sleep_quality.rawValue
+    : getFirstValue(row, WELLNESS_SLEEP_QUALITY_HEADER_CANDIDATES);
   const sorenessValue = getFirstValue(row, [
     'Daño muscular',
     'Dano muscular',
@@ -962,8 +990,8 @@ function buildWellnessPayload(row, playerId, timeZone) {
     stress: toWellnessScale(getFirstValue(row, ['¿Cómo de estresado estás hoy?', 'Estrés', 'Estres']), 'high-is-bad'),
     mood: toWellnessScale(moodValue, 'mood'),
     weight: toNullableNumber(getWellnessWeightValue(row)),
-    discomfort: getFirstValue(row, WELLNESS_DISCOMFORT_HEADER_CANDIDATES) || '',
-    comment: getFirstValue(row, WELLNESS_COMMENT_HEADER_CANDIDATES) || '',
+    discomfort: fields.discomfort.found ? fields.discomfort.rawValue || '' : '',
+    comment: fields.comment.found ? fields.comment.rawValue || '' : '',
     health_ratio: toHealthRatio(getFirstValue(row, ['Ratio salud'])),
   };
 }
@@ -987,7 +1015,10 @@ function buildWellnessHistoryImportPlan(rowItems, players, timeZone) {
       if (!player) {
         throw new Error(`Jugador no encontrado en public.jugadores: "${playerName}". No se inserta wellness.`);
       }
-      const payload = buildWellnessPayload(row, player.jugador_id, timeZone);
+      const wellnessFields = item.rawRow
+        ? resolveRequiredWellnessFields(item.headers || Object.keys(row), item.rawRow, item.displayRow)
+        : resolveRequiredWellnessFieldsFromObject(row);
+      const payload = buildWellnessPayload(row, player.jugador_id, timeZone, wellnessFields);
       requireFields(payload, ['jugador_id', 'entry_date'], 'wellness');
       const key = `${payload.jugador_id}|${payload.entry_date}`;
       const existing = groupsByKey[key];
@@ -1031,9 +1062,14 @@ function buildWellnessHistoryImportPlan(rowItems, players, timeZone) {
 function readWellnessHistoryRows(sheet, headers, lastColumn) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2 || !lastColumn) return [];
-  const rows = sheet.getRange(2, 1, lastRow - 1, lastColumn).getValues();
+  const range = sheet.getRange(2, 1, lastRow - 1, lastColumn);
+  const rows = range.getValues();
+  const displayRows = range.getDisplayValues();
   return rows.map((row, index) => ({
     rowNumber: index + 2,
+    headers,
+    rawRow: row,
+    displayRow: displayRows[index],
     values: Object.fromEntries(
       headers.map((header, columnIndex) => [String(header).trim(), row[columnIndex]])
     ),
@@ -1045,6 +1081,141 @@ function findMatchingHeader(headers, candidates) {
   return (Array.isArray(headers) ? headers : []).find((header) =>
     normalizedCandidates.includes(normalizeName(header))
   ) || '';
+}
+
+function normalizeWellnessHeader(value) {
+  return String(value || '')
+    .replace(/[\u00AD\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.,;:!?¡¿…]+$/g, '')
+    .trim();
+}
+
+function resolveWellnessColumn(headers, candidates, rawRow, displayRow) {
+  const headerList = Array.isArray(headers) ? headers : [];
+  const indexedHeaders = headerList.map((header, zeroBasedIndex) => ({
+    header: String(header || ''),
+    normalizedHeader: normalizeWellnessHeader(header),
+    zeroBasedIndex,
+  }));
+  let matches = [];
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    const normalizedCandidate = normalizeWellnessHeader(candidate);
+    matches = indexedHeaders.filter((item) => item.normalizedHeader === normalizedCandidate);
+    if (matches.length) break;
+  }
+
+  if (!matches.length) {
+    return {
+      found: false,
+      index: null,
+      header: '',
+      rawValue: undefined,
+      displayValue: undefined,
+      state: 'COLUMN_NOT_FOUND',
+      error: 'Cabecera no encontrada.',
+    };
+  }
+  if (matches.length > 1) {
+    return {
+      found: false,
+      index: null,
+      header: matches.map((item) => item.header).join(' | '),
+      rawValue: undefined,
+      displayValue: undefined,
+      state: 'AMBIGUOUS_COLUMN',
+      error: `Varias cabeceras compatibles: ${matches.map((item) => item.header).join(' | ')}`,
+    };
+  }
+
+  const match = matches[0];
+  const hasRawRow = Array.isArray(rawRow);
+  const hasDisplayRow = Array.isArray(displayRow);
+  if (
+    (hasRawRow && match.zeroBasedIndex >= rawRow.length)
+    || (hasDisplayRow && match.zeroBasedIndex >= displayRow.length)
+  ) {
+    return {
+      found: true,
+      index: match.zeroBasedIndex + 1,
+      header: match.header,
+      rawValue: undefined,
+      displayValue: undefined,
+      state: 'READ_ERROR',
+      error: 'La fila no contiene el índice de la columna detectada.',
+    };
+  }
+
+  const rawValue = hasRawRow ? rawRow[match.zeroBasedIndex] : undefined;
+  const displayValue = hasDisplayRow ? displayRow[match.zeroBasedIndex] : undefined;
+  const empty = hasRawRow && (
+    rawValue === ''
+    || rawValue === null
+    || rawValue === undefined
+  ) && (
+    !hasDisplayRow
+    || displayValue === ''
+    || displayValue === null
+    || displayValue === undefined
+  );
+  return {
+    found: true,
+    index: match.zeroBasedIndex + 1,
+    header: match.header,
+    rawValue,
+    displayValue,
+    state: hasRawRow ? (empty ? 'EMPTY_CELL' : 'VALUE') : 'COLUMN_FOUND',
+    error: '',
+  };
+}
+
+function resolveRequiredWellnessFields(headers, rawRow, displayRow) {
+  return {
+    sleep_quality: resolveWellnessColumn(
+      headers,
+      WELLNESS_SLEEP_QUALITY_HEADER_CANDIDATES,
+      rawRow,
+      displayRow
+    ),
+    discomfort: resolveWellnessColumn(
+      headers,
+      WELLNESS_DISCOMFORT_HEADER_CANDIDATES,
+      rawRow,
+      displayRow
+    ),
+    comment: resolveWellnessColumn(
+      headers,
+      WELLNESS_COMMENT_HEADER_CANDIDATES,
+      rawRow,
+      displayRow
+    ),
+  };
+}
+
+function resolveRequiredWellnessFieldsFromObject(row) {
+  const headers = Object.keys(row || {});
+  const rawRow = headers.map((header) => row[header]);
+  return resolveRequiredWellnessFields(headers, rawRow, rawRow);
+}
+
+function assertRequiredWellnessColumns(fields, headers, sheetName) {
+  const missing = Object.entries(fields || {})
+    .filter(([, resolution]) =>
+      !resolution.found
+      || resolution.state === 'AMBIGUOUS_COLUMN'
+      || resolution.state === 'READ_ERROR'
+    )
+    .map(([field, resolution]) => `${field}: ${resolution.error || resolution.state}`);
+  if (!missing.length) return fields;
+  throw new Error([
+    `Importación Wellness bloqueada en la hoja "${sheetName || '(sin nombre)'}".`,
+    `Cabecera no encontrada o inválida: ${missing.join(' | ')}`,
+    `Cabeceras detectadas: ${(Array.isArray(headers) ? headers : []).join(' | ') || '(ninguna)'}`,
+  ].join(' '));
 }
 
 function fetchAllWellnessEntriesForHistoryAudit() {
@@ -1600,6 +1771,127 @@ function inspectWellnessWeightColumn() {
   return result;
 }
 
+function inspectWellnessRowByPlayerAndDate(
+  playerName = 'Borja Rodríguez',
+  requestedEntryDate = '2026-07-31'
+) {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = findWellnessResponseSheet(spreadsheet);
+  const timeZone = getSheetTimeZone(sheet);
+  const lastColumn = sheet.getLastColumn();
+  const lastRow = sheet.getLastRow();
+  const headers = lastColumn
+    ? sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0]
+    : [];
+  const playerColumn = resolveWellnessColumn(headers, PLAYER_HEADER_CANDIDATES);
+  const timestampColumn = resolveWellnessColumn(headers, TIMESTAMP_HEADER_CANDIDATES);
+  if (!playerColumn.found || !timestampColumn.found) {
+    throw new Error([
+      `No se puede inspeccionar Wellness en "${sheet.getName()}".`,
+      `Jugador: ${playerColumn.error || playerColumn.header}`,
+      `Timestamp: ${timestampColumn.error || timestampColumn.header}`,
+      `Cabeceras detectadas: ${headers.join(' | ') || '(ninguna)'}`,
+    ].join(' '));
+  }
+
+  if (lastRow < 2) {
+    const emptyResult = {
+      sheet: sheet.getName(),
+      timeZone,
+      requestedPlayer: playerName,
+      requestedEntryDate,
+      headers,
+      matches: [],
+    };
+    console.log('Inspección Wellness de solo lectura: no hay respuestas.', emptyResult);
+    return emptyResult;
+  }
+
+  const range = sheet.getRange(2, 1, lastRow - 1, lastColumn);
+  const rawRows = range.getValues();
+  const displayRows = range.getDisplayValues();
+  const normalizedRequestedPlayer = normalizePlayerName(playerName);
+  const matches = [];
+
+  rawRows.forEach((rawRow, index) => {
+    const displayRow = displayRows[index];
+    const receivedName = rawRow[playerColumn.index - 1];
+    const originalTimestamp = rawRow[timestampColumn.index - 1];
+    const calculatedEntryDate = toIsoDate(originalTimestamp, timeZone);
+    if (
+      normalizePlayerName(receivedName) !== normalizedRequestedPlayer
+      || calculatedEntryDate !== requestedEntryDate
+    ) return;
+
+    const fields = resolveRequiredWellnessFields(headers, rawRow, displayRow);
+    const rowObject = Object.fromEntries(
+      headers.map((header, columnIndex) => [String(header).trim(), rawRow[columnIndex]])
+    );
+    let payload = null;
+    let payloadError = '';
+    try {
+      assertRequiredWellnessColumns(fields, headers, sheet.getName());
+      payload = buildWellnessPayload(
+        rowObject,
+        'NO_CONSULTADO_SOLO_INSPECCION',
+        timeZone,
+        fields
+      );
+    } catch (error) {
+      payloadError = error.message || String(error);
+    }
+
+    const fieldDiagnostic = {
+      sleep_quality: {
+        ...fields.sleep_quality,
+        convertedValue: fields.sleep_quality.found
+          ? toWellnessScale(fields.sleep_quality.rawValue, 'sleep')
+          : undefined,
+      },
+      discomfort: {
+        ...fields.discomfort,
+        convertedValue: fields.discomfort.found
+          ? fields.discomfort.rawValue || ''
+          : undefined,
+      },
+      comment: {
+        ...fields.comment,
+        convertedValue: fields.comment.found
+          ? fields.comment.rawValue || ''
+          : undefined,
+      },
+    };
+    matches.push({
+      sheet: sheet.getName(),
+      timeZone,
+      rowNumber: index + 2,
+      receivedName,
+      originalTimestamp,
+      calculatedEntryDate,
+      headers,
+      fields: fieldDiagnostic,
+      payload,
+      payloadError,
+    });
+  });
+
+  const result = {
+    sheet: sheet.getName(),
+    timeZone,
+    requestedPlayer: playerName,
+    requestedEntryDate,
+    headers,
+    matches,
+  };
+  console.log(
+    matches.length
+      ? `Inspección Wellness de solo lectura: ${matches.length} fila(s) compatible(s).`
+      : 'Inspección Wellness de solo lectura: ninguna fila compatible.',
+    result
+  );
+  return result;
+}
+
 function findRpeResponseSheet(spreadsheet) {
   if (!spreadsheet || typeof spreadsheet.getSheets !== 'function') {
     throw new Error('No se pudo acceder al Google Sheet de RPE.');
@@ -1750,11 +2042,15 @@ function readSubmittedSheetRow(e, options) {
   const technical = ensureTechnicalColumns(sheet);
   const waitForHeader = options && options.waitForHeader;
   let values = {};
+  let rawValues = [];
+  let displayValues = [];
 
   for (let attempt = 0; attempt < FORMULA_RETRY_COUNT; attempt += 1) {
     SpreadsheetApp.flush();
-    const row = sheet.getRange(rowNumber, 1, 1, technical.lastColumn).getValues()[0];
-    values = Object.fromEntries(technical.headers.map((header, index) => [String(header).trim(), row[index]]));
+    const rowRange = sheet.getRange(rowNumber, 1, 1, technical.lastColumn);
+    rawValues = rowRange.getValues()[0];
+    displayValues = rowRange.getDisplayValues()[0];
+    values = Object.fromEntries(technical.headers.map((header, index) => [String(header).trim(), rawValues[index]]));
     if (!waitForHeader || getFirstValue(values, [waitForHeader]) !== '') break;
     if (attempt < FORMULA_RETRY_COUNT - 1) Utilities.sleep(FORMULA_RETRY_DELAY_MS);
   }
@@ -1763,6 +2059,9 @@ function readSubmittedSheetRow(e, options) {
     sheet,
     rowNumber,
     columns: technical.columns,
+    headers: technical.headers,
+    rawValues,
+    displayValues,
     values,
   };
 }
