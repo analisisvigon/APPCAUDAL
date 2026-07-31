@@ -34,6 +34,10 @@ import {
   parseLocalMatchDate,
 } from './utils/matchStatus';
 import { buildRecentActivity, formatRecentActivityTime } from './utils/recentActivity';
+import {
+  buildPerformanceObservations,
+  getPerformanceObservationView,
+} from './utils/performanceObservations';
 import { cleanImportedFieldValue, extractTransfermarktPlayerId, isEmptyImportedField, normalizeTransfermarktPosition } from './utils/rivalPlayerImport';
 import {
   createGoalParticipantDbFields,
@@ -3325,6 +3329,55 @@ const PerformanceStatusRing = ({
           imgClassName="h-full w-full object-cover object-center"
           fallbackTextClassName={size === 'lg' ? 'text-sm' : 'text-[10px]'}
         />
+      </span>
+    </span>
+  );
+};
+
+const PerformanceObservations = ({ observations = [], allowFocus = true, className = '' }) => {
+  const view = getPerformanceObservationView(observations, 2);
+  const tooltipId = React.useId();
+  if (view.isEmpty) {
+    return (
+      <span className={`text-[10px] font-semibold text-slate-600 ${className}`}>
+        {view.emptyLabel}
+      </span>
+    );
+  }
+
+  const sourceClasses = {
+    Molestia: 'border-rose-300/20 bg-rose-300/[0.07] text-rose-100',
+    RPE: 'border-caudal-electric/20 bg-caudal-electric/[0.07] text-caudal-electric',
+    Wellness: 'border-emerald-300/15 bg-emerald-300/[0.055] text-emerald-100',
+  };
+
+  return (
+    <span
+      className={`group/observations relative flex min-w-0 flex-col gap-1 ${className}`}
+      aria-label={view.fullText}
+      aria-describedby={tooltipId}
+      tabIndex={allowFocus ? 0 : undefined}
+    >
+      {view.items.map((item) => (
+        <span key={`${item.sourceLabel}:${item.date}:${item.text}`} className="flex h-5 min-w-0 items-center gap-1">
+          <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.08em] ${sourceClasses[item.sourceLabel] || 'border-white/10 bg-white/[0.04] text-slate-300'}`}>
+            {item.sourceLabel}
+          </span>
+          {item.dateLabel ? (
+            <span className="shrink-0 text-[8px] font-black uppercase text-slate-500">{item.dateLabel}</span>
+          ) : null}
+          <span className="min-w-0 truncate text-[10px] font-semibold text-slate-300">{item.text}</span>
+        </span>
+      ))}
+      {view.hiddenCount ? (
+        <span className="text-[8px] font-black uppercase tracking-[0.1em] text-slate-500">{view.moreLabel}</span>
+      ) : null}
+      <span
+        id={tooltipId}
+        role="tooltip"
+        className="pointer-events-none absolute bottom-full left-0 z-40 mb-2 hidden w-72 max-w-[min(18rem,80vw)] rounded-xl border border-white/10 bg-slate-950/98 px-3 py-2.5 text-[10px] leading-4 text-slate-200 opacity-0 shadow-2xl transition sm:block group-hover/observations:opacity-100 group-focus-visible/observations:opacity-100"
+      >
+        {view.fullText.split('\n').map((line) => <span key={line} className="block">{line}</span>)}
       </span>
     </span>
   );
@@ -7988,38 +8041,6 @@ function App() {
     await loadPerformanceData();
   };
 
-  const getPerformanceSummaryObservation = (wellnessSource = [], rpeSource = []) => {
-    const compareEntries = (left, right) => (
-      String(left.entry_date || '').localeCompare(String(right.entry_date || '')) ||
-      String(left.submitted_at || left.updated_at || left.created_at || '').localeCompare(
-        String(right.submitted_at || right.updated_at || right.created_at || '')
-      )
-    );
-    const latestWellness = [...wellnessSource].sort(compareEntries).pop() || null;
-    const latestRpe = [...rpeSource].sort(compareEntries).pop() || null;
-    const rpeComment = String(latestRpe?.comment || '').trim();
-    const wellnessDiscomfort = String(latestWellness?.discomfort || '').trim();
-    const wellnessComment = String(latestWellness?.comment || '').trim();
-    const wellnessText = wellnessDiscomfort || wellnessComment;
-    const rpeDate = String(latestRpe?.entry_date || '');
-    const wellnessDate = String(latestWellness?.entry_date || '');
-
-    if (rpeComment && (!wellnessText || rpeDate >= wellnessDate)) {
-      return { text: rpeComment, source: 'Comentario RPE', entryDate: rpeDate };
-    }
-    if (wellnessText) {
-      return {
-        text: wellnessText,
-        source: wellnessDiscomfort ? 'Molestias' : 'Comentario Wellness',
-        entryDate: wellnessDate,
-      };
-    }
-    if (rpeComment) {
-      return { text: rpeComment, source: 'Comentario RPE', entryDate: rpeDate };
-    }
-    return { text: '', source: '', entryDate: '' };
-  };
-
   const truncatePerformanceSummaryText = (value, maxLength = 96) => {
     const text = String(value || '').trim();
     if (text.length <= maxLength) return text;
@@ -8032,7 +8053,14 @@ function App() {
       .filter((entry) => entry.jugador_id === player.id)
       .sort((left, right) => String(left.entry_date).localeCompare(String(right.entry_date)));
     const latestWellness = [...wellness].sort((a, b) => String(b.entry_date).localeCompare(String(a.entry_date)))[0];
-    const summaryObservation = getPerformanceSummaryObservation(wellness, rpes);
+    const observations = buildPerformanceObservations({
+      wellnessEntries: wellness,
+      rpeEntries: rpes,
+      playerId: player.id,
+    });
+    const summaryObservation = observations[0]
+      ? { text: observations[0].text, source: observations[0].sourceLabel, entryDate: observations[0].date }
+      : { text: '', source: '', entryDate: '' };
     const wellnessScores = wellness.map(getWellnessScore).filter((score) => score !== null);
     const avgRpe = rpes.length ? rpes.reduce((sum, entry) => sum + normalizePerformanceNumber(entry.rpe), 0) / rpes.length : 0;
     const repeatedHighRpe = rpes.filter((entry) => normalizePerformanceNumber(entry.rpe) >= 8).length >= 2;
@@ -8055,6 +8083,7 @@ function App() {
       player,
       wellness,
       latestWellness,
+      observations,
       summaryObservation,
       wellnessScore: wellnessScores.length ? wellnessScores.reduce((sum, score) => sum + score, 0) / wellnessScores.length : null,
       avgRpe,
@@ -8228,7 +8257,11 @@ function App() {
     rpeSource = rpeEntries,
     options = {}
   ) => players.map((player) => {
-    const { includeActivity = true } = options;
+    const {
+      includeActivity = true,
+      contextStartDate = '',
+      contextEndDate = '',
+    } = options;
     const wellness = wellnessSource
       .filter((entry) => entry.jugador_id === player.id)
       .sort((left, right) => String(left.entry_date).localeCompare(String(right.entry_date)));
@@ -8244,7 +8277,16 @@ function App() {
     const latestWellness = wellness[wellness.length - 1] || null;
     const latestWellnessItem = scoredWellness[scoredWellness.length - 1] || null;
     const latestRpeItem = validRpes[validRpes.length - 1] || null;
-    const summaryObservation = getPerformanceSummaryObservation(wellness, rpes);
+    const observations = buildPerformanceObservations({
+      wellnessEntries: wellness,
+      rpeEntries: rpes,
+      playerId: player.id,
+      contextStartDate,
+      contextEndDate,
+    });
+    const summaryObservation = observations[0]
+      ? { text: observations[0].text, source: observations[0].sourceLabel, entryDate: observations[0].date }
+      : { text: '', source: '', entryDate: '' };
     const highRpeEntries = validRpes.filter((item) => item.value >= 8);
     const lowWellnessEntries = scoredWellness.filter((item) => item.value < 7);
     const veryLowWellnessEntries = scoredWellness.filter((item) => item.value <= 2);
@@ -8411,6 +8453,7 @@ function App() {
       wellness,
       rpeEvolution: rpes,
       latestWellness,
+      observations,
       summaryObservation,
       latestWellnessScore: latestWellnessItem?.value ?? null,
       latestRpe: latestRpeItem?.value ?? null,
@@ -8586,6 +8629,8 @@ function App() {
   ) => {
     const rows = getPerformancePlayerRows(wellnessSource, rpeSource, {
       includeActivity: weekStart === performanceWeekStart,
+      contextStartDate: weekStart,
+      contextEndDate: addDays(weekStart, 6),
     });
     const rpeValues = rpeSource
       .map((entry) => getPerformanceNumber(entry.rpe))
@@ -25815,12 +25860,7 @@ function App() {
                         </>
                       )}
                       <td className="px-3 py-2">
-                        <p
-                          title={row.summaryObservation.text || undefined}
-                          className="line-clamp-2 text-xs leading-5 text-slate-400"
-                        >
-                          {truncatePerformanceSummaryText(row.summaryObservation.text) || '—'}
-                        </p>
+                        <PerformanceObservations observations={row.observations} />
                       </td>
                       <td className="px-3 py-2 text-xs font-bold text-slate-300">{formatShortDate(row.lastResponseDate)}</td>
                     </tr>
@@ -25929,12 +25969,11 @@ function App() {
                       </span>
                     </>
                   )}
-                  <p
-                    title={row.summaryObservation.text || undefined}
-                    className="mt-3 truncate text-xs text-slate-500"
-                  >
-                    {truncatePerformanceSummaryText(row.summaryObservation.text) || '—'}
-                  </p>
+                  <PerformanceObservations
+                    observations={row.observations}
+                    allowFocus={false}
+                    className="mt-3 border-t border-white/[0.06] pt-2"
+                  />
                 </button>
               );
             })}
