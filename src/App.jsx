@@ -37,6 +37,7 @@ import { buildRecentActivity, formatRecentActivityTime } from './utils/recentAct
 import {
   buildPerformanceObservationsByPlayer,
   getPerformanceObservationView,
+  hasPhysicalPerformanceObservation,
 } from './utils/performanceObservations';
 import { cleanImportedFieldValue, extractTransfermarktPlayerId, isEmptyImportedField, normalizeTransfermarktPosition } from './utils/rivalPlayerImport';
 import {
@@ -3334,9 +3335,26 @@ const PerformanceStatusRing = ({
   );
 };
 
-const PerformanceObservations = ({ observations = [], allowFocus = true, className = '' }) => {
+const formatPerformanceObservationFullDate = (value) => {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : String(value || 'Sin fecha');
+};
+
+const formatPerformanceObservationTime = (item) => {
+  if (!item?.timestamp || !item.timestampReliable) return '';
+  const date = new Date(item.timestamp);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+};
+
+const PerformanceObservations = ({
+  observations = [],
+  allowFocus = true,
+  className = '',
+  onObservationClick = null,
+}) => {
   const view = getPerformanceObservationView(observations, 2);
-  const tooltipId = React.useId();
+  const tooltipId = React.useId().replace(/:/g, '');
   if (view.isEmpty) {
     return (
       <span className={`text-[10px] font-semibold text-slate-600 ${className}`}>
@@ -3346,39 +3364,79 @@ const PerformanceObservations = ({ observations = [], allowFocus = true, classNa
   }
 
   const sourceClasses = {
-    Molestia: 'border-rose-300/20 bg-rose-300/[0.07] text-rose-100',
-    RPE: 'border-caudal-electric/20 bg-caudal-electric/[0.07] text-caudal-electric',
-    Wellness: 'border-emerald-300/15 bg-emerald-300/[0.055] text-emerald-100',
+    Molestia: { dot: 'bg-violet-300', label: 'text-violet-200' },
+    RPE: { dot: 'bg-sky-300', label: 'text-sky-200' },
+    Wellness: { dot: 'bg-emerald-300', label: 'text-emerald-200' },
   };
 
   return (
     <span
-      className={`group/observations relative flex min-w-0 flex-col gap-1 ${className}`}
+      className={`relative flex h-[48px] min-w-0 flex-col gap-0.5 ${className}`}
       aria-label={view.fullText}
-      aria-describedby={tooltipId}
-      tabIndex={allowFocus ? 0 : undefined}
     >
-      {view.items.map((item) => (
-        <span key={`${item.sourceTable}:${item.sourceField}:${item.date}:${item.timestamp || ''}:${item.text}`} className="flex h-5 min-w-0 items-center gap-1">
-          <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.08em] ${sourceClasses[item.sourceLabel] || 'border-white/10 bg-white/[0.04] text-slate-300'}`}>
-            {item.sourceLabel}
+      {view.items.map((item, index) => {
+        const physical = hasPhysicalPerformanceObservation(item.text);
+        const presentation = sourceClasses[item.sourceLabel] || { dot: 'bg-slate-400', label: 'text-slate-300' };
+        const itemTooltipId = `${tooltipId}-${index}`;
+        const observationTime = formatPerformanceObservationTime(item);
+        const clickable = typeof onObservationClick === 'function';
+        return (
+          <span
+            key={`${item.sourceTable}:${item.sourceField}:${item.date}:${item.timestamp || ''}:${item.text}`}
+            role={clickable ? 'button' : undefined}
+            tabIndex={clickable && allowFocus ? 0 : undefined}
+            aria-describedby={itemTooltipId}
+            aria-label={`${item.sourceLabel}. ${item.dateLabel || item.date}. ${item.text}`}
+            data-observation-date={item.date}
+            data-observation-source={item.sourceLabel}
+            onClick={clickable ? (event) => {
+              event.stopPropagation();
+              onObservationClick(item);
+            } : undefined}
+            onKeyDown={clickable ? (event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              event.preventDefault();
+              event.stopPropagation();
+              onObservationClick(item);
+            } : undefined}
+            className={`group/observation-item relative flex h-[18px] min-w-0 items-center gap-1 rounded-r-md border-l-2 pr-1 transition ${
+              physical
+                ? 'border-rose-300/55 bg-rose-300/[0.055] pl-1.5 hover:bg-rose-300/[0.09]'
+                : 'border-transparent pl-1 hover:bg-white/[0.035]'
+            } ${clickable ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-caudal-electric/60' : ''}`}
+          >
+            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${presentation.dot}`} aria-hidden="true" />
+            <span className={`shrink-0 text-[7px] font-bold uppercase tracking-[0.08em] ${presentation.label}`}>
+              {item.sourceLabel}
+            </span>
+            <span className="shrink-0 text-[8px] font-semibold text-slate-500">{item.dateLabel}</span>
+            <span className={`min-w-0 flex-1 truncate text-[10px] font-bold ${physical ? 'text-rose-50' : 'text-slate-200'}`}>
+              {item.text}
+            </span>
+            {physical ? (
+              <span className="shrink-0 text-[7px] text-rose-200" aria-label="Indicador físico relevante">◆</span>
+            ) : null}
+            <span
+              id={itemTooltipId}
+              role="tooltip"
+              className="pointer-events-none absolute bottom-full left-0 z-50 mb-2 hidden w-72 max-w-[min(18rem,80vw)] rounded-xl border border-white/10 bg-slate-950/98 px-3 py-2.5 text-left opacity-0 shadow-2xl transition sm:block group-hover/observation-item:opacity-100 group-focus-visible/observation-item:opacity-100"
+            >
+              <span className="block text-[8px] font-black uppercase tracking-[0.14em] text-caudal-electric">Origen: {item.sourceLabel}</span>
+              <span className="mt-1 block text-[9px] font-bold text-slate-400">Fecha: {formatPerformanceObservationFullDate(item.date)}</span>
+              {observationTime ? <span className="block text-[9px] font-bold text-slate-400">Hora: {observationTime}</span> : null}
+              <span className="mt-1.5 block text-[11px] leading-4 text-slate-100">{item.text}</span>
+            </span>
           </span>
-          {item.dateLabel ? (
-            <span className="shrink-0 text-[8px] font-black uppercase text-slate-500">{item.dateLabel}</span>
-          ) : null}
-          <span className="min-w-0 truncate text-[10px] font-semibold text-slate-300">{item.text}</span>
-        </span>
-      ))}
+        );
+      })}
       {view.hiddenCount ? (
-        <span className="text-[8px] font-black uppercase tracking-[0.1em] text-slate-500">{view.moreLabel}</span>
+        <span
+          className="h-[8px] min-w-0 truncate pl-1 text-[8px] font-bold leading-[8px] text-slate-500"
+          title={view.sourceSummary}
+        >
+          {view.sourceSummary || view.recordLabel}
+        </span>
       ) : null}
-      <span
-        id={tooltipId}
-        role="tooltip"
-        className="pointer-events-none absolute bottom-full left-0 z-40 mb-2 hidden w-72 max-w-[min(18rem,80vw)] rounded-xl border border-white/10 bg-slate-950/98 px-3 py-2.5 text-[10px] leading-4 text-slate-200 opacity-0 shadow-2xl transition sm:block group-hover/observations:opacity-100 group-focus-visible/observations:opacity-100"
-      >
-        {view.fullText.split('\n').map((line) => <span key={line} className="block">{line}</span>)}
-      </span>
     </span>
   );
 };
@@ -24716,7 +24774,7 @@ function App() {
       ...(selectedDay?.rpeEntries || []).map((entry) => entry.jugador_id),
       ...(selectedDay?.wellnessEntries || []).map((entry) => entry.jugador_id),
     ])];
-    const openPerformancePlayer = (playerId) => {
+    const openPerformancePlayer = (playerId, observation = null) => {
       const hasRpe = selectedDay?.rpeEntries.some((entry) => (
         entry.jugador_id === playerId && getPerformanceNumber(entry.rpe) !== null
       ));
@@ -24724,7 +24782,15 @@ function App() {
         entry.jugador_id === playerId && getWellnessScore(entry) !== null
       ));
       setPerformanceIndividualMetric(hasRpe ? 'rpe' : hasWellness ? 'wellness' : 'general');
+      if (observation) setPerformanceHistoryExpanded(true);
       setPerformanceSelectedPlayerId(playerId);
+      if (observation && typeof document !== 'undefined') {
+        setTimeout(() => {
+          const observationDay = document.getElementById(`performance-individual-history-${observation.date}`);
+          const historySection = document.getElementById('performance-individual-history');
+          (observationDay || historySection)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 0);
+      }
     };
     const selectedDayRows = selectedDayPlayerIds
       .map((playerId) => {
@@ -25902,7 +25968,10 @@ function App() {
                         </>
                       )}
                       <td className="px-3 py-2">
-                        <PerformanceObservations observations={row.observations} />
+                        <PerformanceObservations
+                          observations={row.observations}
+                          onObservationClick={(observation) => openPerformancePlayer(row.player.id, observation)}
+                        />
                       </td>
                       <td className="px-3 py-2 text-xs font-bold text-slate-300">{formatShortDate(row.lastResponseDate)}</td>
                     </tr>
@@ -26015,6 +26084,7 @@ function App() {
                     observations={row.observations}
                     allowFocus={false}
                     className="mt-3 border-t border-white/[0.06] pt-2"
+                    onObservationClick={(observation) => openPerformancePlayer(row.player.id, observation)}
                   />
                 </button>
               );
@@ -26429,7 +26499,11 @@ function App() {
                     {selectedHistoryRows.length ? (
                       <div className="relative mt-4 space-y-2 before:absolute before:bottom-4 before:left-[7px] before:top-4 before:w-px before:bg-white/10">
                         {selectedHistoryRows.slice(0, performanceHistoryExpanded ? selectedHistoryRows.length : 5).map((history) => (
-                          <div key={history.entryDate} className="relative grid grid-cols-[16px_minmax(0,1fr)] gap-3">
+                          <div
+                            id={`performance-individual-history-${history.entryDate}`}
+                            key={history.entryDate}
+                            className="relative grid scroll-mt-24 grid-cols-[16px_minmax(0,1fr)] gap-3"
+                          >
                             <span className="relative z-10 mt-4 h-3.5 w-3.5 rounded-full border-2 border-[#07111f] bg-caudal-electric" />
                             <div className="rounded-xl border border-white/[0.06] bg-black/10 px-3 py-2.5">
                               <div className="flex flex-wrap items-center justify-between gap-2">

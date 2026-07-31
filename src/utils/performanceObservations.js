@@ -1,5 +1,33 @@
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
+const PHYSICAL_OBSERVATION_KEYWORDS = [
+  'dolor',
+  'molestia',
+  'sobrecarga',
+  'inflamacion',
+  'rodilla',
+  'isquio',
+  'aductor',
+  'gemelo',
+  'cuadriceps',
+  'tobillo',
+  'espalda',
+  'lumbar',
+  'pubis',
+  'aquiles',
+  'rotura',
+  'contractura',
+  'hematoma',
+];
+
+export const hasPhysicalPerformanceObservation = (value) => {
+  const normalized = String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  return PHYSICAL_OBSERVATION_KEYWORDS.some((keyword) => normalized.includes(keyword));
+};
+
 const cleanObservationText = (value, { discomfort = false } = {}) => {
   const text = String(value ?? '')
     .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '')
@@ -302,15 +330,33 @@ export const buildPerformanceObservationsByPlayer = ({
 
 export const getPerformanceObservationView = (observations = [], limit = 2) => {
   const normalizedLimit = Math.max(1, Number(limit) || 2);
-  const items = asArray(observations).slice(0, normalizedLimit);
-  const hiddenCount = Math.max(0, asArray(observations).length - items.length);
-  const fullText = asArray(observations).map((item) => item.label).filter(Boolean).join('\n');
+  const allItems = asArray(observations);
+  const items = allItems.slice(0, normalizedLimit);
+  const hiddenCount = Math.max(0, allItems.length - items.length);
+  const fullText = allItems.map((item) => item.label).filter(Boolean).join('\n');
+  const sourceCounts = allItems.reduce((counts, item) => {
+    const source = item?.sourceLabel;
+    if (source === 'Wellness' || source === 'RPE' || source === 'Molestia') {
+      counts[source] += 1;
+    }
+    return counts;
+  }, { Wellness: 0, RPE: 0, Molestia: 0 });
+  const sourceSummary = [
+    sourceCounts.Wellness ? `${sourceCounts.Wellness} Wellness` : '',
+    sourceCounts.RPE ? `${sourceCounts.RPE} RPE` : '',
+    sourceCounts.Molestia
+      ? `${sourceCounts.Molestia} ${sourceCounts.Molestia === 1 ? 'Molestia' : 'Molestias'}`
+      : '',
+  ].filter(Boolean).join(' · ');
   return {
     items,
     hiddenCount,
     moreLabel: hiddenCount ? `+${hiddenCount} más` : '',
+    recordLabel: `${allItems.length} ${allItems.length === 1 ? 'registro' : 'registros'}`,
+    sourceCounts,
+    sourceSummary,
     fullText,
-    isEmpty: !asArray(observations).length,
+    isEmpty: !allItems.length,
     emptyLabel: 'Sin observaciones registradas',
   };
 };

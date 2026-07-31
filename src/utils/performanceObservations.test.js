@@ -6,6 +6,7 @@ import {
   buildPerformanceObservationsByPlayer,
   formatPerformanceObservationDate,
   getPerformanceObservationView,
+  hasPhysicalPerformanceObservation,
   normalizePerformanceCalendarDate,
 } from './performanceObservations.js';
 
@@ -245,6 +246,12 @@ assert.equal(visible.items.length, 2, 'solo se muestran dos observaciones');
 assert.equal(visible.hiddenCount, 1);
 assert.equal(visible.moreLabel, '+1 más');
 assert.ok(visible.fullText.includes('Wellness · Ayer · Dormí regular'));
+assert.equal(visible.recordLabel, '3 registros');
+assert.equal(visible.sourceSummary, '1 Wellness · 1 RPE · 1 Molestia');
+assert.deepEqual(visible.sourceCounts, { Wellness: 1, RPE: 1, Molestia: 1 });
+assert.equal(hasPhysicalPerformanceObservation('Sobrecarga en cuádriceps derecho'), true);
+assert.equal(hasPhysicalPerformanceObservation('Irritación del tendón de Aquiles'), true);
+assert.equal(hasPhysicalPerformanceObservation('Todo bien'), false);
 
 const deduplicated = build({
   wellnessEntries: [
@@ -368,8 +375,14 @@ assert.ok(
   appSource.includes("'id,jugador_id,entry_date,submitted_at,comment,created_at,updated_at'"),
   'RPE conserva submitted_at para ordenar por la hora real'
 );
-assert.ok(appSource.includes('min-w-0 truncate text-[10px]'), 'los textos mantienen truncado responsive');
+assert.ok(appSource.includes('min-w-0 flex-1 truncate text-[10px]'), 'los textos mantienen truncado responsive');
 assert.ok(appSource.includes('role=\"tooltip\"'), 'el contenido completo sigue disponible en tooltip');
+assert.ok(appSource.includes('Origen: {item.sourceLabel}'), 'el tooltip identifica el origen real');
+assert.ok(appSource.includes('Fecha: {formatPerformanceObservationFullDate(item.date)}'), 'el tooltip muestra la fecha completa');
+assert.ok(appSource.includes('Hora: {observationTime}'), 'el tooltip muestra la hora cuando está disponible');
+assert.ok(appSource.includes('onObservationClick(item);'), 'cada observación prepara su navegación contextual');
+assert.ok(appSource.includes('performance-individual-history-${observation.date}'), 'el clic intenta posicionar el historial en la fecha disponible');
+assert.ok(appSource.includes('Indicador físico relevante'), 'las observaciones físicas incorporan una señal no basada solo en color');
 assert.ok(
   appSource.includes('const priority = Boolean(combinedEntry || veryLowWellnessEntries.length || priorityWellnessSignals.length);'),
   'el cálculo del semáforo conserva su lógica independiente'
