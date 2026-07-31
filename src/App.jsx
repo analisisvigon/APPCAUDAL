@@ -3347,6 +3347,133 @@ const formatPerformanceObservationTime = (item) => {
   return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 };
 
+const PerformanceObservationItem = ({
+  item,
+  tooltipId,
+  presentation,
+  physical,
+  clickable,
+  allowFocus,
+  onObservationClick,
+}) => {
+  const anchorRef = useRef(null);
+  const tooltipRef = useRef(null);
+  const [tooltipVisible, setTooltipVisible] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState({ top: 12, left: 12, width: 320, placement: 'above' });
+  const observationTime = formatPerformanceObservationTime(item);
+  const updateTooltipPosition = React.useCallback(() => {
+    if (!anchorRef.current || typeof window === 'undefined') return;
+    const anchor = anchorRef.current.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const margin = 12;
+    const gap = 10;
+    const availableWidth = Math.max(200, viewportWidth - (margin * 2));
+    const width = Math.min(340, availableWidth);
+    const tooltipHeight = tooltipRef.current?.offsetHeight || 118;
+    const roomAbove = anchor.top - margin;
+    const roomBelow = viewportHeight - anchor.bottom - margin;
+    const placement = roomAbove >= tooltipHeight + gap || roomAbove > roomBelow ? 'above' : 'below';
+    const desiredTop = placement === 'above'
+      ? anchor.top - tooltipHeight - gap
+      : anchor.bottom + gap;
+    const top = Math.min(
+      Math.max(margin, desiredTop),
+      Math.max(margin, viewportHeight - tooltipHeight - margin)
+    );
+    const centeredLeft = anchor.left + (anchor.width / 2) - (width / 2);
+    const left = Math.min(
+      Math.max(margin, centeredLeft),
+      Math.max(margin, viewportWidth - width - margin)
+    );
+    setTooltipPosition({ top, left, width, placement });
+  }, []);
+
+  React.useLayoutEffect(() => {
+    if (!tooltipVisible) return;
+    updateTooltipPosition();
+  }, [tooltipVisible, updateTooltipPosition]);
+
+  useEffect(() => {
+    if (!tooltipVisible || typeof window === 'undefined') return undefined;
+    const reposition = () => updateTooltipPosition();
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+    return () => {
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+    };
+  }, [tooltipVisible, updateTooltipPosition]);
+
+  return (
+    <>
+      <span
+        ref={anchorRef}
+        role={clickable ? 'button' : undefined}
+        tabIndex={clickable && allowFocus ? 0 : undefined}
+        aria-describedby={tooltipId}
+        aria-label={`${item.sourceLabel}. ${item.dateLabel || item.date}. ${item.text}`}
+        data-observation-date={item.date}
+        data-observation-source={item.sourceLabel}
+        onMouseEnter={() => setTooltipVisible(true)}
+        onMouseLeave={() => setTooltipVisible(false)}
+        onFocus={() => setTooltipVisible(true)}
+        onBlur={() => setTooltipVisible(false)}
+        onClick={clickable ? (event) => {
+          event.stopPropagation();
+          onObservationClick(item);
+        } : undefined}
+        onKeyDown={clickable ? (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          event.stopPropagation();
+          onObservationClick(item);
+        } : undefined}
+        className={`relative flex h-[18px] min-w-0 items-center gap-1 rounded-r-md border-l-2 pr-1 transition ${
+          physical
+            ? 'border-rose-300/55 bg-rose-300/[0.055] pl-1.5 hover:bg-rose-300/[0.09]'
+            : 'border-transparent pl-1 hover:bg-white/[0.035]'
+        } ${clickable ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-caudal-electric/60' : ''}`}
+      >
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${presentation.dot}`} aria-hidden="true" />
+        <span className={`shrink-0 text-[7px] font-bold uppercase tracking-[0.08em] ${presentation.label}`}>
+          {item.sourceLabel}
+        </span>
+        <span className="shrink-0 text-[8px] font-semibold text-slate-500">{item.dateLabel}</span>
+        <span className={`min-w-0 flex-1 truncate text-[10px] font-bold ${physical ? 'text-rose-50' : 'text-slate-200'}`}>
+          {item.text}
+        </span>
+        {physical ? (
+          <span className="shrink-0 text-[7px] text-rose-200" aria-label="Indicador físico relevante">◆</span>
+        ) : null}
+      </span>
+      {tooltipVisible && typeof document !== 'undefined' ? createPortal(
+        <span
+          ref={tooltipRef}
+          id={tooltipId}
+          role="tooltip"
+          data-placement={tooltipPosition.placement}
+          style={{
+            position: 'fixed',
+            top: `${tooltipPosition.top}px`,
+            left: `${tooltipPosition.left}px`,
+            width: `${tooltipPosition.width}px`,
+          }}
+          className="pointer-events-none z-[10050] rounded-xl border border-slate-500/35 bg-[#07111f] px-4 py-3 text-left shadow-[0_22px_65px_rgba(0,0,0,0.72)]"
+        >
+          <span className={`block text-[9px] font-black uppercase tracking-[0.14em] ${presentation.label}`}>
+            Origen: {item.sourceLabel}
+          </span>
+          <span className="mt-1.5 block text-[10px] font-bold text-slate-400">Fecha: {formatPerformanceObservationFullDate(item.date)}</span>
+          {observationTime ? <span className="block text-[10px] font-bold text-slate-400">Hora: {observationTime}</span> : null}
+          <span className="mt-2 block whitespace-normal break-words text-[12px] font-semibold leading-5 text-white">{item.text}</span>
+        </span>,
+        document.body
+      ) : null}
+    </>
+  );
+};
+
 const PerformanceObservations = ({
   observations = [],
   allowFocus = true,
@@ -3378,55 +3505,18 @@ const PerformanceObservations = ({
         const physical = hasPhysicalPerformanceObservation(item.text);
         const presentation = sourceClasses[item.sourceLabel] || { dot: 'bg-slate-400', label: 'text-slate-300' };
         const itemTooltipId = `${tooltipId}-${index}`;
-        const observationTime = formatPerformanceObservationTime(item);
         const clickable = typeof onObservationClick === 'function';
         return (
-          <span
+          <PerformanceObservationItem
             key={`${item.sourceTable}:${item.sourceField}:${item.date}:${item.timestamp || ''}:${item.text}`}
-            role={clickable ? 'button' : undefined}
-            tabIndex={clickable && allowFocus ? 0 : undefined}
-            aria-describedby={itemTooltipId}
-            aria-label={`${item.sourceLabel}. ${item.dateLabel || item.date}. ${item.text}`}
-            data-observation-date={item.date}
-            data-observation-source={item.sourceLabel}
-            onClick={clickable ? (event) => {
-              event.stopPropagation();
-              onObservationClick(item);
-            } : undefined}
-            onKeyDown={clickable ? (event) => {
-              if (event.key !== 'Enter' && event.key !== ' ') return;
-              event.preventDefault();
-              event.stopPropagation();
-              onObservationClick(item);
-            } : undefined}
-            className={`group/observation-item relative flex h-[18px] min-w-0 items-center gap-1 rounded-r-md border-l-2 pr-1 transition ${
-              physical
-                ? 'border-rose-300/55 bg-rose-300/[0.055] pl-1.5 hover:bg-rose-300/[0.09]'
-                : 'border-transparent pl-1 hover:bg-white/[0.035]'
-            } ${clickable ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-caudal-electric/60' : ''}`}
-          >
-            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${presentation.dot}`} aria-hidden="true" />
-            <span className={`shrink-0 text-[7px] font-bold uppercase tracking-[0.08em] ${presentation.label}`}>
-              {item.sourceLabel}
-            </span>
-            <span className="shrink-0 text-[8px] font-semibold text-slate-500">{item.dateLabel}</span>
-            <span className={`min-w-0 flex-1 truncate text-[10px] font-bold ${physical ? 'text-rose-50' : 'text-slate-200'}`}>
-              {item.text}
-            </span>
-            {physical ? (
-              <span className="shrink-0 text-[7px] text-rose-200" aria-label="Indicador físico relevante">◆</span>
-            ) : null}
-            <span
-              id={itemTooltipId}
-              role="tooltip"
-              className="pointer-events-none absolute bottom-full left-0 z-50 mb-2 hidden w-72 max-w-[min(18rem,80vw)] rounded-xl border border-white/10 bg-slate-950/98 px-3 py-2.5 text-left opacity-0 shadow-2xl transition sm:block group-hover/observation-item:opacity-100 group-focus-visible/observation-item:opacity-100"
-            >
-              <span className="block text-[8px] font-black uppercase tracking-[0.14em] text-caudal-electric">Origen: {item.sourceLabel}</span>
-              <span className="mt-1 block text-[9px] font-bold text-slate-400">Fecha: {formatPerformanceObservationFullDate(item.date)}</span>
-              {observationTime ? <span className="block text-[9px] font-bold text-slate-400">Hora: {observationTime}</span> : null}
-              <span className="mt-1.5 block text-[11px] leading-4 text-slate-100">{item.text}</span>
-            </span>
-          </span>
+            item={item}
+            tooltipId={itemTooltipId}
+            presentation={presentation}
+            physical={physical}
+            clickable={clickable}
+            allowFocus={allowFocus}
+            onObservationClick={onObservationClick}
+          />
         );
       })}
       {view.hiddenCount ? (
