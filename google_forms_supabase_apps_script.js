@@ -56,8 +56,11 @@
  *    event type: On form submit
  *
  * Importación histórica Wellness:
- * - Ejecuta manualmente importAllWellnessHistory desde Apps Script.
- * - Puede repetirse: el upsert por jugador_id + entry_date evita duplicados.
+ * - Ejecuta primero previewWellnessHistoryCorrection (solo lectura).
+ * - Revisa cualquier acción REVISAR_MANUALMENTE o ELIMINAR_ANTIGUA.
+ * - Después ejecuta importAllWellnessHistory.
+ * - Puede repetirse: las correcciones inequívocas mueven la fila existente por id
+ *   y el resto conserva el upsert por jugador_id + entry_date.
  *
  * Importación histórica RPE:
  * - Ejecuta manualmente importAllRpeHistory desde Apps Script.
@@ -86,6 +89,26 @@ const WELLNESS_COMMENT_HEADER_CANDIDATES = [
   'Comentario',
   'Comentarios',
 ];
+const WELLNESS_RESPONSE_ID_HEADER_CANDIDATES = [
+  'Response ID',
+  'Response Id',
+  'ID de respuesta',
+  'Id de respuesta',
+];
+const WELLNESS_COMPARISON_FIELDS = [
+  'sleep_hours',
+  'sleep_quality',
+  'fatigue',
+  'muscle_soreness',
+  'stress',
+  'mood',
+  'weight',
+  'discomfort',
+  'comment',
+  'health_ratio',
+];
+const WELLNESS_TEXT_FIELDS = ['discomfort', 'comment'];
+const WELLNESS_SHIFT_CREATED_AT_TOLERANCE_MS = 6 * 60 * 60 * 1000;
 const FORMULA_RETRY_COUNT = 3;
 const FORMULA_RETRY_DELAY_MS = 250;
 const WELLNESS_IMPORT_BATCH_SIZE = 100;
@@ -186,22 +209,32 @@ function importAllWellnessHistory() {
   const technical = ensureTechnicalColumns(sheet);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) {
-    const emptySummary = { sheet: sheet.getName(), rows: 0, upserted: 0, duplicatesMerged: 0, errors: 0 };
+    const emptySummary = {
+      sheet: sheet.getName(),
+      rows: 0,
+      inserted: 0,
+      updated: 0,
+      corrected: 0,
+      unchanged: 0,
+      skipped: 0,
+      review: 0,
+      errors: 0,
+    };
     console.log('Histórico Wellness: no hay filas para importar.', emptySummary);
     return emptySummary;
   }
 
   SpreadsheetApp.flush();
-  const rows = sheet.getRange(2, 1, lastRow - 1, technical.lastColumn).getValues();
-  const rowItems = rows.map((row, index) => ({
-    rowNumber: index + 2,
-    values: Object.fromEntries(technical.headers.map((header, columnIndex) => [String(header).trim(), row[columnIndex]])),
-  }));
+  const rowItems = readWellnessHistoryRows(sheet, technical.headers, technical.lastColumn);
   const players = fetchPlayersForForms();
-  const plan = buildWellnessHistoryImportPlan(rowItems, players, getSheetTimeZone(sheet));
+  const historyPlan = buildWellnessHistoryImportPlan(rowItems, players, getSheetTimeZone(sheet));
+  const reconciliation = buildWellnessHistoryReconciliationPlan(
+    historyPlan,
+    fetchAllWellnessEntriesForHistoryAudit()
+  );
   const syncStates = {};
 
-  plan.failures.forEach((failure) => {
+  historyPlan.failures.forEach((failure) => {
     syncStates[failure.rowNumber] = {
       status: 'ERROR',
       sessionId: '',
@@ -210,70 +243,118 @@ function importAllWellnessHistory() {
     };
   });
 
-  let upserted = 0;
-  let syncedRows = 0;
-  for (let offset = 0; offset < plan.groups.length; offset += WELLNESS_IMPORT_BATCH_SIZE) {
-    const groups = plan.groups.slice(offset, offset + WELLNESS_IMPORT_BATCH_SIZE);
-    try {
-      upsertSupabase('wellness_entries', groups.map((group) => group.payload), 'jugador_id,entry_date');
-      const syncedAt = new Date();
-      groups.forEach((group) => {
-        group.rowNumbers.forEach((rowNumber) => {
-          syncStates[rowNumber] = {
-            status: 'SYNCED',
-            sessionId: '',
-            error: '',
-            syncedAt,
-          };
-          syncedRows += 1;
-        });
-        group.rowDetails.forEach((detail) => {
-          logPlayerResolution('importAllWellnessHistory', detail.receivedName, {
-            jugador_id: group.payload.jugador_id,
-            name: detail.matchedPlayerName,
-            google_forms_name: detail.googleFormsName,
-            match_rule: detail.matchRule,
-          });
-        });
-      });
-      upserted += groups.length;
-    } catch (error) {
-      const message = error.message || String(error);
-      groups.forEach((group) => {
-        group.rowNumbers.forEach((rowNumber) => {
-          syncStates[rowNumber] = {
-            status: 'ERROR',
-            sessionId: '',
-            error: message,
-            syncedAt: '',
-          };
-        });
-      });
-      plan.failures.push(...groups.flatMap((group) =>
-        group.rowDetails.map((detail) => buildWellnessImportFailure({
-          rowNumber: detail.rowNumber,
-          receivedName: detail.receivedName,
-          receivedDate: detail.receivedDate,
-          error: getWellnessPayloadDiagnostic(group.payload, detail.receivedDate) || message,
-          players,
-        }))
-      ));
-    }
-  }
-  writeHistorySyncStates(sheet, technical.columns, lastRow, syncStates);
-
   const summary = {
     sheet: sheet.getName(),
     rows: rowItems.length,
-    syncedRows,
-    upserted,
-    duplicatesMerged: plan.duplicatesMerged,
-    skipped: plan.skipped,
-    errors: plan.failures.length,
+    inserted: 0,
+    updated: 0,
+    corrected: 0,
+    unchanged: 0,
+    skipped: historyPlan.skipped,
+    review: 0,
+    errors: historyPlan.failures.length,
+    duplicatesMerged: historyPlan.duplicatesMerged,
   };
-  console.log('Histórico Wellness importado.', summary);
-  logWellnessHistoryErrors(plan.failures);
+  const markActionRows = (action, status, error, syncedAt) => {
+    action.rowNumbers.forEach((rowNumber) => {
+      syncStates[rowNumber] = {
+        status,
+        sessionId: '',
+        error: error || '',
+        syncedAt: syncedAt || '',
+      };
+    });
+  };
+
+  reconciliation.actions.forEach((action) => {
+    if (action.action === 'SIN_CAMBIOS') {
+      summary.unchanged += 1;
+      markActionRows(action, 'SYNCED', '', new Date());
+      return;
+    }
+    if (action.action === 'REVISAR_MANUALMENTE' || action.action === 'ELIMINAR_ANTIGUA') {
+      summary.review += 1;
+      markActionRows(action, 'REVIEW', action.reason, '');
+      return;
+    }
+
+    try {
+      if (action.action === 'CORREGIR_FECHA') {
+        updateSupabaseById('wellness_entries', action.existingId, action.payload);
+        summary.corrected += 1;
+      } else {
+        upsertSupabase('wellness_entries', action.payload, 'jugador_id,entry_date');
+        if (action.action === 'INSERTAR') summary.inserted += 1;
+        else summary.updated += 1;
+      }
+      const syncedAt = new Date();
+      markActionRows(action, 'SYNCED', '', syncedAt);
+      action.rowDetails.forEach((detail) => {
+        logPlayerResolution('importAllWellnessHistory', detail.receivedName, {
+          jugador_id: action.payload.jugador_id,
+          name: detail.matchedPlayerName,
+          google_forms_name: detail.googleFormsName,
+          match_rule: detail.matchRule,
+        });
+      });
+    } catch (error) {
+      const message = error.message || String(error);
+      markActionRows(action, 'ERROR', message, '');
+      const failures = action.rowDetails.map((detail) => buildWellnessImportFailure({
+        rowNumber: detail.rowNumber,
+        receivedName: detail.receivedName,
+        receivedDate: detail.receivedTimestamp,
+        error: getWellnessPayloadDiagnostic(action.payload, detail.receivedDate) || message,
+        players,
+      }));
+      historyPlan.failures.push(...failures);
+      summary.errors += failures.length;
+    }
+  });
+  writeHistorySyncStates(sheet, technical.columns, lastRow, syncStates);
+
+  console.log('Histórico Wellness reconciliado.', summary);
+  logWellnessReconciliationActions(reconciliation.actions);
+  logWellnessHistoryErrors(historyPlan.failures);
   return summary;
+}
+
+function previewWellnessHistoryCorrection() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = findWellnessResponseSheet(spreadsheet);
+  const lastColumn = sheet.getLastColumn();
+  const headers = lastColumn
+    ? sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0]
+    : [];
+  const rowItems = readWellnessHistoryRows(sheet, headers, lastColumn);
+  const players = fetchPlayersForForms();
+  const historyPlan = buildWellnessHistoryImportPlan(rowItems, players, getSheetTimeZone(sheet));
+  const reconciliation = buildWellnessHistoryReconciliationPlan(
+    historyPlan,
+    fetchAllWellnessEntriesForHistoryAudit()
+  );
+  const summary = summarizeWellnessReconciliation(
+    reconciliation.actions,
+    rowItems.length,
+    historyPlan
+  );
+
+  console.log('PREVISUALIZACIÓN Wellness (solo lectura).', {
+    sheet: sheet.getName(),
+    timeZone: getSheetTimeZone(sheet),
+    responseIdHeader: findMatchingHeader(headers, WELLNESS_RESPONSE_ID_HEADER_CANDIDATES) || 'NO DISPONIBLE',
+    uniqueKey: 'jugador_id,entry_date',
+    ...summary,
+  });
+  logWellnessReconciliationActions(reconciliation.actions);
+  logWellnessHistoryErrors(historyPlan.failures);
+  return {
+    sheet: sheet.getName(),
+    timeZone: getSheetTimeZone(sheet),
+    summary,
+    actions: reconciliation.actions,
+    failures: historyPlan.failures,
+  };
 }
 
 function importAllRpeHistory() {
@@ -430,6 +511,17 @@ function upsertSupabase(table, payload, onConflict) {
     payload: JSON.stringify(payload),
     headers: {
       Prefer: 'resolution=merge-duplicates,return=representation',
+    },
+  });
+}
+
+function updateSupabaseById(table, id, payload) {
+  if (!id) throw new Error(`No se puede actualizar ${table}: falta id.`);
+  return supabaseFetch(`${table}?id=eq.${encodeURIComponent(id)}`, {
+    method: 'patch',
+    payload: JSON.stringify(payload),
+    headers: {
+      Prefer: 'return=representation',
     },
   });
 }
@@ -899,10 +991,14 @@ function buildWellnessHistoryImportPlan(rowItems, players, timeZone) {
       requireFields(payload, ['jugador_id', 'entry_date'], 'wellness');
       const key = `${payload.jugador_id}|${payload.entry_date}`;
       const existing = groupsByKey[key];
+      const submittedDate = parseRpeSubmittedDate(entryDate, timeZone);
       const rowDetail = {
         rowNumber: item.rowNumber,
         receivedName: String(playerName || '').trim(),
         receivedDate: entryDate,
+        receivedTimestamp: entryDate,
+        submittedAt: submittedDate ? submittedDate.toISOString() : '',
+        responseId: getFirstValue(row, WELLNESS_RESPONSE_ID_HEADER_CANDIDATES) || '',
         matchedPlayerName: player.name,
         googleFormsName: player.google_forms_name,
         matchRule: player.match_rule,
@@ -930,6 +1026,263 @@ function buildWellnessHistoryImportPlan(rowItems, players, timeZone) {
     skipped,
     duplicatesMerged: groups.reduce((total, group) => total + Math.max(0, group.rowNumbers.length - 1), 0),
   };
+}
+
+function readWellnessHistoryRows(sheet, headers, lastColumn) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2 || !lastColumn) return [];
+  const rows = sheet.getRange(2, 1, lastRow - 1, lastColumn).getValues();
+  return rows.map((row, index) => ({
+    rowNumber: index + 2,
+    values: Object.fromEntries(
+      headers.map((header, columnIndex) => [String(header).trim(), row[columnIndex]])
+    ),
+  }));
+}
+
+function findMatchingHeader(headers, candidates) {
+  const normalizedCandidates = (Array.isArray(candidates) ? candidates : []).map(normalizeName);
+  return (Array.isArray(headers) ? headers : []).find((header) =>
+    normalizedCandidates.includes(normalizeName(header))
+  ) || '';
+}
+
+function fetchAllWellnessEntriesForHistoryAudit() {
+  const pageSize = 1000;
+  const entries = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const page = supabaseFetch(
+      `wellness_entries?select=id,jugador_id,entry_date,sleep_hours,sleep_quality,fatigue,muscle_soreness,stress,mood,weight,discomfort,comment,health_ratio,created_at,updated_at&order=entry_date.asc,created_at.asc&limit=${pageSize}&offset=${offset}`,
+      { method: 'get' }
+    ) || [];
+    entries.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return entries;
+}
+
+function shiftIsoCalendarDate(value, amount) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return '';
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  date.setUTCDate(date.getUTCDate() + Number(amount || 0));
+  return [
+    date.getUTCFullYear(),
+    String(date.getUTCMonth() + 1).padStart(2, '0'),
+    String(date.getUTCDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function normalizeWellnessComparisonValue(field, value) {
+  if (value === '' || value === null || value === undefined) return null;
+  if (!WELLNESS_TEXT_FIELDS.includes(field)) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  }
+  const text = String(value)
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text || null;
+}
+
+function compareWellnessData(payload, existing) {
+  const comparisons = WELLNESS_COMPARISON_FIELDS.map((field) => {
+    const expected = normalizeWellnessComparisonValue(field, payload && payload[field]);
+    const current = normalizeWellnessComparisonValue(field, existing && existing[field]);
+    return {
+      field,
+      expected,
+      current,
+      meaningful: expected !== null || current !== null,
+      equal: expected === current,
+    };
+  });
+  const meaningful = comparisons.filter((item) => item.meaningful);
+  const equalMeaningful = meaningful.filter((item) => item.equal);
+  return {
+    exact: comparisons.every((item) => item.equal),
+    meaningfulCount: meaningful.length,
+    equalMeaningfulCount: equalMeaningful.length,
+    similarity: meaningful.length ? equalMeaningful.length / meaningful.length : 0,
+    differingFields: meaningful.filter((item) => !item.equal).map((item) => item.field),
+  };
+}
+
+function hasReliableShiftEvidence(group, existing) {
+  const comparison = compareWellnessData(group.payload, existing);
+  if (!comparison.exact || comparison.meaningfulCount < 4 || group.rowDetails.length !== 1) {
+    return false;
+  }
+  const submittedAt = Date.parse(group.rowDetails[0].submittedAt || '');
+  const createdAt = Date.parse(existing && existing.created_at ? existing.created_at : '');
+  return Number.isFinite(submittedAt)
+    && Number.isFinite(createdAt)
+    && Math.abs(createdAt - submittedAt) <= WELLNESS_SHIFT_CREATED_AT_TOLERANCE_MS;
+}
+
+function buildWellnessHistoryReconciliationPlan(historyPlan, existingEntries) {
+  const rows = Array.isArray(existingEntries) ? existingEntries : [];
+  const sheetKeys = new Set(
+    historyPlan.groups.map((group) => `${group.payload.jugador_id}|${group.payload.entry_date}`)
+  );
+  const actions = historyPlan.groups.map((group) => {
+    const playerId = String(group.payload.jugador_id || '');
+    const correctDate = group.payload.entry_date;
+    const previousDate = shiftIsoCalendarDate(correctDate, -1);
+    const nextDate = shiftIsoCalendarDate(correctDate, 1);
+    const sameDateRows = rows.filter((row) =>
+      String(row.jugador_id || '') === playerId && row.entry_date === correctDate
+    );
+    const previousRows = rows.filter((row) =>
+      String(row.jugador_id || '') === playerId && row.entry_date === previousDate
+    );
+    const nextRows = rows.filter((row) =>
+      String(row.jugador_id || '') === playerId && row.entry_date === nextDate
+    );
+    const previousDateClaimedBySheet = sheetKeys.has(`${playerId}|${previousDate}`);
+    const nextDateClaimedBySheet = sheetKeys.has(`${playerId}|${nextDate}`);
+    const base = {
+      playerId,
+      playerName: group.rowDetails[group.rowDetails.length - 1]?.matchedPlayerName || '',
+      receivedName: group.rowDetails[group.rowDetails.length - 1]?.receivedName || '',
+      originalTimestamp: group.rowDetails[group.rowDetails.length - 1]?.receivedTimestamp || '',
+      submittedAt: group.rowDetails[group.rowDetails.length - 1]?.submittedAt || '',
+      responseId: group.rowDetails[group.rowDetails.length - 1]?.responseId || '',
+      correctDate,
+      payload: group.payload,
+      rowNumbers: group.rowNumbers,
+      rowDetails: group.rowDetails,
+      existingDate: '',
+      existingId: '',
+      reason: '',
+    };
+
+    if (sameDateRows.length > 1) {
+      return {
+        ...base,
+        action: 'REVISAR_MANUALMENTE',
+        existingDate: correctDate,
+        reason: `Hay ${sameDateRows.length} filas Supabase para la clave única esperada.`,
+      };
+    }
+
+    if (sameDateRows.length === 1) {
+      const correctRow = sameDateRows[0];
+      const shiftedDuplicates = previousRows.filter((row) =>
+        !previousDateClaimedBySheet && hasReliableShiftEvidence(group, row)
+      );
+      if (shiftedDuplicates.length) {
+        return {
+          ...base,
+          action: 'ELIMINAR_ANTIGUA',
+          existingDate: previousDate,
+          existingId: shiftedDuplicates[0].id,
+          reason: 'La fila correcta ya existe y también hay una candidata antigua desplazada. No se elimina automáticamente.',
+        };
+      }
+      const comparison = compareWellnessData(group.payload, correctRow);
+      return {
+        ...base,
+        action: comparison.exact ? 'SIN_CAMBIOS' : 'ACTUALIZAR',
+        existingDate: correctDate,
+        existingId: correctRow.id,
+        reason: comparison.exact
+          ? 'La fila de Supabase ya coincide con la respuesta del Sheet.'
+          : `La clave diaria existe, pero difieren: ${comparison.differingFields.join(', ') || 'datos Wellness'}.`,
+      };
+    }
+
+    const reliablePreviousMatches = previousRows.filter((row) =>
+      !previousDateClaimedBySheet && hasReliableShiftEvidence(group, row)
+    );
+    if (reliablePreviousMatches.length === 1) {
+      return {
+        ...base,
+        action: 'CORREGIR_FECHA',
+        existingDate: previousDate,
+        existingId: reliablePreviousMatches[0].id,
+        reason: 'Coincidencia completa, fecha anterior no reclamada y created_at cercano al timestamp original.',
+      };
+    }
+    if (reliablePreviousMatches.length > 1) {
+      return {
+        ...base,
+        action: 'REVISAR_MANUALMENTE',
+        existingDate: previousDate,
+        reason: 'Más de una fila anterior cumple las condiciones de corrección.',
+      };
+    }
+
+    const suspiciousAdjacent = [...previousRows, ...nextRows].filter((row) => {
+      if (row.entry_date === previousDate && previousDateClaimedBySheet) return false;
+      if (row.entry_date === nextDate && nextDateClaimedBySheet) return false;
+      const comparison = compareWellnessData(group.payload, row);
+      return comparison.meaningfulCount >= 4
+        && comparison.equalMeaningfulCount >= 4
+        && comparison.similarity >= 0.8;
+    });
+    if (suspiciousAdjacent.length) {
+      return {
+        ...base,
+        action: 'REVISAR_MANUALMENTE',
+        existingDate: suspiciousAdjacent[0].entry_date,
+        existingId: suspiciousAdjacent[0].id,
+        reason: 'Existe una fila contigua muy similar, pero no hay evidencia suficiente para moverla.',
+      };
+    }
+
+    return {
+      ...base,
+      action: 'INSERTAR',
+      reason: previousDateClaimedBySheet
+        ? 'La fecha anterior corresponde a otra respuesta real del Sheet.'
+        : 'No existe fila para la fecha correcta ni candidata desplazada suficientemente fiable.',
+    };
+  });
+  return { actions };
+}
+
+function summarizeWellnessReconciliation(actions, rowCount, historyPlan) {
+  const counts = {
+    rows: rowCount,
+    insert: 0,
+    update: 0,
+    correct: 0,
+    unchanged: 0,
+    deleteOld: 0,
+    review: 0,
+    skipped: historyPlan.skipped,
+    errors: historyPlan.failures.length,
+  };
+  actions.forEach((action) => {
+    if (action.action === 'INSERTAR') counts.insert += 1;
+    else if (action.action === 'ACTUALIZAR') counts.update += 1;
+    else if (action.action === 'CORREGIR_FECHA') counts.correct += 1;
+    else if (action.action === 'SIN_CAMBIOS') counts.unchanged += 1;
+    else if (action.action === 'ELIMINAR_ANTIGUA') counts.deleteOld += 1;
+    else counts.review += 1;
+  });
+  return counts;
+}
+
+function logWellnessReconciliationActions(actions) {
+  (Array.isArray(actions) ? actions : []).forEach((item, index) => {
+    console.log([
+      `Wellness ${index + 1}/${actions.length}`,
+      `Jugador: ${item.playerName || item.receivedName || '(sin nombre)'} [${item.playerId}]`,
+      `Filas Sheet: ${item.rowNumbers.join(', ')}`,
+      `Timestamp Forms: ${item.originalTimestamp || '(no disponible)'}`,
+      `Response ID: ${item.responseId || '(no disponible)'}`,
+      `ID existente Supabase: ${item.existingId || '(ninguno)'}`,
+      `Fecha existente Supabase: ${item.existingDate || '(ninguna)'}`,
+      `Fecha correcta: ${item.correctDate}`,
+      `Comentario: ${item.payload.comment || '(vacío)'}`,
+      `Molestias: ${item.payload.discomfort || '(vacío)'}`,
+      `Acción propuesta: ${item.action}`,
+      `Motivo: ${item.reason}`,
+    ].join('\n'));
+  });
 }
 
 function buildWellnessImportFailure(details) {

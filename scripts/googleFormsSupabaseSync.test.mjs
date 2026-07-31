@@ -12,6 +12,10 @@ const appSource = fs.readFileSync(path.join(projectRoot, 'src', 'App.jsx'), 'utf
 const rendimientoSchemaSource = fs.readFileSync(path.join(projectRoot, 'supabase_rendimiento.sql'), 'utf8');
 const migrationSource = fs.readFileSync(path.join(projectRoot, 'supabase_rpe_daily_phase1.sql'), 'utf8');
 const rollbackSource = fs.readFileSync(path.join(projectRoot, 'supabase_rpe_daily_phase1_rollback.sql'), 'utf8');
+const wellnessHistoryAuditSource = fs.readFileSync(
+  path.join(projectRoot, 'supabase_wellness_history_audit.sql'),
+  'utf8'
+);
 
 const requestedUrls = [];
 const requestedFetches = [];
@@ -517,6 +521,185 @@ assert.deepEqual(
 );
 assert.equal(historyPlan.skipped, 1, 'Las filas completamente vacías deben ignorarse.');
 
+const wellnessPayloadForDay = (entryDate, overrides = {}) => ({
+  jugador_id: 'player-acerete',
+  entry_date: entryDate,
+  sleep_hours: 8,
+  sleep_quality: 8,
+  fatigue: 4,
+  muscle_soreness: 3,
+  stress: 2,
+  mood: 8,
+  weight: 80.4,
+  discomfort: 'Cuádriceps derecho',
+  comment: 'Bastante cargado de la semana',
+  health_ratio: 8.5,
+  ...overrides,
+});
+const wellnessGroupForDay = (entryDate, timestamp, overrides = {}) => ({
+  payload: wellnessPayloadForDay(entryDate, overrides),
+  rowNumbers: [2],
+  rowDetails: [{
+    rowNumber: 2,
+    receivedName: 'Acerete',
+    receivedDate: timestamp,
+    receivedTimestamp: timestamp,
+    submittedAt: timestamp,
+    responseId: '',
+    matchedPlayerName: 'CRISTIAN ACERETE',
+    matchRule: 'EXACT_SHIRT_NAME',
+  }],
+});
+const shiftedHistoryPlan = {
+  groups: [wellnessGroupForDay('2026-07-30', '2026-07-30T10:00:00.000Z')],
+  failures: [],
+  skipped: 0,
+  duplicatesMerged: 0,
+};
+const shiftedExistingRow = {
+  id: 'wellness-shifted',
+  ...wellnessPayloadForDay('2026-07-29'),
+  created_at: '2026-07-30T10:02:00.000Z',
+};
+const shiftedCorrection = sandbox.buildWellnessHistoryReconciliationPlan(
+  shiftedHistoryPlan,
+  [shiftedExistingRow]
+);
+assert.equal(
+  shiftedCorrection.actions[0].action,
+  'CORREGIR_FECHA',
+  'Una respuesta inequívocamente desplazada debe actualizar la fila existente.'
+);
+assert.equal(shiftedCorrection.actions[0].existingId, 'wellness-shifted');
+assert.equal(shiftedCorrection.actions[0].correctDate, '2026-07-30');
+
+const repeatedCorrection = sandbox.buildWellnessHistoryReconciliationPlan(
+  shiftedHistoryPlan,
+  [{
+    ...shiftedExistingRow,
+    entry_date: '2026-07-30',
+  }]
+);
+assert.equal(
+  repeatedCorrection.actions[0].action,
+  'SIN_CAMBIOS',
+  'Tras corregir la fecha, repetir la operación debe ser idempotente.'
+);
+
+const july31Correction = sandbox.buildWellnessHistoryReconciliationPlan(
+  {
+    ...shiftedHistoryPlan,
+    groups: [wellnessGroupForDay('2026-07-31', '2026-07-31T08:34:58.000Z')],
+  },
+  [{
+    id: 'wellness-july-31-shifted',
+    ...wellnessPayloadForDay('2026-07-30'),
+    created_at: '2026-07-31T08:35:30.000Z',
+  }]
+);
+assert.equal(july31Correction.actions[0].action, 'CORREGIR_FECHA');
+assert.equal(july31Correction.actions[0].correctDate, '2026-07-31');
+
+const sameDateUpdate = sandbox.buildWellnessHistoryReconciliationPlan(
+  shiftedHistoryPlan,
+  [{
+    ...shiftedExistingRow,
+    entry_date: '2026-07-30',
+    fatigue: 7,
+  }]
+);
+assert.equal(
+  sameDateUpdate.actions[0].action,
+  'ACTUALIZAR',
+  'Una clave diaria existente con datos distintos debe actualizarse, no insertarse.'
+);
+
+const twoRealDaysPlan = {
+  groups: [
+    wellnessGroupForDay('2026-07-29', '2026-07-29T10:00:00.000Z'),
+    {
+      ...wellnessGroupForDay('2026-07-30', '2026-07-30T10:00:00.000Z'),
+      rowNumbers: [3],
+      rowDetails: [{
+        ...wellnessGroupForDay('2026-07-30', '2026-07-30T10:00:00.000Z').rowDetails[0],
+        rowNumber: 3,
+      }],
+    },
+  ],
+  failures: [],
+  skipped: 0,
+  duplicatesMerged: 0,
+};
+const twoRealDays = sandbox.buildWellnessHistoryReconciliationPlan(
+  twoRealDaysPlan,
+  [shiftedExistingRow]
+);
+assert.equal(twoRealDays.actions[0].action, 'SIN_CAMBIOS');
+assert.equal(
+  twoRealDays.actions[1].action,
+  'INSERTAR',
+  'La misma observación en dos días reales distintos debe conservar ambas fechas.'
+);
+
+const doubtfulShift = sandbox.buildWellnessHistoryReconciliationPlan(
+  shiftedHistoryPlan,
+  [{
+    ...shiftedExistingRow,
+    created_at: '2026-08-15T10:00:00.000Z',
+  }]
+);
+assert.equal(
+  doubtfulShift.actions[0].action,
+  'REVISAR_MANUALMENTE',
+  'Un created_at de importación lejano no autoriza a mover una fila.'
+);
+const sameCommentOnly = sandbox.buildWellnessHistoryReconciliationPlan(
+  shiftedHistoryPlan,
+  [{
+    id: 'wellness-same-comment-only',
+    ...wellnessPayloadForDay('2026-07-29', {
+      sleep_quality: 2,
+      fatigue: 9,
+      muscle_soreness: 9,
+      stress: 9,
+      mood: 2,
+      weight: 70,
+      health_ratio: 2,
+      discomfort: '',
+    }),
+    created_at: '2026-07-30T10:01:00.000Z',
+  }]
+);
+assert.equal(
+  sameCommentOnly.actions[0].action,
+  'INSERTAR',
+  'Compartir únicamente el comentario no convierte dos respuestas en duplicadas.'
+);
+const correctionSummary = sandbox.summarizeWellnessReconciliation(
+  [
+    ...shiftedCorrection.actions,
+    ...twoRealDays.actions,
+    ...doubtfulShift.actions,
+  ],
+  4,
+  { skipped: 0, failures: [] }
+);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(correctionSummary)),
+  {
+    rows: 4,
+    insert: 1,
+    update: 0,
+    correct: 1,
+    unchanged: 1,
+    deleteOld: 0,
+    review: 1,
+    skipped: 0,
+    errors: 0,
+  },
+  'La previsualización debe informar cada clase de resultado.'
+);
+
 const ambiguousFailure = sandbox.buildWellnessHistoryImportPlan([{
   rowNumber: 9,
   values: {
@@ -666,7 +849,33 @@ assert.match(source, /submitted_at: submittedDate\.toISOString\(\)/);
 assert.match(source, /Cabeceras detectadas:/, 'Los errores de cabeceras deben indicar las cabeceras detectadas.');
 assert.doesNotMatch(source, /jugadores_map/, 'El script no debe depender de una hoja jugadores_map.');
 assert.match(source, /function importAllWellnessHistory\(\)/, 'Debe existir una importación histórica manual.');
-assert.match(source, /upsertSupabase\('wellness_entries', groups\.map/, 'El histórico debe usar upsert por lotes.');
+assert.match(source, /function previewWellnessHistoryCorrection\(\)/, 'Debe existir una previsualización de solo lectura.');
+assert.match(source, /buildWellnessHistoryReconciliationPlan\(/, 'El histórico debe reconciliar fechas antes del upsert.');
+assert.match(source, /updateSupabaseById\('wellness_entries', action\.existingId, action\.payload\)/, 'La corrección inequívoca debe mover la fila existente por id.');
+assert.match(source, /upsertSupabase\('wellness_entries', action\.payload, 'jugador_id,entry_date'\)/, 'Insertados y actualizados deben conservar la clave diaria.');
+const wellnessImportSource = source.slice(
+  source.indexOf('function importAllWellnessHistory'),
+  source.indexOf('function importAllRpeHistory')
+);
+const wellnessPreviewSource = source.slice(
+  source.indexOf('function previewWellnessHistoryCorrection'),
+  source.indexOf('function importAllRpeHistory')
+);
+assert.doesNotMatch(
+  wellnessImportSource,
+  /deleteSupabase\(/,
+  'La importación Wellness nunca debe borrar automáticamente una fila antigua.'
+);
+assert.doesNotMatch(
+  wellnessPreviewSource,
+  /upsertSupabase\(|updateSupabaseById\(|deleteSupabase\(|setValues\(|setValue\(/,
+  'La previsualización Wellness debe ser estrictamente de solo lectura.'
+);
+assert.doesNotMatch(
+  wellnessHistoryAuditSource,
+  /\b(insert|update|delete|alter|drop|truncate|create)\b/i,
+  'El SQL de auditoría Wellness debe contener únicamente consultas de solo lectura.'
+);
 assert.match(source, /Nombre recibido desde Google Forms:/, 'El registro debe mostrar el nombre recibido.');
 assert.match(source, /Motivo exacto:/, 'El registro debe mostrar el motivo exacto.');
 assert.match(source, /Jugador esperado en public\.jugadores:/, 'El registro debe mostrar el candidato esperado.');
@@ -707,4 +916,4 @@ assert.doesNotMatch(migrationSource, /drop\s+constraint\s+.*session_id_fkey/i);
 assert.match(rollbackSource, /Rollback bloqueado: existen rpe_entries diarios sin session_id/);
 assert.doesNotMatch(rollbackSource, /drop\s+table|drop\s+column|drop\s+policy/i);
 
-console.log('Google Forms -> Supabase: RPE diario idempotente, zona horaria, compatibilidad legacy y UI sin sesiones validados.');
+console.log('Google Forms -> Supabase: reconciliación Wellness segura e idempotente, zona horaria y RPE diario validados.');
