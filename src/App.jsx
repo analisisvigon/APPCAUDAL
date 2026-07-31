@@ -3359,7 +3359,7 @@ const PerformanceObservations = ({ observations = [], allowFocus = true, classNa
       tabIndex={allowFocus ? 0 : undefined}
     >
       {view.items.map((item) => (
-        <span key={`${item.sourceLabel}:${item.date}:${item.text}`} className="flex h-5 min-w-0 items-center gap-1">
+        <span key={`${item.sourceTable}:${item.sourceField}:${item.date}:${item.timestamp || ''}:${item.text}`} className="flex h-5 min-w-0 items-center gap-1">
           <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.08em] ${sourceClasses[item.sourceLabel] || 'border-white/10 bg-white/[0.04] text-slate-300'}`}>
             {item.sourceLabel}
           </span>
@@ -7878,7 +7878,7 @@ function App() {
         ),
         loadObservationHistory(
           'rpe_entries',
-          'id,jugador_id,entry_date,comment,created_at,updated_at'
+          'id,jugador_id,entry_date,submitted_at,comment,created_at,updated_at'
         ),
       ]);
 

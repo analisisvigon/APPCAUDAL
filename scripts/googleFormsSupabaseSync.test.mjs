@@ -119,6 +119,33 @@ assert.equal(
 );
 assert.equal(sandbox.getDailyRpeConflictTarget(madridMidnightPayload), 'jugador_id,entry_date');
 
+const wellnessSheetTimeZonePayload = sandbox.buildWellnessPayload({
+  'Marca temporal': new Date('2026-07-29T22:30:00.000Z'),
+  'Nombre y apellidos.': 'VIGON',
+  'Información personal: (molestias, comentarios)': 'Cuádriceps derecho',
+}, '00000000-0000-0000-0000-000000000001', 'Europe/Madrid');
+assert.equal(
+  wellnessSheetTimeZonePayload.entry_date,
+  '2026-07-30',
+  'Wellness debe obtener la fecha diaria con la zona horaria del Sheet, no con UTC.'
+);
+assert.equal(wellnessSheetTimeZonePayload.comment, 'Cuádriceps derecho');
+assert.equal(wellnessSheetTimeZonePayload.discomfort, '');
+const wellnessHistoryTimeZonePlan = sandbox.buildWellnessHistoryImportPlan([{
+  rowNumber: 2,
+  values: {
+    'Marca temporal': new Date('2026-07-29T22:30:00.000Z'),
+    'Nombre y apellidos.': 'VIGON',
+    'Información personal: (molestias, comentarios)': 'Comentario histórico',
+  },
+}], supabasePlayers, 'Europe/Madrid');
+assert.equal(wellnessHistoryTimeZonePlan.failures.length, 0);
+assert.equal(
+  wellnessHistoryTimeZonePlan.groups[0].payload.entry_date,
+  '2026-07-30',
+  'La reimportación histórica Wellness debe compartir la zona horaria del Sheet.'
+);
+
 assert.equal(sandbox.toRpeValue('7'), 7, 'Debe aceptar RPE enteros entre 1 y 10.');
 assert.throws(() => sandbox.toRpeValue('0'), /RPE inválido/);
 assert.throws(() => sandbox.toRpeValue('11'), /RPE inválido/);
@@ -525,6 +552,19 @@ const realWellnessHeaders = {
   'Información personal: (molestias, comentarios)': 'Carga controlada.',
   'Ratio salud': '8,5',
 };
+
+const wellnessTextMapping = sandbox.buildWellnessPayload({
+  'Marca temporal': '30/07/2026 11:59:25',
+  'Especificar la molestia en caso de tener alguna': 'Isquio derecho',
+  'Información personal: (molestias, comentarios)': 'Bastante cargado de la semana',
+}, 'player-acerete', 'Europe/Madrid');
+assert.equal(wellnessTextMapping.discomfort, 'Isquio derecho');
+assert.equal(wellnessTextMapping.comment, 'Bastante cargado de la semana');
+assert.equal(
+  'submitted_at' in wellnessTextMapping,
+  false,
+  'Wellness no debe inventar una columna submitted_at que no existe en su esquema.'
+);
 
 assert.equal(
   sandbox.findWellnessWeightColumnIndex(['Fecha', 'Nombre y apellidos.', '¿Cuál tu peso hoy?', 'Ratio salud']),

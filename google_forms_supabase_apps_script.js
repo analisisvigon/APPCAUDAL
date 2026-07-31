@@ -77,6 +77,15 @@ const RPE_HEADER_CANDIDATES = ['RPE', 'RPE (1-10)', 'RPE 1-10', 'Columna 4'];
 const RPE_SESSION_CODE_HEADERS = ['Código sesión', 'Codigo sesion', 'Código de sesión', 'Codigo de sesion', 'form_code'];
 const TIMESTAMP_HEADER_CANDIDATES = ['Marca temporal', 'Timestamp', 'Fecha', 'Columna 1'];
 const RPE_COMMENT_HEADER_CANDIDATES = ['Comentario', 'Comentarios', 'Columna 5'];
+const WELLNESS_DISCOMFORT_HEADER_CANDIDATES = [
+  'Especificar la molestia en caso de tener alguna',
+  'Molestias',
+];
+const WELLNESS_COMMENT_HEADER_CANDIDATES = [
+  'Información personal: (molestias, comentarios)',
+  'Comentario',
+  'Comentarios',
+];
 const FORMULA_RETRY_COUNT = 3;
 const FORMULA_RETRY_DELAY_MS = 250;
 const WELLNESS_IMPORT_BATCH_SIZE = 100;
@@ -93,7 +102,11 @@ function onWellnessSubmit(e) {
       throw new Error(`Jugador no encontrado en public.jugadores: "${playerName}". No se inserta wellness.`);
     }
 
-    const payload = buildWellnessPayload(row, player.jugador_id);
+    const payload = buildWellnessPayload(
+      row,
+      player.jugador_id,
+      getSheetTimeZone(submission.sheet)
+    );
 
     requireFields(payload, ['jugador_id', 'entry_date'], 'wellness');
     upsertSupabase('wellness_entries', payload, 'jugador_id,entry_date');
@@ -185,7 +198,7 @@ function importAllWellnessHistory() {
     values: Object.fromEntries(technical.headers.map((header, columnIndex) => [String(header).trim(), row[columnIndex]])),
   }));
   const players = fetchPlayersForForms();
-  const plan = buildWellnessHistoryImportPlan(rowItems, players);
+  const plan = buildWellnessHistoryImportPlan(rowItems, players, getSheetTimeZone(sheet));
   const syncStates = {};
 
   plan.failures.forEach((failure) => {
@@ -820,7 +833,7 @@ function damerauLevenshteinDistance(leftValue, rightValue) {
   return matrix[left.length][right.length];
 }
 
-function buildWellnessPayload(row, playerId) {
+function buildWellnessPayload(row, playerId, timeZone) {
   const sleepValue = getFirstValue(row, [
     'Calidad del sueño',
     'Calidad del sueno',
@@ -846,7 +859,10 @@ function buildWellnessPayload(row, playerId) {
 
   return {
     jugador_id: playerId,
-    entry_date: toIsoDate(getFirstValue(row, ['Fecha', 'Marca temporal', 'Timestamp'])),
+    entry_date: toIsoDate(
+      getFirstValue(row, ['Fecha', 'Marca temporal', 'Timestamp']),
+      timeZone
+    ),
     sleep_hours: toNullableNumber(getFirstValue(row, ['Horas de sueño', 'Horas de sueno', 'Horas sueño', 'Horas sueno'])),
     sleep_quality: toWellnessScale(sleepValue, 'sleep'),
     fatigue: toWellnessScale(getFirstValue(row, ['¿Cómo de fatigado estás hoy?', 'Fatiga']), 'high-is-bad'),
@@ -854,13 +870,13 @@ function buildWellnessPayload(row, playerId) {
     stress: toWellnessScale(getFirstValue(row, ['¿Cómo de estresado estás hoy?', 'Estrés', 'Estres']), 'high-is-bad'),
     mood: toWellnessScale(moodValue, 'mood'),
     weight: toNullableNumber(getWellnessWeightValue(row)),
-    discomfort: getFirstValue(row, ['Especificar la molestia en caso de tener alguna', 'Molestias']) || '',
-    comment: getFirstValue(row, ['Información personal: (molestias, comentarios)', 'Comentario', 'Comentarios']) || '',
+    discomfort: getFirstValue(row, WELLNESS_DISCOMFORT_HEADER_CANDIDATES) || '',
+    comment: getFirstValue(row, WELLNESS_COMMENT_HEADER_CANDIDATES) || '',
     health_ratio: toHealthRatio(getFirstValue(row, ['Ratio salud'])),
   };
 }
 
-function buildWellnessHistoryImportPlan(rowItems, players) {
+function buildWellnessHistoryImportPlan(rowItems, players, timeZone) {
   const groupsByKey = {};
   const failures = [];
   let skipped = 0;
@@ -879,7 +895,7 @@ function buildWellnessHistoryImportPlan(rowItems, players) {
       if (!player) {
         throw new Error(`Jugador no encontrado en public.jugadores: "${playerName}". No se inserta wellness.`);
       }
-      const payload = buildWellnessPayload(row, player.jugador_id);
+      const payload = buildWellnessPayload(row, player.jugador_id, timeZone);
       requireFields(payload, ['jugador_id', 'entry_date'], 'wellness');
       const key = `${payload.jugador_id}|${payload.entry_date}`;
       const existing = groupsByKey[key];
@@ -1456,10 +1472,11 @@ function normalizeName(value) {
     .toLowerCase();
 }
 
-function toIsoDate(value) {
+function toIsoDate(value, timeZone) {
   if (!value) return '';
+  const calendarTimeZone = timeZone || Session.getScriptTimeZone();
   if (Object.prototype.toString.call(value) === '[object Date]') {
-    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    return Utilities.formatDate(value, calendarTimeZone, 'yyyy-MM-dd');
   }
   const text = String(value).trim();
   const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -1468,7 +1485,7 @@ function toIsoDate(value) {
   if (parts) return `${parts[3]}-${parts[2].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
   const parsed = new Date(text);
   if (!Number.isNaN(parsed.getTime())) {
-    return Utilities.formatDate(parsed, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    return Utilities.formatDate(parsed, calendarTimeZone, 'yyyy-MM-dd');
   }
   return text;
 }

@@ -4,7 +4,9 @@ import { readFileSync } from 'node:fs';
 import {
   buildPerformanceObservations,
   buildPerformanceObservationsByPlayer,
+  formatPerformanceObservationDate,
   getPerformanceObservationView,
+  normalizePerformanceCalendarDate,
 } from './performanceObservations.js';
 
 const REFERENCE_DATE = '2026-07-31';
@@ -16,6 +18,63 @@ const build = ({ wellnessEntries = [], rpeEntries = [], playerId = 'player-1' } 
     referenceDate: REFERENCE_DATE,
   })
 );
+
+assert.equal(normalizePerformanceCalendarDate('2026-07-30'), '2026-07-30');
+assert.equal(
+  normalizePerformanceCalendarDate('2026-07-31T08:34:58'),
+  '2026-07-31',
+  'un timestamp sin zona conserva su fecha de calendario'
+);
+assert.equal(
+  formatPerformanceObservationDate('2026-07-30', '2026-08-03'),
+  '30/07',
+  'una fecha date no atraviesa UTC ni puede retroceder al día anterior'
+);
+
+const acereteWellness = build({
+  playerId: 'acerete',
+  wellnessEntries: [{
+    jugador_id: 'acerete',
+    entry_date: '2026-07-30',
+    comment: 'Cuádriceps derecho',
+    created_at: '2026-07-30T10:00:00Z',
+  }],
+});
+assert.equal(acereteWellness[0].label, 'Wellness · Ayer · Cuádriceps derecho');
+assert.equal(acereteWellness[0].date, '2026-07-30');
+assert.equal(acereteWellness[0].sourceTable, 'wellness_entries');
+assert.equal(acereteWellness[0].sourceType, 'wellness_comment');
+assert.equal(acereteWellness[0].sourceField, 'comment');
+assert.equal(acereteWellness[0].playerId, 'acerete');
+assert.notEqual(acereteWellness[0].sourceLabel, 'RPE');
+
+const marcosLatestWellness = build({
+  playerId: 'marcos',
+  wellnessEntries: [
+    {
+      jugador_id: 'marcos',
+      entry_date: '2026-07-29',
+      comment: 'Comentario anterior',
+    },
+    {
+      jugador_id: 'marcos',
+      entry_date: '2026-07-30',
+      comment: 'Bastante cargado de la semana',
+    },
+  ],
+});
+assert.equal(marcosLatestWellness[0].text, 'Bastante cargado de la semana');
+assert.equal(marcosLatestWellness[0].date, '2026-07-30');
+
+const july31 = build({
+  wellnessEntries: [{
+    jugador_id: 'player-1',
+    entry_date: '2026-07-31T08:34:58',
+    comment: 'Respuesta del 31',
+  }],
+});
+assert.equal(july31[0].date, '2026-07-31');
+assert.equal(july31[0].dateLabel, 'Hoy');
 
 const previousRpeWithoutWellnessToday = build({
   wellnessEntries: [{
@@ -97,6 +156,57 @@ assert.deepEqual(
   sameDatePriority.map((item) => item.priority),
   [1, 2, 3]
 );
+assert.deepEqual(
+  sameDatePriority.map((item) => [item.sourceTable, item.sourceType, item.sourceField]),
+  [
+    ['wellness_entries', 'discomfort', 'discomfort'],
+    ['rpe_entries', 'rpe_comment', 'comment'],
+    ['wellness_entries', 'wellness_comment', 'comment'],
+  ],
+  'cada texto conserva la tabla, el tipo y el campo exactos de origen'
+);
+
+const sameDateRealTime = build({
+  wellnessEntries: [{
+    jugador_id: 'player-1',
+    entry_date: '2026-07-30',
+    submitted_at: '2026-07-30T09:00:00+02:00',
+    discomfort: 'Molestia temprana',
+  }],
+  rpeEntries: [{
+    jugador_id: 'player-1',
+    entry_date: '2026-07-30',
+    submitted_at: '2026-07-30T18:00:00+02:00',
+    comment: 'RPE posterior',
+  }],
+});
+assert.deepEqual(
+  sameDateRealTime.map((item) => item.text),
+  ['RPE posterior', 'Molestia temprana'],
+  'la hora fiable prevalece sobre la prioridad de tipo el mismo día'
+);
+assert.equal(sameDateRealTime[0].timestampReliable, true);
+assert.equal(sameDateRealTime[0].timestampField, 'submitted_at');
+
+const unreliableWellnessTimeUsesPriority = build({
+  wellnessEntries: [{
+    jugador_id: 'player-1',
+    entry_date: '2026-07-30',
+    created_at: '2026-08-02T12:00:00Z',
+    discomfort: 'Molestia importada',
+  }],
+  rpeEntries: [{
+    jugador_id: 'player-1',
+    entry_date: '2026-07-30',
+    submitted_at: '2026-07-30T18:00:00+02:00',
+    comment: 'RPE con hora real',
+  }],
+});
+assert.equal(
+  unreliableWellnessTimeUsesPriority[0].sourceLabel,
+  'Molestia',
+  'created_at no se confunde con la hora real de una respuesta histórica Wellness'
+);
 
 const rpeBeatsWellnessOnSameDate = build({
   wellnessEntries: [{
@@ -177,6 +287,16 @@ const emptyValues = build({
 });
 assert.deepEqual(emptyValues, [], 'ignora vacíos y nunca genera comentarios desde valores numéricos');
 
+const moreEmptyValues = build({
+  wellnessEntries: [{
+    jugador_id: 'player-1',
+    entry_date: '2026-07-31',
+    discomfort: 'No tengo molestias',
+    comment: '.',
+  }],
+});
+assert.deepEqual(moreEmptyValues, [], 'ignora punto suelto y ausencia explícita de molestias');
+
 const explicitEverythingFine = build({
   wellnessEntries: [{
     jugador_id: 'player-1',
@@ -213,6 +333,20 @@ assert.deepEqual(
   'la agrupación previa no mezcla jugadores'
 );
 
+const namedPlayersAreIsolated = buildPerformanceObservationsByPlayer({
+  wellnessEntries: [
+    { jugador_id: 'acerete', entry_date: '2026-07-30', comment: 'Acerete comentario' },
+    { jugador_id: 'marcos', entry_date: '2026-07-30', comment: 'Marcos comentario' },
+    { jugador_id: 'agus', entry_date: '2026-07-30', comment: 'Agus comentario' },
+    { jugador_id: 'julio', entry_date: '2026-07-30', comment: 'Julio comentario' },
+  ],
+  referenceDate: REFERENCE_DATE,
+});
+assert.deepEqual(namedPlayersAreIsolated.get('acerete').map((item) => item.text), ['Acerete comentario']);
+assert.deepEqual(namedPlayersAreIsolated.get('marcos').map((item) => item.text), ['Marcos comentario']);
+assert.deepEqual(namedPlayersAreIsolated.get('agus').map((item) => item.text), ['Agus comentario']);
+assert.deepEqual(namedPlayersAreIsolated.get('julio').map((item) => item.text), ['Julio comentario']);
+
 const emptyView = getPerformanceObservationView([]);
 assert.equal(emptyView.isEmpty, true);
 assert.equal(emptyView.emptyLabel, 'Sin observaciones registradas');
@@ -231,8 +365,8 @@ assert.ok(
   'Wellness carga únicamente identificador, fecha y campos textuales necesarios'
 );
 assert.ok(
-  appSource.includes("'id,jugador_id,entry_date,comment,created_at,updated_at'"),
-  'RPE carga únicamente identificador, fecha y comentario'
+  appSource.includes("'id,jugador_id,entry_date,submitted_at,comment,created_at,updated_at'"),
+  'RPE conserva submitted_at para ordenar por la hora real'
 );
 assert.ok(appSource.includes('min-w-0 truncate text-[10px]'), 'los textos mantienen truncado responsive');
 assert.ok(appSource.includes('role=\"tooltip\"'), 'el contenido completo sigue disponible en tooltip');
