@@ -25126,6 +25126,81 @@ function App() {
       const time = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' }).format(parsed);
       return `Última respuesta: ${formatShortDate(activity.lastResponseDate)} · ${time}`;
     };
+    const getPerformanceActivityText = (value) => {
+      const text = String(value ?? '').trim();
+      if (!text) return '';
+      const normalized = text
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[.,;:!?…'"`()\[\]{}_\-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return new Set([
+        '',
+        'nada',
+        'sin molestia',
+        'sin molestias',
+        'no tengo molestia',
+        'no tengo molestias',
+      ]).has(normalized) ? '' : text;
+    };
+    const renderPerformanceActivityText = (label, value, emptyLabel) => {
+      const text = getPerformanceActivityText(value);
+      return (
+        <div className="min-w-0">
+          <p className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+          <p
+            title={text || undefined}
+            className={`mt-0.5 line-clamp-2 text-[10px] font-semibold leading-4 ${text ? 'text-slate-200' : 'text-slate-500'}`}
+          >
+            {text || emptyLabel}
+          </p>
+        </div>
+      );
+    };
+    const renderPerformanceActivityContent = (formType, activity, entry) => {
+      if (activity.neverResponded) return null;
+      const hasFullEntry = Boolean(
+        activity.lastResponseDate && entry?.entry_date === activity.lastResponseDate
+      );
+      if (!hasFullEntry) {
+        return (
+          <p className="mt-2 rounded-lg border border-dashed border-slate-400/15 bg-slate-400/[0.035] px-2.5 py-2 text-[10px] font-semibold leading-4 text-slate-400">
+            Detalle no disponible en el periodo cargado
+          </p>
+        );
+      }
+
+      if (formType === 'wellness') {
+        const wellnessValue = getWellnessScore(entry);
+        return (
+          <div className="mt-2 space-y-2 border-t border-white/[0.06] pt-2">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-500">Wellness</span>
+              <span className="text-xs font-black text-white">
+                {wellnessValue === null ? 'Sin dato' : `${wellnessValue.toFixed(1)}/10`}
+              </span>
+            </div>
+            {renderPerformanceActivityText('Molestia', entry.discomfort, 'Sin molestias registradas')}
+            {renderPerformanceActivityText('Comentario', entry.comment, 'Sin comentario registrado')}
+          </div>
+        );
+      }
+
+      const rpeValue = getPerformanceNumber(entry.rpe);
+      return (
+        <div className="mt-2 space-y-2 border-t border-white/[0.06] pt-2">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-500">Último RPE</span>
+            <span className="text-xs font-black text-white">
+              {rpeValue === null ? 'Sin dato' : `${rpeValue.toFixed(1)}/10`}
+            </span>
+          </div>
+          {renderPerformanceActivityText('Comentario RPE', entry.comment, 'Sin comentario registrado')}
+        </div>
+      );
+    };
     const selectedWellnessIndicators = [
       { key: 'sleep_quality', label: 'Sueño', icon: '☾', value: getPerformanceNumber(selectedDayWellness?.sleep_quality), suffix: '/10' },
       { key: 'fatigue', label: 'Fatiga', icon: '◆', value: getPerformanceNumber(selectedDayWellness?.fatigue), suffix: '/10' },
@@ -26353,6 +26428,7 @@ function App() {
                             <p className="mt-2 text-[10px] font-bold text-slate-500">
                               {formatLastActivityDetail(activity, entry)}
                             </p>
+                            {renderPerformanceActivityContent(formType, activity, entry)}
                           </div>
                         ))}
                       </div>
