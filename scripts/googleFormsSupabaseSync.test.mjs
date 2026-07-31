@@ -816,6 +816,43 @@ assert.equal(borjaPayload.sleep_quality, 8);
 assert.equal(borjaPayload.discomfort, 'Cuádriceps derecho');
 assert.equal(borjaPayload.comment, 'Todo bien');
 
+const actualBorjaCommentHeader = 'Información personal: (molestias, comentarios, etc).';
+const actualBorjaHeaders = currentWellnessHeaders.map((header) => (
+  header.startsWith('Información personal') ? actualBorjaCommentHeader : header
+));
+const actualBorjaFields = sandbox.resolveRequiredWellnessFields(
+  actualBorjaHeaders,
+  borjaRawRow,
+  borjaDisplayRow
+);
+assert.equal(actualBorjaFields.comment.found, true);
+assert.equal(actualBorjaFields.comment.index, 12);
+assert.equal(actualBorjaFields.comment.header, actualBorjaCommentHeader);
+assert.equal(actualBorjaFields.comment.rawValue, 'Todo bien');
+assert.equal(actualBorjaFields.comment.displayValue, 'Todo bien');
+assert.equal(
+  sandbox.buildWellnessPayload(
+    Object.fromEntries(actualBorjaHeaders.map((header, index) => [header, borjaRawRow[index]])),
+    'player-borja',
+    'Europe/Madrid',
+    actualBorjaFields
+  ).comment,
+  'Todo bien',
+  'La cabecera real etc). debe incluir el comentario general en el payload.'
+);
+[
+  'Información personal: (molestias, comentarios, etc).',
+  'Información personal: (molestias, comentarios, etc.).',
+  'Información personal: (molestias, comentarios, etc)',
+  'Información personal: (molestias, comentarios, etc.',
+].forEach((header) => {
+  assert.equal(
+    sandbox.normalizeWellnessHeader(header),
+    sandbox.normalizeWellnessHeader(actualBorjaCommentHeader),
+    `La variante ${header} debe ser equivalente solo por su puntuación terminal.`
+  );
+});
+
 const invisibleWellnessHeaders = currentWellnessHeaders.map((header) => {
   if (header === 'Calidad del sueño') return '  CALIDAD\u200B DEL   SUEÑO...  ';
   if (header.startsWith('Especificar la molestia')) {
@@ -1037,6 +1074,11 @@ assert.doesNotMatch(
   wellnessInspectorSource,
   /supabaseFetch\(|fetchPlayersForForms\(|upsertSupabase\(|updateSupabaseById\(|deleteSupabase\(|setValues\(|setValue\(|ensureTechnicalColumns\(/,
   'El inspector de Borja no debe escribir ni realizar requests a Supabase.'
+);
+assert.match(
+  wellnessInspectorSource,
+  /let payloadError = null;/,
+  'Una fila válida inspeccionada debe devolver payloadError: null.'
 );
 assert.ok(
   wellnessImportSource.indexOf('assertRequiredWellnessColumns(')

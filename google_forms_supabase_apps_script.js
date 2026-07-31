@@ -93,8 +93,11 @@ const WELLNESS_DISCOMFORT_HEADER_CANDIDATES = [
   'Molestias',
 ];
 const WELLNESS_COMMENT_HEADER_CANDIDATES = [
+  'Información personal: (molestias, comentarios, etc).',
   'Información personal: (molestias, comentarios, etc.).',
   'Información personal: (molestias, comentarios, etc.)',
+  'Información personal: (molestias, comentarios, etc)',
+  'Información personal: (molestias, comentarios, etc.',
   'Información personal: (molestias, comentarios)',
   'Comentario',
   'Comentarios',
@@ -1091,7 +1094,7 @@ function normalizeWellnessHeader(value) {
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase()
-    .replace(/[\s.,;:!?¡¿…]+$/g, '')
+    .replace(/[\s.,;:!?¡¿…)]+$/g, '')
     .trim();
 }
 
@@ -1828,7 +1831,7 @@ function inspectWellnessRowByPlayerAndDate(
       headers.map((header, columnIndex) => [String(header).trim(), rawRow[columnIndex]])
     );
     let payload = null;
-    let payloadError = '';
+    let payloadError = null;
     try {
       assertRequiredWellnessColumns(fields, headers, sheet.getName());
       payload = buildWellnessPayload(
