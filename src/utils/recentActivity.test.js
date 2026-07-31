@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   buildRecentActivity,
@@ -6,216 +7,240 @@ import {
   groupRecentActivity,
 } from './recentActivity.js';
 
-const timestamp = (hour, minute = 0) => (
-  `2026-07-30T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00.000Z`
+const timestamp = (day, hour, minute = 0) => (
+  `2026-07-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00.000Z`
 );
+const NOW = timestamp(31, 12);
+const recentOptions = { nowValue: NOW };
 
 const referencePlayers = [
   { id: 'player-1', name: 'Alejandro González', shirt_name: 'Alex Glez' },
-  { id: 'player-2', name: 'David Fernández', shirt_name: 'Davo' },
+  { id: 'player-2', name: 'Vicente Antuña' },
+  { id: 'player-3', name: 'Agustín Porto', shirt_name: 'Agus Porto' },
 ];
 
-const fiveWellness = buildRecentActivity({
-  players: referencePlayers,
-  wellnessEntries: Array.from({ length: 5 }, (_, index) => ({
-    id: `wellness-${index + 1}`,
-    jugador_id: index % 2 ? 'player-2' : 'player-1',
-    entry_date: '2026-07-30',
-    created_at: timestamp(8, index),
-  })),
-});
-assert.equal(fiveWellness.length, 1, 'cinco respuestas Wellness producen una sola tarjeta');
-assert.equal(fiveWellness[0].moduleKey, 'performance');
-assert.equal(fiveWellness[0].moduleName, 'Rendimiento');
-assert.equal(fiveWellness[0].summary, '5 respuestas Wellness');
-assert.equal(fiveWellness[0].eventCount, 5);
-assert.ok(
-  fiveWellness[0].events.every((event) => event.moduleKey === 'performance'),
-  'cada evento conserva el moduleKey canónico'
-);
-
-const combinedPerformance = buildRecentActivity({
+const performanceInput = {
   players: referencePlayers,
   wellnessEntries: [{
-    id: 'wellness-combined',
-    jugador_id: 'player-1',
-    created_at: timestamp(9),
+    id: 'wellness-latest',
+    jugador_id: 'player-2',
+    created_at: timestamp(31, 11, 48),
   }],
-  rpeEntries: [
-    { id: 'rpe-combined-1', jugador_id: 'player-1', created_at: timestamp(10) },
-    { id: 'rpe-combined-2', jugador_id: 'player-2', created_at: timestamp(11) },
-  ],
+  rpeEntries: [{
+    id: 'rpe-before-wellness',
+    jugador_id: 'player-3',
+    created_at: timestamp(31, 11, 40),
+  }],
   trainingSessions: [{
-    id: 'session-combined',
-    title: 'Activación',
-    created_at: timestamp(12),
+    id: 'session-before-rpe',
+    title: 'MD-3',
+    created_at: timestamp(31, 10, 30),
   }],
-});
-assert.equal(combinedPerformance.length, 1);
+};
+const latestWellness = buildRecentActivity(performanceInput, recentOptions);
+assert.equal(latestWellness.length, 1, 'Rendimiento mantiene una tarjeta por módulo');
+assert.equal(latestWellness[0].moduleKey, 'performance');
+assert.equal(latestWellness[0].moduleLabel, 'Rendimiento');
+assert.equal(latestWellness[0].latestEventType, 'Último Wellness');
+assert.equal(latestWellness[0].latestEntityLabel, 'Vicente Antuña');
+assert.equal(latestWellness[0].latestTimestamp, timestamp(31, 11, 48));
 assert.equal(
-  combinedPerformance[0].summary,
-  '1 respuesta Wellness · 2 respuestas RPE · 1 sesión creada',
-  'Wellness, RPE y sesiones mantienen el orden estable del módulo'
+  latestWellness[0].summary,
+  '1 Wellness · 1 RPE · 1 sesión',
+  'el resumen secundario conserva todos los tipos registrados'
 );
-assert.equal(
-  combinedPerformance[0].timestamp,
-  timestamp(12),
-  'la tarjeta utiliza la fecha más reciente del grupo'
-);
+assert.equal(latestWellness[0].summaryPeriodLabel, 'Últimos 7 días');
 
-const allCanonicalModules = buildRecentActivity({
-  matches: [{
-    id: 'match-1',
-    opponent: 'Praviano',
-    is_home: true,
-    created_at: timestamp(13),
+const latestRpe = buildRecentActivity({
+  ...performanceInput,
+  rpeEntries: [{
+    id: 'rpe-latest',
+    jugador_id: 'player-3',
+    created_at: timestamp(31, 11, 55),
   }],
-  players: [{
-    id: 'player-created',
-    name: 'Nuevo jugador',
-    created_at: timestamp(12),
+}, recentOptions);
+assert.equal(latestRpe[0].latestEventType, 'Último RPE');
+assert.equal(latestRpe[0].latestEntityLabel, 'Agus Porto', 'RPE utiliza el nombre visible del jugador');
+
+const latestSession = buildRecentActivity({
+  ...performanceInput,
+  trainingSessions: [{
+    id: 'session-latest',
+    title: 'MD-3',
+    created_at: timestamp(31, 11, 58),
   }],
-  teams: [{
-    id: 'team-1',
-    name: 'Praviano',
-    created_at: timestamp(11),
-    updated_at: timestamp(14),
-  }],
+}, recentOptions);
+assert.equal(latestSession[0].latestEventType, 'Última sesión creada');
+assert.equal(latestSession[0].latestEntityLabel, 'MD-3');
+
+const unresolvedPerformancePlayer = buildRecentActivity({
   wellnessEntries: [{
-    id: 'wellness-module',
-    jugador_id: 'player-created',
-    created_at: timestamp(15),
+    id: 'wellness-unresolved',
+    jugador_id: 'missing-id',
+    created_at: timestamp(31, 11),
   }],
-});
-assert.deepEqual(
-  allCanonicalModules.map((group) => group.moduleKey),
-  ['performance', 'teams', 'matches', 'squad'],
-  'los grupos se ordenan por su actividad más reciente'
-);
-assert.equal(allCanonicalModules.find((group) => group.moduleKey === 'matches')?.summary, '1 partido creado');
-assert.equal(allCanonicalModules.find((group) => group.moduleKey === 'squad')?.summary, '1 jugador añadido');
-assert.equal(allCanonicalModules.find((group) => group.moduleKey === 'teams')?.summary, '1 rival actualizado');
+}, recentOptions);
+assert.equal(unresolvedPerformancePlayer[0].latestEntityLabel, 'Jugador no disponible');
+assert.ok(!JSON.stringify(unresolvedPerformancePlayer).includes('missing-id'), 'la tarjeta no muestra IDs sin resolver');
 
-const eventIds = allCanonicalModules.flatMap((group) => group.events.map((event) => event.id));
-assert.equal(new Set(eventIds).size, eventIds.length, 'ningún evento aparece en dos módulos');
-allCanonicalModules.forEach((group) => {
-  assert.ok(
-    group.events.every((event) => event.moduleKey === group.moduleKey),
-    `todos los eventos pertenecen únicamente a ${group.moduleKey}`
-  );
-});
-
-const pluralSummaries = buildRecentActivity({
-  matches: [
-    { id: 'match-created-1', opponent: 'A', created_at: timestamp(7) },
-    { id: 'match-created-2', opponent: 'B', created_at: timestamp(8) },
-    { id: 'match-updated-1', opponent: 'C', created_at: timestamp(6), updated_at: timestamp(9) },
-    { id: 'match-updated-2', opponent: 'D', created_at: timestamp(6), updated_at: timestamp(10) },
-  ],
+const squadActivity = buildRecentActivity({
   players: [
-    { id: 'player-added-1', name: 'A', created_at: timestamp(5) },
-    { id: 'player-added-2', name: 'B', created_at: timestamp(6) },
+    {
+      id: 'updated-player',
+      name: 'Jugador anterior',
+      created_at: timestamp(29, 9),
+      updated_at: timestamp(31, 11, 50),
+    },
+    {
+      id: 'latest-created-player',
+      name: 'Vicente Antuña',
+      created_at: timestamp(31, 10),
+    },
   ],
-  teams: [
-    { id: 'team-updated-1', name: 'A', created_at: timestamp(4), updated_at: timestamp(7) },
-    { id: 'team-updated-2', name: 'B', created_at: timestamp(4), updated_at: timestamp(8) },
-    { id: 'team-updated-3', name: 'C', created_at: timestamp(4), updated_at: timestamp(9) },
-  ],
-});
+}, recentOptions);
+assert.equal(squadActivity[0].moduleKey, 'squad');
+assert.equal(squadActivity[0].latestEventType, 'Último jugador añadido');
+assert.equal(squadActivity[0].latestEntityLabel, 'Vicente Antuña');
 assert.equal(
-  pluralSummaries.find((group) => group.moduleKey === 'matches')?.summary,
-  '2 partidos creados · 2 partidos actualizados'
+  squadActivity[0].summary,
+  '2 jugadores añadidos · 1 jugador actualizado',
+  'Plantilla cuenta creaciones y actualizaciones fiables sin confundirlas'
 );
+
+const rivalTeams = [
+  { id: 'own-team', name: 'C.D. Caudal', team_kind: 'own', created_at: timestamp(25, 8) },
+  { id: 'rival-team', name: 'CD Praviano', team_kind: 'rival', created_at: timestamp(26, 8) },
+];
+const rivalPlayerActivity = buildRecentActivity({
+  teams: rivalTeams,
+  globalPlayers: [{ id: 'global-rival', name: 'Juan Pérez' }],
+  rivalMemberships: [{
+    id: 'membership-rival',
+    player_id: 'global-rival',
+    team_id: 'rival-team',
+    created_at: timestamp(31, 9),
+  }],
+}, recentOptions);
+assert.equal(rivalPlayerActivity.length, 1);
+assert.equal(rivalPlayerActivity[0].moduleKey, 'teams');
+assert.equal(rivalPlayerActivity[0].latestEventType, 'Último jugador añadido');
+assert.equal(rivalPlayerActivity[0].latestEntityLabel, 'Juan Pérez');
+assert.equal(rivalPlayerActivity[0].latestContextLabel, 'CD Praviano');
+assert.equal(rivalPlayerActivity[0].summary, '1 jugador rival añadido · 1 equipo creado');
+
+const legacyRivalActivity = buildRecentActivity({
+  teams: rivalTeams,
+  rivalPlayers: [{
+    id: 'legacy-rival',
+    name: 'Mario García',
+    equipo_rival_id: 'rival-team',
+    created_at: timestamp(30, 9),
+  }],
+}, recentOptions);
+assert.equal(legacyRivalActivity[0].latestEntityLabel, 'Mario García', 'mantiene compatibilidad con jugadores rivales legacy');
+assert.equal(legacyRivalActivity[0].latestContextLabel, 'CD Praviano');
+
+const noDuplicatedLinkedRival = buildRecentActivity({
+  teams: rivalTeams,
+  globalPlayers: [{ id: 'global-linked', name: 'Jugador vinculado' }],
+  rivalMemberships: [{
+    id: 'membership-linked',
+    player_id: 'global-linked',
+    team_id: 'rival-team',
+    created_at: timestamp(31, 9),
+  }],
+  rivalPlayers: [{
+    id: 'legacy-linked',
+    name: 'Jugador vinculado',
+    global_player_id: 'global-linked',
+    membership_id: 'membership-linked',
+    equipo_rival_id: 'rival-team',
+    created_at: timestamp(31, 9),
+  }],
+}, recentOptions);
 assert.equal(
-  pluralSummaries.find((group) => group.moduleKey === 'squad')?.summary,
-  '2 jugadores añadidos'
+  noDuplicatedLinkedRival[0].counts['Jugador rival añadido'],
+  1,
+  'la fila legacy vinculada no duplica la incorporación global'
 );
-assert.equal(
-  pluralSummaries.find((group) => group.moduleKey === 'teams')?.summary,
-  '3 rivales actualizados'
+
+const teamFallback = buildRecentActivity({
+  teams: [{
+    id: 'fallback-team',
+    name: 'CD Llanes',
+    team_kind: 'rival',
+    created_at: timestamp(30, 8),
+    updated_at: timestamp(31, 8),
+  }],
+}, recentOptions);
+assert.equal(teamFallback[0].latestEventType, 'Último equipo rival actualizado');
+assert.equal(teamFallback[0].latestEntityLabel, 'CD Llanes');
+assert.equal(teamFallback[0].summary, '1 equipo creado · 1 equipo actualizado');
+
+const matchActivity = buildRecentActivity({
+  matches: [{
+    id: 'match-created',
+    opponent: 'CD Praviano',
+    is_home: true,
+    date: '2026-08-02',
+    created_at: timestamp(31, 10, 20),
+  }],
+}, recentOptions);
+assert.equal(matchActivity[0].moduleKey, 'matches');
+assert.equal(matchActivity[0].latestEventType, 'Último partido creado');
+assert.equal(matchActivity[0].latestEntityLabel, 'Caudal vs CD Praviano');
+assert.equal(matchActivity[0].latestContextLabel, '02/08/2026');
+assert.equal(matchActivity[0].summary, '1 partido creado');
+
+const sortedModules = buildRecentActivity({
+  matches: [{ id: 'sort-match', opponent: 'A', created_at: timestamp(31, 9) }],
+  players: [{ id: 'sort-player', name: 'A', created_at: timestamp(31, 10) }],
+  teams: [{ id: 'sort-team', name: 'A', team_kind: 'rival', created_at: timestamp(31, 8) }],
+  wellnessEntries: [{ id: 'sort-wellness', created_at: timestamp(31, 11) }],
+}, recentOptions);
+assert.deepEqual(
+  sortedModules.map((group) => group.moduleKey),
+  ['performance', 'squad', 'matches', 'teams'],
+  'las tarjetas se ordenan por la fecha de su acción concreta'
 );
-assert.ok(
-  !pluralSummaries.some((group) => group.summary.includes('0 ')),
-  'los tipos con contador cero no aparecen'
-);
+assert.equal(new Set(sortedModules.map((group) => group.moduleKey)).size, sortedModules.length);
+assert.ok(sortedModules.length <= 6, 'se mantiene el límite global de tarjetas');
 
 const duplicated = buildRecentActivity({
-  players: referencePlayers,
   wellnessEntries: [
-    { id: 'same', jugador_id: 'player-1', created_at: timestamp(13) },
-    { id: 'same', jugador_id: 'player-1', created_at: timestamp(13) },
+    { id: 'same-wellness', created_at: timestamp(31, 10) },
+    { id: 'same-wellness', created_at: timestamp(31, 10) },
   ],
-});
-assert.equal(duplicated.length, 1);
-assert.equal(duplicated[0].eventCount, 1, 'la deduplicación exacta se conserva antes de agrupar');
-assert.equal(duplicated[0].summary, '1 respuesta Wellness');
+}, recentOptions);
+assert.equal(duplicated[0].eventCount, 1, 'la deduplicación exacta se conserva');
+assert.equal(duplicated[0].summary, '1 Wellness');
 
-const limited = buildRecentActivity({
-  matches: [{ id: 'limit-match', opponent: 'A', created_at: timestamp(10) }],
-  players: [{ id: 'limit-player', name: 'A', created_at: timestamp(11) }],
-  teams: [{ id: 'limit-team', name: 'A', created_at: timestamp(12) }],
-  wellnessEntries: [{ id: 'limit-wellness', created_at: timestamp(13) }],
-}, { limit: 2 });
-assert.equal(limited.length, 2, 'el límite se aplica después de formar los grupos');
-assert.ok(allCanonicalModules.length <= 6, 'el límite global por defecto nunca supera seis tarjetas');
+const outsideWindow = buildRecentActivity({
+  wellnessEntries: [{ id: 'old-wellness', created_at: timestamp(20, 10) }],
+}, recentOptions);
+assert.deepEqual(outsideWindow, [], 'los contadores y tarjetas representan únicamente los últimos siete días');
 
-assert.deepEqual(buildRecentActivity(), [], 'sin eventos reales se devuelve el estado vacío');
+assert.deepEqual(buildRecentActivity({}, recentOptions), [], 'sin actividad real se devuelve el estado vacío');
 assert.deepEqual(
   groupRecentActivity([{
-    id: 'unreliable-source',
-    source: 'biblioteca',
+    id: 'unreliable',
     moduleKey: 'library',
     type: 'Documento modificado',
-    timestamp: timestamp(15),
-  }]),
+    timestamp: timestamp(31, 10),
+  }], recentOptions),
   [],
-  'no se crean tarjetas para módulos sin una fuente fiable'
+  'no aparecen módulos sin una fuente fiable'
 );
 
-const expectedNavigation = {
-  performance: 'Rendimiento',
-  matches: 'Partidos',
-  squad: 'Plantilla',
-  teams: 'Equipos',
-};
-allCanonicalModules.forEach((group) => {
-  assert.equal(group.tab, expectedNavigation[group.moduleKey], `destino correcto para ${group.moduleName}`);
-  assert.ok(group.id.startsWith('recent-activity:'), 'la tarjeta utiliza una clave estable');
-});
+const appSource = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
+assert.ok(!appSource.includes('>Actividad en</p>'), 'desaparece el texto visual “Actividad en”');
+assert.ok(appSource.includes('role="tooltip"'), 'el resumen completo utiliza un tooltip accesible');
+assert.ok(appSource.includes('{item.summaryPeriodLabel}: {item.summary}'), 'el tooltip contiene el resumen agregado completo');
+assert.ok(appSource.includes('onClick={() => goToTab(item.tab)}'), 'se conserva la navegación compartida por pestañas');
+assert.ok(appSource.includes('min-h-[10.5rem]'), 'las tarjetas mantienen una altura uniforme');
 
-assert.equal(
-  combinedPerformance[0].summary,
-  combinedPerformance[0].events.length
-    ? '1 respuesta Wellness · 2 respuestas RPE · 1 sesión creada'
-    : '',
-  'el resumen completo permanece disponible aunque la vista lo trunque'
-);
+assert.equal(formatRecentActivityTime(timestamp(31, 11, 50), NOW), 'Hace 10 min');
+assert.equal(formatRecentActivityTime(timestamp(31, 10), NOW), 'Hace 2 h');
+assert.equal(formatRecentActivityTime(timestamp(30, 12), NOW), 'Hace 1 día');
 
-const conservativeCreation = buildRecentActivity({
-  matches: [{
-    id: 'match-conservative',
-    opponent: 'Langreo',
-    created_at: timestamp(9),
-    updated_at: timestamp(9, 0),
-  }],
-});
-assert.equal(
-  conservativeCreation[0].summary,
-  '1 partido creado',
-  'no se infiere una actualización cuando los timestamps son ambiguos'
-);
-
-const missingTimestamps = buildRecentActivity({
-  matches: [{ id: 'without-date', opponent: 'Dato estático' }],
-  players: [{ id: 'without-date', name: 'Ejemplo', updated_at: timestamp(10) }],
-});
-assert.deepEqual(missingTimestamps, [], 'filas sin fecha de creación no generan actividad');
-
-assert.equal(formatRecentActivityTime(timestamp(13, 50), timestamp(14)), 'Hace 10 min');
-assert.equal(formatRecentActivityTime(timestamp(12), timestamp(14)), 'Hace 2 h');
-assert.equal(
-  formatRecentActivityTime('2026-07-29T14:00:00.000Z', timestamp(14)),
-  'Hace 1 día'
-);
-
-console.log('recentActivity tests passed');
+console.log('recentActivity hybrid-card tests passed');

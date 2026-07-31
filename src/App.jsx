@@ -5764,6 +5764,7 @@ function App() {
   const loadHomeDashboardData = async () => {
     setHomeLoading(true);
     setHomeError('');
+    const recentActivitySince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     try {
       const [
@@ -5778,6 +5779,9 @@ function App() {
         trainingSessionsResponse,
         wellnessResponse,
         rpeResponse,
+        rivalPlayersResponse,
+        globalPlayersResponse,
+        rivalMembershipsResponse,
       ] = await Promise.all([
         supabase.from("partidos").select("*").order("date", { ascending: true, nullsFirst: false }),
         supabase.from("jugadores").select("*").order("name", { ascending: true }),
@@ -5787,9 +5791,12 @@ function App() {
         supabase.from("match_quick_events").select("*"),
         supabase.from("partido_eventos_sistema").select("*"),
         supabase.from("partido_eventos_post").select("*"),
-        supabase.from("training_sessions").select("*").order("created_at", { ascending: false }).limit(25),
-        supabase.from("wellness_entries").select("*").order("created_at", { ascending: false }).limit(25),
-        supabase.from("rpe_entries").select("*").order("created_at", { ascending: false }).limit(25),
+        supabase.from("training_sessions").select("*").gte("created_at", recentActivitySince).order("created_at", { ascending: false }),
+        supabase.from("wellness_entries").select("*").gte("created_at", recentActivitySince).order("created_at", { ascending: false }),
+        supabase.from("rpe_entries").select("*").gte("created_at", recentActivitySince).order("created_at", { ascending: false }),
+        supabase.from("jugadores_rivales").select("*").order("created_at", { ascending: false }),
+        supabase.from("players_database").select("*").order("name", { ascending: true }),
+        supabase.from("player_team_memberships").select("*").order("created_at", { ascending: false }),
       ]);
       const failed = [partidosResponse, jugadoresResponse, equiposResponse, statsResponse, goalsResponse].find((response) => response.error);
       if (failed) throw failed.error;
@@ -5800,6 +5807,9 @@ function App() {
         ['training_sessions', trainingSessionsResponse],
         ['wellness_entries', wellnessResponse],
         ['rpe_entries', rpeResponse],
+        ['jugadores_rivales', rivalPlayersResponse],
+        ['players_database', globalPlayersResponse],
+        ['player_team_memberships', rivalMembershipsResponse],
       ].forEach(([source, response]) => {
         if (response.error) console.warn(`[HOME_RECENT_ACTIVITY] No se pudo consultar ${source}:`, response.error);
       });
@@ -5859,6 +5869,9 @@ function App() {
         trainingSessions: trainingSessionsResponse.error ? [] : trainingSessionsResponse.data || [],
         wellnessEntries: wellnessResponse.error ? [] : wellnessResponse.data || [],
         rpeEntries: rpeResponse.error ? [] : rpeResponse.data || [],
+        rivalPlayers: rivalPlayersResponse.error ? [] : rivalPlayersResponse.data || [],
+        globalPlayers: globalPlayersResponse.error ? [] : globalPlayersResponse.data || [],
+        rivalMemberships: rivalMembershipsResponse.error ? [] : rivalMembershipsResponse.data || [],
       });
 
       setPlayers(nextPlayers);
@@ -27392,33 +27405,48 @@ function App() {
             <section className="rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]">
               <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Actividad reciente</h3>
               <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-                {safeArray(homeDashboard.activity).length ? safeArray(homeDashboard.activity).map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => goToTab(item.tab)}
-                    aria-label={`Abrir ${item.moduleName}. ${item.summary}. Última actividad: ${formatRecentActivityTime(item.timestamp)}`}
-                    className="group flex min-w-0 items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-left text-sm transition hover:border-caudal-electric/25 hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b1424]"
-                  >
-                    <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-caudal-electric" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Actividad en</p>
-                      <p className="font-bold text-white transition group-hover:text-caudal-electric">{item.moduleName}</p>
-                      <p
-                        className="mt-1 break-words text-xs font-semibold leading-4 text-slate-300 sm:line-clamp-2"
-                        title={item.summary}
-                      >
-                        {item.summary}
+                {safeArray(homeDashboard.activity).length ? safeArray(homeDashboard.activity).map((item) => {
+                  const tooltipId = `recent-activity-summary-${item.moduleKey}`;
+                  const relativeTime = formatRecentActivityTime(item.latestTimestamp);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => goToTab(item.tab)}
+                      aria-describedby={tooltipId}
+                      aria-label={`Abrir ${item.moduleLabel}. ${item.latestEventType}: ${item.latestEntityLabel}. ${relativeTime}. ${item.summaryPeriodLabel}: ${item.summary}`}
+                      className="group relative flex h-full min-h-[10.5rem] min-w-0 flex-col rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 text-left text-sm transition hover:border-caudal-electric/25 hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b1424]"
+                    >
+                      <p className="text-[9px] font-black uppercase tracking-[0.18em] text-caudal-electric/80">
+                        {item.moduleLabel}
                       </p>
-                      <p
-                        className="mt-1 truncate text-[10px] text-slate-500"
-                        title={`Última actividad: ${new Date(item.timestamp).toLocaleString('es-ES')}`}
-                      >
-                        Última actividad: {formatRecentActivityTime(item.timestamp)}
+                      <p className="mt-2 truncate text-sm font-black text-white transition group-hover:text-caudal-electric">
+                        {item.latestEventType}
                       </p>
-                    </div>
-                  </button>
-                )) : <p className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-sm text-slate-400 md:col-span-2 xl:col-span-4">Todavía no hay actividad reciente.</p>}
+                      <p className="mt-1 truncate text-xs font-bold text-slate-200">
+                        {item.latestEntityLabel}
+                      </p>
+                      <p className="mt-1 truncate text-[10px] font-semibold text-slate-500">
+                        {item.latestContextLabel ? `${item.latestContextLabel} · ` : ''}{relativeTime}
+                      </p>
+                      <div className="mt-auto border-t border-white/[0.07] pt-2.5">
+                        <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-600">
+                          {item.summaryPeriodLabel}
+                        </p>
+                        <p className="mt-0.5 break-words text-[10px] font-semibold leading-4 text-slate-400 sm:line-clamp-1">
+                          {item.summary}
+                        </p>
+                      </div>
+                      <span
+                        id={tooltipId}
+                        role="tooltip"
+                        className="pointer-events-none absolute bottom-3 left-3 right-3 z-20 hidden translate-y-2 rounded-xl border border-white/10 bg-slate-950/98 px-3 py-2 text-[10px] font-semibold leading-4 text-slate-200 opacity-0 shadow-2xl transition sm:block group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100"
+                      >
+                        {item.summaryPeriodLabel}: {item.summary}
+                      </span>
+                    </button>
+                  );
+                }) : <p className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-sm text-slate-400 md:col-span-2 xl:col-span-4">Todavía no hay actividad reciente.</p>}
               </div>
             </section>
 
