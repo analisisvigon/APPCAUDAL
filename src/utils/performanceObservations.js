@@ -46,33 +46,6 @@ const normalizeDuplicateKey = (value) => String(value || '')
 
 const entryDate = (entry) => String(entry?.entry_date || entry?.entryDate || '').slice(0, 10);
 
-const entryTimestamp = (entry) => String(
-  entry?.submitted_at ||
-  entry?.submittedAt ||
-  entry?.updated_at ||
-  entry?.updatedAt ||
-  entry?.created_at ||
-  entry?.createdAt ||
-  ''
-);
-
-const compareEntries = (left, right) => (
-  entryDate(left).localeCompare(entryDate(right)) ||
-  entryTimestamp(left).localeCompare(entryTimestamp(right)) ||
-  String(left?.id || '').localeCompare(String(right?.id || ''))
-);
-
-const isInsideContext = (entry, startDate, endDate) => {
-  const date = entryDate(entry);
-  if (!startDate && !endDate) return true;
-  if (!date) return false;
-  if (startDate && date < startDate) return false;
-  if (endDate && date > endDate) return false;
-  return true;
-};
-
-const latestEntry = (entries) => [...entries].sort(compareEntries).pop() || null;
-
 const localDateKey = (value) => {
   if (typeof value === 'string') {
     const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
@@ -129,31 +102,27 @@ export const buildPerformanceObservations = ({
   wellnessEntries = [],
   rpeEntries = [],
   playerId = '',
-  contextStartDate = '',
-  contextEndDate = '',
   referenceDate = Date.now(),
 } = {}) => {
   const belongsToPlayer = (entry) => (
     !playerId || String(entry?.jugador_id || entry?.jugadorId || '') === String(playerId)
   );
   const wellness = asArray(wellnessEntries).filter((entry) => (
-    belongsToPlayer(entry) && isInsideContext(entry, contextStartDate, contextEndDate)
+    belongsToPlayer(entry) && entryDate(entry)
   ));
   const rpe = asArray(rpeEntries).filter((entry) => (
-    belongsToPlayer(entry) && isInsideContext(entry, contextStartDate, contextEndDate)
+    belongsToPlayer(entry) && entryDate(entry)
   ));
-  const latestWellness = latestEntry(wellness);
-  const latestRpe = latestEntry(rpe);
   const candidates = [];
 
-  if (latestWellness) {
+  wellness.forEach((entry) => {
     [
-      latestWellness.discomfort,
-      latestWellness.muscle_discomfort,
-      latestWellness.pain_location,
-      latestWellness.affected_area,
+      entry.discomfort,
+      entry.muscle_discomfort,
+      entry.pain_location,
+      entry.affected_area,
     ].forEach((value) => appendCandidate(candidates, {
-      entry: latestWellness,
+      entry,
       value,
       source: 'wellness',
       sourceLabel: 'Molestia',
@@ -161,46 +130,46 @@ export const buildPerformanceObservations = ({
       priority: 1,
       discomfort: true,
     }));
-  }
+  });
 
-  if (latestRpe) {
+  rpe.forEach((entry) => {
     [
-      latestRpe.comment,
-      latestRpe.observation,
-      latestRpe.observations,
-      latestRpe.notes,
+      entry.comment,
+      entry.observation,
+      entry.observations,
+      entry.notes,
     ].forEach((value) => appendCandidate(candidates, {
-      entry: latestRpe,
+      entry,
       value,
       source: 'rpe',
       sourceLabel: 'RPE',
       type: 'comment',
       priority: 2,
     }));
-  }
+  });
 
-  if (latestWellness) {
+  wellness.forEach((entry) => {
     [
-      latestWellness.comment,
-      latestWellness.observation,
-      latestWellness.observations,
-      latestWellness.notes,
+      entry.comment,
+      entry.observation,
+      entry.observations,
+      entry.notes,
     ].forEach((value) => appendCandidate(candidates, {
-      entry: latestWellness,
+      entry,
       value,
       source: 'wellness',
       sourceLabel: 'Wellness',
       type: 'comment',
       priority: 3,
     }));
-  }
+  });
 
   const deduplicated = [];
   const seen = new Set();
   candidates
     .sort((left, right) => (
-      left.priority - right.priority ||
       right.date.localeCompare(left.date) ||
+      left.priority - right.priority ||
       left.text.localeCompare(right.text)
     ))
     .forEach((candidate) => {
@@ -210,16 +179,49 @@ export const buildPerformanceObservations = ({
       deduplicated.push(candidate);
     });
 
-  const distinctDates = new Set(deduplicated.map((item) => item.date).filter(Boolean));
-  const showDates = distinctDates.size > 1;
   return deduplicated.map((item) => {
-    const dateLabel = showDates ? formatObservationDate(item.date, referenceDate) : '';
+    const dateLabel = formatObservationDate(item.date, referenceDate);
     return {
       ...item,
       dateLabel,
       label: [item.sourceLabel, dateLabel, item.text].filter(Boolean).join(' · '),
     };
   });
+};
+
+export const buildPerformanceObservationsByPlayer = ({
+  wellnessEntries = [],
+  rpeEntries = [],
+  referenceDate = Date.now(),
+} = {}) => {
+  const wellnessByPlayer = new Map();
+  const rpeByPlayer = new Map();
+
+  asArray(wellnessEntries).forEach((entry) => {
+    const playerId = String(entry?.jugador_id || entry?.jugadorId || '');
+    if (!playerId) return;
+    const playerEntries = wellnessByPlayer.get(playerId) || [];
+    playerEntries.push(entry);
+    wellnessByPlayer.set(playerId, playerEntries);
+  });
+  asArray(rpeEntries).forEach((entry) => {
+    const playerId = String(entry?.jugador_id || entry?.jugadorId || '');
+    if (!playerId) return;
+    const playerEntries = rpeByPlayer.get(playerId) || [];
+    playerEntries.push(entry);
+    rpeByPlayer.set(playerId, playerEntries);
+  });
+
+  const playerIds = new Set([...wellnessByPlayer.keys(), ...rpeByPlayer.keys()]);
+  return new Map([...playerIds].map((playerId) => [
+    playerId,
+    buildPerformanceObservations({
+      wellnessEntries: wellnessByPlayer.get(playerId) || [],
+      rpeEntries: rpeByPlayer.get(playerId) || [],
+      playerId,
+      referenceDate,
+    }),
+  ]));
 };
 
 export const getPerformanceObservationView = (observations = [], limit = 2) => {
@@ -233,6 +235,6 @@ export const getPerformanceObservationView = (observations = [], limit = 2) => {
     moreLabel: hiddenCount ? `+${hiddenCount} más` : '',
     fullText,
     isEmpty: !asArray(observations).length,
-    emptyLabel: 'Sin observaciones',
+    emptyLabel: 'Sin observaciones registradas',
   };
 };

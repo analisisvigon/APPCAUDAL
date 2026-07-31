@@ -35,7 +35,7 @@ import {
 } from './utils/matchStatus';
 import { buildRecentActivity, formatRecentActivityTime } from './utils/recentActivity';
 import {
-  buildPerformanceObservations,
+  buildPerformanceObservationsByPlayer,
   getPerformanceObservationView,
 } from './utils/performanceObservations';
 import { cleanImportedFieldValue, extractTransfermarktPlayerId, isEmptyImportedField, normalizeTransfermarktPosition } from './utils/rivalPlayerImport';
@@ -5194,6 +5194,10 @@ function App() {
   const [rpeEntries, setRpeEntries] = useState([]);
   const [previousWellnessEntries, setPreviousWellnessEntries] = useState([]);
   const [previousRpeEntries, setPreviousRpeEntries] = useState([]);
+  const [performanceObservationHistory, setPerformanceObservationHistory] = useState({
+    wellness: [],
+    rpe: [],
+  });
   const [performanceLastResponses, setPerformanceLastResponses] = useState({ wellness: {}, rpe: {} });
   const [performanceLastSyncedAt, setPerformanceLastSyncedAt] = useState('');
   const [performanceSelectedDate, setPerformanceSelectedDate] = useState('');
@@ -7798,6 +7802,24 @@ function App() {
         error: null,
       };
     };
+    const loadObservationHistory = async (tableName, columns) => {
+      const pageSize = 1000;
+      const entries = [];
+      let from = 0;
+      while (true) {
+        const response = await supabase
+          .from(tableName)
+          .select(columns)
+          .order('entry_date', { ascending: false })
+          .range(from, from + pageSize - 1);
+        if (response.error) return response;
+        const page = response.data || [];
+        entries.push(...page);
+        if (page.length < pageSize) break;
+        from += pageSize;
+      }
+      return { data: entries, error: null };
+    };
 
     try {
       const [
@@ -7809,6 +7831,8 @@ function App() {
         latestRpeResponse,
         wellnessActivityResponse,
         rpeActivityResponse,
+        wellnessObservationHistoryResponse,
+        rpeObservationHistoryResponse,
       ] = await Promise.all([
         supabase
           .from('wellness_entries')
@@ -7848,6 +7872,14 @@ function App() {
           .limit(1),
         loadLatestActivityDates('wellness_entries'),
         loadLatestActivityDates('rpe_entries'),
+        loadObservationHistory(
+          'wellness_entries',
+          'id,jugador_id,entry_date,discomfort,comment,created_at,updated_at'
+        ),
+        loadObservationHistory(
+          'rpe_entries',
+          'id,jugador_id,entry_date,comment,created_at,updated_at'
+        ),
       ]);
 
       const failed = [
@@ -7859,6 +7891,8 @@ function App() {
         latestRpeResponse,
         wellnessActivityResponse,
         rpeActivityResponse,
+        wellnessObservationHistoryResponse,
+        rpeObservationHistoryResponse,
       ].find((response) => response.error);
       if (failed) {
         console.error('Error cargando Rendimiento desde Supabase:', failed.error);
@@ -7871,6 +7905,10 @@ function App() {
       setRpeEntries(nextRpeEntries);
       setPreviousWellnessEntries(previousWellnessResponse.data || []);
       setPreviousRpeEntries(previousRpeResponse.data || []);
+      setPerformanceObservationHistory({
+        wellness: wellnessObservationHistoryResponse.data || [],
+        rpe: rpeObservationHistoryResponse.data || [],
+      });
       const buildLastResponseMap = (entries = []) => entries.reduce((lastByPlayerId, entry) => {
         if (entry.jugador_id && entry.entry_date && !lastByPlayerId[entry.jugador_id]) {
           lastByPlayerId[entry.jugador_id] = entry.entry_date;
@@ -8053,11 +8091,7 @@ function App() {
       .filter((entry) => entry.jugador_id === player.id)
       .sort((left, right) => String(left.entry_date).localeCompare(String(right.entry_date)));
     const latestWellness = [...wellness].sort((a, b) => String(b.entry_date).localeCompare(String(a.entry_date)))[0];
-    const observations = buildPerformanceObservations({
-      wellnessEntries: wellness,
-      rpeEntries: rpes,
-      playerId: player.id,
-    });
+    const observations = performanceObservationsByPlayer.get(String(player.id)) || [];
     const summaryObservation = observations[0]
       ? { text: observations[0].text, source: observations[0].sourceLabel, entryDate: observations[0].date }
       : { text: '', source: '', entryDate: '' };
@@ -8257,11 +8291,7 @@ function App() {
     rpeSource = rpeEntries,
     options = {}
   ) => players.map((player) => {
-    const {
-      includeActivity = true,
-      contextStartDate = '',
-      contextEndDate = '',
-    } = options;
+    const { includeActivity = true } = options;
     const wellness = wellnessSource
       .filter((entry) => entry.jugador_id === player.id)
       .sort((left, right) => String(left.entry_date).localeCompare(String(right.entry_date)));
@@ -8277,13 +8307,7 @@ function App() {
     const latestWellness = wellness[wellness.length - 1] || null;
     const latestWellnessItem = scoredWellness[scoredWellness.length - 1] || null;
     const latestRpeItem = validRpes[validRpes.length - 1] || null;
-    const observations = buildPerformanceObservations({
-      wellnessEntries: wellness,
-      rpeEntries: rpes,
-      playerId: player.id,
-      contextStartDate,
-      contextEndDate,
-    });
+    const observations = performanceObservationsByPlayer.get(String(player.id)) || [];
     const summaryObservation = observations[0]
       ? { text: observations[0].text, source: observations[0].sourceLabel, entryDate: observations[0].date }
       : { text: '', source: '', entryDate: '' };
@@ -8629,8 +8653,6 @@ function App() {
   ) => {
     const rows = getPerformancePlayerRows(wellnessSource, rpeSource, {
       includeActivity: weekStart === performanceWeekStart,
-      contextStartDate: weekStart,
-      contextEndDate: addDays(weekStart, 6),
     });
     const rpeValues = rpeSource
       .map((entry) => getPerformanceNumber(entry.rpe))
@@ -20202,13 +20224,33 @@ function App() {
     }
   }, [isMatchPanelOpen, matchFormSection]);
 
+  const performanceObservationsByPlayer = useMemo(
+    () => buildPerformanceObservationsByPlayer({
+      wellnessEntries: performanceObservationHistory.wellness,
+      rpeEntries: performanceObservationHistory.rpe,
+    }),
+    [performanceObservationHistory.wellness, performanceObservationHistory.rpe]
+  );
   const performanceDashboard = useMemo(
     () => getPerformanceDashboard(wellnessEntries, rpeEntries, performanceWeekStart),
-    [players, wellnessEntries, rpeEntries, performanceWeekStart, performanceLastResponses]
+    [
+      players,
+      wellnessEntries,
+      rpeEntries,
+      performanceWeekStart,
+      performanceLastResponses,
+      performanceObservationsByPlayer,
+    ]
   );
   const previousPerformanceDashboard = useMemo(
     () => getPerformanceDashboard(previousWellnessEntries, previousRpeEntries, addDays(performanceWeekStart, -7)),
-    [players, previousWellnessEntries, previousRpeEntries, performanceWeekStart]
+    [
+      players,
+      previousWellnessEntries,
+      previousRpeEntries,
+      performanceWeekStart,
+      performanceObservationsByPlayer,
+    ]
   );
   const performanceActiveSeason = useMemo(
     () => getPerformanceSportsSeason(`${performanceChartSeasonKey}-07-01`),

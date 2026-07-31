@@ -3,78 +3,106 @@ import { readFileSync } from 'node:fs';
 
 import {
   buildPerformanceObservations,
+  buildPerformanceObservationsByPlayer,
   getPerformanceObservationView,
 } from './performanceObservations.js';
 
-const context = {
-  playerId: 'player-1',
-  contextStartDate: '2026-07-27',
-  contextEndDate: '2026-08-02',
-  referenceDate: '2026-07-31',
-};
-
-const build = ({ wellnessEntries = [], rpeEntries = [] } = {}) => buildPerformanceObservations({
-  ...context,
-  wellnessEntries,
-  rpeEntries,
-});
-
-const onlyRpe = build({
-  rpeEntries: [{
-    jugador_id: 'player-1',
-    entry_date: '2026-07-31',
-    comment: 'Sesión exigente',
-  }],
-});
-assert.deepEqual(
-  onlyRpe.map(({ sourceLabel, type, text }) => ({ sourceLabel, type, text })),
-  [{ sourceLabel: 'RPE', type: 'comment', text: 'Sesión exigente' }],
-  'muestra un comentario RPE real e identifica su fuente'
+const REFERENCE_DATE = '2026-07-31';
+const build = ({ wellnessEntries = [], rpeEntries = [], playerId = 'player-1' } = {}) => (
+  buildPerformanceObservations({
+    wellnessEntries,
+    rpeEntries,
+    playerId,
+    referenceDate: REFERENCE_DATE,
+  })
 );
 
-const onlyWellnessComment = build({
+const previousRpeWithoutWellnessToday = build({
   wellnessEntries: [{
     jugador_id: 'player-1',
     entry_date: '2026-07-31',
+    sleep_quality: 8,
+  }],
+  rpeEntries: [{
+    jugador_id: 'player-1',
+    entry_date: '2026-07-29',
+    comment: 'Sesión muy exigente',
+  }],
+});
+assert.equal(previousRpeWithoutWellnessToday[0].label, 'RPE · 29/07 · Sesión muy exigente');
+
+const previousWellnessWithoutRpeToday = build({
+  rpeEntries: [{
+    jugador_id: 'player-1',
+    entry_date: '2026-07-31',
+    rpe: 7,
+  }],
+  wellnessEntries: [{
+    jugador_id: 'player-1',
+    entry_date: '2026-07-28',
     comment: 'Dormí mal',
   }],
 });
-assert.equal(onlyWellnessComment[0].label, 'Wellness · Dormí mal');
+assert.equal(previousWellnessWithoutRpeToday[0].label, 'Wellness · 28/07 · Dormí mal');
 
-const onlyDiscomfort = build({
+const historicalOnly = build({
   wellnessEntries: [{
     jugador_id: 'player-1',
-    entry_date: '2026-07-31',
-    discomfort: 'Cuádriceps derecho',
+    entry_date: '2025-11-12',
+    discomfort: 'Gemelo derecho',
   }],
 });
-assert.equal(onlyDiscomfort[0].label, 'Molestia · Cuádriceps derecho');
+assert.equal(historicalOnly[0].text, 'Gemelo derecho', 'no existe ninguna ventana temporal');
+assert.equal(historicalOnly[0].date, '2025-11-12');
 
-const allSources = build({
+const latestRpeWins = build({
   wellnessEntries: [{
     jugador_id: 'player-1',
-    entry_date: '2026-07-31',
+    entry_date: '2026-07-28',
     discomfort: 'Cuádriceps derecho',
-    comment: 'Sensación de rigidez',
   }],
   rpeEntries: [{
     jugador_id: 'player-1',
-    entry_date: '2026-07-31',
-    comment: 'Sesión exigente',
+    entry_date: '2026-07-29',
+    comment: 'Sesión muy exigente',
+  }],
+});
+assert.equal(latestRpeWins[0].sourceLabel, 'RPE');
+assert.equal(latestRpeWins[0].date, '2026-07-29');
+assert.equal(
+  latestRpeWins[1].sourceLabel,
+  'Molestia',
+  'una molestia antigua no supera a un RPE más reciente'
+);
+
+const sameDatePriority = build({
+  wellnessEntries: [{
+    jugador_id: 'player-1',
+    entry_date: '2026-07-30',
+    discomfort: 'Cuádriceps derecho',
+    comment: 'Dormí regular',
+  }],
+  rpeEntries: [{
+    jugador_id: 'player-1',
+    entry_date: '2026-07-30',
+    comment: 'Sesión muy exigente',
   }],
 });
 assert.deepEqual(
-  allSources.map((item) => item.sourceLabel),
+  sameDatePriority.map((item) => item.sourceLabel),
   ['Molestia', 'RPE', 'Wellness'],
-  'la molestia precede al comentario RPE y al comentario Wellness'
+  'la prioridad solo resuelve observaciones de la misma fecha'
 );
-assert.ok(allSources.every((item) => ['Molestia', 'RPE', 'Wellness'].includes(item.sourceLabel)));
+assert.deepEqual(
+  sameDatePriority.map((item) => item.priority),
+  [1, 2, 3]
+);
 
-const differentDates = build({
+const rpeBeatsWellnessOnSameDate = build({
   wellnessEntries: [{
     jugador_id: 'player-1',
-    entry_date: '2026-07-31',
-    discomfort: 'Cuádriceps derecho',
+    entry_date: '2026-07-30',
+    comment: 'Dormí regular',
   }],
   rpeEntries: [{
     jugador_id: 'player-1',
@@ -82,24 +110,53 @@ const differentDates = build({
     comment: 'Sesión exigente',
   }],
 });
-assert.equal(differentDates[0].label, 'Molestia · Hoy · Cuádriceps derecho');
-assert.equal(differentDates[1].label, 'RPE · Ayer · Sesión exigente');
+assert.deepEqual(
+  rpeBeatsWellnessOnSameDate.map((item) => item.sourceLabel),
+  ['RPE', 'Wellness']
+);
 
-const deduplicated = build({
+const originalDates = build({
   wellnessEntries: [{
     jugador_id: 'player-1',
     entry_date: '2026-07-31',
-    discomfort: 'Cuádriceps derecho.',
-    comment: '  CUADRÍCEPS   DERECHO ',
+    comment: 'Todo bien',
   }],
   rpeEntries: [{
     jugador_id: 'player-1',
-    entry_date: '2026-07-31',
-    comment: 'Cuadríceps derecho!',
+    entry_date: '2026-07-30',
+    comment: 'Carga alta',
   }],
 });
-assert.equal(deduplicated.length, 1, 'deduplica mayúsculas, espacios, tildes y puntuación básica');
-assert.equal(deduplicated[0].sourceLabel, 'Molestia', 'conserva la fuente de mayor prioridad');
+assert.equal(originalDates[0].label, 'Wellness · Hoy · Todo bien');
+assert.equal(originalDates[1].label, 'RPE · Ayer · Carga alta');
+
+const visible = getPerformanceObservationView(sameDatePriority, 2);
+assert.equal(visible.items.length, 2, 'solo se muestran dos observaciones');
+assert.equal(visible.hiddenCount, 1);
+assert.equal(visible.moreLabel, '+1 más');
+assert.ok(visible.fullText.includes('Wellness · Ayer · Dormí regular'));
+
+const deduplicated = build({
+  wellnessEntries: [
+    {
+      jugador_id: 'player-1',
+      entry_date: '2026-07-31',
+      comment: '  SESIÓN   EXIGENTE. ',
+    },
+    {
+      jugador_id: 'player-1',
+      entry_date: '2026-07-28',
+      discomfort: 'Sesión exigente!',
+    },
+  ],
+  rpeEntries: [{
+    jugador_id: 'player-1',
+    entry_date: '2026-07-29',
+    comment: 'Sesión exigente',
+  }],
+});
+assert.equal(deduplicated.length, 1, 'los duplicados exactos se eliminan tras normalizar');
+assert.equal(deduplicated[0].date, '2026-07-31', 'la deduplicación conserva la observación más reciente');
 
 const emptyValues = build({
   wellnessEntries: [{
@@ -107,14 +164,18 @@ const emptyValues = build({
     entry_date: '2026-07-31',
     discomfort: 'Sin molestias',
     comment: '—',
+    fatigue: 9,
+    sleep_quality: 2,
+    stress: 8,
   }],
   rpeEntries: [{
     jugador_id: 'player-1',
     entry_date: '2026-07-31',
     comment: 'Ninguna',
+    rpe: 10,
   }],
 });
-assert.deepEqual(emptyValues, [], 'ignora respuestas vacías o técnicas sin contenido');
+assert.deepEqual(emptyValues, [], 'ignora vacíos y nunca genera comentarios desde valores numéricos');
 
 const explicitEverythingFine = build({
   wellnessEntries: [{
@@ -123,80 +184,69 @@ const explicitEverythingFine = build({
     comment: 'Todo bien',
   }],
 });
-assert.equal(explicitEverythingFine[0].label, 'Wellness · Todo bien', 'conserva un comentario explícito útil');
+assert.equal(explicitEverythingFine[0].text, 'Todo bien');
 
-const emptyView = getPerformanceObservationView([]);
-assert.equal(emptyView.emptyLabel, 'Sin observaciones');
-assert.equal(emptyView.isEmpty, true);
-
-const limitedView = getPerformanceObservationView(allSources);
-assert.equal(limitedView.items.length, 2, 'muestra como máximo dos observaciones');
-assert.equal(limitedView.hiddenCount, 1);
-assert.equal(limitedView.moreLabel, '+1 más');
-assert.ok(limitedView.fullText.includes('Wellness · Sensación de rigidez'));
-
-const mixedPlayers = build({
+const grouped = buildPerformanceObservationsByPlayer({
   wellnessEntries: [
     {
       jugador_id: 'player-1',
-      entry_date: '2026-07-31',
-      comment: 'Comentario correcto',
+      entry_date: '2026-07-30',
+      comment: 'Comentario uno',
     },
     {
       jugador_id: 'player-2',
       entry_date: '2026-07-31',
-      discomfort: 'No debe aparecer',
-    },
-  ],
-});
-assert.equal(mixedPlayers.length, 1);
-assert.equal(mixedPlayers[0].text, 'Comentario correcto', 'no mezcla datos de jugadores distintos');
-
-const contextFiltered = build({
-  wellnessEntries: [
-    {
-      jugador_id: 'player-1',
-      entry_date: '2026-07-20',
-      discomfort: 'Comentario antiguo',
-    },
-    {
-      jugador_id: 'player-1',
-      entry_date: '2026-07-31',
-      comment: 'Comentario semanal',
+      discomfort: 'Comentario dos',
     },
   ],
   rpeEntries: [{
-    jugador_id: 'player-1',
-    entry_date: '2026-07-20',
-    comment: 'RPE antiguo',
+    jugador_id: 'player-2',
+    entry_date: '2026-07-29',
+    comment: 'RPE jugador dos',
   }],
+  referenceDate: REFERENCE_DATE,
 });
-assert.deepEqual(contextFiltered.map((item) => item.text), ['Comentario semanal']);
-
-const onlyLatestSourceRecord = build({
-  wellnessEntries: [
-    {
-      jugador_id: 'player-1',
-      entry_date: '2026-07-29',
-      discomfort: 'Molestia anterior',
-    },
-    {
-      jugador_id: 'player-1',
-      entry_date: '2026-07-31',
-      comment: 'Comentario actual',
-    },
-  ],
-});
+assert.deepEqual(grouped.get('player-1').map((item) => item.text), ['Comentario uno']);
 assert.deepEqual(
-  onlyLatestSourceRecord.map((item) => item.text),
-  ['Comentario actual'],
-  'no recupera observaciones antiguas cuando la fila representa un registro Wellness posterior'
+  grouped.get('player-2').map((item) => item.text),
+  ['Comentario dos', 'RPE jugador dos'],
+  'la agrupación previa no mezcla jugadores'
 );
 
-const appSource = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
-assert.ok(appSource.includes('min-w-0 truncate text-[10px]'), 'los textos largos se truncan sin ensanchar la tabla');
-assert.ok(appSource.includes('max-w-[min(18rem,80vw)]'), 'el tooltip limita su anchura también en pantallas pequeñas');
-assert.ok(appSource.includes('allowFocus={false}'), 'la versión móvil evita controles interactivos anidados');
-assert.ok(appSource.includes('<PerformanceObservations observations={row.observations} />'), 'la tabla reutiliza el componente estructurado');
+const emptyView = getPerformanceObservationView([]);
+assert.equal(emptyView.isEmpty, true);
+assert.equal(emptyView.emptyLabel, 'Sin observaciones registradas');
 
-console.log('performanceObservations tests passed');
+const appSource = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
+assert.ok(
+  appSource.includes('buildPerformanceObservationsByPlayer({'),
+  'App agrupa y resuelve el historial antes de construir las filas'
+);
+assert.ok(
+  appSource.includes('const performanceObservationsByPlayer = useMemo('),
+  'la agrupación histórica está memoizada'
+);
+assert.ok(
+  appSource.includes("'id,jugador_id,entry_date,discomfort,comment,created_at,updated_at'"),
+  'Wellness carga únicamente identificador, fecha y campos textuales necesarios'
+);
+assert.ok(
+  appSource.includes("'id,jugador_id,entry_date,comment,created_at,updated_at'"),
+  'RPE carga únicamente identificador, fecha y comentario'
+);
+assert.ok(appSource.includes('min-w-0 truncate text-[10px]'), 'los textos mantienen truncado responsive');
+assert.ok(appSource.includes('role=\"tooltip\"'), 'el contenido completo sigue disponible en tooltip');
+assert.ok(
+  appSource.includes('const priority = Boolean(combinedEntry || veryLowWellnessEntries.length || priorityWellnessSignals.length);'),
+  'el cálculo del semáforo conserva su lógica independiente'
+);
+assert.ok(
+  appSource.includes('wellnessTrend: getPerformanceTrend(scoredWellness.map((item) => item.value))'),
+  'las tendencias siguen calculándose desde sus valores originales'
+);
+assert.ok(
+  appSource.includes('avgRpe: validRpes.length'),
+  'las medias RPE permanecen fuera de la utilidad de observaciones'
+);
+
+console.log('performanceObservations historical-order tests passed');
