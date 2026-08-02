@@ -9,6 +9,7 @@ import MatchPrintTab from './components/print/MatchPrintTab';
 import TacticalEvidencePanel from './components/tactical/TacticalEvidencePanel';
 import RivalCollectiveAssistant from './components/tactical/RivalCollectiveAssistant';
 import CollectiveProfileEditorModal from './components/tactical/CollectiveProfileEditorModal';
+import RivalPlayerTacticalCenter from './components/tactical/RivalPlayerTacticalCenter';
 import PlayerDatabaseForm from './components/players/PlayerDatabaseForm';
 import GlobalPlayerDatabase from './components/players/GlobalPlayerDatabase';
 import AccordionSection from './components/shared/AccordionSection';
@@ -43,6 +44,10 @@ import {
 } from './utils/performanceObservations';
 import { cleanImportedFieldValue, extractTransfermarktPlayerId, isEmptyImportedField, normalizeTransfermarktPosition } from './utils/rivalPlayerImport';
 import { buildRivalCollectiveAssistant } from './utils/rivalCollectiveAssistant';
+import {
+  buildRivalPlayerCollectiveSignals,
+  buildRivalPlayerTacticalModel,
+} from './utils/rivalPlayerTacticalAssistant';
 import {
   createGoalParticipantDbFields,
   getGoalAssistant,
@@ -12092,6 +12097,7 @@ function App() {
       ...safeArray(transitionWorkspace.plays).map((play) => ({ ...play, phase: 'transition' })),
       ...safeArray(setPieceWorkspace.plays).map((play) => ({ ...play, phase: 'set_piece' })),
     ];
+    const individualRivalSignals = buildRivalPlayerCollectiveSignals(observedPlayerRows);
     const analyzedRivalMatches = matches
       .filter((match) => {
         const sameTeamId = selectedMatchRivalTeam?.id && match.equipoRivalId === selectedMatchRivalTeam.id;
@@ -12129,7 +12135,7 @@ function App() {
       ownSystem: caudalSystem,
       rivalSystem,
       collectiveProfile: collective,
-      evidences,
+      evidences: [...evidences, ...individualRivalSignals],
       connections: selectedRivalObservedScouting.tacticalConnections,
       plays: collectiveAssistantPlays,
       reports: String(selectedMatch.preRivalReportText || '').trim()
@@ -12254,18 +12260,21 @@ function App() {
       red: 'border-red-300/25 bg-red-400/10 text-red-100',
       cyan: 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric',
     };
-    const duelRows = observedPlayerRows.slice(0, 5).map(({ player, profile }, index) => {
-      const rivalName = displayPlayerName(player);
-      const caudalName = safeArray(selectedMatch.preCaudalLineup).filter(Boolean)[index] || getFormationRoles(caudalSystem)[index] || 'Caudal';
-      const bestMetric = [
-        ['velocidad', Number(profile.speed || 0)],
-        ['juego aéreo', Number(profile.aerial || 0)],
-        ['1v1', Number(profile.oneVsOne || 0)],
-        ['técnica', Number(profile.technique || 0)],
-      ].sort((a, b) => b[1] - a[1])[0];
-      const tone = bestMetric?.[1] >= 4 ? 'red' : bestMetric?.[1] <= 2 ? 'green' : 'amber';
-      return { caudalName, rivalName, tone, reason: bestMetric?.[1] ? `${bestMetric[0]} ${bestMetric[1]}` : 'perfil registrado' };
+    const rivalPlayerTacticalModel = buildRivalPlayerTacticalModel({
+      player: selectedMicroPlayer,
+      profile: selectedMicroProfile,
+      participation: selectedMicroParticipation,
+      observedEvidences: evidences,
+      videoEvidences: safeArray(selectedMicroPlayer?.videos),
+      duelCandidates: [],
     });
+    const rivalPlayerSelectorGroups = microPlayersByGroup.map(({ group, players: groupPlayers }) => ({
+      group,
+      players: groupPlayers.map((player) => ({
+        key: getObservedPlayerKey(player),
+        label: `${displayPlayerName(player) || player.name}${getMicroPlayerTags(player).length ? ` · ${getMicroPlayerTags(player).join(' · ')}` : ''}`,
+      })),
+    }));
     const tacticalAnswer = selectedPreAiAnalysis?.tacticalQuestion?.answer || '';
     const tacticalQuestionGroups = [
       ['Con balón', 'Macro', [
@@ -12345,6 +12354,34 @@ function App() {
               model={rivalCollectiveModel}
               onEditCollectiveProfile={() => setIsCollectiveProfileEditorOpen(true)}
               onCompleteMissingInformation={completeRivalMissingInformation}
+            />
+          ) : null}
+          {facingSystemsView === 'JUGADORES' ? (
+            <RivalPlayerTacticalCenter
+              key={selectedMicroKey || 'sin-jugador'}
+              model={rivalPlayerTacticalModel}
+              selectedPlayerKey={selectedMicroKey}
+              playerFilter={microPlayerFilter}
+              playerGroups={rivalPlayerSelectorGroups}
+              profile={selectedMicroProfile}
+              positionOptions={positions}
+              profileOptions={selectedMicroPlayer ? getMicroProfileOptions(selectedMicroPlayer, selectedMicroProfile) : []}
+              behaviourOptions={selectedMicroBehaviourConfig}
+              incompatibleTraits={selectedMicroIncompatibleTraits}
+              onSelectPlayer={(playerKey) => {
+                setSelectedMicroPlayerKey(playerKey);
+                clearTacticalQuestion();
+              }}
+              onChangeFilter={setMicroPlayerFilter}
+              onOpenPlayer={() => selectedMicroPlayer && requestFacingSystemsPlayerProfile(selectedMicroPlayer)}
+              onUpdateProfile={(patch) => selectedMicroPlayer && updateObservedPlayerProfile(selectedMicroPlayer, patch)}
+              onToggleTrait={(trait) => selectedMicroPlayer && toggleObservedPlayerTrait(selectedMicroPlayer, trait)}
+              onAddObservation={(observation) => {
+                if (!selectedMicroPlayer) return;
+                updateObservedPlayerProfile(selectedMicroPlayer, {
+                  notes: [String(selectedMicroProfile.notes || '').trim(), observation].filter(Boolean).join('\n'),
+                });
+              }}
             />
           ) : null}
           <CollectiveProfileEditorModal
@@ -12589,20 +12626,6 @@ function App() {
             </section>
             ) : null}
 
-            <section className={`order-5 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2 ${facingSystemsView !== 'JUGADORES' ? 'hidden' : ''}`}>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Duelos críticos</p>
-              <div className="mt-4 space-y-2">
-                {(duelRows.length ? duelRows : [{ caudalName: 'Caudal', rivalName: liveRivalIdentity.mainThreat || 'Rival', tone: 'amber' }]).map((duel) => (
-                  <div key={`${duel.caudalName}-${duel.rivalName}`} className="flex items-center justify-between gap-3 border-b border-white/8 pb-2 text-sm">
-                    <span className="min-w-0 truncate font-black text-white">{duel.caudalName} vs {duel.rivalName}</span>
-                    <span className={`shrink-0 rounded-md border px-2 py-1 text-[10px] font-black uppercase ${semitoneClass[duel.tone]}`}>
-                      {duel.tone === 'green' ? 'Favorable' : duel.tone === 'red' ? 'Riesgo' : 'Igualado'} · {duel.reason}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </section>
-
             <section className={`order-1 border border-caudal-electric/20 bg-[#091428]/95 p-5 xl:col-span-2 ${facingSystemsView !== 'PLAN DE PARTIDO' ? 'hidden' : ''}`}>
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Plan de partido</p>
               <div className="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
@@ -12617,7 +12640,8 @@ function App() {
               </div>
             </section>
 
-            <section className={`order-2 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2 ${!['JUGADORES', 'PLAN DE PARTIDO'].includes(facingSystemsView) ? 'hidden' : ''}`}>
+            {facingSystemsView === 'PLAN DE PARTIDO' ? (
+            <section className="order-2 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Pregunta táctica IA</p>
                 {selectedPreAiAnalysis?.tacticalQuestion?.confidence ? (
@@ -13003,6 +13027,7 @@ function App() {
                 )) : null}
               </div>
             </section>
+            ) : null}
           </div>
 
           {facingSystemsView === 'PIZARRA' ? (
