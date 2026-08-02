@@ -132,12 +132,16 @@ assert.equal(humanizeTacticalConnection({ label: 'right_centre_back → left_bac
 
 const componentSource = fs.readFileSync(new URL('../components/tactical/TacticalEvidencePanel.jsx', import.meta.url), 'utf8');
 const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
-assert.match(componentSource, /Centro de validación táctica/);
+assert.match(componentSource, /Centro de Inteligencia Táctica/);
 assert.match(componentSource, /Evidencias pendientes de validar/);
 assert.match(componentSource, /Patrones confirmados/);
-assert.match(componentSource, /Señales detectadas/);
+assert.match(componentSource, /Señales aisladas/);
 assert.match(componentSource, /Cobertura del análisis/);
 assert.match(componentSource, /Relaciones detectadas/);
+assert.match(componentSource, /Fuerza de la evidencia/);
+assert.match(componentSource, /Cadena de trazabilidad/);
+assert.match(componentSource, /Ver impacto/);
+assert.match(componentSource, /Vista entrenador/);
 assert.doesNotMatch(componentSource, />\s*right_centre_back\s*</, 'la interfaz no imprime códigos posicionales internos');
 assert.match(appSource, /buildConfirmedTacticalEvidenceReport\(tacticalEvidenceReport, tacticalEvidenceCenter\)/, 'Rival, Jugadores y Plan parten exclusivamente del subconjunto confirmado');
 assert.match(appSource, /tacticalEvidenceValidationsV1: nextValidations/, 'la validación se persiste en el análisis PRE compartido del partido');
