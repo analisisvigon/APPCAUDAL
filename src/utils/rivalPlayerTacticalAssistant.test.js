@@ -290,6 +290,7 @@ const persistedRows = JSON.parse(JSON.stringify([
 assert.deepEqual(buildRivalPlayerCollectiveSignals(persistedRows), buildRivalPlayerCollectiveSignals(JSON.parse(JSON.stringify(persistedRows))));
 
 const componentSource = fs.readFileSync(new URL('../components/tactical/RivalPlayerTacticalCenter.jsx', import.meta.url), 'utf8');
+const collectiveEditorSource = fs.readFileSync(new URL('../components/tactical/CollectiveProfileEditorModal.jsx', import.meta.url), 'utf8');
 const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 [
   'Resumen del jugador',
@@ -310,7 +311,40 @@ assert.match(componentSource, /aria-live="polite"/);
 assert.match(componentSource, /focus-visible:ring-2/);
 assert.match(componentSource, /sm:grid-cols|lg:grid-cols|xl:grid-cols/, 'la composición declara breakpoints responsive');
 assert.ok(!/supabase|localStorage|fetch\(/i.test(componentSource), 'el componente no consulta ni persiste directamente');
+
+// Interacción recuperable del filtro Debilidades y editor inline existente.
+assert.match(componentSource, /Filtrar jugadores: \$\{filter\}/, 'Debilidades se identifica accesiblemente como filtro');
+assert.match(componentSource, /data-testid="rival-player-empty-filter"[\s\S]*?Ver todos los jugadores/, 'un filtro vacío conserva controles y salida visible');
+assert.match(componentSource, /data-testid="rival-player-filter-bar"/, 'la barra permanece montada aunque el filtro no tenga resultados');
+assert.ok(!/createPortal|fixed inset-0|backdrop-blur/.test(componentSource), 'el editor individual inline no crea backdrop ni overlay bloqueante');
+assert.match(componentSource, /event\.key !== 'Escape'[\s\S]*?closeEditor\(\)/, 'Escape cierra el editor');
+assert.match(componentSource, />Cancelar</, 'Cancelar cierra el borrador sin guardar');
+assert.match(componentSource, />Guardar</, 'Guardar aplica el formulario actual');
+assert.match(componentSource, /changeFilter[\s\S]*?closeEditor\(\{ restoreFocus: false \}\)/, 'cambiar filtro limpia el editor');
+assert.match(componentSource, /\[activePlayerKey\]/, 'cambiar jugador cierra el editor');
+assert.match(componentSource, /restoreEditorFocus[\s\S]*?trigger\.focus\(\)/, 'el foco vuelve al disparador');
+assert.match(componentSource, /No se pudo cargar el editor de debilidades[\s\S]*?Reintentar[\s\S]*?Cerrar/, 'un error de render mantiene reintento y cierre');
+assert.ok(!/document\.body\.style|pointer-events-none/.test(componentSource), 'el editor no bloquea scroll ni deja pointer-events residuales');
+
+// Divulgación progresiva y conservación de datos reales.
+assert.match(componentSource, /data-testid="rival-player-pending-analysis"/, 'el perfil vacío usa un único bloque compacto');
+assert.match(componentSource, /Análisis táctico pendiente/, 'explica qué información falta');
+assert.match(componentSource, /Completar perfil/, 'el estado pendiente abre el editor existente');
+assert.match(componentSource, /impactWithData\.map/, 'no renderiza tarjetas de impacto con cero evidencias');
+assert.match(componentSource, /impactWithData\.length \? <section/, 'el impacto aparece automáticamente al existir datos');
+assert.match(componentSource, /model\.behaviors\.length \? <section/, 'los comportamientos reales no se ocultan');
+assert.match(componentSource, /hasDefensivePlan \|\| hasAttackingPlan/, 'los planes reales reaparecen automáticamente');
+assert.match(componentSource, /model\.trends\.length \|\| model\.relations\.length/, 'tendencias y relaciones reales se conservan');
+assert.match(componentSource, /375|sm:|lg:|xl:/, 'la composición mantiene reglas fluidas para móvil, tablet y escritorio');
+
+// Cabecera y regresiones de editores/tabs.
+assert.match(componentSource, /model\.player\?\.name \|\| summary\.name/, 'la cabecera prioriza el nombre completo real');
+assert.match(componentSource, /Nombre de camiseta/, 'el nombre de camiseta se presenta por separado');
+assert.match(componentSource, /summary\.role \? <span/, 'el rol se presenta como badge independiente');
+assert.match(collectiveEditorSource, /createPortal\(/, 'el editor global colectivo conserva su portal');
+assert.match(collectiveEditorSource, /role="dialog"/, 'el editor global colectivo mantiene accesibilidad');
 assert.match(appSource, /facingSystemsView === 'JUGADORES' \? \([\s\S]*?<RivalPlayerTacticalCenter/);
+assert.match(appSource, /facingSystemsView === 'RIVAL' \? \([\s\S]*?<RivalCollectiveAssistant/, 'Rival mantiene su montaje independiente');
 assert.match(appSource, /evidences: \[\.\.\.evidences, \.\.\.individualRivalSignals\]/, 'Rival consume señales reales del perfil individual');
 assert.match(appSource, /notes: \[String\(selectedMicroProfile\.notes/, 'las observaciones reutilizan el campo existente');
 
