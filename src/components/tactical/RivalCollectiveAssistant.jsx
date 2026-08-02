@@ -100,9 +100,12 @@ function RecommendationCard({ recommendation }) {
   return (
     <article className="rounded-[1.35rem] bg-black/15 p-4 transition hover:bg-black/20 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className={`rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] ${priorityTone[recommendation.priority]}`}>
-          {recommendation.priority}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] ${priorityTone[recommendation.priority]}`}>
+            {recommendation.priority}
+          </span>
+          {recommendation.evidenceLabel ? <span className="rounded-full border border-white/[0.08] bg-white/[0.025] px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.1em] text-slate-400">{recommendation.evidenceLabel}</span> : null}
+        </div>
         <span className={`text-[9px] font-black uppercase tracking-[0.12em] ${confidenceTone[recommendation.confidence]}`}>
           Confianza {recommendation.confidence}
         </span>
@@ -127,12 +130,14 @@ function RecommendationCard({ recommendation }) {
         <p><span className="font-black text-white">Comportamiento y regla:</span> {recommendation.rationale}</p>
         <p className="mt-2"><span className="font-black text-white">Impacto:</span> {recommendation.expectedImpact}</p>
         <p className="mt-2"><span className="font-black text-white">Confianza:</span> {recommendation.confidence}</p>
+        {recommendation.traceabilityExplanation ? <p className="mt-2"><span className="font-black text-white">Trazabilidad:</span> {recommendation.traceabilityExplanation}</p> : null}
+        <p className="mt-2"><span className="font-black text-white">Unidades independientes:</span> {recommendation.independentSourceCount || 0}</p>
         <div className="mt-2"><SourceChips sources={recommendation.sources} /></div>
         <div className="mt-3 space-y-1.5">
           <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">Evidencias concretas</p>
           {recommendation.evidence.map((evidence) => (
             <p key={evidence.id} className="rounded-lg bg-white/[0.025] px-2.5 py-2">
-              <span className="font-black text-slate-100">{evidence.source}:</span> {evidence.text}
+              <span className="font-black text-slate-100">{evidence.source}{evidence.playerName ? ` · ${evidence.playerName}` : ''}:</span> {evidence.text}
             </p>
           ))}
         </div>

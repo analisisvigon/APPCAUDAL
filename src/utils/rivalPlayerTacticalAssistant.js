@@ -35,21 +35,28 @@ const newestDate = (values) => safeArray(values)
   .filter(Boolean)
   .sort((a, b) => b.getTime() - a.getTime())[0]?.toISOString() || '';
 
+const independentFacts = (facts) => [...new Map(safeArray(facts).map((fact) => [fact.evidenceUnitId || fact.id, fact])).values()];
+
 const evidenceConfidence = (facts) => {
-  const rows = safeArray(facts);
+  const rows = independentFacts(facts);
   const sources = new Set(rows.map((fact) => fact.source));
-  if (rows.length >= 5 && sources.size >= 3) return 'Alta';
+  if (rows.length >= 3 && sources.size >= 3) return 'Alta';
   if (rows.length >= 2 && sources.size >= 2) return 'Media';
   return 'Baja';
 };
 
-const makeFact = ({ id, text, source, date = '', topics = [], meta = {} }) => ({
+const makeFact = ({ id, text, source, date = '', topics = [], meta = {}, evidenceUnitId = '', sourceKind = '', sourceId = '', playerId = '', matchId = '' }) => ({
   id,
   text: clean(text),
   source,
   date,
   topics,
   meta,
+  evidenceUnitId: clean(evidenceUnitId || id),
+  sourceKind: clean(sourceKind || source).toLowerCase(),
+  sourceId: clean(sourceId || id),
+  playerId: clean(playerId),
+  matchId: clean(matchId),
 });
 
 const matchesPlayerEvidence = (row, player) => {
@@ -59,10 +66,42 @@ const matchesPlayerEvidence = (row, player) => {
   return clean(row?.playerKey) === playerKey(player) || text.includes(expected);
 };
 
+export const classifyPlayerConnectionContext = (connection = {}) => {
+  const contextRows = safeArray(connection.contexts);
+  const contextText = [
+    connection.type,
+    connection.phase,
+    connection.category,
+    connection.context,
+    connection.situation,
+    connection.label,
+    ...contextRows.flatMap((row) => [row.phase, row.phaseLabel, row.category, row.situation, row.type]),
+  ].map(clean).filter(Boolean).join(' ');
+  const value = normalize(contextText);
+  const matches = (pattern) => pattern.test(value);
+  if (matches(/\babp\b|balon parado|corner|falta lateral|estrategia|set piece/)) {
+    return { key: 'set-piece', label: 'ABP', reason: 'Contexto explícito de estrategia', contextText };
+  }
+  if (matches(/transicion|contraataque|tras robo|tras recuperacion|tras perdida|recuperacion inmediata/)) {
+    return { key: 'transition', label: 'Transición', reason: 'Contexto explícito de transición', contextText };
+  }
+  if (matches(/finalizacion|ultimo pase|asistencia|centro|remate|area/)) {
+    return { key: 'finishing', label: 'Finalización', reason: 'Contexto explícito de finalización', contextText };
+  }
+  if (matches(/salida|inicio|primera linea|construccion|progresion desde/)) {
+    return { key: 'build-up', label: 'Salida / construcción', reason: 'Contexto explícito de inicio o progresión', contextText };
+  }
+  if (matches(/ataque posicional|juego posicional|amplitud|conexion interior|pase habitual/)) {
+    return { key: 'positional', label: 'Ataque posicional', reason: 'Contexto explícito de ataque posicional', contextText };
+  }
+  return { key: 'unclassified', label: 'Sin contexto', reason: 'La conexión no incluye una fase táctica verificable', contextText };
+};
+
 const buildFacts = ({ player, profile, participation, observedEvidences, videoEvidences }) => {
   if (!player) return [];
   const facts = [];
-  const profileDate = clean(profile?.updatedAt);
+  const currentPlayerId = playerKey(player);
+  const profileUnitId = `player-profile:${currentPlayerId}`;
   const add = (fact) => {
     if (fact.text && !facts.some((row) => row.id === fact.id)) facts.push(fact);
   };
@@ -71,7 +110,7 @@ const buildFacts = ({ player, profile, participation, observedEvidences, videoEv
     ['secondary-profile', profile?.secondaryProfile, 'Perfil secundario'],
     ['foot', profile?.foot, 'Pie dominante'],
   ].forEach(([id, value, label]) => {
-    if (clean(value)) add(makeFact({ id: `profile:${id}`, text: `${label}: ${value}`, source: 'Perfil', date: profileDate }));
+    if (clean(value)) add(makeFact({ id: `profile:${id}`, text: `${label}: ${value}`, source: 'Perfil', evidenceUnitId: profileUnitId, sourceKind: 'player_profile', sourceId: profileUnitId, playerId: currentPlayerId }));
   });
   [
     ['speed', profile?.speed, 'Velocidad'],
@@ -80,13 +119,16 @@ const buildFacts = ({ player, profile, participation, observedEvidences, videoEv
     ['one-vs-one', profile?.oneVsOne, 'Uno contra uno'],
     ['defensive-work', profile?.defensiveWork, 'Trabajo defensivo'],
   ].forEach(([id, value, label]) => {
-    if (Number(value) > 0) add(makeFact({ id: `profile:metric:${id}`, text: `${label}: ${Number(value)}/5`, source: 'Perfil', date: profileDate, meta: { metric: id, value: Number(value) } }));
+    if (Number(value) > 0) add(makeFact({ id: `profile:metric:${id}`, text: `${label}: ${Number(value)}/5`, source: 'Perfil', evidenceUnitId: profileUnitId, sourceKind: 'player_profile', sourceId: profileUnitId, playerId: currentPlayerId, meta: { metric: id, value: Number(value) } }));
   });
   safeArray(profile?.traits).forEach((trait, index) => add(makeFact({
     id: `profile:trait:${normalize(trait)}:${index}`,
     text: clean(trait),
     source: 'Perfil',
-    date: profileDate,
+    evidenceUnitId: profileUnitId,
+    sourceKind: 'player_profile',
+    sourceId: profileUnitId,
+    playerId: currentPlayerId,
     meta: { trait: true },
   })));
   const profileNotes = clean(profile?.notes).split(/\r?\n/).map(clean).filter(Boolean);
@@ -94,27 +136,46 @@ const buildFacts = ({ player, profile, participation, observedEvidences, videoEv
     id: `profile:notes:${index}`,
     text: note,
     source: 'Staff',
-    date: index === profileNotes.length - 1 ? profileDate : '',
+    evidenceUnitId: profileUnitId,
+    sourceKind: 'player_profile',
+    sourceId: profileUnitId,
+    playerId: currentPlayerId,
     meta: { observation: true },
   })));
   safeArray(participation?.plays).forEach((play) => add(makeFact({
     id: `play:${play.id}`,
     text: `${play.name || 'Jugada guardada'} · ${play.phase || 'Sin fase'}`,
     source: 'Pizarra',
+    date: clean(play.date || play.updatedAt || play.createdAt),
     topics: [clean(play.phase)],
+    evidenceUnitId: `play:${play.id}`,
+    sourceKind: 'play',
+    sourceId: clean(play.id),
+    playerId: currentPlayerId,
     meta: { play: true, phase: clean(play.phase) },
   })));
-  safeArray(participation?.connections).forEach((connection, index) => add(makeFact({
-    id: `connection:${normalize(connection.label)}:${index}`,
-    text: `${connection.label} · ${Number(connection.count || 0)} conexión${Number(connection.count || 0) === 1 ? '' : 'es'}`,
-    source: 'Conexiones',
-    topics: ['Construcción'],
-    meta: { connection: true, count: Number(connection.count || 0), label: connection.label },
-  })));
+  safeArray(participation?.connections).forEach((connection, index) => {
+    const classification = classifyPlayerConnectionContext(connection);
+    add(makeFact({
+      id: `connection:${normalize(connection.label)}:${index}`,
+      text: `${connection.label} · ${Number(connection.count || 0)} conexión${Number(connection.count || 0) === 1 ? '' : 'es'}`,
+      source: 'Conexiones',
+      topics: classification.key === 'unclassified' ? [] : [classification.label, classification.contextText],
+      evidenceUnitId: `connection:${clean(connection.key || connection.id || index)}`,
+      sourceKind: 'connection',
+      sourceId: clean(connection.key || connection.id || index),
+      playerId: currentPlayerId,
+      meta: { connection: true, count: Number(connection.count || 0), label: connection.label, connection, connectionClassification: classification },
+    }));
+  });
   safeArray(participation?.observations).forEach((observation, index) => add(makeFact({
     id: `board:observation:${index}`,
     text: clean(observation),
     source: 'Pizarra',
+    evidenceUnitId: `board-observation:${index}`,
+    sourceKind: 'play_observation',
+    sourceId: `board-observation:${index}`,
+    playerId: currentPlayerId,
     meta: { observation: true },
   })));
   safeArray(observedEvidences).filter((row) => matchesPlayerEvidence(row, player)).forEach((row, index) => add(makeFact({
@@ -123,7 +184,12 @@ const buildFacts = ({ player, profile, participation, observedEvidences, videoEv
     source: 'Evidencias',
     date: clean(row.date),
     topics: [clean(row.type)],
-    meta: { observation: true, match: clean(row.match), importance: clean(row.importance) },
+    evidenceUnitId: `evidence:${clean(row.observationId || row.id || index)}`,
+    sourceKind: 'evidence',
+    sourceId: clean(row.observationId || row.id || index),
+    playerId: currentPlayerId,
+    matchId: clean(row.matchId || row.match),
+    meta: { observation: true, match: clean(row.match), matchId: clean(row.matchId || row.match), importance: clean(row.importance) },
   })));
   safeArray(videoEvidences).filter((row) => clean(row?.url || row?.label || row?.text)).forEach((row, index) => add(makeFact({
     id: `video:${row.id || index}`,
@@ -131,6 +197,10 @@ const buildFacts = ({ player, profile, participation, observedEvidences, videoEv
     source: 'Vídeo',
     date: clean(row.date || row.updatedAt),
     topics: safeArray(row.topics),
+    evidenceUnitId: `video:${clean(row.id || index)}`,
+    sourceKind: 'video',
+    sourceId: clean(row.id || index),
+    playerId: currentPlayerId,
     meta: { video: true, url: clean(row.url) },
   })));
   return facts;
@@ -154,39 +224,111 @@ const factMatches = (fact, pattern) => pattern.test(normalize(`${fact.text} ${fa
 
 const buildImpact = (facts) => impactDefinitions.map(([key, label, pattern]) => {
   const evidence = facts.filter((fact) => factMatches(fact, pattern));
+  const units = independentFacts(evidence);
+  const coverageLevel = units.length >= 3 ? 'Consolidada' : units.length >= 2 ? 'Parcial' : units.length === 1 ? 'Inicial' : 'Sin cobertura';
   return {
     key,
     label,
     count: evidence.length,
+    evidenceCount: evidence.length,
+    independentEvidenceCount: units.length,
+    coverageLevel,
     sources: sortSources(evidence.map((fact) => fact.source)),
     evidenceIds: evidence.map((fact) => fact.id),
+    evidenceUnitIds: units.map((fact) => fact.evidenceUnitId),
   };
 });
 
-const behaviorDefinitions = [
-  ['with-ball', 'Con balón', /organizador|asociativo|regate|conduce|vertical|centro|remat|juego corto|juego largo|recibe|gira|profundo|espacio/],
-  ['without-ball', 'Sin balón', /presion|repliegue|roba|defiende|marca|cobertura|equilibra|salta|intenso|ayuda/],
-  ['offensive-transition', 'Transición ofensiva', /transicion ofensiva|contraataque|tras robo|amenaza transicion|ataca espacio/],
-  ['defensive-transition', 'Transición defensiva', /transicion defensiva|tras perdida|repliegue|retorno|presion tras perdida/],
-  ['set-piece', 'ABP', /\babp\b|corner|estrategia|juego aereo|primer palo|segundo palo/],
+const behaviorPhaseLabels = {
+  'with-ball': 'Con balón',
+  'without-ball': 'Sin balón',
+  'offensive-transition': 'Transición ofensiva',
+  'defensive-transition': 'Transición defensiva',
+  'set-piece': 'ABP',
+};
+
+const behaviorConcepts = [
+  ['attack-space', 'Ataca el espacio', /ataca espacio|ataca espalda|profundo|desmarque|rapido al espacio/],
+  ['retreat', 'Repliegue', /repliegue|retorno/],
+  ['aerial', 'Juego aéreo', /juego aereo|duelo aereo|rematador|cabeza/],
+  ['dribble', 'Uno contra uno', /regate|desbordador|uno contra uno|1v1/],
+  ['organizer', 'Organización y asociación', /organizador|asociativo|recibe entre lineas|gira|circulacion/],
+  ['pressing', 'Presión', /presion|salta|intenso|orienta salida/],
+  ['coverage', 'Cobertura', /cobertura|equilibra|ayuda al lateral|protege/],
+  ['finishing', 'Finalización', /centro|remat|finaliza|ultimo pase|asistencia/],
 ];
 
-const buildBehaviors = (facts) => behaviorDefinitions.map(([key, label, pattern]) => {
-  const evidence = facts.filter((fact) => factMatches(fact, pattern));
+export const classifyPlayerBehavior = (fact = {}) => {
+  const value = normalize(`${fact.text || ''} ${safeArray(fact.topics).join(' ')}`);
+  const concept = behaviorConcepts.find(([, , pattern]) => pattern.test(value));
+  const explicitSetPiece = /\babp\b|corner|balon parado|falta lateral|estrategia/.test(value);
+  const explicitOffensiveTransition = /transicion ofensiva|contraataque|tras robo|tras recuperacion/.test(value);
+  const explicitDefensiveTransition = /transicion defensiva|tras perdida|presion tras perdida/.test(value);
+  let primaryPhase = '';
+  const secondaryPhases = [];
+  let reason = '';
+
+  if (concept?.[0] === 'attack-space') {
+    primaryPhase = 'with-ball';
+    reason = 'Comportamiento ofensivo principal';
+    if (explicitOffensiveTransition) secondaryPhases.push('offensive-transition');
+  } else if (concept?.[0] === 'retreat') {
+    primaryPhase = 'without-ball';
+    reason = 'Comportamiento defensivo principal';
+    if (explicitDefensiveTransition) secondaryPhases.push('defensive-transition');
+  } else if (concept?.[0] === 'aerial') {
+    primaryPhase = /defiende|marca|despeje/.test(value) ? 'without-ball' : 'with-ball';
+    reason = 'Juego aéreo sin contexto de estrategia';
+    if (explicitSetPiece) secondaryPhases.push('set-piece');
+  } else if (explicitSetPiece) {
+    primaryPhase = 'set-piece';
+    reason = 'La evidencia incluye contexto explícito de estrategia';
+  } else if (explicitOffensiveTransition) {
+    primaryPhase = 'offensive-transition';
+    reason = 'La evidencia incluye contexto tras recuperación';
+  } else if (explicitDefensiveTransition) {
+    primaryPhase = 'defensive-transition';
+    reason = 'La evidencia incluye contexto tras pérdida';
+  } else if (/organizador|asociativo|regate|conduce|vertical|centro|remat|juego corto|juego largo|recibe|gira|profundo|espacio/.test(value)) {
+    primaryPhase = 'with-ball';
+    reason = 'Acción registrada con balón';
+  } else if (/presion|roba|defiende|marca|cobertura|equilibra|salta|intenso|ayuda/.test(value)) {
+    primaryPhase = 'without-ball';
+    reason = 'Acción registrada sin balón';
+  }
+  if (!primaryPhase) return null;
   return {
-    key,
-    label,
-    items: evidence.map((fact) => ({
-      id: fact.id,
-      text: fact.text,
-      source: fact.source,
-      date: fact.date,
-    })),
-    confidence: evidenceConfidence(evidence),
-    sources: sortSources(evidence.map((fact) => fact.source)),
-    lastObservedAt: newestDate(evidence.map((fact) => fact.date)),
+    behaviourKey: concept?.[0] || primaryPhase,
+    behaviourLabel: concept?.[1] || behaviorPhaseLabels[primaryPhase],
+    primaryPhase,
+    secondaryPhases,
+    reason,
   };
-}).filter((group) => group.items.length);
+};
+
+const buildBehaviors = (facts) => {
+  const classified = facts.map((fact) => ({ fact, classification: classifyPlayerBehavior(fact) })).filter((row) => row.classification);
+  return Object.entries(behaviorPhaseLabels).map(([key, label]) => {
+    const rows = classified.filter((row) => row.classification.primaryPhase === key);
+    const evidence = rows.map((row) => row.fact);
+    return {
+      key,
+      label,
+      items: rows.map(({ fact, classification }) => ({
+        id: fact.id,
+        text: fact.text,
+        source: fact.source,
+        date: fact.date,
+        behaviourKey: classification.behaviourKey,
+        secondaryPhases: classification.secondaryPhases,
+        classificationReason: classification.reason,
+      })),
+      confidence: evidenceConfidence(evidence),
+      sources: sortSources(evidence.map((fact) => fact.source)),
+      lastObservedAt: newestDate(evidence.map((fact) => fact.date)),
+    };
+  }).filter((group) => group.items.length);
+};
 
 const recommendationRules = [
   {
@@ -199,7 +341,7 @@ const recommendationRules = [
   {
     id: 'deny-turn',
     pattern: /recibe entre lineas|gira|juego de espaldas|asociativo/,
-    defense: ['No permitir que gire tras la recepción.', 'Presionar su primer control con cobertura interior.'],
+    defense: ['Impedir que gire tras la recepción.', 'Presionar su primer control con cobertura interior.'],
     impact: 'Limitar su continuidad y el acceso al siguiente pase.',
     priority: 'Importante',
   },
@@ -264,18 +406,56 @@ const buildRecommendations = (facts, kind) => recommendationRules.flatMap((rule)
   }));
 });
 
-const buildTrends = (facts) => facts
+const trendCandidateFacts = (facts) => facts
   .filter((fact) => fact.meta.trait || fact.source === 'Evidencias')
-  .filter((fact) => !/^pie dominante|^perfil/i.test(fact.text))
-  .map((fact) => ({
-    id: `trend:${fact.id}`,
+  .filter((fact) => !/^pie dominante|^perfil/i.test(fact.text));
+
+const buildRegisteredBehaviors = (facts) => trendCandidateFacts(facts).map((fact) => {
+  const classification = classifyPlayerBehavior(fact);
+  return {
+    id: `behavior:${fact.id}`,
+    type: 'recorded_behavior',
     label: fact.text,
-    frequency: '1 evidencia',
-    lastObservedAt: fact.date,
-    confidence: evidenceConfidence([fact]),
-    sources: [fact.source],
-    evidenceIds: [fact.id],
-  }));
+    behaviourKey: classification?.behaviourKey || normalize(fact.text),
+    source: fact.source,
+    date: fact.date,
+    dateLabel: fact.date ? '' : 'Fecha no registrada',
+    evidenceUnitId: fact.evidenceUnitId,
+  };
+});
+
+const buildTrends = (facts) => {
+  const groups = new Map();
+  trendCandidateFacts(facts).forEach((fact) => {
+    const classification = classifyPlayerBehavior(fact);
+    const key = classification?.behaviourKey || normalize(fact.text);
+    if (!groups.has(key)) groups.set(key, { key, label: classification?.behaviourLabel || fact.text, facts: [] });
+    groups.get(key).facts.push(fact);
+  });
+  return [...groups.values()].flatMap((group) => {
+    const units = independentFacts(group.facts);
+    const matches = unique(group.facts.map((fact) => fact.matchId || fact.meta.matchId || fact.meta.match));
+    const declaredFrequency = Math.max(0, ...group.facts.map((fact) => Number(fact.meta.frequency || 0)));
+    if (units.length < 2 && matches.length < 2 && declaredFrequency < 2) return [];
+    const frequency = matches.length >= 2
+      ? `${matches.length} partidos`
+      : declaredFrequency >= 2
+        ? `${declaredFrequency} repeticiones registradas`
+        : `${units.length} evidencias independientes`;
+    return [{
+      id: `trend:${group.key}`,
+      type: 'observed_trend',
+      label: group.label,
+      frequency,
+      lastObservedAt: newestDate(group.facts.map((fact) => fact.date)),
+      dateLabel: newestDate(group.facts.map((fact) => fact.date)) ? '' : 'Fecha no registrada',
+      confidence: evidenceConfidence(group.facts),
+      sources: sortSources(group.facts.map((fact) => fact.source)),
+      evidenceIds: group.facts.map((fact) => fact.id),
+      evidenceUnitIds: units.map((fact) => fact.evidenceUnitId),
+    }];
+  });
+};
 
 const buildRelations = (participation) => safeArray(participation?.connections)
   .filter((row) => clean(row.label) && Number(row.count || 0) > 0)
@@ -285,6 +465,7 @@ const buildRelations = (participation) => safeArray(participation?.connections)
     label: row.label,
     count: Number(row.count || 0),
     source: 'Conexiones',
+    classification: classifyPlayerConnectionContext(row),
   }));
 
 const buildPhases = (participation) => {
@@ -387,6 +568,7 @@ export const buildRivalPlayerTacticalModel = (input = {}) => {
     facts,
     impact: buildImpact(facts),
     behaviors: buildBehaviors(facts),
+    registeredBehaviors: buildRegisteredBehaviors(facts),
     recommendations: { defense: defensivePlan, attack: attackingPlan },
     trends: buildTrends(facts),
     relations: buildRelations(participation),
@@ -409,27 +591,43 @@ export const buildRivalPlayerTacticalModel = (input = {}) => {
 export const buildRivalPlayerCollectiveSignals = (rows = []) => safeArray(rows).flatMap(({ player, profile }) => {
   const name = fullPlayerName(player);
   const key = playerKey(player) || normalize(name);
+  const sourceId = `player-profile:${key}`;
   const observations = [
     clean(profile?.mainProfile) ? `Perfil principal: ${profile.mainProfile}` : '',
     clean(profile?.secondaryProfile) ? `Perfil secundario: ${profile.secondaryProfile}` : '',
     ...safeArray(profile?.traits),
     clean(profile?.notes) ? `Observación del staff: ${profile.notes}` : '',
   ].filter(Boolean);
-  return observations.map((observation, index) => ({
-    id: `player-profile:${key}:${index}`,
+  return observations.map((observation, index) => {
+    const classification = classifyPlayerBehavior({ text: observation, topics: [] });
+    return {
+    id: `${sourceId}:${index}`,
     type: 'Jugador',
-    importance: player?.isKey ? 'Alta' : 'Media',
+    importance: 'Media',
     observation: `${name} · ${observation}`,
-    date: clean(profile?.updatedAt),
+    date: '',
+    scope: 'individual',
+    playerId: key,
     playerKey: key,
     playerName: name,
+    sourceKind: 'player_profile',
+    sourceId,
+    evidenceUnitId: sourceId,
+    evidenceUnitIds: [sourceId],
+    observationId: '',
+    matchId: '',
+    behaviourKey: classification?.behaviourKey || normalize(observation),
     derivedFromPlayerProfile: true,
-  }));
+    corroboratedByCollectiveSource: false,
+    independentSourceCount: 1,
+    collectiveStrength: player?.isStructural || profile?.influence === 'structural' ? 'structural' : 'individual',
+  };
+  });
 });
 
 const answerFromEvidence = (question, model) => {
   const q = normalize(question);
-  if (/jugador nuestro|quien.*marca|marcarle/.test(q)) {
+  if (/jugador nuestro|quien.*(?:marca|emparej)|marcarle|emparej|perfil nuestro|perfil.*duelo/.test(q)) {
     const duel = model.duels[0];
     if (!duel || !duel.sources.length) return {
       reading: 'No existe un emparejamiento respaldado por evidencias suficientes.',
@@ -500,7 +698,44 @@ const coachTemplates = [
   [/si no juega|sin el/, 'La ausencia de un jugador puede cambiar relaciones y responsabilidades sin alterar el sistema nominal.', 'Observar quién ocupa su altura, quién recibe sus pases y quién asume su fase dominante.', 'Asumir que el sustituto repetirá su comportamiento puede conducir a un ajuste equivocado.', 'Mantener el plan inicial hasta identificar un cambio real en las primeras posesiones.'],
 ];
 
-const answerFromCoach = (question) => {
+const answerPairingFromCoach = (model) => {
+  const duel = safeArray(model?.duels)[0];
+  if (duel?.duel && duel?.sources?.length) {
+    return {
+      reading: `El emparejamiento registrado es ${duel.duel}.`,
+      instruction: duel.instruction,
+      risks: duel.risk,
+      alternative: 'Mantener cobertura zonal si el seguimiento individual rompe la estructura.',
+      sources: duel.sources,
+      confidence: duel.confidence,
+      evidenceIds: [],
+    };
+  }
+  const summary = model?.summary || {};
+  const metricFacts = safeArray(model?.facts).filter((fact) => fact.meta?.metric);
+  const metric = (key) => Number(metricFacts.find((fact) => fact.meta.metric === key)?.meta.value || 0);
+  const needs = [];
+  if (metric('speed') >= 4 || /extremo|delantero/.test(normalize(summary.position))) needs.push('velocidad para proteger la espalda');
+  if (metric('aerial') >= 4 || /rematador|juego aereo/.test(normalize(safeArray(model?.facts).map((fact) => fact.text).join(' ')))) needs.push('capacidad aérea y contacto');
+  if (metric('one-vs-one') >= 4) needs.push('temporización y defensa del uno contra uno');
+  if (summary.foot) needs.push(`orientación para llevarle lejos de su pie ${summary.foot.toLowerCase()}`);
+  if (!needs.length) needs.push('lectura posicional, capacidad de temporizar y cobertura cercana');
+  return {
+    reading: `No hay datos comparables suficientes de nuestros jugadores para proponer un nombre concreto. El duelo requiere ${needs.join(', ')}.`,
+    instruction: 'Elegir el perfil que reúna esas capacidades sin romper las coberturas del bloque.',
+    risks: 'Asignar un nombre sin datos comparables convertiría una orientación de perfil en una certeza no respaldada.',
+    alternative: 'Defender por zona y activar el seguimiento únicamente con un desencadenante claro.',
+    sources: [],
+    confidence: 'Baja',
+    evidenceIds: [],
+  };
+};
+
+const answerFromCoach = (question, model) => {
+  const normalizedQuestion = normalize(question);
+  if (/jugador nuestro|quien.*(?:marca|emparej)|marcarle|emparej|perfil nuestro|perfil.*duelo/.test(normalizedQuestion)) {
+    return answerPairingFromCoach(model);
+  }
   const template = coachTemplates.find(([pattern]) => pattern.test(normalize(question))) || coachTemplates[0];
   return {
     reading: template[1],
@@ -515,7 +750,7 @@ const answerFromCoach = (question) => {
 
 export const answerRivalPlayerTacticalQuestion = ({ question, mode = 'evidence', model } = {}) => {
   if (!clean(question) || !model) return null;
-  const answer = mode === 'coach' ? answerFromCoach(question) : answerFromEvidence(question, model);
+  const answer = mode === 'coach' ? answerFromCoach(question, model) : answerFromEvidence(question, model);
   return {
     ...answer,
     mode,

@@ -52,38 +52,83 @@ const hasAnyTerm = (value, terms) => {
 };
 const byNewest = (left, right) => clean(right).localeCompare(clean(left));
 
-const profileEvidence = (field, value) => ({
+const evidenceUnitKey = (row = {}) => clean(
+  row.evidenceUnitId
+  || safeArray(row.evidenceUnitIds)[0]
+  || [
+    clean(row.sourceKind || row.source).toLowerCase(),
+    clean(row.sourceId || row.observationId || row.playId || row.id),
+    clean(row.playerId || row.playerKey),
+    clean(row.matchId),
+  ].filter(Boolean).join(':')
+  || row.id
+);
+
+const withEvidenceIdentity = (row, defaults = {}) => {
+  const sourceKind = clean(row.sourceKind || defaults.sourceKind || row.source).toLowerCase();
+  const sourceId = clean(row.sourceId || defaults.sourceId || row.observationId || row.playId || row.id);
+  const playerId = clean(row.playerId || row.playerKey);
+  const normalized = {
+    ...row,
+    sourceKind,
+    sourceId,
+    playerId,
+    playerKey: clean(row.playerKey || playerId),
+    playerName: clean(row.playerName),
+    matchId: clean(row.matchId || defaults.matchId),
+    observationId: clean(row.observationId),
+    playId: clean(row.playId),
+    behaviourKey: clean(row.behaviourKey),
+    scope: clean(row.scope || defaults.scope || 'collective'),
+    derivedFromPlayerProfile: Boolean(row.derivedFromPlayerProfile),
+    collectiveStrength: clean(row.collectiveStrength),
+  };
+  return {
+    ...normalized,
+    evidenceUnitId: evidenceUnitKey({ ...normalized, evidenceUnitId: row.evidenceUnitId }),
+  };
+};
+
+const profileEvidence = (field, value) => withEvidenceIdentity({
   id: `profile:${field}:${normalize(Array.isArray(value) ? value.join('-') : value)}`,
   source: 'Perfil',
   text: Array.isArray(value) ? value.join(', ') : clean(value),
   importance: 'Media',
   date: '',
-});
+  evidenceUnitId: 'collective-profile',
+}, { sourceKind: 'collective_profile', sourceId: 'collective-profile', scope: 'collective' });
 
 const normalizeEvidenceRows = (rows) => safeArray(rows)
-  .map((row, index) => ({
+  .map((row, index) => withEvidenceIdentity({
+    ...row,
     id: `evidence:${clean(row?.id) || index}`,
     source: 'Evidencias',
-    text: clean(row?.observation),
+    text: clean(row?.observation || row?.text),
     context: [clean(row?.type), clean(row?.match)].filter(Boolean).join(' · '),
     importance: clean(row?.importance) || 'Media',
     date: clean(row?.date),
+    matchId: clean(row?.matchId || row?.match),
+    observationId: clean(row?.observationId || row?.id),
+  }, {
+    sourceKind: row?.derivedFromPlayerProfile ? 'player_profile' : 'evidence',
+    sourceId: row?.sourceId || row?.observationId || row?.id || index,
+    scope: row?.scope || (row?.derivedFromPlayerProfile ? 'individual' : 'collective'),
   }))
   .filter((row) => row.text);
 
 const normalizeConnections = (rows) => safeArray(rows)
-  .map((row, index) => ({
+  .map((row, index) => withEvidenceIdentity({
     id: `connection:${clean(row?.id) || index}`,
     source: 'Conexiones',
     text: [clean(row?.type), clean(row?.origin), clean(row?.destination), clean(row?.comment)].filter(Boolean).join(' · '),
     context: clean(row?.team) || 'rival',
     importance: clean(row?.intensity) || 'Media',
     date: clean(row?.createdAt),
-  }))
+  }, { sourceKind: 'connection', sourceId: row?.id || index, scope: 'collective' }))
   .filter((row) => row.text && row.context !== 'caudal');
 
 const normalizePlays = (rows, tacticalEvidenceReport) => {
-  const directRows = safeArray(rows).map((row, index) => ({
+  const directRows = safeArray(rows).map((row, index) => withEvidenceIdentity({
     id: `play:${clean(row?.id || row?.playId) || index}`,
     source: 'Pizarra',
     text: [
@@ -95,10 +140,11 @@ const normalizePlays = (rows, tacticalEvidenceReport) => {
     context: playPhaseLabel(row?.phase),
     importance: 'Media',
     date: clean(row?.updatedAt || row?.createdAt),
-  })).filter((row) => row.text);
+    playId: clean(row?.id || row?.playId),
+  }, { sourceKind: 'play', sourceId: row?.id || row?.playId || index, scope: 'collective' })).filter((row) => row.text);
 
   const reportRows = safeArray(tacticalEvidenceReport?.contextRows)
-    .map((row, index) => ({
+    .map((row, index) => withEvidenceIdentity({
       id: `play:${clean(row?.playId) || `report-${index}`}`,
       source: 'Pizarra',
       text: [
@@ -110,25 +156,26 @@ const normalizePlays = (rows, tacticalEvidenceReport) => {
       context: playPhaseLabel(row?.phase),
       importance: 'Media',
       date: '',
-    }))
+      playId: clean(row?.playId),
+    }, { sourceKind: 'play', sourceId: row?.playId || `report-${index}`, scope: 'collective' }))
     .filter((row) => row.text);
 
   return [...new Map([...directRows, ...reportRows].map((row) => [row.id, row])).values()];
 };
 
 const normalizeStaffRows = (rows) => safeArray(rows)
-  .map((row, index) => ({
+  .map((row, index) => withEvidenceIdentity({
     id: `staff:${clean(row?.id) || index}`,
     source: 'Staff',
     text: clean(row?.text || row?.content),
     context: clean(row?.label) || 'Informe del staff',
     importance: 'Media',
     date: clean(row?.updatedAt || row?.createdAt),
-  }))
+  }, { sourceKind: 'staff_report', sourceId: row?.id || index, scope: 'collective' }))
   .filter((row) => row.text);
 
 const normalizeVideos = (rows) => safeArray(rows)
-  .map((row, index) => ({
+  .map((row, index) => withEvidenceIdentity({
     id: `video:${clean(row?.id) || index}`,
     source: 'Vídeo',
     text: clean(row?.observation || row?.description),
@@ -136,7 +183,7 @@ const normalizeVideos = (rows) => safeArray(rows)
     context: clean(row?.label) || 'Vídeo vinculado',
     importance: 'Media',
     date: clean(row?.updatedAt || row?.createdAt),
-  }))
+  }, { sourceKind: 'video', sourceId: row?.id || index, scope: 'collective' }))
   .filter((row) => row.url);
 
 const playPhaseLabel = (phase) => ({
@@ -183,12 +230,61 @@ const collectTopicSupport = (facts, terms) => facts.concrete.filter((row) => (
   hasAnyTerm(`${row.text} ${row.context}`, terms)
 ));
 
+const uniqueEvidenceUnits = (rows) => [...new Map(safeArray(rows).map((row) => [evidenceUnitKey(row), row])).values()];
+
+const buildSupportStats = (rows) => {
+  const support = safeArray(rows);
+  const units = uniqueEvidenceUnits(support);
+  const individual = units.filter((row) => row.scope === 'individual' || row.derivedFromPlayerProfile);
+  const collective = units.filter((row) => !individual.includes(row));
+  const contributingPlayerIds = uniq(individual.map((row) => row.playerId || row.playerKey));
+  const contributingPlayers = uniq(individual.map((row) => row.playerName));
+  const matchIds = uniq(units.map((row) => row.matchId));
+  const sourceKinds = uniq(units.map((row) => row.sourceKind));
+  const repeatedAcrossPlayers = contributingPlayerIds.length >= 2;
+  const repeatedAcrossMatches = matchIds.length >= 2;
+  const corroboratedByCollectiveSource = individual.length > 0 && collective.length > 0;
+  const structuralWithIndependentSupport = individual.some((row) => row.collectiveStrength === 'structural') && units.length >= 2;
+  const hasCollectiveRepetition = individual.length === 0 && collective.length >= 2;
+  const qualifiesAsCollective = repeatedAcrossPlayers
+    || repeatedAcrossMatches
+    || corroboratedByCollectiveSource
+    || structuralWithIndependentSupport
+    || hasCollectiveRepetition;
+  const backedPattern = qualifiesAsCollective
+    && units.length >= 3
+    && collective.length > 0
+    && sourceKinds.length >= 2;
+  const evidenceLevel = backedPattern
+    ? 'collective_pattern'
+    : qualifiesAsCollective
+      ? 'collective_hypothesis'
+      : individual.length
+        ? 'individual_signal'
+        : 'collective_hypothesis';
+  return {
+    units,
+    individual,
+    collective,
+    contributingPlayerIds,
+    contributingPlayers,
+    matchIds,
+    sourceKinds,
+    independentSourceCount: units.length,
+    corroboratedByCollectiveSource,
+    evidenceLevel,
+    evidenceLabel: evidenceLevel === 'collective_pattern'
+      ? 'Patrón colectivo respaldado'
+      : evidenceLevel === 'collective_hypothesis'
+        ? 'Hipótesis colectiva'
+        : 'Señal individual',
+  };
+};
+
 const calculateConfidence = (rows) => {
-  const concreteRows = safeArray(rows).filter((row) => row.source !== 'Perfil');
-  const sourceCount = new Set(rows.map((row) => row.source)).size;
-  const hasConcrete = concreteRows.length > 0;
-  if (hasConcrete && sourceCount >= 3 && concreteRows.length >= 2) return 'Alta';
-  if ((hasConcrete && sourceCount >= 2) || concreteRows.length >= 2) return 'Media';
+  const stats = buildSupportStats(rows);
+  if (stats.evidenceLevel === 'collective_pattern') return 'Alta';
+  if (stats.evidenceLevel === 'collective_hypothesis' && stats.independentSourceCount >= 2) return 'Media';
   return 'Baja';
 };
 
@@ -339,27 +435,26 @@ const ruleProfileSupport = (rule, facts) => {
   return matched.length ? [profileEvidence(rule.field, matched)] : [];
 };
 
-const isStrongSingleEvidence = (rows) => rows.some((row) => (
-  row.source === 'Evidencias' && normalize(row.importance) === 'alta'
-));
-
 const isValidAction = (action) => ACTION_VERBS.some((verb) => new RegExp(`^${verb}\\b`, 'i').test(clean(action)));
 
 const recommendationFromRule = (rule, facts, ruleIndex) => {
   const profileSupport = ruleProfileSupport(rule, facts);
   const topicSupport = collectTopicSupport(facts, rule.terms);
-  const distinctConcrete = new Set(topicSupport.map((row) => row.id)).size;
-  const canApply = (
-    (profileSupport.length > 0 && distinctConcrete >= 1)
-    || distinctConcrete >= 2
-    || isStrongSingleEvidence(topicSupport)
-  );
-  if (!canApply || !isValidAction(rule.action) || !clean(rule.expectedImpact) || !clean(rule.rationale)) return null;
   const support = [...profileSupport, ...topicSupport];
+  const stats = buildSupportStats(support);
+  const canApply = topicSupport.length > 0;
+  if (!canApply || !isValidAction(rule.action) || !clean(rule.expectedImpact) || !clean(rule.rationale)) return null;
   const sources = uniq(support.map((row) => row.source)).filter((source) => RIVAL_ASSISTANT_SOURCE_LABELS.includes(source));
   if (!sources.length || !support.length) return null;
   const confidence = calculateConfidence(support);
-  const priority = rule.priority === 'Crítica' && confidence === 'Baja' ? 'Importante' : rule.priority;
+  const priority = stats.evidenceLevel === 'individual_signal'
+    ? 'Opcional'
+    : stats.evidenceLevel === 'collective_hypothesis'
+      ? rule.priority === 'Opcional' ? 'Opcional' : 'Importante'
+      : rule.priority;
+  const playerExplanation = stats.contributingPlayers.length
+    ? `${stats.evidenceLabel} respaldada por ${stats.contributingPlayers.join(', ')}.`
+    : `${stats.evidenceLabel} respaldada por ${stats.independentSourceCount} ${stats.independentSourceCount === 1 ? 'unidad independiente' : 'unidades independientes'}.`;
   return {
     id: rule.id,
     side: rule.side,
@@ -370,12 +465,30 @@ const recommendationFromRule = (rule, facts, ruleIndex) => {
     sources,
     rationale: rule.rationale,
     evidenceIds: uniq(support.map((row) => row.id)),
+    contributingEvidenceIds: uniq(support.map((row) => row.id)),
+    contributingPlayerIds: stats.contributingPlayerIds,
+    contributingPlayers: stats.contributingPlayers,
+    independentSourceCount: stats.independentSourceCount,
+    sourceKinds: stats.sourceKinds,
+    corroboratedByCollectiveSource: stats.corroboratedByCollectiveSource,
+    evidenceLevel: stats.evidenceLevel,
+    evidenceLabel: stats.evidenceLabel,
+    traceabilityExplanation: playerExplanation,
     evidence: support.map((row) => ({
       id: row.id,
       source: row.source,
       text: row.text,
       context: row.context || '',
       date: row.date || '',
+      playerId: row.playerId || '',
+      playerKey: row.playerKey || '',
+      playerName: row.playerName || '',
+      sourceKind: row.sourceKind || '',
+      sourceId: row.sourceId || '',
+      evidenceUnitId: row.evidenceUnitId || '',
+      derivedFromPlayerProfile: Boolean(row.derivedFromPlayerProfile),
+      behaviourKey: row.behaviourKey || '',
+      matchId: row.matchId || '',
     })),
     duel: rule.duel,
     ruleOrder: ruleIndex,

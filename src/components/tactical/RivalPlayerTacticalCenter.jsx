@@ -329,18 +329,19 @@ export default function RivalPlayerTacticalCenter({
       </section>
 
       <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
-        <SectionHeader eyebrow="Influencia funcional" title="Impacto en el modelo colectivo" detail="Los segmentos representan evidencias reales, no una valoración de calidad." />
+        <SectionHeader eyebrow="Influencia funcional" title="Impacto en el modelo colectivo" detail="Recuentos reales y cobertura por unidades de evidencia independientes." />
         <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {model.impact.map((indicator) => (
             <article key={indicator.key} className="rounded-xl bg-white/[0.028] p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-black text-slate-200">{indicator.label}</p>
-                <span className="text-[9px] font-black text-slate-500">{indicator.count ? `${indicator.count} evid.` : 'Sin evidencia'}</span>
+                <span className="text-[9px] font-black text-slate-500">{indicator.evidenceCount ? `${indicator.evidenceCount} evid.` : 'Sin evidencia'}</span>
               </div>
-              <div className="mt-3 flex gap-1" aria-label={`${indicator.count} evidencias en ${indicator.label}`}>
-                {Array.from({ length: 5 }, (_, index) => <span key={index} className={`h-1.5 flex-1 rounded-full ${index < Math.min(indicator.count, 5) ? 'bg-caudal-electric' : 'bg-white/[0.06]'}`} />)}
+              <div className="mt-3 rounded-lg bg-black/15 px-3 py-2" aria-label={`${indicator.evidenceCount} evidencias y ${indicator.independentEvidenceCount} unidades independientes en ${indicator.label}`}>
+                <p className="text-[10px] font-black text-slate-200">{indicator.coverageLevel}</p>
+                <p className="mt-1 text-[9px] font-semibold text-slate-500">{indicator.independentEvidenceCount} {indicator.independentEvidenceCount === 1 ? 'unidad independiente' : 'unidades independientes'}</p>
               </div>
-              {indicator.count ? <div className="mt-3"><SourceChips sources={indicator.sources} /></div> : null}
+              {indicator.evidenceCount ? <div className="mt-3"><SourceChips sources={indicator.sources} /></div> : null}
             </article>
           ))}
         </div>
@@ -376,7 +377,7 @@ export default function RivalPlayerTacticalCenter({
 
       <div className="grid items-start gap-5 lg:grid-cols-2">
         <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
-          <SectionHeader eyebrow="Patrones" title="Tendencias detectadas" />
+          <SectionHeader eyebrow="Patrones repetidos" title="Tendencias observadas" detail="Solo aparecen cuando existen al menos dos evidencias independientes o dos contextos reales." />
           <div className="mt-4 space-y-2">
             {model.trends.length ? model.trends.slice(0, 8).map((trend) => (
               <article key={trend.id} className="rounded-xl bg-white/[0.025] px-3.5 py-3">
@@ -386,10 +387,10 @@ export default function RivalPlayerTacticalCenter({
                 </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                   <SourceChips sources={trend.sources} />
-                  <span className="text-[9px] font-semibold text-slate-600">{trend.frequency} · {trend.lastObservedAt ? formatDate(trend.lastObservedAt) : 'Sin fecha'}</span>
+                  <span className="text-[9px] font-semibold text-slate-600">{trend.frequency} · {trend.lastObservedAt ? formatDate(trend.lastObservedAt) : 'Fecha no registrada'}</span>
                 </div>
               </article>
-            )) : <CompactEmpty />}
+            )) : <CompactEmpty>No existen repeticiones suficientes para hablar de tendencia.</CompactEmpty>}
           </div>
         </section>
         <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
@@ -399,7 +400,7 @@ export default function RivalPlayerTacticalCenter({
               <article key={relation.id} className="flex items-center justify-between gap-3 rounded-xl bg-white/[0.025] px-3.5 py-3">
                 <div className="min-w-0">
                   <p className="truncate text-xs font-black text-slate-200">{relation.label}</p>
-                  <p className="mt-1 text-[9px] font-bold text-amber-100">Fuente · {relation.source}</p>
+                  <p className="mt-1 text-[9px] font-bold text-amber-100">{relation.classification.label} · {relation.classification.reason}</p>
                 </div>
                 <span className="shrink-0 rounded-full bg-amber-300/[0.08] px-3 py-1.5 text-[10px] font-black text-amber-100">{relation.count} conexiones</span>
               </article>

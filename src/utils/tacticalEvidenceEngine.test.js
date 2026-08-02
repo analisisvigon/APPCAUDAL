@@ -63,6 +63,8 @@ assert.equal(lateral.playCount, 3);
 assert.equal(lateral.connectionsReceived, 3);
 assert.equal(lateral.connectionsCreated, 0);
 assert.ok(lateral.movementTypes.some((row) => row.label === 'Ruptura'));
+assert.equal(lateral.connections[0].contexts.length, 3, 'cada conexión conserva sus contextos reales de jugada');
+assert.ok(lateral.connections[0].contexts.every((context) => context.phase === 'offensive'), 'la fase llega al clasificador individual');
 
 const empty = buildTacticalEvidenceEngine([]);
 const noEvidence = selectTacticalEvidenceForQuestion(empty, '¿Cómo progresa el rival?');

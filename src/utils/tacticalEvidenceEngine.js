@@ -529,6 +529,23 @@ export const getPlayerTacticalEvidence = (report, playerId) => {
   ));
   if (!row) return emptyParticipation();
   const contextsById = new Map(safeArray(report.contexts).map((context) => [context.playId, context]));
+  const contextualizeConnection = (connection) => ({
+    ...connection,
+    contexts: safeArray(connection.playIds).map((playId) => {
+      const context = contextsById.get(playId);
+      return {
+        playId,
+        phase: context?.phase || '',
+        phaseLabel: context?.phaseLabel || phaseNames[context?.phase] || '',
+        category: context ? getCategory(context) : '',
+        situation: context?.situationLabel
+          || context?.fieldZoneLabel
+          || context?.transitionTypeLabel
+          || context?.setPieceTypeLabel
+          || '',
+      };
+    }),
+  });
   return {
     playCount: row.playCount,
     plays: row.playIds.map((playId) => {
@@ -537,10 +554,11 @@ export const getPlayerTacticalEvidence = (report, playerId) => {
         id: playId,
         name: context?.playName || 'Jugada guardada',
         phase: context?.phaseLabel || phaseNames[context?.phase] || 'Sin fase',
+        date: context?.date || context?.updatedAt || context?.createdAt || '',
       };
     }),
     phases: row.phases,
-    connections: row.connections,
+    connections: row.connections.map(contextualizeConnection),
     connectionsCreated: row.connectionsCreated,
     connectionsReceived: row.connectionsReceived,
     movements: row.movementTypes.reduce((sum, movement) => sum + movement.count, 0),
