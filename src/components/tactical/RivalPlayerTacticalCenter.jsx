@@ -1,4 +1,4 @@
-import { Component, useEffect, useId, useRef, useState } from 'react';
+import { Component, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import {
   PLAYER_TACTICAL_SUGGESTED_QUESTIONS,
@@ -37,6 +37,44 @@ const formatDate = (value, includeTime = false) => {
     year: 'numeric',
     ...(includeTime ? { hour: '2-digit', minute: '2-digit' } : {}),
   }).format(date);
+};
+
+const factTimestamp = (fact) => {
+  const value = new Date(fact?.date || '').getTime();
+  return Number.isFinite(value) ? value : 0;
+};
+
+const buildAutomaticSummary = (model) => {
+  if (!model || model.facts.length < 2) return 'No existen suficientes evidencias para generar un resumen fiable.';
+  const parts = [];
+  const identity = [model.summary.position, model.summary.mainProfile ? `perfil ${model.summary.mainProfile.toLowerCase()}` : ''].filter(Boolean).join(' de ');
+  if (identity) parts.push(`${identity.charAt(0).toUpperCase()}${identity.slice(1)}.`);
+  const recorded = model.registeredBehaviors.slice(0, 3).map((item) => item.label).filter(Boolean);
+  if (recorded.length) parts.push(`Comportamientos registrados: ${recorded.join(' · ')}.`);
+  if (model.summary.influence.key !== 'residual') parts.push(`${model.summary.influence.label}: ${model.summary.influence.reason}.`);
+  const observedPhases = new Set(model.behaviors.map((group) => group.key));
+  if (!observedPhases.has('without-ball')) parts.push('Todavía no existen evidencias suficientes sobre su comportamiento sin balón.');
+  if (!observedPhases.has('with-ball')) parts.push('Todavía no existen evidencias suficientes sobre su comportamiento con balón.');
+  return parts.join(' ') || 'No existen suficientes evidencias para generar un resumen fiable.';
+};
+
+const behaviorState = (item, model) => {
+  const fact = model.facts.find((row) => row.id === item.id);
+  if (fact?.status === 'confirmed' || fact?.meta?.confirmed === true) return 'Confirmado';
+  if (model.trends.some((trend) => trend.id === `trend:${item.behaviourKey}`)) return 'Pendiente validar';
+  return 'Registrado';
+};
+
+const behaviorStateTone = {
+  Confirmado: 'border-emerald-300/20 bg-emerald-300/[0.08] text-emerald-100',
+  'Pendiente validar': 'border-amber-300/20 bg-amber-300/[0.08] text-amber-100',
+  Registrado: 'border-caudal-electric/20 bg-caudal-electric/[0.07] text-cyan-100',
+};
+
+const maturityTone = {
+  consolidated: 'border-emerald-300/25 bg-emerald-300/[0.08] text-emerald-100',
+  partial: 'border-amber-300/20 bg-amber-300/[0.07] text-amber-100',
+  initial: 'border-slate-300/15 bg-white/[0.04] text-slate-300',
 };
 
 function SourceChips({ sources = [] }) {
@@ -109,7 +147,7 @@ function PlayerPortrait({ player, name }) {
   );
 }
 
-function RecommendationCard({ recommendation }) {
+function RecommendationCard({ recommendation, onOpenEvidence }) {
   const [expanded, setExpanded] = useState(false);
   const detailsId = useId().replace(/:/g, '');
   return (
@@ -123,15 +161,20 @@ function RecommendationCard({ recommendation }) {
       <h4 className="mt-3 text-sm font-black leading-6 text-white">{recommendation.action}</h4>
       <p className="mt-2 text-xs font-semibold leading-5 text-slate-400">{recommendation.expectedImpact}</p>
       <div className="mt-3"><SourceChips sources={recommendation.sources} /></div>
-      <button
-        type="button"
-        aria-expanded={expanded}
-        aria-controls={`player-rec-${detailsId}`}
-        onClick={() => setExpanded((current) => !current)}
-        className="mt-3 min-h-10 rounded-xl border border-white/[0.08] bg-white/[0.025] px-3 py-2 text-[10px] font-black text-slate-300 transition hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70"
-      >
-        {expanded ? 'Ocultar explicación' : 'Ver por qué'}
-      </button>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={`player-rec-${detailsId}`}
+          onClick={() => setExpanded((current) => !current)}
+          className="min-h-10 rounded-xl border border-white/[0.08] bg-white/[0.025] px-3 py-2 text-[10px] font-black text-slate-300 transition hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70"
+        >
+          {expanded ? 'Ocultar explicación' : 'Ver explicación'}
+        </button>
+        <button type="button" onClick={() => onOpenEvidence?.(recommendation.evidenceIds)} disabled={!recommendation.evidenceIds.length} className="min-h-10 rounded-xl border border-caudal-electric/20 px-3 py-2 text-[10px] font-black text-caudal-electric disabled:opacity-35">
+          Ver evidencias · {recommendation.evidenceIds.length}
+        </button>
+      </div>
       <div id={`player-rec-${detailsId}`} hidden={!expanded} className="mt-3 rounded-xl bg-[#07111f] p-3 text-xs font-semibold leading-5 text-slate-300">
         {recommendation.rationale}
       </div>
@@ -139,12 +182,12 @@ function RecommendationCard({ recommendation }) {
   );
 }
 
-function RecommendationPanel({ title, eyebrow, rows }) {
+function RecommendationPanel({ title, eyebrow, rows, onOpenEvidence }) {
   return (
     <section className="rounded-[1.8rem] bg-gradient-to-br from-[#101d31] to-[#091525] p-5 sm:p-6">
       <SectionHeader eyebrow={eyebrow} title={title} />
       <div className="mt-4 space-y-3">
-        {rows.length ? rows.map((row) => <RecommendationCard key={row.id} recommendation={row} />) : (
+        {rows.length ? rows.map((row) => <RecommendationCard key={row.id} recommendation={row} onOpenEvidence={onOpenEvidence} />) : (
           <CompactEmpty>No existen consignas respaldadas por evidencias del jugador.</CompactEmpty>
         )}
       </div>
@@ -167,6 +210,7 @@ function PlayerAssistant({ model }) {
     setMode(value);
     setAnswer(null);
   };
+  const relatedQuestions = PLAYER_TACTICAL_SUGGESTED_QUESTIONS.filter((suggestion) => suggestion !== question).slice(0, 4);
   return (
     <section className="rounded-[1.8rem] bg-gradient-to-br from-[#10223a] via-[#0b192c] to-[#081321] p-5 sm:p-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -223,6 +267,10 @@ function PlayerAssistant({ model }) {
             <SourceChips sources={answer.sources} />
             <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-[9px] font-black uppercase text-slate-300">Confianza {answer.confidence}</span>
           </div>
+          <div className="mt-4 border-t border-white/[0.06] pt-4">
+            <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">Preguntas relacionadas</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">{relatedQuestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => ask(suggestion)} className="rounded-full border border-white/[0.08] px-3 py-1.5 text-[9px] font-bold text-slate-300 transition hover:border-caudal-electric/25 hover:text-white">{suggestion}</button>)}</div>
+          </div>
         </div>
       ) : null}
     </section>
@@ -257,9 +305,11 @@ function ProfileEditor({ open, profile, positionOptions, profileOptions, behavio
       onToggle={(event) => onOpenChange?.(event.currentTarget.open, event.currentTarget.querySelector('summary'))}
       className="mt-5 rounded-2xl border border-white/[0.08] bg-black/15"
     >
-      <summary className="cursor-pointer list-none px-4 py-3 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70">Editar datos y comportamientos</summary>
+      <summary className="cursor-pointer list-none px-4 py-3 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70">Scouting · editar perfil</summary>
       <div className="grid gap-4 border-t border-white/[0.07] p-4 lg:grid-cols-2">
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div>
+          <p className="mb-3 text-[9px] font-black uppercase tracking-[0.14em] text-caudal-electric">Identidad y perfiles</p>
+          <div className="grid gap-2 sm:grid-cols-2">
           {[
             ['Posición táctica', 'position', positionOptions],
             ['Pie dominante', 'foot', ['Derecho', 'Izquierdo', 'Ambos']],
@@ -274,8 +324,10 @@ function ProfileEditor({ open, profile, positionOptions, profileOptions, behavio
               </select>
             </label>
           ))}
+          </div>
         </div>
         <div className="space-y-3">
+          <p className="text-[9px] font-black uppercase tracking-[0.14em] text-caudal-electric">Comportamientos</p>
           {behaviourOptions ? [
             ['Con balón', behaviourOptions.withBall],
             ['Sin balón', behaviourOptions.withoutBall],
@@ -301,6 +353,150 @@ function ProfileEditor({ open, profile, positionOptions, profileOptions, behavio
   );
 }
 
+function InfluenceMap({ indicators }) {
+  const maxEvidence = Math.max(1, ...indicators.map((indicator) => indicator.evidenceCount || 0));
+  return (
+    <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
+      <SectionHeader eyebrow="Influencia funcional" title="Mapa de influencia" detail="Intensidad relativa construida solo con unidades de evidencia reales; no es una estadística de rendimiento." />
+      <div className="mt-5 grid gap-x-7 gap-y-4 lg:grid-cols-2">
+        {indicators.map((indicator) => {
+          const width = indicator.evidenceCount ? Math.max(8, Math.round((indicator.evidenceCount / maxEvidence) * 100)) : 0;
+          return (
+            <article key={indicator.key}>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-black text-slate-200">{indicator.label}</p>
+                <span className="text-[9px] font-bold text-slate-500">{indicator.evidenceCount ? `${indicator.evidenceCount} evid. · ${indicator.coverageLevel}` : 'Sin evidencia'}</span>
+              </div>
+              <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-white/[0.055]" title={`${indicator.independentEvidenceCount} unidades independientes`}>
+                <div className="h-full rounded-full bg-gradient-to-r from-caudal-electric to-violet-300 transition-all duration-500" style={{ width: `${width}%` }} />
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function BehaviorDossier({ model }) {
+  return (
+    <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
+      <SectionHeader eyebrow="Comprender" title="Comportamientos observados" detail="Cada rasgo conserva su estado real de conocimiento y su fuente original." />
+      <div className="mt-5 grid gap-3 lg:grid-cols-2">
+        {model.behaviors.map((group) => (
+          <article key={group.key} className="rounded-[1.4rem] border border-white/[0.06] bg-white/[0.025] p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div><p className="text-[8px] font-black uppercase tracking-[0.13em] text-caudal-electric">{group.key === 'with-ball' ? 'Con balón' : group.key === 'without-ball' ? 'Sin balón' : 'Contexto'}</p><h4 className="mt-1 text-base font-black text-white">{group.label}</h4></div>
+              <span className="text-[8px] font-black uppercase text-slate-500">Confianza {group.confidence}</span>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {group.items.slice(0, 8).map((item) => {
+                const state = behaviorState(item, model);
+                return <span key={item.id} className={`rounded-xl border px-3 py-2 text-[9px] font-black ${behaviorStateTone[state]}`} title={`${item.text} · ${item.source}`}>{item.text}<span className="ml-2 opacity-65">· {state}</span></span>;
+              })}
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.06] pt-3"><SourceChips sources={group.sources} /><span className="text-[9px] font-semibold text-slate-600">Última observación · {group.lastObservedAt ? formatDate(group.lastObservedAt) : 'Sin fecha'}</span></div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ScoutingTraits({ player }) {
+  const traits = Array.isArray(player?.traits) ? player.traits : [];
+  const strengths = traits.filter((trait) => trait && typeof trait === 'object' && trait.category === 'strength');
+  const weaknesses = traits.filter((trait) => trait && typeof trait === 'object' && trait.category === 'vulnerability');
+  const renderRows = (rows, empty) => rows.length ? rows.map((trait, index) => <span key={trait.id || `${trait.label}-${index}`} className="rounded-xl border border-white/[0.07] bg-black/15 px-3 py-2 text-[10px] font-black text-slate-200">{trait.label}</span>) : <CompactEmpty>{empty}</CompactEmpty>;
+  return (
+    <div className="grid gap-5 lg:grid-cols-2">
+      <section className="rounded-[1.8rem] bg-gradient-to-br from-emerald-300/[0.055] to-[#091525] p-5 sm:p-6"><SectionHeader eyebrow="Aprovechar" title="Fortalezas registradas" /><div className="mt-4 flex flex-wrap gap-2">{renderRows(strengths, 'No existen fortalezas clasificadas en los datos actuales.')}</div></section>
+      <section className="rounded-[1.8rem] bg-gradient-to-br from-rose-300/[0.045] to-[#091525] p-5 sm:p-6"><SectionHeader eyebrow="Neutralizar" title="Debilidades registradas" /><div className="mt-4 flex flex-wrap gap-2">{renderRows(weaknesses, 'No existen debilidades clasificadas en los datos actuales.')}</div></section>
+    </div>
+  );
+}
+
+function TeamConditioning({ model }) {
+  const phaseRows = model.phases.map((phase) => ({ id: `phase-${phase.label}`, text: `${phase.label} · ${phase.count} jugada${phase.count === 1 ? '' : 's'} observada${phase.count === 1 ? '' : 's'}` }));
+  const relationRows = model.relations.map((relation) => ({ id: relation.id, text: `${relation.label} · ${relation.count} conexiones` }));
+  const rows = [...relationRows, ...phaseRows].slice(0, 8);
+  return (
+    <section className="rounded-[1.8rem] bg-gradient-to-br from-[#111f35] to-[#081321] p-5 sm:p-6">
+      <SectionHeader eyebrow="Impacto colectivo" title="Cómo condiciona al equipo" detail="Se muestran participaciones y relaciones observadas; no se atribuye causalidad sin una comparación real." />
+      {rows.length ? <div className="mt-5 grid gap-2 md:grid-cols-2">{rows.map((row) => <article key={row.id} className="rounded-xl border border-white/[0.06] bg-black/15 px-4 py-3 text-xs font-bold leading-5 text-slate-200">{row.text}</article>)}</div> : <div className="mt-4"><CompactEmpty>No existen evidencias suficientes para explicar cómo condiciona al rival.</CompactEmpty></div>}
+    </section>
+  );
+}
+
+function ScoutingTimeline({ model }) {
+  const events = useMemo(() => {
+    const datedFacts = model.facts.filter((fact) => factTimestamp(fact)).slice().sort((left, right) => factTimestamp(left) - factTimestamp(right));
+    const firstFact = datedFacts[0];
+    const firstEvidence = datedFacts.find((fact) => fact.source === 'Evidencias');
+    const firstPlay = datedFacts.find((fact) => fact.source === 'Pizarra');
+    const trend = model.trends.filter((row) => row.lastObservedAt).slice().sort((left, right) => new Date(left.lastObservedAt) - new Date(right.lastObservedAt))[0];
+    const lastFact = datedFacts[datedFacts.length - 1];
+    return [
+      firstFact ? { id: 'first', at: firstFact.date, label: 'Primera observación fechada', detail: firstFact.text } : null,
+      firstEvidence ? { id: 'evidence', at: firstEvidence.date, label: 'Primera evidencia individual', detail: firstEvidence.text } : null,
+      firstPlay ? { id: 'play', at: firstPlay.date, label: 'Primera jugada vinculada', detail: firstPlay.text } : null,
+      trend ? { id: 'trend', at: trend.lastObservedAt, label: 'Patrón repetido detectado', detail: trend.label } : null,
+      lastFact && lastFact !== firstFact ? { id: 'last', at: lastFact.date, label: 'Última actualización fechada', detail: lastFact.text } : null,
+    ].filter(Boolean).filter((event, index, rows) => rows.findIndex((row) => row.id === event.id || `${row.at}:${row.detail}` === `${event.at}:${event.detail}`) === index);
+  }, [model]);
+  return (
+    <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
+      <SectionHeader eyebrow="Trazabilidad" title="Evolución del scouting" detail="Hitos construidos exclusivamente con fechas y registros existentes." />
+      {events.length ? <div className="mt-5 border-l border-white/10 pl-5">{events.map((event) => <article key={event.id} className="relative pb-5 last:pb-0"><span className="absolute -left-[1.55rem] top-1 h-2.5 w-2.5 rounded-full border-2 border-[#0a1628] bg-caudal-electric" /><p className="text-[9px] font-black uppercase text-slate-500">{formatDate(event.at, true)}</p><p className="mt-1 text-sm font-black text-white">{event.label}</p><p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-400">{event.detail}</p></article>)}</div> : <div className="mt-4"><CompactEmpty>No hay registros fechados para construir la evolución del scouting.</CompactEmpty></div>}
+      <div className="mt-5 grid grid-cols-3 gap-2 border-t border-white/[0.06] pt-4 text-center">{[['Partidos', model.scouting.matches], ['Jugadas', model.scouting.plays], ['Observaciones', model.scouting.observations]].map(([label, value]) => <div key={label}><p className="text-lg font-black text-white">{value}</p><p className="text-[8px] font-black uppercase text-slate-600">{label}</p></div>)}</div>
+    </section>
+  );
+}
+
+function ContextualVideo({ model }) {
+  const videos = model.facts.filter((fact) => fact.source === 'Vídeo' && (fact.meta?.url || fact.text));
+  return (
+    <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
+      <SectionHeader eyebrow="Contexto audiovisual" title="Vídeo del jugador" />
+      {videos.length ? <div className="mt-4 grid gap-2 md:grid-cols-2">{videos.map((video) => <article key={video.id} className="flex items-center justify-between gap-3 rounded-xl bg-black/15 p-3"><div className="min-w-0"><p className="truncate text-xs font-black text-white">{video.text}</p><p className="mt-1 text-[9px] font-semibold text-slate-500">{video.date ? formatDate(video.date, true) : 'Fecha no registrada'}</p></div>{video.meta?.url ? <a href={video.meta.url} target="_blank" rel="noreferrer" className="shrink-0 rounded-lg border border-caudal-electric/20 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Ver clip</a> : <span className="text-[8px] font-black uppercase text-slate-600">Sin enlace</span>}</article>)}</div> : <div className="mt-4"><CompactEmpty>No existen clips vinculados a este jugador.</CompactEmpty></div>}
+    </section>
+  );
+}
+
+function AutomaticReport({ model }) {
+  const confirmedFacts = model.facts.filter((fact) => fact.status === 'confirmed' || fact.meta?.confirmed === true);
+  const confirmedIds = new Set(confirmedFacts.map((fact) => fact.id));
+  const defensive = model.recommendations.defense.filter((row) => row.evidenceIds.some((id) => confirmedIds.has(id)));
+  const attacking = model.recommendations.attack.filter((row) => row.evidenceIds.some((id) => confirmedIds.has(id)));
+  const hasReport = confirmedFacts.length >= 2;
+  return (
+    <section className="rounded-[1.8rem] border border-caudal-electric/15 bg-[radial-gradient(circle_at_top_right,rgba(79,140,255,0.12),transparent_36%),#091525] p-5 sm:p-6">
+      <SectionHeader eyebrow="Dossier ejecutivo" title="Informe automático" detail="Solo utiliza elementos marcados explícitamente como confirmados en los datos disponibles." />
+      {hasReport ? <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{[
+        ['Quién es', [model.summary.name, model.summary.position].filter(Boolean).join(' · ')],
+        ['Cómo juega', confirmedFacts.slice(0, 3).map((fact) => fact.text).join(' · ')],
+        ['Cómo defenderle', defensive.map((row) => row.action).slice(0, 2).join(' ') || 'Sin consigna confirmada.'],
+        ['Cómo hacerle daño', attacking.map((row) => row.action).slice(0, 2).join(' ') || 'Sin consigna confirmada.'],
+        ['Nivel de confianza', model.scouting.confidence],
+      ].map(([label, value]) => <div key={label} className="rounded-xl border border-white/[0.06] bg-black/15 p-4"><p className="text-[8px] font-black uppercase tracking-[0.13em] text-caudal-electric">{label}</p><p className="mt-2 text-sm font-semibold leading-6 text-slate-200">{value}</p></div>)}</div> : <div className="mt-4"><CompactEmpty>No existe un conjunto de evidencias confirmadas suficiente para generar un informe fiable.</CompactEmpty></div>}
+    </section>
+  );
+}
+
+function AbsenceScenario({ model }) {
+  const hasInfluence = model.summary.influence.key !== 'residual' && model.facts.length >= 2;
+  return (
+    <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
+      <SectionHeader eyebrow="Escenario alternativo" title="Si hoy no juega" detail="No se atribuyen cambios sin datos comparativos del rival con y sin el jugador." />
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="rounded-xl bg-black/15 p-4"><p className="text-[8px] font-black uppercase text-slate-500">Qué perfil pierde el rival</p><p className="mt-2 text-xs font-semibold leading-5 text-slate-200">{hasInfluence ? `${model.summary.influence.label} · ${model.summary.influence.reason}` : 'No existen evidencias suficientes.'}</p></div>
+        <div className="rounded-xl bg-black/15 p-4"><p className="text-[8px] font-black uppercase text-slate-500">Posible sustituto</p><p className="mt-2 text-xs font-semibold leading-5 text-slate-500">No existen datos comparativos suficientes para identificarlo.</p></div>
+        <div className="rounded-xl bg-black/15 p-4"><p className="text-[8px] font-black uppercase text-slate-500">Cambio del plan</p><p className="mt-2 text-xs font-semibold leading-5 text-slate-500">No existe un cambio respaldado por evidencias disponibles.</p></div>
+      </div>
+    </section>
+  );
+}
+
 export default function RivalPlayerTacticalCenter({
   model,
   players = [],
@@ -318,6 +514,7 @@ export default function RivalPlayerTacticalCenter({
   onUpdateProfile,
   onToggleTrait,
   onAddObservation,
+  onOpenEvidence,
 }) {
   const [observationDraft, setObservationDraft] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
@@ -424,6 +621,7 @@ export default function RivalPlayerTacticalCenter({
     !model.scouting.plays ? 'Jugadas' : '',
     !model.scouting.observations ? 'Observaciones' : '',
   ].filter(Boolean);
+  const automaticSummary = buildAutomaticSummary(model);
   const addObservation = () => {
     const value = observationDraft.trim();
     if (!value) return;
@@ -434,18 +632,19 @@ export default function RivalPlayerTacticalCenter({
     <div className="min-w-0 space-y-5 xl:col-span-2" data-testid="rival-player-tactical-center">
       {filterBar}
 
-      <section className="overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#10223a] via-[#0b182b] to-[#07111f] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.22)] sm:p-7">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
+      <section className="overflow-hidden rounded-[2rem] border border-caudal-electric/15 bg-[radial-gradient(circle_at_top_right,rgba(79,140,255,0.20),transparent_34%),linear-gradient(145deg,#10223a,#07111f)] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)] sm:p-7">
+        <div className="flex flex-col gap-7 lg:flex-row lg:items-start">
           <PlayerPortrait key={model.playerKey} player={model.player} name={fullName} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-caudal-electric">Resumen del jugador</p>
-                <h2 className="mt-1 text-2xl font-black text-white sm:text-3xl">{fullName}</h2>
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-caudal-electric">Dossier individual · Observar → Comprender → Neutralizar → Aprovechar</p>
+                <h2 className="mt-2 text-3xl font-black text-white sm:text-4xl">{fullName}</h2>
                 {showShirtName ? <p className="mt-1 text-xs font-bold text-caudal-electric">Nombre de camiseta · {shirtName}</p> : null}
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <p className="text-sm font-bold text-slate-400">{summary.position || 'Posición sin registrar'}</p>
                   {summary.role ? <span className="rounded-full border border-white/[0.09] bg-white/[0.04] px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.1em] text-slate-300">{summary.role}</span> : null}
+                  <span className={`rounded-full border px-2.5 py-1 text-[8px] font-black uppercase ${maturityTone[summary.maturity.key] || maturityTone.initial}`}>{summary.maturity.label}</span>
                 </div>
               </div>
               <button type="button" onClick={onOpenPlayer} className="min-h-10 rounded-xl border border-white/[0.09] bg-white/[0.035] px-4 py-2 text-[10px] font-black text-slate-300 transition hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70">Abrir ficha completa</button>
@@ -458,7 +657,7 @@ export default function RivalPlayerTacticalCenter({
                 ['Perfil', summary.mainProfile || 'Sin identificar'],
                 ['Perfil secundario', summary.secondaryProfile || 'Sin identificar'],
                 ['Estado', summary.scoutingState],
-                ['Madurez', summary.maturity.label],
+                ['Última observación', summary.lastUpdatedAt ? formatDate(summary.lastUpdatedAt, true) : 'Sin fecha registrada'],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-xl bg-white/[0.03] px-3 py-2.5">
                   <p className="text-[8px] font-black uppercase tracking-[0.13em] text-slate-500">{label}</p>
@@ -469,6 +668,10 @@ export default function RivalPlayerTacticalCenter({
                 <p className="text-[8px] font-black uppercase tracking-[0.13em] opacity-70">Influencia</p>
                 <p className="mt-1 text-xs font-black">{summary.influence.label}</p>
               </div>
+            </div>
+            <div className="mt-4 rounded-2xl border border-white/[0.07] bg-black/20 p-4 sm:p-5">
+              <p className="text-[9px] font-black uppercase tracking-[0.15em] text-caudal-electric">Resumen automático</p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-slate-200">{automaticSummary}</p>
             </div>
           </div>
         </div>
@@ -497,130 +700,22 @@ export default function RivalPlayerTacticalCenter({
         </section>
       ) : null}
 
-      {impactWithData.length ? <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
-        <SectionHeader eyebrow="Influencia funcional" title="Impacto en el modelo colectivo" detail="Recuentos reales y cobertura por unidades de evidencia independientes." />
-        <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {impactWithData.map((indicator) => (
-            <article key={indicator.key} className="rounded-xl bg-white/[0.028] p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-black text-slate-200">{indicator.label}</p>
-                <span className="text-[9px] font-black text-slate-500">{indicator.evidenceCount ? `${indicator.evidenceCount} evid.` : 'Sin evidencia'}</span>
-              </div>
-              <div className="mt-3 rounded-lg bg-black/15 px-3 py-2" aria-label={`${indicator.evidenceCount} evidencias y ${indicator.independentEvidenceCount} unidades independientes en ${indicator.label}`}>
-                <p className="text-[10px] font-black text-slate-200">{indicator.coverageLevel}</p>
-                <p className="mt-1 text-[9px] font-semibold text-slate-500">{indicator.independentEvidenceCount} {indicator.independentEvidenceCount === 1 ? 'unidad independiente' : 'unidades independientes'}</p>
-              </div>
-              {indicator.evidenceCount ? <div className="mt-3"><SourceChips sources={indicator.sources} /></div> : null}
-            </article>
-          ))}
-        </div>
-      </section> : null}
+      <InfluenceMap indicators={model.impact} />
 
-      {model.behaviors.length ? <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
-        <SectionHeader eyebrow="Lectura individual" title="Cómo juega" />
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {model.behaviors.map((group) => (
-              <article key={group.key} className="rounded-[1.3rem] bg-white/[0.028] p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <h4 className="text-sm font-black text-white">{group.label}</h4>
-                  <span className="text-[8px] font-black uppercase text-slate-500">Confianza {group.confidence}</span>
-                </div>
-                <div className="mt-3 space-y-2">
-                  {group.items.slice(0, 5).map((item) => <p key={item.id} className="rounded-lg bg-black/15 px-3 py-2 text-xs font-semibold leading-5 text-slate-300">{item.text}</p>)}
-                </div>
-                <div className="mt-3 flex items-end justify-between gap-3">
-                  <SourceChips sources={group.sources} />
-                  <span className="shrink-0 text-[9px] font-semibold text-slate-600">{group.items.length} evid. · {group.lastObservedAt ? formatDate(group.lastObservedAt) : 'Sin fecha'}</span>
-                </div>
-              </article>
-            ))}
-        </div>
-      </section> : null}
+      {model.behaviors.length ? <BehaviorDossier model={model} /> : null}
+
+      <ScoutingTraits player={model.player} />
+
+      <TeamConditioning model={model} />
 
       {hasDefensivePlan || hasAttackingPlan ? (
         <div className="grid items-start gap-5 lg:grid-cols-2">
-          {hasDefensivePlan ? <RecommendationPanel eyebrow="Sin balón" title="Plan defensivo" rows={model.recommendations.defense} /> : null}
-          {hasAttackingPlan ? <RecommendationPanel eyebrow="Con balón" title="Cómo hacerle daño" rows={model.recommendations.attack} /> : null}
+          {hasDefensivePlan ? <RecommendationPanel eyebrow="Neutralizar" title="Cómo defenderle" rows={model.recommendations.defense} onOpenEvidence={onOpenEvidence} /> : null}
+          {hasAttackingPlan ? <RecommendationPanel eyebrow="Aprovechar" title="Cómo hacerle daño" rows={model.recommendations.attack} onOpenEvidence={onOpenEvidence} /> : null}
         </div>
       ) : null}
 
-      {model.trends.length || model.relations.length ? <div className="grid items-start gap-5 lg:grid-cols-2">
-        {model.trends.length ? <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
-          <SectionHeader eyebrow="Patrones repetidos" title="Tendencias observadas" detail="Solo aparecen cuando existen al menos dos evidencias independientes o dos contextos reales." />
-          <div className="mt-4 space-y-2">
-            {model.trends.slice(0, 8).map((trend) => (
-              <article key={trend.id} className="rounded-xl bg-white/[0.025] px-3.5 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="text-xs font-black leading-5 text-slate-200">{trend.label}</p>
-                  <span className="shrink-0 text-[8px] font-black uppercase text-slate-500">{trend.confidence}</span>
-                </div>
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                  <SourceChips sources={trend.sources} />
-                  <span className="text-[9px] font-semibold text-slate-600">{trend.frequency} · {trend.lastObservedAt ? formatDate(trend.lastObservedAt) : 'Fecha no registrada'}</span>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section> : null}
-        {model.relations.length ? <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
-          <SectionHeader eyebrow="Red de juego" title="Relaciones tácticas" />
-          <div className="mt-4 space-y-2">
-            {model.relations.slice(0, 8).map((relation) => (
-              <article key={relation.id} className="flex items-center justify-between gap-3 rounded-xl bg-white/[0.025] px-3.5 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-black text-slate-200">{relation.label}</p>
-                  <p className="mt-1 text-[9px] font-bold text-amber-100">{relation.classification.label} · {relation.classification.reason}</p>
-                </div>
-                <span className="shrink-0 rounded-full bg-amber-300/[0.08] px-3 py-1.5 text-[10px] font-black text-amber-100">{relation.count} conexiones</span>
-              </article>
-            ))}
-          </div>
-        </section> : null}
-      </div> : null}
-
-      <div className={`grid items-start gap-5 ${model.phases.length ? 'lg:grid-cols-2' : ''}`}>
-        {model.phases.length ? <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
-          <SectionHeader eyebrow="Contexto" title="Fases del juego" />
-          <div className="mt-4 space-y-3">
-            {model.phases.map((phase) => (
-              <div key={phase.label} className="rounded-xl bg-white/[0.025] px-3.5 py-3">
-                <div className="flex items-center justify-between gap-3 text-xs font-black text-slate-200"><span>{phase.label}</span><span>{phase.count} jugada{phase.count === 1 ? '' : 's'}</span></div>
-                <div className="mt-2 flex gap-1">{Array.from({ length: Math.min(phase.count, 8) }, (_, index) => <span key={index} className="h-1.5 flex-1 rounded-full bg-caudal-electric" />)}</div>
-              </div>
-            ))}
-          </div>
-        </section> : null}
-        <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
-          <SectionHeader eyebrow="Trazabilidad" title="Evolución del scouting" />
-          {hasTacticalAnalysis ? <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {[
-              ['Partidos', model.scouting.matches],
-              ['Vídeos vinculados', model.scouting.videos],
-              ['Jugadas', model.scouting.plays],
-              ['Conexiones', model.scouting.connections],
-              ['Observaciones', model.scouting.observations],
-              ['Perfil', `${model.scouting.profileCoverage.completed}/${model.scouting.profileCoverage.total}`],
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-xl bg-white/[0.028] px-3 py-3 text-center">
-                <p className="text-xl font-black text-white">{value}</p>
-                <p className="mt-1 text-[8px] font-black uppercase tracking-[0.1em] text-slate-500">{label}</p>
-              </div>
-            ))}
-          </div> : (
-            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 rounded-xl bg-black/15 px-3 py-3 text-[10px] font-black text-slate-400">
-              <span>Partidos · {model.scouting.matches}</span>
-              <span>Jugadas · {model.scouting.plays}</span>
-              <span>Conexiones · {model.scouting.connections}</span>
-              <span>Observaciones · {model.scouting.observations}</span>
-              <span>Perfil · {model.scouting.profileCoverage.completed}/{model.scouting.profileCoverage.total}</span>
-            </div>
-          )}
-          {hasTacticalAnalysis ? <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-black/15 px-3 py-3">
-            <SourceChips sources={model.scouting.sources} />
-            <span className="text-[9px] font-black uppercase text-slate-300">Confianza {model.scouting.confidence}</span>
-          </div> : null}
-        </section>
-      </div>
+      <div className="grid items-start gap-5 lg:grid-cols-2"><ScoutingTimeline model={model} /><ContextualVideo model={model} /></div>
 
       <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
         <SectionHeader eyebrow="Seguimiento" title="Observaciones" detail="Se reutiliza el campo de notas y las evidencias existentes; no se crea otro registro paralelo." />
@@ -645,17 +740,19 @@ export default function RivalPlayerTacticalCenter({
         </div>
       </section>
 
-      <PlayerAssistant key={model.playerKey} model={model} />
-
-      {model.duels.length ? <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
-        <SectionHeader eyebrow="Emparejamientos" title="Duelos recomendados" />
+      <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
+        <SectionHeader eyebrow="Emparejamientos" title="Comparativa con nuestros jugadores" detail="Solo se muestran duelos que ya llegan respaldados por datos comparables." />
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          {model.duels.map((duel) => (
+          {model.duels.length ? model.duels.map((duel) => {
+            const names = duel.duel.split(/\s+vs\s+/i);
+            return (
             <article key={duel.id} className="rounded-[1.3rem] bg-white/[0.028] p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <h4 className="text-sm font-black leading-5 text-white">{duel.duel}</h4>
-                <span className="rounded-full border border-amber-300/18 bg-amber-300/[0.07] px-2.5 py-1 text-[8px] font-black uppercase text-amber-100">{duel.favorability}</span>
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 text-center">
+                <p className="rounded-xl border border-caudal-electric/15 bg-caudal-electric/[0.06] px-3 py-3 text-sm font-black text-white">{names[0] || 'Caudal'}</p>
+                <span className="text-[10px] font-black text-slate-500">VS</span>
+                <p className="rounded-xl border border-white/[0.08] bg-black/15 px-3 py-3 text-sm font-black text-white">{names[1] || model.summary.name}</p>
               </div>
+              <div className="mt-3 flex justify-end"><span className="rounded-full border border-amber-300/18 bg-amber-300/[0.07] px-2.5 py-1 text-[8px] font-black uppercase text-amber-100">{duel.favorability}</span></div>
               <dl className="mt-4 grid gap-3 text-xs">
                 {[['Riesgo', duel.risk], ['Motivo', duel.reason], ['Consigna', duel.instruction], ['Impacto esperado', duel.expectedImpact]].map(([label, value]) => (
                   <div key={label}><dt className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</dt><dd className="mt-1 font-semibold leading-5 text-slate-200">{value}</dd></div>
@@ -663,9 +760,15 @@ export default function RivalPlayerTacticalCenter({
               </dl>
               <div className="mt-3"><SourceChips sources={duel.sources} /></div>
             </article>
-          ))}
+          ); }) : <div className="lg:col-span-2"><CompactEmpty>No existen evidencias para comparar este jugador con nuestros jugadores.</CompactEmpty></div>}
         </div>
-      </section> : null}
+      </section>
+
+      <PlayerAssistant key={model.playerKey} model={model} />
+
+      <AbsenceScenario model={model} />
+
+      <AutomaticReport model={model} />
     </div>
   );
 }

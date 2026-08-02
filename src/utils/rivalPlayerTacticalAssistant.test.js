@@ -299,18 +299,22 @@ const componentSource = fs.readFileSync(new URL('../components/tactical/RivalPla
 const collectiveEditorSource = fs.readFileSync(new URL('../components/tactical/CollectiveProfileEditorModal.jsx', import.meta.url), 'utf8');
 const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 [
-  'Resumen del jugador',
-  'Impacto en el modelo colectivo',
-  'Cómo juega',
-  'Plan defensivo',
+  'Dossier individual',
+  'Resumen automático',
+  'Mapa de influencia',
+  'Comportamientos observados',
+  'Fortalezas registradas',
+  'Debilidades registradas',
+  'Cómo condiciona al equipo',
+  'Cómo defenderle',
   'Cómo hacerle daño',
-  'Tendencias observadas',
-  'Relaciones tácticas',
-  'Fases del juego',
   'Evolución del scouting',
+  'Vídeo del jugador',
   'Observaciones',
   'Asistente del jugador',
-  'Duelos recomendados',
+  'Comparativa con nuestros jugadores',
+  'Si hoy no juega',
+  'Informe automático',
 ].forEach((heading) => assert.match(componentSource, new RegExp(heading), `incluye ${heading}`));
 assert.match(componentSource, /role="radiogroup"/);
 assert.match(componentSource, /aria-live="polite"/);
@@ -336,11 +340,12 @@ assert.ok(!/document\.body\.style|pointer-events-none/.test(componentSource), 'e
 assert.match(componentSource, /data-testid="rival-player-pending-analysis"/, 'el perfil vacío usa un único bloque compacto');
 assert.match(componentSource, /Análisis táctico pendiente/, 'explica qué información falta');
 assert.match(componentSource, /Completar perfil/, 'el estado pendiente abre el editor existente');
-assert.match(componentSource, /impactWithData\.map/, 'no renderiza tarjetas de impacto con cero evidencias');
-assert.match(componentSource, /impactWithData\.length \? <section/, 'el impacto aparece automáticamente al existir datos');
-assert.match(componentSource, /model\.behaviors\.length \? <section/, 'los comportamientos reales no se ocultan');
+assert.match(componentSource, /<InfluenceMap indicators=\{model\.impact\}/, 'el mapa conserva todos los ámbitos y distingue los que carecen de evidencia');
+assert.match(componentSource, /model\.behaviors\.length \? <BehaviorDossier/, 'los comportamientos reales no se ocultan');
 assert.match(componentSource, /hasDefensivePlan \|\| hasAttackingPlan/, 'los planes reales reaparecen automáticamente');
-assert.match(componentSource, /model\.trends\.length \|\| model\.relations\.length/, 'tendencias y relaciones reales se conservan');
+assert.match(componentSource, /model\.phases\.map[\s\S]*model\.relations\.map/, 'relaciones y fases reales alimentan el impacto colectivo');
+assert.match(componentSource, /fact\.status === 'confirmed' \|\| fact\.meta\?\.confirmed === true/, 'el informe reserva sus conclusiones a evidencias explícitamente confirmadas');
+assert.match(componentSource, /onOpenEvidence/, 'las recomendaciones conservan acceso directo a sus evidencias');
 assert.match(componentSource, /375|sm:|lg:|xl:/, 'la composición mantiene reglas fluidas para móvil, tablet y escritorio');
 
 // Cabecera y regresiones de editores/tabs.

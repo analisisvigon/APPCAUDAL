@@ -12477,6 +12477,7 @@ function App() {
                   notes: [String(selectedMicroProfile.notes || '').trim(), observation].filter(Boolean).join('\n'),
                 });
               }}
+              onOpenEvidence={() => requestFacingSystemsView('EVIDENCIAS')}
             />
           ) : null}
           <CollectiveProfileEditorModal
