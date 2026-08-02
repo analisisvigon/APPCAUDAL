@@ -5275,6 +5275,16 @@ function App() {
   const [matchViewSection, setMatchViewSection] = useState('PRE');
   const [preSubTab, setPreSubTab] = useState('Plan cuerpo técnico');
   const [facingSystemsView, setFacingSystemsView] = useState('PIZARRA');
+  const [matchPlanDirty, setMatchPlanDirty] = useState(false);
+  const confirmLeaveMatchPlan = () => (
+    !matchPlanDirty || window.confirm('Hay cambios sin guardar en el Plan de partido. Si sales ahora, seguirán pendientes y podrían perderse al recargar. ¿Quieres salir?')
+  );
+  const requestFacingSystemsView = (nextView) => {
+    if (nextView === facingSystemsView) return true;
+    if (facingSystemsView === 'PLAN DE PARTIDO' && !confirmLeaveMatchPlan()) return false;
+    setFacingSystemsView(nextView);
+    return true;
+  };
   const [isCollectiveProfileEditorOpen, setIsCollectiveProfileEditorOpen] = useState(false);
   const [openTacticalQuestionCategory, setOpenTacticalQuestionCategory] = useState('Con balón');
   const [facingSystemsPlayerReturn, setFacingSystemsPlayerReturn] = useState(null);
@@ -9107,15 +9117,15 @@ function App() {
     };
   }, [selectedMatch?.postVideoLink, matchView]);
 
-  const updateSelectedMatchFields = async (fields) => {
-    if (!selectedMatch) return;
-    setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? { ...match, ...fields } : match)));
+  const updateSelectedMatchFields = async (fields, { optimistic = true } = {}) => {
+    if (!selectedMatch) return { ok: false, error: new Error('No hay un partido seleccionado.') };
+    if (optimistic) setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? { ...match, ...fields } : match)));
     const payload = Object.fromEntries(
       Object.entries(fields)
         .filter(([field]) => partidoWritableFieldMap[field])
         .map(([field, value]) => [partidoWritableFieldMap[field], value])
     );
-    if (!Object.keys(payload).length) return;
+    if (!Object.keys(payload).length) return { ok: false, error: new Error('No hay campos persistibles para guardar.') };
     const { error: updateError } = await supabase.from("partidos").update(payload).eq("id", selectedMatch.id);
     if (updateError) {
       const isPostUpdate = Object.keys(fields).some((field) => partidoPostFieldMap[field]);
@@ -9127,10 +9137,11 @@ function App() {
       });
       if (isPostUpdate) setPostError(updateError.message || 'No se pudo guardar el POST.');
       else setPreError(updateError.message || 'No se pudo guardar el PRE.');
-      return;
+      return { ok: false, error: updateError };
     }
     if (Object.keys(fields).some((field) => partidoPostFieldMap[field])) await loadMatchPostData(selectedMatch.id);
     else await loadMatchPreData(selectedMatch.id);
+    return { ok: true, savedAt: new Date().toISOString() };
   };
 
   const handlePostVideoLinkChange = (value) => {
@@ -12175,26 +12186,26 @@ function App() {
       ...splitLines(selectedMatch.prePlanTrigger),
       collective.weaknesses.includes('Espalda lateral') ? 'Atacar espalda lateral registrada' : '',
       collective.weaknesses.includes('Pérdida interior') ? 'Forzar recepción interior' : '',
-    ]).slice(0, 3);
+    ]);
     const defensePlan = uniq([
       ...splitLines(selectedMatch.planSinBalon),
       ...splitLines(selectedMatch.preCaudalDefendStrengths),
       collective.strengths.includes('Juego interior') ? 'Cerrar pase interior' : '',
       collective.strengths.includes('Centros') ? 'Proteger segundo palo' : '',
       collective.strengths.includes('Juego directo') ? 'Disputar segunda jugada' : '',
-    ]).slice(0, 3);
+    ]);
     const transitionPlan = uniq([
       ...splitLines(selectedMatch.planTransiciones),
       ...splitLines(selectedMatch.prePlanAvoid),
       collective.strengths.includes('Transiciones') || collective.strengths.includes('Contraataque') ? 'Falta táctica si la pérdida es interior' : '',
       collective.strengths.includes('Transiciones') || collective.strengths.includes('Contraataque') ? 'Repliegue inmediato' : '',
-    ]).slice(0, 3);
+    ]);
     const abpPlan = uniq([
       ...splitLines(selectedMatch.abpOfensiva),
       ...splitLines(selectedMatch.abpDefensiva),
       keyPlayers[0] ? `Vigilar ${displayPlayerName(keyPlayers[0])}` : '',
       collective.strengths.includes('ABP') ? 'Proteger segundo palo' : '',
-    ]).slice(0, 3);
+    ]);
     const riskPlan = uniq([
       ...safeArray(collective.weaknesses),
       ...unavailablePlayers.map((player) => `${displayPlayerName(player)} no disponible`),
@@ -12264,7 +12275,7 @@ function App() {
               <button
                 key={view}
                 type="button"
-                onClick={() => setFacingSystemsView(view)}
+                onClick={() => requestFacingSystemsView(view)}
                 className={`min-h-10 whitespace-nowrap px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] transition sm:text-xs ${facingSystemsView === view ? 'bg-caudal-electric text-slate-950' : 'border border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'}`}
               >
                 {view}
@@ -12575,25 +12586,27 @@ function App() {
                 plays={collectiveAssistantPlays.map((play) => ({
                   id: play.id,
                   name: play.name || play.title || 'Jugada sin nombre',
+                  description: play.description || '',
                   phase: play.phase,
                 }))}
                 onSave={async (workspace) => {
-                  await updateSelectedMatchFields({
+                  return updateSelectedMatchFields({
                     ...serializeMatchPlanLegacyFields(workspace),
                     preAiAnalysis: {
                       ...(selectedPreAiAnalysis || {}),
                       matchPlanWorkspaceV1: workspace,
                     },
-                  });
+                  }, { optimistic: false });
                 }}
+                onDirtyChange={setMatchPlanDirty}
                 onOpenPlay={(phase, playId) => {
+                  if (!requestFacingSystemsView('PIZARRA')) return;
                   const boardPhase = phase === 'with_ball' ? 'offensive' : phase === 'without_ball' ? 'defensive' : phase;
                   setTacticalGamePhase(boardPhase);
                   if (boardPhase === 'offensive') selectOffensivePlay(playId);
                   if (boardPhase === 'defensive') selectDefensivePlay(playId);
                   if (boardPhase === 'transition') selectTransitionPlay(playId);
                   if (boardPhase === 'set_piece') selectSetPiecePlay(playId);
-                  setFacingSystemsView('PIZARRA');
                 }}
               />
             ) : null}
@@ -27005,6 +27018,7 @@ function App() {
   ];
   const mobileMoreTabs = ['Perfiles', 'Equipos', 'Rendimiento', 'Biblioteca'];
   const goToTab = (tab) => {
+    if (tab !== activeTab && facingSystemsView === 'PLAN DE PARTIDO' && !confirmLeaveMatchPlan()) return;
     setActiveTab(tab);
     setIsMobileMoreOpen(false);
   };

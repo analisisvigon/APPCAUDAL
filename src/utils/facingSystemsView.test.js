@@ -38,12 +38,12 @@ assert.match(modelBuild, /reports: String\(selectedMatch\.preRivalReportText/, '
 
 assert.match(
   appSource,
-  /onClick=\{\(\) => setFacingSystemsView\(view\)}/,
+  /onClick=\{\(\) => requestFacingSystemsView\(view\)}/,
   'cambiar de pestaña solo cambia la vista y conserva el estado táctico'
 );
 assert.doesNotMatch(
   appSource,
-  /onClick=\{\(\) => \{\s*setFacingSystemsView\(view\);\s*(?:setTactical|resetDefensive|setSelectedTactical)/,
+  /onClick=\{\(\) => \{\s*(?:setFacingSystemsView|requestFacingSystemsView)\(view\);\s*(?:setTactical|resetDefensive|setSelectedTactical)/,
   'la navegación principal no reinicia jugada, fase, posiciones o conexiones'
 );
 
