@@ -18,6 +18,7 @@
     "test:rival-center": "node src/utils/rivalTacticalCenter.test.js",
     "test:facing-systems": "node src/utils/facingSystemsView.test.js",
     "test:rival-players": "node src/utils/rivalPlayerTacticalAssistant.test.js",
+    "test:match-plan": "node src/utils/matchPlanWorkspace.test.js",
     "test:defensive-blocks": "node src/utils/defensiveBlockPositions.test.js",
     "test:defensive-offensive-board": "node src/utils/defensiveOffensiveBoard.test.js",
     "test:offensive-phase": "node src/utils/offensivePhasePositions.test.js",
