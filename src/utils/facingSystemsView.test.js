@@ -30,9 +30,10 @@ assert.ok(rivalRender, 'Rival tiene un render exclusivo');
 assert.doesNotMatch(rivalRender, /renderFacingSystemsOverview|tacticalConnectionDraft|Pizarra de partido/);
 
 const modelBuild = appSource.match(/const rivalCollectiveModel = buildRivalCollectiveAssistant\(\{[\s\S]*?\n    \}\);/)?.[0] || '';
-assert.match(modelBuild, /connections: selectedRivalObservedScouting\.tacticalConnections/, 'Rival sigue recibiendo conexiones como fuente de lectura');
-assert.match(modelBuild, /plays: collectiveAssistantPlays/, 'Rival sigue recibiendo jugadas como fuente de lectura');
-assert.match(modelBuild, /\bevidences,/, 'Rival sigue recibiendo evidencias');
+assert.match(modelBuild, /connections: confirmedTacticalConnections/, 'Rival recibe únicamente conexiones validadas como fuente de lectura');
+assert.match(modelBuild, /plays: confirmedCollectiveAssistantPlays/, 'Rival recibe únicamente jugadas respaldadas por evidencias confirmadas');
+assert.match(modelBuild, /evidences: \[\.\.\.evidences, \.\.\.individualRivalSignals\]/, 'Rival conserva las evidencias confirmadas y las señales del perfil individual');
+assert.match(modelBuild, /tacticalEvidenceReport: confirmedTacticalEvidenceReport/, 'el informe automático también queda limitado a evidencias confirmadas');
 assert.match(modelBuild, /videos: relatedRivalVideos/, 'Rival sigue recibiendo vídeo');
 assert.match(modelBuild, /reports: String\(selectedMatch\.preRivalReportText/, 'Rival sigue recibiendo informes');
 

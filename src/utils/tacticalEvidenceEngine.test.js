@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 
 import {
   buildTacticalEvidenceEngine,
   getPlayerTacticalEvidence,
   selectTacticalEvidenceForQuestion,
 } from './tacticalEvidenceEngine.js';
+import {
+  buildConfirmedTacticalEvidenceReport,
+  buildTacticalEvidenceCenter,
+  filterConfirmedTacticalEvidenceContexts,
+  humanizeTacticalConnection,
+} from './tacticalEvidenceCenter.js';
 
 const player = (id, boardKey, name, specificPosition) => ({
   playerId: id,
@@ -80,5 +87,61 @@ const staticOnly = buildTacticalEvidenceEngine([{
 assert.equal(staticOnly.connections.length, 0, 'no inventa conexiones desde posiciones estáticas');
 assert.equal(staticOnly.movements.length, 0, 'no inventa movimientos desde posiciones estáticas');
 assert.equal(staticOnly.players.length, 0, 'no atribuye participación por mera presencia');
+
+const pendingCenter = buildTacticalEvidenceCenter({ report, validations: {}, manualEvidences: [] });
+assert.equal(pendingCenter.confirmedCount, 0, 'ninguna evidencia alimenta consumidores sin confirmación del staff');
+assert.ok(pendingCenter.pendingItems.every((item) => item.playCount >= 2), 'solo las repeticiones trazables llegan a pendientes de validación');
+const repeatedConnection = pendingCenter.items.find((item) => item.type === 'connection');
+assert.ok(repeatedConnection.canConfirm, 'una conexión presente en tres jugadas distintas puede confirmarse');
+
+const confirmedCenter = buildTacticalEvidenceCenter({
+  report,
+  validations: {
+    [repeatedConnection.id]: {
+      status: 'confirmed',
+      updatedAt: '2026-08-02T12:00:00.000Z',
+      updatedBy: 'Analista',
+      history: [{ status: 'confirmed', at: '2026-08-02T12:00:00.000Z', by: 'Analista' }],
+    },
+  },
+});
+assert.equal(confirmedCenter.confirmedCount, 1);
+assert.deepEqual(confirmedCenter.confirmedPlayIds.sort(), ['p1', 'p2', 'p3']);
+assert.equal(filterConfirmedTacticalEvidenceContexts(report, confirmedCenter).length, 3, 'los consumidores reciben solo jugadas respaldadas por evidencias confirmadas');
+assert.equal(confirmedCenter.confirmedItems[0].usedIn.rival, true);
+assert.equal(confirmedCenter.confirmedItems[0].usedIn.plan, true);
+assert.equal(confirmedCenter.confirmedItems[0].usedIn.players, true);
+const confirmedReport = buildConfirmedTacticalEvidenceReport(report, confirmedCenter);
+assert.equal(confirmedReport.connections.length, 1, 'conserva la relación confirmada');
+assert.equal(confirmedReport.movements.length, 0, 'no arrastra movimientos no confirmados desde las mismas jugadas');
+assert.equal(confirmedReport.patterns.length, 0, 'no arrastra patrones no confirmados desde las mismas jugadas');
+assert.equal(confirmedReport.zones.total, 0, 'no convierte zonas no confirmadas en conclusiones laterales');
+
+const onePlayReport = buildTacticalEvidenceEngine([makeContext('single')]);
+const onePlayCenter = buildTacticalEvidenceCenter({ report: onePlayReport });
+const isolatedConnection = onePlayCenter.items.find((item) => item.type === 'connection');
+const forcedSingleConfirmation = buildTacticalEvidenceCenter({
+  report: onePlayReport,
+  validations: { [isolatedConnection.id]: { status: 'confirmed' } },
+});
+assert.equal(forcedSingleConfirmation.confirmedCount, 0, 'una única jugada nunca se convierte en patrón aunque exista un estado legacy incorrecto');
+assert.equal(forcedSingleConfirmation.signalItems.some((item) => item.id === isolatedConnection.id), true);
+assert.equal(filterConfirmedTacticalEvidenceContexts(onePlayReport, forcedSingleConfirmation).length, 0);
+
+assert.equal(humanizeTacticalConnection({ label: 'right_centre_back → left_back' }), 'Central derecho conecta habitualmente con Lateral izquierdo');
+
+const componentSource = fs.readFileSync(new URL('../components/tactical/TacticalEvidencePanel.jsx', import.meta.url), 'utf8');
+const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
+assert.match(componentSource, /Centro de validación táctica/);
+assert.match(componentSource, /Evidencias pendientes de validar/);
+assert.match(componentSource, /Patrones confirmados/);
+assert.match(componentSource, /Señales detectadas/);
+assert.match(componentSource, /Cobertura del análisis/);
+assert.match(componentSource, /Relaciones detectadas/);
+assert.doesNotMatch(componentSource, />\s*right_centre_back\s*</, 'la interfaz no imprime códigos posicionales internos');
+assert.match(appSource, /buildConfirmedTacticalEvidenceReport\(tacticalEvidenceReport, tacticalEvidenceCenter\)/, 'Rival, Jugadores y Plan parten exclusivamente del subconjunto confirmado');
+assert.match(appSource, /tacticalEvidenceValidationsV1: nextValidations/, 'la validación se persiste en el análisis PRE compartido del partido');
+assert.match(appSource, /plays: confirmedCollectiveAssistantPlays/);
+assert.match(appSource, /tacticalEvidenceReport: confirmedTacticalEvidenceReport/);
 
 console.log('tacticalEvidenceEngine tests: ok');

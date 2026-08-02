@@ -480,6 +480,10 @@ export const buildTacticalEvidenceEngine = (contexts, { team = 'rival' } = {}) =
   const contextRows = scopedContexts.map((context) => ({
     playId: context.playId,
     playName: context.playName,
+    matchId: context.matchId || null,
+    createdAt: context.createdAt || null,
+    updatedAt: context.updatedAt || context.createdAt || null,
+    videoUrl: context.videoUrl || null,
     phase: context.phase,
     phaseLabel: context.phaseLabel || phaseNames[context.phase] || context.phase,
     situation: context.situationLabel
@@ -617,3 +621,11 @@ export const selectTacticalEvidenceForQuestion = (report, question, { playerId =
   const risks = buildRisks({ playCount: contexts.length, zones, players, connections });
   return summaryFromRows({ contexts, connections, players, zones, movements, risks });
 };
+
+export const rebuildTacticalEvidencePlanRecommendations = (report) => ({
+  ...report,
+  planRecommendations: Object.fromEntries(Object.entries(planQuestions).map(([title, question]) => [
+    title,
+    selectTacticalEvidenceForQuestion(report, question),
+  ])),
+});

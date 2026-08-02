@@ -162,6 +162,10 @@ import {
   selectTacticalEvidenceForQuestion,
 } from './utils/tacticalEvidenceEngine';
 import {
+  buildConfirmedTacticalEvidenceReport,
+  buildTacticalEvidenceCenter,
+} from './utils/tacticalEvidenceCenter';
+import {
   calculateTacticalTemplateUsages,
   loadTacticalTemplateUsageRows,
 } from './utils/tacticalTemplateUsage';
@@ -7017,6 +7021,7 @@ function App() {
     collective: emptyObservedCollectiveProfile,
     playerProfiles: {},
     evidences: [],
+    evidenceValidations: {},
     tacticalConnections: [],
     ...(rivalObservedScouting[selectedRivalObservedKey] || {}),
   };
@@ -7028,6 +7033,10 @@ function App() {
   };
   selectedRivalObservedScouting.playerProfiles = safeObject(selectedRivalObservedScouting.playerProfiles);
   selectedRivalObservedScouting.evidences = safeArray(selectedRivalObservedScouting.evidences);
+  selectedRivalObservedScouting.evidenceValidations = {
+    ...safeObject(selectedRivalObservedScouting.evidenceValidations),
+    ...safeObject(selectedPreAiAnalysis?.tacticalEvidenceValidationsV1),
+  };
   selectedRivalObservedScouting.tacticalConnections = safeArray(selectedRivalObservedScouting.tacticalConnections);
   const updateSelectedRivalObservedScouting = (patch) => {
     setRivalObservedScouting((current) => ({
@@ -7036,6 +7045,7 @@ function App() {
         collective: emptyObservedCollectiveProfile,
         playerProfiles: {},
         evidences: [],
+        evidenceValidations: {},
         tacticalConnections: [],
         ...(current[selectedRivalObservedKey] || {}),
         ...patch,
@@ -10756,6 +10766,44 @@ function App() {
       caudalFormationSlots: getFormationSlots(caudalSystem, 'own'),
     });
   };
+  const tacticalEvidenceCenter = buildTacticalEvidenceCenter({
+    report: tacticalEvidenceReport,
+    validations: selectedRivalObservedScouting.evidenceValidations,
+    manualEvidences: selectedRivalObservedScouting.evidences,
+  });
+  const confirmedTacticalEvidenceReport = buildConfirmedTacticalEvidenceReport(tacticalEvidenceReport, tacticalEvidenceCenter);
+  const confirmedObservedEvidences = selectedRivalObservedScouting.evidences.filter((evidence) => (
+    tacticalEvidenceCenter.confirmedItems.some((item) => item.id === `manual:${evidence.id}`)
+  ));
+  const updateTacticalEvidenceValidation = async (evidenceId, patch) => {
+    const evidence = tacticalEvidenceCenter.items.find((item) => item.id === evidenceId);
+    if (!evidence) return;
+    if (patch.status === 'confirmed' && !evidence.canConfirm) return;
+    const current = safeObject(selectedRivalObservedScouting.evidenceValidations[evidenceId]);
+    const now = new Date().toISOString();
+    const actor = session?.user?.email || session?.user?.user_metadata?.name || 'Staff';
+    const nextStatus = patch.status || current.status || 'pending';
+    const statusChanged = patch.status && patch.status !== current.status;
+    const nextValidations = {
+      ...selectedRivalObservedScouting.evidenceValidations,
+      [evidenceId]: {
+        ...current,
+        ...patch,
+        status: nextStatus,
+        updatedAt: now,
+        updatedBy: actor,
+        history: statusChanged
+          ? [...safeArray(current.history), { status: nextStatus, at: now, by: actor }]
+          : safeArray(current.history),
+      },
+    };
+    return updateSelectedMatchFields({
+      preAiAnalysis: {
+        ...(selectedPreAiAnalysis || {}),
+        tacticalEvidenceValidationsV1: nextValidations,
+      },
+    }, { optimistic: false });
+  };
   const buildTransitionInitialPlayerPositions = (nextTransitionType, fieldZone, rivalSystem, caudalSystem) => (
     getTransitionInitialPositions({
       transitionType: nextTransitionType,
@@ -11434,6 +11482,8 @@ function App() {
     offensiveSaveStatus,
     transitionSaveStatus,
     setPieceSaveStatus,
+    selectedRivalObservedKey,
+    rivalObservedScouting,
   ]);
 
   const buildTacticalQuestionAnswer = (mode, question, context = {}) => {
@@ -11444,7 +11494,7 @@ function App() {
     const safeQuestion = String(question || '');
     const q = safeQuestion.toLowerCase();
     const tacticalSummary = selectTacticalEvidenceForQuestion(
-      tacticalEvidenceReport,
+      confirmedTacticalEvidenceReport,
       safeQuestion,
       { playerId: context.playerKey || '' }
     );
@@ -11460,7 +11510,7 @@ function App() {
             : /progres|espacio|superioridad|estructura|con balón|con balon|atacamos/.test(q)
               ? ['Ataque']
               : [];
-    const evidences = selectedRivalObservedScouting.evidences.filter((evidence) => (
+    const evidences = confirmedObservedEvidences.filter((evidence) => (
       !relevantEvidenceTypes.length || relevantEvidenceTypes.includes(evidence.type)
     ));
     const profiledPlayers = liveRivalPlayers
@@ -12114,7 +12164,7 @@ function App() {
     const caudalSystem = selectedMatch.preCaudalSystem || '4-4-2';
     const rivalSystem = getCurrentRivalSystem();
     const collective = selectedRivalObservedScouting.collective;
-    const evidences = selectedRivalObservedScouting.evidences;
+    const evidences = confirmedObservedEvidences;
     const observedPlayerRows = liveRivalPlayers
       .map((player) => ({ player, profile: getObservedPlayerProfile(player) }))
       .filter(({ profile }) => profile.speed || profile.technique || profile.aerial || profile.oneVsOne || profile.defensiveWork || profile.foot || profile.traits.length || String(profile.notes || '').trim());
@@ -12158,8 +12208,8 @@ function App() {
     const selectedMicroProfile = selectedMicroPlayer ? getObservedPlayerProfile(selectedMicroPlayer) : emptyObservedPlayerProfile;
     const selectedMicroKey = selectedMicroPlayer ? getObservedPlayerKey(selectedMicroPlayer) : '';
     const selectedMicroParticipation = selectedMicroKey
-      ? getPlayerTacticalEvidence(tacticalEvidenceReport, selectedMicroKey)
-      : getPlayerTacticalEvidence(tacticalEvidenceReport, '');
+      ? getPlayerTacticalEvidence(confirmedTacticalEvidenceReport, selectedMicroKey)
+      : getPlayerTacticalEvidence(confirmedTacticalEvidenceReport, '');
     const selectedMicroBehaviourConfig = selectedMicroPlayer ? getMicroBehaviourConfig(selectedMicroPlayer, selectedMicroProfile) : null;
     const selectedMicroIncompatibleTraits = selectedMicroPlayer ? getIncompatibleMicroTraits(selectedMicroPlayer, selectedMicroProfile) : [];
     const microPlayersByGroup = ['PORTEROS', 'DEFENSAS', 'MEDIOS', 'DELANTEROS', 'SIN DEMARCACIÓN'].map((group) => ({
@@ -12172,6 +12222,13 @@ function App() {
       ...safeArray(transitionWorkspace.plays).map((play) => ({ ...play, phase: 'transition' })),
       ...safeArray(setPieceWorkspace.plays).map((play) => ({ ...play, phase: 'set_piece' })),
     ];
+    const confirmedPlayIdSet = new Set(tacticalEvidenceCenter.confirmedPlayIds.map(String));
+    const confirmedCollectiveAssistantPlays = collectiveAssistantPlays.filter((play) => confirmedPlayIdSet.has(String(play.id)));
+    const confirmedTacticalConnections = selectedRivalObservedScouting.tacticalConnections.filter((connection) => (
+      tacticalEvidenceCenter.confirmedItems.some((item) => item.sources.some((source) => (
+        source.type === 'tactical_connection' && String(source.id) === String(connection.id)
+      )))
+    ));
     const individualRivalSignals = buildRivalPlayerCollectiveSignals(observedPlayerRows);
     const analyzedRivalMatches = matches
       .filter((match) => {
@@ -12211,8 +12268,8 @@ function App() {
       rivalSystem,
       collectiveProfile: collective,
       evidences: [...evidences, ...individualRivalSignals],
-      connections: selectedRivalObservedScouting.tacticalConnections,
-      plays: collectiveAssistantPlays,
+      connections: confirmedTacticalConnections,
+      plays: confirmedCollectiveAssistantPlays,
       reports: String(selectedMatch.preRivalReportText || '').trim()
         ? [{
             id: selectedMatch.id,
@@ -12222,7 +12279,7 @@ function App() {
           }]
         : [],
       videos: relatedRivalVideos,
-      tacticalEvidenceReport,
+      tacticalEvidenceReport: confirmedTacticalEvidenceReport,
       analyzedMatches: analyzedRivalMatches,
       analysisUpdatedAt: selectedRivalObservedScouting.updatedAt || '',
     });
@@ -12311,14 +12368,14 @@ function App() {
       };
     };
     const tacticalPlanEvidence = {
-      'Con balón': addSavedQuestionEvidence('Con balón', tacticalEvidenceReport.planRecommendations['Con balón']),
-      'Sin balón': addSavedQuestionEvidence('Sin balón', tacticalEvidenceReport.planRecommendations['Sin balón']),
-      'Transición': addSavedQuestionEvidence('Transición', tacticalEvidenceReport.planRecommendations.Transición),
-      ABP: addSavedQuestionEvidence('ABP', tacticalEvidenceReport.planRecommendations.ABP),
-      'Vigilancias prioritarias': addSavedQuestionEvidence('Vigilancias prioritarias', tacticalEvidenceReport.planRecommendations['Vigilancias prioritarias']),
-      'Jugadores a vigilar': addSavedQuestionEvidence('Jugadores a vigilar', tacticalEvidenceReport.planRecommendations['Jugadores a vigilar']),
-      Riesgos: addSavedQuestionEvidence('Riesgos', tacticalEvidenceReport.planRecommendations.Riesgos),
-      'Claves del partido': addSavedQuestionEvidence('Claves del partido', tacticalEvidenceReport.planRecommendations['Claves del partido']),
+      'Con balón': addSavedQuestionEvidence('Con balón', confirmedTacticalEvidenceReport.planRecommendations['Con balón']),
+      'Sin balón': addSavedQuestionEvidence('Sin balón', confirmedTacticalEvidenceReport.planRecommendations['Sin balón']),
+      'Transición': addSavedQuestionEvidence('Transición', confirmedTacticalEvidenceReport.planRecommendations.Transición),
+      ABP: addSavedQuestionEvidence('ABP', confirmedTacticalEvidenceReport.planRecommendations.ABP),
+      'Vigilancias prioritarias': addSavedQuestionEvidence('Vigilancias prioritarias', confirmedTacticalEvidenceReport.planRecommendations['Vigilancias prioritarias']),
+      'Jugadores a vigilar': addSavedQuestionEvidence('Jugadores a vigilar', confirmedTacticalEvidenceReport.planRecommendations['Jugadores a vigilar']),
+      Riesgos: addSavedQuestionEvidence('Riesgos', confirmedTacticalEvidenceReport.planRecommendations.Riesgos),
+      'Claves del partido': addSavedQuestionEvidence('Claves del partido', confirmedTacticalEvidenceReport.planRecommendations['Claves del partido']),
     };
     const rivalPlayerTacticalModel = buildRivalPlayerTacticalModel({
       player: selectedMicroPlayer,
@@ -12357,7 +12414,36 @@ function App() {
         </nav>
 
         <div className={`grid gap-4 ${facingSystemsView === 'PIZARRA' && !isPreTalkMode ? 'xl:grid-cols-[minmax(320px,0.32fr)_minmax(0,0.68fr)]' : 'xl:grid-cols-2'}`}>
-          {facingSystemsView === 'EVIDENCIAS' ? <TacticalEvidencePanel report={tacticalEvidenceReport} /> : null}
+          {facingSystemsView === 'EVIDENCIAS' ? (
+            <TacticalEvidencePanel
+              report={tacticalEvidenceReport}
+              center={tacticalEvidenceCenter}
+              match={{
+                id: selectedMatch.id,
+                opponent: selectedMatch.opponent,
+                date: selectedMatch.date,
+                competition: getCompetitionFromCatalog(selectedMatch).label,
+                result: getMatchScoreLabel(selectedMatch),
+                videoUrl: selectedMatch.postVideoLink || '',
+              }}
+              onUpdateValidation={updateTacticalEvidenceValidation}
+              onViewPlay={(playId, phase) => {
+                requestFacingSystemsView('PIZARRA', () => {
+                  setTacticalGamePhase(phase);
+                  if (phase === 'offensive') selectOffensivePlay(playId);
+                  if (phase === 'defensive') selectDefensivePlay(playId);
+                  if (phase === 'transition') selectTransitionPlay(playId);
+                  if (phase === 'set_piece') selectSetPiecePlay(playId);
+                });
+              }}
+              onOpenVideo={() => openMatchPage(selectedMatch, 'POST')}
+              onNavigate={(destination) => {
+                if (destination === 'rival') requestFacingSystemsView('RIVAL');
+                if (destination === 'players') requestFacingSystemsView('JUGADORES');
+                if (destination === 'plan') requestFacingSystemsView('PLAN DE PARTIDO');
+              }}
+            />
+          ) : null}
           {facingSystemsView === 'RIVAL' ? (
             <RivalCollectiveAssistant
               model={rivalCollectiveModel}
