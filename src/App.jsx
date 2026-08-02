@@ -12367,7 +12367,8 @@ function App() {
             }}
           />
           <div className="grid gap-4 xl:contents">
-            <section className={`order-4 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1 xl:row-start-1 ${facingSystemsView !== 'PIZARRA' ? 'hidden' : ''}`}>
+            {facingSystemsView === 'PIZARRA' ? (
+            <section className="order-4 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1 xl:row-start-1">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Análisis táctico</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
@@ -12586,6 +12587,7 @@ function App() {
                 />
               </label>
             </section>
+            ) : null}
 
             <section className={`order-5 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2 ${facingSystemsView !== 'JUGADORES' ? 'hidden' : ''}`}>
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Duelos críticos</p>
@@ -13003,7 +13005,8 @@ function App() {
             </section>
           </div>
 
-          <div className={`grid gap-4 xl:contents ${facingSystemsView !== 'PIZARRA' ? 'hidden' : ''}`}>
+          {facingSystemsView === 'PIZARRA' ? (
+          <div className="grid gap-4 xl:contents">
             <section className="order-4 border border-white/10 bg-[#091428]/82 p-3 xl:col-start-2 xl:row-span-3 xl:row-start-1">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -13127,8 +13130,9 @@ function App() {
                 </div>
               </div>
           </div>
+          ) : null}
         </div>
-        {tacticalTemplateDialog === 'new' ? (
+        {facingSystemsView === 'PIZARRA' && tacticalTemplateDialog === 'new' ? (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 p-4" role="dialog" aria-modal="true" aria-labelledby="new-tactical-play-title">
             <div className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto border border-white/10 bg-[#091428] p-5 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
@@ -13151,7 +13155,7 @@ function App() {
             </div>
           </div>
         ) : null}
-        {['load', 'library'].includes(tacticalTemplateDialog) ? (
+        {facingSystemsView === 'PIZARRA' && ['load', 'library'].includes(tacticalTemplateDialog) ? (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 p-4" role="dialog" aria-modal="true" aria-labelledby="load-tactical-template-title">
             <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto border border-white/10 bg-[#091428] p-5 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
@@ -13286,7 +13290,7 @@ function App() {
             </div>
           </div>
         ) : null}
-        {['save', 'edit'].includes(tacticalTemplateDialog) ? (
+        {facingSystemsView === 'PIZARRA' && ['save', 'edit'].includes(tacticalTemplateDialog) ? (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 p-4" role="dialog" aria-modal="true" aria-labelledby="save-tactical-template-title">
             <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto border border-white/10 bg-[#091428] p-5 shadow-2xl">
               <div className="flex items-start justify-between gap-4">

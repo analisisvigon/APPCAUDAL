@@ -116,6 +116,6 @@ assert.match(editorSource, /sm:max-w-3xl/, 'el modal se adapta a móvil, tablet 
 assert.match(appSource, /updateSelectedRivalObservedScouting\(\{\s*collective:/, 'guardar reutiliza el estado y persistencia existentes');
 assert.match(appSource, /setIsCollectiveProfileEditorOpen\(false\)/, 'guardar o cancelar cierra el editor');
 assert.match(appSource, /\['PIZARRA', 'RIVAL', 'JUGADORES', 'PLAN DE PARTIDO', 'EVIDENCIAS'\]/, 'la navegación entre pestañas permanece intacta');
-assert.match(appSource, /facingSystemsView !== 'PIZARRA'/, 'la pestaña Pizarra permanece independiente');
+assert.match(appSource, /facingSystemsView === 'PIZARRA' \? \(/, 'la pestaña Pizarra permanece independiente y se monta de forma exclusiva');
 
 console.log('rivalCollectiveAssistant tests: ok');
