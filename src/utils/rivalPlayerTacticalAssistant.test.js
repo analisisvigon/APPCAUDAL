@@ -289,6 +289,12 @@ const persistedRows = JSON.parse(JSON.stringify([
 ]));
 assert.deepEqual(buildRivalPlayerCollectiveSignals(persistedRows), buildRivalPlayerCollectiveSignals(JSON.parse(JSON.stringify(persistedRows))));
 
+// Un filtro sin coincidencias debe producir un modelo vacío renderizable, no romper React.
+const emptyFilteredPlayerModel = buildRivalPlayerTacticalModel({ player: null });
+assert.equal(emptyFilteredPlayerModel.player, null);
+assert.equal(emptyFilteredPlayerModel.playerKey, '');
+assert.equal(emptyFilteredPlayerModel.summary.name, 'Jugador rival');
+
 const componentSource = fs.readFileSync(new URL('../components/tactical/RivalPlayerTacticalCenter.jsx', import.meta.url), 'utf8');
 const collectiveEditorSource = fs.readFileSync(new URL('../components/tactical/CollectiveProfileEditorModal.jsx', import.meta.url), 'utf8');
 const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');

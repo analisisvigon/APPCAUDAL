@@ -24,8 +24,8 @@ export const PLAYER_TACTICAL_SUGGESTED_QUESTIONS = Object.freeze([
 
 const unique = (rows) => [...new Set(safeArray(rows).filter(Boolean))];
 const sortSources = (sources) => unique(sources).sort((a, b) => sourcePriority.indexOf(a) - sourcePriority.indexOf(b));
-const fullPlayerName = (player = {}) => clean(player.shirtName || player.shirt_name || player.name) || 'Jugador rival';
-const playerKey = (player = {}) => clean(player.globalPlayerId || player.jugadorRivalId || player.id || player.name);
+const fullPlayerName = (player = {}) => clean(player?.shirtName || player?.shirt_name || player?.name) || 'Jugador rival';
+const playerKey = (player = {}) => clean(player?.globalPlayerId || player?.jugadorRivalId || player?.id || player?.name);
 const getDate = (value) => {
   const date = new Date(value || '');
   return Number.isNaN(date.getTime()) ? null : date;
