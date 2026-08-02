@@ -9,6 +9,7 @@ import {
   moveMatchPlanCard,
   moveMatchPlanCardByOffset,
   moveMatchPlanChecklistItem,
+  persistMatchPlanWorkspace,
   serializeMatchPlanLegacyFields,
 } from './matchPlanWorkspace.js';
 
@@ -41,6 +42,20 @@ const persistedEmpty = createMatchPlanWorkspace({
   seed: { phases: { with_ball: ['No debe reaparecer'] } },
 });
 assert.equal(persistedEmpty.phases.with_ball.length, 0, 'una eliminación guardada no se repuebla desde el legado');
+
+const sevenPerPhase = Object.fromEntries(['with_ball', 'without_ball', 'transition', 'set_piece'].map((phase) => [
+  phase,
+  Array.from({ length: 7 }, (_, index) => `${phase} · consigna ${index + 1}`),
+]));
+const migratedSeven = createMatchPlanWorkspace({ seed: { phases: sevenPerPhase } });
+Object.keys(sevenPerPhase).forEach((phase) => assert.equal(migratedSeven.phases[phase].length, 7, `${phase} conserva siete consignas legacy`));
+const persistedSeven = createMatchPlanWorkspace({
+  stored: JSON.parse(JSON.stringify(migratedSeven)),
+  seed: { phases: Object.fromEntries(Object.keys(sevenPerPhase).map((phase) => [phase, ['El legacy no debe sobrescribir V1']])) },
+});
+Object.keys(sevenPerPhase).forEach((phase) => assert.deepEqual(persistedSeven.phases[phase].map((card) => card.action), migratedSeven.phases[phase].map((card) => card.action), `Workspace V1 prevalece en ${phase}`));
+const serializedSeven = serializeMatchPlanLegacyFields(persistedSeven);
+['planConBalon', 'planSinBalon', 'planTransiciones'].forEach((field) => assert.equal(serializedSeven[field].split('\n').length, 7, `${field} guarda las siete consignas`));
 
 const firstId = seeded.phases.with_ball[0].id;
 const secondId = seeded.phases.with_ball[1].id;
@@ -76,6 +91,10 @@ assert.ok(duplicate, 'crea una copia con identidad propia');
 assert.equal(duplicate.playId, '', 'la copia no hereda accidentalmente la jugada vinculada');
 assert.equal(duplicate.status, 'draft');
 assert.equal(duplicate.executed, false);
+assert.notEqual(duplicate.sources, linkedSeed.phases.with_ball[0].sources, 'la copia no comparte arrays mutables con la original');
+assert.deepEqual(duplicate.sources, linkedSeed.phases.with_ball[0].sources);
+const crossPhaseIdCollision = duplicateMatchPlanCard(linkedSeed, 'with_ball', firstId, linkedSeed.phases.transition[0].id);
+assert.equal(crossPhaseIdCollision, linkedSeed, 'rechaza IDs ya utilizados en otra fase o plan');
 
 const clearedFields = createMatchPlanWorkspace({
   stored: {
@@ -93,6 +112,13 @@ const clearedFields = createMatchPlanWorkspace({
 assert.equal(clearedFields.phases.with_ball[0].impact, '', 'un impacto vaciado permanece vacío al recargar');
 assert.equal(clearedFields.phases.with_ball[0].explanation, '', 'una explicación vaciada permanece vacía al recargar');
 assert.deepEqual(clearedFields.phases.with_ball[0].sources, [], 'las fuentes vaciadas permanecen vacías al recargar');
+const clearedRoundTrip = createMatchPlanWorkspace({
+  stored: JSON.parse(JSON.stringify(clearedFields)),
+  seed: { insights: { 'Con balón': { proposedAction: 'No debe reaparecer', conclusion: 'No debe reaparecer', sources: ['Perfil'] } } },
+});
+assert.equal(clearedRoundTrip.phases.with_ball[0].impact, '', 'ida y vuelta: impacto vacío permanece vacío');
+assert.equal(clearedRoundTrip.phases.with_ball[0].explanation, '', 'ida y vuelta: explicación vacía permanece vacía');
+assert.deepEqual(clearedRoundTrip.phases.with_ball[0].sources, [], 'ida y vuelta: fuentes vacías permanecen []');
 
 const normalizedLegacyPriority = createMatchPlanWorkspace({
   stored: {
@@ -106,6 +132,18 @@ assert.equal(normalizedLegacyPriority.phases.with_ball[0].priority, 'Alta', 'mig
 assert.equal(normalizedLegacyPriority.executiveStates.objective, 'validated');
 assert.equal(normalizedLegacyPriority.live.cardExecution[firstId].priority, 'Baja', 'normaliza la prioridad de ejecución sin tocar el diseño');
 assert.equal(normalizedLegacyPriority.live.cardExecution[firstId].observation, 'Cerrar antes');
+assert.equal(normalizedLegacyPriority.phases.with_ball[0].priority, 'Alta', 'salir de En directo conserva la prioridad diseñada');
+
+const realSaveError = new Error('Fallo real de Supabase');
+const failedSave = await persistMatchPlanWorkspace({
+  workspace: seeded,
+  onSave: async () => ({ ok: false, error: realSaveError }),
+  now: () => '2026-08-02T15:00:00.000Z',
+});
+assert.equal(failedSave.ok, false);
+assert.equal(failedSave.error, realSaveError, 'propaga el objeto de error real');
+assert.equal(failedSave.workspace, seeded, 'un fallo conserva exactamente el workspace local');
+assert.equal(failedSave.savedAt, '', 'un fallo no registra una hora de guardado');
 
 const checklistMoved = moveMatchPlanChecklistItem(seeded, seeded.checklist[1].id, seeded.checklist[0].id);
 assert.equal(checklistMoved.checklist[0].id, seeded.checklist[1].id, 'el checklist mantiene drag and drop mediante una operación estable');
@@ -167,7 +205,8 @@ assert.doesNotMatch(componentSource, /onLiveChange=\{\(patch\) => updateCard/, '
 assert.match(componentSource, /moveMatchPlanCardByOffset/, 'existe una alternativa accesible para reordenar');
 assert.match(componentSource, /Plan en edición/, 'Plan A y Plan B se seleccionan de forma explícita');
 assert.match(componentSource, /beforeunload/, 'los cambios pendientes quedan protegidos al recargar o cerrar');
-assert.match(componentSource, /if \(!result\?\.ok\) throw/, 'el workspace solo confirma un guardado remoto explícito');
+assert.match(componentSource, /if \(!result\.ok\)[\s\S]*setDirty\(true\)[\s\S]*setSaveStatus\('Error al guardar'\)/, 'un fallo mantiene dirty y muestra Error al guardar');
+assert.match(componentSource, /saveStatus === 'Error al guardar' \? 'Reintentar'/, 'un fallo ofrece reintentar');
 assert.match(componentSource, /onOpenPlay\(phase, linkedPlay\.id\)/, 'cada consigna puede abrir su jugada vinculada');
 assert.doesNotMatch(componentSource, /supabase|localStorage|fetch\(/i, 'el workspace no crea persistencia paralela');
 assert.match(appSource, /return \{ ok: false, error: updateError \}/, 'Supabase devuelve el fallo al consumidor');

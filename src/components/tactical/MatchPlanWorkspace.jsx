@@ -10,6 +10,7 @@ import {
   moveMatchPlanCard,
   moveMatchPlanCardByOffset,
   moveMatchPlanChecklistItem,
+  persistMatchPlanWorkspace,
 } from '../../utils/matchPlanWorkspace.js';
 
 const priorityTone = {
@@ -245,7 +246,7 @@ export default function MatchPlanWorkspace({ matchKey, rivalName, storedWorkspac
     setProposals((current) => ({ ...current, [blockKey]: action && !/registrar y validar/i.test(action) ? { action, impact: clean(insight.conclusion), explanation: clean(insight.evidence?.join?.(' · ')), sources: insight.sources?.length ? ['Pizarra', 'Evidencias'] : ['Perfil'] } : { unavailable: true } }));
   };
   const acceptProposal = (blockKey) => { const proposal = proposals[blockKey]; if (!proposal || proposal.unavailable) return; if (blockKey === 'executive') applyWorkspace((current) => ({ ...current, executive: { ...current.executive, objective: proposal.action } })); else if (blockKey === 'checklist') applyWorkspace((current) => ({ ...current, checklist: [...current.checklist, { id: makeId('check'), text: proposal.action, checked: false }] })); else addCard(blockKey, proposal); setProposals((current) => ({ ...current, [blockKey]: null })); };
-  const saveWorkspace = async () => { setSaveStatus('Guardando'); const attemptedAt = new Date().toISOString(); const next = { ...workspace, updatedAt: attemptedAt }; try { const result = await onSave?.(next); if (!result?.ok) throw result?.error || new Error('La persistencia no confirmó el guardado del plan.'); const savedAt = result.savedAt || attemptedAt; setWorkspace({ ...next, updatedAt: savedAt }); setDirty(false); setSaveStatus('Guardado'); setLastSavedAt(savedAt); setClock(Date.now()); } catch (error) { console.error('Error guardando el Plan de partido:', error); setDirty(true); setSaveStatus('Error al guardar'); } };
+  const saveWorkspace = async () => { setSaveStatus('Guardando'); const result = await persistMatchPlanWorkspace({ workspace, onSave }); if (!result.ok) { console.error('Error guardando el Plan de partido:', result.error); setDirty(true); setSaveStatus('Error al guardar'); return; } setWorkspace(result.workspace); setDirty(false); setSaveStatus('Guardado'); setLastSavedAt(result.savedAt); setClock(Date.now()); };
   const visibleCards = (phase) => workspace.phases[phase].filter((card) => { if (presentation) return card.status === 'confirmed' && card.plan === selectedPlan; if (live) return card.status !== 'discarded' && card.plan === activePlan; return card.plan === selectedPlan; });
   const importSelected = (candidates) => { applyWorkspace((current) => { const existing = current.phases[importPhase]; const imported = candidates.filter((candidate) => !existing.some((card) => card.plan === selectedPlan && card.action.toLocaleLowerCase('es') === candidate.action.toLocaleLowerCase('es'))).map((candidate) => ({ id: makeId(`plan-${importPhase}`), action: candidate.action, priority: 'Media', impact: candidate.impact, explanation: candidate.explanation, sources: candidate.sources, status: 'draft', plan: selectedPlan, playId: candidate.playId, executed: false })); return { ...current, phases: { ...current.phases, [importPhase]: [...existing, ...imported] } }; }); setImportPhase(''); };
 

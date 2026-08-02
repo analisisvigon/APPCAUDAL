@@ -187,6 +187,26 @@ export const buildMatchPlanImportCandidates = ({ phase, insight = {}, plays = []
   ));
 };
 
+export const persistMatchPlanWorkspace = async ({ workspace, onSave, now = () => new Date().toISOString() } = {}) => {
+  const attemptedAt = now();
+  const candidate = { ...workspace, updatedAt: attemptedAt };
+  try {
+    const result = await onSave?.(candidate);
+    if (!result?.ok) {
+      return {
+        ok: false,
+        error: result?.error || new Error('La persistencia no confirmó el guardado del plan.'),
+        workspace,
+        savedAt: '',
+      };
+    }
+    const savedAt = result.savedAt || attemptedAt;
+    return { ok: true, error: null, workspace: { ...candidate, updatedAt: savedAt }, savedAt };
+  } catch (error) {
+    return { ok: false, error, workspace, savedAt: '' };
+  }
+};
+
 export const moveMatchPlanCard = (workspace, fromPhase, cardId, toPhase, targetId = '') => {
   if (!workspace?.phases?.[fromPhase] || !workspace?.phases?.[toPhase]) return workspace;
   const sourceRows = [...workspace.phases[fromPhase]];
@@ -228,12 +248,14 @@ export const duplicateMatchPlanCard = (workspace, phase, cardId, duplicateId) =>
   const rows = workspace?.phases?.[phase];
   if (!Array.isArray(rows)) return workspace;
   const sourceIndex = rows.findIndex((card) => card.id === cardId);
-  if (sourceIndex < 0 || !clean(duplicateId) || rows.some((card) => card.id === duplicateId)) return workspace;
+  const duplicateIdAlreadyExists = MATCH_PLAN_PHASES.some(({ key }) => safeArray(workspace?.phases?.[key]).some((card) => card.id === duplicateId));
+  if (sourceIndex < 0 || !clean(duplicateId) || duplicateIdAlreadyExists) return workspace;
   const sourceCard = rows[sourceIndex];
   const duplicate = {
     ...sourceCard,
     id: duplicateId,
     action: `${sourceCard.action} (copia)`,
+    sources: [...safeArray(sourceCard.sources)],
     status: 'draft',
     playId: '',
     executed: false,
