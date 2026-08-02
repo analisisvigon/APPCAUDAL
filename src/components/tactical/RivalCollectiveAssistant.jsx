@@ -1,6 +1,11 @@
 import { useId, useState } from 'react';
 
 import { getRivalRecommendationListView } from '../../utils/rivalCollectiveAssistant.js';
+import {
+  buildRivalMissingInformation,
+  getRivalScoutingMaturity,
+} from '../../utils/rivalTacticalCenter.js';
+import RivalTacticalAssistant from './RivalTacticalAssistant.jsx';
 
 const sourceTone = {
   Perfil: 'border-cyan-300/15 bg-cyan-300/[0.06] text-cyan-100',
@@ -166,8 +171,23 @@ function RecommendationSection({ title, eyebrow, recommendations, emptyMessage, 
   );
 }
 
-export default function RivalCollectiveAssistant({ model, onEditCollectiveProfile }) {
+export default function RivalCollectiveAssistant({ model, onEditCollectiveProfile, onCompleteMissingInformation }) {
   if (!model) return null;
+  const maturity = getRivalScoutingMaturity(model);
+  const missingInformation = buildRivalMissingInformation(model);
+  const visibleBehaviors = model.behaviors.filter((behavior) => behavior.summary);
+  const maturityTone = {
+    initial: 'border-slate-300/15 bg-slate-300/[0.05] text-slate-300',
+    partial: 'border-amber-300/18 bg-amber-300/[0.07] text-amber-100',
+    consolidated: 'border-emerald-300/18 bg-emerald-300/[0.07] text-emerald-100',
+  }[maturity.key];
+  const getCoverageTone = (source) => {
+    if (!source.available) return 'border-white/[0.06] bg-white/[0.018] text-slate-500';
+    const consolidated = source.key === 'video' || source.count >= 3 || (source.key === 'profile' && source.count >= 5);
+    return consolidated
+      ? 'border-emerald-300/18 bg-emerald-300/[0.07] text-emerald-100'
+      : 'border-amber-300/18 bg-amber-300/[0.07] text-amber-100';
+  };
   return (
     <div className="min-w-0 space-y-5 xl:col-span-2" data-testid="rival-collective-assistant">
       <section className="overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#10223a] via-[#0b182b] to-[#07111f] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.22)] sm:p-7">
@@ -200,6 +220,12 @@ export default function RivalCollectiveAssistant({ model, onEditCollectiveProfil
                 <p className="text-[8px] font-black uppercase tracking-[0.15em] text-slate-500">Última actualización</p>
                 <p className="mt-1 text-sm font-black text-slate-200">{formatAnalysisTimestamp(model.summary.lastUpdatedAt)}</p>
               </div>
+              <div>
+                <p className="text-[8px] font-black uppercase tracking-[0.15em] text-slate-500">Madurez del scouting</p>
+                <span className={`mt-1 inline-flex rounded-full border px-3 py-1.5 text-[9px] font-black ${maturityTone}`} title={maturity.detail}>
+                  {maturity.label}
+                </span>
+              </div>
           </div>
           {model.summary.profileChips.length ? (
             <div className="flex max-w-2xl flex-wrap gap-2 lg:justify-end">
@@ -223,12 +249,20 @@ export default function RivalCollectiveAssistant({ model, onEditCollectiveProfil
         {model.summary.emptyMessage ? <div className="mt-5"><EmptyState>{model.summary.emptyMessage}</EmptyState></div> : null}
       </section>
 
+      <RivalTacticalAssistant model={model} missingInformation={missingInformation} />
+
       <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
         <p className="text-[9px] font-black uppercase tracking-[0.2em] text-caudal-electric">Lectura colectiva</p>
         <h3 className="mt-1 text-xl font-black text-white sm:text-2xl">Cómo atacan</h3>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {model.behaviors.map((behavior) => <BehaviorCard key={behavior.key} behavior={behavior} />)}
-        </div>
+        {visibleBehaviors.length ? (
+          <div className={`mt-5 grid gap-3 ${visibleBehaviors.length > 1 ? 'sm:grid-cols-2' : ''} ${visibleBehaviors.length > 2 ? 'xl:grid-cols-4' : ''}`}>
+            {visibleBehaviors.map((behavior) => <BehaviorCard key={behavior.key} behavior={behavior} />)}
+          </div>
+        ) : (
+          <p className="mt-4 rounded-xl bg-white/[0.02] px-4 py-3 text-sm font-semibold text-slate-400">
+            No existen evidencias suficientes para describir el comportamiento ofensivo del rival.
+          </p>
+        )}
       </section>
 
       <div className="grid items-start gap-5 lg:grid-cols-2">
@@ -248,42 +282,49 @@ export default function RivalCollectiveAssistant({ model, onEditCollectiveProfil
       </div>
 
       <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
-        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-caudal-electric">Relaciones colectivas</p>
-        <h3 className="mt-1 text-xl font-black text-white sm:text-2xl">Duelos tácticos</h3>
-        {model.duels.length ? (
-          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {model.duels.map((duel) => (
-              <article key={duel.id} className="rounded-[1.25rem] bg-white/[0.028] p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <span className={`rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-[0.1em] ${
-                    duel.type === 'Riesgo' ? 'border-rose-300/20 bg-rose-300/[0.07] text-rose-100' : 'border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-100'
-                  }`}>{duel.type}</span>
-                  <span className={`text-[8px] font-black uppercase tracking-[0.1em] ${confidenceTone[duel.confidence]}`}>Confianza {duel.confidence}</span>
+        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-caudal-electric">Siguiente paso</p>
+        <h3 className="mt-1 text-xl font-black text-white sm:text-2xl">Información que falta</h3>
+        {missingInformation.length ? (
+          <div className="mt-4 grid gap-2 md:grid-cols-2">
+            {missingInformation.map((item) => (
+              <article key={item.id} className="flex min-w-0 items-center justify-between gap-3 rounded-xl bg-white/[0.025] px-3.5 py-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold leading-5 text-slate-300">{item.text}</p>
+                  <p className="mt-0.5 text-[9px] font-semibold text-slate-600">Destino · {item.destinationLabel}</p>
                 </div>
-                <h4 className="mt-3 text-sm font-black leading-5 text-white">{duel.relation}</h4>
-                <p className="mt-2 text-xs font-semibold leading-5 text-slate-300">{duel.recommendation}</p>
-                <div className="mt-3"><SourceChips sources={duel.sources} /></div>
+                <button
+                  type="button"
+                  onClick={() => onCompleteMissingInformation?.(item.destination)}
+                  className="shrink-0 rounded-lg border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-[9px] font-black text-slate-300 transition hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70"
+                >
+                  Completar
+                </button>
               </article>
             ))}
           </div>
-        ) : <div className="mt-5"><EmptyState>{model.duelsEmptyMessage}</EmptyState></div>}
+        ) : (
+          <p className="mt-4 rounded-xl bg-emerald-300/[0.045] px-4 py-3 text-sm font-semibold text-emerald-100">
+            Las fuentes colectivas principales están registradas.
+          </p>
+        )}
       </section>
 
-      <section className="rounded-[1.8rem] bg-[#0a1628] p-5 sm:p-6">
+      <section className="rounded-[1.8rem] bg-[#0a1628] px-5 py-4 sm:px-6">
         <p className="text-[9px] font-black uppercase tracking-[0.2em] text-caudal-electric">Trazabilidad</p>
         <h3 className="mt-1 text-xl font-black text-white sm:text-2xl">Evidencias que respaldan el plan</h3>
         {model.evidenceEmptyMessage ? (
           <div className="mt-5"><EmptyState>{model.evidenceEmptyMessage}</EmptyState></div>
         ) : (
-          <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-3 flex flex-wrap gap-2">
             {model.evidenceCoverage.map((source) => (
-              <article key={source.key} className={`flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 ${source.available ? 'bg-white/[0.035]' : 'bg-white/[0.018]'}`}>
-                <div className="min-w-0">
-                  <p className={`text-xs font-black ${source.available ? 'text-white' : 'text-slate-500'}`}>{source.label}</p>
-                  <p className="mt-0.5 text-[10px] font-semibold text-slate-500">{source.detail}</p>
-                </div>
-                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${source.available ? 'bg-emerald-300' : 'border border-slate-600 bg-transparent'}`} aria-label={source.available ? 'Disponible' : 'No disponible'} />
-              </article>
+              <span
+                key={source.key}
+                title={`${source.label} · ${source.detail}`}
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[9px] font-black ${getCoverageTone(source)}`}
+              >
+                {source.key === 'evidences' ? 'Observaciones' : source.label}
+                {source.key === 'video' ? (source.available ? 'Disponible' : 'No disponible') : source.count}
+              </span>
             ))}
           </div>
         )}

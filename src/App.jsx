@@ -12145,6 +12145,33 @@ function App() {
       analyzedMatches: analyzedRivalMatches,
       analysisUpdatedAt: selectedRivalObservedScouting.updatedAt || '',
     });
+    const completeRivalMissingInformation = (destination) => {
+      if (destination === 'profile') {
+        setIsCollectiveProfileEditorOpen(true);
+        return;
+      }
+      if (destination === 'board:set_piece') {
+        setTacticalGamePhase('set_piece');
+        setFacingSystemsView('PIZARRA');
+        return;
+      }
+      if (destination === 'board:transition') {
+        setTacticalGamePhase('transition');
+        setFacingSystemsView('PIZARRA');
+        return;
+      }
+      if (destination === 'board:connections') {
+        setTacticalConnectionFilter('Todas');
+        setFacingSystemsView('PIZARRA');
+        return;
+      }
+      if (destination === 'video') {
+        setMatchView('post_partido');
+        window.setTimeout(() => document.getElementById('post-video-clips')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+        return;
+      }
+      if (destination === 'evidences') setFacingSystemsView('EVIDENCIAS');
+    };
     const attackPlan = uniq([
       ...splitLines(selectedMatch.planConBalon),
       ...splitLines(selectedMatch.prePlanTrigger),
@@ -12317,6 +12344,7 @@ function App() {
             <RivalCollectiveAssistant
               model={rivalCollectiveModel}
               onEditCollectiveProfile={() => setIsCollectiveProfileEditorOpen(true)}
+              onCompleteMissingInformation={completeRivalMissingInformation}
             />
           ) : null}
           <CollectiveProfileEditorModal

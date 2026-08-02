@@ -15,6 +15,7 @@
     "test:rival-sync": "node src/utils/rivalSync.test.js",
     "test:rival-tactics": "node src/utils/rivalTactics.test.js",
     "test:rival-assistant": "node src/utils/rivalCollectiveAssistant.test.js",
+    "test:rival-center": "node src/utils/rivalTacticalCenter.test.js",
     "test:defensive-blocks": "node src/utils/defensiveBlockPositions.test.js",
     "test:defensive-offensive-board": "node src/utils/defensiveOffensiveBoard.test.js",
     "test:offensive-phase": "node src/utils/offensivePhasePositions.test.js",
