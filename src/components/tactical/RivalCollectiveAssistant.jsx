@@ -166,16 +166,28 @@ function RecommendationSection({ title, eyebrow, recommendations, emptyMessage, 
   );
 }
 
-export default function RivalCollectiveAssistant({ model }) {
+export default function RivalCollectiveAssistant({ model, onEditCollectiveProfile }) {
   if (!model) return null;
   return (
     <div className="min-w-0 space-y-5 xl:col-span-2" data-testid="rival-collective-assistant">
       <section className="overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#10223a] via-[#0b182b] to-[#07111f] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.22)] sm:p-7">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-[9px] font-black uppercase tracking-[0.22em] text-caudal-electric">Resumen del rival</p>
             <h2 className="mt-2 truncate text-2xl font-black text-white sm:text-3xl">{model.rivalName}</h2>
-            <div className="mt-5 flex flex-wrap gap-x-7 gap-y-4">
+          </div>
+          {onEditCollectiveProfile ? (
+            <button
+              type="button"
+              onClick={onEditCollectiveProfile}
+              className="shrink-0 rounded-xl border border-white/[0.09] bg-white/[0.035] px-3 py-2 text-[9px] font-black text-slate-300 transition hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 sm:px-4 sm:text-[10px]"
+            >
+              Editar perfil colectivo
+            </button>
+          ) : null}
+        </div>
+        <div className="mt-5 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-wrap gap-x-7 gap-y-4">
               <div>
                 <p className="text-[8px] font-black uppercase tracking-[0.15em] text-slate-500">Sistema habitual</p>
                 <p className="mt-1 text-xl font-black text-white">{model.summary.usualSystem}</p>
@@ -188,7 +200,6 @@ export default function RivalCollectiveAssistant({ model }) {
                 <p className="text-[8px] font-black uppercase tracking-[0.15em] text-slate-500">Última actualización</p>
                 <p className="mt-1 text-sm font-black text-slate-200">{formatAnalysisTimestamp(model.summary.lastUpdatedAt)}</p>
               </div>
-            </div>
           </div>
           {model.summary.profileChips.length ? (
             <div className="flex max-w-2xl flex-wrap gap-2 lg:justify-end">

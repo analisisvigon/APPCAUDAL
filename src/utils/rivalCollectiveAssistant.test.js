@@ -93,6 +93,7 @@ assert.equal(empty.evidenceEmptyMessage, RIVAL_ASSISTANT_EMPTY_STATES.sources);
 assert.ok(empty.evidenceCoverage.every((source) => !source.available), 'no crea chips de fuentes ficticias');
 
 const componentSource = fs.readFileSync(new URL('../components/tactical/RivalCollectiveAssistant.jsx', import.meta.url), 'utf8');
+const editorSource = fs.readFileSync(new URL('../components/tactical/CollectiveProfileEditorModal.jsx', import.meta.url), 'utf8');
 const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 assert.match(componentSource, /lg:grid-cols-2/, 'las recomendaciones se adaptan a dos columnas sin scroll horizontal');
 assert.match(componentSource, /flex-wrap/, 'los chips permiten wrap responsive');
@@ -100,6 +101,20 @@ assert.match(componentSource, /aria-expanded=\{expanded\}/, 'los desplegables ex
 assert.match(componentSource, /aria-controls=\{detailsId\}/, 'la explicación está asociada a su control');
 assert.match(componentSource, /focus-visible:ring-2/, 'los controles mantienen foco visible');
 assert.ok(!/supabase|updateSelectedMatchFields|updateObservedCollectiveProfile|persistRival/i.test(componentSource), 'el componente de lectura no modifica datos guardados');
+assert.match(componentSource, /Editar perfil colectivo/, 'el resumen ofrece un acceso visible y discreto al editor');
+assert.match(editorSource, /role="dialog"/, 'el editor recuperado utiliza un diálogo semántico');
+assert.match(editorSource, /aria-modal="true"/, 'el editor comunica su modalidad a tecnologías de asistencia');
+assert.match(editorSource, /createPortal\(/, 'el editor no queda recortado por la vista Rival');
+assert.match(editorSource, /\['Salida de balón', 'buildUp'/, 'recupera el campo de salida existente');
+assert.match(editorSource, /\['Altura del bloque', 'blockHeight'/, 'recupera el campo de bloque existente');
+assert.match(editorSource, /\['Tipo de presión', 'pressureType'/, 'recupera el campo de presión existente');
+assert.match(editorSource, /\['Debilidades', 'weaknesses'/, 'recupera las debilidades existentes');
+assert.match(editorSource, /aria-pressed=\{active\}/, 'fortalezas y debilidades son operables con teclado y tacto');
+assert.match(editorSource, />\s*Cancelar\s*</, 'el editor permite cancelar el borrador');
+assert.match(editorSource, /onSave\(createCollectiveProfileDraft\(draft\)\)/, 'solo Guardar entrega el borrador a persistencia');
+assert.match(editorSource, /sm:max-w-3xl/, 'el modal se adapta a móvil, tablet y escritorio');
+assert.match(appSource, /updateSelectedRivalObservedScouting\(\{\s*collective:/, 'guardar reutiliza el estado y persistencia existentes');
+assert.match(appSource, /setIsCollectiveProfileEditorOpen\(false\)/, 'guardar o cancelar cierra el editor');
 assert.match(appSource, /\['PIZARRA', 'RIVAL', 'JUGADORES', 'PLAN DE PARTIDO', 'EVIDENCIAS'\]/, 'la navegación entre pestañas permanece intacta');
 assert.match(appSource, /facingSystemsView !== 'PIZARRA'/, 'la pestaña Pizarra permanece independiente');
 

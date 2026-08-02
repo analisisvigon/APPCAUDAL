@@ -8,6 +8,7 @@ import MatchVideoPlayer from './components/matches/MatchVideoPlayer';
 import MatchPrintTab from './components/print/MatchPrintTab';
 import TacticalEvidencePanel from './components/tactical/TacticalEvidencePanel';
 import RivalCollectiveAssistant from './components/tactical/RivalCollectiveAssistant';
+import CollectiveProfileEditorModal from './components/tactical/CollectiveProfileEditorModal';
 import PlayerDatabaseForm from './components/players/PlayerDatabaseForm';
 import GlobalPlayerDatabase from './components/players/GlobalPlayerDatabase';
 import AccordionSection from './components/shared/AccordionSection';
@@ -5267,6 +5268,7 @@ function App() {
   const [matchViewSection, setMatchViewSection] = useState('PRE');
   const [preSubTab, setPreSubTab] = useState('Plan cuerpo técnico');
   const [facingSystemsView, setFacingSystemsView] = useState('PIZARRA');
+  const [isCollectiveProfileEditorOpen, setIsCollectiveProfileEditorOpen] = useState(false);
   const [openTacticalQuestionCategory, setOpenTacticalQuestionCategory] = useState('Con balón');
   const [facingSystemsPlayerReturn, setFacingSystemsPlayerReturn] = useState(null);
   const [pendingFacingSystemsPlayer, setPendingFacingSystemsPlayer] = useState(null);
@@ -12311,7 +12313,31 @@ function App() {
 
         <div className={`grid gap-4 ${facingSystemsView === 'PIZARRA' && !isPreTalkMode ? 'xl:grid-cols-[minmax(320px,0.32fr)_minmax(0,0.68fr)]' : 'xl:grid-cols-2'}`}>
           {facingSystemsView === 'EVIDENCIAS' ? <TacticalEvidencePanel report={tacticalEvidenceReport} /> : null}
-          {facingSystemsView === 'RIVAL' ? <RivalCollectiveAssistant model={rivalCollectiveModel} /> : null}
+          {facingSystemsView === 'RIVAL' ? (
+            <RivalCollectiveAssistant
+              model={rivalCollectiveModel}
+              onEditCollectiveProfile={() => setIsCollectiveProfileEditorOpen(true)}
+            />
+          ) : null}
+          <CollectiveProfileEditorModal
+            open={isCollectiveProfileEditorOpen}
+            rivalName={rivalCollectiveModel.rivalName}
+            profile={collective}
+            options={collectiveProfileOptions}
+            onCancel={() => setIsCollectiveProfileEditorOpen(false)}
+            onSave={(nextProfile) => {
+              updateSelectedRivalObservedScouting({
+                collective: {
+                  ...emptyObservedCollectiveProfile,
+                  ...nextProfile,
+                  strengths: safeArray(nextProfile.strengths),
+                  weaknesses: safeArray(nextProfile.weaknesses),
+                },
+              });
+              setIsCollectiveProfileEditorOpen(false);
+              setFacingSystemsView('RIVAL');
+            }}
+          />
           <div className="grid gap-4 xl:contents">
             <section className={`order-4 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1 xl:row-start-1 ${facingSystemsView !== 'PIZARRA' ? 'hidden' : ''}`}>
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Análisis táctico</p>
