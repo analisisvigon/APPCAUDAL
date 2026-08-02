@@ -207,6 +207,33 @@ export const persistMatchPlanWorkspace = async ({ workspace, onSave, now = () =>
   }
 };
 
+export const resolveMatchPlanPendingNavigation = async ({ action, save, discard, execute } = {}) => {
+  if (action === 'cancel') return { ok: false, cancelled: true, navigated: false, error: null };
+
+  if (action === 'discard') {
+    discard?.();
+    await execute?.();
+    return { ok: true, cancelled: false, navigated: true, error: null };
+  }
+
+  if (action !== 'save') {
+    return { ok: false, cancelled: false, navigated: false, error: new Error('Acción de navegación no válida.') };
+  }
+
+  const saveResult = await save?.();
+  if (!saveResult?.ok) {
+    return {
+      ok: false,
+      cancelled: false,
+      navigated: false,
+      error: saveResult?.error || new Error('No se pudo guardar el Plan de partido.'),
+    };
+  }
+
+  await execute?.();
+  return { ok: true, cancelled: false, navigated: true, error: null, savedAt: saveResult.savedAt || '' };
+};
+
 export const moveMatchPlanCard = (workspace, fromPhase, cardId, toPhase, targetId = '') => {
   if (!workspace?.phases?.[fromPhase] || !workspace?.phases?.[toPhase]) return workspace;
   const sourceRows = [...workspace.phases[fromPhase]];

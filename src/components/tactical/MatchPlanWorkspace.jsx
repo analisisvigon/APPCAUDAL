@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   MATCH_PLAN_EXECUTIVE_FIELDS,
@@ -183,7 +183,7 @@ function ImportRecommendationsDrawer({ phase, candidates, onClose, onImport }) {
   );
 }
 
-export default function MatchPlanWorkspace({ matchKey, rivalName, storedWorkspace, seed, insights = {}, plays = [], onSave, onOpenPlay, onDirtyChange }) {
+export default function MatchPlanWorkspace({ matchKey, rivalName, storedWorkspace, seed, insights = {}, plays = [], onSave, onOpenPlay, onDirtyChange, onNavigationGuardReady }) {
   const initialWorkspace = useMemo(() => createMatchPlanWorkspace({ stored: storedWorkspace, seed: { ...seed, insights } }), [matchKey, storedWorkspace?.updatedAt]);
   const [workspace, setWorkspace] = useState(initialWorkspace);
   const [mode, setMode] = useState('workspace');
@@ -209,7 +209,6 @@ export default function MatchPlanWorkspace({ matchKey, rivalName, storedWorkspac
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   useEffect(() => { if (!lastSavedAt) return undefined; const timer = window.setInterval(() => setClock(Date.now()), 15000); return () => window.clearInterval(timer); }, [lastSavedAt]);
-  useEffect(() => { if (!dirty) return undefined; const warn = (event) => { event.preventDefault(); event.returnValue = ''; }; window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn); }, [dirty]);
 
   const presentation = mode === 'presentation';
   const live = mode === 'live';
@@ -246,7 +245,34 @@ export default function MatchPlanWorkspace({ matchKey, rivalName, storedWorkspac
     setProposals((current) => ({ ...current, [blockKey]: action && !/registrar y validar/i.test(action) ? { action, impact: clean(insight.conclusion), explanation: clean(insight.evidence?.join?.(' · ')), sources: insight.sources?.length ? ['Pizarra', 'Evidencias'] : ['Perfil'] } : { unavailable: true } }));
   };
   const acceptProposal = (blockKey) => { const proposal = proposals[blockKey]; if (!proposal || proposal.unavailable) return; if (blockKey === 'executive') applyWorkspace((current) => ({ ...current, executive: { ...current.executive, objective: proposal.action } })); else if (blockKey === 'checklist') applyWorkspace((current) => ({ ...current, checklist: [...current.checklist, { id: makeId('check'), text: proposal.action, checked: false }] })); else addCard(blockKey, proposal); setProposals((current) => ({ ...current, [blockKey]: null })); };
-  const saveWorkspace = async () => { setSaveStatus('Guardando'); const result = await persistMatchPlanWorkspace({ workspace, onSave }); if (!result.ok) { console.error('Error guardando el Plan de partido:', result.error); setDirty(true); setSaveStatus('Error al guardar'); return; } setWorkspace(result.workspace); setDirty(false); setSaveStatus('Guardado'); setLastSavedAt(result.savedAt); setClock(Date.now()); };
+  const saveWorkspace = useCallback(async () => {
+    setSaveStatus('Guardando');
+    const result = await persistMatchPlanWorkspace({ workspace, onSave });
+    if (!result.ok) {
+      console.error('Error guardando el Plan de partido:', result.error);
+      setDirty(true);
+      setSaveStatus('Error al guardar');
+      return result;
+    }
+    setWorkspace(result.workspace);
+    setDirty(false);
+    setSaveStatus('Guardado');
+    setLastSavedAt(result.savedAt);
+    setClock(Date.now());
+    return result;
+  }, [onSave, workspace]);
+  const discardPendingWorkspace = useCallback(() => {
+    setWorkspace(initialWorkspace);
+    setDirty(false);
+    setSaveStatus('');
+    setEditingCardId('');
+    setProposals({});
+    setImportPhase('');
+  }, [initialWorkspace]);
+  useEffect(() => {
+    onNavigationGuardReady?.({ save: saveWorkspace, discard: discardPendingWorkspace });
+    return () => onNavigationGuardReady?.(null);
+  }, [discardPendingWorkspace, onNavigationGuardReady, saveWorkspace]);
   const visibleCards = (phase) => workspace.phases[phase].filter((card) => { if (presentation) return card.status === 'confirmed' && card.plan === selectedPlan; if (live) return card.status !== 'discarded' && card.plan === activePlan; return card.plan === selectedPlan; });
   const importSelected = (candidates) => { applyWorkspace((current) => { const existing = current.phases[importPhase]; const imported = candidates.filter((candidate) => !existing.some((card) => card.plan === selectedPlan && card.action.toLocaleLowerCase('es') === candidate.action.toLocaleLowerCase('es'))).map((candidate) => ({ id: makeId(`plan-${importPhase}`), action: candidate.action, priority: 'Media', impact: candidate.impact, explanation: candidate.explanation, sources: candidate.sources, status: 'draft', plan: selectedPlan, playId: candidate.playId, executed: false })); return { ...current, phases: { ...current.phases, [importPhase]: [...existing, ...imported] } }; }); setImportPhase(''); };
 

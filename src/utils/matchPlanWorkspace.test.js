@@ -10,6 +10,7 @@ import {
   moveMatchPlanCardByOffset,
   moveMatchPlanChecklistItem,
   persistMatchPlanWorkspace,
+  resolveMatchPlanPendingNavigation,
   serializeMatchPlanLegacyFields,
 } from './matchPlanWorkspace.js';
 
@@ -145,6 +146,53 @@ assert.equal(failedSave.error, realSaveError, 'propaga el objeto de error real')
 assert.equal(failedSave.workspace, seeded, 'un fallo conserva exactamente el workspace local');
 assert.equal(failedSave.savedAt, '', 'un fallo no registra una hora de guardado');
 
+const pendingNavigationOrder = [];
+let completePendingSave;
+const pendingSave = new Promise((resolve) => { completePendingSave = resolve; });
+const saveAndLeavePromise = resolveMatchPlanPendingNavigation({
+  action: 'save',
+  save: async () => {
+    pendingNavigationOrder.push('guardar');
+    const result = await pendingSave;
+    pendingNavigationOrder.push('guardado');
+    return result;
+  },
+  execute: async () => { pendingNavigationOrder.push('navegar'); },
+});
+await Promise.resolve();
+assert.deepEqual(pendingNavigationOrder, ['guardar'], 'Guardar y salir espera el resultado real antes de navegar');
+completePendingSave({ ok: true, savedAt: '2026-08-02T16:00:00.000Z' });
+const saveAndLeaveResult = await saveAndLeavePromise;
+assert.equal(saveAndLeaveResult.ok, true);
+assert.deepEqual(pendingNavigationOrder, ['guardar', 'guardado', 'navegar']);
+
+let failedNavigationExecuted = false;
+const failedNavigation = await resolveMatchPlanPendingNavigation({
+  action: 'save',
+  save: async () => ({ ok: false, error: realSaveError }),
+  execute: () => { failedNavigationExecuted = true; },
+});
+assert.equal(failedNavigation.ok, false);
+assert.equal(failedNavigation.error, realSaveError);
+assert.equal(failedNavigationExecuted, false, 'un fallo de guardado bloquea la navegación pendiente');
+
+const discardOrder = [];
+const discardedNavigation = await resolveMatchPlanPendingNavigation({
+  action: 'discard',
+  discard: () => discardOrder.push('descartar'),
+  execute: () => discardOrder.push('navegar'),
+});
+assert.equal(discardedNavigation.ok, true);
+assert.deepEqual(discardOrder, ['descartar', 'navegar'], 'Salir sin guardar descarta solo el estado local antes de navegar');
+
+let cancelledNavigationExecuted = false;
+const cancelledNavigation = await resolveMatchPlanPendingNavigation({
+  action: 'cancel',
+  execute: () => { cancelledNavigationExecuted = true; },
+});
+assert.equal(cancelledNavigation.cancelled, true);
+assert.equal(cancelledNavigationExecuted, false, 'Cancelar conserva el plan y anula la navegación');
+
 const checklistMoved = moveMatchPlanChecklistItem(seeded, seeded.checklist[1].id, seeded.checklist[0].id);
 assert.equal(checklistMoved.checklist[0].id, seeded.checklist[1].id, 'el checklist mantiene drag and drop mediante una operación estable');
 
@@ -204,9 +252,16 @@ assert.match(componentSource, /cardExecution/, 'En directo guarda la ejecución 
 assert.doesNotMatch(componentSource, /onLiveChange=\{\(patch\) => updateCard/, 'En directo no sobrescribe la tarjeta diseñada');
 assert.match(componentSource, /moveMatchPlanCardByOffset/, 'existe una alternativa accesible para reordenar');
 assert.match(componentSource, /Plan en edición/, 'Plan A y Plan B se seleccionan de forma explícita');
-assert.match(componentSource, /beforeunload/, 'los cambios pendientes quedan protegidos al recargar o cerrar');
+assert.match(appSource, /if \(!matchPlanDirty\) return undefined;[\s\S]*beforeunload/, 'la protección central cubre recarga y cierre solo cuando hay cambios pendientes');
 assert.match(componentSource, /if \(!result\.ok\)[\s\S]*setDirty\(true\)[\s\S]*setSaveStatus\('Error al guardar'\)/, 'un fallo mantiene dirty y muestra Error al guardar');
 assert.match(componentSource, /saveStatus === 'Error al guardar' \? 'Reintentar'/, 'un fallo ofrece reintentar');
+assert.match(componentSource, /onNavigationGuardReady\?\.\(\{ save: saveWorkspace, discard: discardPendingWorkspace \}\)/, 'el editor expone el mismo guardado real y el descarte local al guard central');
+assert.match(appSource, /Cambios sin guardar[\s\S]*Tienes cambios sin guardar en el Plan de partido\.[\s\S]*Guardar y salir[\s\S]*Salir sin guardar[\s\S]*Cancelar/, 'el diálogo central ofrece las tres decisiones requeridas');
+assert.match(appSource, /const openMatchPage = \(match, section\) => requestMatchPlanNavigation/, 'cambiar de partido o sección pasa por el guard central');
+assert.match(appSource, /const closeMatchPage = \(\) => requestMatchPlanNavigation/, 'cerrar la ficha pasa por el guard central');
+assert.match(appSource, /const requestPreSubTab = \(nextTab\)[\s\S]*requestMatchPlanNavigation/, 'cambiar de subpestaña pasa por el guard central');
+assert.match(appSource, /const goToTab = \(tab\)[\s\S]*requestMatchPlanNavigation/, 'cambiar de módulo pasa por el guard central');
+assert.match(appSource, /type: 'change-rival-player'[\s\S]*requestMatchPlanNavigation|requestMatchPlanNavigation\(\{[\s\S]*type: 'change-rival-player'/, 'abrir el contexto de otro rival pasa por el guard central');
 assert.match(componentSource, /onOpenPlay\(phase, linkedPlay\.id\)/, 'cada consigna puede abrir su jugada vinculada');
 assert.doesNotMatch(componentSource, /supabase|localStorage|fetch\(/i, 'el workspace no crea persistencia paralela');
 assert.match(appSource, /return \{ ok: false, error: updateError \}/, 'Supabase devuelve el fallo al consumidor');

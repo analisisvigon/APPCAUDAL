@@ -44,7 +44,7 @@ import {
   hasPhysicalPerformanceObservation,
 } from './utils/performanceObservations';
 import { cleanImportedFieldValue, extractTransfermarktPlayerId, isEmptyImportedField, normalizeTransfermarktPosition } from './utils/rivalPlayerImport';
-import { serializeMatchPlanLegacyFields } from './utils/matchPlanWorkspace';
+import { resolveMatchPlanPendingNavigation, serializeMatchPlanLegacyFields } from './utils/matchPlanWorkspace';
 import { buildRivalCollectiveAssistant } from './utils/rivalCollectiveAssistant';
 import {
   buildRivalPlayerCollectiveSignals,
@@ -5276,15 +5276,87 @@ function App() {
   const [preSubTab, setPreSubTab] = useState('Plan cuerpo técnico');
   const [facingSystemsView, setFacingSystemsView] = useState('PIZARRA');
   const [matchPlanDirty, setMatchPlanDirty] = useState(false);
-  const confirmLeaveMatchPlan = () => (
-    !matchPlanDirty || window.confirm('Hay cambios sin guardar en el Plan de partido. Si sales ahora, seguirán pendientes y podrían perderse al recargar. ¿Quieres salir?')
-  );
-  const requestFacingSystemsView = (nextView) => {
-    if (nextView === facingSystemsView) return true;
-    if (facingSystemsView === 'PLAN DE PARTIDO' && !confirmLeaveMatchPlan()) return false;
-    setFacingSystemsView(nextView);
-    return true;
+  const matchPlanNavigationGuardRef = useRef(null);
+  const [pendingMatchPlanNavigation, setPendingMatchPlanNavigation] = useState(null);
+  const [matchPlanNavigationStatus, setMatchPlanNavigationStatus] = useState('');
+  const [matchPlanNavigationError, setMatchPlanNavigationError] = useState('');
+  const registerMatchPlanNavigationGuard = React.useCallback((guard) => {
+    matchPlanNavigationGuardRef.current = guard;
+  }, []);
+  const requestMatchPlanNavigation = React.useCallback((navigation) => {
+    if (!navigation?.execute) return false;
+    if (!matchPlanDirty) {
+      navigation.execute();
+      return true;
+    }
+    setMatchPlanNavigationStatus('');
+    setMatchPlanNavigationError('');
+    setPendingMatchPlanNavigation(navigation);
+    return false;
+  }, [matchPlanDirty]);
+  const requestFacingSystemsView = (nextView, afterNavigate) => {
+    if (nextView === facingSystemsView) {
+      afterNavigate?.();
+      return true;
+    }
+    return requestMatchPlanNavigation({
+      type: 'change-facing-systems-view',
+      execute: () => {
+        setFacingSystemsView(nextView);
+        afterNavigate?.();
+      },
+    });
   };
+  const requestPreSubTab = (nextTab) => {
+    if (nextTab === preSubTab) return true;
+    return requestMatchPlanNavigation({
+      type: 'change-pre-sub-tab',
+      execute: () => setPreSubTab(nextTab),
+    });
+  };
+  const resolvePendingMatchPlanNavigation = async (action) => {
+    const pendingNavigation = pendingMatchPlanNavigation;
+    if (!pendingNavigation || ['Guardando', 'Saliendo'].includes(matchPlanNavigationStatus)) return;
+    if (action === 'cancel') {
+      await resolveMatchPlanPendingNavigation({ action });
+      setPendingMatchPlanNavigation(null);
+      setMatchPlanNavigationStatus('');
+      setMatchPlanNavigationError('');
+      return;
+    }
+
+    setMatchPlanNavigationStatus(action === 'save' ? 'Guardando' : 'Saliendo');
+    setMatchPlanNavigationError('');
+    const guard = matchPlanNavigationGuardRef.current;
+    const result = await resolveMatchPlanPendingNavigation({
+      action,
+      save: () => guard?.save?.() || Promise.resolve({ ok: false, error: new Error('El editor del Plan de partido no está disponible.') }),
+      discard: () => {
+        guard?.discard?.();
+        setMatchPlanDirty(false);
+      },
+      execute: pendingNavigation.execute,
+    });
+    if (!result.ok) {
+      setMatchPlanDirty(true);
+      setMatchPlanNavigationStatus('Error al guardar');
+      setMatchPlanNavigationError(result.error?.message || 'No se pudo guardar el Plan de partido.');
+      return;
+    }
+    setMatchPlanDirty(false);
+    setPendingMatchPlanNavigation(null);
+    setMatchPlanNavigationStatus('');
+    setMatchPlanNavigationError('');
+  };
+  useEffect(() => {
+    if (!matchPlanDirty) return undefined;
+    const warnBeforeLeaving = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnBeforeLeaving);
+    return () => window.removeEventListener('beforeunload', warnBeforeLeaving);
+  }, [matchPlanDirty]);
   const [isCollectiveProfileEditorOpen, setIsCollectiveProfileEditorOpen] = useState(false);
   const [openTacticalQuestionCategory, setOpenTacticalQuestionCategory] = useState('Con balón');
   const [facingSystemsPlayerReturn, setFacingSystemsPlayerReturn] = useState(null);
@@ -12599,14 +12671,16 @@ function App() {
                   }, { optimistic: false });
                 }}
                 onDirtyChange={setMatchPlanDirty}
+                onNavigationGuardReady={registerMatchPlanNavigationGuard}
                 onOpenPlay={(phase, playId) => {
-                  if (!requestFacingSystemsView('PIZARRA')) return;
-                  const boardPhase = phase === 'with_ball' ? 'offensive' : phase === 'without_ball' ? 'defensive' : phase;
-                  setTacticalGamePhase(boardPhase);
-                  if (boardPhase === 'offensive') selectOffensivePlay(playId);
-                  if (boardPhase === 'defensive') selectDefensivePlay(playId);
-                  if (boardPhase === 'transition') selectTransitionPlay(playId);
-                  if (boardPhase === 'set_piece') selectSetPiecePlay(playId);
+                  requestFacingSystemsView('PIZARRA', () => {
+                    const boardPhase = phase === 'with_ball' ? 'offensive' : phase === 'without_ball' ? 'defensive' : phase;
+                    setTacticalGamePhase(boardPhase);
+                    if (boardPhase === 'offensive') selectOffensivePlay(playId);
+                    if (boardPhase === 'defensive') selectDefensivePlay(playId);
+                    if (boardPhase === 'transition') selectTransitionPlay(playId);
+                    if (boardPhase === 'set_piece') selectSetPiecePlay(playId);
+                  });
                 }}
               />
             ) : null}
@@ -19912,44 +19986,50 @@ function App() {
     loadPlayerProfileData(selectedPlayerProfile);
   }, [selectedPlayerProfileId]);
 
-  const openMatchPage = async (match, section) => {
-    setSelectedMatchId(match.id);
-    setMatchView(section === 'PRE' ? 'pre_partido' : section === 'ESTADÍSTICAS' ? 'estadisticas_partido' : section === 'IMPRESIÓN' ? 'impresion_partido' : 'post_partido');
-    setMatchViewSection(section);
-    if (section === 'PRE') {
-      setPreSubTab('Plan cuerpo técnico');
-      await loadMatchPreData(match.id);
-    }
-    if (section === 'ESTADÍSTICAS') {
-      try {
-        await loadMatchStatsData(match.id);
-      } catch (loadError) {
-        console.error('Error cargando estadísticas del partido desde Supabase:', loadError);
+  const openMatchPage = (match, section) => requestMatchPlanNavigation({
+    type: selectedMatchId && String(selectedMatchId) !== String(match.id) ? 'change-match' : 'change-match-section',
+    execute: async () => {
+      setSelectedMatchId(match.id);
+      setMatchView(section === 'PRE' ? 'pre_partido' : section === 'ESTADÍSTICAS' ? 'estadisticas_partido' : section === 'IMPRESIÓN' ? 'impresion_partido' : 'post_partido');
+      setMatchViewSection(section);
+      if (section === 'PRE') {
+        setPreSubTab('Plan cuerpo técnico');
+        await loadMatchPreData(match.id);
       }
-    }
-    if (section === 'POST') {
-      await loadMatchPostData(match.id);
-    }
-    if (section === 'IMPRESIÓN') {
-      await loadMatchPreData(match.id);
-      try {
-        await loadMatchStatsData(match.id);
-      } catch (loadError) {
-        console.error('Error cargando datos de impresión del partido desde Supabase:', loadError);
+      if (section === 'ESTADÍSTICAS') {
+        try {
+          await loadMatchStatsData(match.id);
+        } catch (loadError) {
+          console.error('Error cargando estadísticas del partido desde Supabase:', loadError);
+        }
       }
-    }
-  };
+      if (section === 'POST') {
+        await loadMatchPostData(match.id);
+      }
+      if (section === 'IMPRESIÓN') {
+        await loadMatchPreData(match.id);
+        try {
+          await loadMatchStatsData(match.id);
+        } catch (loadError) {
+          console.error('Error cargando datos de impresión del partido desde Supabase:', loadError);
+        }
+      }
+    },
+  });
 
-  const closeMatchPage = async () => {
-    if (selectedMatchId && matchView === 'estadisticas_partido') {
-      await statsOperationRef.current;
-      const refreshed = await refreshStatsFromSupabase(selectedMatchId, 'salida de Estadísticas');
-      if (!refreshed) return;
-    }
-    setMatchView('lista_partidos');
-    setSelectedMatchId(null);
-    setMatchViewSection('PRE');
-  };
+  const closeMatchPage = () => requestMatchPlanNavigation({
+    type: 'close-match',
+    execute: async () => {
+      if (selectedMatchId && matchView === 'estadisticas_partido') {
+        await statsOperationRef.current;
+        const refreshed = await refreshStatsFromSupabase(selectedMatchId, 'salida de Estadísticas');
+        if (!refreshed) return;
+      }
+      setMatchView('lista_partidos');
+      setSelectedMatchId(null);
+      setMatchViewSection('PRE');
+    },
+  });
 
   useEffect(() => {
     if (!isMatchPanelOpen) return;
@@ -23122,26 +23202,31 @@ function App() {
       setFacingSystemsPlayerNavigationError('No se ha podido abrir la ficha real de este jugador.');
       return;
     }
-    setFacingSystemsPlayerNavigationError('');
-    setFacingSystemsPlayerReturn({
-      matchId: selectedMatch.id,
-      teamId,
-      playerId,
-      matchView,
-      matchViewSection,
-      preSubTab,
-      tacticalGamePhase,
-      defensiveSituation,
-      offensiveSituation,
-      transitionType,
-      transitionFieldZone,
-      transitionBehaviour,
-      setPieceType,
-      setPieceAction,
+    requestMatchPlanNavigation({
+      type: 'change-rival-player',
+      execute: () => {
+        setFacingSystemsPlayerNavigationError('');
+        setFacingSystemsPlayerReturn({
+          matchId: selectedMatch.id,
+          teamId,
+          playerId,
+          matchView,
+          matchViewSection,
+          preSubTab,
+          tacticalGamePhase,
+          defensiveSituation,
+          offensiveSituation,
+          transitionType,
+          transitionFieldZone,
+          transitionBehaviour,
+          setPieceType,
+          setPieceAction,
+        });
+        setSelectedTeamId(teamId);
+        setActiveTab('Equipos');
+        openRivalPlayerModal(targetPlayer, { teamId });
+      },
     });
-    setSelectedTeamId(teamId);
-    setActiveTab('Equipos');
-    openRivalPlayerModal(targetPlayer, { teamId });
   };
 
   const requestFacingSystemsPlayerProfile = (player) => {
@@ -27018,9 +27103,17 @@ function App() {
   ];
   const mobileMoreTabs = ['Perfiles', 'Equipos', 'Rendimiento', 'Biblioteca'];
   const goToTab = (tab) => {
-    if (tab !== activeTab && facingSystemsView === 'PLAN DE PARTIDO' && !confirmLeaveMatchPlan()) return;
-    setActiveTab(tab);
-    setIsMobileMoreOpen(false);
+    if (tab === activeTab) {
+      setIsMobileMoreOpen(false);
+      return;
+    }
+    requestMatchPlanNavigation({
+      type: 'change-module',
+      execute: () => {
+        setActiveTab(tab);
+        setIsMobileMoreOpen(false);
+      },
+    });
   };
   const splashScreen = showSplash ? (
     <div
@@ -30994,7 +31087,7 @@ function App() {
                           {['Plan cuerpo técnico', 'Sistemas enfrentados'].map((tab) => (
                             <button
                               key={tab}
-                              onClick={() => setPreSubTab(tab)}
+                              onClick={() => requestPreSubTab(tab)}
                               className={`rounded-2xl px-4 py-3 text-sm font-semibold uppercase tracking-[0.12em] ${(preSubTab === tab || (preSubTab === 'Informe rival' && tab === 'Plan cuerpo técnico')) ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}>
                               {tab}
                             </button>
@@ -32546,6 +32639,27 @@ function App() {
           </main>
         ) : null}
       </div>
+
+      {pendingMatchPlanNavigation ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="match-plan-unsaved-title" aria-describedby="match-plan-unsaved-description">
+          <button type="button" className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={() => resolvePendingMatchPlanNavigation('cancel')} disabled={['Guardando', 'Saliendo'].includes(matchPlanNavigationStatus)} aria-label="Cancelar salida" />
+          <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-[#091428] p-6 shadow-[0_28px_90px_rgba(0,0,0,0.58)]">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Plan de partido</p>
+            <h2 id="match-plan-unsaved-title" className="mt-2 text-2xl font-black text-white">Cambios sin guardar</h2>
+            <p id="match-plan-unsaved-description" className="mt-3 text-sm font-semibold leading-6 text-slate-400">Tienes cambios sin guardar en el Plan de partido.</p>
+            {matchPlanNavigationError ? (
+              <p className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-300/[0.07] px-4 py-3 text-sm font-semibold text-rose-100" role="alert">{matchPlanNavigationError}</p>
+            ) : null}
+            <div className="mt-6 grid gap-2 sm:grid-cols-2">
+              <button type="button" onClick={() => resolvePendingMatchPlanNavigation('save')} disabled={['Guardando', 'Saliendo'].includes(matchPlanNavigationStatus)} className="min-h-11 rounded-xl bg-caudal-electric px-4 py-3 text-xs font-black text-slate-950 disabled:cursor-wait disabled:opacity-60">
+                {matchPlanNavigationStatus === 'Guardando' ? 'Guardando…' : matchPlanNavigationStatus === 'Error al guardar' ? 'Reintentar guardado' : 'Guardar y salir'}
+              </button>
+              <button type="button" onClick={() => resolvePendingMatchPlanNavigation('discard')} disabled={['Guardando', 'Saliendo'].includes(matchPlanNavigationStatus)} className="min-h-11 rounded-xl border border-rose-300/20 px-4 py-3 text-xs font-black text-rose-100 disabled:opacity-50">Salir sin guardar</button>
+              <button type="button" onClick={() => resolvePendingMatchPlanNavigation('cancel')} disabled={['Guardando', 'Saliendo'].includes(matchPlanNavigationStatus)} className="min-h-11 rounded-xl border border-white/10 px-4 py-3 text-xs font-black text-slate-300 disabled:opacity-50 sm:col-span-2">Cancelar</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {authUser ? (
         <>
