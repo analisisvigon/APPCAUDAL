@@ -7,6 +7,7 @@ import LibrarySection from './components/library/LibrarySection';
 import MatchVideoPlayer from './components/matches/MatchVideoPlayer';
 import MatchPrintTab from './components/print/MatchPrintTab';
 import TacticalEvidencePanel from './components/tactical/TacticalEvidencePanel';
+import RivalCollectiveAssistant from './components/tactical/RivalCollectiveAssistant';
 import PlayerDatabaseForm from './components/players/PlayerDatabaseForm';
 import GlobalPlayerDatabase from './components/players/GlobalPlayerDatabase';
 import AccordionSection from './components/shared/AccordionSection';
@@ -40,6 +41,7 @@ import {
   hasPhysicalPerformanceObservation,
 } from './utils/performanceObservations';
 import { cleanImportedFieldValue, extractTransfermarktPlayerId, isEmptyImportedField, normalizeTransfermarktPosition } from './utils/rivalPlayerImport';
+import { buildRivalCollectiveAssistant } from './utils/rivalCollectiveAssistant';
 import {
   createGoalParticipantDbFields,
   getGoalAssistant,
@@ -12024,11 +12026,6 @@ function App() {
     const observedPlayerRows = liveRivalPlayers
       .map((player) => ({ player, profile: getObservedPlayerProfile(player) }))
       .filter(({ profile }) => profile.speed || profile.technique || profile.aerial || profile.oneVsOne || profile.defensiveWork || profile.foot || profile.traits.length || String(profile.notes || '').trim());
-    const hasCollectiveData = Object.values(collective).some((value) => Array.isArray(value) ? value.length : Boolean(value));
-    const rivalTacticalPattern = selectTacticalEvidenceForQuestion(
-      tacticalEvidenceReport,
-      '¿Cómo progresa el rival con balón y qué conexiones repite?'
-    );
     const splitLines = (value) => String(value || '').split(/\r?\n|•/).map((item) => String(item || '').trim()).filter(Boolean);
     const uniq = (items) => [...new Set(safeArray(items).map((item) => String(item || '').trim()).filter(Boolean))];
     const rivalConnectionOptions = getRivalFormationSlots().map((slot) => slot.player?.name || slot.role || `R${Number(slot.slot || 0) + 1}`).filter(Boolean);
@@ -12087,11 +12084,65 @@ function App() {
       group,
       players: filteredMicroPlayers.filter((player) => getMicroPositionGroupLabel(player) === group),
     })).filter((group) => group.players.length);
-    const sourceLabel = [
-      hasCollectiveData ? 'Perfil colectivo' : null,
-      observedPlayerRows.length ? 'Perfil jugador' : null,
-      evidences.length ? `${evidences.length} evidencias` : null,
-    ].filter(Boolean).join(' · ') || 'Sin fuente observada';
+    const collectiveAssistantPlays = [
+      ...safeArray(defensiveWorkspace.plays).map((play) => ({ ...play, phase: 'defensive' })),
+      ...safeArray(offensiveWorkspace.plays).map((play) => ({ ...play, phase: 'offensive' })),
+      ...safeArray(transitionWorkspace.plays).map((play) => ({ ...play, phase: 'transition' })),
+      ...safeArray(setPieceWorkspace.plays).map((play) => ({ ...play, phase: 'set_piece' })),
+    ];
+    const analyzedRivalMatches = matches
+      .filter((match) => {
+        const sameTeamId = selectedMatchRivalTeam?.id && match.equipoRivalId === selectedMatchRivalTeam.id;
+        const sameName = comparableTeamName(match.opponent || '') === comparableTeamName(selectedMatch.opponent || '');
+        if (!sameTeamId && !sameName) return false;
+        return Boolean(
+          String(match.preRivalReportText || '').trim()
+          || match.preRivalReportExtraction
+          || safeArray(match.quickEvents).length
+          || safeArray(match.statsGoalEvents).length
+          || String(match.postVideoLink || '').trim()
+        );
+      })
+      .map((match) => ({
+        id: match.id,
+        label: match.opponent,
+        date: match.date,
+        updatedAt: match.updatedAt || match.updated_at || '',
+        hasAnalysis: true,
+      }));
+    const relatedRivalVideos = matches
+      .filter((match) => {
+        const sameTeamId = selectedMatchRivalTeam?.id && match.equipoRivalId === selectedMatchRivalTeam.id;
+        const sameName = comparableTeamName(match.opponent || '') === comparableTeamName(selectedMatch.opponent || '');
+        return (sameTeamId || sameName) && String(match.postVideoLink || '').trim();
+      })
+      .map((match) => ({
+        id: match.id,
+        url: match.postVideoLink,
+        label: match.opponent,
+        updatedAt: match.updatedAt || match.updated_at || '',
+      }));
+    const rivalCollectiveModel = buildRivalCollectiveAssistant({
+      rivalName: selectedMatchRivalTeam?.name || selectedMatch.opponent || 'Rival',
+      ownSystem: caudalSystem,
+      rivalSystem,
+      collectiveProfile: collective,
+      evidences,
+      connections: selectedRivalObservedScouting.tacticalConnections,
+      plays: collectiveAssistantPlays,
+      reports: String(selectedMatch.preRivalReportText || '').trim()
+        ? [{
+            id: selectedMatch.id,
+            text: selectedMatch.preRivalReportText,
+            label: 'Informe del rival',
+            updatedAt: selectedMatch.updatedAt || selectedMatch.updated_at || '',
+          }]
+        : [],
+      videos: relatedRivalVideos,
+      tacticalEvidenceReport,
+      analyzedMatches: analyzedRivalMatches,
+      analysisUpdatedAt: selectedRivalObservedScouting.updatedAt || '',
+    });
     const attackPlan = uniq([
       ...splitLines(selectedMatch.planConBalon),
       ...splitLines(selectedMatch.prePlanTrigger),
@@ -12260,76 +12311,8 @@ function App() {
 
         <div className={`grid gap-4 ${facingSystemsView === 'PIZARRA' && !isPreTalkMode ? 'xl:grid-cols-[minmax(320px,0.32fr)_minmax(0,0.68fr)]' : 'xl:grid-cols-2'}`}>
           {facingSystemsView === 'EVIDENCIAS' ? <TacticalEvidencePanel report={tacticalEvidenceReport} /> : null}
+          {facingSystemsView === 'RIVAL' ? <RivalCollectiveAssistant model={rivalCollectiveModel} /> : null}
           <div className="grid gap-4 xl:contents">
-            <section className={`order-1 border border-caudal-electric/15 bg-[#091428]/90 p-4 ${facingSystemsView !== 'RIVAL' ? 'hidden' : ''}`}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Resumen ejecutivo</p>
-                  <h4 className="mt-1 text-xl font-black text-white">{selectedMatchRivalTeam?.name || selectedMatch.opponent || 'Rival'}</h4>
-                </div>
-              </div>
-              <div className="mt-3 grid gap-2 text-xs font-bold text-slate-200 sm:grid-cols-2 xl:grid-cols-3">
-                {[
-                  ['Sistema', rivalSystem],
-                  ['Salida', collective.buildUp || 'Sin información suficiente'],
-                  ['Fortaleza', collective.strengths[0] || 'Sin información suficiente'],
-                  ['Debilidad', collective.weaknesses[0] || 'Sin información suficiente'],
-                  ['Jugador a vigilar', keyPlayers[0] ? displayPlayerName(keyPlayers[0]) : 'Sin información suficiente'],
-                  ['Ausencias', unavailablePlayers[0] ? displayPlayerName(unavailablePlayers[0]) : 'Sin información suficiente'],
-                ].map(([label, value]) => (
-                  <div key={label} className="bg-white/[0.045] px-3 py-2">
-                    <span className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</span>
-                    <p className="mt-0.5 truncate text-white">{value}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
-            <section className={`order-3 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2 ${facingSystemsView !== 'RIVAL' ? 'hidden' : ''}`}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Perfil colectivo</p>
-                  <p className="mt-1 text-xs font-bold text-slate-500">{sourceLabel}</p>
-                </div>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {[
-                  ['Salida de balón', 'buildUp', collectiveProfileOptions.buildUp],
-                  ['Altura del bloque', 'blockHeight', collectiveProfileOptions.blockHeight],
-                  ['Tipo de presión', 'pressureType', collectiveProfileOptions.pressureType],
-                  ['Ritmo ofensivo', 'attackingRhythm', collectiveProfileOptions.attackingRhythm],
-                  ['Ataque preferente', 'preferredAttack', collectiveProfileOptions.preferredAttack],
-                ].map(([label, field, options]) => (
-                  <label key={field} className="grid gap-1.5 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
-                    <span>{label}</span>
-                    <select value={collective[field] || ''} onChange={(event) => updateObservedCollectiveProfile(field, event.target.value)} className="border border-white/10 bg-black/20 px-3 py-2 text-sm font-bold normal-case tracking-normal text-white">
-                      <option value="">Sin información suficiente</option>
-                      {options.map((option) => <option key={option} value={option}>{option}</option>)}
-                    </select>
-                  </label>
-                ))}
-              </div>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                {[
-                  ['Fortalezas', 'strengths', collectiveProfileOptions.strengths, 'green'],
-                  ['Debilidades', 'weaknesses', collectiveProfileOptions.weaknesses, 'red'],
-                ].map(([label, field, options, tone]) => (
-                  <div key={field}>
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {options.map((option) => {
-                        const active = safeArray(collective[field]).includes(option);
-                        return (
-                          <button key={option} type="button" onClick={() => toggleObservedCollectiveListValue(field, option)} className={`rounded-lg border px-2 py-1.5 text-[10px] font-black uppercase ${active ? semitoneClass[tone] : 'border-white/10 bg-white/[0.035] text-slate-500'}`}>
-                            {option}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
             <section className={`order-4 border border-white/10 bg-[#091428]/82 p-4 xl:col-start-1 xl:row-start-1 ${facingSystemsView !== 'PIZARRA' ? 'hidden' : ''}`}>
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Análisis táctico</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -12548,66 +12531,6 @@ function App() {
                   className="min-h-[120px] w-full resize-y border border-white/10 bg-black/20 px-3 py-3 text-sm font-semibold normal-case leading-6 tracking-normal text-white outline-none placeholder:text-slate-500"
                 />
               </label>
-            </section>
-
-            <section className={`order-2 border border-white/10 bg-[#091428]/82 p-4 ${facingSystemsView !== 'RIVAL' ? 'hidden' : ''}`}>
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Comparador</p>
-                  <h4 className="mt-1 text-2xl font-black text-white">{caudalSystem} <span className="text-slate-500">vs</span> {rivalSystem}</h4>
-                </div>
-                <select
-                  value={caudalSystem}
-                  onChange={(event) => updateCaudalPreSystem(event.target.value)}
-                  className="max-w-[150px] border border-white/10 bg-slate-950/70 px-3 py-2 text-sm font-black text-white outline-none"
-                >
-                  {gameSystems.filter((system) => system !== 'Otro').map((system) => <option key={system} value={system}>{system}</option>)}
-                </select>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-2 text-xs font-bold text-slate-200">
-                <span className="bg-white/[0.045] px-3 py-2">Salida: {collective.buildUp || 'Sin información suficiente'}</span>
-                <span className="bg-white/[0.045] px-3 py-2">Bloque: {collective.blockHeight || 'Sin información suficiente'}</span>
-                <span className="bg-white/[0.045] px-3 py-2">Presión: {collective.pressureType || 'Sin información suficiente'}</span>
-              </div>
-            </section>
-
-            <section className={`order-4 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2 ${facingSystemsView !== 'RIVAL' ? 'hidden' : ''}`}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Patrones de jugadas guardadas</p>
-                  <p className="mt-2 max-w-4xl text-sm font-semibold leading-6 text-slate-100">{rivalTacticalPattern.conclusion}</p>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  <span className="border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[9px] font-black uppercase text-caudal-electric">
-                    Confianza {rivalTacticalPattern.confidence}
-                  </span>
-                  <span className="border border-white/10 bg-white/[0.04] px-2 py-1 text-[9px] font-black uppercase text-slate-300">
-                    {rivalTacticalPattern.contexts.length ? 'Detectado en la pizarra' : 'Sin jugadas relevantes'}
-                  </span>
-                  <span className="border border-amber-300/20 bg-amber-300/10 px-2 py-1 text-[9px] font-black uppercase text-amber-100">
-                    {rivalTacticalPattern.sources.some((source) => source.type === 'tactical_play_description') ? 'Confirmado por el staff' : 'Pendiente de validar'}
-                  </span>
-                  <span className="border border-white/10 bg-white/[0.04] px-2 py-1 text-[9px] font-black uppercase text-slate-300">
-                    {rivalTacticalPattern.sources.some((source) => !['board_evidence', 'tactical_play'].includes(source.type)) ? 'Fuentes cruzadas' : 'Solo evidencia visual'}
-                  </span>
-                </div>
-              </div>
-              <div className="mt-3 grid gap-2 md:grid-cols-2">
-                {(rivalTacticalPattern.evidence.length
-                  ? rivalTacticalPattern.evidence.slice(0, 6)
-                  : ['Sin información suficiente']).map((item) => (
-                    <div key={item} className="border border-white/8 bg-black/15 px-3 py-2 text-xs font-semibold text-slate-300">{item}</div>
-                  ))}
-              </div>
-              {rivalTacticalPattern.sources.length ? (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {rivalTacticalPattern.sources.map((source) => (
-                    <span key={`${source.type}-${source.id}`} className="border border-white/10 bg-white/[0.035] px-2 py-1 text-[9px] font-bold text-slate-400">
-                      {source.label}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
             </section>
 
             <section className={`order-5 border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2 ${facingSystemsView !== 'JUGADORES' ? 'hidden' : ''}`}>
