@@ -8,8 +8,9 @@ const matchPrint = fs.readFileSync(new URL('../components/print/MatchPrintTab.js
 const css = fs.readFileSync(new URL('../styles/print.css', import.meta.url), 'utf8');
 const proCss = css.slice(css.indexOf('.set-piece-pro-sheet'), css.indexOf('@page portrait'));
 
-assert.ok(sheet.includes('const pageDiagrams = diagrams.slice(0, 2)'), 'cada hoja admite como máximo dos jugadas');
-assert.equal((sheet.match(/<article/g) || []).length, 1, 'el renderer crea un único nodo de hoja');
+assert.ok(sheet.includes('function chunkPlays(plays = [], size = 2)'), 'las jugadas se agrupan en bloques de dos antes de renderizar');
+assert.ok(sheet.includes('abp-print-page'), 'cada bloque de dos jugadas se renderiza como una página independiente');
+assert.equal((sheet.match(/<article/g) || []).length, 1, 'el renderer crea un nodo por página de impresión');
 assert.ok(sheet.includes('chronology.map'), 'se imprimen todos los pasos cronológicos');
 assert.equal(sheet.includes('chronology.slice'), false, 'la cronología no se corta silenciosamente');
 assert.ok(css.includes('grid-template-rows: repeat(2, minmax(0, 1fr))'), 'la hoja se divide en dos mitades');

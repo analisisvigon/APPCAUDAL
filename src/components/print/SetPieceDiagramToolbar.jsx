@@ -17,11 +17,16 @@ const toolGroups = [
     ],
   },
   {
-    label: 'ANOTACIONES',
+    label: 'DIBUJO',
+    actions: [
+      ['block', 'Bloqueo'],
+    ],
+  },
+  {
+    label: 'Anotaciones',
     actions: [
       ['zone', 'Zona'],
       ['text', 'Texto'],
-      ['block', 'Bloqueo'],
     ],
   },
 ];

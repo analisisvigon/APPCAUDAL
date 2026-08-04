@@ -17,6 +17,14 @@ const getMatchLabel = (match) => (
     : `${match?.opponent || 'Rival'} - C.D. Caudal`
 );
 
+function chunkPlays(plays = [], size = 2) {
+  const chunks = [];
+  for (let index = 0; index < plays.length; index += size) {
+    chunks.push(plays.slice(index, index + size));
+  }
+  return chunks;
+}
+
 function PrintPlay({ diagram, players, fallbackOrder }) {
   const meta = getSetPieceTacticalMeta(diagram.elements);
   const chronology = getSetPieceChronology(diagram.elements, players);
@@ -100,32 +108,40 @@ function PrintPlay({ diagram, players, fallbackOrder }) {
 }
 
 export default function SetPieceDiagramPrintSheet({ match, title = 'ABP', diagrams = [], players = [], preview = false }) {
-  const pageDiagrams = diagrams.slice(0, 2);
-  if (!pageDiagrams.length) return null;
+  const pages = chunkPlays(diagrams, 2);
+  if (!pages.length) return null;
 
   return (
-    <article className={`lineup-print-sheet print-sheet-a4 diagram-print-sheet diagram-print-landscape set-piece-pro-sheet ${preview ? 'set-piece-preview-sheet set-piece-is-preview' : ''}`}>
-      <header className="set-piece-print-sheet-header">
-        <div>
-          <p>C.D. Caudal de Mieres · Dossier ABP</p>
-          <h1>{title}</h1>
-        </div>
-        <div>
-          <strong>{getMatchLabel(match)}</strong>
-          <span>{formatDate(match?.date)}</span>
-        </div>
-      </header>
+    <>
+      {pages.map((pageDiagrams, pageIndex) => {
+        const pageNumber = pageIndex + 1;
+        const pageKey = `${title}-${pageNumber}-${pageDiagrams.map((diagram) => diagram.id || `${diagram.tipo}-${diagram.orden}`).join('-')}`;
+        return (
+          <article key={pageKey} className={`lineup-print-sheet print-sheet-a4 diagram-print-sheet diagram-print-landscape set-piece-pro-sheet abp-print-page ${preview ? 'set-piece-preview-sheet set-piece-is-preview' : ''}`}>
+            <header className="set-piece-print-sheet-header">
+              <div>
+                <p>C.D. Caudal de Mieres · Dossier ABP</p>
+                <h1>{title}</h1>
+              </div>
+              <div>
+                <strong>{getMatchLabel(match)}</strong>
+                <span>{formatDate(match?.date)}</span>
+              </div>
+            </header>
 
-      <div className="set-piece-pro-plays" data-count={pageDiagrams.length}>
-        {pageDiagrams.map((diagram, index) => (
-          <PrintPlay
-            key={diagram.id || `${diagram.tipo}-${diagram.orden}-${index}`}
-            diagram={diagram}
-            players={players}
-            fallbackOrder={index + 1}
-          />
-        ))}
-      </div>
-    </article>
+            <div className="set-piece-pro-plays" data-count={pageDiagrams.length} data-page-number={pageNumber}>
+              {pageDiagrams.map((diagram, index) => (
+                <PrintPlay
+                  key={diagram.id || `${diagram.tipo}-${diagram.orden}-${index}`}
+                  diagram={diagram}
+                  players={players}
+                  fallbackOrder={pageIndex * 2 + index + 1}
+                />
+              ))}
+            </div>
+          </article>
+        );
+      })}
+    </>
   );
 }

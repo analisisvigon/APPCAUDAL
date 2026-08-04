@@ -1223,6 +1223,16 @@
   overflow: hidden;
 }
 
+.abp-print-page {
+  break-after: page;
+  page-break-after: always;
+}
+
+.abp-print-page:last-child {
+  break-after: auto;
+  page-break-after: auto;
+}
+
 .set-piece-pro-sheet {
   width: 297mm;
   height: 210mm;
@@ -1275,6 +1285,7 @@
   display: grid;
   grid-template-rows: repeat(2, minmax(0, 1fr));
   height: calc(100% - 13mm);
+  gap: 2mm;
 }
 
 .set-piece-print-play {
@@ -1283,10 +1294,15 @@
   min-height: 0;
   padding: 3mm 0;
   break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 .set-piece-print-play + .set-piece-print-play {
   border-top: 1.2pt solid #111827;
+}
+
+.set-piece-pro-plays[data-count="1"] {
+  grid-template-rows: 1fr;
 }
 
 .set-piece-print-play-header {
@@ -1631,6 +1647,16 @@
     page: landscape;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
+  }
+
+  .abp-print-page {
+    break-after: page !important;
+    page-break-after: always !important;
+  }
+
+  .abp-print-page:last-child {
+    break-after: auto !important;
+    page-break-after: auto !important;
   }
 
   .set-piece-pro-sheet + .set-piece-pro-sheet {
