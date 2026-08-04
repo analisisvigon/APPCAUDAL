@@ -35,6 +35,13 @@ export const createDefaultSetPieceTacticalMeta = () => ({
   libraryVersion: '',
   importedAt: '',
   linkStatus: 'detached',
+  libraryZone: '',
+  libraryMechanism: '',
+  libraryMarking: '',
+  libraryStatus: 'draft',
+  libraryFavorite: false,
+  libraryCreatedAt: '',
+  libraryUpdatedAt: '',
 });
 
 const cleanString = (value) => String(value || '').trim();
@@ -70,6 +77,13 @@ export const normalizeSetPieceTacticalMeta = (value) => {
     libraryVersion: cleanString(source.libraryVersion),
     importedAt: cleanString(source.importedAt),
     linkStatus: libraryId ? cleanString(source.linkStatus) || 'linked' : 'detached',
+    libraryZone: cleanString(source.libraryZone),
+    libraryMechanism: cleanString(source.libraryMechanism),
+    libraryMarking: cleanString(source.libraryMarking),
+    libraryStatus: ['draft', 'ready', 'archived'].includes(source.libraryStatus) ? source.libraryStatus : 'draft',
+    libraryFavorite: Boolean(source.libraryFavorite),
+    libraryCreatedAt: cleanString(source.libraryCreatedAt),
+    libraryUpdatedAt: cleanString(source.libraryUpdatedAt),
   };
 };
 
@@ -255,7 +269,7 @@ export const getSetPieceChronology = (elements, players = []) => {
     .map((element) => ({
       id: element.id,
       order: Number(element.sequenceOrder),
-      playerName: getSetPiecePlayerName(element, playersById) || `Jugador ${element.label || ''}`.trim(),
+      playerName: getSetPiecePlayerName(element, playersById) || cleanString(element.roles?.[0]) || `Jugador ${element.label || ''}`.trim(),
       instruction: cleanString(element.note) || cleanString(element.roles?.[0]) || 'interviene',
     }));
 };

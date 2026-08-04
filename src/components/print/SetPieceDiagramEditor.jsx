@@ -122,7 +122,7 @@ function PreviewOverlay({ diagrams, players, match, onClose }) {
   );
 }
 
-export default function SetPieceDiagramEditor({ diagram, players = [], match, suggestions = [], printDiagrams = [], onChange }) {
+export default function SetPieceDiagramEditor({ diagram, players = [], match, suggestions = [], printDiagrams = [], roleOnly = false, onChange }) {
   const drawableElements = useMemo(() => getDrawableSetPieceElements(diagram.elements), [diagram.elements]);
   const tacticalMeta = useMemo(() => getSetPieceTacticalMeta(diagram.elements), [diagram.elements]);
   const [selectedId, setSelectedId] = useState('');
@@ -194,6 +194,9 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
 
   const addElement = (type) => {
     const element = createElement(type);
+    if (roleOnly && type === 'player') {
+      element.label = String(drawableElements.filter((entry) => entry.type === 'player').length + 1);
+    }
     updateElements([...drawableElements, element]);
     setSelectedId(element.id);
     if (['player', 'opponent'].includes(type)) setPanel('player');
@@ -229,7 +232,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
 
   const panelTabs = [
     ['tactic', 'Ficha'],
-    ['player', 'Jugador'],
+    ['player', roleOnly ? 'Rol' : 'Jugador'],
   ];
   const selectedWidthRange = selectedElement ? getSetPieceDimensionRange(selectedElement, 'width') : null;
   const selectedHeightRange = selectedElement ? getSetPieceDimensionRange(selectedElement, 'height') : null;
@@ -322,14 +325,14 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
             {panel === 'player' ? (
               isSelectedPlayer ? (
                 <>
-                  <div><p className={labelClass}>Jugador seleccionado</p><p className="mt-1 text-base font-black text-white">{selectedElement.type === 'opponent' ? 'Rival' : players.find((player) => player.id === selectedElement.player_id) ? getPlayerDisplayName(players.find((player) => player.id === selectedElement.player_id)) : `Jugador ${selectedElement.label || ''}`}</p></div>
-                  {selectedElement.type === 'player' ? <label className="grid gap-1.5"><span className={labelClass}>Jugador vinculado</span><select value={selectedElement.player_id || ''} onChange={(event) => { const player = players.find((item) => item.id === event.target.value); updateSelected({ player_id: event.target.value, label: player?.number ? String(player.number) : selectedElement.label, name: '' }); }} className={`${fieldClass} bg-white font-bold text-slate-950`}><option value="">Sin jugador vinculado</option>{players.map((player) => <option key={player.id} value={player.id}>{player.number || '-'} · {getPlayerDisplayName(player)}</option>)}</select></label> : null}
+                  <div><p className={labelClass}>{roleOnly ? 'Participante por rol' : 'Jugador seleccionado'}</p><p className="mt-1 text-base font-black text-white">{selectedElement.type === 'opponent' ? 'Rival' : roleOnly ? (selectedElement.roles?.[0] || `Participante ${selectedElement.label || ''}`) : players.find((player) => player.id === selectedElement.player_id) ? getPlayerDisplayName(players.find((player) => player.id === selectedElement.player_id)) : `Jugador ${selectedElement.label || ''}`}</p></div>
+                  {!roleOnly && selectedElement.type === 'player' ? <label className="grid gap-1.5"><span className={labelClass}>Jugador vinculado</span><select value={selectedElement.player_id || ''} onChange={(event) => { const player = players.find((item) => item.id === event.target.value); updateSelected({ player_id: event.target.value, label: player?.number ? String(player.number) : selectedElement.label, name: '' }); }} className={`${fieldClass} bg-white font-bold text-slate-950`}><option value="">Sin jugador vinculado</option>{players.map((player) => <option key={player.id} value={player.id}>{player.number || '-'} · {getPlayerDisplayName(player)}</option>)}</select></label> : null}
                   <div><p className={labelClass}>Roles · selección múltiple</p><div className="mt-2 flex flex-wrap gap-1.5">{SET_PIECE_ROLES.map((role) => <button key={role} type="button" aria-pressed={(selectedElement.roles || []).includes(role)} onClick={() => toggleRole(role)} className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-bold ${(selectedElement.roles || []).includes(role) ? 'border-caudal-electric/40 bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300'}`}>{role}</button>)}</div></div>
                   <TacticalField label="Consigna individual" value={selectedElement.note || ''} onChange={(note) => updateSelected({ note })} placeholder="Julio fija y ataca el espacio" rows={3} />
                   <label className="grid gap-1.5"><span className={labelClass}>Orden de aparición</span><input type="number" min="1" max="20" value={selectedElement.sequenceOrder || ''} onChange={(event) => updateSelected({ sequenceOrder: event.target.value ? Number(event.target.value) : null })} className={fieldClass} placeholder="1" /></label>
                   <label className="flex min-h-11 items-center justify-between rounded-xl bg-white/[0.04] p-3 text-xs font-bold text-white"><span>Responsable principal</span><input type="checkbox" checked={Boolean(selectedElement.primaryResponsibility)} onChange={(event) => updateSelected({ primaryResponsibility: event.target.checked })} className="h-4 w-4 accent-[#4f8cff]" /></label>
                 </>
-              ) : <div className="rounded-2xl border border-dashed border-white/10 p-5 text-center"><p className="text-sm font-black text-white">Selecciona un jugador en el campo</p><p className="mt-2 text-xs leading-5 text-slate-500">Aquí editarás rol, consigna, orden y responsabilidad principal.</p></div>
+              ) : <div className="rounded-2xl border border-dashed border-white/10 p-5 text-center"><p className="text-sm font-black text-white">Selecciona {roleOnly ? 'un participante' : 'un jugador'} en el campo</p><p className="mt-2 text-xs leading-5 text-slate-500">Aquí editarás rol, consigna, orden y responsabilidad principal.</p></div>
             ) : null}
 
             {selectedElement && !isSelectedPlayer ? (

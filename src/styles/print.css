@@ -1417,6 +1417,11 @@
   }
 }
 
+.set-piece-laboratory-editor .set-piece-editor button,
+.set-piece-laboratory-editor .set-piece-editor summary {
+  min-height: 44px;
+}
+
 @page portrait {
   size: A4 portrait;
   margin: 0;

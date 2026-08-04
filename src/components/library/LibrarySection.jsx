@@ -3,10 +3,10 @@ import { supabase } from '../../lib/supabase';
 import SetPieceDiagramCanvas from '../print/SetPieceDiagramCanvas';
 import SetPieceDiagramEditor from '../print/SetPieceDiagramEditor';
 import LibraryPrintSheet from './LibraryPrintSheet';
+import SetPieceLaboratory from './SetPieceLaboratory';
+import { isSetPieceLaboratoryItem } from '../../utils/setPieceLaboratory';
 
 export const libraryCategories = [
-  'ABP Ofensiva',
-  'ABP Defensiva',
   'Ejercicios técnicos',
   'Ejercicios tácticos',
   'Juegos reducidos',
@@ -33,7 +33,7 @@ const emptyDraft = {
   elements: [],
 };
 
-export default function LibrarySection({ players = [] }) {
+function ExerciseLibrarySection({ players = [] }) {
   const [items, setItems] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [draft, setDraft] = useState(emptyDraft);
@@ -55,7 +55,7 @@ export default function LibrarySection({ players = [] }) {
         .select('*')
         .order('updated_at', { ascending: false });
       if (loadError) throw loadError;
-      setItems(data || []);
+      setItems((data || []).filter((item) => !isSetPieceLaboratoryItem(item)));
     } catch (loadError) {
       console.error('Error cargando biblioteca desde Supabase:', loadError);
       setError(loadError.message || 'No se pudo cargar la biblioteca.');
@@ -253,5 +253,18 @@ export default function LibrarySection({ players = [] }) {
         <LibraryPrintSheet items={filteredItems.length ? filteredItems : (selectedItem ? [selectedItem] : [])} perPage={printPerPage} />
       </div>
     </main>
+  );
+}
+
+export default function LibrarySection({ players = [] }) {
+  const [section, setSection] = useState('abp');
+  return (
+    <div className="space-y-5">
+      <nav className="print-hidden flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-[#071327] p-2" aria-label="Categorías de Biblioteca">
+        <button type="button" aria-current={section === 'exercises' ? 'page' : undefined} onClick={() => setSection('exercises')} className={`min-h-11 rounded-xl px-5 text-sm font-black outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric ${section === 'exercises' ? 'bg-white text-slate-950' : 'bg-white/[0.06] text-slate-300'}`}>Ejercicios</button>
+        <button type="button" aria-current={section === 'abp' ? 'page' : undefined} onClick={() => setSection('abp')} className={`min-h-11 rounded-xl px-5 text-sm font-black outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric ${section === 'abp' ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.06] text-slate-300'}`}>ABP</button>
+      </nav>
+      {section === 'abp' ? <SetPieceLaboratory /> : <ExerciseLibrarySection players={players} />}
+    </div>
   );
 }
