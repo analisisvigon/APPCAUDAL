@@ -15,6 +15,39 @@ const snapValue = (value, enabled) => (enabled ? Math.round(value / 4) * 4 : val
 const isArrow = (element) => ['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow'].includes(element?.type);
 const isResizableBox = (element) => ['zone', 'block', 'text_box'].includes(element?.type);
 
+export const SET_PIECE_CANVAS_TOKENS = Object.freeze({
+  editor: Object.freeze({
+    playerRadius: 2.1,
+    selectedPlayerRadius: 2.4,
+    responsibilityRadius: 2.85,
+    ballRadius: 1.8,
+    blockRadius: 1.7,
+    arrowWidth: 0.55,
+    dorsalSize: 1.9,
+    abbreviationSize: 1.55,
+    stepRadius: 1.4,
+    stepSize: 1.35,
+    roleSize: 1.2,
+    annotationSize: 2.8,
+    zoneSize: 2.35,
+  }),
+  print: Object.freeze({
+    playerRadius: 1.95,
+    selectedPlayerRadius: 1.95,
+    responsibilityRadius: 2.55,
+    ballRadius: 1.5,
+    blockRadius: 1.4,
+    arrowWidth: 0.44,
+    dorsalSize: 2.45,
+    abbreviationSize: 2.8,
+    stepRadius: 1.5,
+    stepSize: 1.7,
+    roleSize: 1.45,
+    annotationSize: 2.65,
+    zoneSize: 2.25,
+  }),
+});
+
 const getPoint = (event, svg) => {
   const rect = svg.getBoundingClientRect();
   return {
@@ -37,15 +70,15 @@ const compactDiagramLabel = (value, max = 14) => {
   return compact.length <= max ? compact : `${compact.slice(0, Math.max(3, max - 1))}.`;
 };
 
-const BallIcon = ({ x, y, selected }) => (
+const BallIcon = ({ x, y, selected, radius }) => (
   <g>
-    <circle cx={x} cy={y} r={selected ? 2.8 : 2.35} fill="white" stroke="currentColor" strokeWidth="0.9" />
-    <path d={`M${x} ${y - 1.05}l1 .72-.38 1.18h-1.24l-.38-1.18Z`} fill="currentColor" />
+    <circle cx={x} cy={y} r={selected ? radius + 0.35 : radius} fill="white" stroke="currentColor" strokeWidth="0.65" />
+    <path d={`M${x} ${y - radius * 0.45}l${radius * 0.45} ${radius * 0.32}-.17 ${radius * 0.52}h-${radius * 0.56}l-.17-${radius * 0.52}Z`} fill="currentColor" />
     {[270, 342, 54, 126, 198].map((angle) => {
       const radians = (angle * Math.PI) / 180;
-      const x2 = x + Math.cos(radians) * 2.05;
-      const y2 = y + Math.sin(radians) * 2.05;
-      return <line key={angle} x1={x} y1={y} x2={x2} y2={y2} stroke="currentColor" strokeWidth="0.36" />;
+      const x2 = x + Math.cos(radians) * radius * 0.86;
+      const y2 = y + Math.sin(radians) * radius * 0.86;
+      return <line key={angle} x1={x} y1={y} x2={x2} y2={y2} stroke="currentColor" strokeWidth="0.28" />;
     })}
   </g>
 );
@@ -79,7 +112,7 @@ function PitchLines({ fullField = false }) {
   );
 }
 
-export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, printOptimized = false }) {
+export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, printOptimized = false, identityMode = 'number-and-abbreviation' }) {
   const svgRef = useRef(null);
   const [drag, setDrag] = useState(null);
   const playersById = useMemo(() => new Map(players.map((player) => [player.id, player])), [players]);
@@ -88,6 +121,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
       ? optimizeSetPieceElementsForPrint(elements, players)
       : getDrawableSetPieceElements(elements)
   ), [elements, players, printOptimized]);
+  const tokens = printOptimized ? SET_PIECE_CANVAS_TOKENS.print : SET_PIECE_CANVAS_TOKENS.editor;
 
   const updateElement = (id, fields) => {
     onChange(elements.map((element) => (element.id === id ? { ...element, ...fields } : element)));
@@ -168,7 +202,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
       className={`set-piece-diagram-canvas ${readOnly ? 'set-piece-diagram-preview-canvas' : 'set-piece-diagram-editor-canvas'}`}
       viewBox="0 0 100 72"
       role="img"
-      aria-label="Editor tactico ABP"
+      aria-label={readOnly ? 'Diagrama táctico ABP' : 'Editor táctico ABP'}
       onPointerMove={handlePointerMove}
       onPointerUp={stopDrag}
       onPointerLeave={stopDrag}
@@ -189,14 +223,15 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
         const renderedElement = normalizeSetPieceElementDimensions(element);
         if (isArrow(element)) {
           const dashed = element.type === 'dashed_arrow' || element.dashed;
-          const curved = element.type === 'curved_arrow' || Number.isFinite(Number(element.printCurve));
+          const curved = element.type === 'curved_arrow';
           const double = element.type === 'double_arrow';
           const midX = ((element.x1 || 0) + (element.x2 || 0)) / 2;
-          const midY = ((element.y1 || 0) + (element.y2 || 0)) / 2 + (Number.isFinite(Number(element.printCurve)) ? Number(element.printCurve) : -12);
+          const storedCurve = Number.isFinite(Number(element.curvature)) ? Number(element.curvature) : -12;
+          const midY = ((element.y1 || 0) + (element.y2 || 0)) / 2 + storedCurve;
           const path = curved ? `M${element.x1} ${element.y1} Q${midX} ${midY} ${element.x2} ${element.y2}` : `M${element.x1} ${element.y1} L${element.x2} ${element.y2}`;
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
-              <path d={path} fill="none" stroke="currentColor" strokeWidth={selected ? 1.05 : 0.72} strokeDasharray={dashed ? '3 2.4' : ''} markerEnd="url(#diagram-arrow)" markerStart={double ? 'url(#diagram-arrow-start)' : ''} />
+              <path d={path} fill="none" stroke="currentColor" strokeWidth={selected ? tokens.arrowWidth + 0.28 : tokens.arrowWidth} strokeDasharray={dashed ? '2.2 1.8' : ''} markerEnd="url(#diagram-arrow)" markerStart={double ? 'url(#diagram-arrow-start)' : ''} />
               {selected && !readOnly ? (
                 <>
                   <circle cx={element.x1} cy={element.y1} r="2" fill="white" stroke="currentColor" strokeWidth="0.7" onPointerDown={(event) => startDrag(event, element, 'arrow-start')} />
@@ -207,11 +242,11 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           );
         }
         if (element.type === 'block') {
-          const radius = Math.max(1.9, Math.min(5.2, (renderedElement.width || 7) / 2));
+          const radius = tokens.blockRadius;
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
-              <circle cx={element.x} cy={element.y} r={radius} fill="white" stroke="currentColor" strokeWidth={selected ? 1.3 : 1} />
-              <path d={`M${element.x - radius * 0.55} ${element.y - radius * 0.55}L${element.x + radius * 0.55} ${element.y + radius * 0.55}M${element.x + radius * 0.55} ${element.y - radius * 0.55}L${element.x - radius * 0.55} ${element.y + radius * 0.55}`} stroke="currentColor" strokeWidth="0.65" strokeLinecap="round" />
+              <circle cx={element.x} cy={element.y} r={radius} fill="white" stroke="currentColor" strokeWidth={selected ? 0.85 : 0.62} />
+              <path d={`M${element.x - radius * 0.58} ${element.y - radius * 0.58}L${element.x + radius * 0.58} ${element.y + radius * 0.58}M${element.x + radius * 0.58} ${element.y - radius * 0.58}L${element.x - radius * 0.58} ${element.y + radius * 0.58}`} stroke="currentColor" strokeWidth="0.48" strokeLinecap="round" />
               {selected && !readOnly ? (
                 <rect x={element.x + radius - 1.5} y={element.y + radius - 1.5} width="3.5" height="3.5" fill="white" stroke="currentColor" strokeWidth="0.7" onPointerDown={(event) => startDrag(event, element, 'resize')} />
               ) : null}
@@ -221,13 +256,19 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
         if (isResizableBox(element)) {
           const width = renderedElement.width || (element.type === 'text_box' ? 30 : 18);
           const height = renderedElement.height || (element.type === 'text_box' ? 18 : 10);
+          const hasPrintLabel = printOptimized && Number.isFinite(Number(element.printLabelX)) && Number.isFinite(Number(element.printLabelY));
+          const printLabelX = hasPrintLabel ? Number(element.printLabelX) : Number(element.x || 0) + 2;
+          const printLabelY = hasPrintLabel ? Number(element.printLabelY) : Number(element.y || 0) + 4;
           const lines = splitLines(element.label || (element.type === 'block' ? 'BLOQUEO' : ''))
             .map((line) => (readOnly ? compactDiagramLabel(line, element.type === 'text_box' ? 24 : 18) : line));
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
               <rect x={element.x} y={element.y} width={width} height={height} fill="white" stroke="currentColor" strokeWidth={selected ? 1.2 : 0.85} strokeDasharray={element.type === 'zone' ? '3 2' : ''} />
+              {hasPrintLabel && element.printLabelLeader ? (
+                <line x1={Number(element.x || 0) + width / 2} y1={Number(element.y || 0) + 2} x2={printLabelX} y2={printLabelY - 1.2} stroke="currentColor" strokeWidth="0.24" opacity="0.58" />
+              ) : null}
               {lines.map((line, index) => (
-                <text key={`${element.id}-${index}`} x={(element.x || 0) + 2} y={(element.y || 0) + 5 + index * 4} fontSize={element.type === 'text_box' ? '2.8' : '3.1'} fontWeight={index === 0 ? '900' : '700'} fill="currentColor">
+                <text key={`${element.id}-${index}`} x={printLabelX} y={printLabelY + index * 3.3} textAnchor={hasPrintLabel ? 'middle' : 'start'} fontSize={element.type === 'text_box' ? tokens.annotationSize : tokens.zoneSize} fontWeight={index === 0 ? '900' : '700'} fill="currentColor" paintOrder="stroke" stroke="white" strokeWidth={hasPrintLabel ? '0.6' : '0'}>
                   {line}
                 </text>
               ))}
@@ -240,14 +281,19 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
         if (element.type === 'ball') {
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
-              <BallIcon x={element.x} y={element.y} selected={selected} />
+              <BallIcon x={element.x} y={element.y} selected={selected} radius={tokens.ballRadius} />
             </g>
           );
         }
         if (element.type === 'text') {
+          const labelX = printOptimized && Number.isFinite(Number(element.printLabelX)) ? Number(element.printLabelX) : Number(element.x || 0);
+          const labelY = printOptimized && Number.isFinite(Number(element.printLabelY)) ? Number(element.printLabelY) : Number(element.y || 0);
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
-              <text x={element.x} y={element.y} textAnchor="middle" fontSize={selected ? '4.4' : '3.8'} fontWeight="900" fill="currentColor">
+              {printOptimized && element.printLabelLeader ? (
+                <line x1={element.x} y1={element.y} x2={labelX} y2={labelY - 1.2} stroke="currentColor" strokeWidth="0.24" opacity="0.58" />
+              ) : null}
+              <text x={labelX} y={labelY} textAnchor="middle" fontSize={selected ? tokens.annotationSize + 0.35 : tokens.annotationSize} fontWeight="900" fill="currentColor" paintOrder="stroke" stroke="white" strokeWidth={printOptimized ? '0.7' : '0.45'}>
                 {element.label || 'Texto'}
               </text>
             </g>
@@ -255,30 +301,35 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
         }
         const isOpponent = element.type === 'opponent';
         const name = compactDiagramLabel(element.printName || getPlayerName(element, playersById), readOnly ? 12 : 18);
-        const labelX = Number(element.x || 0) + Number(element.printLabelOffsetX || 0);
-        const labelY = Number(element.y || 0) + 5.9 + Number(element.printLabelOffsetY || 0);
+        const labelX = Number.isFinite(Number(element.printLabelX)) ? Number(element.printLabelX) : Number(element.x || 0) + Number(element.printLabelOffsetX || 0);
+        const labelY = Number.isFinite(Number(element.printLabelY)) ? Number(element.printLabelY) : Number(element.y || 0) + 5.2 + Number(element.printLabelOffsetY || 0);
         const role = Array.isArray(element.roles) ? element.roles[0] : '';
         const roleCode = String(role || '').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+        const showDorsal = identityMode !== 'abbreviation';
+        const showAbbreviation = identityMode !== 'number';
         return (
           <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
-            <circle cx={element.x} cy={element.y} r={selected ? 2.8 : 2.45} fill={isOpponent ? 'white' : 'currentColor'} stroke="currentColor" strokeWidth="0.65" />
-            {element.primaryResponsibility ? <circle cx={element.x} cy={element.y} r="3.35" fill="none" stroke="currentColor" strokeWidth="0.55" /> : null}
-            <text x={element.x} y={element.y + 0.9} textAnchor="middle" fontSize="2.25" fontWeight="900" fill={isOpponent ? 'currentColor' : 'white'}>
-              {element.label || ''}
+            {printOptimized && showAbbreviation && element.printLabelLeader ? (
+              <line x1={element.x} y1={element.y} x2={labelX} y2={labelY - 1.2} stroke="currentColor" strokeWidth="0.24" opacity="0.58" />
+            ) : null}
+            <circle cx={element.x} cy={element.y} r={selected ? tokens.selectedPlayerRadius : tokens.playerRadius} fill={isOpponent ? 'white' : 'currentColor'} stroke="currentColor" strokeWidth="0.55" />
+            {element.primaryResponsibility ? <circle cx={element.x} cy={element.y} r={tokens.responsibilityRadius} fill="none" stroke="currentColor" strokeWidth="0.48" /> : null}
+            <text x={element.x} y={element.y + tokens.dorsalSize * 0.34} textAnchor="middle" fontSize={tokens.dorsalSize} fontWeight="900" fill={isOpponent ? 'currentColor' : 'white'}>
+              {showDorsal ? element.label || '' : ''}
             </text>
-            {name ? (
-              <text x={labelX} y={labelY} textAnchor="middle" fontSize={readOnly ? '1.45' : '1.75'} fontWeight="800" fill="currentColor">
+            {name && showAbbreviation ? (
+              <text x={labelX} y={labelY} textAnchor="middle" fontSize={tokens.abbreviationSize} fontWeight="900" fill="currentColor" paintOrder="stroke" stroke="white" strokeWidth={printOptimized ? '0.75' : '0.45'}>
                 {name.toUpperCase()}
               </text>
             ) : null}
             {Number(element.sequenceOrder) > 0 ? (
               <g>
-                <circle cx={Number(element.x) + 3.2} cy={Number(element.y) - 3.2} r="1.75" fill="currentColor" />
-                <text x={Number(element.x) + 3.2} y={Number(element.y) - 2.55} textAnchor="middle" fontSize="1.75" fontWeight="900" fill={isOpponent ? 'white' : 'white'}>{Number(element.sequenceOrder)}</text>
+                <circle cx={Number(element.x) + 2.8} cy={Number(element.y) - 2.8} r={tokens.stepRadius} fill="currentColor" />
+                <text x={Number(element.x) + 2.8} y={Number(element.y) - 2.8 + tokens.stepSize * 0.34} textAnchor="middle" fontSize={tokens.stepSize} fontWeight="900" fill="white">{Number(element.sequenceOrder)}</text>
               </g>
             ) : null}
             {roleCode ? (
-              <text x={Number(element.x) - 3.5} y={Number(element.y) - 3.2} textAnchor="middle" fontSize="1.45" fontWeight="900" fill="currentColor">{roleCode}</text>
+              <text x={Number(element.x) - 3} y={Number(element.y) - 2.8} textAnchor="middle" fontSize={tokens.roleSize} fontWeight="900" fill="currentColor" paintOrder="stroke" stroke="white" strokeWidth="0.45">{roleCode}</text>
             ) : null}
             {element.locked && !readOnly ? <text x={element.x + 4.2} y={element.y - 3.5} fontSize="2.6" fontWeight="900">L</text> : null}
           </g>

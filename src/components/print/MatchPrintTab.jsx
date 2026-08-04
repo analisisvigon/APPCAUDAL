@@ -8,6 +8,7 @@ import SetPieceDiagramPrintSheet from './SetPieceDiagramPrintSheet';
 import SetPieceTakersPrintSheet from './SetPieceTakersPrintSheet';
 import { getPlayerDisplayName } from '../../utils/playerDisplayName';
 import {
+  cloneSetPieceElementsWithFreshIds,
   createDefaultSetPieceTacticalMeta,
   getSetPieceTacticalMeta,
   setSetPieceTacticalMeta,
@@ -809,6 +810,14 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     return getTypeDiagrams(mode);
   };
 
+  const getCurrentPrintPageDiagrams = (mode) => {
+    const diagrams = getPrintDiagrams(mode);
+    const order = getDiagramOrder(mode);
+    const currentIndex = Math.max(0, diagrams.findIndex((diagram) => Number(diagram.orden) === Number(order)));
+    const pageStart = Math.floor(currentIndex / 2) * 2;
+    return diagrams.slice(pageStart, pageStart + 2);
+  };
+
   const addDiagram = (mode) => {
     const definitions = getDiagramDefinitions(mode);
     const type = getDiagramType(mode);
@@ -909,7 +918,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
         orden: nextOrder,
         titulo: `${baseTitle} copia`,
         consigna: source.consigna || '',
-        elements: JSON.parse(JSON.stringify(cleanDiagramElements(source.elements))),
+        elements: cloneSetPieceElementsWithFreshIds(cleanDiagramElements(source.elements)),
       };
       const { data, error } = await supabase
         .from('match_set_piece_diagrams')
@@ -1016,7 +1025,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
         categoria: category,
         descripcion: tacticalMeta.generalInstruction || diagram.consigna || '',
         objetivo: tacticalMeta.objective || '',
-        variantes: tacticalMeta.variants.filter((variant) => variant.changes).map((variant) => `${variant.name}: ${variant.changes}`).join('\n'),
+        variantes: tacticalMeta.alternative || '',
         dimensiones: '',
         jugadores: '',
         duracion: '',
@@ -1043,11 +1052,15 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
       ...storedMeta,
       objective: storedMeta.objective || item.objetivo || '',
       generalInstruction: storedMeta.generalInstruction || item.descripcion || '',
-      variation: storedMeta.variation || item.variantes || '',
+      alternative: storedMeta.alternative || item.variantes || '',
       lastUsedAt,
+      libraryId: String(item.id || ''),
+      libraryVersion: String(item.updated_at || item.version || '1'),
+      importedAt: lastUsedAt,
+      linkStatus: 'linked',
     };
     const libraryElements = setSetPieceTacticalMeta(
-      JSON.parse(JSON.stringify(cleanDiagramElements(item.elements))),
+      cloneSetPieceElementsWithFreshIds(cleanDiagramElements(item.elements)),
       importedMeta
     );
     updateCurrentDiagram(libraryModal, {
@@ -1058,11 +1071,6 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     });
     setDiagramStatus(`Cargado desde biblioteca: ${item.nombre}. Guarda la jugada para sincronizarla con el partido.`);
     setLibraryModal(null);
-    const { error } = await supabase.from('training_library').update({ elements: libraryElements }).eq('id', item.id);
-    if (error) {
-      console.error('Error registrando el último uso de la jugada ABP:', error);
-      setDiagramStatus(`Cargado desde biblioteca: ${item.nombre}. No se pudo actualizar la fecha de último uso.`);
-    }
   };
 
   const addDefensiveQuickElement = (label) => {
@@ -1564,6 +1572,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                 players={players}
                 match={match}
                 suggestions={professionalSetPieceSuggestions}
+                printDiagrams={getCurrentPrintPageDiagrams('offensive')}
                 onChange={(diagram) => updateCurrentDiagram('offensive', diagram)}
               />
             ) : null}
@@ -1657,6 +1666,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                 players={players}
                 match={match}
                 suggestions={professionalSetPieceSuggestions}
+                printDiagrams={getCurrentPrintPageDiagrams('defensive')}
                 onChange={(diagram) => updateCurrentDiagram('defensive', diagram)}
               />
             ) : null}
@@ -1664,7 +1674,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
         </div>
       ) : null}
 
-      <div ref={sheetRef} className="print-sheet-frame print-current-sheet">
+      <div ref={sheetRef} className={`print-sheet-frame print-current-sheet ${['abp_ofensiva', 'abp_defensiva'].includes(printView) ? 'print-sheet-frame-landscape' : ''}`}>
         {printView === 'alineacion' ? (
           <div>
             <div className="print-hidden mb-4 flex justify-center">
@@ -1690,28 +1700,15 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
             players={players}
           />
         ) : printView === 'abp_ofensiva' ? (
-          offensiveType === 'saque_inicio_ofensivo' ? (
-            getPrintDiagrams('offensive').map((diagram) => (
-              <SetPieceDiagramPrintSheet
-                key={`kickoff-current-${diagram.id || diagram.orden}`}
-                match={match}
-                title={offensiveSetPieceTypes.find((type) => type.id === offensiveType)?.label || 'Saque de inicio'}
-                diagrams={[diagram]}
-                players={players}
-                layout="landscape"
-              />
-            ))
-          ) : (
-            chunkDiagrams(getPrintDiagrams('offensive')).map((diagrams, index) => (
-              <SetPieceDiagramPrintSheet
-                key={`offensive-current-${index}`}
-                match={match}
-                title={offensiveSetPieceTypes.find((type) => type.id === offensiveType)?.label || 'ABP ofensiva'}
-                diagrams={diagrams}
-                players={players}
-              />
-            ))
-          )
+          chunkDiagrams(getPrintDiagrams('offensive')).map((diagrams, index) => (
+            <SetPieceDiagramPrintSheet
+              key={`offensive-current-${index}`}
+              match={match}
+              title={offensiveSetPieceTypes.find((type) => type.id === offensiveType)?.label || 'ABP ofensiva'}
+              diagrams={diagrams}
+              players={players}
+            />
+          ))
         ) : (
           chunkDiagrams(getPrintDiagrams('defensive')).map((diagrams, index) => (
             <SetPieceDiagramPrintSheet
@@ -1759,14 +1756,13 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
               ));
             }
             if (page.id === 'kickoff') {
-              return dossierContent.kickoffDiagrams.map((diagram) => (
+              return chunkDiagrams(dossierContent.kickoffDiagrams).map((diagrams, index) => (
                 <SetPieceDiagramPrintSheet
-                  key={`kickoff-dossier-${diagram.id || diagram.orden}`}
+                  key={`kickoff-dossier-${index}`}
                   match={match}
                   title="Saque de inicio"
-                  diagrams={[diagram]}
+                  diagrams={diagrams}
                   players={players}
-                  layout="landscape"
                 />
               ));
             }

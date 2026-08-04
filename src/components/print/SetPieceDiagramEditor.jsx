@@ -9,6 +9,7 @@ import {
 import { getSetPieceHistoryAction } from '../../utils/setPieceEditorInteractions';
 import {
   SET_PIECE_ROLES,
+  SET_PIECE_PRINT_IDENTITY_MODES,
   getDrawableSetPieceElements,
   getSetPieceChronology,
   getSetPieceResponsibilities,
@@ -42,7 +43,7 @@ const createElement = (type) => {
   if (isArrow({ type })) return { id: createId(), type, x1: 20, y1: 46, x2: 44, y2: 26, dashed: type === 'dashed_arrow' };
   if (type === 'zone') return { id: createId(), type, x: 34, y: 18, width: 22, height: 12, label: 'Zona' };
   if (type === 'text') return { id: createId(), type, x: 42, y: 40, label: 'Texto' };
-  if (type === 'block') return { id: createId(), type, x: 42, y: 34, width: 18, height: 8, label: 'BLOQUEO' };
+  if (type === 'block') return { id: createId(), type, x: 42, y: 34, width: 5, label: 'BLOQUEO' };
   if (type === 'text_box') return { id: createId(), type, x: 58, y: 10, width: 32, height: 24, label: 'TEXTO' };
   if (type === 'opponent') return { id: createId(), type, x: 50, y: 17, label: 'R' };
   return { id: createId(), type: 'player', x: 50, y: 35, label: '1', player_id: '', roles: [], sequenceOrder: null };
@@ -73,6 +74,7 @@ function TacticalField({ label, value, onChange, placeholder, rows = 0, maxLengt
 
 function PresentationOverlay({ diagram, players, onClose }) {
   const chronology = getSetPieceChronology(diagram.elements, players);
+  const tacticalMeta = getSetPieceTacticalMeta(diagram.elements);
   return createPortal(
     <div className="fixed inset-0 z-[120] flex flex-col bg-[#07150f] p-3 sm:p-6" role="dialog" aria-modal="true" aria-label="Modo presentación ABP">
       <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col overflow-hidden">
@@ -84,7 +86,7 @@ function PresentationOverlay({ diagram, players, onClose }) {
           <button type="button" onClick={onClose} className="min-h-11 rounded-xl border border-white/15 bg-white/10 px-4 text-xs font-black uppercase text-white">Salir</button>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden rounded-3xl bg-white p-2 text-black shadow-2xl sm:p-4">
-          <SetPieceDiagramCanvas elements={diagram.elements} players={players} readOnly printOptimized fullField={String(diagram.tipo || '').includes('saque_inicio')} />
+          <SetPieceDiagramCanvas elements={diagram.elements} players={players} readOnly printOptimized identityMode={tacticalMeta.printIdentityMode} fullField={String(diagram.tipo || '').includes('saque_inicio')} />
         </div>
         {(diagram.consigna || chronology.length) ? (
           <div className="mt-3 grid gap-3 text-white lg:grid-cols-[minmax(0,0.35fr)_minmax(0,0.65fr)]">
@@ -100,7 +102,7 @@ function PresentationOverlay({ diagram, players, onClose }) {
   );
 }
 
-function PreviewOverlay({ diagram, players, match, onClose }) {
+function PreviewOverlay({ diagrams, players, match, onClose }) {
   const printPreview = () => {
     document.body.classList.add('printing-set-piece-preview');
     const cleanup = () => document.body.classList.remove('printing-set-piece-preview');
@@ -114,13 +116,13 @@ function PreviewOverlay({ diagram, players, match, onClose }) {
         <div><p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Vista previa exacta</p><p className="mt-1 text-xs text-slate-400">Renderer A4 independiente del editor</p></div>
         <div className="flex gap-2"><button type="button" onClick={printPreview} className="min-h-11 rounded-xl bg-caudal-electric px-4 text-xs font-black text-slate-950">Imprimir / PDF</button><button type="button" onClick={onClose} className="min-h-11 rounded-xl bg-white/10 px-4 text-xs font-black text-white">Cerrar</button></div>
       </div>
-      <div className="mx-auto w-fit shadow-2xl"><SetPieceDiagramPrintSheet match={match} title="Ficha táctica ABP" diagrams={[diagram]} players={players} preview /></div>
+      <div className="mx-auto w-fit shadow-2xl"><SetPieceDiagramPrintSheet match={match} title="Ficha táctica ABP" diagrams={diagrams} players={players} preview /></div>
     </div>,
     document.body
   );
 }
 
-export default function SetPieceDiagramEditor({ diagram, players = [], match, suggestions = [], onChange }) {
+export default function SetPieceDiagramEditor({ diagram, players = [], match, suggestions = [], printDiagrams = [], onChange }) {
   const drawableElements = useMemo(() => getDrawableSetPieceElements(diagram.elements), [diagram.elements]);
   const tacticalMeta = useMemo(() => getSetPieceTacticalMeta(diagram.elements), [diagram.elements]);
   const [selectedId, setSelectedId] = useState('');
@@ -140,7 +142,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
   const updateDiagram = (fields) => onChange({ ...diagram, ...fields });
   const updateMeta = (patch) => {
     const next = typeof patch === 'function' ? patch(tacticalMeta) : { ...tacticalMeta, ...patch };
-    updateDiagram({ elements: setSetPieceTacticalMeta(drawableElements, next) });
+    updateDiagram({ elements: setSetPieceTacticalMeta(diagram.elements, next) });
   };
   const pushHistory = (elements) => {
     const next = [...history.slice(0, historyIndex + 1), clone(elements)].slice(-50);
@@ -148,7 +150,8 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
     setHistoryIndex(next.length - 1);
   };
   const updateElements = (elements, options = {}) => {
-    updateDiagram({ elements: setSetPieceTacticalMeta(elements, tacticalMeta) });
+    const metaElement = diagram.elements.find((element) => element.type === 'tactical_meta');
+    updateDiagram({ elements: setSetPieceTacticalMeta(metaElement ? [...elements, metaElement] : elements, tacticalMeta) });
     if (!options.skipHistory) pushHistory(elements);
   };
   const updateSelected = (fields) => {
@@ -227,21 +230,20 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
   const panelTabs = [
     ['tactic', 'Ficha'],
     ['player', 'Jugador'],
-    ['variants', 'Variantes'],
   ];
   const selectedWidthRange = selectedElement ? getSetPieceDimensionRange(selectedElement, 'width') : null;
   const selectedHeightRange = selectedElement ? getSetPieceDimensionRange(selectedElement, 'height') : null;
 
   return (
-    <div className="space-y-3">
+    <div className="set-piece-editor space-y-3">
       <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#071327] p-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <p className="text-[9px] font-black uppercase tracking-[0.22em] text-caudal-electric">Sistema profesional de preparación ABP</p>
           <input value={diagram.titulo || ''} onChange={(event) => updateDiagram({ titulo: event.target.value })} placeholder="Nombre de la jugada" className="mt-1 w-full border-0 bg-transparent p-0 text-xl font-black text-white outline-none placeholder:text-slate-600" />
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => setOverlay('preview')} className="min-h-10 rounded-xl border border-white/10 bg-white/[0.06] px-4 text-xs font-black text-white">Vista previa</button>
-          <button type="button" onClick={() => setOverlay('presentation')} className="min-h-10 rounded-xl bg-white px-4 text-xs font-black text-slate-950">Presentar</button>
+          <button type="button" onClick={() => setOverlay('preview')} className="min-h-11 rounded-xl border border-white/10 bg-white/[0.06] px-4 text-xs font-black text-white">Vista previa</button>
+          <button type="button" onClick={() => setOverlay('presentation')} className="min-h-11 rounded-xl bg-white px-4 text-xs font-black text-slate-950">Presentar</button>
         </div>
       </div>
 
@@ -252,15 +254,16 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
             <div className="flex flex-wrap gap-1.5">
               <button type="button" disabled={historyIndex <= 0} onClick={() => {
                 const nextIndex = Math.max(0, historyIndex - 1); historyChangeRef.current = true; setHistoryIndex(nextIndex); updateElements(clone(history[nextIndex]), { skipHistory: true });
-              }} className="min-h-9 rounded-xl bg-white/10 px-3 disabled:opacity-40">Deshacer</button>
+              }} className="min-h-11 rounded-xl bg-white/10 px-3 disabled:opacity-40">Deshacer</button>
               <button type="button" disabled={historyIndex >= history.length - 1} onClick={() => {
                 const nextIndex = Math.min(history.length - 1, historyIndex + 1); historyChangeRef.current = true; setHistoryIndex(nextIndex); updateElements(clone(history[nextIndex]), { skipHistory: true });
-              }} className="min-h-9 rounded-xl bg-white/10 px-3 disabled:opacity-40">Rehacer</button>
-              <button type="button" aria-pressed={snapEnabled} onClick={() => setSnapEnabled((value) => !value)} className={`min-h-9 rounded-xl px-3 ${snapEnabled ? 'bg-caudal-electric text-slate-950' : 'bg-white/10'}`}>Imán</button>
-              <button type="button" onClick={addSequence} className="min-h-9 rounded-xl bg-white/10 px-3">Numerar automáticamente</button>
+              }} className="min-h-11 rounded-xl bg-white/10 px-3 disabled:opacity-40">Rehacer</button>
+              <button type="button" aria-pressed={snapEnabled} onClick={() => setSnapEnabled((value) => !value)} className={`min-h-11 rounded-xl px-3 ${snapEnabled ? 'bg-caudal-electric text-slate-950' : 'bg-white/10'}`}>Imán</button>
+              <button type="button" onClick={addSequence} className="min-h-11 rounded-xl bg-white/10 px-3">Numerar automáticamente</button>
             </div>
-            <div className="flex items-center rounded-xl bg-black/20"><button type="button" onClick={() => setZoom((value) => Math.max(0.75, value - 0.1))} className="h-9 w-9" aria-label="Reducir zoom">−</button><span className="min-w-12 text-center text-[11px] text-slate-300">{Math.round(zoom * 100)}%</span><button type="button" onClick={() => setZoom((value) => Math.min(1.6, value + 0.1))} className="h-9 w-9" aria-label="Aumentar zoom">+</button></div>
+            <div className="flex items-center rounded-xl bg-black/20"><button type="button" onClick={() => setZoom((value) => Math.max(0.75, value - 0.1))} className="h-11 w-11" aria-label="Reducir zoom">−</button><span className="min-w-12 text-center text-[11px] text-slate-300">{Math.round(zoom * 100)}%</span><button type="button" onClick={() => setZoom((value) => Math.min(1.6, value + 0.1))} className="h-11 w-11" aria-label="Aumentar zoom">+</button></div>
           </div>
+          <p className="flex items-center gap-2 px-1 text-[10px] font-bold text-slate-500 sm:hidden" aria-hidden="true"><span>↔</span> Desliza dentro del campo para recorrerlo</p>
           <div className="overflow-auto rounded-3xl border-2 border-white/15 bg-white p-2 text-black shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
             <div style={{ width: `${zoom * 100}%`, minWidth: '100%' }}>
               <SetPieceDiagramCanvas elements={drawableElements} selectedId={selectedId} onSelect={(id) => { setSelectedId(id); const element = drawableElements.find((item) => item.id === id); if (['player', 'opponent'].includes(element?.type)) setPanel('player'); }} onChange={updateElements} players={players} snap={snapEnabled} fullField={String(diagram.tipo || '').includes('saque_inicio')} />
@@ -275,8 +278,8 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
         <aside className="overflow-hidden rounded-3xl border border-white/10 bg-[#0a172b] xl:sticky xl:top-4">
           <div className="border-b border-white/10 p-3">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Panel táctico</p>
-            <div className="mt-3 grid grid-cols-3 gap-1 rounded-xl bg-black/20 p-1" role="tablist">
-              {panelTabs.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={panel === id} onClick={() => setPanel(id)} className={`min-h-9 rounded-lg text-[10px] font-black uppercase ${panel === id ? 'bg-white text-slate-950' : 'text-slate-400'}`}>{label}</button>)}
+            <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-black/20 p-1" role="tablist">
+              {panelTabs.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={panel === id} onClick={() => setPanel(id)} className={`min-h-11 rounded-lg text-[10px] font-black uppercase ${panel === id ? 'bg-white text-slate-950' : 'text-slate-400'}`}>{label}</button>)}
             </div>
           </div>
 
@@ -289,9 +292,24 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
                   <p className={labelClass}>Responsables</p>
                   {responsibilities.length ? <div className="mt-2 space-y-1.5">{responsibilities.map((item, index) => <div key={`${item.role}-${item.playerName}-${index}`} className="flex items-center justify-between gap-3 text-xs"><span className="text-slate-400">{item.role}</span><strong className="truncate text-white">{item.playerName}{item.primary ? ' · Principal' : ''}</strong></div>)}</div> : <p className="mt-2 text-xs leading-5 text-slate-500">Asigna roles desde la pestaña Jugador. No se duplican en otro formulario.</p>}
                 </section>
-                <TacticalField label="Consigna general · máx. 3 líneas" value={diagram.consigna || tacticalMeta.generalInstruction} onChange={(generalInstruction) => { updateDiagram({ consigna: generalInstruction, elements: setSetPieceTacticalMeta(drawableElements, { ...tacticalMeta, generalInstruction }) }); }} placeholder="Mensaje breve para el grupo" rows={3} maxLength={240} />
+                <TacticalField label="Consigna general · máx. 3 líneas" value={diagram.consigna || tacticalMeta.generalInstruction} onChange={(generalInstruction) => { updateDiagram({ consigna: generalInstruction, elements: setSetPieceTacticalMeta(diagram.elements, { ...tacticalMeta, generalInstruction }) }); }} placeholder="Mensaje breve para el grupo" rows={3} maxLength={240} />
                 <TacticalField label="Riesgo" value={tacticalMeta.risk} onChange={(risk) => updateMeta({ risk })} placeholder="Qué ocurre si falla" rows={2} />
-                <TacticalField label="Variante" value={tacticalMeta.variation} onChange={(variation) => updateMeta({ variation })} placeholder="Qué hacer si el rival cambia el marcaje" rows={2} />
+                <TacticalField label="Alternativa" value={tacticalMeta.alternative} onChange={(alternative) => updateMeta({ alternative })} placeholder="Qué hacer si el rival cambia el marcaje" rows={2} />
+                <label className="grid gap-1.5">
+                  <span className={labelClass}>Identidad en dossier</span>
+                  <select value={tacticalMeta.printIdentityMode} onChange={(event) => updateMeta({ printIdentityMode: event.target.value })} className={`${fieldClass} bg-white font-bold text-slate-950`}>
+                    <option value={SET_PIECE_PRINT_IDENTITY_MODES.NUMBER}>Dorsal</option>
+                    <option value={SET_PIECE_PRINT_IDENTITY_MODES.ABBREVIATION}>Abreviatura</option>
+                    <option value={SET_PIECE_PRINT_IDENTITY_MODES.NUMBER_AND_ABBREVIATION}>Dorsal + abreviatura</option>
+                  </select>
+                </label>
+                {tacticalMeta.libraryId ? (
+                  <section className="rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.06] p-3">
+                    <p className={labelClass}>Origen de biblioteca</p>
+                    <p className="mt-1 text-xs font-bold text-emerald-100">Instancia vinculada · plantilla {tacticalMeta.libraryVersion || 'sin versión'}</p>
+                    <p className="mt-1 text-[10px] text-slate-500">La instancia del partido es editable y no modifica la plantilla maestra.</p>
+                  </section>
+                ) : null}
                 <TacticalField label="Observaciones" value={tacticalMeta.observations} onChange={(observations) => updateMeta({ observations })} placeholder="Notas internas del entrenador" rows={3} />
                 <div className="grid grid-cols-[1fr_auto] gap-3">
                   <TacticalField label="Etiquetas" value={tacticalMeta.tags.join(', ')} onChange={(value) => updateMeta({ tags: value.split(',').map((item) => item.trim()).filter(Boolean) })} placeholder="segundo palo, zona" />
@@ -309,13 +327,9 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
                   <div><p className={labelClass}>Roles · selección múltiple</p><div className="mt-2 flex flex-wrap gap-1.5">{SET_PIECE_ROLES.map((role) => <button key={role} type="button" aria-pressed={(selectedElement.roles || []).includes(role)} onClick={() => toggleRole(role)} className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-bold ${(selectedElement.roles || []).includes(role) ? 'border-caudal-electric/40 bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300'}`}>{role}</button>)}</div></div>
                   <TacticalField label="Consigna individual" value={selectedElement.note || ''} onChange={(note) => updateSelected({ note })} placeholder="Julio fija y ataca el espacio" rows={3} />
                   <label className="grid gap-1.5"><span className={labelClass}>Orden de aparición</span><input type="number" min="1" max="20" value={selectedElement.sequenceOrder || ''} onChange={(event) => updateSelected({ sequenceOrder: event.target.value ? Number(event.target.value) : null })} className={fieldClass} placeholder="1" /></label>
-                  <div className="grid gap-2"><label className="flex items-center justify-between rounded-xl bg-white/[0.04] p-3 text-xs font-bold text-white"><span>Responsable principal</span><input type="checkbox" checked={Boolean(selectedElement.primaryResponsibility)} onChange={(event) => updateSelected({ primaryResponsibility: event.target.checked })} className="h-4 w-4 accent-[#4f8cff]" /></label>{['A', 'B'].map((variant) => <label key={variant} className="flex items-center justify-between rounded-xl bg-white/[0.04] p-3 text-xs font-bold text-white"><span>Participa en Variante {variant}</span><input type="checkbox" checked={Boolean(selectedElement[`variant${variant}`])} onChange={(event) => updateSelected({ [`variant${variant}`]: event.target.checked })} className="h-4 w-4 accent-[#4f8cff]" /></label>)}</div>
+                  <label className="flex min-h-11 items-center justify-between rounded-xl bg-white/[0.04] p-3 text-xs font-bold text-white"><span>Responsable principal</span><input type="checkbox" checked={Boolean(selectedElement.primaryResponsibility)} onChange={(event) => updateSelected({ primaryResponsibility: event.target.checked })} className="h-4 w-4 accent-[#4f8cff]" /></label>
                 </>
-              ) : <div className="rounded-2xl border border-dashed border-white/10 p-5 text-center"><p className="text-sm font-black text-white">Selecciona un jugador en el campo</p><p className="mt-2 text-xs leading-5 text-slate-500">Aquí editarás rol, consigna, orden, variantes y responsabilidad principal.</p></div>
-            ) : null}
-
-            {panel === 'variants' ? (
-              <><div className="rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.06] p-3"><p className="text-xs font-black text-emerald-100">Principal → herencia activa</p><p className="mt-1 text-[11px] leading-5 text-slate-400">Cada variante guarda solo sus cambios. Campo, jugadores y consignas no modificadas se heredan de la principal.</p></div>{tacticalMeta.variants.map((variant) => <section key={variant.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3"><div className="flex items-center justify-between"><strong className="text-sm text-white">{variant.name}</strong><span className="rounded-full bg-emerald-300/10 px-2 py-1 text-[9px] font-black uppercase text-emerald-200">Heredada</span></div><textarea value={variant.changes} onChange={(event) => updateMeta({ variants: tacticalMeta.variants.map((item) => item.id === variant.id ? { ...item, changes: event.target.value } : item) })} rows={4} placeholder="Solo cambios: lanzador, bloqueador, centro corto..." className={`${fieldClass} mt-3 resize-y`} /><p className="mt-2 text-[10px] text-slate-500">Participantes: {drawableElements.filter((element) => element[`variant${variant.id}`]).length || 'sin cambios de participación'}</p></section>)}</>
+              ) : <div className="rounded-2xl border border-dashed border-white/10 p-5 text-center"><p className="text-sm font-black text-white">Selecciona un jugador en el campo</p><p className="mt-2 text-xs leading-5 text-slate-500">Aquí editarás rol, consigna, orden y responsabilidad principal.</p></div>
             ) : null}
 
             {selectedElement && !isSelectedPlayer ? (
@@ -324,7 +338,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
           </div>
         </aside>
       </div>
-      {overlay === 'preview' ? <PreviewOverlay diagram={diagram} players={players} match={match} onClose={() => setOverlay('')} /> : null}
+      {overlay === 'preview' ? <PreviewOverlay diagrams={printDiagrams.length ? printDiagrams : [diagram]} players={players} match={match} onClose={() => setOverlay('')} /> : null}
       {overlay === 'presentation' ? <PresentationOverlay diagram={diagram} players={players} onClose={() => setOverlay('')} /> : null}
     </div>
   );

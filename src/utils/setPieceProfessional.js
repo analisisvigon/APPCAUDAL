@@ -1,4 +1,9 @@
 export const SET_PIECE_META_TYPE = 'tactical_meta';
+export const SET_PIECE_PRINT_IDENTITY_MODES = Object.freeze({
+  NUMBER: 'number',
+  ABBREVIATION: 'abbreviation',
+  NUMBER_AND_ABBREVIATION: 'number-and-abbreviation',
+});
 
 export const SET_PIECE_ROLES = [
   'Lanzador',
@@ -15,20 +20,21 @@ export const SET_PIECE_ROLES = [
 ];
 
 export const createDefaultSetPieceTacticalMeta = () => ({
-  version: 1,
+  version: 2,
   objective: '',
   whenToUse: '',
   generalInstruction: '',
   risk: '',
-  variation: '',
+  alternative: '',
   observations: '',
   rating: 0,
   tags: [],
   lastUsedAt: '',
-  variants: [
-    { id: 'A', name: 'Variante A', changes: '', inherited: true },
-    { id: 'B', name: 'Variante B', changes: '', inherited: true },
-  ],
+  printIdentityMode: SET_PIECE_PRINT_IDENTITY_MODES.NUMBER_AND_ABBREVIATION,
+  libraryId: '',
+  libraryVersion: '',
+  importedAt: '',
+  linkStatus: 'detached',
 });
 
 const cleanString = (value) => String(value || '').trim();
@@ -36,19 +42,22 @@ const cleanString = (value) => String(value || '').trim();
 export const normalizeSetPieceTacticalMeta = (value) => {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const defaults = createDefaultSetPieceTacticalMeta();
-  const variantsById = new Map(
-    (Array.isArray(source.variants) ? source.variants : [])
-      .filter((variant) => variant && ['A', 'B'].includes(String(variant.id)))
-      .map((variant) => [String(variant.id), variant])
-  );
+  const legacyAlternative = (Array.isArray(source.variants) ? source.variants : [])
+    .map((variant) => cleanString(variant?.changes))
+    .filter(Boolean)
+    .join(' / ');
+  const identityMode = Object.values(SET_PIECE_PRINT_IDENTITY_MODES).includes(source.printIdentityMode)
+    ? source.printIdentityMode
+    : defaults.printIdentityMode;
+  const libraryId = cleanString(source.libraryId);
   return {
     ...defaults,
-    version: 1,
+    version: 2,
     objective: cleanString(source.objective),
     whenToUse: cleanString(source.whenToUse),
     generalInstruction: cleanString(source.generalInstruction),
     risk: cleanString(source.risk),
-    variation: cleanString(source.variation),
+    alternative: cleanString(source.alternative || source.variation || legacyAlternative),
     observations: cleanString(source.observations),
     rating: Math.max(0, Math.min(5, Number(source.rating) || 0)),
     tags: (Array.isArray(source.tags) ? source.tags : [])
@@ -56,15 +65,11 @@ export const normalizeSetPieceTacticalMeta = (value) => {
       .filter(Boolean)
       .slice(0, 12),
     lastUsedAt: cleanString(source.lastUsedAt),
-    variants: defaults.variants.map((fallback) => {
-      const stored = variantsById.get(fallback.id) || {};
-      return {
-        ...fallback,
-        name: cleanString(stored.name) || fallback.name,
-        changes: cleanString(stored.changes),
-        inherited: true,
-      };
-    }),
+    printIdentityMode: identityMode,
+    libraryId,
+    libraryVersion: cleanString(source.libraryVersion),
+    importedAt: cleanString(source.importedAt),
+    linkStatus: libraryId ? cleanString(source.linkStatus) || 'linked' : 'detached',
   };
 };
 
@@ -80,11 +85,12 @@ export const getDrawableSetPieceElements = (elements) => (
 );
 
 export const setSetPieceTacticalMeta = (elements, nextMeta) => {
+  const currentMeta = (Array.isArray(elements) ? elements : []).find((element) => element?.type === SET_PIECE_META_TYPE);
   const drawable = getDrawableSetPieceElements(elements);
   return [
     ...drawable,
     {
-      id: 'set-piece-tactical-meta-v1',
+      id: currentMeta?.id || createSetPieceEntityId('meta'),
       type: SET_PIECE_META_TYPE,
       data: normalizeSetPieceTacticalMeta(nextMeta),
     },
@@ -96,69 +102,149 @@ export const getSetPiecePlayerName = (element, playersById) => {
   return cleanString(player?.shirtName || player?.shirt_name || player?.name || element?.name);
 };
 
-const getInitials = (value) => {
-  const parts = cleanString(value).split(/\s+/).filter(Boolean);
-  if (!parts.length) return '';
-  if (parts.length === 1) return parts[0].slice(0, 8);
-  return `${parts[0][0]}. ${parts.at(-1)}`.slice(0, 10);
+const createSetPieceEntityId = (prefix = 'abp') => {
+  if (globalThis.crypto?.randomUUID) return `${prefix}-${globalThis.crypto.randomUUID()}`;
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-const distance = (a, b) => Math.hypot(Number(a.x || 0) - Number(b.x || 0), Number(a.y || 0) - Number(b.y || 0));
+const getInitials = (value, maxLength = 10) => {
+  const parts = cleanString(value).split(/\s+/).filter(Boolean);
+  if (!parts.length) return '';
+  if (parts.length === 1) return parts[0].slice(0, maxLength);
+  return `${parts[0][0]}. ${parts.at(-1)}`.slice(0, maxLength);
+};
 
-const pointToSegmentDistance = (point, start, end) => {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  if (!dx && !dy) return distance(point, start);
-  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy)));
-  return distance(point, { x: start.x + t * dx, y: start.y + t * dy });
+const getPreferredAbbreviation = (element, player) => {
+  const configured = [
+    player?.shirtName,
+    player?.shirt_name,
+    player?.abbreviation,
+    player?.abreviatura,
+    player?.shortName,
+    player?.short_name,
+    element?.abbreviation,
+    element?.shortName,
+  ].map(cleanString).find(Boolean);
+  const fullName = cleanString(player?.name || element?.name);
+  const preferred = configured || getInitials(fullName, 10);
+  return preferred.length <= 10 ? preferred : getInitials(preferred, 10);
+};
+
+export const getSetPieceGeometrySnapshot = (elements) => getDrawableSetPieceElements(elements).map((element) => {
+  const geometry = { id: element.id, type: element.type };
+  ['x', 'y', 'x1', 'y1', 'x2', 'y2', 'width', 'height', 'curve', 'curvature', 'controlX', 'controlY']
+    .forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(element, key)) geometry[key] = element[key];
+    });
+  return geometry;
+});
+
+const getLabelPlacement = ({ element, text, players, occupied }) => {
+  const width = Math.max(5.5, Math.min(19, text.length * 1.55));
+  const height = 3.4;
+  const radialCandidates = [
+    [0, 5.4], [0, -4.3], [width / 2 + 3, 1], [-(width / 2 + 3), 1],
+    [width / 2 + 3, 5.4], [-(width / 2 + 3), 5.4], [width / 2 + 3, -4.3], [-(width / 2 + 3), -4.3],
+    [0, 9], [0, -8], [width / 2 + 6, 3], [-(width / 2 + 6), 3],
+  ];
+  const candidates = radialCandidates.map(([dx, dy]) => {
+    const centerX = Math.max(width / 2 + 1, Math.min(99 - width / 2, Number(element.x || 0) + dx));
+    const baselineY = Math.max(height + 1, Math.min(70, Number(element.y || 0) + dy));
+    const box = { left: centerX - width / 2, right: centerX + width / 2, top: baselineY - height, bottom: baselineY + 0.5 };
+    const labelCollisions = occupied.filter((other) => !(
+      box.right + 0.8 < other.left || box.left - 0.8 > other.right || box.bottom + 0.6 < other.top || box.top - 0.6 > other.bottom
+    )).length;
+    const playerCollisions = players.filter((player) => player.id !== element.id && (
+      Number(player.x) >= box.left - 2.5 && Number(player.x) <= box.right + 2.5
+      && Number(player.y) >= box.top - 2.5 && Number(player.y) <= box.bottom + 2.5
+    )).length;
+    const displacement = Math.hypot(centerX - Number(element.x || 0), baselineY - Number(element.y || 0));
+    return { centerX, baselineY, box, score: labelCollisions * 100 + playerCollisions * 18 + displacement };
+  });
+  return candidates.sort((a, b) => a.score - b.score)[0];
 };
 
 export const optimizeSetPieceElementsForPrint = (elements, players = []) => {
   const playersById = new Map(players.map((player) => [player.id, player]));
   const drawable = getDrawableSetPieceElements(elements).map((element) => ({ ...element }));
   const playerElements = drawable.filter((element) => ['player', 'opponent'].includes(element.type));
-  const arrows = drawable.filter((element) => ['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow'].includes(element.type));
-  const boxes = drawable.filter((element) => ['zone', 'text_box', 'block'].includes(element.type));
+  const abbreviationCounts = new Map();
+  const abbreviations = playerElements.map((element) => {
+    const player = playersById.get(element.player_id);
+    const base = getPreferredAbbreviation(element, player) || cleanString(element.label) || 'J';
+    const key = base.toLocaleLowerCase('es');
+    abbreviationCounts.set(key, (abbreviationCounts.get(key) || 0) + 1);
+    return base;
+  });
+  const usedAbbreviations = new Set();
+  const labelBoxes = [];
 
   playerElements.forEach((element, index) => {
-    const nearby = playerElements.filter((candidate) => candidate.id !== element.id && distance(element, candidate) < 13);
-    const fullName = getSetPiecePlayerName(element, playersById);
-    element.printName = nearby.length ? getInitials(fullName) : fullName;
-    if (nearby.some((candidate) => distance(element, candidate) < 7.5)) {
-      element.printName = cleanString(element.label) || getInitials(fullName);
+    const base = abbreviations[index];
+    const duplicate = abbreviationCounts.get(base.toLocaleLowerCase('es')) > 1;
+    const dorsal = cleanString(element.label);
+    let uniqueAbbreviation = duplicate ? `${base} ${dorsal || index + 1}` : base;
+    let fallbackIndex = index + 1;
+    while (usedAbbreviations.has(uniqueAbbreviation.toLocaleLowerCase('es'))) {
+      uniqueAbbreviation = `${base} ${dorsal || fallbackIndex}-${fallbackIndex}`;
+      fallbackIndex += 1;
     }
-    const direction = index % 4;
-    element.printLabelOffsetX = direction === 1 ? 4 : direction === 3 ? -4 : 0;
-    element.printLabelOffsetY = direction === 0 ? 0 : direction === 2 ? -9 : -3;
+    usedAbbreviations.add(uniqueAbbreviation.toLocaleLowerCase('es'));
+    element.printName = uniqueAbbreviation;
+    const placement = getLabelPlacement({ element, text: uniqueAbbreviation, players: playerElements, occupied: labelBoxes });
+    element.printLabelX = placement.centerX;
+    element.printLabelY = placement.baselineY;
+    element.printLabelLeader = Math.hypot(placement.centerX - Number(element.x || 0), placement.baselineY - Number(element.y || 0)) > 6;
+    labelBoxes.push(placement.box);
   });
 
-  arrows.forEach((arrow, index) => {
-    const start = { x: Number(arrow.x1 || 0), y: Number(arrow.y1 || 0) };
-    const end = { x: Number(arrow.x2 || 0), y: Number(arrow.y2 || 0) };
-    const crossesPlayer = playerElements.some((player) => (
-      distance(player, start) > 4 && distance(player, end) > 4 && pointToSegmentDistance(player, start, end) < 4.6
-    ));
-    const sharesPath = arrows.slice(0, index).some((candidate) => (
-      distance(start, { x: Number(candidate.x1 || 0), y: Number(candidate.y1 || 0) }) < 8
-      && distance(end, { x: Number(candidate.x2 || 0), y: Number(candidate.y2 || 0) }) < 8
-    ));
-    if (crossesPlayer || sharesPath) arrow.printCurve = (index % 2 ? 1 : -1) * (sharesPath ? 12 : 8);
-  });
-
-  boxes.forEach((box, index) => {
-    const width = Number(box.width || (box.type === 'block' ? 8 : 18));
-    const height = Number(box.height || (box.type === 'block' ? 8 : 10));
-    const overlapsPlayer = playerElements.some((player) => (
-      player.x >= box.x - 3 && player.x <= box.x + width + 3
-      && player.y >= box.y - 3 && player.y <= box.y + height + 3
-    ));
-    if (overlapsPlayer) {
-      box.x = Math.max(2, Math.min(98 - width, Number(box.x || 0) + (index % 2 ? -8 : 8)));
-      box.y = Math.max(2, Math.min(70 - height, Number(box.y || 0) + 7));
-    }
-  });
+  drawable
+    .filter((element) => ['text', 'text_box', 'zone'].includes(element.type) && cleanString(element.label))
+    .forEach((element) => {
+      const lines = cleanString(element.label).split(/\r?\n/).filter(Boolean);
+      const longestLine = lines.sort((a, b) => b.length - a.length)[0] || '';
+      const isBox = ['text_box', 'zone'].includes(element.type);
+      const originalLabelX = isBox
+        ? Number(element.x || 0) + Math.min(Number(element.width || 18) / 2, 9)
+        : Number(element.x || 0);
+      const originalLabelY = isBox ? Number(element.y || 0) + 4 : Number(element.y || 0);
+      const placement = getLabelPlacement({
+        element: { ...element, x: originalLabelX, y: originalLabelY - 5.4 },
+        text: longestLine,
+        players: playerElements,
+        occupied: labelBoxes,
+      });
+      element.printLabelX = placement.centerX;
+      element.printLabelY = placement.baselineY;
+      element.printLabelLeader = Math.hypot(
+        placement.centerX - originalLabelX,
+        placement.baselineY - originalLabelY,
+      ) > 5;
+      labelBoxes.push(placement.box);
+    });
 
   return drawable;
+};
+
+export const cloneSetPieceElementsWithFreshIds = (elements) => {
+  const source = JSON.parse(JSON.stringify(Array.isArray(elements) ? elements : []));
+  const idMap = new Map();
+  const collectIds = (value) => {
+    if (Array.isArray(value)) return value.forEach(collectIds);
+    if (!value || typeof value !== 'object') return;
+    Object.entries(value).forEach(([key, entry]) => {
+      if (key === 'id' && typeof entry === 'string' && entry) idMap.set(entry, createSetPieceEntityId('copy'));
+      collectIds(entry);
+    });
+  };
+  const replaceIds = (value) => {
+    if (Array.isArray(value)) return value.map(replaceIds);
+    if (typeof value === 'string') return idMap.get(value) || value;
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, replaceIds(entry)]));
+  };
+  collectIds(source);
+  return replaceIds(source);
 };
 
 export const getSetPieceChronology = (elements, players = []) => {

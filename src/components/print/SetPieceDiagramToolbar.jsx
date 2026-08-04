@@ -14,6 +14,7 @@ const toolGroups = [
       ['curved_arrow', 'Flecha curva'],
       ['double_arrow', 'Flecha doble'],
       ['dashed_arrow', 'Discontinua'],
+      ['block', 'Bloqueo'],
     ],
   },
   {
@@ -21,7 +22,6 @@ const toolGroups = [
     actions: [
       ['zone', 'Zona'],
       ['text', 'Texto'],
-      ['block', 'Bloqueo'],
     ],
   },
 ];
@@ -38,7 +38,7 @@ export default function SetPieceDiagramToolbar({ onAdd }) {
                 key={type}
                 type="button"
                 onClick={() => onAdd(type)}
-                className="min-h-9 rounded-xl bg-white/10 px-3 py-2 text-[11px] font-bold text-slate-200 transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70"
+                className="min-h-11 rounded-xl bg-white/10 px-3 py-2 text-[11px] font-bold text-slate-200 transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70"
               >
                 {label}
               </button>
