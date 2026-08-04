@@ -7,6 +7,11 @@ import SetPieceDiagramEditor from './SetPieceDiagramEditor';
 import SetPieceDiagramPrintSheet from './SetPieceDiagramPrintSheet';
 import SetPieceTakersPrintSheet from './SetPieceTakersPrintSheet';
 import { getPlayerDisplayName } from '../../utils/playerDisplayName';
+import {
+  createDefaultSetPieceTacticalMeta,
+  getSetPieceTacticalMeta,
+  setSetPieceTacticalMeta,
+} from '../../utils/setPieceProfessional';
 
 const setPieceSections = [
   { id: 'penaltis', label: 'Penaltis' },
@@ -163,18 +168,19 @@ function SetPieceEditorHeader({
 
 const createDefaultDiagram = (type, order, definitions) => {
   const definition = definitions.find((item) => item.id === type);
+  const drawableElements = [
+    { id: `${type}-${order}-ball`, type: 'ball', x: 8, y: 8 },
+    { id: `${type}-${order}-p1`, type: 'player', x: 46, y: 20, label: '1', player_id: '', roles: [], sequenceOrder: 1 },
+    { id: `${type}-${order}-p2`, type: 'player', x: 56, y: 22, label: '2', player_id: '', roles: [], sequenceOrder: 2 },
+    { id: `${type}-${order}-p3`, type: 'player', x: 50, y: 36, label: '3', player_id: '', roles: [], sequenceOrder: 3 },
+  ];
   return {
     partido_id: '',
     tipo: type,
     orden: order,
     titulo: `${definition?.label || 'ABP'} ${order}`,
     consigna: '',
-    elements: [
-      { id: `${type}-${order}-ball`, type: 'ball', x: 8, y: 8 },
-      { id: `${type}-${order}-p1`, type: 'player', x: 46, y: 20, label: '1', player_id: '' },
-      { id: `${type}-${order}-p2`, type: 'player', x: 56, y: 22, label: '2', player_id: '' },
-      { id: `${type}-${order}-p3`, type: 'player', x: 50, y: 36, label: '3', player_id: '' },
-    ],
+    elements: setSetPieceTacticalMeta(drawableElements, createDefaultSetPieceTacticalMeta()),
   };
 };
 
@@ -429,6 +435,35 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     return { system, starters: markedStarters, bench, coordinates };
   }, [match, players, getFormationCoordinates, captainPlayerId]);
 
+  const professionalSetPieceSuggestions = useMemo(() => {
+    const suggestions = [];
+    const add = (text, source) => {
+      const normalized = String(text || '').trim();
+      if (normalized && !suggestions.some((item) => item.text === normalized)) suggestions.push({ text: normalized, source });
+    };
+    const rivalCornerEvidence = String(match?.preRivalCornersAgainst || '').trim();
+    if (/zona/i.test(rivalCornerEvidence)) {
+      add('El informe indica defensa zonal: valora fijar una zona y atacar la espalda del segundo escalón.', 'Informe rival · córners defensivos');
+    } else if (/segundo palo/i.test(rivalCornerEvidence)) {
+      add('El segundo palo aparece en el informe rival: valora una llegada liberada a esa zona.', 'Informe rival · córners defensivos');
+    } else if (rivalCornerEvidence) {
+      add(`Contrasta esta jugada con el dato registrado: ${rivalCornerEvidence}`, 'Informe rival · córners defensivos');
+    }
+    const planText = String(match?.abpOfensiva || match?.abpDefensiva || '').trim();
+    if (planText) add(`Alinea la ficha con el plan de partido: ${planText}`, 'Plan de partido · ABP');
+    const confirmedTaker = setPieceTakers
+      .filter((entry) => entry.jugador_id || String(entry.nombre_manual || '').trim())
+      .sort((a, b) => Number(a.orden) - Number(b.orden))[0];
+    if (confirmedTaker) {
+      const linkedPlayer = players.find((player) => player.id === confirmedTaker.jugador_id);
+      const takerName = linkedPlayer ? getPlayerDisplayName(linkedPlayer) : confirmedTaker.nombre_manual;
+      add(`${takerName} figura como lanzador prioritario; revisa si debe ser responsable principal de esta jugada.`, 'Lanzadores del partido');
+    }
+    const riskText = String(match?.prePlanAvoid || '').trim();
+    if (riskText) add(`Ten en cuenta el riesgo global registrado: ${riskText}`, 'Plan de partido · evitar');
+    return suggestions.slice(0, 4);
+  }, [match, players, setPieceTakers]);
+
   const handleCaptainChange = async (nextCaptainId) => {
     if (!match?.id) return;
     setCaptainPlayerId(nextCaptainId);
@@ -561,6 +596,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
 
   const mirrorDiagramElements = (elements, axis = 'horizontal') =>
     cleanDiagramElements(elements).map((element) => {
+      if (element.type === 'tactical_meta') return element;
       if (['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow'].includes(element.type)) {
         return axis === 'horizontal'
           ? { ...element, x1: 100 - Number(element.x1 || 0), x2: 100 - Number(element.x2 || 0) }
@@ -907,7 +943,6 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
   const deleteCurrentDiagram = async (mode) => {
     const source = getCurrentDiagram(mode);
     const type = getDiagramType(mode);
-    const definitions = getDiagramDefinitions(mode);
     if (!source?.tipo) return;
     setDiagramSaving(true);
     setDiagramError('');
@@ -915,35 +950,21 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     try {
       const isPersisted = Boolean(source.id);
       if (match?.id && isPersisted) {
-        const { error } = await supabase.from('match_set_piece_diagrams').delete().eq('partido_id', match.id).eq('tipo', type);
+        const { error } = await supabase
+          .from('match_set_piece_diagrams')
+          .delete()
+          .eq('id', source.id)
+          .eq('partido_id', match.id);
         if (error) throw error;
       }
       const remaining = setPieceDiagrams
         .filter((diagram) => !(diagram.tipo === source.tipo && Number(diagram.orden) === Number(source.orden)))
         .sort((a, b) => Number(a.orden) - Number(b.orden));
       const sameType = remaining.filter((diagram) => diagram.tipo === type);
-      const otherTypes = remaining.filter((diagram) => diagram.tipo !== type);
-      const compacted = sameType.map((diagram, index) => ({
-        ...diagram,
-        orden: index + 1,
-        titulo: diagram.titulo || `${definitions.find((item) => item.id === type)?.label || 'ABP'} ${index + 1}`,
-      }));
-      if (match?.id && isPersisted && compacted.length) {
-        const rows = compacted.map((diagram) => ({
-          partido_id: match.id,
-          tipo: diagram.tipo,
-          orden: Number(diagram.orden) || 1,
-          titulo: diagram.titulo || '',
-          consigna: diagram.consigna || '',
-          elements: cleanDiagramElements(diagram.elements),
-        }));
-        const { data, error } = await supabase.from('match_set_piece_diagrams').insert(rows).select('*');
-        if (error) throw error;
-        setSetPieceDiagrams([...otherTypes, ...(data || compacted)]);
-      } else {
-        setSetPieceDiagrams([...otherTypes, ...compacted]);
-      }
-      const nextOrder = compacted.length ? Math.min(Number(source.orden) || 1, compacted.length) : 1;
+      setSetPieceDiagrams(remaining);
+      const nextOrder = sameType.find((diagram) => Number(diagram.orden) > Number(source.orden))?.orden
+        || sameType.at(-1)?.orden
+        || 1;
       if (mode === 'offensive') setOffensiveDiagramOrder(nextOrder);
       else setDefensiveDiagramOrder(nextOrder);
       setDiagramStatus('Jugada eliminada.');
@@ -986,15 +1007,16 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     setDiagramStatus('');
     try {
       const diagram = getCurrentDiagram(mode);
+      const tacticalMeta = getSetPieceTacticalMeta(diagram.elements);
       const category = mode === 'offensive' ? 'ABP Ofensiva' : 'ABP Defensiva';
       const label = getDiagramDefinitions(mode).find((item) => item.id === diagram.tipo)?.label || category;
       const payload = {
         nombre: diagram.titulo || `${label} ${diagram.orden || 1}`,
         tipo: diagram.tipo,
         categoria: category,
-        descripcion: diagram.consigna || '',
-        objetivo: '',
-        variantes: '',
+        descripcion: tacticalMeta.generalInstruction || diagram.consigna || '',
+        objetivo: tacticalMeta.objective || '',
+        variantes: tacticalMeta.variants.filter((variant) => variant.changes).map((variant) => `${variant.name}: ${variant.changes}`).join('\n'),
         dimensiones: '',
         jugadores: '',
         duracion: '',
@@ -1012,17 +1034,35 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     }
   };
 
-  const loadLibraryItemIntoDiagram = (item) => {
+  const loadLibraryItemIntoDiagram = async (item) => {
     if (!libraryModal) return;
     const current = getCurrentDiagram(libraryModal);
+    const storedMeta = getSetPieceTacticalMeta(item.elements);
+    const lastUsedAt = new Date().toISOString();
+    const importedMeta = {
+      ...storedMeta,
+      objective: storedMeta.objective || item.objetivo || '',
+      generalInstruction: storedMeta.generalInstruction || item.descripcion || '',
+      variation: storedMeta.variation || item.variantes || '',
+      lastUsedAt,
+    };
+    const libraryElements = setSetPieceTacticalMeta(
+      JSON.parse(JSON.stringify(cleanDiagramElements(item.elements))),
+      importedMeta
+    );
     updateCurrentDiagram(libraryModal, {
       ...current,
       titulo: item.nombre || current.titulo,
       consigna: item.descripcion || item.objetivo || current.consigna || '',
-      elements: JSON.parse(JSON.stringify(cleanDiagramElements(item.elements))),
+      elements: libraryElements,
     });
     setDiagramStatus(`Cargado desde biblioteca: ${item.nombre}. Guarda la jugada para sincronizarla con el partido.`);
     setLibraryModal(null);
+    const { error } = await supabase.from('training_library').update({ elements: libraryElements }).eq('id', item.id);
+    if (error) {
+      console.error('Error registrando el último uso de la jugada ABP:', error);
+      setDiagramStatus(`Cargado desde biblioteca: ${item.nombre}. No se pudo actualizar la fecha de último uso.`);
+    }
   };
 
   const addDefensiveQuickElement = (label) => {
@@ -1203,8 +1243,8 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
 
   const dossierContent = getDossierContent();
   const activeSheetCount = activeDossierPages.reduce((count, page) => {
-    if (page.id === 'offensive') return count + Math.max(1, chunkDiagrams(dossierContent.offensiveDiagrams).length);
-    if (page.id === 'defensive') return count + Math.max(1, chunkDiagrams(dossierContent.defensiveDiagrams).length);
+    if (page.id === 'offensive') return count + Math.max(1, dossierContent.offensiveDiagrams.length);
+    if (page.id === 'defensive') return count + Math.max(1, dossierContent.defensiveDiagrams.length);
     if (page.id === 'kickoff') return count + Math.max(1, dossierContent.kickoffDiagrams.length);
     return count + 1;
   }, 0);
@@ -1233,8 +1273,8 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
   };
 
   const getPageSheetCount = (page) => {
-    if (page.id === 'offensive') return Math.max(1, chunkDiagrams(dossierContent.offensiveDiagrams).length);
-    if (page.id === 'defensive') return Math.max(1, chunkDiagrams(dossierContent.defensiveDiagrams).length);
+    if (page.id === 'offensive') return Math.max(1, dossierContent.offensiveDiagrams.length);
+    if (page.id === 'defensive') return Math.max(1, dossierContent.defensiveDiagrams.length);
     if (page.id === 'kickoff') return Math.max(1, dossierContent.kickoffDiagrams.length);
     return 1;
   };
@@ -1466,8 +1506,8 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
       {printView === 'abp_ofensiva' ? (
         <div data-print-workspace="true" className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-3 shadow-glow sm:p-6">
           <SetPieceEditorHeader
-            title="Editor visual ABP ofensiva"
-            description="Diseña la jugada con círculos, balón, flechas, líneas discontinuas y zonas. Se imprimen 2 jugadas por hoja."
+            title="Preparación profesional de ABP ofensiva"
+            description="Construye una ficha táctica completa. Editor, vista previa y renderer A4 funcionan como modos independientes."
             saving={diagramSaving}
             hasDiagrams={Boolean(getTypeDiagrams('offensive').length)}
             onAdd={() => addDiagram('offensive')}
@@ -1522,6 +1562,8 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
               <SetPieceDiagramEditor
                 diagram={getCurrentDiagram('offensive')}
                 players={players}
+                match={match}
+                suggestions={professionalSetPieceSuggestions}
                 onChange={(diagram) => updateCurrentDiagram('offensive', diagram)}
               />
             ) : null}
@@ -1532,8 +1574,8 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
       {printView === 'abp_defensiva' ? (
         <div data-print-workspace="true" className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-3 shadow-glow sm:p-6">
           <SetPieceEditorHeader
-            title="Editor visual ABP defensiva"
-            description="Diferencia equipo propio y rival, añade zonas, flechas y trayectorias. Se imprimen 2 jugadas por hoja."
+            title="Preparación profesional de ABP defensiva"
+            description="Organiza marcas, zonas, responsabilidades y riesgos en una ficha lista para presentar e imprimir."
             saving={diagramSaving}
             hasDiagrams={Boolean(getTypeDiagrams('defensive').length)}
             onAdd={() => addDiagram('defensive')}
@@ -1613,6 +1655,8 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
               <SetPieceDiagramEditor
                 diagram={getCurrentDiagram('defensive')}
                 players={players}
+                match={match}
+                suggestions={professionalSetPieceSuggestions}
                 onChange={(diagram) => updateCurrentDiagram('defensive', diagram)}
               />
             ) : null}
@@ -1767,26 +1811,36 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
             />
             {libraryLoading ? <p className="mt-4 text-sm text-slate-400">Cargando biblioteca desde Supabase...</p> : null}
             {libraryError ? <p className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-100">{libraryError}</p> : null}
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              {filteredLibraryItems.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => loadLibraryItemIntoDiagram(item)}
-                  className="rounded-3xl border border-white/5 bg-white/5 p-4 text-left transition hover:border-caudal-electric/40 hover:bg-white/10"
-                >
-                  <div className="grid gap-4 sm:grid-cols-[120px_1fr]">
-                    <div className="rounded-2xl bg-white p-2 text-black">
-                      <SetPieceDiagramCanvas elements={item.elements || []} readOnly />
+            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {filteredLibraryItems.map((item) => {
+                const libraryMeta = getSetPieceTacticalMeta(item.elements);
+                const objective = libraryMeta.objective || item.objetivo || item.descripcion || 'Objetivo pendiente';
+                const updatedAt = libraryMeta.lastUsedAt || item.updated_at || item.created_at;
+                const formattedUpdatedAt = updatedAt
+                  ? new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(updatedAt))
+                  : 'Sin uso registrado';
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => loadLibraryItemIntoDiagram(item)}
+                    className="group overflow-hidden rounded-3xl border border-white/10 bg-white/[0.045] text-left transition hover:-translate-y-0.5 hover:border-caudal-electric/45 hover:bg-white/[0.075] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70"
+                  >
+                    <div className="aspect-[16/10] bg-white p-2 text-black">
+                      <SetPieceDiagramCanvas elements={item.elements || []} readOnly printOptimized />
                     </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-black text-white">{item.nombre}</p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.14em] text-caudal-electric">{item.categoria || item.tipo}</p>
-                      <p className="mt-2 line-clamp-3 text-xs text-slate-400">{item.descripcion || item.objetivo || 'Sin descripción'}</p>
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0"><p className="truncate text-sm font-black text-white">{item.nombre}</p><p className="mt-1 text-[9px] font-black uppercase tracking-[0.15em] text-caudal-electric">{item.categoria || item.tipo}</p></div>
+                        <span className="shrink-0 text-xs tracking-[-0.08em] text-amber-300">{Array.from({ length: 5 }, (_, index) => index < libraryMeta.rating ? '★' : '·').join('')}</span>
+                      </div>
+                      <p className="mt-3 line-clamp-2 min-h-10 text-xs font-semibold leading-5 text-slate-300">{objective}</p>
+                      {libraryMeta.tags.length ? <div className="mt-3 flex flex-wrap gap-1">{libraryMeta.tags.slice(0, 3).map((tag) => <span key={tag} className="rounded-full bg-white/10 px-2 py-1 text-[9px] font-bold text-slate-300">{tag}</span>)}</div> : null}
+                      <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-3 text-[9px] font-bold uppercase tracking-[0.12em] text-slate-500"><span>Último uso</span><span>{formattedUpdatedAt}</span></div>
                     </div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
               {!libraryLoading && !filteredLibraryItems.length ? (
                 <p className="rounded-2xl border border-dashed border-white/10 p-5 text-sm text-slate-400 md:col-span-2">No hay jugadas guardadas en esta categoría de biblioteca.</p>
               ) : null}

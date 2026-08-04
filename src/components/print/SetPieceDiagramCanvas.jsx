@@ -5,6 +5,10 @@ import {
   normalizeSetPieceElementDimensions,
 } from '../../utils/setPieceElementDimensions';
 import { getSetPieceElementInteraction } from '../../utils/setPieceEditorInteractions';
+import {
+  getDrawableSetPieceElements,
+  optimizeSetPieceElementsForPrint,
+} from '../../utils/setPieceProfessional';
 
 const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, value));
 const snapValue = (value, enabled) => (enabled ? Math.round(value / 4) * 4 : value);
@@ -75,10 +79,15 @@ function PitchLines({ fullField = false }) {
   );
 }
 
-export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false }) {
+export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, printOptimized = false }) {
   const svgRef = useRef(null);
   const [drag, setDrag] = useState(null);
   const playersById = useMemo(() => new Map(players.map((player) => [player.id, player])), [players]);
+  const renderedElements = useMemo(() => (
+    printOptimized
+      ? optimizeSetPieceElementsForPrint(elements, players)
+      : getDrawableSetPieceElements(elements)
+  ), [elements, players, printOptimized]);
 
   const updateElement = (id, fields) => {
     onChange(elements.map((element) => (element.id === id ? { ...element, ...fields } : element)));
@@ -175,15 +184,15 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
       </defs>
       <PitchLines fullField={fullField} />
 
-      {elements.map((element) => {
+      {renderedElements.map((element) => {
         const selected = selectedId === element.id;
         const renderedElement = normalizeSetPieceElementDimensions(element);
         if (isArrow(element)) {
           const dashed = element.type === 'dashed_arrow' || element.dashed;
-          const curved = element.type === 'curved_arrow';
+          const curved = element.type === 'curved_arrow' || Number.isFinite(Number(element.printCurve));
           const double = element.type === 'double_arrow';
           const midX = ((element.x1 || 0) + (element.x2 || 0)) / 2;
-          const midY = ((element.y1 || 0) + (element.y2 || 0)) / 2 - 12;
+          const midY = ((element.y1 || 0) + (element.y2 || 0)) / 2 + (Number.isFinite(Number(element.printCurve)) ? Number(element.printCurve) : -12);
           const path = curved ? `M${element.x1} ${element.y1} Q${midX} ${midY} ${element.x2} ${element.y2}` : `M${element.x1} ${element.y1} L${element.x2} ${element.y2}`;
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
@@ -245,17 +254,31 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           );
         }
         const isOpponent = element.type === 'opponent';
-        const name = compactDiagramLabel(getPlayerName(element, playersById), readOnly ? 12 : 18);
+        const name = compactDiagramLabel(element.printName || getPlayerName(element, playersById), readOnly ? 12 : 18);
+        const labelX = Number(element.x || 0) + Number(element.printLabelOffsetX || 0);
+        const labelY = Number(element.y || 0) + 5.9 + Number(element.printLabelOffsetY || 0);
+        const role = Array.isArray(element.roles) ? element.roles[0] : '';
+        const roleCode = String(role || '').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
         return (
           <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
             <circle cx={element.x} cy={element.y} r={selected ? 2.8 : 2.45} fill={isOpponent ? 'white' : 'currentColor'} stroke="currentColor" strokeWidth="0.65" />
+            {element.primaryResponsibility ? <circle cx={element.x} cy={element.y} r="3.35" fill="none" stroke="currentColor" strokeWidth="0.55" /> : null}
             <text x={element.x} y={element.y + 0.9} textAnchor="middle" fontSize="2.25" fontWeight="900" fill={isOpponent ? 'currentColor' : 'white'}>
               {element.label || ''}
             </text>
             {name ? (
-              <text x={element.x} y={element.y + 5.9} textAnchor="middle" fontSize={readOnly ? '1.45' : '1.75'} fontWeight="800" fill="currentColor">
+              <text x={labelX} y={labelY} textAnchor="middle" fontSize={readOnly ? '1.45' : '1.75'} fontWeight="800" fill="currentColor">
                 {name.toUpperCase()}
               </text>
+            ) : null}
+            {Number(element.sequenceOrder) > 0 ? (
+              <g>
+                <circle cx={Number(element.x) + 3.2} cy={Number(element.y) - 3.2} r="1.75" fill="currentColor" />
+                <text x={Number(element.x) + 3.2} y={Number(element.y) - 2.55} textAnchor="middle" fontSize="1.75" fontWeight="900" fill={isOpponent ? 'white' : 'white'}>{Number(element.sequenceOrder)}</text>
+              </g>
+            ) : null}
+            {roleCode ? (
+              <text x={Number(element.x) - 3.5} y={Number(element.y) - 3.2} textAnchor="middle" fontSize="1.45" fontWeight="900" fill="currentColor">{roleCode}</text>
             ) : null}
             {element.locked && !readOnly ? <text x={element.x + 4.2} y={element.y - 3.5} fontSize="2.6" fontWeight="900">L</text> : null}
           </g>
