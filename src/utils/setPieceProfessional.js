@@ -22,6 +22,7 @@ export const SET_PIECE_ROLES = [
 export const createDefaultSetPieceTacticalMeta = () => ({
   version: 2,
   objective: '',
+  saqueType: '',
   whenToUse: '',
   generalInstruction: '',
   risk: '',
@@ -61,6 +62,7 @@ export const normalizeSetPieceTacticalMeta = (value) => {
     ...defaults,
     version: 2,
     objective: cleanString(source.objective),
+    saqueType: cleanString(source.saqueType || source.saque_type || source.typeOfSaque),
     whenToUse: cleanString(source.whenToUse),
     generalInstruction: cleanString(source.generalInstruction),
     risk: cleanString(source.risk),

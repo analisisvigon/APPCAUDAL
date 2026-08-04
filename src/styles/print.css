@@ -1309,9 +1309,9 @@
 
 .set-piece-print-play-body {
   display: grid;
-  grid-template-columns: 120mm minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.38fr) minmax(0, 0.92fr);
   min-height: 0;
-  gap: 5mm;
+  gap: 6mm;
 }
 
 .set-piece-print-pitch {
@@ -1328,7 +1328,7 @@
 .set-piece-print-pitch .set-piece-diagram-canvas {
   width: 100%;
   height: 100%;
-  max-height: 72mm;
+  max-height: 78mm;
   color: #111827;
 }
 
@@ -1337,7 +1337,7 @@
   min-width: 0;
   min-height: 0;
   align-content: start;
-  gap: 2.4mm;
+  gap: 2.6mm;
   overflow: hidden;
 }
 
@@ -1357,6 +1357,19 @@
 .set-piece-print-copy p {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+.set-piece-print-player-list {
+  display: grid;
+  gap: 1.2mm;
+}
+
+.set-piece-print-player-list div {
+  display: flex;
+  justify-content: space-between;
+  gap: 2mm;
+  padding-top: 0.6mm;
+  border-top: 0.4pt solid #e5e7eb;
 }
 
 .set-piece-print-instruction {

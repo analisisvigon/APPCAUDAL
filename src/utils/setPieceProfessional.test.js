@@ -40,7 +40,10 @@ assert.equal(stored.length, drawable.length + 1, 'la ficha se guarda dentro del 
 assert.deepEqual(getDrawableSetPieceElements(stored), drawable, 'el renderer del editor no recibe metadatos');
 assert.equal(getSetPieceTacticalMeta(stored).objective, 'Liberar segundo palo');
 assert.equal(getSetPieceTacticalMeta(stored).alternative, 'Saque corto');
-assert.equal(getSetPieceTacticalMeta(stored).libraryId, 'library-1');
+assert.equal(getSetPieceTacticalMeta(stored).saqueType, '', 'el tipo de saque se normaliza por defecto');
+const withSaqueType = getSetPieceTacticalMeta(setSetPieceTacticalMeta(drawable, { ...meta, saqueType: 'Saque corto' }));
+assert.equal(withSaqueType.saqueType, 'Saque corto', 'el tipo de saque se conserva en la ficha');
+assert.equal(withSaqueType.libraryId, 'library-1');
 assert.equal(getSetPieceTacticalMeta(stored).linkStatus, 'linked');
 assert.equal(getSetPieceTacticalMeta(stored).printIdentityMode, SET_PIECE_PRINT_IDENTITY_MODES.NUMBER_AND_ABBREVIATION);
 

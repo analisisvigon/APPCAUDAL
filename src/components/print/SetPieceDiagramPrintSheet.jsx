@@ -22,6 +22,7 @@ function PrintPlay({ diagram, players, fallbackOrder }) {
   const chronology = getSetPieceChronology(diagram.elements, players);
   const order = Number(diagram.orden) || fallbackOrder;
   const instruction = diagram.consigna || meta.generalInstruction || meta.objective || 'Consigna pendiente de definir';
+  const saqueType = meta.saqueType || diagram.saqueType || '';
 
   return (
     <section className="set-piece-print-play" data-play-order={order}>
@@ -51,9 +52,23 @@ function PrintPlay({ diagram, players, fallbackOrder }) {
             <p className="set-piece-print-instruction">{instruction}</p>
           </section>
 
+          {saqueType ? (
+            <section>
+              <h3>Tipo de saque</h3>
+              <p>{saqueType}</p>
+            </section>
+          ) : null}
+
+          {meta.whenToUse ? (
+            <section>
+              <h3>Cuándo utilizarla</h3>
+              <p>{meta.whenToUse}</p>
+            </section>
+          ) : null}
+
           {chronology.length ? (
             <section className="set-piece-print-chronology">
-              <h3>Cronología</h3>
+              <h3>Intervienen</h3>
               <ol>
                 {chronology.map((step) => (
                   <li key={step.id}>
@@ -62,6 +77,13 @@ function PrintPlay({ diagram, players, fallbackOrder }) {
                   </li>
                 ))}
               </ol>
+            </section>
+          ) : null}
+
+          {meta.risk ? (
+            <section>
+              <h3>Riesgo</h3>
+              <p>{meta.risk}</p>
             </section>
           ) : null}
 

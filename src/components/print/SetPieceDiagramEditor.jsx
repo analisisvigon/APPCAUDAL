@@ -6,10 +6,11 @@ import {
   normalizeSetPieceDimensionValue,
   normalizeSetPieceElementDimensions,
 } from '../../utils/setPieceElementDimensions';
-import { getSetPieceHistoryAction } from '../../utils/setPieceEditorInteractions';
+import { getSetPieceHistoryAction, isEditableInteractionTarget } from '../../utils/setPieceEditorInteractions';
 import {
   SET_PIECE_ROLES,
   SET_PIECE_PRINT_IDENTITY_MODES,
+  cloneSetPieceElementsWithFreshIds,
   getDrawableSetPieceElements,
   getSetPieceChronology,
   getSetPieceResponsibilities,
@@ -61,14 +62,14 @@ function TacticalField({ label, value, onChange, placeholder, rows = 0, maxLengt
       {rows ? (
         <textarea
           rows={rows}
-          value={value}
+          value={value ?? ''}
           maxLength={maxLength}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
-          className={`${fieldClass} resize-y leading-5`}
+          className={`${fieldClass} min-h-[90px] resize-y leading-5`}
         />
       ) : (
-        <input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className={fieldClass} />
+        <input value={value ?? ''} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className={fieldClass} />
       )}
     </label>
   );
@@ -202,6 +203,18 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
     return () => window.removeEventListener('keydown', onKeyDown);
   });
 
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.defaultPrevented || !selectedElement) return;
+      if (isEditableInteractionTarget(event.target)) return;
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+      event.preventDefault();
+      deleteSelected();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedElement, drawableElements]);
+
   const addElement = (type) => {
     const element = createElement(type);
     if (roleOnly && type === 'player') {
@@ -210,6 +223,32 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
     updateElements([...drawableElements, element]);
     setSelectedId(element.id);
     if (['player', 'opponent'].includes(type)) setPanel('player');
+  };
+  const duplicateDiagram = () => {
+    const nextElements = cloneSetPieceElementsWithFreshIds(drawableElements);
+    const nextMeta = {
+      ...tacticalMeta,
+      libraryId: '',
+      libraryVersion: '',
+      libraryCreatedAt: '',
+      libraryUpdatedAt: '',
+      linkStatus: 'detached',
+      libraryStatus: 'draft',
+      libraryFavorite: false,
+    };
+    onChange({
+      ...diagram,
+      titulo: `${diagram.titulo || 'Jugada'} copia`,
+      consigna: diagram.consigna || tacticalMeta.generalInstruction || '',
+      elements: setSetPieceTacticalMeta(nextElements, nextMeta),
+    });
+    setSelectedId('');
+    setPanel('tactic');
+  };
+  const clearDiagram = () => {
+    updateElements([]);
+    setSelectedId('');
+    setPanel('tactic');
   };
   const duplicateSelected = () => {
     if (!selectedElement) return;
@@ -262,6 +301,10 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
         <div className="min-w-0">
           <p className="text-[9px] font-black uppercase tracking-[0.24em] text-caudal-electric">Sistema profesional de preparación ABP</p>
           <input value={diagram.titulo || ''} onChange={(event) => updateDiagram({ titulo: event.target.value })} placeholder="Nombre de la jugada" className="mt-1 w-full border-0 bg-transparent p-0 text-xl font-black text-white outline-none placeholder:text-slate-600" />
+          <label className="mt-3 grid max-w-[260px] gap-1.5">
+            <span className={labelClass}>Tipo de saque</span>
+            <input value={tacticalMeta.saqueType || ''} onChange={(event) => updateMeta({ saqueType: event.target.value })} placeholder="Saque corto, de banda..." className={fieldClass} />
+          </label>
           <div className="mt-3 flex flex-wrap gap-2">
             <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-300">Tipo · {diagram.tipo || 'Sin tipo'}</span>
             <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-300">Clasificación · {tacticalMeta.libraryZone || 'Sin definir'}</span>
@@ -288,6 +331,8 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
               }} className="min-h-10 rounded-full bg-white/[0.08] px-3 disabled:opacity-40">↷</button>
               <button type="button" aria-pressed={snapEnabled} onClick={() => setSnapEnabled((value) => !value)} className={`min-h-10 rounded-full px-3 ${snapEnabled ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.08]'}`}>🧲</button>
               <button type="button" onClick={addSequence} className="min-h-10 rounded-full bg-white/[0.08] px-3">①</button>
+              <button type="button" onClick={duplicateDiagram} className="min-h-10 rounded-full bg-white/[0.08] px-3">⧉</button>
+              <button type="button" onClick={clearDiagram} className="min-h-10 rounded-full bg-red-500/15 px-3 text-red-200">🗑</button>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {layerControls.map((layer) => (
@@ -329,6 +374,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
                   <summary className="cursor-pointer list-none px-1 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-white">Información táctica</summary>
                   <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
                     <TacticalField label="Objetivo" value={tacticalMeta.objective} onChange={(objective) => updateMeta({ objective })} placeholder="Liberar segundo palo" />
+                    <TacticalField label="Tipo de saque" value={tacticalMeta.saqueType} onChange={(saqueType) => updateMeta({ saqueType })} placeholder="Saque corto, de banda, de inicio..." />
                     <TacticalField label="Cuándo utilizarla" value={tacticalMeta.whenToUse} onChange={(whenToUse) => updateMeta({ whenToUse })} placeholder={'Primeros córners.\nSi el rival marca en zona.'} rows={3} />
                     <section className="rounded-2xl border border-white/5 bg-black/15 p-3">
                       <p className={labelClass}>Responsables</p>

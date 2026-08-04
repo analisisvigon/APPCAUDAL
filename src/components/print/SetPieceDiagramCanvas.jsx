@@ -62,6 +62,11 @@ const getPlayerName = (element, playersById) => {
 };
 
 const splitLines = (value) => String(value || '').split('\n').slice(0, 12);
+const getCurveControlPoint = (element) => {
+  const x = Number.isFinite(Number(element?.controlX)) ? Number(element.controlX) : ((Number(element?.x1) || 0) + (Number(element?.x2) || 0)) / 2;
+  const y = Number.isFinite(Number(element?.controlY)) ? Number(element.controlY) : ((Number(element?.y1) || 0) + (Number(element?.y2) || 0)) / 2 + (Number.isFinite(Number(element?.curvature)) ? Number(element.curvature) : -12);
+  return { x, y };
+};
 const compactDiagramLabel = (value, max = 14) => {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   if (text.length <= max) return text;
@@ -154,6 +159,13 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
       updateElement(drag.element.id, { x2: snapValue(clamp(drag.origin.x2 + dx), snap), y2: snapValue(clamp(drag.origin.y2 + dy, 0, 72), snap) });
       return;
     }
+    if (drag.mode === 'curve-control' && drag.element.type === 'curved_arrow') {
+      updateElement(drag.element.id, {
+        controlX: clamp(drag.origin.controlX + dx, 0, 100),
+        controlY: clamp(drag.origin.controlY + dy, 0, 72),
+      });
+      return;
+    }
     if (drag.mode === 'resize' && drag.element.type === 'block') {
       updateElement(drag.element.id, {
         width: normalizeSetPieceDimensionValue(
@@ -238,10 +250,8 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           const dashed = element.type === 'dashed_arrow' || element.dashed;
           const curved = element.type === 'curved_arrow';
           const double = element.type === 'double_arrow';
-          const midX = ((element.x1 || 0) + (element.x2 || 0)) / 2;
-          const storedCurve = Number.isFinite(Number(element.curvature)) ? Number(element.curvature) : -12;
-          const midY = ((element.y1 || 0) + (element.y2 || 0)) / 2 + storedCurve;
-          const path = curved ? `M${element.x1} ${element.y1} Q${midX} ${midY} ${element.x2} ${element.y2}` : `M${element.x1} ${element.y1} L${element.x2} ${element.y2}`;
+          const controlPoint = getCurveControlPoint(element);
+          const path = curved ? `M${element.x1} ${element.y1} Q${controlPoint.x} ${controlPoint.y} ${element.x2} ${element.y2}` : `M${element.x1} ${element.y1} L${element.x2} ${element.y2}`;
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
               <path d={path} fill="none" stroke="currentColor" strokeWidth={selected ? tokens.arrowWidth + 0.28 : tokens.arrowWidth} strokeDasharray={dashed ? '2.2 1.8' : ''} markerEnd="url(#diagram-arrow)" markerStart={double ? 'url(#diagram-arrow-start)' : ''} />
@@ -249,6 +259,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
                 <>
                   <circle cx={element.x1} cy={element.y1} r="2" fill="white" stroke="currentColor" strokeWidth="0.7" onPointerDown={(event) => startDrag(event, element, 'arrow-start')} />
                   <circle cx={element.x2} cy={element.y2} r="2" fill="white" stroke="currentColor" strokeWidth="0.7" onPointerDown={(event) => startDrag(event, element, 'arrow-end')} />
+                  {curved ? <circle cx={controlPoint.x} cy={controlPoint.y} r="1.8" fill="#3DD9FF" stroke="white" strokeWidth="0.55" onPointerDown={(event) => startDrag(event, element, 'curve-control')} /> : null}
                 </>
               ) : null}
             </g>
@@ -335,11 +346,11 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
             ) : null}
             <circle cx={element.x} cy={element.y} r={selected ? tokens.selectedPlayerRadius : tokens.playerRadius} fill={isOpponent ? 'white' : 'currentColor'} stroke="currentColor" strokeWidth="0.55" />
             {element.primaryResponsibility ? <circle cx={element.x} cy={element.y} r={tokens.responsibilityRadius} fill="none" stroke="currentColor" strokeWidth="0.48" /> : null}
-            <text x={element.x} y={element.y + tokens.dorsalSize * 0.34} textAnchor="middle" fontSize={tokens.dorsalSize} fontWeight="900" fill={isOpponent ? 'currentColor' : 'white'}>
+            <text x={element.x} y={element.y + tokens.dorsalSize * 0.34} textAnchor="middle" dominantBaseline="middle" fontSize={tokens.dorsalSize} fontWeight="900" fill={isOpponent ? 'currentColor' : 'white'}>
               {showDorsal ? element.label || '' : ''}
             </text>
             {name && showAbbreviation ? (
-              <text x={labelX} y={labelY} textAnchor="middle" fontSize={tokens.abbreviationSize} fontWeight="900" fill="currentColor" paintOrder="stroke" stroke="white" strokeWidth={printOptimized ? '0.75' : '0.45'}>
+              <text x={labelX} y={labelY} textAnchor="middle" dominantBaseline="middle" fontSize={tokens.abbreviationSize} fontWeight="900" fill="currentColor" paintOrder="stroke" stroke="white" strokeWidth={printOptimized ? '0.75' : '0.45'}>
                 {name.toUpperCase()}
               </text>
             ) : null}
