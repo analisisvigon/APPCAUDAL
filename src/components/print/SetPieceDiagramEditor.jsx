@@ -49,8 +49,10 @@ const createElement = (type) => {
   return { id: createId(), type: 'player', x: 50, y: 35, label: '1', player_id: '', roles: [], sequenceOrder: null };
 };
 
-const fieldClass = 'w-full rounded-xl border border-white/10 bg-white/[0.045] px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-600 focus:border-caudal-electric/60 focus:ring-2 focus:ring-caudal-electric/20';
+const fieldClass = 'w-full rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-sm text-white outline-none placeholder:text-slate-600 focus:border-caudal-electric/60 focus:ring-2 focus:ring-caudal-electric/20';
 const labelClass = 'text-[9px] font-black uppercase tracking-[0.16em] text-slate-500';
+const editorSurfaceClass = 'rounded-[28px] border border-white/[0.08] bg-[#08131f]/95 p-3 shadow-[0_14px_38px_rgba(0,0,0,0.22)]';
+const compactMiniButtonClass = 'inline-flex min-h-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1.5 text-[10px] font-bold text-slate-200 transition hover:border-caudal-electric/50 hover:bg-white/[0.08]';
 
 function TacticalField({ label, value, onChange, placeholder, rows = 0, maxLength }) {
   return (
@@ -132,6 +134,14 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
   const [zoom, setZoom] = useState(1);
   const [panel, setPanel] = useState('tactic');
   const [overlay, setOverlay] = useState('');
+  const [visibleLayers, setVisibleLayers] = useState({
+    numbers: true,
+    abbreviations: true,
+    roles: true,
+    chronology: true,
+    zones: true,
+    texts: true,
+  });
   const historyChangeRef = useRef(false);
 
   const selectedElement = useMemo(() => drawableElements.find((element) => element.id === selectedId) || null, [drawableElements, selectedId]);
@@ -236,90 +246,136 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
   ];
   const selectedWidthRange = selectedElement ? getSetPieceDimensionRange(selectedElement, 'width') : null;
   const selectedHeightRange = selectedElement ? getSetPieceDimensionRange(selectedElement, 'height') : null;
+  const layerControls = [
+    { key: 'numbers', label: 'Dorsales' },
+    { key: 'abbreviations', label: 'Abreviaturas' },
+    { key: 'roles', label: 'Roles' },
+    { key: 'chronology', label: 'Cronología' },
+    { key: 'zones', label: 'Zonas' },
+    { key: 'texts', label: 'Textos' },
+  ];
+  const metadataStatus = tacticalMeta.libraryStatus === 'ready' ? 'Lista' : tacticalMeta.libraryStatus === 'archived' ? 'Archivada' : 'Borrador';
 
   return (
     <div className="set-piece-editor space-y-3">
-      <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#071327] p-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className={`${editorSurfaceClass} flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between`}>
         <div className="min-w-0">
-          <p className="text-[9px] font-black uppercase tracking-[0.22em] text-caudal-electric">Sistema profesional de preparación ABP</p>
+          <p className="text-[9px] font-black uppercase tracking-[0.24em] text-caudal-electric">Sistema profesional de preparación ABP</p>
           <input value={diagram.titulo || ''} onChange={(event) => updateDiagram({ titulo: event.target.value })} placeholder="Nombre de la jugada" className="mt-1 w-full border-0 bg-transparent p-0 text-xl font-black text-white outline-none placeholder:text-slate-600" />
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-300">Tipo · {diagram.tipo || 'Sin tipo'}</span>
+            <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-300">Clasificación · {tacticalMeta.libraryZone || 'Sin definir'}</span>
+            <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-300">Estado · {metadataStatus}</span>
+            <button type="button" className="rounded-full border border-amber-400/20 bg-amber-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-200">★ Favorita</button>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => setOverlay('preview')} className="min-h-11 rounded-xl border border-white/10 bg-white/[0.06] px-4 text-xs font-black text-white">Vista previa</button>
-          <button type="button" onClick={() => setOverlay('presentation')} className="min-h-11 rounded-xl bg-white px-4 text-xs font-black text-slate-950">Presentar</button>
+          <button type="button" onClick={() => setOverlay('preview')} className="min-h-10 rounded-2xl border border-white/10 bg-white/[0.06] px-4 text-xs font-black text-white">Vista previa</button>
+          <button type="button" onClick={() => setOverlay('presentation')} className="min-h-10 rounded-2xl bg-white px-4 text-xs font-black text-slate-950">Presentar</button>
         </div>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(300px,3fr)] xl:items-start">
         <div className="min-w-0 space-y-3">
           <SetPieceDiagramToolbar onAdd={addElement} />
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/5 bg-white/[0.035] p-2 text-xs font-bold text-white">
+          <div className={`${editorSurfaceClass} flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-white`}>
             <div className="flex flex-wrap gap-1.5">
               <button type="button" disabled={historyIndex <= 0} onClick={() => {
                 const nextIndex = Math.max(0, historyIndex - 1); historyChangeRef.current = true; setHistoryIndex(nextIndex); updateElements(clone(history[nextIndex]), { skipHistory: true });
-              }} className="min-h-11 rounded-xl bg-white/10 px-3 disabled:opacity-40">Deshacer</button>
+              }} className="min-h-10 rounded-full bg-white/[0.08] px-3 disabled:opacity-40">↶</button>
               <button type="button" disabled={historyIndex >= history.length - 1} onClick={() => {
                 const nextIndex = Math.min(history.length - 1, historyIndex + 1); historyChangeRef.current = true; setHistoryIndex(nextIndex); updateElements(clone(history[nextIndex]), { skipHistory: true });
-              }} className="min-h-11 rounded-xl bg-white/10 px-3 disabled:opacity-40">Rehacer</button>
-              <button type="button" aria-pressed={snapEnabled} onClick={() => setSnapEnabled((value) => !value)} className={`min-h-11 rounded-xl px-3 ${snapEnabled ? 'bg-caudal-electric text-slate-950' : 'bg-white/10'}`}>Imán</button>
-              <button type="button" onClick={addSequence} className="min-h-11 rounded-xl bg-white/10 px-3">Numerar automáticamente</button>
+              }} className="min-h-10 rounded-full bg-white/[0.08] px-3 disabled:opacity-40">↷</button>
+              <button type="button" aria-pressed={snapEnabled} onClick={() => setSnapEnabled((value) => !value)} className={`min-h-10 rounded-full px-3 ${snapEnabled ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.08]'}`}>🧲</button>
+              <button type="button" onClick={addSequence} className="min-h-10 rounded-full bg-white/[0.08] px-3">①</button>
             </div>
-            <div className="flex items-center rounded-xl bg-black/20"><button type="button" onClick={() => setZoom((value) => Math.max(0.75, value - 0.1))} className="h-11 w-11" aria-label="Reducir zoom">−</button><span className="min-w-12 text-center text-[11px] text-slate-300">{Math.round(zoom * 100)}%</span><button type="button" onClick={() => setZoom((value) => Math.min(1.6, value + 0.1))} className="h-11 w-11" aria-label="Aumentar zoom">+</button></div>
+            <div className="flex flex-wrap items-center gap-2">
+              {layerControls.map((layer) => (
+                <button key={layer.key} type="button" aria-pressed={visibleLayers[layer.key]} onClick={() => setVisibleLayers((current) => ({ ...current, [layer.key]: !current[layer.key] }))} className={`rounded-full border px-2.5 py-1.5 text-[10px] font-bold ${visibleLayers[layer.key] ? 'border-caudal-electric/50 bg-caudal-electric/15 text-caudal-electric' : 'border-white/10 bg-white/[0.04] text-slate-400'}`}>
+                  {layer.label}
+                </button>
+              ))}
+              <div className="flex items-center rounded-full border border-white/10 bg-black/20">
+                <button type="button" onClick={() => setZoom((value) => Math.max(0.75, value - 0.1))} className="h-10 w-10 text-lg" aria-label="Reducir zoom">−</button>
+                <span className="min-w-12 text-center text-[11px] text-slate-300">{Math.round(zoom * 100)}%</span>
+                <button type="button" onClick={() => setZoom((value) => Math.min(1.6, value + 0.1))} className="h-10 w-10 text-lg" aria-label="Aumentar zoom">+</button>
+              </div>
+            </div>
           </div>
           <p className="flex items-center gap-2 px-1 text-[10px] font-bold text-slate-500 sm:hidden" aria-hidden="true"><span>↔</span> Desliza dentro del campo para recorrerlo</p>
-          <div className="overflow-auto rounded-3xl border-2 border-white/15 bg-white p-2 text-black shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
+          <div className="mx-auto max-w-[940px] overflow-auto rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] p-2 text-black shadow-[0_22px_60px_rgba(0,0,0,0.2)]">
             <div style={{ width: `${zoom * 100}%`, minWidth: '100%' }}>
-              <SetPieceDiagramCanvas elements={drawableElements} selectedId={selectedId} onSelect={(id) => { setSelectedId(id); const element = drawableElements.find((item) => item.id === id); if (['player', 'opponent'].includes(element?.type)) setPanel('player'); }} onChange={updateElements} players={players} snap={snapEnabled} fullField={String(diagram.tipo || '').includes('saque_inicio')} />
+              <SetPieceDiagramCanvas elements={drawableElements} selectedId={selectedId} onSelect={(id) => { setSelectedId(id); const element = drawableElements.find((item) => item.id === id); if (['player', 'opponent'].includes(element?.type)) setPanel('player'); }} onChange={updateElements} players={players} snap={snapEnabled} fullField={String(diagram.tipo || '').includes('saque_inicio')} visibleLayers={visibleLayers} />
             </div>
           </div>
-          <section className="rounded-2xl border border-white/5 bg-white/[0.035] p-3">
-            <div className="flex items-center justify-between"><p className={labelClass}>Cronología</p><span className="text-[10px] text-slate-500">Los números se imprimen en el campo</span></div>
-            {chronology.length ? <ol className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{chronology.map((step) => <li key={step.id} className="rounded-xl bg-black/20 px-3 py-2 text-xs leading-5 text-slate-300"><strong className="mr-2 text-caudal-electric">{step.order}</strong><span className="font-black text-white">{step.playerName}</span> {step.instruction}</li>)}</ol> : <p className="mt-2 text-xs text-slate-500">Selecciona jugadores y asigna su orden de aparición.</p>}
+          <section className={editorSurfaceClass}>
+            <div className="flex items-center justify-between"><p className={labelClass}>Cronología</p><span className="text-[10px] text-slate-500">Secuencia visual para el cuerpo técnico</span></div>
+            {chronology.length ? <ol className="mt-3 space-y-2">{chronology.map((step, index) => <li key={step.id} className="flex items-start gap-2"><div className="flex flex-col items-center pt-1"><div className="flex h-7 w-7 items-center justify-center rounded-full bg-caudal-electric text-[11px] font-black text-slate-950">{step.order}</div>{index < chronology.length - 1 ? <div className="mt-1 h-5 w-px bg-white/10" /> : null}</div><div className="flex-1 rounded-2xl border border-white/10 bg-black/15 px-3 py-2"><p className="text-[11px] font-black text-white">{step.playerName}</p><p className="mt-1 text-[11px] leading-5 text-slate-400">{step.instruction || 'Sin consigna'}</p></div></li>)}</ol> : <p className="mt-2 text-xs text-slate-500">Selecciona jugadores y asigna su orden de aparición.</p>}
           </section>
         </div>
 
-        <aside className="overflow-hidden rounded-3xl border border-white/10 bg-[#0a172b] xl:sticky xl:top-4">
+        <aside className="overflow-hidden rounded-[30px] border border-white/10 bg-[#08131f]/95 xl:sticky xl:top-4">
           <div className="border-b border-white/10 p-3">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Panel táctico</p>
-            <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-black/20 p-1" role="tablist">
-              {panelTabs.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={panel === id} onClick={() => setPanel(id)} className={`min-h-11 rounded-lg text-[10px] font-black uppercase ${panel === id ? 'bg-white text-slate-950' : 'text-slate-400'}`}>{label}</button>)}
+            <div className="mt-3 grid grid-cols-2 gap-1 rounded-2xl bg-black/20 p-1" role="tablist">
+              {panelTabs.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={panel === id} onClick={() => setPanel(id)} className={`min-h-10 rounded-xl text-[10px] font-black uppercase ${panel === id ? 'bg-white text-slate-950' : 'text-slate-400'}`}>{label}</button>)}
             </div>
           </div>
 
-          <div className="max-h-[calc(100vh-10rem)] space-y-4 overflow-y-auto p-4">
+          <div className="max-h-[calc(100vh-10rem)] space-y-2 overflow-y-auto p-3">
             {panel === 'tactic' ? (
-              <>
-                <TacticalField label="Objetivo" value={tacticalMeta.objective} onChange={(objective) => updateMeta({ objective })} placeholder="Liberar segundo palo" />
-                <TacticalField label="Cuándo utilizarla" value={tacticalMeta.whenToUse} onChange={(whenToUse) => updateMeta({ whenToUse })} placeholder={'Primeros córners.\nSi el rival marca en zona.'} rows={3} />
-                <section className="rounded-2xl border border-white/5 bg-black/15 p-3">
-                  <p className={labelClass}>Responsables</p>
-                  {responsibilities.length ? <div className="mt-2 space-y-1.5">{responsibilities.map((item, index) => <div key={`${item.role}-${item.playerName}-${index}`} className="flex items-center justify-between gap-3 text-xs"><span className="text-slate-400">{item.role}</span><strong className="truncate text-white">{item.playerName}{item.primary ? ' · Principal' : ''}</strong></div>)}</div> : <p className="mt-2 text-xs leading-5 text-slate-500">Asigna roles desde la pestaña Jugador. No se duplican en otro formulario.</p>}
-                </section>
-                <TacticalField label="Consigna general · máx. 3 líneas" value={diagram.consigna || tacticalMeta.generalInstruction} onChange={(generalInstruction) => { updateDiagram({ consigna: generalInstruction, elements: setSetPieceTacticalMeta(diagram.elements, { ...tacticalMeta, generalInstruction }) }); }} placeholder="Mensaje breve para el grupo" rows={3} maxLength={240} />
-                <TacticalField label="Riesgo" value={tacticalMeta.risk} onChange={(risk) => updateMeta({ risk })} placeholder="Qué ocurre si falla" rows={2} />
-                <TacticalField label="Alternativa" value={tacticalMeta.alternative} onChange={(alternative) => updateMeta({ alternative })} placeholder="Qué hacer si el rival cambia el marcaje" rows={2} />
-                <label className="grid gap-1.5">
-                  <span className={labelClass}>Identidad en dossier</span>
-                  <select value={tacticalMeta.printIdentityMode} onChange={(event) => updateMeta({ printIdentityMode: event.target.value })} className={`${fieldClass} bg-white font-bold text-slate-950`}>
-                    <option value={SET_PIECE_PRINT_IDENTITY_MODES.NUMBER}>Dorsal</option>
-                    <option value={SET_PIECE_PRINT_IDENTITY_MODES.ABBREVIATION}>Abreviatura</option>
-                    <option value={SET_PIECE_PRINT_IDENTITY_MODES.NUMBER_AND_ABBREVIATION}>Dorsal + abreviatura</option>
-                  </select>
-                </label>
-                {tacticalMeta.libraryId ? (
-                  <section className="rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.06] p-3">
-                    <p className={labelClass}>Origen de biblioteca</p>
-                    <p className="mt-1 text-xs font-bold text-emerald-100">Instancia vinculada · plantilla {tacticalMeta.libraryVersion || 'sin versión'}</p>
-                    <p className="mt-1 text-[10px] text-slate-500">La instancia del partido es editable y no modifica la plantilla maestra.</p>
-                  </section>
-                ) : null}
-                <TacticalField label="Observaciones" value={tacticalMeta.observations} onChange={(observations) => updateMeta({ observations })} placeholder="Notas internas del entrenador" rows={3} />
-                <div className="grid grid-cols-[1fr_auto] gap-3">
-                  <TacticalField label="Etiquetas" value={tacticalMeta.tags.join(', ')} onChange={(value) => updateMeta({ tags: value.split(',').map((item) => item.trim()).filter(Boolean) })} placeholder="segundo palo, zona" />
-                  <div><p className={labelClass}>Valoración</p><div className="mt-2 flex gap-1">{[1, 2, 3, 4, 5].map((rating) => <button key={rating} type="button" aria-label={`Valorar con ${rating}`} aria-pressed={tacticalMeta.rating === rating} onClick={() => updateMeta({ rating })} className={`text-lg ${rating <= tacticalMeta.rating ? 'text-amber-300' : 'text-slate-700'}`}>★</button>)}</div></div>
-                </div>
-                {suggestions.length ? <section className="rounded-2xl border border-caudal-electric/20 bg-caudal-electric/[0.07] p-3"><p className={labelClass}>Sugerencias contextuales · nunca automáticas</p><div className="mt-2 space-y-2">{suggestions.slice(0, 4).map((suggestion, index) => <div key={`${suggestion.source}-${index}`} className="rounded-xl bg-black/15 p-2.5"><p className="text-xs font-bold leading-5 text-white">{suggestion.text}</p><p className="mt-1 text-[9px] font-black uppercase tracking-[0.14em] text-caudal-electric">{suggestion.source}</p></div>)}</div></section> : null}
-              </>
+              <div className="space-y-2">
+                <details open className="rounded-2xl border border-white/10 bg-white/[0.03] p-2">
+                  <summary className="cursor-pointer list-none px-1 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-white">Información táctica</summary>
+                  <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
+                    <TacticalField label="Objetivo" value={tacticalMeta.objective} onChange={(objective) => updateMeta({ objective })} placeholder="Liberar segundo palo" />
+                    <TacticalField label="Cuándo utilizarla" value={tacticalMeta.whenToUse} onChange={(whenToUse) => updateMeta({ whenToUse })} placeholder={'Primeros córners.\nSi el rival marca en zona.'} rows={3} />
+                    <section className="rounded-2xl border border-white/5 bg-black/15 p-3">
+                      <p className={labelClass}>Responsables</p>
+                      {responsibilities.length ? <div className="mt-2 space-y-1.5">{responsibilities.map((item, index) => <div key={`${item.role}-${item.playerName}-${index}`} className="flex items-center justify-between gap-3 text-xs"><span className="text-slate-400">{item.role}</span><strong className="truncate text-white">{item.playerName}{item.primary ? ' · Principal' : ''}</strong></div>)}</div> : <p className="mt-2 text-xs leading-5 text-slate-500">Asigna roles desde la pestaña Jugador. No se duplican en otro formulario.</p>}
+                    </section>
+                  </div>
+                </details>
+                <details className="rounded-2xl border border-white/10 bg-white/[0.03] p-2">
+                  <summary className="cursor-pointer list-none px-1 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-white">Consignas</summary>
+                  <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
+                    <TacticalField label="Consigna general · máx. 3 líneas" value={diagram.consigna || tacticalMeta.generalInstruction} onChange={(generalInstruction) => { updateDiagram({ consigna: generalInstruction, elements: setSetPieceTacticalMeta(diagram.elements, { ...tacticalMeta, generalInstruction }) }); }} placeholder="Mensaje breve para el grupo" rows={3} maxLength={240} />
+                    <TacticalField label="Riesgo" value={tacticalMeta.risk} onChange={(risk) => updateMeta({ risk })} placeholder="Qué ocurre si falla" rows={2} />
+                    <TacticalField label="Alternativa" value={tacticalMeta.alternative} onChange={(alternative) => updateMeta({ alternative })} placeholder="Qué hacer si el rival cambia el marcaje" rows={2} />
+                  </div>
+                </details>
+                <details className="rounded-2xl border border-white/10 bg-white/[0.03] p-2">
+                  <summary className="cursor-pointer list-none px-1 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-white">Dossier</summary>
+                  <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
+                    <label className="grid gap-1.5">
+                      <span className={labelClass}>Identidad en dossier</span>
+                      <select value={tacticalMeta.printIdentityMode} onChange={(event) => updateMeta({ printIdentityMode: event.target.value })} className={`${fieldClass} bg-white font-bold text-slate-950`}>
+                        <option value={SET_PIECE_PRINT_IDENTITY_MODES.NUMBER}>Dorsal</option>
+                        <option value={SET_PIECE_PRINT_IDENTITY_MODES.ABBREVIATION}>Abreviatura</option>
+                        <option value={SET_PIECE_PRINT_IDENTITY_MODES.NUMBER_AND_ABBREVIATION}>Dorsal + abreviatura</option>
+                      </select>
+                    </label>
+                    <div className="grid grid-cols-[1fr_auto] gap-3">
+                      <TacticalField label="Etiquetas" value={tacticalMeta.tags.join(', ')} onChange={(value) => updateMeta({ tags: value.split(',').map((item) => item.trim()).filter(Boolean) })} placeholder="segundo palo, zona" />
+                      <div><p className={labelClass}>Valoración</p><div className="mt-2 flex gap-1">{[1, 2, 3, 4, 5].map((rating) => <button key={rating} type="button" aria-label={`Valorar con ${rating}`} aria-pressed={tacticalMeta.rating === rating} onClick={() => updateMeta({ rating })} className={`text-lg ${rating <= tacticalMeta.rating ? 'text-amber-300' : 'text-slate-700'}`}>★</button>)}</div></div>
+                    </div>
+                  </div>
+                </details>
+                <details className="rounded-2xl border border-white/10 bg-white/[0.03] p-2">
+                  <summary className="cursor-pointer list-none px-1 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-white">Biblioteca y observaciones</summary>
+                  <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
+                    {tacticalMeta.libraryId ? (
+                      <section className="rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.06] p-3">
+                        <p className={labelClass}>Origen de biblioteca</p>
+                        <p className="mt-1 text-xs font-bold text-emerald-100">Instancia vinculada · plantilla {tacticalMeta.libraryVersion || 'sin versión'}</p>
+                        <p className="mt-1 text-[10px] text-slate-500">La instancia del partido es editable y no modifica la plantilla maestra.</p>
+                      </section>
+                    ) : null}
+                    <TacticalField label="Observaciones" value={tacticalMeta.observations} onChange={(observations) => updateMeta({ observations })} placeholder="Notas internas del entrenador" rows={3} />
+                    {suggestions.length ? <section className="rounded-2xl border border-caudal-electric/20 bg-caudal-electric/[0.07] p-3"><p className={labelClass}>Sugerencias contextuales · nunca automáticas</p><div className="mt-2 space-y-2">{suggestions.slice(0, 4).map((suggestion, index) => <div key={`${suggestion.source}-${index}`} className="rounded-xl bg-black/15 p-2.5"><p className="text-xs font-bold leading-5 text-white">{suggestion.text}</p><p className="mt-1 text-[9px] font-black uppercase tracking-[0.14em] text-caudal-electric">{suggestion.source}</p></div>)}</div></section> : null}
+                  </div>
+                </details>
+              </div>
             ) : null}
 
             {panel === 'player' ? (

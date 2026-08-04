@@ -173,6 +173,14 @@ select option {
   overflow-x: clip;
 }
 
+.set-piece-editor .set-piece-diagram-canvas {
+  max-height: min(72vh, 760px);
+}
+
+.set-piece-editor .set-piece-diagram-canvas text {
+  user-select: none;
+}
+
 main,
 section,
 article,

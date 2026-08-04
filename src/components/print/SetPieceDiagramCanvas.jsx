@@ -112,15 +112,28 @@ function PitchLines({ fullField = false }) {
   );
 }
 
-export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, printOptimized = false, identityMode = 'number-and-abbreviation' }) {
+export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, printOptimized = false, identityMode = 'number-and-abbreviation', visibleLayers = {} }) {
   const svgRef = useRef(null);
   const [drag, setDrag] = useState(null);
   const playersById = useMemo(() => new Map(players.map((player) => [player.id, player])), [players]);
-  const renderedElements = useMemo(() => (
-    printOptimized
+  const normalizedVisibleLayers = useMemo(() => ({
+    numbers: visibleLayers?.numbers ?? true,
+    abbreviations: visibleLayers?.abbreviations ?? true,
+    roles: visibleLayers?.roles ?? true,
+    chronology: visibleLayers?.chronology ?? true,
+    zones: visibleLayers?.zones ?? true,
+    texts: visibleLayers?.texts ?? true,
+  }), [visibleLayers]);
+  const renderedElements = useMemo(() => {
+    const baseElements = printOptimized
       ? optimizeSetPieceElementsForPrint(elements, players)
-      : getDrawableSetPieceElements(elements)
-  ), [elements, players, printOptimized]);
+      : getDrawableSetPieceElements(elements);
+    return baseElements.filter((element) => {
+      if (!normalizedVisibleLayers.zones && element.type === 'zone') return false;
+      if (!normalizedVisibleLayers.texts && ['text', 'text_box'].includes(element.type)) return false;
+      return true;
+    });
+  }, [elements, players, printOptimized, normalizedVisibleLayers]);
   const tokens = printOptimized ? SET_PIECE_CANVAS_TOKENS.print : SET_PIECE_CANVAS_TOKENS.editor;
 
   const updateElement = (id, fields) => {
@@ -305,12 +318,20 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
         const labelY = Number.isFinite(Number(element.printLabelY)) ? Number(element.printLabelY) : Number(element.y || 0) + 5.2 + Number(element.printLabelOffsetY || 0);
         const role = Array.isArray(element.roles) ? element.roles[0] : '';
         const roleCode = String(role || '').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
-        const showDorsal = identityMode !== 'abbreviation';
-        const showAbbreviation = identityMode !== 'number';
+        const showDorsal = normalizedVisibleLayers.numbers && identityMode !== 'abbreviation';
+        const showAbbreviation = normalizedVisibleLayers.abbreviations && identityMode !== 'number';
+        const showRoleCode = normalizedVisibleLayers.roles && roleCode;
+        const showSequenceNumber = normalizedVisibleLayers.chronology && Number(element.sequenceOrder) > 0;
         return (
           <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
             {printOptimized && showAbbreviation && element.printLabelLeader ? (
               <line x1={element.x} y1={element.y} x2={labelX} y2={labelY - 1.2} stroke="currentColor" strokeWidth="0.24" opacity="0.58" />
+            ) : null}
+            {selected && !readOnly ? (
+              <>
+                <circle cx={element.x} cy={element.y} r={tokens.selectedPlayerRadius + 0.95} fill="none" stroke="#3DD9FF" strokeWidth="0.9" opacity="0.72" />
+                <circle cx={element.x} cy={element.y} r={tokens.selectedPlayerRadius + 1.3} fill="none" stroke="white" strokeWidth="0.26" opacity="0.95" />
+              </>
             ) : null}
             <circle cx={element.x} cy={element.y} r={selected ? tokens.selectedPlayerRadius : tokens.playerRadius} fill={isOpponent ? 'white' : 'currentColor'} stroke="currentColor" strokeWidth="0.55" />
             {element.primaryResponsibility ? <circle cx={element.x} cy={element.y} r={tokens.responsibilityRadius} fill="none" stroke="currentColor" strokeWidth="0.48" /> : null}
@@ -322,13 +343,13 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
                 {name.toUpperCase()}
               </text>
             ) : null}
-            {Number(element.sequenceOrder) > 0 ? (
+            {showSequenceNumber ? (
               <g>
                 <circle cx={Number(element.x) + 2.8} cy={Number(element.y) - 2.8} r={tokens.stepRadius} fill="currentColor" />
                 <text x={Number(element.x) + 2.8} y={Number(element.y) - 2.8 + tokens.stepSize * 0.34} textAnchor="middle" fontSize={tokens.stepSize} fontWeight="900" fill="white">{Number(element.sequenceOrder)}</text>
               </g>
             ) : null}
-            {roleCode ? (
+            {showRoleCode ? (
               <text x={Number(element.x) - 3} y={Number(element.y) - 2.8} textAnchor="middle" fontSize={tokens.roleSize} fontWeight="900" fill="currentColor" paintOrder="stroke" stroke="white" strokeWidth="0.45">{roleCode}</text>
             ) : null}
             {element.locked && !readOnly ? <text x={element.x + 4.2} y={element.y - 3.5} fontSize="2.6" fontWeight="900">L</text> : null}
