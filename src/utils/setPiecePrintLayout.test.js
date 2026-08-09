@@ -26,6 +26,6 @@ assert.ok(matchPrint.includes("linkStatus: 'linked'"), 'la instancia conserva el
 assert.equal(editor.includes("['variants', 'Variantes']"), false, 'la interfaz no anuncia variantes gráficas');
 assert.equal(editor.includes('Participa en Variante'), false, 'la participación ficticia en variantes desaparece');
 assert.ok(editor.includes('label="Alternativa"'), 'solo queda Alternativa textual');
-assert.ok(toolbar.indexOf("['block', 'Bloqueo']") < toolbar.indexOf("label: 'Anotaciones'"), 'Bloqueo pertenece a Dibujo');
+assert.ok(toolbar.indexOf("['block', 'Bloqueo']") > toolbar.indexOf("label: 'TRAZADO'") && toolbar.indexOf("['block', 'Bloqueo']") < toolbar.indexOf("label: 'ANOTACIONES'"), 'Bloqueo pertenece a Trazado');
 
 console.log('setPiecePrintLayout tests passed');

@@ -26,19 +26,6 @@ const clone = (value) => JSON.parse(JSON.stringify(value || []));
 const isArrow = (element) => ['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow'].includes(element?.type);
 const isResizableBox = (element) => ['zone', 'block', 'text_box'].includes(element?.type);
 
-const quickConsignas = [
-  'Atacar primer palo',
-  'Atacar segundo palo',
-  'Bloqueo',
-  'Arrastre',
-  'Segunda jugada',
-  'Rechace',
-  'Vigilancia',
-  'Barrera',
-  'Marca individual',
-  'Zona',
-];
-
 const createElement = (type) => {
   if (type === 'ball') return { id: createId(), type, x: 8, y: 8 };
   if (isArrow({ type })) return { id: createId(), type, x1: 20, y1: 46, x2: 44, y2: 26, dashed: type === 'dashed_arrow' };
@@ -53,7 +40,7 @@ const createElement = (type) => {
 const fieldClass = 'w-full rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-sm text-white outline-none placeholder:text-slate-600 focus:border-caudal-electric/60 focus:ring-2 focus:ring-caudal-electric/20';
 const labelClass = 'text-[9px] font-black uppercase tracking-[0.16em] text-slate-500';
 const editorSurfaceClass = 'rounded-[28px] border border-white/[0.08] bg-[#08131f]/95 p-3 shadow-[0_14px_38px_rgba(0,0,0,0.22)]';
-const compactMiniButtonClass = 'inline-flex min-h-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1.5 text-[10px] font-bold text-slate-200 transition hover:border-caudal-electric/50 hover:bg-white/[0.08]';
+const compactToolButtonClass = 'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-3 text-[11px] font-bold text-slate-200 transition hover:bg-white/[0.09] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric disabled:opacity-35';
 
 function TacticalField({ label, value, onChange, placeholder, rows = 0, maxLength }) {
   return (
@@ -72,6 +59,24 @@ function TacticalField({ label, value, onChange, placeholder, rows = 0, maxLengt
         <input value={value ?? ''} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className={fieldClass} />
       )}
     </label>
+  );
+}
+
+function EditorAccordion({ id, title, open, onToggle, children }) {
+  return (
+    <section className="border-b border-white/[0.07] last:border-b-0">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={`${id}-content`}
+        onClick={onToggle}
+        className="flex min-h-11 w-full items-center justify-between gap-3 px-1 text-left text-[10px] font-black uppercase tracking-[0.18em] text-slate-300 outline-none hover:text-white focus-visible:ring-2 focus-visible:ring-caudal-electric"
+      >
+        <span>{title}</span>
+        <span aria-hidden="true" className={`text-base text-caudal-electric transition-transform ${open ? 'rotate-45' : ''}`}>+</span>
+      </button>
+      {open ? <div id={`${id}-content`} className="space-y-3 pb-4 pt-1">{children}</div> : null}
+    </section>
   );
 }
 
@@ -143,12 +148,25 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
     zones: true,
     texts: true,
   });
+  const [openSections, setOpenSections] = useState({
+    ficha: true,
+    risk: false,
+    dossier: false,
+    library: false,
+    observations: false,
+  });
   const historyChangeRef = useRef(false);
 
   const selectedElement = useMemo(() => drawableElements.find((element) => element.id === selectedId) || null, [drawableElements, selectedId]);
   const chronology = useMemo(() => getSetPieceChronology(diagram.elements, players), [diagram.elements, players]);
   const responsibilities = useMemo(() => getSetPieceResponsibilities(diagram.elements, players), [diagram.elements, players]);
   const isSelectedPlayer = ['player', 'opponent'].includes(selectedElement?.type);
+  const structureOnly = !visibleLayers.numbers
+    && !visibleLayers.abbreviations
+    && !visibleLayers.roles
+    && !visibleLayers.chronology
+    && !visibleLayers.zones
+    && !visibleLayers.texts;
 
   const updateDiagram = (fields) => onChange({ ...diagram, ...fields });
   const updateMeta = (patch) => {
@@ -169,6 +187,15 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
     if (!selectedElement) return;
     updateElements(drawableElements.map((element) => element.id === selectedElement.id ? { ...element, ...fields } : element));
   };
+  const toggleSection = (section) => setOpenSections((current) => ({
+    ...current,
+    [section]: !current[section],
+  }));
+  const selectElement = (id) => {
+    setSelectedId(id);
+    const element = drawableElements.find((item) => item.id === id);
+    setPanel(['player', 'opponent'].includes(element?.type) ? 'player' : 'tactic');
+  };
 
   useEffect(() => {
     if (historyChangeRef.current) {
@@ -179,6 +206,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
     setHistoryIndex(0);
     setSelectedId('');
     setPanel('tactic');
+    setOpenSections({ ficha: true, risk: false, dossier: false, library: false, observations: false });
   }, [diagram.id, diagram.tipo, diagram.orden]);
 
   useEffect(() => {
@@ -294,10 +322,19 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
     { key: 'texts', label: 'Textos' },
   ];
   const metadataStatus = tacticalMeta.libraryStatus === 'ready' ? 'Lista' : tacticalMeta.libraryStatus === 'archived' ? 'Archivada' : 'Borrador';
+  const selectedParticipantName = isSelectedPlayer
+    ? selectedElement.type === 'opponent'
+      ? 'Rival'
+      : roleOnly
+        ? (selectedElement.roles?.[0] || `Participante ${selectedElement.label || ''}`)
+        : players.find((player) => player.id === selectedElement.player_id)
+          ? getPlayerDisplayName(players.find((player) => player.id === selectedElement.player_id))
+          : `Jugador ${selectedElement.label || ''}`
+    : '';
 
   return (
-    <div className="set-piece-editor space-y-3">
-      <div className={`${editorSurfaceClass} flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between`}>
+    <div className="set-piece-editor w-full min-w-0 max-w-full space-y-3 overflow-x-hidden">
+      {!roleOnly ? <div className={`${editorSurfaceClass} flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between`}>
         <div className="min-w-0">
           <p className="text-[9px] font-black uppercase tracking-[0.24em] text-caudal-electric">Sistema profesional de preparación ABP</p>
           <input value={diagram.titulo || ''} onChange={(event) => updateDiagram({ titulo: event.target.value })} placeholder="Nombre de la jugada" className="mt-1 w-full border-0 bg-transparent p-0 text-xl font-black text-white outline-none placeholder:text-slate-600" />
@@ -316,129 +353,112 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
           <button type="button" onClick={() => setOverlay('preview')} className="min-h-10 rounded-2xl border border-white/10 bg-white/[0.06] px-4 text-xs font-black text-white">Vista previa</button>
           <button type="button" onClick={() => setOverlay('presentation')} className="min-h-10 rounded-2xl bg-white px-4 text-xs font-black text-slate-950">Presentar</button>
         </div>
-      </div>
+      </div> : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(300px,3fr)] xl:items-start">
+      <div className={`grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 xl:items-start ${roleOnly ? 'xl:grid-cols-[minmax(0,6.6fr)_minmax(320px,3.4fr)]' : 'xl:grid-cols-[minmax(0,7fr)_minmax(300px,3fr)]'}`}>
         <div className="min-w-0 space-y-3">
           <SetPieceDiagramToolbar onAdd={addElement} />
-          <div className={`${editorSurfaceClass} flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-white`}>
-            <div className="flex flex-wrap gap-1.5">
-              <button type="button" disabled={historyIndex <= 0} onClick={() => {
-                const nextIndex = Math.max(0, historyIndex - 1); historyChangeRef.current = true; setHistoryIndex(nextIndex); updateElements(clone(history[nextIndex]), { skipHistory: true });
-              }} className="min-h-10 rounded-full bg-white/[0.08] px-3 disabled:opacity-40">↶</button>
-              <button type="button" disabled={historyIndex >= history.length - 1} onClick={() => {
-                const nextIndex = Math.min(history.length - 1, historyIndex + 1); historyChangeRef.current = true; setHistoryIndex(nextIndex); updateElements(clone(history[nextIndex]), { skipHistory: true });
-              }} className="min-h-10 rounded-full bg-white/[0.08] px-3 disabled:opacity-40">↷</button>
-              <button type="button" aria-pressed={snapEnabled} onClick={() => setSnapEnabled((value) => !value)} className={`min-h-10 rounded-full px-3 ${snapEnabled ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.08]'}`}>🧲</button>
-              <button type="button" onClick={addSequence} className="min-h-10 rounded-full bg-white/[0.08] px-3">①</button>
-              <button type="button" onClick={duplicateDiagram} className="min-h-10 rounded-full bg-white/[0.08] px-3">⧉</button>
-              <button type="button" onClick={clearDiagram} className="min-h-10 rounded-full bg-red-500/15 px-3 text-red-200">🗑</button>
+          <section className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl bg-[#08131f]/90 px-2 py-1.5 shadow-[0_12px_30px_rgba(0,0,0,0.16)]" aria-label="Herramientas de edición">
+            <div className="flex flex-wrap items-center justify-between gap-1">
+              <div className="flex flex-wrap items-center gap-0.5">
+                <button type="button" title="Deshacer" aria-label="Deshacer" disabled={historyIndex <= 0} onClick={() => {
+                  const nextIndex = Math.max(0, historyIndex - 1); historyChangeRef.current = true; setHistoryIndex(nextIndex); updateElements(clone(history[nextIndex]), { skipHistory: true });
+                }} className={compactToolButtonClass}><span aria-hidden="true">↶</span><span className="hidden sm:inline">Deshacer</span></button>
+                <button type="button" title="Rehacer" aria-label="Rehacer" disabled={historyIndex >= history.length - 1} onClick={() => {
+                  const nextIndex = Math.min(history.length - 1, historyIndex + 1); historyChangeRef.current = true; setHistoryIndex(nextIndex); updateElements(clone(history[nextIndex]), { skipHistory: true });
+                }} className={compactToolButtonClass}><span aria-hidden="true">↷</span><span className="hidden sm:inline">Rehacer</span></button>
+                <span className="mx-1 h-6 w-px bg-white/10" aria-hidden="true" />
+                <button type="button" title="Ajustar a la cuadrícula" aria-label="Activar o desactivar el imán" aria-pressed={snapEnabled} onClick={() => setSnapEnabled((value) => !value)} className={`${compactToolButtonClass} ${snapEnabled ? 'bg-caudal-electric/15 text-caudal-electric' : ''}`}><span aria-hidden="true">⌖</span> Imán</button>
+                <button type="button" title="Numerar participantes por orden" aria-label="Numerar participantes por orden" onClick={addSequence} className={compactToolButtonClass}><span aria-hidden="true">①</span> Numerar</button>
+              </div>
+              <div className="flex flex-wrap items-center gap-0.5">
+                <button type="button" title="Duplicar diseño" aria-label="Duplicar diseño" onClick={duplicateDiagram} className={compactToolButtonClass}><span aria-hidden="true">⧉</span><span className="hidden sm:inline">Duplicar</span></button>
+                <button type="button" title="Vaciar campo" aria-label="Vaciar campo" onClick={clearDiagram} className={`${compactToolButtonClass} text-red-200 hover:bg-red-500/15`}><span aria-hidden="true">×</span><span className="hidden sm:inline">Vaciar</span></button>
+                <div className="ml-1 flex items-center rounded-xl bg-black/20" aria-label="Controles de zoom">
+                  <button type="button" title="Reducir zoom" onClick={() => setZoom((value) => Math.max(0.75, value - 0.1))} className="h-11 w-11 rounded-xl text-lg text-white outline-none hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-caudal-electric" aria-label="Reducir zoom">−</button>
+                  <span className="min-w-12 text-center text-[10px] font-bold text-slate-300" aria-live="polite">{Math.round(zoom * 100)}%</span>
+                  <button type="button" title="Aumentar zoom" onClick={() => setZoom((value) => Math.min(1.6, value + 0.1))} className="h-11 w-11 rounded-xl text-lg text-white outline-none hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-caudal-electric" aria-label="Aumentar zoom">+</button>
+                </div>
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+          </section>
+
+          <section className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.025] px-2.5 py-2" aria-label="Capas de visualización">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="mr-1 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Capas</span>
               {layerControls.map((layer) => (
-                <button key={layer.key} type="button" aria-pressed={visibleLayers[layer.key]} onClick={() => setVisibleLayers((current) => ({ ...current, [layer.key]: !current[layer.key] }))} className={`rounded-full border px-2.5 py-1.5 text-[10px] font-bold ${visibleLayers[layer.key] ? 'border-caudal-electric/50 bg-caudal-electric/15 text-caudal-electric' : 'border-white/10 bg-white/[0.04] text-slate-400'}`}>
+                <button key={layer.key} type="button" title={`${visibleLayers[layer.key] ? 'Ocultar' : 'Mostrar'} ${layer.label.toLowerCase()}`} aria-pressed={visibleLayers[layer.key]} onClick={() => setVisibleLayers((current) => ({ ...current, [layer.key]: !current[layer.key] }))} className={`min-h-9 rounded-full px-2.5 text-[10px] font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-caudal-electric ${visibleLayers[layer.key] ? 'bg-white/[0.09] text-white' : 'bg-black/15 text-slate-500 line-through'}`}>
                   {layer.label}
                 </button>
               ))}
-              <div className="flex items-center rounded-full border border-white/10 bg-black/20">
-                <button type="button" onClick={() => setZoom((value) => Math.max(0.75, value - 0.1))} className="h-10 w-10 text-lg" aria-label="Reducir zoom">−</button>
-                <span className="min-w-12 text-center text-[11px] text-slate-300">{Math.round(zoom * 100)}%</span>
-                <button type="button" onClick={() => setZoom((value) => Math.min(1.6, value + 0.1))} className="h-10 w-10 text-lg" aria-label="Aumentar zoom">+</button>
-              </div>
+              <button type="button" title={structureOnly ? 'Restaurar todas las capas' : 'Ocultar las capas informativas'} aria-pressed={structureOnly} onClick={() => setVisibleLayers(structureOnly ? { numbers: true, abbreviations: true, roles: true, chronology: true, zones: true, texts: true } : { numbers: false, abbreviations: false, roles: false, chronology: false, zones: false, texts: false })} className={`ml-auto min-h-9 rounded-full px-3 text-[10px] font-black outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric ${structureOnly ? 'bg-caudal-electric text-slate-950' : 'bg-caudal-electric/10 text-caudal-electric'}`}>
+                {structureOnly ? 'Mostrar capas' : 'Solo estructura'}
+              </button>
             </div>
-          </div>
+          </section>
           <p className="flex items-center gap-2 px-1 text-[10px] font-bold text-slate-500 sm:hidden" aria-hidden="true"><span>↔</span> Desliza dentro del campo para recorrerlo</p>
-          <div className="mx-auto max-w-[940px] overflow-auto rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] p-2 text-black shadow-[0_22px_60px_rgba(0,0,0,0.2)]">
+          <div className={`relative mx-auto w-full min-w-0 overflow-auto rounded-[28px] bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] p-2 text-black shadow-[0_24px_70px_rgba(0,0,0,0.24)] ${roleOnly ? 'max-w-[820px]' : 'max-w-[940px]'}`}>
             <div style={{ width: `${zoom * 100}%`, minWidth: '100%' }}>
-              <SetPieceDiagramCanvas elements={drawableElements} selectedId={selectedId} onSelect={(id) => { setSelectedId(id); const element = drawableElements.find((item) => item.id === id); if (['player', 'opponent'].includes(element?.type)) setPanel('player'); }} onChange={updateElements} players={players} snap={snapEnabled} fullField={String(diagram.tipo || '').includes('saque_inicio')} visibleLayers={visibleLayers} />
+              <SetPieceDiagramCanvas elements={drawableElements} selectedId={selectedId} onSelect={selectElement} onChange={updateElements} players={players} snap={snapEnabled} fullField={String(diagram.tipo || '').includes('saque_inicio')} visibleLayers={visibleLayers} />
             </div>
+            {!drawableElements.length ? <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8"><div className="max-w-xs rounded-2xl bg-slate-950/80 px-5 py-4 text-center text-white shadow-xl backdrop-blur-sm"><p className="text-sm font-black">El campo está listo</p><p className="mt-1 text-xs leading-5 text-slate-300">Empieza añadiendo participantes, balón o trazados.</p></div></div> : null}
           </div>
-          <section className={editorSurfaceClass}>
-            <div className="flex items-center justify-between"><p className={labelClass}>Cronología</p><span className="text-[10px] text-slate-500">Secuencia visual para el cuerpo técnico</span></div>
-            {chronology.length ? <ol className="mt-3 space-y-2">{chronology.map((step, index) => <li key={step.id} className="flex items-start gap-2"><div className="flex flex-col items-center pt-1"><div className="flex h-7 w-7 items-center justify-center rounded-full bg-caudal-electric text-[11px] font-black text-slate-950">{step.order}</div>{index < chronology.length - 1 ? <div className="mt-1 h-5 w-px bg-white/10" /> : null}</div><div className="flex-1 rounded-2xl border border-white/10 bg-black/15 px-3 py-2"><p className="text-[11px] font-black text-white">{step.playerName}</p><p className="mt-1 text-[11px] leading-5 text-slate-400">{step.instruction || 'Sin consigna'}</p></div></li>)}</ol> : <p className="mt-2 text-xs text-slate-500">Selecciona jugadores y asigna su orden de aparición.</p>}
+          <section className="rounded-[24px] border border-white/[0.07] bg-[#08131f]/75 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2"><p className={labelClass}>Cronología</p><span className="text-[10px] text-slate-500">Selecciona un paso para editar su participante</span></div>
+            {chronology.length ? <ol className="mt-3 flex flex-col gap-2 lg:flex-row lg:items-stretch" aria-label="Secuencia de la jugada">{chronology.map((step, index) => <li key={step.id} className="relative flex min-w-0 flex-1 items-stretch gap-2 lg:block"><button type="button" aria-label={`Paso ${step.order}: ${step.playerName}`} aria-current={selectedId === step.id ? 'step' : undefined} onClick={() => selectElement(step.id)} className={`flex min-h-14 w-full items-center gap-2 rounded-2xl px-3 py-2 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-caudal-electric lg:items-start ${selectedId === step.id ? 'bg-caudal-electric/15 ring-1 ring-caudal-electric/60' : 'bg-black/15 hover:bg-white/[0.06]'}`}><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-caudal-electric text-[11px] font-black text-slate-950">{step.order}</span><span className="min-w-0"><strong className="block truncate text-[11px] text-white">{step.playerName}</strong><span className="mt-0.5 block text-[10px] leading-4 text-slate-400">{step.instruction || 'Sin consigna'}</span></span></button>{index < chronology.length - 1 ? <span className="flex w-5 shrink-0 items-center justify-center text-caudal-electric/50 lg:absolute lg:-right-2.5 lg:top-1/2 lg:z-10 lg:-translate-y-1/2" aria-hidden="true"><span className="lg:hidden">↓</span><span className="hidden lg:inline">›</span></span> : null}</li>)}</ol> : <p className="mt-2 text-xs text-slate-500">Selecciona participantes y asigna su orden de aparición. La secuencia aparecerá aquí.</p>}
           </section>
         </div>
 
-        <aside className="overflow-hidden rounded-[30px] border border-white/10 bg-[#08131f]/95 xl:sticky xl:top-4">
-          <div className="border-b border-white/10 p-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Panel táctico</p>
-            <div className="mt-3 grid grid-cols-2 gap-1 rounded-2xl bg-black/20 p-1" role="tablist">
-              {panelTabs.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={panel === id} onClick={() => setPanel(id)} className={`min-h-10 rounded-xl text-[10px] font-black uppercase ${panel === id ? 'bg-white text-slate-950' : 'text-slate-400'}`}>{label}</button>)}
+        <aside className="overflow-hidden rounded-[26px] border border-white/[0.08] bg-[#08131f]/95 shadow-[0_20px_50px_rgba(0,0,0,0.2)] xl:sticky xl:top-4">
+          <div className="border-b border-white/[0.07] p-3">
+            <div className="flex items-center justify-between gap-3"><div><p className="text-[9px] font-black uppercase tracking-[0.2em] text-caudal-electric">Panel contextual</p><p className="mt-1 truncate text-xs font-bold text-white">{isSelectedPlayer ? selectedParticipantName : 'Información de la jugada'}</p></div>{isSelectedPlayer ? <span className="rounded-full bg-caudal-electric/15 px-2 py-1 text-[9px] font-black uppercase text-caudal-electric">Seleccionado</span> : null}</div>
+            <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-black/20 p-1" role="tablist" aria-label="Panel de edición">
+              {panelTabs.map(([id, label]) => { const disabled = id === 'player' && !isSelectedPlayer; return <button key={id} type="button" role="tab" aria-selected={panel === id} aria-controls={`set-piece-panel-${id}`} disabled={disabled} onClick={() => setPanel(id)} className={`min-h-11 rounded-lg text-[10px] font-black uppercase outline-none transition focus-visible:ring-2 focus-visible:ring-caudal-electric ${panel === id ? 'bg-white text-slate-950' : 'text-slate-400 hover:text-white'} disabled:cursor-not-allowed disabled:opacity-35`}>{label}</button>; })}
             </div>
           </div>
 
-          <div className="max-h-[calc(100vh-10rem)] space-y-2 overflow-y-auto p-3">
+          <div className="max-h-[calc(100vh-10rem)] overflow-y-auto px-3 pb-4" id={`set-piece-panel-${panel}`} role="tabpanel">
             {panel === 'tactic' ? (
-              <div className="space-y-2">
-                <details open className="rounded-2xl border border-white/10 bg-white/[0.03] p-2">
-                  <summary className="cursor-pointer list-none px-1 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-white">Información táctica</summary>
-                  <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
-                    <TacticalField label="Objetivo" value={tacticalMeta.objective} onChange={(objective) => updateMeta({ objective })} placeholder="Liberar segundo palo" />
-                    <TacticalField label="Tipo de saque" value={tacticalMeta.saqueType} onChange={(saqueType) => updateMeta({ saqueType })} placeholder="Saque corto, de banda, de inicio..." />
-                    <TacticalField label="Cuándo utilizarla" value={tacticalMeta.whenToUse} onChange={(whenToUse) => updateMeta({ whenToUse })} placeholder={'Primeros córners.\nSi el rival marca en zona.'} rows={3} />
-                    <section className="rounded-2xl border border-white/5 bg-black/15 p-3">
-                      <p className={labelClass}>Responsables</p>
-                      {responsibilities.length ? <div className="mt-2 space-y-1.5">{responsibilities.map((item, index) => <div key={`${item.role}-${item.playerName}-${index}`} className="flex items-center justify-between gap-3 text-xs"><span className="text-slate-400">{item.role}</span><strong className="truncate text-white">{item.playerName}{item.primary ? ' · Principal' : ''}</strong></div>)}</div> : <p className="mt-2 text-xs leading-5 text-slate-500">Asigna roles desde la pestaña Jugador. No se duplican en otro formulario.</p>}
-                    </section>
-                  </div>
-                </details>
-                <details className="rounded-2xl border border-white/10 bg-white/[0.03] p-2">
-                  <summary className="cursor-pointer list-none px-1 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-white">Consignas</summary>
-                  <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
-                    <TacticalField label="Consigna general · máx. 3 líneas" value={diagram.consigna || tacticalMeta.generalInstruction} onChange={(generalInstruction) => { updateDiagram({ consigna: generalInstruction, elements: setSetPieceTacticalMeta(diagram.elements, { ...tacticalMeta, generalInstruction }) }); }} placeholder="Mensaje breve para el grupo" rows={3} maxLength={240} />
-                    <TacticalField label="Riesgo" value={tacticalMeta.risk} onChange={(risk) => updateMeta({ risk })} placeholder="Qué ocurre si falla" rows={2} />
-                    <TacticalField label="Alternativa" value={tacticalMeta.alternative} onChange={(alternative) => updateMeta({ alternative })} placeholder="Qué hacer si el rival cambia el marcaje" rows={2} />
-                  </div>
-                </details>
-                <details className="rounded-2xl border border-white/10 bg-white/[0.03] p-2">
-                  <summary className="cursor-pointer list-none px-1 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-white">Dossier</summary>
-                  <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
-                    <label className="grid gap-1.5">
-                      <span className={labelClass}>Identidad en dossier</span>
-                      <select value={tacticalMeta.printIdentityMode} onChange={(event) => updateMeta({ printIdentityMode: event.target.value })} className={`${fieldClass} bg-white font-bold text-slate-950`}>
-                        <option value={SET_PIECE_PRINT_IDENTITY_MODES.NUMBER}>Dorsal</option>
-                        <option value={SET_PIECE_PRINT_IDENTITY_MODES.ABBREVIATION}>Abreviatura</option>
-                        <option value={SET_PIECE_PRINT_IDENTITY_MODES.NUMBER_AND_ABBREVIATION}>Dorsal + abreviatura</option>
-                      </select>
-                    </label>
-                    <div className="grid grid-cols-[1fr_auto] gap-3">
-                      <TacticalField label="Etiquetas" value={tacticalMeta.tags.join(', ')} onChange={(value) => updateMeta({ tags: value.split(',').map((item) => item.trim()).filter(Boolean) })} placeholder="segundo palo, zona" />
-                      <div><p className={labelClass}>Valoración</p><div className="mt-2 flex gap-1">{[1, 2, 3, 4, 5].map((rating) => <button key={rating} type="button" aria-label={`Valorar con ${rating}`} aria-pressed={tacticalMeta.rating === rating} onClick={() => updateMeta({ rating })} className={`text-lg ${rating <= tacticalMeta.rating ? 'text-amber-300' : 'text-slate-700'}`}>★</button>)}</div></div>
-                    </div>
-                  </div>
-                </details>
-                <details className="rounded-2xl border border-white/10 bg-white/[0.03] p-2">
-                  <summary className="cursor-pointer list-none px-1 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-white">Biblioteca y observaciones</summary>
-                  <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
-                    {tacticalMeta.libraryId ? (
-                      <section className="rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.06] p-3">
-                        <p className={labelClass}>Origen de biblioteca</p>
-                        <p className="mt-1 text-xs font-bold text-emerald-100">Instancia vinculada · plantilla {tacticalMeta.libraryVersion || 'sin versión'}</p>
-                        <p className="mt-1 text-[10px] text-slate-500">La instancia del partido es editable y no modifica la plantilla maestra.</p>
-                      </section>
-                    ) : null}
-                    <TacticalField label="Observaciones" value={tacticalMeta.observations} onChange={(observations) => updateMeta({ observations })} placeholder="Notas internas del entrenador" rows={3} />
-                    {suggestions.length ? <section className="rounded-2xl border border-caudal-electric/20 bg-caudal-electric/[0.07] p-3"><p className={labelClass}>Sugerencias contextuales · nunca automáticas</p><div className="mt-2 space-y-2">{suggestions.slice(0, 4).map((suggestion, index) => <div key={`${suggestion.source}-${index}`} className="rounded-xl bg-black/15 p-2.5"><p className="text-xs font-bold leading-5 text-white">{suggestion.text}</p><p className="mt-1 text-[9px] font-black uppercase tracking-[0.14em] text-caudal-electric">{suggestion.source}</p></div>)}</div></section> : null}
-                  </div>
-                </details>
+              <div>
+                <EditorAccordion id="ficha" title="Ficha" open={openSections.ficha} onToggle={() => toggleSection('ficha')}>
+                  <TacticalField label="Objetivo" value={tacticalMeta.objective} onChange={(objective) => updateMeta({ objective })} placeholder="Liberar segundo palo" />
+                  <TacticalField label="Tipo de saque" value={tacticalMeta.saqueType} onChange={(saqueType) => updateMeta({ saqueType })} placeholder="Saque corto, de banda, de inicio..." />
+                  <TacticalField label="Cuándo utilizarla" value={tacticalMeta.whenToUse} onChange={(whenToUse) => updateMeta({ whenToUse })} placeholder={'Primeros córners.\nSi el rival marca en zona.'} rows={3} />
+                  <TacticalField label="Consigna general · máx. 3 líneas" value={diagram.consigna || tacticalMeta.generalInstruction} onChange={(generalInstruction) => updateDiagram({ consigna: generalInstruction, elements: setSetPieceTacticalMeta(diagram.elements, { ...tacticalMeta, generalInstruction }) })} placeholder="Mensaje breve para el grupo" rows={3} maxLength={240} />
+                  {responsibilities.length ? <div className="rounded-xl bg-black/15 p-3"><p className={labelClass}>Roles asignados</p><div className="mt-2 space-y-1.5">{responsibilities.map((item, index) => <div key={`${item.role}-${item.playerName}-${index}`} className="flex items-center justify-between gap-3 text-[11px]"><span className="text-slate-400">{item.role}</span><strong className="truncate text-white">{item.playerName}{item.primary ? ' · Principal' : ''}</strong></div>)}</div></div> : null}
+                </EditorAccordion>
+                <EditorAccordion id="risk" title="Riesgo / Alternativa" open={openSections.risk} onToggle={() => toggleSection('risk')}>
+                  <TacticalField label="Riesgo" value={tacticalMeta.risk} onChange={(risk) => updateMeta({ risk })} placeholder="Qué ocurre si falla" rows={2} />
+                  <TacticalField label="Alternativa" value={tacticalMeta.alternative} onChange={(alternative) => updateMeta({ alternative })} placeholder="Qué hacer si el rival cambia el marcaje" rows={2} />
+                </EditorAccordion>
+                <EditorAccordion id="dossier" title="Dossier" open={openSections.dossier} onToggle={() => toggleSection('dossier')}>
+                  <label className="grid gap-1.5"><span className={labelClass}>Identidad en dossier</span><select value={tacticalMeta.printIdentityMode} onChange={(event) => updateMeta({ printIdentityMode: event.target.value })} className={`${fieldClass} bg-white font-bold text-slate-950`}><option value={SET_PIECE_PRINT_IDENTITY_MODES.NUMBER}>Dorsal</option><option value={SET_PIECE_PRINT_IDENTITY_MODES.ABBREVIATION}>Abreviatura</option><option value={SET_PIECE_PRINT_IDENTITY_MODES.NUMBER_AND_ABBREVIATION}>Dorsal + abreviatura</option></select></label>
+                  <TacticalField label="Etiquetas" value={tacticalMeta.tags.join(', ')} onChange={(value) => updateMeta({ tags: value.split(',').map((item) => item.trim()).filter(Boolean) })} placeholder="segundo palo, zona" />
+                  <div><p className={labelClass}>Valoración</p><div className="mt-2 flex gap-1">{[1, 2, 3, 4, 5].map((rating) => <button key={rating} type="button" aria-label={`Valorar con ${rating}`} aria-pressed={tacticalMeta.rating === rating} onClick={() => updateMeta({ rating })} className={`min-h-11 min-w-11 rounded-lg text-lg outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric ${rating <= tacticalMeta.rating ? 'text-amber-300' : 'text-slate-700'}`}>★</button>)}</div></div>
+                </EditorAccordion>
+                <EditorAccordion id="library" title="Biblioteca" open={openSections.library} onToggle={() => toggleSection('library')}>
+                  {tacticalMeta.libraryId ? <section className="rounded-xl bg-emerald-300/[0.06] p-3"><p className={labelClass}>Origen de biblioteca</p><p className="mt-1 text-xs font-bold text-emerald-100">Instancia vinculada · plantilla {tacticalMeta.libraryVersion || 'sin versión'}</p><p className="mt-1 text-[10px] text-slate-500">La instancia del partido es editable y no modifica la plantilla maestra.</p></section> : <p className="text-xs leading-5 text-slate-500">Esta jugada todavía no está vinculada a una plantilla.</p>}
+                </EditorAccordion>
+                <EditorAccordion id="observations" title="Observaciones" open={openSections.observations} onToggle={() => toggleSection('observations')}>
+                  <TacticalField label="Observaciones" value={tacticalMeta.observations} onChange={(observations) => updateMeta({ observations })} placeholder="Notas internas del entrenador" rows={3} />
+                  {suggestions.length ? <section className="rounded-xl bg-caudal-electric/[0.07] p-3"><p className={labelClass}>Sugerencias contextuales · nunca automáticas</p><div className="mt-2 space-y-2">{suggestions.slice(0, 4).map((suggestion, index) => <div key={`${suggestion.source}-${index}`} className="rounded-xl bg-black/15 p-2.5"><p className="text-xs font-bold leading-5 text-white">{suggestion.text}</p><p className="mt-1 text-[9px] font-black uppercase tracking-[0.14em] text-caudal-electric">{suggestion.source}</p></div>)}</div></section> : null}
+                </EditorAccordion>
               </div>
             ) : null}
 
-            {panel === 'player' ? (
-              isSelectedPlayer ? (
-                <>
-                  <div><p className={labelClass}>{roleOnly ? 'Participante por rol' : 'Jugador seleccionado'}</p><p className="mt-1 text-base font-black text-white">{selectedElement.type === 'opponent' ? 'Rival' : roleOnly ? (selectedElement.roles?.[0] || `Participante ${selectedElement.label || ''}`) : players.find((player) => player.id === selectedElement.player_id) ? getPlayerDisplayName(players.find((player) => player.id === selectedElement.player_id)) : `Jugador ${selectedElement.label || ''}`}</p></div>
-                  {!roleOnly && selectedElement.type === 'player' ? <label className="grid gap-1.5"><span className={labelClass}>Jugador vinculado</span><select value={selectedElement.player_id || ''} onChange={(event) => { const player = players.find((item) => item.id === event.target.value); updateSelected({ player_id: event.target.value, label: player?.number ? String(player.number) : selectedElement.label, name: '' }); }} className={`${fieldClass} bg-white font-bold text-slate-950`}><option value="">Sin jugador vinculado</option>{players.map((player) => <option key={player.id} value={player.id}>{player.number || '-'} · {getPlayerDisplayName(player)}</option>)}</select></label> : null}
-                  <div><p className={labelClass}>Roles · selección múltiple</p><div className="mt-2 flex flex-wrap gap-1.5">{SET_PIECE_ROLES.map((role) => <button key={role} type="button" aria-pressed={(selectedElement.roles || []).includes(role)} onClick={() => toggleRole(role)} className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-bold ${(selectedElement.roles || []).includes(role) ? 'border-caudal-electric/40 bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300'}`}>{role}</button>)}</div></div>
-                  <TacticalField label="Consigna individual" value={selectedElement.note || ''} onChange={(note) => updateSelected({ note })} placeholder="Julio fija y ataca el espacio" rows={3} />
-                  <label className="grid gap-1.5"><span className={labelClass}>Orden de aparición</span><input type="number" min="1" max="20" value={selectedElement.sequenceOrder || ''} onChange={(event) => updateSelected({ sequenceOrder: event.target.value ? Number(event.target.value) : null })} className={fieldClass} placeholder="1" /></label>
-                  <label className="flex min-h-11 items-center justify-between rounded-xl bg-white/[0.04] p-3 text-xs font-bold text-white"><span>Responsable principal</span><input type="checkbox" checked={Boolean(selectedElement.primaryResponsibility)} onChange={(event) => updateSelected({ primaryResponsibility: event.target.checked })} className="h-4 w-4 accent-[#4f8cff]" /></label>
-                </>
-              ) : <div className="rounded-2xl border border-dashed border-white/10 p-5 text-center"><p className="text-sm font-black text-white">Selecciona {roleOnly ? 'un participante' : 'un jugador'} en el campo</p><p className="mt-2 text-xs leading-5 text-slate-500">Aquí editarás rol, consigna, orden y responsabilidad principal.</p></div>
+            {panel === 'player' && isSelectedPlayer ? (
+              <div className="space-y-4 py-4">
+                <div className="rounded-2xl bg-caudal-electric/[0.08] p-3 ring-1 ring-caudal-electric/25"><p className={labelClass}>{roleOnly ? 'Participante por rol' : 'Jugador seleccionado'}</p><p className="mt-1 text-base font-black text-white">{selectedParticipantName}</p><p className="mt-1 text-[10px] text-caudal-electric">Editando el elemento resaltado en el campo</p></div>
+                {!roleOnly && selectedElement.type === 'player' ? <label className="grid gap-1.5"><span className={labelClass}>Jugador vinculado</span><select value={selectedElement.player_id || ''} onChange={(event) => { const player = players.find((item) => item.id === event.target.value); updateSelected({ player_id: event.target.value, label: player?.number ? String(player.number) : selectedElement.label, name: '' }); }} className={`${fieldClass} bg-white font-bold text-slate-950`}><option value="">Sin jugador vinculado</option>{players.map((player) => <option key={player.id} value={player.id}>{player.number || '-'} · {getPlayerDisplayName(player)}</option>)}</select></label> : null}
+                <div><p className={labelClass}>Roles · selección múltiple</p><div className="mt-2 grid grid-cols-2 gap-2">{SET_PIECE_ROLES.map((role) => { const active = (selectedElement.roles || []).includes(role); return <button key={role} type="button" aria-pressed={active} onClick={() => toggleRole(role)} className={`flex min-h-11 items-center justify-between rounded-xl px-3 text-left text-[10px] font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-caudal-electric ${active ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.05] text-slate-300 hover:bg-white/[0.09]'}`}><span>{role}</span><span aria-hidden="true">{active ? '✓' : '+'}</span></button>; })}</div></div>
+                <TacticalField label="Consigna individual" value={selectedElement.note || ''} onChange={(note) => updateSelected({ note })} placeholder="Fija y ataca el espacio" rows={3} />
+                <label className="grid gap-1.5"><span className={labelClass}>Orden de aparición</span><input type="number" min="1" max="20" value={selectedElement.sequenceOrder || ''} onChange={(event) => updateSelected({ sequenceOrder: event.target.value ? Number(event.target.value) : null })} className={fieldClass} placeholder="1" /></label>
+                <label className={`flex min-h-12 cursor-pointer items-center justify-between rounded-xl p-3 text-xs font-bold transition ${selectedElement.primaryResponsibility ? 'bg-amber-300/15 text-amber-100 ring-1 ring-amber-300/35' : 'bg-white/[0.04] text-white'}`}><span><strong className="block">Responsable principal</strong><span className="mt-0.5 block text-[10px] font-normal text-slate-400">Marca la referencia principal de la acción</span></span><input type="checkbox" checked={Boolean(selectedElement.primaryResponsibility)} onChange={(event) => updateSelected({ primaryResponsibility: event.target.checked })} className="h-5 w-5 accent-[#3dd9ff]" /></label>
+              </div>
             ) : null}
 
             {selectedElement && !isSelectedPlayer ? (
-              <details className="rounded-2xl border border-white/10 bg-black/15" open={panel === 'player'}><summary className="cursor-pointer list-none px-3 py-3 text-xs font-black text-white">Dibujo · {selectedElement.type.replaceAll('_', ' ')}</summary><div className="space-y-3 border-t border-white/10 p-3">{!isArrow(selectedElement) ? <TacticalField label="Etiqueta / texto" value={selectedElement.label || ''} onChange={(label) => updateSelected({ label })} placeholder="Etiqueta" rows={selectedElement.type === 'text_box' ? 4 : 0} /> : <label className="grid gap-1.5"><span className={labelClass}>Trayectoria</span><select value={selectedElement.type} onChange={(event) => updateSelected({ type: event.target.value, dashed: event.target.value === 'dashed_arrow' })} className={`${fieldClass} bg-white font-bold text-slate-950`}><option value="arrow">Continua</option><option value="dashed_arrow">Discontinua</option><option value="curved_arrow">Curva</option><option value="double_arrow">Doble</option></select></label>}{isResizableBox(selectedElement) ? <div className="grid grid-cols-2 gap-2">{selectedWidthRange ? <label className="grid gap-1"><span className={labelClass}>Ancho</span><input type="number" value={selectedElement.width ?? selectedWidthRange.defaultValue} onChange={(event) => updateSelected({ width: normalizeSetPieceDimensionValue(selectedElement, 'width', event.target.value, selectedElement.width) })} className={fieldClass} /></label> : null}{selectedHeightRange ? <label className="grid gap-1"><span className={labelClass}>Alto</span><input type="number" value={selectedElement.height ?? selectedHeightRange.defaultValue} onChange={(event) => updateSelected({ height: normalizeSetPieceDimensionValue(selectedElement, 'height', event.target.value, selectedElement.height) })} className={fieldClass} /></label> : null}</div> : null}<div className="grid grid-cols-2 gap-2"><button type="button" onClick={duplicateSelected} className="rounded-xl bg-white/10 px-3 py-2.5 text-xs font-bold text-white">Duplicar</button><button type="button" onClick={deleteSelected} className="rounded-xl bg-red-500/15 px-3 py-2.5 text-xs font-bold text-red-100">Eliminar</button></div></div></details>
+              <div className="space-y-3 py-4"><div className="rounded-2xl bg-caudal-electric/[0.08] p-3 ring-1 ring-caudal-electric/25"><p className={labelClass}>Elemento seleccionado</p><p className="mt-1 text-sm font-black capitalize text-white">{selectedElement.type.replaceAll('_', ' ')}</p></div>{!isArrow(selectedElement) ? <TacticalField label="Etiqueta / texto" value={selectedElement.label || ''} onChange={(label) => updateSelected({ label })} placeholder="Etiqueta" rows={selectedElement.type === 'text_box' ? 4 : 0} /> : <label className="grid gap-1.5"><span className={labelClass}>Trayectoria</span><select value={selectedElement.type} onChange={(event) => updateSelected({ type: event.target.value, dashed: event.target.value === 'dashed_arrow' })} className={`${fieldClass} bg-white font-bold text-slate-950`}><option value="arrow">Continua</option><option value="dashed_arrow">Discontinua</option><option value="curved_arrow">Curva</option><option value="double_arrow">Doble</option></select></label>}{isResizableBox(selectedElement) ? <div className="grid grid-cols-2 gap-2">{selectedWidthRange ? <label className="grid gap-1"><span className={labelClass}>Ancho</span><input type="number" value={selectedElement.width ?? selectedWidthRange.defaultValue} onChange={(event) => updateSelected({ width: normalizeSetPieceDimensionValue(selectedElement, 'width', event.target.value, selectedElement.width) })} className={fieldClass} /></label> : null}{selectedHeightRange ? <label className="grid gap-1"><span className={labelClass}>Alto</span><input type="number" value={selectedElement.height ?? selectedHeightRange.defaultValue} onChange={(event) => updateSelected({ height: normalizeSetPieceDimensionValue(selectedElement, 'height', event.target.value, selectedElement.height) })} className={fieldClass} /></label> : null}</div> : null}<div className="grid grid-cols-2 gap-2"><button type="button" onClick={duplicateSelected} className="min-h-11 rounded-xl bg-white/10 px-3 text-xs font-bold text-white outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric">Duplicar</button><button type="button" onClick={deleteSelected} className="min-h-11 rounded-xl bg-red-500/15 px-3 text-xs font-bold text-red-100 outline-none focus-visible:ring-2 focus-visible:ring-red-300">Eliminar</button></div></div>
             ) : null}
           </div>
         </aside>

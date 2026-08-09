@@ -104,6 +104,9 @@ assert.deepEqual(filterAndSortSetPieceLaboratoryItems([older, newer], { favorite
 assert.deepEqual(filterAndSortSetPieceLaboratoryItems([older, newer], { sort: 'updated' }).map((item) => item.id), ['newer', 'older']);
 
 const component = fs.readFileSync(new URL('../components/library/SetPieceLaboratory.jsx', import.meta.url), 'utf8');
+const editor = fs.readFileSync(new URL('../components/print/SetPieceDiagramEditor.jsx', import.meta.url), 'utf8');
+const toolbar = fs.readFileSync(new URL('../components/print/SetPieceDiagramToolbar.jsx', import.meta.url), 'utf8');
+const canvas = fs.readFileSync(new URL('../components/print/SetPieceDiagramCanvas.jsx', import.meta.url), 'utf8');
 const library = fs.readFileSync(new URL('../components/library/LibrarySection.jsx', import.meta.url), 'utf8');
 const matchPrint = fs.readFileSync(new URL('../components/print/MatchPrintTab.jsx', import.meta.url), 'utf8');
 ['Abrir', 'Duplicar', 'Archivar', 'Eliminar', 'Vista previa'].forEach((action) => assert.ok(component.includes(`>${action}<`) || component.includes(`'${action}'`), `acción ${action} disponible`));
@@ -116,7 +119,29 @@ assert.ok(library.includes('>Ejercicios<') && library.includes('>ABP<'), 'Biblio
 assert.ok(component.includes('closeButtonRef.current?.focus()'), 'la vista previa recibe foco al abrirse');
 assert.ok(component.includes('aria-modal="true"') && component.includes('aria-label="Jugadas del Laboratorio ABP"'), 'diálogo y galería exponen nombres accesibles');
 assert.ok(component.includes('min-h-11'), 'las acciones principales mantienen un objetivo táctil mínimo de 44 px');
-assert.ok(component.includes('md:grid-cols-2 2xl:grid-cols-3'), 'la galería adapta sus columnas sin ancho global fijo');
+assert.ok(component.includes('md:grid-cols-2'), 'la galería adapta sus columnas sin ancho global fijo');
 assert.ok(component.includes('galleryScrollRef') && component.includes('window.scrollTo'), 'volver del editor conserva la posición de la galería');
+
+assert.ok(component.includes('aria-haspopup="menu"') && component.includes('role="menu"') && component.includes('menuItemId'), 'las acciones secundarias viven en un menú accesible de tres puntos');
+assert.ok(component.includes('Escape') && component.includes("window.addEventListener('pointerdown', closeMenu)"), 'el menú de tarjeta se cierra con Escape o clic exterior');
+assert.ok(component.includes('Guardar y volver') && component.includes('Vista previa') && component.includes('Cancelar'), 'las tres acciones del editor siguen visibles');
+assert.ok(component.includes('aria-pressed={meta.libraryFavorite}') && component.includes('statusLabel(meta.libraryStatus)'), 'favorita y estado se expresan también mediante texto/estado accesible');
+
+const objectsIndex = toolbar.indexOf("label: 'OBJETOS'");
+const tracingIndex = toolbar.indexOf("label: 'TRAZADO'");
+const annotationsIndex = toolbar.indexOf("label: 'ANOTACIONES'");
+const blockIndex = toolbar.indexOf("['block', 'Bloqueo']");
+assert.ok(objectsIndex >= 0 && tracingIndex > objectsIndex && annotationsIndex > tracingIndex, 'la toolbar respeta la jerarquía Objetos, Trazado y Anotaciones');
+assert.ok(blockIndex > tracingIndex && blockIndex < annotationsIndex, 'Bloqueo permanece dentro de Trazado');
+assert.ok(toolbar.includes('aria-label={`Añadir ${label.toLowerCase()}`}') && toolbar.includes('title={`Añadir ${label.toLowerCase()}`}') && toolbar.includes('min-h-11'), 'herramientas con nombre accesible, tooltip y objetivo táctil');
+
+['numbers', 'abbreviations', 'roles', 'chronology', 'zones', 'texts'].forEach((layer) => assert.ok(editor.includes(`key: '${layer}'`), `capa ${layer} disponible`));
+assert.ok(editor.includes('Solo estructura') && editor.includes('Mostrar capas'), 'la acción Solo estructura es reversible y solo cambia estado local');
+assert.ok(editor.includes('EditorAccordion') && editor.includes('aria-expanded={open}') && editor.includes('openSections'), 'el panel usa acordeones accesibles y recuerda su estado durante la edición');
+assert.ok(editor.includes("setPanel(['player', 'opponent'].includes(element?.type) ? 'player' : 'tactic')"), 'la selección de un participante abre Rol y el resto conserva Ficha');
+assert.ok(editor.includes("disabled={disabled}") && editor.includes("id === 'player' && !isSelectedPlayer"), 'Rol no se muestra sin participante seleccionado');
+assert.ok(editor.includes('Empieza añadiendo participantes, balón o trazados.'), 'el campo vacío ofrece una ayuda discreta');
+assert.ok(editor.includes('lg:flex-row') && editor.includes('aria-current={selectedId === step.id'), 'la cronología es horizontal en escritorio, vertical en móvil y mantiene el vínculo seleccionable');
+assert.ok(canvas.includes('stroke="#3DD9FF"') && canvas.includes('selected && !readOnly'), 'la selección tiene halo de alto contraste sin alterar las coordenadas tácticas');
 
 console.log('setPieceLaboratory tests passed');

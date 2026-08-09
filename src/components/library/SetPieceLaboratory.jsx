@@ -100,8 +100,10 @@ export default function SetPieceLaboratory() {
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [menuItemId, setMenuItemId] = useState('');
   const [controls, setControls] = useState({ search: '', zone: '', mechanism: '', marking: '', status: '', favorites: false, sort: 'updated' });
   const galleryScrollRef = useRef(0);
+  const menuRef = useRef(null);
 
   const loadItems = async () => {
     setLoading(true);
@@ -123,6 +125,19 @@ export default function SetPieceLaboratory() {
   };
 
   useEffect(() => { loadItems(); }, []);
+
+  useEffect(() => {
+    if (!menuItemId) return undefined;
+    const closeMenu = (event) => {
+      if (event.key === 'Escape' || (event.type === 'pointerdown' && !menuRef.current?.contains(event.target))) setMenuItemId('');
+    };
+    window.addEventListener('keydown', closeMenu);
+    window.addEventListener('pointerdown', closeMenu);
+    return () => {
+      window.removeEventListener('keydown', closeMenu);
+      window.removeEventListener('pointerdown', closeMenu);
+    };
+  }, [menuItemId]);
 
   const visibleItems = useMemo(() => filterAndSortSetPieceLaboratoryItems(items, controls), [items, controls]);
   const updateControls = (patch) => setControls((current) => ({ ...current, ...patch }));
@@ -256,20 +271,19 @@ export default function SetPieceLaboratory() {
     const meta = getSetPieceLaboratoryMeta(draft);
     return (
       <section className="set-piece-laboratory-editor space-y-4" aria-labelledby="laboratory-editor-title">
-        <header className="rounded-3xl border border-white/10 bg-[#071327] p-4 sm:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div><p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric">Laboratorio ABP · Editor</p><h2 id="laboratory-editor-title" className="mt-2 text-2xl font-black text-white">{draft.isNew ? 'Nueva jugada' : draft.nombre}</h2><p className="mt-2 text-sm text-slate-400">Plantilla maestra del club · participantes definidos exclusivamente por roles.</p></div>
-            <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setPreviewItem(draft)} className={`min-h-11 rounded-xl bg-white/10 px-4 text-sm font-black text-white ${buttonFocus}`}>Vista previa</button><button type="button" onClick={returnToGallery} className={`min-h-11 rounded-xl bg-white/10 px-4 text-sm font-black text-white ${buttonFocus}`}>Cancelar</button><button type="button" onClick={saveDraft} disabled={saving} className={`min-h-11 rounded-xl bg-caudal-electric px-5 text-sm font-black text-slate-950 disabled:opacity-50 ${buttonFocus}`}>{saving ? 'Guardando…' : 'Guardar y volver'}</button></div>
+        <header className="rounded-[28px] bg-[#071327]/95 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.22)] backdrop-blur sm:p-5 xl:sticky xl:top-2 xl:z-30">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0 flex-1"><p className="text-[9px] font-black uppercase tracking-[0.22em] text-caudal-electric">Laboratorio ABP · Editor</p><label className="mt-1 block min-w-0"><span className="sr-only">Nombre de la jugada</span><input id="laboratory-editor-title" value={draft.nombre} onChange={(event) => setDraft((current) => ({ ...current, nombre: event.target.value }))} className="w-full min-w-0 max-w-full border-0 bg-transparent p-0 text-2xl font-black text-white outline-none placeholder:text-slate-600 focus-visible:ring-2 focus-visible:ring-caudal-electric sm:text-3xl" placeholder={draft.isNew ? 'Nueva jugada' : 'Nombre de la jugada'} /></label><p className="mt-1 text-xs text-slate-500">Plantilla maestra · participantes por roles</p></div>
+            <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setPreviewItem(draft)} className={`min-h-11 rounded-xl bg-white/[0.07] px-4 text-xs font-black text-white ${buttonFocus}`}>Vista previa</button><button type="button" onClick={returnToGallery} className={`min-h-11 rounded-xl bg-white/[0.07] px-4 text-xs font-black text-white ${buttonFocus}`}>Cancelar</button><button type="button" onClick={saveDraft} disabled={saving} className={`min-h-11 rounded-xl bg-caudal-electric px-5 text-xs font-black text-slate-950 disabled:opacity-50 ${buttonFocus}`}>{saving ? 'Guardando…' : 'Guardar y volver'}</button></div>
           </div>
-          {error ? <p role="alert" className="mt-4 rounded-xl bg-red-500/10 p-3 text-sm font-bold text-red-100">{error}</p> : null}
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-            <label className="grid gap-1 xl:col-span-2"><span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Nombre</span><input value={draft.nombre} onChange={(event) => setDraft((current) => ({ ...current, nombre: event.target.value }))} className={darkControlClass} placeholder="Nombre de la jugada" /></label>
-            <label className="grid gap-1"><span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Tipo</span><select value={draft.tipo} onChange={(event) => setDraft((current) => ({ ...current, tipo: event.target.value, categoria: getSetPieceLabType(event.target.value).category }))} className={controlClass}>{SET_PIECE_LAB_TYPES.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select></label>
-            <label className="grid gap-1"><span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Zona objetivo</span><select value={meta.libraryZone} onChange={(event) => updateDraftMeta({ libraryZone: event.target.value })} className={controlClass}><option value="">Sin definir</option>{SET_PIECE_LAB_ZONES.map((value) => <option key={value}>{value}</option>)}</select></label>
-            <label className="grid gap-1"><span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Mecanismo</span><select value={meta.libraryMechanism} onChange={(event) => updateDraftMeta({ libraryMechanism: event.target.value })} className={controlClass}><option value="">Sin definir</option>{SET_PIECE_LAB_MECHANISMS.map((value) => <option key={value}>{value}</option>)}</select></label>
-            <label className="grid gap-1"><span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Marcaje rival</span><select value={meta.libraryMarking} onChange={(event) => updateDraftMeta({ libraryMarking: event.target.value })} className={controlClass}><option value="">Sin definir</option>{SET_PIECE_LAB_MARKINGS.map((value) => <option key={value}>{value}</option>)}</select></label>
-            <label className="grid gap-1"><span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Estado</span><select value={meta.libraryStatus} onChange={(event) => updateDraftMeta({ libraryStatus: event.target.value })} className={controlClass}>{SET_PIECE_LAB_STATUSES.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select></label>
-            <label className="flex min-h-11 items-center gap-3 self-end rounded-xl border border-white/10 bg-white/[0.05] px-3 text-sm font-bold text-white"><input type="checkbox" checked={meta.libraryFavorite} onChange={(event) => updateDraftMeta({ libraryFavorite: event.target.checked })} className="h-5 w-5 accent-[#4f8cff]" /> Favorita</label>
+          {error ? <p role="alert" className="mt-3 rounded-xl bg-red-500/10 p-3 text-sm font-bold text-red-100">{error}</p> : null}
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[1.2fr_1fr_1fr_1fr_0.85fr_auto]">
+            <label className="grid gap-1"><span className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Tipo</span><select value={draft.tipo} onChange={(event) => setDraft((current) => ({ ...current, tipo: event.target.value, categoria: getSetPieceLabType(event.target.value).category }))} className={controlClass}>{SET_PIECE_LAB_TYPES.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select></label>
+            <label className="grid gap-1"><span className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Zona objetivo</span><select value={meta.libraryZone} onChange={(event) => updateDraftMeta({ libraryZone: event.target.value })} className={controlClass}><option value="">Sin definir</option>{SET_PIECE_LAB_ZONES.map((value) => <option key={value}>{value}</option>)}</select></label>
+            <label className="grid gap-1"><span className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Mecanismo</span><select value={meta.libraryMechanism} onChange={(event) => updateDraftMeta({ libraryMechanism: event.target.value })} className={controlClass}><option value="">Sin definir</option>{SET_PIECE_LAB_MECHANISMS.map((value) => <option key={value}>{value}</option>)}</select></label>
+            <label className="grid gap-1"><span className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Marcaje rival</span><select value={meta.libraryMarking} onChange={(event) => updateDraftMeta({ libraryMarking: event.target.value })} className={controlClass}><option value="">Sin definir</option>{SET_PIECE_LAB_MARKINGS.map((value) => <option key={value}>{value}</option>)}</select></label>
+            <label className="grid gap-1"><span className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Estado</span><select value={meta.libraryStatus} onChange={(event) => updateDraftMeta({ libraryStatus: event.target.value })} className={controlClass}>{SET_PIECE_LAB_STATUSES.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select></label>
+            <button type="button" title={meta.libraryFavorite ? 'Quitar de favoritas' : 'Marcar como favorita'} aria-label={meta.libraryFavorite ? 'Quitar de favoritas' : 'Marcar como favorita'} aria-pressed={meta.libraryFavorite} onClick={() => updateDraftMeta({ libraryFavorite: !meta.libraryFavorite })} className={`mt-auto flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-xs font-black ${meta.libraryFavorite ? 'bg-amber-300 text-slate-950' : 'bg-white/[0.06] text-slate-300'} ${buttonFocus}`}><span aria-hidden="true">★</span><span className="xl:sr-only">Favorita</span></button>
           </div>
         </header>
         <SetPieceDiagramEditor
@@ -311,24 +325,25 @@ export default function SetPieceLaboratory() {
       {status ? <p role="status" className="rounded-2xl bg-emerald-400/10 p-4 text-sm font-bold text-emerald-100">{status}</p> : null}
 
       {!loading && visibleItems.length ? (
-        <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3" aria-label="Jugadas del Laboratorio ABP">
+        <div className="grid gap-5 md:grid-cols-2" aria-label="Jugadas del Laboratorio ABP">
           {visibleItems.map((item) => {
             const meta = getSetPieceLaboratoryMeta(item);
             const archived = meta.libraryStatus === 'archived';
             return (
-              <article key={item.id} className={`overflow-hidden rounded-3xl border bg-[#091428]/90 shadow-glow ${archived ? 'border-slate-600/30 opacity-75' : 'border-white/10'}`}>
-                <div className="relative bg-white p-3 text-black"><SetPieceDiagramCanvas elements={item.elements || []} players={[]} readOnly fullField={String(item.tipo).includes('saque_inicio')} /><button type="button" aria-label={meta.libraryFavorite ? `Quitar ${item.nombre} de favoritas` : `Marcar ${item.nombre} como favorita`} aria-pressed={meta.libraryFavorite} onClick={() => toggleFavorite(item)} className={`absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full border text-xl shadow-lg ${meta.libraryFavorite ? 'border-amber-300 bg-amber-300 text-slate-950' : 'border-slate-300 bg-white text-slate-500'} ${buttonFocus}`}>★</button></div>
-                <div className="p-4">
+              <article key={item.id} className={`overflow-hidden rounded-[28px] bg-[#091428]/90 shadow-[0_20px_55px_rgba(0,0,0,0.18)] ring-1 ${archived ? 'opacity-75 ring-slate-600/30' : 'ring-white/[0.08]'}`}>
+                <div className="relative bg-white p-2 text-black"><SetPieceDiagramCanvas elements={item.elements || []} players={[]} readOnly fullField={String(item.tipo).includes('saque_inicio')} /><button type="button" aria-label={meta.libraryFavorite ? `Quitar ${item.nombre} de favoritas` : `Marcar ${item.nombre} como favorita`} aria-pressed={meta.libraryFavorite} onClick={() => toggleFavorite(item)} className={`absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full text-xl shadow-lg ${meta.libraryFavorite ? 'bg-amber-300 text-slate-950' : 'bg-white text-slate-500 ring-1 ring-slate-200'} ${buttonFocus}`}>★</button></div>
+                <div className="p-5">
                   <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">{getSetPieceLabType(item.tipo).label}</p><h3 className="mt-1 truncate text-lg font-black text-white">{item.nombre || 'Jugada sin nombre'}</h3></div><span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${meta.libraryStatus === 'ready' ? 'bg-emerald-300/15 text-emerald-200' : archived ? 'bg-slate-400/15 text-slate-300' : 'bg-amber-300/15 text-amber-200'}`}>{statusLabel(meta.libraryStatus)}</span></div>
                   <div className="mt-3 flex flex-wrap gap-1.5"><ClassificationPill>{meta.libraryZone}</ClassificationPill><ClassificationPill>{meta.libraryMechanism}</ClassificationPill><ClassificationPill>{meta.libraryMarking}</ClassificationPill></div>
                   <p className="mt-3 line-clamp-2 min-h-10 text-xs leading-5 text-slate-400">{meta.objective || item.objetivo || meta.generalInstruction || item.descripcion || 'Sin objetivo definido.'}</p>
                   <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Actualizada {formatDate(item.updated_at || meta.libraryUpdatedAt)}</p>
-                  <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    <button type="button" onClick={() => editItem(item)} className={`min-h-11 rounded-xl bg-caudal-electric px-3 text-xs font-black text-slate-950 ${buttonFocus}`}>Abrir</button>
-                    <button type="button" onClick={() => setPreviewItem(item)} className={`min-h-11 rounded-xl bg-white/10 px-3 text-xs font-black text-white ${buttonFocus}`}>Vista previa</button>
-                    <button type="button" onClick={() => duplicateItem(item)} disabled={saving} className={`min-h-11 rounded-xl bg-white/10 px-3 text-xs font-black text-white disabled:opacity-50 ${buttonFocus}`}>Duplicar</button>
-                    <button type="button" onClick={() => toggleArchived(item)} className={`min-h-11 rounded-xl bg-white/10 px-3 text-xs font-black text-white ${buttonFocus}`}>{archived ? 'Restaurar' : 'Archivar'}</button>
-                    <button type="button" onClick={() => deleteItem(item)} className={`min-h-11 rounded-xl bg-red-500/15 px-3 text-xs font-black text-red-100 ${buttonFocus}`}>Eliminar</button>
+                  <div className="mt-4 flex items-center gap-2">
+                    <button type="button" onClick={() => editItem(item)} className={`min-h-11 flex-1 rounded-xl bg-caudal-electric px-4 text-xs font-black text-slate-950 ${buttonFocus}`}>Abrir</button>
+                    <button type="button" onClick={() => setPreviewItem(item)} className={`min-h-11 rounded-xl bg-white/10 px-4 text-xs font-black text-white ${buttonFocus}`}>Vista previa</button>
+                    <div className="relative" ref={menuItemId === item.id ? menuRef : undefined}>
+                      <button type="button" aria-label={`Más acciones para ${item.nombre}`} aria-haspopup="menu" aria-expanded={menuItemId === item.id} onClick={() => setMenuItemId((current) => current === item.id ? '' : item.id)} className={`flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-xl font-black text-white ${buttonFocus}`}>⋯</button>
+                      {menuItemId === item.id ? <div role="menu" aria-label={`Acciones de ${item.nombre}`} className="absolute bottom-12 right-0 z-20 min-w-44 overflow-hidden rounded-xl bg-[#101d31] p-1.5 shadow-2xl ring-1 ring-white/10"><button type="button" role="menuitem" onClick={() => { setMenuItemId(''); duplicateItem(item); }} disabled={saving} className={`flex min-h-11 w-full items-center rounded-lg px-3 text-left text-xs font-bold text-white hover:bg-white/10 disabled:opacity-50 ${buttonFocus}`}>Duplicar</button><button type="button" role="menuitem" onClick={() => { setMenuItemId(''); toggleArchived(item); }} className={`flex min-h-11 w-full items-center rounded-lg px-3 text-left text-xs font-bold text-white hover:bg-white/10 ${buttonFocus}`}>{archived ? 'Restaurar' : 'Archivar'}</button><button type="button" role="menuitem" onClick={() => { setMenuItemId(''); deleteItem(item); }} className={`flex min-h-11 w-full items-center rounded-lg px-3 text-left text-xs font-bold text-red-200 hover:bg-red-500/15 ${buttonFocus}`}>Eliminar</button></div> : null}
+                    </div>
                   </div>
                 </div>
               </article>

@@ -77,6 +77,7 @@ const compactDiagramLabel = (value, max = 14) => {
 
 const BallIcon = ({ x, y, selected, radius }) => (
   <g>
+    {selected ? <circle cx={x} cy={y} r={radius + 1.05} fill="none" stroke="#3DD9FF" strokeWidth="0.75" opacity="0.8" /> : null}
     <circle cx={x} cy={y} r={selected ? radius + 0.35 : radius} fill="white" stroke="currentColor" strokeWidth="0.65" />
     <path d={`M${x} ${y - radius * 0.45}l${radius * 0.45} ${radius * 0.32}-.17 ${radius * 0.52}h-${radius * 0.56}l-.17-${radius * 0.52}Z`} fill="currentColor" />
     {[270, 342, 54, 126, 198].map((angle) => {
@@ -254,6 +255,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           const path = curved ? `M${element.x1} ${element.y1} Q${controlPoint.x} ${controlPoint.y} ${element.x2} ${element.y2}` : `M${element.x1} ${element.y1} L${element.x2} ${element.y2}`;
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
+              {selected && !readOnly ? <path d={path} fill="none" stroke="#3DD9FF" strokeWidth={tokens.arrowWidth + 1.25} strokeDasharray={dashed ? '2.2 1.8' : ''} opacity="0.38" /> : null}
               <path d={path} fill="none" stroke="currentColor" strokeWidth={selected ? tokens.arrowWidth + 0.28 : tokens.arrowWidth} strokeDasharray={dashed ? '2.2 1.8' : ''} markerEnd="url(#diagram-arrow)" markerStart={double ? 'url(#diagram-arrow-start)' : ''} />
               {selected && !readOnly ? (
                 <>
@@ -269,6 +271,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           const radius = tokens.blockRadius;
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
+              {selected && !readOnly ? <circle cx={element.x} cy={element.y} r={radius + 1.05} fill="none" stroke="#3DD9FF" strokeWidth="0.75" opacity="0.8" /> : null}
               <circle cx={element.x} cy={element.y} r={radius} fill="white" stroke="currentColor" strokeWidth={selected ? 0.85 : 0.62} />
               <path d={`M${element.x - radius * 0.58} ${element.y - radius * 0.58}L${element.x + radius * 0.58} ${element.y + radius * 0.58}M${element.x + radius * 0.58} ${element.y - radius * 0.58}L${element.x - radius * 0.58} ${element.y + radius * 0.58}`} stroke="currentColor" strokeWidth="0.48" strokeLinecap="round" />
               {selected && !readOnly ? (
@@ -287,6 +290,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
             .map((line) => (readOnly ? compactDiagramLabel(line, element.type === 'text_box' ? 24 : 18) : line));
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
+              {selected && !readOnly ? <rect x={Number(element.x) - 0.9} y={Number(element.y) - 0.9} width={width + 1.8} height={height + 1.8} rx="1" fill="none" stroke="#3DD9FF" strokeWidth="0.7" opacity="0.82" /> : null}
               <rect x={element.x} y={element.y} width={width} height={height} fill="white" stroke="currentColor" strokeWidth={selected ? 1.2 : 0.85} strokeDasharray={element.type === 'zone' ? '3 2' : ''} />
               {hasPrintLabel && element.printLabelLeader ? (
                 <line x1={Number(element.x || 0) + width / 2} y1={Number(element.y || 0) + 2} x2={printLabelX} y2={printLabelY - 1.2} stroke="currentColor" strokeWidth="0.24" opacity="0.58" />
@@ -314,6 +318,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           const labelY = printOptimized && Number.isFinite(Number(element.printLabelY)) ? Number(element.printLabelY) : Number(element.y || 0);
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
+              {selected && !readOnly ? <circle cx={labelX} cy={labelY - 0.9} r="4.4" fill="#3DD9FF" opacity="0.16" stroke="#3DD9FF" strokeWidth="0.55" /> : null}
               {printOptimized && element.printLabelLeader ? (
                 <line x1={element.x} y1={element.y} x2={labelX} y2={labelY - 1.2} stroke="currentColor" strokeWidth="0.24" opacity="0.58" />
               ) : null}

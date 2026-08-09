@@ -11,19 +11,14 @@ const toolGroups = [
     label: 'TRAZADO',
     actions: [
       ['arrow', 'Flecha'],
-      ['curved_arrow', 'Curva'],
-      ['double_arrow', 'Doble'],
+      ['curved_arrow', 'Flecha curva'],
+      ['double_arrow', 'Flecha doble'],
       ['dashed_arrow', 'Discontinua'],
-    ],
-  },
-  {
-    label: 'DIBUJO',
-    actions: [
       ['block', 'Bloqueo'],
     ],
   },
   {
-    label: 'Anotaciones',
+    label: 'ANOTACIONES',
     actions: [
       ['zone', 'Zona'],
       ['text', 'Texto'],
@@ -46,22 +41,20 @@ const actionIcons = {
 
 export default function SetPieceDiagramToolbar({ onAdd }) {
   return (
-    <div className="rounded-[26px] border border-white/10 bg-[#08131f]/90 p-2 shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
-      <div className="mb-2 flex items-center justify-between px-1">
-        <p className="text-[9px] font-black uppercase tracking-[0.24em] text-slate-500">Herramientas</p>
-        <span className="text-[10px] text-slate-600">Diseño rápido</span>
-      </div>
-      <div className="grid gap-2 md:grid-cols-3">
+    <div className="w-full min-w-0 max-w-full overflow-hidden rounded-[22px] bg-[#0a1727]/80 p-2 shadow-[0_12px_32px_rgba(0,0,0,0.16)]" aria-label="Herramientas de dibujo ABP">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5 md:grid-cols-[0.8fr_1.45fr_0.7fr]">
         {toolGroups.map((group) => (
-          <div key={group.label} className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.03] p-2">
-            <p className="mb-2 px-1 text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">{group.label}</p>
+          <div key={group.label} className="min-w-0 px-1.5 py-1 md:border-r md:border-white/[0.07] md:last:border-r-0">
+            <p className="mb-1.5 px-1 text-[8px] font-black uppercase tracking-[0.22em] text-slate-500">{group.label}</p>
             <div className="flex flex-wrap gap-1.5">
               {group.actions.map(([type, label]) => (
                 <button
                   key={type}
                   type="button"
                   onClick={() => onAdd(type)}
-                  className="inline-flex min-h-10 items-center gap-2 rounded-2xl border border-white/10 bg-[#0f1b2f] px-2.5 py-2 text-[11px] font-semibold text-slate-200 transition hover:border-caudal-electric/60 hover:bg-[#14233d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70"
+                  aria-label={`Añadir ${label.toLowerCase()}`}
+                  title={`Añadir ${label.toLowerCase()}`}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white/[0.055] px-3 py-2 text-[11px] font-bold text-slate-200 transition hover:bg-caudal-electric/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70"
                 >
                   <span className="text-[13px] text-caudal-electric">{actionIcons[type]}</span>
                   <span>{label}</span>
