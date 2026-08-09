@@ -76,10 +76,24 @@ const WELLNESS_WEIGHT_HEADER_CANDIDATES = [
   'Peso hoy',
   'Peso',
 ];
-const RPE_HEADER_CANDIDATES = ['RPE', 'RPE (1-10)', 'RPE 1-10', 'Columna 4'];
+const RPE_HEADER_CANDIDATES = [
+  'Esfuerzo percibido de la sesión de entrenamiento.',
+  'RPE',
+  'RPE (1-10)',
+  'RPE 1-10',
+  'Esfuerzo',
+  'Columna 4',
+];
 const RPE_SESSION_CODE_HEADERS = ['Código sesión', 'Codigo sesion', 'Código de sesión', 'Codigo de sesion', 'form_code'];
 const TIMESTAMP_HEADER_CANDIDATES = ['Marca temporal', 'Timestamp', 'Fecha', 'Columna 1'];
-const RPE_COMMENT_HEADER_CANDIDATES = ['Comentario', 'Comentarios', 'Columna 5'];
+const RPE_COMMENT_HEADER_CANDIDATES = [
+  'Información personal: (sensaciones, molestias, comentarios, etc.)',
+  'Información personal: (sensaciones, molestias, comentarios, etc).',
+  'Información personal: (sensaciones, molestias, comentarios, etc.).',
+  'Comentario',
+  'Comentarios',
+  'Columna 5',
+];
 const WELLNESS_SLEEP_QUALITY_HEADER_CANDIDATES = [
   'Calidad del sueño',
   'Calidad del sueno',
@@ -171,6 +185,7 @@ function onWellnessSubmit(e) {
 
 function onRpeSubmit(e) {
   let submission = null;
+  let rpeFields = null;
   const diagnostic = {
     receivedName: '',
     receivedTimestamp: '',
@@ -181,11 +196,16 @@ function onRpeSubmit(e) {
   try {
     submission = readSubmittedSheetRow(e);
     const row = submission.values;
-    assertRpeHeaders(row);
-    const playerName = getFirstValue(row, PLAYER_HEADER_CANDIDATES);
+    rpeFields = resolveRequiredRpeFields(
+      submission.headers,
+      submission.rawValues,
+      submission.displayValues
+    );
+    assertRequiredRpeColumns(rpeFields, submission.headers, submission.sheet.getName());
+    const playerName = rpeFields.player.rawValue;
     diagnostic.receivedName = playerName;
-    diagnostic.receivedTimestamp = getFirstValue(row, TIMESTAMP_HEADER_CANDIDATES);
-    diagnostic.rawRpe = getFirstValue(row, RPE_HEADER_CANDIDATES);
+    diagnostic.receivedTimestamp = rpeFields.timestamp.rawValue;
+    diagnostic.rawRpe = rpeFields.rpe.rawValue;
     const player = findPlayerIdByFormName(playerName);
     if (!player) {
       throw new Error(`Jugador no encontrado en public.jugadores: "${playerName}". No se inserta RPE.`);
@@ -196,7 +216,8 @@ function onRpeSubmit(e) {
       row,
       player.jugador_id,
       getSheetTimeZone(submission.sheet),
-      player.club_id
+      player.club_id,
+      rpeFields
     );
     diagnostic.payload = payload;
     requireFields(payload, ['jugador_id', 'entry_date', 'submitted_at', 'rpe'], 'rpe diario');
@@ -582,8 +603,11 @@ function getSheetTimeZone(sheet) {
   return Session.getScriptTimeZone();
 }
 
-function buildDailyRpePayload(row, playerId, timeZone, clubId) {
-  const receivedTimestamp = getFirstValue(row || {}, TIMESTAMP_HEADER_CANDIDATES);
+function buildDailyRpePayload(row, playerId, timeZone, clubId, resolvedRpeFields) {
+  const fields = resolvedRpeFields || resolveRequiredRpeFieldsFromObject(row);
+  const receivedTimestamp = fields.timestamp.found
+    ? fields.timestamp.rawValue
+    : getFirstValue(row || {}, TIMESTAMP_HEADER_CANDIDATES);
   const submittedDate = parseRpeSubmittedDate(receivedTimestamp, timeZone);
   if (!submittedDate) {
     throw new Error(`Fecha RPE inválida: "${String(receivedTimestamp || '').trim()}".`);
@@ -600,8 +624,8 @@ function buildDailyRpePayload(row, playerId, timeZone, clubId) {
     jugador_id: playerId,
     entry_date: entryDate,
     submitted_at: submittedDate.toISOString(),
-    rpe: toRpeValue(getFirstValue(row || {}, RPE_HEADER_CANDIDATES)),
-    comment: getFirstValue(row || {}, RPE_COMMENT_HEADER_CANDIDATES) || '',
+    rpe: toRpeValue(fields.rpe.found ? fields.rpe.rawValue : getFirstValue(row || {}, RPE_HEADER_CANDIDATES)),
+    comment: fields.comment.found ? fields.comment.rawValue || '' : '',
   };
   if (clubId) payload.club_id = clubId;
   return payload;
@@ -1588,9 +1612,10 @@ function buildRpeHistoryImportPlan(rowItems, players, timeZone) {
 
   (Array.isArray(rowItems) ? rowItems : []).forEach((item) => {
     const row = item.values || {};
-    const playerName = getFirstValue(row, PLAYER_HEADER_CANDIDATES);
-    const rawRpe = getFirstValue(row, RPE_HEADER_CANDIDATES);
-    const receivedTimestamp = getFirstValue(row, TIMESTAMP_HEADER_CANDIDATES);
+    const rpeFields = resolveRequiredRpeFieldsFromObject(row);
+    const playerName = rpeFields.player.found ? rpeFields.player.rawValue : '';
+    const rawRpe = rpeFields.rpe.found ? rpeFields.rpe.rawValue : '';
+    const receivedTimestamp = rpeFields.timestamp.found ? rpeFields.timestamp.rawValue : '';
     if (!playerName && !rawRpe && !receivedTimestamp) {
       skipped += 1;
       return;
@@ -1610,7 +1635,8 @@ function buildRpeHistoryImportPlan(rowItems, players, timeZone) {
         row,
         playerResolution.jugador_id,
         timeZone,
-        playerResolution.club_id
+        playerResolution.club_id,
+        rpeFields
       );
       requireFields(payload, ['jugador_id', 'entry_date', 'submitted_at', 'rpe'], 'rpe diario');
       const key = `${payload.club_id || ''}|${payload.jugador_id}|${payload.entry_date}`;
@@ -1698,20 +1724,146 @@ function formatRpeSessionCandidate(session) {
   };
 }
 
+function normalizeRpeHeader(value) {
+  return String(value || '')
+    .replace(/[\u00AD\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.,;:!?¡¿…\)]+$/g, '')
+    .trim();
+}
+
+function resolveRpeColumn(headers, candidates, rawRow, displayRow) {
+  const headerList = Array.isArray(headers) ? headers : [];
+  const indexedHeaders = headerList.map((header, zeroBasedIndex) => ({
+    header: String(header || ''),
+    normalizedHeader: normalizeRpeHeader(header),
+    zeroBasedIndex,
+  }));
+  let matches = [];
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    const normalizedCandidate = normalizeRpeHeader(candidate);
+    matches = indexedHeaders.filter((item) => item.normalizedHeader === normalizedCandidate);
+    if (matches.length) break;
+  }
+
+  if (!matches.length) {
+    return {
+      found: false,
+      index: null,
+      header: '',
+      rawValue: undefined,
+      displayValue: undefined,
+      state: 'COLUMN_NOT_FOUND',
+      error: 'Cabecera no encontrada.',
+    };
+  }
+  if (matches.length > 1) {
+    return {
+      found: false,
+      index: null,
+      header: matches.map((item) => item.header).join(' | '),
+      rawValue: undefined,
+      displayValue: undefined,
+      state: 'AMBIGUOUS_COLUMN',
+      error: `Varias cabeceras compatibles: ${matches.map((item) => item.header).join(' | ')}`,
+    };
+  }
+
+  const match = matches[0];
+  const hasRawRow = Array.isArray(rawRow);
+  const hasDisplayRow = Array.isArray(displayRow);
+  if (
+    (hasRawRow && match.zeroBasedIndex >= rawRow.length)
+    || (hasDisplayRow && match.zeroBasedIndex >= displayRow.length)
+  ) {
+    return {
+      found: true,
+      index: match.zeroBasedIndex + 1,
+      header: match.header,
+      rawValue: undefined,
+      displayValue: undefined,
+      state: 'READ_ERROR',
+      error: 'La fila no contiene el índice de la columna detectada.',
+    };
+  }
+
+  const rawValue = hasRawRow ? rawRow[match.zeroBasedIndex] : undefined;
+  const displayValue = hasDisplayRow ? displayRow[match.zeroBasedIndex] : undefined;
+  const empty = hasRawRow && (
+    rawValue === ''
+    || rawValue === null
+    || rawValue === undefined
+  ) && (
+    !hasDisplayRow
+    || displayValue === ''
+    || displayValue === null
+    || displayValue === undefined
+  );
+  return {
+    found: true,
+    index: match.zeroBasedIndex + 1,
+    header: match.header,
+    rawValue,
+    displayValue,
+    state: hasRawRow ? (empty ? 'EMPTY_CELL' : 'VALUE') : 'COLUMN_FOUND',
+    error: '',
+  };
+}
+
+function resolveRequiredRpeFields(headers, rawRow, displayRow) {
+  return {
+    player: resolveRpeColumn(headers, PLAYER_HEADER_CANDIDATES, rawRow, displayRow),
+    timestamp: resolveRpeColumn(headers, TIMESTAMP_HEADER_CANDIDATES, rawRow, displayRow),
+    rpe: resolveRpeColumn(headers, RPE_HEADER_CANDIDATES, rawRow, displayRow),
+    comment: resolveRpeColumn(headers, RPE_COMMENT_HEADER_CANDIDATES, rawRow, displayRow),
+  };
+}
+
+function resolveRequiredRpeFieldsFromObject(row) {
+  const headers = Object.keys(row || {});
+  const rawRow = headers.map((header) => row[header]);
+  return resolveRequiredRpeFields(headers, rawRow, rawRow);
+}
+
+function assertRequiredRpeColumns(fields, headers, sheetName) {
+  const requiredFields = [
+    ['jugador', fields && fields.player],
+    ['esfuerzo', fields && fields.rpe],
+    ['fecha', fields && fields.timestamp],
+  ];
+  const missing = requiredFields
+    .filter(([, resolution]) => (
+      !resolution
+      || !resolution.found
+      || resolution.state === 'AMBIGUOUS_COLUMN'
+      || resolution.state === 'READ_ERROR'
+    ))
+    .map(([field, resolution]) => {
+      const detail = String(
+        resolution?.error || resolution?.state || 'Cabecera no encontrada'
+      ).replace(/[.\s]+$/g, '');
+      return `${field} (${detail})`;
+    });
+  if (!missing.length) return fields;
+  throw new Error(
+    `Cabeceras RPE no reconocidas en la hoja "${sheetName || '(sin nombre)'}". `
+    + `Faltan: ${missing.join(' | ')}. `
+    + `Cabeceras detectadas: ${(Array.isArray(headers) ? headers : []).join(' | ') || '(ninguna)'}.`
+  );
+}
+
 function assertRpeHeaders(row) {
   const headers = Object.keys(row || {}).map((header) => String(header).trim()).filter(Boolean);
-  const missing = [];
-  if (!hasCandidateHeader(headers, PLAYER_HEADER_CANDIDATES)) missing.push(`jugador (${PLAYER_HEADER_CANDIDATES.join(' | ')})`);
-  if (!hasCandidateHeader(headers, RPE_HEADER_CANDIDATES)) missing.push(`esfuerzo (${RPE_HEADER_CANDIDATES.join(' | ')})`);
-  if (!hasCandidateHeader(headers, TIMESTAMP_HEADER_CANDIDATES)) missing.push(`fecha (${TIMESTAMP_HEADER_CANDIDATES.join(' | ')})`);
-  if (missing.length) {
-    throw new Error(`Cabeceras RPE no reconocidas. Faltan: ${missing.join(', ')}. Cabeceras detectadas: ${headers.join(' | ') || '(ninguna)'}.`);
-  }
+  return assertRequiredRpeColumns(resolveRequiredRpeFields(headers), headers, '');
 }
 
 function hasCandidateHeader(headers, candidates) {
-  const normalizedHeaders = (Array.isArray(headers) ? headers : []).map(normalizeName);
-  return candidates.some((candidate) => normalizedHeaders.includes(normalizeName(candidate)));
+  const normalizedHeaders = (Array.isArray(headers) ? headers : []).map(normalizeRpeHeader);
+  return candidates.some((candidate) => normalizedHeaders.includes(normalizeRpeHeader(candidate)));
 }
 
 function normalizeWellnessWeightHeader(value) {
@@ -1935,6 +2087,36 @@ function findRpeResponseSheet(spreadsheet) {
     throw new Error(`Hay varias hojas RPE compatibles: ${candidates.map(({ sheet }) => sheet.getName()).join(', ')}. Activa la hoja que quieres importar.`);
   }
   return candidates[0].sheet;
+}
+
+function inspectRpeHeaders() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = findRpeResponseSheet(spreadsheet);
+  const lastColumn = sheet.getLastColumn();
+  const headers = lastColumn
+    ? sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0]
+    : [];
+  const fields = resolveRequiredRpeFields(headers);
+  const result = {
+    sheet: sheet.getName(),
+    timeZone: getSheetTimeZone(sheet),
+    headers,
+    playerHeader: fields.player.header,
+    playerIndex: fields.player.index,
+    playerState: fields.player.state,
+    rpeHeader: fields.rpe.header,
+    rpeIndex: fields.rpe.index,
+    rpeState: fields.rpe.state,
+    commentHeader: fields.comment.header,
+    commentIndex: fields.comment.index,
+    commentState: fields.comment.state,
+    timestampHeader: fields.timestamp.header,
+    timestampIndex: fields.timestamp.index,
+    timestampState: fields.timestamp.state,
+    resolutions: fields,
+  };
+  console.log('Inspección RPE de solo lectura.', result);
+  return result;
 }
 
 function logRpeResolution(context, details) {

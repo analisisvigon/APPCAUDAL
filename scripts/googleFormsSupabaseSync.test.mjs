@@ -337,6 +337,234 @@ assert.doesNotThrow(() => sandbox.assertRpeHeaders({
   'RPE': '',
 }));
 
+const actualRpeHeaders = [
+  'Marca temporal',
+  'Dirección de correo electrónico',
+  'Nombre y apellidos.',
+  'Esfuerzo percibido de la sesión de entrenamiento.',
+  'Información personal: (sensaciones, molestias, comentarios, etc).',
+  'Dorsal',
+  'Supabase status',
+  'Supabase session_id',
+  'Supabase error',
+  'Supabase synced_at',
+];
+const actualRpeRawRow = [
+  new Date('2026-08-09T10:30:00.000Z'),
+  'jugador@example.com',
+  'VIGON',
+  10,
+  'Sesión completada sin molestias',
+  '7',
+  '',
+  '',
+  '',
+  '',
+];
+const actualRpeFields = sandbox.resolveRequiredRpeFields(
+  actualRpeHeaders,
+  actualRpeRawRow,
+  actualRpeRawRow
+);
+assert.equal(actualRpeFields.player.header, 'Nombre y apellidos.');
+assert.equal(actualRpeFields.player.index, 3);
+assert.equal(actualRpeFields.rpe.header, 'Esfuerzo percibido de la sesión de entrenamiento.');
+assert.equal(actualRpeFields.rpe.index, 4);
+assert.equal(actualRpeFields.comment.header, 'Información personal: (sensaciones, molestias, comentarios, etc).');
+assert.equal(actualRpeFields.comment.index, 5);
+assert.equal(actualRpeFields.rpe.state, 'VALUE');
+assert.doesNotThrow(() => sandbox.assertRequiredRpeColumns(
+  actualRpeFields,
+  actualRpeHeaders,
+  'Respuestas RPE'
+));
+
+const actualRpePayload = sandbox.buildDailyRpePayload(
+  Object.fromEntries(actualRpeHeaders.map((header, index) => [header, actualRpeRawRow[index]])),
+  '00000000-0000-0000-0000-000000000001',
+  'Europe/Madrid',
+  null,
+  actualRpeFields
+);
+assert.equal(actualRpePayload.rpe, 10, 'La pregunta real debe aceptar un RPE numérico entre 1 y 10.');
+assert.equal(
+  actualRpePayload.comment,
+  'Sesión completada sin molestias',
+  'La pregunta real de información personal debe mapearse a rpe_entries.comment.'
+);
+
+[
+  'Información personal: (sensaciones, molestias, comentarios, etc.)',
+  'Información personal: (sensaciones, molestias, comentarios, etc).',
+  'Información personal: (sensaciones, molestias, comentarios, etc.).',
+].forEach((commentHeader) => {
+  const fields = sandbox.resolveRequiredRpeFields(
+    ['Marca temporal', 'Nombre y apellidos.', 'Esfuerzo percibido de la sesión de entrenamiento.', commentHeader],
+    ['09/08/2026 12:30:00', 'VIGON', 7, 'Comentario seguro'],
+    ['09/08/2026 12:30:00', 'VIGON', '7', 'Comentario seguro']
+  );
+  assert.equal(fields.comment.found, true, `Debe reconocer la variante final "${commentHeader}".`);
+  assert.equal(fields.comment.index, 4);
+});
+
+const invisibleRpeHeaders = actualRpeHeaders.map((header) => {
+  if (header === 'Nombre y apellidos.') return `  NOMBRE\u200B   Y APELLIDOS...  `;
+  if (header === 'Esfuerzo percibido de la sesión de entrenamiento.') {
+    return `  ESFUERZO\u2060   PERCIBIDO DE LA SESION DE ENTRENAMIENTO...  `;
+  }
+  if (header.startsWith('Información personal:')) {
+    return `INFORMACION\uFEFF PERSONAL:  (sensaciones, molestias, comentarios, etc.).`;
+  }
+  return header;
+});
+const invisibleRpeFields = sandbox.resolveRequiredRpeFields(
+  invisibleRpeHeaders,
+  actualRpeRawRow,
+  actualRpeRawRow
+);
+assert.equal(invisibleRpeFields.player.index, 3);
+assert.equal(invisibleRpeFields.rpe.index, 4);
+assert.equal(invisibleRpeFields.comment.index, 5);
+assert.equal(
+  sandbox.normalizeRpeHeader('ESFUERZO\u200B  PERCIBIDO DE LA SESIÓN DE ENTRENAMIENTO...'),
+  sandbox.normalizeRpeHeader('Esfuerzo percibido de la sesión de entrenamiento.'),
+  'RPE debe ignorar mayúsculas, tildes, espacios repetidos, Unicode invisible y puntuación terminal.'
+);
+assert.equal(
+  sandbox.resolveRequiredRpeFields(
+    ['Marca temporal', 'Nombre y apellidos.', 'Esfuerzo percibido de la sesión'],
+  ).rpe.found,
+  false,
+  'La resolución RPE nunca debe aceptar una coincidencia parcial.'
+);
+
+const dropdownNameFields = sandbox.resolveRequiredRpeFields(
+  actualRpeHeaders,
+  actualRpeRawRow,
+  actualRpeRawRow
+);
+assert.equal(dropdownNameFields.player.rawValue, 'VIGON');
+assert.equal(
+  sandbox.resolvePlayerByFormName(supabasePlayers, dropdownNameFields.player.rawValue).jugador_id,
+  '00000000-0000-0000-0000-000000000001',
+  'Respuesta corta o desplegable producen el mismo mapeo mientras la cabecera Nombre y apellidos. no cambie.'
+);
+
+const emptyRpeCommentRow = [...actualRpeRawRow];
+emptyRpeCommentRow[4] = '';
+const emptyRpeCommentFields = sandbox.resolveRequiredRpeFields(
+  actualRpeHeaders,
+  emptyRpeCommentRow,
+  emptyRpeCommentRow
+);
+assert.equal(emptyRpeCommentFields.comment.state, 'EMPTY_CELL');
+assert.equal(
+  sandbox.buildDailyRpePayload(
+    Object.fromEntries(actualRpeHeaders.map((header, index) => [header, emptyRpeCommentRow[index]])),
+    '00000000-0000-0000-0000-000000000001',
+    'Europe/Madrid',
+    null,
+    emptyRpeCommentFields
+  ).comment,
+  '',
+  'Un comentario RPE vacío debe conservarse como cadena vacía.'
+);
+
+const missingActualRpeHeaders = actualRpeHeaders.filter((header) => (
+  header !== 'Esfuerzo percibido de la sesión de entrenamiento.'
+));
+const missingActualRpeFields = sandbox.resolveRequiredRpeFields(missingActualRpeHeaders);
+assert.equal(missingActualRpeFields.rpe.state, 'COLUMN_NOT_FOUND');
+assert.throws(
+  () => sandbox.assertRequiredRpeColumns(
+    missingActualRpeFields,
+    missingActualRpeHeaders,
+    'Respuestas RPE'
+  ),
+  /Faltan: esfuerzo \(Cabecera no encontrada\)\..*Cabeceras detectadas:/,
+  'Una cabecera RPE obligatoria ausente debe identificar el campo y enumerar las cabeceras detectadas.'
+);
+
+let inspectorWriteCount = 0;
+const inspectorSheet = {
+  getName() { return 'Respuestas RPE'; },
+  getSheetId() { return 77; },
+  getLastColumn() { return actualRpeHeaders.length; },
+  getRange() {
+    return {
+      getDisplayValues() { return [actualRpeHeaders]; },
+      setValue() { inspectorWriteCount += 1; },
+      setValues() { inspectorWriteCount += 1; },
+    };
+  },
+  getParent() {
+    return {
+      getSpreadsheetTimeZone() { return 'Europe/Madrid'; },
+    };
+  },
+};
+const inspectorSpreadsheet = {
+  getSheets() { return [inspectorSheet]; },
+  getActiveSheet() { return inspectorSheet; },
+};
+const previousGetActiveSpreadsheet = sandbox.SpreadsheetApp.getActiveSpreadsheet;
+sandbox.SpreadsheetApp.getActiveSpreadsheet = () => inspectorSpreadsheet;
+const inspectedRpeHeaders = sandbox.inspectRpeHeaders();
+sandbox.SpreadsheetApp.getActiveSpreadsheet = previousGetActiveSpreadsheet;
+assert.equal(inspectedRpeHeaders.sheet, 'Respuestas RPE');
+assert.equal(inspectedRpeHeaders.timeZone, 'Europe/Madrid');
+assert.equal(inspectedRpeHeaders.playerHeader, 'Nombre y apellidos.');
+assert.equal(inspectedRpeHeaders.rpeHeader, 'Esfuerzo percibido de la sesión de entrenamiento.');
+assert.equal(inspectedRpeHeaders.rpeIndex, 4);
+assert.equal(inspectedRpeHeaders.commentIndex, 5);
+assert.equal(inspectedRpeHeaders.rpeState, 'COLUMN_FOUND');
+assert.equal(inspectorWriteCount, 0, 'inspectRpeHeaders debe ser estrictamente de solo lectura.');
+
+const blockingHeaders = missingActualRpeHeaders;
+const blockingRawRow = blockingHeaders.map((header) => {
+  if (header === 'Marca temporal') return new Date('2026-08-09T10:30:00.000Z');
+  if (header === 'Nombre y apellidos.') return 'VIGON';
+  if (header.startsWith('Información personal:')) return 'No debe enviarse';
+  return '';
+});
+const blockingSheet = {
+  getName() { return 'Respuestas RPE'; },
+  getLastColumn() { return blockingHeaders.length; },
+  getRange(rowNumber) {
+    if (rowNumber === 1) {
+      return { getDisplayValues() { return [blockingHeaders]; } };
+    }
+    if (rowNumber === 2) {
+      return {
+        getValues() { return [blockingRawRow]; },
+        getDisplayValues() { return [blockingRawRow]; },
+        setValue() {},
+      };
+    }
+    return { setValue() {} };
+  },
+  hideColumns() {},
+  getParent() {
+    return { getSpreadsheetTimeZone() { return 'Europe/Madrid'; } };
+  },
+};
+const fetchCountBeforeBlockedSubmit = requestedFetches.length;
+assert.throws(
+  () => sandbox.onRpeSubmit({
+    range: {
+      getSheet() { return blockingSheet; },
+      getRow() { return 2; },
+    },
+  }),
+  /Faltan: esfuerzo \(Cabecera no encontrada\)\./,
+  'onRpeSubmit debe abortar cuando falta la cabecera obligatoria de esfuerzo.'
+);
+assert.equal(
+  requestedFetches.length,
+  fetchCountBeforeBlockedSubmit,
+  'Si falta RPE, onRpeSubmit no debe consultar jugadores ni enviar ningún payload a Supabase.'
+);
+
 function makeSheet(name, id, headers) {
   return {
     getName() {
