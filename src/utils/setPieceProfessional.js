@@ -91,6 +91,11 @@ export const normalizeSetPieceTacticalMeta = (value) => {
   const displayLayersBeforeStructure = source.displayLayersBeforeStructure
     ? normalizeSetPieceDisplayLayers(source.displayLayersBeforeStructure)
     : null;
+  const legacyDisplayLayers = {
+    ...createDefaultSetPieceDisplayLayers(),
+    dorsals: identityMode !== SET_PIECE_PRINT_IDENTITY_MODES.ABBREVIATION,
+    abbreviations: identityMode !== SET_PIECE_PRINT_IDENTITY_MODES.NUMBER,
+  };
   return {
     ...defaults,
     version: 3,
@@ -108,7 +113,7 @@ export const normalizeSetPieceTacticalMeta = (value) => {
       .slice(0, 12),
     lastUsedAt: cleanString(source.lastUsedAt),
     printIdentityMode: identityMode,
-    displayLayers: normalizeSetPieceDisplayLayers(source.displayLayers),
+    displayLayers: normalizeSetPieceDisplayLayers(source.displayLayers || legacyDisplayLayers),
     displayLayersBeforeStructure,
     libraryId,
     libraryVersion: cleanString(source.libraryVersion),
@@ -150,7 +155,16 @@ export const setSetPieceTacticalMeta = (elements, nextMeta) => {
 
 export const getSetPiecePlayerName = (element, playersById) => {
   const player = playersById?.get?.(element?.player_id);
-  return cleanString(player?.shirtName || player?.shirt_name || player?.name || element?.name);
+  return cleanString(
+    player?.shirtName
+    || player?.shirt_name
+    || player?.abbreviation
+    || player?.abreviatura
+    || player?.shortName
+    || player?.short_name
+    || player?.name
+    || element?.name,
+  );
 };
 
 const createSetPieceEntityId = (prefix = 'abp') => {
@@ -158,31 +172,37 @@ const createSetPieceEntityId = (prefix = 'abp') => {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-const getInitials = (value, maxLength = 3) => {
-  const parts = cleanString(value).split(/\s+/).filter(Boolean);
-  if (!parts.length) return '';
-  const normalizedParts = parts.map((part) => part.replace(/[^\p{L}\p{N}]/gu, '')).filter(Boolean);
-  if (!normalizedParts.length) return '';
-  if (normalizedParts.length === 1) return normalizedParts[0].slice(0, maxLength).toUpperCase();
-  const first = normalizedParts[0];
-  const last = normalizedParts.at(-1);
-  if (first.length === 1) return `${first}${last.slice(0, Math.max(1, maxLength - 1))}`.slice(0, maxLength).toUpperCase();
-  return last.slice(0, maxLength).toUpperCase();
-};
-
-const getPreferredAbbreviation = (element, player) => {
-  const configured = [
+const getPreferredPrintIdentity = (element, player, fallbackIndex) => {
+  const shirtName = [
     player?.shirtName,
     player?.shirt_name,
+    element?.shirtName,
+    element?.shirt_name,
+  ].map(cleanString).find(Boolean);
+  if (shirtName) return shirtName;
+
+  const configuredAbbreviation = [
     player?.abbreviation,
     player?.abreviatura,
+    element?.abbreviation,
+    element?.abreviatura,
+  ].map(cleanString).find(Boolean);
+  if (configuredAbbreviation) return configuredAbbreviation;
+
+  const usefulName = [
     player?.shortName,
     player?.short_name,
-    element?.abbreviation,
     element?.shortName,
+    element?.short_name,
+    player?.name,
+    element?.name,
   ].map(cleanString).find(Boolean);
-  const fullName = cleanString(player?.name || element?.name);
-  return getInitials(configured || fullName, 3);
+  if (usefulName) return usefulName;
+
+  const dorsal = cleanString(element?.label || player?.number || player?.dorsal);
+  if (dorsal) return dorsal;
+
+  return `J${String(fallbackIndex + 1).padStart(2, '0').slice(-2)}`;
 };
 
 export const getSetPieceGeometrySnapshot = (elements) => getDrawableSetPieceElements(elements).map((element) => {
@@ -224,9 +244,9 @@ export const optimizeSetPieceElementsForPrint = (elements, players = []) => {
   const drawable = getDrawableSetPieceElements(elements).map((element) => ({ ...element }));
   const playerElements = drawable.filter((element) => ['player', 'opponent'].includes(element.type));
   const abbreviationCounts = new Map();
-  const abbreviations = playerElements.map((element) => {
+  const abbreviations = playerElements.map((element, index) => {
     const player = playersById.get(element.player_id);
-    const base = getPreferredAbbreviation(element, player) || cleanString(element.label) || 'J';
+    const base = getPreferredPrintIdentity(element, player, index);
     const key = base.toLocaleLowerCase('es');
     abbreviationCounts.set(key, (abbreviationCounts.get(key) || 0) + 1);
     return base;
@@ -238,10 +258,10 @@ export const optimizeSetPieceElementsForPrint = (elements, players = []) => {
     const base = abbreviations[index];
     const duplicate = abbreviationCounts.get(base.toLocaleLowerCase('es')) > 1;
     const dorsal = cleanString(element.label);
-    let uniqueAbbreviation = duplicate ? `${base}${dorsal && dorsal.toLocaleLowerCase('es') !== base.toLocaleLowerCase('es') ? dorsal : index + 1}` : base;
+    let uniqueAbbreviation = duplicate ? `${base}${dorsal && dorsal.toLocaleLowerCase('es') !== base.toLocaleLowerCase('es') ? ` · ${dorsal}` : ` ${index + 1}`}` : base;
     let fallbackIndex = index + 1;
     while (usedAbbreviations.has(uniqueAbbreviation.toLocaleLowerCase('es'))) {
-      uniqueAbbreviation = `${base}${dorsal && dorsal.toLocaleLowerCase('es') !== base.toLocaleLowerCase('es') ? dorsal : ''}${fallbackIndex}`;
+      uniqueAbbreviation = `${base}${dorsal && dorsal.toLocaleLowerCase('es') !== base.toLocaleLowerCase('es') ? ` · ${dorsal}` : ''} ${fallbackIndex}`;
       fallbackIndex += 1;
     }
     usedAbbreviations.add(uniqueAbbreviation.toLocaleLowerCase('es'));
@@ -310,6 +330,24 @@ export const getSetPieceChronology = (elements, players = []) => {
     .map((element) => ({
       id: element.id,
       order: Number(element.sequenceOrder),
+      playerName: getSetPiecePlayerName(element, playersById) || cleanString(element.roles?.[0]) || `Jugador ${element.label || ''}`.trim(),
+      role: cleanString(element.roles?.[0]),
+      instruction: cleanString(element.note),
+    }));
+};
+
+export const getSetPieceIndividualInstructions = (elements, players = []) => {
+  const playersById = new Map(players.map((player) => [player.id, player]));
+  return getDrawableSetPieceElements(elements)
+    .map((element, sourceIndex) => ({ element, sourceIndex }))
+    .filter(({ element }) => ['player', 'opponent'].includes(element.type) && cleanString(element.note))
+    .sort((left, right) => {
+      const leftOrder = Number(left.element.sequenceOrder) > 0 ? Number(left.element.sequenceOrder) : Number.MAX_SAFE_INTEGER;
+      const rightOrder = Number(right.element.sequenceOrder) > 0 ? Number(right.element.sequenceOrder) : Number.MAX_SAFE_INTEGER;
+      return leftOrder - rightOrder || left.sourceIndex - right.sourceIndex;
+    })
+    .map(({ element }) => ({
+      id: element.id,
       playerName: getSetPiecePlayerName(element, playersById) || cleanString(element.roles?.[0]) || `Jugador ${element.label || ''}`.trim(),
       role: cleanString(element.roles?.[0]),
       instruction: cleanString(element.note),

@@ -21,8 +21,13 @@ function PrintDetail({ label, value, className = '' }) {
 
 function PrintPlay({ play }) {
   const hasChronology = play.chronology.length > 0;
+  const chronologyIds = new Set(play.chronology.map((step) => step.id));
+  const indications = play.displayLayers.chronology
+    ? play.individualInstructions.filter((item) => !chronologyIds.has(item.id))
+    : play.individualInstructions;
+  const hasIndications = indications.length > 0;
   const hasOperationalDetails = Boolean(play.objective || play.whenToUse || play.risk || play.alternative || play.observations);
-  const hasCopy = Boolean(play.instruction || hasChronology || hasOperationalDetails);
+  const hasCopy = Boolean(play.instruction || hasChronology || hasIndications || hasOperationalDetails);
   const bodyClassName = [
     'set-piece-print-play-body',
     !play.instruction && !hasChronology ? 'set-piece-print-play-body--field-forward' : '',
@@ -67,6 +72,21 @@ function PrintPlay({ play }) {
                   </li>
                 ))}
               </ol>
+            </section>
+          ) : null}
+
+          {hasIndications ? (
+            <section className="set-piece-print-indications">
+              <h3>Indicaciones</h3>
+              <ul>
+                {indications.map((item) => (
+                  <li key={item.id}>
+                    {item.identity ? <strong>{item.identity}</strong> : null}
+                    {item.role ? <span className="set-piece-print-indication-role">{item.identity ? ' · ' : ''}{item.role}</span> : null}
+                    {item.instruction ? <span className="set-piece-print-indication-text">{item.identity || item.role ? ' — ' : ''}{item.instruction}</span> : null}
+                  </li>
+                ))}
+              </ul>
             </section>
           ) : null}
 

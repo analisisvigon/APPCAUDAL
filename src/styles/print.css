@@ -1474,27 +1474,62 @@
   text-transform: none;
 }
 
-.set-piece-print-operational-details {
+.set-piece-print-indications {
+  border-left: 1.2pt solid #6b7280;
+  padding: 0.5mm 0 0.5mm 2mm;
+}
+
+.set-piece-print-indications ul {
   display: grid;
   gap: 0.55mm;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.set-piece-print-indications li {
+  margin: 0;
+  font-size: 8.3pt;
+  line-height: 1.12;
+  overflow-wrap: break-word;
+}
+
+.set-piece-print-indications li strong {
+  text-transform: uppercase;
+}
+
+.set-piece-print-indications li span {
+  color: #374151;
+}
+
+.set-piece-print-indication-role {
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.set-piece-print-indication-text {
+  font-weight: 500;
+  text-transform: none;
+}
+
+.set-piece-print-operational-details {
+  display: grid;
+  gap: 1.1mm;
   border-top: 0.55pt solid #9ca3af;
-  padding-top: 0.8mm;
+  padding-top: 1mm;
 }
 
 .set-piece-print-operational-details section {
-  display: grid;
-  grid-template-columns: 28mm minmax(0, 1fr);
-  align-items: start;
-  gap: 1.5mm;
+  display: block;
 }
 
 .set-piece-print-operational-details h3 {
-  margin: 0;
+  margin: 0 0 0.3mm;
 }
 
 .set-piece-print-operational-details p {
-  font-size: 7.7pt;
-  line-height: 1.1;
+  font-size: 7.9pt;
+  line-height: 1.14;
 }
 
 .set-piece-print-risk p {

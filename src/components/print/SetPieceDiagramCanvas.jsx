@@ -370,7 +370,8 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           );
         }
         const isOpponent = element.type === 'opponent';
-        const name = compactDiagramLabel(element.printName || getPlayerName(element, playersById), readOnly ? 12 : 18);
+        const sourceName = element.printName || getPlayerName(element, playersById);
+        const name = printOptimized ? String(sourceName || '').trim() : compactDiagramLabel(sourceName, 18);
         const labelX = Number.isFinite(Number(element.printLabelX)) ? Number(element.printLabelX) : Number(element.x || 0) + Number(element.printLabelOffsetX || 0);
         const labelY = Number.isFinite(Number(element.printLabelY)) ? Number(element.printLabelY) : Number(element.y || 0) + 5.2 + Number(element.printLabelOffsetY || 0);
         const role = Array.isArray(element.roles) ? element.roles[0] : '';
@@ -402,12 +403,12 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
             ) : null}
             {showSequenceNumber ? (
               <g>
-                <circle cx={Number(element.x) + 2.8} cy={Number(element.y) - 2.8} r={tokens.stepRadius} fill="currentColor" />
-                <text x={Number(element.x) + 2.8} y={Number(element.y) - 2.8 + tokens.stepSize * 0.34} textAnchor="middle" fontSize={tokens.stepSize} fontWeight="900" fill="white">{Number(element.sequenceOrder)}</text>
+                <circle cx={Number(element.x) + 4.1} cy={Number(element.y) - 4.1} r={tokens.stepRadius} fill="currentColor" stroke="white" strokeWidth="0.42" />
+                <text x={Number(element.x) + 4.1} y={Number(element.y) - 4.1 + tokens.stepSize * 0.34} textAnchor="middle" fontSize={tokens.stepSize} fontWeight="900" fill="white">{Number(element.sequenceOrder)}</text>
               </g>
             ) : null}
             {showRoleCode ? (
-              <text x={Number(element.x) - 3} y={Number(element.y) - 2.8} textAnchor="middle" fontSize={tokens.roleSize} fontWeight="900" fill="currentColor" paintOrder="stroke" stroke="white" strokeWidth="0.45">{roleCode}</text>
+              <text x={Number(element.x) - 4.1} y={Number(element.y) - 3.8} textAnchor="middle" fontSize={tokens.roleSize} fontWeight="900" fill="currentColor" paintOrder="stroke" stroke="white" strokeWidth="0.55">{roleCode}</text>
             ) : null}
             {element.locked && !readOnly ? <text x={element.x + 4.2} y={element.y - 3.5} fontSize="2.6" fontWeight="900">L</text> : null}
           </g>

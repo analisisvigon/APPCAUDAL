@@ -13,6 +13,7 @@ import {
 } from '../../utils/setPieceEditorInteractions';
 import {
   SET_PIECE_ROLES,
+  SET_PIECE_PRINT_IDENTITY_MODES,
   createDefaultSetPieceDisplayLayers,
   cloneSetPieceElementsWithFreshIds,
   getDrawableSetPieceElements,
@@ -48,6 +49,13 @@ const fieldClass = 'w-full rounded-2xl border border-white/10 bg-white/[0.045] p
 const labelClass = 'text-[9px] font-black uppercase tracking-[0.16em] text-slate-500';
 const editorSurfaceClass = 'rounded-[28px] border border-white/[0.08] bg-[#08131f]/95 p-3 shadow-[0_14px_38px_rgba(0,0,0,0.22)]';
 const compactToolButtonClass = 'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-3 text-[11px] font-bold text-slate-200 transition hover:bg-white/[0.09] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric disabled:opacity-35';
+
+const getIdentityModeFromLayers = (layers, fallback) => {
+  if (layers.dorsals && layers.abbreviations) return SET_PIECE_PRINT_IDENTITY_MODES.NUMBER_AND_ABBREVIATION;
+  if (layers.dorsals) return SET_PIECE_PRINT_IDENTITY_MODES.NUMBER;
+  if (layers.abbreviations) return SET_PIECE_PRINT_IDENTITY_MODES.ABBREVIATION;
+  return fallback;
+};
 
 function TacticalField({ label, value, onChange, placeholder, rows = 0, maxLength }) {
   return (
@@ -174,8 +182,23 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
     const next = typeof patch === 'function' ? patch(tacticalMeta) : { ...tacticalMeta, ...patch };
     updateDiagram({ elements: setSetPieceTacticalMeta(diagram.elements, next) });
   };
-  const toggleDisplayLayer = (key) => updateMeta({
-    displayLayers: { ...visibleLayers, [key]: !visibleLayers[key] },
+  const toggleDisplayLayer = (key) => {
+    const displayLayers = { ...visibleLayers, [key]: !visibleLayers[key] };
+    updateMeta({
+      displayLayers,
+      printIdentityMode: ['dorsals', 'abbreviations'].includes(key)
+        ? getIdentityModeFromLayers(displayLayers, tacticalMeta.printIdentityMode)
+        : tacticalMeta.printIdentityMode,
+      displayLayersBeforeStructure: null,
+    });
+  };
+  const updateIdentityMode = (printIdentityMode) => updateMeta({
+    printIdentityMode,
+    displayLayers: {
+      ...visibleLayers,
+      dorsals: printIdentityMode !== SET_PIECE_PRINT_IDENTITY_MODES.ABBREVIATION,
+      abbreviations: printIdentityMode !== SET_PIECE_PRINT_IDENTITY_MODES.NUMBER,
+    },
     displayLayersBeforeStructure: null,
   });
   const activateStructureOnly = () => updateMeta({
@@ -450,6 +473,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
                   <TacticalField label="Alternativa" value={tacticalMeta.alternative} onChange={(alternative) => updateMeta({ alternative })} placeholder="Qué hacer si el rival cambia el marcaje" rows={2} />
                 </EditorAccordion>
                 <EditorAccordion id="dossier" title="Dossier" open={openSections.dossier} onToggle={() => toggleSection('dossier')}>
+                  <label className="grid gap-1.5"><span className={labelClass}>Identidad en dossier</span><select value={tacticalMeta.printIdentityMode} onChange={(event) => updateIdentityMode(event.target.value)} className={`${fieldClass} bg-white font-bold text-slate-950`}><option value={SET_PIECE_PRINT_IDENTITY_MODES.NUMBER}>Dorsal</option><option value={SET_PIECE_PRINT_IDENTITY_MODES.ABBREVIATION}>Abreviatura</option><option value={SET_PIECE_PRINT_IDENTITY_MODES.NUMBER_AND_ABBREVIATION}>Dorsal + abreviatura</option></select></label>
                   <TacticalField label="Etiquetas" value={tacticalMeta.tags.join(', ')} onChange={(value) => updateMeta({ tags: value.split(',').map((item) => item.trim()).filter(Boolean) })} placeholder="segundo palo, zona" />
                   <div><p className={labelClass}>Valoración</p><div className="mt-2 flex gap-1">{[1, 2, 3, 4, 5].map((rating) => <button key={rating} type="button" aria-label={`Valorar con ${rating}`} aria-pressed={tacticalMeta.rating === rating} onClick={() => updateMeta({ rating })} className={`min-h-11 min-w-11 rounded-lg text-lg outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric ${rating <= tacticalMeta.rating ? 'text-amber-300' : 'text-slate-700'}`}>★</button>)}</div></div>
                 </EditorAccordion>

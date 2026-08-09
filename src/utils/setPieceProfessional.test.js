@@ -7,6 +7,7 @@ import {
   getDrawableSetPieceElements,
   getSetPieceChronology,
   getSetPieceGeometrySnapshot,
+  getSetPieceIndividualInstructions,
   getSetPieceResponsibilities,
   getSetPieceTacticalMeta,
   optimizeSetPieceElementsForPrint,
@@ -48,6 +49,9 @@ assert.equal(withSaqueType.libraryId, 'library-1');
 assert.equal(getSetPieceTacticalMeta(stored).linkStatus, 'linked');
 assert.equal(getSetPieceTacticalMeta(stored).printIdentityMode, SET_PIECE_PRINT_IDENTITY_MODES.NUMBER_AND_ABBREVIATION);
 assert.deepEqual(getSetPieceTacticalMeta(stored).displayLayers, createDefaultSetPieceDisplayLayers(), 'las jugadas legacy muestran todas las capas como antes');
+const legacyAbbreviationMode = getSetPieceTacticalMeta(setSetPieceTacticalMeta([], { printIdentityMode: SET_PIECE_PRINT_IDENTITY_MODES.ABBREVIATION }));
+assert.equal(legacyAbbreviationMode.displayLayers.dorsals, false, 'una jugada legacy conserva el modo Abreviatura');
+assert.equal(legacyAbbreviationMode.displayLayers.abbreviations, true, 'el modo legacy activa su identidad corta útil');
 
 const hiddenLayers = {
   dorsals: false,
@@ -84,6 +88,33 @@ assert.equal(drawable[0].printName, undefined, 'la preparación de impresión no
 const printNames = optimized.filter((element) => element.type === 'player').map((element) => element.printName.toLocaleLowerCase('es'));
 assert.equal(new Set(printNames).size, printNames.length, 'las abreviaturas son únicas dentro de la jugada');
 assert.equal(optimized.find((element) => element.id === 'arrow-1').printCurve, undefined, 'el renderer no introduce curvaturas');
+
+const identityPlayers = [
+  { id: 'agus', name: 'Nombre administrativo distinto', shirt_name: 'AGUS PORTO', abbreviation: 'AP' },
+  { id: 'boza', name: 'DIEGO BOZA', abbreviation: 'BOZA' },
+  { id: 'acerete', name: 'Nombre completo administrativo', shortName: 'ACERETE' },
+];
+const identityElements = [
+  { id: 'agus-el', type: 'player', x: 20, y: 30, label: '10', player_id: 'agus', roles: ['Bloqueador'], note: 'correr', sequenceOrder: 2 },
+  { id: 'boza-el', type: 'player', x: 40, y: 30, label: '4', player_id: 'boza', roles: ['Arrastre'], note: 'fijar', sequenceOrder: 1 },
+  { id: 'acerete-el', type: 'player', x: 60, y: 30, label: '9', player_id: 'acerete', roles: ['Rematador'], note: 'atacar primer palo', sequenceOrder: 3 },
+];
+const usefulIdentities = optimizeSetPieceElementsForPrint(identityElements, identityPlayers);
+assert.deepEqual(
+  usefulIdentities.map((element) => element.printName),
+  ['AGUS PORTO', 'BOZA', 'ACERETE'],
+  'la identidad prioriza nombre de camiseta, abreviatura configurada o nombre corto sin recortarlos a tres letras',
+);
+const individualInstructions = getSetPieceIndividualInstructions(identityElements, identityPlayers);
+assert.deepEqual(individualInstructions.map((item) => item.instruction), ['fijar', 'correr', 'atacar primer palo'], 'las consignas individuales se conservan aunque se presenten fuera de Cronología');
+assert.deepEqual(individualInstructions.map((item) => item.playerName), ['BOZA', 'AGUS PORTO', 'ACERETE'], 'las indicaciones usan identidades reales en orden estable');
+assert.equal(getSetPieceIndividualInstructions([...identityElements, { id: 'empty-note', type: 'player', x: 80, y: 30, label: '6', note: '' }], identityPlayers).length, 3, 'una consigna vacía no genera texto inventado');
+
+const fallbackIdentities = optimizeSetPieceElementsForPrint([
+  { id: 'dorsal-only', type: 'player', x: 15, y: 15, label: '8' },
+  { id: 'automatic-only', type: 'player', x: 25, y: 15, label: '' },
+], []);
+assert.deepEqual(fallbackIdentities.map((element) => element.printName), ['8', 'J02'], 'el dorsal precede al fallback automático estable de tres caracteres');
 
 const duplicated = cloneSetPieceElementsWithFreshIds(stored);
 const collectIds = (value, ids = []) => {

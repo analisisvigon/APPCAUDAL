@@ -1,5 +1,6 @@
 import {
   getSetPieceChronology,
+  getSetPieceIndividualInstructions,
   getSetPieceTacticalMeta,
   optimizeSetPieceElementsForPrint,
 } from './setPieceProfessional.js';
@@ -71,6 +72,12 @@ export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder
     role: displayLayers.roles ? getMeaningfulSetPiecePrintText(step.role) : '',
     instruction: getMeaningfulSetPiecePrintText(step.instruction),
   }));
+  const individualInstructions = getSetPieceIndividualInstructions(diagram?.elements, players).map((item) => ({
+    ...item,
+    identity: formatIdentity(elementsById.get(item.id), displayLayers),
+    role: displayLayers.roles ? getMeaningfulSetPiecePrintText(item.role) : '',
+    instruction: getMeaningfulSetPiecePrintText(item.instruction),
+  }));
   return {
     id: diagram?.id,
     order,
@@ -87,6 +94,7 @@ export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder
     observations: getMeaningfulSetPiecePrintText(meta.observations),
     displayLayers,
     chronology,
+    individualInstructions,
     elements,
     fullField: String(diagram?.tipo || '').includes('saque_inicio'),
   };

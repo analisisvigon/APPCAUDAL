@@ -114,6 +114,48 @@ const noIdentityModel = buildSetPiecePrintPlayModel(createPlay('no-identity', 1,
 assert.equal(noIdentityModel.chronology.every((step) => step.identity === ''), true, 'el PDF no fuerza una identidad cuando ambas capas están ocultas');
 assert.equal(noIdentityModel.displayLayers.zones || noIdentityModel.displayLayers.texts, false, 'Zonas y Textos OFF llegan al renderer de impresión');
 
+const identityPlayers = [
+  { id: 'agus', name: 'AGUS PORTO', shirt_name: 'AGUS PORTO' },
+  { id: 'boza', name: 'DIEGO BOZA', abbreviation: 'BOZA' },
+  { id: 'acerete', name: 'ACERETE', shortName: 'ACERETE' },
+];
+const identityElements = [
+  { id: 'agus-el', type: 'player', x: 24, y: 38, label: '10', player_id: 'agus', roles: ['Bloqueador'], note: 'correr', sequenceOrder: 2 },
+  { id: 'boza-el', type: 'player', x: 46, y: 30, label: '4', player_id: 'boza', roles: ['Arrastre'], note: 'fijar al central', sequenceOrder: 1 },
+  { id: 'acerete-el', type: 'player', x: 68, y: 24, label: '9', player_id: 'acerete', roles: ['Rematador'], note: 'atacar primer palo', sequenceOrder: 3 },
+];
+const identityDiagram = {
+  id: 'identity-on',
+  orden: 1,
+  tipo: 'corner_ofensivo',
+  titulo: 'Identidades reales',
+  elements: setSetPieceTacticalMeta(identityElements, {
+    ...printMeta,
+    printIdentityMode: 'number-and-abbreviation',
+    displayLayers: { dorsals: true, abbreviations: true, roles: true, chronology: true, zones: true, texts: true },
+  }),
+};
+const identityOnModel = buildSetPiecePrintPlayModel(identityDiagram, identityPlayers, 1);
+assert.deepEqual(identityOnModel.chronology.map((step) => step.identity), ['4 BOZA', '10 AGUS PORTO', '9 ACERETE'], 'Cronología ON lleva dorsal e identidad útil al PDF sin recortes automáticos');
+assert.deepEqual(identityOnModel.chronology.map((step) => step.instruction), ['fijar al central', 'correr', 'atacar primer palo'], 'Cronología ON muestra cada consigna individual junto al orden');
+
+const identityOffDiagram = {
+  ...identityDiagram,
+  id: 'identity-off',
+  elements: setSetPieceTacticalMeta(identityElements, {
+    ...printMeta,
+    printIdentityMode: 'abbreviation',
+    displayLayers: { dorsals: false, abbreviations: true, roles: true, chronology: false, zones: true, texts: true },
+  }),
+};
+const identityOffModel = buildSetPiecePrintPlayModel(identityOffDiagram, identityPlayers, 1);
+assert.deepEqual(identityOffModel.chronology, [], 'Cronología OFF elimina orden y Secuencia');
+assert.deepEqual(identityOffModel.individualInstructions.map((item) => [item.identity, item.instruction]), [
+  ['BOZA', 'fijar al central'],
+  ['AGUS PORTO', 'correr'],
+  ['ACERETE', 'atacar primer palo'],
+], 'Cronología OFF conserva las consignas en Indicaciones con identidad útil');
+
 assert.equal(getMeaningfulSetPiecePrintText('Consigna pendiente de definir'), '');
 assert.equal(getMeaningfulSetPiecePrintText('Sin observaciones.'), '');
 const emptyModel = buildSetPiecePrintPlayModel(createPlay('empty', 1, { generalInstruction: 'Consigna pendiente de definir', objective: 'Sin definir', risk: 'Sin riesgo', alternative: 'Sin alternativa', observations: 'Sin observaciones' }));
@@ -128,6 +170,10 @@ assert.ok(canvas.includes("element.type === 'zone'") && canvas.includes("['text'
 assert.ok(canvas.includes('const showDorsal = normalizedVisibleLayers.dorsals') && canvas.includes('const showAbbreviation = normalizedVisibleLayers.abbreviations'), 'Dorsales y Abreviaturas admiten las cuatro combinaciones sin fallback automático');
 assert.ok(editor.includes('{visibleLayers.chronology ? <section') && sheet.includes('play.chronology.length > 0'), 'Cronología OFF elimina el bloque inferior del editor y la Secuencia impresa');
 assert.ok(sheet.includes("step.role ? <span>{step.identity ? ' · ' : ''}{step.role}</span> : null"), 'Roles OFF no deja etiquetas de rol en la Secuencia');
+assert.ok(sheet.includes('<h3>Indicaciones</h3>') && sheet.includes('play.individualInstructions'), 'las consignas individuales tienen un bloque independiente de Cronología');
+assert.match(css, /\.set-piece-print-operational-details section \{\s*display: block;/, 'Clave, Riesgo y Alternativa usan etiqueta y texto apilados');
+assert.equal(css.includes('grid-template-columns: 28mm minmax(0, 1fr)'), false, 'el bloque lateral ya no usa una tabla comprimida');
+assert.ok(canvas.includes('Number(element.x) + 4.1') && canvas.includes('Number(element.y) - 4.1') && canvas.includes('stroke="white"'), 'el número cronológico se separa visualmente del dorsal');
 assert.ok(canvas.includes('selected && !readOnly') && canvas.includes('set-piece-curve-control'), 'el punto de control solo existe como ayuda de edición y no aparece en preview/PDF');
 assert.ok(sheet.includes('preparedForPrint') && sheet.includes('data-render-model="set-piece-print"'), 'preview y PDF comparten elementos preparados y el mismo renderer táctico');
 

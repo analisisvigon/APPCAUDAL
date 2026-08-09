@@ -139,6 +139,7 @@ assert.ok(toolbar.includes('aria-label={`Añadir ${label.toLowerCase()}`}') && t
 assert.ok(editor.includes('Solo estructura') && editor.includes('Restaurar capas'), 'Solo estructura persiste la decisión y permite restaurar la selección anterior');
 assert.ok(editor.includes('displayLayersBeforeStructure') && editor.includes('toggleDisplayLayer'), 'las capas se guardan en tactical_meta y no en localStorage');
 assert.equal(editor.includes('setVisibleLayers'), false, 'el editor usa la configuración persistida como única fuente de verdad');
+assert.ok(editor.includes('Identidad en dossier') && editor.includes('updateIdentityMode'), 'se mantienen los modos Dorsal, Abreviatura y Dorsal + abreviatura sincronizados con las capas');
 assert.ok(editor.includes('EditorAccordion') && editor.includes('aria-expanded={open}') && editor.includes('openSections'), 'el panel usa acordeones accesibles y recuerda su estado durante la edición');
 assert.ok(editor.includes("setPanel(['player', 'opponent'].includes(element?.type) ? 'player' : 'tactic')"), 'la selección de un participante abre Rol y el resto conserva Ficha');
 assert.ok(editor.includes("disabled={disabled}") && editor.includes("id === 'player' && !isSelectedPlayer"), 'Rol no se muestra sin participante seleccionado');
