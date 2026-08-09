@@ -294,6 +294,201 @@ assert.equal(
   'No debe aceptar diferencias tipográficas superiores a uno.'
 );
 
+const verifiedRpePlayers = [
+  {
+    id: '405e20ed-6648-4843-b223-54f7a6f3838f',
+    name: 'DAVID FERNÁNDEZ',
+    shirt_name: 'DAVO',
+    google_forms_name: null,
+  },
+  {
+    id: 'c5029ff1-5668-4efd-b91c-ccd4d2836232',
+    name: 'Juilo Rodríguez',
+    shirt_name: 'J. RODRÍGUEZ',
+    google_forms_name: null,
+  },
+  {
+    id: '52b68efa-2087-44a0-8f9f-96ed0f612a82',
+    name: 'Julio Delgado',
+    shirt_name: null,
+    google_forms_name: null,
+  },
+  {
+    id: '2e0146e9-e9fc-45ad-b055-edc138a85f7e',
+    name: 'Borja Rodríguez',
+    shirt_name: 'BORJA RGUEZ',
+    google_forms_name: null,
+  },
+  {
+    id: 'forms-vigon',
+    name: 'Miguel Vigón',
+    shirt_name: null,
+    google_forms_name: 'VIGON',
+  },
+];
+
+const verifiedHistoricalAliases = [
+  ['DAVI', '405e20ed-6648-4843-b223-54f7a6f3838f', 'DAVID FERNÁNDEZ'],
+  ['Julio Rodriguez', 'c5029ff1-5668-4efd-b91c-ccd4d2836232', 'Juilo Rodríguez'],
+  ['JULIO RGUEZ', 'c5029ff1-5668-4efd-b91c-ccd4d2836232', 'Juilo Rodríguez'],
+];
+verifiedHistoricalAliases.forEach(([receivedName, expectedId, expectedName]) => {
+  assert.equal(
+    sandbox.resolvePlayerByFormName(verifiedRpePlayers, receivedName),
+    null,
+    `"${receivedName}" no debe resolverse por parecido de texto sin el alias RPE controlado.`
+  );
+  const resolution = sandbox.resolveRpePlayerByFormName(verifiedRpePlayers, receivedName);
+  assert.equal(resolution.jugador_id, expectedId);
+  assert.equal(resolution.name, expectedName);
+  assert.equal(resolution.match_rule, 'EXACT_RPE_HISTORICAL_ALIAS');
+});
+
+assert.throws(
+  () => sandbox.resolveRpePlayerByFormName([
+    {
+      id: 'jugador-no-verificado',
+      name: 'Juilo Rodríguez',
+      shirt_name: 'J. RODRÍGUEZ',
+      google_forms_name: null,
+    },
+    verifiedRpePlayers[2],
+  ], 'Julio Rodriguez'),
+  /REVISAR_MANUALMENTE/,
+  'El alias histórico debe bloquearse si no están presentes el id, name y shirt_name auditados.'
+);
+assert.equal(
+  sandbox.resolveRpePlayerByFormName(verifiedRpePlayers, 'Julio Rod'),
+  null,
+  'Un fragmento parecido a un alias histórico no debe activar la equivalencia.'
+);
+
+const controlledDropdownAudit = sandbox.auditRpeDropdownNames([
+  'VIGON',
+  'DAVO',
+  'J. RODRÍGUEZ',
+  'Julio Delgado',
+  'Julio Rguez',
+], verifiedRpePlayers);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(controlledDropdownAudit.map((item) => item.status))),
+  ['RESUELTO', 'RESUELTO', 'RESUELTO', 'RESUELTO', 'RESUELTO'],
+  'Los nombres controlados actuales deben resolverse inequívocamente.'
+);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(controlledDropdownAudit.map((item) => item.match_rule))),
+  [
+    'EXACT_GOOGLE_FORMS_NAME',
+    'EXACT_SHIRT_NAME',
+    'EXACT_SHIRT_NAME',
+    'EXACT_PLAYER_NAME',
+    'EXACT_RPE_HISTORICAL_ALIAS',
+  ]
+);
+
+const historicalAliasRows = [
+  {
+    rowNumber: 42,
+    values: {
+      'Marca temporal': '01/08/2026 12:00:00',
+      'Nombre y apellidos.': 'DAVI',
+      'Esfuerzo percibido de la sesión de entrenamiento.': 2,
+      'Información personal: (sensaciones, molestias, comentarios, etc).': '',
+    },
+  },
+  {
+    rowNumber: 73,
+    values: {
+      'Marca temporal': '02/08/2026 12:00:00',
+      'Nombre y apellidos.': 'Julio Rodriguez',
+      'Esfuerzo percibido de la sesión de entrenamiento.': 4,
+      'Información personal: (sensaciones, molestias, comentarios, etc).': '',
+    },
+  },
+  {
+    rowNumber: 87,
+    values: {
+      'Marca temporal': '03/08/2026 12:00:00',
+      'Nombre y apellidos.': 'JULIO RGUEZ',
+      'Esfuerzo percibido de la sesión de entrenamiento.': 5,
+      'Información personal: (sensaciones, molestias, comentarios, etc).': '',
+    },
+  },
+];
+const historicalAliasPreview = sandbox.buildRpeHistoricalAliasPreview(
+  historicalAliasRows,
+  verifiedRpePlayers,
+  'Europe/Madrid',
+  [42, 73, 87]
+);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(historicalAliasPreview.map((item) => ({
+    rowNumber: item.rowNumber,
+    receivedName: item.receivedName,
+    status: item.status,
+    jugador_id: item.jugador_id,
+    name: item.name,
+    shirt_name: item.shirt_name,
+    match_rule: item.match_rule,
+    entry_date: item.entry_date,
+    rpe: item.rpe,
+  })))),
+  [
+    {
+      rowNumber: 42,
+      receivedName: 'DAVI',
+      status: 'RESUELTO',
+      jugador_id: '405e20ed-6648-4843-b223-54f7a6f3838f',
+      name: 'DAVID FERNÁNDEZ',
+      shirt_name: 'DAVO',
+      match_rule: 'EXACT_RPE_HISTORICAL_ALIAS',
+      entry_date: '2026-08-01',
+      rpe: 2,
+    },
+    {
+      rowNumber: 73,
+      receivedName: 'Julio Rodriguez',
+      status: 'RESUELTO',
+      jugador_id: 'c5029ff1-5668-4efd-b91c-ccd4d2836232',
+      name: 'Juilo Rodríguez',
+      shirt_name: 'J. RODRÍGUEZ',
+      match_rule: 'EXACT_RPE_HISTORICAL_ALIAS',
+      entry_date: '2026-08-02',
+      rpe: 4,
+    },
+    {
+      rowNumber: 87,
+      receivedName: 'JULIO RGUEZ',
+      status: 'RESUELTO',
+      jugador_id: 'c5029ff1-5668-4efd-b91c-ccd4d2836232',
+      name: 'Juilo Rodríguez',
+      shirt_name: 'J. RODRÍGUEZ',
+      match_rule: 'EXACT_RPE_HISTORICAL_ALIAS',
+      entry_date: '2026-08-03',
+      rpe: 5,
+    },
+  ],
+  'La previsualización debe mostrar identidad, regla, fecha y RPE sin insertar.'
+);
+const historicalAliasImportPlan = sandbox.buildRpeHistoryImportPlan(
+  historicalAliasRows,
+  verifiedRpePlayers,
+  'Europe/Madrid'
+);
+assert.equal(historicalAliasImportPlan.groups.length, 3);
+assert.equal(historicalAliasImportPlan.failures.length, 0);
+const blockedHistoricalAliasPreview = sandbox.buildRpeHistoricalAliasPreview(
+  historicalAliasRows,
+  verifiedRpePlayers.filter((player) => player.id !== 'c5029ff1-5668-4efd-b91c-ccd4d2836232'),
+  'Europe/Madrid',
+  [73, 87]
+);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(blockedHistoricalAliasPreview.map((item) => item.status))),
+  ['REVISAR_MANUALMENTE', 'REVISAR_MANUALMENTE'],
+  'Si desaparece la identidad auditada, los alias de Julio no deben generar payloads importables.'
+);
+
 assert.doesNotThrow(() => sandbox.assertRpeHeaders({
   'Marca temporal': '',
   'Nombre y apellidos.': '',
