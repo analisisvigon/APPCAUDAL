@@ -28,7 +28,7 @@ export default function LineupPrintSheet({ match, starters = [], bench = [], coo
           <p><strong>Rival:</strong> {match?.opponent || 'Sin información'}</p>
           <p><strong>Fecha:</strong> {formatDate(match?.date)}</p>
           <p><strong>Sistema:</strong> {system}</p>
-          <p><strong>Equipación:</strong> {kit === 'away' ? 'Suplente / amarilla a rayas' : 'Titular / blanca'}</p>
+          <p><strong>Equipación:</strong> {kit === 'away' ? 'Segunda / negra' : 'Primera / blanca'}</p>
         </div>
       </header>
 

@@ -172,15 +172,15 @@
 
 .print-player-shirt {
   position: relative;
-  width: 27mm;
-  height: 28mm;
+  width: 22mm;
+  height: 25mm;
   color: #000;
   text-align: center;
 }
 
 .print-player-shirt.compact {
-  width: 11mm;
-  height: 12mm;
+  width: 10mm;
+  height: 11mm;
   flex: 0 0 auto;
 }
 
@@ -297,64 +297,98 @@
 
 .print-shirt-shape {
   display: block;
-  width: 100%;
-  height: 100%;
+  width: 20mm;
+  height: 18mm;
+  margin: 0 auto;
+  overflow: visible;
 }
 
 .shirt-body {
   fill: #fff;
   stroke: #000;
-  stroke-width: 3;
+  stroke-width: 3.6;
+  stroke-linejoin: round;
 }
 
-.print-player-shirt.away .shirt-body {
-  fill: #f6d345;
+.print-player-shirt.opponent .shirt-body,
+.print-player-shirt.own.away.assigned .shirt-body {
+  fill: #000;
 }
 
-.print-player-shirt.goalkeeper .shirt-body {
-  fill: #d9d9d9;
+.shirt-shoulder-detail {
+  fill: #000;
+  stroke: none;
 }
 
-.shirt-stripe {
-  fill: #111;
-  opacity: 0.28;
+.print-player-shirt.opponent .shirt-shoulder-detail,
+.print-player-shirt.own.away.assigned .shirt-shoulder-detail {
+  fill: #fff;
 }
 
 .shirt-neck {
   fill: #fff;
   stroke: #000;
-  stroke-width: 2;
+  stroke-width: 2.4;
+}
+
+.print-player-shirt.opponent .shirt-neck,
+.print-player-shirt.own.away.assigned .shirt-neck {
+  fill: #000;
+  stroke: #fff;
+}
+
+.print-player-shirt.unassigned .shirt-body {
+  fill: #fff;
+}
+
+.print-player-shirt.unassigned .shirt-shoulder-detail {
+  fill: #000;
+}
+
+.print-player-shirt.unassigned .shirt-neck {
+  fill: #fff;
+  stroke: #000;
 }
 
 .print-shirt-number {
   position: absolute;
   left: 50%;
-  top: 50%;
-  transform: translate(-50%, -42%);
-  font-size: 14pt;
+  top: 8.7mm;
+  transform: translate(-50%, -50%);
+  color: #000;
+  font-size: 10.5pt;
   line-height: 1;
   font-weight: 900;
 }
 
+.print-player-shirt.opponent.assigned .print-shirt-number,
+.print-player-shirt.own.away.assigned .print-shirt-number {
+  color: #fff;
+}
+
 .print-shirt-name {
   position: absolute;
-  left: -8mm;
-  right: -8mm;
-  top: 29mm;
+  left: -4mm;
+  right: -4mm;
+  top: 18.7mm;
+  display: -webkit-box;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 7pt;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: #000;
+  font-size: 6.6pt;
   font-weight: 900;
+  line-height: 1.08;
+  overflow-wrap: anywhere;
   text-transform: uppercase;
   background: #fff;
-  padding: 0.4mm 0.8mm;
+  padding: 0.35mm 0.5mm;
 }
 
 .print-captain-badge {
   position: absolute;
-  right: 0;
-  top: 5mm;
+  right: -0.5mm;
+  top: 2.2mm;
   display: inline-flex;
   width: 5mm;
   height: 5mm;
@@ -372,17 +406,18 @@
   transform: translate(-50%, -58%);
 }
 
-.goalkeeper-slot .print-shirt-name {
-  top: 28.5mm;
-}
-
 .print-player-shirt.compact .print-shirt-number {
-  top: 3.6mm;
-  font-size: 6.8pt;
+  top: 4mm;
+  font-size: 6.4pt;
 }
 
 .print-player-shirt.compact .print-shirt-name {
   display: none;
+}
+
+.print-player-shirt.compact .print-shirt-shape {
+  width: 9mm;
+  height: 8.5mm;
 }
 
 .print-bench {
@@ -1819,13 +1854,9 @@
     break-inside: avoid !important;
   }
 
-  .print-player-shirt.away .shirt-body,
-  .print-player-shirt.goalkeeper .shirt-body {
-    fill: #fff !important;
-  }
-
-  .shirt-stripe {
-    fill: #000 !important;
-    opacity: 0.22 !important;
+  .print-player-shirt,
+  .print-player-shirt * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 }

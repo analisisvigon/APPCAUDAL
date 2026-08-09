@@ -1,6 +1,6 @@
 import PlayerShirt from './PlayerShirt';
 
-export default function FootballPitchPrint({ players = [], coordinates = [], kit = 'home' }) {
+export default function FootballPitchPrint({ players = [], coordinates = [], kit = 'home', teamType = 'own' }) {
   return (
     <div className="print-pitch" aria-label="Campo táctico">
       <div className="print-pitch-line halfway" />
@@ -10,15 +10,16 @@ export default function FootballPitchPrint({ players = [], coordinates = [], kit
       <div className="print-pitch-box top small" />
       <div className="print-pitch-box bottom small" />
       {coordinates.map((slot, index) => {
-        const player = players[index] || { number: '', name: 'Sin jugador asignado' };
-        const goalkeeper = index === 0 || String(player.position || '').toLowerCase().includes('portero');
+        const player = players[index] || null;
+        const goalkeeper = index === 0 || String(player?.position || '').toLowerCase().includes('portero');
+        const playerTeamType = player?.teamType === 'opponent' ? 'opponent' : teamType;
         return (
           <div
-            key={`${player.id || player.name || 'slot'}-${index}`}
+            key={`${player?.id || player?.name || 'slot'}-${index}`}
             className={`print-player-slot ${goalkeeper ? 'goalkeeper-slot' : ''}`}
             style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
           >
-            <PlayerShirt player={player} kit={kit} goalkeeper={goalkeeper} captain={Boolean(player.isCaptain)} />
+            <PlayerShirt player={player} teamType={playerTeamType} kit={kit} assigned={Boolean(player)} goalkeeper={goalkeeper} captain={Boolean(player?.isCaptain)} />
           </div>
         );
       })}

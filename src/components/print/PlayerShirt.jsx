@@ -1,30 +1,26 @@
-import { getPlayerDisplayName } from '../../utils/playerDisplayName';
+import { buildPrintPlayerShirtModel } from '../../utils/printPlayerShirt';
 
-export default function PlayerShirt({ player, kit = 'home', goalkeeper = false, compact = false, captain = false }) {
-  const number = player?.number || player?.dorsal || '';
-  const name = player?.name || player?.shirtName || player?.shirt_name || player?.shortName
-    ? getPlayerDisplayName(player)
-    : player?.label || '';
-  const kitClass = goalkeeper ? 'goalkeeper' : kit === 'away' ? 'away' : 'home';
+export default function PlayerShirt({ player, teamType = 'own', kit = 'home', assigned, goalkeeper = false, compact = false, captain = false }) {
+  const model = buildPrintPlayerShirtModel({ player, teamType, kit, assigned });
 
   return (
-    <div className={`print-player-shirt ${kitClass} ${compact ? 'compact' : ''}`}>
-      <svg className="print-shirt-shape" viewBox="0 0 100 92" aria-hidden="true">
+    <div
+      className={`print-player-shirt ${model.teamType} ${model.kit} ${model.assigned ? 'assigned' : 'unassigned'} ${goalkeeper ? 'goalkeeper' : ''} ${compact ? 'compact' : ''}`}
+      data-team-type={model.teamType}
+      data-assigned={model.assigned ? 'true' : 'false'}
+      role="img"
+      aria-label={`${model.teamType === 'opponent' ? 'Rival' : 'Jugador propio'} · ${model.number} · ${model.identity}`}
+    >
+      <svg className="print-shirt-shape" viewBox="0 0 100 88" aria-hidden="true">
         <path
           className="shirt-body"
-          d="M31 8 18 14 6 36l17 9 5-9v48h44V36l5 9 17-9-12-22-13-6-8 12H39L31 8Z"
+          d="M32 8 19 14 7 34l17 9 6-10v47h40V33l6 10 17-9-12-20-13-6-8 11H40L32 8Z"
         />
-        {kitClass === 'away' ? (
-          <>
-            <path className="shirt-stripe" d="M34 21h8v63h-8z" />
-            <path className="shirt-stripe" d="M50 21h8v63h-8z" />
-            <path className="shirt-stripe" d="M66 21h6v63h-6z" />
-          </>
-        ) : null}
-        <path className="shirt-neck" d="M39 20h22l-5 8H44l-5-8Z" />
+        <path className="shirt-shoulder-detail" d="M32 8 19 14 15 21l12 6 8-13ZM68 8l13 6 4 7-12 6-8-13Z" />
+        <path className="shirt-neck" d="M40 19h20l-5 7H45l-5-7Z" />
       </svg>
-      <span className="print-shirt-number">{number || '-'}</span>
-      <span className="print-shirt-name">{name || 'Jugador'}</span>
+      <span className="print-shirt-number">{model.number}</span>
+      <span className="print-shirt-name">{model.identity}</span>
       {captain ? <span className="print-captain-badge">C</span> : null}
     </div>
   );
