@@ -4,14 +4,16 @@ import {
   setSetPieceTacticalMeta,
 } from './setPieceProfessional.js';
 
+export const SET_PIECE_LAB_CATEGORY = 'ABP Laboratorio';
+
 export const SET_PIECE_LAB_TYPES = Object.freeze([
-  { id: 'corner_ofensivo', label: 'Córner ofensivo', category: 'ABP Ofensiva' },
-  { id: 'falta_lateral_ofensiva', label: 'Falta lateral ofensiva', category: 'ABP Ofensiva' },
-  { id: 'saque_banda_ofensivo', label: 'Saque de banda ofensivo', category: 'ABP Ofensiva' },
-  { id: 'saque_inicio_ofensivo', label: 'Saque de inicio', category: 'ABP Ofensiva' },
-  { id: 'corner_defensivo', label: 'Córner defensivo', category: 'ABP Defensiva' },
-  { id: 'falta_lateral_defensiva', label: 'Falta lateral defensiva', category: 'ABP Defensiva' },
-  { id: 'saque_banda_defensivo', label: 'Saque de banda defensivo', category: 'ABP Defensiva' },
+  { id: 'corner_ofensivo', label: 'Córner ofensivo', category: SET_PIECE_LAB_CATEGORY },
+  { id: 'falta_lateral_ofensiva', label: 'Falta lateral ofensiva', category: SET_PIECE_LAB_CATEGORY },
+  { id: 'saque_banda_ofensivo', label: 'Saque de banda ofensivo', category: SET_PIECE_LAB_CATEGORY },
+  { id: 'saque_inicio_ofensivo', label: 'Saque de inicio', category: SET_PIECE_LAB_CATEGORY },
+  { id: 'corner_defensivo', label: 'Córner defensivo', category: SET_PIECE_LAB_CATEGORY },
+  { id: 'falta_lateral_defensiva', label: 'Falta lateral defensiva', category: SET_PIECE_LAB_CATEGORY },
+  { id: 'saque_banda_defensivo', label: 'Saque de banda defensivo', category: SET_PIECE_LAB_CATEGORY },
 ]);
 
 export const SET_PIECE_LAB_ZONES = Object.freeze(['Primer palo', 'Zona media', 'Segundo palo', 'En corto', 'Frontal']);
@@ -24,9 +26,15 @@ export const SET_PIECE_LAB_STATUSES = Object.freeze([
 ]);
 
 const clean = (value) => String(value || '').trim();
-const createId = () => globalThis.crypto?.randomUUID?.() || `lab-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const createId = () => globalThis.crypto?.randomUUID?.() || 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (token) => {
+  const random = Math.floor(Math.random() * 16);
+  const value = token === 'x' ? random : (random & 0x3) | 0x8;
+  return value.toString(16);
+});
 
-export const isSetPieceLaboratoryItem = (item) => clean(item?.categoria).toLocaleLowerCase('es').startsWith('abp');
+export const isSetPieceLaboratoryItem = (item) => (
+  clean(item?.categoria).toLocaleLowerCase('es') === SET_PIECE_LAB_CATEGORY.toLocaleLowerCase('es')
+);
 
 export const getSetPieceLabType = (type) => SET_PIECE_LAB_TYPES.find((entry) => entry.id === type) || SET_PIECE_LAB_TYPES[0];
 
@@ -41,6 +49,13 @@ export const getSetPieceLaboratoryMeta = (itemOrElements) => {
     libraryCreatedAt: meta.libraryCreatedAt || clean(item?.created_at),
     libraryUpdatedAt: meta.libraryUpdatedAt || clean(item?.updated_at),
     linkStatus: 'master',
+    libraryZone: SET_PIECE_LAB_ZONES.includes(meta.libraryZone) ? meta.libraryZone : '',
+    libraryMechanism: SET_PIECE_LAB_MECHANISMS.includes(meta.libraryMechanism) ? meta.libraryMechanism : '',
+    libraryMarking: SET_PIECE_LAB_MARKINGS.includes(meta.libraryMarking) ? meta.libraryMarking : '',
+    libraryStatus: SET_PIECE_LAB_STATUSES.some((status) => status.id === meta.libraryStatus)
+      ? meta.libraryStatus
+      : 'draft',
+    libraryFavorite: Boolean(meta.libraryFavorite),
   };
 };
 
@@ -86,12 +101,18 @@ export const createSetPieceLaboratoryDraft = (type = SET_PIECE_LAB_TYPES[0].id) 
 };
 
 export const prepareSetPieceLaboratoryItem = (item) => {
-  const meta = getSetPieceLaboratoryMeta(item);
+  const sourceMeta = getSetPieceLaboratoryMeta(item);
+  const meta = {
+    ...sourceMeta,
+    objective: sourceMeta.objective || clean(item?.objetivo),
+    generalInstruction: sourceMeta.generalInstruction || clean(item?.descripcion),
+    alternative: sourceMeta.alternative || clean(item?.variantes),
+  };
   return {
     ...item,
     nombre: clean(item?.nombre),
-    tipo: item?.tipo || SET_PIECE_LAB_TYPES[0].id,
-    categoria: item?.categoria || getSetPieceLabType(item?.tipo).category,
+    tipo: getSetPieceLabType(item?.tipo).id,
+    categoria: SET_PIECE_LAB_CATEGORY,
     elements: setSetPieceTacticalMeta(item?.elements, meta),
   };
 };
@@ -101,9 +122,9 @@ export const buildSetPieceLaboratoryPayload = (draft) => {
   const sourceMeta = getSetPieceLaboratoryMeta(draft);
   const meta = {
     ...sourceMeta,
-    objective: sourceMeta.objective || clean(draft.objetivo),
-    generalInstruction: sourceMeta.generalInstruction || clean(draft.descripcion),
-    alternative: sourceMeta.alternative || clean(draft.variantes),
+    objective: sourceMeta.objective,
+    generalInstruction: sourceMeta.generalInstruction,
+    alternative: sourceMeta.alternative,
     libraryId: clean(draft.id),
     libraryVersion: now,
     libraryCreatedAt: sourceMeta.libraryCreatedAt || clean(draft.created_at) || now,
@@ -113,8 +134,8 @@ export const buildSetPieceLaboratoryPayload = (draft) => {
   return {
     id: draft.id,
     nombre: clean(draft.nombre) || 'Jugada ABP sin nombre',
-    tipo: draft.tipo,
-    categoria: getSetPieceLabType(draft.tipo).category,
+    tipo: getSetPieceLabType(draft.tipo).id,
+    categoria: SET_PIECE_LAB_CATEGORY,
     descripcion: meta.generalInstruction,
     objetivo: meta.objective,
     variantes: meta.alternative,

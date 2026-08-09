@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import {
   SET_PIECE_LAB_MARKINGS,
   SET_PIECE_LAB_MECHANISMS,
+  SET_PIECE_LAB_CATEGORY,
   SET_PIECE_LAB_STATUSES,
   SET_PIECE_LAB_TYPES,
   SET_PIECE_LAB_ZONES,
@@ -45,10 +46,16 @@ function ClassificationPill({ children }) {
 function LaboratoryPreview({ item, onClose }) {
   const meta = getSetPieceLaboratoryMeta(item);
   const chronology = getSetPieceChronology(item.elements, []);
+  const closeButtonRef = useRef(null);
   useEffect(() => {
+    const previouslyFocused = document.activeElement;
     const close = (event) => { if (event.key === 'Escape') onClose(); };
     window.addEventListener('keydown', close);
-    return () => window.removeEventListener('keydown', close);
+    closeButtonRef.current?.focus();
+    return () => {
+      window.removeEventListener('keydown', close);
+      previouslyFocused?.focus?.();
+    };
   }, [onClose]);
   return createPortal(
     <div className="fixed inset-0 z-[130] overflow-y-auto bg-slate-950/95 p-3 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="laboratory-preview-title">
@@ -65,7 +72,7 @@ function LaboratoryPreview({ item, onClose }) {
               <ClassificationPill>{statusLabel(meta.libraryStatus)}</ClassificationPill>
             </div>
           </div>
-          <button type="button" onClick={onClose} className={`min-h-11 rounded-xl bg-white/10 px-5 text-sm font-black text-white ${buttonFocus}`}>Cerrar</button>
+          <button ref={closeButtonRef} type="button" onClick={onClose} className={`min-h-11 rounded-xl bg-white/10 px-5 text-sm font-black text-white ${buttonFocus}`}>Cerrar</button>
         </header>
         <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(300px,0.6fr)]">
           <div className="rounded-3xl bg-white p-3 text-black">
@@ -103,7 +110,7 @@ export default function SetPieceLaboratory() {
       const { data, error: loadError } = await supabase
         .from('training_library')
         .select('*')
-        .ilike('categoria', 'ABP%')
+        .eq('categoria', SET_PIECE_LAB_CATEGORY)
         .order('updated_at', { ascending: false });
       if (loadError) throw loadError;
       setItems((data || []).map(prepareSetPieceLaboratoryItem));
