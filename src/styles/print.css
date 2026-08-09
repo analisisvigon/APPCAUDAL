@@ -26,7 +26,7 @@
 }
 
 .lineup-print-sheet.lineup-match-sheet {
-  padding: 6mm;
+  padding: 7mm;
 }
 
 .print-sheet-a4 {
@@ -780,7 +780,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 7mm;
+  height: 8mm;
   border-bottom: 1pt solid #000;
   margin-bottom: 0;
   overflow: hidden;
@@ -1249,56 +1249,47 @@
 }
 
 .set-piece-print-sheet-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
-  gap: 6mm;
-  height: 13mm;
-  border-bottom: 1pt solid #111827;
+  justify-content: space-between;
+  gap: 5mm;
+  height: 7mm;
+  border-bottom: 0.8pt solid #111827;
 }
 
-.set-piece-print-sheet-header p,
-.set-piece-print-play-header p {
+.set-piece-print-sheet-header p {
   margin: 0;
-  color: #4b5563;
-  font-size: 7.5pt;
+  color: #111827;
+  font-size: 7.8pt;
   font-weight: 900;
-  letter-spacing: 0.13em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
-.set-piece-print-sheet-header h1 {
-  margin: 0.7mm 0 0;
-  font-size: 12pt;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
-.set-piece-print-sheet-header > div:last-child {
-  display: grid;
-  justify-items: end;
-  gap: 0.8mm;
-  font-size: 8pt;
+.set-piece-print-sheet-header > div {
+  display: flex;
+  align-items: center;
+  gap: 3mm;
+  font-size: 7.8pt;
 }
 
 .set-piece-pro-plays {
   display: grid;
   grid-template-rows: repeat(2, minmax(0, 1fr));
-  height: calc(100% - 13mm);
-  gap: 2mm;
+  height: calc(100% - 8mm);
 }
 
 .set-piece-print-play {
   display: grid;
-  grid-template-rows: 13mm minmax(0, 1fr);
+  grid-template-rows: 16mm minmax(0, 1fr);
   min-height: 0;
-  padding: 3mm 0;
+  padding: 2mm 0;
   break-inside: avoid;
   page-break-inside: avoid;
 }
 
 .set-piece-print-play + .set-piece-print-play {
-  border-top: 1.2pt solid #111827;
+  border-top: 1pt solid #111827;
 }
 
 .set-piece-pro-plays[data-count="1"] {
@@ -1306,28 +1297,61 @@
 }
 
 .set-piece-print-play-header {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.set-piece-print-play-heading {
   display: grid;
-  grid-template-columns: minmax(62mm, 0.42fr) minmax(0, 0.58fr);
+  min-width: 0;
+  gap: 0.7mm;
+}
+
+.set-piece-print-play-kicker {
+  display: flex;
   align-items: center;
-  gap: 5mm;
+  justify-content: space-between;
+  gap: 4mm;
+  color: #374151;
+  font-size: 7.8pt;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.set-piece-print-play-kicker span {
+  color: #111827;
 }
 
 .set-piece-print-play-header h2 {
-  margin: 0.6mm 0 0;
-  font-size: 14pt;
+  margin: 0;
+  font-size: 12.5pt;
   line-height: 1.05;
+  overflow-wrap: anywhere;
 }
 
-.set-piece-print-play-header > strong {
-  font-size: 9pt;
-  line-height: 1.25;
+.set-piece-print-classifications {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1mm;
+}
+
+.set-piece-print-classifications span {
+  border: 0.6pt solid #9ca3af;
+  border-radius: 999px;
+  padding: 0.45mm 1.6mm;
+  color: #374151;
+  font-size: 7.5pt;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .set-piece-print-play-body {
   display: grid;
-  grid-template-columns: minmax(0, 1.38fr) minmax(0, 0.92fr);
+  grid-template-columns: minmax(0, 2.25fr) minmax(70mm, 1fr);
   min-height: 0;
-  gap: 6mm;
+  gap: 4mm;
 }
 
 .set-piece-print-pitch {
@@ -1337,14 +1361,14 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border: 0.9pt solid #111827;
-  padding: 1.2mm;
+  border: 0.8pt solid #111827;
+  padding: 0.8mm;
 }
 
 .set-piece-print-pitch .set-piece-diagram-canvas {
   width: 100%;
   height: 100%;
-  max-height: 78mm;
+  max-height: none;
   color: #111827;
 }
 
@@ -1352,8 +1376,9 @@
   display: grid;
   min-width: 0;
   min-height: 0;
+  grid-auto-rows: max-content;
   align-content: start;
-  gap: 2.6mm;
+  gap: 1mm;
   overflow: hidden;
 }
 
@@ -1362,42 +1387,33 @@
 }
 
 .set-piece-print-copy h3 {
-  margin: 0 0 1mm;
-  color: #4b5563;
-  font-size: 7.5pt;
+  margin: 0 0 0.4mm;
+  color: #374151;
+  font-size: 7.6pt;
   font-weight: 900;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
 }
 
 .set-piece-print-copy p {
   margin: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
-.set-piece-print-player-list {
-  display: grid;
-  gap: 1.2mm;
+.set-piece-print-consigna {
+  border-left: 1.4pt solid #111827;
+  padding: 0.6mm 0 0.6mm 2mm;
 }
 
-.set-piece-print-player-list div {
-  display: flex;
-  justify-content: space-between;
-  gap: 2mm;
-  padding-top: 0.6mm;
-  border-top: 0.4pt solid #e5e7eb;
-}
-
-.set-piece-print-instruction {
-  font-size: 9pt;
+.set-piece-print-consigna p {
+  font-size: 9.3pt;
   font-weight: 800;
-  line-height: 1.3;
+  line-height: 1.24;
 }
 
 .set-piece-print-chronology ol {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.4mm 3mm;
+  gap: 0.25mm;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1405,12 +1421,14 @@
 
 .set-piece-print-chronology li {
   display: grid;
-  grid-template-columns: 5mm minmax(0, 1fr);
+  grid-template-columns: 4.7mm minmax(0, 1fr);
   align-items: start;
-  gap: 1mm;
+  gap: 0.8mm;
   min-width: 0;
-  font-size: 8pt;
-  line-height: 1.2;
+  border-bottom: 0.35pt solid #e5e7eb;
+  padding-bottom: 0.2mm;
+  font-size: 8.5pt;
+  line-height: 1.05;
 }
 
 .set-piece-print-chronology li b {
@@ -1422,19 +1440,69 @@
   border-radius: 50%;
   background: #111827;
   color: #fff;
-  font-size: 8pt;
+  font-size: 7.6pt;
 }
 
-.set-piece-print-chronology li span {
+.set-piece-print-chronology li div {
   min-width: 0;
-  overflow-wrap: anywhere;
 }
 
-.set-piece-print-alternative {
-  border-top: 0.6pt solid #d1d5db;
-  padding-top: 1.5mm;
-  font-size: 7.5pt;
-  line-height: 1.25;
+.set-piece-print-step-identity {
+  font-size: 8.5pt;
+  text-transform: uppercase;
+}
+
+.set-piece-print-step-identity span {
+  color: #4b5563;
+  font-size: 7.7pt;
+  font-weight: 800;
+}
+
+.set-piece-print-step-instruction {
+  color: #374151;
+  font-size: 8.3pt;
+  font-weight: 500 !important;
+  line-height: 1.08;
+  text-transform: none;
+}
+
+.set-piece-print-operational-details {
+  display: grid;
+  gap: 0.55mm;
+  border-top: 0.55pt solid #9ca3af;
+  padding-top: 0.8mm;
+}
+
+.set-piece-print-operational-details section {
+  display: grid;
+  grid-template-columns: 28mm minmax(0, 1fr);
+  align-items: start;
+  gap: 1.5mm;
+}
+
+.set-piece-print-operational-details h3 {
+  margin: 0;
+}
+
+.set-piece-print-operational-details p {
+  font-size: 7.7pt;
+  line-height: 1.1;
+}
+
+.set-piece-print-risk p {
+  font-weight: 800;
+}
+
+.set-piece-pro-plays[data-count="1"] .set-piece-print-play {
+  grid-template-rows: 19mm minmax(0, 1fr);
+}
+
+.set-piece-pro-plays[data-count="1"] .set-piece-print-play-body {
+  grid-template-columns: minmax(0, 2.5fr) minmax(78mm, 1fr);
+}
+
+.set-piece-pro-plays[data-count="1"] .set-piece-print-play-header h2 {
+  font-size: 14pt;
 }
 
 @media screen and (max-width: 768px) {
@@ -1606,7 +1674,7 @@
   }
 
   .lineup-print-sheet.lineup-match-sheet {
-    padding: 6mm !important;
+    padding: 7mm !important;
   }
 
   .printing-dossier .lineup-print-sheet {

@@ -123,11 +123,16 @@ const createSetPieceEntityId = (prefix = 'abp') => {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-const getInitials = (value, maxLength = 10) => {
+const getInitials = (value, maxLength = 3) => {
   const parts = cleanString(value).split(/\s+/).filter(Boolean);
   if (!parts.length) return '';
-  if (parts.length === 1) return parts[0].slice(0, maxLength);
-  return `${parts[0][0]}. ${parts.at(-1)}`.slice(0, maxLength);
+  const normalizedParts = parts.map((part) => part.replace(/[^\p{L}\p{N}]/gu, '')).filter(Boolean);
+  if (!normalizedParts.length) return '';
+  if (normalizedParts.length === 1) return normalizedParts[0].slice(0, maxLength).toUpperCase();
+  const first = normalizedParts[0];
+  const last = normalizedParts.at(-1);
+  if (first.length === 1) return `${first}${last.slice(0, Math.max(1, maxLength - 1))}`.slice(0, maxLength).toUpperCase();
+  return last.slice(0, maxLength).toUpperCase();
 };
 
 const getPreferredAbbreviation = (element, player) => {
@@ -142,8 +147,7 @@ const getPreferredAbbreviation = (element, player) => {
     element?.shortName,
   ].map(cleanString).find(Boolean);
   const fullName = cleanString(player?.name || element?.name);
-  const preferred = configured || getInitials(fullName, 10);
-  return preferred.length <= 10 ? preferred : getInitials(preferred, 10);
+  return getInitials(configured || fullName, 3);
 };
 
 export const getSetPieceGeometrySnapshot = (elements) => getDrawableSetPieceElements(elements).map((element) => {
@@ -199,10 +203,10 @@ export const optimizeSetPieceElementsForPrint = (elements, players = []) => {
     const base = abbreviations[index];
     const duplicate = abbreviationCounts.get(base.toLocaleLowerCase('es')) > 1;
     const dorsal = cleanString(element.label);
-    let uniqueAbbreviation = duplicate ? `${base} ${dorsal || index + 1}` : base;
+    let uniqueAbbreviation = duplicate ? `${base}${dorsal && dorsal.toLocaleLowerCase('es') !== base.toLocaleLowerCase('es') ? dorsal : index + 1}` : base;
     let fallbackIndex = index + 1;
     while (usedAbbreviations.has(uniqueAbbreviation.toLocaleLowerCase('es'))) {
-      uniqueAbbreviation = `${base} ${dorsal || fallbackIndex}-${fallbackIndex}`;
+      uniqueAbbreviation = `${base}${dorsal && dorsal.toLocaleLowerCase('es') !== base.toLocaleLowerCase('es') ? dorsal : ''}${fallbackIndex}`;
       fallbackIndex += 1;
     }
     usedAbbreviations.add(uniqueAbbreviation.toLocaleLowerCase('es'));
@@ -272,7 +276,8 @@ export const getSetPieceChronology = (elements, players = []) => {
       id: element.id,
       order: Number(element.sequenceOrder),
       playerName: getSetPiecePlayerName(element, playersById) || cleanString(element.roles?.[0]) || `Jugador ${element.label || ''}`.trim(),
-      instruction: cleanString(element.note) || cleanString(element.roles?.[0]) || 'interviene',
+      role: cleanString(element.roles?.[0]),
+      instruction: cleanString(element.note),
     }));
 };
 

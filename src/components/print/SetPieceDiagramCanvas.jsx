@@ -32,19 +32,19 @@ export const SET_PIECE_CANVAS_TOKENS = Object.freeze({
     zoneSize: 2.35,
   }),
   print: Object.freeze({
-    playerRadius: 1.95,
-    selectedPlayerRadius: 1.95,
-    responsibilityRadius: 2.55,
-    ballRadius: 1.5,
-    blockRadius: 1.4,
-    arrowWidth: 0.44,
-    dorsalSize: 2.45,
-    abbreviationSize: 2.8,
-    stepRadius: 1.5,
-    stepSize: 1.7,
-    roleSize: 1.45,
-    annotationSize: 2.65,
-    zoneSize: 2.25,
+    playerRadius: 2.05,
+    selectedPlayerRadius: 2.05,
+    responsibilityRadius: 2.65,
+    ballRadius: 1.55,
+    blockRadius: 1.45,
+    arrowWidth: 0.5,
+    dorsalSize: 2.35,
+    abbreviationSize: 2.4,
+    stepRadius: 1.42,
+    stepSize: 1.55,
+    roleSize: 1.2,
+    annotationSize: 2.45,
+    zoneSize: 2.15,
   }),
 });
 
@@ -118,7 +118,7 @@ function PitchLines({ fullField = false }) {
   );
 }
 
-export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, printOptimized = false, identityMode = 'number-and-abbreviation', visibleLayers = {} }) {
+export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, printOptimized = false, preparedForPrint = false, identityMode = 'number-and-abbreviation', visibleLayers = {} }) {
   const svgRef = useRef(null);
   const [drag, setDrag] = useState(null);
   const playersById = useMemo(() => new Map(players.map((player) => [player.id, player])), [players]);
@@ -131,7 +131,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
     texts: visibleLayers?.texts ?? true,
   }), [visibleLayers]);
   const renderedElements = useMemo(() => {
-    const baseElements = printOptimized
+    const baseElements = printOptimized && !preparedForPrint
       ? optimizeSetPieceElementsForPrint(elements, players)
       : getDrawableSetPieceElements(elements);
     return baseElements.filter((element) => {
@@ -139,7 +139,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
       if (!normalizedVisibleLayers.texts && ['text', 'text_box'].includes(element.type)) return false;
       return true;
     });
-  }, [elements, players, printOptimized, normalizedVisibleLayers]);
+  }, [elements, players, printOptimized, preparedForPrint, normalizedVisibleLayers]);
   const tokens = printOptimized ? SET_PIECE_CANVAS_TOKENS.print : SET_PIECE_CANVAS_TOKENS.editor;
 
   const updateElement = (id, fields) => {

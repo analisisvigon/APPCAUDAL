@@ -1,143 +1,100 @@
 import SetPieceDiagramCanvas from './SetPieceDiagramCanvas';
-import {
-  getSetPieceChronology,
-  getSetPieceTacticalMeta,
-} from '../../utils/setPieceProfessional';
+import { buildSetPiecePrintPages } from '../../utils/setPiecePrintModel';
 
 const formatDate = (value) => {
-  if (!value) return 'Fecha pendiente';
+  if (!value) return '';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  if (Number.isNaN(date.getTime())) return String(value).trim();
   return new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
 };
 
-const getMatchLabel = (match) => (
-  match?.isHome
-    ? `C.D. Caudal - ${match?.opponent || 'Rival'}`
-    : `${match?.opponent || 'Rival'} - C.D. Caudal`
-);
+const getMatchLabel = (match) => {
+  const opponent = String(match?.opponent || '').trim();
+  if (!opponent) return '';
+  return match?.isHome ? `C.D. Caudal - ${opponent}` : `${opponent} - C.D. Caudal`;
+};
 
-function chunkPlays(plays = [], size = 2) {
-  const chunks = [];
-  for (let index = 0; index < plays.length; index += size) {
-    chunks.push(plays.slice(index, index + size));
-  }
-  return chunks;
+function PrintDetail({ label, value, className = '' }) {
+  if (!value) return null;
+  return <section className={className}><h3>{label}</h3><p>{value}</p></section>;
 }
 
-function PrintPlay({ diagram, players, fallbackOrder }) {
-  const meta = getSetPieceTacticalMeta(diagram.elements);
-  const chronology = getSetPieceChronology(diagram.elements, players);
-  const order = Number(diagram.orden) || fallbackOrder;
-  const instruction = diagram.consigna || meta.generalInstruction || meta.objective || 'Consigna pendiente de definir';
-  const saqueType = meta.saqueType || diagram.saqueType || '';
-
+function PrintPlay({ play }) {
   return (
-    <section className="set-piece-print-play" data-play-order={order}>
+    <section className="set-piece-print-play" data-play-order={play.order} data-play-id={play.id || ''}>
       <header className="set-piece-print-play-header">
-        <div>
-          <p>Jugada {order}</p>
-          <h2>{diagram.titulo || `Jugada ${order}`}</h2>
+        <div className="set-piece-print-play-heading">
+          <div className="set-piece-print-play-kicker"><strong>{play.typeLabel}</strong><span>Jugada {play.order}</span></div>
+          <h2>{play.title}</h2>
+          {play.classifications.length ? <div className="set-piece-print-classifications">{play.classifications.map((classification) => <span key={classification}>{classification}</span>)}</div> : null}
         </div>
-        <strong>{meta.objective || instruction}</strong>
       </header>
 
       <div className="set-piece-print-play-body">
-        <div className="set-piece-print-pitch" aria-label={`Geometría táctica de la jugada ${order}`}>
+        <div className="set-piece-print-pitch" aria-label={`Geometría táctica de la jugada ${play.order}`}>
           <SetPieceDiagramCanvas
-            elements={diagram.elements}
-            players={players}
-            fullField={String(diagram.tipo || '').includes('saque_inicio')}
+            elements={play.elements}
+            players={[]}
+            fullField={play.fullField}
             readOnly
             printOptimized
-            identityMode={meta.printIdentityMode}
+            preparedForPrint
+            identityMode={play.identityMode}
+            visibleLayers={{ numbers: true, abbreviations: true, roles: false, chronology: true, zones: true, texts: true }}
           />
         </div>
 
-        <div className="set-piece-print-copy">
-          <section>
-            <h3>Consigna</h3>
-            <p className="set-piece-print-instruction">{instruction}</p>
-          </section>
+        <aside className="set-piece-print-copy" aria-label={`Información operativa de la jugada ${play.order}`}>
+          {play.instruction ? <section className="set-piece-print-consigna"><h3>Consigna</h3><p>{play.instruction}</p></section> : null}
 
-          {saqueType ? (
-            <section>
-              <h3>Tipo de saque</h3>
-              <p>{saqueType}</p>
-            </section>
-          ) : null}
-
-          {meta.whenToUse ? (
-            <section>
-              <h3>Cuándo utilizarla</h3>
-              <p>{meta.whenToUse}</p>
-            </section>
-          ) : null}
-
-          {chronology.length ? (
+          {play.chronology.length ? (
             <section className="set-piece-print-chronology">
-              <h3>Intervienen</h3>
+              <h3>Secuencia</h3>
               <ol>
-                {chronology.map((step) => (
+                {play.chronology.map((step) => (
                   <li key={step.id}>
                     <b>{step.order}</b>
-                    <span><strong>{step.playerName}</strong> {step.instruction}</span>
+                    <div>
+                      <p className="set-piece-print-step-identity"><strong>{step.identity}</strong>{step.role ? <span> · {step.role}</span> : null}{step.instruction ? <span className="set-piece-print-step-instruction"> — {step.instruction}</span> : null}</p>
+                    </div>
                   </li>
                 ))}
               </ol>
             </section>
           ) : null}
 
-          {meta.risk ? (
-            <section>
-              <h3>Riesgo</h3>
-              <p>{meta.risk}</p>
-            </section>
-          ) : null}
-
-          {meta.alternative ? (
-            <section className="set-piece-print-alternative">
-              <h3>Alternativa</h3>
-              <p>{meta.alternative}</p>
-            </section>
-          ) : null}
-        </div>
+          <div className="set-piece-print-operational-details">
+            <PrintDetail label="Clave" value={play.objective} />
+            <PrintDetail label="Cuándo" value={play.whenToUse} />
+            <PrintDetail label="Riesgo" value={play.risk} className="set-piece-print-risk" />
+            <PrintDetail label="Alternativa" value={play.alternative} />
+            <PrintDetail label="Observaciones" value={play.observations} />
+          </div>
+        </aside>
       </div>
     </section>
   );
 }
 
 export default function SetPieceDiagramPrintSheet({ match, title = 'ABP', diagrams = [], players = [], preview = false }) {
-  const pages = chunkPlays(diagrams, 2);
+  const pages = buildSetPiecePrintPages(diagrams, players);
   if (!pages.length) return null;
+  const matchLabel = getMatchLabel(match);
+  const matchDate = formatDate(match?.date);
 
   return (
     <>
-      {pages.map((pageDiagrams, pageIndex) => {
-        const pageNumber = pageIndex + 1;
-        const pageKey = `${title}-${pageNumber}-${pageDiagrams.map((diagram) => diagram.id || `${diagram.tipo}-${diagram.orden}`).join('-')}`;
+      {pages.map((page) => {
+        const pageKey = `${title}-${page.pageNumber}-${page.plays.map((play) => play.id || `${play.typeLabel}-${play.order}`).join('-')}`;
         return (
-          <article key={pageKey} className={`lineup-print-sheet print-sheet-a4 diagram-print-sheet diagram-print-landscape set-piece-pro-sheet abp-print-page ${preview ? 'set-piece-preview-sheet set-piece-is-preview' : ''}`}>
+          <article key={pageKey} data-render-model="set-piece-print" className={`lineup-print-sheet print-sheet-a4 diagram-print-sheet diagram-print-landscape set-piece-pro-sheet abp-print-page ${preview ? 'set-piece-preview-sheet set-piece-is-preview' : ''}`}>
             <header className="set-piece-print-sheet-header">
-              <div>
-                <p>C.D. Caudal de Mieres · Dossier ABP</p>
-                <h1>{title}</h1>
-              </div>
-              <div>
-                <strong>{getMatchLabel(match)}</strong>
-                <span>{formatDate(match?.date)}</span>
-              </div>
+              <p>C.D. Caudal de Mieres · Dossier ABP</p>
+              {(matchLabel || matchDate) ? <div>{matchLabel ? <strong>{matchLabel}</strong> : null}{matchDate ? <span>{matchDate}</span> : null}</div> : null}
             </header>
 
-            <div className="set-piece-pro-plays" data-count={pageDiagrams.length} data-page-number={pageNumber}>
-              {pageDiagrams.map((diagram, index) => (
-                <PrintPlay
-                  key={diagram.id || `${diagram.tipo}-${diagram.orden}-${index}`}
-                  diagram={diagram}
-                  players={players}
-                  fallbackOrder={pageIndex * 2 + index + 1}
-                />
-              ))}
+            <div className="set-piece-pro-plays" data-count={page.plays.length} data-page-number={page.pageNumber}>
+              {page.plays.map((play) => <PrintPlay key={play.id || `${play.typeLabel}-${play.order}`} play={play} />)}
             </div>
           </article>
         );
