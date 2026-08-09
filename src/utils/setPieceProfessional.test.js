@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   SET_PIECE_PRINT_IDENTITY_MODES,
   cloneSetPieceElementsWithFreshIds,
+  createDefaultSetPieceDisplayLayers,
   createDefaultSetPieceTacticalMeta,
   getDrawableSetPieceElements,
   getSetPieceChronology,
@@ -19,7 +20,7 @@ const players = [
 const drawable = [
   { id: 'p1-el', type: 'player', x: 40, y: 30, label: '9', player_id: 'p1', roles: ['Rematador'], note: 'fija', sequenceOrder: 1, primaryResponsibility: true, targetId: 'arrow-1' },
   { id: 'p2-el', type: 'player', x: 46, y: 31, label: '5', player_id: 'p2', roles: ['Bloqueador'], note: 'bloquea', sequenceOrder: 2, linkedElementId: 'p1-el' },
-  { id: 'arrow-1', type: 'curved_arrow', x1: 20, y1: 30, x2: 70, y2: 30, curvature: -9, sourceId: 'p1-el', targetId: 'p2-el' },
+  { id: 'arrow-1', type: 'curved_arrow', x1: 20, y1: 30, x2: 70, y2: 30, controlX: 44, controlY: 17, sourceId: 'p1-el', targetId: 'p2-el' },
   { id: 'block-1', type: 'block', x: 42, y: 28, width: 18, parentId: 'p1-el' },
   { id: 'zone-1', type: 'zone', x: 34, y: 18, width: 22, height: 12 },
 ];
@@ -46,6 +47,19 @@ assert.equal(withSaqueType.saqueType, 'Saque corto', 'el tipo de saque se conser
 assert.equal(withSaqueType.libraryId, 'library-1');
 assert.equal(getSetPieceTacticalMeta(stored).linkStatus, 'linked');
 assert.equal(getSetPieceTacticalMeta(stored).printIdentityMode, SET_PIECE_PRINT_IDENTITY_MODES.NUMBER_AND_ABBREVIATION);
+assert.deepEqual(getSetPieceTacticalMeta(stored).displayLayers, createDefaultSetPieceDisplayLayers(), 'las jugadas legacy muestran todas las capas como antes');
+
+const hiddenLayers = {
+  dorsals: false,
+  abbreviations: true,
+  roles: false,
+  chronology: false,
+  zones: false,
+  texts: false,
+};
+const storedWithLayers = setSetPieceTacticalMeta(drawable, { ...meta, displayLayers: hiddenLayers });
+assert.deepEqual(getSetPieceTacticalMeta(storedWithLayers).displayLayers, hiddenLayers, 'guardar y recargar conserva la presentación en el JSON de la jugada');
+assert.deepEqual(getDrawableSetPieceElements(storedWithLayers), drawable, 'ocultar capas no modifica ni elimina contenido táctico');
 
 const migrated = getSetPieceTacticalMeta(setSetPieceTacticalMeta([], {
   variation: 'Alternativa heredada',
@@ -89,5 +103,17 @@ const duplicatedSecondPlayer = duplicated.find((element) => element.type === 'pl
 assert.equal(duplicatedArrow.sourceId, duplicatedFirstPlayer.id, 'sourceId apunta al nuevo jugador');
 assert.equal(duplicatedArrow.targetId, duplicatedSecondPlayer.id, 'targetId apunta al nuevo jugador');
 assert.equal(duplicatedFirstPlayer.targetId, duplicatedArrow.id, 'las referencias inversas también se regeneran');
+
+assert.notEqual(duplicatedArrow.id, 'arrow-1', 'duplicar una curva crea un ID nuevo');
+assert.deepEqual(
+  { controlX: duplicatedArrow.controlX, controlY: duplicatedArrow.controlY },
+  { controlX: 44, controlY: 17 },
+  'la copia conserva un punto de control independiente',
+);
+duplicatedArrow.controlY = 50;
+assert.equal(drawable.find((element) => element.id === 'arrow-1').controlY, 17, 'editar la copia no altera la curva original');
+const withoutDuplicateCurve = duplicated.filter((element) => element.id !== duplicatedArrow.id);
+assert.equal(withoutDuplicateCurve.some((element) => element.type === 'curved_arrow'), false, 'eliminar la copia no afecta a otros elementos');
+assert.equal(drawable.some((element) => element.id === 'arrow-1'), true, 'la curva original permanece intacta');
 
 console.log('setPieceProfessional tests passed');

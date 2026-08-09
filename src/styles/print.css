@@ -1354,6 +1354,14 @@
   gap: 4mm;
 }
 
+.set-piece-print-play-body--field-forward {
+  grid-template-columns: minmax(0, 3.35fr) minmax(56mm, 1fr);
+}
+
+.set-piece-print-play-body--field-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .set-piece-print-pitch {
   display: flex;
   min-width: 0;
@@ -1499,6 +1507,14 @@
 
 .set-piece-pro-plays[data-count="1"] .set-piece-print-play-body {
   grid-template-columns: minmax(0, 2.5fr) minmax(78mm, 1fr);
+}
+
+.set-piece-pro-plays[data-count="1"] .set-piece-print-play-body--field-forward {
+  grid-template-columns: minmax(0, 3.7fr) minmax(64mm, 1fr);
+}
+
+.set-piece-pro-plays[data-count="1"] .set-piece-print-play-body--field-only {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .set-piece-pro-plays[data-count="1"] .set-piece-print-play-header h2 {

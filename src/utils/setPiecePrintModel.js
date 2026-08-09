@@ -1,5 +1,4 @@
 import {
-  SET_PIECE_PRINT_IDENTITY_MODES,
   getSetPieceChronology,
   getSetPieceTacticalMeta,
   optimizeSetPieceElementsForPrint,
@@ -50,12 +49,13 @@ export const getSetPiecePrintTypeLabel = (type) => (
   || String(type || '').replaceAll('_', ' ').replace(/^./, (character) => character.toUpperCase())
 );
 
-const formatIdentity = (element, mode) => {
+const formatIdentity = (element, displayLayers) => {
   const number = getMeaningfulSetPiecePrintText(element?.label);
   const abbreviation = getMeaningfulSetPiecePrintText(element?.printName);
-  if (mode === SET_PIECE_PRINT_IDENTITY_MODES.NUMBER) return number || abbreviation;
-  if (mode === SET_PIECE_PRINT_IDENTITY_MODES.ABBREVIATION) return abbreviation || number;
-  return [number, abbreviation].filter((value, index, values) => value && values.indexOf(value) === index).join(' ');
+  return [
+    displayLayers.dorsals ? number : '',
+    displayLayers.abbreviations ? abbreviation : '',
+  ].filter((value, index, values) => value && values.indexOf(value) === index).join(' ');
 };
 
 export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder = 1) => {
@@ -64,10 +64,11 @@ export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder
   const elementsById = new Map(elements.map((element) => [element.id, element]));
   const order = Number(diagram?.orden) || fallbackOrder;
   const typeLabel = getSetPiecePrintTypeLabel(diagram?.tipo);
-  const chronology = getSetPieceChronology(diagram?.elements, players).map((step) => ({
+  const displayLayers = meta.displayLayers;
+  const chronology = (displayLayers.chronology ? getSetPieceChronology(diagram?.elements, players) : []).map((step) => ({
     ...step,
-    identity: formatIdentity(elementsById.get(step.id), meta.printIdentityMode) || getMeaningfulSetPiecePrintText(step.playerName),
-    role: getMeaningfulSetPiecePrintText(step.role),
+    identity: formatIdentity(elementsById.get(step.id), displayLayers),
+    role: displayLayers.roles ? getMeaningfulSetPiecePrintText(step.role) : '',
     instruction: getMeaningfulSetPiecePrintText(step.instruction),
   }));
   return {
@@ -84,7 +85,7 @@ export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder
     risk: getMeaningfulSetPiecePrintText(meta.risk),
     alternative: getMeaningfulSetPiecePrintText(meta.alternative),
     observations: getMeaningfulSetPiecePrintText(meta.observations),
-    identityMode: meta.printIdentityMode,
+    displayLayers,
     chronology,
     elements,
     fullField: String(diagram?.tipo || '').includes('saque_inicio'),

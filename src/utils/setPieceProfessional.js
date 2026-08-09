@@ -5,6 +5,34 @@ export const SET_PIECE_PRINT_IDENTITY_MODES = Object.freeze({
   NUMBER_AND_ABBREVIATION: 'number-and-abbreviation',
 });
 
+export const SET_PIECE_DISPLAY_LAYER_KEYS = Object.freeze([
+  'dorsals',
+  'abbreviations',
+  'roles',
+  'chronology',
+  'zones',
+  'texts',
+]);
+
+export const createDefaultSetPieceDisplayLayers = () => ({
+  dorsals: true,
+  abbreviations: true,
+  roles: true,
+  chronology: true,
+  zones: true,
+  texts: true,
+});
+
+export const normalizeSetPieceDisplayLayers = (value) => {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const defaults = createDefaultSetPieceDisplayLayers();
+  return Object.fromEntries(SET_PIECE_DISPLAY_LAYER_KEYS.map((key) => {
+    const legacyKey = key === 'dorsals' ? 'numbers' : key;
+    const candidate = source[key] ?? source[legacyKey];
+    return [key, typeof candidate === 'boolean' ? candidate : defaults[key]];
+  }));
+};
+
 export const SET_PIECE_ROLES = [
   'Lanzador',
   'Rematador',
@@ -20,7 +48,7 @@ export const SET_PIECE_ROLES = [
 ];
 
 export const createDefaultSetPieceTacticalMeta = () => ({
-  version: 2,
+  version: 3,
   objective: '',
   saqueType: '',
   whenToUse: '',
@@ -32,6 +60,8 @@ export const createDefaultSetPieceTacticalMeta = () => ({
   tags: [],
   lastUsedAt: '',
   printIdentityMode: SET_PIECE_PRINT_IDENTITY_MODES.NUMBER_AND_ABBREVIATION,
+  displayLayers: createDefaultSetPieceDisplayLayers(),
+  displayLayersBeforeStructure: null,
   libraryId: '',
   libraryVersion: '',
   importedAt: '',
@@ -58,9 +88,12 @@ export const normalizeSetPieceTacticalMeta = (value) => {
     ? source.printIdentityMode
     : defaults.printIdentityMode;
   const libraryId = cleanString(source.libraryId);
+  const displayLayersBeforeStructure = source.displayLayersBeforeStructure
+    ? normalizeSetPieceDisplayLayers(source.displayLayersBeforeStructure)
+    : null;
   return {
     ...defaults,
-    version: 2,
+    version: 3,
     objective: cleanString(source.objective),
     saqueType: cleanString(source.saqueType || source.saque_type || source.typeOfSaque),
     whenToUse: cleanString(source.whenToUse),
@@ -75,6 +108,8 @@ export const normalizeSetPieceTacticalMeta = (value) => {
       .slice(0, 12),
     lastUsedAt: cleanString(source.lastUsedAt),
     printIdentityMode: identityMode,
+    displayLayers: normalizeSetPieceDisplayLayers(source.displayLayers),
+    displayLayersBeforeStructure,
     libraryId,
     libraryVersion: cleanString(source.libraryVersion),
     importedAt: cleanString(source.importedAt),

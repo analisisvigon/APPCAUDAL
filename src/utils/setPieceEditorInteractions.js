@@ -25,3 +25,62 @@ export const getSetPieceElementInteraction = ({ readOnly = false, locked = false
   selectable: !readOnly,
   draggable: !readOnly && !locked,
 });
+
+const finiteCoordinate = (value, fallback = 0) => (
+  Number.isFinite(Number(value)) ? Number(value) : fallback
+);
+
+export const getSetPieceCurveControlPoint = (element = {}) => {
+  const x1 = finiteCoordinate(element.x1);
+  const y1 = finiteCoordinate(element.y1);
+  const x2 = finiteCoordinate(element.x2);
+  const y2 = finiteCoordinate(element.y2);
+  return {
+    x: finiteCoordinate(element.controlX, (x1 + x2) / 2),
+    y: finiteCoordinate(
+      element.controlY,
+      (y1 + y2) / 2 + finiteCoordinate(element.curvature, -12),
+    ),
+  };
+};
+
+export const ensureSetPieceCurveGeometry = (element = {}) => {
+  if (element.type !== 'curved_arrow') return { ...element };
+  const controlPoint = getSetPieceCurveControlPoint(element);
+  return { ...element, controlX: controlPoint.x, controlY: controlPoint.y };
+};
+
+export const moveSetPieceCurveControlPoint = (element = {}, point = {}) => {
+  const current = getSetPieceCurveControlPoint(element);
+  return {
+    ...ensureSetPieceCurveGeometry(element),
+    controlX: finiteCoordinate(point.x, current.x),
+    controlY: finiteCoordinate(point.y, current.y),
+  };
+};
+
+export const translateSetPieceElement = (element = {}, dx = 0, dy = 0) => {
+  const offsetX = finiteCoordinate(dx);
+  const offsetY = finiteCoordinate(dy);
+  if (!['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow'].includes(element.type)) {
+    return {
+      ...element,
+      x: finiteCoordinate(element.x) + offsetX,
+      y: finiteCoordinate(element.y) + offsetY,
+    };
+  }
+  const translated = {
+    ...element,
+    x1: finiteCoordinate(element.x1) + offsetX,
+    y1: finiteCoordinate(element.y1) + offsetY,
+    x2: finiteCoordinate(element.x2) + offsetX,
+    y2: finiteCoordinate(element.y2) + offsetY,
+  };
+  if (element.type !== 'curved_arrow') return translated;
+  const controlPoint = getSetPieceCurveControlPoint(element);
+  return {
+    ...translated,
+    controlX: controlPoint.x + offsetX,
+    controlY: controlPoint.y + offsetY,
+  };
+};

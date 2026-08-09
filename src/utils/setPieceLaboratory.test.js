@@ -135,8 +135,10 @@ assert.ok(objectsIndex >= 0 && tracingIndex > objectsIndex && annotationsIndex >
 assert.ok(blockIndex > tracingIndex && blockIndex < annotationsIndex, 'Bloqueo permanece dentro de Trazado');
 assert.ok(toolbar.includes('aria-label={`Añadir ${label.toLowerCase()}`}') && toolbar.includes('title={`Añadir ${label.toLowerCase()}`}') && toolbar.includes('min-h-11'), 'herramientas con nombre accesible, tooltip y objetivo táctil');
 
-['numbers', 'abbreviations', 'roles', 'chronology', 'zones', 'texts'].forEach((layer) => assert.ok(editor.includes(`key: '${layer}'`), `capa ${layer} disponible`));
-assert.ok(editor.includes('Solo estructura') && editor.includes('Mostrar capas'), 'la acción Solo estructura es reversible y solo cambia estado local');
+['dorsals', 'abbreviations', 'roles', 'chronology', 'zones', 'texts'].forEach((layer) => assert.ok(editor.includes(`key: '${layer}'`), `capa ${layer} disponible`));
+assert.ok(editor.includes('Solo estructura') && editor.includes('Restaurar capas'), 'Solo estructura persiste la decisión y permite restaurar la selección anterior');
+assert.ok(editor.includes('displayLayersBeforeStructure') && editor.includes('toggleDisplayLayer'), 'las capas se guardan en tactical_meta y no en localStorage');
+assert.equal(editor.includes('setVisibleLayers'), false, 'el editor usa la configuración persistida como única fuente de verdad');
 assert.ok(editor.includes('EditorAccordion') && editor.includes('aria-expanded={open}') && editor.includes('openSections'), 'el panel usa acordeones accesibles y recuerda su estado durante la edición');
 assert.ok(editor.includes("setPanel(['player', 'opponent'].includes(element?.type) ? 'player' : 'tactic')"), 'la selección de un participante abre Rol y el resto conserva Ficha');
 assert.ok(editor.includes("disabled={disabled}") && editor.includes("id === 'player' && !isSelectedPlayer"), 'Rol no se muestra sin participante seleccionado');

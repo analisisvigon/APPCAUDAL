@@ -6,10 +6,14 @@ import {
   normalizeSetPieceDimensionValue,
   normalizeSetPieceElementDimensions,
 } from '../../utils/setPieceElementDimensions';
-import { getSetPieceHistoryAction, isEditableInteractionTarget } from '../../utils/setPieceEditorInteractions';
+import {
+  ensureSetPieceCurveGeometry,
+  getSetPieceHistoryAction,
+  isEditableInteractionTarget,
+} from '../../utils/setPieceEditorInteractions';
 import {
   SET_PIECE_ROLES,
-  SET_PIECE_PRINT_IDENTITY_MODES,
+  createDefaultSetPieceDisplayLayers,
   cloneSetPieceElementsWithFreshIds,
   getDrawableSetPieceElements,
   getSetPieceChronology,
@@ -28,7 +32,10 @@ const isResizableBox = (element) => ['zone', 'block', 'text_box'].includes(eleme
 
 const createElement = (type) => {
   if (type === 'ball') return { id: createId(), type, x: 8, y: 8 };
-  if (isArrow({ type })) return { id: createId(), type, x1: 20, y1: 46, x2: 44, y2: 26, dashed: type === 'dashed_arrow' };
+  if (isArrow({ type })) {
+    const arrow = { id: createId(), type, x1: 20, y1: 46, x2: 44, y2: 26, dashed: type === 'dashed_arrow' };
+    return type === 'curved_arrow' ? ensureSetPieceCurveGeometry(arrow) : arrow;
+  }
   if (type === 'zone') return { id: createId(), type, x: 34, y: 18, width: 22, height: 12, label: 'Zona' };
   if (type === 'text') return { id: createId(), type, x: 42, y: 40, label: 'Texto' };
   if (type === 'block') return { id: createId(), type, x: 42, y: 34, width: 5, label: 'BLOQUEO' };
@@ -83,6 +90,7 @@ function EditorAccordion({ id, title, open, onToggle, children }) {
 function PresentationOverlay({ diagram, players, onClose }) {
   const chronology = getSetPieceChronology(diagram.elements, players);
   const tacticalMeta = getSetPieceTacticalMeta(diagram.elements);
+  const displayLayers = tacticalMeta.displayLayers;
   return createPortal(
     <div className="fixed inset-0 z-[120] flex flex-col bg-[#07150f] p-3 sm:p-6" role="dialog" aria-modal="true" aria-label="Modo presentación ABP">
       <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col overflow-hidden">
@@ -94,14 +102,14 @@ function PresentationOverlay({ diagram, players, onClose }) {
           <button type="button" onClick={onClose} className="min-h-11 rounded-xl border border-white/15 bg-white/10 px-4 text-xs font-black uppercase text-white">Salir</button>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden rounded-3xl bg-white p-2 text-black shadow-2xl sm:p-4">
-          <SetPieceDiagramCanvas elements={diagram.elements} players={players} readOnly printOptimized identityMode={tacticalMeta.printIdentityMode} fullField={String(diagram.tipo || '').includes('saque_inicio')} />
+          <SetPieceDiagramCanvas elements={diagram.elements} players={players} readOnly printOptimized visibleLayers={displayLayers} fullField={String(diagram.tipo || '').includes('saque_inicio')} />
         </div>
-        {(diagram.consigna || chronology.length) ? (
+        {(diagram.consigna || (displayLayers.chronology && chronology.length)) ? (
           <div className="mt-3 grid gap-3 text-white lg:grid-cols-[minmax(0,0.35fr)_minmax(0,0.65fr)]">
             <p className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-sm font-bold leading-6">{diagram.consigna || 'Sin consigna general.'}</p>
-            <ol className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-white/[0.06] p-3">
-              {chronology.map((step) => <li key={step.id} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold"><strong className="mr-1 text-caudal-electric">{step.order}</strong>{step.playerName}: {step.instruction}</li>)}
-            </ol>
+            {displayLayers.chronology ? <ol className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-white/[0.06] p-3">
+              {chronology.map((step) => <li key={step.id} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold"><strong className="mr-1 text-caudal-electric">{step.order}</strong>{step.playerName}{displayLayers.roles && step.role ? ` · ${step.role}` : ''}: {step.instruction}</li>)}
+            </ol> : null}
           </div>
         ) : null}
       </div>
@@ -140,14 +148,6 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
   const [zoom, setZoom] = useState(1);
   const [panel, setPanel] = useState('tactic');
   const [overlay, setOverlay] = useState('');
-  const [visibleLayers, setVisibleLayers] = useState({
-    numbers: true,
-    abbreviations: true,
-    roles: true,
-    chronology: true,
-    zones: true,
-    texts: true,
-  });
   const [openSections, setOpenSections] = useState({
     ficha: true,
     risk: false,
@@ -156,12 +156,13 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
     observations: false,
   });
   const historyChangeRef = useRef(false);
+  const visibleLayers = tacticalMeta.displayLayers;
 
   const selectedElement = useMemo(() => drawableElements.find((element) => element.id === selectedId) || null, [drawableElements, selectedId]);
   const chronology = useMemo(() => getSetPieceChronology(diagram.elements, players), [diagram.elements, players]);
   const responsibilities = useMemo(() => getSetPieceResponsibilities(diagram.elements, players), [diagram.elements, players]);
   const isSelectedPlayer = ['player', 'opponent'].includes(selectedElement?.type);
-  const structureOnly = !visibleLayers.numbers
+  const structureOnly = !visibleLayers.dorsals
     && !visibleLayers.abbreviations
     && !visibleLayers.roles
     && !visibleLayers.chronology
@@ -173,6 +174,18 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
     const next = typeof patch === 'function' ? patch(tacticalMeta) : { ...tacticalMeta, ...patch };
     updateDiagram({ elements: setSetPieceTacticalMeta(diagram.elements, next) });
   };
+  const toggleDisplayLayer = (key) => updateMeta({
+    displayLayers: { ...visibleLayers, [key]: !visibleLayers[key] },
+    displayLayersBeforeStructure: null,
+  });
+  const activateStructureOnly = () => updateMeta({
+    displayLayersBeforeStructure: visibleLayers,
+    displayLayers: Object.fromEntries(Object.keys(createDefaultSetPieceDisplayLayers()).map((key) => [key, false])),
+  });
+  const restoreDisplayLayers = () => updateMeta({
+    displayLayers: tacticalMeta.displayLayersBeforeStructure || createDefaultSetPieceDisplayLayers(),
+    displayLayersBeforeStructure: null,
+  });
   const pushHistory = (elements) => {
     const next = [...history.slice(0, historyIndex + 1), clone(elements)].slice(-50);
     setHistory(next);
@@ -282,8 +295,13 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
     if (!selectedElement) return;
     const copy = { ...clone([selectedElement])[0], id: createId() };
     if (isArrow(copy)) {
+      const curvedCopy = copy.type === 'curved_arrow' ? ensureSetPieceCurveGeometry(copy) : null;
       copy.x1 = Math.min(100, Number(copy.x1 || 0) + 4); copy.y1 = Math.min(72, Number(copy.y1 || 0) + 4);
       copy.x2 = Math.min(100, Number(copy.x2 || 0) + 4); copy.y2 = Math.min(72, Number(copy.y2 || 0) + 4);
+      if (curvedCopy) {
+        copy.controlX = Math.min(100, Number(curvedCopy.controlX || 0) + 4);
+        copy.controlY = Math.min(72, Number(curvedCopy.controlY || 0) + 4);
+      }
     } else { copy.x = Math.min(100, Number(copy.x || 0) + 4); copy.y = Math.min(72, Number(copy.y || 0) + 4); }
     const normalized = normalizeSetPieceElementDimensions(copy);
     updateElements([...drawableElements, normalized]);
@@ -314,7 +332,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
   const selectedWidthRange = selectedElement ? getSetPieceDimensionRange(selectedElement, 'width') : null;
   const selectedHeightRange = selectedElement ? getSetPieceDimensionRange(selectedElement, 'height') : null;
   const layerControls = [
-    { key: 'numbers', label: 'Dorsales' },
+    { key: 'dorsals', label: 'Dorsales' },
     { key: 'abbreviations', label: 'Abreviaturas' },
     { key: 'roles', label: 'Roles' },
     { key: 'chronology', label: 'Cronología' },
@@ -387,12 +405,12 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="mr-1 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Capas</span>
               {layerControls.map((layer) => (
-                <button key={layer.key} type="button" title={`${visibleLayers[layer.key] ? 'Ocultar' : 'Mostrar'} ${layer.label.toLowerCase()}`} aria-pressed={visibleLayers[layer.key]} onClick={() => setVisibleLayers((current) => ({ ...current, [layer.key]: !current[layer.key] }))} className={`min-h-9 rounded-full px-2.5 text-[10px] font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-caudal-electric ${visibleLayers[layer.key] ? 'bg-white/[0.09] text-white' : 'bg-black/15 text-slate-500 line-through'}`}>
+                <button key={layer.key} type="button" title={`${visibleLayers[layer.key] ? 'Ocultar' : 'Mostrar'} ${layer.label.toLowerCase()}`} aria-pressed={visibleLayers[layer.key]} onClick={() => toggleDisplayLayer(layer.key)} className={`min-h-9 rounded-full px-2.5 text-[10px] font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-caudal-electric ${visibleLayers[layer.key] ? 'bg-white/[0.09] text-white' : 'bg-black/15 text-slate-500 line-through'}`}>
                   {layer.label}
                 </button>
               ))}
-              <button type="button" title={structureOnly ? 'Restaurar todas las capas' : 'Ocultar las capas informativas'} aria-pressed={structureOnly} onClick={() => setVisibleLayers(structureOnly ? { numbers: true, abbreviations: true, roles: true, chronology: true, zones: true, texts: true } : { numbers: false, abbreviations: false, roles: false, chronology: false, zones: false, texts: false })} className={`ml-auto min-h-9 rounded-full px-3 text-[10px] font-black outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric ${structureOnly ? 'bg-caudal-electric text-slate-950' : 'bg-caudal-electric/10 text-caudal-electric'}`}>
-                {structureOnly ? 'Mostrar capas' : 'Solo estructura'}
+              <button type="button" title={structureOnly ? 'Restaurar la selección de capas anterior' : 'Ocultar las capas informativas'} aria-pressed={structureOnly} onClick={structureOnly ? restoreDisplayLayers : activateStructureOnly} className={`ml-auto min-h-9 rounded-full px-3 text-[10px] font-black outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric ${structureOnly ? 'bg-caudal-electric text-slate-950' : 'bg-caudal-electric/10 text-caudal-electric'}`}>
+                {structureOnly ? 'Restaurar capas' : 'Solo estructura'}
               </button>
             </div>
           </section>
@@ -403,10 +421,10 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
             </div>
             {!drawableElements.length ? <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8"><div className="max-w-xs rounded-2xl bg-slate-950/80 px-5 py-4 text-center text-white shadow-xl backdrop-blur-sm"><p className="text-sm font-black">El campo está listo</p><p className="mt-1 text-xs leading-5 text-slate-300">Empieza añadiendo participantes, balón o trazados.</p></div></div> : null}
           </div>
-          <section className="rounded-[24px] border border-white/[0.07] bg-[#08131f]/75 p-3">
+          {visibleLayers.chronology ? <section className="rounded-[24px] border border-white/[0.07] bg-[#08131f]/75 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2"><p className={labelClass}>Cronología</p><span className="text-[10px] text-slate-500">Selecciona un paso para editar su participante</span></div>
             {chronology.length ? <ol className="mt-3 flex flex-col gap-2 lg:flex-row lg:items-stretch" aria-label="Secuencia de la jugada">{chronology.map((step, index) => <li key={step.id} className="relative flex min-w-0 flex-1 items-stretch gap-2 lg:block"><button type="button" aria-label={`Paso ${step.order}: ${step.playerName}`} aria-current={selectedId === step.id ? 'step' : undefined} onClick={() => selectElement(step.id)} className={`flex min-h-14 w-full items-center gap-2 rounded-2xl px-3 py-2 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-caudal-electric lg:items-start ${selectedId === step.id ? 'bg-caudal-electric/15 ring-1 ring-caudal-electric/60' : 'bg-black/15 hover:bg-white/[0.06]'}`}><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-caudal-electric text-[11px] font-black text-slate-950">{step.order}</span><span className="min-w-0"><strong className="block truncate text-[11px] text-white">{step.playerName}</strong><span className="mt-0.5 block text-[10px] leading-4 text-slate-400">{step.instruction || 'Sin consigna'}</span></span></button>{index < chronology.length - 1 ? <span className="flex w-5 shrink-0 items-center justify-center text-caudal-electric/50 lg:absolute lg:-right-2.5 lg:top-1/2 lg:z-10 lg:-translate-y-1/2" aria-hidden="true"><span className="lg:hidden">↓</span><span className="hidden lg:inline">›</span></span> : null}</li>)}</ol> : <p className="mt-2 text-xs text-slate-500">Selecciona participantes y asigna su orden de aparición. La secuencia aparecerá aquí.</p>}
-          </section>
+          </section> : null}
         </div>
 
         <aside className="overflow-hidden rounded-[26px] border border-white/[0.08] bg-[#08131f]/95 shadow-[0_20px_50px_rgba(0,0,0,0.2)] xl:sticky xl:top-4">
@@ -432,7 +450,6 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
                   <TacticalField label="Alternativa" value={tacticalMeta.alternative} onChange={(alternative) => updateMeta({ alternative })} placeholder="Qué hacer si el rival cambia el marcaje" rows={2} />
                 </EditorAccordion>
                 <EditorAccordion id="dossier" title="Dossier" open={openSections.dossier} onToggle={() => toggleSection('dossier')}>
-                  <label className="grid gap-1.5"><span className={labelClass}>Identidad en dossier</span><select value={tacticalMeta.printIdentityMode} onChange={(event) => updateMeta({ printIdentityMode: event.target.value })} className={`${fieldClass} bg-white font-bold text-slate-950`}><option value={SET_PIECE_PRINT_IDENTITY_MODES.NUMBER}>Dorsal</option><option value={SET_PIECE_PRINT_IDENTITY_MODES.ABBREVIATION}>Abreviatura</option><option value={SET_PIECE_PRINT_IDENTITY_MODES.NUMBER_AND_ABBREVIATION}>Dorsal + abreviatura</option></select></label>
                   <TacticalField label="Etiquetas" value={tacticalMeta.tags.join(', ')} onChange={(value) => updateMeta({ tags: value.split(',').map((item) => item.trim()).filter(Boolean) })} placeholder="segundo palo, zona" />
                   <div><p className={labelClass}>Valoración</p><div className="mt-2 flex gap-1">{[1, 2, 3, 4, 5].map((rating) => <button key={rating} type="button" aria-label={`Valorar con ${rating}`} aria-pressed={tacticalMeta.rating === rating} onClick={() => updateMeta({ rating })} className={`min-h-11 min-w-11 rounded-lg text-lg outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric ${rating <= tacticalMeta.rating ? 'text-amber-300' : 'text-slate-700'}`}>★</button>)}</div></div>
                 </EditorAccordion>
@@ -458,7 +475,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
             ) : null}
 
             {selectedElement && !isSelectedPlayer ? (
-              <div className="space-y-3 py-4"><div className="rounded-2xl bg-caudal-electric/[0.08] p-3 ring-1 ring-caudal-electric/25"><p className={labelClass}>Elemento seleccionado</p><p className="mt-1 text-sm font-black capitalize text-white">{selectedElement.type.replaceAll('_', ' ')}</p></div>{!isArrow(selectedElement) ? <TacticalField label="Etiqueta / texto" value={selectedElement.label || ''} onChange={(label) => updateSelected({ label })} placeholder="Etiqueta" rows={selectedElement.type === 'text_box' ? 4 : 0} /> : <label className="grid gap-1.5"><span className={labelClass}>Trayectoria</span><select value={selectedElement.type} onChange={(event) => updateSelected({ type: event.target.value, dashed: event.target.value === 'dashed_arrow' })} className={`${fieldClass} bg-white font-bold text-slate-950`}><option value="arrow">Continua</option><option value="dashed_arrow">Discontinua</option><option value="curved_arrow">Curva</option><option value="double_arrow">Doble</option></select></label>}{isResizableBox(selectedElement) ? <div className="grid grid-cols-2 gap-2">{selectedWidthRange ? <label className="grid gap-1"><span className={labelClass}>Ancho</span><input type="number" value={selectedElement.width ?? selectedWidthRange.defaultValue} onChange={(event) => updateSelected({ width: normalizeSetPieceDimensionValue(selectedElement, 'width', event.target.value, selectedElement.width) })} className={fieldClass} /></label> : null}{selectedHeightRange ? <label className="grid gap-1"><span className={labelClass}>Alto</span><input type="number" value={selectedElement.height ?? selectedHeightRange.defaultValue} onChange={(event) => updateSelected({ height: normalizeSetPieceDimensionValue(selectedElement, 'height', event.target.value, selectedElement.height) })} className={fieldClass} /></label> : null}</div> : null}<div className="grid grid-cols-2 gap-2"><button type="button" onClick={duplicateSelected} className="min-h-11 rounded-xl bg-white/10 px-3 text-xs font-bold text-white outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric">Duplicar</button><button type="button" onClick={deleteSelected} className="min-h-11 rounded-xl bg-red-500/15 px-3 text-xs font-bold text-red-100 outline-none focus-visible:ring-2 focus-visible:ring-red-300">Eliminar</button></div></div>
+              <div className="space-y-3 py-4"><div className="rounded-2xl bg-caudal-electric/[0.08] p-3 ring-1 ring-caudal-electric/25"><p className={labelClass}>Elemento seleccionado</p><p className="mt-1 text-sm font-black capitalize text-white">{selectedElement.type.replaceAll('_', ' ')}</p></div>{!isArrow(selectedElement) ? <TacticalField label="Etiqueta / texto" value={selectedElement.label || ''} onChange={(label) => updateSelected({ label })} placeholder="Etiqueta" rows={selectedElement.type === 'text_box' ? 4 : 0} /> : <label className="grid gap-1.5"><span className={labelClass}>Trayectoria</span><select value={selectedElement.type} onChange={(event) => { const type = event.target.value; const next = { ...selectedElement, type, dashed: type === 'dashed_arrow' }; updateSelected(type === 'curved_arrow' ? ensureSetPieceCurveGeometry(next) : next); }} className={`${fieldClass} bg-white font-bold text-slate-950`}><option value="arrow">Continua</option><option value="dashed_arrow">Discontinua</option><option value="curved_arrow">Curva</option><option value="double_arrow">Doble</option></select></label>}{isResizableBox(selectedElement) ? <div className="grid grid-cols-2 gap-2">{selectedWidthRange ? <label className="grid gap-1"><span className={labelClass}>Ancho</span><input type="number" value={selectedElement.width ?? selectedWidthRange.defaultValue} onChange={(event) => updateSelected({ width: normalizeSetPieceDimensionValue(selectedElement, 'width', event.target.value, selectedElement.width) })} className={fieldClass} /></label> : null}{selectedHeightRange ? <label className="grid gap-1"><span className={labelClass}>Alto</span><input type="number" value={selectedElement.height ?? selectedHeightRange.defaultValue} onChange={(event) => updateSelected({ height: normalizeSetPieceDimensionValue(selectedElement, 'height', event.target.value, selectedElement.height) })} className={fieldClass} /></label> : null}</div> : null}<div className="grid grid-cols-2 gap-2"><button type="button" onClick={duplicateSelected} className="min-h-11 rounded-xl bg-white/10 px-3 text-xs font-bold text-white outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric">Duplicar</button><button type="button" onClick={deleteSelected} className="min-h-11 rounded-xl bg-red-500/15 px-3 text-xs font-bold text-red-100 outline-none focus-visible:ring-2 focus-visible:ring-red-300">Eliminar</button></div></div>
             ) : null}
           </div>
         </aside>

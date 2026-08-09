@@ -4,7 +4,11 @@ import {
   normalizeSetPieceDimensionValue,
   normalizeSetPieceElementDimensions,
 } from '../../utils/setPieceElementDimensions';
-import { getSetPieceElementInteraction } from '../../utils/setPieceEditorInteractions';
+import {
+  ensureSetPieceCurveGeometry,
+  getSetPieceCurveControlPoint,
+  getSetPieceElementInteraction,
+} from '../../utils/setPieceEditorInteractions';
 import {
   getDrawableSetPieceElements,
   optimizeSetPieceElementsForPrint,
@@ -62,11 +66,6 @@ const getPlayerName = (element, playersById) => {
 };
 
 const splitLines = (value) => String(value || '').split('\n').slice(0, 12);
-const getCurveControlPoint = (element) => {
-  const x = Number.isFinite(Number(element?.controlX)) ? Number(element.controlX) : ((Number(element?.x1) || 0) + (Number(element?.x2) || 0)) / 2;
-  const y = Number.isFinite(Number(element?.controlY)) ? Number(element.controlY) : ((Number(element?.y1) || 0) + (Number(element?.y2) || 0)) / 2 + (Number.isFinite(Number(element?.curvature)) ? Number(element.curvature) : -12);
-  return { x, y };
-};
 const compactDiagramLabel = (value, max = 14) => {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   if (text.length <= max) return text;
@@ -118,12 +117,12 @@ function PitchLines({ fullField = false }) {
   );
 }
 
-export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, printOptimized = false, preparedForPrint = false, identityMode = 'number-and-abbreviation', visibleLayers = {} }) {
+export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, printOptimized = false, preparedForPrint = false, visibleLayers = {} }) {
   const svgRef = useRef(null);
   const [drag, setDrag] = useState(null);
   const playersById = useMemo(() => new Map(players.map((player) => [player.id, player])), [players]);
   const normalizedVisibleLayers = useMemo(() => ({
-    numbers: visibleLayers?.numbers ?? true,
+    dorsals: visibleLayers?.dorsals ?? visibleLayers?.numbers ?? true,
     abbreviations: visibleLayers?.abbreviations ?? true,
     roles: visibleLayers?.roles ?? true,
     chronology: visibleLayers?.chronology ?? true,
@@ -196,12 +195,17 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
       return;
     }
     if (isArrow(drag.element)) {
-      updateElement(drag.element.id, {
+      const fields = {
         x1: snapValue(clamp(drag.origin.x1 + dx), snap),
         y1: snapValue(clamp(drag.origin.y1 + dy, 0, 72), snap),
         x2: snapValue(clamp(drag.origin.x2 + dx), snap),
         y2: snapValue(clamp(drag.origin.y2 + dy, 0, 72), snap),
-      });
+      };
+      if (drag.element.type === 'curved_arrow') {
+        fields.controlX = snapValue(clamp(drag.origin.controlX + dx), snap);
+        fields.controlY = snapValue(clamp(drag.origin.controlY + dy, 0, 72), snap);
+      }
+      updateElement(drag.element.id, fields);
       return;
     }
     updateElement(drag.element.id, {
@@ -217,10 +221,34 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
     onSelect(element.id);
     if (!interaction.draggable) return;
     const point = getPoint(event, svgRef.current);
-    setDrag({ element, mode, start: point, origin: { ...element } });
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setDrag({
+      element,
+      mode,
+      start: point,
+      origin: element.type === 'curved_arrow' ? ensureSetPieceCurveGeometry(element) : { ...element },
+    });
   };
 
   const stopDrag = () => setDrag(null);
+
+  const moveCurveControlWithKeyboard = (event, element) => {
+    const offsets = {
+      ArrowLeft: [-1, 0],
+      ArrowRight: [1, 0],
+      ArrowUp: [0, -1],
+      ArrowDown: [0, 1],
+    };
+    if (!offsets[event.key] || readOnly || element.locked) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const step = event.shiftKey ? 4 : 1;
+    const controlPoint = getSetPieceCurveControlPoint(element);
+    updateElement(element.id, {
+      controlX: clamp(controlPoint.x + offsets[event.key][0] * step),
+      controlY: clamp(controlPoint.y + offsets[event.key][1] * step, 0, 72),
+    });
+  };
 
   return (
     <svg
@@ -229,6 +257,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
       viewBox="0 0 100 72"
       role="img"
       aria-label={readOnly ? 'Diagrama táctico ABP' : 'Editor táctico ABP'}
+      style={{ touchAction: readOnly ? 'auto' : 'none' }}
       onPointerMove={handlePointerMove}
       onPointerUp={stopDrag}
       onPointerLeave={stopDrag}
@@ -251,7 +280,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           const dashed = element.type === 'dashed_arrow' || element.dashed;
           const curved = element.type === 'curved_arrow';
           const double = element.type === 'double_arrow';
-          const controlPoint = getCurveControlPoint(element);
+          const controlPoint = getSetPieceCurveControlPoint(element);
           const path = curved ? `M${element.x1} ${element.y1} Q${controlPoint.x} ${controlPoint.y} ${element.x2} ${element.y2}` : `M${element.x1} ${element.y1} L${element.x2} ${element.y2}`;
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
@@ -261,7 +290,19 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
                 <>
                   <circle cx={element.x1} cy={element.y1} r="2" fill="white" stroke="currentColor" strokeWidth="0.7" onPointerDown={(event) => startDrag(event, element, 'arrow-start')} />
                   <circle cx={element.x2} cy={element.y2} r="2" fill="white" stroke="currentColor" strokeWidth="0.7" onPointerDown={(event) => startDrag(event, element, 'arrow-end')} />
-                  {curved ? <circle cx={controlPoint.x} cy={controlPoint.y} r="1.8" fill="#3DD9FF" stroke="white" strokeWidth="0.55" onPointerDown={(event) => startDrag(event, element, 'curve-control')} /> : null}
+                  {curved ? (
+                    <g
+                      tabIndex="0"
+                      role="button"
+                      aria-label="Mover punto de control de la flecha curva"
+                      onKeyDown={(event) => moveCurveControlWithKeyboard(event, element)}
+                      onPointerDown={(event) => startDrag(event, element, 'curve-control')}
+                      className="set-piece-curve-control"
+                    >
+                      <circle cx={controlPoint.x} cy={controlPoint.y} r="4.2" fill="transparent" stroke="none" />
+                      <circle cx={controlPoint.x} cy={controlPoint.y} r="1.8" fill="#3DD9FF" stroke="white" strokeWidth="0.55" />
+                    </g>
+                  ) : null}
                 </>
               ) : null}
             </g>
@@ -334,8 +375,8 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
         const labelY = Number.isFinite(Number(element.printLabelY)) ? Number(element.printLabelY) : Number(element.y || 0) + 5.2 + Number(element.printLabelOffsetY || 0);
         const role = Array.isArray(element.roles) ? element.roles[0] : '';
         const roleCode = String(role || '').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
-        const showDorsal = normalizedVisibleLayers.numbers && identityMode !== 'abbreviation';
-        const showAbbreviation = normalizedVisibleLayers.abbreviations && identityMode !== 'number';
+        const showDorsal = normalizedVisibleLayers.dorsals;
+        const showAbbreviation = normalizedVisibleLayers.abbreviations;
         const showRoleCode = normalizedVisibleLayers.roles && roleCode;
         const showSequenceNumber = normalizedVisibleLayers.chronology && Number(element.sequenceOrder) > 0;
         return (

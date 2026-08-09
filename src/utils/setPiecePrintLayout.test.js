@@ -13,6 +13,7 @@ import {
 
 const sheet = fs.readFileSync(new URL('../components/print/SetPieceDiagramPrintSheet.jsx', import.meta.url), 'utf8');
 const editor = fs.readFileSync(new URL('../components/print/SetPieceDiagramEditor.jsx', import.meta.url), 'utf8');
+const canvas = fs.readFileSync(new URL('../components/print/SetPieceDiagramCanvas.jsx', import.meta.url), 'utf8');
 const toolbar = fs.readFileSync(new URL('../components/print/SetPieceDiagramToolbar.jsx', import.meta.url), 'utf8');
 const matchPrint = fs.readFileSync(new URL('../components/print/MatchPrintTab.jsx', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../styles/print.css', import.meta.url), 'utf8');
@@ -45,6 +46,7 @@ const baseElements = [
   { id: 'arrow-2', type: 'dashed_arrow', x1: 30, y1: 38, x2: 66, y2: 21 },
   { id: 'block-1', type: 'block', x: 46, y: 25, width: 7, label: 'BLOQUEO' },
   { id: 'zone-1', type: 'zone', x: 62, y: 9, width: 22, height: 12, label: 'ZONA' },
+  { id: 'text-1', type: 'text', x: 52, y: 45, label: 'SEGUNDA JUGADA' },
 ];
 const printMeta = {
   objective: 'Liberar segundo palo',
@@ -78,8 +80,39 @@ assert.deepEqual({ x: printBlock.x, y: printBlock.y, width: printBlock.width }, 
 assert.equal(printModel.chronology.length, 5, 'la secuencia conserva cinco pasos completos');
 assert.equal(printModel.chronology.every((step) => step.identity && step.role && step.instruction), true, 'la secuencia utiliza identidad, rol e instrucción realmente almacenada');
 assert.equal(new Set(printModel.chronology.map((step) => step.identity)).size, 5, 'las identidades abreviadas son estables y únicas en la jugada');
-const modelAfterEditorLayerChanges = buildSetPiecePrintPlayModel(sourcePlay, [], 1);
-assert.deepEqual(modelAfterEditorLayerChanges.chronology, printModel.chronology, 'ocultar cronología o abreviaturas en el editor no cambia secuencia ni identidad del dossier');
+const chronologyOffPlay = createPlay('chronology-off', 1, {
+  ...printMeta,
+  displayLayers: { dorsals: true, abbreviations: true, roles: true, chronology: false, zones: true, texts: true },
+});
+const chronologyOffModel = buildSetPiecePrintPlayModel(chronologyOffPlay, [], 1);
+assert.deepEqual(chronologyOffModel.chronology, [], 'Cronología OFF elimina por completo la Secuencia del preview y PDF');
+assert.equal(chronologyOffModel.displayLayers.chronology, false, 'el dossier consume la capa persistida, no un estado local');
+assert.deepEqual(getSetPieceGeometrySnapshot(chronologyOffModel.elements), getSetPieceGeometrySnapshot(chronologyOffPlay.elements), 'ocultar cronología no modifica geometría ni datos');
+
+const rolesOffModel = buildSetPiecePrintPlayModel(createPlay('roles-off', 1, {
+  ...printMeta,
+  displayLayers: { dorsals: true, abbreviations: true, roles: false, chronology: true, zones: true, texts: true },
+}), [], 1);
+assert.equal(rolesOffModel.chronology.every((step) => step.role === ''), true, 'Roles OFF conserva la secuencia pero no imprime roles');
+
+const dorsalsOnlyModel = buildSetPiecePrintPlayModel(createPlay('dorsals-only', 1, {
+  ...printMeta,
+  displayLayers: { dorsals: true, abbreviations: false, roles: true, chronology: true, zones: true, texts: true },
+}), [], 1);
+assert.deepEqual(dorsalsOnlyModel.chronology.map((step) => step.identity), ['1', '2', '3', '4', '5'], 'Dorsales ON y Abreviaturas OFF imprime solo dorsales');
+
+const abbreviationsOnlyModel = buildSetPiecePrintPlayModel(createPlay('abbreviations-only', 1, {
+  ...printMeta,
+  displayLayers: { dorsals: false, abbreviations: true, roles: true, chronology: true, zones: true, texts: true },
+}), [], 1);
+assert.equal(abbreviationsOnlyModel.chronology.every((step) => step.identity && !/^\d+$/.test(step.identity)), true, 'Dorsales OFF y Abreviaturas ON imprime solo abreviaturas');
+
+const noIdentityModel = buildSetPiecePrintPlayModel(createPlay('no-identity', 1, {
+  ...printMeta,
+  displayLayers: { dorsals: false, abbreviations: false, roles: true, chronology: true, zones: false, texts: false },
+}), [], 1);
+assert.equal(noIdentityModel.chronology.every((step) => step.identity === ''), true, 'el PDF no fuerza una identidad cuando ambas capas están ocultas');
+assert.equal(noIdentityModel.displayLayers.zones || noIdentityModel.displayLayers.texts, false, 'Zonas y Textos OFF llegan al renderer de impresión');
 
 assert.equal(getMeaningfulSetPiecePrintText('Consigna pendiente de definir'), '');
 assert.equal(getMeaningfulSetPiecePrintText('Sin observaciones.'), '');
@@ -88,7 +121,14 @@ assert.equal(emptyModel.instruction || emptyModel.objective || emptyModel.risk |
 assert.deepEqual(emptyModel.classifications, [], 'clasificaciones vacías no generan etiquetas');
 assert.deepEqual(printModel.classifications, ['Segundo palo', 'Bloqueo', 'Zonal'], 'solo se incluyen clasificaciones definidas');
 assert.equal((sheet.match(/<h3>Consigna<\/h3>/g) || []).length, 1, 'la consigna se renderiza una sola vez por jugada');
-assert.ok(sheet.includes('visibleLayers={{ numbers: true, abbreviations: true, roles: false, chronology: true, zones: true, texts: true }}'), 'las capas temporales del editor no gobiernan el dossier');
+assert.ok(sheet.includes('visibleLayers={play.displayLayers}'), 'preview y PDF respetan las capas persistidas de cada jugada');
+assert.equal(sheet.includes('visibleLayers={{ numbers: true'), false, 'el dossier ya no fuerza capas propias');
+assert.ok(sheet.includes('set-piece-print-play-body--field-forward') && css.includes('.set-piece-print-play-body--field-forward'), 'sin consigna ni cronología el campo aprovecha el espacio liberado');
+assert.ok(canvas.includes("element.type === 'zone'") && canvas.includes("['text', 'text_box'].includes(element.type)"), 'Zonas y Textos se ocultan solo en render, sin borrar datos');
+assert.ok(canvas.includes('const showDorsal = normalizedVisibleLayers.dorsals') && canvas.includes('const showAbbreviation = normalizedVisibleLayers.abbreviations'), 'Dorsales y Abreviaturas admiten las cuatro combinaciones sin fallback automático');
+assert.ok(editor.includes('{visibleLayers.chronology ? <section') && sheet.includes('play.chronology.length > 0'), 'Cronología OFF elimina el bloque inferior del editor y la Secuencia impresa');
+assert.ok(sheet.includes("step.role ? <span>{step.identity ? ' · ' : ''}{step.role}</span> : null"), 'Roles OFF no deja etiquetas de rol en la Secuencia');
+assert.ok(canvas.includes('selected && !readOnly') && canvas.includes('set-piece-curve-control'), 'el punto de control solo existe como ayuda de edición y no aparece en preview/PDF');
 assert.ok(sheet.includes('preparedForPrint') && sheet.includes('data-render-model="set-piece-print"'), 'preview y PDF comparten elementos preparados y el mismo renderer táctico');
 
 console.log('setPiecePrintLayout tests passed');

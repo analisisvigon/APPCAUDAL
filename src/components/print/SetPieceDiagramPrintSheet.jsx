@@ -20,8 +20,16 @@ function PrintDetail({ label, value, className = '' }) {
 }
 
 function PrintPlay({ play }) {
+  const hasChronology = play.chronology.length > 0;
+  const hasOperationalDetails = Boolean(play.objective || play.whenToUse || play.risk || play.alternative || play.observations);
+  const hasCopy = Boolean(play.instruction || hasChronology || hasOperationalDetails);
+  const bodyClassName = [
+    'set-piece-print-play-body',
+    !play.instruction && !hasChronology ? 'set-piece-print-play-body--field-forward' : '',
+    !hasCopy ? 'set-piece-print-play-body--field-only' : '',
+  ].filter(Boolean).join(' ');
   return (
-    <section className="set-piece-print-play" data-play-order={play.order} data-play-id={play.id || ''}>
+    <section className="set-piece-print-play" data-play-order={play.order} data-play-id={play.id || ''} data-has-chronology={hasChronology ? 'true' : 'false'}>
       <header className="set-piece-print-play-header">
         <div className="set-piece-print-play-heading">
           <div className="set-piece-print-play-kicker"><strong>{play.typeLabel}</strong><span>Jugada {play.order}</span></div>
@@ -30,7 +38,7 @@ function PrintPlay({ play }) {
         </div>
       </header>
 
-      <div className="set-piece-print-play-body">
+      <div className={bodyClassName}>
         <div className="set-piece-print-pitch" aria-label={`Geometría táctica de la jugada ${play.order}`}>
           <SetPieceDiagramCanvas
             elements={play.elements}
@@ -39,12 +47,11 @@ function PrintPlay({ play }) {
             readOnly
             printOptimized
             preparedForPrint
-            identityMode={play.identityMode}
-            visibleLayers={{ numbers: true, abbreviations: true, roles: false, chronology: true, zones: true, texts: true }}
+            visibleLayers={play.displayLayers}
           />
         </div>
 
-        <aside className="set-piece-print-copy" aria-label={`Información operativa de la jugada ${play.order}`}>
+        {hasCopy ? <aside className="set-piece-print-copy" aria-label={`Información operativa de la jugada ${play.order}`}>
           {play.instruction ? <section className="set-piece-print-consigna"><h3>Consigna</h3><p>{play.instruction}</p></section> : null}
 
           {play.chronology.length ? (
@@ -55,7 +62,7 @@ function PrintPlay({ play }) {
                   <li key={step.id}>
                     <b>{step.order}</b>
                     <div>
-                      <p className="set-piece-print-step-identity"><strong>{step.identity}</strong>{step.role ? <span> · {step.role}</span> : null}{step.instruction ? <span className="set-piece-print-step-instruction"> — {step.instruction}</span> : null}</p>
+                      <p className="set-piece-print-step-identity">{step.identity ? <strong>{step.identity}</strong> : null}{step.role ? <span>{step.identity ? ' · ' : ''}{step.role}</span> : null}{step.instruction ? <span className="set-piece-print-step-instruction">{step.identity || step.role ? ' — ' : ''}{step.instruction}</span> : null}</p>
                     </div>
                   </li>
                 ))}
@@ -63,14 +70,14 @@ function PrintPlay({ play }) {
             </section>
           ) : null}
 
-          <div className="set-piece-print-operational-details">
+          {hasOperationalDetails ? <div className="set-piece-print-operational-details">
             <PrintDetail label="Clave" value={play.objective} />
             <PrintDetail label="Cuándo" value={play.whenToUse} />
             <PrintDetail label="Riesgo" value={play.risk} className="set-piece-print-risk" />
             <PrintDetail label="Alternativa" value={play.alternative} />
             <PrintDetail label="Observaciones" value={play.observations} />
-          </div>
-        </aside>
+          </div> : null}
+        </aside> : null}
       </div>
     </section>
   );
