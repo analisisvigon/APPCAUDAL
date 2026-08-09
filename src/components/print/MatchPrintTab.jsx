@@ -7,6 +7,7 @@ import SetPieceDiagramEditor from './SetPieceDiagramEditor';
 import SetPieceDiagramPrintSheet from './SetPieceDiagramPrintSheet';
 import SetPieceTakersPrintSheet from './SetPieceTakersPrintSheet';
 import { getPlayerDisplayName } from '../../utils/playerDisplayName';
+import { getOwnPrintKitForMatch } from '../../utils/printPlayerShirt';
 import {
   cloneSetPieceElementsWithFreshIds,
   createDefaultSetPieceTacticalMeta,
@@ -249,7 +250,7 @@ const getLineupBench = ({ match, players, starters, playersByName }) => {
 
 export default function MatchPrintTab({ match, matches = [], players = [], getFormationCoordinates, onNavigateMatchSection }) {
   const [printView, setPrintView] = useState('alineacion');
-  const [kit, setKit] = useState('home');
+  const kit = getOwnPrintKitForMatch(match);
   const [setPieceTakers, setSetPieceTakers] = useState([]);
   const [setPieceLoading, setSetPieceLoading] = useState(false);
   const [setPieceSaving, setSetPieceSaving] = useState(false);

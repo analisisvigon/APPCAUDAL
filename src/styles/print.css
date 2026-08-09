@@ -310,19 +310,28 @@
   stroke-linejoin: round;
 }
 
-.print-player-shirt.opponent .shirt-body,
-.print-player-shirt.own.away.assigned .shirt-body {
+.print-player-shirt.own.away .shirt-body {
   fill: #000;
 }
 
-.shirt-shoulder-detail {
+.shirt-sleeve-panel {
   fill: #000;
   stroke: none;
 }
 
-.print-player-shirt.opponent .shirt-shoulder-detail,
-.print-player-shirt.own.away.assigned .shirt-shoulder-detail {
+.print-player-shirt.own.away .shirt-sleeve-panel,
+.print-player-shirt.opponent .shirt-sleeve-panel {
   fill: #fff;
+}
+
+.shirt-opponent-mark {
+  display: none;
+  fill: #000;
+  stroke: none;
+}
+
+.print-player-shirt.opponent .shirt-opponent-mark {
+  display: block;
 }
 
 .shirt-neck {
@@ -331,21 +340,12 @@
   stroke-width: 2.4;
 }
 
-.print-player-shirt.opponent .shirt-neck,
-.print-player-shirt.own.away.assigned .shirt-neck {
+.print-player-shirt.own.away .shirt-neck {
   fill: #000;
   stroke: #fff;
 }
 
-.print-player-shirt.unassigned .shirt-body {
-  fill: #fff;
-}
-
-.print-player-shirt.unassigned .shirt-shoulder-detail {
-  fill: #000;
-}
-
-.print-player-shirt.unassigned .shirt-neck {
+.print-player-shirt.opponent .shirt-neck {
   fill: #fff;
   stroke: #000;
 }
@@ -362,7 +362,7 @@
 }
 
 .print-player-shirt.opponent.assigned .print-shirt-number,
-.print-player-shirt.own.away.assigned .print-shirt-number {
+.print-player-shirt.own.away .print-shirt-number {
   color: #fff;
 }
 

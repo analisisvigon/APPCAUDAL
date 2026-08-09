@@ -17,6 +17,15 @@ export const PRINT_PLAYER_TEAM_TYPES = Object.freeze({
   OPPONENT: 'opponent',
 });
 
+export const getOwnPrintKitForMatch = (match = {}) => {
+  const venueValue = match?.isHome ?? match?.is_home;
+  if (venueValue === undefined || venueValue === null || venueValue === '') return 'home';
+  if (typeof venueValue === 'string') {
+    return ['true', '1', 'home', 'local'].includes(normalizeComparable(venueValue)) ? 'home' : 'away';
+  }
+  return venueValue ? 'home' : 'away';
+};
+
 export const getPrintPlayerIdentity = (player = {}) => [
   player?.shirtName,
   player?.shirt_name,

@@ -1,6 +1,6 @@
 import FootballPitchPrint from './FootballPitchPrint';
-import PlayerShirt from './PlayerShirt';
 import { getPlayerDisplayName } from '../../utils/playerDisplayName';
+import { getOwnPrintKitForMatch } from '../../utils/printPlayerShirt';
 
 const formatDate = (value) => {
   if (!value) return 'Sin información';
@@ -15,8 +15,9 @@ const getBenchNumber = (player) => {
   return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
 };
 
-export default function LineupPrintSheet({ match, starters = [], bench = [], coordinates = [], system = '4-4-2', kit = 'home', captainPlayerId = null }) {
+export default function LineupPrintSheet({ match, starters = [], bench = [], coordinates = [], system = '4-4-2', kit, captainPlayerId = null }) {
   const sortedBench = [...bench].sort((a, b) => getBenchNumber(a) - getBenchNumber(b));
+  const resolvedKit = kit === 'away' || kit === 'home' ? kit : getOwnPrintKitForMatch(match);
 
   return (
     <article className="lineup-print-sheet print-sheet-a4 lineup-match-sheet">
@@ -28,12 +29,12 @@ export default function LineupPrintSheet({ match, starters = [], bench = [], coo
           <p><strong>Rival:</strong> {match?.opponent || 'Sin información'}</p>
           <p><strong>Fecha:</strong> {formatDate(match?.date)}</p>
           <p><strong>Sistema:</strong> {system}</p>
-          <p><strong>Equipación:</strong> {kit === 'away' ? 'Segunda / negra' : 'Primera / blanca'}</p>
+          <p><strong>Equipación:</strong> {resolvedKit === 'away' ? 'Segunda / negra' : 'Primera / blanca'}</p>
         </div>
       </header>
 
       <section className="print-lineup-layout">
-        <FootballPitchPrint players={starters} coordinates={coordinates} kit={kit} />
+        <FootballPitchPrint players={starters} coordinates={coordinates} kit={resolvedKit} />
         <aside className="print-bench">
           <h2>Banquillo</h2>
           <div className="print-bench-list">

@@ -16,7 +16,8 @@ export default function PlayerShirt({ player, teamType = 'own', kit = 'home', as
           className="shirt-body"
           d="M32 8 19 14 7 34l17 9 6-10v47h40V33l6 10 17-9-12-20-13-6-8 11H40L32 8Z"
         />
-        <path className="shirt-shoulder-detail" d="M32 8 19 14 15 21l12 6 8-13ZM68 8l13 6 4 7-12 6-8-13Z" />
+        <path className="shirt-sleeve-panel" d="M19 14 7 34l17 9 6-10-5-10ZM81 14l12 20-17 9-6-10 5-10Z" />
+        <path className="shirt-opponent-mark" d="M31 18 39 13 70 63v17h-6L30 24Z" />
         <path className="shirt-neck" d="M40 19h20l-5 7H45l-5-7Z" />
       </svg>
       <span className="print-shirt-number">{model.number}</span>
