@@ -10,6 +10,7 @@
     "test:league-results": "node src/utils/leagueResults.test.js",
     "test:competition-filters": "node src/utils/competitionFilters.test.js",
     "test:competitive-panel": "node src/utils/competitivePanel.test.js",
+    "test:group-analysis": "node src/utils/groupAnalysisStats.test.js",
     "test:club-core-sql": "node scripts/clubCoreSqlAudit.test.mjs",
     "test:encoding": "node src/utils/encodingAudit.test.js",
     "test:rival-import": "node src/utils/rivalPlayerImport.test.js",

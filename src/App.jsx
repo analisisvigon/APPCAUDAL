@@ -47,6 +47,15 @@ import {
   getOfficialPlayedMatches,
 } from './utils/competitivePanel';
 import {
+  buildGroupGoalCoverage,
+  buildGroupGoalTypeRows,
+  buildGroupSetPieceSummary,
+  buildScoringEfficiencyRows,
+  countGroupGoalZones,
+  getTiedTopGoalBuckets,
+  splitGroupGoals,
+} from './utils/groupAnalysisStats';
+import {
   buildPerformanceObservationsByPlayer,
   getPerformanceObservationView,
   hasPhysicalPerformanceObservation,
@@ -5666,6 +5675,7 @@ function App() {
   const [groupContextFilter, setGroupContextFilter] = useState('Todos');
   const [groupQuickReviewedOnly, setGroupQuickReviewedOnly] = useState(true);
   const [groupRankingTab, setGroupRankingTab] = useState('Goles');
+  const [groupFinishZoneSide, setGroupFinishZoneSide] = useState('for');
   const [expandedSystemXi, setExpandedSystemXi] = useState('');
   const [delegatedStatusFilter, setDelegatedStatusFilter] = useState('Todos');
   const [delegatedStatusSavingId, setDelegatedStatusSavingId] = useState('');
@@ -18876,42 +18886,6 @@ function App() {
         .filter(Boolean)
     );
 
-  const buildOfficialGoalTypeRows = (officialGoals = []) => {
-    const goals = safeArray(officialGoals);
-    return [...officialGoalContexts, 'Sin clasificar'].map((context) => {
-      const matchesContext = (goal) => (goal.goalContext || 'Sin clasificar') === context;
-      return {
-        context,
-        forCount: goals.filter((goal) => goal.teamSide === 'for' && matchesContext(goal)).length,
-        againstCount: goals.filter((goal) => goal.teamSide === 'against' && matchesContext(goal)).length,
-      };
-    });
-  };
-
-  const buildOfficialGoalCoverage = (officialGoals = []) => {
-    const goals = safeArray(officialGoals);
-    const forGoals = goals.filter((goal) => goal.teamSide === 'for');
-    return {
-      total: goals.length,
-      withContext: goals.filter((goal) => goal.goalContext).length,
-      withFinishZone: goals.filter((goal) => goal.finishZone).length,
-      withGoalZone: goals.filter((goal) => goal.goalMouthZone).length,
-      withAssist: forGoals.filter(hasGoalAssistant).length,
-      forGoals: forGoals.length,
-      againstGoals: goals.filter((goal) => goal.teamSide === 'against').length,
-    };
-  };
-
-  const getOfficialGoalZoneCounts = (goals = [], field) =>
-    safeArray(goals).reduce((acc, goal) => {
-      const value = goal?.[field];
-      if (!value) return acc;
-      const normalized = field === 'goalMouthZone' ? normalizeGoalMouthZone(value) : normalizePitchZone(value);
-      if (!normalized) return acc;
-      acc[normalized] = (acc[normalized] || 0) + 1;
-      return acc;
-    }, {});
-
   const buildOfficialIndividualRankings = (officialGoals = [], scopedMatches = []) => {
     const playerKey = (player) => player?.id || normalizePlayerIdentityName(player?.name || '');
     const goalPlayerKey = (id, name) => id || normalizePlayerIdentityName(name || '');
@@ -19000,12 +18974,11 @@ function App() {
         avgRating: row.ratingCount ? row.ratingTotal / row.ratingCount : null,
       };
     });
-    const withMinutesFloor = rows.filter((row) => row.minutes >= 90);
     return {
       rows,
       scorers: rows.filter((row) => row.goals > 0).sort((a, b) => b.goals - a.goals || b.scoringMatchesCount - a.scoringMatchesCount).slice(0, 5),
       assistants: rows.filter((row) => row.assists > 0).sort((a, b) => b.assists - a.assists || b.minutes - a.minutes).slice(0, 5),
-      efficiency: withMinutesFloor.filter((row) => row.goals > 0).sort((a, b) => a.minutesPerGoal - b.minutesPerGoal).slice(0, 5),
+      efficiency: buildScoringEfficiencyRows(rows, 90),
       participation: rows.filter((row) => row.minutes > 0 || row.starts > 0 || row.ratingCount > 0).sort((a, b) => b.minutes - a.minutes).slice(0, 5),
       topStarts: rows.filter((row) => row.starts > 0).sort((a, b) => b.starts - a.starts).slice(0, 5),
       topPlayed: rows.filter((row) => row.played > 0).sort((a, b) => b.played - a.played || b.minutes - a.minutes).slice(0, 5),
@@ -19431,11 +19404,25 @@ function App() {
     };
   };
 
+  const getGroupStatsSystem = (match = {}) => match.statsSystemRaw || match.statsSystem || '';
+
+  const buildGroupSystemSequence = (match = {}) => {
+    const statsSystem = getGroupStatsSystem(match);
+    if (!statsSystem) return [];
+    return buildSystemSequence({
+      ...match,
+      statsSystemRaw: statsSystem,
+      statsSystem,
+      preCaudalSystemRaw: '',
+      preCaudalSystem: '',
+    });
+  };
+
   const buildSystemUsageRows = (scopedMatches = []) => {
     const rowsBySystem = new Map();
     safeArray(scopedMatches).forEach((match) => {
-      const initialSystem = getInitialMatchSystem(match);
-      const sequence = buildSystemSequence(match);
+      const initialSystem = getGroupStatsSystem(match);
+      const sequence = buildGroupSystemSequence(match);
       sequence.forEach((segment) => {
         if (!segment.system) return;
         const row = rowsBySystem.get(segment.system) || {
@@ -19482,7 +19469,7 @@ function App() {
   };
 
   const getMatchSnapshotForSystem = (match = {}, system = '') => {
-    const source = getMatchLineupSource(match);
+    const source = getMatchLineupSource(match, { statsOnly: true });
     const slots = safeArray(source.slots);
     if (!system || source.system !== system || !slots.length) {
       return { hasSnapshot: false, system, slots: [], source: source.scope || 'none' };
@@ -19505,7 +19492,7 @@ function App() {
     const coverage = { totalMatches: safeArray(scopedMatches).length, tacticalMatches: 0, missingSegments: 0, missingMinutes: 0 };
     safeArray(scopedMatches).forEach((match) => {
       const duration = getMatchDurationMinutes(match);
-      const sequence = buildSystemSequence(match);
+      const sequence = buildGroupSystemSequence(match);
       let matchHasSnapshot = false;
       sequence.forEach((segment) => {
         const snapshot = getMatchSnapshotForSystem(match, segment.system);
@@ -20391,8 +20378,8 @@ function App() {
       return <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Aún no hay minutos tácticos suficientes para construir el once.</p>;
     }
     return (
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_260px]">
-        <div className="mx-auto w-full max-w-[min(100%,42rem)] overflow-hidden">
+      <div className="space-y-5">
+        <div className="mx-auto w-full max-w-[min(100%,38rem)] overflow-hidden">
           <div className="relative mx-auto aspect-[7/8.9] w-full overflow-hidden rounded-2xl border border-white/20 bg-[#102616] shadow-inner sm:rounded-3xl">
             <div className="absolute inset-3 rounded-2xl border-2 border-white/55 sm:inset-4 sm:rounded-[28px]" />
             <div className="absolute left-3 right-3 top-1/2 h-px bg-white/35 sm:left-4 sm:right-4" />
@@ -20402,31 +20389,35 @@ function App() {
             {xiData.assignments.map(({ slot, row }, index) => {
               const player = row?.player;
               return (
-                <div key={`${slot.id}-${index}`} className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-0.5 text-center sm:gap-1" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
-                  <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-caudal-electric/60 bg-caudal-950/80 text-[10px] font-black text-white sm:h-14 sm:w-14 sm:rounded-2xl sm:border-2">
-                    {player?.name ? <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" /> : index + 1}
+                <div key={`${slot.id}-${index}`} className="absolute flex w-16 -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center sm:w-20" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
+                  <div className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-caudal-electric/60 bg-caudal-950/80 text-[10px] font-black text-white sm:h-14 sm:w-14 sm:rounded-2xl sm:border-2">
+                    <div className="h-full w-full overflow-hidden rounded-[inherit]">
+                      {player?.name ? <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" /> : index + 1}
+                    </div>
+                    {row?.minutes ? <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-slate-950/30 bg-caudal-electric px-1 py-0.5 text-[6px] font-black leading-none text-slate-950 sm:text-[8px]" title={`${row.minutes} minutos`}>{row.minutes}'</span> : null}
                   </div>
-                  <span className="max-w-[72px] truncate rounded-lg bg-black/70 px-1.5 py-0.5 text-[8px] font-black text-white sm:max-w-[104px] sm:rounded-xl sm:px-2 sm:py-1 sm:text-[10px]">
+                  <span className="mt-2 block w-full truncate rounded-lg bg-black/75 px-1 py-0.5 text-[7px] font-black leading-tight text-white sm:rounded-xl sm:px-1.5 sm:py-1 sm:text-[9px]" title={player ? `${player.number ? `#${player.number} ` : ''}${displayPlayerName(player)}` : slot.label}>
                     {player?.number ? `#${player.number} ` : ''}{player ? displayPlayerName(player) : slot.label}
                   </span>
-                  {row?.minutes ? <span className="rounded-lg bg-caudal-electric px-1.5 py-0.5 text-[7px] font-black text-slate-950 sm:text-[9px]">{row.minutes} min</span> : null}
                 </div>
               );
             })}
           </div>
         </div>
-        <div className="space-y-3">
+        <div>
           <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Alternativas por posición</p>
-          {xiData.assignments.filter((assignment) => assignment.row).map(({ slot, row }) => {
-            const alternatives = xiData.alternatives?.[slot.id] || [];
-            return (
-              <div key={`alt-${slot.id}`} className="rounded-2xl bg-white/5 px-3 py-3">
-                <p className="text-xs font-black uppercase tracking-[0.12em] text-white">{slot.label}</p>
-                <p className="mt-1 text-sm font-bold text-caudal-electric">{displayPlayerName(row.player)} · {row.minutes} min</p>
-                {alternatives[0] ? <p className="mt-1 text-xs font-semibold text-slate-400">Alternativa: {displayPlayerName(alternatives[0].player)} · {alternatives[0].minutes} min</p> : null}
-              </div>
-            );
-          })}
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {xiData.assignments.filter((assignment) => assignment.row).map(({ slot, row }) => {
+              const alternatives = xiData.alternatives?.[slot.id] || [];
+              return (
+                <div key={`alt-${slot.id}`} className="min-w-0 rounded-2xl bg-white/5 px-3 py-2.5">
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-white">{slot.label}</p>
+                  <p className="mt-1 truncate text-xs font-bold text-caudal-electric">{displayPlayerName(row.player)} · {row.minutes}'</p>
+                  {alternatives[0] ? <p className="mt-1 truncate text-[11px] font-semibold text-slate-400">Alt. {displayPlayerName(alternatives[0].player)} · {alternatives[0].minutes}'</p> : null}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     );
@@ -30588,42 +30579,42 @@ function App() {
           }));
           const hasData = scopedMatches.length > 0;
           const filteredOfficialGoals = buildFilteredOfficialGoals(scopedMatches);
-          const goalForRows = filteredOfficialGoals.filter((goal) => goal.teamSide === 'for');
-          const goalAgainstRows = filteredOfficialGoals.filter((goal) => goal.teamSide === 'against');
-          const allGoalRows = filteredOfficialGoals;
-          const groupData = summarizeGroupMatches(scopedMatches);
-          const competitionResults = buildCompetitionResults(
-            getGroupScopedMatches().map((match) => ({
-              ...match,
-              statsGoalEvents: safeArray(match.statsGoalEvents),
-              events: safeArray(match.events),
-            })),
-            groupCompetitionFilter
-          );
-          const minuteFor = groupEventsByMinuteRange(goalForRows);
-          const minuteAgainst = groupEventsByMinuteRange(goalAgainstRows);
+          const { goalsFor: goalForRows, goalsAgainst: goalAgainstRows } = splitGroupGoals(filteredOfficialGoals);
+          const scoreSummary = summarizeGroupMatches(scopedMatches);
+          const groupData = {
+            ...scoreSummary,
+            goalsFor: goalForRows.length,
+            goalsAgainst: goalAgainstRows.length,
+            goalDiff: goalForRows.length - goalAgainstRows.length,
+          };
+          const competitionResults = buildCompetitionResults(scopedMatches, groupCompetitionFilter);
           const goalTimeRows = buildGoalTimeBucketRows(filteredOfficialGoals);
           const maxMinuteGoals = Math.max(1, ...goalTimeRows.map((row) => row.forCount), ...goalTimeRows.map((row) => row.againstCount));
           const totalBucketFor = goalTimeRows.reduce((sum, row) => sum + row.forCount, 0);
           const totalBucketAgainst = goalTimeRows.reduce((sum, row) => sum + row.againstCount, 0);
-          const topForBucket = goalTimeRows.filter((row) => row.forCount > 0).sort((a, b) => b.forCount - a.forCount)[0] || null;
-          const topAgainstBucket = goalTimeRows.filter((row) => row.againstCount > 0).sort((a, b) => b.againstCount - a.againstCount)[0] || null;
-          const goalTypeRows = buildOfficialGoalTypeRows(filteredOfficialGoals);
+          const topForBuckets = getTiedTopGoalBuckets(goalTimeRows, 'forCount');
+          const topAgainstBuckets = getTiedTopGoalBuckets(goalTimeRows, 'againstCount');
+          const goalTypeRows = buildGroupGoalTypeRows(filteredOfficialGoals);
           const phaseFor = goalTypeRows.map((row) => ({ phase: row.context === 'Sin clasificar' ? 'Sin contexto registrado' : row.context, count: row.forCount }));
           const phaseAgainst = goalTypeRows.map((row) => ({ phase: row.context === 'Sin clasificar' ? 'Sin contexto registrado' : row.context, count: row.againstCount }));
           const assistedGoalRows = goalForRows.filter(hasGoalAssistant);
-          const assistZoneCounts = getOfficialGoalZoneCounts(assistedGoalRows, 'creationZone');
-          const shotZoneCounts = getOfficialGoalZoneCounts(allGoalRows, 'finishZone');
-          const goalZoneForCounts = getOfficialGoalZoneCounts(goalForRows, 'goalMouthZone');
-          const goalZoneAgainstCounts = getOfficialGoalZoneCounts(goalAgainstRows, 'goalMouthZone');
-          const abpFor = { total: goalForRows.filter((goal) => goal.goalContext === 'ABP').length, corner: goalForRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Córner').length, directFreeKick: goalForRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Falta directa').length, penalty: goalForRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Penalti').length };
-          const abpAgainst = { total: goalAgainstRows.filter((goal) => goal.goalContext === 'ABP').length, corner: goalAgainstRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Córner').length, directFreeKick: goalAgainstRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Falta directa').length, penalty: goalAgainstRows.filter((goal) => goal.goalContext === 'ABP' && goal.subphase === 'Penalti').length };
-          const goalCoverage = buildOfficialGoalCoverage(filteredOfficialGoals);
+          const assistZoneCounts = countGroupGoalZones(assistedGoalRows, 'creationZone', normalizePitchZone);
+          const shotZoneForCounts = countGroupGoalZones(goalForRows, 'finishZone', normalizePitchZone);
+          const shotZoneAgainstCounts = countGroupGoalZones(goalAgainstRows, 'finishZone', normalizePitchZone);
+          const goalZoneForCounts = countGroupGoalZones(goalForRows, 'goalMouthZone', normalizeGoalMouthZone);
+          const goalZoneAgainstCounts = countGroupGoalZones(goalAgainstRows, 'goalMouthZone', normalizeGoalMouthZone);
+          const abpFor = buildGroupSetPieceSummary(goalForRows);
+          const abpAgainst = buildGroupSetPieceSummary(goalAgainstRows);
+          const goalCoverage = buildGroupGoalCoverage(filteredOfficialGoals);
           const missingAssistCount = goalForRows.filter((goal) => !hasGoalAssistant(goal)).length;
           const assistedWithoutZoneCount = assistedGoalRows.filter((goal) => !goal.creationZone).length;
-          const missingFinishZoneCount = allGoalRows.filter((goal) => !goal.finishZone).length;
+          const missingFinishZoneForCount = goalForRows.filter((goal) => !goal.finishZone).length;
+          const missingFinishZoneAgainstCount = goalAgainstRows.filter((goal) => !goal.finishZone).length;
           const missingGoalZoneForCount = goalForRows.filter((goal) => !goal.goalMouthZone).length;
           const missingGoalZoneAgainstCount = goalAgainstRows.filter((goal) => !goal.goalMouthZone).length;
+          const selectedFinishZoneCounts = groupFinishZoneSide === 'for' ? shotZoneForCounts : shotZoneAgainstCounts;
+          const selectedFinishGoals = groupFinishZoneSide === 'for' ? goalForRows : goalAgainstRows;
+          const selectedMissingFinishZones = groupFinishZoneSide === 'for' ? missingFinishZoneForCount : missingFinishZoneAgainstCount;
           const individualRankings = buildOfficialIndividualRankings(filteredOfficialGoals, scopedMatches);
           const connectionRows = buildGoalConnectionRows(filteredOfficialGoals);
           const localSummary = summarizeGroupMatches(scopedMatches.filter((match) => match.isHome));
@@ -30662,8 +30653,8 @@ function App() {
           const minGc90Row = systemRows.filter((row) => row.minutes >= 30).sort((a, b) => (a.goalsAgainst / a.minutes) - (b.goalsAgainst / b.minutes) || b.minutes - a.minutes)[0] || null;
           const systemSequences = scopedMatches.map((match) => ({
             match,
-            segments: buildSystemSequence(match),
-          }));
+            segments: buildGroupSystemSequence(match),
+          })).filter((row) => row.segments.length);
           const competitionRows = Object.entries(scopedMatches.reduce((acc, match) => {
             const normalizedKey = normalizeCompetitionKey(match);
             acc[normalizedKey] = [...(acc[normalizedKey] || []), match];
@@ -30675,27 +30666,25 @@ function App() {
             logoUrl: getCompetitionFromCatalog(competitionKey).logoUrl || '',
             ...summarizeGroupMatches(rows),
           })).sort((a, b) => b.played - a.played);
-          const secondHalfGoals = allGoalRows.filter((event) => Number(event.minute) >= 45).length;
-          const centralFinish = allGoalRows.filter((event) => event.finishZone && normalizePitchZone(event.finishZone).includes('centro')).length;
+          const secondHalfGoalsFor = goalForRows.filter((event) => Number(event.minute) >= 45).length;
+          const secondHalfGoalsAgainst = goalAgainstRows.filter((event) => Number(event.minute) >= 45).length;
+          const centralFinishFor = goalForRows.filter((event) => event.finishZone && normalizePitchZone(event.finishZone).includes('centro')).length;
+          const centralFinishAgainst = goalAgainstRows.filter((event) => event.finishZone && normalizePitchZone(event.finishZone).includes('centro')).length;
           const scoringStreak = scopedMatches.reduceRight((streak, match) => streak.active && getMatchScoreData(match).caudalGoals > 0 ? { active: true, count: streak.count + 1 } : { active: false, count: streak.count }, { active: true, count: 0 }).count;
           const cleanSheetStreak = scopedMatches.reduceRight((streak, match) => streak.active && getMatchScoreData(match).rivalGoals === 0 ? { active: true, count: streak.count + 1 } : { active: false, count: streak.count }, { active: true, count: 0 }).count;
-          const comebackWins = scopedMatches.filter((match) => filteredOfficialGoals.some((goal) => goal.partidoId === match.id && goal.teamSide === 'against') && getMatchScoreData(match).caudalGoals > getMatchScoreData(match).rivalGoals).length;
-          const statisticalPatterns = [
+          const statisticalTrends = scopedMatches.length < 3 ? [] : [
             scoringStreak >= 3 ? `${scoringStreak} partidos consecutivos marcando.` : null,
             cleanSheetStreak >= 2 ? `${cleanSheetStreak} porterías a cero consecutivas.` : null,
             goalForRows.length >= 3 && phaseFor.some((row) => row.phase !== 'Sin contexto registrado' && row.count >= 3) ? `${phaseFor.filter((row) => row.phase !== 'Sin contexto registrado').slice().sort((a, b) => b.count - a.count)[0].count} goles mediante ${phaseFor.filter((row) => row.phase !== 'Sin contexto registrado').slice().sort((a, b) => b.count - a.count)[0].phase.toLowerCase()}.` : null,
-            allGoalRows.length >= 4 && secondHalfGoals / allGoalRows.length >= 0.75 ? `${Math.round((secondHalfGoals / allGoalRows.length) * 100)}% de los goles registrados llegan en segunda parte.` : null,
+            goalForRows.length >= 4 && secondHalfGoalsFor / goalForRows.length >= 0.75 ? `${Math.round((secondHalfGoalsFor / goalForRows.length) * 100)}% de los goles a favor llegan en segunda parte.` : null,
+            goalAgainstRows.length >= 4 && secondHalfGoalsAgainst / goalAgainstRows.length >= 0.75 ? `${Math.round((secondHalfGoalsAgainst / goalAgainstRows.length) * 100)}% de los goles en contra llegan en segunda parte.` : null,
             goalAgainstRows.filter((event) => event.goalContext === 'ABP' && event.subphase === 'Córner').length >= 2 ? `${goalAgainstRows.filter((event) => event.goalContext === 'ABP' && event.subphase === 'Córner').length} goles encajados tras córner.` : null,
-            allGoalRows.length >= 4 && centralFinish / allGoalRows.length >= 0.7 ? `${Math.round((centralFinish / allGoalRows.length) * 100)}% de los goles finalizan por zona central.` : null,
-            scopedMatches.length >= 3 && comebackWins === 0 ? 'No hay remontadas registradas en la muestra actual.' : null,
+            goalForRows.length >= 4 && centralFinishFor / goalForRows.length >= 0.7 ? `${Math.round((centralFinishFor / goalForRows.length) * 100)}% de los goles a favor finalizan por zona central.` : null,
+            goalAgainstRows.length >= 4 && centralFinishAgainst / goalAgainstRows.length >= 0.7 ? `${Math.round((centralFinishAgainst / goalAgainstRows.length) * 100)}% de los goles en contra finalizan por zona central.` : null,
           ].filter(Boolean);
           const objectiveReadings = [
-            hasData ? `${scopedMatches.length} partidos en la muestra filtrada.` : 'No hay partidos para los filtros seleccionados.',
-            goalForRows.length ? `El equipo ha marcado ${goalForRows.length} goles en la muestra filtrada.` : hasData ? 'No se registraron goles a favor en estos partidos.' : null,
-            goalAgainstRows.length ? `El equipo ha encajado ${goalAgainstRows.length} goles en la muestra filtrada.` : hasData ? 'No hemos encajado goles en los partidos filtrados.' : null,
-            goalForRows.length && phaseFor.some((row) => row.phase !== 'Sin contexto registrado' && row.count) ? `${phaseFor.filter((row) => row.phase !== 'Sin contexto registrado').slice().sort((a, b) => b.count - a.count)[0].phase} genera ${phaseFor.filter((row) => row.phase !== 'Sin contexto registrado').slice().sort((a, b) => b.count - a.count)[0].count} goles a favor.` : null,
-            allGoalRows.length ? `El tramo con más goles registrados es ${[...minuteFor.map((row, index) => ({ range: row.range, count: row.count + minuteAgainst[index].count }))].sort((a, b) => b.count - a.count)[0]?.range}'.` : null,
-          ].filter(Boolean).slice(0, 4);
+            goalForRows.length && abpFor.total ? `La ABP genera el ${Math.round((abpFor.total / goalForRows.length) * 100)}% de los goles a favor.` : null,
+          ].filter(Boolean);
           const metricCard = (label, value, meta = '') => (
             <div key={label} className="rounded-3xl border border-white/10 bg-white/[0.045] p-5">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
@@ -30746,6 +30735,25 @@ function App() {
               )}
             </div>
           );
+          const setPieceBlock = (title, summary) => (
+            <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
+              <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
+                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">{title}</h3>
+                <div className="text-right">
+                  <p className="text-2xl font-black text-caudal-electric">{summary.total}</p>
+                  <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">{summary.total === 1 ? 'Gol' : 'Goles'}</p>
+                </div>
+              </div>
+              <div className="mt-4 space-y-2">
+                {summary.subtypeRows.map((row) => (
+                  <div key={`${title}-${row.label}`} className="flex items-center justify-between gap-3 rounded-xl bg-white/[0.035] px-3 py-2.5">
+                    <span className="text-xs font-bold text-slate-300">{row.label}</span>
+                    <span className="text-sm font-black text-white">{row.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
           const zoneTotal = (counts) => Object.values(counts || {}).reduce((sum, count) => sum + Number(count || 0), 0);
           const rankingRow = (row, value, meta = '') => (
             <div key={`${row.key}-${value}-${meta}`} className="grid gap-3 rounded-2xl bg-white/5 px-4 py-3 sm:grid-cols-[1fr_auto] sm:items-center">
@@ -30753,7 +30761,7 @@ function App() {
               <span className="text-sm font-black text-caudal-electric sm:text-right">{value}</span>
             </div>
           );
-          const rankingTabs = ['Goles', 'Asistencias', 'Eficiencia', 'Participación', 'Conexiones'];
+          const rankingTabs = ['Goles', 'Asistencias', 'Rendimiento goleador', 'Minutos y aportación', 'Conexiones'];
           const rankingPanel = () => {
             if (groupRankingTab === 'Goles') {
               return individualRankings.scorers.length ? (
@@ -30769,14 +30777,14 @@ function App() {
                 </div>
               ) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Sin asistencias registradas.</p>;
             }
-            if (groupRankingTab === 'Eficiencia') {
+            if (groupRankingTab === 'Rendimiento goleador') {
               return individualRankings.efficiency.length ? (
                 <div className="grid gap-3 lg:grid-cols-2">
-                  {individualRankings.efficiency.map((row) => rankingRow(row, `${Math.round(row.minutesPerGoal)} min/gol`, `${row.goalsPer90.toFixed(2)} goles/90 · mínimo 90 min`))}
+                  {individualRankings.efficiency.map((row) => rankingRow(row, `${row.goalsPer90.toFixed(2)} goles/90`, `${Math.round(row.minutesPerGoal)} min/gol · mínimo 90 min`))}
                 </div>
-              ) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Sin muestra suficiente para eficiencia goleadora.</p>;
+              ) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Sin goleadores con el mínimo de 90 minutos.</p>;
             }
-            if (groupRankingTab === 'Participación') {
+            if (groupRankingTab === 'Minutos y aportación') {
               return (
                 <div className="grid gap-4 xl:grid-cols-2">
                   <div className="space-y-3">
@@ -30844,7 +30852,7 @@ function App() {
                   <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Once más utilizado de la temporada</h3>
+                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Once más utilizado</h3>
                         <p className="mt-2 text-sm font-semibold text-slate-400">
                           Sistema base: <span className="text-caudal-electric">{seasonBaseSystem || 'Sin datos'}</span>
                         </p>
@@ -30861,7 +30869,7 @@ function App() {
                     </p>
                   </div>
                   <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Parejas más utilizadas</h3>
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">{scopedMatches.length <= 1 ? 'Combinaciones utilizadas' : 'Combinaciones más utilizadas'}</h3>
                     <div className="mt-5 space-y-3">
                       {mostUsedPairs.length ? mostUsedPairs.map((row) => (
                         <div key={`${row.system}-${row.groupName}-${row.names.join('-')}`} className="rounded-2xl bg-white/5 px-4 py-3">
@@ -30871,10 +30879,10 @@ function App() {
                         </div>
                       )) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Aún no hay parejas tácticas suficientes.</p>}
                     </div>
-                    <div className="mt-6 border-t border-white/10 pt-5">
+                    {playerSlotBreakdownRows.length ? <div className="mt-6 border-t border-white/10 pt-5">
                       <h4 className="text-xs font-black uppercase tracking-[0.16em] text-white">Minutos por posición del jugador</h4>
                       <div className="mt-3 space-y-3">
-                        {playerSlotBreakdownRows.length ? playerSlotBreakdownRows.map((row) => (
+                        {playerSlotBreakdownRows.map((row) => (
                           <div key={`breakdown-${row.playerName}`} className="rounded-2xl bg-white/5 px-4 py-3">
                             <PlayerIdentity player={row.player} name={row.playerName} meta={`${row.total} min tácticos`} size="sm" />
                             <div className="mt-2 space-y-1">
@@ -30885,9 +30893,9 @@ function App() {
                               ))}
                             </div>
                           </div>
-                        )) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Sin jugadores con minutos en varios slots tácticos.</p>}
+                        ))}
                       </div>
-                    </div>
+                    </div> : null}
                   </div>
                 </section>
 
@@ -30905,18 +30913,18 @@ function App() {
                       ['Porterías a cero', groupData.cleanSheets],
                     ].map(([label, value]) => metricCard(label, value))}
                   </div>
-                  <div className="mt-5 grid gap-3 lg:grid-cols-2">
-                    {(objectiveReadings.length ? objectiveReadings : ['No hay datos oficiales suficientes para generar una lectura objetiva.']).map((line) => (
+                  {objectiveReadings.length ? <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                    {objectiveReadings.map((line) => (
                       <p key={line} className="rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm font-semibold leading-6 text-slate-100">{line}</p>
                     ))}
-                  </div>
+                  </div> : null}
                   <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                     {[
-                      ['Goles analizados', goalCoverage.total],
-                      ['Con contexto táctico', goalCoverage.withContext],
-                      ['Con zona finalización', goalCoverage.withFinishZone],
-                      ['Con portería 3x3', goalCoverage.withGoalZone],
-                      ['Con asistencia', goalCoverage.withAssist],
+                      ['Goles con datos', `${goalCoverage.total}/${goalCoverage.total}`],
+                      ['Contexto táctico', `${goalCoverage.withContext}/${goalCoverage.total}`],
+                      ['Zona finalización', `${goalCoverage.withFinishZone}/${goalCoverage.total}`],
+                      ['Portería 3x3', `${goalCoverage.withGoalZone}/${goalCoverage.total}`],
+                      ['Con asistencia', `${goalCoverage.withAssist}/${goalCoverage.forGoals}`],
                     ].map(([label, value]) => (
                       <div key={label} className="rounded-2xl bg-black/15 px-4 py-3">
                         <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
@@ -30972,8 +30980,8 @@ function App() {
                         ))}
                       </div>
                       <div className="mt-5 grid gap-3 md:grid-cols-2">
-                        <p className="rounded-2xl bg-black/15 px-4 py-3 text-sm font-semibold text-slate-300">Mayor concentración a favor: <span className="font-black text-white">{topForBucket ? `${topForBucket.range}' (${topForBucket.forCount})` : 'Sin goles a favor'}</span></p>
-                        <p className="rounded-2xl bg-black/15 px-4 py-3 text-sm font-semibold text-slate-300">Mayor concentración en contra: <span className="font-black text-white">{topAgainstBucket ? `${topAgainstBucket.range}' (${topAgainstBucket.againstCount})` : 'Sin goles en contra'}</span></p>
+                        <p className="rounded-2xl bg-black/15 px-4 py-3 text-sm font-semibold text-slate-300">Mayor concentración a favor: <span className="font-black text-white">{topForBuckets.length ? `${topForBuckets.map((row) => `${row.range}'`).join(' y ')} (${topForBuckets[0].forCount})` : 'Sin goles a favor'}</span></p>
+                        <p className="rounded-2xl bg-black/15 px-4 py-3 text-sm font-semibold text-slate-300">Mayor concentración en contra: <span className="font-black text-white">{topAgainstBuckets.length ? `${topAgainstBuckets.map((row) => `${row.range}'`).join(' y ')} (${topAgainstBuckets[0].againstCount})` : 'Sin goles en contra'}</span></p>
                       </div>
                     </>
                   )}
@@ -31004,11 +31012,24 @@ function App() {
                 <section className="grid gap-6 xl:grid-cols-3">
                   <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Origen de asistencias</h3>
-                    <div className="mt-5">{zoneTotal(assistZoneCounts) ? renderReadOnlyZoneGrid({ counts: assistZoneCounts }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{assistedGoalRows.length ? `${assistedWithoutZoneCount} asistencia${assistedWithoutZoneCount === 1 ? '' : 's'} sin zona de origen registrada.` : missingAssistCount ? `${missingAssistCount} gol${missingAssistCount === 1 ? '' : 'es'} sin asistencia.` : 'Sin asistencias registradas.'}</p>}</div>
+                    <div className="mt-5">
+                      {zoneTotal(assistZoneCounts) ? renderReadOnlyZoneGrid({ counts: assistZoneCounts }) : null}
+                      {assistedWithoutZoneCount ? <p className="mt-3 rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{assistedWithoutZoneCount} asistencia{assistedWithoutZoneCount === 1 ? '' : 's'} sin zona de origen registrada.</p> : null}
+                      {missingAssistCount ? <p className="mt-3 rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{missingAssistCount} gol{missingAssistCount === 1 ? '' : 'es'} sin asistencia.</p> : null}
+                      {!assistedGoalRows.length && !missingAssistCount ? <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Sin goles a favor registrados.</p> : null}
+                    </div>
                   </div>
                   <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Zonas de finalización</h3>
-                    <div className="mt-5">{zoneTotal(shotZoneCounts) ? renderReadOnlyZoneGrid({ counts: shotZoneCounts }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{allGoalRows.length ? `${missingFinishZoneCount} gol${missingFinishZoneCount === 1 ? '' : 'es'} sin zona de finalización registrada.` : 'No se registraron goles en estos partidos.'}</p>}</div>
+                    <div className="mt-4 flex gap-2" role="tablist" aria-label="Sentido de las zonas de finalización">
+                      {[
+                        ['for', 'A favor'],
+                        ['against', 'En contra'],
+                      ].map(([value, label]) => (
+                        <button key={value} type="button" role="tab" aria-selected={groupFinishZoneSide === value} onClick={() => setGroupFinishZoneSide(value)} className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] ${groupFinishZoneSide === value ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>{label}</button>
+                      ))}
+                    </div>
+                    <div className="mt-4">{zoneTotal(selectedFinishZoneCounts) ? renderReadOnlyZoneGrid({ counts: selectedFinishZoneCounts }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{selectedFinishGoals.length ? `${selectedMissingFinishZones} gol${selectedMissingFinishZones === 1 ? '' : 'es'} sin zona de finalización registrada.` : groupFinishZoneSide === 'for' ? 'No se registraron goles a favor.' : 'No se registraron goles en contra.'}</p>}</div>
                   </div>
                   <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Portería 3x3</h3>
@@ -31023,28 +31044,8 @@ function App() {
                       </div>
                     </div>
                   </div>
-                  <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">ABP ofensiva</h3>
-                    <div className="mt-5 grid grid-cols-2 gap-3">
-                      {[
-                        ['Total', abpFor.total],
-                        ['Córner', abpFor.corner],
-                        ['Falta directa', abpFor.directFreeKick],
-                        ['Penalti', abpFor.penalty],
-                      ].map(([label, value]) => metricCard(label, value))}
-                    </div>
-                  </div>
-                  <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">ABP defensiva</h3>
-                    <div className="mt-5 grid grid-cols-2 gap-3">
-                      {[
-                        ['Total', abpAgainst.total],
-                        ['Córner', abpAgainst.corner],
-                        ['Falta directa', abpAgainst.directFreeKick],
-                        ['Penalti', abpAgainst.penalty],
-                      ].map(([label, value]) => metricCard(label, value))}
-                    </div>
-                  </div>
+                  {setPieceBlock('ABP ofensiva', abpFor)}
+                  {setPieceBlock('ABP defensiva', abpAgainst)}
                 </section>
 
                 <section>
@@ -31164,11 +31165,12 @@ function App() {
                 </section>
 
                 <section className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
-                  <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Patrones</h3>
+                  <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Tendencias detectadas</h3>
+                  <p className="mt-2 text-sm font-semibold text-slate-400">Rachas o concentraciones repetidas en al menos tres partidos de la muestra.</p>
                   <div className="mt-5 grid gap-3 md:grid-cols-2">
-                    {statisticalPatterns.length ? statisticalPatterns.map((pattern) => (
-                      <p key={pattern} className="rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.055] px-4 py-3 text-sm font-semibold leading-6 text-slate-100">{pattern}</p>
-                    )) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400 md:col-span-2">No existen patrones repetidos suficientes.</p>}
+                    {statisticalTrends.length ? statisticalTrends.map((trend) => (
+                      <p key={trend} className="rounded-2xl border border-caudal-electric/15 bg-caudal-electric/[0.055] px-4 py-3 text-sm font-semibold leading-6 text-slate-100">{trend}</p>
+                    )) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400 md:col-span-2">{scopedMatches.length < 3 ? 'Se necesitan más partidos para detectar tendencias.' : 'No se han detectado tendencias repetidas en la muestra.'}</p>}
                   </div>
                 </section>
               </main>
