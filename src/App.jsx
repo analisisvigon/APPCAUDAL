@@ -13,6 +13,7 @@ import RivalPlayerTacticalCenter from './components/tactical/RivalPlayerTactical
 import MatchPlanWorkspace from './components/tactical/MatchPlanWorkspace';
 import PlayerDatabaseForm from './components/players/PlayerDatabaseForm';
 import GlobalPlayerDatabase from './components/players/GlobalPlayerDatabase';
+import DailyLoadCard from './components/performance/DailyLoadCard';
 import AccordionSection from './components/shared/AccordionSection';
 import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
@@ -60,6 +61,12 @@ import {
   getPerformanceObservationView,
   hasPhysicalPerformanceObservation,
 } from './utils/performanceObservations';
+import {
+  getTrainingLoadForDate,
+  loadTrainingLoadsRange,
+  replaceTrainingLoadByDate,
+  saveDailyTeamLoad,
+} from './utils/performanceLoadStore';
 import { cleanImportedFieldValue, extractTransfermarktPlayerId, isEmptyImportedField, normalizeTransfermarktPosition } from './utils/rivalPlayerImport';
 import { resolveMatchPlanPendingNavigation, serializeMatchPlanLegacyFields } from './utils/matchPlanWorkspace';
 import { buildRivalCollectiveAssistant } from './utils/rivalCollectiveAssistant';
@@ -5502,6 +5509,8 @@ function App() {
   const [trainingSessions, setTrainingSessions] = useState([]);
   const [wellnessEntries, setWellnessEntries] = useState([]);
   const [rpeEntries, setRpeEntries] = useState([]);
+  const [performanceTrainingLoads, setPerformanceTrainingLoads] = useState([]);
+  const [performanceLoadSaving, setPerformanceLoadSaving] = useState(false);
   const [previousWellnessEntries, setPreviousWellnessEntries] = useState([]);
   const [previousRpeEntries, setPreviousRpeEntries] = useState([]);
   const [performanceObservationHistory, setPerformanceObservationHistory] = useState({
@@ -8244,6 +8253,7 @@ function App() {
         rpeActivityResponse,
         wellnessObservationHistoryResponse,
         rpeObservationHistoryResponse,
+        nextTrainingLoads,
       ] = await Promise.all([
         supabase
           .from('wellness_entries')
@@ -8291,6 +8301,7 @@ function App() {
           'rpe_entries',
           'id,jugador_id,entry_date,submitted_at,comment,created_at,updated_at'
         ),
+        loadTrainingLoadsRange(supabase, performanceWeekStart, weekEnd),
       ]);
 
       const failed = [
@@ -8314,6 +8325,7 @@ function App() {
       const nextRpeEntries = rpeResponse.data || [];
       setWellnessEntries(nextWellnessEntries);
       setRpeEntries(nextRpeEntries);
+      setPerformanceTrainingLoads(nextTrainingLoads);
       setPreviousWellnessEntries(previousWellnessResponse.data || []);
       setPreviousRpeEntries(previousRpeResponse.data || []);
       setPerformanceObservationHistory({
@@ -8339,8 +8351,11 @@ function App() {
         new Date(right).getTime() - new Date(left).getTime()
       ))[0] || '');
 
-      const responseDates = [...nextWellnessEntries, ...nextRpeEntries]
-        .map((entry) => entry.entry_date)
+      const responseDates = [
+        ...nextWellnessEntries.map((entry) => entry.entry_date),
+        ...nextRpeEntries.map((entry) => entry.entry_date),
+        ...nextTrainingLoads.map((load) => load.session.session_date),
+      ]
         .filter(Boolean)
         .sort();
       setPerformanceSelectedDate((current) => (
@@ -8350,9 +8365,28 @@ function App() {
       ));
     } catch (loadError) {
       console.error('Error cargando Rendimiento:', loadError);
-      setPerformanceError(loadError.message || 'No se pudo cargar Rendimiento. Revisa que hayas ejecutado supabase_rendimiento.sql.');
+      setPerformanceError(loadError.message || 'No se pudo cargar Rendimiento. Revisa las migraciones de Rendimiento, incluida supabase_training_daily_load_phase1.sql.');
     } finally {
       setPerformanceLoading(false);
+    }
+  };
+
+  const savePerformanceDailyLoad = async (draft) => {
+    setPerformanceLoadSaving(true);
+    setPerformanceError('');
+    setPerformanceStatus('');
+    try {
+      const savedLoad = await saveDailyTeamLoad(supabase, draft);
+      setPerformanceTrainingLoads((current) => replaceTrainingLoadByDate(current, savedLoad));
+      setPerformanceStatus(`Carga del ${savedLoad.session.session_date} guardada correctamente.`);
+      setHomeActivityRefreshVersion((current) => current + 1);
+      return savedLoad;
+    } catch (saveError) {
+      console.error('Error guardando la carga diaria de Rendimiento:', saveError);
+      setPerformanceError(saveError.message || 'No se pudo guardar la carga diaria.');
+      throw saveError;
+    } finally {
+      setPerformanceLoadSaving(false);
     }
   };
 
@@ -24413,6 +24447,7 @@ function App() {
     const dashboard = performanceDashboard;
     const previousDashboard = previousPerformanceDashboard;
     const selectedDay = dashboard.days.find((day) => day.entryDate === performanceSelectedDate) || dashboard.days[0];
+    const selectedTrainingLoad = getTrainingLoadForDate(performanceTrainingLoads, selectedDay?.entryDate || '');
     const statusPresentation = {
       prioridad: {
         label: 'Prioridad',
@@ -25672,6 +25707,7 @@ function App() {
             {dashboard.days.map((day) => {
               const selected = day.entryDate === selectedDay?.entryDate;
               const dayPresentation = dayStatusPresentation[day.dayStatus.status];
+              const hasTrainingLoad = Boolean(getTrainingLoadForDate(performanceTrainingLoads, day.entryDate));
               return (
                 <button
                   key={`cycle-${day.entryDate}`}
@@ -25684,11 +25720,15 @@ function App() {
                     selected ? 'bg-caudal-electric/[0.10] text-white ring-1 ring-caudal-electric/25' : 'text-slate-500 hover:bg-white/[0.05] hover:text-slate-300'
                   }`}
                   aria-current={selected ? 'date' : undefined}
-                  title={`${day.tooltip}\n\nCumplimiento actual de formularios:\n${dashboard.upToDateCount} al día · ${dashboard.requiresNoticeCount} requieren aviso por falta de respuesta`}
+                  title={`${day.tooltip}\n\nCumplimiento actual de formularios:\n${dashboard.upToDateCount} al día · ${dashboard.requiresNoticeCount} requieren aviso por falta de respuesta${hasTrainingLoad ? '\n\nCarga registrada' : ''}`}
                 >
                   <span className="text-[9px] font-black uppercase tracking-[0.1em] sm:text-[10px]">{day.shortDay}</span>
                   <span className={`h-2.5 w-2.5 rounded-full transition-all ${dayPresentation.dot} ${selected ? 'scale-125' : ''}`} />
                   <span className="hidden text-[8px] font-bold sm:block">{formatShortDate(day.entryDate)}</span>
+                  <span
+                    aria-label={hasTrainingLoad ? 'Carga registrada' : undefined}
+                    className={`h-0.5 w-5 rounded-full transition ${hasTrainingLoad ? 'bg-sky-300 shadow-[0_0_8px_rgba(125,211,252,0.5)]' : 'bg-transparent'}`}
+                  />
                 </button>
               );
             })}
@@ -25753,6 +25793,15 @@ function App() {
         {performanceError ? <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-5 py-4 text-sm text-rose-100">{performanceError}</div> : null}
         {performanceStatus ? <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-5 py-4 text-sm text-emerald-100">{performanceStatus}</div> : null}
         {performanceLoading ? <div className="rounded-2xl border border-white/[0.06] bg-[#091428] px-5 py-4 text-sm text-slate-400">Actualizando datos de Rendimiento…</div> : null}
+
+        <DailyLoadCard
+          date={selectedDay?.entryDate || performanceSelectedDate || performanceWeekStart}
+          load={selectedTrainingLoad}
+          averageRpe={selectedDay?.avgRpe ?? null}
+          rpeResponseCount={selectedDay?.rpeResponseCount || 0}
+          saving={performanceLoadSaving}
+          onSave={savePerformanceDailyLoad}
+        />
 
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           {kpis.map((kpi) => (

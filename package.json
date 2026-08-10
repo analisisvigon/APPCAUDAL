@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node scripts/googleFormsSupabaseSync.test.mjs",
+    "test": "node scripts/googleFormsSupabaseSync.test.mjs && node src/utils/performanceLoad.test.js && node src/utils/performanceLoadStore.test.js && node scripts/trainingLoadSqlAudit.test.mjs && node scripts/performanceLoadUiAudit.test.mjs",
+    "test:performance-load": "node src/utils/performanceLoad.test.js && node src/utils/performanceLoadStore.test.js && node scripts/trainingLoadSqlAudit.test.mjs && node scripts/performanceLoadUiAudit.test.mjs",
     "test:league-results": "node src/utils/leagueResults.test.js",
     "test:competition-filters": "node src/utils/competitionFilters.test.js",
     "test:competitive-panel": "node src/utils/competitivePanel.test.js",
