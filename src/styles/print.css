@@ -1262,16 +1262,6 @@
   overflow: hidden;
 }
 
-.abp-print-page {
-  break-after: page;
-  page-break-after: always;
-}
-
-.abp-print-page:last-child {
-  break-after: auto;
-  page-break-after: auto;
-}
-
 .set-piece-pro-sheet {
   width: 297mm;
   height: 210mm;
@@ -1344,13 +1334,6 @@
   color: #111827;
   font-family: Inter, Arial, Helvetica, sans-serif;
   box-sizing: border-box;
-  break-after: page;
-  page-break-after: always;
-}
-
-.match-plan-print-sheet:last-child {
-  break-after: auto;
-  page-break-after: auto;
 }
 
 .match-plan-print-page-header {
@@ -1440,7 +1423,8 @@
 }
 
 .match-plan-print-pitch {
-  display: flex;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
   align-items: center;
@@ -1454,6 +1438,78 @@
   width: 100%;
   max-height: 100%;
   background: #fff;
+}
+
+.match-plan-identity-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 14px;
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.match-plan-identity-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: normal;
+}
+
+.match-plan-identity-legend i {
+  display: inline-flex;
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  font-style: normal;
+}
+
+.match-plan-legend-own,
+.match-plan-legend-rival {
+  border: 1.2px solid #111827;
+  border-radius: 999px;
+}
+
+.match-plan-legend-own {
+  background: #fff;
+}
+
+.match-plan-legend-rival {
+  background: #111827;
+}
+
+.match-plan-legend-ball {
+  width: auto !important;
+  font-size: 11px;
+}
+
+.match-plan-identity-legend-compact {
+  gap: 4px 10px;
+  padding-top: 2px;
+  color: #374151;
+  font-size: 8px;
+}
+
+.match-plan-print-pitch .match-plan-identity-legend {
+  padding-top: 1mm;
+  color: #374151;
+  font-size: 6.5pt;
+}
+
+.print-dossier-portal {
+  position: fixed;
+  left: -100000px;
+  top: 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
 }
 
 .match-plan-print-keys {
@@ -1795,11 +1851,29 @@
     color: #000 !important;
   }
 
-  html:has(.printing-dossier .print-dossier > .match-plan-print-sheet):not(:has(.printing-dossier .print-dossier > .lineup-print-sheet:not(.match-plan-print-sheet))),
-  body:has(.printing-dossier .print-dossier > .match-plan-print-sheet):not(:has(.printing-dossier .print-dossier > .lineup-print-sheet:not(.match-plan-print-sheet))),
-  body:has(.printing-dossier .print-dossier > .match-plan-print-sheet):not(:has(.printing-dossier .print-dossier > .lineup-print-sheet:not(.match-plan-print-sheet))) #root {
-    width: 297mm !important;
-    min-height: 210mm !important;
+  html:has(body > .print-dossier-portal),
+  body:has(> .print-dossier-portal) {
+    width: auto !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body:has(> .print-dossier-portal) > :not(.print-dossier-portal):not(script):not(style) {
+    display: none !important;
+  }
+
+  body > .print-dossier-portal {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
   }
 
   body * {
@@ -1985,16 +2059,6 @@
   .match-plan-print-sheet + .match-plan-print-sheet {
     break-before: page !important;
     page-break-before: always !important;
-  }
-
-  .abp-print-page {
-    break-after: page !important;
-    page-break-after: always !important;
-  }
-
-  .abp-print-page:last-child {
-    break-after: auto !important;
-    page-break-after: auto !important;
   }
 
   .set-piece-pro-sheet + .set-piece-pro-sheet {

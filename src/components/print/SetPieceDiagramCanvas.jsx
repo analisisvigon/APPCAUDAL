@@ -117,7 +117,7 @@ function PitchLines({ fullField = false }) {
   );
 }
 
-export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, printOptimized = false, preparedForPrint = false, visibleLayers = {} }) {
+export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, printOptimized = false, preparedForPrint = false, visibleLayers = {}, identityConvention = 'default' }) {
   const svgRef = useRef(null);
   const [drag, setDrag] = useState(null);
   const playersById = useMemo(() => new Map(players.map((player) => [player.id, player])), [players]);
@@ -140,6 +140,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
     });
   }, [elements, players, printOptimized, preparedForPrint, normalizedVisibleLayers]);
   const tokens = printOptimized ? SET_PIECE_CANVAS_TOKENS.print : SET_PIECE_CANVAS_TOKENS.editor;
+  const usesMatchPlanIdentity = identityConvention === 'match-plan';
 
   const updateElement = (id, fields) => {
     onChange(elements.map((element) => (element.id === id ? { ...element, ...fields } : element)));
@@ -380,9 +381,15 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
         const showAbbreviation = normalizedVisibleLayers.abbreviations;
         const showRoleCode = normalizedVisibleLayers.roles && roleCode;
         const showSequenceNumber = normalizedVisibleLayers.chronology && Number(element.sequenceOrder) > 0;
+        const matchPlanIdentity = compactDiagramLabel(role || sourceName || element.label, 4).toUpperCase();
+        const interiorIdentity = usesMatchPlanIdentity
+          ? (showAbbreviation ? matchPlanIdentity : (showDorsal ? String(element.label || '') : ''))
+          : (showDorsal ? String(element.label || '') : '');
+        const participantFill = usesMatchPlanIdentity ? (isOpponent ? '#111827' : '#ffffff') : (isOpponent ? 'white' : 'currentColor');
+        const participantText = usesMatchPlanIdentity ? (isOpponent ? '#ffffff' : '#111827') : (isOpponent ? 'currentColor' : 'white');
         return (
-          <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
-            {printOptimized && showAbbreviation && element.printLabelLeader ? (
+          <g key={element.id} data-participant-side={isOpponent ? 'rival' : 'own'} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
+            {!usesMatchPlanIdentity && printOptimized && showAbbreviation && element.printLabelLeader ? (
               <line x1={element.x} y1={element.y} x2={labelX} y2={labelY - 1.2} stroke="currentColor" strokeWidth="0.24" opacity="0.58" />
             ) : null}
             {selected && !readOnly ? (
@@ -391,12 +398,12 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
                 <circle cx={element.x} cy={element.y} r={tokens.selectedPlayerRadius + 1.3} fill="none" stroke="white" strokeWidth="0.26" opacity="0.95" />
               </>
             ) : null}
-            <circle cx={element.x} cy={element.y} r={selected ? tokens.selectedPlayerRadius : tokens.playerRadius} fill={isOpponent ? 'white' : 'currentColor'} stroke="currentColor" strokeWidth="0.55" />
+            <circle className="set-piece-participant-marker" cx={element.x} cy={element.y} r={selected ? tokens.selectedPlayerRadius : tokens.playerRadius} fill={participantFill} stroke={usesMatchPlanIdentity ? '#111827' : 'currentColor'} strokeWidth={usesMatchPlanIdentity ? '0.68' : '0.55'} />
             {element.primaryResponsibility ? <circle cx={element.x} cy={element.y} r={tokens.responsibilityRadius} fill="none" stroke="currentColor" strokeWidth="0.48" /> : null}
-            <text x={element.x} y={element.y + tokens.dorsalSize * 0.34} textAnchor="middle" dominantBaseline="middle" fontSize={tokens.dorsalSize} fontWeight="900" fill={isOpponent ? 'currentColor' : 'white'}>
-              {showDorsal ? element.label || '' : ''}
+            <text className="set-piece-participant-identity" x={element.x} y={element.y + (usesMatchPlanIdentity ? 0.12 : tokens.dorsalSize * 0.34)} textAnchor="middle" dominantBaseline="middle" fontSize={usesMatchPlanIdentity ? (printOptimized ? 1.55 : 1.45) : tokens.dorsalSize} fontWeight="900" fill={participantText} stroke="none">
+              {interiorIdentity}
             </text>
-            {name && showAbbreviation ? (
+            {!usesMatchPlanIdentity && name && showAbbreviation ? (
               <text x={labelX} y={labelY} textAnchor="middle" dominantBaseline="middle" fontSize={tokens.abbreviationSize} fontWeight="900" fill="currentColor" paintOrder="stroke" stroke="white" strokeWidth={printOptimized ? '0.75' : '0.45'}>
                 {name.toUpperCase()}
               </text>

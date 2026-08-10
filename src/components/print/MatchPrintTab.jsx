@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import DossierTacticalSheet from './DossierTacticalSheet';
 import LineupPrintSheet from './LineupPrintSheet';
@@ -19,9 +20,13 @@ import {
 import {
   MATCH_PLAN_TYPE_VALUES,
   buildMatchPlanPersistencePayload,
-  getMatchPlanPageCount,
   normalizeMatchPlanSituations,
 } from '../../utils/matchPlanPrint';
+import {
+  getDossierPageContribution,
+  getDossierStartPageNumber,
+  getDossierTotalPages,
+} from '../../utils/printDossierPagination';
 
 const setPieceSections = [
   { id: 'penaltis', label: 'Penaltis' },
@@ -678,21 +683,13 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
 
   const handlePrintDossier = () => {
     const dossierContent = getDossierContent();
-    const printableSections = activeDossierPages.filter((page) => {
-      if (page.id === 'lineup') return dossierContent.hasLineup;
-      if (page.id === 'takers') return dossierContent.hasTakers;
-      if (page.id === 'offensive') return dossierContent.offensiveDiagrams.length;
-      if (page.id === 'defensive') return dossierContent.defensiveDiagrams.length;
-      if (page.id === 'kickoff') return dossierContent.kickoffDiagrams.length;
-      if (page.id === 'match_plan') return dossierContent.matchPlanSituations.length;
-      return true;
-    }).length;
+    const printablePages = getDossierTotalPages(activeDossierPages, dossierContent);
     if (dossierContent.warnings.length) {
       setPrintValidationStatus(dossierContent.warnings.join(' '));
     } else {
       setPrintValidationStatus('');
     }
-    if (!printableSections) {
+    if (!printablePages) {
       setPrintValidationStatus('No hay contenido real para imprimir en el dossier.');
       return;
     }
@@ -1358,13 +1355,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
   const printTitle = printView === 'alineacion' ? 'Alineación' : printView === 'lanzadores' ? 'Lanzadores' : printView === 'abp_ofensiva' ? 'ABP ofensiva' : printView === 'plan_partido' ? 'Plan de partido' : 'ABP defensiva';
 
   const dossierContent = getDossierContent();
-  const activeSheetCount = activeDossierPages.reduce((count, page) => {
-    if (page.id === 'offensive') return count + Math.max(1, dossierContent.offensiveDiagrams.length);
-    if (page.id === 'defensive') return count + Math.max(1, dossierContent.defensiveDiagrams.length);
-    if (page.id === 'kickoff') return count + Math.max(1, dossierContent.kickoffDiagrams.length);
-    if (page.id === 'match_plan') return count + getMatchPlanPageCount(dossierContent.matchPlanSituations);
-    return count + 1;
-  }, 0);
+  const activeSheetCount = getDossierTotalPages(activeDossierPages, dossierContent);
   const activeReadMinutes = Math.max(1, Math.ceil(activeSheetCount * 1.3));
   const dossierDensity = activeSheetCount >= 9 ? 'dossier denso' : activeSheetCount >= 5 ? 'dossier operativo' : 'dossier express';
   const densityAdvice = activeSheetCount >= 9 ? 'lectura rapida no recomendada' : activeSheetCount >= 5 ? 'listo para staff' : 'ideal para charla corta';
@@ -1390,11 +1381,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
   };
 
   const getPageSheetCount = (page) => {
-    if (page.id === 'offensive') return Math.max(1, dossierContent.offensiveDiagrams.length);
-    if (page.id === 'defensive') return Math.max(1, dossierContent.defensiveDiagrams.length);
-    if (page.id === 'kickoff') return Math.max(1, dossierContent.kickoffDiagrams.length);
-    if (page.id === 'match_plan') return getMatchPlanPageCount(dossierContent.matchPlanSituations);
-    return 1;
+    return getDossierPageContribution(page.id, dossierContent);
   };
 
   const getDossierPageStatus = (page) => {
@@ -1473,8 +1460,72 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     onNavigateMatchSection?.('PRE');
   };
 
+  const dossierSheets = activeDossierPages.flatMap((page) => {
+    const pageNumber = getDossierStartPageNumber(activeDossierPages, page.id, dossierContent);
+    if (page.id === 'lineup') {
+      return dossierContent.hasLineup ? [(
+        <LineupPrintSheet
+          key="lineup-dossier"
+          match={match}
+          starters={printData.starters}
+          bench={printData.bench}
+          coordinates={printData.coordinates}
+          system={printData.system}
+          kit={kit}
+          captainPlayerId={captainPlayerId}
+        />
+      )] : [];
+    }
+    if (page.id === 'takers') {
+      return dossierContent.hasTakers ? [(
+        <SetPieceTakersPrintSheet key="takers-dossier" match={match} sections={setPieceSections} takers={setPieceTakers} players={players} />
+      )] : [];
+    }
+    if (page.id === 'offensive') {
+      return chunkDiagrams(dossierContent.offensiveDiagrams).map((diagrams, index) => (
+        <SetPieceDiagramPrintSheet key={`offensive-dossier-${index}`} match={match} title="ABP ofensiva" diagrams={diagrams} players={players} />
+      ));
+    }
+    if (page.id === 'defensive') {
+      return chunkDiagrams(dossierContent.defensiveDiagrams).map((diagrams, index) => (
+        <SetPieceDiagramPrintSheet key={`defensive-dossier-${index}`} match={match} title="ABP defensiva" diagrams={diagrams} players={players} />
+      ));
+    }
+    if (page.id === 'kickoff') {
+      return chunkDiagrams(dossierContent.kickoffDiagrams).map((diagrams, index) => (
+        <SetPieceDiagramPrintSheet key={`kickoff-dossier-${index}`} match={match} title="Saque de inicio" diagrams={diagrams} players={players} />
+      ));
+    }
+    if (page.id === 'match_plan') {
+      return dossierContent.matchPlanSituations.length ? [(
+        <MatchPlanPrintSheet key="match-plan-dossier" match={match} situations={dossierContent.matchPlanSituations} />
+      )] : [];
+    }
+    return [(
+      <DossierTacticalSheet
+        key={`${page.id}-dossier`}
+        match={match}
+        pageId={page.id}
+        dossierType="Dossier"
+        keys={page.id === 'keys' ? getMatchDayKeys() : getMatchKeys()}
+        staffNotes={getStaffNotes()}
+        pageNumber={pageNumber}
+        totalPages={activeSheetCount}
+      />
+    )];
+  });
+
+  const dossierPrintPortal = printMode === 'dossier' && typeof document !== 'undefined'
+    ? createPortal(
+      <section className="printing-dossier print-dossier-portal" aria-label="Dossier imprimible">
+        <div className="print-dossier">{dossierSheets}</div>
+      </section>,
+      document.body
+    )
+    : null;
+
   return (
-    <section className={`match-print-tab space-y-6 ${printMode === 'dossier' ? 'printing-dossier' : ''}`}>
+    <section className="match-print-tab space-y-6">
       <div className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -1850,70 +1901,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
         )}
       </div>
 
-      {printMode === 'dossier' ? (
-        <div className="print-dossier">
-          {activeDossierPages.flatMap((page) => {
-            const pageNumber = activeDossierPages.findIndex((item) => item.id === page.id) + 1;
-            if (page.id === 'lineup') {
-              return dossierContent.hasLineup ? [(
-                <LineupPrintSheet
-                  key="lineup-dossier"
-                  match={match}
-                  starters={printData.starters}
-                  bench={printData.bench}
-                  coordinates={printData.coordinates}
-                  system={printData.system}
-                  kit={kit}
-                  captainPlayerId={captainPlayerId}
-                />
-              )] : [];
-            }
-            if (page.id === 'takers') {
-              return dossierContent.hasTakers ? [(
-                <SetPieceTakersPrintSheet key="takers-dossier" match={match} sections={setPieceSections} takers={setPieceTakers} players={players} />
-              )] : [];
-            }
-            if (page.id === 'offensive') {
-              return chunkDiagrams(dossierContent.offensiveDiagrams).map((diagrams, index) => (
-                <SetPieceDiagramPrintSheet key={`offensive-dossier-${index}`} match={match} title="ABP ofensiva" diagrams={diagrams} players={players} />
-              ));
-            }
-            if (page.id === 'defensive') {
-              return chunkDiagrams(dossierContent.defensiveDiagrams).map((diagrams, index) => (
-                <SetPieceDiagramPrintSheet key={`defensive-dossier-${index}`} match={match} title="ABP defensiva" diagrams={diagrams} players={players} />
-              ));
-            }
-            if (page.id === 'kickoff') {
-              return chunkDiagrams(dossierContent.kickoffDiagrams).map((diagrams, index) => (
-                <SetPieceDiagramPrintSheet
-                  key={`kickoff-dossier-${index}`}
-                  match={match}
-                  title="Saque de inicio"
-                  diagrams={diagrams}
-                  players={players}
-                />
-              ));
-            }
-            if (page.id === 'match_plan') {
-              return dossierContent.matchPlanSituations.length ? [(
-                <MatchPlanPrintSheet key="match-plan-dossier" match={match} situations={dossierContent.matchPlanSituations} />
-              )] : [];
-            }
-            return [(
-              <DossierTacticalSheet
-                key={`${page.id}-dossier`}
-                match={match}
-                pageId={page.id}
-                dossierType="Dossier"
-                keys={page.id === 'keys' ? getMatchDayKeys() : getMatchKeys()}
-                staffNotes={getStaffNotes()}
-                pageNumber={pageNumber}
-                totalPages={activeSheetCount}
-              />
-            )];
-          })}
-        </div>
-      ) : null}
+      {dossierPrintPortal}
 
       {diagramStatus ? (
         <div className="print-hidden fixed bottom-5 right-5 z-[90] max-w-sm rounded-2xl border border-emerald-300/20 bg-[#10241f] px-4 py-3 text-sm font-semibold text-emerald-100 shadow-2xl" role="status" aria-live="polite">

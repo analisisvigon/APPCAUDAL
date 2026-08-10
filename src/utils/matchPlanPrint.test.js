@@ -91,10 +91,12 @@ const editorSource = fs.readFileSync(new URL('../components/print/MatchPlanEdito
 const sheetSource = fs.readFileSync(new URL('../components/print/MatchPlanPrintSheet.jsx', import.meta.url), 'utf8');
 const sharedEditorSource = fs.readFileSync(new URL('../components/print/SetPieceDiagramEditor.jsx', import.meta.url), 'utf8');
 const tabSource = fs.readFileSync(new URL('../components/print/MatchPrintTab.jsx', import.meta.url), 'utf8');
+const canvasSource = fs.readFileSync(new URL('../components/print/SetPieceDiagramCanvas.jsx', import.meta.url), 'utf8');
+const legendSource = fs.readFileSync(new URL('../components/print/MatchPlanIdentityLegend.jsx', import.meta.url), 'utf8');
 const cssSource = fs.readFileSync(new URL('../styles/print.css', import.meta.url), 'utf8');
 
 assert.match(tabSource, /label: 'Plan de partido', icon: 'PP'/);
-assert.match(tabSource, /getMatchPlanPageCount/);
+assert.match(tabSource, /getDossierTotalPages/);
 assert.match(tabSource, /MatchPlanPrintSheet/);
 assert.match(tabSource, /match_set_piece_diagrams/);
 assert.match(editorSource, /Galería Plan de partido/);
@@ -108,11 +110,22 @@ assert.match(sharedEditorSource, /Rehacer/);
 assert.match(sheetSource, /getDrawableSetPieceElements/);
 assert.doesNotMatch(sheetSource, /optimizeSetPieceElementsForPrint/, 'PDF no recoloca elementos');
 assert.match(sheetSource, /data-render-model="match-plan-print"/);
+assert.match(sheetSource, /identityConvention="match-plan"/);
+assert.match(editorSource, /identityConvention="match-plan"/);
+assert.match(sharedEditorSource, /identityConvention=\{editorContext === 'match-plan'/);
+assert.match(canvasSource, /participantFill = usesMatchPlanIdentity \? \(isOpponent \? '#111827' : '#ffffff'\)/, 'Plan usa blanco para Caudal y negro para rival');
+assert.match(canvasSource, /participantText = usesMatchPlanIdentity \? \(isOpponent \? '#ffffff' : '#111827'\)/, 'el texto interior mantiene contraste');
+assert.match(legendSource, /Nuestro equipo/);
+assert.match(legendSource, /Rival/);
+assert.match(legendSource, /Balón/);
+assert.match(tabSource, /createPortal/);
+assert.match(tabSource, /print-dossier-portal/);
 assert.match(cssSource, /\.match-plan-print-sheet[\s\S]*width: 297mm;[\s\S]*height: 210mm;/);
 assert.match(cssSource, /grid-template-rows: repeat\(2, minmax\(0, 1fr\)\)/);
 assert.match(cssSource, /page: landscape/);
 assert.match(cssSource, /background: #fff/);
 assert.match(cssSource, /color: #111827/);
-assert.match(cssSource, /html:has\(\.printing-dossier \.print-dossier > \.match-plan-print-sheet\)/, 'el dossier exclusivo de plan usa el tamaño raíz apaisado');
+assert.match(cssSource, /body:has\(> \.print-dossier-portal\) > :not\(\.print-dossier-portal\)/, 'el árbol normal sale del flujo físico durante el dossier');
+assert.doesNotMatch(cssSource, /html:has\(\.printing-dossier \.print-dossier > \.match-plan-print-sheet\)/, 'no queda el ajuste sintomático exclusivo para Plan');
 
 console.log('Match plan print tests passed.');

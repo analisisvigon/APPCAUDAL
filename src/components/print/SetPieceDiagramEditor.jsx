@@ -23,6 +23,7 @@ import {
   setSetPieceTacticalMeta,
 } from '../../utils/setPieceProfessional';
 import SetPieceDiagramCanvas from './SetPieceDiagramCanvas';
+import MatchPlanIdentityLegend from './MatchPlanIdentityLegend';
 import SetPieceDiagramPrintSheet from './SetPieceDiagramPrintSheet';
 import SetPieceDiagramToolbar from './SetPieceDiagramToolbar';
 
@@ -464,10 +465,11 @@ export default function SetPieceDiagramEditor({
           <p className="flex items-center gap-2 px-1 text-[10px] font-bold text-slate-500 sm:hidden" aria-hidden="true"><span>↔</span> Desliza dentro del campo para recorrerlo</p>
           <div className={`relative mx-auto w-full min-w-0 overflow-auto rounded-[28px] bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] p-2 text-black shadow-[0_24px_70px_rgba(0,0,0,0.24)] ${roleOnly ? 'max-w-[820px]' : 'max-w-[940px]'}`}>
             <div style={{ width: `${zoom * 100}%`, minWidth: '100%' }}>
-              <SetPieceDiagramCanvas elements={drawableElements} selectedId={selectedId} onSelect={selectElement} onChange={updateElements} players={players} snap={snapEnabled} fullField={fullFieldOverride ?? String(diagram.tipo || '').includes('saque_inicio')} visibleLayers={visibleLayers} />
+              <SetPieceDiagramCanvas elements={drawableElements} selectedId={selectedId} onSelect={selectElement} onChange={updateElements} players={players} snap={snapEnabled} fullField={fullFieldOverride ?? String(diagram.tipo || '').includes('saque_inicio')} visibleLayers={visibleLayers} identityConvention={editorContext === 'match-plan' ? 'match-plan' : 'default'} />
             </div>
             {!drawableElements.length ? <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8"><div className="max-w-xs rounded-2xl bg-slate-950/80 px-5 py-4 text-center text-white shadow-xl backdrop-blur-sm"><p className="text-sm font-black">El campo está listo</p><p className="mt-1 text-xs leading-5 text-slate-300">Empieza añadiendo participantes, balón o trazados.</p></div></div> : null}
           </div>
+          {editorContext === 'match-plan' ? <MatchPlanIdentityLegend /> : null}
           {visibleLayers.chronology ? <section className="rounded-[24px] border border-white/[0.07] bg-[#08131f]/75 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2"><p className={labelClass}>Cronología</p><span className="text-[10px] text-slate-500">Selecciona un paso para editar su participante</span></div>
             {chronology.length ? <ol className="mt-3 flex flex-col gap-2 lg:flex-row lg:items-stretch" aria-label="Secuencia de la jugada">{chronology.map((step, index) => <li key={step.id} className="relative flex min-w-0 flex-1 items-stretch gap-2 lg:block"><button type="button" aria-label={`Paso ${step.order}: ${step.playerName}`} aria-current={selectedId === step.id ? 'step' : undefined} onClick={() => selectElement(step.id)} className={`flex min-h-14 w-full items-center gap-2 rounded-2xl px-3 py-2 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-caudal-electric lg:items-start ${selectedId === step.id ? 'bg-caudal-electric/15 ring-1 ring-caudal-electric/60' : 'bg-black/15 hover:bg-white/[0.06]'}`}><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-caudal-electric text-[11px] font-black text-slate-950">{step.order}</span><span className="min-w-0"><strong className="block truncate text-[11px] text-white">{step.playerName}</strong><span className="mt-0.5 block text-[10px] leading-4 text-slate-400">{step.instruction || 'Sin consigna'}</span></span></button>{index < chronology.length - 1 ? <span className="flex w-5 shrink-0 items-center justify-center text-caudal-electric/50 lg:absolute lg:-right-2.5 lg:top-1/2 lg:z-10 lg:-translate-y-1/2" aria-hidden="true"><span className="lg:hidden">↓</span><span className="hidden lg:inline">›</span></span> : null}</li>)}</ol> : <p className="mt-2 text-xs text-slate-500">Selecciona participantes y asigna su orden de aparición. La secuencia aparecerá aquí.</p>}

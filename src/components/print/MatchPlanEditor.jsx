@@ -1,5 +1,6 @@
 import SetPieceDiagramCanvas from './SetPieceDiagramCanvas';
 import SetPieceDiagramEditor from './SetPieceDiagramEditor';
+import MatchPlanIdentityLegend from './MatchPlanIdentityLegend';
 import {
   MATCH_PLAN_PHASES,
   MATCH_PLAN_TACTICAL_LABELS,
@@ -50,7 +51,7 @@ export default function MatchPlanEditor({ situations = [], selectedId, onSelecte
             return (
               <article key={situation.id} className={`min-w-0 rounded-2xl border p-3 ${selectedId === situation.id ? 'border-caudal-electric/60 bg-caudal-electric/10' : 'border-white/10 bg-white/[0.035]'}`}>
                 <button type="button" onClick={() => onSelectedIdChange(situation.id)} className="w-full text-left">
-                  <div className="aspect-[16/10] overflow-hidden rounded-xl bg-white text-black"><SetPieceDiagramCanvas elements={getDrawableSetPieceElements(situation.elements)} players={[]} fullField readOnly visibleLayers={meta.displayLayers} /></div>
+                  <div className="overflow-hidden rounded-xl bg-white p-1 text-black"><div className="aspect-[16/10]"><SetPieceDiagramCanvas elements={getDrawableSetPieceElements(situation.elements)} players={[]} fullField readOnly visibleLayers={meta.displayLayers} identityConvention="match-plan" /></div><MatchPlanIdentityLegend compact /></div>
                   <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-caudal-electric">{getMatchPlanPhaseLabel(situation)}</p>
                   <h5 className="mt-1 truncate text-sm font-black text-white">{situation.titulo || 'Situación sin título'}</h5>
                 </button>

@@ -1,4 +1,5 @@
 import SetPieceDiagramCanvas from './SetPieceDiagramCanvas';
+import MatchPlanIdentityLegend from './MatchPlanIdentityLegend';
 import {
   buildMatchPlanPages,
   getMatchPlanInstructions,
@@ -30,7 +31,9 @@ function MatchPlanSituationPrint({ situation }) {
           fullField
           readOnly
           visibleLayers={meta.displayLayers}
+          identityConvention="match-plan"
         />
+        <MatchPlanIdentityLegend compact />
       </div>
       {instructions.length ? (
         <section className="match-plan-print-keys">
