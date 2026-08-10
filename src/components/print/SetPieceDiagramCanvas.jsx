@@ -13,6 +13,7 @@ import {
   getDrawableSetPieceElements,
   optimizeSetPieceElementsForPrint,
 } from '../../utils/setPieceProfessional';
+import { sortSetPieceElementsForRender } from '../../utils/setPieceRenderLayout';
 
 const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, value));
 const snapValue = (value, enabled) => (enabled ? Math.round(value / 4) * 4 : value);
@@ -35,20 +36,50 @@ export const SET_PIECE_CANVAS_TOKENS = Object.freeze({
     annotationSize: 2.8,
     zoneSize: 2.35,
   }),
-  print: Object.freeze({
-    playerRadius: 2.05,
+  abp: Object.freeze({
+    playerRadius: 1.75,
     selectedPlayerRadius: 2.05,
-    responsibilityRadius: 2.65,
-    ballRadius: 1.55,
-    blockRadius: 1.45,
-    arrowWidth: 0.5,
-    dorsalSize: 2.35,
-    abbreviationSize: 2.4,
-    stepRadius: 1.42,
-    stepSize: 1.55,
-    roleSize: 1.2,
-    annotationSize: 2.45,
-    zoneSize: 2.15,
+    responsibilityRadius: 2.4,
+    ballRadius: 1.5,
+    blockRadius: 1.35,
+    arrowWidth: 0.48,
+    dorsalSize: 1.6,
+    abbreviationSize: 1.35,
+    stepRadius: 1.22,
+    stepSize: 1.2,
+    roleSize: 1.05,
+    annotationSize: 2.55,
+    zoneSize: 2.1,
+  }),
+  thumbnail: Object.freeze({
+    playerRadius: 1.45,
+    selectedPlayerRadius: 1.45,
+    responsibilityRadius: 1.9,
+    ballRadius: 1.2,
+    blockRadius: 1.15,
+    arrowWidth: 0.42,
+    dorsalSize: 1.35,
+    abbreviationSize: 1.2,
+    stepRadius: 1,
+    stepSize: 1,
+    roleSize: 0.95,
+    annotationSize: 2.1,
+    zoneSize: 1.85,
+  }),
+  print: Object.freeze({
+    playerRadius: 1.65,
+    selectedPlayerRadius: 1.65,
+    responsibilityRadius: 2.2,
+    ballRadius: 1.35,
+    blockRadius: 1.25,
+    arrowWidth: 0.46,
+    dorsalSize: 1.65,
+    abbreviationSize: 1.85,
+    stepRadius: 1.2,
+    stepSize: 1.25,
+    roleSize: 1.05,
+    annotationSize: 2.3,
+    zoneSize: 2,
   }),
 });
 
@@ -117,7 +148,7 @@ function PitchLines({ fullField = false }) {
   );
 }
 
-export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, printOptimized = false, preparedForPrint = false, visibleLayers = {}, identityConvention = 'default' }) {
+export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, printOptimized = false, optimizeLabels = false, preparedForPrint = false, visibleLayers = {}, identityConvention = 'default', renderMode = 'default' }) {
   const svgRef = useRef(null);
   const [drag, setDrag] = useState(null);
   const playersById = useMemo(() => new Map(players.map((player) => [player.id, player])), [players]);
@@ -130,17 +161,21 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
     texts: visibleLayers?.texts ?? true,
   }), [visibleLayers]);
   const renderedElements = useMemo(() => {
-    const baseElements = printOptimized && !preparedForPrint
+    const baseElements = (printOptimized || optimizeLabels) && !preparedForPrint
       ? optimizeSetPieceElementsForPrint(elements, players)
       : getDrawableSetPieceElements(elements);
-    return baseElements.filter((element) => {
+    const visibleElements = baseElements.filter((element) => {
       if (!normalizedVisibleLayers.zones && element.type === 'zone') return false;
       if (!normalizedVisibleLayers.texts && ['text', 'text_box'].includes(element.type)) return false;
       return true;
     });
-  }, [elements, players, printOptimized, preparedForPrint, normalizedVisibleLayers]);
-  const tokens = printOptimized ? SET_PIECE_CANVAS_TOKENS.print : SET_PIECE_CANVAS_TOKENS.editor;
+    const usesAbpLayerOrder = printOptimized || renderMode === 'abp' || renderMode === 'thumbnail';
+    return usesAbpLayerOrder ? sortSetPieceElementsForRender(visibleElements) : visibleElements;
+  }, [elements, players, printOptimized, optimizeLabels, preparedForPrint, normalizedVisibleLayers, renderMode]);
+  const tokenMode = printOptimized ? 'print' : renderMode === 'abp' || renderMode === 'thumbnail' ? renderMode : 'editor';
+  const tokens = SET_PIECE_CANVAS_TOKENS[tokenMode];
   const usesMatchPlanIdentity = identityConvention === 'match-plan';
+  const usesOptimizedLabels = printOptimized || optimizeLabels;
 
   const updateElement = (id, fields) => {
     onChange(elements.map((element) => (element.id === id ? { ...element, ...fields } : element)));
@@ -255,6 +290,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
     <svg
       ref={svgRef}
       className={`set-piece-diagram-canvas ${readOnly ? 'set-piece-diagram-preview-canvas' : 'set-piece-diagram-editor-canvas'}`}
+      data-render-mode={tokenMode}
       viewBox="0 0 100 72"
       role="img"
       aria-label={readOnly ? 'Diagrama táctico ABP' : 'Editor táctico ABP'}
@@ -325,7 +361,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
         if (isResizableBox(element)) {
           const width = renderedElement.width || (element.type === 'text_box' ? 30 : 18);
           const height = renderedElement.height || (element.type === 'text_box' ? 18 : 10);
-          const hasPrintLabel = printOptimized && Number.isFinite(Number(element.printLabelX)) && Number.isFinite(Number(element.printLabelY));
+          const hasPrintLabel = usesOptimizedLabels && Number.isFinite(Number(element.printLabelX)) && Number.isFinite(Number(element.printLabelY));
           const printLabelX = hasPrintLabel ? Number(element.printLabelX) : Number(element.x || 0) + 2;
           const printLabelY = hasPrintLabel ? Number(element.printLabelY) : Number(element.y || 0) + 4;
           const lines = splitLines(element.label || (element.type === 'block' ? 'BLOQUEO' : ''))
@@ -356,12 +392,12 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           );
         }
         if (element.type === 'text') {
-          const labelX = printOptimized && Number.isFinite(Number(element.printLabelX)) ? Number(element.printLabelX) : Number(element.x || 0);
-          const labelY = printOptimized && Number.isFinite(Number(element.printLabelY)) ? Number(element.printLabelY) : Number(element.y || 0);
+          const labelX = usesOptimizedLabels && Number.isFinite(Number(element.printLabelX)) ? Number(element.printLabelX) : Number(element.x || 0);
+          const labelY = usesOptimizedLabels && Number.isFinite(Number(element.printLabelY)) ? Number(element.printLabelY) : Number(element.y || 0);
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
               {selected && !readOnly ? <circle cx={labelX} cy={labelY - 0.9} r="4.4" fill="#3DD9FF" opacity="0.16" stroke="#3DD9FF" strokeWidth="0.55" /> : null}
-              {printOptimized && element.printLabelLeader ? (
+              {usesOptimizedLabels && element.printLabelLeader ? (
                 <line x1={element.x} y1={element.y} x2={labelX} y2={labelY - 1.2} stroke="currentColor" strokeWidth="0.24" opacity="0.58" />
               ) : null}
               <text x={labelX} y={labelY} textAnchor="middle" fontSize={selected ? tokens.annotationSize + 0.35 : tokens.annotationSize} fontWeight="900" fill="currentColor" paintOrder="stroke" stroke="white" strokeWidth={printOptimized ? '0.7' : '0.45'}>
@@ -389,7 +425,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
         const participantText = usesMatchPlanIdentity ? (isOpponent ? '#ffffff' : '#111827') : (isOpponent ? 'currentColor' : 'white');
         return (
           <g key={element.id} data-participant-side={isOpponent ? 'rival' : 'own'} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
-            {!usesMatchPlanIdentity && printOptimized && showAbbreviation && element.printLabelLeader ? (
+            {!usesMatchPlanIdentity && usesOptimizedLabels && showAbbreviation && element.printLabelLeader ? (
               <line x1={element.x} y1={element.y} x2={labelX} y2={labelY - 1.2} stroke="currentColor" strokeWidth="0.24" opacity="0.58" />
             ) : null}
             {selected && !readOnly ? (

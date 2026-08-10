@@ -4,7 +4,6 @@ import { supabase } from '../../lib/supabase';
 import {
   SET_PIECE_LAB_MARKINGS,
   SET_PIECE_LAB_MECHANISMS,
-  SET_PIECE_LAB_CATEGORY,
   SET_PIECE_LAB_STATUSES,
   SET_PIECE_LAB_TYPES,
   SET_PIECE_LAB_ZONES,
@@ -14,6 +13,7 @@ import {
   filterAndSortSetPieceLaboratoryItems,
   getSetPieceLaboratoryMeta,
   getSetPieceLabType,
+  isSetPieceLibraryItem,
   prepareSetPieceLaboratoryItem,
   validateSetPieceLaboratoryMeta,
 } from '../../utils/setPieceLaboratory';
@@ -24,6 +24,8 @@ import {
 } from '../../utils/setPieceProfessional';
 import SetPieceDiagramCanvas from '../print/SetPieceDiagramCanvas';
 import SetPieceDiagramEditor from '../print/SetPieceDiagramEditor';
+import SetPieceDiagramPrintSheet from '../print/SetPieceDiagramPrintSheet';
+import { createSetPieceThumbnailLayers } from '../../utils/setPieceRenderLayout';
 
 const controlClass = 'min-h-11 w-full rounded-xl border border-white/10 bg-white px-3 py-2.5 text-sm font-bold text-slate-950 outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric';
 const darkControlClass = 'min-h-11 w-full rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus-visible:ring-2 focus-visible:ring-caudal-electric';
@@ -90,11 +92,46 @@ function LaboratoryPreview({ item, onClose }) {
   );
 }
 
+function LaboratoryPrintPreview({ items, onClose }) {
+  const closeButtonRef = useRef(null);
+  const printDiagrams = items.map((item, index) => ({
+    ...item,
+    titulo: item.titulo || item.nombre,
+    consigna: item.consigna || getSetPieceLaboratoryMeta(item).generalInstruction || item.descripcion,
+    orden: Number(item.orden) || index + 1,
+  }));
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+    const close = (event) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [onClose]);
+  const printPreview = () => {
+    document.body.classList.add('printing-set-piece-preview');
+    const cleanup = () => document.body.classList.remove('printing-set-piece-preview');
+    window.addEventListener('afterprint', cleanup, { once: true });
+    window.print();
+    window.setTimeout(cleanup, 1000);
+  };
+  return createPortal(
+    <div className="set-piece-preview-overlay fixed inset-0 z-[140] overflow-auto bg-slate-950/95 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label="Impresión de jugadas ABP">
+      <div className="print-hidden sticky top-0 z-10 mx-auto mb-4 flex max-w-[297mm] flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#0b1629]/95 p-3 shadow-2xl backdrop-blur">
+        <div><p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Impresión ABP</p><p className="mt-1 text-xs text-slate-400">{items.length} {items.length === 1 ? 'jugada' : 'jugadas'} · dos por hoja</p></div>
+        <div className="flex gap-2"><button type="button" onClick={printPreview} className={`min-h-11 rounded-xl bg-caudal-electric px-4 text-xs font-black text-slate-950 ${buttonFocus}`}>Imprimir / PDF</button><button ref={closeButtonRef} type="button" onClick={onClose} className={`min-h-11 rounded-xl bg-white/10 px-4 text-xs font-black text-white ${buttonFocus}`}>Cerrar</button></div>
+      </div>
+      <div className="mx-auto w-fit shadow-2xl"><SetPieceDiagramPrintSheet title="Biblioteca ABP" diagrams={printDiagrams} players={[]} preview /></div>
+    </div>,
+    document.body
+  );
+}
+
 export default function SetPieceLaboratory() {
   const [items, setItems] = useState([]);
   const [view, setView] = useState('gallery');
   const [draft, setDraft] = useState(null);
   const [previewItem, setPreviewItem] = useState(null);
+  const [printPreviewItems, setPrintPreviewItems] = useState([]);
+  const [selectedPrintIds, setSelectedPrintIds] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -112,10 +149,9 @@ export default function SetPieceLaboratory() {
       const { data, error: loadError } = await supabase
         .from('training_library')
         .select('*')
-        .eq('categoria', SET_PIECE_LAB_CATEGORY)
         .order('updated_at', { ascending: false });
       if (loadError) throw loadError;
-      setItems((data || []).map(prepareSetPieceLaboratoryItem));
+      setItems((data || []).filter(isSetPieceLibraryItem).map(prepareSetPieceLaboratoryItem));
     } catch (loadError) {
       console.error('Error cargando Laboratorio ABP:', loadError);
       setError(loadError.message || 'No se pudo cargar el Laboratorio ABP.');
@@ -140,6 +176,7 @@ export default function SetPieceLaboratory() {
   }, [menuItemId]);
 
   const visibleItems = useMemo(() => filterAndSortSetPieceLaboratoryItems(items, controls), [items, controls]);
+  const selectedPrintItems = useMemo(() => items.filter((item) => selectedPrintIds.includes(item.id)), [items, selectedPrintIds]);
   const updateControls = (patch) => setControls((current) => ({ ...current, ...patch }));
   const rememberGalleryPosition = () => { galleryScrollRef.current = window.scrollY; };
   const returnToGallery = () => {
@@ -260,6 +297,7 @@ export default function SetPieceLaboratory() {
       const { error: deleteError } = await supabase.from('training_library').delete().eq('id', item.id);
       if (deleteError) throw deleteError;
       setItems((current) => current.filter((entry) => entry.id !== item.id));
+      setSelectedPrintIds((current) => current.filter((id) => id !== item.id));
       setStatus('Jugada eliminada.');
     } catch (deleteError) {
       console.error('Error eliminando ABP:', deleteError);
@@ -290,6 +328,7 @@ export default function SetPieceLaboratory() {
           diagram={{ ...draft, titulo: draft.nombre, consigna: getSetPieceTacticalMeta(draft.elements).generalInstruction || draft.descripcion }}
           players={[]}
           roleOnly
+          renderMode="abp"
           onChange={(next) => setDraft((current) => ({ ...current, nombre: next.titulo ?? current.nombre, descripcion: next.consigna ?? current.descripcion, elements: next.elements || current.elements }))}
         />
         {previewItem ? <LaboratoryPreview item={previewItem} onClose={() => setPreviewItem(null)} /> : null}
@@ -302,7 +341,7 @@ export default function SetPieceLaboratory() {
       <header className="rounded-3xl border border-white/10 bg-[#071327] p-5 shadow-glow sm:p-7">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div><p className="text-[10px] font-black uppercase tracking-[0.24em] text-caudal-electric">Biblioteca · ABP</p><h2 id="set-piece-laboratory-title" className="mt-2 text-3xl font-black text-white">LABORATORIO ABP</h2><p className="mt-2 text-sm text-slate-400">Biblioteca táctica de acciones a balón parado del club.</p></div>
-          <button type="button" onClick={startNew} className={`min-h-11 rounded-2xl bg-caudal-electric px-5 text-sm font-black text-slate-950 ${buttonFocus}`}>+ Nueva jugada</button>
+          <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setPrintPreviewItems(selectedPrintItems.length ? selectedPrintItems : visibleItems)} disabled={!visibleItems.length && !selectedPrintItems.length} className={`min-h-11 rounded-2xl bg-white/10 px-5 text-sm font-black text-white disabled:opacity-40 ${buttonFocus}`}>Imprimir {selectedPrintItems.length ? `seleccionadas (${selectedPrintItems.length})` : 'visibles'}</button><button type="button" onClick={startNew} className={`min-h-11 rounded-2xl bg-caudal-electric px-5 text-sm font-black text-slate-950 ${buttonFocus}`}>+ Nueva jugada</button></div>
         </div>
         <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(240px,1fr)_auto_auto]">
           <label className="relative"><span className="sr-only">Buscar jugadas</span><input value={controls.search} onChange={(event) => updateControls({ search: event.target.value })} placeholder="Buscar por nombre, objetivo o consigna" className={darkControlClass} /></label>
@@ -331,7 +370,7 @@ export default function SetPieceLaboratory() {
             const archived = meta.libraryStatus === 'archived';
             return (
               <article key={item.id} className={`overflow-hidden rounded-[28px] bg-[#091428]/90 shadow-[0_20px_55px_rgba(0,0,0,0.18)] ring-1 ${archived ? 'opacity-75 ring-slate-600/30' : 'ring-white/[0.08]'}`}>
-                <div className="relative bg-white p-2 text-black"><SetPieceDiagramCanvas elements={item.elements || []} players={[]} readOnly visibleLayers={meta.displayLayers} fullField={String(item.tipo).includes('saque_inicio')} /><button type="button" aria-label={meta.libraryFavorite ? `Quitar ${item.nombre} de favoritas` : `Marcar ${item.nombre} como favorita`} aria-pressed={meta.libraryFavorite} onClick={() => toggleFavorite(item)} className={`absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full text-xl shadow-lg ${meta.libraryFavorite ? 'bg-amber-300 text-slate-950' : 'bg-white text-slate-500 ring-1 ring-slate-200'} ${buttonFocus}`}>★</button></div>
+                <div className="relative bg-white p-2 text-black"><SetPieceDiagramCanvas elements={item.elements || []} players={[]} readOnly renderMode="thumbnail" visibleLayers={createSetPieceThumbnailLayers(meta.displayLayers)} fullField={String(item.tipo).includes('saque_inicio')} /><label className="absolute left-3 top-3 flex min-h-11 items-center gap-2 rounded-xl bg-white/95 px-3 text-[10px] font-black text-slate-900 shadow-lg ring-1 ring-slate-200"><input type="checkbox" checked={selectedPrintIds.includes(item.id)} onChange={(event) => setSelectedPrintIds((current) => event.target.checked ? [...new Set([...current, item.id])] : current.filter((id) => id !== item.id))} className="h-4 w-4 accent-[#4f8cff]" />PDF</label><button type="button" aria-label={meta.libraryFavorite ? `Quitar ${item.nombre} de favoritas` : `Marcar ${item.nombre} como favorita`} aria-pressed={meta.libraryFavorite} onClick={() => toggleFavorite(item)} className={`absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full text-xl shadow-lg ${meta.libraryFavorite ? 'bg-amber-300 text-slate-950' : 'bg-white text-slate-500 ring-1 ring-slate-200'} ${buttonFocus}`}>★</button></div>
                 <div className="p-5">
                   <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">{getSetPieceLabType(item.tipo).label}</p><h3 className="mt-1 truncate text-lg font-black text-white">{item.nombre || 'Jugada sin nombre'}</h3></div><span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${meta.libraryStatus === 'ready' ? 'bg-emerald-300/15 text-emerald-200' : archived ? 'bg-slate-400/15 text-slate-300' : 'bg-amber-300/15 text-amber-200'}`}>{statusLabel(meta.libraryStatus)}</span></div>
                   <div className="mt-3 flex flex-wrap gap-1.5"><ClassificationPill>{meta.libraryZone}</ClassificationPill><ClassificationPill>{meta.libraryMechanism}</ClassificationPill><ClassificationPill>{meta.libraryMarking}</ClassificationPill></div>
@@ -342,7 +381,7 @@ export default function SetPieceLaboratory() {
                     <button type="button" onClick={() => setPreviewItem(item)} className={`min-h-11 rounded-xl bg-white/10 px-4 text-xs font-black text-white ${buttonFocus}`}>Vista previa</button>
                     <div className="relative" ref={menuItemId === item.id ? menuRef : undefined}>
                       <button type="button" aria-label={`Más acciones para ${item.nombre}`} aria-haspopup="menu" aria-expanded={menuItemId === item.id} onClick={() => setMenuItemId((current) => current === item.id ? '' : item.id)} className={`flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-xl font-black text-white ${buttonFocus}`}>⋯</button>
-                      {menuItemId === item.id ? <div role="menu" aria-label={`Acciones de ${item.nombre}`} className="absolute bottom-12 right-0 z-20 min-w-44 overflow-hidden rounded-xl bg-[#101d31] p-1.5 shadow-2xl ring-1 ring-white/10"><button type="button" role="menuitem" onClick={() => { setMenuItemId(''); duplicateItem(item); }} disabled={saving} className={`flex min-h-11 w-full items-center rounded-lg px-3 text-left text-xs font-bold text-white hover:bg-white/10 disabled:opacity-50 ${buttonFocus}`}>Duplicar</button><button type="button" role="menuitem" onClick={() => { setMenuItemId(''); toggleArchived(item); }} className={`flex min-h-11 w-full items-center rounded-lg px-3 text-left text-xs font-bold text-white hover:bg-white/10 ${buttonFocus}`}>{archived ? 'Restaurar' : 'Archivar'}</button><button type="button" role="menuitem" onClick={() => { setMenuItemId(''); deleteItem(item); }} className={`flex min-h-11 w-full items-center rounded-lg px-3 text-left text-xs font-bold text-red-200 hover:bg-red-500/15 ${buttonFocus}`}>Eliminar</button></div> : null}
+                      {menuItemId === item.id ? <div role="menu" aria-label={`Acciones de ${item.nombre}`} className="absolute bottom-12 right-0 z-20 min-w-44 overflow-hidden rounded-xl bg-[#101d31] p-1.5 shadow-2xl ring-1 ring-white/10"><button type="button" role="menuitem" onClick={() => { setMenuItemId(''); setPrintPreviewItems([item]); }} className={`flex min-h-11 w-full items-center rounded-lg px-3 text-left text-xs font-bold text-white hover:bg-white/10 ${buttonFocus}`}>Imprimir</button><button type="button" role="menuitem" onClick={() => { setMenuItemId(''); duplicateItem(item); }} disabled={saving} className={`flex min-h-11 w-full items-center rounded-lg px-3 text-left text-xs font-bold text-white hover:bg-white/10 disabled:opacity-50 ${buttonFocus}`}>Duplicar</button><button type="button" role="menuitem" onClick={() => { setMenuItemId(''); toggleArchived(item); }} className={`flex min-h-11 w-full items-center rounded-lg px-3 text-left text-xs font-bold text-white hover:bg-white/10 ${buttonFocus}`}>{archived ? 'Restaurar' : 'Archivar'}</button><button type="button" role="menuitem" onClick={() => { setMenuItemId(''); deleteItem(item); }} className={`flex min-h-11 w-full items-center rounded-lg px-3 text-left text-xs font-bold text-red-200 hover:bg-red-500/15 ${buttonFocus}`}>Eliminar</button></div> : null}
                     </div>
                   </div>
                 </div>
@@ -353,6 +392,7 @@ export default function SetPieceLaboratory() {
       ) : null}
       {!loading && !visibleItems.length ? <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] p-8 text-center"><p className="text-lg font-black text-white">No hay jugadas que coincidan</p><p className="mt-2 text-sm text-slate-500">Crea la primera jugada o limpia los filtros activos.</p><button type="button" onClick={startNew} className={`mt-5 min-h-11 rounded-xl bg-caudal-electric px-5 text-sm font-black text-slate-950 ${buttonFocus}`}>+ Nueva jugada</button></div> : null}
       {previewItem ? <LaboratoryPreview item={previewItem} onClose={() => setPreviewItem(null)} /> : null}
+      {printPreviewItems.length ? <LaboratoryPrintPreview items={printPreviewItems} onClose={() => setPrintPreviewItems([])} /> : null}
     </section>
   );
 }

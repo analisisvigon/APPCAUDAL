@@ -26,6 +26,7 @@ import SetPieceDiagramCanvas from './SetPieceDiagramCanvas';
 import MatchPlanIdentityLegend from './MatchPlanIdentityLegend';
 import SetPieceDiagramPrintSheet from './SetPieceDiagramPrintSheet';
 import SetPieceDiagramToolbar from './SetPieceDiagramToolbar';
+import { findCrowdedSetPieceParticipants } from '../../utils/setPieceRenderLayout';
 
 const createId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const clone = (value) => JSON.parse(JSON.stringify(value || []));
@@ -158,6 +159,7 @@ export default function SetPieceDiagramEditor({
   participantRoleOptions = SET_PIECE_ROLES,
   participantRoleMode = 'multiple',
   fullFieldOverride,
+  renderMode = 'default',
   onChange,
 }) {
   const drawableElements = useMemo(() => getDrawableSetPieceElements(diagram.elements), [diagram.elements]);
@@ -182,6 +184,7 @@ export default function SetPieceDiagramEditor({
   const selectedElement = useMemo(() => drawableElements.find((element) => element.id === selectedId) || null, [drawableElements, selectedId]);
   const chronology = useMemo(() => getSetPieceChronology(diagram.elements, players), [diagram.elements, players]);
   const responsibilities = useMemo(() => getSetPieceResponsibilities(diagram.elements, players), [diagram.elements, players]);
+  const crowdedParticipants = useMemo(() => findCrowdedSetPieceParticipants(drawableElements), [drawableElements]);
   const isSelectedPlayer = ['player', 'opponent'].includes(selectedElement?.type);
   const structureOnly = !visibleLayers.dorsals
     && !visibleLayers.abbreviations
@@ -465,10 +468,11 @@ export default function SetPieceDiagramEditor({
           <p className="flex items-center gap-2 px-1 text-[10px] font-bold text-slate-500 sm:hidden" aria-hidden="true"><span>↔</span> Desliza dentro del campo para recorrerlo</p>
           <div className={`relative mx-auto w-full min-w-0 overflow-auto rounded-[28px] bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] p-2 text-black shadow-[0_24px_70px_rgba(0,0,0,0.24)] ${roleOnly ? 'max-w-[820px]' : 'max-w-[940px]'}`}>
             <div style={{ width: `${zoom * 100}%`, minWidth: '100%' }}>
-              <SetPieceDiagramCanvas elements={drawableElements} selectedId={selectedId} onSelect={selectElement} onChange={updateElements} players={players} snap={snapEnabled} fullField={fullFieldOverride ?? String(diagram.tipo || '').includes('saque_inicio')} visibleLayers={visibleLayers} identityConvention={editorContext === 'match-plan' ? 'match-plan' : 'default'} />
+              <SetPieceDiagramCanvas elements={drawableElements} selectedId={selectedId} onSelect={selectElement} onChange={updateElements} players={players} snap={snapEnabled} fullField={fullFieldOverride ?? String(diagram.tipo || '').includes('saque_inicio')} visibleLayers={visibleLayers} identityConvention={editorContext === 'match-plan' ? 'match-plan' : 'default'} renderMode={renderMode} optimizeLabels={renderMode === 'abp'} />
             </div>
             {!drawableElements.length ? <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8"><div className="max-w-xs rounded-2xl bg-slate-950/80 px-5 py-4 text-center text-white shadow-xl backdrop-blur-sm"><p className="text-sm font-black">El campo está listo</p><p className="mt-1 text-xs leading-5 text-slate-300">Empieza añadiendo participantes, balón o trazados.</p></div></div> : null}
           </div>
+          {renderMode === 'abp' && crowdedParticipants.length ? <p role="status" className="mx-auto w-fit rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-1.5 text-[10px] font-bold text-amber-100">Elementos muy próximos · {crowdedParticipants.length} {crowdedParticipants.length === 1 ? 'pareja' : 'parejas'}. Revisa su separación si no es intencionada.</p> : null}
           {editorContext === 'match-plan' ? <MatchPlanIdentityLegend /> : null}
           {visibleLayers.chronology ? <section className="rounded-[24px] border border-white/[0.07] bg-[#08131f]/75 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2"><p className={labelClass}>Cronología</p><span className="text-[10px] text-slate-500">Selecciona un paso para editar su participante</span></div>

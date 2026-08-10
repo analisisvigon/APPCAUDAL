@@ -208,6 +208,7 @@ const getPreferredPrintIdentity = (element, player, fallbackIndex) => {
     element?.short_name,
     player?.name,
     element?.name,
+    element?.roles?.[0],
   ].map(cleanString).find(Boolean);
   if (usefulName) return usefulName;
 

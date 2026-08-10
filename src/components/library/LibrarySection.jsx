@@ -4,7 +4,8 @@ import SetPieceDiagramCanvas from '../print/SetPieceDiagramCanvas';
 import SetPieceDiagramEditor from '../print/SetPieceDiagramEditor';
 import LibraryPrintSheet from './LibraryPrintSheet';
 import SetPieceLaboratory from './SetPieceLaboratory';
-import { isSetPieceLaboratoryItem } from '../../utils/setPieceLaboratory';
+import { TRAINING_LIBRARY_SECTIONS, partitionTrainingLibraryItems } from '../../utils/setPieceLaboratory';
+import { createSetPieceThumbnailLayers } from '../../utils/setPieceRenderLayout';
 
 export const libraryCategories = [
   'Ejercicios técnicos',
@@ -55,7 +56,7 @@ function ExerciseLibrarySection({ players = [] }) {
         .select('*')
         .order('updated_at', { ascending: false });
       if (loadError) throw loadError;
-      setItems((data || []).filter((item) => !isSetPieceLaboratoryItem(item)));
+      setItems(partitionTrainingLibraryItems(data || [])[TRAINING_LIBRARY_SECTIONS.EXERCISES]);
     } catch (loadError) {
       console.error('Error cargando biblioteca desde Supabase:', loadError);
       setError(loadError.message || 'No se pudo cargar la biblioteca.');
@@ -216,7 +217,7 @@ function ExerciseLibrarySection({ players = [] }) {
               <button key={item.id} type="button" onClick={() => editItem(item)} className={`rounded-3xl border p-4 text-left transition ${selectedId === item.id ? 'border-caudal-electric bg-caudal-electric/10' : 'border-white/5 bg-white/5 hover:bg-white/10'}`}>
                 <div className="grid gap-4 sm:grid-cols-[120px_1fr]">
                   <div className="rounded-2xl bg-white p-2 text-black">
-                    <SetPieceDiagramCanvas elements={item.elements || []} readOnly />
+                    <SetPieceDiagramCanvas elements={item.elements || []} readOnly renderMode="thumbnail" visibleLayers={createSetPieceThumbnailLayers()} />
                   </div>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-black text-white">{item.nombre}</p>

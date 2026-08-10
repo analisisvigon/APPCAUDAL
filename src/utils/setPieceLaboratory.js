@@ -6,6 +6,11 @@ import {
 
 export const SET_PIECE_LAB_CATEGORY = 'ABP Laboratorio';
 
+export const TRAINING_LIBRARY_SECTIONS = Object.freeze({
+  EXERCISES: 'exercises',
+  SET_PIECES: 'set-pieces',
+});
+
 export const SET_PIECE_LAB_TYPES = Object.freeze([
   { id: 'corner_ofensivo', label: 'Córner ofensivo', category: SET_PIECE_LAB_CATEGORY },
   { id: 'falta_lateral_ofensiva', label: 'Falta lateral ofensiva', category: SET_PIECE_LAB_CATEGORY },
@@ -26,15 +31,58 @@ export const SET_PIECE_LAB_STATUSES = Object.freeze([
 ]);
 
 const clean = (value) => String(value || '').trim();
+export const normalizeTrainingLibraryClassification = (value) => clean(value)
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '')
+  .replace(/[._/\\:;()[\]{}-]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .toLocaleLowerCase('es');
+
+const SET_PIECE_CATEGORY_KEYS = new Set([
+  'abp ofensiva',
+  'abp ofensivo',
+  'abp defensiva',
+  'abp defensivo',
+  'abp laboratorio',
+  'laboratorio abp',
+  'accion a balon parado',
+  'acciones a balon parado',
+  'balon parado',
+]);
+
+const SET_PIECE_TYPE_KEYS = new Set([
+  ...SET_PIECE_LAB_TYPES.map((entry) => normalizeTrainingLibraryClassification(entry.id)),
+  'abp',
+  'abp ofensiva',
+  'abp ofensivo',
+  'abp defensiva',
+  'abp defensivo',
+  'accion a balon parado',
+  'acciones a balon parado',
+]);
 const createId = () => globalThis.crypto?.randomUUID?.() || 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (token) => {
   const random = Math.floor(Math.random() * 16);
   const value = token === 'x' ? random : (random & 0x3) | 0x8;
   return value.toString(16);
 });
 
-export const isSetPieceLaboratoryItem = (item) => (
-  clean(item?.categoria).toLocaleLowerCase('es') === SET_PIECE_LAB_CATEGORY.toLocaleLowerCase('es')
+export const isSetPieceLibraryItem = (item) => (
+  SET_PIECE_CATEGORY_KEYS.has(normalizeTrainingLibraryClassification(item?.categoria))
+  || SET_PIECE_TYPE_KEYS.has(normalizeTrainingLibraryClassification(item?.tipo))
 );
+
+export const isSetPieceLaboratoryItem = isSetPieceLibraryItem;
+
+export const getTrainingLibrarySection = (item) => (
+  isSetPieceLibraryItem(item) ? TRAINING_LIBRARY_SECTIONS.SET_PIECES : TRAINING_LIBRARY_SECTIONS.EXERCISES
+);
+
+export const partitionTrainingLibraryItems = (items = []) => (Array.isArray(items) ? items : []).reduce((partition, item) => {
+  partition[getTrainingLibrarySection(item)].push(item);
+  return partition;
+}, { [TRAINING_LIBRARY_SECTIONS.EXERCISES]: [], [TRAINING_LIBRARY_SECTIONS.SET_PIECES]: [] });
 
 export const getSetPieceLabType = (type) => SET_PIECE_LAB_TYPES.find((entry) => entry.id === type) || SET_PIECE_LAB_TYPES[0];
 
@@ -112,7 +160,7 @@ export const prepareSetPieceLaboratoryItem = (item) => {
     ...item,
     nombre: clean(item?.nombre),
     tipo: getSetPieceLabType(item?.tipo).id,
-    categoria: SET_PIECE_LAB_CATEGORY,
+    categoria: clean(item?.categoria) || SET_PIECE_LAB_CATEGORY,
     elements: setSetPieceTacticalMeta(item?.elements, meta),
   };
 };
@@ -135,7 +183,7 @@ export const buildSetPieceLaboratoryPayload = (draft) => {
     id: draft.id,
     nombre: clean(draft.nombre) || 'Jugada ABP sin nombre',
     tipo: getSetPieceLabType(draft.tipo).id,
-    categoria: SET_PIECE_LAB_CATEGORY,
+    categoria: isSetPieceLibraryItem(draft) ? clean(draft.categoria) : SET_PIECE_LAB_CATEGORY,
     descripcion: meta.generalInstruction,
     objetivo: meta.objective,
     variantes: meta.alternative,
