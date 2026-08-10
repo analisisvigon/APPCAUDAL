@@ -28,6 +28,7 @@ const loadedRows = [{
     decelerations: 43,
     sprints: 2,
     meters_per_minute: 63,
+    load_units: 320,
   }],
 }];
 
@@ -84,6 +85,7 @@ const saveClient = {
     saved.session.session_type = params.p_session_type;
     saved.session.actual_duration_minutes = params.p_actual_duration_minutes;
     saved.metrics.distance_m = params.p_distance_m;
+    saved.metrics.load_units = params.p_load_units;
     return { data: structuredClone(saved), error: null };
   },
 };
@@ -98,6 +100,7 @@ const baseDraft = {
   decelerations: '',
   sprints: '',
   metersPerMinute: '',
+  loadUnits: '320',
   notes: '',
 };
 const firstSave = await saveDailyTeamLoad(saveClient, baseDraft);
@@ -110,11 +113,13 @@ assert.equal(firstSave.session.id, editedSave.session.id);
 assert.equal(editedSave.session.id, repeatedSave.session.id);
 assert.equal(editedSave.session.actual_duration_minutes, 70);
 assert.equal(editedSave.metrics.distance_m, 5000);
+assert.equal(editedSave.metrics.load_units, 320);
 assert.equal(rpcCalls.length, 3);
 assert.ok(rpcCalls.every(([name]) => name === 'upsert_team_daily_training_load'));
 
 const replaced = replaceTrainingLoadByDate(loads, editedSave);
 assert.equal(replaced.length, 1);
 assert.equal(replaced[0].metrics.distance_m, 5000);
+assert.equal(replaced[0].metrics.load_units, 320);
 
 console.log('performanceLoadStore: all assertions passed');

@@ -70,6 +70,7 @@ create table if not exists public.training_session_load_metrics (
   decelerations integer,
   sprints integer,
   meters_per_minute numeric(8,2),
+  load_units numeric(10,2),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint training_session_load_metrics_scope_check
@@ -97,8 +98,46 @@ create table if not exists public.training_session_load_metrics (
   constraint training_session_load_metrics_sprints_check
     check (sprints is null or sprints >= 0),
   constraint training_session_load_metrics_meters_per_minute_check
-    check (meters_per_minute is null or meters_per_minute >= 0)
+    check (meters_per_minute is null or meters_per_minute >= 0),
+  constraint training_session_load_metrics_load_units_check
+    check (load_units is null or load_units >= 0)
 );
+
+alter table public.training_session_load_metrics
+  add column if not exists load_units numeric(10,2);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.training_session_load_metrics'::regclass
+      and conname = 'training_session_load_metrics_load_units_check'
+  ) then
+    alter table public.training_session_load_metrics
+      add constraint training_session_load_metrics_load_units_check
+      check (load_units is null or load_units >= 0);
+  end if;
+end;
+$$;
+
+alter table public.training_session_load_metrics
+  add column if not exists load_units numeric(10,2);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.training_session_load_metrics'::regclass
+      and conname = 'training_session_load_metrics_load_units_check'
+  ) then
+    alter table public.training_session_load_metrics
+      add constraint training_session_load_metrics_load_units_check
+      check (load_units is null or load_units >= 0);
+  end if;
+end;
+$$;
 
 create unique index if not exists training_session_load_metrics_team_session_key
   on public.training_session_load_metrics(session_id)
@@ -166,6 +205,7 @@ create or replace function public.upsert_team_daily_training_load(
   p_decelerations integer default null,
   p_sprints integer default null,
   p_meters_per_minute numeric default null,
+  p_load_units numeric default null,
   p_notes text default null
 )
 returns jsonb
@@ -198,7 +238,8 @@ begin
     or p_accelerations < 0
     or p_decelerations < 0
     or p_sprints < 0
-    or p_meters_per_minute < 0 then
+    or p_meters_per_minute < 0
+    or p_load_units < 0 then
     raise exception 'Las metricas de carga no pueden ser negativas.' using errcode = '23514';
   end if;
 
@@ -246,7 +287,8 @@ begin
     accelerations,
     decelerations,
     sprints,
-    meters_per_minute
+    meters_per_minute,
+    load_units
   )
   values (
     saved_session.id,
@@ -258,7 +300,8 @@ begin
     p_accelerations,
     p_decelerations,
     p_sprints,
-    p_meters_per_minute
+    p_meters_per_minute,
+    p_load_units
   )
   on conflict (session_id) where scope = 'team'
   do update set
@@ -269,6 +312,7 @@ begin
     decelerations = excluded.decelerations,
     sprints = excluded.sprints,
     meters_per_minute = excluded.meters_per_minute,
+    load_units = excluded.load_units,
     updated_at = now()
   returning * into saved_metrics;
 
@@ -280,10 +324,10 @@ end;
 $$;
 
 revoke all on function public.upsert_team_daily_training_load(
-  date, text, integer, numeric, numeric, integer, integer, integer, numeric, text
+  date, text, integer, numeric, numeric, integer, integer, integer, numeric, numeric, text
 ) from public, anon;
 grant execute on function public.upsert_team_daily_training_load(
-  date, text, integer, numeric, numeric, integer, integer, integer, numeric, text
+  date, text, integer, numeric, numeric, integer, integer, integer, numeric, numeric, text
 ) to authenticated, service_role;
 
 commit;

@@ -30,6 +30,7 @@ export function normalizeTrainingLoadRecord(record) {
       decelerations: metrics.decelerations,
       sprints: metrics.sprints,
       meters_per_minute: metrics.meters_per_minute,
+      load_units: metrics.load_units,
       updated_at: metrics.updated_at,
     },
   };
@@ -61,6 +62,7 @@ export async function loadTrainingLoadsRange(client, startDate, endDate) {
         decelerations,
         sprints,
         meters_per_minute,
+        load_units,
         updated_at
       )
     `)

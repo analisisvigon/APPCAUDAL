@@ -28,6 +28,7 @@ const validDraft = {
   decelerations: '43',
   sprints: '2',
   metersPerMinute: '63',
+  loadUnits: '320,5',
   notes: 'Trabajo de campo reducido',
 };
 
@@ -42,6 +43,7 @@ assert.deepEqual(buildDailyLoadRpcParams(validDraft), {
   p_decelerations: 43,
   p_sprints: 2,
   p_meters_per_minute: 63,
+  p_load_units: 320.5,
   p_notes: 'Trabajo de campo reducido',
 });
 
@@ -72,6 +74,7 @@ assert.deepEqual(buildDailyLoadRpcParams(nullableRestDraft), {
   p_decelerations: null,
   p_sprints: null,
   p_meters_per_minute: null,
+  p_load_units: null,
   p_notes: null,
 });
 
@@ -79,7 +82,7 @@ const missingDuration = validateDailyLoad({ ...nullableRestDraft, sessionType: '
 assert.equal(missingDuration.isValid, false);
 assert.match(missingDuration.errors.actualDurationMinutes, /obligatorio/);
 
-for (const field of ['actualDurationMinutes', 'distanceKm', 'hsrM', 'accelerations', 'decelerations', 'sprints', 'metersPerMinute']) {
+for (const field of ['actualDurationMinutes', 'distanceKm', 'hsrM', 'accelerations', 'decelerations', 'sprints', 'metersPerMinute', 'loadUnits']) {
   const result = validateDailyLoad({ ...validDraft, [field]: '-1' });
   assert.equal(result.isValid, false, `${field} debe rechazar negativos`);
   assert.match(result.errors[field], /negativo|mayor que cero/);
@@ -107,10 +110,12 @@ const loadedDraft = buildDailyLoadDraft({
     decelerations: 43,
     sprints: 2,
     meters_per_minute: 63,
+    load_units: 320.5,
   },
 });
 assert.equal(loadedDraft.sessionDate, '2026-08-10');
 assert.equal(loadedDraft.distanceKm, '4,25');
+assert.equal(loadedDraft.loadUnits, '320,5');
 assert.equal(loadedDraft.notes, 'Observación');
 
 assert.deepEqual(getRpeCoverage(18, 21), {

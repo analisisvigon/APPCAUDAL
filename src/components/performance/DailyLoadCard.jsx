@@ -15,6 +15,7 @@ const EXTERNAL_METRIC_FIELDS = [
   { key: 'accelerations', label: 'ACC', suffix: '', inputMode: 'numeric' },
   { key: 'decelerations', label: 'DCC', suffix: '', inputMode: 'numeric' },
   { key: 'sprints', label: 'Sprint', suffix: '', inputMode: 'numeric' },
+  { key: 'loadUnits', label: 'U.C.', tooltip: 'Unidades de carga', suffix: '', inputMode: 'decimal' },
 ];
 
 function formatLongCalendarDate(value) {
@@ -174,6 +175,7 @@ export default function DailyLoadCard({
     { value: metrics.accelerations, label: 'ACC', suffix: '', decimals: 0 },
     { value: metrics.decelerations, label: 'DCC', suffix: '', decimals: 0 },
     { value: metrics.sprints, label: 'Sprint', suffix: '', decimals: 0 },
+    { value: metrics.load_units, label: 'U.C.', suffix: '', decimals: 2 },
   ] : [];
 
   return (

@@ -20,6 +20,7 @@ export const EMPTY_DAILY_LOAD_DRAFT = Object.freeze({
   decelerations: '',
   sprints: '',
   metersPerMinute: '',
+  loadUnits: '',
   notes: '',
 });
 
@@ -69,6 +70,7 @@ export function buildDailyLoadDraft(load, sessionDate = '') {
     decelerations: formatDraftNumber(metrics?.decelerations),
     sprints: formatDraftNumber(metrics?.sprints),
     metersPerMinute: formatDraftNumber(metrics?.meters_per_minute),
+    loadUnits: formatDraftNumber(metrics?.load_units),
     notes: session?.notes || '',
   };
 }
@@ -92,6 +94,7 @@ export function validateDailyLoad(draft) {
     ['decelerations', 'DCC'],
     ['sprints', 'Sprint'],
     ['metersPerMinute', 'M/min'],
+    ['loadUnits', 'U.C.'],
   ];
 
   fieldDefinitions.forEach(([field, label]) => {
@@ -142,6 +145,7 @@ export function buildDailyLoadRpcParams(draft) {
     p_decelerations: values.decelerations,
     p_sprints: values.sprints,
     p_meters_per_minute: values.metersPerMinute,
+    p_load_units: values.loadUnits,
     p_notes: String(draft.notes || '').trim() || null,
   };
 }
