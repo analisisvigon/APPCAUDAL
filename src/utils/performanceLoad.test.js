@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildDailyLoadDraft,
   buildDailyLoadRpcParams,
+  getRpeCoverage,
   isIsoCalendarDate,
   parseNullablePerformanceNumber,
   validateDailyLoad,
@@ -111,5 +112,22 @@ const loadedDraft = buildDailyLoadDraft({
 assert.equal(loadedDraft.sessionDate, '2026-08-10');
 assert.equal(loadedDraft.distanceKm, '4,25');
 assert.equal(loadedDraft.notes, 'Observación');
+
+assert.deepEqual(getRpeCoverage(18, 21), {
+  responses: 18,
+  total: 21,
+  percentage: 86,
+  hasReliableTotal: true,
+  isLowCoverage: false,
+});
+assert.equal(getRpeCoverage(4, 21).isLowCoverage, true);
+assert.deepEqual(getRpeCoverage(22, 21), {
+  responses: 22,
+  total: null,
+  percentage: null,
+  hasReliableTotal: false,
+  isLowCoverage: false,
+});
+assert.equal(getRpeCoverage(18, null).hasReliableTotal, false);
 
 console.log('performanceLoad: all assertions passed');

@@ -25799,6 +25799,7 @@ function App() {
           load={selectedTrainingLoad}
           averageRpe={selectedDay?.avgRpe ?? null}
           rpeResponseCount={selectedDay?.rpeResponseCount || 0}
+          activePlayerCount={players.length || null}
           saving={performanceLoadSaving}
           onSave={savePerformanceDailyLoad}
         />

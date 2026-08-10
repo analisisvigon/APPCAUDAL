@@ -11,6 +11,7 @@ const store = fs.readFileSync(path.join(projectRoot, 'src', 'utils', 'performanc
 assert.match(app, /<DailyLoadCard/);
 assert.match(app, /averageRpe=\{selectedDay\?\.avgRpe \?\? null\}/);
 assert.match(app, /rpeResponseCount=\{selectedDay\?\.rpeResponseCount \|\| 0\}/);
+assert.match(app, /activePlayerCount=\{players\.length \|\| null\}/);
 assert.match(app, /loadTrainingLoadsRange\(supabase, performanceWeekStart, weekEnd\)/);
 assert.match(app, /hasTrainingLoad[\s\S]*Carga registrada/);
 assert.match(app, /hasTrainingLoad \? 'bg-sky-300/);
@@ -20,8 +21,16 @@ assert.match(card, /Registrar carga/);
 assert.match(card, /Guardar carga/);
 assert.match(card, /Editar/);
 assert.match(card, /Automático/);
+assert.match(card, /Google Forms/);
 assert.match(card, /Sin respuestas/);
+assert.match(card, /Cobertura baja/);
+assert.match(card, /coverage\.percentage/);
 assert.match(card, /PERFORMANCE_SESSION_TYPES\.map/);
+assert.match(card, /grid grid-cols-2 gap-2 lg:grid-cols-3/);
+assert.match(card, /rows=\{2\}/);
+assert.match(card, /ref=\{notesRef\}/);
+assert.match(card, /!editing && load/);
+assert.match(card, /\{editing \? \(/);
 assert.doesNotMatch(card, /INTENSIDAD|Intensidad|\bINT\b/);
 assert.doesNotMatch(card, /name=["']rpe|p_rpe/i, 'El RPE automático no debe ser un campo editable ni persistido.');
 

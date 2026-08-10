@@ -149,3 +149,22 @@ export function buildDailyLoadRpcParams(draft) {
 export function getPerformanceSessionTypeLabel(value) {
   return PERFORMANCE_SESSION_TYPES.find((option) => option.value === value)?.label || 'Otro';
 }
+
+export function getRpeCoverage(responseCount, activePlayerCount) {
+  const responses = Number.isInteger(Number(responseCount)) && Number(responseCount) >= 0
+    ? Number(responseCount)
+    : 0;
+  const requestedTotal = Number(activePlayerCount);
+  const hasReliableTotal = Number.isInteger(requestedTotal)
+    && requestedTotal > 0
+    && responses <= requestedTotal;
+  const total = hasReliableTotal ? requestedTotal : null;
+  const percentage = total === null ? null : Math.round((responses / total) * 100);
+  return {
+    responses,
+    total,
+    percentage,
+    hasReliableTotal,
+    isLowCoverage: responses > 0 && percentage !== null && percentage < 50,
+  };
+}
