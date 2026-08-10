@@ -15,6 +15,22 @@ assert.match(app, /activePlayerCount=\{players\.length \|\| null\}/);
 assert.match(app, /loadTrainingLoadsRange\(supabase, performanceWeekStart, weekEnd\)/);
 assert.match(app, /hasTrainingLoad[\s\S]*Carga registrada/);
 assert.match(app, /hasTrainingLoad \? 'bg-sky-300/);
+assert.match(app, /ref=\{performanceDayNavRef\}/);
+assert.match(app, /performanceDayNavRef\.current/);
+assert.match(app, /scrollIntoView\(\{/);
+assert.match(app, /data-selected=\{selected \? 'true' : 'false'\}/);
+assert.match(app, /min-w-\[770px\][^"']*grid-cols-7/);
+assert.match(app, /onClick=\{\(\) => setPerformanceSelectedDate\(day\.entryDate\)\}/);
+assert.doesNotMatch(app, /performanceDayTooltipDate|setPerformanceDayTooltipDate/);
+assert.doesNotMatch(app, /Pulso diario del equipo|Resumen por día/);
+
+const microcycleNavigation = app.match(/<nav aria-label="Navegación del microciclo"[\s\S]*?<\/nav>/)?.[0] || '';
+assert.match(microcycleNavigation, /day\.dayStatus\.label/);
+assert.match(microcycleNavigation, /day\.avgRpe/);
+assert.match(microcycleNavigation, /day\.rpeResponseCount/);
+assert.match(microcycleNavigation, /day\.relevantCount/);
+assert.match(microcycleNavigation, /Carga registrada/);
+assert.doesNotMatch(microcycleNavigation, /day\.maxRpe|day\.highRpeCount|Máximo|RPE altos/);
 
 assert.match(card, /Sin carga registrada\./);
 assert.match(card, /Registrar carga/);

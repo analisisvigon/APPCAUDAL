@@ -1537,7 +1537,8 @@ const performanceUiSource = appSource.slice(
 );
 assert.doesNotMatch(loadPerformanceSource, /\.from\('training_sessions'\)|\.from\('rpe_sync_pending'\)/);
 assert.match(loadPerformanceSource, /\.from\('rpe_entries'\)/);
-assert.match(performanceUiSource, /RPE por fecha/);
+assert.match(performanceUiSource, /Navegación del microciclo/);
+assert.match(performanceUiSource, /RPE \{day\.avgRpe/);
 assert.match(performanceUiSource, /Evolución diaria/);
 assert.doesNotMatch(performanceUiSource, /Crear sesión|Carga semanal|Volumen total|Carga automática|RPE pendientes de asociación/);
 assert.doesNotMatch(performanceUiSource, /session_id|duration_minutes|planned_duration/);

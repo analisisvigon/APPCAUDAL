@@ -5532,8 +5532,8 @@ function App() {
   const [performanceChartSeasonKey, setPerformanceChartSeasonKey] = useState(() => getPerformanceSportsSeason().key);
   const [performancePeriodEntries, setPerformancePeriodEntries] = useState({ key: '', wellness: [], rpe: [] });
   const [performancePeriodLoading, setPerformancePeriodLoading] = useState(false);
-  const [performanceDayTooltipDate, setPerformanceDayTooltipDate] = useState('');
   const performancePeriodCacheRef = useRef(new Map());
+  const performanceDayNavRef = useRef(null);
   const [performanceMenuRect, setPerformanceMenuRect] = useState(null);
   const [rpeSyncPending, setRpeSyncPending] = useState([]);
   const [pendingRpeSessionById, setPendingRpeSessionById] = useState({});
@@ -7056,6 +7056,17 @@ function App() {
     if (activeTab !== 'Rendimiento') return;
     loadPerformanceData();
   }, [activeTab, performanceWeekStart]);
+
+  useEffect(() => {
+    if (activeTab !== 'Rendimiento' || !performanceSelectedDate) return;
+    const navigation = performanceDayNavRef.current;
+    if (!navigation || navigation.scrollWidth <= navigation.clientWidth) return;
+    navigation.querySelector('[data-selected="true"]')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'center',
+    });
+  }, [activeTab, performanceSelectedDate, performanceWeekStart]);
 
   useEffect(() => {
     if (activeTab !== 'Rendimiento' || performanceChartPeriod === 'week') return;
@@ -25577,7 +25588,6 @@ function App() {
         return;
       }
       setPerformanceSelectedDate(point.entryDate);
-      setPerformanceDayTooltipDate(point.entryDate);
       if (performanceChartPeriod === 'month') {
         setPerformanceWeekStart(getPerformanceNaturalWeekStart(point.entryDate));
       }
@@ -25631,18 +25641,18 @@ function App() {
           ['Evolución del cumplimiento', firstSeasonDataWeek && lastSeasonDataWeek ? `${firstSeasonDataWeek.bothFormPlayerCount} → ${lastSeasonDataWeek.bothFormPlayerCount} jugadores con ambos formularios` : 'Sin datos suficientes'],
           ['Semanas con alertas', `${periodDataPoints.filter((point) => point.redDayCount || point.orangeDayCount).length}`],
         ];
-    const activeDayTooltip = dashboard.days.find((day) => day.entryDate === performanceDayTooltipDate) || null;
+    const activeDayTooltip = selectedDay || null;
     const activeChartPoint = performanceChartPoints.find((point) => point.key === selectedChartKey) || null;
 
     return (
       <section className="space-y-5">
-        <header className="relative overflow-hidden rounded-[2rem] border border-white/[0.07] bg-[#081426] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.22)] sm:p-7">
+        <header className="relative overflow-hidden rounded-[2rem] border border-white/[0.07] bg-[#081426] p-4 shadow-[0_24px_70px_rgba(0,0,0,0.22)] sm:p-5">
           <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-caudal-electric/[0.08] blur-3xl" />
-          <div className="relative flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+          <div className="relative flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <p className="text-[11px] font-black uppercase tracking-[0.28em] text-caudal-electric">Rendimiento</p>
-              <h2 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">Control físico del microciclo</h2>
-              <p className="mt-2 text-sm text-slate-400">Estado diario del equipo a partir de Wellness y RPE.</p>
+              <h2 className="mt-1.5 text-2xl font-black tracking-tight text-white sm:text-3xl">Control físico del microciclo</h2>
+              <p className="mt-1 text-sm text-slate-400">Estado diario del equipo a partir de Wellness y RPE.</p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="flex items-center rounded-2xl border border-white/10 bg-white/[0.04] p-1.5">
@@ -25703,37 +25713,56 @@ function App() {
               </button>
             </div>
           </div>
-          <nav aria-label="Navegación del microciclo" className="relative mt-5 grid grid-cols-7 gap-1 rounded-2xl border border-white/[0.07] bg-black/15 p-1.5 sm:gap-2">
-            {dashboard.days.map((day) => {
-              const selected = day.entryDate === selectedDay?.entryDate;
-              const dayPresentation = dayStatusPresentation[day.dayStatus.status];
-              const hasTrainingLoad = Boolean(getTrainingLoadForDate(performanceTrainingLoads, day.entryDate));
-              return (
-                <button
-                  key={`cycle-${day.entryDate}`}
-                  type="button"
-                  onClick={() => {
-                    setPerformanceSelectedDate(day.entryDate);
-                    setPerformanceDayTooltipDate((current) => current === day.entryDate ? '' : day.entryDate);
-                  }}
-                  className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 transition ${
-                    selected ? 'bg-caudal-electric/[0.10] text-white ring-1 ring-caudal-electric/25' : 'text-slate-500 hover:bg-white/[0.05] hover:text-slate-300'
-                  }`}
-                  aria-current={selected ? 'date' : undefined}
-                  title={`${day.tooltip}\n\nCumplimiento actual de formularios:\n${dashboard.upToDateCount} al día · ${dashboard.requiresNoticeCount} requieren aviso por falta de respuesta${hasTrainingLoad ? '\n\nCarga registrada' : ''}`}
-                >
-                  <span className="text-[9px] font-black uppercase tracking-[0.1em] sm:text-[10px]">{day.shortDay}</span>
-                  <span className={`h-2.5 w-2.5 rounded-full transition-all ${dayPresentation.dot} ${selected ? 'scale-125' : ''}`} />
-                  <span className="hidden text-[8px] font-bold sm:block">{formatShortDate(day.entryDate)}</span>
-                  <span
-                    aria-label={hasTrainingLoad ? 'Carga registrada' : undefined}
-                    className={`h-0.5 w-5 rounded-full transition ${hasTrainingLoad ? 'bg-sky-300 shadow-[0_0_8px_rgba(125,211,252,0.5)]' : 'bg-transparent'}`}
-                  />
-                </button>
-              );
-            })}
-          </nav>
-          <div className="relative mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[9px] font-black uppercase tracking-[0.11em] text-slate-400">
+          <div
+            ref={performanceDayNavRef}
+            className="relative -mx-1 mt-4 snap-x snap-mandatory overflow-x-auto px-1 pb-1 [scrollbar-color:rgba(125,211,252,0.22)_transparent] [scrollbar-width:thin]"
+          >
+            <nav aria-label="Navegación del microciclo" className="grid min-w-[770px] grid-cols-7 gap-1.5 rounded-2xl border border-white/[0.07] bg-black/15 p-1.5 lg:min-w-0">
+              {dashboard.days.map((day) => {
+                const selected = day.entryDate === selectedDay?.entryDate;
+                const dayPresentation = dayStatusPresentation[day.dayStatus.status];
+                const hasTrainingLoad = Boolean(getTrainingLoadForDate(performanceTrainingLoads, day.entryDate));
+                return (
+                  <button
+                    key={`cycle-${day.entryDate}`}
+                    type="button"
+                    data-selected={selected ? 'true' : 'false'}
+                    onClick={() => setPerformanceSelectedDate(day.entryDate)}
+                    className={`relative min-w-0 snap-center overflow-hidden rounded-xl border px-2 py-2.5 text-left transition ${
+                      selected
+                        ? 'border-caudal-electric/45 bg-caudal-electric/[0.10] shadow-[0_0_0_1px_rgba(92,225,230,0.06)]'
+                        : 'border-transparent bg-white/[0.018] hover:border-white/10 hover:bg-white/[0.045]'
+                    }`}
+                    aria-current={selected ? 'date' : undefined}
+                    title={`${day.tooltip}${hasTrainingLoad ? '\nCarga registrada' : ''}`}
+                  >
+                    {selected ? <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-caudal-electric" /> : null}
+                    <span className="flex items-start justify-between gap-2">
+                      <span>
+                        <span className="block text-[9px] font-black uppercase tracking-[0.13em] text-caudal-electric">{day.shortDay}</span>
+                        <span className="mt-0.5 block text-[11px] font-black text-white">{formatShortDate(day.entryDate)}</span>
+                      </span>
+                      <span
+                        title={hasTrainingLoad ? 'Carga registrada' : undefined}
+                        aria-label={hasTrainingLoad ? 'Carga registrada' : undefined}
+                        className={`mt-1 h-1 w-5 rounded-full ${hasTrainingLoad ? 'bg-sky-300 shadow-[0_0_8px_rgba(125,211,252,0.45)]' : 'bg-transparent'}`}
+                      />
+                    </span>
+                    <span className={`mt-2 inline-flex max-w-full items-center gap-1 rounded-full border px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.06em] ${dayPresentation.badge}`}>
+                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dayPresentation.dot}`} />
+                      <span className="truncate">{day.dayStatus.label}</span>
+                    </span>
+                    <span className="mt-2 block space-y-0.5 text-[8px] font-bold leading-3 text-slate-400">
+                      <span className="block text-[9px] font-black text-slate-200">RPE {day.avgRpe === null ? '—' : day.avgRpe.toFixed(1)}</span>
+                      <span className="block">{day.rpeResponseCount} {day.rpeResponseCount === 1 ? 'respuesta' : 'respuestas'}</span>
+                      <span className="block">{day.relevantCount} {day.relevantCount === 1 ? 'observación' : 'observaciones'}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+          <div className="relative mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[9px] font-black uppercase tracking-[0.11em] text-slate-400">
             {[
               ['green', 'Verde · Sin alertas'],
               ['orange', 'Naranja · Vigilancia'],
@@ -25747,7 +25776,7 @@ function App() {
             ))}
           </div>
           {activeDayTooltip ? (
-            <div className="relative mt-3 grid gap-3 rounded-2xl border border-white/[0.08] bg-black/20 p-3 text-left sm:grid-cols-[1.2fr_0.8fr]">
+            <div className="relative mt-2 grid gap-3 rounded-2xl border border-white/[0.08] bg-black/20 p-3 text-left sm:grid-cols-[1.2fr_0.8fr]">
               <div>
                 <p className="text-[9px] font-black uppercase tracking-[0.16em] text-caudal-electric">Estado físico del día</p>
                 <p className="mt-1 text-sm font-black capitalize text-white">{activeDayTooltip.label} · {activeDayTooltip.dayStatus.label}</p>
@@ -25768,7 +25797,7 @@ function App() {
               </div>
             </div>
           ) : null}
-          <div className="relative mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-white/[0.07] pt-4 text-xs text-slate-500">
+          <div className="relative mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-white/[0.07] pt-3 text-xs text-slate-500">
             <span className="inline-flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,0.7)]" />
               Última sincronización: <strong className="font-bold text-slate-300">{formatSyncDate(performanceLastSyncedAt)}</strong>
@@ -25837,79 +25866,6 @@ function App() {
             <span className="font-bold text-amber-100"><strong className="mr-1 text-base font-black text-white">{dashboard.wellnessPendingCount}</strong> sin Wellness</span>
             <span className="font-bold text-rose-100"><strong className="mr-1 text-base font-black text-white">{dashboard.requiresNoticeCount}</strong> requiere aviso</span>
           </div>
-        </section>
-
-        <section aria-label="RPE por fecha · Resumen por día" className="rounded-[1.75rem] border border-white/[0.07] bg-[#091428] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-6">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Resumen por día</p>
-              <h3 className="mt-1 text-lg font-black text-white">Pulso diario del equipo</h3>
-            </div>
-            <p className="text-xs text-slate-500">Selecciona un día para consultar el detalle</p>
-          </div>
-          <div className="-mx-1 mt-3 flex snap-x gap-2.5 overflow-x-auto px-1 pb-2">
-            {dashboard.days.map((day) => (
-              <button
-                key={day.entryDate}
-                type="button"
-                onClick={() => {
-                  setPerformanceSelectedDate(day.entryDate);
-                  setPerformanceDayTooltipDate(day.entryDate);
-                }}
-                className={`min-w-[166px] snap-start rounded-2xl border p-3 text-left transition sm:min-w-[178px] ${
-                  selectedDay?.entryDate === day.entryDate
-                    ? 'border-caudal-electric/45 bg-caudal-electric/[0.09] shadow-[0_0_0_1px_rgba(92,225,230,0.08)]'
-                    : 'border-white/[0.07] bg-white/[0.025] hover:border-white/15 hover:bg-white/[0.05]'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">{day.shortDay}</p>
-                    <p className="mt-1 text-sm font-black capitalize text-white">{formatShortDate(day.entryDate)}</p>
-                  </div>
-                  <span
-                    title={day.tooltip}
-                    className={`mt-1 h-2.5 w-2.5 rounded-full ${dayStatusPresentation[day.dayStatus.status].dot}`}
-                  />
-                </div>
-                <p className={`mt-2 inline-flex rounded-full border px-2 py-0.5 text-[8px] font-black uppercase ${dayStatusPresentation[day.dayStatus.status].badge}`}>
-                  {day.dayStatus.label}
-                </p>
-                {day.hasData ? (
-                  <>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <div>
-                        <p className="text-xl font-black text-white">{day.rpeResponseCount || '—'}</p>
-                        <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-500">Respuestas RPE</p>
-                      </div>
-                      <div>
-                        <p className="text-xl font-black text-white">{day.avgRpe === null ? '—' : day.avgRpe.toFixed(1)}</p>
-                        <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-500">RPE medio</p>
-                      </div>
-                      <div>
-                        <p className="text-base font-black text-white">{day.maxRpe === null ? '—' : day.maxRpe.toFixed(1)}</p>
-                        <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-500">Máximo</p>
-                      </div>
-                      <div>
-                        <p className="text-base font-black text-white">{day.highRpeCount}</p>
-                        <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-500">RPE altos</p>
-                      </div>
-                    </div>
-                    <p className="mt-3 border-t border-white/[0.07] pt-2 text-[9px] font-bold text-slate-400">
-                      {day.relevantCount
-                        ? `${day.relevantCount} comentarios o molestias`
-                        : 'Sin comentarios relevantes'}
-                    </p>
-                  </>
-                ) : (
-                  <div className="mt-5 rounded-xl border border-dashed border-white/10 px-3 py-4 text-center text-xs font-bold text-slate-500">
-                    Sin respuestas
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-
         </section>
 
         <div className={`grid items-stretch gap-5 xl:grid-cols-[1.35fr_0.85fr] ${
