@@ -7,6 +7,107 @@ export const PERFORMANCE_SESSION_TYPES = Object.freeze([
   { value: 'other', label: 'Otro' },
 ]);
 
+export const PERFORMANCE_LOAD_METRIC_CONFIG = Object.freeze([
+  {
+    key: 'loadUnits',
+    label: 'U.C.',
+    unit: 'U.C.',
+    aggregation: 'sum',
+    supportsAverage: true,
+    enabled: true,
+    valueFromRecord: (record) => {
+      const value = record?.metrics?.load_units;
+      return Number.isFinite(Number(value)) ? Number(value) : null;
+    },
+  },
+  {
+    key: 'distanceKm',
+    label: 'Distancia',
+    unit: 'km',
+    aggregation: 'sum',
+    supportsAverage: true,
+    enabled: false,
+    valueFromRecord: (record) => {
+      const value = Number(record?.metrics?.distance_m);
+      return Number.isFinite(value) ? value / 1000 : null;
+    },
+  },
+  {
+    key: 'hsrM',
+    label: 'HSR',
+    unit: 'm',
+    aggregation: 'sum',
+    supportsAverage: true,
+    enabled: false,
+    valueFromRecord: (record) => {
+      const value = Number(record?.metrics?.hsr_m);
+      return Number.isFinite(value) ? value : null;
+    },
+  },
+  {
+    key: 'accelerations',
+    label: 'ACC',
+    unit: '',
+    aggregation: 'sum',
+    supportsAverage: false,
+    enabled: false,
+    valueFromRecord: (record) => {
+      const value = Number(record?.metrics?.accelerations);
+      return Number.isFinite(value) ? value : null;
+    },
+  },
+  {
+    key: 'decelerations',
+    label: 'DCC',
+    unit: '',
+    aggregation: 'sum',
+    supportsAverage: false,
+    enabled: false,
+    valueFromRecord: (record) => {
+      const value = Number(record?.metrics?.decelerations);
+      return Number.isFinite(value) ? value : null;
+    },
+  },
+  {
+    key: 'sprints',
+    label: 'Sprint',
+    unit: '',
+    aggregation: 'sum',
+    supportsAverage: false,
+    enabled: false,
+    valueFromRecord: (record) => {
+      const value = Number(record?.metrics?.sprints);
+      return Number.isFinite(value) ? value : null;
+    },
+  },
+  {
+    key: 'metersPerMinute',
+    label: 'M/min',
+    unit: 'm/min',
+    aggregation: 'avg',
+    supportsAverage: true,
+    enabled: false,
+    valueFromRecord: (record) => {
+      const value = Number(record?.metrics?.meters_per_minute);
+      return Number.isFinite(value) ? value : null;
+    },
+  },
+  {
+    key: 'actualDurationMinutes',
+    label: 'Volumen',
+    unit: 'min',
+    aggregation: 'sum',
+    supportsAverage: false,
+    enabled: false,
+    valueFromRecord: (record) => {
+      const value = Number(record?.session?.actual_duration_minutes);
+      return Number.isFinite(value) ? value : null;
+    },
+  },
+]);
+
+export const getPerformanceLoadMetricConfig = (key) => PERFORMANCE_LOAD_METRIC_CONFIG.find((item) => item.key === key) || PERFORMANCE_LOAD_METRIC_CONFIG[0];
+
 const SESSION_TYPE_VALUES = new Set(PERFORMANCE_SESSION_TYPES.map((option) => option.value));
 const INTEGER_FIELDS = new Set(['actualDurationMinutes', 'accelerations', 'decelerations', 'sprints']);
 
