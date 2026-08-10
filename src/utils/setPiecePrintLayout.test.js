@@ -164,12 +164,29 @@ assert.equal(getMeaningfulSetPiecePrintText('Consigna pendiente de definir'), ''
 assert.equal(getMeaningfulSetPiecePrintText('Sin observaciones.'), '');
 const emptyModel = buildSetPiecePrintPlayModel(createPlay('empty', 1, { generalInstruction: 'Consigna pendiente de definir', objective: 'Sin definir', risk: 'Sin riesgo', alternative: 'Sin alternativa', observations: 'Sin observaciones' }));
 assert.equal(emptyModel.instruction || emptyModel.objective || emptyModel.risk || emptyModel.alternative || emptyModel.observations, '', 'los placeholders no generan bloques');
-assert.deepEqual(emptyModel.classifications, [], 'clasificaciones vacías no generan etiquetas');
-assert.deepEqual(printModel.classifications, ['Segundo palo', 'Bloqueo', 'Zonal', 'Cerrado'], 'el golpeo definido aparece en preview y PDF junto a las clasificaciones');
+assert.deepEqual(emptyModel.headerFacts, [], 'Destino y Golpeo vacíos no generan una fila');
+assert.deepEqual(printModel.headerFacts, [
+  { id: 'destination', label: 'Destino', value: 'Segundo palo' },
+  { id: 'delivery', label: 'Golpeo', value: 'Cerrado' },
+], 'la cabecera impresa solo presenta Destino y Golpeo');
+assert.equal(JSON.stringify(printModel.headerFacts).includes('Bloqueo') || JSON.stringify(printModel.headerFacts).includes('Zonal'), false, 'mecanismo y marcaje no llegan visualmente a la cabecera');
 assert.equal(printModel.deliveryType, 'closed');
 assert.equal(printModel.deliveryTypeLabel, 'Cerrado');
 const undefinedDeliveryModel = buildSetPiecePrintPlayModel(createPlay('delivery-undefined', 1, { ...printMeta, deliveryType: '' }));
-assert.equal(undefinedDeliveryModel.classifications.includes('Sin definir'), false, 'un golpeo sin definir no ensucia la impresión');
+assert.deepEqual(undefinedDeliveryModel.headerFacts, [{ id: 'destination', label: 'Destino', value: 'Segundo palo' }], 'golpeo sin definir deja únicamente Destino');
+const undefinedDestinationModel = buildSetPiecePrintPlayModel(createPlay('destination-undefined', 1, { ...printMeta, libraryZone: '' }));
+assert.deepEqual(undefinedDestinationModel.headerFacts, [{ id: 'delivery', label: 'Golpeo', value: 'Cerrado' }], 'zona sin definir deja únicamente Golpeo');
+const undefinedHeaderModel = buildSetPiecePrintPlayModel(createPlay('header-undefined', 1, { ...printMeta, libraryZone: '', deliveryType: '' }));
+assert.deepEqual(undefinedHeaderModel.headerFacts, [], 'si ambos valores faltan no aparece una fila vacía');
+[
+  ['Primer palo', 'open', 'Abierto'],
+  ['Segundo palo', 'closed', 'Cerrado'],
+  ['Zona media', 'open', 'Abierto'],
+  ['En corto', 'closed', 'Cerrado'],
+].forEach(([zone, deliveryType, deliveryLabel], index) => {
+  const model = buildSetPiecePrintPlayModel(createPlay(`header-combination-${index}`, 1, { ...printMeta, libraryZone: zone, deliveryType }));
+  assert.deepEqual(model.headerFacts.map((fact) => fact.value), [zone, deliveryLabel], `${zone} + ${deliveryLabel} conserva los valores persistidos`);
+});
 assert.equal((sheet.match(/<h3>Consigna<\/h3>/g) || []).length, 1, 'la consigna se renderiza una sola vez por jugada');
 assert.ok(sheet.includes('visibleLayers={play.displayLayers}'), 'preview y PDF respetan las capas persistidas de cada jugada');
 assert.equal(sheet.includes('visibleLayers={{ numbers: true'), false, 'el dossier ya no fuerza capas propias');
@@ -186,5 +203,8 @@ assert.ok(canvas.includes('selected && !readOnly') && canvas.includes('set-piece
 assert.ok(canvas.includes("element.type === 'dashed_arrow' || element.dashed") && canvas.includes("element.type === 'curved_arrow'"), 'el renderer combina curva y discontinuidad sin geometría paralela');
 assert.ok(canvas.includes("strokeDasharray={dashed ? '2.2 1.8' : ''}"), 'el patrón discontinuo llega al SVG usado por preview, presentación y PDF');
 assert.ok(sheet.includes('preparedForPrint') && sheet.includes('data-render-model="set-piece-print"'), 'preview y PDF comparten elementos preparados y el mismo renderer táctico');
+assert.ok(sheet.includes('play.headerFacts.length') && sheet.includes('fact.label') && sheet.includes('fact.value'), 'preview, PDF e impresión comparten la cabecera Destino/Golpeo');
+assert.equal(sheet.includes('play.classifications'), false, 'la cabecera ya no renderiza chips tácticos genéricos');
+assert.ok(css.includes('.set-piece-print-header-facts strong') && css.includes('font-size: 9pt') && css.includes('border-left: 1.25pt solid #111827'), 'Destino/Golpeo tienen jerarquía compacta y contraste apto para B/N');
 
 console.log('setPiecePrintLayout tests passed');

@@ -67,6 +67,8 @@ export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder
   const order = Number(diagram?.orden) || fallbackOrder;
   const typeLabel = getSetPiecePrintTypeLabel(diagram?.tipo);
   const displayLayers = meta.displayLayers;
+  const destination = getMeaningfulSetPiecePrintText(meta.libraryZone);
+  const delivery = getMeaningfulSetPiecePrintText(getSetPieceDeliveryTypeLabel(meta.deliveryType));
   const chronology = (displayLayers.chronology ? getSetPieceChronology(diagram?.elements, players) : []).map((step) => ({
     ...step,
     identity: formatIdentity(elementsById.get(step.id), displayLayers),
@@ -86,9 +88,10 @@ export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder
     title: getMeaningfulSetPiecePrintText(diagram?.titulo) || typeLabel || `Jugada ${order}`,
     deliveryType: meta.deliveryType,
     deliveryTypeLabel: getSetPieceDeliveryTypeLabel(meta.deliveryType),
-    classifications: [meta.libraryZone, meta.libraryMechanism, meta.libraryMarking, getSetPieceDeliveryTypeLabel(meta.deliveryType)]
-      .map(getMeaningfulSetPiecePrintText)
-      .filter(Boolean),
+    headerFacts: [
+      destination ? { id: 'destination', label: 'Destino', value: destination } : null,
+      delivery ? { id: 'delivery', label: 'Golpeo', value: delivery } : null,
+    ].filter(Boolean),
     instruction: getMeaningfulSetPiecePrintText(diagram?.consigna || meta.generalInstruction),
     objective: getMeaningfulSetPiecePrintText(meta.objective),
     whenToUse: getMeaningfulSetPiecePrintText(meta.whenToUse),

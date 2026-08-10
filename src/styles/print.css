@@ -1582,20 +1582,36 @@
   overflow-wrap: anywhere;
 }
 
-.set-piece-print-classifications {
+.set-piece-print-header-facts {
   display: flex;
   flex-wrap: wrap;
-  gap: 1mm;
+  align-items: center;
+  gap: 1.5mm 5mm;
+  margin-top: 0.35mm;
+  color: #111827;
 }
 
-.set-piece-print-classifications span {
-  border: 0.6pt solid #9ca3af;
-  border-radius: 999px;
-  padding: 0.45mm 1.6mm;
-  color: #374151;
-  font-size: 7.5pt;
-  font-weight: 800;
-  line-height: 1;
+.set-piece-print-header-facts span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1.2mm;
+  border-left: 1.25pt solid #111827;
+  padding-left: 1.7mm;
+  line-height: 1.05;
+}
+
+.set-piece-print-header-facts b {
+  font-size: 7.2pt;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.set-piece-print-header-facts strong {
+  font-size: 9pt;
+  font-weight: 950;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
 }
 
 .set-piece-print-play-body {

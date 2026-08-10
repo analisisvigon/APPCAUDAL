@@ -39,7 +39,7 @@ function PrintPlay({ play }) {
         <div className="set-piece-print-play-heading">
           <div className="set-piece-print-play-kicker"><strong>{play.typeLabel}</strong><span>Jugada {play.order}</span></div>
           <h2>{play.title}</h2>
-          {play.classifications.length ? <div className="set-piece-print-classifications">{play.classifications.map((classification) => <span key={classification}>{classification}</span>)}</div> : null}
+          {play.headerFacts.length ? <div className="set-piece-print-header-facts">{play.headerFacts.map((fact) => <span key={fact.id}><b>{fact.label}:</b><strong>{fact.value}</strong></span>)}</div> : null}
         </div>
       </header>
 
