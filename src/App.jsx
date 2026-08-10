@@ -60,6 +60,14 @@ import {
   resolveGoalParticipant,
 } from './utils/goalEvents';
 import {
+  DEFAULT_GOAL_PHASE,
+  GOAL_PHASE_OPTIONS,
+  getGoalModalSummaryEvent,
+  getGoalSubphaseOptions,
+  normalizeGoalTacticalContext,
+  updateGoalPrimaryContext,
+} from './utils/goalFormState';
+import {
   buildDelegatedPlayerOptions,
   buildDelegatedQuickEventDbPayload,
   delegatedEventMatchesPlayer,
@@ -589,12 +597,7 @@ const competitionOptions = [
   { value: 'friendly', label: 'Amistoso' },
 ];
 const eventColorOptions = ['emerald', 'red', 'sky', 'violet', 'amber', 'orange', 'slate'];
-const goalPhaseOptions = {
-  'Juego combinativo': ['Dentro del área', 'Fuera del área'],
-  'Juego directo': ['Centro al área', 'Segunda jugada'],
-  'Transición': ['Tras robo', 'Tras ABP'],
-  ABP: ['Córner', 'Falta directa', 'Falta con remate', 'Saque de banda', 'Penalti', 'Segunda jugada'],
-};
+const goalPhaseOptions = GOAL_PHASE_OPTIONS;
 const pitchZoneCatalog = [
   { value: 'finalizacion_izquierda', label: 'F.Finalización izquierda', shortLabel: 'F.Finalización\nIZQ' },
   { value: 'finalizacion_centro', label: 'F.Finalización centro', shortLabel: 'F.Finalización\nCENTRO' },
@@ -627,7 +630,7 @@ const defaultGoalAnalysisDraft = {
   scorerId: null,
   assistant: '',
   assistantId: null,
-  phase: '',
+  phase: DEFAULT_GOAL_PHASE,
   subphase: '',
   shotZone: '',
   assistZone: '',
@@ -5419,7 +5422,6 @@ function App() {
   const [systemChangeDraft, setSystemChangeDraft] = useState(null);
   const [editingSystemEventId, setEditingSystemEventId] = useState('');
   const [systemChangeSaving, setSystemChangeSaving] = useState(false);
-  const [lastGoalAnalysisContext, setLastGoalAnalysisContext] = useState(null);
   const [isStatsCallupPanelOpen, setIsStatsCallupPanelOpen] = useState(false);
   const [selectedStatsCallups, setSelectedStatsCallups] = useState([]);
   const [statsCallupFilter, setStatsCallupFilter] = useState('TODOS');
@@ -15708,19 +15710,18 @@ function App() {
   };
 
   const openGoalAnalysisModal = () => {
-    const remembered = lastGoalAnalysisContext || {};
-    const goalPlayerOptions = getStatsCalledPlayers().length ? getStatsCalledPlayers() : players;
+    const tacticalContext = normalizeGoalTacticalContext(defaultGoalAnalysisDraft);
     setStatsError('');
     setStatsSaveStatus('');
     setEditingGoalEventId('');
     setGoalAnalysisDraft({
       ...defaultGoalAnalysisDraft,
-      ...remembered,
+      ...tacticalContext,
       minute: '',
       summary: '',
       videoUrl: '',
-      scorer: goalPlayerOptions[0]?.name || '',
-      scorerId: isUuid(goalPlayerOptions[0]?.id) ? goalPlayerOptions[0].id : null,
+      scorer: '',
+      scorerId: null,
       assistant: '',
       assistantId: null,
     });
@@ -15730,6 +15731,7 @@ function App() {
   const openGoalEditModal = (eventId) => {
     const goal = getStatsGoalEvents().find((event) => event.id === eventId);
     if (!goal) return;
+    const tacticalContext = normalizeGoalTacticalContext({ phase: goal.phase, subphase: goal.subphase });
     setStatsError('');
     setStatsSaveStatus('');
     setEditingGoalEventId(goal.id);
@@ -15742,8 +15744,7 @@ function App() {
       scorerId: goal.scorerId || null,
       assistant: goal.assistant || '',
       assistantId: goal.assistantId || null,
-      phase: goal.phase || '',
-      subphase: goal.subphase || '',
+      ...tacticalContext,
       assistZone: goal.assistZone || '',
       shotZone: goal.shotZone || '',
       goalZone: goal.goalZone || '',
@@ -15790,11 +15791,11 @@ function App() {
     return `${minute}${scorer} finaliza una ${action} iniciada ${originSide} y terminada desde ${finish}.${goal}${assist}`;
   };
 
-  const getGoalDraftPartialScore = (draft = goalAnalysisDraft) => {
-    const score = getStatsScore();
-    if (draft.type === 'Gol en contra') return { caudal: score.caudal, rival: score.rival + 1 };
-    return { caudal: score.caudal + 1, rival: score.rival };
-  };
+  const getGoalModalHeaderEvent = () => getGoalModalSummaryEvent({
+    events: getStatsGoalEvents(),
+    editingGoalEventId,
+    draft: goalAnalysisDraft,
+  });
 
   const getGoalDraftPlayerOptions = () => (getStatsCalledPlayers().length ? getStatsCalledPlayers() : players);
 
@@ -15824,6 +15825,14 @@ function App() {
     };
     const { error: matchScoreError } = await supabase.from("partidos").update(scorePayload).eq("id", matchId);
     if (matchScoreError) throw matchScoreError;
+    setMatches((current) => current.map((match) => (match.id === matchId ? {
+      ...match,
+      statsGoalEvents: nextEvents,
+      goalsFor: String(caudalGoals),
+      goalsAgainst: String(rivalGoals),
+      homeScore: scorePayload.home_score,
+      awayScore: scorePayload.away_score,
+    } : match)));
     return { nextEvents, caudalGoals, rivalGoals, scorePayload };
   };
 
@@ -15907,7 +15916,7 @@ function App() {
         summary: !prev.summary || prev.summary === buildGoalDraftSummary(prev) ? buildGoalDraftSummary(next) : next.summary,
       });
       if (field === 'phase') {
-        return withAutoSummary({ ...prev, phase: value, subphase: goalPhaseOptions[value]?.[0] || '' });
+        return withAutoSummary(updateGoalPrimaryContext(prev, value));
       }
       if (field === 'type' && value === 'Gol en contra') {
         return withAutoSummary({ ...prev, type: value, scorer: '', scorerId: null, assistant: '', assistantId: null });
@@ -16049,20 +16058,6 @@ function App() {
       return;
     }
 
-    setLastGoalAnalysisContext({
-      type: payloadDraft.type,
-      half: payloadDraft.half,
-      phase: payloadDraft.phase,
-      subphase: payloadDraft.subphase,
-      assistZone: payloadDraft.assistZone,
-      shotZone: payloadDraft.shotZone,
-      goalZone: payloadDraft.goalZone,
-      contact: payloadDraft.contact,
-      attackDirection: payloadDraft.attackDirection,
-      offensivePattern: payloadDraft.offensivePattern,
-      recoveryType: payloadDraft.recoveryType,
-      realOrigin: payloadDraft.realOrigin,
-    });
     setEditingGoalEventId('');
     setIsGoalAnalysisOpen(false);
     await loadPartidos();
@@ -33002,18 +32997,26 @@ function App() {
                 </div>
               ) : null}
               {(() => {
-                const partialScore = getGoalDraftPartialScore(goalAnalysisDraft);
-                const chain = getGoalDraftChain(goalAnalysisDraft);
+                const summaryEvent = getGoalModalHeaderEvent();
+                const partialScore = getStatsScore();
+                const chain = summaryEvent ? getGoalDraftChain(summaryEvent) : [];
+                const isCaudalGoal = summaryEvent?.type === 'Gol a favor';
                 return (
                   <section className="rounded-3xl border border-caudal-electric/20 bg-caudal-electric/[0.08] p-4">
                     <div className="grid gap-4 lg:grid-cols-[0.75fr_1fr_0.75fr] lg:items-center">
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">{goalAnalysisDraft.type === 'Gol a favor' ? 'Gol Caudal' : 'Gol rival'}</p>
-                        <p className="mt-1 text-4xl font-black text-white">{goalAnalysisDraft.minute || '--'}'</p>
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">
+                          {editingGoalEventId ? 'Gol en edición' : summaryEvent ? 'Último gol registrado' : 'Estado actual del partido'}
+                        </p>
+                        <p className="mt-1 text-4xl font-black text-white">{summaryEvent?.minute || '--'}'</p>
                       </div>
                       <div>
-                        <p className="text-xl font-black text-white">{goalAnalysisDraft.type === 'Gol a favor' ? (goalAnalysisDraft.scorer || 'Goleador') : (selectedMatch.opponent || 'Rival')}</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-300">Asistencia: {goalAnalysisDraft.assistant || 'Sin asistencia'}</p>
+                        <p className="text-xl font-black text-white">
+                          {summaryEvent ? (isCaudalGoal ? (summaryEvent.scorer || 'Sin goleador registrado') : (selectedMatch.opponent || 'Rival')) : 'Sin goles registrados'}
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-slate-300">
+                          {summaryEvent ? `Asistencia: ${summaryEvent.assistant || 'Sin asistencia'}` : 'Sin evento previo'}
+                        </p>
                         <div className="mt-3 flex flex-wrap items-center gap-2">
                           {chain.map((item, index) => (
                             <span key={`${item}-${index}`} className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.1em] text-slate-200">
@@ -33105,7 +33108,8 @@ function App() {
                     {Object.keys(goalPhaseOptions).map((phase) => <option key={phase} value={phase}>{phase}</option>)}
                   </select>
                   <select value={goalAnalysisDraft.subphase} onChange={(event) => updateGoalAnalysisDraft('subphase', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-caudal-electric/70 focus:bg-white/10">
-                    {(goalPhaseOptions[goalAnalysisDraft.phase] || []).map((subphase) => <option key={subphase} value={subphase}>{subphase}</option>)}
+                    <option value="">Seleccionar contexto secundario</option>
+                    {getGoalSubphaseOptions(goalAnalysisDraft.phase).map((subphase) => <option key={subphase} value={subphase}>{subphase}</option>)}
                   </select>
                 </div>
               </section>
