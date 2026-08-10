@@ -56,6 +56,7 @@ export const createDefaultSetPieceTacticalMeta = () => ({
   risk: '',
   alternative: '',
   observations: '',
+  collectiveInstructions: [],
   rating: 0,
   tags: [],
   lastUsedAt: '',
@@ -106,6 +107,17 @@ export const normalizeSetPieceTacticalMeta = (value) => {
     risk: cleanString(source.risk),
     alternative: cleanString(source.alternative || source.variation || legacyAlternative),
     observations: cleanString(source.observations),
+    collectiveInstructions: (Array.isArray(source.collectiveInstructions) ? source.collectiveInstructions : [])
+      .map((instruction, index) => {
+        const text = cleanString(typeof instruction === 'string' ? instruction : instruction?.text);
+        return {
+          id: cleanString(typeof instruction === 'object' ? instruction?.id : '') || `instruction-${index + 1}`,
+          text,
+          order: Number(typeof instruction === 'object' ? instruction?.order : index + 1) || index + 1,
+        };
+      })
+      .sort((a, b) => a.order - b.order)
+      .map((instruction, index) => ({ ...instruction, order: index + 1 })),
     rating: Math.max(0, Math.min(5, Number(source.rating) || 0)),
     tags: (Array.isArray(source.tags) ? source.tags : [])
       .map(cleanString)

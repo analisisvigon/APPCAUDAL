@@ -146,7 +146,19 @@ function PreviewOverlay({ diagrams, players, match, onClose }) {
   );
 }
 
-export default function SetPieceDiagramEditor({ diagram, players = [], match, suggestions = [], printDiagrams = [], roleOnly = false, onChange }) {
+export default function SetPieceDiagramEditor({
+  diagram,
+  players = [],
+  match,
+  suggestions = [],
+  printDiagrams = [],
+  roleOnly = false,
+  editorContext = 'set-piece',
+  participantRoleOptions = SET_PIECE_ROLES,
+  participantRoleMode = 'multiple',
+  fullFieldOverride,
+  onChange,
+}) {
   const drawableElements = useMemo(() => getDrawableSetPieceElements(diagram.elements), [diagram.elements]);
   const tacticalMeta = useMemo(() => getSetPieceTacticalMeta(diagram.elements), [diagram.elements]);
   const [selectedId, setSelectedId] = useState('');
@@ -284,6 +296,12 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
     if (roleOnly && type === 'player') {
       element.label = String(drawableElements.filter((entry) => entry.type === 'player').length + 1);
     }
+    if (editorContext === 'match-plan' && ['player', 'opponent'].includes(type)) {
+      const tacticalLabel = type === 'opponent' ? 'DFC' : 'DC';
+      element.label = tacticalLabel;
+      element.name = tacticalLabel;
+      element.roles = [tacticalLabel];
+    }
     updateElements([...drawableElements, element]);
     setSelectedId(element.id);
     if (['player', 'opponent'].includes(type)) setPanel('player');
@@ -344,6 +362,10 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
     }));
   };
   const toggleRole = (role) => {
+    if (participantRoleMode === 'single') {
+      updateSelected({ roles: [role], name: role, label: role });
+      return;
+    }
     const current = Array.isArray(selectedElement?.roles) ? selectedElement.roles : [];
     updateSelected({ roles: current.includes(role) ? current.filter((item) => item !== role) : [...current, role] });
   };
@@ -364,7 +386,9 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
   ];
   const metadataStatus = tacticalMeta.libraryStatus === 'ready' ? 'Lista' : tacticalMeta.libraryStatus === 'archived' ? 'Archivada' : 'Borrador';
   const selectedParticipantName = isSelectedPlayer
-    ? selectedElement.type === 'opponent'
+    ? editorContext === 'match-plan'
+      ? (selectedElement.roles?.[0] || selectedElement.name || 'Posición sin definir')
+      : selectedElement.type === 'opponent'
       ? 'Rival'
       : roleOnly
         ? (selectedElement.roles?.[0] || `Participante ${selectedElement.label || ''}`)
@@ -440,7 +464,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
           <p className="flex items-center gap-2 px-1 text-[10px] font-bold text-slate-500 sm:hidden" aria-hidden="true"><span>↔</span> Desliza dentro del campo para recorrerlo</p>
           <div className={`relative mx-auto w-full min-w-0 overflow-auto rounded-[28px] bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] p-2 text-black shadow-[0_24px_70px_rgba(0,0,0,0.24)] ${roleOnly ? 'max-w-[820px]' : 'max-w-[940px]'}`}>
             <div style={{ width: `${zoom * 100}%`, minWidth: '100%' }}>
-              <SetPieceDiagramCanvas elements={drawableElements} selectedId={selectedId} onSelect={selectElement} onChange={updateElements} players={players} snap={snapEnabled} fullField={String(diagram.tipo || '').includes('saque_inicio')} visibleLayers={visibleLayers} />
+              <SetPieceDiagramCanvas elements={drawableElements} selectedId={selectedId} onSelect={selectElement} onChange={updateElements} players={players} snap={snapEnabled} fullField={fullFieldOverride ?? String(diagram.tipo || '').includes('saque_inicio')} visibleLayers={visibleLayers} />
             </div>
             {!drawableElements.length ? <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8"><div className="max-w-xs rounded-2xl bg-slate-950/80 px-5 py-4 text-center text-white shadow-xl backdrop-blur-sm"><p className="text-sm font-black">El campo está listo</p><p className="mt-1 text-xs leading-5 text-slate-300">Empieza añadiendo participantes, balón o trazados.</p></div></div> : null}
           </div>
@@ -461,6 +485,9 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
           <div className="max-h-[calc(100vh-10rem)] overflow-y-auto px-3 pb-4" id={`set-piece-panel-${panel}`} role="tabpanel">
             {panel === 'tactic' ? (
               <div>
+                {editorContext === 'match-plan' ? (
+                  <div className="my-4 rounded-2xl bg-caudal-electric/[0.08] p-4 text-xs leading-5 text-slate-300 ring-1 ring-caudal-electric/20">El objetivo y las claves colectivas se editan en la ficha superior. Este panel se centra en el dibujo táctico y sus elementos.</div>
+                ) : <>
                 <EditorAccordion id="ficha" title="Ficha" open={openSections.ficha} onToggle={() => toggleSection('ficha')}>
                   <TacticalField label="Objetivo" value={tacticalMeta.objective} onChange={(objective) => updateMeta({ objective })} placeholder="Liberar segundo palo" />
                   <TacticalField label="Tipo de saque" value={tacticalMeta.saqueType} onChange={(saqueType) => updateMeta({ saqueType })} placeholder="Saque corto, de banda, de inicio..." />
@@ -484,6 +511,7 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
                   <TacticalField label="Observaciones" value={tacticalMeta.observations} onChange={(observations) => updateMeta({ observations })} placeholder="Notas internas del entrenador" rows={3} />
                   {suggestions.length ? <section className="rounded-xl bg-caudal-electric/[0.07] p-3"><p className={labelClass}>Sugerencias contextuales · nunca automáticas</p><div className="mt-2 space-y-2">{suggestions.slice(0, 4).map((suggestion, index) => <div key={`${suggestion.source}-${index}`} className="rounded-xl bg-black/15 p-2.5"><p className="text-xs font-bold leading-5 text-white">{suggestion.text}</p><p className="mt-1 text-[9px] font-black uppercase tracking-[0.14em] text-caudal-electric">{suggestion.source}</p></div>)}</div></section> : null}
                 </EditorAccordion>
+                </>}
               </div>
             ) : null}
 
@@ -491,10 +519,12 @@ export default function SetPieceDiagramEditor({ diagram, players = [], match, su
               <div className="space-y-4 py-4">
                 <div className="rounded-2xl bg-caudal-electric/[0.08] p-3 ring-1 ring-caudal-electric/25"><p className={labelClass}>{roleOnly ? 'Participante por rol' : 'Jugador seleccionado'}</p><p className="mt-1 text-base font-black text-white">{selectedParticipantName}</p><p className="mt-1 text-[10px] text-caudal-electric">Editando el elemento resaltado en el campo</p></div>
                 {!roleOnly && selectedElement.type === 'player' ? <label className="grid gap-1.5"><span className={labelClass}>Jugador vinculado</span><select value={selectedElement.player_id || ''} onChange={(event) => { const player = players.find((item) => item.id === event.target.value); updateSelected({ player_id: event.target.value, label: player?.number ? String(player.number) : selectedElement.label, name: '' }); }} className={`${fieldClass} bg-white font-bold text-slate-950`}><option value="">Sin jugador vinculado</option>{players.map((player) => <option key={player.id} value={player.id}>{player.number || '-'} · {getPlayerDisplayName(player)}</option>)}</select></label> : null}
-                <div><p className={labelClass}>Roles · selección múltiple</p><div className="mt-2 grid grid-cols-2 gap-2">{SET_PIECE_ROLES.map((role) => { const active = (selectedElement.roles || []).includes(role); return <button key={role} type="button" aria-pressed={active} onClick={() => toggleRole(role)} className={`flex min-h-11 items-center justify-between rounded-xl px-3 text-left text-[10px] font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-caudal-electric ${active ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.05] text-slate-300 hover:bg-white/[0.09]'}`}><span>{role}</span><span aria-hidden="true">{active ? '✓' : '+'}</span></button>; })}</div></div>
-                <TacticalField label="Consigna individual" value={selectedElement.note || ''} onChange={(note) => updateSelected({ note })} placeholder="Fija y ataca el espacio" rows={3} />
-                <label className="grid gap-1.5"><span className={labelClass}>Orden de aparición</span><input type="number" min="1" max="20" value={selectedElement.sequenceOrder || ''} onChange={(event) => updateSelected({ sequenceOrder: event.target.value ? Number(event.target.value) : null })} className={fieldClass} placeholder="1" /></label>
-                <label className={`flex min-h-12 cursor-pointer items-center justify-between rounded-xl p-3 text-xs font-bold transition ${selectedElement.primaryResponsibility ? 'bg-amber-300/15 text-amber-100 ring-1 ring-amber-300/35' : 'bg-white/[0.04] text-white'}`}><span><strong className="block">Responsable principal</strong><span className="mt-0.5 block text-[10px] font-normal text-slate-400">Marca la referencia principal de la acción</span></span><input type="checkbox" checked={Boolean(selectedElement.primaryResponsibility)} onChange={(event) => updateSelected({ primaryResponsibility: event.target.checked })} className="h-5 w-5 accent-[#3dd9ff]" /></label>
+                <div><p className={labelClass}>{participantRoleMode === 'single' ? 'Etiqueta táctica' : 'Roles · selección múltiple'}</p><div className="mt-2 grid grid-cols-2 gap-2">{participantRoleOptions.map((role) => { const active = (selectedElement.roles || []).includes(role); return <button key={role} type="button" aria-pressed={active} onClick={() => toggleRole(role)} className={`flex min-h-11 items-center justify-between rounded-xl px-3 text-left text-[10px] font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-caudal-electric ${active ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.05] text-slate-300 hover:bg-white/[0.09]'}`}><span>{role}</span><span aria-hidden="true">{active ? '✓' : '+'}</span></button>; })}</div></div>
+                {editorContext !== 'match-plan' ? <>
+                  <TacticalField label="Consigna individual" value={selectedElement.note || ''} onChange={(note) => updateSelected({ note })} placeholder="Fija y ataca el espacio" rows={3} />
+                  <label className="grid gap-1.5"><span className={labelClass}>Orden de aparición</span><input type="number" min="1" max="20" value={selectedElement.sequenceOrder || ''} onChange={(event) => updateSelected({ sequenceOrder: event.target.value ? Number(event.target.value) : null })} className={fieldClass} placeholder="1" /></label>
+                  <label className={`flex min-h-12 cursor-pointer items-center justify-between rounded-xl p-3 text-xs font-bold transition ${selectedElement.primaryResponsibility ? 'bg-amber-300/15 text-amber-100 ring-1 ring-amber-300/35' : 'bg-white/[0.04] text-white'}`}><span><strong className="block">Responsable principal</strong><span className="mt-0.5 block text-[10px] font-normal text-slate-400">Marca la referencia principal de la acción</span></span><input type="checkbox" checked={Boolean(selectedElement.primaryResponsibility)} onChange={(event) => updateSelected({ primaryResponsibility: event.target.checked })} className="h-5 w-5 accent-[#3dd9ff]" /></label>
+                </> : null}
               </div>
             ) : null}
 

@@ -1335,6 +1335,162 @@
   grid-template-rows: 1fr;
 }
 
+.match-plan-print-sheet {
+  width: 297mm;
+  height: 210mm;
+  padding: 6mm;
+  overflow: hidden;
+  background: #fff;
+  color: #111827;
+  font-family: Inter, Arial, Helvetica, sans-serif;
+  box-sizing: border-box;
+  break-after: page;
+  page-break-after: always;
+}
+
+.match-plan-print-sheet:last-child {
+  break-after: auto;
+  page-break-after: auto;
+}
+
+.match-plan-print-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 7mm;
+  gap: 5mm;
+  border-bottom: 0.8pt solid #111827;
+  font-size: 7.8pt;
+}
+
+.match-plan-print-page-header p {
+  margin: 0;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.match-plan-print-page-header div {
+  display: flex;
+  gap: 3mm;
+}
+
+.match-plan-print-situations {
+  display: grid;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  height: calc(100% - 8mm);
+}
+
+.match-plan-print-situations[data-count="1"] {
+  grid-template-rows: 1fr;
+}
+
+.match-plan-print-situation {
+  display: grid;
+  grid-template-columns: 48mm minmax(0, 1fr) 68mm;
+  align-items: stretch;
+  gap: 3mm;
+  min-height: 0;
+  padding: 2.5mm 0;
+  overflow: hidden;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.match-plan-print-situation[data-has-keys="false"] {
+  grid-template-columns: 54mm minmax(0, 1fr);
+}
+
+.match-plan-print-situation + .match-plan-print-situation {
+  border-top: 1pt solid #111827;
+}
+
+.match-plan-print-situation > header {
+  min-width: 0;
+  align-self: start;
+}
+
+.match-plan-print-situation > header > p {
+  margin: 0 0 1.5mm;
+  font-size: 7.5pt;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.match-plan-print-situation h2 {
+  margin: 0;
+  font-size: 13pt;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.match-plan-print-objective {
+  display: grid;
+  gap: 0.8mm;
+  margin-top: 3mm;
+  font-size: 8pt;
+  line-height: 1.22;
+}
+
+.match-plan-print-objective strong,
+.match-plan-print-keys h3 {
+  font-size: 7pt;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.match-plan-print-pitch {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: #111827;
+}
+
+.match-plan-print-pitch .set-piece-diagram-canvas {
+  display: block;
+  width: 100%;
+  max-height: 100%;
+  background: #fff;
+}
+
+.match-plan-print-keys {
+  align-self: center;
+  min-width: 0;
+  border-left: 0.8pt solid #9ca3af;
+  padding-left: 3mm;
+}
+
+.match-plan-print-keys h3 {
+  margin: 0 0 1.5mm;
+}
+
+.match-plan-print-keys ol {
+  display: grid;
+  gap: 1.5mm;
+  margin: 0;
+  padding-left: 5mm;
+  font-size: 7.6pt;
+  font-weight: 700;
+  line-height: 1.18;
+}
+
+.match-plan-print-situations[data-count="1"] .match-plan-print-situation {
+  grid-template-columns: 55mm minmax(0, 1fr) 72mm;
+  gap: 4mm;
+  padding: 5mm 0;
+}
+
+.match-plan-print-situations[data-count="1"] .match-plan-print-situation[data-has-keys="false"] {
+  grid-template-columns: 60mm minmax(0, 1fr);
+}
+
+.match-plan-print-situations[data-count="1"] .match-plan-print-situation h2 {
+  font-size: 18pt;
+}
+
 .set-piece-print-play-header {
   min-width: 0;
   overflow: hidden;
@@ -1639,6 +1795,13 @@
     color: #000 !important;
   }
 
+  html:has(.printing-dossier .print-dossier > .match-plan-print-sheet):not(:has(.printing-dossier .print-dossier > .lineup-print-sheet:not(.match-plan-print-sheet))),
+  body:has(.printing-dossier .print-dossier > .match-plan-print-sheet):not(:has(.printing-dossier .print-dossier > .lineup-print-sheet:not(.match-plan-print-sheet))),
+  body:has(.printing-dossier .print-dossier > .match-plan-print-sheet):not(:has(.printing-dossier .print-dossier > .lineup-print-sheet:not(.match-plan-print-sheet))) #root {
+    width: 297mm !important;
+    min-height: 210mm !important;
+  }
+
   body * {
     visibility: hidden !important;
   }
@@ -1805,6 +1968,23 @@
     page: landscape;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
+  }
+
+  .lineup-print-sheet.match-plan-print-sheet {
+    position: relative !important;
+    inset: auto !important;
+    width: 297mm !important;
+    height: 210mm !important;
+    max-height: 210mm !important;
+    padding: 6mm !important;
+    page: landscape;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .match-plan-print-sheet + .match-plan-print-sheet {
+    break-before: page !important;
+    page-break-before: always !important;
   }
 
   .abp-print-page {

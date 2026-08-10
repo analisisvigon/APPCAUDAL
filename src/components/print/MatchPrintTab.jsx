@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import DossierTacticalSheet from './DossierTacticalSheet';
 import LineupPrintSheet from './LineupPrintSheet';
+import MatchPlanEditor from './MatchPlanEditor';
+import MatchPlanPrintSheet from './MatchPlanPrintSheet';
 import SetPieceDiagramCanvas from './SetPieceDiagramCanvas';
 import SetPieceDiagramEditor from './SetPieceDiagramEditor';
 import SetPieceDiagramPrintSheet from './SetPieceDiagramPrintSheet';
@@ -14,6 +16,12 @@ import {
   getSetPieceTacticalMeta,
   setSetPieceTacticalMeta,
 } from '../../utils/setPieceProfessional';
+import {
+  MATCH_PLAN_TYPE_VALUES,
+  buildMatchPlanPersistencePayload,
+  getMatchPlanPageCount,
+  normalizeMatchPlanSituations,
+} from '../../utils/matchPlanPrint';
 
 const setPieceSections = [
   { id: 'penaltis', label: 'Penaltis' },
@@ -77,12 +85,13 @@ const dossierPageDefinitions = [
   { id: 'offensive', label: 'ABP ofensiva', icon: 'AB+', use: 'jugadas a favor' },
   { id: 'defensive', label: 'ABP defensiva', icon: 'AB-', use: 'marcas y zonas' },
   { id: 'kickoff', label: 'Saque inicial', icon: 'SI', use: 'primer minuto' },
+  { id: 'match_plan', label: 'Plan de partido', icon: 'PP', use: 'comportamientos colectivos con y sin balón' },
 ];
 
 const dossierPresets = {
   matchday: {
     label: 'Dossier partido',
-    pages: ['lineup', 'keys', 'takers', 'offensive', 'defensive', 'kickoff'],
+    pages: ['lineup', 'keys', 'takers', 'offensive', 'defensive', 'kickoff', 'match_plan'],
   },
 };
 
@@ -289,6 +298,12 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
   const [printValidationStatus, setPrintValidationStatus] = useState('');
   const [dossierPages, setDossierPages] = useState(() => buildDossierPagesFromPreset('matchday'));
   const [draggedDossierPageId, setDraggedDossierPageId] = useState('');
+  const [matchPlanSituations, setMatchPlanSituations] = useState([]);
+  const [selectedMatchPlanId, setSelectedMatchPlanId] = useState('');
+  const [matchPlanLoading, setMatchPlanLoading] = useState(false);
+  const [matchPlanSaving, setMatchPlanSaving] = useState(false);
+  const [matchPlanError, setMatchPlanError] = useState('');
+  const [matchPlanStatus, setMatchPlanStatus] = useState('');
   const [captainPlayerId, setCaptainPlayerId] = useState(match?.captainPlayerId || '');
   const sheetRef = useRef(null);
 
@@ -354,6 +369,33 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
       }
     };
     loadDiagrams();
+  }, [match?.id]);
+
+  useEffect(() => {
+    const loadMatchPlan = async () => {
+      if (!match?.id) return;
+      setMatchPlanLoading(true);
+      setMatchPlanError('');
+      setMatchPlanStatus('');
+      try {
+        const { data, error } = await supabase
+          .from('match_set_piece_diagrams')
+          .select('*')
+          .eq('partido_id', match.id)
+          .in('tipo', MATCH_PLAN_TYPE_VALUES)
+          .order('orden', { ascending: true });
+        if (error) throw error;
+        const normalized = normalizeMatchPlanSituations((data || []).map((situation) => ({ ...situation, persisted: true })), match.id);
+        setMatchPlanSituations(normalized);
+        setSelectedMatchPlanId(normalized[0]?.id || '');
+      } catch (loadError) {
+        console.error('Error cargando Plan de partido desde Supabase:', loadError);
+        setMatchPlanError(loadError.message || 'No se pudo cargar el Plan de partido.');
+      } finally {
+        setMatchPlanLoading(false);
+      }
+    };
+    loadMatchPlan();
   }, [match?.id]);
 
   useEffect(() => {
@@ -547,6 +589,68 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     ...getShortLines(match?.abpDefensiva, 3),
   ].filter(Boolean).slice(0, 10);
 
+  const saveMatchPlanSituations = async (situations = matchPlanSituations) => {
+    if (!match?.id) return;
+    const normalized = normalizeMatchPlanSituations(situations, match.id);
+    setMatchPlanSaving(true);
+    setMatchPlanError('');
+    setMatchPlanStatus('');
+    try {
+      const existingRows = matchPlanSituations.filter((situation) => situation.persisted && situation.id);
+      for (let index = 0; index < existingRows.length; index += 1) {
+        const { error } = await supabase.from('match_set_piece_diagrams').update({ orden: 10000 + index }).eq('id', existingRows[index].id);
+        if (error) throw error;
+      }
+
+      const retainedIds = new Set(normalized.filter((situation) => situation.persisted).map((situation) => situation.id));
+      const removedIds = existingRows.filter((situation) => !retainedIds.has(situation.id)).map((situation) => situation.id);
+      if (removedIds.length) {
+        const { error } = await supabase.from('match_set_piece_diagrams').delete().in('id', removedIds);
+        if (error) throw error;
+      }
+
+      const savedRows = [];
+      for (let index = 0; index < normalized.length; index += 1) {
+        const situation = normalized[index];
+        const payload = buildMatchPlanPersistencePayload(situation, match.id, index + 1);
+        if (situation.persisted) {
+          const { id: _id, ...fields } = payload;
+          const { data, error } = await supabase.from('match_set_piece_diagrams').update(fields).eq('id', situation.id).select('*').single();
+          if (error) throw error;
+          savedRows.push(data);
+        } else {
+          const { data, error } = await supabase.from('match_set_piece_diagrams').insert(payload).select('*').single();
+          if (error) throw error;
+          savedRows.push(data);
+        }
+      }
+      const next = normalizeMatchPlanSituations(savedRows.map((situation) => ({ ...situation, persisted: true })), match.id);
+      setMatchPlanSituations(next);
+      setSelectedMatchPlanId((current) => next.some((situation) => situation.id === current) ? current : next[0]?.id || '');
+      setMatchPlanStatus('Plan de partido guardado.');
+    } catch (saveError) {
+      console.error('Error guardando Plan de partido en Supabase:', saveError);
+      setMatchPlanError(saveError.message || 'No se pudo guardar el Plan de partido.');
+    } finally {
+      setMatchPlanSaving(false);
+    }
+  };
+
+  const deleteMatchPlanSituation = async (situation) => {
+    if (!window.confirm(`¿Eliminar ${situation.titulo || 'esta situación táctica'}?`)) return;
+    if (situation.persisted) {
+      const { error } = await supabase.from('match_set_piece_diagrams').delete().eq('id', situation.id);
+      if (error) {
+        setMatchPlanError(error.message || 'No se pudo eliminar la situación.');
+        return;
+      }
+    }
+    const next = normalizeMatchPlanSituations(matchPlanSituations.filter((item) => item.id !== situation.id), match.id);
+    setMatchPlanSituations(next);
+    setSelectedMatchPlanId(next[0]?.id || '');
+    setMatchPlanStatus('Situación eliminada.');
+  };
+
   const getDossierContent = () => {
     const hasLineup = printData.starters.some((player) => player?.name && !String(player.name).startsWith('Puesto '));
     const hasTakers = setPieceTakers.some((entry) => entry.jugador_id || String(entry.nombre_manual || '').trim());
@@ -560,12 +664,14 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     if (isDossierPageActive('offensive') && !offensiveDiagrams.length) warnings.push('ABP Ofensiva no tiene jugadas.');
     if (isDossierPageActive('defensive') && !defensiveDiagrams.length) warnings.push('ABP Defensiva no tiene jugadas.');
     if (isDossierPageActive('kickoff') && !kickoffDiagrams.length) warnings.push('Saque de inicio esta marcado pero no existe diagrama.');
+    if (isDossierPageActive('match_plan') && !matchPlanSituations.length) warnings.push('Plan de partido no tiene situaciones tácticas.');
     return {
       hasLineup,
       hasTakers,
       offensiveDiagrams,
       defensiveDiagrams,
       kickoffDiagrams,
+      matchPlanSituations,
       warnings,
     };
   };
@@ -578,6 +684,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
       if (page.id === 'offensive') return dossierContent.offensiveDiagrams.length;
       if (page.id === 'defensive') return dossierContent.defensiveDiagrams.length;
       if (page.id === 'kickoff') return dossierContent.kickoffDiagrams.length;
+      if (page.id === 'match_plan') return dossierContent.matchPlanSituations.length;
       return true;
     }).length;
     if (dossierContent.warnings.length) {
@@ -1248,13 +1355,14 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
 
   const currentOffensiveNote = getOffensiveNote();
   const currentDefensiveNote = getDefensiveNote();
-  const printTitle = printView === 'alineacion' ? 'Alineación' : printView === 'lanzadores' ? 'Lanzadores' : printView === 'abp_ofensiva' ? 'ABP ofensiva' : 'ABP defensiva';
+  const printTitle = printView === 'alineacion' ? 'Alineación' : printView === 'lanzadores' ? 'Lanzadores' : printView === 'abp_ofensiva' ? 'ABP ofensiva' : printView === 'plan_partido' ? 'Plan de partido' : 'ABP defensiva';
 
   const dossierContent = getDossierContent();
   const activeSheetCount = activeDossierPages.reduce((count, page) => {
     if (page.id === 'offensive') return count + Math.max(1, dossierContent.offensiveDiagrams.length);
     if (page.id === 'defensive') return count + Math.max(1, dossierContent.defensiveDiagrams.length);
     if (page.id === 'kickoff') return count + Math.max(1, dossierContent.kickoffDiagrams.length);
+    if (page.id === 'match_plan') return count + getMatchPlanPageCount(dossierContent.matchPlanSituations);
     return count + 1;
   }, 0);
   const activeReadMinutes = Math.max(1, Math.ceil(activeSheetCount * 1.3));
@@ -1285,6 +1393,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     if (page.id === 'offensive') return Math.max(1, dossierContent.offensiveDiagrams.length);
     if (page.id === 'defensive') return Math.max(1, dossierContent.defensiveDiagrams.length);
     if (page.id === 'kickoff') return Math.max(1, dossierContent.kickoffDiagrams.length);
+    if (page.id === 'match_plan') return getMatchPlanPageCount(dossierContent.matchPlanSituations);
     return 1;
   };
 
@@ -1301,6 +1410,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     const kickoffCount = dossierContent.kickoffDiagrams.length;
     const offensiveCount = dossierContent.offensiveDiagrams.length;
     const defensiveCount = dossierContent.defensiveDiagrams.length;
+    const matchPlanCount = dossierContent.matchPlanSituations.length;
     const config = {
       lineup: { count: realStarters, target: 11, noun: `${realStarters}/11 jugadores`, last: match?.updated_at || match?.updatedAt || match?.date },
       keys: { count: getMatchDayKeys().length, target: 4, noun: `${getMatchDayKeys().length} claves`, last: match?.updated_at || match?.updatedAt || match?.date },
@@ -1309,6 +1419,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
       offensive: { count: offensiveCount, target: 1, noun: `${offensiveCount} jugadas`, last: latestTimestamp(dossierContent.offensiveDiagrams) },
       defensive: { count: defensiveCount, target: 1, noun: `${defensiveCount} jugadas`, last: latestTimestamp(dossierContent.defensiveDiagrams) },
       kickoff: { count: kickoffCount, target: 1, noun: `${kickoffCount} jugadas`, last: latestTimestamp(dossierContent.kickoffDiagrams) },
+      match_plan: { count: matchPlanCount, target: 2, noun: `${matchPlanCount} situaciones`, last: latestTimestamp(dossierContent.matchPlanSituations) },
       pressure: { count: pressureLines, target: 3, noun: `${pressureLines} apuntes`, last: match?.updated_at || match?.updatedAt || match?.date },
       vigilances: { count: vigilanceLines, target: 3, noun: `${vigilanceLines} vigilancias`, last: match?.updated_at || match?.updatedAt || match?.date },
       transitions: { count: transitionLines, target: 2, noun: `${transitionLines} consignas`, last: match?.updated_at || match?.updatedAt || match?.date },
@@ -1333,6 +1444,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     if (pageId === 'takers') return 'lanzadores';
     if (pageId === 'offensive' || pageId === 'kickoff') return 'abp_ofensiva';
     if (pageId === 'defensive') return 'abp_defensiva';
+    if (pageId === 'match_plan') return 'plan_partido';
     return 'alineacion';
   };
 
@@ -1349,7 +1461,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
       return;
     }
     if (page.id === 'kickoff') setOffensiveType('saque_inicio_ofensivo');
-    if (['lineup', 'takers', 'offensive', 'defensive', 'kickoff'].includes(page.id)) {
+    if (['lineup', 'takers', 'offensive', 'defensive', 'kickoff', 'match_plan'].includes(page.id)) {
       setPrintView(getPageTargetView(page.id));
       scrollToPrintWorkspace();
       return;
@@ -1454,7 +1566,20 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
         ) : null}
       </div>
 
-      {printView === 'lanzadores' ? (
+      {printView === 'plan_partido' ? (
+        <MatchPlanEditor
+          situations={matchPlanSituations}
+          selectedId={selectedMatchPlanId}
+          onSelectedIdChange={setSelectedMatchPlanId}
+          onChange={setMatchPlanSituations}
+          onSave={saveMatchPlanSituations}
+          onDelete={deleteMatchPlanSituation}
+          saving={matchPlanSaving}
+          loading={matchPlanLoading}
+          error={matchPlanError}
+          status={matchPlanStatus}
+        />
+      ) : printView === 'lanzadores' ? (
         <div data-print-workspace="true" className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -1675,7 +1800,7 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
         </div>
       ) : null}
 
-      <div ref={sheetRef} className={`print-sheet-frame print-current-sheet ${['abp_ofensiva', 'abp_defensiva'].includes(printView) ? 'print-sheet-frame-landscape' : ''}`}>
+      <div ref={sheetRef} className={`print-sheet-frame print-current-sheet ${['abp_ofensiva', 'abp_defensiva', 'plan_partido'].includes(printView) ? 'print-sheet-frame-landscape' : ''}`}>
         {printView === 'alineacion' ? (
           <div>
             <div className="print-hidden mb-4 flex justify-center">
@@ -1693,6 +1818,8 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
               captainPlayerId={captainPlayerId}
             />
           </div>
+        ) : printView === 'plan_partido' ? (
+          <MatchPlanPrintSheet match={match} situations={matchPlanSituations} preview />
         ) : printView === 'lanzadores' ? (
           <SetPieceTakersPrintSheet
             match={match}
@@ -1766,6 +1893,11 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
                   players={players}
                 />
               ));
+            }
+            if (page.id === 'match_plan') {
+              return dossierContent.matchPlanSituations.length ? [(
+                <MatchPlanPrintSheet key="match-plan-dossier" match={match} situations={dossierContent.matchPlanSituations} />
+              )] : [];
             }
             return [(
               <DossierTacticalSheet

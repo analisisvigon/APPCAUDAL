@@ -30,6 +30,7 @@
     "test:set-piece-interactions": "node src/utils/setPieceEditorInteractions.test.js",
     "test:set-piece-professional": "node src/utils/setPieceProfessional.test.js",
     "test:set-piece-print": "node src/utils/setPiecePrintLayout.test.js",
+    "test:match-plan-print": "node src/utils/matchPlanPrint.test.js",
     "test:set-piece-laboratory": "node src/utils/setPieceLaboratory.test.js",
     "test:print-player-shirt": "node src/utils/printPlayerShirt.test.js",
     "test:tactical-templates": "node src/utils/tacticalTemplates.test.js",
