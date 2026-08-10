@@ -612,8 +612,6 @@ const goalMouthZoneCatalog = [
 ];
 const pitchZoneOptions = pitchZoneCatalog.map((zone) => zone.value);
 const goalZoneOptions = goalMouthZoneCatalog.map((zone) => zone.value);
-const goalAttackTypeOptions = ['Combinativo', 'Transición', 'ABP', 'Juego directo', 'Contraataque', 'Segunda jugada'];
-const goalSituationOptions = ['Organizado', 'Desorganizado', 'Superioridad', 'Igualdad', 'Inferioridad'];
 const defaultGoalAnalysisDraft = {
   type: 'Gol a favor',
   half: '',
@@ -628,8 +626,6 @@ const defaultGoalAnalysisDraft = {
   assistZone: '',
   goalZone: '',
   contact: '',
-  attackType: '',
-  situation: '',
   summary: '',
   videoUrl: '',
   attackDirection: 'derecha',
@@ -15728,8 +15724,6 @@ function App() {
       assistantId: goal.assistantId || null,
       phase: goal.phase || '',
       subphase: goal.subphase || '',
-      attackType: goal.attackType || goal.phase || '',
-      situation: goal.situation || '',
       assistZone: goal.assistZone || '',
       shotZone: goal.shotZone || '',
       goalZone: goal.goalZone || '',
@@ -15762,19 +15756,18 @@ function App() {
 
   const buildGoalDraftSummary = (draft = goalAnalysisDraft) => {
     const minute = draft.minute ? `${draft.minute}': ` : '';
-    const action = String(draft.attackType || draft.phase || getMissingDataLabel('acción sin fase registrada')).toLowerCase();
-    const situation = draft.situation ? ` ${String(draft.situation).toLowerCase()}` : '';
+    const action = String(draft.phase || getMissingDataLabel('acción sin fase registrada')).toLowerCase();
     const originSide = getGoalSidePhrase(draft.assistZone);
     const origin = getGoalZonePhrase(draft.assistZone);
     const finish = getGoalZonePhrase(draft.shotZone);
     const goalMouthLabel = getZoneLabel(draft.goalZone, { goal: true });
     const goal = goalMouthLabel ? ` Entra ${goalMouthLabel.toLowerCase()}.` : '';
     if (draft.type === 'Gol en contra') {
-      return `${minute}gol rival en una ${action}${situation} iniciada ${originSide} y terminada desde ${finish}.${goal}`;
+      return `${minute}gol rival en una ${action} iniciada ${originSide} y terminada desde ${finish}.${goal}`;
     }
     const scorer = draft.scorer || 'Jugador Caudal';
     const assist = draft.assistant ? ` Asistencia de ${draft.assistant}.` : '';
-    return `${minute}${scorer} finaliza una ${action}${situation} iniciada ${originSide} y terminada desde ${finish}.${goal}${assist}`;
+    return `${minute}${scorer} finaliza una ${action} iniciada ${originSide} y terminada desde ${finish}.${goal}${assist}`;
   };
 
   const getGoalDraftPartialScore = (draft = goalAnalysisDraft) => {
@@ -15873,10 +15866,10 @@ function App() {
 
   const applyGoalPreset = (preset) => {
     const presets = {
-      combinativo: { phase: 'Juego combinativo', subphase: 'Dentro del área', attackType: 'Combinativo', situation: 'Organizado', realOrigin: 'por dentro', offensivePattern: 'tercer hombre' },
-      transicion: { phase: 'Transición', subphase: 'Tras robo', attackType: 'Transición', situation: 'Desorganizado', realOrigin: 'tras robo', recoveryType: 'robo alto' },
-      abp: { phase: 'ABP', subphase: 'Córner', attackType: 'ABP', situation: 'Igualdad', offensivePattern: 'balón parado' },
-      directo: { phase: 'Juego directo', subphase: 'Segunda jugada', attackType: 'Juego directo', situation: 'Igualdad', offensivePattern: 'segunda jugada' },
+      combinativo: { phase: 'Juego combinativo', subphase: 'Dentro del área', realOrigin: 'por dentro', offensivePattern: 'tercer hombre' },
+      transicion: { phase: 'Transición', subphase: 'Tras robo', realOrigin: 'tras robo', recoveryType: 'robo alto' },
+      abp: { phase: 'ABP', subphase: 'Córner', offensivePattern: 'balón parado' },
+      directo: { phase: 'Juego directo', subphase: 'Segunda jugada', offensivePattern: 'segunda jugada' },
     };
     const patch = presets[preset];
     if (!patch) return;
@@ -15894,8 +15887,7 @@ function App() {
         summary: !prev.summary || prev.summary === buildGoalDraftSummary(prev) ? buildGoalDraftSummary(next) : next.summary,
       });
       if (field === 'phase') {
-        const inferredAttackType = value === 'Juego combinativo' ? 'Combinativo' : value;
-        return withAutoSummary({ ...prev, phase: value, subphase: goalPhaseOptions[value]?.[0] || '', attackType: inferredAttackType });
+        return withAutoSummary({ ...prev, phase: value, subphase: goalPhaseOptions[value]?.[0] || '' });
       }
       if (field === 'type' && value === 'Gol en contra') {
         return withAutoSummary({ ...prev, type: value, scorer: '', scorerId: null, assistant: '', assistantId: null });
@@ -16017,8 +16009,6 @@ function App() {
         offensivePattern: payloadDraft.offensivePattern,
         recoveryType: payloadDraft.recoveryType,
         realOrigin: payloadDraft.realOrigin,
-        attackType: payloadDraft.attackType,
-        situation: payloadDraft.situation,
         assistZone: payloadDraft.assistZone,
         shotZone: payloadDraft.shotZone,
         goalZone: payloadDraft.goalZone,
@@ -16044,8 +16034,6 @@ function App() {
       half: payloadDraft.half,
       phase: payloadDraft.phase,
       subphase: payloadDraft.subphase,
-      attackType: payloadDraft.attackType,
-      situation: payloadDraft.situation,
       assistZone: payloadDraft.assistZone,
       shotZone: payloadDraft.shotZone,
       goalZone: payloadDraft.goalZone,
@@ -33058,18 +33046,12 @@ function App() {
                     ))}
                   </div>
                 </div>
-                <div className="mt-4 grid gap-3 lg:grid-cols-4">
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <select value={goalAnalysisDraft.phase} onChange={(event) => updateGoalAnalysisDraft('phase', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-caudal-electric/70 focus:bg-white/10">
                     {Object.keys(goalPhaseOptions).map((phase) => <option key={phase} value={phase}>{phase}</option>)}
                   </select>
                   <select value={goalAnalysisDraft.subphase} onChange={(event) => updateGoalAnalysisDraft('subphase', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-caudal-electric/70 focus:bg-white/10">
                     {(goalPhaseOptions[goalAnalysisDraft.phase] || []).map((subphase) => <option key={subphase} value={subphase}>{subphase}</option>)}
-                  </select>
-                  <select value={goalAnalysisDraft.attackType} onChange={(event) => updateGoalAnalysisDraft('attackType', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-caudal-electric/70 focus:bg-white/10">
-                    {goalAttackTypeOptions.map((option) => <option key={option} value={option}>{option}</option>)}
-                  </select>
-                  <select value={goalAnalysisDraft.situation} onChange={(event) => updateGoalAnalysisDraft('situation', event.target.value)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-caudal-electric/70 focus:bg-white/10">
-                    {goalSituationOptions.map((option) => <option key={option} value={option}>{option}</option>)}
                   </select>
                 </div>
               </section>
@@ -33129,7 +33111,7 @@ function App() {
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Autoresumen del gol</p>
                     <div className="mt-3 grid gap-1.5 text-sm font-semibold text-slate-100">
                       <p><span className="text-caudal-electric">{goalAnalysisDraft.minute || '--'}'</span> {goalAnalysisDraft.type === 'Gol a favor' ? `${goalAnalysisDraft.scorer || 'Goleador'} marca.` : `${selectedMatch.opponent || 'Rival'} marca.`}</p>
-                      <p>{goalAnalysisDraft.attackType || goalAnalysisDraft.phase}. {getGoalZonePhrase(goalAnalysisDraft.assistZone)}. Finalización: {getGoalZonePhrase(goalAnalysisDraft.shotZone)}.</p>
+                      <p>{goalAnalysisDraft.phase}. {getGoalZonePhrase(goalAnalysisDraft.assistZone)}. Finalización: {getGoalZonePhrase(goalAnalysisDraft.shotZone)}.</p>
                       <p>Pie/contacto: {goalAnalysisDraft.contact}. {goalAnalysisDraft.assistant ? `Asistencia de ${goalAnalysisDraft.assistant}.` : 'Sin asistencia registrada.'}</p>
                     </div>
                   </div>

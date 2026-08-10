@@ -35,6 +35,7 @@
     "test:tactical-play-context": "node src/utils/tacticalPlayContext.test.js",
     "test:tactical-evidence": "node src/utils/tacticalEvidenceEngine.test.js",
     "test:goal-events": "node src/utils/goalEvents.test.js",
+    "test:goal-tactical-context": "node src/utils/goalTacticalContext.test.js",
     "test:delegated-events": "node src/utils/delegatedEventIdentity.test.js",
     "test:delegated-save-flow": "node src/utils/delegatedEventSaveFlow.test.js",
     "test:player-display-name": "node src/utils/playerDisplayName.test.js",
