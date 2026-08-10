@@ -85,11 +85,18 @@ import {
 import { getPlayerDisplayName } from './utils/playerDisplayName';
 import {
   calculateStatsCallupCounts,
-  getOutsideStatsCallupPlayerNames,
   getStatsCallupPositionGroup,
   groupStatsCallupRowsByPosition,
   toggleStatsCallupGroupState,
 } from './utils/statsCallup';
+import {
+  PLAYER_AVAILABILITY,
+  buildAvailabilityRpcInput,
+  consumeSuspensionsForEligibleMatches,
+  getAvailableOutsidePlayerNames,
+  getPlayerAvailabilityPresentation,
+  isPlayerAvailable,
+} from './utils/playerAvailability';
 import {
   getPlayerSourceFunctionUserMessage,
   invokePlayerSourceAnalyzer,
@@ -1468,6 +1475,10 @@ const normalizeSupabaseJugador = (player) => ({
   foot: player.foot ?? player.pierna ?? '',
   image: player.image ?? player.imagen ?? '',
   originalImage: player.original_image ?? player.originalImage ?? '',
+  availabilityStatus: player.availability_status ?? player.availabilityStatus ?? PLAYER_AVAILABILITY.available,
+  suspensionMatchesRemaining: Math.max(0, Number(player.suspension_matches_remaining ?? player.suspensionMatchesRemaining) || 0),
+  suspensionCycleId: player.suspension_cycle_id ?? player.suspensionCycleId ?? null,
+  suspensionStartedAt: player.suspension_started_at ?? player.suspensionStartedAt ?? null,
 });
 
 async function getJugadores() {
@@ -5428,6 +5439,10 @@ function App() {
   const [statsCallupSaving, setStatsCallupSaving] = useState(false);
   const [statsCallupError, setStatsCallupError] = useState('');
   const [collapsedStatsCallupGroups, setCollapsedStatsCallupGroups] = useState({});
+  const [availabilityEditor, setAvailabilityEditor] = useState(null);
+  const [availabilityDraft, setAvailabilityDraft] = useState({ status: PLAYER_AVAILABILITY.available, remaining: 1 });
+  const [availabilitySaving, setAvailabilitySaving] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState('');
   const [selectedPlayerProfileId, setSelectedPlayerProfileId] = useState(null);
   const [playerCompetitionFilter, setPlayerCompetitionFilter] = useState('Temporada');
   const [performanceLoading, setPerformanceLoading] = useState(false);
@@ -5653,6 +5668,7 @@ function App() {
   const postSectionRef = useRef(null);
   const delegatedHeaderRef = useRef(null);
   const statsOperationRef = useRef(Promise.resolve());
+  const suspensionProcessingSignatureRef = useRef('');
   const postYoutubeIframeRef = useRef(null);
   const postYoutubePlayerRef = useRef(null);
   const postMatchVideoRef = useRef(null);
@@ -6841,6 +6857,31 @@ function App() {
       console.error('Error cargando partidos desde Supabase:', loadError);
     });
   }, []);
+
+  useEffect(() => {
+    const suspendedPlayers = players.filter((player) => (
+      player.availabilityStatus === PLAYER_AVAILABILITY.suspended
+      && player.suspensionMatchesRemaining > 0
+      && player.suspensionCycleId
+    ));
+    if (!suspendedPlayers.length || !matches.length) return;
+    const signature = [
+      ...suspendedPlayers.map((player) => `${player.id}:${player.suspensionCycleId}:${player.suspensionMatchesRemaining}`),
+      ...matches.map((match) => `${match.id}:${match.status}:${match.homeScore}:${match.awayScore}:${match.goalsFor}:${match.goalsAgainst}`),
+    ].join('|');
+    if (suspensionProcessingSignatureRef.current === signature) return;
+    suspensionProcessingSignatureRef.current = signature;
+    consumeSuspensionsForEligibleMatches({ supabase, matches, competitionCatalog: competitions })
+      .then(async (consumptions) => {
+        if (!consumptions.length) return;
+        const jugadores = await getJugadores();
+        setPlayers(jugadores);
+        setEmpty(jugadores.length === 0);
+      })
+      .catch((processingError) => {
+        console.error('Error consumiendo sanciones de partidos oficiales:', processingError);
+      });
+  }, [competitions, matches, players]);
 
   useEffect(() => {
     loadTeams();
@@ -14529,6 +14570,56 @@ function App() {
     return calculateStatsCallupCounts(getStatsSquadRows());
   };
 
+  const openAvailabilityEditor = (player) => {
+    const presentation = getPlayerAvailabilityPresentation(player);
+    setAvailabilityEditor(player);
+    setAvailabilityDraft({
+      status: presentation.status,
+      remaining: presentation.status === PLAYER_AVAILABILITY.suspended ? presentation.remaining : 1,
+    });
+    setAvailabilityError('');
+    setAvailabilitySaving(false);
+  };
+
+  const closeAvailabilityEditor = () => {
+    if (availabilitySaving) return;
+    setAvailabilityEditor(null);
+    setAvailabilityError('');
+  };
+
+  const savePlayerAvailability = async () => {
+    if (!availabilityEditor?.id) return;
+    const current = getPlayerAvailabilityPresentation(availabilityEditor);
+    const pendingSanctionText = current.remaining === 1 ? 'Queda 1 partido' : `Quedan ${current.remaining} partidos`;
+    const leavingSanctionMessage = availabilityDraft.status === PLAYER_AVAILABILITY.available
+      ? `${pendingSanctionText} de sanción. ¿Marcar al jugador como disponible igualmente?`
+      : `${pendingSanctionText} de sanción. ¿Cerrar la sanción y cambiar el estado igualmente?`;
+    if (
+      current.status === PLAYER_AVAILABILITY.suspended
+      && current.remaining > 0
+      && availabilityDraft.status !== PLAYER_AVAILABILITY.suspended
+      && !window.confirm(leavingSanctionMessage)
+    ) return;
+    setAvailabilitySaving(true);
+    setAvailabilityError('');
+    try {
+      const { data, error: rpcError } = await supabase.rpc(
+        'set_player_availability',
+        buildAvailabilityRpcInput(availabilityEditor.id, availabilityDraft.status, availabilityDraft.remaining)
+      );
+      if (rpcError) throw rpcError;
+      const updatedRow = Array.isArray(data) ? data[0] : data;
+      if (!updatedRow) throw new Error('Supabase no devolvió el estado de disponibilidad actualizado.');
+      const updatedPlayer = normalizeSupabaseJugador({ ...availabilityEditor, ...updatedRow });
+      setPlayers((currentPlayers) => currentPlayers.map((player) => (player.id === updatedPlayer.id ? { ...player, ...updatedPlayer } : player)));
+      setAvailabilityEditor(null);
+    } catch (saveError) {
+      setAvailabilityError(saveError.message || 'No se pudo guardar la disponibilidad.');
+    } finally {
+      setAvailabilitySaving(false);
+    }
+  };
+
   const openStatsCallupPanel = async () => {
     if (!selectedMatch) return;
     setStatsCallupError('');
@@ -14571,7 +14662,10 @@ function App() {
     const currentCalled = new Set(getStatsCalledPlayerNames().map(normalizePlayerIdentityName));
     const uniqueNames = Array.from(new Set(playerNames)).filter(
       (playerName) => playerName && !currentCalled.has(normalizePlayerIdentityName(playerName))
-    );
+    ).filter((playerName) => {
+      const player = players.find((item) => item.name === playerName);
+      return player && isPlayerAvailable(player);
+    });
     if (!uniqueNames.length) return 0;
 
     const playersByName = new Map(players.map((player) => [player.name, player]));
@@ -14611,7 +14705,7 @@ function App() {
 
   const handleAddAllStatsCallups = async () => {
     if (!selectedMatch) return;
-    const outsidePlayerNames = getOutsideStatsCallupPlayerNames(getStatsSquadRows());
+    const outsidePlayerNames = getAvailableOutsidePlayerNames(getStatsSquadRows());
     if (!outsidePlayerNames.length) return;
     setStatsCallupSaving(true);
     setStatsCallupError('');
@@ -16782,7 +16876,9 @@ function App() {
     const awayTeamName = selectedMatch.isHome ? selectedMatch.opponent || 'Rival' : 'C.D. Caudal';
     const homeTeamCrest = selectedMatch.isHome ? clubCrest : selectedMatch.opponentCrest;
     const awayTeamCrest = selectedMatch.isHome ? selectedMatch.opponentCrest : clubCrest;
-    const renderStatsSquadCard = ({ player, status }) => (
+    const renderStatsSquadCard = ({ player, status }) => {
+      const availability = getPlayerAvailabilityPresentation(player);
+      return (
       <div
         key={`${status}-${player.id || player.name}`}
         draggable
@@ -16799,6 +16895,15 @@ function App() {
               {displayPlayerName(player) || player.name}
             </p>
             <p className="mt-0.5 break-words text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">{getPlayerPositionLabel(player)}</p>
+            {availability.status !== PLAYER_AVAILABILITY.available ? (
+              <button
+                type="button"
+                onClick={() => openAvailabilityEditor(player)}
+                className="mt-1 text-left text-[8px] font-black uppercase tracking-[0.08em] text-amber-200 hover:text-amber-100"
+              >
+                {availability.label}
+              </button>
+            ) : null}
           </div>
           <select
             value={status}
@@ -16810,7 +16915,8 @@ function App() {
           </select>
         </div>
       </div>
-    );
+      );
+    };
     const renderStatsSquadGroup = (title, status) => {
       const rows = getStatsSquadRowsByStatus(status);
       const positionGroups = status === 'Titular' ? [] : groupStatsCallupRowsByPosition(rows);
@@ -20235,14 +20341,12 @@ function App() {
     [performancePlayerRows]
   );
   const staffStatusByPlayerId = useMemo(() => {
-    const recentMatches = [...matches]
-      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
-      .slice(0, 5);
     return new Map(players.map((player) => {
-      const recentStats = recentMatches.map((match) => match.statsPlayerData?.[player.name]).filter(Boolean);
       const performanceRow = performanceRowByPlayerId.get(player.id);
-      const injured = recentStats.some((stats) => stats.injured);
-      const suspended = recentStats.some((stats) => stats.red);
+      const availability = getPlayerAvailabilityPresentation(player);
+      const injured = availability.status === PLAYER_AVAILABILITY.injured;
+      const suspended = availability.status === PLAYER_AVAILABILITY.suspended;
+      const unavailable = availability.status === PLAYER_AVAILABILITY.unavailable;
       const highLoad = Boolean(performanceRow?.repeatedHighRpe);
       const touched = Boolean(
         performanceRow?.hasDiscomfort ||
@@ -20253,10 +20357,12 @@ function App() {
         captain: matches.some((match) => match.captainPlayerId === player.id),
         injured,
         suspended,
+        unavailable,
+        availability,
         sub23: playerLabel(player.dob) === 'Sub-23',
         highLoad,
         touched,
-        available: !injured && !suspended,
+        available: availability.status === PLAYER_AVAILABILITY.available,
       }];
     }));
   }, [matches, performancePlayerRows, performanceRowByPlayerId, players]);
@@ -20266,10 +20372,11 @@ function App() {
     const suspended = statuses.filter((status) => status.suspended).length;
     return {
       total: players.length,
-      available: Math.max(0, players.length - injured - suspended),
+      available: statuses.filter((status) => status.available).length,
       injured,
       suspended,
-      doubtful: statuses.filter((status) => (status.touched || status.highLoad) && !status.injured && !status.suspended).length,
+      unavailable: statuses.filter((status) => status.unavailable).length,
+      doubtful: statuses.filter((status) => (status.touched || status.highLoad) && status.available).length,
       sub23: statuses.filter((status) => status.sub23).length,
     };
   }, [players, staffStatusByPlayerId]);
@@ -20366,7 +20473,7 @@ function App() {
         playerQuickFilter === 'Todos' ||
         (playerQuickFilter === 'Disponibles' && status.available) ||
         (playerQuickFilter === 'Sub-23' && status.sub23) ||
-        (playerQuickFilter === 'Alertas' && (status.injured || status.suspended || status.highLoad || status.touched));
+        (playerQuickFilter === 'Alertas' && (status.injured || status.suspended || status.unavailable || status.highLoad || status.touched));
       return matchesSearch && matchesFilter;
     });
   }, [playerQuickFilter, playerSearchTerm, rosterDisplayPlayers, staffStatusByPlayerId]);
@@ -28396,12 +28503,13 @@ function App() {
                   <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">Plantilla</p>
                   <h2 className="mt-1 text-2xl font-black text-white">Panel competitivo</h2>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-4 xl:min-w-[560px]">
+                <div className="grid gap-2 sm:grid-cols-5 xl:min-w-[680px]">
                   {[
                     ['PL', 'Total plantilla', squadSummary.total, 'border-white/10 bg-white/[0.05] text-white'],
                     ['OK', 'Disponibles reales', squadSummary.available, 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100'],
                     ['LES', 'Lesionados', squadSummary.injured, 'border-red-200/20 bg-red-300/10 text-red-100'],
                     ['SAN', 'Sancionados', squadSummary.suspended, 'border-slate-200/20 bg-slate-200/10 text-slate-200'],
+                    ['ND', 'No disponibles', squadSummary.unavailable, 'border-amber-200/20 bg-amber-200/10 text-amber-100'],
                   ].map(([icon, label, value, tone]) => (
                     <div key={label} className={`rounded-2xl border px-3 py-2 ${tone}`}>
                       <p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-65">{icon} {label}</p>
@@ -28419,11 +28527,12 @@ function App() {
 
               <div className="mt-3 rounded-[1.05rem] border border-white/10 bg-black/15 p-2.5">
                 <p className="mb-2 px-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Disponibilidad semanal</p>
-                <div className="grid gap-2 sm:grid-cols-4">
+                <div className="grid gap-2 sm:grid-cols-5">
                   {[
                     ['Disponibles', squadSummary.available, 'text-emerald-100'],
                     ['Lesionados', squadSummary.injured, 'text-red-100'],
                     ['Sancionados', squadSummary.suspended, 'text-slate-200'],
+                    ['No disponibles', squadSummary.unavailable, 'text-amber-100'],
                     ['Sub-23', squadSummary.sub23, 'text-caudal-electric'],
                   ].map(([label, value, textClass]) => (
                     <div key={label} className="flex items-center justify-between gap-2 rounded-xl bg-white/[0.035] px-3 py-2">
@@ -28552,10 +28661,15 @@ function App() {
                       <tbody>
                         {visiblePlayers.map((player) => {
                           const staffStatus = staffStatusByPlayerId.get(player.id) || {};
+                          const availability = getPlayerAvailabilityPresentation(player);
                           const rosterRow = rosterDashboard.rowByPlayerId.get(player.id) || {};
                           const inBaseEleven = rosterDashboard.baseEleven.some((item) => item.player.id === player.id);
-                          const statusLabel = staffStatus.suspended ? 'Sancionado' : staffStatus.injured ? 'Lesionado' : '';
-                          const statusClass = statusLabel === 'Lesionado' ? 'bg-red-300 text-slate-950' : 'bg-slate-300 text-slate-950';
+                          const statusLabel = availability.status === PLAYER_AVAILABILITY.available ? '' : availability.label;
+                          const statusClass = availability.status === PLAYER_AVAILABILITY.injured
+                            ? 'bg-red-300 text-slate-950'
+                            : availability.status === PLAYER_AVAILABILITY.unavailable
+                              ? 'bg-amber-200 text-slate-950'
+                              : 'bg-slate-300 text-slate-950';
                           const positionLabel = getPlayerPositionLabel(player);
                           const ageLabel = player.dob ? `${calculateAge(player.dob)} años` : 'Edad no indicada';
                           return (
@@ -28572,7 +28686,7 @@ function App() {
                               <td className="px-4 py-3 text-slate-300">{positionLabel}</td>
                               <td className="px-4 py-3 text-slate-300" title={player.dob ? undefined : 'Falta indicar la fecha de nacimiento'}>{ageLabel}</td>
                               <td className="px-4 py-3">
-                                {statusLabel ? <span className={`rounded-xl px-2.5 py-1 text-xs font-black ${statusClass}`}>{statusLabel}</span> : <span className="text-slate-600">-</span>}
+                                {statusLabel ? <button type="button" onClick={(event) => { event.stopPropagation(); openAvailabilityEditor(player); }} className={`rounded-xl px-2.5 py-1 text-xs font-black ${statusClass}`}>{statusLabel}</button> : <button type="button" onClick={(event) => { event.stopPropagation(); openAvailabilityEditor(player); }} className="text-xs font-bold text-emerald-200">Disponible</button>}
                               </td>
                               <td className="px-4 py-3">
                                 <div className="flex flex-wrap gap-1.5">
@@ -28603,12 +28717,15 @@ function App() {
                     <div className="grid gap-3 xl:grid-cols-2 min-[1700px]:grid-cols-3">
                       {group.players.map((player) => {
                         const staffStatus = staffStatusByPlayerId.get(player.id) || {};
+                        const availability = getPlayerAvailabilityPresentation(player);
                         const rosterRow = rosterDashboard.rowByPlayerId.get(player.id) || {};
                         const inBaseEleven = rosterDashboard.baseEleven.some((item) => item.player.id === player.id);
-                        const statusLabel = staffStatus.suspended ? 'Sancionado' : staffStatus.injured ? 'Lesionado' : '';
-                        const statusClass = statusLabel === 'Lesionado'
+                        const statusLabel = availability.status === PLAYER_AVAILABILITY.available ? '' : availability.label;
+                        const statusClass = availability.status === PLAYER_AVAILABILITY.injured
                           ? 'border-red-200/20 bg-red-300/10 text-red-100'
-                          : 'border-slate-200/20 bg-slate-200/10 text-slate-200';
+                          : availability.status === PLAYER_AVAILABILITY.unavailable
+                            ? 'border-amber-200/20 bg-amber-200/10 text-amber-100'
+                            : 'border-slate-200/20 bg-slate-200/10 text-slate-200';
                         const minutesLabel = `${Number(rosterRow.minutes || 0)}'`;
                         const startsLabel = rosterRow.starts ? `${rosterRow.starts} TIT` : 'Sin participar';
                         const footLabel = player.foot || 'Pierna no indicada';
@@ -28643,6 +28760,7 @@ function App() {
                           {floatingMenu?.id === `player-card-${player.id}` ? (
                             <FloatingActionMenu anchorRect={floatingMenu.anchorRect} width={144} onClose={closeFloatingMenu}>
                               <button type="button" onClick={() => runMenuAction(() => openForm(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-white transition hover:bg-white/10">Editar</button>
+                              <button type="button" onClick={() => runMenuAction(() => openAvailabilityEditor(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-amber-100 transition hover:bg-amber-500/15">Disponibilidad</button>
                               <button type="button" onClick={() => runMenuAction(() => handleDelete(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar</button>
                             </FloatingActionMenu>
                           ) : null}
@@ -33197,6 +33315,57 @@ function App() {
         </div>
       ) : null}
 
+      {availabilityEditor ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-black/70 px-4 py-6 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#07111f] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.46)] sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Disponibilidad persistente</p>
+                <h3 className="mt-2 text-xl font-black text-white">{displayPlayerName(availabilityEditor)}</h3>
+                <p className="mt-1 text-sm text-slate-400">Este estado será el mismo en Plantilla y Convocatoria.</p>
+              </div>
+              <button type="button" onClick={closeAvailabilityEditor} disabled={availabilitySaving} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-bold text-slate-200 disabled:opacity-50">Cerrar</button>
+            </div>
+            {availabilityError ? <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-100">{availabilityError}</div> : null}
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <label className="space-y-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                <span>Estado</span>
+                <select
+                  value={availabilityDraft.status}
+                  onChange={(event) => setAvailabilityDraft((current) => ({ ...current, status: event.target.value }))}
+                  disabled={availabilitySaving}
+                  className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm normal-case tracking-normal text-white outline-none focus:border-caudal-electric/60"
+                >
+                  <option value={PLAYER_AVAILABILITY.available}>Disponible</option>
+                  <option value={PLAYER_AVAILABILITY.injured}>Lesionado</option>
+                  <option value={PLAYER_AVAILABILITY.suspended}>Sancionado</option>
+                  <option value={PLAYER_AVAILABILITY.unavailable}>No disponible</option>
+                </select>
+              </label>
+              {availabilityDraft.status === PLAYER_AVAILABILITY.suspended ? (
+                <label className="space-y-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                  <span>Partidos pendientes</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={availabilityDraft.remaining}
+                    onChange={(event) => setAvailabilityDraft((current) => ({ ...current, remaining: event.target.value }))}
+                    disabled={availabilitySaving}
+                    className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm normal-case tracking-normal text-white outline-none focus:border-caudal-electric/60"
+                  />
+                  <span className="block text-[10px] normal-case tracking-normal text-slate-500">El valor 0 guarda al jugador como disponible.</span>
+                </label>
+              ) : null}
+            </div>
+            <div className="mt-6 flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:justify-end">
+              <button type="button" onClick={closeAvailabilityEditor} disabled={availabilitySaving} className="rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-3 text-sm font-bold text-slate-200 disabled:opacity-50">Cancelar</button>
+              <button type="button" onClick={savePlayerAvailability} disabled={availabilitySaving} className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 disabled:opacity-60">{availabilitySaving ? 'Guardando...' : 'Guardar disponibilidad'}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {isStatsCallupPanelOpen ? (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6">
           <div className="mx-auto flex h-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-caudal-950 shadow-glow">
@@ -33223,13 +33392,22 @@ function App() {
               <button
                 type="button"
                 onClick={handleAddAllStatsCallups}
-                disabled={!getStatsCallupCounts().outside || statsCallupSaving}
+                disabled={!getAvailableOutsidePlayerNames(getStatsSquadRows()).length || statsCallupSaving}
                 className="flex w-full items-center justify-between gap-3 rounded-2xl bg-caudal-electric px-4 py-3 text-left text-xs font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span>AÑADIR TODOS A CONVOCADOS</span>
-                <span>{getStatsCallupCounts().outside}</span>
+                <span>{getAvailableOutsidePlayerNames(getStatsSquadRows()).length}</span>
               </button>
-              <p className="mt-2 text-xs text-slate-400">Convierte en suplentes a todos los jugadores que están fuera, aunque el listado esté filtrado.</p>
+              <p className="mt-2 text-xs text-slate-400">Añade como suplentes solo a los jugadores disponibles que están fuera, aunque el listado esté filtrado.</p>
+              {(() => {
+                const unavailableRows = getStatsSquadRows().filter((row) => !isPlayerAvailable(row.player));
+                const injuredCount = unavailableRows.filter((row) => getPlayerAvailabilityPresentation(row.player).status === PLAYER_AVAILABILITY.injured).length;
+                const suspendedCount = unavailableRows.filter((row) => getPlayerAvailabilityPresentation(row.player).status === PLAYER_AVAILABILITY.suspended).length;
+                const absentCount = unavailableRows.filter((row) => getPlayerAvailabilityPresentation(row.player).status === PLAYER_AVAILABILITY.unavailable).length;
+                return unavailableRows.length ? (
+                  <p className="mt-1 text-[10px] font-bold text-slate-500">{unavailableRows.length} no disponibles · {injuredCount} lesionados · {suspendedCount} sancionados · {absentCount} no disponibles</p>
+                ) : null;
+              })()}
             </div>
             <div className="flex flex-wrap gap-2 border-b border-white/10 px-6 py-4">
               {(() => {
@@ -33245,8 +33423,8 @@ function App() {
               })()}
               <button
                 type="button"
-                onClick={() => setSelectedStatsCallups(getFilteredStatsSquadRowsForCallup().filter((row) => row.status === 'Fuera').map((row) => row.player.name))}
-                disabled={!getFilteredStatsSquadRowsForCallup().some((row) => row.status === 'Fuera') || statsCallupSaving}
+                onClick={() => setSelectedStatsCallups(getFilteredStatsSquadRowsForCallup().filter((row) => row.status === 'Fuera' && isPlayerAvailable(row.player)).map((row) => row.player.name))}
+                disabled={!getFilteredStatsSquadRowsForCallup().some((row) => row.status === 'Fuera' && isPlayerAvailable(row.player)) || statsCallupSaving}
                 className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Seleccionar fuera visibles
@@ -33285,6 +33463,7 @@ function App() {
                 <div className="grid gap-3 sm:grid-cols-2">
                   {getFilteredStatsSquadRowsForCallup().map(({ player, status }) => {
                     const checked = selectedStatsCallups.includes(player.name);
+                    const availability = getPlayerAvailabilityPresentation(player);
                     return (
                       <div
                         key={player.id}
@@ -33297,7 +33476,7 @@ function App() {
                             type="checkbox"
                             checked={checked}
                             onChange={() => toggleStatsCallupSelection(player.name)}
-                            disabled={statsCallupSaving || status !== 'Fuera'}
+                            disabled={statsCallupSaving || status !== 'Fuera' || !isPlayerAvailable(player)}
                             className="h-5 w-5 accent-caudal-electric disabled:opacity-30"
                           />
                           <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/10 text-xs font-black text-white">
@@ -33309,6 +33488,13 @@ function App() {
                               {displayPlayerName(player)}
                             </span>
                             <span className="mt-0.5 block break-words text-[10px] uppercase tracking-[0.08em] text-slate-500">{getPlayerPositionLabel(player)}</span>
+                            <button
+                              type="button"
+                              onClick={() => openAvailabilityEditor(player)}
+                              className={`mt-1 block text-left text-[9px] font-black uppercase tracking-[0.08em] ${availability.status === PLAYER_AVAILABILITY.available ? 'text-emerald-200 hover:text-emerald-100' : 'text-amber-200 hover:text-amber-100'}`}
+                            >
+                              {availability.label} · Cambiar
+                            </button>
                           </span>
                           <select
                             value={status}
@@ -33475,6 +33661,24 @@ function App() {
                     </div>
                   </section>
 
+                  {editingId ? (() => {
+                    const availabilityPlayer = players.find((player) => player.id === editingId);
+                    if (!availabilityPlayer) return null;
+                    const availability = getPlayerAvailabilityPresentation(availabilityPlayer);
+                    return (
+                      <section className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Disponibilidad</p>
+                            <p className="mt-2 text-sm font-black text-white">{availability.label}</p>
+                            <p className="mt-1 text-xs text-slate-500">Estado persistente compartido con Convocatoria.</p>
+                          </div>
+                          <button type="button" onClick={() => openAvailabilityEditor(availabilityPlayer)} className="min-h-11 rounded-xl border border-caudal-electric/25 bg-caudal-electric/10 px-4 py-2 text-xs font-black text-caudal-electric">Cambiar disponibilidad</button>
+                        </div>
+                      </section>
+                    );
+                  })() : null}
+
                 </div>
 
                 <aside className="space-y-3">
@@ -33536,6 +33740,12 @@ function App() {
                 || safeArray(rivalPlayerModal.draft?.memberships).some((membership) => membership.is_current && String(membership.team_id) === String(team.id))
               )
             ))}
+            availabilityPlayer={(() => {
+              const globalId = rivalPlayerModal.draft?.globalPlayerId || rivalPlayerModal.draft?.id;
+              const ownPlayer = players.find((player) => player.globalPlayerId && String(player.globalPlayerId) === String(globalId));
+              return ownPlayer ? { ...ownPlayer, availabilityLabel: getPlayerAvailabilityPresentation(ownPlayer).label } : null;
+            })()}
+            onManageAvailability={openAvailabilityEditor}
             globalPlayers={globalPlayers}
             saving={rivalPlayerSaving}
             error={rivalPlayerSaveError}

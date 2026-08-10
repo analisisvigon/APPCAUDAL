@@ -29,6 +29,8 @@ export default function PlayerDatabaseForm({
   onAllowDuplicate,
   onDelete,
   onManageTeam,
+  availabilityPlayer = null,
+  onManageAvailability,
   onMergeDuplicate,
   sourceAnalysis,
   analyzingSourceUrl = '',
@@ -220,6 +222,19 @@ export default function PlayerDatabaseForm({
         </div>
         {photoError ? <p className="mt-2 text-xs font-bold text-red-200">{photoError}</p> : null}
       </section>
+
+      {availabilityPlayer && onManageAvailability ? (
+        <section className="mt-4 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h4 className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Disponibilidad</h4>
+              <p className="mt-2 text-sm font-black text-white">{availabilityPlayer.availabilityLabel || 'DISPONIBLE'}</p>
+              <p className="mt-1 text-xs text-slate-500">Estado persistente de la plantilla y la convocatoria.</p>
+            </div>
+            <button type="button" onClick={() => onManageAvailability(availabilityPlayer)} className="min-h-11 rounded-xl border border-caudal-electric/25 bg-caudal-electric/10 px-4 py-2 text-xs font-black text-caudal-electric">Cambiar disponibilidad</button>
+          </div>
+        </section>
+      ) : null}
 
       {draft.name?.trim() && matches.length ? (
         <section className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-300/[0.07] p-4">

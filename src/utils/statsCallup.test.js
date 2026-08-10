@@ -70,12 +70,16 @@ let collapsedGroups = {};
 
 const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 assert.ok(appSource.includes('AÑADIR TODOS A CONVOCADOS'), 'la acción masiva está expuesta en la cabecera del gestor');
-assert.ok(appSource.includes('getOutsideStatsCallupPlayerNames(getStatsSquadRows())'), 'la acción usa toda la plantilla y no las filas filtradas');
-assert.ok(appSource.includes("getFilteredStatsSquadRowsForCallup().filter((row) => row.status === 'Fuera')"), 'seleccionar visibles mantiene el filtro activo');
+assert.ok(appSource.includes('getAvailableOutsidePlayerNames(getStatsSquadRows())'), 'la acción usa toda la plantilla y filtra por disponibilidad persistente');
+assert.ok(appSource.includes("row.status === 'Fuera' && isPlayerAvailable(row.player)"), 'seleccionar visibles mantiene filtro y disponibilidad');
 assert.ok(appSource.includes('aria-expanded={!collapsed}'), 'los grupos usan un control accesible de expansión');
 assert.ok(appSource.includes('aria-controls={contentId}'), 'los controles enlazan con su contenido');
 assert.ok(appSource.includes('aria-label={`${collapsed ? \'Abrir\' : \'Cerrar\'} ${title.toLowerCase()} ${group.label.toLowerCase()}`}'), 'cada grupo declara una etiqueta accesible contextual');
 assert.ok(appSource.includes("supabase.from(\"partido_convocados\").upsert(convocadoRows"), 'la convocatoria masiva conserva la persistencia existente');
+assert.ok(appSource.includes("player && isPlayerAvailable(player)"), 'la escritura masiva vuelve a validar disponibilidad y evita selecciones obsoletas');
+assert.ok(appSource.includes("'set_player_availability'"), 'Plantilla y Convocatoria reutilizan la misma RPC persistente');
+assert.ok(appSource.includes('window.confirm(leavingSanctionMessage)') && appSource.includes("'Queda 1 partido'"), 'I: el alta manual con sanción pendiente exige confirmación');
+assert.ok(appSource.includes('availabilityDraft.status === PLAYER_AVAILABILITY.suspended') && appSource.includes('min="0"'), 'J: el contador permite cero y la RPC normaliza el alta');
 assert.ok(appSource.includes("await refreshStatsFromSupabase(selectedMatch.id, 'convocatoria completa')"), 'la acción vuelve a leer el estado persistido real');
 assert.ok(appSource.includes("if (role === 'Fuera')") && appSource.includes('removeStatsCalledPlayer(playerName)'), 'FUERA conserva el borrado de la convocatoria real');
 assert.ok(appSource.includes('const legacyCalledRows = calledPlayers'), 'los convocados heredados fuera de la plantilla activa no desaparecen del recuento');

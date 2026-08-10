@@ -44,6 +44,8 @@
     "test:recent-activity": "node src/utils/recentActivity.test.js",
     "test:player-positions": "node src/constants/playerPositions.test.js",
     "test:stats-callup": "node src/utils/statsCallup.test.js",
+    "test:player-availability": "node src/utils/playerAvailability.test.js",
+    "test:player-availability-sql": "node scripts/playerAvailabilitySqlAudit.test.mjs",
     "test:global-players": "node src/utils/globalPlayerStore.test.js",
     "test:player-source-analysis": "node src/utils/playerSourceAnalysis.test.js",
     "audit:supabase-encoding": "node src/utils/supabaseEncodingAudit.js",
