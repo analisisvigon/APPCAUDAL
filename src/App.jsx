@@ -90,6 +90,22 @@ import {
   toggleStatsCallupGroupState,
 } from './utils/statsCallup';
 import {
+  DEFAULT_OWN_FORMATION,
+  OWN_DEFAULT_FORMATION_CONFIG_KEY,
+  STATS_FORMATION_OPTIONS,
+  createNewMatchFormationState,
+  normalizeOwnDefaultFormation,
+  resolveMatchStatsFormation,
+} from './utils/statsFormation';
+import {
+  buildStatsLineupRows,
+  getStatsLineupInvariantReport,
+  hydrateStatsLineup,
+  moveStatsLineupPlayer,
+  normalizeStatsLineup,
+  removeStatsLineupPlayer,
+} from './utils/statsLineup';
+import {
   PLAYER_AVAILABILITY,
   buildAvailabilityRpcInput,
   consumeSuspensionsForEligibleMatches,
@@ -678,7 +694,7 @@ const emptyMatchForm = {
   cleanSheet: false,
   statsGoalEvents: [],
   systemEvents: [],
-  statsSystem: '4-4-2',
+  statsSystem: DEFAULT_OWN_FORMATION,
   statsLineup: [],
   statsCalledPlayers: [],
   statsCalledPlayerIds: {},
@@ -710,7 +726,7 @@ const emptyMatchForm = {
   preCanvaLink: '',
   preRivalReportText: '',
   preRivalReportExtraction: null,
-  preCaudalSystem: '4-4-2',
+  preCaudalSystem: DEFAULT_OWN_FORMATION,
   preCaudalLineup: [],
   preRivalSystem: '',
   preRivalLineup: [],
@@ -1744,7 +1760,10 @@ const normalizeSupabasePartido = (match) =>
     awayScore: match.away_score ?? match.awayScore ?? '',
     goalsFor: match.goals_for ?? match.goalsFor ?? '',
     goalsAgainst: match.goals_against ?? match.goalsAgainst ?? '',
-    statsSystem: match.stats_system || '4-4-2',
+    statsSystemRaw: match.stats_system ?? match.statsSystemRaw ?? '',
+    statsSystem: match.stats_system || match.statsSystemRaw || match.statsSystem || '',
+    preCaudalSystemRaw: match.pre_caudal_system ?? match.preCaudalSystemRaw ?? '',
+    preCaudalSystem: match.pre_caudal_system || match.preCaudalSystemRaw || match.preCaudalSystem || '',
     delegatedDataStatus: match.delegated_data_status || match.delegatedDataStatus || '',
     captainPlayerId: match.captain_player_id || null,
     equipoRivalId: match.equipo_rival_id || null,
@@ -1775,6 +1794,7 @@ const createPartidoPayload = (matchFormState, teams = [], competitions = []) => 
     away_score: matchFormState.awayScore ?? '',
     goals_for: matchFormState.goalsFor ?? '',
     goals_against: matchFormState.goalsAgainst ?? '',
+    stats_system: matchFormState.statsSystem || DEFAULT_OWN_FORMATION,
     equipo_rival_id: equipoRivalId,
   };
   const prepPayload = Object.fromEntries(
@@ -1868,11 +1888,11 @@ const sortSystemEventsChronologically = (events = []) => safeArray(events)
     return String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
   });
 
-const getInitialMatchSystem = (match = {}) => match.statsSystem || match.statsSystemRaw || match.preCaudalSystem || match.preCaudalSystemRaw || '4-4-2';
+const getInitialMatchSystem = (match = {}) => match.statsSystemRaw || match.statsSystem || match.preCaudalSystemRaw || match.preCaudalSystem || DEFAULT_OWN_FORMATION;
 
-const getSystemAtMinute = ({ initialSystem = '4-4-2', systemEvents = [], minute, period = '' } = {}) => {
+const getSystemAtMinute = ({ initialSystem = DEFAULT_OWN_FORMATION, systemEvents = [], minute, period = '' } = {}) => {
   const targetMinute = getEventMinuteNumber(minute);
-  if (targetMinute === null) return initialSystem || '4-4-2';
+  if (targetMinute === null) return initialSystem || DEFAULT_OWN_FORMATION;
   const targetHalf = getEventHalfOrder(period);
   return sortSystemEventsChronologically(systemEvents).reduce((currentSystem, event) => {
     const eventMinute = getSystemEventMinute(event);
@@ -1882,12 +1902,12 @@ const getSystemAtMinute = ({ initialSystem = '4-4-2', systemEvents = [], minute,
       return event.toSystem || currentSystem;
     }
     return currentSystem;
-  }, initialSystem || '4-4-2');
+  }, initialSystem || DEFAULT_OWN_FORMATION);
 };
 
-const getSystemBeforeEvent = ({ initialSystem = '4-4-2', systemEvents = [], eventId = '', minute, period = '' } = {}) => {
+const getSystemBeforeEvent = ({ initialSystem = DEFAULT_OWN_FORMATION, systemEvents = [], eventId = '', minute, period = '' } = {}) => {
   const targetMinute = getEventMinuteNumber(minute);
-  if (targetMinute === null) return initialSystem || '4-4-2';
+  if (targetMinute === null) return initialSystem || DEFAULT_OWN_FORMATION;
   const targetHalf = getEventHalfOrder(period);
   return sortSystemEventsChronologically(systemEvents).reduce((currentSystem, event) => {
     if (event.id && event.id === eventId) return currentSystem;
@@ -1898,7 +1918,7 @@ const getSystemBeforeEvent = ({ initialSystem = '4-4-2', systemEvents = [], even
       return event.toSystem || currentSystem;
     }
     return currentSystem;
-  }, initialSystem || '4-4-2');
+  }, initialSystem || DEFAULT_OWN_FORMATION);
 };
 
 const getMatchDurationMinutes = (match = {}) => {
@@ -5186,6 +5206,7 @@ function App() {
   const [matchFieldErrors, setMatchFieldErrors] = useState({});
   const [isSavingMatch, setIsSavingMatch] = useState(false);
   const [ownClubStadium, setOwnClubStadium] = useState('');
+  const [ownDefaultFormation, setOwnDefaultFormation] = useState(DEFAULT_OWN_FORMATION);
   const [matchStadiumManuallyEdited, setMatchStadiumManuallyEdited] = useState(false);
   const [isUploadingPlayerImage, setIsUploadingPlayerImage] = useState(false);
   const [isUploadingTeamCrest, setIsUploadingTeamCrest] = useState(false);
@@ -6085,6 +6106,24 @@ function App() {
     return String(nextStadium || '').trim();
   };
 
+  const loadOwnDefaultFormation = async () => {
+    const { data, error: configError } = await supabase
+      .from("app_config")
+      .select("value")
+      .eq("key", OWN_DEFAULT_FORMATION_CONFIG_KEY)
+      .maybeSingle();
+
+    if (configError) {
+      console.warn('No se pudo cargar el sistema habitual del club; se usa el fallback local:', configError);
+      setOwnDefaultFormation(DEFAULT_OWN_FORMATION);
+      return DEFAULT_OWN_FORMATION;
+    }
+
+    const formation = normalizeOwnDefaultFormation(data?.value);
+    setOwnDefaultFormation(formation);
+    return formation;
+  };
+
   const loadHomeDashboardData = async () => {
     setHomeLoading(true);
     setHomeError('');
@@ -6314,10 +6353,7 @@ function App() {
     }
     const systemEvents = await loadSystemEventsForMatch(partidoId);
 
-    const statsLineup = Array.from({ length: 11 }, () => '');
-    (slotsResponse.data || []).forEach((slot) => {
-      if (Number.isInteger(slot.slot) && slot.slot >= 0 && slot.slot < 11) statsLineup[slot.slot] = slot.player_name || '';
-    });
+    const statsLineup = hydrateStatsLineup(slotsResponse.data || []);
 
     const statsRowsByName = new Map((statsResponse.data || []).map((row) => [row.player_name, row]));
     const starterNamesMissingMinutes = Array.from(new Set(statsLineup.filter(Boolean))).filter((playerName) => {
@@ -6656,10 +6692,7 @@ function App() {
       setMatches((partidosResponse.data || []).map((match) => {
         const normalized = normalizeSupabasePartido(match);
         const lineupSlots = slotsByMatch[match.id] || { stats: [], preCaudal: [] };
-        const statsLineup = Array.from({ length: 11 }, () => '');
-        lineupSlots.stats.forEach((slot) => {
-          statsLineup[slot.slot] = slot.playerName;
-        });
+        const statsLineup = hydrateStatsLineup(lineupSlots.stats);
         return {
           ...normalized,
           statsSystemRaw: match.stats_system || '',
@@ -6889,6 +6922,7 @@ function App() {
 
   useEffect(() => {
     loadOwnClubStadium();
+    loadOwnDefaultFormation();
   }, []);
 
   useEffect(() => {
@@ -6981,10 +7015,12 @@ function App() {
     [selectedTeam]
   );
 
-  const selectedMatch = useMemo(
-    () => matches.find((match) => match.id === selectedMatchId) ?? null,
-    [selectedMatchId, matches]
-  );
+  const selectedMatch = useMemo(() => {
+    const match = matches.find((item) => item.id === selectedMatchId) ?? null;
+    if (!match) return null;
+    const statsSystem = resolveMatchStatsFormation(match, ownDefaultFormation);
+    return match.statsSystem === statsSystem ? match : { ...match, statsSystem };
+  }, [selectedMatchId, matches, ownDefaultFormation]);
 
   const selectedPreAiAnalysis = useMemo(
     () => normalizePreAiAnalysis(selectedMatch?.preAiAnalysis),
@@ -15033,7 +15069,7 @@ function App() {
 
   const getStatsParticipationSummary = () => {
     const called = getStatsCalledPlayers();
-    const starters = called.filter((player) => getStatsPlayerData(player.name).role === 'Titular');
+    const starters = normalizeStatsLineup(selectedMatch?.statsLineup || []).filter(Boolean);
     const used = called.filter((player) => {
       const stats = getStatsPlayerData(player.name);
       return Number(stats.minutes || 0) > 0 || getStatsSubstituteMinutes(player.name) > 0;
@@ -15083,7 +15119,7 @@ function App() {
 
   const getStatsPlayedPosition = (playerName) => {
     const slotIndex = safeArray(selectedMatch?.statsLineup).findIndex((name) => name === playerName);
-    if (slotIndex >= 0) return getFormationRoles(selectedMatch?.statsSystem || '4-4-2')[slotIndex] || 'Titular';
+    if (slotIndex >= 0) return getFormationRoles(resolveMatchStatsFormation(selectedMatch, ownDefaultFormation))[slotIndex] || 'Titular';
     const substitution = getStatsSubstitutionEvents().find((event) => event.inPlayer === playerName);
     if (substitution) return `Cambio por ${substitution.outPlayer}`;
     return 'Sin posición';
@@ -15113,10 +15149,102 @@ function App() {
 
   const getStatsSquadRowsByStatus = (status) => getStatsSquadRows().filter((row) => row.status === status);
 
+  const persistStatsLineupSnapshot = async (lineup, reason = 'alineación de estadísticas') => {
+    if (!selectedMatch) return null;
+    const report = getStatsLineupInvariantReport(lineup);
+    const nextLineup = report.lineup;
+    const starterNames = new Set(nextLineup.filter(Boolean));
+    const calledPlayers = getStatsCalledPlayers();
+    const playersByName = new Map([
+      ...players.map((player) => [player.name, player]),
+      ...calledPlayers.map((player) => [player.name, player]),
+    ]);
+    const allNames = Array.from(new Set([
+      ...calledPlayers.map((player) => player.name),
+      ...starterNames,
+    ])).filter(Boolean);
+
+    return runStatsOperation(reason, async () => {
+      const { error: deleteSlotsError } = await supabase
+        .from("partido_alineacion_slots")
+        .delete()
+        .eq("partido_id", selectedMatch.id)
+        .eq("scope", "stats");
+      if (deleteSlotsError) throw deleteSlotsError;
+
+      const slotRows = buildStatsLineupRows({ matchId: selectedMatch.id, lineup: nextLineup, players })
+        .map((row) => ({ ...row, jugador_id: isUuid(row.jugador_id) ? row.jugador_id : null }));
+      if (slotRows.length) {
+        const { error: slotsError } = await supabase
+          .from("partido_alineacion_slots")
+          .upsert(slotRows, { onConflict: "partido_id,scope,slot" });
+        if (slotsError) throw slotsError;
+      }
+
+      const calledRows = Array.from(starterNames).map((playerName) => {
+        const player = playersByName.get(playerName);
+        return {
+          partido_id: selectedMatch.id,
+          jugador_id: isUuid(player?.id) ? player.id : null,
+          player_name: playerName,
+        };
+      });
+      if (calledRows.length) {
+        const { error: calledError } = await supabase
+          .from("partido_convocados")
+          .upsert(calledRows, { onConflict: "partido_id,player_name" });
+        if (calledError) throw calledError;
+      }
+
+      const statsRows = allNames.map((playerName) => {
+        const player = playersByName.get(playerName);
+        const current = getStatsPlayerData(playerName);
+        const role = starterNames.has(playerName)
+          ? 'Titular'
+          : current.role === 'Titular' ? 'Suplente' : current.role || 'Suplente';
+        return {
+          partido_id: selectedMatch.id,
+          jugador_id: isUuid(player?.id) ? player.id : null,
+          player_name: playerName,
+          role,
+          minutes: hasRealValue(current.minutes) ? String(current.minutes) : role === 'Titular' ? '90' : '',
+          yellow: Boolean(current.yellow),
+          yellow_count: Number(current.yellowCount || 0),
+          red: Boolean(current.red),
+          injured: Boolean(current.injured),
+          rating: String(current.rating || ''),
+          replacement_name: current.replacementName || '',
+        };
+      });
+      if (statsRows.length) {
+        const { error: statsError } = await supabase
+          .from("partido_estadisticas_jugador")
+          .upsert(statsRows, { onConflict: "partido_id,player_name" });
+        if (statsError) throw statsError;
+      }
+    });
+  };
+
   const saveStatsPlayerRole = async (playerName, role) => {
     if (!selectedMatch || !playerName) return;
     if (role === 'Fuera') {
       await removeStatsCalledPlayer(playerName);
+      return;
+    }
+    const currentLineup = normalizeStatsLineup(selectedMatch.statsLineup || []);
+    const currentSlot = currentLineup.indexOf(playerName);
+    if (role === 'Titular') {
+      if (currentSlot >= 0) return;
+      const emptySlot = currentLineup.findIndex((name) => !name);
+      if (emptySlot < 0) {
+        setStatsError('El once ya tiene 11 titulares. Arrastra el jugador sobre el titular que quieras sustituir.');
+        return;
+      }
+      await updateStatsLineupSlot(emptySlot, playerName);
+      return;
+    }
+    if (role === 'Suplente' && currentSlot >= 0) {
+      await persistStatsLineupSnapshot(removeStatsLineupPlayer(currentLineup, playerName), `pasar ${playerName} a suplente`);
       return;
     }
     const player = players.find((item) => item.name === playerName);
@@ -15151,20 +15279,24 @@ function App() {
     if (!selectedMatch) return;
     const starters = getStatsSquadRowsByStatus('Titular').slice(0, 11).map((row) => row.player);
     if (!starters.length) return;
-    await runStatsOperation('auto colocar titulares', async () => {
-      await supabase.from("partido_alineacion_slots").delete().eq("partido_id", selectedMatch.id).eq("scope", "stats");
-      const rows = starters.map((player, index) => ({
-        partido_id: selectedMatch.id,
-        scope: 'stats',
-        slot: index,
-        player_name: player.name,
-        jugador_id: isUuid(player.id) ? player.id : null,
-      }));
-      if (rows.length) {
-        const { error: slotsError } = await supabase.from("partido_alineacion_slots").upsert(rows, { onConflict: "partido_id,scope,slot" });
-        if (slotsError) throw slotsError;
-      }
+    const system = resolveMatchStatsFormation(selectedMatch, ownDefaultFormation);
+    const roles = getFormationRoles(system);
+    const coordinates = getFormationCoordinates(system);
+    const currentLineup = normalizeStatsLineup(selectedMatch.statsLineup || []).flatMap((playerName, slot) => {
+      const player = starters.find((item) => item.name === playerName);
+      return player ? [{ ...player, role: 'Titular', slot, ...coordinates[slot] }] : [];
     });
+    const result = buildIntelligentLineup({ players: starters, roles, coordinates, currentLineup, currentRoles: roles });
+    const nextLineup = Array.from({ length: 11 }, () => '');
+    result.lineup.forEach((player) => {
+      if (Number.isInteger(player.slot) && player.slot >= 0 && player.slot < 11) nextLineup[player.slot] = player.name;
+    });
+    const remainingPlayers = starters.filter((player) => !nextLineup.includes(player.name));
+    remainingPlayers.forEach((player) => {
+      const emptySlot = nextLineup.findIndex((name) => !name);
+      if (emptySlot >= 0) nextLineup[emptySlot] = player.name;
+    });
+    await persistStatsLineupSnapshot(nextLineup, 'auto colocar titulares');
   };
 
   const updateStatsPlayerData = async (playerName, fields) => {
@@ -15225,61 +15357,18 @@ function App() {
 
   const updateStatsLineupSlot = async (slotIndex, playerName) => {
     if (!selectedMatch || !playerName) return;
-    const player = players.find((item) => item.name === playerName);
-    const jugadorId = isUuid(player?.id) ? player.id : null;
-    const calledNames = getStatsCalledPlayerNames();
-    if (!calledNames.includes(playerName)) await addStatsCalledPlayer(playerName);
-
-    const repeatedSlots = (selectedMatch.statsLineup || [])
-      .map((name, index) => ({ name, index }))
-      .filter((entry) => entry.name === playerName && entry.index !== slotIndex);
-    if (repeatedSlots.length) {
-      const { error: repeatedError } = await supabase
-        .from("partido_alineacion_slots")
-        .delete()
-        .eq("partido_id", selectedMatch.id)
-        .eq("scope", "stats")
-        .in("slot", repeatedSlots.map((entry) => entry.index));
-      if (repeatedError) {
-        console.error('Error limpiando slots repetidos en Supabase:', repeatedError);
-        return;
-      }
-    }
-
-    const { error: slotError } = await supabase.from("partido_alineacion_slots").upsert(
-      {
-        partido_id: selectedMatch.id,
-        scope: 'stats',
-        slot: slotIndex,
-        player_name: playerName,
-        jugador_id: jugadorId,
-      },
-      { onConflict: "partido_id,scope,slot" }
+    const transition = moveStatsLineupPlayer({
+      lineup: selectedMatch.statsLineup || [],
+      playerName,
+      targetSlot: slotIndex,
+    });
+    if (!transition.changed) return;
+    await persistStatsLineupSnapshot(
+      transition.lineup,
+      transition.sourceSlot >= 0 && transition.displacedPlayerName
+        ? `intercambio ${playerName} / ${transition.displacedPlayerName}`
+        : `colocar ${playerName}`
     );
-    if (slotError) {
-      console.error('Error guardando slot de alineación en Supabase:', slotError);
-      return;
-    }
-
-    const currentStats = getStatsPlayerData(playerName);
-    const nextStats = { ...currentStats, role: 'Titular', minutes: hasRealValue(currentStats.minutes) ? String(currentStats.minutes) : '90' };
-    await supabase.from("partido_estadisticas_jugador").upsert(
-      {
-        partido_id: selectedMatch.id,
-        jugador_id: jugadorId,
-        player_name: playerName,
-        role: 'Titular',
-        minutes: nextStats.minutes,
-        yellow: Boolean(nextStats.yellow),
-        yellow_count: Number(nextStats.yellowCount || 0),
-        red: Boolean(nextStats.red),
-        injured: Boolean(nextStats.injured),
-        rating: String(nextStats.rating || ''),
-        replacement_name: nextStats.replacementName || '',
-      },
-      { onConflict: "partido_id,player_name" }
-    );
-    await refreshStatsFromSupabase(selectedMatch.id, 'alineación de estadísticas');
   };
 
   const updateStatsSystem = async (system) => {
@@ -15287,6 +15376,11 @@ function App() {
     const { error: systemError } = await supabase.from("partidos").update({ stats_system: system }).eq("id", selectedMatch.id);
     if (systemError) {
       console.error('Error guardando sistema de estadísticas en Supabase:', systemError);
+      return;
+    }
+    const lineupReport = getStatsLineupInvariantReport(selectedMatch.statsLineup || []);
+    if (!lineupReport.valid) {
+      await persistStatsLineupSnapshot(lineupReport.lineup, 'normalización tras cambio de sistema');
       return;
     }
     await refreshStatsFromSupabase(selectedMatch.id, 'sistema de estadísticas');
@@ -16757,7 +16851,7 @@ function App() {
     if (!selectedMatch) return null;
     const systemSequence = buildSystemSequence(selectedMatch);
     const latestSegment = systemSequence[systemSequence.length - 1] || null;
-    const activeSystem = selectedSystemMoment?.system || latestSegment?.system || selectedMatch.statsSystem || '4-4-2';
+    const activeSystem = selectedSystemMoment?.system || latestSegment?.system || resolveMatchStatsFormation(selectedMatch, ownDefaultFormation);
     const activeSystemFromMinute = selectedSystemMoment?.minute ?? latestSegment?.fromMinute ?? 0;
     const coordinates = getFormationCoordinates(activeSystem);
     const matchEvents = getStatsMatchEvents();
@@ -16883,14 +16977,14 @@ function App() {
         key={`${status}-${player.id || player.name}`}
         draggable
         onDragStart={() => setDraggedPlayer(player)}
-        className="border border-white/10 bg-white/[0.035] px-2.5 py-2"
+        className="border border-white/10 bg-white/[0.035] px-2 py-2"
       >
-        <div className="flex items-center gap-2">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/10 text-[11px] font-black text-white">
+        <div className="grid grid-cols-[36px_minmax(0,1fr)_76px] items-center gap-1.5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/10 text-[10px] font-black text-white">
             <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="break-words text-sm font-black leading-tight text-white" title={player.name}>
+            <p className="whitespace-normal [overflow-wrap:anywhere] text-[12px] font-black leading-[1.15] text-white" title={`${player.number ? `#${player.number} ` : ''}${displayPlayerName(player) || player.name}`}>
               {player.number ? <span className="mr-1 text-caudal-electric">#{player.number}</span> : null}
               {displayPlayerName(player) || player.name}
             </p>
@@ -16909,7 +17003,7 @@ function App() {
             value={status}
             onChange={(event) => saveStatsPlayerRole(player.name, event.target.value)}
             aria-label={`Estado de convocatoria de ${displayPlayerName(player) || player.name}`}
-            className="w-[88px] shrink-0 rounded-lg border border-white/10 bg-black/25 px-1.5 py-1.5 text-[9px] font-black uppercase text-white"
+            className="min-h-9 w-[76px] shrink-0 rounded-lg border border-white/10 bg-black/25 px-1 py-1.5 text-[8px] font-black uppercase text-white"
           >
             {['Titular', 'Suplente', 'Fuera'].map((option) => <option key={option} value={option}>{option}</option>)}
           </select>
@@ -17160,8 +17254,8 @@ function App() {
                 <p className="mt-1 text-sm font-semibold text-slate-400">Dorsal, nombre corto y foto si existe</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <select value={selectedMatch.statsSystem || '4-4-2'} onChange={(event) => updateStatsSystem(event.target.value)} className="border border-white/10 bg-white px-4 py-2 text-sm font-black text-slate-950">
-                  {['4-4-2', '4-2-3-1', '4-3-3', '3-5-2', '5-3-2', '3-4-3'].map((system) => <option key={system} value={system}>{system}</option>)}
+                <select value={resolveMatchStatsFormation(selectedMatch, ownDefaultFormation)} onChange={(event) => updateStatsSystem(event.target.value)} className="border border-white/10 bg-white px-4 py-2 text-sm font-black text-slate-950">
+                  {STATS_FORMATION_OPTIONS.map((system) => <option key={system} value={system}>{system}</option>)}
                 </select>
                 <button type="button" onClick={autoPlaceStatsStarters} className="bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-200">Auto colocar titulares</button>
                 <button type="button" onClick={openStatsCallupPanel} className="bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Añadir convocados</button>
@@ -19460,7 +19554,7 @@ function App() {
           return acc;
         }, Array.from({ length: 11 }, () => ''))
         : safeArray(match.statsLineup);
-      const system = source.system || match.statsSystem || '4-4-2';
+      const system = source.system || resolveMatchStatsFormation(match, ownDefaultFormation);
       const roles = getFormationRoles(system);
       safeArray(match.statsGoalEvents).forEach((event) => {
         if (event.type !== 'Gol a favor') return;
@@ -21853,7 +21947,11 @@ function App() {
       setMatchFormState(normalizeMatch(match));
     } else {
       setEditingMatchId(null);
-      setMatchFormState({ ...emptyMatchForm, stadium: ownClubStadium || '' });
+      setMatchFormState({
+        ...emptyMatchForm,
+        ...createNewMatchFormationState(ownDefaultFormation),
+        stadium: ownClubStadium || '',
+      });
     }
     setMatchFormSection(section);
     setIsMatchPanelOpen(true);
@@ -32640,8 +32738,8 @@ function App() {
                             <p className="mt-2 text-sm text-slate-400">Arrastra convocados al campo y modifica posiciones por sistema.</p>
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            <select value={selectedMatch.statsSystem || '4-4-2'} onChange={(event) => updateStatsSystem(event.target.value)} className="rounded-2xl border border-white/10 bg-white px-5 py-3 text-sm font-black text-slate-950">
-                              {gameSystems.map((system) => <option key={system} value={system}>{system}</option>)}
+                            <select value={resolveMatchStatsFormation(selectedMatch, ownDefaultFormation)} onChange={(event) => updateStatsSystem(event.target.value)} className="rounded-2xl border border-white/10 bg-white px-5 py-3 text-sm font-black text-slate-950">
+                              {STATS_FORMATION_OPTIONS.map((system) => <option key={system} value={system}>{system}</option>)}
                             </select>
                             <button type="button" onClick={() => openSystemChangeModal()} className="rounded-2xl border border-violet-300/25 bg-violet-300/10 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-violet-100">
                               Registrar cambio de sistema
@@ -33471,7 +33569,7 @@ function App() {
                           checked ? 'border-caudal-electric/60 bg-caudal-electric/15 text-white' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.07]'
                         }`}
                       >
-                        <div className="flex items-center gap-3">
+                        <div className="grid grid-cols-[20px_36px_minmax(0,1fr)_76px] items-center gap-2">
                           <input
                             type="checkbox"
                             checked={checked}
@@ -33479,11 +33577,11 @@ function App() {
                             disabled={statsCallupSaving || status !== 'Fuera' || !isPlayerAvailable(player)}
                             className="h-5 w-5 accent-caudal-electric disabled:opacity-30"
                           />
-                          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/10 text-xs font-black text-white">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/10 text-xs font-black text-white">
                             <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" />
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block break-words text-sm font-bold leading-tight" title={player.name}>
+                            <span className="block whitespace-normal [overflow-wrap:anywhere] text-[12px] font-black leading-[1.15]" title={`${player.number ? `#${player.number} ` : ''}${displayPlayerName(player)}`}>
                               {player.number ? <span className="mr-1 text-caudal-electric">#{player.number}</span> : null}
                               {displayPlayerName(player)}
                             </span>
@@ -33501,7 +33599,7 @@ function App() {
                             onChange={(event) => saveStatsPlayerRole(player.name, event.target.value)}
                             disabled={statsCallupSaving}
                             aria-label={`Estado de convocatoria de ${displayPlayerName(player)}`}
-                            className="w-[88px] shrink-0 rounded-lg border border-white/10 bg-black/25 px-1.5 py-1.5 text-[9px] font-black uppercase text-white disabled:opacity-50"
+                            className="min-h-9 w-[76px] shrink-0 rounded-lg border border-white/10 bg-black/25 px-1 py-1.5 text-[8px] font-black uppercase text-white disabled:opacity-50"
                           >
                             {['Titular', 'Suplente', 'Fuera'].map((option) => <option key={option} value={option}>{option}</option>)}
                           </select>

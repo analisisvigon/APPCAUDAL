@@ -59,6 +59,15 @@ assert.deepEqual(grouped.map((group) => group.key), ['MC', 'ATA'], 'los grupos n
 assert.equal(getPlayerDisplayName({ shirtName: 'BOZA', shortName: 'DIEGO', name: 'Diego Boza' }), 'BOZA');
 assert.equal(getPlayerDisplayName({ shortName: 'DIEGO', name: 'Diego Boza' }), 'DIEGO');
 assert.equal(getPlayerDisplayName({ name: 'Diego Boza' }), 'Diego Boza');
+[
+  { number: 20, shirtName: 'AGUS PORTO', expected: 'AGUS PORTO' },
+  { number: 9, shirtName: 'ACERETE', expected: 'ACERETE' },
+  { number: 7, shirtName: 'DIEGO BOZA', expected: 'DIEGO BOZA' },
+  { number: 26, shirtName: 'SAMU', expected: 'SAMU' },
+  { number: 1, shirtName: 'ALEX GLEZ', expected: 'ALEX GLEZ' },
+].forEach(({ number, shirtName, expected }) => {
+  assert.equal(`#${number} ${getPlayerDisplayName({ number, shirtName, name: 'Nombre real' })}`, `#${number} ${expected}`);
+});
 
 let collapsedGroups = {};
 ['Suplente-POR', 'Suplente-DEF', 'Suplente-MC', 'Suplente-ATA', 'Fuera-POR', 'Fuera-DEF', 'Fuera-MC', 'Fuera-ATA', 'Fuera-OTROS'].forEach((key) => {
@@ -88,7 +97,10 @@ const addAllHandlerSource = appSource.slice(appSource.indexOf('const handleAddAl
 assert.ok(!addAllHandlerSource.includes('confirm('), 'añadir todos se ejecuta sin confirmación intermedia');
 assert.ok(appSource.includes('min-h-0 flex-1 overflow-y-auto'), 'el modal conserva un único flujo vertical desplazable');
 assert.ok(appSource.includes('break-words text-sm font-black leading-tight'), 'la identidad lateral puede usar varias líneas sin truncarse');
-assert.ok(appSource.includes('w-[88px] shrink-0'), 'el selector se mantiene compacto en anchos reducidos');
+assert.ok(appSource.includes('min-h-9 w-[76px] shrink-0'), 'el selector se mantiene compacto en anchos reducidos');
+assert.ok(appSource.includes('grid-cols-[36px_minmax(0,1fr)_76px]'), 'foto, identidad y selector reservan espacio estable desde 375px');
+assert.ok(appSource.includes('grid-cols-[20px_36px_minmax(0,1fr)_76px]'), 'el modal reserva además una columna propia para el checkbox');
+assert.ok(appSource.includes('whitespace-normal [overflow-wrap:anywhere]'), 'la identidad puede ocupar el espacio disponible sin recorte agresivo');
 assert.ok(!appSource.includes('className={`${maxHeight} space-y-2 overflow-y-auto pr-1`}'), 'la convocatoria lateral no conserva scrolls verticales internos');
 
 console.log('statsCallup tests passed');
