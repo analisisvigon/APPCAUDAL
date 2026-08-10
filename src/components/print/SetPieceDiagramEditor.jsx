@@ -7,9 +7,11 @@ import {
   normalizeSetPieceElementDimensions,
 } from '../../utils/setPieceElementDimensions';
 import {
+  applySetPieceArrowStyle,
   ensureSetPieceCurveGeometry,
+  getSetPieceArrowStyle,
+  getSetPieceDeleteAction,
   getSetPieceHistoryAction,
-  isEditableInteractionTarget,
 } from '../../utils/setPieceEditorInteractions';
 import {
   SET_PIECE_ROLES,
@@ -35,9 +37,8 @@ const isResizableBox = (element) => ['zone', 'block', 'text_box'].includes(eleme
 
 const createElement = (type) => {
   if (type === 'ball') return { id: createId(), type, x: 8, y: 8 };
-  if (isArrow({ type })) {
-    const arrow = { id: createId(), type, x1: 20, y1: 46, x2: 44, y2: 26, dashed: type === 'dashed_arrow' };
-    return type === 'curved_arrow' ? ensureSetPieceCurveGeometry(arrow) : arrow;
+  if (isArrow({ type }) || type === 'curved_dashed_arrow') {
+    return applySetPieceArrowStyle({ id: createId(), type: 'arrow', x1: 20, y1: 46, x2: 44, y2: 26 }, type);
   }
   if (type === 'zone') return { id: createId(), type, x: 34, y: 18, width: 22, height: 12, label: 'Zona' };
   if (type === 'text') return { id: createId(), type, x: 42, y: 40, label: 'Texto' };
@@ -285,9 +286,7 @@ export default function SetPieceDiagramEditor({
 
   useEffect(() => {
     const onKeyDown = (event) => {
-      if (event.defaultPrevented || !selectedElement) return;
-      if (isEditableInteractionTarget(event.target)) return;
-      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+      if (getSetPieceDeleteAction(event, Boolean(selectedElement)) !== 'delete') return;
       event.preventDefault();
       deleteSelected();
     };
@@ -535,7 +534,7 @@ export default function SetPieceDiagramEditor({
             ) : null}
 
             {selectedElement && !isSelectedPlayer ? (
-              <div className="space-y-3 py-4"><div className="rounded-2xl bg-caudal-electric/[0.08] p-3 ring-1 ring-caudal-electric/25"><p className={labelClass}>Elemento seleccionado</p><p className="mt-1 text-sm font-black capitalize text-white">{selectedElement.type.replaceAll('_', ' ')}</p></div>{!isArrow(selectedElement) ? <TacticalField label="Etiqueta / texto" value={selectedElement.label || ''} onChange={(label) => updateSelected({ label })} placeholder="Etiqueta" rows={selectedElement.type === 'text_box' ? 4 : 0} /> : <label className="grid gap-1.5"><span className={labelClass}>Trayectoria</span><select value={selectedElement.type} onChange={(event) => { const type = event.target.value; const next = { ...selectedElement, type, dashed: type === 'dashed_arrow' }; updateSelected(type === 'curved_arrow' ? ensureSetPieceCurveGeometry(next) : next); }} className={`${fieldClass} bg-white font-bold text-slate-950`}><option value="arrow">Continua</option><option value="dashed_arrow">Discontinua</option><option value="curved_arrow">Curva</option><option value="double_arrow">Doble</option></select></label>}{isResizableBox(selectedElement) ? <div className="grid grid-cols-2 gap-2">{selectedWidthRange ? <label className="grid gap-1"><span className={labelClass}>Ancho</span><input type="number" value={selectedElement.width ?? selectedWidthRange.defaultValue} onChange={(event) => updateSelected({ width: normalizeSetPieceDimensionValue(selectedElement, 'width', event.target.value, selectedElement.width) })} className={fieldClass} /></label> : null}{selectedHeightRange ? <label className="grid gap-1"><span className={labelClass}>Alto</span><input type="number" value={selectedElement.height ?? selectedHeightRange.defaultValue} onChange={(event) => updateSelected({ height: normalizeSetPieceDimensionValue(selectedElement, 'height', event.target.value, selectedElement.height) })} className={fieldClass} /></label> : null}</div> : null}<div className="grid grid-cols-2 gap-2"><button type="button" onClick={duplicateSelected} className="min-h-11 rounded-xl bg-white/10 px-3 text-xs font-bold text-white outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric">Duplicar</button><button type="button" onClick={deleteSelected} className="min-h-11 rounded-xl bg-red-500/15 px-3 text-xs font-bold text-red-100 outline-none focus-visible:ring-2 focus-visible:ring-red-300">Eliminar</button></div></div>
+              <div className="space-y-3 py-4"><div className="rounded-2xl bg-caudal-electric/[0.08] p-3 ring-1 ring-caudal-electric/25"><p className={labelClass}>Elemento seleccionado</p><p className="mt-1 text-sm font-black capitalize text-white">{selectedElement.type.replaceAll('_', ' ')}</p></div>{!isArrow(selectedElement) ? <TacticalField label="Etiqueta / texto" value={selectedElement.label || ''} onChange={(label) => updateSelected({ label })} placeholder="Etiqueta" rows={selectedElement.type === 'text_box' ? 4 : 0} /> : <label className="grid gap-1.5"><span className={labelClass}>Trayectoria</span><select value={getSetPieceArrowStyle(selectedElement)} onChange={(event) => updateSelected(applySetPieceArrowStyle(selectedElement, event.target.value))} className={`${fieldClass} bg-white font-bold text-slate-950`}><option value="arrow">Continua</option><option value="curved_arrow">Curva</option><option value="curved_dashed_arrow">Curva discontinua</option><option value="double_arrow">Doble</option><option value="dashed_arrow">Discontinua</option></select></label>}{isResizableBox(selectedElement) ? <div className="grid grid-cols-2 gap-2">{selectedWidthRange ? <label className="grid gap-1"><span className={labelClass}>Ancho</span><input type="number" value={selectedElement.width ?? selectedWidthRange.defaultValue} onChange={(event) => updateSelected({ width: normalizeSetPieceDimensionValue(selectedElement, 'width', event.target.value, selectedElement.width) })} className={fieldClass} /></label> : null}{selectedHeightRange ? <label className="grid gap-1"><span className={labelClass}>Alto</span><input type="number" value={selectedElement.height ?? selectedHeightRange.defaultValue} onChange={(event) => updateSelected({ height: normalizeSetPieceDimensionValue(selectedElement, 'height', event.target.value, selectedElement.height) })} className={fieldClass} /></label> : null}</div> : null}<div className="grid grid-cols-2 gap-2"><button type="button" onClick={duplicateSelected} className="min-h-11 rounded-xl bg-white/10 px-3 text-xs font-bold text-white outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric">Duplicar</button><button type="button" onClick={deleteSelected} className="min-h-11 rounded-xl bg-red-500/15 px-3 text-xs font-bold text-red-100 outline-none focus-visible:ring-2 focus-visible:ring-red-300">Eliminar</button></div></div>
             ) : null}
           </div>
         </aside>

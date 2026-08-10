@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   SET_PIECE_PRINT_IDENTITY_MODES,
+  SET_PIECE_DELIVERY_TYPES,
   cloneSetPieceElementsWithFreshIds,
   createDefaultSetPieceDisplayLayers,
   createDefaultSetPieceTacticalMeta,
@@ -45,6 +46,34 @@ assert.equal(getSetPieceTacticalMeta(stored).alternative, 'Saque corto');
 assert.equal(getSetPieceTacticalMeta(stored).saqueType, '', 'el tipo de saque se normaliza por defecto');
 const withSaqueType = getSetPieceTacticalMeta(setSetPieceTacticalMeta(drawable, { ...meta, saqueType: 'Saque corto' }));
 assert.equal(withSaqueType.saqueType, 'Saque corto', 'el tipo de saque se conserva en la ficha');
+assert.deepEqual(SET_PIECE_DELIVERY_TYPES.map((entry) => entry.id), ['open', 'closed']);
+assert.equal(getSetPieceTacticalMeta(stored).deliveryType, '', 'una jugada antigua queda con golpeo Sin definir');
+const deliveryOpen = getSetPieceTacticalMeta(setSetPieceTacticalMeta(drawable, { ...meta, deliveryType: 'open' }));
+const deliveryClosed = getSetPieceTacticalMeta(setSetPieceTacticalMeta(drawable, { ...meta, deliveryType: 'closed' }));
+assert.equal(deliveryOpen.deliveryType, 'open');
+assert.equal(deliveryClosed.deliveryType, 'closed');
+assert.equal(getSetPieceTacticalMeta(setSetPieceTacticalMeta(drawable, { ...meta, deliveryType: 'automatic' })).deliveryType, '', 'no se deduce ni admite un tipo de golpeo desconocido');
+const exactText = '  Bloquear primer palo y atacar zona media  \nSegunda línea con tildes, ñ y signos.  ';
+const exactTextMeta = getSetPieceTacticalMeta(setSetPieceTacticalMeta(drawable, {
+  ...meta,
+  objective: exactText,
+  saqueType: exactText,
+  whenToUse: exactText,
+  generalInstruction: exactText,
+  risk: exactText,
+  alternative: exactText,
+  observations: exactText,
+}));
+['objective', 'saqueType', 'whenToUse', 'generalInstruction', 'risk', 'alternative', 'observations'].forEach((field) => {
+  assert.equal(exactTextMeta[field], exactText, `${field} conserva espacios y saltos de línea al guardar y recargar`);
+});
+const exactElementText = 'Atacar segundo palo\nDespués, cerrar transición ñ.';
+const storedExactElements = setSetPieceTacticalMeta([
+  { id: 'individual-text', type: 'player', x: 20, y: 20, note: exactElementText },
+  { id: 'canvas-text', type: 'text', x: 30, y: 30, label: exactElementText },
+], meta);
+assert.equal(getDrawableSetPieceElements(storedExactElements).find((element) => element.id === 'individual-text').note, exactElementText, 'la consigna individual conserva espacios y saltos');
+assert.equal(getDrawableSetPieceElements(storedExactElements).find((element) => element.id === 'canvas-text').label, exactElementText, 'el texto del campo conserva espacios y saltos');
 assert.equal(withSaqueType.libraryId, 'library-1');
 assert.equal(getSetPieceTacticalMeta(stored).linkStatus, 'linked');
 assert.equal(getSetPieceTacticalMeta(stored).printIdentityMode, SET_PIECE_PRINT_IDENTITY_MODES.NUMBER_AND_ABBREVIATION);
@@ -146,5 +175,14 @@ assert.equal(drawable.find((element) => element.id === 'arrow-1').controlY, 17, 
 const withoutDuplicateCurve = duplicated.filter((element) => element.id !== duplicatedArrow.id);
 assert.equal(withoutDuplicateCurve.some((element) => element.type === 'curved_arrow'), false, 'eliminar la copia no afecta a otros elementos');
 assert.equal(drawable.some((element) => element.id === 'arrow-1'), true, 'la curva original permanece intacta');
+
+const dashedCurveSource = [{ id: 'curve-dashed', type: 'curved_arrow', dashed: true, x1: 11, y1: 52, x2: 73, y2: 19, controlX: 61, controlY: 46 }];
+const duplicatedDashedCurve = cloneSetPieceElementsWithFreshIds(dashedCurveSource)[0];
+assert.notEqual(duplicatedDashedCurve.id, dashedCurveSource[0].id);
+assert.deepEqual(
+  { type: duplicatedDashedCurve.type, dashed: duplicatedDashedCurve.dashed, x1: duplicatedDashedCurve.x1, y1: duplicatedDashedCurve.y1, x2: duplicatedDashedCurve.x2, y2: duplicatedDashedCurve.y2, controlX: duplicatedDashedCurve.controlX, controlY: duplicatedDashedCurve.controlY },
+  { type: 'curved_arrow', dashed: true, x1: 11, y1: 52, x2: 73, y2: 19, controlX: 61, controlY: 46 },
+  'duplicar una curva discontinua regenera el ID y conserva geometría y estilo',
+);
 
 console.log('setPieceProfessional tests passed');

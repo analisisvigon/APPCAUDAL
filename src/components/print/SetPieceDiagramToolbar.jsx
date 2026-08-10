@@ -12,6 +12,7 @@ const toolGroups = [
     actions: [
       ['arrow', 'Flecha'],
       ['curved_arrow', 'Flecha curva'],
+      ['curved_dashed_arrow', 'Curva discont.'],
       ['double_arrow', 'Flecha doble'],
       ['dashed_arrow', 'Discontinua'],
       ['block', 'Bloqueo'],
@@ -32,6 +33,7 @@ const actionIcons = {
   ball: '⚪',
   arrow: '↗',
   curved_arrow: '⤴',
+  curved_dashed_arrow: '⤴',
   double_arrow: '⇄',
   dashed_arrow: '⤳',
   zone: '▭',

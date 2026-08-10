@@ -10,15 +10,38 @@ export const isEditableInteractionTarget = (target) => {
   return typeof target.closest === 'function' && Boolean(target.closest(EDITABLE_SELECTOR));
 };
 
+export const shouldIgnoreSetPieceShortcut = (event = {}) => (
+  Boolean(event.defaultPrevented) || isEditableInteractionTarget(event.target)
+);
+
 export const getSetPieceHistoryAction = (event = {}) => {
-  if (event.defaultPrevented) return null;
-  if (isEditableInteractionTarget(event.target)) return null;
+  if (shouldIgnoreSetPieceShortcut(event)) return null;
   if (!(event.ctrlKey || event.metaKey) || event.altKey) return null;
 
   const key = String(event.key || '').toLowerCase();
   if (key === 'y' && event.ctrlKey && !event.shiftKey) return 'redo';
   if (key !== 'z') return null;
   return event.shiftKey ? 'redo' : 'undo';
+};
+
+export const getSetPieceDeleteAction = (event = {}, hasSelection = false) => {
+  if (!hasSelection || shouldIgnoreSetPieceShortcut(event)) return null;
+  return ['Delete', 'Backspace'].includes(event.key) ? 'delete' : null;
+};
+
+export const getSetPieceArrowStyle = (element = {}) => {
+  if (element.type === 'curved_arrow' && element.dashed) return 'curved_dashed_arrow';
+  return element.type || 'arrow';
+};
+
+export const applySetPieceArrowStyle = (element = {}, style = 'arrow') => {
+  const curved = ['curved_arrow', 'curved_dashed_arrow'].includes(style);
+  const next = {
+    ...element,
+    type: curved ? 'curved_arrow' : style,
+    dashed: style === 'dashed_arrow' || style === 'curved_dashed_arrow',
+  };
+  return curved ? ensureSetPieceCurveGeometry(next) : next;
 };
 
 export const getSetPieceElementInteraction = ({ readOnly = false, locked = false } = {}) => ({

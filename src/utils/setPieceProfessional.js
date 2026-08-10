@@ -5,6 +5,15 @@ export const SET_PIECE_PRINT_IDENTITY_MODES = Object.freeze({
   NUMBER_AND_ABBREVIATION: 'number-and-abbreviation',
 });
 
+export const SET_PIECE_DELIVERY_TYPES = Object.freeze([
+  { id: 'open', label: 'Abierto' },
+  { id: 'closed', label: 'Cerrado' },
+]);
+
+export const getSetPieceDeliveryTypeLabel = (value) => (
+  SET_PIECE_DELIVERY_TYPES.find((entry) => entry.id === value)?.label || ''
+);
+
 export const SET_PIECE_DISPLAY_LAYER_KEYS = Object.freeze([
   'dorsals',
   'abbreviations',
@@ -70,6 +79,7 @@ export const createDefaultSetPieceTacticalMeta = () => ({
   libraryZone: '',
   libraryMechanism: '',
   libraryMarking: '',
+  deliveryType: '',
   libraryStatus: 'draft',
   libraryFavorite: false,
   libraryCreatedAt: '',
@@ -77,6 +87,7 @@ export const createDefaultSetPieceTacticalMeta = () => ({
 });
 
 const cleanString = (value) => String(value || '').trim();
+const preserveText = (value) => value === null || value === undefined ? '' : String(value);
 
 export const normalizeSetPieceTacticalMeta = (value) => {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -100,13 +111,13 @@ export const normalizeSetPieceTacticalMeta = (value) => {
   return {
     ...defaults,
     version: 3,
-    objective: cleanString(source.objective),
-    saqueType: cleanString(source.saqueType || source.saque_type || source.typeOfSaque),
-    whenToUse: cleanString(source.whenToUse),
-    generalInstruction: cleanString(source.generalInstruction),
-    risk: cleanString(source.risk),
-    alternative: cleanString(source.alternative || source.variation || legacyAlternative),
-    observations: cleanString(source.observations),
+    objective: preserveText(source.objective),
+    saqueType: preserveText(source.saqueType || source.saque_type || source.typeOfSaque),
+    whenToUse: preserveText(source.whenToUse),
+    generalInstruction: preserveText(source.generalInstruction),
+    risk: preserveText(source.risk),
+    alternative: preserveText(source.alternative || source.variation || legacyAlternative),
+    observations: preserveText(source.observations),
     collectiveInstructions: (Array.isArray(source.collectiveInstructions) ? source.collectiveInstructions : [])
       .map((instruction, index) => {
         const text = cleanString(typeof instruction === 'string' ? instruction : instruction?.text);
@@ -134,6 +145,7 @@ export const normalizeSetPieceTacticalMeta = (value) => {
     libraryZone: cleanString(source.libraryZone),
     libraryMechanism: cleanString(source.libraryMechanism),
     libraryMarking: cleanString(source.libraryMarking),
+    deliveryType: SET_PIECE_DELIVERY_TYPES.some((entry) => entry.id === source.deliveryType) ? source.deliveryType : '',
     libraryStatus: ['draft', 'ready', 'archived'].includes(source.libraryStatus) ? source.libraryStatus : 'draft',
     libraryFavorite: Boolean(source.libraryFavorite),
     libraryCreatedAt: cleanString(source.libraryCreatedAt),

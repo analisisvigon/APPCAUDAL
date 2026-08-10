@@ -44,6 +44,7 @@ const baseElements = [
   ...Array.from({ length: 5 }, (_, index) => ({ id: `player-${index + 1}`, type: 'player', x: 20 + index * 11, y: 28 + index, label: String(index + 1), name: ['Agus Porto', 'Mario Boza', 'Pablo Acerete', 'Julio Delgado', 'Dani Blanco'][index], roles: [['Lanzador'], ['Bloqueador'], ['Rematador'], ['Arrastre'], ['Vigilancia']][index], note: ['Pase al primer palo', 'Fija al defensor', 'Ataca la zona', 'Libera el pasillo', 'Equilibra la segunda jugada'][index], sequenceOrder: index + 1 })),
   { id: 'arrow-1', type: 'curved_arrow', x1: 20, y1: 28, x2: 72, y2: 17, controlX: 54, controlY: 42, curvature: -8 },
   { id: 'arrow-2', type: 'dashed_arrow', x1: 30, y1: 38, x2: 66, y2: 21 },
+  { id: 'arrow-3', type: 'curved_arrow', dashed: true, x1: 18, y1: 46, x2: 74, y2: 24, controlX: 58, controlY: 52 },
   { id: 'block-1', type: 'block', x: 46, y: 25, width: 7, label: 'BLOQUEO' },
   { id: 'zone-1', type: 'zone', x: 62, y: 9, width: 22, height: 12, label: 'ZONA' },
   { id: 'text-1', type: 'text', x: 52, y: 45, label: 'SEGUNDA JUGADA' },
@@ -58,6 +59,7 @@ const printMeta = {
   libraryZone: 'Segundo palo',
   libraryMechanism: 'Bloqueo',
   libraryMarking: 'Zonal',
+  deliveryType: 'closed',
   printIdentityMode: 'number-and-abbreviation',
 };
 const createPlay = (id, order, meta = printMeta) => ({ id, orden: order, tipo: 'corner_ofensivo', titulo: `Jugada ${order}`, elements: setSetPieceTacticalMeta(baseElements, meta) });
@@ -75,6 +77,8 @@ assert.deepEqual(getSetPieceGeometrySnapshot(printModel.elements), getSetPieceGe
 assert.deepEqual(sourcePlay.elements.map((element) => element.id), sourceIds, 'renderizar no modifica IDs');
 const printArrow = printModel.elements.find((element) => element.id === 'arrow-1');
 assert.deepEqual({ x1: printArrow.x1, y1: printArrow.y1, x2: printArrow.x2, y2: printArrow.y2, controlX: printArrow.controlX, controlY: printArrow.controlY, curvature: printArrow.curvature }, { x1: 20, y1: 28, x2: 72, y2: 17, controlX: 54, controlY: 42, curvature: -8 }, 'la flecha mantiene origen, destino y curvatura');
+const printDashedCurve = printModel.elements.find((element) => element.id === 'arrow-3');
+assert.deepEqual({ type: printDashedCurve.type, dashed: printDashedCurve.dashed, x1: printDashedCurve.x1, y1: printDashedCurve.y1, x2: printDashedCurve.x2, y2: printDashedCurve.y2, controlX: printDashedCurve.controlX, controlY: printDashedCurve.controlY }, { type: 'curved_arrow', dashed: true, x1: 18, y1: 46, x2: 74, y2: 24, controlX: 58, controlY: 52 }, 'preview y PDF conservan la curva discontinua completa');
 const printBlock = printModel.elements.find((element) => element.id === 'block-1');
 assert.deepEqual({ x: printBlock.x, y: printBlock.y, width: printBlock.width }, { x: 46, y: 25, width: 7 }, 'el bloqueo mantiene su posición y tamaño');
 assert.equal(printModel.chronology.length, 5, 'la secuencia conserva cinco pasos completos');
@@ -161,7 +165,11 @@ assert.equal(getMeaningfulSetPiecePrintText('Sin observaciones.'), '');
 const emptyModel = buildSetPiecePrintPlayModel(createPlay('empty', 1, { generalInstruction: 'Consigna pendiente de definir', objective: 'Sin definir', risk: 'Sin riesgo', alternative: 'Sin alternativa', observations: 'Sin observaciones' }));
 assert.equal(emptyModel.instruction || emptyModel.objective || emptyModel.risk || emptyModel.alternative || emptyModel.observations, '', 'los placeholders no generan bloques');
 assert.deepEqual(emptyModel.classifications, [], 'clasificaciones vacías no generan etiquetas');
-assert.deepEqual(printModel.classifications, ['Segundo palo', 'Bloqueo', 'Zonal'], 'solo se incluyen clasificaciones definidas');
+assert.deepEqual(printModel.classifications, ['Segundo palo', 'Bloqueo', 'Zonal', 'Cerrado'], 'el golpeo definido aparece en preview y PDF junto a las clasificaciones');
+assert.equal(printModel.deliveryType, 'closed');
+assert.equal(printModel.deliveryTypeLabel, 'Cerrado');
+const undefinedDeliveryModel = buildSetPiecePrintPlayModel(createPlay('delivery-undefined', 1, { ...printMeta, deliveryType: '' }));
+assert.equal(undefinedDeliveryModel.classifications.includes('Sin definir'), false, 'un golpeo sin definir no ensucia la impresión');
 assert.equal((sheet.match(/<h3>Consigna<\/h3>/g) || []).length, 1, 'la consigna se renderiza una sola vez por jugada');
 assert.ok(sheet.includes('visibleLayers={play.displayLayers}'), 'preview y PDF respetan las capas persistidas de cada jugada');
 assert.equal(sheet.includes('visibleLayers={{ numbers: true'), false, 'el dossier ya no fuerza capas propias');
@@ -175,6 +183,8 @@ assert.match(css, /\.set-piece-print-operational-details section \{\s*display: b
 assert.equal(css.includes('grid-template-columns: 28mm minmax(0, 1fr)'), false, 'el bloque lateral ya no usa una tabla comprimida');
 assert.ok(canvas.includes('Number(element.x) + 4.1') && canvas.includes('Number(element.y) - 4.1') && canvas.includes('stroke="white"'), 'el número cronológico se separa visualmente del dorsal');
 assert.ok(canvas.includes('selected && !readOnly') && canvas.includes('set-piece-curve-control'), 'el punto de control solo existe como ayuda de edición y no aparece en preview/PDF');
+assert.ok(canvas.includes("element.type === 'dashed_arrow' || element.dashed") && canvas.includes("element.type === 'curved_arrow'"), 'el renderer combina curva y discontinuidad sin geometría paralela');
+assert.ok(canvas.includes("strokeDasharray={dashed ? '2.2 1.8' : ''}"), 'el patrón discontinuo llega al SVG usado por preview, presentación y PDF');
 assert.ok(sheet.includes('preparedForPrint') && sheet.includes('data-render-model="set-piece-print"'), 'preview y PDF comparten elementos preparados y el mismo renderer táctico');
 
 console.log('setPiecePrintLayout tests passed');

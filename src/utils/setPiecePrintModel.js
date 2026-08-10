@@ -1,5 +1,6 @@
 import {
   getSetPieceChronology,
+  getSetPieceDeliveryTypeLabel,
   getSetPieceIndividualInstructions,
   getSetPieceTacticalMeta,
   optimizeSetPieceElementsForPrint,
@@ -83,7 +84,9 @@ export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder
     order,
     typeLabel,
     title: getMeaningfulSetPiecePrintText(diagram?.titulo) || typeLabel || `Jugada ${order}`,
-    classifications: [meta.libraryZone, meta.libraryMechanism, meta.libraryMarking]
+    deliveryType: meta.deliveryType,
+    deliveryTypeLabel: getSetPieceDeliveryTypeLabel(meta.deliveryType),
+    classifications: [meta.libraryZone, meta.libraryMechanism, meta.libraryMarking, getSetPieceDeliveryTypeLabel(meta.deliveryType)]
       .map(getMeaningfulSetPiecePrintText)
       .filter(Boolean),
     instruction: getMeaningfulSetPiecePrintText(diagram?.consigna || meta.generalInstruction),

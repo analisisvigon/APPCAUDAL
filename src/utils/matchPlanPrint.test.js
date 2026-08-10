@@ -23,6 +23,7 @@ const geometry = [
   { id: 'element-ball', type: 'ball', x: 50, y: 36 },
   { id: 'element-arrow', type: 'arrow', x1: 50, y1: 55, x2: 50, y2: 38 },
   { id: 'element-curve', type: 'curved_arrow', x1: 70, y1: 52, x2: 82, y2: 30, controlX: 91, controlY: 46 },
+  { id: 'element-curve-dashed', type: 'curved_arrow', dashed: true, x1: 44, y1: 54, x2: 62, y2: 28, controlX: 68, controlY: 48 },
   { id: 'element-double', type: 'double_arrow', x1: 24, y1: 48, x2: 38, y2: 29 },
   { id: 'element-dashed', type: 'dashed_arrow', x1: 30, y1: 52, x2: 18, y2: 30 },
   { id: 'element-block', type: 'block', x: 61, y: 31, width: 6, label: 'BLOQUEO' },
@@ -67,6 +68,8 @@ const snapshotBefore = getSetPieceGeometrySnapshot(withoutBall.elements);
 const payload = buildMatchPlanPersistencePayload(withoutBall, 'match-1', 1);
 const reloaded = normalizeMatchPlanSituations([{ ...payload, id: 'stored-1', persisted: true }], 'match-1')[0];
 assert.deepEqual(getSetPieceGeometrySnapshot(reloaded.elements), snapshotBefore, 'guardado y recarga conservan toda la geometría');
+const reloadedDashedCurve = reloaded.elements.find((element) => element.id === 'element-curve-dashed');
+assert.deepEqual({ type: reloadedDashedCurve.type, dashed: reloadedDashedCurve.dashed, controlX: reloadedDashedCurve.controlX, controlY: reloadedDashedCurve.controlY }, { type: 'curved_arrow', dashed: true, controlX: 68, controlY: 48 }, 'Plan recibe del motor compartido la curva discontinua sin perder estilo ni control');
 assert.equal(getSetPieceTacticalMeta(reloaded.elements).collectiveInstructions.length, 3);
 
 const duplicate = duplicateMatchPlanSituation(withoutBall, 3);
@@ -90,6 +93,7 @@ for (let count = 1; count <= 5; count += 1) {
 const editorSource = fs.readFileSync(new URL('../components/print/MatchPlanEditor.jsx', import.meta.url), 'utf8');
 const sheetSource = fs.readFileSync(new URL('../components/print/MatchPlanPrintSheet.jsx', import.meta.url), 'utf8');
 const sharedEditorSource = fs.readFileSync(new URL('../components/print/SetPieceDiagramEditor.jsx', import.meta.url), 'utf8');
+const sharedToolbarSource = fs.readFileSync(new URL('../components/print/SetPieceDiagramToolbar.jsx', import.meta.url), 'utf8');
 const tabSource = fs.readFileSync(new URL('../components/print/MatchPrintTab.jsx', import.meta.url), 'utf8');
 const canvasSource = fs.readFileSync(new URL('../components/print/SetPieceDiagramCanvas.jsx', import.meta.url), 'utf8');
 const legendSource = fs.readFileSync(new URL('../components/print/MatchPlanIdentityLegend.jsx', import.meta.url), 'utf8');
@@ -104,6 +108,7 @@ assert.match(editorSource, /participantRoleMode="single"/);
 assert.match(editorSource, /Sin balón/);
 assert.match(editorSource, /Con balón/);
 assert.match(sharedEditorSource, /curved_arrow/);
+assert.match(sharedToolbarSource, /curved_dashed_arrow/);
 assert.match(sharedEditorSource, /controlX/);
 assert.match(sharedEditorSource, /Deshacer/);
 assert.match(sharedEditorSource, /Rehacer/);

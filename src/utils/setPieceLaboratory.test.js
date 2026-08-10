@@ -82,6 +82,13 @@ assert.equal(payload.objetivo, 'Liberar segundo palo');
 assert.equal(getSetPieceTacticalMeta(payload.elements).linkStatus, 'master');
 const offensivePayload = buildSetPieceLaboratoryPayload({ ...draft, categoria: 'ABP Ofensiva' });
 assert.equal(offensivePayload.categoria, 'ABP Ofensiva', 'editar una ABP histórica conserva su categoría y no crea otra fila');
+const closedDeliveryPayload = buildSetPieceLaboratoryPayload({
+  ...draft,
+  elements: setSetPieceTacticalMeta(draft.elements, { ...getSetPieceLaboratoryMeta(draft), deliveryType: 'closed' }),
+});
+assert.equal(getSetPieceLaboratoryMeta(closedDeliveryPayload).deliveryType, 'closed', 'Tipo de golpeo se persiste en tactical_meta');
+assert.equal(getSetPieceLaboratoryMeta(duplicateSetPieceLaboratoryItem(closedDeliveryPayload)).deliveryType, 'closed', 'duplicar conserva Tipo de golpeo');
+assert.equal(getSetPieceLaboratoryMeta(prepareSetPieceLaboratoryItem({ ...payload, id: 'legacy-delivery', elements: [] })).deliveryType, '', 'una ABP antigua abre como Sin definir');
 
 const preparedLegacy = prepareSetPieceLaboratoryItem({
   ...payload,
@@ -160,6 +167,8 @@ assert.ok(editor.includes("xl:grid-cols-[minmax(0,6.6fr)_minmax(320px,3.4fr)]"),
 assert.ok(component.includes('renderMode="abp"') && component.includes('renderMode="thumbnail"'), 'ABP aplica escala específica en editor y miniatura');
 assert.ok(component.includes('createSetPieceThumbnailLayers(meta.displayLayers)'), 'la miniatura conserva estructura y simplifica etiquetas secundarias');
 assert.ok(component.includes('SetPieceDiagramPrintSheet') && component.includes('dos por hoja'), 'ABP reutiliza la impresión profesional a dos jugadas por hoja');
+assert.ok(component.includes('Tipo de golpeo') && component.includes('SET_PIECE_DELIVERY_TYPES') && component.includes('deliveryType'), 'Laboratorio permite Sin definir, Abierto y Cerrado desde tactical_meta');
+assert.ok(component.includes('getSetPieceDeliveryTypeLabel(meta.deliveryType)'), 'la tarjeta y preview muestran el golpeo solo cuando está definido');
 ['Duración', 'Jugadores', 'Dimensiones', 'Material', 'Variantes futuras / progresiones'].forEach((field) => {
   assert.equal(component.includes(field), false, `ABP no muestra el campo genérico ${field}`);
   assert.ok(library.includes(field), `Ejercicios conserva el campo ${field}`);
@@ -174,9 +183,14 @@ const objectsIndex = toolbar.indexOf("label: 'OBJETOS'");
 const tracingIndex = toolbar.indexOf("label: 'TRAZADO'");
 const annotationsIndex = toolbar.indexOf("label: 'ANOTACIONES'");
 const blockIndex = toolbar.indexOf("['block', 'Bloqueo']");
+const curvedIndex = toolbar.indexOf("['curved_arrow', 'Flecha curva']");
+const curvedDashedIndex = toolbar.indexOf("['curved_dashed_arrow', 'Curva discont.']");
+const doubleIndex = toolbar.indexOf("['double_arrow', 'Flecha doble']");
 assert.ok(objectsIndex >= 0 && tracingIndex > objectsIndex && annotationsIndex > tracingIndex, 'la toolbar respeta la jerarquía Objetos, Trazado y Anotaciones');
 assert.ok(blockIndex > tracingIndex && blockIndex < annotationsIndex, 'Bloqueo permanece dentro de Trazado');
+assert.ok(curvedIndex < curvedDashedIndex && curvedDashedIndex < doubleIndex, 'Curva discontinua ocupa el orden solicitado dentro de Trazado');
 assert.ok(toolbar.includes('aria-label={`Añadir ${label.toLowerCase()}`}') && toolbar.includes('title={`Añadir ${label.toLowerCase()}`}') && toolbar.includes('min-h-11'), 'herramientas con nombre accesible, tooltip y objetivo táctil');
+assert.ok(toolbar.includes('w-full min-w-0 max-w-full overflow-hidden') && toolbar.includes('flex flex-wrap gap-1.5'), 'la herramienta nueva queda accesible por wrap en 375–1920 px sin scroll global');
 
 ['dorsals', 'abbreviations', 'roles', 'chronology', 'zones', 'texts'].forEach((layer) => assert.ok(editor.includes(`key: '${layer}'`), `capa ${layer} disponible`));
 assert.ok(editor.includes('Solo estructura') && editor.includes('Restaurar capas'), 'Solo estructura persiste la decisión y permite restaurar la selección anterior');
