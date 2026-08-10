@@ -39,6 +39,14 @@ import {
 } from './utils/matchStatus';
 import { buildRecentActivity, formatRecentActivityTime } from './utils/recentActivity';
 import {
+  buildOfficialPlayerTotals,
+  compareHabitualPlayerEvidence,
+  getCompetitiveMatchChronologyKey,
+  getHabitualOfficialSystem,
+  getOfficialCaptainPlayerId,
+  getOfficialPlayedMatches,
+} from './utils/competitivePanel';
+import {
   buildPerformanceObservationsByPlayer,
   getPerformanceObservationView,
   hasPhysicalPerformanceObservation,
@@ -6073,6 +6081,52 @@ function App() {
     return nextMatches;
   };
 
+  const loadCompetitivePanelEvidence = async () => {
+    const [statsResponse, slotsResponse] = await Promise.all([
+      supabase.from("partido_estadisticas_jugador").select("*"),
+      supabase.from("partido_alineacion_slots").select("*").eq("scope", "stats").order("slot", { ascending: true }),
+    ]);
+    const failed = [statsResponse, slotsResponse].find((response) => response.error);
+    if (failed) throw failed.error;
+
+    const statsByMatch = (statsResponse.data || []).reduce((acc, row) => {
+      const current = acc[row.partido_id] || {};
+      current[row.player_name] = {
+        role: row.role || 'Suplente',
+        minutes: row.minutes ?? '',
+        yellow: Boolean(row.yellow),
+        yellowCount: Number(row.yellow_count || 0),
+        red: Boolean(row.red),
+        injured: Boolean(row.injured),
+        rating: row.rating || '',
+        replacementName: row.replacement_name || '',
+        jugadorId: row.jugador_id || null,
+      };
+      acc[row.partido_id] = current;
+      return acc;
+    }, {});
+    const slotsByMatch = (slotsResponse.data || []).reduce((acc, slot) => {
+      if (!slot.partido_id || !Number.isInteger(slot.slot) || slot.slot < 0 || slot.slot > 10) return acc;
+      acc[slot.partido_id] = [...(acc[slot.partido_id] || []), {
+        scope: 'stats',
+        slot: slot.slot,
+        playerName: slot.player_name || '',
+        jugadorId: slot.jugador_id || null,
+      }];
+      return acc;
+    }, {});
+
+    setMatches((currentMatches) => currentMatches.map((match) => {
+      const statsSlots = slotsByMatch[match.id] || [];
+      return {
+        ...match,
+        statsPlayerData: statsByMatch[match.id] || {},
+        lineupSlots: { ...safeObject(match.lineupSlots), stats: statsSlots },
+        statsLineup: hydrateStatsLineup(statsSlots),
+      };
+    }));
+  };
+
   const loadHomePhrase = async () => {
     const { data, error: configError } = await supabase
       .from("app_config")
@@ -6971,6 +7025,13 @@ function App() {
     if (activeTab !== 'Análisis Grupal') return;
     loadGroupAnalysisData();
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'Plantilla' || !matches.length) return;
+    loadCompetitivePanelEvidence().catch((loadError) => {
+      console.error('Error cargando evidencia oficial del Panel competitivo:', loadError);
+    });
+  }, [activeTab, matches.length]);
 
   useEffect(() => {
     if (activeTab !== 'Rendimiento') return;
@@ -19534,7 +19595,7 @@ function App() {
     return rows;
   };
 
-  const getMatchLineupSource = (match) => {
+  const getMatchLineupSource = (match, { statsOnly = false } = {}) => {
     const lineupSlots = safeObject(match?.lineupSlots);
     const statsSlots = safeArray(lineupSlots.stats).filter((slot) => slot?.playerName);
     const preCaudalSlots = safeArray(lineupSlots.preCaudal).filter((slot) => slot?.playerName);
@@ -19545,11 +19606,28 @@ function App() {
         slots: statsSlots,
       };
     }
-    if (preCaudalSlots.length) {
+    if (!statsOnly && preCaudalSlots.length) {
       return {
         scope: 'pre_caudal',
         system: match.preCaudalSystemRaw || match.preCaudalSystem || '',
         slots: preCaudalSlots,
+      };
+    }
+    const legacyStatsSlots = safeArray(match?.statsLineup).flatMap((playerName, slot) => (
+      playerName ? [{ slot, playerName }] : []
+    ));
+    if (legacyStatsSlots.length) {
+      return {
+        scope: 'stats',
+        system: match.statsSystemRaw || match.statsSystem || '',
+        slots: legacyStatsSlots,
+      };
+    }
+    if (statsOnly) {
+      return {
+        scope: 'none',
+        system: match.statsSystemRaw || match.statsSystem || '',
+        slots: [],
       };
     }
     return {
@@ -19582,7 +19660,7 @@ function App() {
     };
   };
 
-  const getGroupRankings = (scopedMatches) => {
+  const getGroupRankings = (scopedMatches, { statsOnly = false } = {}) => {
     const scoped = safeArray(scopedMatches);
     const possibleMinutes = Math.max(1, scoped.length * 90);
     const byPlayer = new Map(safeArray(players).map((player) => [player.name, {
@@ -19598,10 +19676,11 @@ function App() {
       ratingCount: 0,
       roleMinutes: {},
       slotUsage: {},
+      latestStartKey: '',
     }]));
 
     scoped.forEach((match) => {
-      const source = getMatchLineupSource(match);
+      const source = getMatchLineupSource(match, { statsOnly });
       const sourceSlots = safeArray(source.slots);
       const lineup = sourceSlots.length
         ? sourceSlots.reduce((acc, slot) => {
@@ -19626,7 +19705,9 @@ function App() {
         const row = byPlayer.get(player.name);
         row.minutes += minutes;
         row.starts += isStarter ? 1 : 0;
-        if (isStarter && minutes > 0) {
+        if (isStarter && (statsOnly || minutes > 0)) {
+          const chronologyKey = getCompetitiveMatchChronologyKey(match);
+          if (chronologyKey > row.latestStartKey) row.latestStartKey = chronologyKey;
           const role = roles[slotIndex] || player.position || 'Sin posicion';
           const idealSlot = getIdealSlotForStoredSlot(system, slotIndex, role);
           row.roleMinutes[role] = (row.roleMinutes[role] || 0) + minutes;
@@ -19642,9 +19723,11 @@ function App() {
             starts: 0,
             ratingTotal: 0,
             ratingCount: 0,
+            latestStartKey: '',
           };
           slotUsage.minutes += minutes;
           slotUsage.starts += 1;
+          if (chronologyKey > slotUsage.latestStartKey) slotUsage.latestStartKey = chronologyKey;
           if (stored.rating) {
             slotUsage.ratingTotal += Number(stored.rating) || 0;
             slotUsage.ratingCount += 1;
@@ -19736,10 +19819,20 @@ function App() {
     return value.toUpperCase();
   };
 
-  const playerPositionFitsIdealSlot = (playerRole, slot) => {
+  const playerPositionFitsIdealSlot = (playerOrRole, slot) => {
+    const playerRole = typeof playerOrRole === 'object' ? getPlayerPositionLabel(playerOrRole) : playerOrRole;
     const playerKey = normalizeIdealRole(playerRole);
     const slotId = slot?.id || '';
     if (!playerKey || !slotId) return false;
+    if (typeof playerOrRole === 'object') {
+      const position = getPlayerPositionPresentation(playerOrRole);
+      if (!position.specificKey) {
+        if (position.naturalKey === 'goalkeeper') return slotId === 'POR';
+        if (position.naturalKey === 'defender') return ['LD', 'LI', 'CAD', 'CAI'].includes(slotId) || slotId.startsWith('DFC');
+        if (position.naturalKey === 'midfielder') return slotId.startsWith('MC') || slotId.startsWith('MCD') || slotId.startsWith('MP') || ['ED', 'EI'].includes(slotId);
+        if (position.naturalKey === 'forward') return slotId.startsWith('DC') || slotId.startsWith('MP') || ['ED', 'EI'].includes(slotId);
+      }
+    }
     if (slotId === 'POR') return playerKey === 'POR';
     if (slotId === 'LD') return playerKey === 'LD' || playerKey === 'CAD';
     if (slotId === 'LI') return playerKey === 'LI' || playerKey === 'CAI';
@@ -19755,7 +19848,7 @@ function App() {
     return false;
   };
 
-  const buildIdealElevenForSystem = (idealRows, system) => {
+  const buildIdealElevenForSystem = (idealRows, system, { habitual = false } = {}) => {
     const slots = getIdealFormationSlots(system);
     const used = new Set();
     const assignments = slots.map((slot) => {
@@ -19764,6 +19857,7 @@ function App() {
         .map((row) => ({ row, usage: row.slotUsage?.[slotKey] }))
         .filter(({ row, usage }) => usage && !used.has(row.player.name))
         .sort((a, b) => {
+          if (habitual) return compareHabitualPlayerEvidence(a.row, b.row);
           const ratingA = a.usage.ratingCount ? a.usage.ratingTotal / a.usage.ratingCount : 0;
           const ratingB = b.usage.ratingCount ? b.usage.ratingTotal / b.usage.ratingCount : 0;
           return b.usage.starts - a.usage.starts || b.usage.minutes - a.usage.minutes || ratingB - ratingA || b.row.idealScore - a.row.idealScore;
@@ -19778,14 +19872,17 @@ function App() {
         };
       }
       const fallback = idealRows
-        .filter((row) => !used.has(row.player.name) && playerPositionFitsIdealSlot(row.player.position, slot))
-        .sort((a, b) => b.starts - a.starts || b.minutes - a.minutes || b.avgRating - a.avgRating || b.idealScore - a.idealScore)[0];
+        .filter((row) => !used.has(row.player.name) && playerPositionFitsIdealSlot(habitual ? row.player : row.player.position, slot))
+        .sort((a, b) => habitual
+          ? compareHabitualPlayerEvidence(a, b)
+          : b.starts - a.starts || b.minutes - a.minutes || b.avgRating - a.avgRating || b.idealScore - a.idealScore)[0];
       if (!fallback) return { slot, row: null, debug: { source: 'empty', normalizedSlot: slot.id } };
       used.add(fallback.player.name);
+      const fallbackRole = habitual ? getPlayerPositionLabel(fallback.player) : fallback.player.position;
       return {
         slot,
-        row: { ...fallback, primaryRole: fallback.player.position, idealSlotSource: 'plantilla', idealSlotMinutes: 0, idealSlotFallback: true },
-        debug: { source: 'plantilla_fallback', role: fallback.player.position, normalizedSlot: slot.id },
+        row: { ...fallback, primaryRole: fallbackRole, idealSlotSource: 'plantilla', idealSlotMinutes: 0, idealSlotFallback: true },
+        debug: { source: 'plantilla_fallback', role: fallbackRole, normalizedSlot: slot.id },
       };
     });
     return assignments;
@@ -20529,13 +20626,17 @@ function App() {
       sub23: statuses.filter((status) => status.sub23).length,
     };
   }, [players, staffStatusByPlayerId]);
+  const officialPlayedMatches = useMemo(
+    () => getOfficialPlayedMatches(matches, competitions),
+    [competitions, matches]
+  );
   const rosterDashboard = useMemo(() => {
     const hasPlayedData = (match) => getMatchStatus(match) === 'played';
-    const finished = safeArray(matches).filter(hasPlayedData);
-    const rankings = getGroupRankings(finished);
+    const rankings = getGroupRankings(officialPlayedMatches, { statsOnly: true });
+    const officialTotals = buildOfficialPlayerTotals(officialPlayedMatches, players);
     const rows = rankings.rows || [];
-    const rowByPlayerId = new Map(rows.map((row) => [row.player.id, row]));
-    const mostUsedSystem = getMostUsedRealSystem(finished).system || '4-4-2';
+    const rowByPlayerId = new Map(officialTotals.rows.map((row) => [row.player.id, row]));
+    const mostUsedSystem = getHabitualOfficialSystem(officialPlayedMatches).system;
     const nextMatchForLaunchers = safeArray(matches)
       .filter((match) => !hasPlayedData(match))
       .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.time || '').localeCompare(String(b.time || '')))[0] || null;
@@ -20559,7 +20660,11 @@ function App() {
       if (['MCD', 'MC', 'MP'].includes(normalized)) return 'MED';
       return 'DEL';
     };
-    const baseEleven = buildIdealElevenForSystem(rankings.idealRows || [], mostUsedSystem)
+    const baseElevenCandidates = mostUsedSystem ? buildIdealElevenForSystem(
+      rows.filter((row) => row.starts > 0),
+      mostUsedSystem,
+      { habitual: true }
+    )
       .filter((assignment) => assignment.row)
       .slice(0, 11)
       .map((assignment) => ({
@@ -20568,20 +20673,25 @@ function App() {
         player: assignment.row.player,
         minutes: assignment.row.minutes,
         starts: assignment.row.starts,
-      }));
-    const topMinutes = rankings.minutes?.[0] || null;
-    const topScorer = rankings.scorers?.[0] || null;
-    const topAssistant = rankings.assistants?.[0] || null;
-    const mainGoalkeeper = rows
-      .filter((row) => normalizeIdealRole(row.player.position) === 'POR')
-      .sort((a, b) => b.minutes - a.minutes || b.starts - a.starts)[0] || null;
-    const captain = players.find((player) => staffStatusByPlayerId.get(player.id)?.captain) || null;
+      })) : [];
+    const hasHabitualEleven = officialPlayedMatches.length > 0 && baseElevenCandidates.length === 11;
+    const baseEleven = hasHabitualEleven ? baseElevenCandidates : [];
+    const topMinutes = officialTotals.topMinutes;
+    const topScorer = officialTotals.topScorer;
+    const topAssistant = officialTotals.topAssistant;
+    const mainGoalkeeper = officialTotals.rows
+      .filter((row) => getPlayerPositionPresentation(row.player).naturalKey === 'goalkeeper' && row.minutes > 0)
+      .sort((left, right) => right.minutes - left.minutes || left.player.name.localeCompare(right.player.name, 'es'))[0] || null;
+    const captainPlayerId = getOfficialCaptainPlayerId(officialPlayedMatches);
+    const captain = captainPlayerId ? players.find((player) => String(player.id) === String(captainPlayerId)) || null : null;
     return {
       rowByPlayerId,
       baseEleven,
       baseLines: ['POR', 'DEF', 'MED', 'DEL'].map((line) => ({ line, players: baseEleven.filter((item) => item.line === line) })),
       launcherPlayerIds,
       mostUsedSystem,
+      officialMatchCount: officialPlayedMatches.length,
+      hasHabitualEleven,
       keyPlayers: [
         { label: 'Más minutos', row: topMinutes, value: topMinutes ? `${topMinutes.minutes}'` : '-' },
         { label: 'Máximo goleador', row: topScorer, value: topScorer ? topScorer.goals : '-' },
@@ -20590,7 +20700,7 @@ function App() {
         { label: 'Capitán', player: captain, value: captain ? `#${displayDorsal(captain.number)}` : '-' },
       ],
     };
-  }, [matches, players, staffStatusByPlayerId]);
+  }, [matches, officialPlayedMatches, players]);
   const rosterDisplayPlayers = useMemo(() => {
     const globalById = new Map(globalPlayers.map((player) => [String(player.globalPlayerId || player.id), player]));
     return players.map((player) => {
@@ -28656,13 +28766,14 @@ function App() {
                   <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">Plantilla</p>
                   <h2 className="mt-1 text-2xl font-black text-white">Panel competitivo</h2>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-5 xl:min-w-[680px]">
+                <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[760px] xl:grid-cols-6">
                   {[
                     ['PL', 'Total plantilla', squadSummary.total, 'border-white/10 bg-white/[0.05] text-white'],
                     ['OK', 'Disponibles reales', squadSummary.available, 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100'],
                     ['LES', 'Lesionados', squadSummary.injured, 'border-red-200/20 bg-red-300/10 text-red-100'],
                     ['SAN', 'Sancionados', squadSummary.suspended, 'border-slate-200/20 bg-slate-200/10 text-slate-200'],
                     ['ND', 'No disponibles', squadSummary.unavailable, 'border-amber-200/20 bg-amber-200/10 text-amber-100'],
+                    ['U23', 'Sub-23', squadSummary.sub23, 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'],
                   ].map(([icon, label, value, tone]) => (
                     <div key={label} className={`rounded-2xl border px-3 py-2 ${tone}`}>
                       <p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-65">{icon} {label}</p>
@@ -28678,35 +28789,18 @@ function App() {
                 </button>
               </div>
 
-              <div className="mt-3 rounded-[1.05rem] border border-white/10 bg-black/15 p-2.5">
-                <p className="mb-2 px-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Disponibilidad semanal</p>
-                <div className="grid gap-2 sm:grid-cols-5">
-                  {[
-                    ['Disponibles', squadSummary.available, 'text-emerald-100'],
-                    ['Lesionados', squadSummary.injured, 'text-red-100'],
-                    ['Sancionados', squadSummary.suspended, 'text-slate-200'],
-                    ['No disponibles', squadSummary.unavailable, 'text-amber-100'],
-                    ['Sub-23', squadSummary.sub23, 'text-caudal-electric'],
-                  ].map(([label, value, textClass]) => (
-                    <div key={label} className="flex items-center justify-between gap-2 rounded-xl bg-white/[0.035] px-3 py-2">
-                      <span className="truncate text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</span>
-                      <span className={`text-sm font-black ${textClass}`}>{value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
               <div className="mt-3 grid gap-3 xl:grid-cols-[1.05fr_0.95fr]">
                 <div className="rounded-[1.15rem] border border-white/10 bg-black/15 p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <h3 className="text-xs font-black uppercase tracking-[0.18em] text-white">Once base actual</h3>
-                      <p className="mt-1 text-xs text-slate-500">Sistema más usado: {rosterDashboard.mostUsedSystem}</p>
+                      <h3 className="text-xs font-black uppercase tracking-[0.18em] text-white">Once habitual</h3>
+                      <p className="mt-1 text-xs text-slate-500">Basado en partidos oficiales</p>
+                      <p className="mt-1 text-xs text-slate-500">Sistema habitual: {rosterDashboard.mostUsedSystem || 'Sin datos'}</p>
                     </div>
-                    <span className="rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-2.5 py-1 text-xs font-black text-caudal-electric">{rosterDashboard.baseEleven.length}/11</span>
+                    <span className="rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-2.5 py-1 text-xs font-black text-caudal-electric">{rosterDashboard.hasHabitualEleven ? '11 titulares' : 'Datos insuficientes'}</span>
                   </div>
                   <div className="mt-3 space-y-1.5">
-                    {rosterDashboard.baseEleven.length ? rosterDashboard.baseLines.map((line) => (
+                    {rosterDashboard.hasHabitualEleven ? rosterDashboard.baseLines.map((line) => (
                       <div key={line.line} className="grid grid-cols-[42px_1fr] items-start gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-2.5 py-2">
                         <span className="pt-1 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{line.line}</span>
                         <div className="flex flex-wrap gap-1.5">
@@ -28723,7 +28817,10 @@ function App() {
                         </div>
                       </div>
                     )) : (
-                      <p className="rounded-xl border border-dashed border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-400">Sin partidos suficientes para calcular once base.</p>
+                      <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.03] px-3 py-3">
+                        <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-300">Datos oficiales insuficientes</p>
+                        <p className="mt-1 text-sm text-slate-400">Aún no hay suficientes partidos oficiales para definir un once habitual.</p>
+                      </div>
                     )}
                   </div>
                 </div>
