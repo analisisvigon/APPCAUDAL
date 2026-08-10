@@ -70,6 +70,7 @@ const matchPrint = fs.readFileSync(new URL('../components/print/MatchPrintTab.js
 const setPieceCanvas = fs.readFileSync(new URL('../components/print/SetPieceDiagramCanvas.jsx', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../styles/print.css', import.meta.url), 'utf8');
 const shirtCss = css.slice(css.indexOf('.print-player-shirt {'), css.indexOf('.print-bench {'));
+const sleeveCss = shirtCss.slice(shirtCss.indexOf('.shirt-sleeve-panel {'), shirtCss.indexOf('.shirt-opponent-mark {'));
 
 assert.equal((component.match(/<svg/g) || []).length, 1, 'existe un único SVG reutilizable de camiseta');
 assert.ok(component.includes('model.teamType') && component.includes('model.assigned'), 'el componente usa semántica propio/rival y asignado/sin asignar');
@@ -80,9 +81,11 @@ assert.ok(lineup.includes('getOwnPrintKitForMatch(match)') && lineup.includes('k
 assert.ok(lineup.includes('Segunda / negra') && lineup.includes('Primera / blanca'), 'la leyenda refleja las equipaciones clara y oscura');
 assert.ok(shirtCss.includes('width: 22mm') && !shirtCss.includes('width: 27mm'), 'la camiseta reduce moderadamente su tamaño');
 assert.ok(shirtCss.includes('.shirt-body') && shirtCss.includes('fill: #fff') && shirtCss.includes('stroke: #000'), 'el jugador propio usa blanco con contorno negro');
-assert.ok(shirtCss.includes('.shirt-sleeve-panel') && shirtCss.includes('.print-player-shirt.own.away .shirt-sleeve-panel'), 'la local concentra el negro en paneles laterales de manga');
+assert.ok(sleeveCss.includes('fill: #000'), 'los paneles laterales de manga son negros por defecto');
+assert.equal(sleeveCss.includes('.print-player-shirt.own.away'), false, 'el kit visitante no aplica rellenos claros en las mangas');
 assert.ok(shirtCss.includes('.print-player-shirt.own.away .shirt-body') && shirtCss.includes('fill: #000'), 'Caudal visitante usa cuerpo negro');
 assert.ok(shirtCss.includes('.print-player-shirt.own.away .print-shirt-number') && shirtCss.includes('color: #fff'), 'el dorsal visitante y el guion sin asignar usan contraste claro');
+assert.ok(shirtCss.includes('.print-player-shirt.own.away.unassigned .print-shirt-number'), 'el guion visitante se refuerza a escala A4 sin alterar la camiseta local');
 assert.ok(shirtCss.includes('.print-player-shirt.opponent .shirt-opponent-mark') && shirtCss.includes('display: block'), 'el rival usa una marca táctica diferenciadora en B/N');
 assert.equal(shirtCss.includes('.print-player-shirt.opponent .shirt-body'), false, 'el rival no se confunde con el cuerpo negro del Caudal visitante');
 assert.equal(shirtCss.includes('text-overflow: ellipsis'), false, 'los nombres no se recortan con elipsis');
