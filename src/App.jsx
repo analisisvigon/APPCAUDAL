@@ -76,6 +76,13 @@ import {
 } from './utils/delegatedEventSaveFlow';
 import { getPlayerDisplayName } from './utils/playerDisplayName';
 import {
+  calculateStatsCallupCounts,
+  getOutsideStatsCallupPlayerNames,
+  getStatsCallupPositionGroup,
+  groupStatsCallupRowsByPosition,
+  toggleStatsCallupGroupState,
+} from './utils/statsCallup';
+import {
   getPlayerSourceFunctionUserMessage,
   invokePlayerSourceAnalyzer,
 } from './utils/playerSourceFunction';
@@ -5418,6 +5425,7 @@ function App() {
   const [statsCallupFilter, setStatsCallupFilter] = useState('TODOS');
   const [statsCallupSaving, setStatsCallupSaving] = useState(false);
   const [statsCallupError, setStatsCallupError] = useState('');
+  const [collapsedStatsCallupGroups, setCollapsedStatsCallupGroups] = useState({});
   const [selectedPlayerProfileId, setSelectedPlayerProfileId] = useState(null);
   const [playerCompetitionFilter, setPlayerCompetitionFilter] = useState('Temporada');
   const [performanceLoading, setPerformanceLoading] = useState(false);
@@ -14503,15 +14511,6 @@ function App() {
     return players.filter((player) => player?.name && !calledNames.has(normalizePlayerIdentityName(player.name)));
   };
 
-  const getStatsCallupPositionGroup = (player) => {
-    const position = normalizePlayerIdentityName(player?.position || '');
-    if (position.includes('portero')) return 'POR';
-    if (position.includes('defensa') || position.includes('central') || position.includes('lateral') || position.includes('carrilero')) return 'DEF';
-    if (position.includes('medio') || position.includes('pivote') || position.includes('interior') || position.includes('mediapunta')) return 'MC';
-    if (position.includes('extremo') || position.includes('delantero') || position.includes('punta')) return 'ATA';
-    return 'TODOS';
-  };
-
   const getFilteredAvailableStatsCallupPlayers = () => {
     const available = getAvailableStatsCallupPlayers();
     if (statsCallupFilter === 'TODOS') return available;
@@ -14525,12 +14524,7 @@ function App() {
   };
 
   const getStatsCallupCounts = () => {
-    const called = getStatsCalledPlayers();
-    return {
-      called: getStatsCalledPlayerNames().length,
-      starters: called.filter((player) => getStatsPlayerData(player.name).role === 'Titular').length,
-      substitutes: called.filter((player) => getStatsPlayerData(player.name).role !== 'Titular').length,
-    };
+    return calculateStatsCallupCounts(getStatsSquadRows());
   };
 
   const openStatsCallupPanel = async () => {
@@ -14571,14 +14565,12 @@ function App() {
   };
 
   const addStatsCalledPlayersBulk = async (playerNames) => {
-    if (!selectedMatch) return;
-    const currentCalled = new Set(getStatsCalledPlayerNames());
-    const uniqueNames = Array.from(new Set(playerNames)).filter((playerName) => playerName && !currentCalled.has(playerName));
-    if (!uniqueNames.length) {
-      setIsStatsCallupPanelOpen(false);
-      setSelectedStatsCallups([]);
-      return;
-    }
+    if (!selectedMatch) return 0;
+    const currentCalled = new Set(getStatsCalledPlayerNames().map(normalizePlayerIdentityName));
+    const uniqueNames = Array.from(new Set(playerNames)).filter(
+      (playerName) => playerName && !currentCalled.has(normalizePlayerIdentityName(playerName))
+    );
+    if (!uniqueNames.length) return 0;
 
     const playersByName = new Map(players.map((player) => [player.name, player]));
     const convocadoRows = uniqueNames.map((playerName) => {
@@ -14612,6 +14604,25 @@ function App() {
     ]);
     const bulkError = convocadosError || statsError;
     if (bulkError) throw bulkError;
+    return uniqueNames.length;
+  };
+
+  const handleAddAllStatsCallups = async () => {
+    if (!selectedMatch) return;
+    const outsidePlayerNames = getOutsideStatsCallupPlayerNames(getStatsSquadRows());
+    if (!outsidePlayerNames.length) return;
+    setStatsCallupSaving(true);
+    setStatsCallupError('');
+    try {
+      await addStatsCalledPlayersBulk(outsidePlayerNames);
+      await refreshStatsFromSupabase(selectedMatch.id, 'convocatoria completa');
+      setSelectedStatsCallups([]);
+    } catch (bulkError) {
+      console.error('Error añadiendo toda la plantilla a convocados:', bulkError);
+      setStatsCallupError(bulkError.message || 'No se pudo añadir toda la plantilla a convocados.');
+    } finally {
+      setStatsCallupSaving(false);
+    }
   };
 
   const handleAddSelectedStatsCallups = async () => {
@@ -14983,8 +14994,10 @@ function App() {
   };
 
   const getStatsSquadRows = () => {
-    const calledNames = new Set(getStatsCalledPlayerNames().map(normalizePlayerIdentityName));
-    return players.map((player) => {
+    const calledPlayers = getStatsCalledPlayers();
+    const calledNames = new Set(calledPlayers.map((player) => normalizePlayerIdentityName(player.name)));
+    const rosterNames = new Set(players.map((player) => normalizePlayerIdentityName(player.name)));
+    const rosterRows = players.map((player) => {
       const called = calledNames.has(normalizePlayerIdentityName(player.name));
       const stats = called ? getStatsPlayerData(player.name) : null;
       return {
@@ -14993,6 +15006,13 @@ function App() {
         stats,
       };
     });
+    const legacyCalledRows = calledPlayers
+      .filter((player) => !rosterNames.has(normalizePlayerIdentityName(player.name)))
+      .map((player) => {
+        const stats = getStatsPlayerData(player.name);
+        return { player, status: stats.role || 'Suplente', stats };
+      });
+    return [...rosterRows, ...legacyCalledRows];
   };
 
   const getStatsSquadRowsByStatus = (status) => getStatsSquadRows().filter((row) => row.status === status);
@@ -16772,45 +16792,79 @@ function App() {
         key={`${status}-${player.id || player.name}`}
         draggable
         onDragStart={() => setDraggedPlayer(player)}
-        className="border border-white/10 bg-white/[0.035] px-3 py-2.5"
+        className="border border-white/10 bg-white/[0.035] px-2.5 py-2"
       >
-        <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/10 text-[11px] font-black text-white">
+        <div className="flex items-center gap-2">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/10 text-[11px] font-black text-white">
             <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-black text-white">{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</p>
-            <p className="truncate text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{player.position || 'Sin posición'}</p>
+            <p className="break-words text-sm font-black leading-tight text-white" title={player.name}>
+              {player.number ? <span className="mr-1 text-caudal-electric">#{player.number}</span> : null}
+              {displayPlayerName(player) || player.name}
+            </p>
+            <p className="mt-0.5 break-words text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">{getPlayerPositionLabel(player)}</p>
           </div>
           <select
             value={status}
             onChange={(event) => saveStatsPlayerRole(player.name, event.target.value)}
-            className="shrink-0 rounded-lg border border-white/10 bg-black/25 px-2 py-1.5 text-[10px] font-black uppercase text-white"
+            aria-label={`Estado de convocatoria de ${displayPlayerName(player) || player.name}`}
+            className="w-[88px] shrink-0 rounded-lg border border-white/10 bg-black/25 px-1.5 py-1.5 text-[9px] font-black uppercase text-white"
           >
             {['Titular', 'Suplente', 'Fuera'].map((option) => <option key={option} value={option}>{option}</option>)}
           </select>
         </div>
       </div>
     );
-    const renderStatsSquadGroup = (title, status, maxHeight = 'max-h-48') => {
+    const renderStatsSquadGroup = (title, status) => {
       const rows = getStatsSquadRowsByStatus(status);
+      const positionGroups = status === 'Titular' ? [] : groupStatsCallupRowsByPosition(rows);
+      const handleDrop = () => {
+        if (!draggedPlayer) return;
+        saveStatsPlayerRole(normalizeSquadEntry(draggedPlayer).name, status);
+        setDraggedPlayer(null);
+      };
       return (
-        <div>
+        <div
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={handleDrop}
+        >
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">{title}</p>
             <span className="text-[10px] font-black text-caudal-electric">{rows.length}</span>
           </div>
-          <div
-            className={`${maxHeight} space-y-2 overflow-y-auto pr-1`}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={() => {
-              if (!draggedPlayer) return;
-              saveStatsPlayerRole(normalizeSquadEntry(draggedPlayer).name, status);
-              setDraggedPlayer(null);
-            }}
-          >
-            {rows.length ? rows.map(renderStatsSquadCard) : <p className="border border-dashed border-white/10 px-3 py-3 text-xs text-slate-500">Sin jugadores.</p>}
-          </div>
+          {!rows.length ? <p className="border border-dashed border-white/10 px-3 py-3 text-xs text-slate-500">Sin jugadores.</p> : null}
+          {status === 'Titular' && rows.length ? <div className="space-y-2">{rows.map(renderStatsSquadCard)}</div> : null}
+          {positionGroups.length ? (
+            <div className="space-y-2">
+              {positionGroups.map((group) => {
+                const collapseKey = `${status}-${group.key}`;
+                const collapsed = Boolean(collapsedStatsCallupGroups[collapseKey]);
+                const contentId = `stats-callup-${status.toLowerCase()}-${group.key.toLowerCase()}`;
+                return (
+                  <div key={collapseKey} className="border border-white/8 bg-black/10">
+                    <button
+                      type="button"
+                      onClick={() => setCollapsedStatsCallupGroups((current) => toggleStatsCallupGroupState(current, collapseKey))}
+                      aria-expanded={!collapsed}
+                      aria-controls={contentId}
+                      aria-label={`${collapsed ? 'Abrir' : 'Cerrar'} ${title.toLowerCase()} ${group.label.toLowerCase()}`}
+                      className="flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left text-[9px] font-black uppercase tracking-[0.12em] text-slate-400 hover:bg-white/[0.04]"
+                    >
+                      <span>{group.label}</span>
+                      <span className="flex items-center gap-2">
+                        <span className="text-caudal-electric">{group.rows.length}</span>
+                        <span aria-hidden="true">{collapsed ? '+' : '−'}</span>
+                      </span>
+                    </button>
+                    <div id={contentId} hidden={collapsed} className="space-y-1.5 border-t border-white/8 p-1.5">
+                      {group.rows.map(renderStatsSquadCard)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       );
     };
@@ -17027,12 +17081,12 @@ function App() {
               <span className="bg-white/[0.045] px-2 py-2 text-[10px] font-black uppercase text-slate-300">Convocados {callupCounts.called}</span>
               <span className="bg-white/[0.045] px-2 py-2 text-[10px] font-black uppercase text-caudal-electric">Titulares {callupCounts.starters}/11</span>
               <span className="bg-white/[0.045] px-2 py-2 text-[10px] font-black uppercase text-slate-300">Suplentes {callupCounts.substitutes}</span>
-              <span className="bg-white/[0.045] px-2 py-2 text-[10px] font-black uppercase text-slate-300">Fuera {getStatsSquadRowsByStatus('Fuera').length}</span>
+              <span className="bg-white/[0.045] px-2 py-2 text-[10px] font-black uppercase text-slate-300">Fuera {callupCounts.outside}</span>
             </div>
             <div className="mt-4 space-y-4">
-              {renderStatsSquadGroup('Titulares', 'Titular', 'max-h-56')}
-              {renderStatsSquadGroup('Suplentes', 'Suplente', 'max-h-48')}
-              {renderStatsSquadGroup('Fuera', 'Fuera', 'max-h-48')}
+              {renderStatsSquadGroup('Titulares', 'Titular')}
+              {renderStatsSquadGroup('Suplentes', 'Suplente')}
+              {renderStatsSquadGroup('Fuera', 'Fuera')}
             </div>
           </section>
         </div>
@@ -33161,6 +33215,18 @@ function App() {
                 Cerrar
               </button>
             </div>
+            <div className="border-b border-white/10 bg-caudal-electric/[0.06] px-4 py-3 sm:px-6">
+              <button
+                type="button"
+                onClick={handleAddAllStatsCallups}
+                disabled={!getStatsCallupCounts().outside || statsCallupSaving}
+                className="flex w-full items-center justify-between gap-3 rounded-2xl bg-caudal-electric px-4 py-3 text-left text-xs font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span>AÑADIR TODOS A CONVOCADOS</span>
+                <span>{getStatsCallupCounts().outside}</span>
+              </button>
+              <p className="mt-2 text-xs text-slate-400">Convierte en suplentes a todos los jugadores que están fuera, aunque el listado esté filtrado.</p>
+            </div>
             <div className="flex flex-wrap gap-2 border-b border-white/10 px-6 py-4">
               {(() => {
                 const counts = getStatsCallupCounts();
@@ -33169,6 +33235,7 @@ function App() {
                     <span className="rounded-2xl bg-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-200">Convocados: {counts.called}</span>
                     <span className="rounded-2xl bg-caudal-electric/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">Titulares: {counts.starters}</span>
                     <span className="rounded-2xl bg-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-200">Suplentes: {counts.substitutes}</span>
+                    <span className="rounded-2xl bg-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-200">Fuera: {counts.outside}</span>
                   </div>
                 );
               })()}
@@ -33233,14 +33300,21 @@ function App() {
                             <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" />
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-bold">{displayPlayerName(player)}</span>
-                            <span className="mt-0.5 block truncate text-xs text-slate-500">{player.position || 'Sin posición'} · {status}</span>
+                            <span className="block break-words text-sm font-bold leading-tight" title={player.name}>
+                              {player.number ? <span className="mr-1 text-caudal-electric">#{player.number}</span> : null}
+                              {displayPlayerName(player)}
+                            </span>
+                            <span className="mt-0.5 block break-words text-[10px] uppercase tracking-[0.08em] text-slate-500">{getPlayerPositionLabel(player)}</span>
                           </span>
-                        </div>
-                        <div className="mt-3 grid grid-cols-3 gap-1.5">
-                          <button type="button" onClick={() => saveStatsPlayerRole(player.name, 'Titular')} className={`rounded-lg px-2 py-1.5 text-[10px] font-black uppercase ${status === 'Titular' ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>Titular</button>
-                          <button type="button" onClick={() => saveStatsPlayerRole(player.name, 'Suplente')} className={`rounded-lg px-2 py-1.5 text-[10px] font-black uppercase ${status === 'Suplente' ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-slate-300'}`}>Suplente</button>
-                          <button type="button" onClick={() => saveStatsPlayerRole(player.name, 'Fuera')} className={`rounded-lg px-2 py-1.5 text-[10px] font-black uppercase ${status === 'Fuera' ? 'bg-red-400 text-white' : 'bg-white/10 text-slate-300'}`}>Fuera</button>
+                          <select
+                            value={status}
+                            onChange={(event) => saveStatsPlayerRole(player.name, event.target.value)}
+                            disabled={statsCallupSaving}
+                            aria-label={`Estado de convocatoria de ${displayPlayerName(player)}`}
+                            className="w-[88px] shrink-0 rounded-lg border border-white/10 bg-black/25 px-1.5 py-1.5 text-[9px] font-black uppercase text-white disabled:opacity-50"
+                          >
+                            {['Titular', 'Suplente', 'Fuera'].map((option) => <option key={option} value={option}>{option}</option>)}
+                          </select>
                         </div>
                       </div>
                     );
@@ -33248,8 +33322,8 @@ function App() {
                 </div>
               ) : (
                 <div className="rounded-3xl border border-dashed border-white/10 bg-black/20 p-8 text-center">
-                  <p className="text-sm font-semibold text-white">Todos los jugadores están añadidos.</p>
-                  <p className="mt-2 text-sm text-slate-400">Gestiona aquí titulares, suplentes y fuera convocatoria.</p>
+                  <p className="text-sm font-semibold text-white">Sin jugadores para este filtro.</p>
+                  <p className="mt-2 text-sm text-slate-400">Cambia de posición o vuelve a TODOS para ver la plantilla completa.</p>
                 </div>
               )}
             </div>
