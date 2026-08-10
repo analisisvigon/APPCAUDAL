@@ -51,8 +51,13 @@ import {
   buildRivalPlayerTacticalModel,
 } from './utils/rivalPlayerTacticalAssistant';
 import {
+  GOAL_ASSISTANCE_SELECT_VALUE,
+  GOAL_ASSISTANCE_STATUS,
+  createGoalAssistantDraftPatch,
   createGoalParticipantDbFields,
   getGoalAssistant,
+  getGoalAssistantSelectValue,
+  getPersistedGoalAssistanceStatus,
   getGoalScorer,
   goalParticipantMatchesPlayer,
   hasGoalAssistant,
@@ -653,6 +658,7 @@ const defaultGoalAnalysisDraft = {
   scorerId: null,
   assistant: '',
   assistantId: null,
+  assistantStatus: GOAL_ASSISTANCE_STATUS.pending,
   phase: DEFAULT_GOAL_PHASE,
   subphase: '',
   shotZone: '',
@@ -15912,6 +15918,7 @@ function App() {
       scorerId: null,
       assistant: '',
       assistantId: null,
+      assistantStatus: GOAL_ASSISTANCE_STATUS.pending,
     });
     setIsGoalAnalysisOpen(true);
   };
@@ -15919,6 +15926,7 @@ function App() {
   const openGoalEditModal = (eventId) => {
     const goal = getStatsGoalEvents().find((event) => event.id === eventId);
     if (!goal) return;
+    const persistedAssistant = resolveGoalParticipant(goal, 'assistant', players);
     const tacticalContext = normalizeGoalTacticalContext({ phase: goal.phase, subphase: goal.subphase });
     setStatsError('');
     setStatsSaveStatus('');
@@ -15930,8 +15938,9 @@ function App() {
       minute: goal.minute || '',
       scorer: goal.scorer || '',
       scorerId: goal.scorerId || null,
-      assistant: goal.assistant || '',
-      assistantId: goal.assistantId || null,
+      assistant: goal.assistant || persistedAssistant?.name || '',
+      assistantId: goal.assistantId || persistedAssistant?.id || null,
+      assistantStatus: getPersistedGoalAssistanceStatus(goal),
       ...tacticalContext,
       assistZone: goal.assistZone || '',
       shotZone: goal.shotZone || '',
@@ -15975,7 +15984,9 @@ function App() {
       return `${minute}gol rival en una ${action} iniciada ${originSide} y terminada desde ${finish}.${goal}`;
     }
     const scorer = draft.scorer || 'Jugador Caudal';
-    const assist = draft.assistant ? ` Asistencia de ${draft.assistant}.` : '';
+    const assist = draft.assistant
+      ? ` Asistencia de ${draft.assistant}.`
+      : draft.assistantStatus === GOAL_ASSISTANCE_STATUS.none ? ' Sin asistencia.' : '';
     return `${minute}${scorer} finaliza una ${action} iniciada ${originSide} y terminada desde ${finish}.${goal}${assist}`;
   };
 
@@ -16107,7 +16118,26 @@ function App() {
         return withAutoSummary(updateGoalPrimaryContext(prev, value));
       }
       if (field === 'type' && value === 'Gol en contra') {
-        return withAutoSummary({ ...prev, type: value, scorer: '', scorerId: null, assistant: '', assistantId: null });
+        return withAutoSummary({
+          ...prev,
+          type: value,
+          scorer: '',
+          scorerId: null,
+          assistant: '',
+          assistantId: null,
+          assistantStatus: GOAL_ASSISTANCE_STATUS.none,
+        });
+      }
+      if (field === 'type' && value === 'Gol a favor' && prev.type === 'Gol en contra') {
+        return withAutoSummary({
+          ...prev,
+          type: value,
+          scorer: '',
+          scorerId: null,
+          assistant: '',
+          assistantId: null,
+          assistantStatus: GOAL_ASSISTANCE_STATUS.pending,
+        });
       }
       return withAutoSummary({ ...prev, [field]: value });
     });
@@ -16115,6 +16145,24 @@ function App() {
 
   const updateGoalParticipantDraft = (role, playerName) => {
     if (statsError) setStatsError('');
+    if (role === 'assistant') {
+      const availablePlayers = dedupeRivalPlayers([...players, ...getGoalDraftPlayerOptions()]);
+      const assistantPatch = createGoalAssistantDraftPatch(playerName, availablePlayers);
+      setGoalAnalysisDraft((previous) => {
+        const next = {
+          ...previous,
+          ...assistantPatch,
+          assistantId: isUuid(assistantPatch.assistantId) ? assistantPatch.assistantId : null,
+        };
+        return {
+          ...next,
+          summary: !previous.summary || previous.summary === buildGoalDraftSummary(previous)
+            ? buildGoalDraftSummary(next)
+            : next.summary,
+        };
+      });
+      return;
+    }
     const selectedPlayer = getGoalDraftPlayerOptions().find((player) => player.name === playerName)
       || players.find((player) => player.name === playerName)
       || null;
@@ -16150,6 +16198,13 @@ function App() {
     }
     if (goalAnalysisDraft.type === 'Gol a favor' && !String(goalAnalysisDraft.scorer || '').trim()) {
       setStatsError('Selecciona el goleador.');
+      return;
+    }
+    if (
+      goalAnalysisDraft.type === 'Gol a favor'
+      && goalAnalysisDraft.assistantStatus === GOAL_ASSISTANCE_STATUS.pending
+    ) {
+      setStatsError('Selecciona un asistente o indica Sin asistencia.');
       return;
     }
     const minute = Number(goalAnalysisDraft.minute);
@@ -30852,7 +30907,7 @@ function App() {
                 <section className="grid gap-6 xl:grid-cols-3">
                   <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Origen de asistencias</h3>
-                    <div className="mt-5">{zoneTotal(assistZoneCounts) ? renderReadOnlyZoneGrid({ counts: assistZoneCounts }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{assistedGoalRows.length ? `${assistedWithoutZoneCount} asistencia${assistedWithoutZoneCount === 1 ? '' : 's'} sin zona de origen registrada.` : missingAssistCount ? `${missingAssistCount} gol${missingAssistCount === 1 ? '' : 'es'} sin asistencia registrada.` : 'Sin asistencias registradas.'}</p>}</div>
+                    <div className="mt-5">{zoneTotal(assistZoneCounts) ? renderReadOnlyZoneGrid({ counts: assistZoneCounts }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{assistedGoalRows.length ? `${assistedWithoutZoneCount} asistencia${assistedWithoutZoneCount === 1 ? '' : 's'} sin zona de origen registrada.` : missingAssistCount ? `${missingAssistCount} gol${missingAssistCount === 1 ? '' : 'es'} sin asistencia.` : 'Sin asistencias registradas.'}</p>}</div>
                   </div>
                   <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Zonas de finalización</h3>
@@ -33278,8 +33333,9 @@ function App() {
                       </label>
                       <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 lg:col-span-2">
                         <span>Asistente</span>
-                        <select value={goalAnalysisDraft.assistant} onChange={(event) => updateGoalParticipantDraft('assistant', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white">
-                          <option value="">Sin asistencia registrada</option>
+                        <select value={getGoalAssistantSelectValue(goalAnalysisDraft)} onChange={(event) => updateGoalParticipantDraft('assistant', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white">
+                          <option value={GOAL_ASSISTANCE_SELECT_VALUE.pending} disabled>Seleccionar asistente</option>
+                          <option value={GOAL_ASSISTANCE_SELECT_VALUE.none}>Sin asistencia</option>
                           {getGoalDraftPlayerOptions().map((player) => <option key={player.id || player.name} value={player.name}>{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</option>)}
                         </select>
                       </label>
@@ -33386,7 +33442,11 @@ function App() {
                     <div className="mt-3 grid gap-1.5 text-sm font-semibold text-slate-100">
                       <p><span className="text-caudal-electric">{goalAnalysisDraft.minute || '--'}'</span> {goalAnalysisDraft.type === 'Gol a favor' ? `${goalAnalysisDraft.scorer || 'Goleador'} marca.` : `${selectedMatch.opponent || 'Rival'} marca.`}</p>
                       <p>{goalAnalysisDraft.phase}. {getGoalZonePhrase(goalAnalysisDraft.assistZone)}. Finalización: {getGoalZonePhrase(goalAnalysisDraft.shotZone)}.</p>
-                      <p>Pie/contacto: {goalAnalysisDraft.contact}. {goalAnalysisDraft.assistant ? `Asistencia de ${goalAnalysisDraft.assistant}.` : 'Sin asistencia registrada.'}</p>
+                      <p>Pie/contacto: {goalAnalysisDraft.contact}. {goalAnalysisDraft.assistant
+                        ? `Asistencia de ${goalAnalysisDraft.assistant}.`
+                        : goalAnalysisDraft.assistantStatus === GOAL_ASSISTANCE_STATUS.none
+                          ? 'Sin asistencia.'
+                          : 'Seleccionar asistente.'}</p>
                     </div>
                   </div>
                   <span className="shrink-0 rounded-xl bg-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">Editable</span>

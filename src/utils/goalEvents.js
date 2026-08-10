@@ -11,6 +11,17 @@ const firstText = (...values) => values
 
 const firstId = (...values) => firstText(...values) || null;
 
+export const GOAL_ASSISTANCE_STATUS = Object.freeze({
+  pending: 'pending',
+  none: 'none',
+  player: 'player',
+});
+
+export const GOAL_ASSISTANCE_SELECT_VALUE = Object.freeze({
+  pending: '__assist_pending__',
+  none: '__no_assistance__',
+});
+
 export const getGoalScorer = (event = {}) => ({
   id: firstId(event.scorerId, event.scorer_id, event.goalScorerId, event.goal_scorer_id),
   name: firstText(event.scorerName, event.scorer, event.goalScorer, event.goal_scorer),
@@ -38,6 +49,33 @@ export const getGoalAssistant = (event = {}) => ({
 export const hasGoalAssistant = (event = {}) => {
   const assistant = getGoalAssistant(event);
   return Boolean(assistant.id || assistant.name);
+};
+
+export const getPersistedGoalAssistanceStatus = (event = {}) => (
+  hasGoalAssistant(event) ? GOAL_ASSISTANCE_STATUS.player : GOAL_ASSISTANCE_STATUS.none
+);
+
+export const getGoalAssistantSelectValue = (draft = {}) => {
+  if (draft.assistantStatus === GOAL_ASSISTANCE_STATUS.pending) return GOAL_ASSISTANCE_SELECT_VALUE.pending;
+  if (draft.assistantStatus === GOAL_ASSISTANCE_STATUS.none) return GOAL_ASSISTANCE_SELECT_VALUE.none;
+  const assistant = getGoalAssistant(draft);
+  return assistant.name || GOAL_ASSISTANCE_SELECT_VALUE.pending;
+};
+
+export const createGoalAssistantDraftPatch = (selection, players = []) => {
+  if (selection === GOAL_ASSISTANCE_SELECT_VALUE.pending) {
+    return { assistant: '', assistantId: null, assistantStatus: GOAL_ASSISTANCE_STATUS.pending };
+  }
+  if (selection === GOAL_ASSISTANCE_SELECT_VALUE.none) {
+    return { assistant: '', assistantId: null, assistantStatus: GOAL_ASSISTANCE_STATUS.none };
+  }
+  const assistant = String(selection || '').trim();
+  const player = players.find((candidate) => candidate?.name === assistant) || null;
+  return {
+    assistant,
+    assistantId: player?.id || null,
+    assistantStatus: assistant ? GOAL_ASSISTANCE_STATUS.player : GOAL_ASSISTANCE_STATUS.pending,
+  };
 };
 
 export const resolveGoalParticipant = (event = {}, role, players = []) => {

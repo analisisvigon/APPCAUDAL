@@ -35,6 +35,7 @@
     "test:tactical-play-context": "node src/utils/tacticalPlayContext.test.js",
     "test:tactical-evidence": "node src/utils/tacticalEvidenceEngine.test.js",
     "test:goal-events": "node src/utils/goalEvents.test.js",
+    "test:goal-assistance": "node src/utils/goalAssistance.test.js",
     "test:goal-tactical-context": "node src/utils/goalTacticalContext.test.js",
     "test:goal-modal-state": "node src/utils/goalFormState.test.js",
     "test:delegated-events": "node src/utils/delegatedEventIdentity.test.js",
