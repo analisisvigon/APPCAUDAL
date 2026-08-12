@@ -144,6 +144,8 @@ const identityOnModel = buildSetPiecePrintPlayModel(identityDiagram, identityPla
 assert.deepEqual(identityOnModel.chronology.map((step) => step.identity), ['4 BOZA', '10 AGUS PORTO', '9 ACERETE'], 'Cronología ON lleva dorsal e identidad útil al PDF sin recortes automáticos');
 assert.deepEqual(identityOnModel.chronology.map((step) => step.instruction), ['fijar al central', 'correr', 'atacar primer palo'], 'Cronología ON muestra cada consigna individual junto al orden');
 assert.deepEqual(identityOnModel.individualInstructions.map((item) => item.dorsal), ['4', '9', '10'], 'Cronología ON no elimina participantes vinculados con consigna de Indicaciones');
+assert.deepEqual(identityOnModel.instructionGroups.map((group) => group.label), ['Bloqueos', 'Remate'], 'la ofensiva agrupa Indicaciones por roles reales y omite grupos vacíos');
+assert.deepEqual(identityOnModel.instructionGroups[0].items.map((item) => item.dorsal), ['4', '10'], 'Bloqueos conserva orden numérico dentro del grupo');
 
 const identityOffDiagram = {
   ...identityDiagram,
@@ -206,6 +208,9 @@ assert.ok(editor.includes('{visibleLayers.chronology ? <section') && sheet.inclu
 assert.ok(sheet.includes("step.role ? <span>{step.identity ? ' · ' : ''}{step.role}</span> : null"), 'Roles OFF no deja etiquetas de rol en la Secuencia');
 assert.ok(sheet.includes('<h3>Indicaciones</h3>') && sheet.includes('play.individualInstructions'), 'las consignas individuales tienen un bloque independiente de Cronología');
 assert.ok(sheet.includes('const indications = play.individualInstructions;'), 'Indicaciones no se deduplica contra Cronología');
+assert.ok(sheet.includes('play.instructionGroups.map') && sheet.includes('<h4>{group.label}</h4>'), 'las indicaciones se renderizan bajo encabezados funcionales');
+assert.ok(sheet.includes('data-density={indicationDensity}') && css.includes('.set-piece-print-indications[data-density="roomy"]') && css.includes('.set-piece-print-indications[data-density="dense"]'), 'la columna adapta separación y tamaño a la cantidad de indicaciones');
+assert.equal(sheet.includes('>Lanzador<'), false, 'no reaparece una etiqueta independiente de Lanzador');
 assert.ok(sheet.includes('set-piece-print-signal') && sheet.includes('Señal de la jugada:'), 'la señal tiene un bloque semántico propio en cabecera');
 assert.ok(sheet.includes('item.dorsal') && sheet.includes('item.playerName') && sheet.includes('set-piece-print-indication-text'), 'cada indicación separa dorsal, nombre e instrucción');
 assert.match(css, /\.set-piece-print-operational-details section \{\s*display: block;/, 'Clave, Riesgo y Alternativa usan etiqueta y texto apilados');
@@ -215,7 +220,7 @@ assert.ok(canvas.includes('selected && !readOnly') && canvas.includes('set-piece
 assert.ok(canvas.includes("element.type === 'dashed_arrow' || element.dashed") && canvas.includes("element.type === 'curved_arrow'"), 'el renderer combina curva y discontinuidad sin geometría paralela');
 assert.ok(canvas.includes("strokeDasharray={dashed ? '2.2 1.8' : ''}"), 'el patrón discontinuo llega al SVG usado por preview, presentación y PDF');
 assert.ok(sheet.includes('preparedForPrint') && sheet.includes('data-render-model="set-piece-print"'), 'preview y PDF comparten elementos preparados y el mismo renderer táctico');
-assert.ok(sheet.includes('play.headerFacts.length') && sheet.includes('fact.label') && sheet.includes('fact.value'), 'preview, PDF e impresión comparten la cabecera Destino/Golpeo');
+assert.ok(sheet.includes('headerFacts.length') && sheet.includes('fact.label') && sheet.includes('fact.value'), 'preview, PDF e impresión comparten la cabecera Destino/Golpeo/Estructura y la Clave densa');
 assert.equal(sheet.includes('play.classifications'), false, 'la cabecera ya no renderiza chips tácticos genéricos');
 assert.ok(css.includes('.set-piece-print-header-facts strong') && css.includes('font-size: 9pt') && css.includes('border-left: 1.25pt solid #111827'), 'Destino/Golpeo tienen jerarquía compacta y contraste apto para B/N');
 assert.match(css, /\.set-piece-print-signal \{[\s\S]*border: 1\.4pt solid #111827;/, 'SEÑAL conserva jerarquía visible también en blanco y negro');
@@ -285,5 +290,72 @@ assert.equal(chronologyOnControlModel.individualInstructions.find((item) => item
 const twoControlPlays = buildSetPiecePrintPages([controlDiagram, { ...controlDiagram, id: 'control-desde-atras-2', orden: 2 }], controlPlayers);
 assert.deepEqual(twoControlPlays.map((page) => page.plays.length), [2], 'H: dos jugadas siguen agrupadas en una sola página A4');
 assert.deepEqual(getSetPieceGeometrySnapshot(controlModel.elements), getSetPieceGeometrySnapshot(controlDiagram.elements), 'J: el modelo de QA no modifica geometría táctica');
+
+const defensiveDorsals = [14, 5, 22, 9, 4, 6, 10, 11, 2, 21];
+const defensivePlayers = defensiveDorsals.map((dorsal) => ({
+  id: `def-player-${dorsal}`,
+  number: String(dorsal),
+  shirt_name: dorsal === 5 ? 'J. RODRÍGUEZ' : `DEFENSA ${dorsal}`,
+}));
+const defensiveRoles = [
+  ['Zona 2'], ['Zona 1'], ['Segundo rechace'], ['Primer rechace'],
+  ['Marca individual'], ['Marca individual'], ['Marca individual'], ['Marca individual'], ['Marca individual'], ['Marca individual'],
+];
+const defensiveElements = defensiveDorsals.map((dorsal, index) => ({
+  id: `def-element-${dorsal}`,
+  type: 'player',
+  x: 12 + (index % 5) * 17,
+  y: 18 + Math.floor(index / 5) * 25,
+  label: String(dorsal),
+  player_id: `def-player-${dorsal}`,
+  roles: defensiveRoles[index],
+  note: `Responsabilidad defensiva ${dorsal}`,
+}));
+defensiveElements.push({ id: 'marcas-text', type: 'text', x: 23, y: 31, label: 'Marcas' });
+const defensiveDiagram = {
+  id: 'corner-defensive-control',
+  orden: 1,
+  tipo: 'corner_defensivo',
+  titulo: 'Córner defensivo 1',
+  elements: setSetPieceTacticalMeta(defensiveElements, {
+    ...printMeta,
+    libraryMarking: 'Mixto',
+    libraryZone: 'Primer palo',
+    deliveryType: 'closed',
+    objective: 'GANAR 1ER CONTACTO',
+    generalInstruction: 'AGRESIVOS EN PRIMER CONTACTO. PROTEGER RECHACE.',
+    displayLayers: { ...printMeta.displayLayers, chronology: false },
+  }),
+};
+const defensiveModel = buildSetPiecePrintPlayModel(defensiveDiagram, defensivePlayers, 1);
+assert.equal(defensiveModel.defensive, true);
+assert.equal(defensiveModel.defenseTypeLabel, 'Mixta');
+assert.equal(defensiveModel.defensiveStructure, '2 ZONA · 2 RECHACE · 6 MARCAS');
+assert.deepEqual(defensiveModel.headerFacts, [{ id: 'structure', label: 'Estructura', value: '2 ZONA · 2 RECHACE · 6 MARCAS' }], 'una defensiva no muestra destino/golpeo ofensivos aunque existan datos históricos');
+assert.deepEqual(defensiveModel.instructionGroups.map((group) => group.label), ['Zona', 'Marcas', 'Rechace']);
+assert.deepEqual(defensiveModel.instructionGroups.find((group) => group.id === 'zone').items.map((item) => item.dorsal), ['5', '14']);
+assert.deepEqual(defensiveModel.instructionGroups.find((group) => group.id === 'marks').items.map((item) => item.dorsal), ['2', '4', '6', '10', '11', '21']);
+assert.deepEqual(defensiveModel.instructionGroups.find((group) => group.id === 'rebound').items.map((item) => item.dorsal), ['9', '22']);
+assert.equal(new Set(defensiveModel.instructionGroups.flatMap((group) => group.items.map((item) => item.id))).size, 10, 'ningún defensor se duplica entre grupos');
+assert.equal(defensiveModel.signal, 'MANO ARRIBA');
+assert.equal(defensiveModel.objective, 'GANAR 1ER CONTACTO');
+assert.equal(defensiveModel.instruction, 'AGRESIVOS EN PRIMER CONTACTO. PROTEGER RECHACE.');
+const legacyDefensiveModel = buildSetPiecePrintPlayModel({ ...defensiveDiagram, id: 'legacy-defense', elements: setSetPieceTacticalMeta([{ id: 'legacy-player', type: 'player', x: 30, y: 30 }], {}) }, [], 1);
+assert.equal(legacyDefensiveModel.defenseTypeLabel, '');
+assert.equal(legacyDefensiveModel.defensiveStructure, '');
+assert.deepEqual(legacyDefensiveModel.headerFacts, [], 'una defensiva antigua no inventa cabecera ni estructura');
+const duplicateDefenseCopyModel = buildSetPiecePrintPlayModel({
+  ...defensiveDiagram,
+  id: 'deduplicated-defense-copy',
+  elements: setSetPieceTacticalMeta(defensiveElements, {
+    ...printMeta,
+    libraryMarking: 'Mixto',
+    objective: 'DEFENSA MIXTA',
+    generalInstruction: '2 ZONA · 2 RECHACE · 6 MARCAS',
+  }),
+}, defensivePlayers, 1);
+assert.equal(duplicateDefenseCopyModel.objective, '', 'CLAVE idéntica al tipo defensivo no se repite en impresión');
+assert.equal(duplicateDefenseCopyModel.instruction, '', 'CONSIGNA idéntica a la estructura no se repite en impresión');
+assert.deepEqual(buildSetPiecePrintPages([defensiveDiagram, controlDiagram], [...defensivePlayers, ...controlPlayers]).map((page) => page.plays.length), [2], 'ofensiva y defensiva mantienen dos jugadas en una A4');
 
 console.log('setPiecePrintLayout tests passed');

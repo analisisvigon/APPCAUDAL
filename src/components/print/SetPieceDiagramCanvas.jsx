@@ -361,20 +361,16 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
         if (isResizableBox(element)) {
           const width = renderedElement.width || (element.type === 'text_box' ? 30 : 18);
           const height = renderedElement.height || (element.type === 'text_box' ? 18 : 10);
-          const hasPrintLabel = usesOptimizedLabels && Number.isFinite(Number(element.printLabelX)) && Number.isFinite(Number(element.printLabelY));
-          const printLabelX = hasPrintLabel ? Number(element.printLabelX) : Number(element.x || 0) + 2;
-          const printLabelY = hasPrintLabel ? Number(element.printLabelY) : Number(element.y || 0) + 4;
+          const labelX = Number(element.x || 0) + 2;
+          const labelY = Number(element.y || 0) + 4;
           const lines = splitLines(element.label || (element.type === 'block' ? 'BLOQUEO' : ''))
             .map((line) => (readOnly ? compactDiagramLabel(line, element.type === 'text_box' ? 24 : 18) : line));
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
               {selected && !readOnly ? <rect x={Number(element.x) - 0.9} y={Number(element.y) - 0.9} width={width + 1.8} height={height + 1.8} rx="1" fill="none" stroke="#3DD9FF" strokeWidth="0.7" opacity="0.82" /> : null}
               <rect x={element.x} y={element.y} width={width} height={height} fill="white" stroke="currentColor" strokeWidth={selected ? 1.2 : 0.85} strokeDasharray={element.type === 'zone' ? '3 2' : ''} />
-              {hasPrintLabel && element.printLabelLeader ? (
-                <line x1={Number(element.x || 0) + width / 2} y1={Number(element.y || 0) + 2} x2={printLabelX} y2={printLabelY - 1.2} stroke="currentColor" strokeWidth="0.24" opacity="0.58" />
-              ) : null}
               {lines.map((line, index) => (
-                <text key={`${element.id}-${index}`} x={printLabelX} y={printLabelY + index * 3.3} textAnchor={hasPrintLabel ? 'middle' : 'start'} fontSize={element.type === 'text_box' ? tokens.annotationSize : tokens.zoneSize} fontWeight={index === 0 ? '900' : '700'} fill="currentColor" paintOrder="stroke" stroke="white" strokeWidth={hasPrintLabel ? '0.6' : '0'}>
+                <text key={`${element.id}-${index}`} x={labelX} y={labelY + index * 3.3} textAnchor="start" fontSize={element.type === 'text_box' ? tokens.annotationSize : tokens.zoneSize} fontWeight={index === 0 ? '900' : '700'} fill="currentColor" paintOrder="stroke" stroke="white" strokeWidth="0">
                   {line}
                 </text>
               ))}
@@ -392,14 +388,11 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           );
         }
         if (element.type === 'text') {
-          const labelX = usesOptimizedLabels && Number.isFinite(Number(element.printLabelX)) ? Number(element.printLabelX) : Number(element.x || 0);
-          const labelY = usesOptimizedLabels && Number.isFinite(Number(element.printLabelY)) ? Number(element.printLabelY) : Number(element.y || 0);
+          const labelX = Number(element.x || 0);
+          const labelY = Number(element.y || 0);
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
               {selected && !readOnly ? <circle cx={labelX} cy={labelY - 0.9} r="4.4" fill="#3DD9FF" opacity="0.16" stroke="#3DD9FF" strokeWidth="0.55" /> : null}
-              {usesOptimizedLabels && element.printLabelLeader ? (
-                <line x1={element.x} y1={element.y} x2={labelX} y2={labelY - 1.2} stroke="currentColor" strokeWidth="0.24" opacity="0.58" />
-              ) : null}
               <text x={labelX} y={labelY} textAnchor="middle" fontSize={selected ? tokens.annotationSize + 0.35 : tokens.annotationSize} fontWeight="900" fill="currentColor" paintOrder="stroke" stroke="white" strokeWidth={printOptimized ? '0.7' : '0.45'}>
                 {element.label || 'Texto'}
               </text>

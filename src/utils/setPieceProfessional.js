@@ -48,13 +48,56 @@ export const SET_PIECE_ROLES = [
   'Bloqueador',
   'Arrastre',
   'Pantalla',
+  'Zona 1',
+  'Zona 2',
+  'Zona 3',
+  'Marca individual',
   'Rechace',
+  'Primer rechace',
+  'Segundo rechace',
   'Segundo palo',
   'Primer palo',
   'Cobertura',
   'Vigilancia',
   'Salida transición',
+  'Jugador arriba',
+  'Primera descarga',
+  'Protección segundo palo',
 ];
+
+export const SET_PIECE_FUNCTION_GROUPS = Object.freeze({
+  offensive: Object.freeze([
+    { id: 'launch', label: 'Lanzamiento', roles: ['Lanzador'] },
+    { id: 'blocks', label: 'Bloqueos', roles: ['Bloqueador', 'Pantalla', 'Arrastre'] },
+    { id: 'finish', label: 'Remate', roles: ['Rematador', 'Primer palo', 'Segundo palo'] },
+    { id: 'rebound', label: 'Rechace', roles: ['Rechace', 'Primer rechace', 'Segundo rechace'] },
+    { id: 'watch', label: 'Vigilancia', roles: ['Vigilancia', 'Cobertura', 'Protección segundo palo'] },
+    { id: 'transition', label: 'Salida / Transición', roles: ['Salida transición', 'Jugador arriba', 'Primera descarga'] },
+  ]),
+  defensive: Object.freeze([
+    { id: 'zone', label: 'Zona', roles: ['Zona 1', 'Zona 2', 'Zona 3'] },
+    { id: 'marks', label: 'Marcas', roles: ['Marca individual'] },
+    { id: 'rebound', label: 'Rechace', roles: ['Rechace', 'Primer rechace', 'Segundo rechace'] },
+    { id: 'watch', label: 'Vigilancia', roles: ['Vigilancia', 'Cobertura', 'Protección segundo palo'] },
+    { id: 'transition', label: 'Salida / Transición', roles: ['Salida transición', 'Jugador arriba', 'Primera descarga'] },
+  ]),
+});
+
+export const isDefensiveSetPieceType = (type) => String(type || '').toLocaleLowerCase('es').includes('defensiv');
+
+export const getSetPieceRoleOptions = (type) => {
+  if (!isDefensiveSetPieceType(type)) {
+    return ['Lanzador', 'Rematador', 'Bloqueador', 'Arrastre', 'Pantalla', 'Rechace', 'Primer rechace', 'Segundo rechace', 'Primer palo', 'Segundo palo', 'Cobertura', 'Vigilancia', 'Salida transición', 'Jugador arriba', 'Primera descarga'];
+  }
+  return ['Zona 1', 'Zona 2', 'Zona 3', 'Marca individual', 'Rechace', 'Primer rechace', 'Segundo rechace', 'Vigilancia', 'Cobertura', 'Protección segundo palo', 'Salida transición', 'Jugador arriba', 'Primera descarga'];
+};
+
+export const getSetPieceDefenseTypeLabel = (value) => ({
+  Zonal: 'Zonal',
+  Individual: 'Individual',
+  Mixto: 'Mixta',
+  Mixta: 'Mixta',
+}[String(value || '').trim()] || '');
 
 export const createDefaultSetPieceTacticalMeta = () => ({
   version: 3,
@@ -300,31 +343,6 @@ export const optimizeSetPieceElementsForPrint = (elements, players = []) => {
     labelBoxes.push(placement.box);
   });
 
-  drawable
-    .filter((element) => ['text', 'text_box', 'zone'].includes(element.type) && cleanString(element.label))
-    .forEach((element) => {
-      const lines = cleanString(element.label).split(/\r?\n/).filter(Boolean);
-      const longestLine = lines.sort((a, b) => b.length - a.length)[0] || '';
-      const isBox = ['text_box', 'zone'].includes(element.type);
-      const originalLabelX = isBox
-        ? Number(element.x || 0) + Math.min(Number(element.width || 18) / 2, 9)
-        : Number(element.x || 0);
-      const originalLabelY = isBox ? Number(element.y || 0) + 4 : Number(element.y || 0);
-      const placement = getLabelPlacement({
-        element: { ...element, x: originalLabelX, y: originalLabelY - 5.4 },
-        text: longestLine,
-        players: playerElements,
-        occupied: labelBoxes,
-      });
-      element.printLabelX = placement.centerX;
-      element.printLabelY = placement.baselineY;
-      element.printLabelLeader = Math.hypot(
-        placement.centerX - originalLabelX,
-        placement.baselineY - originalLabelY,
-      ) > 5;
-      labelBoxes.push(placement.box);
-    });
-
   return drawable;
 };
 
@@ -389,10 +407,57 @@ export const getSetPieceIndividualInstructions = (elements, players = []) => {
         id: element.id,
         dorsal,
         playerName: resolvedName || (!dorsal ? cleanString(element.roles?.[0]) || 'Jugador' : ''),
+        roles: (Array.isArray(element.roles) ? element.roles : []).map(cleanString).filter(Boolean),
         role: cleanString(element.roles?.[0]),
         instruction: cleanString(element.note),
       };
     });
+};
+
+const getInstructionNumericDorsal = (instruction) => {
+  const dorsal = cleanString(instruction?.dorsal);
+  const numeric = Number(dorsal);
+  return dorsal && Number.isFinite(numeric) ? numeric : Number.MAX_SAFE_INTEGER;
+};
+
+export const groupSetPieceIndividualInstructions = (instructions = [], type = '') => {
+  const taxonomy = isDefensiveSetPieceType(type)
+    ? SET_PIECE_FUNCTION_GROUPS.defensive
+    : SET_PIECE_FUNCTION_GROUPS.offensive;
+  const groupsById = new Map(taxonomy.map((group) => [group.id, { id: group.id, label: group.label, items: [] }]));
+  const other = { id: 'other', label: 'Otras funciones', items: [] };
+
+  (Array.isArray(instructions) ? instructions : []).forEach((instruction) => {
+    const roles = Array.isArray(instruction?.roles) ? instruction.roles : [instruction?.role].filter(Boolean);
+    const group = taxonomy.find((candidate) => candidate.roles.some((role) => roles.includes(role)));
+    (group ? groupsById.get(group.id) : other).items.push(instruction);
+  });
+
+  return [...taxonomy.map((group) => groupsById.get(group.id)), other]
+    .filter((group) => group.items.length)
+    .map((group) => ({
+      ...group,
+      items: group.items
+        .map((item, sourceIndex) => ({ item, sourceIndex }))
+        .sort((left, right) => getInstructionNumericDorsal(left.item) - getInstructionNumericDorsal(right.item) || left.sourceIndex - right.sourceIndex)
+        .map(({ item }) => item),
+    }));
+};
+
+export const getSetPieceDefensiveStructure = (elements = []) => {
+  const defensiveParticipants = getDrawableSetPieceElements(elements)
+    .filter((element) => element.type === 'player');
+  const countFamily = (roles) => defensiveParticipants.filter((element) => (
+    (Array.isArray(element.roles) ? element.roles : []).some((role) => roles.includes(role))
+  )).length;
+  const zones = countFamily(['Zona 1', 'Zona 2', 'Zona 3']);
+  const rebounds = countFamily(['Rechace', 'Primer rechace', 'Segundo rechace']);
+  const marks = countFamily(['Marca individual']);
+  return [
+    zones ? `${zones} ZONA` : '',
+    rebounds ? `${rebounds} RECHACE` : '',
+    marks ? `${marks} MARCAS` : '',
+  ].filter(Boolean).join(' · ');
 };
 
 export const getSetPieceResponsibilities = (elements, players = []) => {

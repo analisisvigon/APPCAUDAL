@@ -1,8 +1,12 @@
 import {
   getSetPieceChronology,
+  getSetPieceDefenseTypeLabel,
+  getSetPieceDefensiveStructure,
   getSetPieceDeliveryTypeLabel,
   getSetPieceIndividualInstructions,
   getSetPieceTacticalMeta,
+  groupSetPieceIndividualInstructions,
+  isDefensiveSetPieceType,
   optimizeSetPieceElementsForPrint,
 } from './setPieceProfessional.js';
 
@@ -66,9 +70,12 @@ export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder
   const elementsById = new Map(elements.map((element) => [element.id, element]));
   const order = Number(diagram?.orden) || fallbackOrder;
   const typeLabel = getSetPiecePrintTypeLabel(diagram?.tipo);
+  const defensive = isDefensiveSetPieceType(diagram?.tipo);
   const displayLayers = meta.displayLayers;
-  const destination = getMeaningfulSetPiecePrintText(meta.libraryZone);
-  const delivery = getMeaningfulSetPiecePrintText(getSetPieceDeliveryTypeLabel(meta.deliveryType));
+  const destination = defensive ? '' : getMeaningfulSetPiecePrintText(meta.libraryZone);
+  const delivery = defensive ? '' : getMeaningfulSetPiecePrintText(getSetPieceDeliveryTypeLabel(meta.deliveryType));
+  const defenseTypeLabel = defensive ? getSetPieceDefenseTypeLabel(meta.libraryMarking) : '';
+  const defensiveStructure = defensive ? getSetPieceDefensiveStructure(diagram?.elements) : '';
   const chronology = (displayLayers.chronology ? getSetPieceChronology(diagram?.elements, players) : []).map((step) => ({
     ...step,
     identity: formatIdentity(elementsById.get(step.id), displayLayers),
@@ -81,20 +88,36 @@ export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder
     role: displayLayers.roles ? getMeaningfulSetPiecePrintText(item.role) : '',
     instruction: getMeaningfulSetPiecePrintText(item.instruction),
   }));
+  const rawInstruction = getMeaningfulSetPiecePrintText(diagram?.consigna || meta.generalInstruction);
+  const rawObjective = getMeaningfulSetPiecePrintText(meta.objective);
+  const defenseTypeComparables = new Set([
+    normalizeComparableText(defenseTypeLabel),
+    normalizeComparableText(`Defensa ${defenseTypeLabel}`),
+  ].filter(Boolean));
+  const instruction = defensive && defensiveStructure && normalizeComparableText(rawInstruction) === normalizeComparableText(defensiveStructure)
+    ? ''
+    : rawInstruction;
+  const objective = defensive && defenseTypeLabel && defenseTypeComparables.has(normalizeComparableText(rawObjective))
+    ? ''
+    : rawObjective;
   return {
     id: diagram?.id,
     order,
     typeLabel,
+    defensive,
+    defenseTypeLabel,
+    defensiveStructure,
     title: getMeaningfulSetPiecePrintText(diagram?.titulo) || typeLabel || `Jugada ${order}`,
     deliveryType: meta.deliveryType,
     deliveryTypeLabel: getSetPieceDeliveryTypeLabel(meta.deliveryType),
     headerFacts: [
+      defensiveStructure ? { id: 'structure', label: 'Estructura', value: defensiveStructure } : null,
       destination ? { id: 'destination', label: 'Destino', value: destination } : null,
       delivery ? { id: 'delivery', label: 'Golpeo', value: delivery } : null,
     ].filter(Boolean),
     signal: getMeaningfulSetPiecePrintText(meta.signal),
-    instruction: getMeaningfulSetPiecePrintText(diagram?.consigna || meta.generalInstruction),
-    objective: getMeaningfulSetPiecePrintText(meta.objective),
+    instruction,
+    objective,
     whenToUse: getMeaningfulSetPiecePrintText(meta.whenToUse),
     risk: getMeaningfulSetPiecePrintText(meta.risk),
     alternative: getMeaningfulSetPiecePrintText(meta.alternative),
@@ -102,6 +125,7 @@ export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder
     displayLayers,
     chronology,
     individualInstructions,
+    instructionGroups: groupSetPieceIndividualInstructions(individualInstructions, diagram?.tipo),
     elements,
     fullField: String(diagram?.tipo || '').includes('saque_inicio'),
   };

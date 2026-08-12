@@ -1,16 +1,23 @@
 import assert from 'node:assert/strict';
 import {
+  SET_PIECE_FUNCTION_GROUPS,
   SET_PIECE_PRINT_IDENTITY_MODES,
   SET_PIECE_DELIVERY_TYPES,
+  SET_PIECE_ROLES,
   cloneSetPieceElementsWithFreshIds,
   createDefaultSetPieceDisplayLayers,
   createDefaultSetPieceTacticalMeta,
   getDrawableSetPieceElements,
   getSetPieceChronology,
+  getSetPieceDefenseTypeLabel,
+  getSetPieceDefensiveStructure,
   getSetPieceGeometrySnapshot,
   getSetPieceIndividualInstructions,
+  getSetPieceRoleOptions,
   getSetPieceResponsibilities,
   getSetPieceTacticalMeta,
+  groupSetPieceIndividualInstructions,
+  isDefensiveSetPieceType,
   optimizeSetPieceElementsForPrint,
   setSetPieceTacticalMeta,
 } from './setPieceProfessional.js';
@@ -46,6 +53,22 @@ assert.equal(getSetPieceTacticalMeta(stored).signal, 'MANO ARRIBA', 'SEÑAL se g
 assert.equal(getSetPieceTacticalMeta(stored).objective, 'Liberar segundo palo');
 assert.equal(getSetPieceTacticalMeta(stored).alternative, 'Saque corto');
 assert.equal(getSetPieceTacticalMeta(stored).saqueType, '', 'el tipo de saque se normaliza por defecto');
+
+assert.equal(isDefensiveSetPieceType('corner_defensivo'), true);
+assert.equal(isDefensiveSetPieceType('ABP DEFENSIVA'), true, 'la clasificación defensiva tolera tipos históricos con otra caja');
+assert.equal(isDefensiveSetPieceType('falta_lateral_ofensiva'), false);
+assert.equal(getSetPieceDefenseTypeLabel('Mixto'), 'Mixta');
+assert.equal(getSetPieceDefenseTypeLabel(''), '', 'una ABP antigua no inventa tipo de defensa');
+assert.equal(new Set(SET_PIECE_ROLES).size, SET_PIECE_ROLES.length, 'el catálogo no contiene roles duplicados');
+['Zona 1', 'Zona 2', 'Zona 3', 'Marca individual', 'Primer rechace', 'Segundo rechace', 'Jugador arriba', 'Primera descarga', 'Protección segundo palo'].forEach((role) => {
+  assert.ok(SET_PIECE_ROLES.includes(role), `el rol defensivo ${role} está disponible`);
+});
+assert.deepEqual(SET_PIECE_FUNCTION_GROUPS.offensive.map((group) => group.label), ['Lanzamiento', 'Bloqueos', 'Remate', 'Rechace', 'Vigilancia', 'Salida / Transición']);
+assert.deepEqual(SET_PIECE_FUNCTION_GROUPS.defensive.map((group) => group.label), ['Zona', 'Marcas', 'Rechace', 'Vigilancia', 'Salida / Transición']);
+assert.equal(getSetPieceRoleOptions('corner_ofensivo').includes('Lanzador'), true);
+assert.equal(getSetPieceRoleOptions('corner_ofensivo').includes('Zona 1'), false);
+assert.equal(getSetPieceRoleOptions('corner_defensivo').includes('Zona 1'), true);
+assert.equal(getSetPieceRoleOptions('corner_defensivo').includes('Lanzador'), false);
 const withSaqueType = getSetPieceTacticalMeta(setSetPieceTacticalMeta(drawable, { ...meta, saqueType: 'Saque corto' }));
 assert.equal(withSaqueType.saqueType, 'Saque corto', 'el tipo de saque se conserva en la ficha');
 assert.deepEqual(SET_PIECE_DELIVERY_TYPES.map((entry) => entry.id), ['open', 'closed']);
@@ -143,6 +166,42 @@ assert.deepEqual(individualInstructions.map((item) => item.instruction), ['fijar
 assert.deepEqual(individualInstructions.map((item) => item.playerName), ['BOZA', 'ACERETE', 'AGUS PORTO'], 'las indicaciones reutilizan la identidad real en orden de dorsal');
 assert.equal(getSetPieceIndividualInstructions([...identityElements, { id: 'empty-note', type: 'player', x: 80, y: 30, label: '6', note: '' }], identityPlayers).length, 3, 'una consigna vacía no genera texto inventado');
 assert.equal(getSetPieceIndividualInstructions([...identityElements, { id: 'unlinked-note', type: 'player', x: 80, y: 30, label: '6', note: 'Moverse' }], identityPlayers).length, 3, 'una consigna sin jugador vinculado no genera una indicación');
+
+const offensiveGroups = groupSetPieceIndividualInstructions([
+  { id: 'o-10', dorsal: '10', roles: ['Rematador', 'Vigilancia'] },
+  { id: 'o-4', dorsal: '4', roles: ['Bloqueador', 'Rematador'] },
+  { id: 'o-14', dorsal: '14', roles: ['Bloqueador'] },
+  { id: 'o-2', dorsal: '2', roles: ['Lanzador', 'Bloqueador'] },
+  { id: 'o-unknown', dorsal: '', roles: ['Función histórica'] },
+], 'corner_ofensivo');
+assert.deepEqual(offensiveGroups.map((group) => group.id), ['launch', 'blocks', 'finish', 'other'], 'solo aparecen grupos ofensivos con contenido');
+assert.deepEqual(offensiveGroups.find((group) => group.id === 'blocks').items.map((item) => item.dorsal), ['4', '14'], 'cada grupo se ordena por dorsal numérico');
+assert.equal(offensiveGroups.flatMap((group) => group.items).filter((item) => item.id === 'o-4').length, 1, 'un jugador con varios roles aparece una sola vez según prioridad');
+assert.equal(offensiveGroups.find((group) => group.id === 'launch').items[0].id, 'o-2', 'Lanzamiento tiene prioridad sobre Bloqueos');
+assert.equal(offensiveGroups.at(-1).items[0].id, 'o-unknown', 'un rol histórico desconocido se conserva sin inventar clasificación');
+
+const defensiveGroups = groupSetPieceIndividualInstructions([
+  { id: 'd-14', dorsal: '14', roles: ['Zona 2'] },
+  { id: 'd-5', dorsal: '5', roles: ['Zona 1'] },
+  { id: 'd-9', dorsal: '9', roles: ['Zona 3', 'Rechace'] },
+  { id: 'd-22', dorsal: '22', roles: ['Rechace'] },
+  { id: 'd-4', dorsal: '4', roles: ['Marca individual'] },
+  { id: 'd-up', dorsal: '', roles: ['Jugador arriba'] },
+], 'corner_defensivo');
+assert.deepEqual(defensiveGroups.map((group) => group.id), ['zone', 'marks', 'rebound', 'transition'], 'prioridad defensiva: Zona, Marca, Rechace, Vigilancia y Salida');
+assert.deepEqual(defensiveGroups.find((group) => group.id === 'zone').items.map((item) => item.dorsal), ['5', '9', '14']);
+assert.equal(defensiveGroups.flatMap((group) => group.items).filter((item) => item.id === 'd-9').length, 1, 'Zona prevalece sobre Rechace sin duplicar tarjeta');
+assert.deepEqual(groupSetPieceIndividualInstructions([], 'corner_defensivo'), [], 'los grupos vacíos no se imprimen');
+
+const defensiveStructureElements = [
+  { id: 'z1', type: 'player', roles: ['Zona 1'] },
+  { id: 'z2', type: 'player', roles: ['Zona 2'] },
+  { id: 'r1', type: 'player', roles: ['Primer rechace'] },
+  { id: 'r2', type: 'player', roles: ['Segundo rechace', 'Rechace'] },
+  ...Array.from({ length: 6 }, (_, index) => ({ id: `m${index + 1}`, type: 'player', roles: ['Marca individual'] })),
+];
+assert.equal(getSetPieceDefensiveStructure(defensiveStructureElements), '2 ZONA · 2 RECHACE · 6 MARCAS');
+assert.equal(getSetPieceDefensiveStructure([{ id: 'legacy', type: 'player' }]), '', 'una defensiva antigua sin roles no inventa estructura');
 
 const fallbackIdentities = optimizeSetPieceElementsForPrint([
   { id: 'dorsal-only', type: 'player', x: 15, y: 15, label: '8' },

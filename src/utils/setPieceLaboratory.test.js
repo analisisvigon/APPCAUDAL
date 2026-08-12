@@ -57,6 +57,8 @@ const draft = createSetPieceLaboratoryDraft('corner_ofensivo');
 assert.match(draft.id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i, 'el id maestro es compatible con la columna uuid existente');
 assert.equal(getSetPieceLaboratoryMeta(draft).libraryStatus, 'draft');
 assert.deepEqual(validateSetPieceLaboratoryMeta({ ...getSetPieceLaboratoryMeta(draft), libraryStatus: 'ready' }), ['Zona objetivo', 'Mecanismo principal', 'Marcaje rival']);
+assert.deepEqual(validateSetPieceLaboratoryMeta({ ...getSetPieceLaboratoryMeta(draft), libraryStatus: 'ready' }, 'corner_defensivo'), ['Tipo de defensa'], 'una defensiva no exige campos ofensivos ocultos');
+assert.deepEqual(validateSetPieceLaboratoryMeta({ ...getSetPieceLaboratoryMeta(draft), libraryStatus: 'ready', libraryMarking: 'Mixto' }, 'corner_defensivo'), [], 'Tipo de defensa basta para validar la clasificación defensiva');
 
 const tacticalMeta = {
   ...getSetPieceTacticalMeta(draft.elements),
@@ -171,6 +173,10 @@ assert.ok(component.includes('createSetPieceThumbnailLayers(meta.displayLayers)'
 assert.ok(component.includes('SetPieceDiagramPrintSheet') && component.includes('dos por hoja'), 'ABP reutiliza la impresión profesional a dos jugadas por hoja');
 assert.ok(component.includes('Tipo de golpeo') && component.includes('SET_PIECE_DELIVERY_TYPES') && component.includes('deliveryType'), 'Laboratorio permite Sin definir, Abierto y Cerrado desde tactical_meta');
 assert.ok(component.includes('getSetPieceDeliveryTypeLabel(meta.deliveryType)'), 'la tarjeta y preview muestran el golpeo solo cuando está definido');
+assert.ok(component.includes('const defensive = isDefensiveSetPieceType(draft.tipo)') && component.includes('Tipo de defensa'), 'la ficha de Biblioteca distingue las ABP defensivas');
+assert.ok(component.includes('validateSetPieceLaboratoryMeta(meta, draft.tipo)'), 'la validación depende del tipo real de ABP');
+assert.ok(component.includes('getSetPieceDefensiveStructure(item.elements)') && component.includes('defensiveStructure'), 'tarjeta y preview pueden mostrar la estructura derivada sin persistir una copia');
+assert.ok(editor.includes("{defensive && !roleOnly ?") && editor.includes("{!defensive ? <TacticalField label=\"Tipo de saque\""), 'los campos ofensivos se ocultan en defensivas y no se duplican dentro del Laboratorio');
 ['Duración', 'Jugadores', 'Dimensiones', 'Material', 'Variantes futuras / progresiones'].forEach((field) => {
   assert.equal(component.includes(field), false, `ABP no muestra el campo genérico ${field}`);
   assert.ok(library.includes(field), `Ejercicios conserva el campo ${field}`);
@@ -209,7 +215,8 @@ assert.ok(editor.includes('lg:flex-row') && editor.includes('aria-current={selec
 assert.ok(canvas.includes('stroke="#3DD9FF"') && canvas.includes('selected && !readOnly'), 'la selección tiene halo de alto contraste sin alterar las coordenadas tácticas');
 assert.ok(canvas.includes('usesAbpLayerOrder ? sortSetPieceElementsForRender(visibleElements) : visibleElements'), 'el orden de capas nuevo queda limitado al render ABP/miniatura/impresión');
 assert.ok(canvas.includes('playerRadius: 1.75') && canvas.includes('playerRadius: 1.45') && canvas.includes('playerRadius: 1.65'), 'editor ABP, miniatura e impresión usan marcadores menores que el editor genérico');
-assert.ok(canvas.includes('const usesOptimizedLabels = printOptimized || optimizeLabels') && canvas.includes('usesOptimizedLabels && element.printLabelLeader'), 'ABP y PDF aplican offsets visuales y conectores sin mover participantes');
+assert.ok(canvas.includes('const usesOptimizedLabels = printOptimized || optimizeLabels') && canvas.includes('usesOptimizedLabels && showAbbreviation && element.printLabelLeader'), 'ABP y PDF aplican offsets visuales solo a identidades de participantes sin moverlos');
+assert.ok(canvas.includes('const labelX = Number(element.x || 0);') && canvas.includes('const labelY = Number(element.y || 0);'), 'las anotaciones de texto mantienen la posición normalizada del editor');
 assert.ok(editor.includes("renderMode === 'abp' && crowdedParticipants.length") && editor.includes('Elementos muy próximos'), 'el editor ABP avisa de proximidad sin recolocar participantes');
 
 console.log('setPieceLaboratory tests passed');

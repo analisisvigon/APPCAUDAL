@@ -1,6 +1,7 @@
 import {
   cloneSetPieceElementsWithFreshIds,
   getSetPieceTacticalMeta,
+  isDefensiveSetPieceType,
   setSetPieceTacticalMeta,
 } from './setPieceProfessional.js';
 
@@ -107,8 +108,13 @@ export const getSetPieceLaboratoryMeta = (itemOrElements) => {
   };
 };
 
-export const validateSetPieceLaboratoryMeta = (meta) => {
+export const validateSetPieceLaboratoryMeta = (meta, type = '') => {
   if (meta.libraryStatus !== 'ready') return [];
+  if (isDefensiveSetPieceType(type)) {
+    return [
+      !SET_PIECE_LAB_MARKINGS.includes(meta.libraryMarking) ? 'Tipo de defensa' : '',
+    ].filter(Boolean);
+  }
   return [
     !SET_PIECE_LAB_ZONES.includes(meta.libraryZone) ? 'Zona objetivo' : '',
     !SET_PIECE_LAB_MECHANISMS.includes(meta.libraryMechanism) ? 'Mecanismo principal' : '',

@@ -23,20 +23,24 @@ function PrintPlay({ play }) {
   const hasChronology = play.chronology.length > 0;
   const indications = play.individualInstructions;
   const hasIndications = indications.length > 0;
-  const hasOperationalDetails = Boolean(play.objective || play.whenToUse || play.risk || play.alternative || play.observations);
+  const indicationDensity = indications.length <= 4 ? 'roomy' : indications.length <= 8 ? 'balanced' : 'dense';
+  const movesObjectiveToHeader = indicationDensity === 'dense' && Boolean(play.objective);
+  const headerFacts = movesObjectiveToHeader ? [...play.headerFacts, { id: 'key', label: 'Clave', value: play.objective }] : play.headerFacts;
+  const hasOperationalDetails = Boolean((!movesObjectiveToHeader && play.objective) || play.whenToUse || play.risk || play.alternative || play.observations);
   const hasCopy = Boolean(play.instruction || hasChronology || hasIndications || hasOperationalDetails);
   const bodyClassName = [
     'set-piece-print-play-body',
     !play.instruction && !hasChronology ? 'set-piece-print-play-body--field-forward' : '',
+    indicationDensity === 'dense' ? 'set-piece-print-play-body--dense-indications' : '',
     !hasCopy ? 'set-piece-print-play-body--field-only' : '',
   ].filter(Boolean).join(' ');
   return (
     <section className="set-piece-print-play" data-play-order={play.order} data-play-id={play.id || ''} data-has-chronology={hasChronology ? 'true' : 'false'}>
       <header className="set-piece-print-play-header" data-has-signal={play.signal ? 'true' : 'false'}>
         <div className="set-piece-print-play-heading">
-          <div className="set-piece-print-play-kicker"><strong>{play.typeLabel}</strong><span>Jugada {play.order}</span></div>
+          <div className="set-piece-print-play-kicker"><strong>{play.typeLabel}{play.defenseTypeLabel ? ` · Defensa ${play.defenseTypeLabel}` : ''}</strong><span>Jugada {play.order}</span></div>
           <h2>{play.title}</h2>
-          {play.headerFacts.length ? <div className="set-piece-print-header-facts">{play.headerFacts.map((fact) => <span key={fact.id}><b>{fact.label}:</b><strong>{fact.value}</strong></span>)}</div> : null}
+          {headerFacts.length ? <div className="set-piece-print-header-facts">{headerFacts.map((fact) => <span key={fact.id}><b>{fact.label}{fact.id === 'structure' ? ' ·' : ':'}</b><strong>{fact.value}</strong></span>)}</div> : null}
         </div>
         {play.signal ? <section className="set-piece-print-signal" aria-label={`Señal de la jugada: ${play.signal}`}><span>Señal</span><strong>{play.signal}</strong></section> : null}
       </header>
@@ -74,24 +78,31 @@ function PrintPlay({ play }) {
           ) : null}
 
           {hasIndications ? (
-            <section className="set-piece-print-indications">
+            <section className="set-piece-print-indications" data-density={indicationDensity} data-count={indications.length} data-many-groups={play.instructionGroups.length > 4 ? 'true' : 'false'}>
               <h3>Indicaciones</h3>
-              <ul className={indications.length > 6 ? 'set-piece-print-indications-dense' : ''}>
-                {indications.map((item) => (
-                  <li key={item.id}>
-                    <div className="set-piece-print-indication-identity">
-                      {item.dorsal ? <b>{item.dorsal}</b> : null}
-                      {item.playerName && item.playerName !== item.dorsal ? <strong>{item.playerName}</strong> : null}
-                    </div>
-                    {item.instruction ? <p className="set-piece-print-indication-text">{item.instruction}</p> : null}
-                  </li>
+              <div className="set-piece-print-indication-groups">
+                {play.instructionGroups.map((group) => (
+                  <section key={group.id} className="set-piece-print-indication-group">
+                    <h4>{group.label}</h4>
+                    <ul>
+                      {group.items.map((item) => (
+                        <li key={item.id}>
+                          <div className="set-piece-print-indication-identity">
+                            {item.dorsal ? <b>{item.dorsal}</b> : null}
+                            {item.playerName && item.playerName !== item.dorsal ? <strong>{item.playerName}</strong> : null}
+                          </div>
+                          {item.instruction ? <p className="set-piece-print-indication-text">{item.instruction}</p> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
                 ))}
-              </ul>
+              </div>
             </section>
           ) : null}
 
           {hasOperationalDetails ? <div className="set-piece-print-operational-details">
-            <PrintDetail label="Clave" value={play.objective} />
+            <PrintDetail label="Clave" value={movesObjectiveToHeader ? '' : play.objective} />
             <PrintDetail label="Cuándo" value={play.whenToUse} />
             <PrintDetail label="Riesgo" value={play.risk} className="set-piece-print-risk" />
             <PrintDetail label="Alternativa" value={play.alternative} />

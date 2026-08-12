@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { createSetPieceThumbnailLayers, findCrowdedSetPieceParticipants, sortSetPieceElementsForRender } from './setPieceRenderLayout.js';
 import { getSetPieceGeometrySnapshot, optimizeSetPieceElementsForPrint } from './setPieceProfessional.js';
 
@@ -40,5 +41,26 @@ assert.equal(denseParticipants.filter((element) => element.type === 'opponent').
 assert.deepEqual(getSetPieceGeometrySnapshot(densePrint), denseGeometry, 'editor, miniatura, preview y PDF conservan x/y y todos los trazados del caso denso');
 assert.equal(densePrint.filter((element) => ['player', 'opponent'].includes(element.type)).every((element) => Number.isFinite(element.printLabelX) && Number.isFinite(element.printLabelY)), true, 'los 20 participantes reciben un offset de etiqueta de impresión');
 assert.equal(sortSetPieceElementsForRender(densePrint).findIndex((element) => element.type === 'arrow') < sortSetPieceElementsForRender(densePrint).findIndex((element) => element.type === 'player'), true, 'las seis flechas quedan por debajo de los jugadores');
+
+const marcasSource = [
+  { id: 'marks-text', type: 'text', x: 23, y: 31, label: 'Marcas' },
+  { id: 'marks-zone', type: 'zone', x: 18, y: 20, width: 26, height: 22, label: 'Marcas' },
+  { id: 'nearby-player', type: 'player', x: 24, y: 30, label: '5' },
+];
+const marcasPrint = optimizeSetPieceElementsForPrint(marcasSource);
+const marcasText = marcasPrint.find((element) => element.id === 'marks-text');
+const marcasZone = marcasPrint.find((element) => element.id === 'marks-zone');
+assert.deepEqual({ x: marcasText.x, y: marcasText.y }, { x: 23, y: 31 });
+assert.equal(marcasText.printLabelX, undefined, 'Texto no recibe un offset manual específico para impresión');
+assert.equal(marcasText.printLabelY, undefined, 'Texto conserva la coordenada Y persistida');
+assert.equal(marcasZone.printLabelX, undefined, 'la etiqueta de Zona tampoco usa otra transformación geométrica');
+const editorViewport = { width: 1000, height: 700 };
+const printViewport = { width: 1270, height: 889 };
+assert.equal((marcasText.x / 100), ((marcasText.x / 100) * printViewport.width) / printViewport.width, 'xEditor/widthEditor coincide con xPrint/widthPrint');
+assert.equal((marcasText.y / 70), ((marcasText.y / 70) * printViewport.height) / printViewport.height, 'yEditor/heightEditor coincide con yPrint/heightPrint');
+assert.equal(editorViewport.width / editorViewport.height, 100 / 70, 'el caso de control comparte el viewBox 100×70 del renderer');
+const canvasSource = fs.readFileSync(new URL('../components/print/SetPieceDiagramCanvas.jsx', import.meta.url), 'utf8');
+assert.ok(canvasSource.includes('const labelX = Number(element.x || 0);') && canvasSource.includes('const labelY = Number(element.y || 0);'), 'Texto usa las coordenadas persistidas en el SVG compartido');
+assert.equal(canvasSource.includes('hasPrintLabel && element.printLabelLeader'), false, 'Texto/Zona no crean líneas guía por desplazamiento de impresión');
 
 console.log('Set-piece render layout tests passed.');

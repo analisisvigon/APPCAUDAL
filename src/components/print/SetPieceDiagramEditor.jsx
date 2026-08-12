@@ -14,14 +14,17 @@ import {
   getSetPieceHistoryAction,
 } from '../../utils/setPieceEditorInteractions';
 import {
-  SET_PIECE_ROLES,
   SET_PIECE_PRINT_IDENTITY_MODES,
   createDefaultSetPieceDisplayLayers,
   cloneSetPieceElementsWithFreshIds,
   getDrawableSetPieceElements,
   getSetPieceChronology,
+  getSetPieceDefenseTypeLabel,
+  getSetPieceDefensiveStructure,
+  getSetPieceRoleOptions,
   getSetPieceResponsibilities,
   getSetPieceTacticalMeta,
+  isDefensiveSetPieceType,
   setSetPieceTacticalMeta,
 } from '../../utils/setPieceProfessional';
 import SetPieceDiagramCanvas from './SetPieceDiagramCanvas';
@@ -158,7 +161,7 @@ export default function SetPieceDiagramEditor({
   printDiagrams = [],
   roleOnly = false,
   editorContext = 'set-piece',
-  participantRoleOptions = SET_PIECE_ROLES,
+  participantRoleOptions,
   participantRoleMode = 'multiple',
   fullFieldOverride,
   renderMode = 'default',
@@ -166,6 +169,9 @@ export default function SetPieceDiagramEditor({
 }) {
   const drawableElements = useMemo(() => getDrawableSetPieceElements(diagram.elements), [diagram.elements]);
   const tacticalMeta = useMemo(() => getSetPieceTacticalMeta(diagram.elements), [diagram.elements]);
+  const defensive = isDefensiveSetPieceType(diagram.tipo);
+  const defensiveStructure = useMemo(() => getSetPieceDefensiveStructure(diagram.elements), [diagram.elements]);
+  const effectiveRoleOptions = participantRoleOptions || getSetPieceRoleOptions(diagram.tipo);
   const [selectedId, setSelectedId] = useState('');
   const [history, setHistory] = useState([clone(drawableElements)]);
   const [historyIndex, setHistoryIndex] = useState(0);
@@ -415,13 +421,13 @@ export default function SetPieceDiagramEditor({
         <div className="min-w-0">
           <p className="text-[9px] font-black uppercase tracking-[0.24em] text-caudal-electric">Sistema profesional de preparación ABP</p>
           <input value={diagram.titulo || ''} onChange={(event) => updateDiagram({ titulo: event.target.value })} placeholder="Nombre de la jugada" className="mt-1 w-full border-0 bg-transparent p-0 text-xl font-black text-white outline-none placeholder:text-slate-600" />
-          <label className="mt-3 grid max-w-[260px] gap-1.5">
+          {!defensive ? <label className="mt-3 grid max-w-[260px] gap-1.5">
             <span className={labelClass}>Tipo de saque</span>
             <input value={tacticalMeta.saqueType || ''} onChange={(event) => updateMeta({ saqueType: event.target.value })} placeholder="Saque corto, de banda..." className={fieldClass} />
-          </label>
+          </label> : null}
           <div className="mt-3 flex flex-wrap gap-2">
             <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-300">Tipo · {diagram.tipo || 'Sin tipo'}</span>
-            <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-300">Clasificación · {tacticalMeta.libraryZone || 'Sin definir'}</span>
+            <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-300">{defensive ? 'Defensa' : 'Clasificación'} · {defensive ? (getSetPieceDefenseTypeLabel(tacticalMeta.libraryMarking) || 'Sin definir') : (tacticalMeta.libraryZone || 'Sin definir')}</span>
             <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-300">Estado · {metadataStatus}</span>
             <button type="button" className="rounded-full border border-amber-400/20 bg-amber-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-200">★ Favorita</button>
           </div>
@@ -504,9 +510,11 @@ export default function SetPieceDiagramEditor({
                 ) : <>
                 <EditorAccordion id="ficha" title="Ficha" open={openSections.ficha} onToggle={() => toggleSection('ficha')}>
                   <TacticalField label="Señal de la jugada" value={tacticalMeta.signal} onChange={(signal) => updateMeta({ signal })} placeholder="Ej. Mano arriba" />
-                  <TacticalField label="Objetivo" value={tacticalMeta.objective} onChange={(objective) => updateMeta({ objective })} placeholder="Liberar segundo palo" />
-                  <TacticalField label="Tipo de saque" value={tacticalMeta.saqueType} onChange={(saqueType) => updateMeta({ saqueType })} placeholder="Saque corto, de banda, de inicio..." />
-                  <TacticalField label="Cuándo utilizarla" value={tacticalMeta.whenToUse} onChange={(whenToUse) => updateMeta({ whenToUse })} placeholder={'Primeros córners.\nSi el rival marca en zona.'} rows={3} />
+                  {defensive && !roleOnly ? <label className="grid gap-1.5"><span className={labelClass}>Tipo de defensa</span><select value={tacticalMeta.libraryMarking} onChange={(event) => updateMeta({ libraryMarking: event.target.value })} className={`${fieldClass} bg-white font-bold text-slate-950`}><option value="">Sin definir</option><option value="Zonal">Zonal</option><option value="Individual">Individual</option><option value="Mixto">Mixta</option></select></label> : null}
+                  {defensiveStructure ? <section className="rounded-xl border border-caudal-electric/20 bg-caudal-electric/[0.06] p-3"><p className={labelClass}>Estructura defensiva · derivada de roles</p><p className="mt-2 text-sm font-black uppercase leading-5 text-white">{defensiveStructure}</p></section> : null}
+                  <TacticalField label={defensive ? 'Clave defensiva' : 'Objetivo'} value={tacticalMeta.objective} onChange={(objective) => updateMeta({ objective })} placeholder={defensive ? 'Ganar 1er contacto' : 'Liberar segundo palo'} />
+                  {!defensive ? <TacticalField label="Tipo de saque" value={tacticalMeta.saqueType} onChange={(saqueType) => updateMeta({ saqueType })} placeholder="Saque corto, de banda, de inicio..." /> : null}
+                  {!defensive ? <TacticalField label="Cuándo utilizarla" value={tacticalMeta.whenToUse} onChange={(whenToUse) => updateMeta({ whenToUse })} placeholder={'Primeros córners.\nSi el rival marca en zona.'} rows={3} /> : null}
                   <TacticalField label="Consigna general · máx. 3 líneas" value={diagram.consigna || tacticalMeta.generalInstruction} onChange={(generalInstruction) => updateDiagram({ consigna: generalInstruction, elements: setSetPieceTacticalMeta(diagram.elements, { ...tacticalMeta, generalInstruction }) })} placeholder="Mensaje breve para el grupo" rows={3} maxLength={240} />
                   {responsibilities.length ? <div className="rounded-xl bg-black/15 p-3"><p className={labelClass}>Roles asignados</p><div className="mt-2 space-y-1.5">{responsibilities.map((item, index) => <div key={`${item.role}-${item.playerName}-${index}`} className="flex items-center justify-between gap-3 text-[11px]"><span className="text-slate-400">{item.role}</span><strong className="truncate text-white">{item.playerName}{item.primary ? ' · Principal' : ''}</strong></div>)}</div></div> : null}
                 </EditorAccordion>
@@ -538,7 +546,7 @@ export default function SetPieceDiagramEditor({
                   {linkedPlayerOptions.exceptionalOption ? <option value={linkedPlayerOptions.exceptionalOption.id}>{linkedPlayerOptions.exceptionalOption.label}</option> : null}
                   {linkedPlayerOptions.starterOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                 </select></label> : null}
-                <div><p className={labelClass}>{participantRoleMode === 'single' ? 'Etiqueta táctica' : 'Roles · selección múltiple'}</p><div className="mt-2 grid grid-cols-2 gap-2">{participantRoleOptions.map((role) => { const active = (selectedElement.roles || []).includes(role); return <button key={role} type="button" aria-pressed={active} onClick={() => toggleRole(role)} className={`flex min-h-11 items-center justify-between rounded-xl px-3 text-left text-[10px] font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-caudal-electric ${active ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.05] text-slate-300 hover:bg-white/[0.09]'}`}><span>{role}</span><span aria-hidden="true">{active ? '✓' : '+'}</span></button>; })}</div></div>
+                <div><p className={labelClass}>{participantRoleMode === 'single' ? 'Etiqueta táctica' : 'Roles · selección múltiple'}</p><div className="mt-2 grid grid-cols-2 gap-2">{effectiveRoleOptions.map((role) => { const active = (selectedElement.roles || []).includes(role); return <button key={role} type="button" aria-pressed={active} onClick={() => toggleRole(role)} className={`flex min-h-11 items-center justify-between rounded-xl px-3 text-left text-[10px] font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-caudal-electric ${active ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.05] text-slate-300 hover:bg-white/[0.09]'}`}><span>{role}</span><span aria-hidden="true">{active ? '✓' : '+'}</span></button>; })}</div></div>
                 {editorContext !== 'match-plan' ? <>
                   <TacticalField label="Consigna individual" value={selectedElement.note || ''} onChange={(note) => updateSelected({ note })} placeholder="Fija y ataca el espacio" rows={3} />
                   <label className="grid gap-1.5"><span className={labelClass}>Orden de aparición</span><input type="number" min="1" max="20" value={selectedElement.sequenceOrder || ''} onChange={(event) => updateSelected({ sequenceOrder: event.target.value ? Number(event.target.value) : null })} className={fieldClass} placeholder="1" /></label>
