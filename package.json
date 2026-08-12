@@ -63,6 +63,7 @@
     "test:player-availability": "node src/utils/playerAvailability.test.js",
     "test:player-availability-sql": "node scripts/playerAvailabilitySqlAudit.test.mjs",
     "test:global-players": "node src/utils/globalPlayerStore.test.js",
+    "test:own-player-editor": "node src/utils/ownRosterPlayerEditor.test.js",
     "test:player-source-analysis": "node src/utils/playerSourceAnalysis.test.js",
     "audit:supabase-encoding": "node src/utils/supabaseEncodingAudit.js",
     "diagnose:player-source": "node scripts/playerSourceDiagnostic.mjs",

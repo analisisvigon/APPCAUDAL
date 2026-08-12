@@ -359,6 +359,7 @@ export const normalizeGlobalPlayer = (row = {}, related = {}) => {
     ...createBlankGlobalPlayer(),
     id: row.id,
     globalPlayerId: row.id,
+    legacyOriginId: row.legacy_origin_id || null,
     name: row.name || '',
     shirtName: row.shirt_name || '',
     photoUrl: row.photo_url || '',
@@ -476,6 +477,71 @@ export const findGlobalPlayerMatches = (candidate = {}, players = []) => {
     - { exact: 0, possible: 1, ambiguous: 2 }[right.confidence]
     || (left.priority ?? 9) - (right.priority ?? 9)
   ));
+};
+
+const getOwnRosterLegacyIds = (player = {}) => [
+  player.legacyOwnPlayerId,
+  player.legacy_own_player_id,
+  player.legacyOriginId,
+  player.legacy_origin_id,
+  player.fieldSources?.migration?.legacyPlayerId,
+  player.fieldSources?.migration?.legacy_player_id,
+].filter(Boolean).map(String);
+
+export const resolveOwnRosterGlobalPlayer = (rosterPlayer = {}, globalPlayers = []) => {
+  const profiles = safeArray(globalPlayers).filter((player) => player?.globalPlayerId || isUuid(player?.id));
+  const linkedId = rosterPlayer.globalPlayerId || rosterPlayer.global_player_id;
+  if (linkedId) {
+    const player = profiles.find((profile) => String(profile.globalPlayerId || profile.id) === String(linkedId)) || null;
+    return { player, strategy: player ? 'global_player_id' : 'missing_global_player_id', exact: Boolean(player) };
+  }
+
+  const membershipId = rosterPlayer.membershipId || rosterPlayer.membership_id;
+  if (membershipId) {
+    const player = profiles.find((profile) => safeArray(profile.memberships).some((membership) => String(membership.id) === String(membershipId))) || null;
+    return { player, strategy: player ? 'membership_id' : 'missing_membership_id', exact: Boolean(player) };
+  }
+
+  const rosterId = rosterPlayer.id ? String(rosterPlayer.id) : '';
+  if (rosterId) {
+    const legacyMatches = profiles.filter((profile) => getOwnRosterLegacyIds(profile).includes(rosterId));
+    if (legacyMatches.length === 1) return { player: legacyMatches[0], strategy: 'legacy_own_player_id', exact: true };
+    if (legacyMatches.length > 1) return { player: null, strategy: 'ambiguous_legacy_own_player_id', exact: false };
+  }
+
+  const exactMatches = findGlobalPlayerMatches(rosterPlayer, profiles).filter((match) => match.confidence === 'exact');
+  if (exactMatches.length === 1) return { player: exactMatches[0].player, strategy: exactMatches[0].reason, exact: true };
+  return {
+    player: null,
+    strategy: exactMatches.length > 1 ? 'ambiguous_exact_match' : 'unresolved',
+    exact: false,
+  };
+};
+
+export const buildOwnRosterGlobalEditorDraft = (rosterPlayer = {}, globalPlayer = {}) => {
+  const rosterPosition = getPlayerPositionModel(rosterPlayer);
+  const globalPosition = getPlayerPositionModel(globalPlayer);
+  const photoUrl = globalPlayer.photoUrl || globalPlayer.image || rosterPlayer.photoUrl || rosterPlayer.image || '';
+  return {
+    ...globalPlayer,
+    globalPlayerId: globalPlayer.globalPlayerId || globalPlayer.id || null,
+    ownRosterPlayerId: rosterPlayer.id || null,
+    googleFormsName: rosterPlayer.googleFormsName || rosterPlayer.google_forms_name || '',
+    shirtName: globalPlayer.shirtName || rosterPlayer.shirtName || rosterPlayer.shirt_name || '',
+    photoUrl,
+    image: photoUrl,
+    dob: globalPlayer.dob || rosterPlayer.dob || '',
+    foot: globalPlayer.foot || rosterPlayer.foot || '',
+    number: globalPlayer.number || rosterPlayer.number || '',
+    primaryNaturalPosition: globalPosition.primaryNaturalPosition || rosterPosition.primaryNaturalPosition,
+    secondaryNaturalPositions: globalPosition.secondaryNaturalPositions.length
+      ? globalPosition.secondaryNaturalPositions
+      : rosterPosition.secondaryNaturalPositions,
+    primarySpecificPosition: globalPosition.primarySpecificPosition || rosterPosition.primarySpecificPosition,
+    secondarySpecificPositions: globalPosition.secondarySpecificPositions.length
+      ? globalPosition.secondarySpecificPositions
+      : rosterPosition.secondarySpecificPositions,
+  };
 };
 
 export const buildGlobalPlayerRpcPayload = (draft = {}) => {

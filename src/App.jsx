@@ -165,6 +165,7 @@ import {
 } from './utils/playerSourceFunction';
 import {
   assignGlobalPlayerToTeam,
+  buildOwnRosterGlobalEditorDraft,
   buildGlobalPlayerCoverage,
   createBlankGlobalPlayer,
   ensureGlobalPlayerTeamMembership,
@@ -172,6 +173,7 @@ import {
   loadGlobalPlayerDatabase,
   mergeGlobalPlayerProfiles,
   removeGlobalPlayerFromCurrentTeam,
+  resolveOwnRosterGlobalPlayer,
   saveGlobalPlayerProfile,
 } from './utils/globalPlayerStore';
 import {
@@ -5279,6 +5281,7 @@ function App() {
   const [globalPlayersLoading, setGlobalPlayersLoading] = useState(false);
   const [globalPlayersError, setGlobalPlayersError] = useState('');
   const [globalPlayerStatus, setGlobalPlayerStatus] = useState('');
+  const [ownPlayerEditorError, setOwnPlayerEditorError] = useState('');
   const [draggedPlayer, setDraggedPlayer] = useState(null);
   const [importStatus, setImportStatus] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
@@ -21069,13 +21072,19 @@ function App() {
 
   const openForm = (player = null) => {
     const ownClubTeam = teams.find((team) => team.isOwnClub || team.teamKind === 'own');
-    const linkedGlobalPlayer = player?.globalPlayerId
-      ? globalPlayers.find((profile) => String(profile.id) === String(player.globalPlayerId))
-      : null;
-    if (globalPlayersAvailable && ownClubTeam && (!player || linkedGlobalPlayer)) {
+    const resolution = player ? resolveOwnRosterGlobalPlayer(player, globalPlayers) : null;
+    if (globalPlayersAvailable && ownClubTeam) {
+      setOwnPlayerEditorError('');
+      if (player && !resolution?.player) {
+        setOwnPlayerEditorError('No se ha podido resolver de forma inequívoca el perfil global de este jugador. No se abrirá el editor legacy ni se creará un duplicado.');
+        return;
+      }
+      const editorPlayer = player && resolution?.player
+        ? buildOwnRosterGlobalEditorDraft(player, resolution.player)
+        : null;
       openRivalPlayerModal(
-        linkedGlobalPlayer ? { ...linkedGlobalPlayer, googleFormsName: player?.googleFormsName || '' } : null,
-        { teamId: ownClubTeam.id }
+        editorPlayer,
+        { teamId: ownClubTeam.id, ownRosterPlayerId: player?.id || null }
       );
       return;
     }
@@ -21431,7 +21440,7 @@ function App() {
       originalTeamId: contextTeamId || null,
       teamId: contextTeamId || null,
       allowDuplicateCreate: false,
-      draft: { ...normalized, photoUrl: normalized.photoUrl || normalized.image || '', teamId: contextTeamId, role: flags.hiddenFromField ? 'Sin colocar' : normalized.role, captain: Boolean(flags.captain || normalized.captain), observed: Boolean(flags.observed || normalized.observed) },
+      draft: { ...normalized, ownRosterPlayerId: options.ownRosterPlayerId || player?.ownRosterPlayerId || null, photoUrl: normalized.photoUrl || normalized.image || '', teamId: contextTeamId, role: flags.hiddenFromField ? 'Sin colocar' : normalized.role, captain: Boolean(flags.captain || normalized.captain), observed: Boolean(flags.observed || normalized.observed) },
     });
   };
 
@@ -21763,6 +21772,35 @@ function App() {
     if (failed) throw failed.error;
   };
 
+  const ensureOwnRosterGlobalLink = async ({ ownRosterPlayerId, globalPlayerId }) => {
+    if (!isUuid(ownRosterPlayerId) || !isUuid(globalPlayerId)) return;
+    const rosterPlayer = players.find((player) => String(player.id) === String(ownRosterPlayerId));
+    if (!rosterPlayer) throw new Error('No se ha encontrado la fila estable del jugador en la plantilla.');
+    if (rosterPlayer.globalPlayerId) {
+      if (String(rosterPlayer.globalPlayerId) !== String(globalPlayerId)) {
+        throw new Error('La fila de plantilla ya está vinculada a otro jugador global. No se ha modificado ningún ID.');
+      }
+      return;
+    }
+    const { data: linkedRows, error: linkError } = await supabase
+      .from('jugadores')
+      .update({ global_player_id: globalPlayerId })
+      .eq('id', ownRosterPlayerId)
+      .is('global_player_id', null)
+      .select('id,global_player_id');
+    if (linkError) throw linkError;
+    if (linkedRows?.some((row) => String(row.global_player_id) === String(globalPlayerId))) return;
+    const { data: currentRow, error: currentRowError } = await supabase
+      .from('jugadores')
+      .select('global_player_id')
+      .eq('id', ownRosterPlayerId)
+      .maybeSingle();
+    if (currentRowError) throw currentRowError;
+    if (String(currentRow?.global_player_id || '') !== String(globalPlayerId)) {
+      throw new Error('No se ha podido confirmar el enlace estable con el perfil global.');
+    }
+  };
+
   const saveRivalPlayerFromModal = async (event) => {
     event.preventDefault();
     if (!rivalPlayerModal.draft?.name?.trim()) return;
@@ -21812,6 +21850,15 @@ function App() {
       return;
     }
     try {
+      const draftTeam = teams.find((team) => String(team.id) === String(draft.teamId));
+      if ((draftTeam?.isOwnClub || draftTeam?.teamKind === 'own') && draft.ownRosterPlayerId) {
+        const resolvedGlobalId = currentGlobalPlayer.globalPlayerId || currentGlobalPlayer.id;
+        if (!isUuid(resolvedGlobalId)) throw new Error('El editor no dispone de un UUID global estable para este jugador.');
+        await ensureOwnRosterGlobalLink({
+          ownRosterPlayerId: draft.ownRosterPlayerId,
+          globalPlayerId: resolvedGlobalId,
+        });
+      }
       if (rivalPlayerModal.mode === 'edit' && !draft.teamId && rivalPlayerModal.originalMembershipId) {
         const { data: unlinkData, error: unlinkError } = await supabase.rpc('remove_rival_player_from_team_atomic', {
           p_team_id: rivalPlayerModal.originalTeamId,
@@ -21832,7 +21879,6 @@ function App() {
           startDate: draft.startDate || null,
         })
         : null;
-      const draftTeam = teams.find((team) => String(team.id) === String(draft.teamId));
       if (draftTeam?.isOwnClub || draftTeam?.teamKind === 'own') {
         const { error: googleFormsNameError } = await supabase
           .from('jugadores')
@@ -28857,6 +28903,13 @@ function App() {
                 </button>
               </div>
 
+              {ownPlayerEditorError ? (
+                <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-red-300/20 bg-red-400/10 px-3 py-2 text-xs font-bold text-red-100">
+                  <span>{ownPlayerEditorError}</span>
+                  <button type="button" onClick={() => setOwnPlayerEditorError('')} className="shrink-0 text-[10px] font-black uppercase text-red-100/75 hover:text-red-100">Cerrar</button>
+                </div>
+              ) : null}
+
               <div className="mt-3 grid gap-3 xl:grid-cols-[1.05fr_0.95fr]">
                 <div className="rounded-[1.15rem] border border-white/10 bg-black/15 p-3">
                   <div className="flex items-center justify-between gap-3">
@@ -34091,7 +34144,11 @@ function App() {
             ))}
             availabilityPlayer={(() => {
               const globalId = rivalPlayerModal.draft?.globalPlayerId || rivalPlayerModal.draft?.id;
-              const ownPlayer = players.find((player) => player.globalPlayerId && String(player.globalPlayerId) === String(globalId));
+              const ownPlayer = players.find((player) => (
+                rivalPlayerModal.draft?.ownRosterPlayerId
+                  ? String(player.id) === String(rivalPlayerModal.draft.ownRosterPlayerId)
+                  : player.globalPlayerId && String(player.globalPlayerId) === String(globalId)
+              ));
               return ownPlayer ? { ...ownPlayer, availabilityLabel: getPlayerAvailabilityPresentation(ownPlayer).label } : null;
             })()}
             onManageAvailability={openAvailabilityEditor}
