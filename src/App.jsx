@@ -21076,7 +21076,16 @@ function App() {
     if (globalPlayersAvailable && ownClubTeam) {
       setOwnPlayerEditorError('');
       if (player && !resolution?.player) {
-        setOwnPlayerEditorError('No se ha podido resolver de forma inequívoca el perfil global de este jugador. No se abrirá el editor legacy ni se creará un duplicado.');
+        const resolutionDetails = {
+          player: player.name || player.shirtName || 'Sin nombre',
+          id: player.id || null,
+          globalPlayerId: player.globalPlayerId || null,
+          membershipId: player.membershipId || null,
+          reason: resolution?.strategy || 'unresolved',
+          failedStrategies: resolution?.failedStrategies || [],
+        };
+        if (import.meta.env.DEV) console.error('[OWN_PLAYER_EDITOR_RESOLUTION_FAILED]', resolutionDetails);
+        setOwnPlayerEditorError(`No se ha podido resolver de forma inequívoca el perfil global de ${resolutionDetails.player} (${resolutionDetails.reason}). No se abrirá el editor legacy ni se creará un duplicado.`);
         return;
       }
       const editorPlayer = player && resolution?.player

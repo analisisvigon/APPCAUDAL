@@ -355,11 +355,15 @@ export const normalizeGlobalPlayer = (row = {}, related = {}) => {
   const memberships = safeArray(related.memberships).filter((item) => item.player_id === row.id);
   const currentMemberships = memberships.filter((item) => item.is_current);
   const membership = currentMemberships[0] || null;
+  const ownRosterMappings = safeArray(related.ownRosterMigrations)
+    .filter((item) => String(item.global_player_id || '') === String(row.id || ''));
   return {
     ...createBlankGlobalPlayer(),
     id: row.id,
     globalPlayerId: row.id,
     legacyOriginId: row.legacy_origin_id || null,
+    legacyOwnPlayerIds: ownRosterMappings.map((item) => item.legacy_player_id).filter(Boolean),
+    ownRosterMappings,
     name: row.name || '',
     shirtName: row.shirt_name || '',
     photoUrl: row.photo_url || '',
@@ -430,17 +434,19 @@ export const loadGlobalPlayerDatabase = async (client) => {
     if (missingSchema) return { available: false, players: [], error: playersResponse.error };
     throw playersResponse.error;
   }
-  const [membershipsResponse, positionsResponse, sourcesResponse, traitsResponse] = await Promise.all([
+  const [membershipsResponse, positionsResponse, sourcesResponse, traitsResponse, ownRosterMigrationsResponse] = await Promise.all([
     client.from('player_team_memberships').select('*').order('created_at', { ascending: false }),
     client.from('player_positions').select('*').order('is_primary', { ascending: false }),
     client.from('player_sources').select('*').order('is_primary', { ascending: false }),
     client.from('player_scouting_traits').select('*').order('created_at', { ascending: true }),
+    client.from('legacy_own_player_migration').select('*').order('created_at', { ascending: false }),
   ]);
-  const failed = [membershipsResponse, positionsResponse, sourcesResponse, traitsResponse].find((response) => response.error);
+  const failed = [membershipsResponse, positionsResponse, sourcesResponse, traitsResponse, ownRosterMigrationsResponse].find((response) => response.error);
   if (failed) throw failed.error;
   const related = {
     memberships: membershipsResponse.data || [], positions: positionsResponse.data || [],
     sources: sourcesResponse.data || [], traits: traitsResponse.data || [],
+    ownRosterMigrations: ownRosterMigrationsResponse.data || [],
   };
   return {
     available: true,
@@ -480,6 +486,8 @@ export const findGlobalPlayerMatches = (candidate = {}, players = []) => {
 };
 
 const getOwnRosterLegacyIds = (player = {}) => [
+  ...safeArray(player.legacyOwnPlayerIds),
+  ...safeArray(player.ownRosterMappings).map((mapping) => mapping.legacy_player_id),
   player.legacyOwnPlayerId,
   player.legacy_own_player_id,
   player.legacyOriginId,
@@ -490,31 +498,35 @@ const getOwnRosterLegacyIds = (player = {}) => [
 
 export const resolveOwnRosterGlobalPlayer = (rosterPlayer = {}, globalPlayers = []) => {
   const profiles = safeArray(globalPlayers).filter((player) => player?.globalPlayerId || isUuid(player?.id));
+  const failedStrategies = [];
   const linkedId = rosterPlayer.globalPlayerId || rosterPlayer.global_player_id;
   if (linkedId) {
     const player = profiles.find((profile) => String(profile.globalPlayerId || profile.id) === String(linkedId)) || null;
-    return { player, strategy: player ? 'global_player_id' : 'missing_global_player_id', exact: Boolean(player) };
+    if (player) return { player, strategy: 'global_player_id', exact: true, failedStrategies };
+    failedStrategies.push('missing_global_player_id');
   }
 
   const membershipId = rosterPlayer.membershipId || rosterPlayer.membership_id;
   if (membershipId) {
     const player = profiles.find((profile) => safeArray(profile.memberships).some((membership) => String(membership.id) === String(membershipId))) || null;
-    return { player, strategy: player ? 'membership_id' : 'missing_membership_id', exact: Boolean(player) };
+    if (player) return { player, strategy: 'membership_id', exact: true, failedStrategies };
+    failedStrategies.push('missing_membership_id');
   }
 
   const rosterId = rosterPlayer.id ? String(rosterPlayer.id) : '';
   if (rosterId) {
     const legacyMatches = profiles.filter((profile) => getOwnRosterLegacyIds(profile).includes(rosterId));
-    if (legacyMatches.length === 1) return { player: legacyMatches[0], strategy: 'legacy_own_player_id', exact: true };
-    if (legacyMatches.length > 1) return { player: null, strategy: 'ambiguous_legacy_own_player_id', exact: false };
+    if (legacyMatches.length === 1) return { player: legacyMatches[0], strategy: 'legacy_own_player_id', exact: true, failedStrategies };
+    if (legacyMatches.length > 1) return { player: null, strategy: 'ambiguous_legacy_own_player_id', exact: false, failedStrategies };
   }
 
   const exactMatches = findGlobalPlayerMatches(rosterPlayer, profiles).filter((match) => match.confidence === 'exact');
-  if (exactMatches.length === 1) return { player: exactMatches[0].player, strategy: exactMatches[0].reason, exact: true };
+  if (exactMatches.length === 1) return { player: exactMatches[0].player, strategy: exactMatches[0].reason, exact: true, failedStrategies };
   return {
     player: null,
     strategy: exactMatches.length > 1 ? 'ambiguous_exact_match' : 'unresolved',
     exact: false,
+    failedStrategies,
   };
 };
 
