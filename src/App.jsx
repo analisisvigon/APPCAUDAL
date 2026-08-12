@@ -3,6 +3,10 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 
 import { supabase } from './lib/supabase';
+import {
+  createAuthenticatedDataLoadCoordinator,
+  runIndependentAuthenticatedLoaders,
+} from './utils/authenticatedDataLoad';
 import LibrarySection from './components/library/LibrarySection';
 import MatchVideoPlayer from './components/matches/MatchVideoPlayer';
 import MatchPrintTab from './components/print/MatchPrintTab';
@@ -5214,6 +5218,8 @@ function App() {
   const [error, setError] = useState(null);
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [authDataRefreshVersion, setAuthDataRefreshVersion] = useState(0);
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authForm, setAuthForm] = useState({ email: '', password: '' });
@@ -5732,6 +5738,9 @@ function App() {
   const postYoutubePlayerRef = useRef(null);
   const postMatchVideoRef = useRef(null);
   const rivalPlacementOperationRef = useRef(false);
+  const authenticatedDataCoordinatorRef = useRef(createAuthenticatedDataLoadCoordinator());
+  const homeDataCoordinatorRef = useRef(createAuthenticatedDataLoadCoordinator());
+  const authSessionIdentityRef = useRef('');
 
   useEffect(() => {
     if (!delegatedTimerRunning) return undefined;
@@ -5787,6 +5796,10 @@ function App() {
       setAuthError(signOutError.message || 'No se pudo cerrar sesión.');
       return;
     }
+    authenticatedDataCoordinatorRef.current.invalidate();
+    homeDataCoordinatorRef.current.invalidate();
+    clearAuthenticatedData();
+    setDataLoading(false);
     setSession(null);
   };
 
@@ -5820,7 +5833,8 @@ function App() {
     }
   };
 
-  const loadTeams = async () => {
+  const loadTeams = async ({ shouldApply = () => true } = {}) => {
+    if (!shouldApply()) return [];
     setTeamsLoading(true);
     setTeamsError('');
     setGlobalPlayersLoading(true);
@@ -5837,6 +5851,7 @@ function App() {
       ]);
       const failed = [teamsResponse, playersResponse, lineupResponse, benchResponse].find((response) => response.error);
       if (failed) throw failed.error;
+      if (!shouldApply()) return [];
       if (syncHistoryResponse.error) console.warn('[RIVAL_SYNC_HISTORY_LOAD_WARNING]', syncHistoryResponse.error.message);
 
       setGlobalPlayersAvailable(globalDatabase.available);
@@ -5961,12 +5976,15 @@ function App() {
       setTeams(nextTeams);
       return nextTeams;
     } catch (loadError) {
+      if (!shouldApply()) return [];
       console.error('Error cargando equipos rivales desde Supabase:', loadError);
       setTeamsError(loadError.message || 'No se pudieron cargar los equipos.');
       return [];
     } finally {
-      setTeamsLoading(false);
-      setGlobalPlayersLoading(false);
+      if (shouldApply()) {
+        setTeamsLoading(false);
+        setGlobalPlayersLoading(false);
+      }
     }
   };
 
@@ -6035,11 +6053,12 @@ function App() {
   const filterMatchesByCompetitionCatalog = (rows = [], competitionKey = 'all') =>
     filterMatchesByCompetition(rows, competitionKey, competitions);
 
-  const loadCompetitions = async () => {
+  const loadCompetitions = async ({ shouldApply = () => true } = {}) => {
     const { data, error } = await supabase
       .from("competitions")
       .select("*")
       .order("name", { ascending: true });
+    if (!shouldApply()) return [];
     if (error) {
       console.warn('No se pudo cargar el catalogo de competiciones; se usa fallback local:', error);
       setCompetitionCatalogError('Catalogo persistente de competiciones no disponible.');
@@ -6053,7 +6072,7 @@ function App() {
     return nextCatalog;
   };
 
-  const loadPartidos = async () => {
+  const loadPartidos = async ({ shouldApply = () => true } = {}) => {
     const [{ data, error: partidosError }, goalsResponse, quickEventsResponse, systemEventsResponse, postEventsResponse] = await Promise.all([
       supabase
         .from("partidos")
@@ -6064,6 +6083,7 @@ function App() {
       supabase.from("partido_eventos_sistema").select("*"),
       supabase.from("partido_eventos_post").select("*"),
     ]);
+    if (!shouldApply()) return [];
     if (partidosError) throw partidosError;
     if (goalsResponse.error) throw goalsResponse.error;
     const goalsByMatch = (goalsResponse.data || []).reduce((acc, event) => {
@@ -6151,12 +6171,13 @@ function App() {
     }));
   };
 
-  const loadHomePhrase = async () => {
+  const loadHomePhrase = async ({ shouldApply = () => true } = {}) => {
     const { data, error: configError } = await supabase
       .from("app_config")
       .select("value")
       .eq("key", homePhraseConfigKey)
       .maybeSingle();
+    if (!shouldApply()) return defaultHomePhrase;
 
     if (configError) {
       console.warn('No se pudo cargar la frase de Inicio desde app_config:', configError);
@@ -6171,11 +6192,12 @@ function App() {
     return nextPhrase;
   };
 
-  const loadOwnClubStadium = async () => {
+  const loadOwnClubStadium = async ({ shouldApply = () => true } = {}) => {
     const { data, error: configError } = await supabase
       .from("app_config")
       .select("key,value")
       .in("key", ownClubStadiumConfigKeys);
+    if (!shouldApply()) return '';
 
     if (configError) {
       console.warn('No se pudo cargar el estadio propio desde app_config:', configError);
@@ -6190,12 +6212,13 @@ function App() {
     return String(nextStadium || '').trim();
   };
 
-  const loadOwnDefaultFormation = async () => {
+  const loadOwnDefaultFormation = async ({ shouldApply = () => true } = {}) => {
     const { data, error: configError } = await supabase
       .from("app_config")
       .select("value")
       .eq("key", OWN_DEFAULT_FORMATION_CONFIG_KEY)
       .maybeSingle();
+    if (!shouldApply()) return DEFAULT_OWN_FORMATION;
 
     if (configError) {
       console.warn('No se pudo cargar el sistema habitual del club; se usa el fallback local:', configError);
@@ -6208,7 +6231,8 @@ function App() {
     return formation;
   };
 
-  const loadHomeDashboardData = async () => {
+  const loadHomeDashboardData = async ({ shouldApply = () => true, reusePrincipalData = false } = {}) => {
+    if (!shouldApply()) return null;
     setHomeLoading(true);
     setHomeError('');
     const recentActivitySince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -6230,9 +6254,15 @@ function App() {
         globalPlayersResponse,
         rivalMembershipsResponse,
       ] = await Promise.all([
-        supabase.from("partidos").select("*").order("date", { ascending: true, nullsFirst: false }),
-        supabase.from("jugadores").select("*").order("name", { ascending: true }),
-        supabase.from("equipos_rivales").select("*").order("name", { ascending: true }),
+        reusePrincipalData
+          ? Promise.resolve({ data: matches, error: null })
+          : supabase.from("partidos").select("*").order("date", { ascending: true, nullsFirst: false }),
+        reusePrincipalData
+          ? Promise.resolve({ data: players, error: null })
+          : supabase.from("jugadores").select("*").order("name", { ascending: true }),
+        reusePrincipalData
+          ? Promise.resolve({ data: teams, error: null })
+          : supabase.from("equipos_rivales").select("*").order("name", { ascending: true }),
         supabase.from("partido_estadisticas_jugador").select("*"),
         supabase.from("partido_eventos_gol").select("*"),
         supabase.from("match_quick_events").select("*"),
@@ -6245,6 +6275,7 @@ function App() {
         supabase.from("players_database").select("*").order("name", { ascending: true }),
         supabase.from("player_team_memberships").select("*").order("created_at", { ascending: false }),
       ]);
+      if (!shouldApply()) return null;
       const failed = [partidosResponse, jugadoresResponse, equiposResponse, statsResponse, goalsResponse].find((response) => response.error);
       if (failed) throw failed.error;
       if (quickEventsResponse.error) {
@@ -6261,7 +6292,9 @@ function App() {
         if (response.error) console.warn(`[HOME_RECENT_ACTIVITY] No se pudo consultar ${source}:`, response.error);
       });
 
-      const nextPlayers = (jugadoresResponse.data || []).map(normalizeSupabaseJugador);
+      const nextPlayers = reusePrincipalData
+        ? jugadoresResponse.data || []
+        : (jugadoresResponse.data || []).map(normalizeSupabaseJugador);
       const statsByMatch = (statsResponse.data || []).reduce((acc, row) => {
         const current = acc[row.partido_id] || {};
         current[row.player_name] = {
@@ -6301,14 +6334,16 @@ function App() {
             return acc;
           }, {});
       const nextMatches = (partidosResponse.data || []).map((match) => ({
-        ...normalizeSupabasePartido(match),
+        ...(reusePrincipalData ? match : normalizeSupabasePartido(match)),
         statsGoalEvents: eventsByMatch[match.id] || [],
         statsPlayerData: statsByMatch[match.id] || {},
         quickEvents: quickEventsByMatch[match.id] || [],
         systemEvents: systemEventsByMatch[match.id] || [],
         events: postEventsByMatch[match.id] || [],
       }));
-      const baseTeams = (equiposResponse.data || []).map((team) => rivalDbToTeam(team));
+      const baseTeams = reusePrincipalData
+        ? equiposResponse.data || []
+        : (equiposResponse.data || []).map((team) => rivalDbToTeam(team));
       const nextRecentActivity = buildRecentActivity({
         matches: partidosResponse.data || [],
         players: jugadoresResponse.data || [],
@@ -6340,12 +6375,13 @@ function App() {
 
       return { players: nextPlayers, matches: nextMatches, teams: baseTeams };
     } catch (dashboardError) {
+      if (!shouldApply()) return null;
       console.error('Error cargando Inicio desde Supabase:', dashboardError);
       setHomeError(dashboardError.message || 'No se pudo cargar el dashboard de Inicio.');
       setHomeRecentActivity([]);
       return null;
     } finally {
-      setHomeLoading(false);
+      if (shouldApply()) setHomeLoading(false);
     }
   };
 
@@ -6869,6 +6905,35 @@ function App() {
     }
   };
 
+  const clearAuthenticatedData = () => {
+    setPlayers([]);
+    setMatches([]);
+    setTeams([]);
+    setGlobalPlayers([]);
+    setGlobalPlayersAvailable(true);
+    setCompetitions(buildDefaultCompetitionCatalog());
+    setHomeRecentActivity([]);
+    setHomePhrase(defaultHomePhrase);
+    setHomePhraseDraft(defaultHomePhrase);
+    setOwnClubStadium('');
+    setOwnDefaultFormation(DEFAULT_OWN_FORMATION);
+    setSelectedMatchId(null);
+    setSelectedTeamId(null);
+    setSelectedPlayerProfileId(null);
+    setPlayerProfileData(null);
+    setEmpty(false);
+    setError(null);
+    setTeamsError('');
+    setGlobalPlayersError('');
+    setCompetitionCatalogError('');
+    setHomeError('');
+    setLoading(false);
+    setTeamsLoading(false);
+    setGlobalPlayersLoading(false);
+    setHomeLoading(false);
+    setActiveTab('Inicio');
+  };
+
   useEffect(() => {
     let isMounted = true;
 
@@ -6880,6 +6945,7 @@ function App() {
       if (!isMounted) return;
 
       if (sessionError) setAuthError(sessionError.message || 'No se pudo cargar la sesión.');
+      authSessionIdentityRef.current = data.session?.access_token || data.session?.user?.id || '';
       setSession(data.session ?? null);
       setAuthLoading(false);
     };
@@ -6888,7 +6954,21 @@ function App() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      const nextSessionIdentity = nextSession?.access_token || nextSession?.user?.id || '';
+      if (event === 'SIGNED_OUT') {
+        authenticatedDataCoordinatorRef.current.invalidate();
+        homeDataCoordinatorRef.current.invalidate();
+        clearAuthenticatedData();
+        setDataLoading(false);
+      } else if (
+        event === 'SIGNED_IN'
+        && nextSession?.user?.id
+        && nextSessionIdentity !== authSessionIdentityRef.current
+      ) {
+        setAuthDataRefreshVersion((current) => current + 1);
+      }
+      authSessionIdentityRef.current = nextSessionIdentity;
       setSession(nextSession);
       setAuthLoading(false);
     });
@@ -6934,48 +7014,69 @@ function App() {
     };
   }, []);
 
+  const authenticatedUserId = session?.user?.id || '';
+  const authenticatedDataLoadKey = authenticatedUserId
+    ? `${authenticatedUserId}:${authDataRefreshVersion}`
+    : '';
+
   useEffect(() => {
-    let isMounted = true;
-
-    const loadJugadores = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const jugadores = await getJugadores();
-        if (!isMounted) return;
-        setPlayers(jugadores);
-        setEmpty(jugadores.length === 0);
-      } catch (loadError) {
-        if (!isMounted) return;
-        setPlayers([]);
-        setError(loadError.message || 'No se pudieron cargar los jugadores');
-        setEmpty(false);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
+    if (authLoading) return;
+    if (!authenticatedDataLoadKey) {
+      authenticatedDataCoordinatorRef.current.invalidate();
+      homeDataCoordinatorRef.current.invalidate();
+      clearAuthenticatedData();
+      setDataLoading(false);
+      return;
     }
 
-    loadJugadores();
+    const { started, promise } = authenticatedDataCoordinatorRef.current.start(
+      authenticatedDataLoadKey,
+      async ({ isCurrent }) => {
+        if (!isCurrent()) return null;
+        setDataLoading(true);
+        setLoading(true);
+        setError(null);
 
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+        const result = await runIndependentAuthenticatedLoaders({
+          jugadores: async () => {
+            const jugadores = await getJugadores();
+            if (!isCurrent()) return;
+            setPlayers(jugadores);
+            setEmpty(jugadores.length === 0);
+          },
+          partidos: () => loadPartidos({ shouldApply: isCurrent }),
+          equipos: () => loadTeams({ shouldApply: isCurrent }),
+          competiciones: () => loadCompetitions({ shouldApply: isCurrent }),
+          estadio: () => loadOwnClubStadium({ shouldApply: isCurrent }),
+          sistemaHabitual: () => loadOwnDefaultFormation({ shouldApply: isCurrent }),
+        }, isCurrent);
+
+        if (!isCurrent() || result.cancelled) return result;
+        result.failures.forEach(({ dataset, error: loadError }) => {
+          console.error(`[AUTHENTICATED_DATA_LOAD:${dataset}]`, loadError);
+          if (dataset === 'jugadores') {
+            setPlayers([]);
+            setEmpty(false);
+            setError(loadError?.message || 'No se pudieron cargar los jugadores');
+          }
+        });
+        setLoading(false);
+        setDataLoading(false);
+        return result;
+      }
+    );
+
+    if (started) {
+      promise.catch((loadError) => {
+        console.error('[AUTHENTICATED_DATA_LOAD]', loadError);
+        setDataLoading(false);
+        setLoading(false);
+      });
+    }
+  }, [authLoading, authenticatedDataLoadKey]);
 
   useEffect(() => {
-    loadCompetitions().catch((loadError) => {
-      console.error('Error cargando competiciones desde Supabase:', loadError);
-    });
-  }, []);
-
-  useEffect(() => {
-    loadPartidos().catch((loadError) => {
-      console.error('Error cargando partidos desde Supabase:', loadError);
-    });
-  }, []);
-
-  useEffect(() => {
+    if (authLoading || !authenticatedUserId) return;
     const suspendedPlayers = players.filter((player) => (
       player.availabilityStatus === PLAYER_AVAILABILITY.suspended
       && player.suspensionMatchesRemaining > 0
@@ -6998,16 +7099,7 @@ function App() {
       .catch((processingError) => {
         console.error('Error consumiendo sanciones de partidos oficiales:', processingError);
       });
-  }, [competitions, matches, players]);
-
-  useEffect(() => {
-    loadTeams();
-  }, []);
-
-  useEffect(() => {
-    loadOwnClubStadium();
-    loadOwnDefaultFormation();
-  }, []);
+  }, [authLoading, authenticatedUserId, competitions, matches, players]);
 
   useEffect(() => {
     try {
@@ -7037,30 +7129,38 @@ function App() {
   }, [rivalObservedScouting]);
 
   useEffect(() => {
-    if (activeTab !== 'Inicio') return;
-    loadHomeDashboardData();
-    loadHomePhrase();
-    const refreshHomeOnFocus = () => loadHomeDashboardData();
+    if (authLoading || dataLoading || !authenticatedUserId || activeTab !== 'Inicio') return;
+    const homeLoadKey = `${authenticatedDataLoadKey}:${homeActivityRefreshVersion}`;
+    homeDataCoordinatorRef.current.start(homeLoadKey, ({ isCurrent }) => Promise.allSettled([
+      loadHomeDashboardData({ shouldApply: isCurrent, reusePrincipalData: true }),
+      loadHomePhrase({ shouldApply: isCurrent }),
+    ]));
+    const refreshHomeOnFocus = () => {
+      homeDataCoordinatorRef.current.invalidate();
+      homeDataCoordinatorRef.current.start(`${homeLoadKey}:focus:${Date.now()}`, ({ isCurrent }) => (
+        loadHomeDashboardData({ shouldApply: isCurrent })
+      ));
+    };
     window.addEventListener('focus', refreshHomeOnFocus);
     return () => window.removeEventListener('focus', refreshHomeOnFocus);
-  }, [activeTab, homeActivityRefreshVersion]);
+  }, [activeTab, authLoading, authenticatedDataLoadKey, authenticatedUserId, dataLoading, homeActivityRefreshVersion]);
 
   useEffect(() => {
-    if (activeTab !== 'Análisis Grupal') return;
+    if (authLoading || !authenticatedUserId || activeTab !== 'Análisis Grupal') return;
     loadGroupAnalysisData();
-  }, [activeTab]);
+  }, [activeTab, authLoading, authenticatedUserId]);
 
   useEffect(() => {
-    if (activeTab !== 'Plantilla' || !matches.length) return;
+    if (authLoading || !authenticatedUserId || activeTab !== 'Plantilla' || !matches.length) return;
     loadCompetitivePanelEvidence().catch((loadError) => {
       console.error('Error cargando evidencia oficial del Panel competitivo:', loadError);
     });
-  }, [activeTab, matches.length]);
+  }, [activeTab, authLoading, authenticatedUserId, matches.length]);
 
   useEffect(() => {
-    if (activeTab !== 'Rendimiento') return;
+    if (authLoading || !authenticatedUserId || activeTab !== 'Rendimiento') return;
     loadPerformanceData();
-  }, [activeTab, performanceWeekStart]);
+  }, [activeTab, authLoading, authenticatedUserId, performanceWeekStart]);
 
   useEffect(() => {
     if (activeTab !== 'Rendimiento' || !performanceSelectedDate) return;
@@ -7074,12 +7174,12 @@ function App() {
   }, [activeTab, performanceSelectedDate, performanceWeekStart]);
 
   useEffect(() => {
-    if (activeTab !== 'Rendimiento' || performanceChartPeriod === 'week') return;
+    if (authLoading || !authenticatedUserId || activeTab !== 'Rendimiento' || performanceChartPeriod === 'week') return;
     loadPerformancePeriodData(performanceChartPeriod);
-  }, [activeTab, performanceChartPeriod, performanceChartMonth, performanceChartSeasonKey]);
+  }, [activeTab, authLoading, authenticatedUserId, performanceChartPeriod, performanceChartMonth, performanceChartSeasonKey]);
 
   useEffect(() => {
-    if (activeTab !== 'Rendimiento' || performanceChartPeriod !== 'month') return;
+    if (authLoading || !authenticatedUserId || activeTab !== 'Rendimiento' || performanceChartPeriod !== 'month') return;
     const cacheKey = performanceChartMonth;
     if (performanceMonthLoadsCacheRef.current.has(cacheKey)) {
       setPerformanceMonthLoads(performanceMonthLoadsCacheRef.current.get(cacheKey));
@@ -7107,7 +7207,7 @@ function App() {
     };
 
     loadMonthData();
-  }, [activeTab, performanceChartPeriod, performanceChartMonth]);
+  }, [activeTab, authLoading, authenticatedUserId, performanceChartPeriod, performanceChartMonth]);
 
   useEffect(() => {
     if (!performanceSelectedPlayerId || typeof document === 'undefined') return undefined;
@@ -27671,6 +27771,20 @@ function App() {
       <p className="mt-5 text-lg font-semibold tracking-wide">App Caudal</p>
     </div>
   ) : null;
+
+  if (authLoading || (authUser && dataLoading)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#02070f] px-6 text-center text-slate-100">
+        {splashScreen}
+        <div>
+          <TeamLogo className="mx-auto" src={clubCrest} alt="Escudo del C.D. Caudal" teamName="C.D. Caudal" size="xl" />
+          <p className="mt-5 text-sm font-black uppercase tracking-[0.18em] text-caudal-electric">
+            {authLoading ? 'Comprobando sesión…' : 'Cargando datos…'}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (!authUser) {
     return (
