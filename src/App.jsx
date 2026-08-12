@@ -128,6 +128,7 @@ import {
 } from './utils/delegatedEventSaveFlow';
 import { getPlayerDisplayName } from './utils/playerDisplayName';
 import { formatStatsPitchPlayerName, resolveStatsVisualIdentity } from './utils/statsVisualIdentity';
+import { sortStatsIndividualPlayers } from './utils/statsIndividualOrder';
 import {
   calculateStatsCallupCounts,
   getStatsCallupPositionGroup,
@@ -17331,10 +17332,10 @@ function App() {
       return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
     };
     const matchMeta = [getCompetitionFromCatalog(selectedMatch).label, formatStatsMatchDate(selectedMatch.date)].filter(Boolean).join(' · ');
-    const statRows = [...getStatsCalledPlayers()].sort((a, b) => {
-      const roleDiff = (getStatsPlayerData(a.name).role === 'Titular' ? -1 : 1) - (getStatsPlayerData(b.name).role === 'Titular' ? -1 : 1);
-      return roleDiff || displayPlayerName(a).localeCompare(displayPlayerName(b));
-    });
+    const statRows = sortStatsIndividualPlayers(
+      getStatsCalledPlayers(),
+      (player) => getStatsPlayerData(player.name).role
+    );
     const callupCounts = getStatsCallupCounts();
     const homeTeamName = selectedMatch.isHome ? 'C.D. Caudal' : selectedMatch.opponent || 'Rival';
     const awayTeamName = selectedMatch.isHome ? selectedMatch.opponent || 'Rival' : 'C.D. Caudal';

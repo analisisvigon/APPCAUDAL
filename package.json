@@ -59,6 +59,7 @@
     "test:stats-formation": "node src/utils/statsFormation.test.js",
     "test:stats-lineup": "node src/utils/statsLineup.test.js",
     "test:stats-visual": "node src/utils/statsVisualIdentity.test.js",
+    "test:stats-individual": "node src/utils/statsIndividualOrder.test.js",
     "test:player-availability": "node src/utils/playerAvailability.test.js",
     "test:player-availability-sql": "node scripts/playerAvailabilitySqlAudit.test.mjs",
     "test:global-players": "node src/utils/globalPlayerStore.test.js",
