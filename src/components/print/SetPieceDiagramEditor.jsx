@@ -29,6 +29,7 @@ import MatchPlanIdentityLegend from './MatchPlanIdentityLegend';
 import SetPieceDiagramPrintSheet from './SetPieceDiagramPrintSheet';
 import SetPieceDiagramToolbar from './SetPieceDiagramToolbar';
 import { findCrowdedSetPieceParticipants } from '../../utils/setPieceRenderLayout';
+import { buildSetPieceLinkedPlayerOptions } from '../../utils/setPieceLinkedPlayers';
 
 const createId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const clone = (value) => JSON.parse(JSON.stringify(value || []));
@@ -183,6 +184,14 @@ export default function SetPieceDiagramEditor({
   const visibleLayers = tacticalMeta.displayLayers;
 
   const selectedElement = useMemo(() => drawableElements.find((element) => element.id === selectedId) || null, [drawableElements, selectedId]);
+  const linkedPlayerOptions = useMemo(() => buildSetPieceLinkedPlayerOptions({
+    match,
+    players,
+    currentPlayerId: selectedElement?.type === 'player' ? selectedElement.player_id : '',
+    currentPlayerFallback: selectedElement?.type === 'player' && selectedElement.player_id
+      ? { name: selectedElement.name || `Jugador ${selectedElement.label || ''}`, number: selectedElement.label || '' }
+      : null,
+  }), [match, players, selectedElement]);
   const chronology = useMemo(() => getSetPieceChronology(diagram.elements, players), [diagram.elements, players]);
   const responsibilities = useMemo(() => getSetPieceResponsibilities(diagram.elements, players), [diagram.elements, players]);
   const crowdedParticipants = useMemo(() => findCrowdedSetPieceParticipants(drawableElements), [drawableElements]);
@@ -523,7 +532,11 @@ export default function SetPieceDiagramEditor({
             {panel === 'player' && isSelectedPlayer ? (
               <div className="space-y-4 py-4">
                 <div className="rounded-2xl bg-caudal-electric/[0.08] p-3 ring-1 ring-caudal-electric/25"><p className={labelClass}>{roleOnly ? 'Participante por rol' : 'Jugador seleccionado'}</p><p className="mt-1 text-base font-black text-white">{selectedParticipantName}</p><p className="mt-1 text-[10px] text-caudal-electric">Editando el elemento resaltado en el campo</p></div>
-                {!roleOnly && selectedElement.type === 'player' ? <label className="grid gap-1.5"><span className={labelClass}>Jugador vinculado</span><select value={selectedElement.player_id || ''} onChange={(event) => { const player = players.find((item) => item.id === event.target.value); updateSelected({ player_id: event.target.value, label: player?.number ? String(player.number) : selectedElement.label, name: '' }); }} className={`${fieldClass} bg-white font-bold text-slate-950`}><option value="">Sin jugador vinculado</option>{players.map((player) => <option key={player.id} value={player.id}>{player.number || '-'} · {getPlayerDisplayName(player)}</option>)}</select></label> : null}
+                {!roleOnly && selectedElement.type === 'player' ? <label className="grid gap-1.5"><span className={labelClass}>Jugador vinculado</span><select value={selectedElement.player_id || ''} disabled={!linkedPlayerOptions.hasDefinedStarters} onChange={(event) => { const player = players.find((item) => String(item.id) === event.target.value); updateSelected({ player_id: event.target.value, label: player?.number || player?.dorsal ? String(player.number ?? player.dorsal) : selectedElement.label, name: '' }); }} className={`${fieldClass} bg-white font-bold text-slate-950 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500`}>
+                  {!linkedPlayerOptions.hasDefinedStarters ? <option value="">No hay titulares definidos</option> : <option value="">Sin jugador vinculado</option>}
+                  {linkedPlayerOptions.exceptionalOption ? <option value={linkedPlayerOptions.exceptionalOption.id}>{linkedPlayerOptions.exceptionalOption.label}</option> : null}
+                  {linkedPlayerOptions.starterOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select></label> : null}
                 <div><p className={labelClass}>{participantRoleMode === 'single' ? 'Etiqueta táctica' : 'Roles · selección múltiple'}</p><div className="mt-2 grid grid-cols-2 gap-2">{participantRoleOptions.map((role) => { const active = (selectedElement.roles || []).includes(role); return <button key={role} type="button" aria-pressed={active} onClick={() => toggleRole(role)} className={`flex min-h-11 items-center justify-between rounded-xl px-3 text-left text-[10px] font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-caudal-electric ${active ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.05] text-slate-300 hover:bg-white/[0.09]'}`}><span>{role}</span><span aria-hidden="true">{active ? '✓' : '+'}</span></button>; })}</div></div>
                 {editorContext !== 'match-plan' ? <>
                   <TacticalField label="Consigna individual" value={selectedElement.note || ''} onChange={(note) => updateSelected({ note })} placeholder="Fija y ataca el espacio" rows={3} />
