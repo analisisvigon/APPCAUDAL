@@ -113,11 +113,17 @@ export const validateMatchSquadSnapshot = (snapshot, availabilityById = {}) => {
   if (snapshot.p_slots.length > 11) throw new Error('A lineup cannot contain more than 11 starters');
 
   const squadIdentities = new Set();
+  const activePlayerNames = new Set();
   snapshot.p_squad.forEach((player) => {
     if (!cleanName(player.player_name) || !['Titular', 'Suplente', 'Fuera'].includes(player.role)) throw new Error('Invalid squad row');
     const identity = getStatsSquadIdentity(player);
     if (squadIdentities.has(identity)) throw new Error('Duplicated squad player');
     squadIdentities.add(identity);
+    if (player.role !== 'Fuera') {
+      const playerName = normalizedName(player.player_name);
+      if (activePlayerNames.has(playerName)) throw new Error('Duplicated active player name conflicts with legacy unique constraint');
+      activePlayerNames.add(playerName);
+    }
   });
 
   const slots = new Set();

@@ -25,7 +25,9 @@ validateMatchSquadSnapshot(snapshot);
 assert.equal(snapshot.p_squad.filter((player) => player.role === 'Titular').length, 11, 'QA 11+7+5: once titulares');
 assert.equal(snapshot.p_squad.filter((player) => player.role === 'Suplente').length, 7, 'QA 11+7+5: siete suplentes');
 assert.equal(snapshot.p_squad.filter((player) => player.role === 'Fuera').length, 5, 'QA 11+7+5: cinco fuera');
+assert.equal(snapshot.p_squad.length, 23, 'QA 11+7+5: snapshot completo con 23 roles logicos');
 assert.equal(snapshot.p_slots.length, 11, 'QA 11+7+5: once slots');
+assert.equal(applyMatchSquadSnapshotModel(emptyState, snapshot).callups.length, 18, 'QA 11+7+5: dieciocho convocados');
 assert.equal(new Set(snapshot.p_slots.map((slot) => slot.slot)).size, 11, 'los slots son únicos');
 
 const tooMany = structuredClone(snapshot);
@@ -45,11 +47,13 @@ inconsistent.p_squad[0].role = 'Suplente';
 assert.throws(() => validateMatchSquadSnapshot(inconsistent), /do not match/);
 
 ['injured', 'suspended', 'unavailable'].forEach((status) => {
+  const stateBeforeRejection = structuredClone(emptyState);
   assert.throws(
-    () => validateMatchSquadSnapshot(snapshot, { [roster[0].id]: status }),
+    () => applyMatchSquadSnapshotModel(stateBeforeRejection, snapshot, { [roster[0].id]: status }),
     /unavailable player/,
     `${status} no puede ser titular`,
   );
+  assert.deepEqual(stateBeforeRejection, emptyState, `${status} provoca rollback completo del modelo`);
 });
 
 const initial = applyMatchSquadSnapshotModel(emptyState, snapshot);
@@ -66,6 +70,7 @@ const swapped = applyMatchSquadSnapshotModel(initial, swapSnapshot);
 assert.equal(swapped.slots[0].jugador_id, roster[11].id, 'swap: B ocupa exactamente el slot de A');
 assert.equal(swapped.stats.find((row) => row.jugador_id === roster[11].id).role, 'Titular');
 assert.equal(swapped.stats.find((row) => row.jugador_id === roster[0].id).role, 'Suplente');
+assert.equal(swapped.callups.length, 18, 'swap: siguen existiendo exactamente 18 convocados');
 assert.ok(swapped.callups.some((row) => row.jugador_id === roster[0].id), 'swap: A continúa convocado');
 
 const movedLineup = [...lineup];
@@ -90,8 +95,9 @@ historicalState.stats[historicalIndex] = {
   yellow_count: 1,
   red: false,
   injured: true,
-  rating: '8',
+  rating: '7.5',
   replacement_name: roster[11].name,
+  raw_data: { source: 'real-match', provider_id: 42 },
 };
 const withoutHistoricalPlayer = buildMatchSquadSnapshot({
   matchId,
@@ -111,8 +117,17 @@ assert.deepEqual(
     injured: historicalRow.injured,
     rating: historicalRow.rating,
     replacement_name: historicalRow.replacement_name,
+    raw_data: historicalRow.raw_data,
   },
-  { minutes: '63', yellow: true, yellow_count: 1, injured: true, rating: '8', replacement_name: roster[11].name },
+  {
+    minutes: '63',
+    yellow: true,
+    yellow_count: 1,
+    injured: true,
+    rating: '7.5',
+    replacement_name: roster[11].name,
+    raw_data: { source: 'real-match', provider_id: 42 },
+  },
   'Fuera con histórico conserva minutos, tarjetas, lesión, valoración y sustitución',
 );
 
@@ -172,5 +187,10 @@ const sameNameSnapshot = buildMatchSquadSnapshot({
 });
 assert.equal(sameNameSnapshot.p_squad.length, 2, 'dos nombres iguales conservan dos identidades UUID distintas');
 assert.equal(new Set(sameNameSnapshot.p_squad.map(getStatsSquadIdentity)).size, 2);
+assert.throws(
+  () => validateMatchSquadSnapshot(sameNameSnapshot),
+  /legacy unique constraint/,
+  'el UNIQUE real por player_name rechaza dos nombres activos iguales aunque sus UUID sean distintos',
+);
 
 console.log('statsSquadSnapshot tests passed');

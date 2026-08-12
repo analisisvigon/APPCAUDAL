@@ -29,15 +29,18 @@ begin
     ('partido_estadisticas_jugador', 'injured'),
     ('partido_estadisticas_jugador', 'rating'),
     ('partido_estadisticas_jugador', 'replacement_name'),
+    ('partido_estadisticas_jugador', 'raw_data'),
     ('jugadores', 'id'),
     ('jugadores', 'availability_status')
   ) as required(table_name, column_name)
-  where not exists (
+  where pg_catalog.to_regclass(pg_catalog.format('public.%I', required.table_name)) is null
+     or not exists (
     select 1
-    from information_schema.columns existing
-    where existing.table_schema = 'public'
-      and existing.table_name = required.table_name
-      and existing.column_name = required.column_name
+    from pg_catalog.pg_attribute existing
+    where existing.attrelid = pg_catalog.to_regclass(pg_catalog.format('public.%I', required.table_name))
+      and existing.attname = required.column_name
+      and existing.attnum > 0
+      and not existing.attisdropped
   );
 
   if missing_columns is not null then
@@ -45,45 +48,11 @@ begin
   end if;
 end $$;
 
--- Estos índices no sustituyen ni eliminan constraints legacy. Garantizan
--- idempotencia por UUID cuando existe y compatibilidad explícita por nombre
--- normalizado únicamente para filas sin jugador_id.
-create unique index if not exists partido_alineacion_slots_match_scope_slot_h2_uidx
-  on public.partido_alineacion_slots (partido_id, scope, slot);
-
-create unique index if not exists partido_alineacion_slots_match_scope_player_h2_uidx
-  on public.partido_alineacion_slots (partido_id, scope, jugador_id)
-  where jugador_id is not null;
-
-create unique index if not exists partido_alineacion_slots_match_scope_legacy_h2_uidx
-  on public.partido_alineacion_slots (
-    partido_id,
-    scope,
-    (lower(regexp_replace(btrim(player_name), '[[:space:]]+', ' ', 'g')))
-  )
-  where jugador_id is null and nullif(btrim(player_name), '') is not null;
-
-create unique index if not exists partido_convocados_match_player_h2_uidx
-  on public.partido_convocados (partido_id, jugador_id)
-  where jugador_id is not null;
-
-create unique index if not exists partido_convocados_match_legacy_h2_uidx
-  on public.partido_convocados (
-    partido_id,
-    (lower(regexp_replace(btrim(player_name), '[[:space:]]+', ' ', 'g')))
-  )
-  where jugador_id is null and nullif(btrim(player_name), '') is not null;
-
-create unique index if not exists partido_estadisticas_match_player_h2_uidx
-  on public.partido_estadisticas_jugador (partido_id, jugador_id)
-  where jugador_id is not null;
-
-create unique index if not exists partido_estadisticas_match_legacy_h2_uidx
-  on public.partido_estadisticas_jugador (
-    partido_id,
-    (lower(regexp_replace(btrim(player_name), '[[:space:]]+', ' ', 'g')))
-  )
-  where jugador_id is null and nullif(btrim(player_name), '') is not null;
+-- Reutiliza los UNIQUE reales ya presentes:
+--   partido_alineacion_slots (partido_id, scope, slot)
+--   partido_convocados (partido_id, player_name)
+--   partido_estadisticas_jugador (partido_id, player_name)
+-- H2 no crea indices ni modifica constraints o RLS.
 
 create or replace function public.save_match_squad_lineup_atomic(
   p_partido_id uuid,
@@ -154,6 +123,19 @@ begin
     having count(*) > 1
   ) then
     raise exception 'Duplicated squad player';
+  end if;
+
+  -- jugador_id sigue siendo la identidad logica. Esta validacion separada
+  -- protege los UNIQUE legacy de convocatoria/estadisticas basados en nombre.
+  if exists (
+    select lower(regexp_replace(btrim(item.player_name), '[[:space:]]+', ' ', 'g'))
+    from jsonb_to_recordset(p_squad)
+      as item(jugador_id uuid, player_name text, role text)
+    where item.role in ('Titular', 'Suplente')
+    group by lower(regexp_replace(btrim(item.player_name), '[[:space:]]+', ' ', 'g'))
+    having count(*) > 1
+  ) then
+    raise exception 'Duplicated active player_name conflicts with legacy unique constraint';
   end if;
 
   if exists (
@@ -278,9 +260,7 @@ begin
   set stats_system = btrim(p_stats_system)
   where id = p_partido_id;
 
-  -- Conserva las filas (y sus PK) cuyo slot/jugador no cambia. Un swap elimina
-  -- solo las posiciones afectadas antes de insertar el estado final, evitando
-  -- conflictos temporales con los indices unicos de jugador y slot.
+  -- Elimina solo posiciones stats ausentes del snapshot. Nunca toca otros scopes.
   delete from public.partido_alineacion_slots existing
   where existing.partido_id = p_partido_id
     and existing.scope = 'stats'
@@ -289,32 +269,6 @@ begin
       from jsonb_to_recordset(p_slots)
         as desired(slot integer, jugador_id uuid, player_name text)
       where desired.slot = existing.slot
-        and (
-          (existing.jugador_id is not null and desired.jugador_id = existing.jugador_id)
-          or (
-            existing.jugador_id is null
-            and desired.jugador_id is null
-            and lower(regexp_replace(btrim(existing.player_name), '[[:space:]]+', ' ', 'g'))
-              = lower(regexp_replace(btrim(desired.player_name), '[[:space:]]+', ' ', 'g'))
-          )
-        )
-    );
-
-  update public.partido_alineacion_slots existing
-  set player_name = regexp_replace(btrim(desired.player_name), '[[:space:]]+', ' ', 'g')
-  from jsonb_to_recordset(p_slots)
-    as desired(slot integer, jugador_id uuid, player_name text)
-  where existing.partido_id = p_partido_id
-    and existing.scope = 'stats'
-    and existing.slot = desired.slot
-    and (
-      (existing.jugador_id is not null and desired.jugador_id = existing.jugador_id)
-      or (
-        existing.jugador_id is null
-        and desired.jugador_id is null
-        and lower(regexp_replace(btrim(existing.player_name), '[[:space:]]+', ' ', 'g'))
-          = lower(regexp_replace(btrim(desired.player_name), '[[:space:]]+', ' ', 'g'))
-      )
     );
 
   insert into public.partido_alineacion_slots (
@@ -332,13 +286,9 @@ begin
     regexp_replace(btrim(item.player_name), '[[:space:]]+', ' ', 'g')
   from jsonb_to_recordset(p_slots)
     as item(slot integer, jugador_id uuid, player_name text)
-  where not exists (
-    select 1
-    from public.partido_alineacion_slots existing
-    where existing.partido_id = p_partido_id
-      and existing.scope = 'stats'
-      and existing.slot = item.slot
-  );
+  on conflict (partido_id, scope, slot) do update
+  set jugador_id = excluded.jugador_id,
+      player_name = excluded.player_name;
 
   -- Convocatoria: Titular y Suplente están dentro; Fuera queda eliminado.
   -- La identidad se resuelve por jugador_id y solo cae a nombre en legacy.
