@@ -84,12 +84,12 @@ assert.ok(appSource.includes("row.status === 'Fuera' && isPlayerAvailable(row.pl
 assert.ok(appSource.includes('aria-expanded={!collapsed}'), 'los grupos usan un control accesible de expansión');
 assert.ok(appSource.includes('aria-controls={contentId}'), 'los controles enlazan con su contenido');
 assert.ok(appSource.includes('aria-label={`${collapsed ? \'Abrir\' : \'Cerrar\'} ${title.toLowerCase()} ${group.label.toLowerCase()}`}'), 'cada grupo declara una etiqueta accesible contextual');
-assert.ok(appSource.includes("supabase.from(\"partido_convocados\").upsert(convocadoRows"), 'la convocatoria masiva conserva la persistencia existente');
+assert.ok(appSource.includes("supabase.rpc('save_match_squad_lineup_atomic', snapshot)"), 'la convocatoria masiva reutiliza el snapshot transaccional');
 assert.ok(appSource.includes("player && isPlayerAvailable(player)"), 'la escritura masiva vuelve a validar disponibilidad y evita selecciones obsoletas');
 assert.ok(appSource.includes("'set_player_availability'"), 'Plantilla y Convocatoria reutilizan la misma RPC persistente');
 assert.ok(appSource.includes('window.confirm(leavingSanctionMessage)') && appSource.includes("'Queda 1 partido'"), 'I: el alta manual con sanción pendiente exige confirmación');
 assert.ok(appSource.includes('availabilityDraft.status === PLAYER_AVAILABILITY.suspended') && appSource.includes('min="0"'), 'J: el contador permite cero y la RPC normaliza el alta');
-assert.ok(appSource.includes("await refreshStatsFromSupabase(selectedMatch.id, 'convocatoria completa')"), 'la acción vuelve a leer el estado persistido real');
+assert.ok(appSource.includes('if (!refreshed) throw new Error'), 'la acción solo confirma Guardado después de releer el estado persistido');
 assert.ok(appSource.includes("if (role === 'Fuera')") && appSource.includes('removeStatsCalledPlayer(playerName)'), 'FUERA conserva el borrado de la convocatoria real');
 assert.ok(appSource.includes('const legacyCalledRows = calledPlayers'), 'los convocados heredados fuera de la plantilla activa no desaparecen del recuento');
 assert.ok(appSource.includes("{['Titular', 'Suplente', 'Fuera'].map"), 'las tres transiciones individuales siguen expuestas');

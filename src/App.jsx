@@ -132,13 +132,13 @@ import {
   resolveMatchStatsFormation,
 } from './utils/statsFormation';
 import {
-  buildStatsLineupRows,
   getStatsLineupInvariantReport,
   hydrateStatsLineup,
   moveStatsLineupPlayer,
   normalizeStatsLineup,
   removeStatsLineupPlayer,
 } from './utils/statsLineup';
+import { buildMatchSquadSnapshot, getActiveStatsCalledPlayerNames } from './utils/statsSquadSnapshot';
 import {
   PLAYER_AVAILABILITY,
   buildAvailabilityRpcInput,
@@ -5319,6 +5319,7 @@ function App() {
   const [statsRefreshing, setStatsRefreshing] = useState(false);
   const [statsError, setStatsError] = useState('');
   const [statsSaveStatus, setStatsSaveStatus] = useState('');
+  const [statsSquadSaving, setStatsSquadSaving] = useState(false);
   const [statsViewMode, setStatsViewMode] = useState('completa');
   const [statsEventFilter, setStatsEventFilter] = useState('Todos');
   const [delegatedMinute, setDelegatedMinute] = useState('0');
@@ -5733,6 +5734,7 @@ function App() {
   const postSectionRef = useRef(null);
   const delegatedHeaderRef = useRef(null);
   const statsOperationRef = useRef(Promise.resolve());
+  const statsSquadSaveInFlightRef = useRef(false);
   const suspensionProcessingSignatureRef = useRef('');
   const postYoutubeIframeRef = useRef(null);
   const postYoutubePlayerRef = useRef(null);
@@ -6476,38 +6478,6 @@ function App() {
     const statsLineup = hydrateStatsLineup(slotsResponse.data || []);
 
     const statsRowsByName = new Map((statsResponse.data || []).map((row) => [row.player_name, row]));
-    const starterNamesMissingMinutes = Array.from(new Set(statsLineup.filter(Boolean))).filter((playerName) => {
-      const row = statsRowsByName.get(playerName);
-      return !hasRealValue(row?.minutes);
-    });
-    if (starterNamesMissingMinutes.length) {
-      const playersByName = new Map(players.map((player) => [player.name, player]));
-      const starterRows = starterNamesMissingMinutes.map((playerName) => {
-        const player = playersByName.get(playerName);
-        const row = statsRowsByName.get(playerName) || {};
-        return {
-          partido_id: partidoId,
-          jugador_id: isUuid(player?.id) ? player.id : row.jugador_id || null,
-          player_name: playerName,
-          role: 'Titular',
-          minutes: '90',
-          yellow: Boolean(row.yellow),
-          yellow_count: Number(row.yellow_count || 0),
-          red: Boolean(row.red),
-          injured: Boolean(row.injured),
-          rating: row.rating || '',
-          replacement_name: row.replacement_name || '',
-        };
-      });
-      const { error: starterMinutesError } = await supabase
-        .from("partido_estadisticas_jugador")
-        .upsert(starterRows, { onConflict: "partido_id,player_name" });
-      if (starterMinutesError) {
-        console.error('Error inicializando minutos de titulares en Supabase:', { partidoId, starterRows, error: starterMinutesError });
-        throw starterMinutesError;
-      }
-      starterRows.forEach((row) => statsRowsByName.set(row.player_name, row));
-    }
 
     const statsPlayerData = {};
     Array.from(statsRowsByName.values()).forEach((row) => {
@@ -6535,6 +6505,7 @@ function App() {
       systemEvents,
       quickEvents,
       statsLineup,
+      statsDataLoaded: true,
     };
 
     setMatches((current) => {
@@ -7775,10 +7746,12 @@ function App() {
     if (!selectedMatch) return;
     const lineup = Array.from({ length: 11 }, (_, index) => selectedMatch.preCaudalLineup?.[index] || '');
     try {
-      await updateStatsSystem(selectedMatch.preCaudalSystem || '4-4-2');
-      for (const [slotIndex, playerName] of lineup.entries()) {
-        if (playerName) await updateStatsLineupSlot(slotIndex, playerName);
-      }
+      const saved = await persistStatsSquadSnapshot({
+        lineup,
+        system: selectedMatch.preCaudalSystem || '4-4-2',
+        reason: 'guardar once definitivo desde PRE',
+      });
+      if (!saved) throw new Error('No se pudo confirmar el guardado del once definitivo. Puedes reintentar.');
     } catch (lineupError) {
       console.error('Error guardando once definitivo desde PRE:', lineupError);
       setPreError(lineupError.message || 'No se pudo guardar el once definitivo.');
@@ -14748,13 +14721,12 @@ function App() {
   };
 
   const getStatsCalledPlayers = () => {
-    const calledNames = new Set([
-      ...getStatsCalledPlayerNames(),
-      ...Object.keys(safeObject(selectedMatch?.statsPlayerData)),
-      ...safeArray(selectedMatch?.statsLineup).filter(Boolean),
-    ]);
+    const calledNames = getActiveStatsCalledPlayerNames({
+      calledPlayerNames: getStatsCalledPlayerNames(),
+      lineupNames: safeArray(selectedMatch?.statsLineup),
+    });
     const playersByName = new Map(players.map((player) => [player.name, player]));
-    return Array.from(calledNames)
+    return calledNames
       .map((name) => playersByName.get(name) || { id: name, name, number: '', position: '', image: '' })
       .filter((player) => player?.name);
   };
@@ -14824,13 +14796,14 @@ function App() {
     const currentMatchId = selectedMatch?.id;
     if (!currentMatchId) return null;
     const operationPromise = statsOperationRef.current.catch(() => null).then(async () => {
-      setStatsSaveStatus('Guardando...');
+      setStatsSaveStatus('Guardando…');
       setStatsError('');
       try {
         await operation();
         const refreshed = await refreshStatsFromSupabase(currentMatchId, reason);
-        setStatsSaveStatus('Guardado ?');
-        window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Guardado ?' ? '' : current)), 2200);
+        if (!refreshed) throw new Error('La operación se guardó, pero no se pudo confirmar recargando el partido.');
+        setStatsSaveStatus('Guardado ✓');
+        window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Guardado ✓' ? '' : current)), 2200);
         return refreshed;
       } catch (operationError) {
         console.error(`Error guardando estadísticas (${reason}) en Supabase:`, operationError);
@@ -14938,17 +14911,16 @@ function App() {
 
   const removeStatsCalledPlayer = async (playerName) => {
     if (!selectedMatch) return;
-    const [{ error: convocadoError }, { error: statsError }, { error: slotsError }] = await Promise.all([
-      supabase.from("partido_convocados").delete().eq("partido_id", selectedMatch.id).eq("player_name", playerName),
-      supabase.from("partido_estadisticas_jugador").delete().eq("partido_id", selectedMatch.id).eq("player_name", playerName),
-      supabase.from("partido_alineacion_slots").delete().eq("partido_id", selectedMatch.id).eq("scope", "stats").eq("player_name", playerName),
-    ]);
-    const deleteError = convocadoError || statsError || slotsError;
-    if (deleteError) {
-      console.error('Error borrando convocado en Supabase:', deleteError);
-      return;
-    }
-    await refreshStatsFromSupabase(selectedMatch.id, 'borrado de convocado');
+    const sourceMatch = selectedMatch.statsDataLoaded ? selectedMatch : await loadMatchStatsData(selectedMatch.id);
+    if (!sourceMatch) return null;
+    const nextCalledNames = safeArray(sourceMatch.statsCalledPlayers).filter((name) => name !== playerName);
+    const nextLineup = removeStatsLineupPlayer(sourceMatch.statsLineup || [], playerName);
+    return persistStatsSquadSnapshot({
+      lineup: nextLineup,
+      calledPlayerNames: nextCalledNames,
+      sourceMatch,
+      reason: `pasar ${playerName} a fuera`,
+    });
   };
 
   const addStatsCalledPlayersBulk = async (playerNames) => {
@@ -14962,38 +14934,11 @@ function App() {
     });
     if (!uniqueNames.length) return 0;
 
-    const playersByName = new Map(players.map((player) => [player.name, player]));
-    const convocadoRows = uniqueNames.map((playerName) => {
-      const player = playersByName.get(playerName);
-      return {
-        partido_id: selectedMatch.id,
-        jugador_id: isUuid(player?.id) ? player.id : null,
-        player_name: playerName,
-      };
+    const saved = await persistStatsSquadSnapshot({
+      calledPlayerNames: [...getStatsCalledPlayerNames(), ...uniqueNames],
+      reason: uniqueNames.length === 1 ? `añadir ${uniqueNames[0]} a convocatoria` : 'añadir convocados',
     });
-    const statsRows = uniqueNames.map((playerName) => {
-      const player = playersByName.get(playerName);
-      return {
-        partido_id: selectedMatch.id,
-        jugador_id: isUuid(player?.id) ? player.id : null,
-        player_name: playerName,
-        role: 'Suplente',
-        minutes: '',
-        yellow: false,
-        yellow_count: 0,
-        red: false,
-        injured: false,
-        rating: '',
-        replacement_name: '',
-      };
-    });
-
-    const [{ error: convocadosError }, { error: statsError }] = await Promise.all([
-      supabase.from("partido_convocados").upsert(convocadoRows, { onConflict: "partido_id,player_name" }),
-      supabase.from("partido_estadisticas_jugador").upsert(statsRows, { onConflict: "partido_id,player_name" }),
-    ]);
-    const bulkError = convocadosError || statsError;
-    if (bulkError) throw bulkError;
+    if (!saved) throw new Error('No se pudo guardar la convocatoria y el XI. Puedes reintentar.');
     return uniqueNames.length;
   };
 
@@ -15005,7 +14950,6 @@ function App() {
     setStatsCallupError('');
     try {
       await addStatsCalledPlayersBulk(outsidePlayerNames);
-      await refreshStatsFromSupabase(selectedMatch.id, 'convocatoria completa');
       setSelectedStatsCallups([]);
     } catch (bulkError) {
       console.error('Error añadiendo toda la plantilla a convocados:', bulkError);
@@ -15021,7 +14965,6 @@ function App() {
     setStatsCallupError('');
     try {
       await addStatsCalledPlayersBulk(selectedStatsCallups);
-      await refreshStatsFromSupabase(selectedMatch.id, 'convocatoria masiva');
       setSelectedStatsCallups([]);
       setIsStatsCallupPanelOpen(false);
     } catch (bulkError) {
@@ -15036,105 +14979,29 @@ function App() {
     if (!selectedMatch) return;
     const currentCalled = getStatsCalledPlayerNames();
     if (currentCalled.includes(playerName)) return;
-    const player = players.find((item) => item.name === playerName);
-    const jugadorId = isUuid(player?.id) ? player.id : null;
-    const { error: convocadoError } = await supabase.from("partido_convocados").upsert(
-      {
-        partido_id: selectedMatch.id,
-        jugador_id: jugadorId,
-        player_name: playerName,
-      },
-      { onConflict: "partido_id,player_name" }
-    );
-    if (convocadoError) {
-      console.error('Error guardando convocado en Supabase:', convocadoError);
-      return;
-    }
-
-    const { error: statsError } = await supabase.from("partido_estadisticas_jugador").upsert(
-      {
-        partido_id: selectedMatch.id,
-        jugador_id: jugadorId,
-        player_name: playerName,
-        role: 'Suplente',
-        minutes: '',
-        yellow: false,
-        yellow_count: 0,
-        red: false,
-        injured: false,
-        rating: '',
-        replacement_name: '',
-      },
-      { onConflict: "partido_id,player_name" }
-    );
-    if (statsError) {
-      console.error('Error inicializando rendimiento del convocado en Supabase:', statsError);
-      return;
-    }
-    await refreshStatsFromSupabase(selectedMatch.id, 'alta de convocado');
+    return addStatsCalledPlayersBulk([playerName]);
   };
 
   const markAllStatsCalledAsSubstitutes = async () => {
     if (!selectedMatch) return;
     const calledPlayers = getStatsCalledPlayers();
     if (!calledPlayers.length) return;
-    const rows = calledPlayers.map((player) => {
-      const current = getStatsPlayerData(player.name);
-      return {
-        partido_id: selectedMatch.id,
-        jugador_id: isUuid(player.id) ? player.id : null,
-        player_name: player.name,
-        role: 'Suplente',
-        minutes: hasRealValue(current.minutes) ? String(current.minutes) : '',
-        yellow: Boolean(current.yellow),
-        yellow_count: Number(current.yellowCount || 0),
-        red: Boolean(current.red),
-        injured: Boolean(current.injured),
-        rating: String(current.rating || ''),
-        replacement_name: '',
-      };
+    return persistStatsSquadSnapshot({
+      lineup: [],
+      calledPlayerNames: calledPlayers.map((player) => player.name),
+      reason: 'marcar todos como suplentes',
     });
-    const [{ error: slotsError }, { error: statsError }] = await Promise.all([
-      supabase.from("partido_alineacion_slots").delete().eq("partido_id", selectedMatch.id).eq("scope", "stats"),
-      supabase.from("partido_estadisticas_jugador").upsert(rows, { onConflict: "partido_id,player_name" }),
-    ]);
-    const markError = slotsError || statsError;
-    if (markError) {
-      console.error('Error marcando convocados como suplentes en Supabase:', markError);
-      return;
-    }
-    await refreshStatsFromSupabase(selectedMatch.id, 'marcar todos como suplentes');
   };
 
   const markStatsLineupAsStarters = async () => {
     if (!selectedMatch) return;
     const starterNames = Array.from(new Set((selectedMatch.statsLineup || []).filter(Boolean)));
     if (!starterNames.length) return;
-    await addStatsCalledPlayersBulk(starterNames);
-    const playersByName = new Map(players.map((player) => [player.name, player]));
-    const rows = starterNames.map((playerName) => {
-      const current = getStatsPlayerData(playerName);
-      const player = playersByName.get(playerName);
-      return {
-        partido_id: selectedMatch.id,
-        jugador_id: isUuid(player?.id) ? player.id : null,
-        player_name: playerName,
-        role: 'Titular',
-        minutes: hasRealValue(current.minutes) ? String(current.minutes) : '90',
-        yellow: Boolean(current.yellow),
-        yellow_count: Number(current.yellowCount || 0),
-        red: Boolean(current.red),
-        injured: Boolean(current.injured),
-        rating: String(current.rating || ''),
-        replacement_name: current.replacementName || '',
-      };
+    return persistStatsSquadSnapshot({
+      lineup: selectedMatch.statsLineup || [],
+      calledPlayerNames: [...getStatsCalledPlayerNames(), ...starterNames],
+      reason: 'marcar once inicial',
     });
-    const { error: statsError } = await supabase.from("partido_estadisticas_jugador").upsert(rows, { onConflict: "partido_id,player_name" });
-    if (statsError) {
-      console.error('Error marcando once inicial en Supabase:', statsError);
-      return;
-    }
-    await refreshStatsFromSupabase(selectedMatch.id, 'marcar once inicial');
   };
 
   const getStatsPlayerData = (playerName) => {
@@ -15407,80 +15274,68 @@ function App() {
 
   const getStatsSquadRowsByStatus = (status) => getStatsSquadRows().filter((row) => row.status === status);
 
+  const persistStatsSquadSnapshot = async ({
+    lineup,
+    calledPlayerNames,
+    system,
+    sourceMatch = selectedMatch,
+    reason = 'convocatoria y XI',
+  } = {}) => {
+    if (!sourceMatch) return null;
+    if (statsSquadSaveInFlightRef.current) {
+      setStatsError('Ya hay un guardado de convocatoria y XI en curso. Espera a que termine para reintentar.');
+      return null;
+    }
+
+    statsSquadSaveInFlightRef.current = true;
+    setStatsSquadSaving(true);
+    try {
+      let workingMatch = sourceMatch;
+      if (!workingMatch.statsDataLoaded) {
+        workingMatch = await loadMatchStatsData(workingMatch.id);
+        if (!workingMatch) return null;
+      }
+
+      const report = getStatsLineupInvariantReport(lineup ?? workingMatch.statsLineup ?? []);
+      const nextLineup = report.lineup;
+      const sourceCalledNames = calledPlayerNames ?? safeArray(workingMatch.statsCalledPlayers);
+      const nextSystem = system || resolveMatchStatsFormation(workingMatch, ownDefaultFormation);
+      const knownPlayers = new Map([
+        ...players.map((player) => [normalizePlayerIdentityName(player.name), player]),
+        ...safeArray(workingMatch.statsCalledPlayers).map((playerName) => [
+          normalizePlayerIdentityName(playerName),
+          players.find((player) => player.name === playerName) || { name: playerName },
+        ]),
+      ]);
+      const desiredCalledNames = Array.from(new Set([
+        ...sourceCalledNames,
+        ...nextLineup.filter(Boolean),
+      ].map((name) => String(name || '').trim()).filter(Boolean)));
+      const calledPlayers = desiredCalledNames.map((playerName) => (
+        knownPlayers.get(normalizePlayerIdentityName(playerName)) || { name: playerName }
+      ));
+      const snapshot = buildMatchSquadSnapshot({
+        matchId: workingMatch.id,
+        system: nextSystem,
+        lineup: nextLineup,
+        rosterPlayers: players,
+        calledPlayers,
+        calledPlayerIds: workingMatch.statsCalledPlayerIds,
+        statsPlayerData: workingMatch.statsPlayerData,
+      });
+
+      return await runStatsOperation(reason, async () => {
+        const { error: rpcError } = await supabase.rpc('save_match_squad_lineup_atomic', snapshot);
+        if (rpcError) throw rpcError;
+      });
+    } finally {
+      statsSquadSaveInFlightRef.current = false;
+      setStatsSquadSaving(false);
+    }
+  };
+
   const persistStatsLineupSnapshot = async (lineup, reason = 'alineación de estadísticas') => {
-    if (!selectedMatch) return null;
-    const report = getStatsLineupInvariantReport(lineup);
-    const nextLineup = report.lineup;
-    const starterNames = new Set(nextLineup.filter(Boolean));
-    const calledPlayers = getStatsCalledPlayers();
-    const playersByName = new Map([
-      ...players.map((player) => [player.name, player]),
-      ...calledPlayers.map((player) => [player.name, player]),
-    ]);
-    const allNames = Array.from(new Set([
-      ...calledPlayers.map((player) => player.name),
-      ...starterNames,
-    ])).filter(Boolean);
-
-    return runStatsOperation(reason, async () => {
-      const { error: deleteSlotsError } = await supabase
-        .from("partido_alineacion_slots")
-        .delete()
-        .eq("partido_id", selectedMatch.id)
-        .eq("scope", "stats");
-      if (deleteSlotsError) throw deleteSlotsError;
-
-      const slotRows = buildStatsLineupRows({ matchId: selectedMatch.id, lineup: nextLineup, players })
-        .map((row) => ({ ...row, jugador_id: isUuid(row.jugador_id) ? row.jugador_id : null }));
-      if (slotRows.length) {
-        const { error: slotsError } = await supabase
-          .from("partido_alineacion_slots")
-          .upsert(slotRows, { onConflict: "partido_id,scope,slot" });
-        if (slotsError) throw slotsError;
-      }
-
-      const calledRows = Array.from(starterNames).map((playerName) => {
-        const player = playersByName.get(playerName);
-        return {
-          partido_id: selectedMatch.id,
-          jugador_id: isUuid(player?.id) ? player.id : null,
-          player_name: playerName,
-        };
-      });
-      if (calledRows.length) {
-        const { error: calledError } = await supabase
-          .from("partido_convocados")
-          .upsert(calledRows, { onConflict: "partido_id,player_name" });
-        if (calledError) throw calledError;
-      }
-
-      const statsRows = allNames.map((playerName) => {
-        const player = playersByName.get(playerName);
-        const current = getStatsPlayerData(playerName);
-        const role = starterNames.has(playerName)
-          ? 'Titular'
-          : current.role === 'Titular' ? 'Suplente' : current.role || 'Suplente';
-        return {
-          partido_id: selectedMatch.id,
-          jugador_id: isUuid(player?.id) ? player.id : null,
-          player_name: playerName,
-          role,
-          minutes: hasRealValue(current.minutes) ? String(current.minutes) : role === 'Titular' ? '90' : '',
-          yellow: Boolean(current.yellow),
-          yellow_count: Number(current.yellowCount || 0),
-          red: Boolean(current.red),
-          injured: Boolean(current.injured),
-          rating: String(current.rating || ''),
-          replacement_name: current.replacementName || '',
-        };
-      });
-      if (statsRows.length) {
-        const { error: statsError } = await supabase
-          .from("partido_estadisticas_jugador")
-          .upsert(statsRows, { onConflict: "partido_id,player_name" });
-        if (statsError) throw statsError;
-      }
-    });
+    return persistStatsSquadSnapshot({ lineup, reason });
   };
 
   const saveStatsPlayerRole = async (playerName, role) => {
@@ -15489,7 +15344,10 @@ function App() {
       await removeStatsCalledPlayer(playerName);
       return;
     }
-    const currentLineup = normalizeStatsLineup(selectedMatch.statsLineup || []);
+    const sourceMatch = selectedMatch.statsDataLoaded ? selectedMatch : await loadMatchStatsData(selectedMatch.id);
+    if (!sourceMatch) return;
+    const currentLineup = normalizeStatsLineup(sourceMatch.statsLineup || []);
+    const calledPlayerNames = Array.from(new Set([...safeArray(sourceMatch.statsCalledPlayers), playerName]));
     const currentSlot = currentLineup.indexOf(playerName);
     if (role === 'Titular') {
       if (currentSlot >= 0) return;
@@ -15498,38 +15356,21 @@ function App() {
         setStatsError('El once ya tiene 11 titulares. Arrastra el jugador sobre el titular que quieras sustituir.');
         return;
       }
-      await updateStatsLineupSlot(emptySlot, playerName);
+      const nextLineup = [...currentLineup];
+      nextLineup[emptySlot] = playerName;
+      await persistStatsSquadSnapshot({
+        lineup: nextLineup,
+        calledPlayerNames,
+        sourceMatch,
+        reason: `marcar ${playerName} como titular`,
+      });
       return;
     }
-    if (role === 'Suplente' && currentSlot >= 0) {
-      await persistStatsLineupSnapshot(removeStatsLineupPlayer(currentLineup, playerName), `pasar ${playerName} a suplente`);
-      return;
-    }
-    const player = players.find((item) => item.name === playerName);
-    const current = getStatsPlayerData(playerName);
-    const jugadorId = isUuid(player?.id) ? player.id : null;
-    await runStatsOperation(`rol ${role}`, async () => {
-      await supabase.from("partido_convocados").upsert(
-        { partido_id: selectedMatch.id, jugador_id: jugadorId, player_name: playerName },
-        { onConflict: "partido_id,player_name" }
-      );
-      const { error: statsError } = await supabase.from("partido_estadisticas_jugador").upsert(
-        {
-          partido_id: selectedMatch.id,
-          jugador_id: jugadorId,
-          player_name: playerName,
-          role,
-          minutes: hasRealValue(current.minutes) ? String(current.minutes) : role === 'Titular' ? '90' : '',
-          yellow: Boolean(current.yellow),
-          yellow_count: Number(current.yellowCount || 0),
-          red: Boolean(current.red),
-          injured: Boolean(current.injured),
-          rating: String(current.rating || ''),
-          replacement_name: current.replacementName || '',
-        },
-        { onConflict: "partido_id,player_name" }
-      );
-      if (statsError) throw statsError;
+    await persistStatsSquadSnapshot({
+      lineup: currentSlot >= 0 ? removeStatsLineupPlayer(currentLineup, playerName) : currentLineup,
+      calledPlayerNames,
+      sourceMatch,
+      reason: `pasar ${playerName} a suplente`,
     });
   };
 
@@ -15599,14 +15440,6 @@ function App() {
           rating: String(replacementCurrent.rating || ''),
           replacement_name: replacementCurrent.replacementName || '',
         };
-        await supabase.from("partido_convocados").upsert(
-          {
-            partido_id: selectedMatch.id,
-            jugador_id: replacementPayload.jugador_id,
-            player_name: next.replacementName,
-          },
-          { onConflict: "partido_id,player_name" }
-        );
         const { error: replacementError } = await supabase.from("partido_estadisticas_jugador").upsert(replacementPayload, { onConflict: "partido_id,player_name" });
         if (replacementError) throw replacementError;
       }
@@ -15615,33 +15448,28 @@ function App() {
 
   const updateStatsLineupSlot = async (slotIndex, playerName) => {
     if (!selectedMatch || !playerName) return;
+    if (statsSquadSaveInFlightRef.current) return;
+    const sourceMatch = selectedMatch.statsDataLoaded ? selectedMatch : await loadMatchStatsData(selectedMatch.id);
+    if (!sourceMatch) return;
     const transition = moveStatsLineupPlayer({
-      lineup: selectedMatch.statsLineup || [],
+      lineup: sourceMatch.statsLineup || [],
       playerName,
       targetSlot: slotIndex,
     });
     if (!transition.changed) return;
-    await persistStatsLineupSnapshot(
-      transition.lineup,
-      transition.sourceSlot >= 0 && transition.displacedPlayerName
+    await persistStatsSquadSnapshot({
+      lineup: transition.lineup,
+      calledPlayerNames: safeArray(sourceMatch.statsCalledPlayers),
+      sourceMatch,
+      reason: transition.sourceSlot >= 0 && transition.displacedPlayerName
         ? `intercambio ${playerName} / ${transition.displacedPlayerName}`
-        : `colocar ${playerName}`
-    );
+        : `colocar ${playerName}`,
+    });
   };
 
   const updateStatsSystem = async (system) => {
     if (!selectedMatch) return;
-    const { error: systemError } = await supabase.from("partidos").update({ stats_system: system }).eq("id", selectedMatch.id);
-    if (systemError) {
-      console.error('Error guardando sistema de estadísticas en Supabase:', systemError);
-      return;
-    }
-    const lineupReport = getStatsLineupInvariantReport(selectedMatch.statsLineup || []);
-    if (!lineupReport.valid) {
-      await persistStatsLineupSnapshot(lineupReport.lineup, 'normalización tras cambio de sistema');
-      return;
-    }
-    await refreshStatsFromSupabase(selectedMatch.id, 'sistema de estadísticas');
+    return persistStatsSquadSnapshot({ system, reason: 'sistema de estadísticas' });
   };
 
   const getSystemChangeDraftDefaults = (event = null) => {
@@ -15759,7 +15587,7 @@ function App() {
   };
 
   const handleDropOnStatsLineupSlot = (slotIndex) => {
-    if (!draggedPlayer) return;
+    if (!draggedPlayer || statsSquadSaveInFlightRef.current) return;
     updateStatsLineupSlot(slotIndex, normalizeSquadEntry(draggedPlayer).name);
     setDraggedPlayer(null);
   };
@@ -17167,7 +16995,7 @@ function App() {
         className="responsive-pitch-canvas relative aspect-[7/8.9] min-h-[640px] overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner"
         onDragOver={(event) => event.preventDefault()}
         onDrop={() => {
-          if (!draggedPlayer) return;
+          if (!draggedPlayer || statsSquadSaving) return;
           saveStatsPlayerRole(normalizeSquadEntry(draggedPlayer).name, 'Suplente');
           setDraggedPlayer(null);
         }}
@@ -17203,7 +17031,7 @@ function App() {
           return (
             <div
               key={`stats-slot-${slotIndex}`}
-              draggable={Boolean(player)}
+              draggable={Boolean(player) && !statsSquadSaving}
               onDragStart={() => player && setDraggedPlayer(player)}
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
@@ -17309,6 +17137,7 @@ function App() {
           <select
             value={status}
             onChange={(event) => saveStatsPlayerRole(player.name, event.target.value)}
+            disabled={statsSquadSaving}
             aria-label={`Estado de convocatoria de ${displayPlayerName(player) || player.name}`}
             className="min-h-9 w-[76px] shrink-0 rounded-lg border border-white/10 bg-black/25 px-1 py-1.5 text-[8px] font-black uppercase text-white"
           >
@@ -17322,7 +17151,7 @@ function App() {
       const rows = getStatsSquadRowsByStatus(status);
       const positionGroups = status === 'Titular' ? [] : groupStatsCallupRowsByPosition(rows);
       const handleDrop = () => {
-        if (!draggedPlayer) return;
+        if (!draggedPlayer || statsSquadSaving) return;
         saveStatsPlayerRole(normalizeSquadEntry(draggedPlayer).name, status);
         setDraggedPlayer(null);
       };
@@ -17561,10 +17390,10 @@ function App() {
                 <p className="mt-1 text-sm font-semibold text-slate-400">Dorsal, nombre corto y foto si existe</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <select value={resolveMatchStatsFormation(selectedMatch, ownDefaultFormation)} onChange={(event) => updateStatsSystem(event.target.value)} className="border border-white/10 bg-white px-4 py-2 text-sm font-black text-slate-950">
+                <select disabled={statsSquadSaving} value={resolveMatchStatsFormation(selectedMatch, ownDefaultFormation)} onChange={(event) => updateStatsSystem(event.target.value)} className="border border-white/10 bg-white px-4 py-2 text-sm font-black text-slate-950 disabled:cursor-wait disabled:opacity-60">
                   {STATS_FORMATION_OPTIONS.map((system) => <option key={system} value={system}>{system}</option>)}
                 </select>
-                <button type="button" onClick={autoPlaceStatsStarters} className="bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-200">Auto colocar titulares</button>
+                <button type="button" disabled={statsSquadSaving} onClick={autoPlaceStatsStarters} className="bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-200 disabled:cursor-wait disabled:opacity-60">{statsSquadSaving ? 'Guardando…' : 'Auto colocar titulares'}</button>
                 <button type="button" onClick={openStatsCallupPanel} className="bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Añadir convocados</button>
               </div>
             </div>
@@ -17600,7 +17429,7 @@ function App() {
               <p className="mt-1 text-sm font-semibold text-slate-400">La nota es el dato principal; minutos e incidencias siguen siendo editables.</p>
             </div>
             {getStatsCalledPlayers().length ? (
-              <button type="button" onClick={markAllStatsCalledAsSubstitutes} className="bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/15">Todos suplentes</button>
+              <button type="button" disabled={statsSquadSaving} onClick={markAllStatsCalledAsSubstitutes} className="bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/15 disabled:cursor-wait disabled:opacity-60">{statsSquadSaving ? 'Guardando…' : 'Todos suplentes'}</button>
             ) : null}
           </div>
           {statRows.length ? (
@@ -23463,15 +23292,6 @@ function App() {
     try {
       if (repeatedIndex >= 0) await clearMatchLineupSlot({ matchId: selectedMatch.id, scope: 'pre_caudal', slotIndex: repeatedIndex });
       await saveMatchLineupSlot({ matchId: selectedMatch.id, scope: 'pre_caudal', slotIndex, playerName });
-      const player = players.find((item) => item.name === playerName);
-      await supabase.from("partido_convocados").upsert(
-        {
-          partido_id: selectedMatch.id,
-          jugador_id: isUuid(player?.id) ? player.id : null,
-          player_name: playerName,
-        },
-        { onConflict: "partido_id,player_name" }
-      );
       await loadMatchPreData(selectedMatch.id);
     } catch (slotError) {
       console.error('Error guardando once PRE Caudal en Supabase:', slotError);
@@ -23535,11 +23355,6 @@ function App() {
         .filter((row) => row.playerName);
       for (const row of rows) {
         await saveMatchLineupSlot({ matchId: selectedMatch.id, scope: 'pre_caudal', slotIndex: row.slot, playerName: row.playerName });
-        const player = players.find((item) => item.name === row.playerName);
-        await supabase.from("partido_convocados").upsert(
-          { partido_id: selectedMatch.id, jugador_id: isUuid(player?.id) ? player.id : null, player_name: row.playerName },
-          { onConflict: "partido_id,player_name" }
-        );
       }
       await loadMatchPreData(selectedMatch.id);
     } catch (lineupError) {
@@ -31921,7 +31736,7 @@ function App() {
                                   </label>
                                   <button type="button" onClick={loadSuggestedCaudalLineup} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-white hover:bg-white/10">Generar XI</button>
                                   <button type="button" onClick={clearPreCaudalLineup} className="rounded-xl border border-red-200/15 bg-red-500/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-red-100 hover:bg-red-500/15">Limpiar</button>
-                                  <button type="button" onClick={savePreLineupAsFinalLineup} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Guardar alineación</button>
+                                  <button type="button" disabled={statsSquadSaving} onClick={savePreLineupAsFinalLineup} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950 disabled:cursor-wait disabled:opacity-60">{statsSquadSaving ? 'Guardando…' : 'Guardar alineación'}</button>
                                 </div>
                               </div>
                               <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(260px,3fr)]">
@@ -33067,7 +32882,7 @@ function App() {
                             <p className="mt-2 text-sm text-slate-400">Arrastra convocados al campo y modifica posiciones por sistema.</p>
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            <select value={resolveMatchStatsFormation(selectedMatch, ownDefaultFormation)} onChange={(event) => updateStatsSystem(event.target.value)} className="rounded-2xl border border-white/10 bg-white px-5 py-3 text-sm font-black text-slate-950">
+                            <select disabled={statsSquadSaving} value={resolveMatchStatsFormation(selectedMatch, ownDefaultFormation)} onChange={(event) => updateStatsSystem(event.target.value)} className="rounded-2xl border border-white/10 bg-white px-5 py-3 text-sm font-black text-slate-950 disabled:cursor-wait disabled:opacity-60">
                               {STATS_FORMATION_OPTIONS.map((system) => <option key={system} value={system}>{system}</option>)}
                             </select>
                             <button type="button" onClick={() => openSystemChangeModal()} className="rounded-2xl border border-violet-300/25 bg-violet-300/10 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-violet-100">
@@ -33110,15 +32925,17 @@ function App() {
                               <button
                                 type="button"
                                 onClick={markAllStatsCalledAsSubstitutes}
-                                className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/15"
+                                disabled={statsSquadSaving}
+                                className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/15 disabled:cursor-wait disabled:opacity-60"
                               >
-                                Marcar todos como suplentes
+                                {statsSquadSaving ? 'Guardando…' : 'Marcar todos como suplentes'}
                               </button>
                               {(selectedMatch.statsLineup || []).some(Boolean) ? (
                                 <button
                                   type="button"
                                   onClick={markStatsLineupAsStarters}
-                                  className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold text-caudal-electric transition hover:bg-white/15"
+                                  disabled={statsSquadSaving}
+                                  className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold text-caudal-electric transition hover:bg-white/15 disabled:cursor-wait disabled:opacity-60"
                                 >
                                   Marcar once inicial
                                 </button>
@@ -33135,7 +32952,7 @@ function App() {
                                         <p className="truncate text-sm font-bold">{displayPlayerName(player)}</p>
                                         <p className="text-xs uppercase tracking-[0.14em] text-slate-500">{stats.role}</p>
                                       </div>
-                                      <button type="button" onClick={() => removeStatsCalledPlayer(player.name)} className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100">
+                                      <button type="button" disabled={statsSquadSaving} onClick={() => removeStatsCalledPlayer(player.name)} className="rounded-xl bg-red-500/15 px-3 py-2 text-xs font-bold text-red-100 disabled:cursor-wait disabled:opacity-60">
                                         Borrar
                                       </button>
                                     </div>
@@ -33172,7 +32989,8 @@ function App() {
                           <button
                             type="button"
                             onClick={markAllStatsCalledAsSubstitutes}
-                            className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/15"
+                            disabled={statsSquadSaving}
+                            className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/15 disabled:cursor-wait disabled:opacity-60"
                           >
                             Todos suplentes
                           </button>
@@ -33824,7 +33642,7 @@ function App() {
               <button
                 type="button"
                 onClick={handleAddAllStatsCallups}
-                disabled={!getAvailableOutsidePlayerNames(getStatsSquadRows()).length || statsCallupSaving}
+                disabled={!getAvailableOutsidePlayerNames(getStatsSquadRows()).length || statsCallupSaving || statsSquadSaving}
                 className="flex w-full items-center justify-between gap-3 rounded-2xl bg-caudal-electric px-4 py-3 text-left text-xs font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span>AÑADIR TODOS A CONVOCADOS</span>
@@ -33856,7 +33674,7 @@ function App() {
               <button
                 type="button"
                 onClick={() => setSelectedStatsCallups(getFilteredStatsSquadRowsForCallup().filter((row) => row.status === 'Fuera' && isPlayerAvailable(row.player)).map((row) => row.player.name))}
-                disabled={!getFilteredStatsSquadRowsForCallup().some((row) => row.status === 'Fuera' && isPlayerAvailable(row.player)) || statsCallupSaving}
+                disabled={!getFilteredStatsSquadRowsForCallup().some((row) => row.status === 'Fuera' && isPlayerAvailable(row.player)) || statsCallupSaving || statsSquadSaving}
                 className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Seleccionar fuera visibles
@@ -33864,7 +33682,7 @@ function App() {
               <button
                 type="button"
                 onClick={() => setSelectedStatsCallups([])}
-                disabled={!selectedStatsCallups.length || statsCallupSaving}
+                disabled={!selectedStatsCallups.length || statsCallupSaving || statsSquadSaving}
                 className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-300 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Deseleccionar todos
@@ -33908,7 +33726,7 @@ function App() {
                             type="checkbox"
                             checked={checked}
                             onChange={() => toggleStatsCallupSelection(player.name)}
-                            disabled={statsCallupSaving || status !== 'Fuera' || !isPlayerAvailable(player)}
+                            disabled={statsCallupSaving || statsSquadSaving || status !== 'Fuera' || !isPlayerAvailable(player)}
                             className="h-5 w-5 accent-caudal-electric disabled:opacity-30"
                           />
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/10 text-xs font-black text-white">
@@ -33931,7 +33749,7 @@ function App() {
                           <select
                             value={status}
                             onChange={(event) => saveStatsPlayerRole(player.name, event.target.value)}
-                            disabled={statsCallupSaving}
+                            disabled={statsCallupSaving || statsSquadSaving}
                             aria-label={`Estado de convocatoria de ${displayPlayerName(player)}`}
                             className="min-h-9 w-[76px] shrink-0 rounded-lg border border-white/10 bg-black/25 px-1 py-1.5 text-[8px] font-black uppercase text-white disabled:opacity-50"
                           >
@@ -33965,7 +33783,7 @@ function App() {
               <button
                 type="button"
                 onClick={handleAddSelectedStatsCallups}
-                disabled={!selectedStatsCallups.length || statsCallupSaving}
+                disabled={!selectedStatsCallups.length || statsCallupSaving || statsSquadSaving}
                 className="inline-flex items-center justify-center gap-2 rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {statsCallupSaving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-950/30 border-t-slate-950" /> : null}
