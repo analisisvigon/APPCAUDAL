@@ -56,7 +56,9 @@
 
 .print-sheet-header h1 {
   margin: 0;
-  font-size: 17pt;
+  font-size: 18pt;
+  font-weight: 900;
+  letter-spacing: 0.025em;
   line-height: 1.05;
   text-transform: uppercase;
 }
@@ -72,12 +74,19 @@
 .print-sheet-header .print-sheet-meta {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.4mm 4mm;
+  gap: 1.7mm 4mm;
   border: 0;
   padding: 0;
-  font-size: 7.3pt;
+  font-size: 8pt;
   line-height: 1.15;
   overflow: hidden;
+}
+
+.print-sheet-header .print-sheet-meta strong {
+  font-size: 7.2pt;
+  font-weight: 900;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
 }
 
 .print-sheet-header .print-sheet-meta p {
@@ -436,14 +445,14 @@
 }
 
 .print-bench h2 {
-  margin: 0 0 2.5mm;
+  margin: 0 0 3.2mm;
   font-size: 10pt;
   text-transform: uppercase;
 }
 
 .print-bench-list {
   display: grid;
-  gap: 0;
+  gap: 0.9mm;
   max-height: 247mm;
   overflow: hidden;
 }
@@ -454,9 +463,9 @@
   align-items: start;
   gap: 1.3mm;
   border-bottom: 0.5pt solid #999;
-  min-height: 8mm;
-  padding: 0.8mm 0;
-  font-size: 7.1pt;
+  min-height: 9.2mm;
+  padding: 1.15mm 0;
+  font-size: 7.4pt;
   font-weight: 900;
   overflow: hidden;
 }
@@ -728,6 +737,10 @@
   border-bottom: 0.8pt solid #000;
   font-size: 14pt;
   font-weight: 800;
+}
+
+.set-piece-row:last-child {
+  border-bottom: 0;
 }
 
 .set-piece-row strong {
@@ -1662,8 +1675,12 @@
   grid-template-columns: minmax(0, 2.65fr) minmax(64mm, 1fr);
 }
 
+.set-piece-print-play-body--balanced-indications {
+  grid-template-columns: minmax(0, 1fr) minmax(110mm, 1fr);
+}
+
 .set-piece-print-play-body--dense-indications {
-  grid-template-columns: minmax(0, 1.55fr) minmax(110mm, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(175mm, 1fr);
 }
 
 .set-piece-print-play-body--field-only {
@@ -1693,7 +1710,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  gap: 1mm;
+  gap: 1.25mm;
   overflow: hidden;
 }
 
@@ -1817,14 +1834,14 @@
 
 .set-piece-print-indication-group ul {
   display: grid;
-  gap: 0.8mm 1.5mm;
+  gap: 1.1mm 1.5mm;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .set-piece-print-indications[data-density="dense"] .set-piece-print-indication-group ul {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .set-piece-print-indications[data-density="dense"] .set-piece-print-indication-groups {
@@ -1849,8 +1866,8 @@
 .set-piece-print-indications li {
   min-width: 0;
   margin: 0;
-  border: 0.45pt solid #d1d5db;
-  padding: 0.75mm 1mm;
+  border: 0;
+  padding: 0.6mm 0;
   font-size: 7.8pt;
   line-height: 1.08;
   overflow-wrap: break-word;
@@ -1888,7 +1905,7 @@
 }
 
 .set-piece-print-indication-text {
-  margin: 0.55mm 0 0;
+  margin: 0.55mm 0 0 5.8mm;
   color: #111827 !important;
   font-size: 7.35pt;
   font-weight: 500;
@@ -1897,7 +1914,7 @@
 }
 
 .set-piece-print-indications[data-density="roomy"] .set-piece-print-indication-groups {
-  gap: 2.2mm;
+  gap: 3mm;
 }
 
 .set-piece-print-indications[data-density="roomy"] .set-piece-print-indication-group h4 {
@@ -1906,7 +1923,7 @@
 }
 
 .set-piece-print-indications[data-density="roomy"] li {
-  padding: 1.35mm 1.5mm;
+  padding: 1.6mm 0;
 }
 
 .set-piece-print-indications[data-density="roomy"] .set-piece-print-indication-identity strong {
@@ -1920,7 +1937,16 @@
 }
 
 .set-piece-print-indications[data-density="balanced"] li {
-  padding: 0.9mm 1.1mm;
+  padding: 0.9mm 0;
+}
+
+.set-piece-print-play[data-density="roomy"] .set-piece-print-copy {
+  gap: 2mm;
+}
+
+.set-piece-print-play[data-density="roomy"] .set-piece-print-consigna p {
+  font-size: 10pt;
+  line-height: 1.28;
 }
 
 .set-piece-pro-plays[data-count="2"] .set-piece-print-indication-group ul {
@@ -1928,28 +1954,47 @@
 }
 
 .set-piece-pro-plays[data-count="2"] .set-piece-print-indications li {
-  padding: 0.4mm 0.7mm;
-  line-height: 1.03;
+  padding: 0.45mm 0;
+  line-height: 1.08;
 }
 
 .set-piece-pro-plays[data-count="2"] .set-piece-print-indication-identity b {
   min-width: 4.5mm;
   height: 3.7mm;
-  font-size: 7.7pt;
+  font-size: 7.9pt;
 }
 
 .set-piece-pro-plays[data-count="2"] .set-piece-print-indication-identity strong {
-  font-size: 7.3pt;
+  font-size: 7.6pt;
 }
 
 .set-piece-pro-plays[data-count="2"] .set-piece-print-indication-text {
-  margin-top: 0.25mm;
-  font-size: 7.05pt;
-  line-height: 1.03;
+  margin-top: 0.35mm;
+  font-size: 7.3pt;
+  line-height: 1.08;
 }
 
 .set-piece-pro-plays[data-count="2"] .set-piece-print-indication-groups {
   gap: 0.7mm;
+}
+
+.set-piece-pro-plays[data-count="2"] .set-piece-print-indications[data-density="balanced"] .set-piece-print-indication-groups {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 0.8mm;
+}
+
+.set-piece-pro-plays[data-count="2"] .set-piece-print-indications[data-density="balanced"] .set-piece-print-indication-group ul,
+.set-piece-pro-plays[data-count="2"] .set-piece-print-indications[data-density="dense"] .set-piece-print-indication-group ul {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.set-piece-pro-plays[data-count="2"] .set-piece-print-indications[data-density="dense"] .set-piece-print-indication-group ul {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.set-piece-pro-plays[data-count="2"] .set-piece-print-indications[data-density="dense"] .set-piece-print-indication-groups {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .set-piece-pro-plays[data-count="2"] .set-piece-print-indication-group h4 {
@@ -1968,22 +2013,22 @@
 }
 
 .set-piece-pro-plays[data-count="2"] .set-piece-print-indications[data-density="dense"][data-many-groups="true"] li {
-  padding: 0.2mm 0.55mm;
+  padding: 0.25mm 0;
 }
 
 .set-piece-pro-plays[data-count="2"] .set-piece-print-indications[data-density="dense"][data-many-groups="true"] .set-piece-print-indication-identity b {
-  height: 3.3mm;
-  font-size: 7.3pt;
+  height: 3.5mm;
+  font-size: 7.6pt;
 }
 
 .set-piece-pro-plays[data-count="2"] .set-piece-print-indications[data-density="dense"][data-many-groups="true"] .set-piece-print-indication-identity strong {
-  font-size: 7pt;
+  font-size: 7.25pt;
 }
 
 .set-piece-pro-plays[data-count="2"] .set-piece-print-indications[data-density="dense"][data-many-groups="true"] .set-piece-print-indication-text {
-  margin-top: 0.1mm;
-  font-size: 7pt;
-  line-height: 1;
+  margin-top: 0.2mm;
+  font-size: 7.15pt;
+  line-height: 1.05;
 }
 
 .set-piece-print-operational-details {
@@ -1991,6 +2036,7 @@
   gap: 1.1mm;
   border-top: 0.55pt solid #9ca3af;
   padding-top: 1mm;
+  margin-top: auto;
 }
 
 .set-piece-print-operational-details section {
@@ -2015,21 +2061,25 @@
 }
 
 .set-piece-pro-plays[data-count="1"] .set-piece-print-play-body {
-  grid-template-columns: minmax(0, 2.5fr) minmax(78mm, 1fr);
+  grid-template-columns: minmax(0, 2.15fr) minmax(90mm, 1fr);
 }
 
 .set-piece-pro-plays[data-count="1"] .set-piece-print-play-body--field-forward {
-  grid-template-columns: minmax(0, 2.85fr) minmax(70mm, 1fr);
+  grid-template-columns: minmax(0, 2.35fr) minmax(82mm, 1fr);
 }
 
 .set-piece-pro-plays[data-count="1"] .set-piece-print-play-body--dense-indications {
-  grid-template-columns: minmax(0, 2.35fr) minmax(84mm, 1fr);
+  grid-template-columns: minmax(0, 1.85fr) minmax(102mm, 1fr);
 }
 
 .set-piece-pro-plays[data-count="1"] .set-piece-print-indications[data-density="dense"] .set-piece-print-indication-groups {
   grid-template-columns: minmax(0, 1fr);
   align-content: space-between;
   gap: 2mm;
+}
+
+.set-piece-pro-plays[data-count="1"] .set-piece-print-indications[data-density="roomy"] .set-piece-print-indication-groups {
+  align-content: space-around;
 }
 
 .set-piece-pro-plays[data-count="1"] .set-piece-print-indications[data-density="dense"] .set-piece-print-indication-group h4 {

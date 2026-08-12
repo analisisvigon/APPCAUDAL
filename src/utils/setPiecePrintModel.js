@@ -50,6 +50,25 @@ export const chunkSetPiecePrintPlays = (plays = [], size = 2) => {
   return chunks;
 };
 
+export const shouldUseSingleSetPiecePrintPage = (play) => {
+  const indications = Array.isArray(play?.individualInstructions) ? play.individualInstructions : [];
+  if (indications.length < 9) return false;
+  const instructionCharacters = indications.reduce((total, item) => total + String(item?.instruction || '').trim().length, 0);
+  return instructionCharacters > indications.length * 72;
+};
+
+export const paginateSetPiecePrintPlays = (plays = []) => plays.reduce((pages, play) => {
+  const previousPage = pages.at(-1);
+  const playNeedsFullPage = shouldUseSingleSetPiecePrintPage(play);
+  const previousPlayNeedsFullPage = previousPage?.some(shouldUseSingleSetPiecePrintPage);
+  if (!previousPage || previousPage.length >= 2 || playNeedsFullPage || previousPlayNeedsFullPage) {
+    pages.push([play]);
+  } else {
+    previousPage.push(play);
+  }
+  return pages;
+}, []);
+
 export const getSetPiecePrintTypeLabel = (type) => (
   TYPE_LABELS[type]
   || String(type || '').replaceAll('_', ' ').replace(/^./, (character) => character.toUpperCase())
@@ -131,9 +150,10 @@ export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder
   };
 };
 
-export const buildSetPiecePrintPages = (diagrams = [], players = []) => (
-  chunkSetPiecePrintPlays(diagrams, 2).map((pageDiagrams, pageIndex) => ({
+export const buildSetPiecePrintPages = (diagrams = [], players = []) => {
+  const printPlays = diagrams.map((diagram, index) => buildSetPiecePrintPlayModel(diagram, players, index + 1));
+  return paginateSetPiecePrintPlays(printPlays).map((pagePlays, pageIndex) => ({
     pageNumber: pageIndex + 1,
-    plays: pageDiagrams.map((diagram, index) => buildSetPiecePrintPlayModel(diagram, players, pageIndex * 2 + index + 1)),
-  }))
-);
+    plays: pagePlays,
+  }));
+};

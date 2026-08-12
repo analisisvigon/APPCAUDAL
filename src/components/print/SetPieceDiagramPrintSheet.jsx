@@ -24,18 +24,19 @@ function PrintPlay({ play }) {
   const indications = play.individualInstructions;
   const hasIndications = indications.length > 0;
   const indicationDensity = indications.length <= 4 ? 'roomy' : indications.length <= 8 ? 'balanced' : 'dense';
-  const movesObjectiveToHeader = indicationDensity === 'dense' && Boolean(play.objective);
+  const movesObjectiveToHeader = indicationDensity !== 'roomy' && Boolean(play.objective);
   const headerFacts = movesObjectiveToHeader ? [...play.headerFacts, { id: 'key', label: 'Clave', value: play.objective }] : play.headerFacts;
   const hasOperationalDetails = Boolean((!movesObjectiveToHeader && play.objective) || play.whenToUse || play.risk || play.alternative || play.observations);
   const hasCopy = Boolean(play.instruction || hasChronology || hasIndications || hasOperationalDetails);
   const bodyClassName = [
     'set-piece-print-play-body',
     !play.instruction && !hasChronology ? 'set-piece-print-play-body--field-forward' : '',
+    indicationDensity === 'balanced' ? 'set-piece-print-play-body--balanced-indications' : '',
     indicationDensity === 'dense' ? 'set-piece-print-play-body--dense-indications' : '',
     !hasCopy ? 'set-piece-print-play-body--field-only' : '',
   ].filter(Boolean).join(' ');
   return (
-    <section className="set-piece-print-play" data-play-order={play.order} data-play-id={play.id || ''} data-has-chronology={hasChronology ? 'true' : 'false'}>
+    <section className="set-piece-print-play" data-play-order={play.order} data-play-id={play.id || ''} data-has-chronology={hasChronology ? 'true' : 'false'} data-density={indicationDensity}>
       <header className="set-piece-print-play-header" data-has-signal={play.signal ? 'true' : 'false'}>
         <div className="set-piece-print-play-heading">
           <div className="set-piece-print-play-kicker"><strong>{play.typeLabel}{play.defenseTypeLabel ? ` · Defensa ${play.defenseTypeLabel}` : ''}</strong><span>Jugada {play.order}</span></div>

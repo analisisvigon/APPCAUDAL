@@ -5,6 +5,8 @@ import {
   buildSetPiecePrintPlayModel,
   chunkSetPiecePrintPlays,
   getMeaningfulSetPiecePrintText,
+  paginateSetPiecePrintPlays,
+  shouldUseSingleSetPiecePrintPage,
 } from './setPiecePrintModel.js';
 import {
   getSetPieceGeometrySnapshot,
@@ -12,6 +14,8 @@ import {
 } from './setPieceProfessional.js';
 
 const sheet = fs.readFileSync(new URL('../components/print/SetPieceDiagramPrintSheet.jsx', import.meta.url), 'utf8');
+const lineupSheet = fs.readFileSync(new URL('../components/print/LineupPrintSheet.jsx', import.meta.url), 'utf8');
+const takersSheet = fs.readFileSync(new URL('../components/print/SetPieceTakersPrintSheet.jsx', import.meta.url), 'utf8');
 const editor = fs.readFileSync(new URL('../components/print/SetPieceDiagramEditor.jsx', import.meta.url), 'utf8');
 const canvas = fs.readFileSync(new URL('../components/print/SetPieceDiagramCanvas.jsx', import.meta.url), 'utf8');
 const toolbar = fs.readFileSync(new URL('../components/print/SetPieceDiagramToolbar.jsx', import.meta.url), 'utf8');
@@ -210,6 +214,7 @@ assert.ok(sheet.includes('<h3>Indicaciones</h3>') && sheet.includes('play.indivi
 assert.ok(sheet.includes('const indications = play.individualInstructions;'), 'Indicaciones no se deduplica contra Cronología');
 assert.ok(sheet.includes('play.instructionGroups.map') && sheet.includes('<h4>{group.label}</h4>'), 'las indicaciones se renderizan bajo encabezados funcionales');
 assert.ok(sheet.includes('data-density={indicationDensity}') && css.includes('.set-piece-print-indications[data-density="roomy"]') && css.includes('.set-piece-print-indications[data-density="dense"]'), 'la columna adapta separación y tamaño a la cantidad de indicaciones');
+assert.ok(sheet.includes('data-density={indicationDensity}>'), 'la jugada completa expone su densidad para adaptar consigna y espacios');
 assert.equal(sheet.includes('>Lanzador<'), false, 'no reaparece una etiqueta independiente de Lanzador');
 assert.ok(sheet.includes('set-piece-print-signal') && sheet.includes('Señal de la jugada:'), 'la señal tiene un bloque semántico propio en cabecera');
 assert.ok(sheet.includes('item.dorsal') && sheet.includes('item.playerName') && sheet.includes('set-piece-print-indication-text'), 'cada indicación separa dorsal, nombre e instrucción');
@@ -225,6 +230,18 @@ assert.equal(sheet.includes('play.classifications'), false, 'la cabecera ya no r
 assert.ok(css.includes('.set-piece-print-header-facts strong') && css.includes('font-size: 9pt') && css.includes('border-left: 1.25pt solid #111827'), 'Destino/Golpeo tienen jerarquía compacta y contraste apto para B/N');
 assert.match(css, /\.set-piece-print-signal \{[\s\S]*border: 1\.4pt solid #111827;/, 'SEÑAL conserva jerarquía visible también en blanco y negro');
 assert.match(css, /\.set-piece-print-indication-identity b \{[\s\S]*border: 0\.8pt solid #111827;/, 'el dorsal no depende de un fondo de color para destacar');
+assert.match(css, /\.set-piece-print-indications li \{[\s\S]*border: 0;/, 'cada jugador se presenta como fila editorial, no como microtarjeta');
+assert.match(css, /\.set-piece-print-operational-details \{[\s\S]*margin-top: auto;/, 'la clave y recordatorios aprovechan el fondo de la columna textual');
+assert.ok(css.includes('.set-piece-pro-plays[data-count="1"] .set-piece-print-play-body') && css.includes('minmax(90mm, 1fr)'), 'una jugada amplía la columna de información sin dejar media hoja vacía');
+assert.match(css, /\.set-piece-pro-plays\[data-count="2"\] \.set-piece-print-indications\[data-density="balanced"\] \.set-piece-print-indication-group ul,[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/, 'dos jugadas reparten jugadores dentro de cada grupo antes de reducir tipografía');
+assert.ok(sheet.includes("const movesObjectiveToHeader = indicationDensity !== 'roomy'"), 'desde densidad media la clave libera altura textual y pasa completa a cabecera');
+assert.ok(sheet.includes('set-piece-print-play-body--balanced-indications') && css.includes('minmax(110mm, 1fr)'), 'la densidad media amplía la zona textual antes de compactar tipografía');
+assert.match(css, /\.set-piece-print-play-body--dense-indications \{[\s\S]*minmax\(175mm, 1fr\);/, 'la densidad alta amplía la zona textual sin alterar la geometría interna de la pizarra');
+assert.match(css, /\.set-piece-pro-plays\[data-count="2"\] \.set-piece-print-indications\[data-density="dense"\] \.set-piece-print-indication-group ul \{[\s\S]*repeat\(2, minmax\(0, 1fr\)\);/, 'la media hoja densa reparte filas en dos columnas anchas para conservar 2–3 líneas legibles');
+assert.ok(takersSheet.includes('visibleOrders') && takersSheet.includes('? [1, 2, 3] : [1, 2]'), 'Lanzadores no dibuja una tercera fila vacía cuando no existe tercer lanzador');
+assert.ok(css.includes('.set-piece-row:last-child') && css.includes('border-bottom: 0'), 'Lanzadores no deja una línea final que simule un dato pendiente');
+assert.ok(lineupSheet.includes('print-sheet-meta') && css.includes('.print-sheet-header .print-sheet-meta strong'), 'la cabecera de alineación conserva sus datos con una jerarquía reforzada');
+assert.ok(css.includes('min-height: 9.2mm') && css.includes('gap: 0.9mm'), 'el banquillo gana separación vertical sin alterar campo ni posiciones');
 
 const controlDorsals = [11, 6, 5, 4, 10, 9, 22, 14, 21, 19];
 const controlPlayers = controlDorsals.map((dorsal) => ({
@@ -290,6 +307,19 @@ assert.equal(chronologyOnControlModel.individualInstructions.find((item) => item
 const twoControlPlays = buildSetPiecePrintPages([controlDiagram, { ...controlDiagram, id: 'control-desde-atras-2', orden: 2 }], controlPlayers);
 assert.deepEqual(twoControlPlays.map((page) => page.plays.length), [2], 'H: dos jugadas siguen agrupadas en una sola página A4');
 assert.deepEqual(getSetPieceGeometrySnapshot(controlModel.elements), getSetPieceGeometrySnapshot(controlDiagram.elements), 'J: el modelo de QA no modifica geometría táctica');
+const verboseControlElements = controlElements.map((element) => element.type === 'player' && element.player_id ? {
+  ...element,
+  note: 'Temporizar el movimiento, atacar el espacio asignado y asegurar la segunda acción sin abandonar la vigilancia posterior.',
+} : element);
+const verboseControlDiagram = {
+  ...controlDiagram,
+  id: 'control-verbose-dense',
+  elements: setSetPieceTacticalMeta(verboseControlElements, controlMeta),
+};
+const verboseControlModel = buildSetPiecePrintPlayModel(verboseControlDiagram, controlPlayers, 1);
+assert.equal(shouldUseSingleSetPiecePrintPage(verboseControlModel), true, 'H: diez consignas largas activan la hoja completa para no cortar texto');
+assert.deepEqual(paginateSetPiecePrintPlays([verboseControlModel, { ...verboseControlModel, id: 'verbose-2', order: 2 }]).map((page) => page.length), [1, 1], 'H: dos jugadas extremas generan dos hojas completas sin superar el máximo de dos');
+assert.deepEqual(buildSetPiecePrintPages([verboseControlDiagram, { ...verboseControlDiagram, id: 'control-verbose-dense-2', orden: 2 }], controlPlayers).map((page) => page.plays.length), [1, 1], 'H: la paginación final conserva completas ambas jugadas verbosas');
 
 const defensiveDorsals = [14, 5, 22, 9, 4, 6, 10, 11, 2, 21];
 const defensivePlayers = defensiveDorsals.map((dorsal) => ({

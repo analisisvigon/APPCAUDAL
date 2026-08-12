@@ -35,10 +35,11 @@ export default function SetPieceTakersPrintSheet({ match, sections = [], takers 
       <section className="set-piece-grid">
         {sections.map((section) => {
           const rows = [...(takersByType[section.id] || [])].sort((a, b) => Number(a.orden) - Number(b.orden));
+          const visibleOrders = rows.some((item) => Number(item.orden) === 3) ? [1, 2, 3] : [1, 2];
           return (
-            <div key={section.id} className="set-piece-box">
+            <div key={section.id} className="set-piece-box" data-row-count={visibleOrders.length}>
               <h2>{section.label}</h2>
-              {[1, 2, 3].map((order) => {
+              {visibleOrders.map((order) => {
                 const entry = rows.find((item) => Number(item.orden) === order);
                 return (
                   <div key={`${section.id}-${order}`} className="set-piece-row">
