@@ -168,6 +168,7 @@ import {
   buildOwnRosterGlobalEditorDraft,
   buildGlobalPlayerCoverage,
   createBlankGlobalPlayer,
+  createOwnPlayerProfileAtomic,
   ensureGlobalPlayerTeamMembership,
   findGlobalPlayerMatches,
   loadGlobalPlayerDatabase,
@@ -21073,60 +21074,33 @@ function App() {
   const openForm = (player = null) => {
     const ownClubTeam = teams.find((team) => team.isOwnClub || team.teamKind === 'own');
     const resolution = player ? resolveOwnRosterGlobalPlayer(player, globalPlayers) : null;
-    if (globalPlayersAvailable && ownClubTeam) {
-      setOwnPlayerEditorError('');
-      if (player && !resolution?.player) {
-        const resolutionDetails = {
-          player: player.name || player.shirtName || 'Sin nombre',
-          id: player.id || null,
-          globalPlayerId: player.globalPlayerId || null,
-          membershipId: player.membershipId || null,
-          reason: resolution?.strategy || 'unresolved',
-          failedStrategies: resolution?.failedStrategies || [],
-        };
-        if (import.meta.env.DEV) console.error('[OWN_PLAYER_EDITOR_RESOLUTION_FAILED]', resolutionDetails);
-        setOwnPlayerEditorError(`No se ha podido resolver de forma inequívoca el perfil global de ${resolutionDetails.player} (${resolutionDetails.reason}). No se abrirá el editor legacy ni se creará un duplicado.`);
-        return;
-      }
-      const editorPlayer = player && resolution?.player
-        ? buildOwnRosterGlobalEditorDraft(player, resolution.player)
-        : null;
-      openRivalPlayerModal(
-        editorPlayer,
-        { teamId: ownClubTeam.id, ownRosterPlayerId: player?.id || null }
-      );
+    setOwnPlayerEditorError('');
+    if (!globalPlayersAvailable || !ownClubTeam) {
+      setOwnPlayerEditorError(!globalPlayersAvailable
+        ? 'La base global no está disponible. El alta y la edición legacy están deshabilitadas para evitar jugadores con identidad parcial.'
+        : 'No se ha encontrado el equipo propio. No se puede abrir un alta parcial de jugador.');
       return;
     }
-    setPlayerFormError('');
-    setIsSavingPlayer(false);
-    if (player) {
-      setEditingId(player.id);
-      setFormState({
-        name: player.name,
-        googleFormsName: player.googleFormsName || '',
-        shirtName: player.shirtName || player.name,
-        dob: player.dob,
-        number: player.number,
-        position: player.position,
-        foot: player.foot,
-        image: player.image,
-        originalImage: player.originalImage || player.image || '',
-      });
-    } else {
-      setEditingId(null);
-      setFormState({
-        name: '',
-        googleFormsName: '',
-        shirtName: '',
-        dob: '',
-        number: '',
-        position: 'Portero',
-        foot: 'Derecha',
-        image: '',
-        originalImage: '',
-      });
+    if (player && !resolution?.player) {
+      const resolutionDetails = {
+        player: player.name || player.shirtName || 'Sin nombre',
+        id: player.id || null,
+        globalPlayerId: player.globalPlayerId || null,
+        membershipId: player.membershipId || null,
+        reason: resolution?.strategy || 'unresolved',
+        failedStrategies: resolution?.failedStrategies || [],
+      };
+      if (import.meta.env.DEV) console.error('[OWN_PLAYER_EDITOR_RESOLUTION_FAILED]', resolutionDetails);
+      setOwnPlayerEditorError(`No se ha podido resolver de forma inequívoca el perfil global de ${resolutionDetails.player} (${resolutionDetails.reason}). No se abrirá el editor legacy ni se creará un duplicado.`);
+      return;
     }
-    setIsPanelOpen(true);
+    const editorPlayer = player && resolution?.player
+      ? buildOwnRosterGlobalEditorDraft(player, resolution.player)
+      : null;
+    openRivalPlayerModal(
+      editorPlayer,
+      { teamId: ownClubTeam.id, ownRosterPlayerId: player?.id || null }
+    );
   };
 
   const closeForm = () => {
@@ -21435,6 +21409,10 @@ function App() {
       ? normalizeSquadEntry(player)
       : { ...createBlankGlobalPlayer(), teamId: contextTeamId };
     const flags = contextTeamId && activeTeam ? getRivalPlayerFlags(activeTeam.id, normalized.name) : {};
+    const contextTeam = teams.find((team) => String(team.id) === String(contextTeamId));
+    const ownRosterPlayerId = options.ownRosterPlayerId
+      || player?.ownRosterPlayerId
+      || (!player && (contextTeam?.isOwnClub || contextTeam?.teamKind === 'own') ? globalThis.crypto?.randomUUID?.() : null);
     setRivalPlayerSaveError('');
     setRivalPlayerPhotoError('');
     setRivalPlayerSaving(false);
@@ -21449,7 +21427,7 @@ function App() {
       originalTeamId: contextTeamId || null,
       teamId: contextTeamId || null,
       allowDuplicateCreate: false,
-      draft: { ...normalized, ownRosterPlayerId: options.ownRosterPlayerId || player?.ownRosterPlayerId || null, photoUrl: normalized.photoUrl || normalized.image || '', teamId: contextTeamId, role: flags.hiddenFromField ? 'Sin colocar' : normalized.role, captain: Boolean(flags.captain || normalized.captain), observed: Boolean(flags.observed || normalized.observed) },
+      draft: { ...normalized, ownRosterPlayerId, photoUrl: normalized.photoUrl || normalized.image || '', teamId: contextTeamId, role: flags.hiddenFromField ? 'Sin colocar' : normalized.role, captain: Boolean(flags.captain || normalized.captain), observed: Boolean(flags.observed || normalized.observed) },
     });
   };
 
@@ -21860,7 +21838,8 @@ function App() {
     }
     try {
       const draftTeam = teams.find((team) => String(team.id) === String(draft.teamId));
-      if ((draftTeam?.isOwnClub || draftTeam?.teamKind === 'own') && draft.ownRosterPlayerId) {
+      const isOwnTeamDraft = Boolean(draftTeam?.isOwnClub || draftTeam?.teamKind === 'own');
+      if (rivalPlayerModal.mode === 'edit' && isOwnTeamDraft && draft.ownRosterPlayerId) {
         const resolvedGlobalId = currentGlobalPlayer.globalPlayerId || currentGlobalPlayer.id;
         if (!isUuid(resolvedGlobalId)) throw new Error('El editor no dispone de un UUID global estable para este jugador.');
         await ensureOwnRosterGlobalLink({
@@ -21878,17 +21857,25 @@ function App() {
         if (unlinkError) throw unlinkError;
         if (!unlinkData?.removed_player_name) throw new Error('Supabase no confirmó la desvinculación del jugador rival.');
       }
-      const globalId = await saveGlobalPlayerProfile(supabase, draft);
-      const membershipId = draft.teamId
-        ? await ensureGlobalPlayerTeamMembership(supabase, {
-          playerId: globalId,
-          teamId: draft.teamId,
-          mode: draft.membershipMode || 'replace',
-          season: draft.season || '',
-          startDate: draft.startDate || null,
-        })
-        : null;
-      if (draftTeam?.isOwnClub || draftTeam?.teamKind === 'own') {
+      let globalId;
+      let membershipId;
+      if (rivalPlayerModal.mode === 'create' && isOwnTeamDraft) {
+        const atomicIdentity = await createOwnPlayerProfileAtomic(supabase, draft);
+        globalId = atomicIdentity.globalPlayerId;
+        membershipId = atomicIdentity.membershipId;
+      } else {
+        globalId = await saveGlobalPlayerProfile(supabase, draft);
+        membershipId = draft.teamId
+          ? await ensureGlobalPlayerTeamMembership(supabase, {
+            playerId: globalId,
+            teamId: draft.teamId,
+            mode: draft.membershipMode || 'replace',
+            season: draft.season || '',
+            startDate: draft.startDate || null,
+          })
+          : null;
+      }
+      if (isOwnTeamDraft) {
         const { error: googleFormsNameError } = await supabase
           .from('jugadores')
           .update({ google_forms_name: String(draft.googleFormsName || '').trim() || null })
@@ -22043,29 +22030,8 @@ function App() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-
-    setIsSavingPlayer(true);
-    setPlayerFormError('');
-
-    try {
-      const payload = createJugadorPayload(formState);
-      const request = editingId
-        ? supabase.from("jugadores").update(payload).eq("id", editingId)
-        : supabase.from("jugadores").insert(payload);
-      const { error: saveError } = await request;
-      if (saveError) throw saveError;
-
-      const jugadores = await getJugadores();
-      setPlayers(jugadores);
-      setEmpty(jugadores.length === 0);
-      setError(null);
-      setHomeActivityRefreshVersion((current) => current + 1);
-      closeForm();
-    } catch (saveError) {
-      setPlayerFormError(saveError.message || 'No se pudo guardar el jugador');
-    } finally {
-      setIsSavingPlayer(false);
-    }
+    setIsSavingPlayer(false);
+    setPlayerFormError('El alta legacy de jugadores propios está deshabilitada. Cierra esta ventana y utiliza el editor global.');
   };
 
   const handleDelete = async (player) => {

@@ -500,18 +500,29 @@ export const resolveOwnRosterGlobalPlayer = (rosterPlayer = {}, globalPlayers = 
   const profiles = safeArray(globalPlayers).filter((player) => player?.globalPlayerId || isUuid(player?.id));
   const failedStrategies = [];
   const linkedId = rosterPlayer.globalPlayerId || rosterPlayer.global_player_id;
-  if (linkedId) {
-    const player = profiles.find((profile) => String(profile.globalPlayerId || profile.id) === String(linkedId)) || null;
-    if (player) return { player, strategy: 'global_player_id', exact: true, failedStrategies };
-    failedStrategies.push('missing_global_player_id');
-  }
-
   const membershipId = rosterPlayer.membershipId || rosterPlayer.membership_id;
-  if (membershipId) {
-    const player = profiles.find((profile) => safeArray(profile.memberships).some((membership) => String(membership.id) === String(membershipId))) || null;
-    if (player) return { player, strategy: 'membership_id', exact: true, failedStrategies };
-    failedStrategies.push('missing_membership_id');
+  const linkedPlayer = linkedId
+    ? profiles.find((profile) => String(profile.globalPlayerId || profile.id) === String(linkedId)) || null
+    : null;
+  const membershipPlayer = membershipId
+    ? profiles.find((profile) => safeArray(profile.memberships).some((membership) => String(membership.id) === String(membershipId))) || null
+    : null;
+
+  if (linkedId && !linkedPlayer) {
+    return { player: null, strategy: 'broken_global_player_reference', exact: false, failedStrategies: ['missing_global_player_id'] };
   }
+  if (membershipId && !membershipPlayer) {
+    return { player: null, strategy: 'broken_membership_reference', exact: false, failedStrategies: ['missing_membership_id'] };
+  }
+  if (linkedPlayer && membershipPlayer
+      && String(linkedPlayer.globalPlayerId || linkedPlayer.id) !== String(membershipPlayer.globalPlayerId || membershipPlayer.id)) {
+    return { player: null, strategy: 'contradictory_global_and_membership_identity', exact: false, failedStrategies: [] };
+  }
+  if (linkedPlayer && membershipPlayer) {
+    return { player: linkedPlayer, strategy: 'global_player_id_membership_id', exact: true, failedStrategies };
+  }
+  if (linkedPlayer) return { player: linkedPlayer, strategy: 'global_player_id', exact: true, failedStrategies };
+  if (membershipPlayer) return { player: membershipPlayer, strategy: 'membership_id', exact: true, failedStrategies };
 
   const rosterId = rosterPlayer.id ? String(rosterPlayer.id) : '';
   if (rosterId) {
@@ -613,6 +624,35 @@ export const saveGlobalPlayerProfile = async (client, draft) => {
       throw new Error('El perfil se guardó, pero falta aplicar supabase_players_database_shirt_name.sql para guardar Nombre en camiseta.');
     }
     throw shirtNameError;
+  }
+  return data;
+};
+
+export const createOwnPlayerProfileAtomic = async (client, draft) => {
+  const ownPlayerId = draft.ownRosterPlayerId;
+  if (!isUuid(ownPlayerId)) throw new Error('Falta el UUID idempotente del nuevo jugador propio.');
+  const payload = buildGlobalPlayerRpcPayload({ ...draft, id: null, globalPlayerId: null, membershipId: null });
+  const { data, error } = await client.rpc('create_own_player_atomic', {
+    p_own_player_id: ownPlayerId,
+    p_player: {
+      ...payload.p_player,
+      googleFormsName: String(draft.googleFormsName || '').trim(),
+      number: draft.number || '',
+      season: draft.season || '',
+      startDate: draft.startDate || '',
+      role: draft.role || '',
+      captain: Boolean(draft.captain),
+      isKey: Boolean(draft.isKey),
+      observed: Boolean(draft.observed),
+      sourceUrl: draft.sources?.find((item) => item.isPrimary)?.url || '',
+    },
+    p_positions: payload.p_positions,
+    p_sources: payload.p_sources,
+    p_traits: payload.p_traits,
+  });
+  if (error) throw error;
+  if (!isUuid(data?.ownPlayerId) || !isUuid(data?.globalPlayerId) || !isUuid(data?.membershipId)) {
+    throw new Error('Supabase no confirmó la identidad atómica completa del jugador propio.');
   }
   return data;
 };

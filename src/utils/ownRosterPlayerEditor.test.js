@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   buildOwnRosterGlobalEditorDraft,
+  createOwnPlayerProfileAtomic,
   loadGlobalPlayerDatabase,
   normalizeGlobalPlayer,
   resolveOwnRosterGlobalPlayer,
@@ -39,7 +40,7 @@ const alexResolution = resolveOwnRosterGlobalPlayer({
   name: 'Alex González',
 }, profiles);
 assert.equal(alexResolution.player, alexProfile, 'A: un jugador ya vinculado se resuelve por global_player_id');
-assert.equal(alexResolution.strategy, 'global_player_id');
+assert.equal(alexResolution.strategy, 'global_player_id_membership_id');
 
 const ismaRoster = {
   id: ismaRosterId,
@@ -73,8 +74,23 @@ const staleDirectLinkResolution = resolveOwnRosterGlobalPlayer({
   id: ismaRosterId,
   globalPlayerId: '99999999-9999-4999-8999-999999999999',
 }, profiles);
-assert.equal(staleDirectLinkResolution.player, ismaProfile, 'un enlace directo obsoleto continúa hasta el mapa legacy en lugar de producir un no-op');
+assert.equal(staleDirectLinkResolution.player, null, 'una referencia global rota falla explícitamente aunque exista un mapa legacy');
+assert.equal(staleDirectLinkResolution.strategy, 'broken_global_player_reference');
 assert.deepEqual(staleDirectLinkResolution.failedStrategies, ['missing_global_player_id']);
+
+const contradictoryResolution = resolveOwnRosterGlobalPlayer({
+  globalPlayerId: alexGlobalId,
+  membershipId: 'isma-membership',
+}, profiles);
+assert.equal(contradictoryResolution.player, null, 'global_player_id y membership.player_id contradictorios nunca se consideran resueltos');
+assert.equal(contradictoryResolution.strategy, 'contradictory_global_and_membership_identity');
+
+const brokenMembershipResolution = resolveOwnRosterGlobalPlayer({
+  globalPlayerId: alexGlobalId,
+  membershipId: 'membership-inexistente',
+}, profiles);
+assert.equal(brokenMembershipResolution.player, null, 'una membership explícita inexistente no queda ocultada por un global_player_id válido');
+assert.equal(brokenMembershipResolution.strategy, 'broken_membership_reference');
 
 const legacyProfile = {
   id: '33333333-3333-4333-8333-333333333333',
@@ -131,6 +147,52 @@ assert.equal(loadedGlobalDatabase.available, true);
 assert.equal(resolveOwnRosterGlobalPlayer(ismaRoster, loadedGlobalDatabase.players).player?.id, ismaGlobalId, 'la carga real incorpora el mapa legacy antes de pulsar Editar');
 assert.equal(resolveOwnRosterGlobalPlayer(ismaRoster, loadedGlobalDatabase.players).player?.id, ismaGlobalId, 'cerrar y volver a resolver conserva la misma identidad global');
 
+const atomicCreateCalls = [];
+const atomicClient = {
+  rpc: async (name, args) => {
+    atomicCreateCalls.push({ name, args });
+    return {
+      data: {
+        status: atomicCreateCalls.length === 1 ? 'created' : 'already_created',
+        ownPlayerId: ismaRosterId,
+        globalPlayerId: ismaGlobalId,
+        membershipId: '77777777-7777-4777-8777-777777777777',
+      },
+      error: null,
+    };
+  },
+};
+const atomicDraft = {
+  ownRosterPlayerId: ismaRosterId,
+  name: 'Nuevo jugador propio',
+  shirtName: 'Nuevo',
+  dob: '2000-01-01',
+  teamId: 'caudal',
+  number: 18,
+  primaryNaturalPosition: 'midfielder',
+  memberships: [],
+};
+const firstAtomicCreate = await createOwnPlayerProfileAtomic(atomicClient, atomicDraft);
+const repeatedAtomicCreate = await createOwnPlayerProfileAtomic(atomicClient, atomicDraft);
+assert.equal(firstAtomicCreate.status, 'created');
+assert.equal(repeatedAtomicCreate.status, 'already_created');
+assert.equal(atomicCreateCalls.length, 2, 'el doble envío usa una única RPC por intento');
+assert.equal(atomicCreateCalls[0].name, 'create_own_player_atomic');
+assert.equal(atomicCreateCalls[0].args.p_own_player_id, atomicCreateCalls[1].args.p_own_player_id, 'los reintentos conservan la misma clave idempotente');
+
+for (const databaseError of ['PROFILE_CREATE_FAILED', 'MEMBERSHIP_CREATE_FAILED']) {
+  let unexpectedClientWrite = false;
+  const failingAtomicClient = {
+    rpc: async () => ({ data: null, error: new Error(databaseError) }),
+    from: () => {
+      unexpectedClientWrite = true;
+      throw new Error('No debe haber escrituras parciales desde el cliente');
+    },
+  };
+  await assert.rejects(() => createOwnPlayerProfileAtomic(failingAtomicClient, atomicDraft), new RegExp(databaseError));
+  assert.equal(unexpectedClientWrite, false, 'un fallo interno queda contenido en la única RPC transaccional');
+}
+
 const duplicatedExact = { ...ismaProfile, id: '55555555-5555-4555-8555-555555555555', globalPlayerId: '55555555-5555-4555-8555-555555555555' };
 assert.equal(resolveOwnRosterGlobalPlayer(ismaRoster, [...profiles, duplicatedExact]).player, null, 'una coincidencia exacta ambigua se bloquea para no fusionar ni duplicar');
 
@@ -138,10 +200,15 @@ const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8'
 const formSource = fs.readFileSync(new URL('../components/players/PlayerDatabaseForm.jsx', import.meta.url), 'utf8');
 const openFormSource = appSource.slice(appSource.indexOf('const openForm ='), appSource.indexOf('const closeForm ='));
 const linkSource = appSource.slice(appSource.indexOf('const ensureOwnRosterGlobalLink'), appSource.indexOf('const saveRivalPlayerFromModal'));
+const legacySubmitSource = appSource.slice(appSource.indexOf('const handleSubmit = async'), appSource.indexOf('const handleDelete = async'));
 assert.ok(openFormSource.includes('resolveOwnRosterGlobalPlayer(player, globalPlayers)'), 'Plantilla usa el resolvedor global compartido');
 assert.ok(openFormSource.includes('buildOwnRosterGlobalEditorDraft'), 'Plantilla abre el editor global con un adaptador de datos');
 assert.ok(openFormSource.includes('No se abrirá el editor legacy ni se creará un duplicado'), 'una identidad ambigua no cae silenciosamente al formulario alternativo');
 assert.ok(openFormSource.includes("console.error('[OWN_PLAYER_EDITOR_RESOLUTION_FAILED]'"), 'un fallo total deja diagnóstico visible en desarrollo');
+assert.ok(openFormSource.includes('El alta y la edición legacy están deshabilitadas'), 'Plantilla no reabre el alta parcial si falta la base global');
+assert.ok(!legacySubmitSource.includes('.insert(') && !legacySubmitSource.includes('.update('), 'el submit legacy ya no puede escribir jugadores parciales');
+assert.ok(appSource.includes('createOwnPlayerProfileAtomic(supabase, draft)'), 'el alta propia usa la RPC atómica dedicada');
+assert.doesNotMatch(appSource, /from\(["']jugadores["']\)\s*\.insert\(/, 'ningún flujo React puede insertar directamente una fila propia parcial');
 assert.ok(linkSource.includes(".from('jugadores')") && linkSource.includes('.update({ global_player_id: globalPlayerId })'), 'guardar repara el enlace de la fila existente');
 assert.ok(!linkSource.includes('.insert('), 'la reparación de identidad no crea jugadores ni membresías');
 assert.ok(formSource.includes('Editar jugador global') && formSource.includes('Nombre en camiseta') && formSource.includes('Nombre en Google Forms'), 'el editor unificado conserva los campos propios');
