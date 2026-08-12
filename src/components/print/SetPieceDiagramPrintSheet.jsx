@@ -35,12 +35,13 @@ function PrintPlay({ play }) {
   ].filter(Boolean).join(' ');
   return (
     <section className="set-piece-print-play" data-play-order={play.order} data-play-id={play.id || ''} data-has-chronology={hasChronology ? 'true' : 'false'}>
-      <header className="set-piece-print-play-header">
+      <header className="set-piece-print-play-header" data-has-signal={play.signal ? 'true' : 'false'}>
         <div className="set-piece-print-play-heading">
           <div className="set-piece-print-play-kicker"><strong>{play.typeLabel}</strong><span>Jugada {play.order}</span></div>
           <h2>{play.title}</h2>
           {play.headerFacts.length ? <div className="set-piece-print-header-facts">{play.headerFacts.map((fact) => <span key={fact.id}><b>{fact.label}:</b><strong>{fact.value}</strong></span>)}</div> : null}
         </div>
+        {play.signal ? <section className="set-piece-print-signal" aria-label={`Señal de la jugada: ${play.signal}`}><span>Señal</span><strong>{play.signal}</strong></section> : null}
       </header>
 
       <div className={bodyClassName}>
@@ -78,12 +79,14 @@ function PrintPlay({ play }) {
           {hasIndications ? (
             <section className="set-piece-print-indications">
               <h3>Indicaciones</h3>
-              <ul>
+              <ul className={indications.length > 6 ? 'set-piece-print-indications-dense' : ''}>
                 {indications.map((item) => (
                   <li key={item.id}>
-                    {item.identity ? <strong>{item.identity}</strong> : null}
-                    {item.role ? <span className="set-piece-print-indication-role">{item.identity ? ' · ' : ''}{item.role}</span> : null}
-                    {item.instruction ? <span className="set-piece-print-indication-text">{item.identity || item.role ? ' — ' : ''}{item.instruction}</span> : null}
+                    <div className="set-piece-print-indication-identity">
+                      {item.dorsal ? <b>{item.dorsal}</b> : null}
+                      {item.playerName && item.playerName !== item.dorsal ? <strong>{item.playerName}</strong> : null}
+                    </div>
+                    {item.instruction ? <p className="set-piece-print-indication-text">{item.instruction}</p> : null}
                   </li>
                 ))}
               </ul>

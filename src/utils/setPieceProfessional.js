@@ -58,6 +58,7 @@ export const SET_PIECE_ROLES = [
 
 export const createDefaultSetPieceTacticalMeta = () => ({
   version: 3,
+  signal: '',
   objective: '',
   saqueType: '',
   whenToUse: '',
@@ -111,6 +112,7 @@ export const normalizeSetPieceTacticalMeta = (value) => {
   return {
     ...defaults,
     version: 3,
+    signal: preserveText(source.signal),
     objective: preserveText(source.objective),
     saqueType: preserveText(source.saqueType || source.saque_type || source.typeOfSaque),
     whenToUse: preserveText(source.whenToUse),
@@ -367,16 +369,26 @@ export const getSetPieceIndividualInstructions = (elements, players = []) => {
     .map((element, sourceIndex) => ({ element, sourceIndex }))
     .filter(({ element }) => ['player', 'opponent'].includes(element.type) && cleanString(element.note))
     .sort((left, right) => {
-      const leftOrder = Number(left.element.sequenceOrder) > 0 ? Number(left.element.sequenceOrder) : Number.MAX_SAFE_INTEGER;
-      const rightOrder = Number(right.element.sequenceOrder) > 0 ? Number(right.element.sequenceOrder) : Number.MAX_SAFE_INTEGER;
-      return leftOrder - rightOrder || left.sourceIndex - right.sourceIndex;
+      const getNumericDorsal = (element) => {
+        const player = playersById.get(element.player_id);
+        const dorsal = cleanString(player?.number ?? player?.dorsal ?? element.label);
+        const numericDorsal = Number(dorsal);
+        return dorsal && Number.isFinite(numericDorsal) ? numericDorsal : Number.MAX_SAFE_INTEGER;
+      };
+      return getNumericDorsal(left.element) - getNumericDorsal(right.element) || left.sourceIndex - right.sourceIndex;
     })
-    .map(({ element }) => ({
-      id: element.id,
-      playerName: getSetPiecePlayerName(element, playersById) || cleanString(element.roles?.[0]) || `Jugador ${element.label || ''}`.trim(),
-      role: cleanString(element.roles?.[0]),
-      instruction: cleanString(element.note),
-    }));
+    .map(({ element }) => {
+      const player = playersById.get(element.player_id);
+      const dorsal = cleanString(player?.number ?? player?.dorsal ?? element.label);
+      const resolvedName = getSetPiecePlayerName(element, playersById);
+      return {
+        id: element.id,
+        dorsal,
+        playerName: resolvedName || (!dorsal ? cleanString(element.roles?.[0]) || 'Jugador' : ''),
+        role: cleanString(element.roles?.[0]),
+        instruction: cleanString(element.note),
+      };
+    });
 };
 
 export const getSetPieceResponsibilities = (elements, players = []) => {

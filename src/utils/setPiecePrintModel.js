@@ -92,6 +92,7 @@ export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder
       destination ? { id: 'destination', label: 'Destino', value: destination } : null,
       delivery ? { id: 'delivery', label: 'Golpeo', value: delivery } : null,
     ].filter(Boolean),
+    signal: getMeaningfulSetPiecePrintText(meta.signal),
     instruction: getMeaningfulSetPiecePrintText(diagram?.consigna || meta.generalInstruction),
     objective: getMeaningfulSetPiecePrintText(meta.objective),
     whenToUse: getMeaningfulSetPiecePrintText(meta.whenToUse),

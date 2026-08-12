@@ -29,6 +29,7 @@ const drawable = [
 
 const meta = {
   ...createDefaultSetPieceTacticalMeta(),
+  signal: 'MANO ARRIBA',
   objective: 'Liberar segundo palo',
   alternative: 'Saque corto',
   rating: 4,
@@ -41,6 +42,7 @@ const meta = {
 const stored = setSetPieceTacticalMeta(drawable, meta);
 assert.equal(stored.length, drawable.length + 1, 'la ficha se guarda dentro del JSON existente');
 assert.deepEqual(getDrawableSetPieceElements(stored), drawable, 'el renderer del editor no recibe metadatos');
+assert.equal(getSetPieceTacticalMeta(stored).signal, 'MANO ARRIBA', 'SEÑAL se guarda dentro del tactical_meta existente');
 assert.equal(getSetPieceTacticalMeta(stored).objective, 'Liberar segundo palo');
 assert.equal(getSetPieceTacticalMeta(stored).alternative, 'Saque corto');
 assert.equal(getSetPieceTacticalMeta(stored).saqueType, '', 'el tipo de saque se normaliza por defecto');
@@ -56,6 +58,7 @@ assert.equal(getSetPieceTacticalMeta(setSetPieceTacticalMeta(drawable, { ...meta
 const exactText = '  Bloquear primer palo y atacar zona media  \nSegunda línea con tildes, ñ y signos.  ';
 const exactTextMeta = getSetPieceTacticalMeta(setSetPieceTacticalMeta(drawable, {
   ...meta,
+  signal: exactText,
   objective: exactText,
   saqueType: exactText,
   whenToUse: exactText,
@@ -64,7 +67,7 @@ const exactTextMeta = getSetPieceTacticalMeta(setSetPieceTacticalMeta(drawable, 
   alternative: exactText,
   observations: exactText,
 }));
-['objective', 'saqueType', 'whenToUse', 'generalInstruction', 'risk', 'alternative', 'observations'].forEach((field) => {
+['signal', 'objective', 'saqueType', 'whenToUse', 'generalInstruction', 'risk', 'alternative', 'observations'].forEach((field) => {
   assert.equal(exactTextMeta[field], exactText, `${field} conserva espacios y saltos de línea al guardar y recargar`);
 });
 const exactElementText = 'Atacar segundo palo\nDespués, cerrar transición ñ.';
@@ -135,8 +138,9 @@ assert.deepEqual(
   'la identidad prioriza nombre de camiseta, abreviatura configurada o nombre corto sin recortarlos a tres letras',
 );
 const individualInstructions = getSetPieceIndividualInstructions(identityElements, identityPlayers);
-assert.deepEqual(individualInstructions.map((item) => item.instruction), ['fijar', 'correr', 'atacar primer palo'], 'las consignas individuales se conservan aunque se presenten fuera de Cronología');
-assert.deepEqual(individualInstructions.map((item) => item.playerName), ['BOZA', 'AGUS PORTO', 'ACERETE'], 'las indicaciones usan identidades reales en orden estable');
+assert.deepEqual(individualInstructions.map((item) => item.dorsal), ['4', '9', '10'], 'las indicaciones se ordenan por dorsal numérico, no por cronología ni string');
+assert.deepEqual(individualInstructions.map((item) => item.instruction), ['fijar', 'atacar primer palo', 'correr'], 'las consignas individuales se conservan en el orden de dorsal');
+assert.deepEqual(individualInstructions.map((item) => item.playerName), ['BOZA', 'ACERETE', 'AGUS PORTO'], 'las indicaciones reutilizan la identidad real en orden de dorsal');
 assert.equal(getSetPieceIndividualInstructions([...identityElements, { id: 'empty-note', type: 'player', x: 80, y: 30, label: '6', note: '' }], identityPlayers).length, 3, 'una consigna vacía no genera texto inventado');
 
 const fallbackIdentities = optimizeSetPieceElementsForPrint([

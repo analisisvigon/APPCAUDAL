@@ -50,6 +50,7 @@ const baseElements = [
   { id: 'text-1', type: 'text', x: 52, y: 45, label: 'SEGUNDA JUGADA' },
 ];
 const printMeta = {
+  signal: 'MANO ARRIBA',
   objective: 'Liberar segundo palo',
   generalInstruction: 'Fijar y atacar con tres alturas.',
   whenToUse: 'Ante marcaje zonal.',
@@ -156,14 +157,19 @@ const identityOffModel = buildSetPiecePrintPlayModel(identityOffDiagram, identit
 assert.deepEqual(identityOffModel.chronology, [], 'Cronología OFF elimina orden y Secuencia');
 assert.deepEqual(identityOffModel.individualInstructions.map((item) => [item.identity, item.instruction]), [
   ['BOZA', 'fijar al central'],
-  ['AGUS PORTO', 'correr'],
   ['ACERETE', 'atacar primer palo'],
-], 'Cronología OFF conserva las consignas en Indicaciones con identidad útil');
+  ['AGUS PORTO', 'correr'],
+], 'Cronología OFF conserva las consignas en Indicaciones con identidad útil y orden de dorsal');
+assert.deepEqual(identityOffModel.individualInstructions.map((item) => [item.dorsal, item.playerName]), [
+  ['4', 'BOZA'],
+  ['9', 'ACERETE'],
+  ['10', 'AGUS PORTO'],
+], 'cada indicación expone dorsal e identidad real por separado');
 
 assert.equal(getMeaningfulSetPiecePrintText('Consigna pendiente de definir'), '');
 assert.equal(getMeaningfulSetPiecePrintText('Sin observaciones.'), '');
 const emptyModel = buildSetPiecePrintPlayModel(createPlay('empty', 1, { generalInstruction: 'Consigna pendiente de definir', objective: 'Sin definir', risk: 'Sin riesgo', alternative: 'Sin alternativa', observations: 'Sin observaciones' }));
-assert.equal(emptyModel.instruction || emptyModel.objective || emptyModel.risk || emptyModel.alternative || emptyModel.observations, '', 'los placeholders no generan bloques');
+assert.equal(emptyModel.signal || emptyModel.instruction || emptyModel.objective || emptyModel.risk || emptyModel.alternative || emptyModel.observations, '', 'los placeholders no generan bloques');
 assert.deepEqual(emptyModel.headerFacts, [], 'Destino y Golpeo vacíos no generan una fila');
 assert.deepEqual(printModel.headerFacts, [
   { id: 'destination', label: 'Destino', value: 'Segundo palo' },
@@ -172,6 +178,8 @@ assert.deepEqual(printModel.headerFacts, [
 assert.equal(JSON.stringify(printModel.headerFacts).includes('Bloqueo') || JSON.stringify(printModel.headerFacts).includes('Zonal'), false, 'mecanismo y marcaje no llegan visualmente a la cabecera');
 assert.equal(printModel.deliveryType, 'closed');
 assert.equal(printModel.deliveryTypeLabel, 'Cerrado');
+assert.equal(printModel.signal, 'MANO ARRIBA', 'SEÑAL llega al modelo impreso como concepto propio');
+assert.equal(printModel.objective, 'Liberar segundo palo', 'CLAVE conserva su valor independiente de SEÑAL');
 const undefinedDeliveryModel = buildSetPiecePrintPlayModel(createPlay('delivery-undefined', 1, { ...printMeta, deliveryType: '' }));
 assert.deepEqual(undefinedDeliveryModel.headerFacts, [{ id: 'destination', label: 'Destino', value: 'Segundo palo' }], 'golpeo sin definir deja únicamente Destino');
 const undefinedDestinationModel = buildSetPiecePrintPlayModel(createPlay('destination-undefined', 1, { ...printMeta, libraryZone: '' }));
@@ -196,6 +204,8 @@ assert.ok(canvas.includes('const showDorsal = normalizedVisibleLayers.dorsals') 
 assert.ok(editor.includes('{visibleLayers.chronology ? <section') && sheet.includes('play.chronology.length > 0'), 'Cronología OFF elimina el bloque inferior del editor y la Secuencia impresa');
 assert.ok(sheet.includes("step.role ? <span>{step.identity ? ' · ' : ''}{step.role}</span> : null"), 'Roles OFF no deja etiquetas de rol en la Secuencia');
 assert.ok(sheet.includes('<h3>Indicaciones</h3>') && sheet.includes('play.individualInstructions'), 'las consignas individuales tienen un bloque independiente de Cronología');
+assert.ok(sheet.includes('set-piece-print-signal') && sheet.includes('Señal de la jugada:'), 'la señal tiene un bloque semántico propio en cabecera');
+assert.ok(sheet.includes('item.dorsal') && sheet.includes('item.playerName') && sheet.includes('set-piece-print-indication-text'), 'cada indicación separa dorsal, nombre e instrucción');
 assert.match(css, /\.set-piece-print-operational-details section \{\s*display: block;/, 'Clave, Riesgo y Alternativa usan etiqueta y texto apilados');
 assert.equal(css.includes('grid-template-columns: 28mm minmax(0, 1fr)'), false, 'el bloque lateral ya no usa una tabla comprimida');
 assert.ok(canvas.includes('Number(element.x) + 4.1') && canvas.includes('Number(element.y) - 4.1') && canvas.includes('stroke="white"'), 'el número cronológico se separa visualmente del dorsal');
@@ -206,5 +216,60 @@ assert.ok(sheet.includes('preparedForPrint') && sheet.includes('data-render-mode
 assert.ok(sheet.includes('play.headerFacts.length') && sheet.includes('fact.label') && sheet.includes('fact.value'), 'preview, PDF e impresión comparten la cabecera Destino/Golpeo');
 assert.equal(sheet.includes('play.classifications'), false, 'la cabecera ya no renderiza chips tácticos genéricos');
 assert.ok(css.includes('.set-piece-print-header-facts strong') && css.includes('font-size: 9pt') && css.includes('border-left: 1.25pt solid #111827'), 'Destino/Golpeo tienen jerarquía compacta y contraste apto para B/N');
+assert.match(css, /\.set-piece-print-signal \{[\s\S]*border: 1\.4pt solid #111827;/, 'SEÑAL conserva jerarquía visible también en blanco y negro');
+assert.match(css, /\.set-piece-print-indication-identity b \{[\s\S]*border: 0\.8pt solid #111827;/, 'el dorsal no depende de un fondo de color para destacar');
+
+const controlDorsals = [11, 6, 5, 4, 10, 9, 22, 14, 21, 19];
+const controlPlayers = controlDorsals.map((dorsal) => ({
+  id: `control-player-${dorsal}`,
+  number: String(dorsal),
+  name: `Nombre completo ${dorsal}`,
+  shirt_name: dorsal === 5 ? 'J. RODRÍGUEZ' : `JUGADOR ${dorsal}`,
+}));
+const controlElements = [
+  ...controlDorsals.map((dorsal, index) => ({
+    id: `control-element-${dorsal}`,
+    type: 'player',
+    x: 12 + (index % 5) * 18,
+    y: 20 + Math.floor(index / 5) * 24,
+    label: String(dorsal),
+    player_id: `control-player-${dorsal}`,
+    roles: ['Movimiento'],
+    sequenceOrder: controlDorsals.length - index,
+    note: dorsal === 5
+      ? 'Movimiento desde punto de penalti a primera zona y continuación hacia el segundo balón'
+      : `Indicación individual del dorsal ${dorsal}`,
+  })),
+  { id: 'control-without-note', type: 'player', x: 50, y: 60, label: '2', player_id: 'control-player-without-note', note: '' },
+  { id: 'control-ball', type: 'ball', x: 7, y: 8 },
+  { id: 'control-arrow', type: 'arrow', x1: 20, y1: 30, x2: 68, y2: 18 },
+];
+const controlMeta = {
+  ...printMeta,
+  signal: 'MANO ARRIBA',
+  objective: 'Balón a 1ª zona tras bloqueos al rematador',
+  libraryZone: 'Primer palo',
+  deliveryType: 'open',
+  displayLayers: { dorsals: true, abbreviations: true, roles: true, chronology: false, zones: true, texts: true },
+};
+const controlDiagram = {
+  id: 'control-desde-atras',
+  orden: 1,
+  tipo: 'corner_ofensivo',
+  titulo: 'Desde atrás',
+  elements: setSetPieceTacticalMeta(controlElements, controlMeta),
+};
+const controlModel = buildSetPiecePrintPlayModel(controlDiagram, controlPlayers, 1);
+assert.equal(controlModel.signal, 'MANO ARRIBA', 'A: la jugada de control imprime la señal');
+assert.equal(controlModel.objective, 'Balón a 1ª zona tras bloqueos al rematador', 'B: la clave no se sustituye por la señal');
+assert.deepEqual(controlModel.individualInstructions.map((item) => Number(item.dorsal)), [4, 5, 6, 9, 10, 11, 14, 19, 21, 22], 'C: orden numérico obligatorio de los diez dorsales');
+assert.equal(controlModel.individualInstructions.every((item) => item.dorsal && item.playerName), true, 'D: todas las indicaciones muestran dorsal y nombre real');
+assert.match(controlModel.individualInstructions.find((item) => item.dorsal === '5').instruction, /continuación hacia el segundo balón/, 'E: la consigna larga llega completa y puede envolver');
+assert.equal(controlModel.individualInstructions.some((item) => item.id === 'control-without-note'), false, 'F: un jugador sin consigna no genera una fila inventada');
+assert.deepEqual(controlModel.chronology, [], 'G: Cronología OFF no genera Secuencia');
+assert.equal(controlModel.individualInstructions.length, 10, 'G: Cronología OFF conserva las diez indicaciones');
+const twoControlPlays = buildSetPiecePrintPages([controlDiagram, { ...controlDiagram, id: 'control-desde-atras-2', orden: 2 }], controlPlayers);
+assert.deepEqual(twoControlPlays.map((page) => page.plays.length), [2], 'H: dos jugadas siguen agrupadas en una sola página A4');
+assert.deepEqual(getSetPieceGeometrySnapshot(controlModel.elements), getSetPieceGeometrySnapshot(controlDiagram.elements), 'J: el modelo de QA no modifica geometría táctica');
 
 console.log('setPiecePrintLayout tests passed');

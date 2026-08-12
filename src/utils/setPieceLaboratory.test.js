@@ -60,6 +60,7 @@ assert.deepEqual(validateSetPieceLaboratoryMeta({ ...getSetPieceLaboratoryMeta(d
 
 const tacticalMeta = {
   ...getSetPieceTacticalMeta(draft.elements),
+  signal: 'MANO ARRIBA',
   objective: 'Liberar segundo palo',
   generalInstruction: 'Bloquear y atacar',
   libraryZone: 'Segundo palo',
@@ -79,6 +80,7 @@ const payload = buildSetPieceLaboratoryPayload(draft);
 assert.equal(payload.id, draft.id);
 assert.equal(payload.categoria, SET_PIECE_LAB_CATEGORY);
 assert.equal(payload.objetivo, 'Liberar segundo palo');
+assert.equal(getSetPieceTacticalMeta(payload.elements).signal, 'MANO ARRIBA', 'SEÑAL persiste en elements/tactical_meta sin columna nueva');
 assert.equal(getSetPieceTacticalMeta(payload.elements).linkStatus, 'master');
 const offensivePayload = buildSetPieceLaboratoryPayload({ ...draft, categoria: 'ABP Ofensiva' });
 assert.equal(offensivePayload.categoria, 'ABP Ofensiva', 'editar una ABP histórica conserva su categoría y no crea otra fila');
@@ -197,6 +199,8 @@ assert.ok(editor.includes('Solo estructura') && editor.includes('Restaurar capas
 assert.ok(editor.includes('displayLayersBeforeStructure') && editor.includes('toggleDisplayLayer'), 'las capas se guardan en tactical_meta y no en localStorage');
 assert.equal(editor.includes('setVisibleLayers'), false, 'el editor usa la configuración persistida como única fuente de verdad');
 assert.ok(editor.includes('Identidad en dossier') && editor.includes('updateIdentityMode'), 'se mantienen los modos Dorsal, Abreviatura y Dorsal + abreviatura sincronizados con las capas');
+assert.ok(editor.includes('label="Señal de la jugada"') && editor.includes('placeholder="Ej. Mano arriba"'), 'Laboratorio y Dossier comparten el campo manual SEÑAL dentro de Ficha');
+assert.ok(component.includes('meta.signal') && component.includes('>Señal<'), 'la vista previa del Laboratorio presenta SEÑAL sin reutilizar Objetivo');
 assert.ok(editor.includes('EditorAccordion') && editor.includes('aria-expanded={open}') && editor.includes('openSections'), 'el panel usa acordeones accesibles y recuerda su estado durante la edición');
 assert.ok(editor.includes("setPanel(['player', 'opponent'].includes(element?.type) ? 'player' : 'tactic')"), 'la selección de un participante abre Rol y el resto conserva Ficha');
 assert.ok(editor.includes("disabled={disabled}") && editor.includes("id === 'player' && !isSelectedPlayer"), 'Rol no se muestra sin participante seleccionado');

@@ -503,6 +503,7 @@ export default function SetPieceDiagramEditor({
                   <div className="my-4 rounded-2xl bg-caudal-electric/[0.08] p-4 text-xs leading-5 text-slate-300 ring-1 ring-caudal-electric/20">El objetivo y las claves colectivas se editan en la ficha superior. Este panel se centra en el dibujo táctico y sus elementos.</div>
                 ) : <>
                 <EditorAccordion id="ficha" title="Ficha" open={openSections.ficha} onToggle={() => toggleSection('ficha')}>
+                  <TacticalField label="Señal de la jugada" value={tacticalMeta.signal} onChange={(signal) => updateMeta({ signal })} placeholder="Ej. Mano arriba" />
                   <TacticalField label="Objetivo" value={tacticalMeta.objective} onChange={(objective) => updateMeta({ objective })} placeholder="Liberar segundo palo" />
                   <TacticalField label="Tipo de saque" value={tacticalMeta.saqueType} onChange={(saqueType) => updateMeta({ saqueType })} placeholder="Saque corto, de banda, de inicio..." />
                   <TacticalField label="Cuándo utilizarla" value={tacticalMeta.whenToUse} onChange={(whenToUse) => updateMeta({ whenToUse })} placeholder={'Primeros córners.\nSi el rival marca en zona.'} rows={3} />
