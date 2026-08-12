@@ -132,6 +132,7 @@ export const createDefaultSetPieceTacticalMeta = () => ({
 
 const cleanString = (value) => String(value || '').trim();
 const preserveText = (value) => value === null || value === undefined ? '' : String(value);
+const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 
 export const normalizeSetPieceTacticalMeta = (value) => {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -157,11 +158,11 @@ export const normalizeSetPieceTacticalMeta = (value) => {
     version: 3,
     signal: preserveText(source.signal),
     objective: preserveText(source.objective),
-    saqueType: preserveText(source.saqueType || source.saque_type || source.typeOfSaque),
+    saqueType: preserveText(hasOwn(source, 'saqueType') ? source.saqueType : source.saque_type ?? source.typeOfSaque),
     whenToUse: preserveText(source.whenToUse),
     generalInstruction: preserveText(source.generalInstruction),
     risk: preserveText(source.risk),
-    alternative: preserveText(source.alternative || source.variation || legacyAlternative),
+    alternative: preserveText(hasOwn(source, 'alternative') ? source.alternative : source.variation ?? legacyAlternative),
     observations: preserveText(source.observations),
     collectiveInstructions: (Array.isArray(source.collectiveInstructions) ? source.collectiveInstructions : [])
       .map((instruction, index) => {

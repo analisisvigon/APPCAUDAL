@@ -14,7 +14,10 @@ import {
   getSetPieceLaboratoryMeta,
   getSetPieceLabType,
   isSetPieceLibraryItem,
+  mergeSetPieceLaboratoryEditorChange,
   prepareSetPieceLaboratoryItem,
+  saveSetPieceLaboratoryDraft,
+  upsertSetPieceLaboratoryItem,
   validateSetPieceLaboratoryMeta,
 } from '../../utils/setPieceLaboratory';
 import {
@@ -94,7 +97,7 @@ function LaboratoryPreview({ item, onClose }) {
             {meta.signal ? <section className="rounded-2xl border border-caudal-electric/25 bg-caudal-electric/[0.08] p-4"><h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">Señal</h3><p className="mt-2 text-lg font-black text-white">{meta.signal}</p></section> : null}
             {defensiveStructure ? <section className="rounded-2xl bg-white/[0.05] p-4"><h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">Estructura</h3><p className="mt-2 font-black uppercase leading-6 text-white">{defensiveStructure}</p></section> : null}
             <section className="rounded-2xl bg-white/[0.05] p-4"><h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">{defensive ? 'Clave defensiva' : 'Objetivo'}</h3><p className="mt-2 leading-6">{meta.objective || 'Sin definir.'}</p></section>
-            <section className="rounded-2xl bg-white/[0.05] p-4"><h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">Consigna</h3><p className="mt-2 leading-6">{meta.generalInstruction || item.descripcion || 'Sin consigna definida.'}</p></section>
+            <section className="rounded-2xl bg-white/[0.05] p-4"><h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">Consigna</h3><p className="mt-2 leading-6">{meta.generalInstruction || 'Sin consigna definida.'}</p></section>
             {meta.displayLayers.chronology ? <section className="rounded-2xl bg-white/[0.05] p-4"><h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">Cronología</h3>{chronology.length ? <ol className="mt-2 space-y-2">{chronology.map((step) => <li key={step.id} className="grid grid-cols-[28px_1fr] gap-2"><b className="flex h-7 w-7 items-center justify-center rounded-full bg-caudal-electric text-slate-950">{step.order}</b><span><strong className="text-white">{step.playerName}</strong>{meta.displayLayers.roles && step.role ? ` · ${step.role}` : ''}{step.instruction ? ` — ${step.instruction}` : ''}</span></li>)}</ol> : <p className="mt-2 text-slate-500">Sin pasos definidos.</p>}</section> : null}
           </div>
         </div>
@@ -109,7 +112,7 @@ function LaboratoryPrintPreview({ items, onClose }) {
   const printDiagrams = items.map((item, index) => ({
     ...item,
     titulo: item.titulo || item.nombre,
-    consigna: item.consigna || getSetPieceLaboratoryMeta(item).generalInstruction || item.descripcion,
+    consigna: item.consigna ?? getSetPieceLaboratoryMeta(item).generalInstruction,
     orden: Number(item.orden) || index + 1,
   }));
   useEffect(() => {
@@ -232,16 +235,9 @@ export default function SetPieceLaboratory() {
     setSaving(true);
     setError('');
     try {
-      const payload = buildSetPieceLaboratoryPayload(draft);
-      const { id, ...fields } = payload;
-      const request = draft.isNew
-        ? supabase.from('training_library').insert(payload).select('*').single()
-        : supabase.from('training_library').update(fields).eq('id', draft.id).select('*').single();
-      const { data, error: saveError } = await request;
-      if (saveError) throw saveError;
-      const saved = prepareSetPieceLaboratoryItem(data);
-      setItems((current) => draft.isNew ? [saved, ...current] : current.map((item) => item.id === saved.id ? saved : item));
-      setStatus(draft.isNew ? 'Jugada creada en el Laboratorio ABP.' : 'Jugada actualizada.');
+      const { inserted, saved } = await saveSetPieceLaboratoryDraft(supabase, draft);
+      setItems((current) => upsertSetPieceLaboratoryItem(current, saved, inserted));
+      setStatus(inserted ? 'Jugada creada en el Laboratorio ABP.' : 'Jugada actualizada.');
       returnToGallery();
     } catch (saveError) {
       console.error('Error guardando jugada del Laboratorio ABP:', saveError);
@@ -341,11 +337,11 @@ export default function SetPieceLaboratory() {
           </div>
         </header>
         <SetPieceDiagramEditor
-          diagram={{ ...draft, titulo: draft.nombre, consigna: getSetPieceTacticalMeta(draft.elements).generalInstruction || draft.descripcion }}
+          diagram={{ ...draft, titulo: draft.nombre, consigna: getSetPieceTacticalMeta(draft.elements).generalInstruction }}
           players={[]}
           roleOnly
           renderMode="abp"
-          onChange={(next) => setDraft((current) => ({ ...current, nombre: next.titulo ?? current.nombre, descripcion: next.consigna ?? current.descripcion, elements: next.elements || current.elements }))}
+          onChange={(next) => setDraft((current) => mergeSetPieceLaboratoryEditorChange(current, next))}
         />
         {previewItem ? <LaboratoryPreview item={previewItem} onClose={() => setPreviewItem(null)} /> : null}
       </section>

@@ -126,6 +126,14 @@ const migrated = getSetPieceTacticalMeta(setSetPieceTacticalMeta([], {
 }));
 assert.equal(migrated.alternative, 'Alternativa heredada', 'los datos antiguos migran a Alternativa textual');
 assert.equal('variants' in migrated, false, 'las variantes gráficas aparentes desaparecen del contrato normalizado');
+const clearedLegacyAliases = getSetPieceTacticalMeta(setSetPieceTacticalMeta([], {
+  saqueType: '',
+  saque_type: 'Saque antiguo',
+  alternative: '',
+  variation: 'Alternativa antigua',
+}));
+assert.equal(clearedLegacyAliases.saqueType, '', 'un Tipo de saque vacío explícito no revive un alias legacy');
+assert.equal(clearedLegacyAliases.alternative, '', 'una Alternativa vacía explícita no revive variation');
 
 const chronology = getSetPieceChronology(stored, players);
 assert.deepEqual(chronology.map((step) => step.order), [1, 2]);

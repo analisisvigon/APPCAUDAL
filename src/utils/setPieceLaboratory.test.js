@@ -12,11 +12,15 @@ import {
   filterAndSortSetPieceLaboratoryItems,
   getSetPieceLaboratoryMeta,
   getTrainingLibrarySection,
+  hasStoredSetPieceTacticalMeta,
   isSetPieceLibraryItem,
   isSetPieceLaboratoryItem,
+  mergeSetPieceLaboratoryEditorChange,
   normalizeTrainingLibraryClassification,
   partitionTrainingLibraryItems,
   prepareSetPieceLaboratoryItem,
+  saveSetPieceLaboratoryDraft,
+  upsertSetPieceLaboratoryItem,
   validateSetPieceLaboratoryMeta,
 } from './setPieceLaboratory.js';
 import { getSetPieceTacticalMeta, setSetPieceTacticalMeta } from './setPieceProfessional.js';
@@ -117,6 +121,281 @@ assert.equal(clearedPayload.objetivo, '', 'vaciar el objetivo no recupera un val
 assert.equal(clearedPayload.descripcion, '', 'vaciar la consigna no recupera un valor antiguo de la columna legacy');
 assert.equal(clearedPayload.variantes, '', 'vaciar la alternativa no recupera un valor antiguo de la columna legacy');
 assert.equal(prepareSetPieceLaboratoryItem({ ...payload, tipo: 'tipo_inexistente' }).tipo, 'corner_ofensivo', 'un tipo antiguo no crea categorías paralelas');
+
+const legacyOnlyRow = {
+  ...payload,
+  id: 'legacy-only-row',
+  descripcion: 'Consigna desde columna legacy',
+  objetivo: 'Objetivo desde columna legacy',
+  variantes: 'Alternativa desde columna legacy',
+  elements: [{ id: 'legacy-ball', type: 'ball', x: 8, y: 8 }],
+};
+assert.equal(hasStoredSetPieceTacticalMeta(legacyOnlyRow.elements), false);
+const migratedLegacyOnlyRow = prepareSetPieceLaboratoryItem(legacyOnlyRow);
+assert.equal(getSetPieceLaboratoryMeta(migratedLegacyOnlyRow).generalInstruction, 'Consigna desde columna legacy', 'una fila realmente legacy se migra una sola vez a tactical_meta');
+assert.equal(hasStoredSetPieceTacticalMeta(migratedLegacyOnlyRow.elements), true);
+
+const canonicalEmptyRow = {
+  ...legacyOnlyRow,
+  id: 'canonical-empty-row',
+  elements: setSetPieceTacticalMeta(legacyOnlyRow.elements, {
+    ...getSetPieceTacticalMeta([]),
+    objective: '',
+    generalInstruction: '',
+    alternative: '',
+  }),
+};
+const preparedCanonicalEmptyRow = prepareSetPieceLaboratoryItem(canonicalEmptyRow);
+assert.equal(getSetPieceLaboratoryMeta(preparedCanonicalEmptyRow).objective, '', 'un objetivo vacío canónico no revive la columna legacy');
+assert.equal(getSetPieceLaboratoryMeta(preparedCanonicalEmptyRow).generalInstruction, '', 'una consigna vacía canónica no revive la columna legacy');
+assert.equal(getSetPieceLaboratoryMeta(preparedCanonicalEmptyRow).alternative, '', 'una alternativa vacía canónica no revive la columna legacy');
+assert.equal(preparedCanonicalEmptyRow.objetivo, '', 'el estado React no conserva una copia legacy obsoleta del objetivo');
+assert.equal(preparedCanonicalEmptyRow.descripcion, '', 'el estado React se sincroniza con la fuente canónica');
+assert.equal(preparedCanonicalEmptyRow.variantes, '', 'las columnas de compatibilidad quedan sincronizadas');
+
+const createSaveDouble = ({ responseId, error } = {}) => {
+  const trace = { table: '', operation: '', payload: null, filters: [], selected: false, single: false };
+  const builder = {
+    insert(value) { trace.operation = 'insert'; trace.payload = value; return builder; },
+    update(value) { trace.operation = 'update'; trace.payload = value; return builder; },
+    eq(column, value) { trace.filters.push([column, value]); return builder; },
+    select() { trace.selected = true; return builder; },
+    async single() {
+      trace.single = true;
+      if (error) return { data: null, error };
+      const filterId = trace.filters.find(([column]) => column === 'id')?.[1];
+      const id = responseId ?? trace.payload?.id ?? filterId;
+      return {
+        data: {
+          ...trace.payload,
+          id,
+          created_at: '2026-08-01T10:00:00.000Z',
+          updated_at: '2026-08-12T10:00:00.000Z',
+        },
+        error: null,
+      };
+    },
+  };
+  return {
+    trace,
+    client: { from(table) { trace.table = table; return builder; } },
+  };
+};
+
+const persistenceRowId = '11111111-1111-4111-8111-111111111111';
+const persistenceElements = [
+  { id: 'participant-5', type: 'player', x: 22, y: 31, label: '5', player_id: 'player-a', roles: ['Bloqueador'], note: 'Consigna A', sequenceOrder: 1, primaryResponsibility: true },
+  { id: 'ball-persist', type: 'ball', x: 8, y: 9 },
+  { id: 'arrow-persist', type: 'arrow', x1: 22, y1: 31, x2: 58, y2: 14 },
+  { id: 'curve-persist', type: 'curved_arrow', x1: 30, y1: 48, x2: 65, y2: 18, controlX: 58, controlY: 46 },
+  { id: 'curve-dashed-persist', type: 'curved_arrow', dashed: true, x1: 18, y1: 50, x2: 70, y2: 22, controlX: 51, controlY: 54 },
+  { id: 'dash-persist', type: 'dashed_arrow', x1: 28, y1: 45, x2: 62, y2: 20 },
+  { id: 'block-persist', type: 'block', x: 43, y: 24, width: 8, label: 'BLOQUEO' },
+  { id: 'zone-old', type: 'zone', x: 60, y: 10, width: 20, height: 15, label: 'ZONA ANTIGUA' },
+  { id: 'text-delete', type: 'text', x: 16, y: 18, label: 'BORRAR' },
+];
+const persistenceMetaA = {
+  ...getSetPieceTacticalMeta([]),
+  signal: '',
+  objective: 'DEFENSA MIXTA',
+  saqueType: 'Saque largo',
+  whenToUse: 'Primeros córners',
+  generalInstruction: 'Texto antiguo',
+  risk: 'Riesgo A',
+  alternative: 'Alternativa A',
+  observations: 'Observación A',
+  tags: ['a'],
+  rating: 2,
+  libraryZone: 'Primer palo',
+  libraryMechanism: 'Bloqueo',
+  libraryMarking: 'Mixto',
+  deliveryType: 'open',
+  libraryStatus: 'draft',
+  libraryFavorite: false,
+  displayLayers: { dorsals: true, abbreviations: true, roles: true, chronology: true, zones: true, texts: true },
+};
+const existingPersistenceDraft = prepareSetPieceLaboratoryItem({
+  id: persistenceRowId,
+  nombre: 'Versión A',
+  tipo: 'corner_ofensivo',
+  categoria: SET_PIECE_LAB_CATEGORY,
+  descripcion: persistenceMetaA.generalInstruction,
+  objetivo: persistenceMetaA.objective,
+  variantes: persistenceMetaA.alternative,
+  elements: setSetPieceTacticalMeta(persistenceElements, persistenceMetaA),
+  created_at: '2026-08-01T10:00:00.000Z',
+  updated_at: '2026-08-10T10:00:00.000Z',
+});
+assert.equal(existingPersistenceDraft.isNew, false, 'una fila cargada de Supabase se trata inequívocamente como edición');
+
+const persistenceElementsB = existingPersistenceDraft.elements
+  .filter((element) => element.id !== 'text-delete' && element.id !== 'zone-old')
+  .map((element) => element.id === 'participant-5' ? {
+    ...element,
+    x: 44,
+    y: 37,
+    player_id: 'player-b',
+    roles: ['Rematador', 'Segundo palo'],
+    note: 'Consigna individual B',
+    sequenceOrder: 3,
+    primaryResponsibility: false,
+  } : element)
+  .concat(
+    { id: 'curve-new', type: 'curved_arrow', dashed: true, x1: 15, y1: 55, x2: 73, y2: 19, controlX: 56, controlY: 52 },
+    { id: 'zone-new', type: 'zone', x: 19, y: 12, width: 25, height: 18, label: 'ZONA NUEVA' },
+  );
+const persistenceMetaB = {
+  ...getSetPieceLaboratoryMeta(existingPersistenceDraft),
+  signal: 'MANO ARRIBA',
+  objective: 'DEFENSA ZONAL',
+  saqueType: '',
+  whenToUse: 'Tras cambio rival',
+  generalInstruction: 'Texto nuevo',
+  risk: '',
+  alternative: 'Alternativa B',
+  observations: '',
+  tags: ['b', 'persistencia'],
+  rating: 5,
+  libraryZone: 'Zona media',
+  libraryMechanism: 'Arrastre',
+  libraryMarking: 'Zonal',
+  deliveryType: 'closed',
+  libraryStatus: 'ready',
+  libraryFavorite: true,
+  displayLayers: { dorsals: false, abbreviations: true, roles: false, chronology: true, zones: true, texts: false },
+  displayLayersBeforeStructure: { dorsals: true, abbreviations: true, roles: true, chronology: true, zones: true, texts: true },
+};
+const draftB = {
+  ...existingPersistenceDraft,
+  nombre: 'Versión B',
+  tipo: 'corner_defensivo',
+  elements: setSetPieceTacticalMeta(persistenceElementsB, persistenceMetaB),
+};
+const updateDoubleB = createSaveDouble();
+const savedBResult = await saveSetPieceLaboratoryDraft(updateDoubleB.client, draftB);
+assert.equal(savedBResult.inserted, false);
+assert.equal(savedBResult.rowId, persistenceRowId);
+assert.equal(updateDoubleB.trace.table, 'training_library');
+assert.equal(updateDoubleB.trace.operation, 'update', 'editar una ABP nunca ejecuta insert');
+assert.deepEqual(updateDoubleB.trace.filters, [['id', persistenceRowId]], 'el UPDATE usa exclusivamente training_library.id');
+assert.equal('id' in updateDoubleB.trace.payload, false, 'el id de fila no se mezcla con los campos actualizados');
+assert.equal(updateDoubleB.trace.selected && updateDoubleB.trace.single, true, 'el guardado exige una única fila devuelta');
+
+const savedB = savedBResult.saved;
+const savedMetaB = getSetPieceLaboratoryMeta(savedB);
+assert.equal(savedMetaB.libraryId, persistenceRowId, 'libraryId se sincroniza con la fila maestra, pero no se usa para construir el WHERE');
+assert.deepEqual({
+  nombre: savedB.nombre,
+  tipo: savedB.tipo,
+  zone: savedMetaB.libraryZone,
+  mechanism: savedMetaB.libraryMechanism,
+  marking: savedMetaB.libraryMarking,
+  status: savedMetaB.libraryStatus,
+  favorite: savedMetaB.libraryFavorite,
+  delivery: savedMetaB.deliveryType,
+  signal: savedMetaB.signal,
+  objective: savedMetaB.objective,
+  whenToUse: savedMetaB.whenToUse,
+  instruction: savedMetaB.generalInstruction,
+  risk: savedMetaB.risk,
+  alternative: savedMetaB.alternative,
+  observations: savedMetaB.observations,
+  tags: savedMetaB.tags,
+  rating: savedMetaB.rating,
+  layers: savedMetaB.displayLayers,
+  previousLayers: savedMetaB.displayLayersBeforeStructure,
+}, {
+  nombre: 'Versión B',
+  tipo: 'corner_defensivo',
+  zone: 'Zona media',
+  mechanism: 'Arrastre',
+  marking: 'Zonal',
+  status: 'ready',
+  favorite: true,
+  delivery: 'closed',
+  signal: 'MANO ARRIBA',
+  objective: 'DEFENSA ZONAL',
+  whenToUse: 'Tras cambio rival',
+  instruction: 'Texto nuevo',
+  risk: '',
+  alternative: 'Alternativa B',
+  observations: '',
+  tags: ['b', 'persistencia'],
+  rating: 5,
+  layers: { dorsals: false, abbreviations: true, roles: false, chronology: true, zones: true, texts: false },
+  previousLayers: { dorsals: true, abbreviations: true, roles: true, chronology: true, zones: true, texts: true },
+}, 'todos los campos de ficha sobreviven a update → respuesta → reconstrucción');
+const savedParticipantB = savedB.elements.find((element) => element.id === 'participant-5');
+assert.deepEqual(savedParticipantB, persistenceElementsB.find((element) => element.id === 'participant-5'), 'vínculo, roles, consigna, orden, responsable y x/y persisten exactamente');
+['ball-persist', 'arrow-persist', 'curve-persist', 'curve-dashed-persist', 'dash-persist', 'block-persist', 'curve-new', 'zone-new'].forEach((id) => {
+  assert.deepEqual(savedB.elements.find((element) => element.id === id), persistenceElementsB.find((element) => element.id === id), `el elemento de dibujo ${id} sobrevive al round-trip`);
+});
+assert.equal(savedB.elements.some((element) => element.id === 'text-delete' || element.id === 'zone-old'), false, 'los elementos borrados no reaparecen');
+assert.equal(savedB.descripcion, 'Texto nuevo');
+assert.equal(savedB.objetivo, 'DEFENSA ZONAL');
+assert.equal(savedB.variantes, 'Alternativa B');
+
+const persistenceMetaC = {
+  ...savedMetaB,
+  signal: '',
+  objective: '',
+  generalInstruction: '',
+  alternative: '',
+  libraryStatus: 'draft',
+};
+const draftC = {
+  ...savedB,
+  nombre: 'Versión C',
+  elements: setSetPieceTacticalMeta(savedB.elements.map((element) => element.id === 'participant-5' ? {
+    ...element,
+    player_id: 'player-c',
+    roles: ['Zona 1'],
+    note: '',
+  } : element), persistenceMetaC),
+};
+const mergedDraftC = mergeSetPieceLaboratoryEditorChange(savedB, {
+  titulo: 'Versión C',
+  consigna: '',
+  elements: draftC.elements,
+});
+assert.equal(mergedDraftC.descripcion, '', 'el estado React toma la consigna de tactical_meta, no de una copia anterior');
+assert.equal(mergedDraftC.objetivo, '', 'el estado React sincroniza también el objetivo vacío');
+assert.equal(mergedDraftC.variantes, '', 'el estado React sincroniza la alternativa vacía');
+assert.equal(mergedDraftC.id, persistenceRowId, 'fusionar cambios del editor no altera la identidad de la fila');
+const updateDoubleC = createSaveDouble();
+const savedC = (await saveSetPieceLaboratoryDraft(updateDoubleC.client, mergedDraftC)).saved;
+const reopenedC = prepareSetPieceLaboratoryItem(JSON.parse(JSON.stringify(savedC)));
+const reopenedMetaC = getSetPieceLaboratoryMeta(reopenedC);
+assert.equal(reopenedC.nombre, 'Versión C', 'tres estados sucesivos A → B → C terminan en C');
+assert.equal(reopenedMetaC.signal, '', 'valor → vacío permanece vacío tras cerrar, serializar y reabrir');
+assert.equal(reopenedMetaC.objective, '');
+assert.equal(reopenedMetaC.generalInstruction, '');
+assert.equal(reopenedMetaC.alternative, '');
+assert.equal(reopenedC.descripcion, '', 'la columna legacy sincronizada tampoco revive la consigna');
+assert.deepEqual(reopenedC.elements.find((element) => element.id === 'participant-5').roles, ['Zona 1'], 'los roles C sustituyen exactamente a los anteriores');
+assert.equal(reopenedC.elements.find((element) => element.id === 'participant-5').player_id, 'player-c', 'Jugador A → B → C termina vinculado únicamente a C');
+assert.equal(reopenedC.elements.find((element) => element.id === 'participant-5').note, '', 'la consigna individual se puede borrar');
+assert.deepEqual(upsertSetPieceLaboratoryItem([existingPersistenceDraft], savedB), [savedB], 'la colección local sustituye la fila vieja por la respuesta guardada');
+
+const insertDraft = createSetPieceLaboratoryDraft('corner_ofensivo');
+const insertDouble = createSaveDouble();
+const insertResult = await saveSetPieceLaboratoryDraft(insertDouble.client, insertDraft);
+assert.equal(insertResult.inserted, true);
+assert.equal(insertDouble.trace.operation, 'insert', 'solo una jugada nueva ejecuta insert');
+assert.deepEqual(insertDouble.trace.filters, [], 'insert no usa IDs internos de elementos como filtro');
+
+const failureDraftSnapshot = JSON.stringify(draftC);
+await assert.rejects(
+  saveSetPieceLaboratoryDraft(createSaveDouble({ error: new Error('fallo de update') }).client, draftC),
+  /fallo de update/,
+  'un error real de Supabase se propaga y no se anuncia como guardado',
+);
+assert.equal(JSON.stringify(draftC), failureDraftSnapshot, 'un update fallido no muta ni pierde el borrador local');
+await assert.rejects(
+  saveSetPieceLaboratoryDraft(createSaveDouble({ responseId: '22222222-2222-4222-8222-222222222222' }).client, draftC),
+  /fila distinta/,
+  'una respuesta de otra fila se rechaza explícitamente',
+);
 
 const invalidClassification = getSetPieceLaboratoryMeta(setSetPieceTacticalMeta([], {
   libraryZone: 'Segundo balón',

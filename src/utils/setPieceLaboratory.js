@@ -87,6 +87,10 @@ export const partitionTrainingLibraryItems = (items = []) => (Array.isArray(item
 
 export const getSetPieceLabType = (type) => SET_PIECE_LAB_TYPES.find((entry) => entry.id === type) || SET_PIECE_LAB_TYPES[0];
 
+export const hasStoredSetPieceTacticalMeta = (elements) => (
+  Array.isArray(elements) && elements.some((element) => element?.type === 'tactical_meta')
+);
+
 export const getSetPieceLaboratoryMeta = (itemOrElements) => {
   const item = Array.isArray(itemOrElements) ? null : itemOrElements;
   const elements = Array.isArray(itemOrElements) ? itemOrElements : item?.elements;
@@ -156,18 +160,24 @@ export const createSetPieceLaboratoryDraft = (type = SET_PIECE_LAB_TYPES[0].id) 
 
 export const prepareSetPieceLaboratoryItem = (item) => {
   const sourceMeta = getSetPieceLaboratoryMeta(item);
-  const meta = {
-    ...sourceMeta,
-    objective: sourceMeta.objective || clean(item?.objetivo),
-    generalInstruction: sourceMeta.generalInstruction || clean(item?.descripcion),
-    alternative: sourceMeta.alternative || clean(item?.variantes),
-  };
+  const meta = hasStoredSetPieceTacticalMeta(item?.elements)
+    ? sourceMeta
+    : {
+      ...sourceMeta,
+      objective: clean(item?.objetivo),
+      generalInstruction: clean(item?.descripcion),
+      alternative: clean(item?.variantes),
+    };
   return {
     ...item,
     nombre: clean(item?.nombre),
     tipo: getSetPieceLabType(item?.tipo).id,
     categoria: clean(item?.categoria) || SET_PIECE_LAB_CATEGORY,
+    descripcion: meta.generalInstruction,
+    objetivo: meta.objective,
+    variantes: meta.alternative,
     elements: setSetPieceTacticalMeta(item?.elements, meta),
+    isNew: item?.isNew === true,
   };
 };
 
@@ -198,6 +208,56 @@ export const buildSetPieceLaboratoryPayload = (draft) => {
     duracion: '',
     material: '',
     elements: setSetPieceTacticalMeta(draft.elements, meta),
+  };
+};
+
+export const mergeSetPieceLaboratoryEditorChange = (current, next = {}) => {
+  if (!current) return current;
+  const elements = next.elements ?? current.elements;
+  const meta = getSetPieceTacticalMeta(elements);
+  return {
+    ...current,
+    nombre: next.titulo ?? current.nombre,
+    descripcion: meta.generalInstruction,
+    objetivo: meta.objective,
+    variantes: meta.alternative,
+    elements,
+  };
+};
+
+export const upsertSetPieceLaboratoryItem = (items, saved, inserted = false) => {
+  const source = Array.isArray(items) ? items : [];
+  if (inserted) return [saved, ...source.filter((item) => item.id !== saved.id)];
+  const found = source.some((item) => item.id === saved.id);
+  return found
+    ? source.map((item) => item.id === saved.id ? saved : item)
+    : [saved, ...source];
+};
+
+export const saveSetPieceLaboratoryDraft = async (supabaseClient, draft) => {
+  const rowId = clean(draft?.id);
+  if (!rowId) throw new Error('La jugada ABP no tiene un id de training_library válido.');
+  if (!supabaseClient?.from) throw new Error('No hay un cliente de persistencia disponible.');
+
+  const payload = buildSetPieceLaboratoryPayload(draft);
+  const inserted = draft?.isNew === true;
+  let request;
+  if (inserted) {
+    request = supabaseClient.from('training_library').insert(payload).select('*').single();
+  } else {
+    const { id: ignoredId, ...fields } = payload;
+    request = supabaseClient.from('training_library').update(fields).eq('id', rowId).select('*').single();
+  }
+
+  const { data, error } = await request;
+  if (error) throw error;
+  if (!data) throw new Error('Supabase no devolvió la fila guardada de training_library.');
+  if (clean(data.id) !== rowId) throw new Error('Supabase devolvió una fila distinta de la jugada ABP editada.');
+
+  return {
+    inserted,
+    rowId,
+    saved: prepareSetPieceLaboratoryItem(data),
   };
 };
 
