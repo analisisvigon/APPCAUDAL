@@ -142,6 +142,7 @@ assert.deepEqual(individualInstructions.map((item) => item.dorsal), ['4', '9', '
 assert.deepEqual(individualInstructions.map((item) => item.instruction), ['fijar', 'atacar primer palo', 'correr'], 'las consignas individuales se conservan en el orden de dorsal');
 assert.deepEqual(individualInstructions.map((item) => item.playerName), ['BOZA', 'ACERETE', 'AGUS PORTO'], 'las indicaciones reutilizan la identidad real en orden de dorsal');
 assert.equal(getSetPieceIndividualInstructions([...identityElements, { id: 'empty-note', type: 'player', x: 80, y: 30, label: '6', note: '' }], identityPlayers).length, 3, 'una consigna vacía no genera texto inventado');
+assert.equal(getSetPieceIndividualInstructions([...identityElements, { id: 'unlinked-note', type: 'player', x: 80, y: 30, label: '6', note: 'Moverse' }], identityPlayers).length, 3, 'una consigna sin jugador vinculado no genera una indicación');
 
 const fallbackIdentities = optimizeSetPieceElementsForPrint([
   { id: 'dorsal-only', type: 'player', x: 15, y: 15, label: '8' },

@@ -143,6 +143,7 @@ const identityDiagram = {
 const identityOnModel = buildSetPiecePrintPlayModel(identityDiagram, identityPlayers, 1);
 assert.deepEqual(identityOnModel.chronology.map((step) => step.identity), ['4 BOZA', '10 AGUS PORTO', '9 ACERETE'], 'Cronología ON lleva dorsal e identidad útil al PDF sin recortes automáticos');
 assert.deepEqual(identityOnModel.chronology.map((step) => step.instruction), ['fijar al central', 'correr', 'atacar primer palo'], 'Cronología ON muestra cada consigna individual junto al orden');
+assert.deepEqual(identityOnModel.individualInstructions.map((item) => item.dorsal), ['4', '9', '10'], 'Cronología ON no elimina participantes vinculados con consigna de Indicaciones');
 
 const identityOffDiagram = {
   ...identityDiagram,
@@ -204,6 +205,7 @@ assert.ok(canvas.includes('const showDorsal = normalizedVisibleLayers.dorsals') 
 assert.ok(editor.includes('{visibleLayers.chronology ? <section') && sheet.includes('play.chronology.length > 0'), 'Cronología OFF elimina el bloque inferior del editor y la Secuencia impresa');
 assert.ok(sheet.includes("step.role ? <span>{step.identity ? ' · ' : ''}{step.role}</span> : null"), 'Roles OFF no deja etiquetas de rol en la Secuencia');
 assert.ok(sheet.includes('<h3>Indicaciones</h3>') && sheet.includes('play.individualInstructions'), 'las consignas individuales tienen un bloque independiente de Cronología');
+assert.ok(sheet.includes('const indications = play.individualInstructions;'), 'Indicaciones no se deduplica contra Cronología');
 assert.ok(sheet.includes('set-piece-print-signal') && sheet.includes('Señal de la jugada:'), 'la señal tiene un bloque semántico propio en cabecera');
 assert.ok(sheet.includes('item.dorsal') && sheet.includes('item.playerName') && sheet.includes('set-piece-print-indication-text'), 'cada indicación separa dorsal, nombre e instrucción');
 assert.match(css, /\.set-piece-print-operational-details section \{\s*display: block;/, 'Clave, Riesgo y Alternativa usan etiqueta y texto apilados');
@@ -241,6 +243,7 @@ const controlElements = [
       : `Indicación individual del dorsal ${dorsal}`,
   })),
   { id: 'control-without-note', type: 'player', x: 50, y: 60, label: '2', player_id: 'control-player-without-note', note: '' },
+  { id: 'control-without-link', type: 'player', x: 56, y: 62, label: '3', player_id: '', note: 'No debe imprimirse sin jugador vinculado' },
   { id: 'control-ball', type: 'ball', x: 7, y: 8 },
   { id: 'control-arrow', type: 'arrow', x1: 20, y1: 30, x2: 68, y2: 18 },
 ];
@@ -266,8 +269,19 @@ assert.deepEqual(controlModel.individualInstructions.map((item) => Number(item.d
 assert.equal(controlModel.individualInstructions.every((item) => item.dorsal && item.playerName), true, 'D: todas las indicaciones muestran dorsal y nombre real');
 assert.match(controlModel.individualInstructions.find((item) => item.dorsal === '5').instruction, /continuación hacia el segundo balón/, 'E: la consigna larga llega completa y puede envolver');
 assert.equal(controlModel.individualInstructions.some((item) => item.id === 'control-without-note'), false, 'F: un jugador sin consigna no genera una fila inventada');
+assert.equal(controlModel.individualInstructions.some((item) => item.id === 'control-without-link'), false, 'F: una consigna sin jugador vinculado no genera una indicación');
 assert.deepEqual(controlModel.chronology, [], 'G: Cronología OFF no genera Secuencia');
 assert.equal(controlModel.individualInstructions.length, 10, 'G: Cronología OFF conserva las diez indicaciones');
+const chronologyOnControlDiagram = {
+  ...controlDiagram,
+  id: 'control-desde-atras-chronology-on',
+  elements: setSetPieceTacticalMeta(controlElements, {
+    ...controlMeta,
+    displayLayers: { ...controlMeta.displayLayers, chronology: true },
+  }),
+};
+const chronologyOnControlModel = buildSetPiecePrintPlayModel(chronologyOnControlDiagram, controlPlayers, 1);
+assert.equal(chronologyOnControlModel.individualInstructions.find((item) => item.dorsal === '6')?.instruction, 'Indicación individual del dorsal 6', 'dorsal 6 vinculado y con consigna permanece en Indicaciones con Cronología ON');
 const twoControlPlays = buildSetPiecePrintPages([controlDiagram, { ...controlDiagram, id: 'control-desde-atras-2', orden: 2 }], controlPlayers);
 assert.deepEqual(twoControlPlays.map((page) => page.plays.length), [2], 'H: dos jugadas siguen agrupadas en una sola página A4');
 assert.deepEqual(getSetPieceGeometrySnapshot(controlModel.elements), getSetPieceGeometrySnapshot(controlDiagram.elements), 'J: el modelo de QA no modifica geometría táctica');

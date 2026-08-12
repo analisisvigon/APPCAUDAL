@@ -21,10 +21,7 @@ function PrintDetail({ label, value, className = '' }) {
 
 function PrintPlay({ play }) {
   const hasChronology = play.chronology.length > 0;
-  const chronologyIds = new Set(play.chronology.map((step) => step.id));
-  const indications = play.displayLayers.chronology
-    ? play.individualInstructions.filter((item) => !chronologyIds.has(item.id))
-    : play.individualInstructions;
+  const indications = play.individualInstructions;
   const hasIndications = indications.length > 0;
   const hasOperationalDetails = Boolean(play.objective || play.whenToUse || play.risk || play.alternative || play.observations);
   const hasCopy = Boolean(play.instruction || hasChronology || hasIndications || hasOperationalDetails);

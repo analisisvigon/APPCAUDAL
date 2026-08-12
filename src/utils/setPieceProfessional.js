@@ -367,7 +367,11 @@ export const getSetPieceIndividualInstructions = (elements, players = []) => {
   const playersById = new Map(players.map((player) => [player.id, player]));
   return getDrawableSetPieceElements(elements)
     .map((element, sourceIndex) => ({ element, sourceIndex }))
-    .filter(({ element }) => ['player', 'opponent'].includes(element.type) && cleanString(element.note))
+    .filter(({ element }) => (
+      ['player', 'opponent'].includes(element.type)
+      && cleanString(element.player_id)
+      && cleanString(element.note)
+    ))
     .sort((left, right) => {
       const getNumericDorsal = (element) => {
         const player = playersById.get(element.player_id);

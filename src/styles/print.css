@@ -1659,7 +1659,7 @@
 }
 
 .set-piece-print-play-body--field-forward {
-  grid-template-columns: minmax(0, 3.35fr) minmax(56mm, 1fr);
+  grid-template-columns: minmax(0, 2.65fr) minmax(64mm, 1fr);
 }
 
 .set-piece-print-play-body--field-only {
@@ -1903,7 +1903,7 @@
 }
 
 .set-piece-pro-plays[data-count="1"] .set-piece-print-play-body--field-forward {
-  grid-template-columns: minmax(0, 3.7fr) minmax(64mm, 1fr);
+  grid-template-columns: minmax(0, 2.85fr) minmax(70mm, 1fr);
 }
 
 .set-piece-pro-plays[data-count="1"] .set-piece-print-play-body--field-only {
