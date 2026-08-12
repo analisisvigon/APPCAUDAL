@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node scripts/googleFormsSupabaseSync.test.mjs && node src/utils/performanceLoad.test.js && node src/utils/performanceLoadStore.test.js && node scripts/trainingLoadSqlAudit.test.mjs && node scripts/performanceLoadUiAudit.test.mjs && node src/utils/rivalLineupAtomic.test.js && node scripts/rivalLineupAtomicSqlAudit.test.mjs && node src/utils/goalAtomicMutation.test.js && node scripts/matchGoalAtomicSqlAudit.test.mjs",
+    "test": "node scripts/googleFormsSupabaseSync.test.mjs && node src/utils/performanceLoad.test.js && node src/utils/performanceLoadStore.test.js && node scripts/trainingLoadSqlAudit.test.mjs && node scripts/performanceLoadUiAudit.test.mjs && node src/utils/rivalLineupAtomic.test.js && node scripts/rivalLineupAtomicSqlAudit.test.mjs && node src/utils/goalAtomicMutation.test.js && node scripts/matchGoalAtomicSqlAudit.test.mjs && node src/utils/rivalScoutingPersistence.test.js && node src/utils/rivalScoutingStore.test.js && node scripts/rivalScoutingSqlAudit.test.mjs",
     "test:performance-load": "node src/utils/performanceLoad.test.js && node src/utils/performanceLoadStore.test.js && node scripts/trainingLoadSqlAudit.test.mjs && node scripts/performanceLoadUiAudit.test.mjs",
     "test:league-results": "node src/utils/leagueResults.test.js",
     "test:competition-filters": "node src/utils/competitionFilters.test.js",
@@ -22,6 +22,7 @@
     "test:rival-center": "node src/utils/rivalTacticalCenter.test.js",
     "test:facing-systems": "node src/utils/facingSystemsView.test.js",
     "test:rival-players": "node src/utils/rivalPlayerTacticalAssistant.test.js",
+    "test:rival-scouting": "node src/utils/rivalScoutingPersistence.test.js && node src/utils/rivalScoutingStore.test.js && node scripts/rivalScoutingSqlAudit.test.mjs",
     "test:match-plan": "node src/utils/matchPlanWorkspace.test.js",
     "test:tactical-autosave": "node src/utils/flushableSaveCoordinator.test.js && node scripts/tacticalAutosaveUiAudit.test.mjs",
     "test:defensive-blocks": "node src/utils/defensiveBlockPositions.test.js",

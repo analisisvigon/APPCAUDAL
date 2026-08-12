@@ -248,6 +248,22 @@ import {
   buildTacticalEvidenceCenter,
 } from './utils/tacticalEvidenceCenter';
 import {
+  getRivalScoutingPlayerIdentity,
+  readLegacyRivalScoutingStorage,
+  resolveRivalPlayerFlags,
+  shouldApplyScoutingResponse,
+} from './utils/rivalScoutingPersistence';
+import {
+  createManualRivalEvidence,
+  createRivalScoutingConnection,
+  deleteManualRivalEvidence,
+  deleteRivalScoutingConnection,
+  loadRivalScoutingBundle,
+  migrateLegacyRivalScouting,
+  saveRivalScoutingSnapshot,
+  updateManualRivalEvidenceStatus,
+} from './utils/rivalScoutingStore';
+import {
   calculateTacticalTemplateUsages,
   loadTacticalTemplateUsageRows,
 } from './utils/tacticalTemplateUsage';
@@ -870,8 +886,6 @@ const createEmptyTeamForm = () => ({
 
 const emptyLineup = [];
 const emptyDepthChart = {};
-const rivalTacticalIdentityKey = 'caudal_rival_tactical_identity_v1';
-const rivalObservedScoutingKey = 'caudal-rival-observed-scouting-v1';
 const defensiveSituationOptions = [
   { value: 'low_block', label: 'Bloque bajo' },
   { value: 'mid_block', label: 'Bloque medio' },
@@ -1448,19 +1462,6 @@ const mapRivalIdentityToPre = (identity = {}) => {
     preRivalSpacesAllowed: data.detectedWeakness,
     preRivalAfterRecovery: data.mainThreat === 'transición' ? 'Primer pase vertical; corre tras robo' : '',
   };
-};
-const readStoredRivalTacticalIdentity = () => {
-  if (typeof window === 'undefined') return {};
-  try {
-    return JSON.parse(window.localStorage.getItem(rivalTacticalIdentityKey) || '{}');
-  } catch {
-    return {};
-  }
-};
-const saveStoredRivalTacticalIdentity = (teamId, identity) => {
-  if (typeof window === 'undefined' || !teamId) return;
-  const current = readStoredRivalTacticalIdentity();
-  window.localStorage.setItem(rivalTacticalIdentityKey, JSON.stringify({ ...current, [teamId]: getTeamTacticalIdentity(identity) }));
 };
 const createSuggestedConsignas = (identity = {}) => {
   const data = getTeamTacticalIdentity(identity);
@@ -5357,8 +5358,10 @@ function App() {
   const matchPlanNavigationGuardRef = useRef(null);
   const [printMatchPlanDirty, setPrintMatchPlanDirty] = useState(false);
   const [tacticalSavePending, setTacticalSavePending] = useState(false);
+  const [rivalScoutingSavePending, setRivalScoutingSavePending] = useState(false);
   const printMatchPlanNavigationGuardRef = useRef(null);
   const tacticalNavigationGuardRef = useRef(null);
+  const rivalScoutingNavigationGuardRef = useRef(null);
   const protectedNavigationInFlightRef = useRef(null);
   const [pendingMatchPlanNavigation, setPendingMatchPlanNavigation] = useState(null);
   const [matchPlanNavigationStatus, setMatchPlanNavigationStatus] = useState('');
@@ -5371,6 +5374,7 @@ function App() {
   }, []);
   const flushDeferredNavigationSaves = React.useCallback(() => flushPendingSaveTargets([
     tacticalNavigationGuardRef.current,
+    rivalScoutingNavigationGuardRef.current,
     printMatchPlanNavigationGuardRef.current,
   ]), []);
   const executeNavigationAfterFlush = React.useCallback((navigation) => {
@@ -5395,6 +5399,7 @@ function App() {
     if (!navigation?.execute) return false;
     if (!matchPlanDirty) {
       const hasDeferredSave = tacticalNavigationGuardRef.current?.hasPending?.()
+        || rivalScoutingNavigationGuardRef.current?.hasPending?.()
         || printMatchPlanNavigationGuardRef.current?.hasPending?.();
       if (hasDeferredSave) {
         void executeNavigationAfterFlush(navigation);
@@ -5496,6 +5501,7 @@ function App() {
     matchPlanDirty,
     printMatchPlanDirty,
     tacticalSavePending,
+    rivalScoutingSavePending,
   ]);
   const [isCollectiveProfileEditorOpen, setIsCollectiveProfileEditorOpen] = useState(false);
   const [openTacticalQuestionCategory, setOpenTacticalQuestionCategory] = useState('Con balón');
@@ -5668,14 +5674,72 @@ function App() {
       return {};
     }
   });
-  const [rivalPlayerFlags, setRivalPlayerFlags] = useState(() => {
-    try {
-      if (typeof window === 'undefined') return {};
-      return JSON.parse(window.localStorage.getItem('caudal-rival-player-flags-v1') || '{}');
-    } catch {
-      return {};
-    }
-  });
+  const [rivalPlayerFlags, setRivalPlayerFlags] = useState({});
+  const [rivalScoutingSaveStatus, setRivalScoutingSaveStatus] = useState('');
+  const [rivalScoutingLoadError, setRivalScoutingLoadError] = useState('');
+  const [rivalScoutingReloadVersion, setRivalScoutingReloadVersion] = useState(0);
+  const rivalScoutingAutosaveTimerRef = useRef(null);
+  const rivalScoutingSnapshotRef = useRef(null);
+  const rivalScoutingPersistRef = useRef(null);
+  const rivalScoutingCoordinatorRef = useRef(null);
+  const rivalScoutingRequestRef = useRef(0);
+  const rivalScoutingLoadRequestRef = useRef(0);
+  const rivalScoutingDirectSavesRef = useRef(new Set());
+  const rivalScoutingDirectFailureRef = useRef(null);
+  const rivalScoutingDirectRetryRef = useRef(null);
+  const currentRivalScoutingTeamIdRef = useRef('');
+  if (!rivalScoutingCoordinatorRef.current) {
+    rivalScoutingCoordinatorRef.current = createFlushableSaveCoordinator({
+      readSnapshot: () => rivalScoutingSnapshotRef.current,
+      persist: (snapshot) => rivalScoutingPersistRef.current?.(snapshot),
+      onStatusChange: (status) => {
+        setRivalScoutingSaveStatus(status);
+        setRivalScoutingSavePending(['Cambios sin guardar', 'Guardando', 'Error al guardar'].includes(status));
+      },
+    });
+  }
+  rivalScoutingNavigationGuardRef.current = {
+    hasPending: () => rivalScoutingCoordinatorRef.current.hasPending() || rivalScoutingDirectSavesRef.current.size > 0 || Boolean(rivalScoutingDirectFailureRef.current),
+    flush: async () => {
+      const deferred = await rivalScoutingCoordinatorRef.current.flush();
+      if (!deferred.ok) return deferred;
+      if (rivalScoutingDirectFailureRef.current) return rivalScoutingDirectFailureRef.current;
+      const directResults = await Promise.all([...rivalScoutingDirectSavesRef.current]);
+      return directResults.find((result) => !result?.ok) || { ok: true };
+    },
+  };
+  const trackRivalScoutingDirectSave = (operation) => {
+    rivalScoutingDirectFailureRef.current = null;
+    const tracked = Promise.resolve(operation)
+      .then((result) => result?.ok === false ? result : { ok: true, ...(result || {}) })
+      .catch((error) => ({ ok: false, error }))
+      .then((result) => {
+        rivalScoutingDirectFailureRef.current = result.ok ? null : result;
+        if (result.ok) rivalScoutingDirectRetryRef.current = null;
+        setRivalScoutingSavePending(!result.ok || rivalScoutingCoordinatorRef.current.hasPending());
+        return result;
+      })
+      .finally(() => {
+        rivalScoutingDirectSavesRef.current.delete(tracked);
+      });
+    rivalScoutingDirectSavesRef.current.add(tracked);
+    return tracked;
+  };
+  const runRivalScoutingDirectSave = (operationFactory) => {
+    rivalScoutingDirectRetryRef.current = operationFactory;
+    return trackRivalScoutingDirectSave(operationFactory());
+  };
+  const retryRivalScoutingSave = () => rivalScoutingDirectRetryRef.current
+    ? runRivalScoutingDirectSave(rivalScoutingDirectRetryRef.current)
+    : rivalScoutingCoordinatorRef.current.save();
+  const queueRivalScoutingSave = () => {
+    rivalScoutingCoordinatorRef.current.markDirty();
+    if (rivalScoutingAutosaveTimerRef.current) window.clearTimeout(rivalScoutingAutosaveTimerRef.current);
+    rivalScoutingAutosaveTimerRef.current = window.setTimeout(() => {
+      rivalScoutingAutosaveTimerRef.current = null;
+      void rivalScoutingCoordinatorRef.current.save();
+    }, TACTICAL_AUTOSAVE_DELAY_MS);
+  };
   const [rivalTacticalUndo, setRivalTacticalUndo] = useState(null);
   const [tacticalGamePhase, setTacticalGamePhase] = useState('defensive');
   const [defensiveSituation, setDefensiveSituation] = useState('mid_block');
@@ -5766,6 +5830,18 @@ function App() {
       },
     });
   }
+  useEffect(() => {
+    if (rivalScoutingSavePending) {
+      setTacticalSavePending(true);
+      return;
+    }
+    setTacticalSavePending([
+      defensiveSaveCoordinatorRef.current,
+      offensiveSaveCoordinatorRef.current,
+      transitionSaveCoordinatorRef.current,
+      setPieceSaveCoordinatorRef.current,
+    ].some((coordinator) => coordinator?.hasPending?.()));
+  }, [rivalScoutingSavePending]);
   const [tacticalTemplates, setTacticalTemplates] = useState([]);
   const [tacticalTemplateDialog, setTacticalTemplateDialog] = useState('');
   const [tacticalTemplateDraft, setTacticalTemplateDraft] = useState(emptyTacticalTemplateDraft);
@@ -5782,14 +5858,7 @@ function App() {
   const [tacticalTemplateBehaviourFilter, setTacticalTemplateBehaviourFilter] = useState('');
   const [tacticalTemplateCategoryFilter, setTacticalTemplateCategoryFilter] = useState('');
   const [tacticalTemplateUsages, setTacticalTemplateUsages] = useState({});
-  const [rivalObservedScouting, setRivalObservedScouting] = useState(() => {
-    try {
-      if (typeof window === 'undefined') return {};
-      return JSON.parse(window.localStorage.getItem(rivalObservedScoutingKey) || '{}');
-    } catch {
-      return {};
-    }
-  });
+  const [rivalObservedScouting, setRivalObservedScouting] = useState({});
   const [evidenceDraft, setEvidenceDraft] = useState(emptyEvidenceDraft);
   const [tacticalConnectionDraft, setTacticalConnectionDraft] = useState(emptyTacticalConnectionDraft);
   const [selectedTacticalConnectionId, setSelectedTacticalConnectionId] = useState('');
@@ -6073,13 +6142,11 @@ function App() {
         return acc;
       }, {});
 
-      const storedTacticalIdentity = readStoredRivalTacticalIdentity();
       const lastSyncByTeam = (syncHistoryResponse.data || []).reduce((history, item) => {
         if (!history[item.equipo_rival_id]) history[item.equipo_rival_id] = item;
         return history;
       }, {});
       const nextTeams = (teamsResponse.data || []).map((team) => rivalDbToTeam(team, {
-        ...getTeamTacticalIdentity(storedTacticalIdentity[team.id]),
         squad: playersByTeam[team.id] || [],
         lineup: lineupByTeam[team.id] || emptyLineup,
         benchChart: benchByTeam[team.id] || emptyDepthChart,
@@ -7142,29 +7209,15 @@ function App() {
   useEffect(() => {
     try {
       if (typeof window === 'undefined') return;
-      window.localStorage.setItem('caudal-rival-scouting-drafts-v1', JSON.stringify(rivalScoutingDrafts));
+      const legacy = readLegacyRivalScoutingStorage(window.localStorage).scoutingDrafts;
+      const next = { ...legacy };
+      if (rivalScoutingDrafts.__new) next.__new = rivalScoutingDrafts.__new;
+      else delete next.__new;
+      window.localStorage.setItem('caudal-rival-scouting-drafts-v1', JSON.stringify(next));
     } catch (storageError) {
-      console.warn('No se pudo guardar el scouting local del rival:', storageError);
+      console.warn('No se pudo guardar el borrador local del nuevo rival:', storageError);
     }
-  }, [rivalScoutingDrafts]);
-
-  useEffect(() => {
-    try {
-      if (typeof window === 'undefined') return;
-      window.localStorage.setItem('caudal-rival-player-flags-v1', JSON.stringify(rivalPlayerFlags));
-    } catch (storageError) {
-      console.warn('No se pudieron guardar marcas locales de rival:', storageError);
-    }
-  }, [rivalPlayerFlags]);
-
-  useEffect(() => {
-    try {
-      if (typeof window === 'undefined') return;
-      window.localStorage.setItem(rivalObservedScoutingKey, JSON.stringify(rivalObservedScouting));
-    } catch (storageError) {
-      console.warn('No se pudo guardar el scouting observado del rival:', storageError);
-    }
-  }, [rivalObservedScouting]);
+  }, [rivalScoutingDrafts.__new]);
 
   useEffect(() => {
     if (authLoading || dataLoading || !authenticatedUserId || activeTab !== 'Inicio') return;
@@ -7367,6 +7420,60 @@ function App() {
     () => teams.find((team) => team.id === selectedMatch?.equipoRivalId) || findTeamByDisplayName(teams, selectedMatch?.opponent || ''),
     [teams, selectedMatch?.equipoRivalId, selectedMatch?.opponent]
   );
+  const rivalScoutingTeamSignature = useMemo(() => teams
+    .map((team) => `${team.id}:${safeArray(team.squad).map((player) => player.membershipId || player.jugadorRivalId || player.globalPlayerId || player.id || player.name).join(',')}:${JSON.stringify(getTeamTacticalIdentity(team))}`)
+    .sort()
+    .join('|'), [teams]);
+  const rivalScoutingMatchSignature = useMemo(() => matches
+    .map((match) => `${match.id}:${match.equipoRivalId || ''}:${match.opponent || ''}:${match.date || ''}`)
+    .sort()
+    .join('|'), [matches]);
+  const rivalScoutingOwnPlayerSignature = useMemo(() => players
+    .map((player) => player.id || player.globalPlayerId || player.name)
+    .sort()
+    .join('|'), [players]);
+
+  useEffect(() => {
+    if (authLoading || !authenticatedUserId || !rivalScoutingTeamSignature) return undefined;
+    const requestId = ++rivalScoutingLoadRequestRef.current;
+    let cancelled = false;
+    const hydrate = async () => {
+      setRivalScoutingLoadError('');
+      try {
+        let remoteByTeam = await loadRivalScoutingBundle(supabase);
+        const legacy = typeof window === 'undefined' ? {} : readLegacyRivalScoutingStorage(window.localStorage);
+        const migration = await migrateLegacyRivalScouting(supabase, {
+          legacy,
+          teams,
+          matches,
+          ownPlayers: players,
+          remoteByTeam,
+        });
+        if (migration.changed || migration.failed) remoteByTeam = await loadRivalScoutingBundle(supabase);
+        if (cancelled || requestId !== rivalScoutingLoadRequestRef.current) return;
+        setRivalObservedScouting(remoteByTeam);
+        setRivalScoutingDrafts((current) => {
+          const remoteDrafts = Object.fromEntries(Object.entries(remoteByTeam).map(([teamId, scouting]) => [teamId, scouting.matchPlanNotes || {}]));
+          return { ...remoteDrafts, ...(current.__new ? { __new: current.__new } : {}) };
+        });
+        setTeams((current) => current.map((team) => remoteByTeam[team.id]
+          ? { ...team, ...getTeamTacticalIdentity(remoteByTeam[team.id].tacticalIdentity) }
+          : team));
+        if (migration.failed) {
+          setRivalScoutingLoadError(`Quedaron ${migration.failed} elementos legacy pendientes de migrar. Los datos remotos se han conservado; pulsa Recargar para reintentar.`);
+        } else if (migration.conflicts) {
+          setRivalScoutingLoadError(`Se conservaron ${migration.conflicts} conflictos legacy como candidatos de revisión sin sobrescribir Supabase.`);
+        }
+      } catch (loadError) {
+        if (cancelled || requestId !== rivalScoutingLoadRequestRef.current) return;
+        console.error('[RIVAL_SCOUTING_LOAD_ERROR]', loadError);
+        setRivalScoutingLoadError(loadError.message || 'No se pudo cargar el scouting rival desde Supabase.');
+      }
+    };
+    void hydrate();
+    return () => { cancelled = true; };
+  }, [authLoading, authenticatedUserId, rivalScoutingMatchSignature, rivalScoutingOwnPlayerSignature, rivalScoutingReloadVersion, rivalScoutingTeamSignature]);
+
   const selectedRivalObservedKey = selectedMatchRivalTeam?.id || comparableTeamName(selectedMatch?.opponent || '') || '__sin_rival__';
   const selectedRivalObservedScouting = {
     collective: emptyObservedCollectiveProfile,
@@ -7390,6 +7497,7 @@ function App() {
   };
   selectedRivalObservedScouting.tacticalConnections = safeArray(selectedRivalObservedScouting.tacticalConnections);
   const updateSelectedRivalObservedScouting = (patch) => {
+    if (!selectedMatchRivalTeam?.id) return;
     setRivalObservedScouting((current) => ({
       ...current,
       [selectedRivalObservedKey]: {
@@ -7403,6 +7511,7 @@ function App() {
         updatedAt: new Date().toISOString(),
       },
     }));
+    queueRivalScoutingSave();
   };
   const updateObservedCollectiveProfile = (field, value) => {
     updateSelectedRivalObservedScouting({
@@ -7434,11 +7543,12 @@ function App() {
   const updateObservedPlayerProfile = (player, patch) => {
     const playerKey = getObservedPlayerKey(player);
     if (!playerKey) return;
+    const storedProfile = safeObject(selectedRivalObservedScouting.playerProfiles[playerKey]);
     updateSelectedRivalObservedScouting({
       playerProfiles: {
         ...selectedRivalObservedScouting.playerProfiles,
         [playerKey]: {
-          ...getObservedPlayerProfile(player),
+          ...storedProfile,
           ...patch,
           updatedAt: new Date().toISOString(),
         },
@@ -7446,69 +7556,151 @@ function App() {
     });
   };
   const toggleObservedPlayerTrait = (player, trait) => {
-    const profile = getObservedPlayerProfile(player);
+    const playerKey = getObservedPlayerKey(player);
+    const specificTraits = safeArray(selectedRivalObservedScouting.playerProfiles[playerKey]?.traits);
     const normalizedTrait = String(trait).toLowerCase();
-    const exists = profile.traits.some((item) => String(item).toLowerCase() === normalizedTrait);
+    const exists = specificTraits.some((item) => String(item).toLowerCase() === normalizedTrait);
     updateObservedPlayerProfile(player, {
-      traits: exists ? profile.traits.filter((item) => String(item).toLowerCase() !== normalizedTrait) : [...profile.traits, trait],
+      traits: exists ? specificTraits.filter((item) => String(item).toLowerCase() !== normalizedTrait) : [...specificTraits, trait],
     });
   };
-  const addObservedEvidence = () => {
+  const addObservedEvidence = async () => {
     const observation = String(evidenceDraft.observation || '').trim();
-    if (!observation) return;
-    updateSelectedRivalObservedScouting({
-      evidences: [
-        {
-          id: `evidence-${Date.now()}`,
-          match: String(evidenceDraft.match || '').trim(),
-          date: evidenceDraft.date || '',
-          type: evidenceDraft.type || 'Ataque',
-          importance: evidenceDraft.importance || 'Media',
-          observation,
+    const teamId = selectedMatchRivalTeam?.id;
+    if (!observation || !teamId) return;
+    setRivalScoutingSaveStatus('Guardando');
+    setRivalScoutingSavePending(true);
+    try {
+      const row = await createManualRivalEvidence(supabase, {
+        equipo_rival_id: teamId,
+        partido_id: selectedMatch?.id || null,
+        evidence_type: evidenceDraft.type || 'Ataque',
+        importance: evidenceDraft.importance || 'Media',
+        interpretation: observation,
+        notes: '',
+        status: 'pending',
+        source: 'staff',
+        source_context: {
+          legacy_match_text: String(evidenceDraft.match || '').trim(),
+          legacy_date: evidenceDraft.date || '',
         },
-        ...selectedRivalObservedScouting.evidences,
-      ].slice(0, 60),
-    });
-    setEvidenceDraft(emptyEvidenceDraft);
+      });
+      if (String(currentRivalScoutingTeamIdRef.current) !== String(teamId)) return;
+      setRivalObservedScouting((current) => ({
+        ...current,
+        [teamId]: {
+          ...(current[teamId] || {}),
+          evidences: [{
+            id: row.id,
+            partidoId: row.partido_id || null,
+            match: row.source_context?.legacy_match_text || '',
+            date: row.source_context?.legacy_date || row.created_at || '',
+            type: row.evidence_type,
+            importance: row.importance,
+            observation: row.interpretation,
+            notes: row.notes || '',
+            status: row.status,
+          }, ...safeArray(current[teamId]?.evidences)].slice(0, 60),
+        },
+      }));
+      setEvidenceDraft(emptyEvidenceDraft);
+      setRivalScoutingSaveStatus('Guardado');
+      return { ok: true };
+    } catch (saveError) {
+      console.error('[RIVAL_SCOUTING_EVIDENCE_CREATE_ERROR]', saveError);
+      setRivalScoutingSaveStatus('Error al guardar');
+      setRivalScoutingLoadError(saveError.message || 'No se pudo guardar la evidencia manual. Reintenta sin perder el borrador.');
+      return { ok: false, error: saveError };
+    } finally {
+      setRivalScoutingSavePending(rivalScoutingCoordinatorRef.current.hasPending());
+    }
   };
-  const removeObservedEvidence = (evidenceId) => {
-    updateSelectedRivalObservedScouting({
-      evidences: selectedRivalObservedScouting.evidences.filter((item) => item.id !== evidenceId),
-    });
+  const removeObservedEvidence = async (evidenceId) => {
+    const teamId = selectedMatchRivalTeam?.id;
+    if (!teamId || !isUuid(evidenceId)) return;
+    setRivalScoutingSaveStatus('Guardando');
+    setRivalScoutingSavePending(true);
+    try {
+      await deleteManualRivalEvidence(supabase, { id: evidenceId, teamId });
+      if (String(currentRivalScoutingTeamIdRef.current) !== String(teamId)) return;
+      setRivalObservedScouting((current) => ({
+        ...current,
+        [teamId]: { ...(current[teamId] || {}), evidences: safeArray(current[teamId]?.evidences).filter((item) => item.id !== evidenceId) },
+      }));
+      setRivalScoutingSaveStatus('Guardado');
+      return { ok: true };
+    } catch (saveError) {
+      setRivalScoutingSaveStatus('Error al guardar');
+      setRivalScoutingLoadError(saveError.message || 'No se pudo borrar la evidencia manual.');
+      return { ok: false, error: saveError };
+    } finally {
+      setRivalScoutingSavePending(rivalScoutingCoordinatorRef.current.hasPending());
+    }
   };
   const normalizeConnectionPlayerKey = (value) => String(value || '').trim();
   const updateTacticalConnectionDraft = (patch) => {
     setTacticalConnectionDraft((current) => ({ ...current, ...patch }));
   };
-  const addTacticalConnection = () => {
+  const addTacticalConnection = async () => {
     const origin = normalizeConnectionPlayerKey(tacticalConnectionDraft.origin);
     const destination = normalizeConnectionPlayerKey(tacticalConnectionDraft.destination);
     if (!origin || !destination || origin === destination) return;
     const type = tacticalConnectionTypes.includes(tacticalConnectionDraft.type) ? tacticalConnectionDraft.type : 'Pase habitual';
     const intensity = ['Baja', 'Media', 'Alta'].includes(tacticalConnectionDraft.intensity) ? tacticalConnectionDraft.intensity : 'Media';
     const team = tacticalConnectionDraft.team === 'caudal' ? 'caudal' : 'rival';
-    updateSelectedRivalObservedScouting({
-      tacticalConnections: [
-        {
-          id: `connection-${Date.now()}`,
-          team,
-          origin,
-          destination,
-          type,
-          intensity,
-          comment: String(tacticalConnectionDraft.comment || '').trim(),
-          createdAt: new Date().toISOString(),
+    const teamId = selectedMatchRivalTeam?.id;
+    if (!teamId) return;
+    const draft = { ...tacticalConnectionDraft, team, origin, destination, type, intensity };
+    setRivalScoutingSaveStatus('Guardando');
+    setRivalScoutingSavePending(true);
+    try {
+      const row = await createRivalScoutingConnection(supabase, {
+        teamId,
+        matchId: selectedMatch?.id || null,
+        draft,
+        players: team === 'caudal' ? players : liveRivalPlayers,
+      });
+      if (String(currentRivalScoutingTeamIdRef.current) !== String(teamId)) return;
+      setRivalObservedScouting((current) => ({
+        ...current,
+        [teamId]: {
+          ...(current[teamId] || {}),
+          tacticalConnections: [{ id: row.id, team, origin, destination, type, intensity, comment: row.comment || '', createdAt: row.created_at || '' }, ...safeArray(current[teamId]?.tacticalConnections)].slice(0, 80),
         },
-        ...selectedRivalObservedScouting.tacticalConnections,
-      ].slice(0, 80),
-    });
-    setTacticalConnectionDraft({ ...emptyTacticalConnectionDraft, team });
+      }));
+      setTacticalConnectionDraft({ ...emptyTacticalConnectionDraft, team });
+      setRivalScoutingSaveStatus('Guardado');
+      return { ok: true };
+    } catch (saveError) {
+      setRivalScoutingSaveStatus('Error al guardar');
+      setRivalScoutingLoadError(saveError.message || 'No se pudo guardar la conexión observada.');
+      return { ok: false, error: saveError };
+    } finally {
+      setRivalScoutingSavePending(rivalScoutingCoordinatorRef.current.hasPending());
+    }
   };
-  const removeTacticalConnection = (connectionId) => {
-    updateSelectedRivalObservedScouting({
-      tacticalConnections: selectedRivalObservedScouting.tacticalConnections.filter((item) => item.id !== connectionId),
-    });
-    if (selectedTacticalConnectionId === connectionId) setSelectedTacticalConnectionId('');
+  const removeTacticalConnection = async (connectionId) => {
+    const teamId = selectedMatchRivalTeam?.id;
+    if (!teamId || !isUuid(connectionId)) return;
+    setRivalScoutingSaveStatus('Guardando');
+    setRivalScoutingSavePending(true);
+    try {
+      await deleteRivalScoutingConnection(supabase, { id: connectionId, teamId });
+      if (String(currentRivalScoutingTeamIdRef.current) !== String(teamId)) return;
+      setRivalObservedScouting((current) => ({
+        ...current,
+        [teamId]: { ...(current[teamId] || {}), tacticalConnections: safeArray(current[teamId]?.tacticalConnections).filter((item) => item.id !== connectionId) },
+      }));
+      if (selectedTacticalConnectionId === connectionId) setSelectedTacticalConnectionId('');
+      setRivalScoutingSaveStatus('Guardado');
+      return { ok: true };
+    } catch (saveError) {
+      setRivalScoutingSaveStatus('Error al guardar');
+      setRivalScoutingLoadError(saveError.message || 'No se pudo borrar la conexión observada.');
+      return { ok: false, error: saveError };
+    } finally {
+      setRivalScoutingSavePending(rivalScoutingCoordinatorRef.current.hasPending());
+    }
   };
   const liveRivalIdentity = useMemo(
     () => getTeamTacticalIdentity(selectedMatchRivalTeam || {}),
@@ -7518,6 +7710,39 @@ function App() {
     () => dedupeRivalPlayers(selectedMatchRivalTeam?.squad || []),
     [selectedMatchRivalTeam]
   );
+  currentRivalScoutingTeamIdRef.current = selectedMatchRivalTeam?.id || '';
+  rivalScoutingSnapshotRef.current = selectedMatchRivalTeam?.id ? {
+    teamId: selectedMatchRivalTeam.id,
+    tacticalIdentity: getTeamTacticalIdentity(selectedMatchRivalTeam),
+    collective: selectedRivalObservedScouting.collective,
+    matchPlanNotes: rivalScoutingDrafts[selectedMatchRivalTeam.id] || selectedRivalObservedScouting.matchPlanNotes || {},
+    playerProfiles: Object.entries(selectedRivalObservedScouting.playerProfiles).map(([playerKey, storedProfile]) => {
+      const player = liveRivalPlayers.find((candidate) => getObservedPlayerKey(candidate) === playerKey);
+      const { id, updatedAt: _updatedAt, ...profile } = safeObject(storedProfile);
+      return { id: isUuid(id) ? id : null, ...getRivalScoutingPlayerIdentity(player || { name: playerKey }), profile };
+    }),
+  } : null;
+  rivalScoutingPersistRef.current = async (snapshot) => {
+    if (!snapshot?.teamId) return { ok: false, error: new Error('No hay un rival real asociado al scouting.') };
+    const requestId = ++rivalScoutingRequestRef.current;
+    const result = await saveRivalScoutingSnapshot(supabase, snapshot);
+    if (!result.ok) return result;
+    const currentTeamId = currentRivalScoutingTeamIdRef.current;
+    if (!shouldApplyScoutingResponse({
+      requestedTeamId: snapshot.teamId,
+      currentTeamId,
+      requestId,
+      latestRequestId: rivalScoutingRequestRef.current,
+    })) return { ok: true, stale: true };
+    return result;
+  };
+  useEffect(() => {
+    if (rivalScoutingAutosaveTimerRef.current) {
+      window.clearTimeout(rivalScoutingAutosaveTimerRef.current);
+      rivalScoutingAutosaveTimerRef.current = null;
+    }
+    rivalScoutingCoordinatorRef.current.reset(selectedMatchRivalTeam?.id ? 'Guardado' : '');
+  }, [selectedMatchRivalTeam?.id]);
   const liveRivalStarters = useMemo(() => {
     const squadByName = new Map(liveRivalPlayers.map((player) => [normalizePlayerIdentityName(player.name), player]));
     const savedLineup = safeArray(selectedMatchRivalTeam?.lineup)
@@ -11153,6 +11378,44 @@ function App() {
     const evidence = tacticalEvidenceCenter.items.find((item) => item.id === evidenceId);
     if (!evidence) return;
     if (patch.status === 'confirmed' && !evidence.canConfirm) return;
+    if (evidenceId.startsWith('manual:')) {
+      const teamId = selectedMatchRivalTeam?.id;
+      const manualId = evidenceId.slice('manual:'.length);
+      if (!teamId || !isUuid(manualId)) return { ok: false, error: new Error('La evidencia manual no tiene una identidad remota válida.') };
+      setRivalScoutingSaveStatus('Guardando');
+      setRivalScoutingSavePending(true);
+      try {
+        const row = await updateManualRivalEvidenceStatus(supabase, {
+          id: manualId,
+          teamId,
+          status: ['confirmed', 'discarded'].includes(patch.status) ? patch.status : evidence.status || 'pending',
+          interpretation: patch.interpretation,
+          notes: patch.notes,
+        });
+        if (String(currentRivalScoutingTeamIdRef.current) !== String(teamId)) return { ok: true, stale: true };
+        setRivalObservedScouting((current) => ({
+          ...current,
+          [teamId]: {
+            ...(current[teamId] || {}),
+            evidences: safeArray(current[teamId]?.evidences).map((item) => item.id === manualId ? {
+              ...item,
+              observation: row.interpretation,
+              notes: row.notes || '',
+              status: row.status,
+              updatedAt: row.updated_at || '',
+            } : item),
+          },
+        }));
+        setRivalScoutingSaveStatus('Guardado');
+        return { ok: true };
+      } catch (saveError) {
+        setRivalScoutingSaveStatus('Error al guardar');
+        setRivalScoutingLoadError(saveError.message || 'No se pudo actualizar la evidencia manual.');
+        return { ok: false, error: saveError };
+      } finally {
+        setRivalScoutingSavePending(rivalScoutingCoordinatorRef.current.hasPending());
+      }
+    }
     const current = safeObject(selectedRivalObservedScouting.evidenceValidations[evidenceId]);
     const now = new Date().toISOString();
     const actor = session?.user?.email || session?.user?.user_metadata?.name || 'Staff';
@@ -12706,8 +12969,12 @@ function App() {
     }));
     return (
       <div className={isPreTalkMode ? 'space-y-4' : 'space-y-5'}>
-        <div className="sticky top-2 z-20 border border-white/10 bg-[#081327]/95 px-3 py-2 backdrop-blur">
+        <div className="sticky top-2 z-20 flex flex-wrap items-center justify-between gap-3 border border-white/10 bg-[#081327]/95 px-3 py-2 backdrop-blur">
           <div className="text-base font-black text-white">{caudalSystem} vs {rivalSystem}</div>
+          <div className="flex items-center gap-2">
+            {rivalScoutingSaveStatus ? <span className={`text-[9px] font-black uppercase ${rivalScoutingSaveStatus === 'Error al guardar' ? 'text-red-200' : rivalScoutingSaveStatus === 'Cambios sin guardar' ? 'text-amber-200' : 'text-slate-400'}`}>{rivalScoutingSaveStatus}</span> : null}
+            {rivalScoutingSaveStatus === 'Error al guardar' && rivalScoutingNavigationGuardRef.current?.hasPending?.() ? <button type="button" onClick={retryRivalScoutingSave} className="rounded-lg border border-red-300/20 px-2 py-1 text-[9px] font-black uppercase text-red-100">Reintentar</button> : null}
+          </div>
         </div>
 
         <nav className="sticky top-14 z-20 overflow-x-auto border border-white/10 bg-[#081327]/95 p-1.5 backdrop-blur" aria-label="Secciones de Sistemas Enfrentados">
@@ -12727,6 +12994,27 @@ function App() {
 
         <div className={`grid gap-4 ${facingSystemsView === 'PIZARRA' && !isPreTalkMode ? 'xl:grid-cols-[minmax(320px,0.32fr)_minmax(0,0.68fr)]' : 'xl:grid-cols-2'}`}>
           {facingSystemsView === 'EVIDENCIAS' ? (
+            <>
+            <section className="rounded-[1.6rem] border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-caudal-electric">Observación del staff</p><h3 className="mt-1 text-lg font-black text-white">Nueva evidencia manual</h3></div>
+                <div className="flex items-center gap-2">
+                  {rivalScoutingSaveStatus ? <span className={`text-[9px] font-black uppercase ${rivalScoutingSaveStatus === 'Error al guardar' ? 'text-red-200' : rivalScoutingSaveStatus === 'Cambios sin guardar' ? 'text-amber-200' : 'text-slate-400'}`}>{rivalScoutingSaveStatus}</span> : null}
+                  {rivalScoutingSaveStatus === 'Error al guardar' && rivalScoutingNavigationGuardRef.current?.hasPending?.() ? <button type="button" onClick={retryRivalScoutingSave} className="rounded-lg border border-red-300/20 px-3 py-2 text-[9px] font-black uppercase text-red-100">Reintentar</button> : null}
+                </div>
+              </div>
+              <div className="mt-4 grid gap-2 md:grid-cols-[130px_110px_1fr_auto]">
+                <select value={evidenceDraft.type} onChange={(event) => setEvidenceDraft((current) => ({ ...current, type: event.target.value }))} className="h-11 border border-white/10 bg-black/20 px-3 text-xs font-bold text-white">
+                  {evidenceTypeOptions.map((type) => <option key={type} value={type}>{type}</option>)}
+                </select>
+                <select value={evidenceDraft.importance} onChange={(event) => setEvidenceDraft((current) => ({ ...current, importance: event.target.value }))} className="h-11 border border-white/10 bg-black/20 px-3 text-xs font-bold text-white">
+                  {['Alta', 'Media', 'Baja'].map((importance) => <option key={importance} value={importance}>{importance}</option>)}
+                </select>
+                <input value={evidenceDraft.observation} onChange={(event) => setEvidenceDraft((current) => ({ ...current, observation: event.target.value }))} placeholder="Comportamiento observado e interpretación…" className="h-11 min-w-0 border border-white/10 bg-black/20 px-3 text-sm text-white outline-none placeholder:text-slate-500" />
+                <button type="button" disabled={!String(evidenceDraft.observation || '').trim() || rivalScoutingSaveStatus === 'Guardando'} onClick={() => runRivalScoutingDirectSave(addObservedEvidence)} className="min-h-11 bg-caudal-electric px-4 text-[10px] font-black uppercase text-slate-950 disabled:opacity-40">Guardar evidencia</button>
+              </div>
+              {rivalScoutingLoadError ? <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-red-300/15 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-100"><span>{rivalScoutingLoadError}</span><button type="button" onClick={() => setRivalScoutingReloadVersion((current) => current + 1)} className="shrink-0 rounded-lg border border-red-200/20 px-2 py-1 text-[9px] font-black uppercase">Recargar</button></div> : null}
+            </section>
             <TacticalEvidencePanel
               report={tacticalEvidenceReport}
               center={tacticalEvidenceCenter}
@@ -12738,7 +13026,8 @@ function App() {
                 result: getMatchScoreLabel(selectedMatch),
                 videoUrl: selectedMatch.postVideoLink || '',
               }}
-              onUpdateValidation={updateTacticalEvidenceValidation}
+              onDeleteManual={(evidenceId) => runRivalScoutingDirectSave(() => removeObservedEvidence(evidenceId))}
+              onUpdateValidation={(evidenceId, patch) => runRivalScoutingDirectSave(() => updateTacticalEvidenceValidation(evidenceId, patch))}
               onViewPlay={(playId, phase) => {
                 requestFacingSystemsView('PIZARRA', () => {
                   setTacticalGamePhase(phase);
@@ -12755,6 +13044,7 @@ function App() {
                 if (destination === 'plan') requestFacingSystemsView('PLAN DE PARTIDO');
               }}
             />
+            </>
           ) : null}
           {facingSystemsView === 'RIVAL' ? (
             <RivalCollectiveAssistant
@@ -12785,8 +13075,9 @@ function App() {
               onToggleTrait={(trait) => selectedMicroPlayer && toggleObservedPlayerTrait(selectedMicroPlayer, trait)}
               onAddObservation={(observation) => {
                 if (!selectedMicroPlayer) return;
+                const storedNotes = selectedRivalObservedScouting.playerProfiles[getObservedPlayerKey(selectedMicroPlayer)]?.notes || '';
                 updateObservedPlayerProfile(selectedMicroPlayer, {
-                  notes: [String(selectedMicroProfile.notes || '').trim(), observation].filter(Boolean).join('\n'),
+                  notes: [String(selectedMicroProfile.notes && !storedNotes ? '' : selectedMicroProfile.notes || '').trim(), observation].filter(Boolean).join('\n'),
                 });
               }}
               onOpenEvidence={() => requestFacingSystemsView('EVIDENCIAS')}
@@ -13195,7 +13486,7 @@ function App() {
                 </div>
                 <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                   <input value={tacticalConnectionDraft.comment} onChange={(event) => updateTacticalConnectionDraft({ comment: event.target.value })} placeholder="Observación opcional: cuándo aparece esta conexión..." className="min-w-0 flex-1 border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none placeholder:text-slate-500" />
-                  <button type="button" onClick={addTacticalConnection} className="min-h-11 bg-caudal-electric px-4 py-2 text-[10px] font-black uppercase text-slate-950">Añadir</button>
+                  <button type="button" onClick={() => runRivalScoutingDirectSave(addTacticalConnection)} className="min-h-11 bg-caudal-electric px-4 py-2 text-[10px] font-black uppercase text-slate-950">Añadir</button>
                 </div>
                 <div className="mt-3 max-h-32 space-y-1.5 overflow-y-auto pr-1">
                   {visibleTacticalConnections.length ? visibleTacticalConnections.slice(0, 8).map((connection) => (
@@ -13203,7 +13494,7 @@ function App() {
                       <button type="button" onClick={() => setSelectedTacticalConnectionId(selectedTacticalConnectionId === connection.id ? '' : connection.id)} className="min-w-0 flex-1 truncate text-left font-black text-white">
                           {connection.origin} {'->'} {connection.destination} · {connection.type} · {connection.intensity}
                       </button>
-                      <button type="button" onClick={() => removeTacticalConnection(connection.id)} className="shrink-0 text-[10px] font-black uppercase text-red-200">Eliminar</button>
+                      <button type="button" onClick={() => runRivalScoutingDirectSave(() => removeTacticalConnection(connection.id))} className="shrink-0 text-[10px] font-black uppercase text-red-200">Eliminar</button>
                     </div>
                   )) : (
                     <p className="border border-dashed border-white/10 px-3 py-3 text-xs font-semibold text-slate-500">Sin conexiones observadas registradas.</p>
@@ -21067,17 +21358,10 @@ function App() {
   const getActiveRivalPlayerTeam = () => selectedTeam || teams.find((team) => team.id === editingTeamId) || null;
   const getRivalPlayerFlags = (teamId, playerName) => {
     const storedPlayer = teams.find((team) => String(team.id) === String(teamId))?.squad?.map(normalizeSquadEntry).find((player) => normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(playerName));
-    const persistedPlacement = storedPlayer?.fieldRole ? {
-      fieldRole: storedPlayer.fieldRole,
-      slotIndex: storedPlayer.slotIndex,
-      reserveIndex: storedPlayer.reserveIndex,
-      hiddenFromField: false,
-    } : {};
-    return { ...persistedPlacement, ...(rivalPlayerFlags[getRivalPlayerFlagKey(teamId, playerName)] || {}) };
-  };
-  const updateRivalPlayerFlags = (teamId, playerName, patch) => {
-    const key = getRivalPlayerFlagKey(teamId, playerName);
-    setRivalPlayerFlags((current) => ({ ...current, [key]: { ...(current[key] || {}), ...patch } }));
+    return resolveRivalPlayerFlags({
+      remotePlayer: storedPlayer,
+      legacyFlags: rivalPlayerFlags[getRivalPlayerFlagKey(teamId, playerName)] || {},
+    });
   };
   const applyRivalPlacementPatches = (teamId, patches = []) => {
     setRivalPlayerFlags((current) => {
@@ -21791,21 +22075,11 @@ function App() {
       const teamId = data.id;
       const savedTeam = rivalDbToTeam(data, {
         ...(currentTeam || {}),
+        ...getTeamTacticalIdentity(teamFormState),
         squad: currentTeam?.squad || [],
         lineup: currentTeam?.lineup || emptyLineup,
         benchChart: currentTeam?.benchChart || emptyDepthChart,
       });
-      saveStoredRivalTacticalIdentity(teamId, teamFormState);
-      squad.forEach((player) => {
-        if (player.name) updateRivalPlayerFlags(teamId, player.name, { captain: Boolean(player.captain) });
-      });
-      if (!editingTeamId && rivalScoutingDrafts.__new) {
-        setRivalScoutingDrafts((current) => {
-          const { __new, ...rest } = current;
-          return { ...rest, [teamId]: __new };
-        });
-      }
-
       if (squad.length && !globalPlayersAvailable) throw new Error('Ejecuta supabase_global_players.sql antes de guardar jugadores. No se crearán más registros legacy.');
       const confirmedPlayers = [];
       for (const squadPlayer of squad.map(normalizeSquadEntry)) {
@@ -21898,6 +22172,44 @@ function App() {
         });
         if (historyError) syncHistoryWarning = `La plantilla se guardó, pero no se pudo registrar el historial: ${historyError.message}`;
         else setPendingRivalSync(null);
+      }
+
+      const existingScouting = safeObject(rivalObservedScouting[teamId]);
+      const matchPlanNotes = editingTeamId
+        ? safeObject(rivalScoutingDrafts[teamId])
+        : safeObject(rivalScoutingDrafts.__new);
+      const scoutingSave = await saveRivalScoutingSnapshot(supabase, {
+        teamId,
+        tacticalIdentity: getTeamTacticalIdentity(teamFormState),
+        collective: safeObject(existingScouting.collective),
+        matchPlanNotes,
+        playerProfiles: Object.entries(safeObject(existingScouting.playerProfiles)).map(([playerKey, storedProfile]) => {
+          const player = squad.find((candidate) => getObservedPlayerKey(candidate) === playerKey);
+          const { id, updatedAt: _updatedAt, ...profile } = safeObject(storedProfile);
+          return { id: isUuid(id) ? id : null, ...getRivalScoutingPlayerIdentity(player || { name: playerKey }), profile };
+        }),
+      });
+      if (!scoutingSave.ok) throw scoutingSave.error;
+      setRivalObservedScouting((current) => ({
+        ...current,
+        [teamId]: {
+          ...(current[teamId] || {}),
+          tacticalIdentity: getTeamTacticalIdentity(teamFormState),
+          matchPlanNotes,
+        },
+      }));
+      setRivalScoutingDrafts((current) => {
+        const { __new, ...rest } = current;
+        return { ...rest, [teamId]: matchPlanNotes };
+      });
+      if (!editingTeamId && typeof window !== 'undefined') {
+        try {
+          const legacyDrafts = readLegacyRivalScoutingStorage(window.localStorage).scoutingDrafts;
+          const { __new: _migratedDraft, ...legacyBackup } = legacyDrafts;
+          window.localStorage.setItem('caudal-rival-scouting-drafts-v1', JSON.stringify({ ...legacyBackup, [teamId]: matchPlanNotes }));
+        } catch (storageError) {
+          console.warn('El rival se guardó, pero no se pudo conservar el backup local del borrador:', storageError);
+        }
       }
 
       setTeams((currentTeams) => {

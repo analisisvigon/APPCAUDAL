@@ -196,7 +196,7 @@ function EvidenceTimeline({ item, match, onViewPlay, onOpenVideo }) {
       <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-black/10 p-4">
         <p className="text-xs font-bold text-slate-400">Esta observación no está vinculada a una jugada guardada.</p>
         {item.manualMatch || item.manualDate ? <p className="mt-2 text-[10px] font-semibold text-slate-500">{item.manualMatch ? `Partido: ${item.manualMatch}` : 'Partido no identificado'}{item.manualDate ? ` · Fecha: ${item.manualDate}` : ''}</p> : null}
-        <p className="mt-1 text-[10px] font-semibold text-slate-600">No puede confirmarse ni alimentar otras pestañas hasta disponer de trazabilidad real.</p>
+        <p className="mt-1 text-[10px] font-semibold text-slate-600">La observación manual puede ser confirmada por el staff; queda identificada como fuente manual.</p>
       </div>
     );
   }
@@ -256,7 +256,7 @@ function ImpactPanel({ item, onClose, onNavigate }) {
   );
 }
 
-function EvidenceCard({ item, match, expanded, editing, saving, compact = false, onToggle, onEdit, onCancelEdit, onSaveEdit, onUpdateValidation, onViewPlay, onOpenVideo, onNavigate, onShowImpact }) {
+function EvidenceCard({ item, match, expanded, editing, saving, compact = false, onToggle, onEdit, onCancelEdit, onSaveEdit, onUpdateValidation, onDeleteManual, onViewPlay, onOpenVideo, onNavigate, onShowImpact }) {
   const [interpretation, setInterpretation] = useState(item.title);
   const [notes, setNotes] = useState(item.notes);
   const confirmed = item.status === 'confirmed';
@@ -313,6 +313,7 @@ function EvidenceCard({ item, match, expanded, editing, saving, compact = false,
             <button type="button" onClick={() => onShowImpact(item)} className="rounded-lg border border-violet-300/20 px-3 py-2 text-[9px] font-black uppercase text-violet-100">Ver impacto</button>
             <button type="button" onClick={() => item.contexts[0] && onViewPlay?.(item.contexts[0].playId, item.contexts[0].phase)} disabled={!item.hasBoard} className="rounded-lg border border-white/10 px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:opacity-35">Abrir en Pizarra</button>
             <button type="button" onClick={() => onNavigate?.('players', item)} disabled={!item.participants.length} className="rounded-lg border border-white/10 px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:opacity-35">Abrir jugador</button>
+            {item.type === 'manual' ? <button type="button" onClick={() => onDeleteManual?.(item.id)} disabled={saving} className="rounded-lg border border-rose-300/15 px-3 py-2 text-[9px] font-black uppercase text-rose-100 disabled:opacity-35">Borrar definitivamente</button> : null}
           </div>
         </div>
       ) : null}
@@ -393,7 +394,7 @@ function RelationshipDiagram({ items, onOpen }) {
   );
 }
 
-export default function TacticalEvidencePanel({ report, center, match, onUpdateValidation, onViewPlay, onOpenVideo, onNavigate }) {
+export default function TacticalEvidencePanel({ report, center, match, onUpdateValidation, onDeleteManual, onViewPlay, onOpenVideo, onNavigate }) {
   const [filter, setFilter] = useState('all');
   const [viewMode, setViewMode] = useState('analysis');
   const [expandedId, setExpandedId] = useState('');
@@ -423,6 +424,16 @@ export default function TacticalEvidencePanel({ report, center, match, onUpdateV
   const saveEdit = async (itemId, patch) => {
     if (await updateValidation(itemId, patch)) setEditingId('');
   };
+  const deleteManual = async (itemId) => {
+    if (savingId) return false;
+    setSavingId(itemId);
+    try {
+      await onDeleteManual?.(itemId.replace(/^manual:/, ''));
+      return true;
+    } finally {
+      setSavingId('');
+    }
+  };
   const cardProps = {
     match,
     expandedId,
@@ -433,6 +444,7 @@ export default function TacticalEvidencePanel({ report, center, match, onUpdateV
     onCancelEdit: () => setEditingId(''),
     onSaveEdit: saveEdit,
     onUpdateValidation: updateValidation,
+    onDeleteManual: deleteManual,
     onViewPlay,
     onOpenVideo,
     onNavigate,

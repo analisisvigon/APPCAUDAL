@@ -114,7 +114,8 @@ const buildItem = ({ type, row, report, validations }) => {
 const buildManualItem = (row, validations) => {
   const id = `manual:${clean(row.id || row.observation)}`;
   const validation = safeObject(validations[id]);
-  const status = validation.status === 'discarded' ? 'discarded' : validation.status === 'review' ? 'review' : 'pending';
+  const requestedStatus = validation.status || row.status;
+  const status = ['confirmed', 'discarded', 'review'].includes(requestedStatus) ? requestedStatus : 'pending';
   return {
     id,
     type: 'manual',
@@ -125,20 +126,20 @@ const buildManualItem = (row, validations) => {
     playIds: [],
     playCount: 0,
     occurrenceCount: 1,
-    matchIds: [],
-    matchCount: clean(row.match) ? 1 : 0,
+    matchIds: clean(row.partidoId) ? [clean(row.partidoId)] : [],
+    matchCount: clean(row.partidoId || row.match) ? 1 : 0,
     sources: [{ type: 'staff_observation', id: clean(row.id), label: 'Staff' }],
     sourceCount: 1,
     participants: [],
     contexts: [],
     status,
-    quality: status === 'discarded' ? 'Descartada' : status === 'review' ? 'Requiere revisión' : 'Observada',
-    canConfirm: false,
-    notes: clean(validation.notes),
-    updatedAt: clean(validation.updatedAt || row.date),
+    quality: status === 'confirmed' ? 'Confirmada' : status === 'discarded' ? 'Descartada' : status === 'review' ? 'Requiere revisión' : 'Observada',
+    canConfirm: true,
+    notes: clean(validation.notes || row.notes),
+    updatedAt: clean(validation.updatedAt || row.updatedAt || row.date),
     updatedBy: clean(validation.updatedBy),
     history: safeArray(validation.history),
-    usedIn: { rival: false, plan: false, players: false },
+    usedIn: { rival: status === 'confirmed', plan: status === 'confirmed', players: false },
     manualMatch: clean(row.match),
     manualDate: clean(row.date),
     hasVideo: false,
