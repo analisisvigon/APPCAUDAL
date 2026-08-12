@@ -99,6 +99,11 @@ import {
   resolveGoalParticipant,
 } from './utils/goalEvents';
 import {
+  buildGoalAtomicRpcArgs,
+  isGoalMutationResponseCurrent,
+  normalizeGoalAtomicResult,
+} from './utils/goalAtomicMutation';
+import {
   DEFAULT_GOAL_PHASE,
   GOAL_PHASE_OPTIONS,
   getGoalModalSummaryEvent,
@@ -194,10 +199,10 @@ import {
   buildIntelligentLineup,
   buildIntelligentReservePlacements,
   getPlayerRoleFitScore,
-  movePlayerInLineup,
   sanitizeTacticalLineup,
   getTacticalPlayerKey,
 } from './utils/rivalTactics';
+import { buildRivalLineupAtomicSnapshot, isRivalSaveResponseCurrent } from './utils/rivalLineupAtomic';
 import { getDefensiveBlockInitialPositions } from './utils/defensiveBlockPositions';
 import {
   buildDefensiveOffensiveRivalBoard,
@@ -2057,19 +2062,6 @@ const createGoalEventPayload = (partidoId, draft) => {
     video_url: emptyToNull(draft.videoUrl),
   };
   return filterGoalEventDbPayload(rawPayload);
-};
-
-const goalEventOptionalDbColumns = ['contact', 'video_url', 'scorer_id', 'assistant_id'];
-
-const getMissingGoalEventColumn = (error) => {
-  const message = String(error?.message || error?.details || error?.hint || '').toLowerCase();
-  return goalEventOptionalDbColumns.find((column) => message.includes(column));
-};
-
-const removeGoalEventDbColumn = (payload, column) => {
-  const nextPayload = { ...payload };
-  delete nextPayload[column];
-  return nextPayload;
 };
 
 const createGoalSaveError = (message, details = {}) => {
@@ -5287,6 +5279,7 @@ function App() {
   const [draggedPlayer, setDraggedPlayer] = useState(null);
   const [importStatus, setImportStatus] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
+  const [pendingRivalPlacementSave, setPendingRivalPlacementSave] = useState(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isTeamPanelOpen, setIsTeamPanelOpen] = useState(false);
   const [teamEditMode, setTeamEditMode] = useState(false);
@@ -5847,12 +5840,17 @@ function App() {
   const postSectionRef = useRef(null);
   const delegatedHeaderRef = useRef(null);
   const statsOperationRef = useRef(Promise.resolve());
+  const goalMutationInFlightRef = useRef(false);
+  const goalMutationRequestRef = useRef(0);
+  const currentGoalMatchIdRef = useRef(null);
   const statsSquadSaveInFlightRef = useRef(false);
   const suspensionProcessingSignatureRef = useRef('');
   const postYoutubeIframeRef = useRef(null);
   const postYoutubePlayerRef = useRef(null);
   const postMatchVideoRef = useRef(null);
   const rivalPlacementOperationRef = useRef(false);
+  const rivalPlacementRequestRef = useRef(0);
+  const currentRivalTeamIdRef = useRef(null);
   const authenticatedDataCoordinatorRef = useRef(createAuthenticatedDataLoadCoordinator());
   const homeDataCoordinatorRef = useRef(createAuthenticatedDataLoadCoordinator());
   const authSessionIdentityRef = useRef('');
@@ -6101,50 +6099,6 @@ function App() {
         setGlobalPlayersLoading(false);
       }
     }
-  };
-
-  const persistTeamLineup = async (teamId, lineup) => {
-    const { error: deleteError } = await supabase.from("equipo_rival_alineacion").delete().eq("equipo_rival_id", teamId);
-    if (deleteError) throw deleteError;
-    const rows = sanitizeTacticalLineup(lineup || []).map((player, index) => ({
-      equipo_rival_id: teamId,
-      jugador_rival_id: isUuid(player.jugadorRivalId) ? player.jugadorRivalId : null,
-      ...(globalPlayersAvailable ? {
-        global_player_id: isUuid(player.globalPlayerId) ? player.globalPlayerId : null,
-        membership_id: isUuid(player.membershipId) ? player.membershipId : null,
-      } : {}),
-      player_name: player.name,
-      slot: Number.isInteger(player.slot) ? player.slot : index,
-      role: player.role || 'Titular',
-      x: player.x ?? null,
-      y: player.y ?? null,
-      player_snapshot: createTacticalPlayerSnapshot(player),
-    }));
-    if (!rows.length) return;
-    const { error: insertError } = await supabase.from("equipo_rival_alineacion").insert(rows);
-    if (insertError) throw insertError;
-  };
-
-  const persistTeamBench = async (teamId, benchChart) => {
-    const { error: deleteError } = await supabase.from("equipo_rival_banquillo").delete().eq("equipo_rival_id", teamId);
-    if (deleteError) throw deleteError;
-    const rows = Object.entries(benchChart || {}).flatMap(([starterName, slots]) =>
-      (slots || []).map((player, slot) => ({
-        equipo_rival_id: teamId,
-        starter_name: starterName,
-        slot,
-        jugador_rival_id: player && isUuid(player.jugadorRivalId) ? player.jugadorRivalId : null,
-        ...(globalPlayersAvailable ? {
-          global_player_id: player && isUuid(player.globalPlayerId) ? player.globalPlayerId : null,
-          membership_id: player && isUuid(player.membershipId) ? player.membershipId : null,
-        } : {}),
-        player_name: player?.name || null,
-        player_snapshot: player ? createTacticalPlayerSnapshot(player) : {},
-      }))
-    );
-    if (!rows.length) return;
-    const { error: insertError } = await supabase.from("equipo_rival_banquillo").insert(rows);
-    if (insertError) throw insertError;
   };
 
   const competitionFilterOptions = useMemo(
@@ -7317,6 +7271,7 @@ function App() {
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
     [selectedTeamId, teams]
   );
+  currentRivalTeamIdRef.current = selectedTeamId;
   useEffect(() => {
     setDraggedPlayer(null);
     setActiveRivalDropSlot('');
@@ -7338,6 +7293,7 @@ function App() {
     const statsSystem = resolveMatchStatsFormation(match, ownDefaultFormation);
     return match.statsSystem === statsSystem ? match : { ...match, statsSystem };
   }, [selectedMatchId, matches, ownDefaultFormation]);
+  currentGoalMatchIdRef.current = selectedMatchId;
 
   const selectedPreAiAnalysis = useMemo(
     () => normalizePreAiAnalysis(selectedMatch?.preAiAnalysis),
@@ -16126,82 +16082,46 @@ function App() {
     return [origin, draft.assistant, draft.scorer || 'Goleador'].filter(Boolean);
   };
 
-  const recalculateMatchScoreFromGoalEvents = async (matchId, extraPayload = {}) => {
-    const { data: goalRows, error: goalsFetchError } = await supabase
-      .from("partido_eventos_gol")
-      .select("*")
-      .eq("partido_id", matchId);
-    if (goalsFetchError) throw goalsFetchError;
+  const mutateGoalAtomically = async ({ operation, matchId, goalId = null, goal = null, matchPatch = {} }) => {
+    const requestId = ++goalMutationRequestRef.current;
+    const { data, error } = await supabase.rpc('mutate_match_goal_atomic', buildGoalAtomicRpcArgs({
+      operation,
+      matchId,
+      goalId,
+      goal,
+      matchPatch,
+    }));
+    const responseIsCurrent = isGoalMutationResponseCurrent({
+      requestedMatchId: matchId,
+      currentMatchId: currentGoalMatchIdRef.current,
+      requestId,
+      latestRequestId: goalMutationRequestRef.current,
+    });
+    if (error) return { data: null, error, stale: !responseIsCurrent };
+    if (!data || typeof data !== 'object') {
+      return {
+        data: null,
+        error: createGoalSaveError('Supabase no devolvió el resultado de la operación atómica del gol.'),
+        stale: !responseIsCurrent,
+      };
+    }
 
-    const nextEvents = (goalRows || []).map(normalizeSupabaseGoalEvent);
-    const caudalGoals = nextEvents.filter((event) => event.type === 'Gol a favor').length;
-    const rivalGoals = nextEvents.filter((event) => event.type === 'Gol en contra').length;
-    const currentMatch = selectedMatch?.id === matchId ? selectedMatch : matches.find((match) => match.id === matchId);
-    const scorePayload = {
-      goals_for: String(caudalGoals),
-      goals_against: String(rivalGoals),
-      home_score: currentMatch?.isHome ? String(caudalGoals) : String(rivalGoals),
-      away_score: currentMatch?.isHome ? String(rivalGoals) : String(caudalGoals),
-      ...extraPayload,
-    };
-    const { error: matchScoreError } = await supabase.from("partidos").update(scorePayload).eq("id", matchId);
-    if (matchScoreError) throw matchScoreError;
+    const normalized = normalizeGoalAtomicResult(data);
+    const stale = !responseIsCurrent;
+    if (stale) return { data: normalized, error: null, stale: true };
+
+    const nextEvents = normalized.events.map(normalizeSupabaseGoalEvent);
     setMatches((current) => current.map((match) => (match.id === matchId ? {
       ...match,
       statsGoalEvents: nextEvents,
-      goalsFor: String(caudalGoals),
-      goalsAgainst: String(rivalGoals),
-      homeScore: scorePayload.home_score,
-      awayScore: scorePayload.away_score,
+      goalsFor: normalized.score.goalsFor,
+      goalsAgainst: normalized.score.goalsAgainst,
+      homeScore: normalized.score.homeScore,
+      awayScore: normalized.score.awayScore,
+      ...(Object.prototype.hasOwnProperty.call(matchPatch, 'post_notes') ? { postNotes: matchPatch.post_notes } : {}),
+      ...(Object.prototype.hasOwnProperty.call(matchPatch, 'post_ai_analysis') ? { postAiAnalysis: matchPatch.post_ai_analysis } : {}),
     } : match)));
-    return { nextEvents, caudalGoals, rivalGoals, scorePayload };
-  };
-
-  const saveGoalWithSchemaFallback = async ({ mode, goalId, payload }) => {
-    if (mode === 'edit' && !goalId) {
-      return {
-        data: null,
-        error: createGoalSaveError('No se pudo guardar el gol: falta el identificador del gol.'),
-        removedColumns: [],
-      };
-    }
-    let currentPayload = { ...payload };
-    const removedColumns = [];
-    for (let attempt = 0; attempt <= goalEventOptionalDbColumns.length; attempt += 1) {
-      let result;
-      try {
-        result = mode === 'edit'
-          ? await supabase.from("partido_eventos_gol").update(currentPayload).eq("id", goalId).select("*").maybeSingle()
-          : await supabase.from("partido_eventos_gol").insert(currentPayload).select("*").maybeSingle();
-      } catch (error) {
-        return { data: null, error, removedColumns };
-      }
-
-      if (!result.error && result.data) return { data: result.data, error: null, removedColumns };
-      if (!result.error && !result.data) {
-        return {
-          data: null,
-          error: createGoalSaveError(
-            mode === 'edit'
-              ? 'No se actualizó ningún gol. Revisa que el evento siga existiendo y que tengas permisos de lectura.'
-              : 'El gol se envió, pero Supabase no devolvió la fila creada. Revisa permisos SELECT/RLS sobre partido_eventos_gol.'
-          ),
-          removedColumns,
-        };
-      }
-
-      const missingColumn = getMissingGoalEventColumn(result.error);
-      if (!missingColumn || !(missingColumn in currentPayload) || removedColumns.includes(missingColumn)) {
-        return { data: null, error: result.error, removedColumns };
-      }
-      removedColumns.push(missingColumn);
-      currentPayload = removeGoalEventDbColumn(currentPayload, missingColumn);
-    }
-    return {
-      data: null,
-      error: createGoalSaveError('No se pudo guardar el gol tras varios intentos.'),
-      removedColumns,
-    };
+    return { data: { ...normalized, events: nextEvents }, error: null, stale: false };
   };
 
   const detectGoalClipPlatform = (url = '') => {
@@ -16305,7 +16225,7 @@ function App() {
   };
 
   const saveGoalAnalysisEvent = async () => {
-    if (statsSaveStatus === 'Guardando gol...') return;
+    if (goalMutationInFlightRef.current) return;
     if (!selectedMatch) {
       setStatsError('No hay partido seleccionado para guardar el gol.');
       return;
@@ -16334,8 +16254,6 @@ function App() {
       setStatsError('El minuto debe estar entre 0 y 120.');
       return;
     }
-    setStatsSaveStatus('Guardando gol...');
-    setStatsError('');
     const payloadDraft = {
       ...goalAnalysisDraft,
       minute: String(minute),
@@ -16349,47 +16267,9 @@ function App() {
     const fullGoalPayload = createGoalEventPayload(selectedMatch.id, payloadDraft);
     const isEditingGoal = Boolean(editingGoalEventId);
     if (isEditingGoal && !getStatsGoalEvents().some((event) => event.id === editingGoalEventId)) {
-      setStatsSaveStatus('');
       setStatsError('No se ha podido guardar el gol: el evento seleccionado ya no está disponible.');
       return;
     }
-    const saveResult = await saveGoalWithSchemaFallback({
-      mode: isEditingGoal ? 'edit' : 'create',
-      goalId: editingGoalEventId,
-      payload: fullGoalPayload,
-    });
-    if (saveResult.error) {
-      console.error('[GOAL_SAVE_ERROR]', { mode: isEditingGoal ? 'edit' : 'create', goalId: editingGoalEventId, payload: fullGoalPayload, removedColumns: saveResult.removedColumns, error: saveResult.error });
-      setStatsSaveStatus('');
-      setStatsError(saveResult.error.message || 'No se ha podido guardar el gol.');
-      return;
-    }
-    const normalizedSavedGoal = normalizeSupabaseGoalEvent(saveResult.data || {});
-    const expectedAssistant = getGoalAssistant(payloadDraft);
-    const savedAssistant = getGoalAssistant(normalizedSavedGoal);
-    if (
-      (expectedAssistant.id || expectedAssistant.name)
-      && (
-        (!savedAssistant.id && !savedAssistant.name)
-        || !goalParticipantMatchesPlayer(normalizedSavedGoal, 'assistant', {
-          id: expectedAssistant.id,
-          name: expectedAssistant.name,
-        })
-      )
-    ) {
-      setStatsSaveStatus('');
-      setStatsError('Gol guardado sin la asistencia seleccionada. Revisa la migración supabase_goal_event_participants.sql antes de continuar.');
-      return;
-    }
-    const expectedZones = goalFormToDb(payloadDraft);
-    const savedZones = goalFormToDb(normalizedSavedGoal);
-    const missingSavedZones = ['assist_zone', 'shot_zone', 'goal_zone'].filter((column) => expectedZones[column] && savedZones[column] !== expectedZones[column]);
-    if (missingSavedZones.length) {
-      setStatsSaveStatus('');
-      setStatsError(`Gol guardado, pero Supabase no devolvió las zonas esperadas: ${missingSavedZones.join(', ')}.`);
-      return;
-    }
-
     const postAnalysis = safeObject(selectedMatch.postAiAnalysis);
     const nextGoalAnalysisMeta = isEditingGoal
       ? safeArray(postAnalysis.goalAnalysisMeta)
@@ -16414,51 +16294,62 @@ function App() {
         post_notes: [selectedMatch.postNotes, payloadDraft.summary].filter(Boolean).join('\n'),
         post_ai_analysis: { ...postAnalysis, goalAnalysisMeta: nextGoalAnalysisMeta },
       };
+    goalMutationInFlightRef.current = true;
+    setStatsSaveStatus('Guardando gol...');
+    setStatsError('');
     try {
-      await recalculateMatchScoreFromGoalEvents(selectedMatch.id, scoreExtraPayload);
-    } catch (scoreError) {
-      console.error('[GOAL_SAVE_ERROR]', { step: 'recalculate_match_score', matchId: selectedMatch.id, error: scoreError });
-      setStatsSaveStatus('');
-      setStatsError('Gol guardado, pero no se ha podido actualizar el marcador.');
-      return;
-    }
+      const saveResult = await mutateGoalAtomically({
+        operation: isEditingGoal ? 'update' : 'create',
+        matchId: selectedMatch.id,
+        goalId: editingGoalEventId,
+        goal: fullGoalPayload,
+        matchPatch: scoreExtraPayload,
+      });
+      if (saveResult.stale) return;
+      if (saveResult.error) {
+        console.error('[GOAL_ATOMIC_SAVE_ERROR]', { operation: isEditingGoal ? 'update' : 'create', goalId: editingGoalEventId, error: saveResult.error });
+        setStatsSaveStatus('Error al guardar · Reintentar');
+        setStatsError(saveResult.error.message || 'No se ha podido guardar el gol. No se ha aplicado ningún cambio.');
+        return;
+      }
 
-    setEditingGoalEventId('');
-    setIsGoalAnalysisOpen(false);
-    await loadPartidos();
-    await refreshStatsFromSupabase(selectedMatch.id, 'análisis de goles y marcador');
-    setStatsSaveStatus(isEditingGoal ? 'Gol actualizado OK' : 'Gol registrado OK');
-    window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Gol registrado OK' || current === 'Gol actualizado OK' ? '' : current)), 2200);
+      setEditingGoalEventId('');
+      setIsGoalAnalysisOpen(false);
+      setStatsSaveStatus(isEditingGoal ? 'Gol actualizado OK' : 'Gol registrado OK');
+      window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Gol registrado OK' || current === 'Gol actualizado OK' ? '' : current)), 2200);
+    } finally {
+      goalMutationInFlightRef.current = false;
+    }
   };
 
   const deleteGoalAnalysisEvent = async (eventId) => {
-    if (!selectedMatch || !eventId) return;
+    if (!selectedMatch || !eventId || goalMutationInFlightRef.current) return;
     if (!window.confirm('¿Eliminar este gol? Se recalculará marcador, timeline y estadísticas.')) return;
+    goalMutationInFlightRef.current = true;
     setStatsSaveStatus('Eliminando gol...');
     setStatsError('');
-    const { error: deleteError } = await supabase.from("partido_eventos_gol").delete().eq("id", eventId);
-    if (deleteError) {
-      console.error('[GOAL_DELETE_ERROR]', { eventId, error: deleteError });
-      setStatsSaveStatus('');
-      setStatsError(deleteError.message || 'No se pudo eliminar el gol.');
-      return;
-    }
     try {
-      await recalculateMatchScoreFromGoalEvents(selectedMatch.id);
-    } catch (scoreError) {
-      console.error('[GOAL_DELETE_ERROR]', { step: 'recalculate_match_score', matchId: selectedMatch.id, error: scoreError });
-      setStatsSaveStatus('');
-      setStatsError('Gol eliminado, pero no se ha podido recalcular el marcador.');
-      return;
+      const deleteResult = await mutateGoalAtomically({
+        operation: 'delete',
+        matchId: selectedMatch.id,
+        goalId: eventId,
+      });
+      if (deleteResult.stale) return;
+      if (deleteResult.error) {
+        console.error('[GOAL_ATOMIC_DELETE_ERROR]', { eventId, error: deleteResult.error });
+        setStatsSaveStatus('Error al eliminar · Reintentar');
+        setStatsError(deleteResult.error.message || 'No se pudo eliminar el gol. No se ha aplicado ningún cambio.');
+        return;
+      }
+      if (editingGoalEventId === eventId) {
+        setEditingGoalEventId('');
+        setIsGoalAnalysisOpen(false);
+      }
+      setStatsSaveStatus('Gol eliminado OK');
+      window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Gol eliminado OK' ? '' : current)), 2200);
+    } finally {
+      goalMutationInFlightRef.current = false;
     }
-    if (editingGoalEventId === eventId) {
-      setEditingGoalEventId('');
-      setIsGoalAnalysisOpen(false);
-    }
-    await loadPartidos();
-    await refreshStatsFromSupabase(selectedMatch.id, 'eliminación de gol');
-    setStatsSaveStatus('Gol eliminado OK');
-    window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Gol eliminado OK' ? '' : current)), 2200);
   };
 
   const renderZoneGrid = ({ value, onChange, zones = pitchZoneOptions, goal = false, compact = false, variant = 'neutral' }) => {
@@ -21101,8 +20992,12 @@ function App() {
     if (!selectedTeam) return;
     const currentPlayer = selectedTeam.squad.map(normalizeSquadEntry).find((player) => player.name === playerName);
     if (!currentPlayer) return;
-    if (currentPlayer.membershipId && ['isKey', 'captain', 'observed', 'role'].includes(field)) {
-      const column = { isKey: 'is_key', captain: 'captain', observed: 'observed', role: 'squad_role' }[field];
+    if (field === 'role') {
+      await setSelectedTeamPlayerRole(playerName, value);
+      return;
+    }
+    if (currentPlayer.membershipId && ['isKey', 'captain', 'observed'].includes(field)) {
+      const column = { isKey: 'is_key', captain: 'captain', observed: 'observed' }[field];
       const { error: membershipError } = await supabase.from('player_team_memberships').update({ [column]: value }).eq('id', currentPlayer.membershipId);
       if (membershipError) console.error('Error actualizando afiliación del jugador global:', membershipError);
       else await loadTeams();
@@ -21113,9 +21008,16 @@ function App() {
       ...nextPlayerBase,
       fieldSources: markChangedFieldsManual({ current: currentPlayer, next: nextPlayerBase, fields: [field], fieldSources: currentPlayer.fieldSources }),
     };
+    const {
+      role: _role,
+      tactical_role: _tacticalRole,
+      tactical_slot: _tacticalSlot,
+      tactical_reserve_slot: _tacticalReserveSlot,
+      ...playerDetailsPayload
+    } = createRivalPlayerPayload(selectedTeam.id, nextPlayer);
     const { error: updateError } = await supabase
       .from("jugadores_rivales")
-      .update(createRivalPlayerPayload(selectedTeam.id, nextPlayer))
+      .update(playerDetailsPayload)
       .eq("equipo_rival_id", selectedTeam.id)
       .eq("name", playerName);
     if (updateError) {
@@ -21129,27 +21031,19 @@ function App() {
     const activeTeam = getActiveRivalPlayerTeam();
     if (!activeTeam || !player?.name) return;
     const normalizedPlayer = normalizeSquadEntry(player);
-    let deleteError = null;
-    if (normalizedPlayer.membershipId) {
-      const response = await supabase.from('player_team_memberships').update({ is_current: false, end_date: new Date().toISOString().slice(0, 10), tactical_role: null, tactical_slot: null, tactical_reserve_slot: null }).eq('id', normalizedPlayer.membershipId);
-      deleteError = response.error;
-    } else {
-      const playerId = isUuid(player.jugadorRivalId) ? player.jugadorRivalId : isUuid(player.id) ? player.id : null;
-      let deleteRequest = supabase.from("jugadores_rivales").delete().eq("equipo_rival_id", activeTeam.id);
-      deleteRequest = playerId ? deleteRequest.eq("id", playerId) : deleteRequest.eq("name", player.name);
-      const response = await deleteRequest;
-      deleteError = response.error;
-    }
-    if (deleteError) {
-      console.error('Error eliminando jugador rival en Supabase:', deleteError);
-      setSaveStatus(deleteError.message || 'No se pudo eliminar el jugador rival.');
+    const rivalPlayerId = isUuid(player.jugadorRivalId) ? player.jugadorRivalId : isUuid(player.id) ? player.id : null;
+    const { data: deleteData, error: deleteError } = await supabase.rpc('remove_rival_player_from_team_atomic', {
+      p_team_id: activeTeam.id,
+      p_membership_id: isUuid(normalizedPlayer.membershipId) ? normalizedPlayer.membershipId : null,
+      p_rival_player_id: rivalPlayerId,
+      p_player_name: player.name,
+    });
+    if (deleteError || !deleteData?.removed_player_name) {
+      const resolvedError = deleteError || new Error('Supabase no confirmó la retirada del jugador rival.');
+      console.error('Error eliminando jugador rival en Supabase:', resolvedError);
+      setSaveStatus(resolvedError.message || 'No se pudo eliminar el jugador rival.');
       return;
     }
-    await Promise.all([
-      supabase.from("equipo_rival_alineacion").delete().eq("equipo_rival_id", activeTeam.id).eq("player_name", player.name),
-      supabase.from("equipo_rival_banquillo").delete().eq("equipo_rival_id", activeTeam.id).eq("player_name", player.name),
-      supabase.from("equipo_rival_banquillo").delete().eq("equipo_rival_id", activeTeam.id).eq("starter_name", player.name),
-    ]);
     setRivalPlayerFlags((current) => {
       const { [getRivalPlayerFlagKey(activeTeam.id, player.name)]: _removed, ...rest } = current;
       return rest;
@@ -21202,79 +21096,6 @@ function App() {
       return next;
     });
   };
-  const persistRivalPlacementPatches = async (teamId, patches = []) => {
-    if (!patches.length) return;
-    const teamPlayers = teams.find((team) => String(team.id) === String(teamId))?.squad?.map(normalizeSquadEntry) || [];
-    const patchPlayers = patches.map((patch) => teamPlayers.find((player) =>
-      patch.playerId
-        ? getRivalPlayerUniqueKey(player) === String(patch.playerId)
-        : normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(patch.playerName)
-    )).filter(Boolean);
-    const membershipIds = patchPlayers.map((player) => player.membershipId).filter(Boolean);
-    const legacyPlayers = patchPlayers.filter((player) => !player.membershipId);
-    const legacyIds = legacyPlayers.map((player) => player.jugadorRivalId || player.id).filter(isUuid);
-    const legacyNames = legacyPlayers.filter((player) => !isUuid(player.jugadorRivalId || player.id)).map((player) => player.name);
-    const atomicPlacements = patches.map((patch) => {
-      const targetPlayer = teamPlayers.find((player) =>
-        patch.playerId
-          ? getRivalPlayerUniqueKey(player) === String(patch.playerId)
-          : normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(patch.playerName)
-      );
-      if (!targetPlayer) return null;
-      const values = {
-        tactical_role: patch.placement.fieldRole || null,
-        tactical_slot: patch.placement.slotIndex !== null && patch.placement.slotIndex !== undefined && Number.isInteger(Number(patch.placement.slotIndex)) ? Number(patch.placement.slotIndex) : null,
-        tactical_reserve_slot: patch.placement.fieldRole === 'Reserva' && [0, 1].includes(Number(patch.placement.reserveIndex)) ? Number(patch.placement.reserveIndex) : null,
-      };
-      return {
-        membership_id: isUuid(targetPlayer.membershipId) ? targetPlayer.membershipId : null,
-        rival_player_id: !targetPlayer.membershipId && isUuid(targetPlayer.jugadorRivalId || targetPlayer.id) ? targetPlayer.jugadorRivalId || targetPlayer.id : null,
-        ...values,
-      };
-    }).filter((placement) => placement?.membership_id || placement?.rival_player_id);
-    if (atomicPlacements.length === patches.length) {
-      const { error: atomicError } = await supabase.rpc('apply_rival_tactical_placements', {
-        p_team_id: teamId,
-        p_placements: atomicPlacements,
-      });
-      if (!atomicError) return;
-      const missingFunction = atomicError.code === 'PGRST202'
-        || /apply_rival_tactical_placements|schema cache|function/i.test(atomicError.message || '') && /not find|does not exist|could not/i.test(atomicError.message || '');
-      if (!missingFunction) throw atomicError;
-    }
-    if (membershipIds.length) {
-      const { error } = await supabase.from('player_team_memberships').update({ tactical_role: null, tactical_slot: null, tactical_reserve_slot: null }).in('id', membershipIds);
-      if (error) throw error;
-    }
-    if (legacyNames.length) {
-      const { error } = await supabase.from("jugadores_rivales").update({ tactical_role: null, tactical_slot: null, tactical_reserve_slot: null }).eq("equipo_rival_id", teamId).in("name", legacyNames);
-      if (error) throw error;
-    }
-    if (legacyIds.length) {
-      const { error } = await supabase.from("jugadores_rivales").update({ tactical_role: null, tactical_slot: null, tactical_reserve_slot: null }).in("id", legacyIds);
-      if (error) throw error;
-    }
-    for (const { playerId, playerName, placement } of patches) {
-      const targetPlayer = playerId
-        ? patchPlayers.find((player) => getRivalPlayerUniqueKey(player) === String(playerId))
-        : patchPlayers.find((player) => normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(playerName));
-      const values = {
-        tactical_role: placement.fieldRole || null,
-        tactical_slot: placement.slotIndex !== null && placement.slotIndex !== undefined && placement.slotIndex !== '' && Number.isInteger(Number(placement.slotIndex)) ? Number(placement.slotIndex) : null,
-        tactical_reserve_slot: placement.fieldRole === 'Reserva' && [0, 1].includes(Number(placement.reserveIndex)) ? Number(placement.reserveIndex) : null,
-      };
-      const legacyPlayerId = targetPlayer?.jugadorRivalId || targetPlayer?.id;
-      const request = targetPlayer?.membershipId
-        ? supabase.from('player_team_memberships').update(values).eq('id', targetPlayer.membershipId)
-        : isUuid(legacyPlayerId)
-          ? supabase.from("jugadores_rivales").update(values).eq("id", legacyPlayerId)
-          : supabase.from("jugadores_rivales").update(values).eq("equipo_rival_id", teamId).eq("name", playerName);
-      const { error: placementError } = await request;
-      if (placementError) throw placementError;
-    }
-  };
-  const removePlayerFromLineupItems = (lineup, playerName) =>
-    safeArray(lineup).filter((item) => normalizePlayerIdentityName(item.name) !== normalizePlayerIdentityName(playerName));
   const getRivalPlayerStatusIcons = (teamId, player) => {
     const flags = getRivalPlayerFlags(teamId, player.name);
     const yellowCardsLabel = Number(player.yellowCardsCount) > 0 ? `${player.yellowCardsCount} amarillas` : 'Amonestaciones';
@@ -21693,8 +21514,14 @@ function App() {
     }
     try {
       if (rivalPlayerModal.mode === 'edit' && !draft.teamId && rivalPlayerModal.originalMembershipId) {
-        const { error: unlinkError } = await supabase.from('player_team_memberships').update({ is_current: false, end_date: new Date().toISOString().slice(0, 10), tactical_role: null, tactical_slot: null, tactical_reserve_slot: null }).eq('id', rivalPlayerModal.originalMembershipId);
+        const { data: unlinkData, error: unlinkError } = await supabase.rpc('remove_rival_player_from_team_atomic', {
+          p_team_id: rivalPlayerModal.originalTeamId,
+          p_membership_id: rivalPlayerModal.originalMembershipId,
+          p_rival_player_id: null,
+          p_player_name: rivalPlayerModal.originalName || draft.name,
+        });
         if (unlinkError) throw unlinkError;
+        if (!unlinkData?.removed_player_name) throw new Error('Supabase no confirmó la desvinculación del jugador rival.');
       }
       const globalId = await saveGlobalPlayerProfile(supabase, draft);
       const membershipId = draft.teamId
@@ -22752,162 +22579,8 @@ function App() {
     setRivalImportReview(null);
     setImportStatus('Importación cancelada.');
   };
-  const updateTeamLineup = async (teamId, updater, options = {}) => {
-    const team = teams.find((item) => item.id === teamId);
-    if (!team) return;
-    const nextLineup = sanitizeTacticalLineup(updater(team.lineup ?? emptyLineup));
-    setTeams((current) =>
-      current.map((item) => (item.id === teamId ? { ...item, lineup: nextLineup } : item))
-    );
-    try {
-      await persistTeamLineup(teamId, nextLineup);
-      const lineupTitularNames = nextLineup.map((player) => player.name).filter(Boolean);
-      const preservedStarterNames = options.preserveUnplacedStarters === false
-        ? []
-        : dedupeRivalPlayers(team.squad || [])
-            .filter((player) => player.role === 'Titular' && !safeArray(options.demoteNames).includes(player.name))
-            .map((player) => player.name);
-      const titularNames = Array.from(new Set([...preservedStarterNames, ...lineupTitularNames]));
-      await supabase.from('player_team_memberships').update({ squad_role: 'Reserva' }).eq('team_id', teamId).eq('is_current', true);
-      await supabase.from("jugadores_rivales").update({ role: 'Reserva' }).eq("equipo_rival_id", teamId);
-      if (titularNames.length) {
-        const titularMembershipIds = dedupeRivalPlayers(team.squad || []).filter((player) => titularNames.includes(player.name)).map((player) => player.membershipId).filter(Boolean);
-        if (titularMembershipIds.length) await supabase.from('player_team_memberships').update({ squad_role: 'Titular' }).in('id', titularMembershipIds);
-        await supabase.from("jugadores_rivales").update({ role: 'Titular' }).eq("equipo_rival_id", teamId).in("name", titularNames);
-      }
-      await loadTeams();
-    } catch (lineupError) {
-      console.error('Error guardando alineación rival en Supabase:', lineupError);
-      setSaveStatus(lineupError.message || 'No se pudo guardar la alineación.');
-    }
-  };
-
   const findRivalPlayerByName = (playerName) =>
     dedupeRivalPlayers(selectedTeam?.squad || []).find((item) => normalizePlayerIdentityName(item.name) === normalizePlayerIdentityName(playerName));
-
-  const findReserveSlotOccupant = (slotIndex, reserveIndex, excludedPlayerName = '') =>
-    dedupeRivalPlayers(selectedTeam?.squad || []).find((player) => {
-      const flags = getRivalPlayerFlags(selectedTeam?.id, player.name);
-      return flags.fieldRole === 'Reserva'
-        && Number(flags.slotIndex) === Number(slotIndex)
-        && Number(flags.reserveIndex) === Number(reserveIndex)
-        && normalizePlayerIdentityName(player.name) !== normalizePlayerIdentityName(excludedPlayerName);
-    });
-
-  const findStarterSlotOccupant = (slotIndex, excludedPlayerName = '') =>
-    dedupeRivalPlayers(selectedTeam?.squad || []).find((player) => {
-      const flags = getRivalPlayerFlags(selectedTeam?.id, player.name);
-      return flags.fieldRole === 'Titular'
-        && Number(flags.slotIndex) === Number(slotIndex)
-        && normalizePlayerIdentityName(player.name) !== normalizePlayerIdentityName(excludedPlayerName);
-    });
-
-  const placePlayerLegacy = async (playerOrId, targetSlotId) => {
-    if (!selectedTeam || !targetSlotId) return;
-    const player = typeof playerOrId === 'string' ? findRivalPlayerByName(playerOrId) : playerOrId;
-    if (!player?.name) return;
-
-    const normalizedPlayer = normalizeSquadEntry(player);
-    const target = typeof targetSlotId === 'string' ? { type: targetSlotId } : targetSlotId;
-    setActiveRivalDropSlot('');
-
-    if (target.type === 'list') {
-      await removeFromLineup(normalizedPlayer.name);
-      setDraggedPlayer(null);
-      setSelectedTeamPlacementPlayerName('');
-      return;
-    }
-
-    const slotIndex = Number(target.slotIndex);
-    if (!Number.isInteger(slotIndex)) return;
-    const system = selectedTeam.system || '4-4-2';
-    const coordinates = getFormationCoordinates(system)[slotIndex] || { x: 50, y: 50 };
-    const formationCoordinates = getFormationCoordinates(system);
-    const currentLineup = sanitizeTacticalLineup(selectedTeam.lineup || []);
-    const sourceLineupPlayer = currentLineup.find((item) => normalizePlayerIdentityName(item.name) === normalizePlayerIdentityName(normalizedPlayer.name));
-    const sourceFlags = getRivalPlayerFlags(selectedTeam.id, normalizedPlayer.name);
-    const sourcePlacement = sourceFlags.fieldRole
-      ? { type: sourceFlags.fieldRole, slotIndex: Number(sourceFlags.slotIndex), reserveIndex: sourceFlags.reserveIndex === null ? null : Number(sourceFlags.reserveIndex) }
-      : sourceLineupPlayer
-        ? { type: 'Titular', slotIndex: Number(sourceLineupPlayer.slot), reserveIndex: null }
-        : { type: 'list', slotIndex: null, reserveIndex: null };
-
-    try {
-      if (target.type === 'Titular') {
-      const droppedPlayer = { ...normalizedPlayer, role: 'Titular', slot: slotIndex, ...coordinates };
-      const replacedPlayer = currentLineup.find((item) =>
-        Number(item.slot) === slotIndex
-        && normalizePlayerIdentityName(item.name) !== normalizePlayerIdentityName(droppedPlayer.name)
-      ) || findStarterSlotOccupant(slotIndex, droppedPlayer.name);
-      const effectiveLineup = sourcePlacement.type === 'Titular'
-        ? sourceLineupPlayer
-          ? currentLineup
-          : [...currentLineup, { ...normalizedPlayer, role: 'Titular', slot: sourcePlacement.slotIndex, ...(formationCoordinates[sourcePlacement.slotIndex] || {}) }]
-        : removePlayerFromLineupItems(currentLineup, normalizedPlayer.name);
-      const nextLineup = movePlayerInLineup({ lineup: effectiveLineup, player: droppedPlayer, targetSlot: slotIndex, coordinates: formationCoordinates });
-      const patches = [{ playerName: droppedPlayer.name, placement: { hiddenFromField: false, fieldRole: 'Titular', slotIndex, reserveIndex: null } }];
-      const demoteNames = [];
-      if (replacedPlayer?.name) {
-        if (sourcePlacement.type === 'Titular' && Number.isInteger(sourcePlacement.slotIndex) && sourcePlacement.slotIndex !== slotIndex) {
-          patches.push({ playerName: replacedPlayer.name, placement: { hiddenFromField: false, fieldRole: 'Titular', slotIndex: sourcePlacement.slotIndex, reserveIndex: null } });
-        } else if (sourcePlacement.type === 'Reserva' && Number.isInteger(sourcePlacement.slotIndex) && [0, 1].includes(sourcePlacement.reserveIndex)) {
-          patches.push({ playerName: replacedPlayer.name, placement: { hiddenFromField: false, fieldRole: 'Reserva', slotIndex: sourcePlacement.slotIndex, reserveIndex: sourcePlacement.reserveIndex } });
-          demoteNames.push(replacedPlayer.name);
-        } else {
-          patches.push({ playerName: replacedPlayer.name, placement: { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null } });
-          demoteNames.push(replacedPlayer.name);
-        }
-      }
-      await persistRivalPlacementPatches(selectedTeam.id, patches);
-      applyRivalPlacementPatches(selectedTeam.id, patches);
-      await updateTeamLineup(selectedTeam.id, () => nextLineup, { demoteNames });
-      }
-
-      if (target.type === 'Reserva') {
-      const reserveIndex = Number(target.reserveIndex ?? 0);
-      if (![0, 1].includes(reserveIndex)) {
-        setSaveStatus('Solo se permiten dos reservas por posición.');
-        return;
-      }
-      const replacedReserve = findReserveSlotOccupant(slotIndex, reserveIndex, normalizedPlayer.name);
-      let nextLineup = removePlayerFromLineupItems(currentLineup, normalizedPlayer.name);
-      const patches = [{ playerName: normalizedPlayer.name, placement: { hiddenFromField: false, fieldRole: 'Reserva', slotIndex, reserveIndex } }];
-      if (replacedReserve?.name) {
-        if (sourcePlacement.type === 'Titular' && Number.isInteger(sourcePlacement.slotIndex)) {
-          nextLineup = movePlayerInLineup({ lineup: nextLineup, player: replacedReserve, targetSlot: sourcePlacement.slotIndex, coordinates: formationCoordinates });
-          patches.push({ playerName: replacedReserve.name, placement: { hiddenFromField: false, fieldRole: 'Titular', slotIndex: sourcePlacement.slotIndex, reserveIndex: null } });
-        } else if (sourcePlacement.type === 'Reserva' && Number.isInteger(sourcePlacement.slotIndex) && [0, 1].includes(sourcePlacement.reserveIndex)) {
-          patches.push({ playerName: replacedReserve.name, placement: { hiddenFromField: false, fieldRole: 'Reserva', slotIndex: sourcePlacement.slotIndex, reserveIndex: sourcePlacement.reserveIndex } });
-        } else {
-          patches.push({ playerName: replacedReserve.name, placement: { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null } });
-        }
-      }
-      await persistRivalPlacementPatches(selectedTeam.id, patches);
-      applyRivalPlacementPatches(selectedTeam.id, patches);
-      await updateTeamLineup(selectedTeam.id, () => nextLineup, { demoteNames: [normalizedPlayer.name] });
-      }
-    } catch (placementError) {
-      console.error('[RIVAL_TACTICAL_PLACEMENT_ERROR]', placementError);
-      setSaveStatus(placementError.message || 'No se pudo completar el movimiento táctico.');
-      await loadTeams();
-    }
-
-    setDraggedPlayer(null);
-    setSelectedTeamPlacementPlayerName('');
-  };
-
-  const removeFromLineupLegacy = async (playerName) => {
-    if (!selectedTeam) return;
-    const patches = [{ playerName, placement: { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null } }];
-    try {
-      await persistRivalPlacementPatches(selectedTeam.id, patches);
-      applyRivalPlacementPatches(selectedTeam.id, patches);
-      await updateTeamLineup(selectedTeam.id, (lineup) => removePlayerFromLineupItems(lineup, playerName), { demoteNames: [playerName] });
-    } catch (placementError) {
-      setSaveStatus(placementError.message || 'No se pudo quitar al jugador del campo.');
-      return;
-    }
-  };
 
   const buildCurrentRivalTacticalPlacements = (team = selectedTeam) => {
     if (!team) return {};
@@ -22931,27 +22604,50 @@ function App() {
     return { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null };
   };
 
-  const persistCanonicalRivalPlacements = async ({ team, before, after, changedPlayerIds, rememberUndo = true }) => {
+  const persistCanonicalRivalPlacements = async ({
+    team,
+    before,
+    after,
+    changedPlayerIds,
+    rememberUndo = true,
+    system = team?.system || '4-4-2',
+    fieldSources = team?.fieldSources || {},
+    benchChart = team?.benchChart || emptyDepthChart,
+  }) => {
     const teamPlayers = dedupeRivalPlayers(team.squad || []).map(normalizeSquadEntry);
     const playerById = new Map(teamPlayers.map((player) => [getTacticalPlayerKey(player), player]));
     const changedIds = Array.from(new Set(changedPlayerIds || [])).map(String).filter((id) => playerById.has(id));
-    if (!changedIds.length) return;
     const patches = changedIds.map((id) => ({
       playerId: id,
       playerName: playerById.get(id).name,
       placement: placementToFlagPatch(after[id]),
     }));
-    const coordinates = getFormationCoordinates(team.system || '4-4-2');
+    const coordinates = getFormationCoordinates(system);
     const nextLineup = Object.entries(after).flatMap(([id, placement]) => {
       const player = playerById.get(id);
       if (!player || placement.status !== 'starter') return [];
       return [{ ...player, role: 'Titular', slot: placement.slotIndex, ...(coordinates[placement.slotIndex] || {}) }];
     }).sort((left, right) => left.slot - right.slot);
+    const rpcArgs = buildRivalLineupAtomicSnapshot({
+      teamId: team.id,
+      system,
+      fieldSources,
+      players: teamPlayers,
+      placements: after,
+      lineup: nextLineup,
+      benchChart,
+      createPlayerSnapshot: createTacticalPlayerSnapshot,
+    });
+    const pendingSave = { team, before, after, changedPlayerIds: changedIds, rememberUndo, system, fieldSources, benchChart };
+    const requestId = ++rivalPlacementRequestRef.current;
 
     applyRivalPlacementPatches(team.id, patches);
     setTeams((current) => current.map((item) => item.id === team.id ? {
       ...item,
+      system,
+      fieldSources,
       lineup: nextLineup,
+      benchChart,
       squad: item.squad.map((entry) => {
         const placement = after[getTacticalPlayerKey(normalizeSquadEntry(entry))];
         if (!placement) return entry;
@@ -22960,14 +22656,42 @@ function App() {
       }),
     } : item));
 
-    try {
-      await persistRivalPlacementPatches(team.id, patches);
-      await persistTeamLineup(team.id, nextLineup);
-      if (rememberUndo) setRivalTacticalUndo({ teamId: team.id, placements: before });
-      await loadTeams();
-    } catch (error) {
-      await loadTeams();
+    const { data, error } = await supabase.rpc('save_rival_lineup_atomic', rpcArgs);
+    const responseIsCurrent = isRivalSaveResponseCurrent({
+      requestedTeamId: team.id,
+      currentTeamId: currentRivalTeamIdRef.current,
+      requestId,
+      latestRequestId: rivalPlacementRequestRef.current,
+    });
+    if (error) {
+      if (!responseIsCurrent) return { stale: true, error };
+      setPendingRivalPlacementSave(pendingSave);
       throw error;
+    }
+    if (!data || typeof data !== 'object') {
+      const responseError = new Error('Supabase no devolvió el resultado del guardado atómico de la alineación rival.');
+      if (!responseIsCurrent) return { stale: true, error: responseError };
+      setPendingRivalPlacementSave(pendingSave);
+      throw responseError;
+    }
+    if (!responseIsCurrent) return { stale: true };
+
+    setPendingRivalPlacementSave(null);
+    if (rememberUndo) setRivalTacticalUndo({ teamId: team.id, placements: before });
+    return { stale: false, lineup: nextLineup };
+  };
+
+  const retryPendingRivalPlacementSave = async () => {
+    if (!pendingRivalPlacementSave || rivalPlacementOperationRef.current) return;
+    rivalPlacementOperationRef.current = true;
+    try {
+      const retryResult = await persistCanonicalRivalPlacements(pendingRivalPlacementSave);
+      if (retryResult?.stale) return;
+      setSaveStatus('Alineación rival guardada correctamente.');
+    } catch (error) {
+      setSaveStatus(error.message || 'No se pudo reintentar el guardado de la alineación rival.');
+    } finally {
+      rivalPlacementOperationRef.current = false;
     }
   };
 
@@ -22995,12 +22719,13 @@ function App() {
 
     rivalPlacementOperationRef.current = true;
     try {
-      await persistCanonicalRivalPlacements({
+      const saveResult = await persistCanonicalRivalPlacements({
         team: selectedTeam,
         before,
         after: result.placements,
         changedPlayerIds: result.movedPlayerIds,
       });
+      if (saveResult?.stale) return;
       setSaveStatus(result.occupantPlayerId
         ? 'Intercambio guardado: solo se han movido los dos jugadores implicados.'
         : 'Movimiento guardado.');
@@ -23031,7 +22756,8 @@ function App() {
     }
     rivalPlacementOperationRef.current = true;
     try {
-      await persistCanonicalRivalPlacements({ team: selectedTeam, before: current, after: previous, changedPlayerIds, rememberUndo: false });
+      const saveResult = await persistCanonicalRivalPlacements({ team: selectedTeam, before: current, after: previous, changedPlayerIds, rememberUndo: false });
+      if (saveResult?.stale) return;
       setRivalTacticalUndo(null);
       setSaveStatus('Último movimiento deshecho.');
     } catch (error) {
@@ -23041,44 +22767,31 @@ function App() {
     }
   };
 
-  const applyIntelligentRivalLineup = async (lineup, reservePlacements = []) => {
+  const applyIntelligentRivalLineup = async (lineup, reservePlacements = [], options = {}) => {
     if (!selectedTeam) return;
     const cleanLineup = sanitizeTacticalLineup(lineup);
     const cleanReservePlacements = reservePlacements.filter((placement) => placement?.player?.name && Number.isInteger(placement.slotIndex) && [0, 1].includes(placement.reserveIndex));
-    const nextNames = new Set([
-      ...cleanLineup.map((player) => normalizePlayerIdentityName(player.name)),
-      ...cleanReservePlacements.map((placement) => normalizePlayerIdentityName(placement.player.name)),
-    ]);
-    const previousStarterNames = new Set([
-      ...safeArray(selectedTeam.lineup).map((player) => normalizePlayerIdentityName(player.name)),
-      ...dedupeRivalPlayers(selectedTeam.squad || []).filter((player) => getRivalPlayerFlags(selectedTeam.id, player.name).fieldRole === 'Titular').map((player) => normalizePlayerIdentityName(player.name)),
-    ]);
-    const previousPlacedNames = new Set(dedupeRivalPlayers(selectedTeam.squad || [])
-      .filter((player) => getRivalPlayerFlags(selectedTeam.id, player.name).fieldRole)
-      .map((player) => normalizePlayerIdentityName(player.name)));
-    previousStarterNames.forEach((name) => previousPlacedNames.add(name));
-    const patches = [
-      ...cleanLineup.map((player) => ({
-      playerName: player.name,
-      placement: { hiddenFromField: false, fieldRole: 'Titular', slotIndex: player.slot, reserveIndex: null },
-      })),
-      ...cleanReservePlacements.map((placement) => ({
-        playerName: placement.player.name,
-        placement: { hiddenFromField: false, fieldRole: 'Reserva', slotIndex: placement.slotIndex, reserveIndex: placement.reserveIndex },
-      })),
-    ];
-    dedupeRivalPlayers(selectedTeam.squad || []).forEach((player) => {
-      const name = normalizePlayerIdentityName(player.name);
-      if (previousPlacedNames.has(name) && !nextNames.has(name)) {
-        patches.push({ playerName: player.name, placement: { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null } });
-      }
+    const teamPlayers = dedupeRivalPlayers(selectedTeam.squad || []).map(normalizeSquadEntry);
+    const playerByName = new Map(teamPlayers.map((player) => [normalizePlayerIdentityName(player.name), player]));
+    const before = buildCurrentRivalTacticalPlacements(selectedTeam);
+    const after = Object.fromEntries(teamPlayers.map((player) => [getTacticalPlayerKey(player), { status: 'unplaced' }]));
+    cleanLineup.forEach((lineupPlayer) => {
+      const player = playerByName.get(normalizePlayerIdentityName(lineupPlayer.name));
+      if (player) after[getTacticalPlayerKey(player)] = { status: 'starter', slotIndex: Number(lineupPlayer.slot) };
     });
-    await persistRivalPlacementPatches(selectedTeam.id, patches);
-    applyRivalPlacementPatches(selectedTeam.id, patches);
-    const demoteNames = dedupeRivalPlayers(selectedTeam.squad || [])
-      .filter((player) => previousStarterNames.has(normalizePlayerIdentityName(player.name)) && !nextNames.has(normalizePlayerIdentityName(player.name)))
-      .map((player) => player.name);
-    await updateTeamLineup(selectedTeam.id, () => cleanLineup, { demoteNames });
+    cleanReservePlacements.forEach((placement) => {
+      const player = playerByName.get(normalizePlayerIdentityName(placement.player.name));
+      if (player) after[getTacticalPlayerKey(player)] = { status: 'reserve', slotIndex: Number(placement.slotIndex), reserveOrder: Number(placement.reserveIndex) };
+    });
+    const changedPlayerIds = Object.keys(after).filter((id) => JSON.stringify(before[id]) !== JSON.stringify(after[id]));
+    return persistCanonicalRivalPlacements({
+      team: selectedTeam,
+      before,
+      after,
+      changedPlayerIds,
+      system: options.system || selectedTeam.system || '4-4-2',
+      fieldSources: options.fieldSources || selectedTeam.fieldSources || {},
+    });
   };
 
   const generateSelectedTeamAutoXI = async ({ system = selectedTeam?.system || '4-4-2', confirmOverwrite = true } = {}) => {
@@ -23096,7 +22809,8 @@ function App() {
     const currentPlacements = new Map(dedupeRivalPlayers(selectedTeam.squad || []).map((player) => [getTacticalPlayerKey(player), getRivalPlayerFlags(selectedTeam.id, player.name)]));
     const reserveResult = buildIntelligentReservePlacements({ players: result.unplacedPlayers, roles, currentPlacements, currentRoles: getFormationRoles(selectedTeam.system || '4-4-2') });
     try {
-      await applyIntelligentRivalLineup(result.lineup, reserveResult.placements);
+      const saveResult = await applyIntelligentRivalLineup(result.lineup, reserveResult.placements);
+      if (saveResult?.stale) return;
       const pendingCount = reserveResult.unplacedPlayers.length;
       setSaveStatus(pendingCount
         ? `Autocolocación completada. ${pendingCount} jugadores quedaron sin colocar por falta de un puesto compatible libre.`
@@ -23185,25 +22899,17 @@ function App() {
   const confirmRivalSystemPreview = async () => {
     if (!selectedTeam || !rivalSystemPreview || rivalSystemPreview.teamId !== selectedTeam.id || rivalSystemApplying) return;
     setRivalSystemApplying(true);
-    const { system, result, reserveResult, nextFieldSources, previousSystem } = rivalSystemPreview;
-    const { error: systemError } = await supabase.from("equipos_rivales").update({ system, field_sources: nextFieldSources }).eq("id", selectedTeam.id);
-    if (systemError) {
-      console.error('Error guardando sistema rival en Supabase:', systemError);
-      setSaveStatus(systemError.message || 'No se pudo guardar el sistema.');
-      setRivalSystemApplying(false);
-      return;
-    }
+    const { system, result, reserveResult, nextFieldSources } = rivalSystemPreview;
     try {
-      await applyIntelligentRivalLineup(result.lineup, reserveResult.placements);
+      const saveResult = await applyIntelligentRivalLineup(result.lineup, reserveResult.placements, { system, fieldSources: nextFieldSources });
+      if (saveResult?.stale) return;
       setSaveStatus(reserveResult.unplacedPlayers.length
         ? `Sistema ${system} aplicado. ${reserveResult.unplacedPlayers.length} jugadores quedaron sin puesto compatible libre.`
         : `Sistema ${system} aplicado tras confirmar la previsualización.`);
       setRivalSystemPreview(null);
     } catch (lineupError) {
       console.error('Error reajustando alineación rival en Supabase:', lineupError);
-      await supabase.from("equipos_rivales").update({ system: previousSystem, field_sources: selectedTeam.fieldSources || {} }).eq("id", selectedTeam.id);
-      await loadTeams();
-      setSaveStatus(lineupError.message || 'No se pudo recolocar la plantilla; se restauró el sistema anterior.');
+      setSaveStatus(lineupError.message || 'No se pudo guardar el sistema y la alineación. Puedes reintentar sin perder la previsualización.');
     } finally {
       setRivalSystemApplying(false);
     }
@@ -23212,20 +22918,12 @@ function App() {
   const setSelectedTeamPlayerRole = async (playerName, role) => {
     if (!selectedTeam) return;
     const currentPlayer = selectedTeam.squad.map(normalizeSquadEntry).find((player) => player.name === playerName) || { ...createBlankTeamPlayer(), name: playerName };
-    const roleRequest = currentPlayer.membershipId
-      ? supabase.from('player_team_memberships').update({ squad_role: role }).eq('id', currentPlayer.membershipId)
-      : supabase.from("jugadores_rivales").update({ role }).eq("equipo_rival_id", selectedTeam.id).eq("name", playerName);
-    const { error: roleError } = await roleRequest;
-    if (roleError) {
-      console.error('Error actualizando rol del jugador rival en Supabase:', roleError);
-      return;
-    }
     if (role === 'Reserva') {
       await removeFromLineup(playerName);
       if (selectedTeamPlacementPlayerName === playerName) setSelectedTeamPlacementPlayerName('');
     } else {
       setSelectedTeamPlacementPlayerName(currentPlayer.name);
-      await loadTeams();
+      setSaveStatus('Selecciona un puesto del XI para guardar al jugador como titular.');
     }
   };
 
@@ -23288,11 +22986,16 @@ function App() {
     nextBenchChart[starterName] = slots;
 
     try {
-      await persistTeamBench(selectedTeam.id, nextBenchChart);
-      await updateTeamLineup(selectedTeam.id, (lineup) => lineup.filter((player) => player.name !== droppedPlayer.name));
-      if (droppedPlayer.membershipId) await supabase.from('player_team_memberships').update({ squad_role: 'Reserva' }).eq('id', droppedPlayer.membershipId);
-      else await supabase.from("jugadores_rivales").update({ role: 'Reserva' }).eq("equipo_rival_id", selectedTeam.id).eq("name", droppedPlayer.name);
-      await loadTeams();
+      const before = buildCurrentRivalTacticalPlacements(selectedTeam);
+      const after = { ...before, [getTacticalPlayerKey(droppedPlayer)]: { status: 'unplaced' } };
+      const saveResult = await persistCanonicalRivalPlacements({
+        team: selectedTeam,
+        before,
+        after,
+        changedPlayerIds: [getTacticalPlayerKey(droppedPlayer)],
+        benchChart: nextBenchChart,
+      });
+      if (saveResult?.stale) return;
     } catch (benchError) {
       console.error('Error guardando banquillo rival en Supabase:', benchError);
       setSaveStatus(benchError.message || 'No se pudo guardar el banquillo.');
@@ -23307,8 +23010,16 @@ function App() {
     slots[slotIndex] = null;
     const nextBenchChart = { ...(selectedTeam.benchChart ?? emptyDepthChart), [starterName]: slots };
     try {
-      await persistTeamBench(selectedTeam.id, nextBenchChart);
-      await loadTeams();
+      const placements = buildCurrentRivalTacticalPlacements(selectedTeam);
+      const saveResult = await persistCanonicalRivalPlacements({
+        team: selectedTeam,
+        before: placements,
+        after: placements,
+        changedPlayerIds: [],
+        rememberUndo: false,
+        benchChart: nextBenchChart,
+      });
+      if (saveResult?.stale) return;
     } catch (benchError) {
       console.error('Error limpiando banquillo rival en Supabase:', benchError);
     }
@@ -24209,16 +23920,16 @@ function App() {
     if (!selectedTeam) return;
     if (safeArray(selectedTeam.lineup).length && !window.confirm('¿Quitar todos los jugadores del campo?')) return;
     try {
-      const starterNames = new Set(safeArray(selectedTeam.lineup).map((player) => normalizePlayerIdentityName(player.name)));
-      const patches = dedupeRivalPlayers(selectedTeam.squad || [])
-        .filter((player) => starterNames.has(normalizePlayerIdentityName(player.name)) || getRivalPlayerFlags(selectedTeam.id, player.name).fieldRole === 'Titular')
-        .map((player) => ({ playerName: player.name, placement: { hiddenFromField: true, fieldRole: null, slotIndex: null, reserveIndex: null } }));
-      await persistRivalPlacementPatches(selectedTeam.id, patches);
-      applyRivalPlacementPatches(selectedTeam.id, patches);
-      await persistTeamLineup(selectedTeam.id, []);
-      await supabase.from('player_team_memberships').update({ squad_role: 'Reserva' }).eq('team_id', selectedTeam.id).eq('is_current', true);
-      await supabase.from("jugadores_rivales").update({ role: 'Reserva' }).eq("equipo_rival_id", selectedTeam.id);
-      await loadTeams();
+      const teamPlayers = dedupeRivalPlayers(selectedTeam.squad || []).map(normalizeSquadEntry);
+      const before = buildCurrentRivalTacticalPlacements(selectedTeam);
+      const after = Object.fromEntries(teamPlayers.map((player) => [getTacticalPlayerKey(player), { status: 'unplaced' }]));
+      const saveResult = await persistCanonicalRivalPlacements({
+        team: selectedTeam,
+        before,
+        after,
+        changedPlayerIds: Object.keys(after).filter((id) => JSON.stringify(before[id]) !== JSON.stringify(after[id])),
+      });
+      if (saveResult?.stale) return;
       setDraggedPlayer(null);
       setSelectedTeamPlacementPlayerName('');
     } catch (clearError) {
@@ -24229,9 +23940,16 @@ function App() {
   const saveSelectedTeamField = async () => {
     if (!selectedTeam) return;
     try {
-      await persistTeamLineup(selectedTeam.id, sanitizeTacticalLineup(selectedTeam.lineup || []));
+      const placements = buildCurrentRivalTacticalPlacements(selectedTeam);
+      const saveResult = await persistCanonicalRivalPlacements({
+        team: selectedTeam,
+        before: placements,
+        after: placements,
+        changedPlayerIds: [],
+        rememberUndo: false,
+      });
+      if (saveResult?.stale) return;
       setSaveStatus('Disposición guardada.');
-      await loadTeams();
     } catch (saveLineupError) {
       setSaveStatus(saveLineupError.message || 'No se pudo guardar la disposición.');
     }
@@ -29146,6 +28864,16 @@ function App() {
                 </div>
               ) : null}
               {saveStatus ? <p className="mt-3 text-sm text-caudal-electric">{saveStatus}</p> : null}
+              {pendingRivalPlacementSave?.team?.id === selectedTeamId ? (
+                <button
+                  type="button"
+                  onClick={retryPendingRivalPlacementSave}
+                  disabled={rivalPlacementOperationRef.current}
+                  className="mt-3 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-black text-amber-100 disabled:cursor-wait disabled:opacity-60"
+                >
+                  Alineación no guardada · Reintentar
+                </button>
+              ) : null}
               {teamsLoading ? <p className="mt-3 text-sm text-slate-400">Cargando equipos...</p> : null}
               {teamsError ? <p className="mt-3 text-sm text-red-200">{teamsError}</p> : null}
             </section>
@@ -33591,14 +33319,14 @@ function App() {
               </section>
             </div>
             <div className="sticky bottom-0 border-t border-white/10 bg-[#111b2a]/95 px-6 py-4 backdrop-blur">
-              <button type="button" onClick={saveGoalAnalysisEvent} disabled={statsSaveStatus === 'Guardando gol...'} className="w-full rounded-3xl bg-caudal-electric px-5 py-4 text-sm font-black uppercase tracking-[0.16em] text-slate-950 disabled:cursor-not-allowed disabled:opacity-60">
+              <button type="button" onClick={saveGoalAnalysisEvent} disabled={statsSaveStatus === 'Guardando gol...' || statsSaveStatus === 'Eliminando gol...'} className="w-full rounded-3xl bg-caudal-electric px-5 py-4 text-sm font-black uppercase tracking-[0.16em] text-slate-950 disabled:cursor-not-allowed disabled:opacity-60">
                 {statsSaveStatus === 'Guardando gol...' ? 'Guardando...' : editingGoalEventId ? 'Guardar cambios' : 'Guardar gol'}
               </button>
               {editingGoalEventId ? (
                 <button
                   type="button"
                   onClick={() => deleteGoalAnalysisEvent(editingGoalEventId)}
-                  disabled={statsSaveStatus === 'Guardando gol...'}
+                  disabled={statsSaveStatus === 'Guardando gol...' || statsSaveStatus === 'Eliminando gol...'}
                   className="mt-3 w-full rounded-3xl border border-red-300/20 bg-red-500/10 px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-red-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Eliminar gol

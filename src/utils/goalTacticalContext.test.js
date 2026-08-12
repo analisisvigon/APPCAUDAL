@@ -10,7 +10,7 @@ const section = (start, end) => {
 };
 
 const defaultDraft = section('const defaultGoalAnalysisDraft', 'const emptyMatchForm');
-const payload = section('const goalEventDbColumns', 'const goalEventOptionalDbColumns');
+const payload = section('const goalEventDbColumns', 'const createGoalSaveError');
 const presets = section('const applyGoalPreset', 'const updateGoalAnalysisDraft');
 const updateDraft = section('const updateGoalAnalysisDraft', 'const updateGoalParticipantDraft');
 const saveFlow = section('const saveGoalAnalysisEvent', 'const deleteGoalAnalysisEvent');
