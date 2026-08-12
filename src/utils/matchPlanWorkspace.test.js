@@ -252,7 +252,7 @@ assert.match(componentSource, /cardExecution/, 'En directo guarda la ejecución 
 assert.doesNotMatch(componentSource, /onLiveChange=\{\(patch\) => updateCard/, 'En directo no sobrescribe la tarjeta diseñada');
 assert.match(componentSource, /moveMatchPlanCardByOffset/, 'existe una alternativa accesible para reordenar');
 assert.match(componentSource, /Plan en edición/, 'Plan A y Plan B se seleccionan de forma explícita');
-assert.match(appSource, /if \(!matchPlanDirty\) return undefined;[\s\S]*beforeunload/, 'la protección central cubre recarga y cierre solo cuando hay cambios pendientes');
+assert.match(appSource, /if \(!matchPlanDirty && !printMatchPlanDirty && !tacticalSavePending\) return undefined;[\s\S]*beforeunload/, 'la protección central cubre recarga y cierre solo cuando algún editor tiene cambios pendientes');
 assert.match(componentSource, /if \(!result\.ok\)[\s\S]*setDirty\(true\)[\s\S]*setSaveStatus\('Error al guardar'\)/, 'un fallo mantiene dirty y muestra Error al guardar');
 assert.match(componentSource, /saveStatus === 'Error al guardar' \? 'Reintentar'/, 'un fallo ofrece reintentar');
 assert.match(componentSource, /onNavigationGuardReady\?\.\(\{ save: saveWorkspace, discard: discardPendingWorkspace \}\)/, 'el editor expone el mismo guardado real y el descarte local al guard central');

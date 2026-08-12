@@ -16,7 +16,7 @@ import { getDrawableSetPieceElements, getSetPieceTacticalMeta } from '../../util
 
 const newInstruction = (order) => ({ id: `instruction-${Date.now()}-${order}`, text: '', order });
 
-export default function MatchPlanEditor({ situations = [], selectedId, onSelectedIdChange, onChange, onSave, onDelete, saving, loading, error, status }) {
+export default function MatchPlanEditor({ situations = [], selectedId, onSelectedIdChange, onChange, onSave, onDelete, saving, loading, error, status, dirty }) {
   const selected = situations.find((situation) => situation.id === selectedId) || null;
   const updateSituation = (id, nextSituation) => onChange(situations.map((situation) => situation.id === id ? nextSituation : situation));
   const addSituation = (phase) => {
@@ -38,10 +38,11 @@ export default function MatchPlanEditor({ situations = [], selectedId, onSelecte
     <div data-print-workspace="true" className="print-hidden space-y-5 rounded-3xl border border-white/5 bg-[#091428]/80 p-3 shadow-glow sm:p-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div><p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Plan de partido</p><h4 className="mt-2 text-xl font-black text-white">Situaciones tácticas</h4><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">Comportamientos colectivos dibujados por posiciones, independientes de la convocatoria.</p></div>
-        <div className="flex flex-wrap gap-2"><button type="button" onClick={() => addSituation(MATCH_PLAN_PHASES.WITHOUT_BALL)} className="min-h-11 rounded-2xl bg-white px-4 text-xs font-black text-slate-950">+ Sin balón</button><button type="button" onClick={() => addSituation(MATCH_PLAN_PHASES.WITH_BALL)} className="min-h-11 rounded-2xl bg-white px-4 text-xs font-black text-slate-950">+ Con balón</button><button type="button" onClick={() => onSave(situations)} disabled={saving || !situations.length} className="min-h-11 rounded-2xl bg-caudal-electric px-4 text-xs font-black text-slate-950 disabled:opacity-50">{saving ? 'Guardando...' : 'Guardar plan'}</button></div>
+        <div className="flex flex-wrap gap-2"><button type="button" onClick={() => addSituation(MATCH_PLAN_PHASES.WITHOUT_BALL)} className="min-h-11 rounded-2xl bg-white px-4 text-xs font-black text-slate-950">+ Sin balón</button><button type="button" onClick={() => addSituation(MATCH_PLAN_PHASES.WITH_BALL)} className="min-h-11 rounded-2xl bg-white px-4 text-xs font-black text-slate-950">+ Con balón</button><button type="button" onClick={() => onSave(situations)} disabled={saving || loading} className="min-h-11 rounded-2xl bg-caudal-electric px-4 text-xs font-black text-slate-950 disabled:opacity-50">{saving ? 'Guardando...' : error ? 'Reintentar' : 'Guardar plan'}</button></div>
       </div>
       {loading ? <p className="rounded-2xl bg-white/5 p-4 text-sm text-slate-400">Cargando situaciones...</p> : null}
       {error ? <p className="rounded-2xl bg-red-500/10 p-4 text-sm text-red-100">{error}</p> : null}
+      {dirty && !error ? <p className="rounded-2xl bg-amber-300/10 p-4 text-sm text-amber-100">Cambios pendientes.</p> : null}
       {status ? <p className="rounded-2xl bg-emerald-400/10 p-4 text-sm text-emerald-100">{status}</p> : null}
 
       <section aria-label="Galería Plan de partido">

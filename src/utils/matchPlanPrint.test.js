@@ -5,6 +5,7 @@ import {
   MATCH_PLAN_TYPES,
   buildMatchPlanPages,
   buildMatchPlanPersistencePayload,
+  buildMatchPrintPlanSnapshot,
   createMatchPlanSituation,
   duplicateMatchPlanSituation,
   getMatchPlanInstructions,
@@ -66,6 +67,7 @@ assert.notDeepEqual(getSetPieceGeometrySnapshot(withBall.elements), getSetPieceG
 
 const snapshotBefore = getSetPieceGeometrySnapshot(withoutBall.elements);
 const payload = buildMatchPlanPersistencePayload(withoutBall, 'match-1', 1);
+assert.match(payload.id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i, 'cada situación nueva lleva un UUID válido para preservar su identidad en RPC');
 const reloaded = normalizeMatchPlanSituations([{ ...payload, id: 'stored-1', persisted: true }], 'match-1')[0];
 assert.deepEqual(getSetPieceGeometrySnapshot(reloaded.elements), snapshotBefore, 'guardado y recarga conservan toda la geometría');
 const reloadedDashedCurve = reloaded.elements.find((element) => element.id === 'element-curve-dashed');
@@ -82,6 +84,14 @@ assert.deepEqual(reordered.map((row) => row.id), [withoutBall.id, duplicate.id, 
 assert.deepEqual(reordered.map((row) => row.orden), [1, 2, 3]);
 assert.equal(reordered.filter((row) => row.id !== duplicate.id).length, 2, 'eliminación no duplica ni altera las demás situaciones');
 assert.equal(getMatchPlanPageCount([]), 0, 'un plan vacío no genera ni contabiliza páginas');
+
+const atomicSnapshot = buildMatchPrintPlanSnapshot([
+  { ...withBall, orden: 1 },
+  { ...withoutBall, orden: 2 },
+], '00000000-0000-4000-8000-000000000001');
+assert.equal(atomicSnapshot.p_partido_id, '00000000-0000-4000-8000-000000000001');
+assert.deepEqual(atomicSnapshot.p_situations.map((row) => row.id), [withBall.id, withoutBall.id], 'snapshot conserva IDs al editar o reordenar');
+assert.deepEqual(atomicSnapshot.p_situations.map((row) => row.orden), [1, 2], 'snapshot normaliza el orden completo');
 
 for (let count = 1; count <= 5; count += 1) {
   const situations = Array.from({ length: count }, (_, index) => createMatchPlanSituation({ order: index + 1, title: `Situación ${index + 1}` }));

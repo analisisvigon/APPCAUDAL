@@ -19,7 +19,7 @@ import {
 } from '../../utils/setPieceProfessional';
 import {
   MATCH_PLAN_TYPE_VALUES,
-  buildMatchPlanPersistencePayload,
+  buildMatchPrintPlanSnapshot,
   normalizeMatchPlanSituations,
 } from '../../utils/matchPlanPrint';
 import {
@@ -262,7 +262,15 @@ const getLineupBench = ({ match, players, starters, playersByName }) => {
   return Array.from(byName.values());
 };
 
-export default function MatchPrintTab({ match, matches = [], players = [], getFormationCoordinates, onNavigateMatchSection }) {
+export default function MatchPrintTab({
+  match,
+  matches = [],
+  players = [],
+  getFormationCoordinates,
+  onNavigateMatchSection,
+  onMatchPlanDirtyChange,
+  onMatchPlanNavigationGuardReady,
+}) {
   const [printView, setPrintView] = useState('alineacion');
   const kit = getOwnPrintKitForMatch(match);
   const [setPieceTakers, setSetPieceTakers] = useState([]);
@@ -309,8 +317,23 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
   const [matchPlanSaving, setMatchPlanSaving] = useState(false);
   const [matchPlanError, setMatchPlanError] = useState('');
   const [matchPlanStatus, setMatchPlanStatus] = useState('');
+  const [matchPlanDirty, setMatchPlanDirty] = useState(false);
   const [captainPlayerId, setCaptainPlayerId] = useState(match?.captainPlayerId || '');
   const sheetRef = useRef(null);
+  const matchPlanEditVersionRef = useRef(0);
+  const matchPlanSaveInFlightRef = useRef(null);
+  const matchPlanMatchIdRef = useRef(match?.id || '');
+  const matchPlanSituationsRef = useRef(matchPlanSituations);
+  const matchPlanDirtyRef = useRef(matchPlanDirty);
+  matchPlanMatchIdRef.current = match?.id || '';
+  matchPlanSituationsRef.current = matchPlanSituations;
+  matchPlanDirtyRef.current = matchPlanDirty;
+
+  useEffect(() => {
+    onMatchPlanDirtyChange?.(matchPlanDirty);
+    return () => onMatchPlanDirtyChange?.(false);
+  }, [matchPlanDirty, onMatchPlanDirtyChange]);
+  useEffect(() => () => onMatchPlanNavigationGuardReady?.(null), [onMatchPlanNavigationGuardReady]);
 
   useEffect(() => {
     setCaptainPlayerId(match?.captainPlayerId || '');
@@ -377,30 +400,38 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
   }, [match?.id]);
 
   useEffect(() => {
+    let cancelled = false;
+    const loadMatchId = match?.id;
     const loadMatchPlan = async () => {
-      if (!match?.id) return;
+      if (!loadMatchId) return;
       setMatchPlanLoading(true);
       setMatchPlanError('');
       setMatchPlanStatus('');
+      setMatchPlanDirty(false);
+      matchPlanDirtyRef.current = false;
+      matchPlanEditVersionRef.current = 0;
       try {
         const { data, error } = await supabase
           .from('match_set_piece_diagrams')
           .select('*')
-          .eq('partido_id', match.id)
+          .eq('partido_id', loadMatchId)
           .in('tipo', MATCH_PLAN_TYPE_VALUES)
           .order('orden', { ascending: true });
         if (error) throw error;
-        const normalized = normalizeMatchPlanSituations((data || []).map((situation) => ({ ...situation, persisted: true })), match.id);
+        if (cancelled || matchPlanMatchIdRef.current !== loadMatchId) return;
+        const normalized = normalizeMatchPlanSituations((data || []).map((situation) => ({ ...situation, persisted: true })), loadMatchId);
         setMatchPlanSituations(normalized);
         setSelectedMatchPlanId(normalized[0]?.id || '');
       } catch (loadError) {
+        if (cancelled || matchPlanMatchIdRef.current !== loadMatchId) return;
         console.error('Error cargando Plan de partido desde Supabase:', loadError);
         setMatchPlanError(loadError.message || 'No se pudo cargar el Plan de partido.');
       } finally {
-        setMatchPlanLoading(false);
+        if (!cancelled && matchPlanMatchIdRef.current === loadMatchId) setMatchPlanLoading(false);
       }
     };
     loadMatchPlan();
+    return () => { cancelled = true; };
   }, [match?.id]);
 
   useEffect(() => {
@@ -594,67 +625,80 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
     ...getShortLines(match?.abpDefensiva, 3),
   ].filter(Boolean).slice(0, 10);
 
-  const saveMatchPlanSituations = async (situations = matchPlanSituations) => {
-    if (!match?.id) return;
-    const normalized = normalizeMatchPlanSituations(situations, match.id);
+  const saveMatchPlanSituations = (situations) => {
+    if (matchPlanSaveInFlightRef.current) return matchPlanSaveInFlightRef.current;
+    const saveMatchId = match?.id;
+    if (!saveMatchId) return Promise.resolve({ ok: false, error: new Error('No hay partido seleccionado.') });
+    const saveVersion = matchPlanEditVersionRef.current;
+    const snapshot = buildMatchPrintPlanSnapshot(situations || matchPlanSituationsRef.current, saveMatchId);
     setMatchPlanSaving(true);
     setMatchPlanError('');
     setMatchPlanStatus('');
-    try {
-      const existingRows = matchPlanSituations.filter((situation) => situation.persisted && situation.id);
-      for (let index = 0; index < existingRows.length; index += 1) {
-        const { error } = await supabase.from('match_set_piece_diagrams').update({ orden: 10000 + index }).eq('id', existingRows[index].id);
-        if (error) throw error;
-      }
 
-      const retainedIds = new Set(normalized.filter((situation) => situation.persisted).map((situation) => situation.id));
-      const removedIds = existingRows.filter((situation) => !retainedIds.has(situation.id)).map((situation) => situation.id);
-      if (removedIds.length) {
-        const { error } = await supabase.from('match_set_piece_diagrams').delete().in('id', removedIds);
-        if (error) throw error;
+    const operation = (async () => {
+      const { data, error } = await supabase.rpc('save_match_print_plan_atomic', snapshot);
+      if (error) throw error;
+      if (matchPlanMatchIdRef.current !== saveMatchId) return { ok: true, stale: true };
+      const next = normalizeMatchPlanSituations(
+        (Array.isArray(data) ? data : []).map((situation) => ({ ...situation, persisted: true })),
+        saveMatchId
+      );
+      if (matchPlanEditVersionRef.current === saveVersion) {
+        setMatchPlanSituations(next);
+        setSelectedMatchPlanId((current) => next.some((situation) => situation.id === current) ? current : next[0]?.id || '');
+        setMatchPlanDirty(false);
+        matchPlanDirtyRef.current = false;
+        setMatchPlanStatus('Plan de partido guardado.');
+      } else {
+        setMatchPlanDirty(true);
+        matchPlanDirtyRef.current = true;
+        setMatchPlanStatus('Cambios pendientes.');
       }
-
-      const savedRows = [];
-      for (let index = 0; index < normalized.length; index += 1) {
-        const situation = normalized[index];
-        const payload = buildMatchPlanPersistencePayload(situation, match.id, index + 1);
-        if (situation.persisted) {
-          const { id: _id, ...fields } = payload;
-          const { data, error } = await supabase.from('match_set_piece_diagrams').update(fields).eq('id', situation.id).select('*').single();
-          if (error) throw error;
-          savedRows.push(data);
-        } else {
-          const { data, error } = await supabase.from('match_set_piece_diagrams').insert(payload).select('*').single();
-          if (error) throw error;
-          savedRows.push(data);
-        }
+      return { ok: true };
+    })().catch((saveError) => {
+      if (matchPlanMatchIdRef.current === saveMatchId) {
+        console.error('Error guardando Plan de partido en Supabase:', saveError);
+        setMatchPlanDirty(true);
+        matchPlanDirtyRef.current = true;
+        setMatchPlanError(saveError.message || 'No se pudo guardar el Plan de partido.');
       }
-      const next = normalizeMatchPlanSituations(savedRows.map((situation) => ({ ...situation, persisted: true })), match.id);
-      setMatchPlanSituations(next);
-      setSelectedMatchPlanId((current) => next.some((situation) => situation.id === current) ? current : next[0]?.id || '');
-      setMatchPlanStatus('Plan de partido guardado.');
-    } catch (saveError) {
-      console.error('Error guardando Plan de partido en Supabase:', saveError);
-      setMatchPlanError(saveError.message || 'No se pudo guardar el Plan de partido.');
-    } finally {
-      setMatchPlanSaving(false);
-    }
+      return { ok: false, error: saveError };
+    }).finally(() => {
+      if (matchPlanSaveInFlightRef.current === operation) {
+        matchPlanSaveInFlightRef.current = null;
+        if (matchPlanMatchIdRef.current === saveMatchId) setMatchPlanSaving(false);
+      }
+    });
+    matchPlanSaveInFlightRef.current = operation;
+    return operation;
   };
 
-  const deleteMatchPlanSituation = async (situation) => {
+  const updateMatchPlanSituations = (situations) => {
+    matchPlanEditVersionRef.current += 1;
+    setMatchPlanSituations(situations);
+    setMatchPlanDirty(true);
+    matchPlanDirtyRef.current = true;
+    setMatchPlanError('');
+    setMatchPlanStatus('');
+  };
+
+  const deleteMatchPlanSituation = (situation) => {
     if (!window.confirm(`¿Eliminar ${situation.titulo || 'esta situación táctica'}?`)) return;
-    if (situation.persisted) {
-      const { error } = await supabase.from('match_set_piece_diagrams').delete().eq('id', situation.id);
-      if (error) {
-        setMatchPlanError(error.message || 'No se pudo eliminar la situación.');
-        return;
-      }
-    }
     const next = normalizeMatchPlanSituations(matchPlanSituations.filter((item) => item.id !== situation.id), match.id);
-    setMatchPlanSituations(next);
+    updateMatchPlanSituations(next);
     setSelectedMatchPlanId(next[0]?.id || '');
-    setMatchPlanStatus('Situación eliminada.');
   };
+
+  onMatchPlanNavigationGuardReady?.({
+    hasPending: () => matchPlanDirtyRef.current || Boolean(matchPlanSaveInFlightRef.current),
+    flush: async () => {
+      while (matchPlanSaveInFlightRef.current || matchPlanDirtyRef.current) {
+        const result = await (matchPlanSaveInFlightRef.current || saveMatchPlanSituations(matchPlanSituationsRef.current));
+        if (!result.ok) return result;
+      }
+      return { ok: true };
+    },
+  });
 
   const getDossierContent = () => {
     const hasLineup = printData.starters.some((player) => player?.name && !String(player.name).startsWith('Puesto '));
@@ -1622,13 +1666,14 @@ export default function MatchPrintTab({ match, matches = [], players = [], getFo
           situations={matchPlanSituations}
           selectedId={selectedMatchPlanId}
           onSelectedIdChange={setSelectedMatchPlanId}
-          onChange={setMatchPlanSituations}
+          onChange={updateMatchPlanSituations}
           onSave={saveMatchPlanSituations}
           onDelete={deleteMatchPlanSituation}
           saving={matchPlanSaving}
           loading={matchPlanLoading}
           error={matchPlanError}
           status={matchPlanStatus}
+          dirty={matchPlanDirty}
         />
       ) : printView === 'lanzadores' ? (
         <div data-print-workspace="true" className="print-hidden rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">

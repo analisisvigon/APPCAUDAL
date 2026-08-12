@@ -286,8 +286,8 @@ assert.equal(manuallyReclassified.description, combinativeCreation.description, 
 assert.equal(manuallyReclassified.name, combinativeCreation.name, 'cambiar tipo no cambia el nombre');
 
 const appSource = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
-assert.ok(appSource.includes('offensivePhaseV1: normalizedWorkspace'), 'la ofensiva se guarda en su propio espacio JSON');
-assert.ok(appSource.includes('defensivePhaseV1: normalizedWorkspace'), 'la persistencia defensiva continúa disponible');
+assert.ok(appSource.includes("phaseField: 'offensivePhaseV1'"), 'la ofensiva se guarda en su propio espacio JSON');
+assert.ok(appSource.includes("phaseField: 'defensivePhaseV1'"), 'la persistencia defensiva continúa disponible');
 assert.ok(appSource.includes(".from('partidos')"), 'la persistencia ofensiva utiliza Supabase');
 assert.ok(appSource.includes('playStyle: normalizeOffensivePlayStyle(play.playStyle)'), 'las jugadas antiguas sin playStyle se leen como combinative');
 assert.ok(appSource.includes('activePlayIdByContext'), 'la selección de jugadas se separa por situación y tipo');

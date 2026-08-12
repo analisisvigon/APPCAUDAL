@@ -308,8 +308,8 @@ assert.equal(JSON.stringify(reloadedAnalysis.defensivePhaseV1), defensiveSnapsho
 assert.equal(JSON.stringify(reloadedAnalysis.offensivePhaseV1), offensiveSnapshot, 'Transiciones no modifica la fase ofensiva');
 
 const appSource = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
-assert.ok(appSource.includes('transitionPhaseV1: normalizedWorkspace'), 'Transiciones se guarda en su espacio JSON independiente');
-assert.ok(appSource.includes("console.error('[TRANSITION_PHASE_SAVE]'"), 'el error de persistencia queda identificado');
+assert.ok(appSource.includes("phaseField: 'transitionPhaseV1'"), 'Transiciones se guarda en su espacio JSON independiente');
+assert.ok(appSource.includes("phaseLabel: 'TRANSITION_PHASE_SAVE'"), 'el error de persistencia queda identificado');
 assert.ok(appSource.includes(".from('partidos')"), 'la persistencia usa Supabase');
 assert.ok(appSource.includes('sourceTemplateId: template.id'), 'las copias desde plantilla conservan la referencia de origen');
 assert.ok(

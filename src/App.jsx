@@ -74,6 +74,11 @@ import {
 } from './utils/performanceLoadStore';
 import { cleanImportedFieldValue, extractTransfermarktPlayerId, isEmptyImportedField, normalizeTransfermarktPosition } from './utils/rivalPlayerImport';
 import { resolveMatchPlanPendingNavigation, serializeMatchPlanLegacyFields } from './utils/matchPlanWorkspace';
+import {
+  TACTICAL_AUTOSAVE_DELAY_MS,
+  createFlushableSaveCoordinator,
+  flushPendingSaveTargets,
+} from './utils/flushableSaveCoordinator';
 import { buildRivalCollectiveAssistant } from './utils/rivalCollectiveAssistant';
 import {
   buildRivalPlayerCollectiveSignals,
@@ -5357,15 +5362,51 @@ function App() {
   const [facingSystemsView, setFacingSystemsView] = useState('PIZARRA');
   const [matchPlanDirty, setMatchPlanDirty] = useState(false);
   const matchPlanNavigationGuardRef = useRef(null);
+  const [printMatchPlanDirty, setPrintMatchPlanDirty] = useState(false);
+  const [tacticalSavePending, setTacticalSavePending] = useState(false);
+  const printMatchPlanNavigationGuardRef = useRef(null);
+  const tacticalNavigationGuardRef = useRef(null);
+  const protectedNavigationInFlightRef = useRef(null);
   const [pendingMatchPlanNavigation, setPendingMatchPlanNavigation] = useState(null);
   const [matchPlanNavigationStatus, setMatchPlanNavigationStatus] = useState('');
   const [matchPlanNavigationError, setMatchPlanNavigationError] = useState('');
   const registerMatchPlanNavigationGuard = React.useCallback((guard) => {
     matchPlanNavigationGuardRef.current = guard;
   }, []);
+  const registerPrintMatchPlanNavigationGuard = React.useCallback((guard) => {
+    printMatchPlanNavigationGuardRef.current = guard;
+  }, []);
+  const flushDeferredNavigationSaves = React.useCallback(() => flushPendingSaveTargets([
+    tacticalNavigationGuardRef.current,
+    printMatchPlanNavigationGuardRef.current,
+  ]), []);
+  const executeNavigationAfterFlush = React.useCallback((navigation) => {
+    if (protectedNavigationInFlightRef.current) return protectedNavigationInFlightRef.current;
+    const operation = (async () => {
+      const result = await flushDeferredNavigationSaves();
+      if (!result.ok) {
+        setPendingMatchPlanNavigation(navigation);
+        setMatchPlanNavigationStatus('Error al guardar');
+        setMatchPlanNavigationError(result.error?.message || 'No se pudieron guardar los cambios pendientes.');
+        return result;
+      }
+      await navigation.execute();
+      return { ok: true };
+    })().finally(() => {
+      if (protectedNavigationInFlightRef.current === operation) protectedNavigationInFlightRef.current = null;
+    });
+    protectedNavigationInFlightRef.current = operation;
+    return operation;
+  }, [flushDeferredNavigationSaves]);
   const requestMatchPlanNavigation = React.useCallback((navigation) => {
     if (!navigation?.execute) return false;
     if (!matchPlanDirty) {
+      const hasDeferredSave = tacticalNavigationGuardRef.current?.hasPending?.()
+        || printMatchPlanNavigationGuardRef.current?.hasPending?.();
+      if (hasDeferredSave) {
+        void executeNavigationAfterFlush(navigation);
+        return false;
+      }
       navigation.execute();
       return true;
     }
@@ -5373,7 +5414,7 @@ function App() {
     setMatchPlanNavigationError('');
     setPendingMatchPlanNavigation(navigation);
     return false;
-  }, [matchPlanDirty]);
+  }, [executeNavigationAfterFlush, matchPlanDirty]);
   const requestFacingSystemsView = (nextView, afterNavigate) => {
     if (nextView === facingSystemsView) {
       afterNavigate?.();
@@ -5405,8 +5446,30 @@ function App() {
       return;
     }
 
+    if (!matchPlanDirty) {
+      setMatchPlanNavigationStatus('Guardando');
+      setMatchPlanNavigationError('');
+      const result = await flushDeferredNavigationSaves();
+      if (!result.ok) {
+        setMatchPlanNavigationStatus('Error al guardar');
+        setMatchPlanNavigationError(result.error?.message || 'No se pudieron guardar los cambios pendientes.');
+        return;
+      }
+      await pendingNavigation.execute();
+      setPendingMatchPlanNavigation(null);
+      setMatchPlanNavigationStatus('');
+      setMatchPlanNavigationError('');
+      return;
+    }
+
     setMatchPlanNavigationStatus(action === 'save' ? 'Guardando' : 'Saliendo');
     setMatchPlanNavigationError('');
+    const deferredSaveResult = await flushDeferredNavigationSaves();
+    if (!deferredSaveResult.ok) {
+      setMatchPlanNavigationStatus('Error al guardar');
+      setMatchPlanNavigationError(deferredSaveResult.error?.message || 'No se pudieron guardar los cambios pendientes.');
+      return;
+    }
     const guard = matchPlanNavigationGuardRef.current;
     const result = await resolveMatchPlanPendingNavigation({
       action,
@@ -5429,14 +5492,18 @@ function App() {
     setMatchPlanNavigationError('');
   };
   useEffect(() => {
-    if (!matchPlanDirty) return undefined;
+    if (!matchPlanDirty && !printMatchPlanDirty && !tacticalSavePending) return undefined;
     const warnBeforeLeaving = (event) => {
       event.preventDefault();
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', warnBeforeLeaving);
     return () => window.removeEventListener('beforeunload', warnBeforeLeaving);
-  }, [matchPlanDirty]);
+  }, [
+    matchPlanDirty,
+    printMatchPlanDirty,
+    tacticalSavePending,
+  ]);
   const [isCollectiveProfileEditorOpen, setIsCollectiveProfileEditorOpen] = useState(false);
   const [openTacticalQuestionCategory, setOpenTacticalQuestionCategory] = useState('Con balón');
   const [facingSystemsPlayerReturn, setFacingSystemsPlayerReturn] = useState(null);
@@ -5647,19 +5714,65 @@ function App() {
   const [selectedDefensiveArrowId, setSelectedDefensiveArrowId] = useState('');
   const [defensiveUndoStack, setDefensiveUndoStack] = useState([]);
   const [defensiveSaveStatus, setDefensiveSaveStatus] = useState('');
-  const defensiveEditVersionRef = useRef(0);
-  const defensiveSaveRequestRef = useRef(0);
   const defensiveAutosaveTimerRef = useRef(null);
   const [offensiveSaveStatus, setOffensiveSaveStatus] = useState('');
-  const offensiveEditVersionRef = useRef(0);
-  const offensiveSaveRequestRef = useRef(0);
   const offensiveAutosaveTimerRef = useRef(null);
-  const transitionEditVersionRef = useRef(0);
-  const transitionSaveRequestRef = useRef(0);
   const transitionAutosaveTimerRef = useRef(null);
-  const setPieceEditVersionRef = useRef(0);
-  const setPieceSaveRequestRef = useRef(0);
   const setPieceAutosaveTimerRef = useRef(null);
+  const tacticalSnapshotReadersRef = useRef({});
+  const tacticalPersistRef = useRef(null);
+  const tacticalSaveQueueRef = useRef(Promise.resolve());
+  const tacticalPreAiAnalysisByMatchRef = useRef(new Map());
+  const defensiveSaveCoordinatorRef = useRef(null);
+  const offensiveSaveCoordinatorRef = useRef(null);
+  const transitionSaveCoordinatorRef = useRef(null);
+  const setPieceSaveCoordinatorRef = useRef(null);
+  const syncTacticalSavePending = (status) => {
+    if (['Cambios sin guardar', 'Guardando', 'Error al guardar'].includes(status)) {
+      setTacticalSavePending(true);
+      return;
+    }
+    Promise.resolve().then(() => setTacticalSavePending([
+      defensiveSaveCoordinatorRef.current,
+      offensiveSaveCoordinatorRef.current,
+      transitionSaveCoordinatorRef.current,
+      setPieceSaveCoordinatorRef.current,
+    ].some((coordinator) => coordinator?.hasPending?.())));
+  };
+  if (!defensiveSaveCoordinatorRef.current) {
+    defensiveSaveCoordinatorRef.current = createFlushableSaveCoordinator({
+      readSnapshot: () => tacticalSnapshotReadersRef.current.defensive?.(),
+      persist: (snapshot) => tacticalPersistRef.current?.(snapshot),
+      onStatusChange: (status) => {
+        setDefensiveSaveStatus(status);
+        syncTacticalSavePending(status);
+      },
+    });
+    offensiveSaveCoordinatorRef.current = createFlushableSaveCoordinator({
+      readSnapshot: () => tacticalSnapshotReadersRef.current.offensive?.(),
+      persist: (snapshot) => tacticalPersistRef.current?.(snapshot),
+      onStatusChange: (status) => {
+        setOffensiveSaveStatus(status);
+        syncTacticalSavePending(status);
+      },
+    });
+    transitionSaveCoordinatorRef.current = createFlushableSaveCoordinator({
+      readSnapshot: () => tacticalSnapshotReadersRef.current.transition?.(),
+      persist: (snapshot) => tacticalPersistRef.current?.(snapshot),
+      onStatusChange: (status) => {
+        setTransitionSaveStatus(status);
+        syncTacticalSavePending(status);
+      },
+    });
+    setPieceSaveCoordinatorRef.current = createFlushableSaveCoordinator({
+      readSnapshot: () => tacticalSnapshotReadersRef.current.setPiece?.(),
+      persist: (snapshot) => tacticalPersistRef.current?.(snapshot),
+      onStatusChange: (status) => {
+        setSetPieceSaveStatus(status);
+        syncTacticalSavePending(status);
+      },
+    });
+  }
   const [tacticalTemplates, setTacticalTemplates] = useState([]);
   const [tacticalTemplateDialog, setTacticalTemplateDialog] = useState('');
   const [tacticalTemplateDraft, setTacticalTemplateDraft] = useState(emptyTacticalTemplateDraft);
@@ -7231,7 +7344,6 @@ function App() {
     [selectedMatch?.preAiAnalysis]
   );
   useEffect(() => {
-    defensiveSaveRequestRef.current += 1;
     if (defensiveAutosaveTimerRef.current) {
       window.clearTimeout(defensiveAutosaveTimerRef.current);
       defensiveAutosaveTimerRef.current = null;
@@ -7239,10 +7351,8 @@ function App() {
     const storedWorkspace = normalizeDefensiveWorkspace(selectedPreAiAnalysis?.defensivePhaseV1);
     setDefensiveWorkspace(storedWorkspace);
     setDefensiveSituation(storedWorkspace.activeSituation);
-    setDefensiveSaveStatus(storedWorkspace.plays.length ? 'Guardado' : '');
-    defensiveEditVersionRef.current = 0;
+    defensiveSaveCoordinatorRef.current.reset(storedWorkspace.plays.length ? 'Guardado' : '');
 
-    offensiveSaveRequestRef.current += 1;
     if (offensiveAutosaveTimerRef.current) {
       window.clearTimeout(offensiveAutosaveTimerRef.current);
       offensiveAutosaveTimerRef.current = null;
@@ -7255,10 +7365,8 @@ function App() {
         storedOffensiveWorkspace.activePlayStyleBySituation?.[storedOffensiveWorkspace.activeSituation]
       )
     );
-    setOffensiveSaveStatus(storedOffensiveWorkspace.plays.length ? 'Guardado' : '');
-    offensiveEditVersionRef.current = 0;
+    offensiveSaveCoordinatorRef.current.reset(storedOffensiveWorkspace.plays.length ? 'Guardado' : '');
 
-    transitionSaveRequestRef.current += 1;
     if (transitionAutosaveTimerRef.current) {
       window.clearTimeout(transitionAutosaveTimerRef.current);
       transitionAutosaveTimerRef.current = null;
@@ -7278,10 +7386,8 @@ function App() {
     setTransitionType(storedTransitionType);
     setTransitionFieldZone(storedTransitionFieldZone);
     setTransitionBehaviour(storedTransitionBehaviour);
-    setTransitionSaveStatus(storedTransitionWorkspace.plays.length ? 'Guardado' : '');
-    transitionEditVersionRef.current = 0;
+    transitionSaveCoordinatorRef.current.reset(storedTransitionWorkspace.plays.length ? 'Guardado' : '');
 
-    setPieceSaveRequestRef.current += 1;
     if (setPieceAutosaveTimerRef.current) {
       window.clearTimeout(setPieceAutosaveTimerRef.current);
       setPieceAutosaveTimerRef.current = null;
@@ -7296,8 +7402,10 @@ function App() {
     setSetPieceBallStartPosition(
       storedSetPieceWorkspace.activeBallPositionByContext[storedActionContextKey]
     );
-    setSetPieceSaveStatus(storedSetPieceWorkspace.plays.length ? 'Guardado' : '');
-    setPieceEditVersionRef.current = 0;
+    setPieceSaveCoordinatorRef.current.reset(storedSetPieceWorkspace.plays.length ? 'Guardado' : '');
+    if (selectedMatch?.id) {
+      tacticalPreAiAnalysisByMatchRef.current.set(selectedMatch.id, selectedPreAiAnalysis || {});
+    }
   }, [selectedMatch?.id]);
   const selectedMatchRivalTeam = useMemo(
     () => teams.find((team) => team.id === selectedMatch?.equipoRivalId) || findTeamByDisplayName(teams, selectedMatch?.opponent || ''),
@@ -10326,8 +10434,7 @@ function App() {
       && (!tacticalTemplateCategoryFilter || template.category.toLowerCase().includes(tacticalTemplateCategoryFilter.trim().toLowerCase()));
   });
   const markDefensiveUnsaved = () => {
-    defensiveEditVersionRef.current += 1;
-    setDefensiveSaveStatus('Cambios sin guardar');
+    defensiveSaveCoordinatorRef.current.markDirty();
   };
   const updateDefensivePlay = (playId, patch) => {
     markDefensiveUnsaved();
@@ -10584,8 +10691,7 @@ function App() {
     }));
   };
   const markOffensiveUnsaved = () => {
-    offensiveEditVersionRef.current += 1;
-    setOffensiveSaveStatus('Cambios sin guardar');
+    offensiveSaveCoordinatorRef.current.markDirty();
   };
   const updateOffensivePlay = (playId, patch) => {
     markOffensiveUnsaved();
@@ -10599,8 +10705,7 @@ function App() {
     }));
   };
   const markTransitionUnsaved = () => {
-    transitionEditVersionRef.current += 1;
-    setTransitionSaveStatus('Cambios sin guardar');
+    transitionSaveCoordinatorRef.current.markDirty();
   };
   const updateTransitionPlay = (playId, patch) => {
     markTransitionUnsaved();
@@ -10614,8 +10719,7 @@ function App() {
     }));
   };
   const markSetPieceUnsaved = () => {
-    setPieceEditVersionRef.current += 1;
-    setSetPieceSaveStatus('Cambios sin guardar');
+    setPieceSaveCoordinatorRef.current.markDirty();
   };
   const updateSetPiecePlay = (playId, patch) => {
     markSetPieceUnsaved();
@@ -11307,202 +11411,140 @@ function App() {
       plays: remainingPlays,
     }));
   };
+  tacticalSnapshotReadersRef.current = {
+    defensive: () => ({
+      matchId: selectedMatch?.id,
+      phaseField: 'defensivePhaseV1',
+      phaseLabel: 'DEFENSIVE_PHASE_SAVE',
+      preAiAnalysis: selectedPreAiAnalysis || {},
+      workspace: normalizeDefensiveWorkspace({ ...defensiveWorkspace, activeSituation: defensiveSituation }),
+    }),
+    offensive: () => ({
+      matchId: selectedMatch?.id,
+      phaseField: 'offensivePhaseV1',
+      phaseLabel: 'OFFENSIVE_PHASE_SAVE',
+      preAiAnalysis: selectedPreAiAnalysis || {},
+      workspace: normalizeOffensiveWorkspace({ ...offensiveWorkspace, activeSituation: offensiveSituation }),
+    }),
+    transition: () => ({
+      matchId: selectedMatch?.id,
+      phaseField: 'transitionPhaseV1',
+      phaseLabel: 'TRANSITION_PHASE_SAVE',
+      preAiAnalysis: selectedPreAiAnalysis || {},
+      workspace: normalizeTransitionWorkspace({
+        ...transitionWorkspace,
+        activeTransitionType: transitionType,
+        activeFieldZoneByType: {
+          ...transitionWorkspace.activeFieldZoneByType,
+          [transitionType]: transitionFieldZone,
+        },
+        activeBehaviourByContext: {
+          ...transitionWorkspace.activeBehaviourByContext,
+          [getTransitionBehaviourContextKey(transitionType, transitionFieldZone)]: transitionBehaviour,
+        },
+      }),
+    }),
+    setPiece: () => {
+      const actionContextKey = getSetPieceActionContextKey(setPieceType, setPieceAction);
+      return {
+        matchId: selectedMatch?.id,
+        phaseField: 'setPiecePhaseV1',
+        phaseLabel: 'SET_PIECE_PHASE_SAVE',
+        preAiAnalysis: selectedPreAiAnalysis || {},
+        workspace: normalizeSetPieceWorkspace({
+          ...setPieceWorkspace,
+          activeSetPieceType: setPieceType,
+          activeActionByType: { ...setPieceWorkspace.activeActionByType, [setPieceType]: setPieceAction },
+          activeBallPositionByContext: {
+            ...setPieceWorkspace.activeBallPositionByContext,
+            [actionContextKey]: setPieceBallStartPosition,
+          },
+        }),
+      };
+    },
+  };
+  tacticalPersistRef.current = (snapshot) => {
+    if (!snapshot?.matchId) return Promise.resolve({ ok: false, error: new Error('No hay partido seleccionado.') });
+    const operation = tacticalSaveQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const baseAnalysis = tacticalPreAiAnalysisByMatchRef.current.get(snapshot.matchId)
+          || snapshot.preAiAnalysis
+          || {};
+        const nextPreAiAnalysis = { ...baseAnalysis, [snapshot.phaseField]: snapshot.workspace };
+        const { error } = await supabase
+          .from('partidos')
+          .update({ pre_ai_analysis: nextPreAiAnalysis })
+          .eq('id', snapshot.matchId);
+        if (error) {
+          console.error(`[${snapshot.phaseLabel}]`, {
+            matchId: snapshot.matchId,
+            workspace: snapshot.workspace,
+            error,
+          });
+          return { ok: false, error };
+        }
+        tacticalPreAiAnalysisByMatchRef.current.set(snapshot.matchId, nextPreAiAnalysis);
+        setMatches((current) => current.map((match) => (
+          match.id === snapshot.matchId ? { ...match, preAiAnalysis: nextPreAiAnalysis } : match
+        )));
+        return { ok: true };
+      });
+    tacticalSaveQueueRef.current = operation.then(() => undefined, () => undefined);
+    return operation;
+  };
+  const clearTacticalAutosaveTimers = () => {
+    [
+      defensiveAutosaveTimerRef,
+      offensiveAutosaveTimerRef,
+      transitionAutosaveTimerRef,
+      setPieceAutosaveTimerRef,
+    ].forEach((timerRef) => {
+      if (!timerRef.current) return;
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    });
+  };
   const saveDefensiveWorkspace = async () => {
     if (!selectedMatch) return false;
-    if (defensiveAutosaveTimerRef.current) {
-      window.clearTimeout(defensiveAutosaveTimerRef.current);
-      defensiveAutosaveTimerRef.current = null;
-    }
-    const savedEditVersion = defensiveEditVersionRef.current;
-    const saveRequestId = defensiveSaveRequestRef.current + 1;
-    defensiveSaveRequestRef.current = saveRequestId;
-    const normalizedWorkspace = normalizeDefensiveWorkspace({
-      ...defensiveWorkspace,
-      activeSituation: defensiveSituation,
-    });
-    const nextPreAiAnalysis = {
-      ...(selectedPreAiAnalysis || {}),
-      defensivePhaseV1: normalizedWorkspace,
-    };
-    setDefensiveSaveStatus('Guardando');
-    const { error: defensiveSaveError } = await supabase
-      .from('partidos')
-      .update({ pre_ai_analysis: nextPreAiAnalysis })
-      .eq('id', selectedMatch.id);
-    if (defensiveSaveError) {
-      console.error('[DEFENSIVE_PHASE_SAVE]', {
-        matchId: selectedMatch.id,
-        workspace: normalizedWorkspace,
-        error: defensiveSaveError,
-      });
-      if (defensiveSaveRequestRef.current === saveRequestId) {
-        setDefensiveSaveStatus(defensiveEditVersionRef.current === savedEditVersion ? 'Error al guardar' : 'Cambios sin guardar');
-      }
-      return false;
-    }
-    if (defensiveSaveRequestRef.current !== saveRequestId) {
-      setDefensiveSaveStatus('Cambios sin guardar');
-      return false;
-    }
-    setMatches((current) => current.map((match) => (
-      match.id === selectedMatch.id
-        ? { ...match, preAiAnalysis: nextPreAiAnalysis }
-        : match
-    )));
-    setDefensiveSaveStatus(defensiveEditVersionRef.current === savedEditVersion ? 'Guardado' : 'Cambios sin guardar');
-    return true;
+    if (defensiveAutosaveTimerRef.current) window.clearTimeout(defensiveAutosaveTimerRef.current);
+    defensiveAutosaveTimerRef.current = null;
+    return (await defensiveSaveCoordinatorRef.current.flush()).ok;
   };
   const saveOffensiveWorkspace = async () => {
     if (!selectedMatch) return false;
-    if (offensiveAutosaveTimerRef.current) {
-      window.clearTimeout(offensiveAutosaveTimerRef.current);
-      offensiveAutosaveTimerRef.current = null;
-    }
-    const savedEditVersion = offensiveEditVersionRef.current;
-    const saveRequestId = offensiveSaveRequestRef.current + 1;
-    offensiveSaveRequestRef.current = saveRequestId;
-    const normalizedWorkspace = normalizeOffensiveWorkspace({
-      ...offensiveWorkspace,
-      activeSituation: offensiveSituation,
-    });
-    const nextPreAiAnalysis = {
-      ...(selectedPreAiAnalysis || {}),
-      offensivePhaseV1: normalizedWorkspace,
-    };
-    setOffensiveSaveStatus('Guardando');
-    const { error: offensiveSaveError } = await supabase
-      .from('partidos')
-      .update({ pre_ai_analysis: nextPreAiAnalysis })
-      .eq('id', selectedMatch.id);
-    if (offensiveSaveError) {
-      console.error('[OFFENSIVE_PHASE_SAVE]', {
-        matchId: selectedMatch.id,
-        workspace: normalizedWorkspace,
-        error: offensiveSaveError,
-      });
-      if (offensiveSaveRequestRef.current === saveRequestId) {
-        setOffensiveSaveStatus(offensiveEditVersionRef.current === savedEditVersion ? 'Error al guardar' : 'Cambios sin guardar');
-      }
-      return false;
-    }
-    if (offensiveSaveRequestRef.current !== saveRequestId) {
-      setOffensiveSaveStatus('Cambios sin guardar');
-      return false;
-    }
-    setMatches((current) => current.map((match) => (
-      match.id === selectedMatch.id
-        ? { ...match, preAiAnalysis: nextPreAiAnalysis }
-        : match
-    )));
-    setOffensiveSaveStatus(offensiveEditVersionRef.current === savedEditVersion ? 'Guardado' : 'Cambios sin guardar');
-    return true;
+    if (offensiveAutosaveTimerRef.current) window.clearTimeout(offensiveAutosaveTimerRef.current);
+    offensiveAutosaveTimerRef.current = null;
+    return (await offensiveSaveCoordinatorRef.current.flush()).ok;
   };
   const saveTransitionWorkspace = async () => {
     if (!selectedMatch) return false;
-    if (transitionAutosaveTimerRef.current) {
-      window.clearTimeout(transitionAutosaveTimerRef.current);
-      transitionAutosaveTimerRef.current = null;
-    }
-    const savedEditVersion = transitionEditVersionRef.current;
-    const saveRequestId = transitionSaveRequestRef.current + 1;
-    transitionSaveRequestRef.current = saveRequestId;
-    const normalizedWorkspace = normalizeTransitionWorkspace({
-      ...transitionWorkspace,
-      activeTransitionType: transitionType,
-      activeFieldZoneByType: {
-        ...transitionWorkspace.activeFieldZoneByType,
-        [transitionType]: transitionFieldZone,
-      },
-      activeBehaviourByContext: {
-        ...transitionWorkspace.activeBehaviourByContext,
-        [getTransitionBehaviourContextKey(transitionType, transitionFieldZone)]: transitionBehaviour,
-      },
-    });
-    const nextPreAiAnalysis = {
-      ...(selectedPreAiAnalysis || {}),
-      transitionPhaseV1: normalizedWorkspace,
-    };
-    setTransitionSaveStatus('Guardando');
-    const { error: transitionSaveError } = await supabase
-      .from('partidos')
-      .update({ pre_ai_analysis: nextPreAiAnalysis })
-      .eq('id', selectedMatch.id);
-    if (transitionSaveError) {
-      console.error('[TRANSITION_PHASE_SAVE]', {
-        matchId: selectedMatch.id,
-        workspace: normalizedWorkspace,
-        error: transitionSaveError,
-      });
-      if (transitionSaveRequestRef.current === saveRequestId) {
-        setTransitionSaveStatus(transitionEditVersionRef.current === savedEditVersion ? 'Error al guardar' : 'Cambios sin guardar');
-      }
-      return false;
-    }
-    if (transitionSaveRequestRef.current !== saveRequestId) {
-      setTransitionSaveStatus('Cambios sin guardar');
-      return false;
-    }
-    setMatches((current) => current.map((match) => (
-      match.id === selectedMatch.id
-        ? { ...match, preAiAnalysis: nextPreAiAnalysis }
-        : match
-    )));
-    setTransitionSaveStatus(transitionEditVersionRef.current === savedEditVersion ? 'Guardado' : 'Cambios sin guardar');
-    return true;
+    if (transitionAutosaveTimerRef.current) window.clearTimeout(transitionAutosaveTimerRef.current);
+    transitionAutosaveTimerRef.current = null;
+    return (await transitionSaveCoordinatorRef.current.flush()).ok;
   };
   const saveSetPieceWorkspace = async () => {
     if (!selectedMatch) return false;
-    if (setPieceAutosaveTimerRef.current) {
-      window.clearTimeout(setPieceAutosaveTimerRef.current);
-      setPieceAutosaveTimerRef.current = null;
-    }
-    const savedEditVersion = setPieceEditVersionRef.current;
-    const saveRequestId = setPieceSaveRequestRef.current + 1;
-    setPieceSaveRequestRef.current = saveRequestId;
-    const actionContextKey = getSetPieceActionContextKey(setPieceType, setPieceAction);
-    const normalizedWorkspace = normalizeSetPieceWorkspace({
-      ...setPieceWorkspace,
-      activeSetPieceType: setPieceType,
-      activeActionByType: {
-        ...setPieceWorkspace.activeActionByType,
-        [setPieceType]: setPieceAction,
-      },
-      activeBallPositionByContext: {
-        ...setPieceWorkspace.activeBallPositionByContext,
-        [actionContextKey]: setPieceBallStartPosition,
-      },
-    });
-    const nextPreAiAnalysis = {
-      ...(selectedPreAiAnalysis || {}),
-      setPiecePhaseV1: normalizedWorkspace,
-    };
-    setSetPieceSaveStatus('Guardando');
-    const { error: setPieceSaveError } = await supabase
-      .from('partidos')
-      .update({ pre_ai_analysis: nextPreAiAnalysis })
-      .eq('id', selectedMatch.id);
-    if (setPieceSaveError) {
-      console.error('[SET_PIECE_PHASE_SAVE]', {
-        matchId: selectedMatch.id,
-        workspace: normalizedWorkspace,
-        error: setPieceSaveError,
-      });
-      if (setPieceSaveRequestRef.current === saveRequestId) {
-        setSetPieceSaveStatus(setPieceEditVersionRef.current === savedEditVersion ? 'Error al guardar' : 'Cambios sin guardar');
-      }
-      return false;
-    }
-    if (setPieceSaveRequestRef.current !== saveRequestId) {
-      setSetPieceSaveStatus('Cambios sin guardar');
-      return false;
-    }
-    setMatches((current) => current.map((match) => (
-      match.id === selectedMatch.id
-        ? { ...match, preAiAnalysis: nextPreAiAnalysis }
-        : match
-    )));
-    setSetPieceSaveStatus(setPieceEditVersionRef.current === savedEditVersion ? 'Guardado' : 'Cambios sin guardar');
-    return true;
+    if (setPieceAutosaveTimerRef.current) window.clearTimeout(setPieceAutosaveTimerRef.current);
+    setPieceAutosaveTimerRef.current = null;
+    return (await setPieceSaveCoordinatorRef.current.flush()).ok;
+  };
+  tacticalNavigationGuardRef.current = {
+    hasPending: () => [
+      defensiveSaveCoordinatorRef.current,
+      offensiveSaveCoordinatorRef.current,
+      transitionSaveCoordinatorRef.current,
+      setPieceSaveCoordinatorRef.current,
+    ].some((coordinator) => coordinator.hasPending()),
+    flush: async () => {
+      clearTacticalAutosaveTimers();
+      return flushPendingSaveTargets([
+        defensiveSaveCoordinatorRef.current,
+        offensiveSaveCoordinatorRef.current,
+        transitionSaveCoordinatorRef.current,
+        setPieceSaveCoordinatorRef.current,
+      ]);
+    },
   };
   useEffect(() => {
     if (defensiveSaveStatus !== 'Cambios sin guardar' || !selectedMatch?.id) return undefined;
@@ -11510,7 +11552,7 @@ function App() {
     defensiveAutosaveTimerRef.current = window.setTimeout(() => {
       defensiveAutosaveTimerRef.current = null;
       saveDefensiveWorkspace();
-    }, 900);
+    }, TACTICAL_AUTOSAVE_DELAY_MS);
     return () => {
       if (defensiveAutosaveTimerRef.current) {
         window.clearTimeout(defensiveAutosaveTimerRef.current);
@@ -11524,7 +11566,7 @@ function App() {
     offensiveAutosaveTimerRef.current = window.setTimeout(() => {
       offensiveAutosaveTimerRef.current = null;
       saveOffensiveWorkspace();
-    }, 900);
+    }, TACTICAL_AUTOSAVE_DELAY_MS);
     return () => {
       if (offensiveAutosaveTimerRef.current) {
         window.clearTimeout(offensiveAutosaveTimerRef.current);
@@ -11538,7 +11580,7 @@ function App() {
     transitionAutosaveTimerRef.current = window.setTimeout(() => {
       transitionAutosaveTimerRef.current = null;
       saveTransitionWorkspace();
-    }, 900);
+    }, TACTICAL_AUTOSAVE_DELAY_MS);
     return () => {
       if (transitionAutosaveTimerRef.current) {
         window.clearTimeout(transitionAutosaveTimerRef.current);
@@ -11559,7 +11601,7 @@ function App() {
     setPieceAutosaveTimerRef.current = window.setTimeout(() => {
       setPieceAutosaveTimerRef.current = null;
       saveSetPieceWorkspace();
-    }, 900);
+    }, TACTICAL_AUTOSAVE_DELAY_MS);
     return () => {
       if (setPieceAutosaveTimerRef.current) {
         window.clearTimeout(setPieceAutosaveTimerRef.current);
@@ -13000,7 +13042,7 @@ function App() {
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <button type="button" onClick={openNewTacticalPlayDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Nueva jugada</button>
-                <button type="button" disabled={tacticalSaveStatus === 'Guardando'} onClick={tacticalGamePhase === 'defensive' ? saveDefensiveWorkspace : tacticalGamePhase === 'offensive' ? saveOffensiveWorkspace : tacticalGamePhase === 'transition' ? saveTransitionWorkspace : saveSetPieceWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">Guardar</button>
+                <button type="button" disabled={tacticalSaveStatus === 'Guardando'} onClick={tacticalGamePhase === 'defensive' ? saveDefensiveWorkspace : tacticalGamePhase === 'offensive' ? saveOffensiveWorkspace : tacticalGamePhase === 'transition' ? saveTransitionWorkspace : saveSetPieceWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">{tacticalSaveStatus === 'Error al guardar' ? 'Reintentar' : 'Guardar'}</button>
                 <button type="button" disabled={!selectedTacticalPlay} onClick={openSaveTacticalTemplateDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">Guardar como plantilla</button>
                 <button type="button" onClick={() => loadTacticalTemplateLibrary('library')} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300">Plantillas</button>
                 <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? duplicateDefensivePlay : tacticalGamePhase === 'offensive' ? duplicateOffensivePlay : tacticalGamePhase === 'transition' ? duplicateTransitionPlay : duplicateSetPiecePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
@@ -33113,6 +33155,8 @@ function App() {
                     players={players}
                     getFormationCoordinates={getFormationCoordinates}
                     onNavigateMatchSection={(section) => openMatchPage(selectedMatch, section)}
+                    onMatchPlanDirtyChange={setPrintMatchPlanDirty}
+                    onMatchPlanNavigationGuardReady={registerPrintMatchPlanNavigationGuard}
                   />
                 ) : (
                   <>
@@ -33131,9 +33175,9 @@ function App() {
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="match-plan-unsaved-title" aria-describedby="match-plan-unsaved-description">
           <button type="button" className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={() => resolvePendingMatchPlanNavigation('cancel')} disabled={['Guardando', 'Saliendo'].includes(matchPlanNavigationStatus)} aria-label="Cancelar salida" />
           <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-[#091428] p-6 shadow-[0_28px_90px_rgba(0,0,0,0.58)]">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Plan de partido</p>
-            <h2 id="match-plan-unsaved-title" className="mt-2 text-2xl font-black text-white">Cambios sin guardar</h2>
-            <p id="match-plan-unsaved-description" className="mt-3 text-sm font-semibold leading-6 text-slate-400">Tienes cambios sin guardar en el Plan de partido.</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">{matchPlanDirty ? 'Plan de partido' : 'Guardado pendiente'}</p>
+            <h2 id="match-plan-unsaved-title" className="mt-2 text-2xl font-black text-white">{matchPlanDirty ? 'Cambios sin guardar' : 'No se pudo completar el guardado'}</h2>
+            <p id="match-plan-unsaved-description" className="mt-3 text-sm font-semibold leading-6 text-slate-400">{matchPlanDirty ? 'Tienes cambios sin guardar en el Plan de partido.' : 'La navegación se ha cancelado para conservar tus cambios. Reintenta el guardado antes de salir.'}</p>
             {matchPlanNavigationError ? (
               <p className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-300/[0.07] px-4 py-3 text-sm font-semibold text-rose-100" role="alert">{matchPlanNavigationError}</p>
             ) : null}
@@ -33141,7 +33185,7 @@ function App() {
               <button type="button" onClick={() => resolvePendingMatchPlanNavigation('save')} disabled={['Guardando', 'Saliendo'].includes(matchPlanNavigationStatus)} className="min-h-11 rounded-xl bg-caudal-electric px-4 py-3 text-xs font-black text-slate-950 disabled:cursor-wait disabled:opacity-60">
                 {matchPlanNavigationStatus === 'Guardando' ? 'Guardando…' : matchPlanNavigationStatus === 'Error al guardar' ? 'Reintentar guardado' : 'Guardar y salir'}
               </button>
-              <button type="button" onClick={() => resolvePendingMatchPlanNavigation('discard')} disabled={['Guardando', 'Saliendo'].includes(matchPlanNavigationStatus)} className="min-h-11 rounded-xl border border-rose-300/20 px-4 py-3 text-xs font-black text-rose-100 disabled:opacity-50">Salir sin guardar</button>
+              {matchPlanDirty ? <button type="button" onClick={() => resolvePendingMatchPlanNavigation('discard')} disabled={['Guardando', 'Saliendo'].includes(matchPlanNavigationStatus)} className="min-h-11 rounded-xl border border-rose-300/20 px-4 py-3 text-xs font-black text-rose-100 disabled:opacity-50">Salir sin guardar</button> : null}
               <button type="button" onClick={() => resolvePendingMatchPlanNavigation('cancel')} disabled={['Guardando', 'Saliendo'].includes(matchPlanNavigationStatus)} className="min-h-11 rounded-xl border border-white/10 px-4 py-3 text-xs font-black text-slate-300 disabled:opacity-50 sm:col-span-2">Cancelar</button>
             </div>
           </div>

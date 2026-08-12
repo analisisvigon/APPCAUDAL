@@ -21,9 +21,12 @@ export const MATCH_PLAN_TACTICAL_LABELS = Object.freeze([
 
 export const MATCH_PLAN_TYPE_VALUES = Object.freeze(Object.values(MATCH_PLAN_TYPES));
 
-const createId = (prefix = 'match-plan') => {
-  if (globalThis.crypto?.randomUUID) return `${prefix}-${globalThis.crypto.randomUUID()}`;
-  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const createId = () => {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => {
+    const random = Math.floor(Math.random() * 16);
+    return (character === 'x' ? random : (random & 0x3) | 0x8).toString(16);
+  });
 };
 
 export const getMatchPlanPhase = (situation = {}) => (
@@ -125,11 +128,18 @@ export const buildMatchPlanPages = (situations = []) => {
 export const getMatchPlanPageCount = (situations = []) => buildMatchPlanPages(situations).length;
 
 export const buildMatchPlanPersistencePayload = (situation, partidoId, order) => ({
-  ...(situation.persisted && situation.id ? { id: situation.id } : {}),
+  ...(situation.id ? { id: situation.id } : {}),
   partido_id: partidoId,
   tipo: MATCH_PLAN_TYPES[getMatchPlanPhase(situation)],
   titulo: String(situation.titulo || '').trim() || null,
   consigna: null,
   orden: order,
   elements: Array.isArray(situation.elements) ? situation.elements : [],
+});
+
+export const buildMatchPrintPlanSnapshot = (situations = [], partidoId = '') => ({
+  p_partido_id: partidoId,
+  p_situations: normalizeMatchPlanSituations(situations, partidoId).map((situation, index) => (
+    buildMatchPlanPersistencePayload(situation, partidoId, index + 1)
+  )),
 });
