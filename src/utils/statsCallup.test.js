@@ -97,10 +97,10 @@ const addAllHandlerSource = appSource.slice(appSource.indexOf('const handleAddAl
 assert.ok(!addAllHandlerSource.includes('confirm('), 'añadir todos se ejecuta sin confirmación intermedia');
 assert.ok(appSource.includes('min-h-0 flex-1 overflow-y-auto'), 'el modal conserva un único flujo vertical desplazable');
 assert.ok(appSource.includes('break-words text-sm font-black leading-tight'), 'la identidad lateral puede usar varias líneas sin truncarse');
-assert.ok(appSource.includes('min-h-9 w-[76px] shrink-0'), 'el selector se mantiene compacto en anchos reducidos');
-assert.ok(appSource.includes('grid-cols-[36px_minmax(0,1fr)_76px]'), 'foto, identidad y selector reservan espacio estable desde 375px');
+assert.ok(appSource.includes('min-h-10 w-24 shrink-0'), 'el selector lateral conserva un target accesible en 96 px');
+assert.ok(appSource.includes('grid-cols-[40px_minmax(0,1fr)_96px]'), 'foto, identidad y selector reservan espacio estable en la convocatoria lateral');
 assert.ok(appSource.includes('grid-cols-[20px_36px_minmax(0,1fr)_76px]'), 'el modal reserva además una columna propia para el checkbox');
-assert.ok(appSource.includes('whitespace-normal [overflow-wrap:anywhere]'), 'la identidad puede ocupar el espacio disponible sin recorte agresivo');
+assert.ok(appSource.includes('truncate whitespace-nowrap text-[12px]'), 'la identidad lateral evita cortes en mitad de una palabra y conserva tooltip');
 assert.ok(!appSource.includes('className={`${maxHeight} space-y-2 overflow-y-auto pr-1`}'), 'la convocatoria lateral no conserva scrolls verticales internos');
 
 console.log('statsCallup tests passed');

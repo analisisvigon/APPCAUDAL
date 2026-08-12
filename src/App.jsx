@@ -127,6 +127,7 @@ import {
   saveDelegatedEventWithSync,
 } from './utils/delegatedEventSaveFlow';
 import { getPlayerDisplayName } from './utils/playerDisplayName';
+import { formatStatsPitchPlayerName, resolveStatsVisualIdentity } from './utils/statsVisualIdentity';
 import {
   calculateStatsCallupCounts,
   getStatsCallupPositionGroup,
@@ -15322,10 +15323,20 @@ function App() {
     const stats = getStatsPlayerData(starterName);
     const minutes = Number(stats.minutes || 0);
     if (stats.role !== 'Titular' || minutes <= 0 || minutes >= 90 || !stats.replacementName) return null;
-    const replacement = players.find((player) => player.name === stats.replacementName);
+    const replacementStored = selectedMatch?.statsPlayerData?.[stats.replacementName] || {};
+    const identity = resolveStatsVisualIdentity({
+      playerId: replacementStored.jugadorId
+        || replacementStored.jugador_id
+        || replacementStored.playerId
+        || replacementStored.player_id,
+      storedName: stats.replacementName,
+      players,
+    });
     return {
       replacementName: stats.replacementName,
-      replacement,
+      replacement: identity.player,
+      replacementDisplayName: identity.displayName,
+      replacementPitchName: formatStatsPitchPlayerName(identity.displayName),
       minute: minutes,
       substituteMinutes: 90 - minutes,
     };
@@ -15368,8 +15379,8 @@ function App() {
       stats.yellow ? { key: 'yellow', label: stats.yellowCount > 1 ? `AM${stats.yellowCount}` : 'AM', title: 'Amarilla', className: 'bg-yellow-300 text-slate-950' } : null,
       stats.red ? { key: 'red', label: 'RJ', title: 'Roja', className: 'bg-red-600 text-white' } : null,
       stats.injured ? { key: 'injured', label: '?', title: 'Lesión', className: 'bg-rose-200 text-rose-800' } : null,
-      substitutionOut ? { key: 'sub-out', label: `${substitutionOut.minute}'?`, title: `Sale por ${substitutionOut.replacementName}`, className: 'bg-emerald-500 text-white' } : null,
-      substitutionIn ? { key: 'sub-in', label: `${substitutionIn.minute}'?`, title: `Entra por ${substitutionIn.outPlayer}`, className: 'bg-emerald-400 text-slate-950' } : null,
+      substitutionOut ? { key: 'sub-out', label: `↓ ${substitutionOut.minute}'`, title: `Sale por ${substitutionOut.replacementName}`, className: 'bg-emerald-500 text-white' } : null,
+      substitutionIn ? { key: 'sub-in', label: `↑ ${substitutionIn.minute}'`, title: `Entra por ${substitutionIn.outPlayer}`, className: 'bg-emerald-400 text-slate-950' } : null,
     ].filter(Boolean);
   };
 
@@ -17216,7 +17227,7 @@ function App() {
     const matchEvents = getStatsMatchEvents();
     return (
       <div
-        className="responsive-pitch-canvas relative aspect-[7/8.9] min-h-[640px] overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner"
+        className="stats-match-pitch relative mx-auto aspect-[7/8.9] w-full max-w-[560px] min-w-0 overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner"
         onDragOver={(event) => event.preventDefault()}
         onDrop={() => {
           if (!draggedPlayer || statsSquadSaving) return;
@@ -17262,7 +17273,7 @@ function App() {
                 event.stopPropagation();
                 handleDropOnStatsLineupSlot(slotIndex);
               }}
-              className={`absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center ${player ? 'cursor-grab' : ''}`}
+              className={`absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-0.5 text-center ${player ? 'cursor-grab' : ''}`}
               style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
             >
               <div className={`relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border text-sm font-black shadow-sm ${playerName ? playerStateClass : 'border-dashed border-white/40 bg-white/10 text-white/70'}`}>
@@ -17296,8 +17307,8 @@ function App() {
                 {playerName ? `${player?.number || slotIndex + 1} ${shortName}` : getFormationRoles(activeSystem)[slotIndex]}
               </div>
               {replacementInfo ? (
-                <div className="max-w-[108px] truncate rounded-xl bg-emerald-500 px-2 py-1 text-[10px] font-black text-white" title={`Entra ${replacementInfo.replacementName}`}>
-                  ? {replacementInfo.replacementName} · {replacementInfo.substituteMinutes}'
+                <div className="max-w-[128px] truncate rounded-lg bg-emerald-500 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.02em] text-white shadow-lg" title={`Entra ${replacementInfo.replacementDisplayName} en el ${replacementInfo.minute}'`}>
+                  ↑ {replacementInfo.replacementPitchName} · {replacementInfo.minute}'
                 </div>
               ) : null}
             </div>
@@ -17336,34 +17347,37 @@ function App() {
         key={`${status}-${player.id || player.name}`}
         draggable
         onDragStart={() => setDraggedPlayer(player)}
-        className="border border-white/10 bg-white/[0.035] px-2 py-2"
+        className="min-h-[56px] border border-white/10 bg-white/[0.035] px-2 py-1.5"
       >
-        <div className="grid grid-cols-[36px_minmax(0,1fr)_76px] items-center gap-1.5">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/10 text-[10px] font-black text-white">
+        <div className="grid grid-cols-[40px_minmax(0,1fr)_96px] items-center gap-2">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/10 text-[10px] font-black text-white">
             <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="whitespace-normal [overflow-wrap:anywhere] text-[12px] font-black leading-[1.15] text-white" title={`${player.number ? `#${player.number} ` : ''}${displayPlayerName(player) || player.name}`}>
+            <p className="truncate whitespace-nowrap text-[12px] font-black leading-tight text-white" title={`${player.number ? `#${player.number} ` : ''}${displayPlayerName(player) || player.name}`}>
               {player.number ? <span className="mr-1 text-caudal-electric">#{player.number}</span> : null}
               {displayPlayerName(player) || player.name}
             </p>
-            <p className="mt-0.5 break-words text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">{getPlayerPositionLabel(player)}</p>
-            {availability.status !== PLAYER_AVAILABILITY.available ? (
-              <button
-                type="button"
-                onClick={() => openAvailabilityEditor(player)}
-                className="mt-1 text-left text-[8px] font-black uppercase tracking-[0.08em] text-amber-200 hover:text-amber-100"
-              >
-                {availability.label}
-              </button>
-            ) : null}
+            <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
+              <p className="min-w-0 truncate text-[9px] font-bold uppercase tracking-[0.06em] text-slate-500">{getPlayerPositionLabel(player)}</p>
+              {availability.status !== PLAYER_AVAILABILITY.available ? (
+                <button
+                  type="button"
+                  onClick={() => openAvailabilityEditor(player)}
+                  title={availability.label}
+                  className="max-w-[78px] shrink-0 truncate rounded bg-amber-300/10 px-1 py-0.5 text-left text-[7px] font-black uppercase tracking-[0.04em] text-amber-200 hover:text-amber-100"
+                >
+                  {availability.label}
+                </button>
+              ) : null}
+            </div>
           </div>
           <select
             value={status}
             onChange={(event) => saveStatsPlayerRole(player.name, event.target.value)}
             disabled={statsSquadSaving}
             aria-label={`Estado de convocatoria de ${displayPlayerName(player) || player.name}`}
-            className="min-h-9 w-[76px] shrink-0 rounded-lg border border-white/10 bg-black/25 px-1 py-1.5 text-[8px] font-black uppercase text-white"
+            className="min-h-10 w-24 shrink-0 rounded-lg border border-white/10 bg-black/25 px-2 py-1.5 text-[9px] font-black uppercase text-white"
           >
             {['Titular', 'Suplente', 'Fuera'].map((option) => <option key={option} value={option}>{option}</option>)}
           </select>
@@ -17384,14 +17398,14 @@ function App() {
           onDragOver={(event) => event.preventDefault()}
           onDrop={handleDrop}
         >
-          <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="mb-1 flex items-center justify-between gap-2">
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">{title}</p>
             <span className="text-[10px] font-black text-caudal-electric">{rows.length}</span>
           </div>
           {!rows.length ? <p className="border border-dashed border-white/10 px-3 py-3 text-xs text-slate-500">Sin jugadores.</p> : null}
-          {status === 'Titular' && rows.length ? <div className="space-y-2">{rows.map(renderStatsSquadCard)}</div> : null}
+          {status === 'Titular' && rows.length ? <div className="space-y-1.5">{rows.map(renderStatsSquadCard)}</div> : null}
           {positionGroups.length ? (
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {positionGroups.map((group) => {
                 const collapseKey = `${status}-${group.key}`;
                 const collapsed = Boolean(collapsedStatsCallupGroups[collapseKey]);
@@ -17404,7 +17418,7 @@ function App() {
                       aria-expanded={!collapsed}
                       aria-controls={contentId}
                       aria-label={`${collapsed ? 'Abrir' : 'Cerrar'} ${title.toLowerCase()} ${group.label.toLowerCase()}`}
-                      className="flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left text-[9px] font-black uppercase tracking-[0.12em] text-slate-400 hover:bg-white/[0.04]"
+                      className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-[9px] font-black uppercase tracking-[0.1em] text-slate-400 hover:bg-white/[0.04]"
                     >
                       <span>{group.label}</span>
                       <span className="flex items-center gap-2">
@@ -17412,7 +17426,7 @@ function App() {
                         <span aria-hidden="true">{collapsed ? '+' : '−'}</span>
                       </span>
                     </button>
-                    <div id={contentId} hidden={collapsed} className="space-y-1.5 border-t border-white/8 p-1.5">
+                    <div id={contentId} hidden={collapsed} className="space-y-1 border-t border-white/8 p-1">
                       {group.rows.map(renderStatsSquadCard)}
                     </div>
                   </div>
@@ -17462,7 +17476,7 @@ function App() {
           </div>
         </div>
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(260px,0.25fr)_minmax(0,0.5fr)_minmax(260px,0.25fr)]">
+        <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(240px,0.8fr)_minmax(460px,1.45fr)_minmax(320px,1fr)]">
           <div className="space-y-5">
             <section className="border border-white/10 bg-[#091428]/82 p-4 shadow-glow">
               <div className="flex items-center justify-between gap-3">
@@ -17621,10 +17635,10 @@ function App() {
                 <button type="button" onClick={openStatsCallupPanel} className="bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Añadir convocados</button>
               </div>
             </div>
-            <div className="responsive-pitch-scroll mt-4 overflow-x-auto">{renderStatsPitch()}</div>
+            <div className="mt-4 min-w-0 overflow-hidden">{renderStatsPitch()}</div>
           </section>
 
-          <section className="border border-white/10 bg-[#091428]/82 p-4 shadow-glow">
+          <section className="flex min-h-0 flex-col border border-white/10 bg-[#091428]/82 p-3 shadow-glow xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:self-start">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Convocatoria</p>
@@ -17638,7 +17652,7 @@ function App() {
               <span className="bg-white/[0.045] px-2 py-2 text-[10px] font-black uppercase text-slate-300">Suplentes {callupCounts.substitutes}</span>
               <span className="bg-white/[0.045] px-2 py-2 text-[10px] font-black uppercase text-slate-300">Fuera {callupCounts.outside}</span>
             </div>
-            <div className="mt-4 space-y-4">
+            <div className="mt-3 min-h-0 space-y-3 overflow-x-hidden overflow-y-auto pr-1">
               {renderStatsSquadGroup('Titulares', 'Titular')}
               {renderStatsSquadGroup('Suplentes', 'Suplente')}
               {renderStatsSquadGroup('Fuera', 'Fuera')}
