@@ -9,16 +9,7 @@ import {
   isDefensiveSetPieceType,
   optimizeSetPieceElementsForPrint,
 } from './setPieceProfessional.js';
-
-const TYPE_LABELS = Object.freeze({
-  corner_ofensivo: 'Córner ofensivo',
-  falta_lateral_ofensiva: 'Falta lateral ofensiva',
-  saque_banda_ofensivo: 'Saque de banda ofensivo',
-  saque_inicio_ofensivo: 'Saque de inicio',
-  corner_defensivo: 'Córner defensivo',
-  falta_lateral_defensiva: 'Falta lateral defensiva',
-  saque_banda_defensivo: 'Saque de banda defensivo',
-});
+import { getSetPieceLabType } from './setPieceLaboratory.js';
 
 const PLACEHOLDER_VALUES = new Set([
   'consigna pendiente de definir',
@@ -70,8 +61,7 @@ export const paginateSetPiecePrintPlays = (plays = []) => plays.reduce((pages, p
 }, []);
 
 export const getSetPiecePrintTypeLabel = (type) => (
-  TYPE_LABELS[type]
-  || String(type || '').replaceAll('_', ' ').replace(/^./, (character) => character.toUpperCase())
+  getSetPieceLabType(type).label
 );
 
 const formatIdentity = (element, displayLayers) => {

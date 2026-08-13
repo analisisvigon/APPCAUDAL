@@ -2,15 +2,21 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   SET_PIECE_LAB_CATEGORY,
+  SET_PIECE_LAB_BASE_TYPES,
   SET_PIECE_LAB_MARKINGS,
   SET_PIECE_LAB_MECHANISMS,
+  SET_PIECE_LAB_TYPES,
   SET_PIECE_LAB_ZONES,
+  SET_PIECE_PHASES,
   TRAINING_LIBRARY_SECTIONS,
   buildSetPieceLaboratoryPayload,
   createSetPieceLaboratoryDraft,
   duplicateSetPieceLaboratoryItem,
   filterAndSortSetPieceLaboratoryItems,
+  getSetPieceClassificationLabel,
   getSetPieceLaboratoryMeta,
+  getSetPiecePhase,
+  getSetPieceType,
   getTrainingLibrarySection,
   hasStoredSetPieceTacticalMeta,
   isSetPieceLibraryItem,
@@ -38,6 +44,22 @@ assert.equal(normalizeTrainingLibraryClassification('  Acción  a balón parado.
 assert.equal(isSetPieceLibraryItem({ categoria: 'Estrategia', tipo: 'Ejercicio táctico' }), false, 'Estrategia no se convierte en ABP por una coincidencia ambigua');
 assert.equal(isSetPieceLibraryItem({ categoria: 'Estrategia', tipo: 'corner_ofensivo' }), true, 'el legacy Estrategia solo entra por un tipo ABP exacto');
 assert.equal(isSetPieceLibraryItem({ categoria: 'Trabajo ABP ofensiva en transición', tipo: 'Ejercicio' }), false, 'no se aceptan coincidencias parciales');
+assert.deepEqual(SET_PIECE_LAB_TYPES.map((entry) => entry.id), [
+  'corner_ofensivo',
+  'falta_lateral_ofensiva',
+  'saque_banda_ofensivo',
+  'saque_inicio_ofensivo',
+  'corner_defensivo',
+  'falta_lateral_defensiva',
+  'saque_banda_defensivo',
+], 'el catálogo central contiene exclusivamente los siete tipos reales de APPCAUDAL');
+assert.deepEqual(SET_PIECE_LAB_BASE_TYPES.map((entry) => entry.id), ['corner', 'wide_free_kick', 'throw_in', 'kickoff']);
+assert.equal(getSetPiecePhase('CORNER-DEFENSIVO'), SET_PIECE_PHASES.DEFENSIVE, 'el adaptador tolera variantes legacy de caja y separadores');
+assert.equal(getSetPieceType('falta_lateral_ofensiva'), 'wide_free_kick');
+assert.equal(getSetPieceClassificationLabel({ tipo: 'saque_banda_defensivo' }), 'Defensiva · Saque de banda');
+assert.equal(getSetPiecePhase({ categoria: 'ABP Ofensiva', tipo: 'tipo_legacy' }), SET_PIECE_PHASES.OFFENSIVE, 'una categoría histórica solo aporta la fase que realmente contiene');
+assert.equal(getSetPieceType({ categoria: 'ABP Ofensiva', tipo: 'tipo_legacy' }), SET_PIECE_PHASES.UNCLASSIFIED);
+assert.equal(getSetPieceClassificationLabel({ categoria: 'ABP Ofensiva', tipo: 'tipo_legacy' }), 'Sin clasificar', 'no se inventa un tipo cuando el dato legacy no basta');
 
 const classificationFixtures = [
   { id: 'A', nombre: 'Técnica de pase', categoria: 'Ejercicios técnicos', tipo: 'Ejercicio' },
@@ -120,7 +142,10 @@ const clearedPayload = buildSetPieceLaboratoryPayload({
 assert.equal(clearedPayload.objetivo, '', 'vaciar el objetivo no recupera un valor antiguo de la columna legacy');
 assert.equal(clearedPayload.descripcion, '', 'vaciar la consigna no recupera un valor antiguo de la columna legacy');
 assert.equal(clearedPayload.variantes, '', 'vaciar la alternativa no recupera un valor antiguo de la columna legacy');
-assert.equal(prepareSetPieceLaboratoryItem({ ...payload, tipo: 'tipo_inexistente' }).tipo, 'corner_ofensivo', 'un tipo antiguo no crea categorías paralelas');
+const unknownLegacy = prepareSetPieceLaboratoryItem({ ...payload, tipo: 'tipo_inexistente', categoria: 'ABP Laboratorio' });
+assert.equal(unknownLegacy.tipo, 'tipo_inexistente', 'un tipo antiguo se conserva y no se convierte en córner ofensivo');
+assert.equal(buildSetPieceLaboratoryPayload(unknownLegacy).tipo, 'tipo_inexistente', 'guardar otros cambios no destruye el valor legacy sin clasificar');
+assert.equal(getSetPieceClassificationLabel(unknownLegacy), 'Sin clasificar');
 
 const legacyOnlyRow = {
   ...payload,
@@ -424,6 +449,24 @@ assert.deepEqual(filterAndSortSetPieceLaboratoryItems([older, newer], { search: 
 assert.deepEqual(filterAndSortSetPieceLaboratoryItems([older, newer], { favorites: true }).map((item) => item.id), ['newer']);
 assert.deepEqual(filterAndSortSetPieceLaboratoryItems([older, newer], { sort: 'updated' }).map((item) => item.id), ['newer', 'older']);
 
+const filterFixtures = [
+  { ...older, id: 'oc', nombre: 'Córner zona dos', tipo: 'corner_ofensivo', updated_at: '2026-01-04T00:00:00Z' },
+  { ...older, id: 'dc', nombre: 'Córner defensivo zona', tipo: 'corner_defensivo', updated_at: '2026-01-03T00:00:00Z', elements: setSetPieceTacticalMeta(payload.elements, { ...tacticalMeta, libraryFavorite: true }) },
+  { ...older, id: 'of', nombre: 'Falta lateral ataque', tipo: 'falta_lateral_ofensiva', updated_at: '2026-01-02T00:00:00Z' },
+  { ...older, id: 'dt', nombre: 'Banda defensiva', tipo: 'saque_banda_defensivo', updated_at: '2026-01-01T00:00:00Z' },
+  unknownLegacy,
+];
+assert.equal(filterAndSortSetPieceLaboratoryItems(filterFixtures).length, 5, 'Todas conserva también las jugadas legacy');
+assert.deepEqual(filterAndSortSetPieceLaboratoryItems(filterFixtures, { phase: SET_PIECE_PHASES.OFFENSIVE }).map((item) => item.id), ['oc', 'of']);
+assert.deepEqual(filterAndSortSetPieceLaboratoryItems(filterFixtures, { phase: SET_PIECE_PHASES.DEFENSIVE }).map((item) => item.id), ['dc', 'dt']);
+assert.deepEqual(filterAndSortSetPieceLaboratoryItems(filterFixtures, { phase: SET_PIECE_PHASES.OFFENSIVE, types: ['corner'] }).map((item) => item.id), ['oc']);
+assert.deepEqual(filterAndSortSetPieceLaboratoryItems(filterFixtures, { phase: SET_PIECE_PHASES.DEFENSIVE, types: ['corner'] }).map((item) => item.id), ['dc']);
+assert.deepEqual(filterAndSortSetPieceLaboratoryItems(filterFixtures, { phase: SET_PIECE_PHASES.OFFENSIVE, types: ['wide_free_kick'] }).map((item) => item.id), ['of']);
+assert.deepEqual(filterAndSortSetPieceLaboratoryItems(filterFixtures, { phase: SET_PIECE_PHASES.DEFENSIVE, types: ['throw_in'] }).map((item) => item.id), ['dt']);
+assert.deepEqual(filterAndSortSetPieceLaboratoryItems(filterFixtures, { search: 'zona' }).map((item) => item.id), ['oc', 'dc']);
+assert.deepEqual(filterAndSortSetPieceLaboratoryItems(filterFixtures, { search: 'zona', phase: SET_PIECE_PHASES.DEFENSIVE, types: ['corner'], favorites: true }).map((item) => item.id), ['dc'], 'búsqueda, fase, tipo y favoritas se combinan');
+assert.deepEqual(filterAndSortSetPieceLaboratoryItems(filterFixtures, { phase: SET_PIECE_PHASES.OFFENSIVE, sort: 'name' }).map((item) => item.id), ['oc', 'of'], 'la ordenación se aplica después de filtrar');
+
 const component = fs.readFileSync(new URL('../components/library/SetPieceLaboratory.jsx', import.meta.url), 'utf8');
 const editor = fs.readFileSync(new URL('../components/print/SetPieceDiagramEditor.jsx', import.meta.url), 'utf8');
 const toolbar = fs.readFileSync(new URL('../components/print/SetPieceDiagramToolbar.jsx', import.meta.url), 'utf8');
@@ -452,7 +495,11 @@ assert.ok(component.includes('createSetPieceThumbnailLayers(meta.displayLayers)'
 assert.ok(component.includes('SetPieceDiagramPrintSheet') && component.includes('dos por hoja'), 'ABP reutiliza la impresión profesional a dos jugadas por hoja');
 assert.ok(component.includes('Tipo de golpeo') && component.includes('SET_PIECE_DELIVERY_TYPES') && component.includes('deliveryType'), 'Laboratorio permite Sin definir, Abierto y Cerrado desde tactical_meta');
 assert.ok(component.includes('getSetPieceDeliveryTypeLabel(meta.deliveryType)'), 'la tarjeta y preview muestran el golpeo solo cuando está definido');
-assert.ok(component.includes('const defensive = isDefensiveSetPieceType(draft.tipo)') && component.includes('Tipo de defensa'), 'la ficha de Biblioteca distingue las ABP defensivas');
+assert.ok(component.includes('const defensive = getSetPiecePhase(draft) === SET_PIECE_PHASES.DEFENSIVE') && component.includes('Tipo de defensa'), 'la ficha de Biblioteca reutiliza la fase normalizada');
+assert.ok(component.includes("label: 'Todas'") && component.includes("label: 'Ofensivas'") && component.includes("label: 'Defensivas'") && component.includes('phaseCounts'), 'la cabecera ofrece el filtro rápido con contadores reales');
+assert.ok(component.includes('SET_PIECE_LAB_BASE_TYPES.map') && component.includes('toggleTypeFilter'), 'Filtros permite combinar los tipos reales mediante selección múltiple');
+assert.ok(component.includes('getSetPieceClassificationLabel(item)'), 'las tarjetas muestran fase y tipo con el adaptador central');
+assert.ok(matchPrint.includes('.filter(isSetPieceLibraryItem).filter') && matchPrint.includes('getSetPiecePhase(item)'), 'el selector de partido reutiliza el mismo clasificador sin depender de categorías antiguas');
 assert.ok(component.includes('validateSetPieceLaboratoryMeta(meta, draft.tipo)'), 'la validación depende del tipo real de ABP');
 assert.ok(component.includes('getSetPieceDefensiveStructure(item.elements)') && component.includes('defensiveStructure'), 'tarjeta y preview pueden mostrar la estructura derivada sin persistir una copia');
 assert.ok(editor.includes("{defensive && !roleOnly ?") && editor.includes("{!defensive ? <TacticalField label=\"Tipo de saque\""), 'los campos ofensivos se ocultan en defensivas y no se duplican dentro del Laboratorio');

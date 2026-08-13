@@ -13,14 +13,29 @@ export const TRAINING_LIBRARY_SECTIONS = Object.freeze({
 });
 
 export const SET_PIECE_LAB_TYPES = Object.freeze([
-  { id: 'corner_ofensivo', label: 'Córner ofensivo', category: SET_PIECE_LAB_CATEGORY },
-  { id: 'falta_lateral_ofensiva', label: 'Falta lateral ofensiva', category: SET_PIECE_LAB_CATEGORY },
-  { id: 'saque_banda_ofensivo', label: 'Saque de banda ofensivo', category: SET_PIECE_LAB_CATEGORY },
-  { id: 'saque_inicio_ofensivo', label: 'Saque de inicio', category: SET_PIECE_LAB_CATEGORY },
-  { id: 'corner_defensivo', label: 'Córner defensivo', category: SET_PIECE_LAB_CATEGORY },
-  { id: 'falta_lateral_defensiva', label: 'Falta lateral defensiva', category: SET_PIECE_LAB_CATEGORY },
-  { id: 'saque_banda_defensivo', label: 'Saque de banda defensivo', category: SET_PIECE_LAB_CATEGORY },
+  { id: 'corner_ofensivo', label: 'Córner ofensivo', phase: 'offensive', type: 'corner', typeLabel: 'Córner', category: SET_PIECE_LAB_CATEGORY },
+  { id: 'falta_lateral_ofensiva', label: 'Falta lateral ofensiva', phase: 'offensive', type: 'wide_free_kick', typeLabel: 'Falta lateral', category: SET_PIECE_LAB_CATEGORY },
+  { id: 'saque_banda_ofensivo', label: 'Saque de banda ofensivo', phase: 'offensive', type: 'throw_in', typeLabel: 'Saque de banda', category: SET_PIECE_LAB_CATEGORY },
+  { id: 'saque_inicio_ofensivo', label: 'Saque de inicio', phase: 'offensive', type: 'kickoff', typeLabel: 'Saque de inicio', category: SET_PIECE_LAB_CATEGORY },
+  { id: 'corner_defensivo', label: 'Córner defensivo', phase: 'defensive', type: 'corner', typeLabel: 'Córner', category: SET_PIECE_LAB_CATEGORY },
+  { id: 'falta_lateral_defensiva', label: 'Falta lateral defensiva', phase: 'defensive', type: 'wide_free_kick', typeLabel: 'Falta lateral', category: SET_PIECE_LAB_CATEGORY },
+  { id: 'saque_banda_defensivo', label: 'Saque de banda defensivo', phase: 'defensive', type: 'throw_in', typeLabel: 'Saque de banda', category: SET_PIECE_LAB_CATEGORY },
 ]);
+
+export const SET_PIECE_PHASES = Object.freeze({
+  ALL: 'all',
+  OFFENSIVE: 'offensive',
+  DEFENSIVE: 'defensive',
+  UNCLASSIFIED: 'unclassified',
+});
+
+export const SET_PIECE_LAB_BASE_TYPES = Object.freeze(
+  SET_PIECE_LAB_TYPES.reduce((types, entry) => (
+    types.some((candidate) => candidate.id === entry.type)
+      ? types
+      : [...types, { id: entry.type, label: entry.typeLabel }]
+  ), [])
+);
 
 export const SET_PIECE_LAB_ZONES = Object.freeze(['Primer palo', 'Zona media', 'Segundo palo', 'En corto', 'Frontal']);
 export const SET_PIECE_LAB_MECHANISMS = Object.freeze(['Bloqueo', 'Arrastre', 'Ataque de zona']);
@@ -63,6 +78,11 @@ const SET_PIECE_TYPE_KEYS = new Set([
   'accion a balon parado',
   'acciones a balon parado',
 ]);
+const SET_PIECE_TYPE_BY_KEY = new Map(
+  SET_PIECE_LAB_TYPES.map((entry) => [normalizeTrainingLibraryClassification(entry.id), entry])
+);
+const OFFENSIVE_CLASSIFICATION_KEYS = new Set(['abp ofensiva', 'abp ofensivo']);
+const DEFENSIVE_CLASSIFICATION_KEYS = new Set(['abp defensiva', 'abp defensivo']);
 const createId = () => globalThis.crypto?.randomUUID?.() || 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (token) => {
   const random = Math.floor(Math.random() * 16);
   const value = token === 'x' ? random : (random & 0x3) | 0x8;
@@ -85,7 +105,57 @@ export const partitionTrainingLibraryItems = (items = []) => (Array.isArray(item
   return partition;
 }, { [TRAINING_LIBRARY_SECTIONS.EXERCISES]: [], [TRAINING_LIBRARY_SECTIONS.SET_PIECES]: [] });
 
-export const getSetPieceLabType = (type) => SET_PIECE_LAB_TYPES.find((entry) => entry.id === type) || SET_PIECE_LAB_TYPES[0];
+export const getSetPieceLabType = (type) => {
+  const storedType = clean(type);
+  return SET_PIECE_TYPE_BY_KEY.get(normalizeTrainingLibraryClassification(storedType)) || {
+    id: storedType,
+    label: 'Sin clasificar',
+    phase: SET_PIECE_PHASES.UNCLASSIFIED,
+    type: SET_PIECE_PHASES.UNCLASSIFIED,
+    typeLabel: 'Sin clasificar',
+    category: SET_PIECE_LAB_CATEGORY,
+  };
+};
+
+const getClassificationValues = (playOrType) => (
+  playOrType && typeof playOrType === 'object'
+    ? [playOrType.tipo, playOrType.categoria]
+    : [playOrType]
+);
+
+export const getSetPiecePhase = (playOrType) => {
+  const values = getClassificationValues(playOrType);
+  const knownType = getSetPieceLabType(values[0]);
+  if (knownType.phase !== SET_PIECE_PHASES.UNCLASSIFIED) return knownType.phase;
+  const keys = values.map(normalizeTrainingLibraryClassification);
+  if (keys.some((key) => OFFENSIVE_CLASSIFICATION_KEYS.has(key))) return SET_PIECE_PHASES.OFFENSIVE;
+  if (keys.some((key) => DEFENSIVE_CLASSIFICATION_KEYS.has(key))) return SET_PIECE_PHASES.DEFENSIVE;
+  return SET_PIECE_PHASES.UNCLASSIFIED;
+};
+
+export const getSetPieceType = (playOrType) => getSetPieceLabType(
+  playOrType && typeof playOrType === 'object' ? playOrType.tipo : playOrType
+).type;
+
+export const getSetPiecePhaseLabel = (playOrType) => {
+  const phase = getSetPiecePhase(playOrType);
+  if (phase === SET_PIECE_PHASES.OFFENSIVE) return 'Ofensiva';
+  if (phase === SET_PIECE_PHASES.DEFENSIVE) return 'Defensiva';
+  return 'Sin clasificar';
+};
+
+export const getSetPieceTypeLabel = (playOrType) => getSetPieceLabType(
+  playOrType && typeof playOrType === 'object' ? playOrType.tipo : playOrType
+).typeLabel;
+
+export const getSetPieceClassificationLabel = (playOrType) => {
+  const phase = getSetPiecePhase(playOrType);
+  const type = getSetPieceType(playOrType);
+  if (phase === SET_PIECE_PHASES.UNCLASSIFIED || type === SET_PIECE_PHASES.UNCLASSIFIED) return 'Sin clasificar';
+  return `${getSetPiecePhaseLabel(playOrType)} · ${getSetPieceTypeLabel(playOrType)}`;
+};
+
+export const getSetPieceTypesForPhase = (phase) => SET_PIECE_LAB_TYPES.filter((entry) => entry.phase === phase);
 
 export const hasStoredSetPieceTacticalMeta = (elements) => (
   Array.isArray(elements) && elements.some((element) => element?.type === 'tactical_meta')
@@ -286,11 +356,14 @@ export const duplicateSetPieceLaboratoryItem = (item) => {
 
 export const filterAndSortSetPieceLaboratoryItems = (items, controls = {}) => {
   const query = clean(controls.search).toLocaleLowerCase('es');
+  const selectedTypes = Array.isArray(controls.types) ? controls.types : [];
   const filtered = items.filter((item) => {
     const meta = getSetPieceLaboratoryMeta(item);
     const matchesSearch = !query || [item.nombre, meta.objective || item.objetivo, meta.generalInstruction || item.descripcion]
       .some((value) => clean(value).toLocaleLowerCase('es').includes(query));
     return matchesSearch
+      && (!controls.phase || controls.phase === SET_PIECE_PHASES.ALL || getSetPiecePhase(item) === controls.phase)
+      && (!selectedTypes.length || selectedTypes.includes(getSetPieceType(item)))
       && (!controls.zone || meta.libraryZone === controls.zone)
       && (!controls.mechanism || meta.libraryMechanism === controls.mechanism)
       && (!controls.marking || meta.libraryMarking === controls.marking)
@@ -302,7 +375,7 @@ export const filterAndSortSetPieceLaboratoryItems = (items, controls = {}) => {
     const metaA = getSetPieceLaboratoryMeta(a);
     const metaB = getSetPieceLaboratoryMeta(b);
     if (sort === 'name') return clean(a.nombre).localeCompare(clean(b.nombre), 'es');
-    if (sort === 'type') return getSetPieceLabType(a.tipo).label.localeCompare(getSetPieceLabType(b.tipo).label, 'es');
+    if (sort === 'type') return getSetPieceClassificationLabel(a).localeCompare(getSetPieceClassificationLabel(b), 'es');
     if (sort === 'favorites') return Number(metaB.libraryFavorite) - Number(metaA.libraryFavorite) || clean(b.updated_at).localeCompare(clean(a.updated_at));
     return clean(b.updated_at || metaB.libraryUpdatedAt).localeCompare(clean(a.updated_at || metaA.libraryUpdatedAt));
   });

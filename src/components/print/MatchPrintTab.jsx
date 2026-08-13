@@ -27,6 +27,14 @@ import {
   getDossierStartPageNumber,
   getDossierTotalPages,
 } from '../../utils/printDossierPagination';
+import {
+  SET_PIECE_PHASES,
+  getSetPieceClassificationLabel,
+  getSetPieceLabType,
+  getSetPiecePhase,
+  getSetPieceTypesForPhase,
+  isSetPieceLibraryItem,
+} from '../../utils/setPieceLaboratory';
 
 const setPieceSections = [
   { id: 'penaltis', label: 'Penaltis' },
@@ -35,18 +43,8 @@ const setPieceSections = [
   { id: 'corners', label: 'Córners' },
 ];
 
-const offensiveSetPieceTypes = [
-  { id: 'corner_ofensivo', label: 'Córner ofensivo' },
-  { id: 'falta_lateral_ofensiva', label: 'Falta lateral ofensiva' },
-  { id: 'saque_banda_ofensivo', label: 'Saque de banda ofensivo' },
-  { id: 'saque_inicio_ofensivo', label: 'Saque de inicio' },
-];
-
-const defensiveSetPieceTypes = [
-  { id: 'corner_defensivo', label: 'Córner defensivo' },
-  { id: 'falta_lateral_defensiva', label: 'Falta lateral defensiva' },
-  { id: 'saque_banda_defensivo', label: 'Saque de banda defensivo' },
-];
+const offensiveSetPieceTypes = getSetPieceTypesForPhase(SET_PIECE_PHASES.OFFENSIVE);
+const defensiveSetPieceTypes = getSetPieceTypesForPhase(SET_PIECE_PHASES.DEFENSIVE);
 
 const defaultOffensiveRoles = [
   'Lanzador',
@@ -1140,16 +1138,13 @@ export default function MatchPrintTab({
     setLibraryError('');
     setLibraryLoading(true);
     try {
-      const categories = mode === 'offensive'
-        ? ['ABP Ofensiva', 'Estrategia']
-        : ['ABP Defensiva', 'Estrategia'];
       const { data, error } = await supabase
         .from('training_library')
         .select('*')
-        .in('categoria', categories)
         .order('updated_at', { ascending: false });
       if (error) throw error;
-      setLibraryItems(data || []);
+      const phase = mode === 'offensive' ? SET_PIECE_PHASES.OFFENSIVE : SET_PIECE_PHASES.DEFENSIVE;
+      setLibraryItems((data || []).filter(isSetPieceLibraryItem).filter((item) => getSetPiecePhase(item) === phase));
     } catch (error) {
       console.error('Error cargando biblioteca desde Supabase:', error);
       setLibraryError(error.message || 'No se pudo cargar la biblioteca.');
@@ -1212,8 +1207,11 @@ export default function MatchPrintTab({
       cloneSetPieceElementsWithFreshIds(cleanDiagramElements(item.elements)),
       importedMeta
     );
+    const storedClassification = getSetPieceLabType(item.tipo);
+    const expectedPhase = libraryModal === 'offensive' ? SET_PIECE_PHASES.OFFENSIVE : SET_PIECE_PHASES.DEFENSIVE;
     updateCurrentDiagram(libraryModal, {
       ...current,
+      tipo: storedClassification.phase === expectedPhase ? storedClassification.id : current.tipo,
       titulo: item.nombre || current.titulo,
       consigna: item.descripcion || item.objetivo || current.consigna || '',
       elements: libraryElements,
@@ -1993,7 +1991,7 @@ export default function MatchPrintTab({
                     </div>
                     <div className="p-4">
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0"><p className="truncate text-sm font-black text-white">{item.nombre}</p><p className="mt-1 text-[9px] font-black uppercase tracking-[0.15em] text-caudal-electric">{item.categoria || item.tipo}</p></div>
+                        <div className="min-w-0"><p className="truncate text-sm font-black text-white">{item.nombre}</p><p className="mt-1 text-[9px] font-black uppercase tracking-[0.15em] text-caudal-electric">{getSetPieceClassificationLabel(item)}</p></div>
                         <span className="shrink-0 text-xs tracking-[-0.08em] text-amber-300">{Array.from({ length: 5 }, (_, index) => index < libraryMeta.rating ? '★' : '·').join('')}</span>
                       </div>
                       <p className="mt-3 line-clamp-2 min-h-10 text-xs font-semibold leading-5 text-slate-300">{objective}</p>

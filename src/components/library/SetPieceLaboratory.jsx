@@ -4,13 +4,17 @@ import { supabase } from '../../lib/supabase';
 import {
   SET_PIECE_LAB_MARKINGS,
   SET_PIECE_LAB_MECHANISMS,
+  SET_PIECE_LAB_BASE_TYPES,
   SET_PIECE_LAB_STATUSES,
   SET_PIECE_LAB_TYPES,
   SET_PIECE_LAB_ZONES,
+  SET_PIECE_PHASES,
   buildSetPieceLaboratoryPayload,
   createSetPieceLaboratoryDraft,
   duplicateSetPieceLaboratoryItem,
   filterAndSortSetPieceLaboratoryItems,
+  getSetPieceClassificationLabel,
+  getSetPiecePhase,
   getSetPieceLaboratoryMeta,
   getSetPieceLabType,
   isSetPieceLibraryItem,
@@ -27,7 +31,6 @@ import {
   getSetPieceDeliveryTypeLabel,
   getSetPieceChronology,
   getSetPieceTacticalMeta,
-  isDefensiveSetPieceType,
   setSetPieceTacticalMeta,
 } from '../../utils/setPieceProfessional';
 import SetPieceDiagramCanvas from '../print/SetPieceDiagramCanvas';
@@ -55,7 +58,7 @@ function ClassificationPill({ children }) {
 
 function LaboratoryPreview({ item, onClose }) {
   const meta = getSetPieceLaboratoryMeta(item);
-  const defensive = isDefensiveSetPieceType(item.tipo);
+  const defensive = getSetPiecePhase(item) === SET_PIECE_PHASES.DEFENSIVE;
   const defensiveStructure = getSetPieceDefensiveStructure(item.elements);
   const chronology = getSetPieceChronology(item.elements, []);
   const closeButtonRef = useRef(null);
@@ -77,7 +80,7 @@ function LaboratoryPreview({ item, onClose }) {
             <p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric">Vista previa · Laboratorio ABP</p>
             <h2 id="laboratory-preview-title" className="mt-2 text-2xl font-black text-white sm:text-3xl">{item.nombre}</h2>
             <div className="mt-3 flex flex-wrap gap-2">
-              <ClassificationPill>{getSetPieceLabType(item.tipo).label}</ClassificationPill>
+              <ClassificationPill>{getSetPieceClassificationLabel(item)}</ClassificationPill>
               {defensive ? <ClassificationPill>{getSetPieceDefenseTypeLabel(meta.libraryMarking) ? `Defensa ${getSetPieceDefenseTypeLabel(meta.libraryMarking)}` : ''}</ClassificationPill> : <>
                 <ClassificationPill>{meta.libraryZone}</ClassificationPill>
                 <ClassificationPill>{meta.libraryMechanism}</ClassificationPill>
@@ -153,7 +156,7 @@ export default function SetPieceLaboratory() {
   const [status, setStatus] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [menuItemId, setMenuItemId] = useState('');
-  const [controls, setControls] = useState({ search: '', zone: '', mechanism: '', marking: '', status: '', favorites: false, sort: 'updated' });
+  const [controls, setControls] = useState({ search: '', phase: SET_PIECE_PHASES.ALL, types: [], zone: '', mechanism: '', marking: '', status: '', favorites: false, sort: 'updated' });
   const galleryScrollRef = useRef(0);
   const menuRef = useRef(null);
 
@@ -191,8 +194,20 @@ export default function SetPieceLaboratory() {
   }, [menuItemId]);
 
   const visibleItems = useMemo(() => filterAndSortSetPieceLaboratoryItems(items, controls), [items, controls]);
+  const phaseCounts = useMemo(() => ({
+    [SET_PIECE_PHASES.ALL]: items.length,
+    [SET_PIECE_PHASES.OFFENSIVE]: items.filter((item) => getSetPiecePhase(item) === SET_PIECE_PHASES.OFFENSIVE).length,
+    [SET_PIECE_PHASES.DEFENSIVE]: items.filter((item) => getSetPiecePhase(item) === SET_PIECE_PHASES.DEFENSIVE).length,
+  }), [items]);
   const selectedPrintItems = useMemo(() => items.filter((item) => selectedPrintIds.includes(item.id)), [items, selectedPrintIds]);
   const updateControls = (patch) => setControls((current) => ({ ...current, ...patch }));
+  const toggleTypeFilter = (type) => setControls((current) => ({
+    ...current,
+    types: current.types.includes(type) ? current.types.filter((entry) => entry !== type) : [...current.types, type],
+  }));
+  const activeSecondaryFilterCount = controls.types.length
+    + [controls.zone, controls.mechanism, controls.marking, controls.status].filter(Boolean).length
+    + Number(controls.favorites);
   const rememberGalleryPosition = () => { galleryScrollRef.current = window.scrollY; };
   const returnToGallery = () => {
     setView('gallery');
@@ -315,7 +330,8 @@ export default function SetPieceLaboratory() {
 
   if (view === 'editor' && draft) {
     const meta = getSetPieceLaboratoryMeta(draft);
-    const defensive = isDefensiveSetPieceType(draft.tipo);
+    const defensive = getSetPiecePhase(draft) === SET_PIECE_PHASES.DEFENSIVE;
+    const knownDraftType = SET_PIECE_LAB_TYPES.some((entry) => entry.id === draft.tipo);
     return (
       <section className="set-piece-laboratory-editor space-y-4" aria-labelledby="laboratory-editor-title">
         <header className="rounded-[28px] bg-[#071327]/95 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.22)] backdrop-blur sm:p-5 xl:sticky xl:top-2 xl:z-30">
@@ -325,7 +341,7 @@ export default function SetPieceLaboratory() {
           </div>
           {error ? <p role="alert" className="mt-3 rounded-xl bg-red-500/10 p-3 text-sm font-bold text-red-100">{error}</p> : null}
           <div className="mt-4 grid min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-[1.15fr_repeat(4,minmax(0,1fr))_0.85fr_auto]">
-            <label className="grid gap-1"><span className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Tipo</span><select value={draft.tipo} onChange={(event) => setDraft((current) => ({ ...current, tipo: event.target.value, categoria: getSetPieceLabType(event.target.value).category }))} className={controlClass}>{SET_PIECE_LAB_TYPES.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select></label>
+            <label className="grid gap-1"><span className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Fase · tipo de ABP</span><select value={draft.tipo} onChange={(event) => setDraft((current) => ({ ...current, tipo: event.target.value, categoria: getSetPieceLabType(event.target.value).category }))} className={controlClass}>{!knownDraftType ? <option value={draft.tipo}>Sin clasificar (valor existente)</option> : null}<optgroup label="Ofensivas">{SET_PIECE_LAB_TYPES.filter((entry) => entry.phase === SET_PIECE_PHASES.OFFENSIVE).map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</optgroup><optgroup label="Defensivas">{SET_PIECE_LAB_TYPES.filter((entry) => entry.phase === SET_PIECE_PHASES.DEFENSIVE).map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</optgroup></select></label>
             {defensive ? <label className="grid min-w-0 gap-1"><span className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Tipo de defensa</span><select value={meta.libraryMarking} onChange={(event) => updateDraftMeta({ libraryMarking: event.target.value })} className={controlClass}><option value="">Sin definir</option><option value="Zonal">Zonal</option><option value="Individual">Individual</option><option value="Mixto">Mixta</option></select></label> : <>
               <label className="grid min-w-0 gap-1"><span className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Zona objetivo</span><select value={meta.libraryZone} onChange={(event) => updateDraftMeta({ libraryZone: event.target.value })} className={controlClass}><option value="">Sin definir</option>{SET_PIECE_LAB_ZONES.map((value) => <option key={value}>{value}</option>)}</select></label>
               <label className="grid min-w-0 gap-1"><span className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Mecanismo</span><select value={meta.libraryMechanism} onChange={(event) => updateDraftMeta({ libraryMechanism: event.target.value })} className={controlClass}><option value="">Sin definir</option>{SET_PIECE_LAB_MECHANISMS.map((value) => <option key={value}>{value}</option>)}</select></label>
@@ -355,18 +371,28 @@ export default function SetPieceLaboratory() {
           <div><p className="text-[10px] font-black uppercase tracking-[0.24em] text-caudal-electric">Biblioteca · ABP</p><h2 id="set-piece-laboratory-title" className="mt-2 text-3xl font-black text-white">LABORATORIO ABP</h2><p className="mt-2 text-sm text-slate-400">Biblioteca táctica de acciones a balón parado del club.</p></div>
           <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setPrintPreviewItems(selectedPrintItems.length ? selectedPrintItems : visibleItems)} disabled={!visibleItems.length && !selectedPrintItems.length} className={`min-h-11 rounded-2xl bg-white/10 px-5 text-sm font-black text-white disabled:opacity-40 ${buttonFocus}`}>Imprimir {selectedPrintItems.length ? `seleccionadas (${selectedPrintItems.length})` : 'visibles'}</button><button type="button" onClick={startNew} className={`min-h-11 rounded-2xl bg-caudal-electric px-5 text-sm font-black text-slate-950 ${buttonFocus}`}>+ Nueva jugada</button></div>
         </div>
-        <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(240px,1fr)_auto_auto]">
+        <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(240px,1fr)_auto_auto_auto]">
           <label className="relative"><span className="sr-only">Buscar jugadas</span><input value={controls.search} onChange={(event) => updateControls({ search: event.target.value })} placeholder="Buscar por nombre, objetivo o consigna" className={darkControlClass} /></label>
-          <button type="button" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((value) => !value)} className={`min-h-11 rounded-xl bg-white/10 px-5 text-sm font-black text-white ${buttonFocus}`}>Filtros</button>
+          <div className="grid min-h-11 grid-cols-3 overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] p-1" aria-label="Filtrar por fase">
+            {[
+              { id: SET_PIECE_PHASES.ALL, label: 'Todas' },
+              { id: SET_PIECE_PHASES.OFFENSIVE, label: 'Ofensivas' },
+              { id: SET_PIECE_PHASES.DEFENSIVE, label: 'Defensivas' },
+            ].map((phase) => <button key={phase.id} type="button" aria-pressed={controls.phase === phase.id} onClick={() => updateControls({ phase: phase.id })} className={`min-w-0 rounded-lg px-2.5 text-[10px] font-black uppercase tracking-[0.06em] transition sm:px-3 ${controls.phase === phase.id ? 'bg-caudal-electric text-slate-950' : 'text-slate-300 hover:bg-white/[0.06]'} ${buttonFocus}`}><span>{phase.label}</span><span className="ml-1 opacity-70">{phaseCounts[phase.id]}</span></button>)}
+          </div>
+          <button type="button" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((value) => !value)} className={`min-h-11 rounded-xl bg-white/10 px-5 text-sm font-black text-white ${buttonFocus}`}>Filtros{activeSecondaryFilterCount ? ` (${activeSecondaryFilterCount})` : ''}</button>
           <label><span className="sr-only">Ordenar jugadas</span><select value={controls.sort} onChange={(event) => updateControls({ sort: event.target.value })} className={controlClass}><option value="updated">Última modificación</option><option value="name">Nombre</option><option value="type">Tipo</option><option value="favorites">Favoritas</option></select></label>
         </div>
         {filtersOpen ? (
-          <div className="mt-3 grid gap-3 rounded-2xl border border-white/10 bg-black/15 p-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="mt-3 rounded-2xl border border-white/10 bg-black/15 p-3">
+            <fieldset><legend className="mb-2 text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Tipo de ABP</legend><div className="flex flex-wrap gap-2">{SET_PIECE_LAB_BASE_TYPES.map((type) => <label key={type.id} className={`flex min-h-10 items-center gap-2 rounded-xl border px-3 text-xs font-bold ${controls.types.includes(type.id) ? 'border-caudal-electric/50 bg-caudal-electric/10 text-white' : 'border-white/10 bg-white/[0.04] text-slate-300'}`}><input type="checkbox" checked={controls.types.includes(type.id)} onChange={() => toggleTypeFilter(type.id)} className="h-4 w-4 accent-[#4f8cff]" />{type.label}</label>)}</div></fieldset>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <label><span className="sr-only">Filtrar por zona</span><select value={controls.zone} onChange={(event) => updateControls({ zone: event.target.value })} className={controlClass}><option value="">Todas las zonas</option>{SET_PIECE_LAB_ZONES.map((value) => <option key={value}>{value}</option>)}</select></label>
             <label><span className="sr-only">Filtrar por mecanismo</span><select value={controls.mechanism} onChange={(event) => updateControls({ mechanism: event.target.value })} className={controlClass}><option value="">Todos los mecanismos</option>{SET_PIECE_LAB_MECHANISMS.map((value) => <option key={value}>{value}</option>)}</select></label>
             <label><span className="sr-only">Filtrar por marcaje</span><select value={controls.marking} onChange={(event) => updateControls({ marking: event.target.value })} className={controlClass}><option value="">Todos los marcajes</option>{SET_PIECE_LAB_MARKINGS.map((value) => <option key={value}>{value}</option>)}</select></label>
             <label><span className="sr-only">Filtrar por estado</span><select value={controls.status} onChange={(event) => updateControls({ status: event.target.value })} className={controlClass}><option value="">Todos los estados</option>{SET_PIECE_LAB_STATUSES.map((entry) => <option key={entry.id} value={entry.id}>{entry.id === 'ready' ? 'Lista' : entry.label}</option>)}</select></label>
             <label className="flex min-h-11 items-center gap-3 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-sm font-bold text-white"><input type="checkbox" checked={controls.favorites} onChange={(event) => updateControls({ favorites: event.target.checked })} className="h-5 w-5 accent-[#4f8cff]" /> Solo favoritas</label>
+            </div>
           </div>
         ) : null}
       </header>
@@ -379,14 +405,14 @@ export default function SetPieceLaboratory() {
         <div className="grid gap-5 md:grid-cols-2" aria-label="Jugadas del Laboratorio ABP">
           {visibleItems.map((item) => {
             const meta = getSetPieceLaboratoryMeta(item);
-            const defensive = isDefensiveSetPieceType(item.tipo);
+            const defensive = getSetPiecePhase(item) === SET_PIECE_PHASES.DEFENSIVE;
             const defensiveStructure = getSetPieceDefensiveStructure(item.elements);
             const archived = meta.libraryStatus === 'archived';
             return (
               <article key={item.id} className={`overflow-hidden rounded-[28px] bg-[#091428]/90 shadow-[0_20px_55px_rgba(0,0,0,0.18)] ring-1 ${archived ? 'opacity-75 ring-slate-600/30' : 'ring-white/[0.08]'}`}>
                 <div className="relative bg-white p-2 text-black"><SetPieceDiagramCanvas elements={item.elements || []} players={[]} readOnly renderMode="thumbnail" visibleLayers={createSetPieceThumbnailLayers(meta.displayLayers)} fullField={String(item.tipo).includes('saque_inicio')} /><label className="absolute left-3 top-3 flex min-h-11 items-center gap-2 rounded-xl bg-white/95 px-3 text-[10px] font-black text-slate-900 shadow-lg ring-1 ring-slate-200"><input type="checkbox" checked={selectedPrintIds.includes(item.id)} onChange={(event) => setSelectedPrintIds((current) => event.target.checked ? [...new Set([...current, item.id])] : current.filter((id) => id !== item.id))} className="h-4 w-4 accent-[#4f8cff]" />PDF</label><button type="button" aria-label={meta.libraryFavorite ? `Quitar ${item.nombre} de favoritas` : `Marcar ${item.nombre} como favorita`} aria-pressed={meta.libraryFavorite} onClick={() => toggleFavorite(item)} className={`absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full text-xl shadow-lg ${meta.libraryFavorite ? 'bg-amber-300 text-slate-950' : 'bg-white text-slate-500 ring-1 ring-slate-200'} ${buttonFocus}`}>★</button></div>
                 <div className="p-5">
-                  <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">{getSetPieceLabType(item.tipo).label}</p><h3 className="mt-1 truncate text-lg font-black text-white">{item.nombre || 'Jugada sin nombre'}</h3></div><span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${meta.libraryStatus === 'ready' ? 'bg-emerald-300/15 text-emerald-200' : archived ? 'bg-slate-400/15 text-slate-300' : 'bg-amber-300/15 text-amber-200'}`}>{statusLabel(meta.libraryStatus)}</span></div>
+                  <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">{getSetPieceClassificationLabel(item)}</p><h3 className="mt-1 truncate text-lg font-black text-white">{item.nombre || 'Jugada sin nombre'}</h3></div><span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${meta.libraryStatus === 'ready' ? 'bg-emerald-300/15 text-emerald-200' : archived ? 'bg-slate-400/15 text-slate-300' : 'bg-amber-300/15 text-amber-200'}`}>{statusLabel(meta.libraryStatus)}</span></div>
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {defensive ? <>
                       <ClassificationPill>{getSetPieceDefenseTypeLabel(meta.libraryMarking) ? `Defensa ${getSetPieceDefenseTypeLabel(meta.libraryMarking)}` : ''}</ClassificationPill>
