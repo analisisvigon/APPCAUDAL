@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import {
   DELEGATED_EVOLUTION_SCOPES,
@@ -11,6 +11,7 @@ import {
   buildDelegatedEvolution,
   buildDelegatedEvolutionComparison,
   buildDelegatedHalfComparison,
+  buildDelegatedMatchSampleComparison,
   buildDelegatedOfficialGoalEvents,
   buildDelegatedOfficialTeamScore,
   buildDelegatedPlayerRows,
@@ -290,6 +291,28 @@ function DataReadings({ readings }) {
   );
 }
 
+function SelectedMatchComparison({ comparison }) {
+  const visibleRows = comparison.rows.filter((row) => row.selected != null || row.average != null);
+  return (
+    <section className="rounded-2xl border border-white/5 bg-black/15 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div><p className="text-[9px] font-black uppercase tracking-[0.14em] text-white">Partido seleccionado vs media de la muestra</p><p className="mt-1 text-[10px] text-slate-500">Comparación descriptiva, sin valorar automáticamente el signo de la diferencia.</p></div>
+        <span className="text-[9px] font-bold text-slate-500">{comparison.sample} partidos en la muestra</span>
+      </div>
+      {!comparison.sufficient ? <p className="mt-2 text-[10px] text-slate-500">La muestra necesita al menos 5 partidos para mostrar una media comparativa fiable.</p> : null}
+      <div className="mt-2 overflow-x-auto">
+        <table className="w-full min-w-[520px] text-[10px]">
+          <thead className="text-slate-600"><tr><th className="py-2 text-left">Métrica</th><th>Partido</th><th>Media muestra</th><th>Diferencia</th></tr></thead>
+          <tbody>{visibleRows.map((row) => {
+            const difference = row.sufficient && row.selected != null ? Number(row.selected) - Number(row.average) : null;
+            return <tr key={row.key} className="border-t border-white/5 text-center"><th title={row.label} className="py-2 text-left font-black text-slate-300">{row.short}{row.source === 'official' || row.key === 'goals' ? <small className="ml-1 text-[7px] uppercase text-slate-600">Oficial</small> : null}</th><td className="font-black text-white">{formatDelegatedNumber(row.selected)}</td><td>{formatDelegatedNumber(row.average, 'average')}</td><td className="font-black text-slate-300">{difference == null ? '—' : signed(difference)}</td></tr>;
+          })}</tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function EvolutionLineChart({ rows, compareSides, formatMatchDate, compact = false }) {
   const width = 920;
   const height = compact ? 180 : 270;
@@ -369,6 +392,11 @@ export default function DelegatedStatsDashboard({
   const [evolutionMode, setEvolutionMode] = useState('total');
   const [showMoreFilters, setShowMoreFilters] = useState(false);
 
+  useEffect(() => {
+    setPlayerMode(matchId ? 'total' : 'average');
+    setTemporalMode('total');
+  }, [matchId]);
+
   const effectiveFilters = { ...filters, matchId, competitionKey, venue, result, scope };
   const dataset = useMemo(() => buildDelegatedStatsDataset({ matches, filters: effectiveFilters }), [matches, filters, matchId, competitionKey, venue, result, scope]);
   const validatedMatches = dataset.validatedMatches;
@@ -394,11 +422,12 @@ export default function DelegatedStatsDashboard({
       hasRival: sides.hasRival || officialScore.reliable,
     };
   }, [sides, officialGoalEvents, officialScore, filters.eventType, filters.period]);
-  const playerRows = useMemo(() => buildDelegatedPlayerRows({ events: dataset.events, matches: validatedMatches, players, selectedPlayerId: filters.playerId, filters }), [dataset.events, validatedMatches, players, filters]);
+  const playerRows = useMemo(() => buildDelegatedPlayerRows({ events: dataset.events, matches: validatedMatches, players, selectedPlayerId: filters.playerId, filters: effectiveFilters }), [dataset.events, validatedMatches, players, filters, matchId, competitionKey, venue, result, scope]);
   const selectedPlayerRow = filters.playerId ? playerRows.find((row) => row.playerId === filters.playerId) || null : null;
   const detailPlayer = playerRows.find((row) => row.playerId === detailPlayerId) || null;
   const rankings = useMemo(() => buildDelegatedRankings(playerRows), [playerRows]);
   const competitionOptions = useMemo(() => [...new Set(matches.map(getDelegatedMatchCompetitionKey))], [matches]);
+  const orderedMatchOptions = useMemo(() => matches.slice().sort((left, right) => `${left.date || ''}T${left.time || ''}`.localeCompare(`${right.date || ''}T${right.time || ''}`)), [matches]);
   const matchCount = validatedMatches.length;
   const selectedSide = filters.team === 'rival' ? 'rival' : 'caudal';
   const teamProfile = useMemo(() => buildDelegatedTeamProfile({ events: dataset.events, matches: validatedMatches, sampleEvents: dataset.sampleEvents, matchCount, side: selectedSide, filters }), [dataset.events, dataset.sampleEvents, validatedMatches, matchCount, selectedSide, filters]);
@@ -410,6 +439,7 @@ export default function DelegatedStatsDashboard({
   const evolution = useMemo(() => buildDelegatedEvolution({ matches, filters: effectiveFilters, scope, competitionKey, metric: evolutionMetric, mode: evolutionMode, players }), [matches, players, filters, matchId, competitionKey, venue, result, scope, evolutionMetric, evolutionMode]);
   const evolutionComparison = useMemo(() => buildDelegatedEvolutionComparison(evolution), [evolution]);
   const trendRows = useMemo(() => RECENT_METRICS.map((key) => ({ key, ...buildDelegatedEvolutionComparison(buildDelegatedEvolution({ matches, filters: effectiveFilters, scope, competitionKey, metric: key, mode: evolutionMode, players })) })), [matches, players, filters, matchId, competitionKey, venue, result, scope, evolutionMode]);
+  const selectedMatchComparison = useMemo(() => buildDelegatedMatchSampleComparison({ matches, filters: effectiveFilters, players }), [matches, players, filters, matchId, competitionKey, venue, result, scope]);
 
   const getSortValue = (row, key) => {
     if (key === 'minutes') return row.minutesReliable ? row.minutes : null;
@@ -438,6 +468,33 @@ export default function DelegatedStatsDashboard({
   const compareEvolutionSides = filters.team === 'todos' && !filters.playerId;
   const hasSelectedSideSample = filters.team === 'rival' ? displaySides.hasRival : filters.team === 'caudal' ? displaySides.hasCaudal : displaySides.hasCaudal || displaySides.hasRival;
   const secondaryFilterCount = [result !== 'all', Boolean(filters.playerId), filters.team !== 'todos', filters.eventType !== 'todos', filters.period !== 'todos', scope !== 'season'].filter(Boolean).length;
+  const singleMatchMode = Boolean(matchId);
+  const formatMatchOption = (match) => {
+    const round = String(match.round || match.matchday || match.jornada || '').trim();
+    const roundLabel = round ? (/^j(?:ornada)?\s*/i.test(round) ? round : `J${round}`) : '';
+    return [roundLabel, formatMatchDate(match.date), match.opponent || 'Rival'].filter(Boolean).join(' · ');
+  };
+  const teamProfileCards = singleMatchMode
+    ? [
+      ['Goles · oficial', teamProfile.officialScore.totals?.[selectedSide]],
+      ['Goles recibidos · oficial', teamProfile.officialScore.totals?.[selectedSide === 'caudal' ? 'rival' : 'caudal']],
+      ['Tiros', teamProfile.totals.shots],
+      ['TAP', teamProfile.totals.shotsOnTarget],
+      ['Centros', teamProfile.totals.crosses],
+      ['Córners', teamProfile.totals.corners],
+      ['TAP %', teamProfile.derived.shotAccuracy],
+      ['Acc. defensivas', teamProfile.totals.steals + teamProfile.totals.recoveries],
+    ]
+    : [
+      ['Goles/p · oficial', teamProfile.officialScore.average?.[selectedSide]],
+      ['Goles recibidos/p · oficial', teamProfile.officialScore.average?.[selectedSide === 'caudal' ? 'rival' : 'caudal']],
+      ['Tiros/p', teamProfile.average?.shots],
+      ['TAP/p', teamProfile.average?.shotsOnTarget],
+      ['Centros/p', teamProfile.average?.crosses],
+      ['Córners/p', teamProfile.average?.corners],
+      ['TAP %', teamProfile.derived.shotAccuracy],
+      ['Acc. defensivas/p', teamProfile.average ? teamProfile.average.steals + teamProfile.average.recoveries : null],
+    ];
 
   return (
     <section className="rounded-3xl border border-white/5 bg-[#091428]/90 p-3 shadow-glow sm:p-4">
@@ -451,7 +508,7 @@ export default function DelegatedStatsDashboard({
       </div>
 
       <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.4fr)_minmax(180px,1fr)_minmax(170px,1fr)_auto]">
-        <select aria-label="Partido" value={matchId} onChange={(event) => setMatchId(event.target.value)} className={selectorClass}><option value="">Todos los partidos</option>{matches.map((match) => <option key={match.id} value={match.id}>{formatMatchDate(match.date)} · {match.opponent || 'Rival'}</option>)}</select>
+        <select aria-label="Partido" value={matchId} onChange={(event) => setMatchId(event.target.value)} className={selectorClass}><option value="">Todos los partidos</option>{orderedMatchOptions.map((match) => <option key={match.id} value={match.id}>{formatMatchOption(match)}</option>)}</select>
         <select aria-label="Competición" value={competitionKey} onChange={(event) => setCompetitionKey(event.target.value)} className={selectorClass}><option value="all">Todas las competiciones</option>{competitionOptions.map((key) => <option key={key} value={key}>{getCompetitionLabel(key)}</option>)}</select>
         <select aria-label="Local o visitante" value={venue} onChange={(event) => setVenue(event.target.value)} className={selectorClass}><option value="all">Local y visitante</option><option value="home">Local</option><option value="away">Visitante</option></select>
         <button type="button" aria-expanded={showMoreFilters} onClick={() => setShowMoreFilters((current) => !current)} className="whitespace-nowrap rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-slate-300 hover:border-caudal-electric/30 hover:text-white">Más filtros{secondaryFilterCount ? ` · ${secondaryFilterCount}` : ''}</button>
@@ -482,7 +539,7 @@ export default function DelegatedStatsDashboard({
 
       {view === 'Jugadores' ? (
         <div className="mt-3">
-          <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-[10px] text-slate-500">PJ y minutos proceden exclusivamente de Estadísticas/POST. Pulsa una fila para abrir el perfil.</p><Segmented label="Modo de estadísticas de jugador" value={playerMode} onChange={setPlayerMode} options={[["total", "Total"], ["average", "Media/partido"], ["per90", "Por90"]]} /></div>
+          <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-[10px] text-slate-500">{singleMatchMode ? 'Solo aparecen jugadores con minutos en el partido seleccionado. G, A y MIN proceden de Estadísticas/POST.' : 'PJ y minutos proceden exclusivamente de Estadísticas/POST. Pulsa una fila para abrir el perfil.'}</p><Segmented label="Modo de estadísticas de jugador" value={playerMode} onChange={setPlayerMode} options={singleMatchMode ? [["total", "Total"], ["per90", "Por90"]] : [["total", "Total"], ["average", "Media/partido"], ["per90", "Por90"]]} /></div>
           <div className="mt-2 max-h-[680px] overflow-auto rounded-2xl border border-white/5">
             <table className="w-full min-w-[1180px] border-collapse text-[11px]">
               <thead className="sticky top-0 z-20 bg-[#071123] text-[8px] uppercase tracking-[0.08em] text-slate-500"><tr><th className="sticky left-0 z-30 bg-[#071123] px-3 py-2.5 text-left">Jugador</th><th title="Partidos realmente jugados según Estadísticas/POST" onClick={() => toggleSort('matchesPlayed')} className="cursor-pointer px-2 py-2.5">PJ{sortMark('matchesPlayed')}</th><th title="Minutos reales de Estadísticas/POST" onClick={() => toggleSort('minutes')} className="cursor-pointer px-2 py-2.5">MIN{sortMark('minutes')}</th>{PLAYER_COLUMNS.map((field) => <th key={field.key} title={field.label} onClick={() => toggleSort(field.key)} className="cursor-pointer px-2 py-2.5">{field.short}{sortMark(field.key)}</th>)}</tr></thead>
@@ -498,22 +555,24 @@ export default function DelegatedStatsDashboard({
       {view === 'Equipo' ? (
         <div className="mt-3 space-y-3">
           <section className="grid gap-3 xl:grid-cols-[1.25fr_0.75fr]">
-            <article className="rounded-2xl border border-white/5 bg-black/15 p-3"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-[0.14em] text-white">Medias por partido · {selectedSide}</p><span className="text-[9px] text-slate-500">{teamProfile.matchCount} partidos con muestra</span></div><div className="mt-2 grid grid-cols-2 gap-x-4 sm:grid-cols-3 lg:grid-cols-4">{DELEGATED_STAT_FIELDS.map((field) => { const available = field.key === 'goals' ? teamProfile.officialScore.reliable : teamProfile.hasActionSample; return <div key={field.key} className="grid grid-cols-[1fr_auto] items-center border-t border-white/5 py-2"><span className="text-[10px] font-bold text-slate-400">{field.label}{field.key === 'goals' ? <small className="ml-1 text-[7px] uppercase text-slate-600">Oficial</small> : null}</span><span className="text-right"><b className="block text-sm text-white">{available ? formatDelegatedNumber(teamProfile.totals[field.key]) : '—'}</b><small className={`text-[9px] font-black ${selectedSide === 'rival' ? 'text-red-200' : 'text-caudal-electric'}`}>{formatDelegatedNumber(available ? teamProfile.average?.[field.key] : null, 'average')}{available ? '/p' : ''}</small></span></div>; })}</div></article>
-            <article className="rounded-2xl border border-white/5 bg-black/15 p-3"><p className="text-[9px] font-black uppercase tracking-[0.14em] text-white">Perfil registrado · {selectedSide}</p><div className="mt-2 grid grid-cols-2 gap-2">{[['Goles/p · oficial', teamProfile.officialScore.average?.[selectedSide]], ['Goles recibidos/p · oficial', teamProfile.officialScore.average?.[selectedSide === 'caudal' ? 'rival' : 'caudal']], ['Tiros/p', teamProfile.average?.shots], ['TAP/p', teamProfile.average?.shotsOnTarget], ['Centros/p', teamProfile.average?.crosses], ['Córners/p', teamProfile.average?.corners], ['TAP %', teamProfile.derived.shotAccuracy], ['Acc. defensivas/p', teamProfile.average ? teamProfile.average.steals + teamProfile.average.recoveries : null]].map(([label, value]) => <div key={label} className="rounded-lg bg-white/[0.035] px-3 py-2"><p className="text-[8px] font-black uppercase text-slate-500">{label}</p><p className={`mt-0.5 text-lg font-black ${selectedSide === 'rival' ? 'text-red-200' : 'text-caudal-electric'}`}>{formatDelegatedNumber(value, 'average')}{label.includes('%') && value != null ? '%' : ''}</p></div>)}</div><p className="mt-2 text-[9px] text-slate-600">Actividad defensiva registrada: robos + recuperaciones. Balance: robos + recuperaciones − pérdidas.</p></article>
+            <article className="rounded-2xl border border-white/5 bg-black/15 p-3"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-[0.14em] text-white">{singleMatchMode ? 'Estadísticas del partido' : 'Medias por partido'} · {selectedSide}</p><span className="text-[9px] text-slate-500">{singleMatchMode ? 'Partido seleccionado' : `${teamProfile.matchCount} partidos con muestra`}</span></div><div className="mt-2 grid grid-cols-2 gap-x-4 sm:grid-cols-3 lg:grid-cols-4">{DELEGATED_STAT_FIELDS.map((field) => { const available = field.key === 'goals' ? teamProfile.officialScore.reliable : teamProfile.hasActionSample; return <div key={field.key} className="grid grid-cols-[1fr_auto] items-center border-t border-white/5 py-2"><span className="text-[10px] font-bold text-slate-400">{field.label}{field.key === 'goals' ? <small className="ml-1 text-[7px] uppercase text-slate-600">Oficial</small> : null}</span><span className="text-right"><b className="block text-sm text-white">{available ? formatDelegatedNumber(teamProfile.totals[field.key]) : '—'}</b>{!singleMatchMode ? <small className={`text-[9px] font-black ${selectedSide === 'rival' ? 'text-red-200' : 'text-caudal-electric'}`}>{formatDelegatedNumber(available ? teamProfile.average?.[field.key] : null, 'average')}{available ? '/p' : ''}</small> : null}</span></div>; })}</div></article>
+            <article className="rounded-2xl border border-white/5 bg-black/15 p-3"><p className="text-[9px] font-black uppercase tracking-[0.14em] text-white">Perfil registrado · {selectedSide}</p><div className="mt-2 grid grid-cols-2 gap-2">{teamProfileCards.map(([label, value]) => <div key={label} className="rounded-lg bg-white/[0.035] px-3 py-2"><p className="text-[8px] font-black uppercase text-slate-500">{label}</p><p className={`mt-0.5 text-lg font-black ${selectedSide === 'rival' ? 'text-red-200' : 'text-caudal-electric'}`}>{formatDelegatedNumber(value, singleMatchMode ? 'total' : 'average')}{label.includes('%') && value != null ? '%' : ''}</p></div>)}</div><p className="mt-2 text-[9px] text-slate-600">Actividad defensiva registrada: robos + recuperaciones. Balance: robos + recuperaciones − pérdidas.</p></article>
           </section>
 
-          <section className="rounded-2xl border border-white/5 bg-black/15 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-black uppercase tracking-[0.14em] text-white">Momento del partido</p><p className="text-[9px] text-slate-600">El minuto &gt;90 se agrupa en 76–90+. CAUDAL / RIVAL.</p></div><div className="flex gap-2"><select value={temporalMetric} onChange={(event) => setTemporalMetric(event.target.value)} className={selectorClass}>{DELEGATED_STAT_FIELDS.map((field) => <option key={field.key} value={field.key}>{field.label}</option>)}</select><Segmented label="Modo temporal" value={temporalMode} onChange={setTemporalMode} options={[["total", "Total"], ["average", "Media/partido"]]} /></div></div><div className="mt-3 grid gap-4 xl:grid-cols-[0.7fr_1.3fr]"><TemporalChart temporal={temporal} metric={temporalMetric} /><TemporalMatrix matrix={temporalMatrix} teamFilter={filters.team} /></div>{!temporal.hasRival ? <p className="mt-2 text-[10px] text-slate-500">No existen eventos rivales suficientes para comparar.</p> : null}</section>
+          <section className="rounded-2xl border border-white/5 bg-black/15 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-black uppercase tracking-[0.14em] text-white">Momento del partido</p><p className="text-[9px] text-slate-600">El minuto &gt;90 se agrupa en 76–90+. CAUDAL / RIVAL.</p></div><div className="flex gap-2"><select value={temporalMetric} onChange={(event) => setTemporalMetric(event.target.value)} className={selectorClass}>{DELEGATED_STAT_FIELDS.map((field) => <option key={field.key} value={field.key}>{field.label}</option>)}</select>{!singleMatchMode ? <Segmented label="Modo temporal" value={temporalMode} onChange={setTemporalMode} options={[["total", "Total"], ["average", "Media/partido"]]} /> : null}</div></div><div className="mt-3 grid gap-4 xl:grid-cols-[0.7fr_1.3fr]"><TemporalChart temporal={temporal} metric={temporalMetric} /><TemporalMatrix matrix={temporalMatrix} teamFilter={filters.team} /></div>{!temporal.hasRival ? <p className="mt-2 text-[10px] text-slate-500">No existen eventos rivales suficientes para comparar.</p> : null}</section>
 
-          <section className="grid gap-3 xl:grid-cols-2"><article className="rounded-2xl border border-white/5 bg-black/15 p-3"><p className="text-[9px] font-black uppercase tracking-[0.14em] text-white">Primera vs segunda parte · {selectedSide}</p><div className="mt-3">{halves.hasSample ? <HalfComparison comparison={halves} /> : <EmptyState>Sin muestra suficiente para distribuir por partes.</EmptyState>}</div></article><article className="rounded-2xl border border-white/5 bg-black/15 p-3"><div className="flex items-center justify-between gap-2"><p className="text-[9px] font-black uppercase tracking-[0.14em] text-white">Contextos · medias por partido</p><select value={contextDimension} onChange={(event) => setContextDimension(event.target.value)} className={selectorClass}><option value="venue">Local / Visitante</option><option value="result">Victoria / Empate / Derrota</option><option value="competition">Liga / Otras</option><option value="recent">Últimos 5 / Temporada</option></select></div><div className="mt-3"><ContextComparison rows={contexts} /></div></article></section>
-          <DataReadings readings={readings} />
+          <section className={`grid gap-3 ${singleMatchMode ? '' : 'xl:grid-cols-2'}`}><article className="rounded-2xl border border-white/5 bg-black/15 p-3"><p className="text-[9px] font-black uppercase tracking-[0.14em] text-white">Primera vs segunda parte · {selectedSide}</p><div className="mt-3">{halves.hasSample ? <HalfComparison comparison={halves} /> : <EmptyState>Sin muestra suficiente para distribuir por partes.</EmptyState>}</div></article>{!singleMatchMode ? <article className="rounded-2xl border border-white/5 bg-black/15 p-3"><div className="flex items-center justify-between gap-2"><p className="text-[9px] font-black uppercase tracking-[0.14em] text-white">Contextos · medias por partido</p><select value={contextDimension} onChange={(event) => setContextDimension(event.target.value)} className={selectorClass}><option value="venue">Local / Visitante</option><option value="result">Victoria / Empate / Derrota</option><option value="competition">Liga / Otras</option><option value="recent">Últimos 5 / Temporada</option></select></div><div className="mt-3"><ContextComparison rows={contexts} /></div></article> : null}</section>
+          {!singleMatchMode ? <DataReadings readings={readings} /> : null}
         </div>
       ) : null}
 
       {view === 'Evolución' ? (
         <div className="mt-3 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-black uppercase tracking-[0.14em] text-white">Evolución partido a partido</p><p className="text-[9px] text-slate-600">Con 2–4 partidos se muestra una serie simple; la media móvil de 5 aparece desde el quinto.</p></div><div className="flex flex-wrap gap-2"><select value={evolutionMetric} onChange={(event) => setEvolutionMetric(event.target.value)} className={selectorClass}>{filters.playerId ? <option value="minutes">Minutos</option> : null}{(filters.playerId ? DELEGATED_PLAYER_STAT_FIELDS : DELEGATED_STAT_FIELDS).map((field) => <option key={field.key} value={field.key}>{field.label}{field.source === 'official' || field.key === 'goals' ? ' · oficial' : ''}</option>)}</select>{filters.playerId ? <Segmented label="Modo de evolución individual" value={evolutionMode} onChange={setEvolutionMode} options={[["total", "Total partido"], ["per90", "Por90"]]} /> : null}</div></div>
-          {!evolution.length ? <EmptyState>No hay partidos validados para esta muestra.</EmptyState> : evolution.length === 1 ? <article className="rounded-2xl border border-white/5 bg-black/15 px-4 py-3"><p className="text-[9px] font-black uppercase text-slate-500">Muestra actual: 1 partido · Las tendencias aparecerán a partir de 5 partidos</p><div className="mt-1 flex items-end justify-between gap-3"><span className="text-sm font-black text-white">{evolution[0].opponent} · {formatMatchDate(evolution[0].date)}</span><span className="text-2xl font-black text-caudal-electric">{formatDelegatedNumber(evolution[0].value, evolution[0].normalized ? 'per90' : 'average')}</span></div></article> : <><EvolutionLineChart rows={evolution} compareSides={compareEvolutionSides} formatMatchDate={formatMatchDate} compact={evolution.length < 5} />{evolution.length < 5 ? <p className="text-[10px] text-slate-500">{evolution.length} partidos registrados. Aún no existe muestra suficiente para media móvil 5.</p> : null}</>}
-          {evolutionComparison.sufficient ? <section className="rounded-2xl border border-white/5 bg-black/15 p-3"><p className="text-[9px] font-black uppercase tracking-[0.14em] text-white">Tendencia reciente · temporada vs últimos 5</p><div className="mt-2 overflow-x-auto"><table className="w-full min-w-[620px] text-[10px]"><thead className="text-slate-600"><tr><th className="py-2 text-left">Métrica</th><th>Temporada</th><th>Últ. 5</th><th>Diferencia</th><th>Diferencia %</th></tr></thead><tbody>{trendRows.map((row) => <tr key={row.key} className="border-t border-white/5 text-center"><th className="py-2 text-left font-black text-slate-300">{fieldByKey.get(row.key)?.label}/p</th>{row.sufficient ? <><td>{formatDelegatedNumber(row.season, 'average')}</td><td className="font-black text-white">{formatDelegatedNumber(row.recent, 'average')}</td><td className="font-black text-caudal-electric">{getArrow(row.difference)} {signed(row.difference)}</td><td>{row.percentDifference == null ? '—' : `${signed(row.percentDifference, 'percent')}%`}</td></> : <td colSpan="4" className="text-slate-600">Muestra insuficiente</td>}</tr>)}</tbody></table></div></section> : null}
+          {singleMatchMode ? <SelectedMatchComparison comparison={selectedMatchComparison} /> : <>
+            <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-black uppercase tracking-[0.14em] text-white">Evolución partido a partido</p><p className="text-[9px] text-slate-600">Con 2–4 partidos se muestra una serie simple; la media móvil de 5 aparece desde el quinto.</p></div><div className="flex flex-wrap gap-2"><select value={evolutionMetric} onChange={(event) => setEvolutionMetric(event.target.value)} className={selectorClass}>{filters.playerId ? <option value="minutes">Minutos</option> : null}{(filters.playerId ? DELEGATED_PLAYER_STAT_FIELDS : DELEGATED_STAT_FIELDS).map((field) => <option key={field.key} value={field.key}>{field.label}{field.source === 'official' || field.key === 'goals' ? ' · oficial' : ''}</option>)}</select>{filters.playerId ? <Segmented label="Modo de evolución individual" value={evolutionMode} onChange={setEvolutionMode} options={[["total", "Total partido"], ["per90", "Por90"]]} /> : null}</div></div>
+            {!evolution.length ? <EmptyState>No hay partidos validados para esta muestra.</EmptyState> : evolution.length === 1 ? <article className="rounded-2xl border border-white/5 bg-black/15 px-4 py-3"><p className="text-[9px] font-black uppercase text-slate-500">Muestra actual: 1 partido · Las tendencias aparecerán a partir de 5 partidos</p><div className="mt-1 flex items-end justify-between gap-3"><span className="text-sm font-black text-white">{evolution[0].opponent} · {formatMatchDate(evolution[0].date)}</span><span className="text-2xl font-black text-caudal-electric">{formatDelegatedNumber(evolution[0].value, evolution[0].normalized ? 'per90' : 'average')}</span></div></article> : <><EvolutionLineChart rows={evolution} compareSides={compareEvolutionSides} formatMatchDate={formatMatchDate} compact={evolution.length < 5} />{evolution.length < 5 ? <p className="text-[10px] text-slate-500">{evolution.length} partidos registrados. Aún no existe muestra suficiente para media móvil 5.</p> : null}</>}
+            {evolutionComparison.sufficient ? <section className="rounded-2xl border border-white/5 bg-black/15 p-3"><p className="text-[9px] font-black uppercase tracking-[0.14em] text-white">Tendencia reciente · temporada vs últimos 5</p><div className="mt-2 overflow-x-auto"><table className="w-full min-w-[620px] text-[10px]"><thead className="text-slate-600"><tr><th className="py-2 text-left">Métrica</th><th>Temporada</th><th>Últ. 5</th><th>Diferencia</th><th>Diferencia %</th></tr></thead><tbody>{trendRows.map((row) => <tr key={row.key} className="border-t border-white/5 text-center"><th className="py-2 text-left font-black text-slate-300">{fieldByKey.get(row.key)?.label}/p</th>{row.sufficient ? <><td>{formatDelegatedNumber(row.season, 'average')}</td><td className="font-black text-white">{formatDelegatedNumber(row.recent, 'average')}</td><td className="font-black text-caudal-electric">{getArrow(row.difference)} {signed(row.difference)}</td><td>{row.percentDifference == null ? '—' : `${signed(row.percentDifference, 'percent')}%`}</td></> : <td colSpan="4" className="text-slate-600">Muestra insuficiente</td>}</tr>)}</tbody></table></div></section> : null}
+          </>}
           {filters.playerId ? <p className="text-[10px] text-slate-500">Evolución individual: los partidos sin participación real se muestran sin punto; Por90 solo aparece con minutos fiables.</p> : null}
         </div>
       ) : null}

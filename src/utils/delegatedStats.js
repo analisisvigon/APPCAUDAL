@@ -358,6 +358,7 @@ export const buildDelegatedRecentComparison = (matchRows = [], fields = DELEGATE
 
 export const buildDelegatedPlayerRows = ({ events = [], matches = [], players = [], selectedPlayerId = '', filters = {} } = {}) => {
   const ownEvents = safeArray(events).filter((event) => getDelegatedEventSide(event) === 'caudal');
+  const singleMatch = Boolean(filters.matchId) && safeArray(matches).length === 1;
   const playersById = new Map(safeArray(players).map((player) => [String(player.id), player]));
   const includedIds = new Set(ownEvents.map(getDelegatedEventPlayerId).filter(Boolean));
   const officialProduction = buildDelegatedOfficialPlayerProduction({ matches, players, filters });
@@ -373,6 +374,10 @@ export const buildDelegatedPlayerRows = ({ events = [], matches = [], players = 
   return [...includedIds].flatMap((playerId) => {
     const player = playersById.get(playerId);
     if (!player || (selectedPlayerId && playerId !== String(selectedPlayerId))) return [];
+    if (singleMatch) {
+      const participationRow = getDelegatedMatchPlayerStatsEntry(matches[0], player);
+      if (!participationRow || !hasNumber(participationRow.minutes) || Number(participationRow.minutes) <= 0) return [];
+    }
     const playerEvents = ownEvents.filter((event) => getDelegatedEventPlayerId(event) === playerId);
     const official = officialProduction.byPlayer.get(playerId) || { goals: 0, assists: 0, goalContributions: 0, matchIds: [], byMatch: {} };
     const eventMatchIds = [...new Set([
@@ -630,6 +635,55 @@ export const buildDelegatedEvolution = ({
     caudalMovingAverage: caudalMoving[index],
     rivalMovingAverage: rivalMoving[index],
   }));
+};
+
+export const buildDelegatedMatchSampleComparison = ({
+  matches = [],
+  filters = {},
+  players = [],
+  fields = filters.playerId ? DELEGATED_PLAYER_STAT_FIELDS : DELEGATED_STAT_FIELDS,
+  minimumSample = 5,
+} = {}) => {
+  const matchId = String(filters.matchId || '');
+  if (!matchId) return { matchId: '', match: null, sample: 0, sufficient: false, rows: [] };
+  const match = safeArray(matches).find((candidate) => String(candidate.id) === matchId) || null;
+  if (!match) return { matchId, match: null, sample: 0, sufficient: false, rows: [] };
+  const sampleFilters = { ...filters, matchId: '' };
+  const rows = safeArray(fields).map((field) => {
+    const selected = buildDelegatedEvolution({
+      matches,
+      filters,
+      scope: 'season',
+      competitionKey: filters.competitionKey || 'all',
+      metric: field.key,
+      mode: 'total',
+      players,
+    }).find((row) => String(row.matchId) === matchId);
+    const sampleRows = buildDelegatedEvolution({
+      matches,
+      filters: sampleFilters,
+      scope: filters.scope || 'season',
+      competitionKey: filters.competitionKey || 'all',
+      metric: field.key,
+      mode: 'total',
+      players,
+    }).filter((row) => row.value != null && Number.isFinite(Number(row.value)));
+    const sufficient = sampleRows.length >= minimumSample;
+    return {
+      ...field,
+      selected: selected?.value ?? null,
+      sample: sampleRows.length,
+      sufficient,
+      average: sufficient ? round(sampleRows.reduce((sum, row) => sum + Number(row.value), 0) / sampleRows.length, 2) : null,
+    };
+  });
+  return {
+    matchId,
+    match,
+    sample: Math.max(0, ...rows.map((row) => row.sample)),
+    sufficient: rows.some((row) => row.sufficient),
+    rows,
+  };
 };
 
 export const buildDelegatedEvolutionComparison = (evolution = []) => {

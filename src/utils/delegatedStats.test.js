@@ -7,6 +7,7 @@ import {
   buildDelegatedEvolution,
   buildDelegatedEvolutionComparison,
   buildDelegatedHalfComparison,
+  buildDelegatedMatchSampleComparison,
   buildDelegatedOfficialGoalEvents,
   buildDelegatedOfficialPlayerProduction,
   buildDelegatedOfficialTeamScore,
@@ -191,6 +192,60 @@ const ambiguousNameMatch = {
   statsGoalEvents: [{ id: 'ambiguous-name', type: 'Gol a favor', scorer: playerA.name }],
 };
 assert.equal(buildDelegatedOfficialPlayerProduction({ matches: [ambiguousNameMatch], players: [playerA, duplicatedName] }).byPlayer.size, 0, 'el fallback nominal no acepta coincidencias ambiguas');
+
+const individualMatchId = 'individual-x';
+const individualSeason = Array.from({ length: 10 }, (_, index) => {
+  const id = index === 4 ? individualMatchId : `individual-${index + 1}`;
+  const quickEvents = index === 4
+    ? [
+      baseEvent('gol'),
+      baseEvent('tiro_puerta'),
+      baseEvent('tiro'),
+      ...Array.from({ length: 4 }, () => baseEvent('robo')),
+      baseEvent('falta_recibida', { playerId: '33333333-3333-4333-8333-333333333333', jugadorId: '33333333-3333-4333-8333-333333333333' }),
+    ]
+    : [baseEvent('tiro')];
+  return {
+    ...match(id, `2026-05-${String(index + 1).padStart(2, '0')}`, 'league', quickEvents, index === 4 ? 70 : 90),
+    round: index + 1,
+    isHome: index % 2 === 0,
+    goalsFor: index === 4 ? 2 : 0,
+    goalsAgainst: 0,
+    statsPlayerData: {
+      'Jugador A': { jugadorId: playerA.id, minutes: index === 4 ? 70 : 90, role: 'Titular' },
+      'Jugador B': { jugadorId: playerB.id, minutes: index === 4 ? 20 : 0, role: 'Suplente' },
+    },
+    statsGoalEvents: index === 4 ? [
+      { id: 'individual-goal-a', type: 'Gol a favor', minute: '15', scorerId: playerA.id, scorer: playerA.name, assistantId: playerB.id, assistant: playerB.name },
+      { id: 'individual-assist-a', type: 'Gol a favor', minute: '50', scorerId: playerB.id, scorer: playerB.name, assistantId: playerA.id, assistant: playerA.name },
+    ] : [],
+  };
+});
+const individualDataset = buildDelegatedStatsDataset({ matches: individualSeason, filters: { matchId: individualMatchId } });
+const individualPlayerRows = buildDelegatedPlayerRows({ events: individualDataset.events, matches: individualDataset.validatedMatches, players: [playerA, playerB, { id: '33333333-3333-4333-8333-333333333333', name: 'Jugador C' }], filters: { matchId: individualMatchId } });
+const individualPlayerA = individualPlayerRows.find((row) => row.playerId === playerA.id);
+assert.deepEqual({
+  minutes: individualPlayerA.minutes,
+  goals: individualPlayerA.stats.goals,
+  assists: individualPlayerA.stats.assists,
+  goalContributions: individualPlayerA.stats.goalContributions,
+  shots: individualPlayerA.stats.shots,
+  shotsOnTarget: individualPlayerA.stats.shotsOnTarget,
+  steals: individualPlayerA.stats.steals,
+}, { minutes: 70, goals: 1, assists: 1, goalContributions: 2, shots: 3, shotsOnTarget: 2, steals: 4 }, 'el partido individual no mezcla acumulados de temporada ni duplica el gol rápido');
+assert.equal(individualPlayerRows.some((row) => row.playerId === '33333333-3333-4333-8333-333333333333'), false, 'un jugador con evento inconsistente pero sin minutos POST no aparece en el partido');
+const restoredSeasonDataset = buildDelegatedStatsDataset({ matches: individualSeason });
+const restoredSeasonA = buildDelegatedPlayerRows({ events: restoredSeasonDataset.events, matches: restoredSeasonDataset.validatedMatches, players: [playerA, playerB] }).find((row) => row.playerId === playerA.id);
+assert.equal(restoredSeasonA.matchesPlayed, 10, 'volver a Todos los partidos recupera los 10 PJ');
+assert.equal(restoredSeasonA.stats.shots, 12, 'volver a Todos los partidos recupera los acumulados delegados');
+assert.deepEqual([restoredSeasonA.stats.goals, restoredSeasonA.stats.assists], [1, 1], 'volver a Todos los partidos recupera la producción oficial de temporada');
+const matchComparison = buildDelegatedMatchSampleComparison({ matches: individualSeason, filters: { matchId: individualMatchId, team: 'caudal', scope: 'season' }, players: [playerA, playerB] });
+assert.equal(matchComparison.sufficient, true);
+assert.deepEqual([matchComparison.rows.find((row) => row.key === 'shots').selected, matchComparison.rows.find((row) => row.key === 'shots').average], [3, 1.2], 'partido seleccionado compara su total con la media de los 10 partidos');
+assert.deepEqual([matchComparison.rows.find((row) => row.key === 'goals').selected, matchComparison.rows.find((row) => row.key === 'goals').average], [2, 0.2], 'la comparación colectiva utiliza goles oficiales');
+const playerMatchComparison = buildDelegatedMatchSampleComparison({ matches: individualSeason, filters: { matchId: individualMatchId, playerId: playerA.id, team: 'caudal', scope: 'season' }, players: [playerA, playerB] });
+assert.deepEqual([playerMatchComparison.rows.find((row) => row.key === 'goals').selected, playerMatchComparison.rows.find((row) => row.key === 'goals').average], [1, 0.1], 'la comparación individual mantiene la autoría oficial del partido y de la temporada');
+assert.deepEqual([playerMatchComparison.rows.find((row) => row.key === 'assists').selected, playerMatchComparison.rows.find((row) => row.key === 'assists').average], [1, 0.1]);
 
 const filtered = buildDelegatedStatsDataset({
   matches: [mixedMatch],

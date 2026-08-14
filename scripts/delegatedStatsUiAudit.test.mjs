@@ -19,10 +19,15 @@ assert.match(component, /Goles \+ asistencias[\s\S]*short: 'G\+A'|goalContributi
 assert.match(component, /Oficial · goles, asistencias y minutos[\s\S]*Registro delegado · acciones/, 'identifica discretamente las dos fuentes');
 assert.match(component, /Más filtros[\s\S]*aria-label="Resultado"[\s\S]*aria-label="Jugador"[\s\S]*aria-label="Equipo"[\s\S]*aria-label="Evento"[\s\S]*aria-label="Tramo"[\s\S]*aria-label="Muestra"/, 'los filtros secundarios viven en Más filtros');
 assert.match(component, /aria-label="Partido"[\s\S]*aria-label="Competición"[\s\S]*aria-label="Local o visitante"[\s\S]*Más filtros/, 'la cabecera conserva solo los tres filtros principales');
+assert.match(component, /orderedMatchOptions[\s\S]*formatMatchOption[\s\S]*roundLabel/, 'el selector ordena cronológicamente y muestra jornada solo cuando existe');
 assert.match(component, /min-w-0 w-full rounded-xl/, 'los selectores pueden usar todo el ancho sin truncado artificial');
 assert.match(component, /<EvolutionLineChart/, 'Evolución utiliza un gráfico de línea');
 assert.match(component, /evolution\.length === 1[\s\S]*Muestra actual: 1 partido/, 'un único partido usa una ficha compacta sin gráfico grande');
 assert.match(component, /compact=\{evolution\.length < 5\}/, 'dos a cuatro partidos usan evolución compacta');
+assert.match(component, /setPlayerMode\(matchId \? 'total' : 'average'\)/, 'un partido prioriza Total y Todos los partidos recupera Media/partido');
+assert.match(component, /singleMatchMode \? \[\["total", "Total"\], \["per90", "Por90"\]\]/, 'el partido individual elimina la media redundante del selector');
+assert.match(component, /singleMatchMode \? <SelectedMatchComparison/, 'Evolución sustituye el gráfico de un punto por partido vs muestra');
+assert.match(component, /Estadísticas del partido[\s\S]*Partido seleccionado/, 'Equipo cambia a lectura específica del encuentro');
 assert.match(component, /rows\.length >= 5[\s\S]*Media móvil 5/, 'la media móvil solo aparece desde cinco partidos');
 assert.match(component, /lineSegments/, 'el gráfico no une huecos sin muestra como si existieran datos');
 assert.match(component, /Media móvil 5|media móvil de 5/i, 'muestra la media móvil de cinco partidos');
