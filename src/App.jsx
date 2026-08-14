@@ -128,6 +128,7 @@ import {
   saveDelegatedEventWithSync,
 } from './utils/delegatedEventSaveFlow';
 import { getPlayerDisplayName } from './utils/playerDisplayName';
+import { getPlayerMatchIndicators } from './utils/playerMatchIndicators';
 import { loadOwnCaptainPriorities, saveOwnCaptainPriorities } from './utils/captainPriorityStore';
 import { getCaptainResolutionLabel, resolveMatchCaptain } from './utils/matchCaptain';
 import { formatStatsPitchPlayerName, resolveStatsVisualIdentity } from './utils/statsVisualIdentity';
@@ -15060,33 +15061,6 @@ function App() {
     return matchEvents.find((event) => event.id === eventId || event.rawId === eventId)?.scoreAfter || null;
   };
 
-  const formatMinuteList = (events = []) => events
-    .map((event) => event.minute ? `${event.minute}'` : '')
-    .filter(Boolean)
-    .join(' y ');
-
-  const getPlayerEventSummary = (matchEvents = getStatsMatchEvents(), player) => {
-    const playerName = player?.name || '';
-    const playerEvents = getEventsByPlayerId(matchEvents, player?.id, playerName);
-    const ownName = normalizePlayerIdentityName(playerName);
-    const goals = playerEvents.filter((event) => event.key === 'goal_for' && normalizePlayerIdentityName(event.playerName) === ownName);
-    const assists = playerEvents.filter((event) => event.key === 'goal_for' && normalizePlayerIdentityName(event.secondaryPlayerName) === ownName);
-    const yellows = playerEvents.filter((event) => event.key === 'yellow_card');
-    const reds = playerEvents.filter((event) => event.key === 'red_card');
-    const injuries = playerEvents.filter((event) => event.key === 'injury');
-    const subOut = playerEvents.filter((event) => event.key === 'substitution' && normalizePlayerIdentityName(event.playerName) === ownName);
-    const subIn = playerEvents.filter((event) => event.key === 'substitution' && normalizePlayerIdentityName(event.secondaryPlayerName) === ownName);
-    return [
-      goals.length ? { key: 'goals', label: `⚽${goals.length > 1 ? goals.length : ''}`, title: `${goals.length} gol${goals.length > 1 ? 'es' : ''}${formatMinuteList(goals) ? ` · ${formatMinuteList(goals)}` : ''}`, className: 'bg-white text-slate-950' } : null,
-      assists.length ? { key: 'assists', label: `A${assists.length > 1 ? assists.length : ''}`, title: `${assists.length} asistencia${assists.length > 1 ? 's' : ''}${formatMinuteList(assists) ? ` · ${formatMinuteList(assists)}` : ''}`, className: 'bg-caudal-electric text-slate-950' } : null,
-      yellows.length ? { key: 'yellow', label: yellows.length > 1 ? `🟨${yellows.length}` : '🟨', title: `Tarjeta amarilla${formatMinuteList(yellows) ? ` · ${formatMinuteList(yellows)}` : ''}`, className: 'bg-yellow-300 text-slate-950' } : null,
-      reds.length ? { key: 'red', label: '🟥', title: `Tarjeta roja${formatMinuteList(reds) ? ` · ${formatMinuteList(reds)}` : ''}`, className: 'bg-red-600 text-white' } : null,
-      subOut.length ? { key: 'sub-out', label: '↔', title: `Sustituido${formatMinuteList(subOut) ? ` · ${formatMinuteList(subOut)}` : ''}`, className: 'bg-sky-300 text-slate-950' } : null,
-      subIn.length ? { key: 'sub-in', label: '↔', title: `Entra${formatMinuteList(subIn) ? ` · ${formatMinuteList(subIn)}` : ''}`, className: 'bg-sky-500 text-white' } : null,
-      injuries.length ? { key: 'injury', label: '+', title: `Lesión${formatMinuteList(injuries) ? ` · ${formatMinuteList(injuries)}` : ''}`, className: 'bg-rose-200 text-rose-800' } : null,
-    ].filter(Boolean);
-  };
-
   const getStatsCalledPlayerNames = () => {
     return safeArray(selectedMatch?.statsCalledPlayers);
   };
@@ -17512,7 +17486,6 @@ function App() {
       : selectedSystemMoment?.system || latestSegment?.system || resolveMatchStatsFormation(selectedMatch, ownDefaultFormation);
     const activeSystemFromMinute = hasLocalProposal ? 0 : selectedSystemMoment?.minute ?? latestSegment?.fromMinute ?? 0;
     const coordinates = getFormationCoordinates(activeSystem);
-    const matchEvents = getStatsMatchEvents();
     return (
       <div
         className="stats-match-pitch relative mx-auto aspect-[7/8.9] w-full max-w-[560px] min-w-0 overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner"
@@ -17538,11 +17511,12 @@ function App() {
           const shortName = player ? displayPlayerName(player) : playerName.split(' ').slice(-1)[0] || '';
           const stats = playerName ? getStatsPlayerData(playerName) : null;
           const isCaptain = player?.id && selectedMatchCaptainResolution.playerId === player.id;
-          const eventBadges = playerName ? getPlayerEventSummary(matchEvents, player || { name: playerName }) : [];
-          const statusBadges = [
-            ...eventBadges,
-            isCaptain ? { key: 'captain', label: 'CAP', title: 'Capitán', className: 'bg-black text-white' } : null,
-          ].filter(Boolean);
+          const indicators = playerName ? getPlayerMatchIndicators({
+            player: player || { name: playerName },
+            goalEvents: getStatsGoalEvents(),
+            playerStats: stats,
+            isCaptain,
+          }) : [];
           const replacementInfo = playerName ? getStatsReplacementInfo(playerName) : null;
           const playerStateClass = stats?.red
             ? 'border-red-300 bg-red-950/80 opacity-70'
@@ -17576,23 +17550,20 @@ function App() {
                   </span>
                 ) : null}
               </div>
-              {statusBadges.length ? (
-                <div className="flex max-w-[118px] flex-wrap justify-center gap-1">
-                  {statusBadges.map((badge) => (
-                    <button
-                      key={badge.key}
-                      type="button"
-                      title={badge.title}
-                      aria-label={badge.title}
-                      className={`flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-[10px] font-black shadow-lg ${badge.className || 'bg-black/80 text-white'}`}
-                    >
-                      {badge.label}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-              <div className="max-w-[112px] truncate rounded-lg bg-black/70 px-2 py-1 text-[10px] font-black uppercase tracking-[0.04em] text-white">
-                {playerName ? `${player?.number || slotIndex + 1} ${shortName}` : getFormationRoles(activeSystem)[slotIndex]}
+              <div className="stats-player-identity flex max-w-[118px] flex-wrap items-center justify-center gap-0.5 rounded-lg bg-black/75 px-1.5 py-1 text-[10px] font-black uppercase leading-none tracking-[0.025em] text-white shadow-lg">
+                <span className="max-w-[104px] truncate">
+                  {playerName ? `${player?.number || slotIndex + 1} ${shortName}` : getFormationRoles(activeSystem)[slotIndex]}
+                </span>
+                {indicators.map((indicator) => (
+                  <span
+                    key={indicator.key}
+                    title={indicator.title}
+                    aria-label={indicator.title}
+                    className={`inline-flex h-4 min-w-4 shrink-0 items-center justify-center whitespace-nowrap rounded-[4px] px-0.5 text-[9px] font-black leading-none shadow-sm ${indicator.className}`}
+                  >
+                    {indicator.label}
+                  </span>
+                ))}
               </div>
               {replacementInfo ? (
                 <div className="max-w-[128px] truncate rounded-lg bg-emerald-500 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.02em] text-white shadow-lg" title={`Entra ${replacementInfo.replacementDisplayName} en el ${replacementInfo.minute}'`}>

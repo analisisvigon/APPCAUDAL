@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node scripts/googleFormsSupabaseSync.test.mjs && node src/utils/performanceLoad.test.js && node src/utils/performanceLoadStore.test.js && node scripts/trainingLoadSqlAudit.test.mjs && node scripts/performanceLoadUiAudit.test.mjs && node src/utils/rivalLineupAtomic.test.js && node scripts/rivalLineupAtomicSqlAudit.test.mjs && node src/utils/goalAtomicMutation.test.js && node scripts/matchGoalAtomicSqlAudit.test.mjs && node src/utils/rivalScoutingPersistence.test.js && node src/utils/rivalScoutingStore.test.js && node scripts/rivalScoutingSqlAudit.test.mjs",
+    "test": "node src/utils/playerMatchIndicators.test.js && node scripts/statsPitchIndicatorsUiAudit.test.mjs && node scripts/googleFormsSupabaseSync.test.mjs && node src/utils/performanceLoad.test.js && node src/utils/performanceLoadStore.test.js && node scripts/trainingLoadSqlAudit.test.mjs && node scripts/performanceLoadUiAudit.test.mjs && node src/utils/rivalLineupAtomic.test.js && node scripts/rivalLineupAtomicSqlAudit.test.mjs && node src/utils/goalAtomicMutation.test.js && node scripts/matchGoalAtomicSqlAudit.test.mjs && node src/utils/rivalScoutingPersistence.test.js && node src/utils/rivalScoutingStore.test.js && node scripts/rivalScoutingSqlAudit.test.mjs",
     "test:performance-load": "node src/utils/performanceLoad.test.js && node src/utils/performanceLoadStore.test.js && node scripts/trainingLoadSqlAudit.test.mjs && node scripts/performanceLoadUiAudit.test.mjs",
     "test:league-results": "node src/utils/leagueResults.test.js",
     "test:competition-filters": "node src/utils/competitionFilters.test.js",
@@ -63,6 +63,7 @@
     "test:stats-lineup": "node src/utils/statsLineup.test.js",
     "test:stats-lineup-history": "node src/utils/statsLineupHistory.test.js",
     "test:stats-visual": "node src/utils/statsVisualIdentity.test.js",
+    "test:stats-pitch-indicators": "node src/utils/playerMatchIndicators.test.js && node scripts/statsPitchIndicatorsUiAudit.test.mjs",
     "test:stats-individual": "node src/utils/statsIndividualOrder.test.js",
     "test:player-availability": "node src/utils/playerAvailability.test.js",
     "test:player-availability-sql": "node scripts/playerAvailabilitySqlAudit.test.mjs",
