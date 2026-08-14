@@ -127,6 +127,24 @@ import {
   reconcileDelegatedEvent,
   saveDelegatedEventWithSync,
 } from './utils/delegatedEventSaveFlow';
+import {
+  DELEGATED_DATA_FILTERS,
+  DELEGATED_DATA_STATUSES,
+  DELEGATED_EVENT_CATALOG,
+  applyDelegatedMatchStatus,
+  filterDelegatedValidatedEvents,
+  getDelegatedDataStatus,
+  getDelegatedEventBaseType,
+  getDelegatedEventPeriod,
+  getDelegatedEventSide,
+  getDelegatedMatchAudit,
+  getDelegatedRegistryQuality,
+  getValidatedDelegatedEvents,
+  isDelegatedDataValidated,
+  isDelegatedEventResolvable,
+  isDelegatedRegistryEvent,
+  runDelegatedMatchStatusBatch,
+} from './utils/delegatedMatchValidation';
 import { getPlayerDisplayName } from './utils/playerDisplayName';
 import { getPlayerMatchIndicators } from './utils/playerMatchIndicators';
 import { loadOwnCaptainPriorities, saveOwnCaptainPriorities } from './utils/captainPriorityStore';
@@ -1829,6 +1847,7 @@ const normalizeSupabasePartido = (match) =>
     preCaudalSystemRaw: match.pre_caudal_system ?? match.preCaudalSystemRaw ?? '',
     preCaudalSystem: match.pre_caudal_system || match.preCaudalSystemRaw || match.preCaudalSystem || '',
     delegatedDataStatus: match.delegated_data_status || match.delegatedDataStatus || '',
+    delegatedReviewedAt: match.delegated_reviewed_at || match.delegatedReviewedAt || '',
     captainPlayerId: match.captain_player_id || null,
     equipoRivalId: match.equipo_rival_id || null,
   });
@@ -2127,15 +2146,6 @@ const EVENT_STAT_FIELDS = [
 ];
 
 const createEmptyEventStats = () => EVENT_STAT_FIELDS.reduce((acc, field) => ({ ...acc, [field.key]: 0 }), {});
-const DELEGATED_DATA_STATUSES = ['Sin revisar', 'Revisado', 'Validado', 'Descartado'];
-const DELEGATED_DATA_FILTERS = ['Todos', 'Sin revisar', 'Revisado', 'Validado', 'Descartado'];
-const getDelegatedDataStatus = (match = {}) => {
-  const quickEvents = safeArray(match.quickEvents);
-  if (!quickEvents.length) return 'Sin registro';
-  if (DELEGATED_DATA_STATUSES.includes(match.delegatedDataStatus)) return match.delegatedDataStatus;
-  return quickEvents.some((event) => !event.reviewed) ? 'Sin revisar' : 'Revisado';
-};
-const isDelegatedDataValidated = (match = {}) => getDelegatedDataStatus(match) === 'Validado';
 const getDelegatedStatusTone = (status) => ({
   Validado: 'border-emerald-300/25 bg-emerald-300/12 text-emerald-100',
   Revisado: 'border-yellow-300/25 bg-yellow-300/12 text-yellow-100',
@@ -2182,10 +2192,8 @@ const delegatedCounterPairs = [
 ];
 
 const quickEventLabelByType = Object.fromEntries(delegatedEventDefinitions.map((definition) => [definition.tipoEvento, definition.label]));
-const getQuickEventBaseType = (tipoEvento = '') => String(tipoEvento || '').replace(/_rival$/i, '');
-const getQuickEventSide = (event = {}) => (
-  event.equipo === 'rival' || /_rival$/i.test(String(event.tipoEvento || '')) ? 'rival' : 'caudal'
-);
+const getQuickEventBaseType = getDelegatedEventBaseType;
+const getQuickEventSide = getDelegatedEventSide;
 const quickEventMatches = (event, tipoEvento, side = 'caudal') =>
   getQuickEventBaseType(event?.tipoEvento) === tipoEvento && getQuickEventSide(event) === side;
 const getDelegatedDefinitionForEvent = (event = {}) =>
@@ -5370,6 +5378,7 @@ function App() {
   const delegatedEventSaveInFlightRef = useRef(false);
   const [delegatedEventFeedback, setDelegatedEventFeedback] = useState('');
   const [quickEventStatus, setQuickEventStatus] = useState('');
+  const [showOnlyPendingQuickEvents, setShowOnlyPendingQuickEvents] = useState(false);
   const [quickEventSavingIds, setQuickEventSavingIds] = useState([]);
   const [pendingQuickEventDeleteId, setPendingQuickEventDeleteId] = useState(null);
   const [pendingPostEventDeleteId, setPendingPostEventDeleteId] = useState(null);
@@ -5908,6 +5917,7 @@ function App() {
   const [expandedSystemXi, setExpandedSystemXi] = useState('');
   const [delegatedStatusFilter, setDelegatedStatusFilter] = useState('Todos');
   const [delegatedStatusSavingId, setDelegatedStatusSavingId] = useState('');
+  const [delegatedStatusFeedback, setDelegatedStatusFeedback] = useState('');
   const [delegatedAnalysisTeamFilter, setDelegatedAnalysisTeamFilter] = useState('todos');
   const [delegatedAnalysisPlayerFilter, setDelegatedAnalysisPlayerFilter] = useState('');
   const [delegatedAnalysisEventFilter, setDelegatedAnalysisEventFilter] = useState('todos');
@@ -16523,28 +16533,39 @@ function App() {
   };
 
   const updateDelegatedDataStatus = async (matchId, status) => {
-    if (!matchId || !DELEGATED_DATA_STATUSES.includes(status)) return;
+    if (!matchId || !DELEGATED_DATA_STATUSES.includes(status)) return { ok: false };
     setDelegatedStatusSavingId(matchId);
-    const { error } = await supabase.from("partidos").update({ delegated_data_status: status }).eq("id", matchId);
+    setDelegatedStatusFeedback('');
+    const { data, error } = await supabase.rpc('set_delegated_match_status', {
+      p_partido_id: matchId,
+      p_status: status,
+    });
     if (error) {
       console.error('Error actualizando estado del Registro Delegado:', { matchId, status, error });
-      setPostError(error.message || 'No se pudo actualizar el estado del Registro Delegado.');
+      setDelegatedStatusFeedback(`Error: ${error.message || 'No se pudo actualizar el estado del Registro Delegado.'}`);
       setDelegatedStatusSavingId('');
-      return;
+      return { ok: false, error };
     }
+    const result = Array.isArray(data) ? data[0] : data;
     setMatches((current) => current.map((match) => (
-      match.id === matchId ? { ...match, delegatedDataStatus: status } : match
+      match.id === matchId
+        ? applyDelegatedMatchStatus(match, status, result?.reviewed_at || '')
+        : match
     )));
+    const validated = Number(result?.validated_events || 0);
+    const pending = Number(result?.pending_events || 0);
+    const label = status === 'Validado'
+      ? `${validated} eventos validados · ${pending} pendientes${pending ? ' · Validado con incidencias' : ''}`
+      : `Partido marcado como ${status.toLowerCase()}`;
+    setDelegatedStatusFeedback(label);
     setDelegatedStatusSavingId('');
+    return { ok: true, result };
   };
 
   const markDelegatedDataDirty = async (matchId) => {
     if (!matchId) return;
-    setMatches((current) => current.map((match) => (
-      match.id === matchId ? { ...match, delegatedDataStatus: 'Sin revisar' } : match
-    )));
-    const { error } = await supabase.from("partidos").update({ delegated_data_status: 'Sin revisar' }).eq("id", matchId);
-    if (error) console.warn('No se pudo marcar el Registro Delegado como Sin revisar:', error);
+    const result = await updateDelegatedDataStatus(matchId, 'Sin revisar');
+    if (!result.ok) console.warn('No se pudo marcar el Registro Delegado como Sin revisar:', result.error);
   };
 
   const openGoalAnalysisModal = () => {
@@ -18567,9 +18588,18 @@ function App() {
 
         <section id="post-quick-events" className="app-card">
           {postBlockHeader('B · Eventos rápidos del delegado', 'Revisar y validar capturas de directo', 'Apuntes simples del partido: corrige minuto, equipo, jugador y marca qué entra al análisis.', (
-            <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-300">
-              {pendingQuick} pendientes de revisar
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-300">
+                {pendingQuick} pendientes de revisar
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowOnlyPendingQuickEvents((current) => !current)}
+                className="rounded-2xl bg-yellow-300/15 px-3 py-2 text-xs font-black text-yellow-100"
+              >
+                {showOnlyPendingQuickEvents ? 'Ver todos' : 'Solo pendientes'}
+              </button>
+            </div>
           ))}
           <StatusMessage status={quickEventStatus} className="mt-4" />
           <details className="mt-4 rounded-3xl border border-white/10 bg-white/[0.035]">
@@ -18580,6 +18610,7 @@ function App() {
             {(selectedMatch.quickEvents || []).length ? (
               [...(selectedMatch.quickEvents || [])]
                 .sort((a, b) => Number(a.minute || 0) - Number(b.minute || 0))
+                .filter((event) => !showOnlyPendingQuickEvents || !event.reviewed)
                 .map((event) => {
                   const definition = getDelegatedDefinitionForEvent(event);
                   const isRival = getQuickEventSide(event) === 'rival';
@@ -18651,8 +18682,14 @@ function App() {
                         </select>
                         </div>
                         <div className="flex flex-wrap gap-2 xl:justify-end">
-                          <button type="button" onClick={() => updateQuickEvent(event.id, { reviewed: !event.reviewed })} disabled={isSaving} className="btn-secondary btn-small">
-                            {event.reviewed ? 'Desmarcar' : 'Validar'}
+                          <button
+                            type="button"
+                            onClick={() => updateDelegatedDataStatus(selectedMatch.id, 'Validado')}
+                            disabled={isSaving || event.reviewed || !isDelegatedEventResolvable(event) || delegatedStatusSavingId === selectedMatch.id}
+                            className="btn-secondary btn-small disabled:cursor-not-allowed disabled:opacity-45"
+                            title={!event.reviewed && !isDelegatedEventResolvable(event) ? 'Asigna primero un jugador válido.' : 'La validación se aplica con el contrato completo del partido.'}
+                          >
+                            {event.reviewed ? 'Validado' : !isDelegatedEventResolvable(event) ? 'Identifica jugador' : 'Validar partido'}
                           </button>
                           <button type="button" onClick={() => openQuickTacticalPanel(event, definition)} className="btn-small bg-caudal-electric text-slate-950">
                             Convertir en evento táctico
@@ -27338,29 +27375,10 @@ function App() {
   };
 
   const renderDelegatedRegistrySection = () => {
-    const delegatedAnalysisEventCatalog = [
-      { type: 'tiro', label: 'Tiros', statKey: 'shots', icon: '◌' },
-      { type: 'tiro_puerta', label: 'Tiros a puerta', statKey: 'shotsOnTarget', icon: '◎' },
-      { type: 'centro', label: 'Centros', statKey: 'crosses', icon: '↗' },
-      { type: 'robo', label: 'Robos', statKey: 'steals', icon: '◆' },
-      { type: 'perdida', label: 'Pérdidas', statKey: 'turnovers', icon: '×' },
-      { type: 'corner', label: 'Córners', statKey: 'corners', icon: '⌜' },
-      { type: 'falta_realizada', label: 'Faltas realizadas', statKey: 'foulsCommitted', icon: '!' },
-      { type: 'falta_recibida', label: 'Faltas recibidas', statKey: 'foulsReceived', icon: '+' },
-    ];
-    const delegatedAnalysisTypeSet = new Set(delegatedAnalysisEventCatalog.map((item) => item.type));
-    const isDelegatedAnalysisEvent = (event) => delegatedAnalysisTypeSet.has(getQuickEventBaseType(event.tipoEvento));
+    const delegatedAnalysisEventCatalog = DELEGATED_EVENT_CATALOG;
+    const isDelegatedAnalysisEvent = isDelegatedRegistryEvent;
     const delegatedPeriodLabels = ['0-15', '15-30', '30-45', '45-60', '60-75', '75-90', '90+'];
-    const getDelegatedPeriodKey = (event) => {
-      const minute = Number(event.minute || 0);
-      if (minute < 15) return '0-15';
-      if (minute < 30) return '15-30';
-      if (minute < 45) return '30-45';
-      if (minute < 60) return '45-60';
-      if (minute < 75) return '60-75';
-      if (minute < 90) return '75-90';
-      return '90+';
-    };
+    const getDelegatedPeriodKey = getDelegatedEventPeriod;
     const getDelegatedAnalysisPlayerId = (event) => (
       getDelegatedEventPlayerId(event)
       || players.find((player) => delegatedEventMatchesPlayer(event, player, players))?.id
@@ -27376,13 +27394,15 @@ function App() {
       .filter((match) => delegatedStatusFilter === 'Todos' || getDelegatedDataStatus(match) === delegatedStatusFilter)
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
     const analysisMatches = visibleMatches.filter(isDelegatedDataValidated);
-    const rankingEvents = analysisMatches
-      .flatMap((match) => safeArray(match.quickEvents).map((event) => ({ ...event, match })))
-      .filter((event) => event.reviewed && isDelegatedAnalysisEvent(event))
-      .filter((event) => delegatedAnalysisTeamFilter === 'todos' || getQuickEventSide(event) === delegatedAnalysisTeamFilter)
-      .filter((event) => !delegatedAnalysisPlayerFilter || getDelegatedAnalysisPlayerId(event) === delegatedAnalysisPlayerFilter)
-      .filter((event) => delegatedAnalysisEventFilter === 'todos' || getQuickEventBaseType(event.tipoEvento) === delegatedAnalysisEventFilter)
-      .filter((event) => delegatedAnalysisPeriodFilter === 'todos' || getDelegatedPeriodKey(event) === delegatedAnalysisPeriodFilter);
+    const rankingEvents = filterDelegatedValidatedEvents(
+      getValidatedDelegatedEvents(analysisMatches),
+      {
+        team: delegatedAnalysisTeamFilter,
+        playerId: delegatedAnalysisPlayerFilter,
+        eventType: delegatedAnalysisEventFilter,
+        period: delegatedAnalysisPeriodFilter,
+      },
+    );
     const collectiveSummary = getQuickEventSummary(rankingEvents);
     const getCoveredMinutes = (events = []) => {
       const minutes = safeArray(events)
@@ -27394,7 +27414,6 @@ function App() {
       safeArray(events).some((event) => Number(event.minute || 0) < 45) ? '1T' : null,
       safeArray(events).some((event) => Number(event.minute || 0) >= 45) ? '2T' : null,
     ].filter(Boolean);
-    const getIndividualEvents = (events = []) => safeArray(events).filter((event) => Object.keys(EVENT_STAT_EFFECTS[getQuickEventBaseType(event.tipoEvento)]?.player || {}).length);
     const visibleEvents = visibleMatches.flatMap((match) => safeArray(match.quickEvents)
       .filter(isDelegatedAnalysisEvent)
       .map((event) => ({ ...event, match })));
@@ -27522,18 +27541,7 @@ function App() {
       Number(left.minute || 0) - Number(right.minute || 0) ||
       String(left.createdAt || '').localeCompare(String(right.createdAt || ''))
     ));
-    const registryQuality = {
-      registered: visibleEvents.length,
-      validated: visibleEvents.filter((event) => event.reviewed && getDelegatedDataStatus(event.match) === 'Validado').length,
-      pending: visibleEvents.filter((event) => (
-        getDelegatedDataStatus(event.match) !== 'Descartado' &&
-        !(event.reviewed && getDelegatedDataStatus(event.match) === 'Validado')
-      )).length,
-      discarded: visibleEvents.filter((event) => getDelegatedDataStatus(event.match) === 'Descartado').length,
-    };
-    registryQuality.percent = registryQuality.registered
-      ? Math.round((registryQuality.validated / registryQuality.registered) * 100)
-      : 0;
+    const registryQuality = getDelegatedRegistryQuality(visibleMatches);
     const quickPlayerRow = delegatedQuickPlayerId
       ? playerRows.find((row) => row.player.id === delegatedQuickPlayerId) || null
       : null;
@@ -27541,26 +27549,22 @@ function App() {
       ? Math.max(...quickPlayerRow.events.map((event) => Number(event.minute || 0)))
       : null;
     const auditMatch = (match) => {
-      const events = safeArray(match.quickEvents).filter(isDelegatedAnalysisEvent);
-      const individualEvents = getIndividualEvents(events);
-      const unidentified = individualEvents.filter((event) => !getDelegatedAnalysisPlayerId(event)).length;
-      const caudalUnidentified = individualEvents.filter((event) => getQuickEventSide(event) === 'caudal' && !getDelegatedAnalysisPlayerId(event)).length;
-      const unreviewed = events.filter((event) => !event.reviewed).length;
-      const validated = events.length - unreviewed;
+      const validation = getDelegatedMatchAudit(match);
+      const { events, validated, pending, unidentified } = validation;
       const minutes = events.map((event) => Number(event.minute || 0)).filter((minute) => Number.isFinite(minute));
       const coveredMinutes = getCoveredMinutes(events);
       const periods = getCoveredPeriods(events);
       const checks = [
-        unreviewed ? `${unreviewed} eventos sin revisar` : null,
-        caudalUnidentified ? `${caudalUnidentified} eventos de Caudal sin jugador` : null,
-        unidentified && !caudalUnidentified ? `${unidentified} eventos sin jugador identificado` : null,
+        pending ? `${pending} eventos requieren revisión` : null,
+        unidentified ? `${unidentified} eventos requieren identificar jugador` : null,
       ].filter(Boolean);
       return {
         events,
         validated,
-        pending: unreviewed,
-        validatedPercent: events.length ? Math.round((validated / events.length) * 100) : 0,
+        pending,
+        validatedPercent: validation.validatedPercent,
         unidentified,
+        unidentifiedEvents: validation.unidentifiedEvents,
         coveredMinutes,
         coverageLabel: coveredMinutes ? `${coveredMinutes} de 90 minutos` : 'Sin minutos',
         duration: minutes.length ? `${Math.min(...minutes)}'-${Math.max(...minutes)}'` : 'Sin minutos',
@@ -27610,10 +27614,14 @@ function App() {
     };
     const updateSelectedDelegatedMatchesStatus = async (status) => {
       const selectedIds = delegatedSelectedMatchIds.filter((matchId) => visibleMatches.some((match) => match.id === matchId));
-      for (const matchId of selectedIds) {
-        await updateDelegatedDataStatus(matchId, status);
-      }
-      setDelegatedSelectedMatchIds([]);
+      const result = await runDelegatedMatchStatusBatch(
+        selectedIds,
+        (matchId) => updateDelegatedDataStatus(matchId, status),
+      );
+      setDelegatedSelectedMatchIds(result.failed);
+      setDelegatedStatusFeedback(result.failed.length
+        ? `${result.succeeded.length} partidos actualizados · ${result.failed.length} con error (siguen seleccionados)`
+        : `${result.succeeded.length} partidos actualizados como ${status.toLowerCase()}`);
     };
 
     return (
@@ -27623,7 +27631,7 @@ function App() {
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-caudal-electric">Registro Delegado</p>
               <h2 className="mt-2 text-3xl font-black uppercase tracking-[0.08em] text-white">Análisis del registro</h2>
-              <p className="mt-2 max-w-3xl text-sm text-slate-400">Lectura exclusiva de las ocho acciones del delegado. No incorpora métricas del Análisis Grupal ni estimaciones.</p>
+              <p className="mt-2 max-w-3xl text-sm text-slate-400">Lectura exclusiva de las once acciones reales del delegado. No incorpora métricas del Análisis Grupal ni estimaciones.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {DELEGATED_DATA_FILTERS.map((filter) => (
@@ -27636,9 +27644,10 @@ function App() {
               <p className="font-bold text-slate-200">Sin datos registrados</p>
             </div>
           ) : null}
+          <StatusMessage status={delegatedStatusFeedback} className="mt-4" />
           <div className="mt-4 flex flex-wrap gap-2">
             {DELEGATED_DATA_STATUSES.map((status) => (
-              <span key={status} className={`rounded-2xl border px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${getDelegatedStatusTone(status)}`}>{status}: {statusCounts[status] || 0}</span>
+              <span key={status} className={`rounded-2xl border px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${getDelegatedStatusTone(status)}`}>Partidos · {status}: {statusCounts[status] || 0}</span>
             ))}
           </div>
         </section>
@@ -27839,7 +27848,7 @@ function App() {
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Validación por partido</p>
-              <p className="mt-1 text-xs text-slate-500">La selección múltiple conserva la lógica existente: cambia el estado completo de cada partido.</p>
+              <p className="mt-1 text-xs text-slate-500">Cada partido usa la misma transición atómica: valida los eventos resolubles y conserva aparte los pendientes.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -27868,6 +27877,7 @@ function App() {
             {visibleMatches.length ? visibleMatches.map((match) => {
               const status = getDelegatedDataStatus(match);
               const audit = auditMatch(match);
+              const statusLabel = status === 'Validado' && audit.pending ? 'Validado con incidencias' : status;
               const isSelected = delegatedSelectedMatchIds.includes(match.id);
               return (
                 <div key={match.id} className={`rounded-3xl border p-5 transition ${isSelected ? 'border-caudal-electric/50 bg-caudal-electric/[0.06]' : 'border-white/5 bg-white/[0.04]'}`}>
@@ -27883,7 +27893,7 @@ function App() {
                       <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-lg font-black text-white">{match.opponent || 'Rival'}</p>
-                        <span className={`rounded-2xl border px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${getDelegatedStatusTone(status)}`}>{status}</span>
+                        <span className={`rounded-2xl border px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${getDelegatedStatusTone(status)}`}>{statusLabel}</span>
                       </div>
                       <p className="mt-1 text-sm text-slate-500">{matchDisplayDate(match.date)} · {getCompetitionFromCatalog(match).label || 'Partido'} · {getMatchScoreLabel(match)}</p>
                       </div>
@@ -27897,7 +27907,7 @@ function App() {
                   <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
                     {[
                       ['Eventos totales', audit.events.length],
-                      ['Validados', `${audit.validated} · ${audit.validatedPercent}%`],
+                      ['Validados', `${audit.validated} · ${audit.validatedPercent.toLocaleString('es-ES')}%`],
                       ['Pendientes', audit.pending],
                       ['Sin identificar', audit.unidentified],
                       ['Duración cubierta', audit.coverageLabel],
@@ -27912,7 +27922,7 @@ function App() {
                   <div className="mt-4">
                     <div className="flex items-center justify-between gap-3 text-xs font-bold text-slate-400">
                       <span>Validación de eventos</span>
-                      <span>{audit.validated} de {audit.events.length} · {audit.validatedPercent}%</span>
+                      <span>{audit.validated} de {audit.events.length} · {audit.validatedPercent.toLocaleString('es-ES')}%</span>
                     </div>
                     <div className="mt-2 h-2 rounded-full bg-white/10">
                       <div className="h-2 rounded-full bg-emerald-300" style={{ width: `${audit.validatedPercent}%` }} />
@@ -27924,6 +27934,20 @@ function App() {
                       {audit.checks.map((check) => (
                         <span key={check} className="rounded-2xl border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-xs font-bold text-yellow-100">{check}</span>
                       ))}
+                      {audit.pending ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setShowOnlyPendingQuickEvents(true);
+                            setActiveTab('Partidos');
+                            await openMatchPage(match, 'POST');
+                            window.setTimeout(() => document.getElementById('post-quick-events')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+                          }}
+                          className="rounded-2xl bg-yellow-300 px-3 py-2 text-xs font-black text-yellow-950"
+                        >
+                          Revisar {audit.pending} pendientes
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
