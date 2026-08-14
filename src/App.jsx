@@ -5212,6 +5212,7 @@ function App() {
   const [captainPrioritySchemaAvailable, setCaptainPrioritySchemaAvailable] = useState(true);
   const [captainPriorityError, setCaptainPriorityError] = useState('');
   const [captainPriorityStatus, setCaptainPriorityStatus] = useState('');
+  const [captainPanelOpen, setCaptainPanelOpen] = useState(false);
   const getStoredPlayerDisplayName = (storedName, fallback = 'Jugador') => {
     const normalizedStoredName = normalizePlayerIdentityName(storedName);
     const player = normalizedStoredName ? players.find((candidate) => [
@@ -7061,6 +7062,7 @@ function App() {
     setCaptainPriorityError('');
     setCaptainPriorityStatus('');
     setCaptainPrioritySchemaAvailable(true);
+    setCaptainPanelOpen(false);
     setMatches([]);
     setTeams([]);
     setGlobalPlayers([]);
@@ -16121,19 +16123,26 @@ function App() {
   };
 
   const saveCaptainPriorityOrder = async (orderedPlayers) => {
-    if (captainPrioritiesSaving || !captainPrioritySchemaAvailable) return;
+    if (captainPrioritiesSaving || !captainPrioritySchemaAvailable) return { ok: false, rows: [] };
     setCaptainPrioritiesSaving(true);
     setCaptainPriorityError('');
     setCaptainPriorityStatus('');
     try {
-      const savedRows = await saveOwnCaptainPriorities(supabase, orderedPlayers);
-      setCaptainPriorities(savedRows);
+      await saveOwnCaptainPriorities(supabase, orderedPlayers);
+      const refreshed = await loadOwnCaptainPriorities(supabase, players);
+      if (!refreshed.schemaAvailable) {
+        const schemaError = new Error('Falta aplicar supabase_own_captain_priority.sql en Supabase.');
+        schemaError.code = 'CAPTAIN_PRIORITY_SCHEMA_MISSING';
+        throw schemaError;
+      }
+      setCaptainPriorities(refreshed.rows);
       setCaptainPriorityStatus('Orden de capitanes guardado en Supabase.');
-      window.setTimeout(() => setCaptainPriorityStatus((current) => current === 'Orden de capitanes guardado en Supabase.' ? '' : current), 2600);
+      return { ok: true, rows: refreshed.rows };
     } catch (saveError) {
       console.error('Error guardando el orden de capitanes:', saveError);
       if (saveError.code === 'CAPTAIN_PRIORITY_SCHEMA_MISSING') setCaptainPrioritySchemaAvailable(false);
       setCaptainPriorityError(saveError.message || 'No se pudo guardar el orden de capitanes.');
+      return { ok: false, rows: [], error: saveError };
     } finally {
       setCaptainPrioritiesSaving(false);
     }
@@ -29179,12 +29188,23 @@ function App() {
                     </div>
                   ))}
                 </div>
-                <button
-                  onClick={() => openForm(null)}
-                  className="inline-flex items-center justify-center rounded-2xl bg-caudal-electric/90 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-caudal-electric"
-                >
-                  Nuevo jugador
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCaptainPanelOpen(true)}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-amber-200/25 bg-amber-200/10 px-5 py-3 text-sm font-black text-amber-100 transition hover:bg-amber-200/15"
+                  >
+                    <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center rounded-full border border-amber-100 text-[10px]">C</span>
+                    CAPITANES
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openForm(null)}
+                    className="inline-flex items-center justify-center rounded-2xl bg-caudal-electric/90 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-caudal-electric"
+                  >
+                    Nuevo jugador
+                  </button>
+                </div>
               </div>
 
               {ownPlayerEditorError ? (
@@ -29253,18 +29273,18 @@ function App() {
                 </div>
               </div>
 
-              <div className="mt-3">
-                <CaptainPriorityPanel
-                  players={players}
-                  priorities={captainPriorities}
-                  loading={captainPrioritiesLoading}
-                  saving={captainPrioritiesSaving}
-                  schemaAvailable={captainPrioritySchemaAvailable}
-                  error={captainPriorityError}
-                  status={captainPriorityStatus}
-                  onSave={saveCaptainPriorityOrder}
-                />
-              </div>
+              <CaptainPriorityPanel
+                open={captainPanelOpen}
+                players={players}
+                priorities={captainPriorities}
+                loading={captainPrioritiesLoading}
+                saving={captainPrioritiesSaving}
+                schemaAvailable={captainPrioritySchemaAvailable}
+                error={captainPriorityError}
+                status={captainPriorityStatus}
+                onClose={() => setCaptainPanelOpen(false)}
+                onSave={saveCaptainPriorityOrder}
+              />
 
               <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-center">
                 <input
@@ -33358,6 +33378,9 @@ function App() {
                           )}
                           <p className="text-xs text-slate-500">El override manual solo ofrece jugadores del XI inicial real.</p>
                           {selectedMatchCaptainResolution.warning ? <p className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs font-bold text-amber-100">{selectedMatchCaptainResolution.warning}</p> : null}
+                          {['automatic_invalid_override', 'none_invalid_override'].includes(selectedMatchCaptainResolution.source) ? (
+                            <button type="button" onClick={() => updateMatchCaptain('')} className="rounded-xl border border-amber-200/25 bg-amber-200/10 px-3 py-2 text-xs font-black text-amber-100">Volver a Automático</button>
+                          ) : null}
                         </div>
                         <div className="responsive-pitch-scroll mt-5 overflow-x-auto">{renderStatsPitch()}</div>
                       </div>

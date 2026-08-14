@@ -55,7 +55,7 @@
     "test:delegated-save-flow": "node src/utils/delegatedEventSaveFlow.test.js",
     "test:player-display-name": "node src/utils/playerDisplayName.test.js",
     "test:match-status": "node src/utils/matchStatus.test.js",
-    "test:captains": "node src/utils/matchCaptain.test.js && node src/utils/captainPriorityStore.test.js && node scripts/captainPrioritySqlAudit.test.mjs",
+    "test:captains": "node src/utils/captainOrder.test.js && node src/utils/matchCaptain.test.js && node src/utils/captainPriorityStore.test.js && node scripts/captainPrioritySqlAudit.test.mjs && node scripts/captainUiAudit.test.mjs",
     "test:recent-activity": "node src/utils/recentActivity.test.js",
     "test:player-positions": "node src/constants/playerPositions.test.js",
     "test:stats-callup": "node src/utils/statsCallup.test.js",
