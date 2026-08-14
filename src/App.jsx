@@ -660,6 +660,8 @@ const squadGroups = [
   },
 ];
 
+const rosterHeaderActionClass = 'inline-flex h-10 w-full items-center justify-center rounded-xl px-4 text-xs font-black transition';
+
 const rivalSquadLineGroups = [
   { key: 'goalkeepers', title: 'Porteros' },
   { key: 'defenders', title: 'Defensas' },
@@ -29166,39 +29168,39 @@ function App() {
             })() : (
             <>
             <section className="rounded-[1.25rem] border border-white/10 bg-white/[0.04] p-3.5 shadow-[0_16px_48px_rgba(0,0,0,0.16)] backdrop-blur-md sm:p-4">
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">Plantilla</p>
-                  <h2 className="mt-1 text-2xl font-black text-white">Panel competitivo</h2>
+              <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(170px,0.65fr)_minmax(660px,2.7fr)_168px] xl:items-stretch">
+                <div className="self-center">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Plantilla</p>
+                  <h2 className="mt-1 whitespace-nowrap text-lg font-black leading-tight text-white">Panel competitivo</h2>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[760px] xl:grid-cols-6">
+                <div className="grid min-w-0 grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
                   {[
-                    ['PL', 'Total plantilla', squadSummary.total, 'border-white/10 bg-white/[0.05] text-white'],
-                    ['OK', 'Disponibles reales', squadSummary.available, 'border-emerald-200/15 bg-emerald-200/[0.08] text-emerald-100'],
-                    ['LES', 'Lesionados', squadSummary.injured, 'border-red-200/20 bg-red-300/10 text-red-100'],
-                    ['SAN', 'Sancionados', squadSummary.suspended, 'border-slate-200/20 bg-slate-200/10 text-slate-200'],
-                    ['ND', 'No disponibles', squadSummary.unavailable, 'border-amber-200/20 bg-amber-200/10 text-amber-100'],
-                    ['U23', 'Sub-23', squadSummary.sub23, 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'],
-                  ].map(([icon, label, value, tone]) => (
-                    <div key={label} className={`rounded-2xl border px-3 py-2 ${tone}`}>
-                      <p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-65">{icon} {label}</p>
-                      <p className="mt-0.5 text-lg font-black">{value}</p>
+                    ['Plantilla', squadSummary.total, 'border-white/10 bg-white/[0.035] text-white', false],
+                    ['Disponibles', squadSummary.available, 'border-emerald-200/15 bg-emerald-200/[0.055] text-emerald-100', false],
+                    ['Lesionados', squadSummary.injured, 'border-red-200/15 bg-red-300/[0.065] text-red-100', false],
+                    ['Sancionados', squadSummary.suspended, 'border-slate-200/15 bg-slate-200/[0.055] text-slate-200', false],
+                    ['No disponibles', squadSummary.unavailable, 'border-amber-200/15 bg-amber-200/[0.065] text-amber-100', false],
+                    ['Sub-23', squadSummary.sub23, 'border-sky-200/15 bg-slate-900/60 text-sky-100', true],
+                  ].map(([label, value, tone, isRosterTrait]) => (
+                    <div key={label} className={`min-h-[58px] rounded-xl border px-3 py-2 ${isRosterTrait ? 'lg:ml-1 lg:border-dashed' : ''} ${tone}`}>
+                      <p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-70">{label}</p>
+                      <p className="mt-0.5 text-lg font-black leading-none">{value}</p>
                     </div>
                   ))}
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="grid w-[168px] grid-cols-1 gap-1.5 xl:w-full">
                   <button
                     type="button"
                     onClick={() => setCaptainPanelOpen(true)}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-amber-200/25 bg-amber-200/10 px-5 py-3 text-sm font-black text-amber-100 transition hover:bg-amber-200/15"
+                    className={`${rosterHeaderActionClass} gap-1.5 border border-white/15 bg-slate-950/45 text-slate-200 hover:border-white/25 hover:bg-white/[0.07]`}
                   >
-                    <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center rounded-full border border-amber-100 text-[10px]">C</span>
+                    <span aria-hidden="true" className="flex h-4 w-4 items-center justify-center rounded-full border border-white/35 bg-white/[0.04] text-[8px] leading-none text-white">C</span>
                     CAPITANES
                   </button>
                   <button
                     type="button"
                     onClick={() => openForm(null)}
-                    className="inline-flex items-center justify-center rounded-2xl bg-caudal-electric/90 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-caudal-electric"
+                    className={`${rosterHeaderActionClass} bg-caudal-electric/90 text-slate-950 hover:bg-caudal-electric`}
                   >
                     Nuevo jugador
                   </button>
@@ -29212,9 +29214,9 @@ function App() {
                 </div>
               ) : null}
 
-              <div className="mt-3 grid gap-3 xl:grid-cols-[1.05fr_0.95fr]">
+              <div className="mt-3 grid items-start gap-3 xl:grid-cols-[1.05fr_0.95fr]">
                 <div className="rounded-[1.15rem] border border-white/10 bg-black/15 p-3">
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <h3 className="text-xs font-black uppercase tracking-[0.18em] text-white">Once habitual</h3>
                       <p className="mt-1 text-xs text-slate-500">Basado en partidos oficiales</p>
@@ -29222,7 +29224,7 @@ function App() {
                     </div>
                     <span className="rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-2.5 py-1 text-xs font-black text-caudal-electric">{rosterDashboard.hasHabitualEleven ? '11 titulares' : 'Datos insuficientes'}</span>
                   </div>
-                  <div className="mt-3 space-y-1.5">
+                  <div className={`${rosterDashboard.hasHabitualEleven ? 'mt-3' : 'mt-2'} space-y-1.5`}>
                     {rosterDashboard.hasHabitualEleven ? rosterDashboard.baseLines.map((line) => (
                       <div key={line.line} className="grid grid-cols-[42px_1fr] items-start gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-2.5 py-2">
                         <span className="pt-1 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{line.line}</span>
@@ -29240,9 +29242,8 @@ function App() {
                         </div>
                       </div>
                     )) : (
-                      <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.03] px-3 py-3">
-                        <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-300">Datos oficiales insuficientes</p>
-                        <p className="mt-1 text-sm text-slate-400">Aún no hay suficientes partidos oficiales para definir un once habitual.</p>
+                      <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-2.5">
+                        <p className="text-xs leading-5 text-slate-400">Aún no hay suficientes partidos oficiales para definir un once habitual.</p>
                       </div>
                     )}
                   </div>
@@ -29250,7 +29251,7 @@ function App() {
 
                 <div className="rounded-[1.15rem] border border-white/10 bg-black/15 p-3">
                   <h3 className="text-xs font-black uppercase tracking-[0.18em] text-white">Jugadores clave</h3>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <div className={`${rosterDashboard.keyPlayers.some((item) => item.player || item.row?.player) ? 'mt-3 gap-2' : 'mt-2 gap-1.5'} grid sm:grid-cols-2`}>
                     {rosterDashboard.keyPlayers.map((item) => {
                       const player = item.player || item.row?.player;
                       return (
@@ -29259,11 +29260,11 @@ function App() {
                           type="button"
                           disabled={!player}
                           onClick={() => player && setSelectedPlayerProfileId(player.id)}
-                          className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-left transition enabled:hover:border-caudal-electric/25 enabled:hover:bg-white/[0.07] disabled:cursor-default"
+                          className={`rounded-xl border border-white/10 bg-white/[0.04] px-3 text-left transition enabled:hover:border-caudal-electric/25 enabled:hover:bg-white/[0.07] disabled:cursor-default ${player ? 'py-2' : 'py-1.5'}`}
                         >
-                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{item.label}</p>
-                          <p className="mt-1 truncate text-sm font-black text-white">{player ? getPlayerDisplayName(player) : 'Sin datos'}</p>
-                          <p className="text-xs font-bold text-caudal-electric">{item.value}</p>
+                          <p className="text-[9px] font-black uppercase tracking-[0.13em] text-slate-500">{item.label}</p>
+                          <p className={`${player ? 'mt-1 text-sm' : 'mt-0.5 text-xs'} truncate font-black text-white`}>{player ? getPlayerDisplayName(player) : 'Sin datos'}</p>
+                          <p className={player ? 'text-xs font-bold text-caudal-electric' : 'text-[9px] leading-none text-slate-600'}>{item.value}</p>
                         </button>
                       );
                     })}
@@ -29284,36 +29285,42 @@ function App() {
                 onSave={saveCaptainPriorityOrder}
               />
 
-              <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-center">
+              <div className="mt-4 grid min-w-0 gap-3 xl:grid-cols-[minmax(240px,1fr)_auto] xl:items-center">
                 <input
                   type="search"
                   value={playerSearchTerm}
                   onChange={(event) => setPlayerSearchTerm(event.target.value)}
                   placeholder="Buscar jugador, dorsal, demarcación..."
-                  className="min-h-[44px] w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-white outline-none transition placeholder:text-slate-500 hover:border-white/20 focus:border-caudal-electric/70 focus:bg-black/30"
+                  className="min-h-[40px] w-full rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-white outline-none transition placeholder:text-slate-500 hover:border-white/20 focus:border-caudal-electric/70 focus:bg-black/30"
                 />
-                <div className="flex flex-wrap gap-2">
-                  {['Todos', 'Disponibles', 'Sub-23', 'Alertas'].map((filter) => (
-                    <button
-                      key={filter}
-                      type="button"
-                      onClick={() => setPlayerQuickFilter(filter)}
-                      className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${
-                        playerQuickFilter === filter
-                          ? 'border-caudal-electric/40 bg-caudal-electric/90 text-slate-950'
-                          : 'border-white/10 bg-white/[0.045] text-slate-300 hover:bg-white/[0.075]'
-                      }`}
-                    >
-                      {filter}
-                    </button>
-                  ))}
-                  <div className="flex rounded-2xl border border-white/10 bg-black/20 p-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.025] p-1" role="group" aria-label="Filtros de plantilla">
+                    <span className="px-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Filtro</span>
+                    {['Todos', 'Disponibles', 'Sub-23', 'Alertas'].map((filter) => (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() => setPlayerQuickFilter(filter)}
+                        aria-pressed={playerQuickFilter === filter}
+                        className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] transition ${
+                          playerQuickFilter === filter
+                            ? 'border-caudal-electric/40 bg-caudal-electric/90 text-slate-950'
+                            : 'border-transparent text-slate-300 hover:bg-white/[0.06]'
+                        }`}
+                      >
+                        {filter}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-black/25 p-1" role="group" aria-label="Modo de vista">
+                    <span className="px-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Vista</span>
                     {['Tarjetas', 'Lista'].map((view) => (
                       <button
                         key={view}
                         type="button"
                         onClick={() => setPlayerRosterView(view)}
-                        className={`rounded-xl px-3 py-1.5 text-xs font-black uppercase tracking-[0.12em] transition ${playerRosterView === view ? 'bg-white text-slate-950' : 'text-slate-400 hover:text-white'}`}
+                        aria-pressed={playerRosterView === view}
+                        className={`rounded-lg px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] transition ${playerRosterView === view ? 'bg-white text-slate-950' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}`}
                       >
                         {view}
                       </button>

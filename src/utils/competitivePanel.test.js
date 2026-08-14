@@ -134,14 +134,35 @@ assert.equal(getOfficialCaptainPlayerId([
 assert.equal(getOfficialCaptainPlayerId([playedMatch({ id: 'no-captain' })]), null, 'sin capitán almacenado no se inventa');
 
 const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
+const panelSource = appSource.slice(
+  appSource.indexOf('<h2 className="mt-1 whitespace-nowrap text-lg font-black leading-tight text-white">Panel competitivo</h2>') - 500,
+  appSource.indexOf('<CaptainPriorityPanel', appSource.indexOf('Panel competitivo'))
+);
 assert.ok(appSource.includes('const officialPlayedMatches = useMemo('), 'Once y tarjetas comparten una única colección oficial jugada');
 assert.ok(appSource.includes('getGroupRankings(officialPlayedMatches, { statsOnly: true })'), 'el once usa alineaciones reales de Estadísticas y no el once PRE');
 assert.ok(appSource.includes("typeof playerOrRole === 'object' ? getPlayerPositionLabel(playerOrRole)"), 'la asignación habitual prioriza la posición específica normalizada');
 assert.ok(appSource.includes('loadCompetitivePanelEvidence().catch('), 'Plantilla carga minutos y slots sin depender de visitar otro módulo');
 assert.ok(appSource.includes('Once habitual') && appSource.includes('Basado en partidos oficiales'), 'la interfaz comunica el nuevo contrato');
-assert.ok(appSource.includes('Datos oficiales insuficientes'), 'un once parcial no se presenta como consolidado');
+assert.ok(appSource.includes('Datos insuficientes') && appSource.includes('Aún no hay suficientes partidos oficiales para definir un once habitual.'), 'un once parcial muestra un estado vacío compacto y explícito');
 assert.equal(appSource.includes('Sistema más usado: {rosterDashboard.mostUsedSystem}'), false, 'se retira el texto y fallback anteriores');
 assert.equal(appSource.includes('Disponibilidad semanal</p>'), false, 'se elimina el bloque duplicado');
-assert.ok(appSource.includes("['U23', 'Sub-23', squadSummary.sub23"), 'Sub-23 se conserva en el resumen superior');
+assert.ok(appSource.includes("['Sub-23', squadSummary.sub23") && appSource.includes("lg:border-dashed"), 'Sub-23 se conserva con tratamiento de característica de plantilla');
+assert.ok(panelSource.includes("['Plantilla', squadSummary.total") && panelSource.includes("['Disponibles', squadSummary.available"), 'las métricas muestran una única etiqueta legible');
+assert.doesNotMatch(panelSource, /\['(?:PL|OK|LES|SAN|ND|U23)'/);
+assert.ok(appSource.includes("const rosterHeaderActionClass = 'inline-flex h-10 w-full items-center justify-center rounded-xl"), 'las dos acciones comparten dimensiones y alineación');
+assert.match(panelSource, /grid w-\[168px\] grid-cols-1 gap-1\.5/);
+assert.match(panelSource, /grid items-start gap-3 xl:grid-cols-\[1\.05fr_0\.95fr\]/, 'los paneles competitivos no se estiran para igualar alturas vacías');
+assert.match(panelSource, /rosterDashboard\.hasHabitualEleven \? 'mt-3' : 'mt-2'/);
+assert.match(panelSource, /player \? 'py-2' : 'py-1\.5'/, 'las tarjetas clave sin datos reducen su altura');
+
+const controlsSource = appSource.slice(
+  appSource.indexOf('placeholder="Buscar jugador, dorsal, demarcación..."') - 400,
+  appSource.indexOf('</section>', appSource.indexOf('placeholder="Buscar jugador, dorsal, demarcación..."'))
+);
+assert.match(controlsSource, /role="group" aria-label="Filtros de plantilla"/);
+assert.match(controlsSource, /role="group" aria-label="Modo de vista"/);
+assert.match(controlsSource, /aria-pressed=\{playerQuickFilter === filter\}/);
+assert.match(controlsSource, /aria-pressed=\{playerRosterView === view\}/);
+assert.match(controlsSource, /xl:grid-cols-\[minmax\(240px,1fr\)_auto\]/, 'el buscador apila controles antes de forzar anchura a 1024 px');
 
 console.log('competitivePanel tests passed');
