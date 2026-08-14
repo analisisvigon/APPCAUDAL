@@ -52,7 +52,7 @@
     "test:goal-assistance": "node src/utils/goalAssistance.test.js",
     "test:goal-tactical-context": "node src/utils/goalTacticalContext.test.js",
     "test:goal-modal-state": "node src/utils/goalFormState.test.js",
-    "test:delegated-events": "node src/utils/delegatedEventIdentity.test.js && node src/utils/delegatedMatchValidation.test.js && node scripts/delegatedMatchValidationSqlAudit.test.mjs",
+    "test:delegated-events": "node src/utils/delegatedEventIdentity.test.js && node src/utils/delegatedMatchValidation.test.js && node src/utils/delegatedMatchStatusFlow.test.js && node scripts/delegatedMatchValidationSqlAudit.test.mjs",
     "test:delegated-save-flow": "node src/utils/delegatedEventSaveFlow.test.js",
     "test:delegated-stats": "node src/utils/delegatedStats.test.js && node scripts/delegatedStatsUiAudit.test.mjs",
     "test:player-display-name": "node src/utils/playerDisplayName.test.js",

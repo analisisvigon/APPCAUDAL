@@ -103,6 +103,10 @@ export default function DelegatedStatsDashboard({
   const scopedMatches = dataset.matches;
   const validatedMatches = dataset.validatedMatches;
   const quality = useMemo(() => getDelegatedRegistryQuality(scopedMatches), [scopedMatches]);
+  const hasUnprocessedValidatedMatch = validatedMatches.length > 0
+    && quality.registered > 0
+    && quality.validated === 0
+    && quality.pending > 0;
   const sides = useMemo(() => aggregateDelegatedSides(dataset.events), [dataset.events]);
   const playerRows = useMemo(() => buildDelegatedPlayerRows({
     events: dataset.events,
@@ -196,7 +200,13 @@ export default function DelegatedStatsDashboard({
 
       {view === 'Resumen' ? (
         <div className="mt-4 space-y-4">
-          {!dataset.events.length ? <p className="rounded-2xl bg-black/20 p-5 text-sm font-semibold text-slate-400">No hay eventos validados que coincidan con estos filtros.</p> : null}
+          {!dataset.events.length ? (
+            <p className="rounded-2xl bg-black/20 p-5 text-sm font-semibold text-slate-400">
+              {hasUnprocessedValidatedMatch
+                ? 'El partido figura como Validado, pero sus eventos siguen pendientes. Vuelve a validarlo para procesar y recargar sus eventos.'
+                : 'No hay eventos validados que coincidan con estos filtros.'}
+            </p>
+          ) : null}
           <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
             {[...DELEGATED_STAT_FIELDS, RATE_FIELD].map((field) => <MetricCard key={field.key} field={field} sides={sides} teamFilter={filters.team} />)}
           </div>

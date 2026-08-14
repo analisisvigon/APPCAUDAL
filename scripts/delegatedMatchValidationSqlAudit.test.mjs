@@ -16,6 +16,7 @@ assert.match(sql, /update public\.partidos[\s\S]*delegated_data_status/i);
 assert.match(sql, /grant execute[\s\S]*to authenticated/i);
 assert.doesNotMatch(sql, /create policy|drop policy|alter policy/i, 'la migración no cambia RLS');
 assert.match(appSource, /supabase\.rpc\('set_delegated_match_status'/, 'la UI usa la RPC transaccional');
+assert.match(appSource, /loadDelegatedMatchSnapshot[\s\S]*from\('match_quick_events'\)[\s\S]*runDelegatedMatchStatusFlow/i, 'tras la RPC se recargan los eventos del partido');
 assert.doesNotMatch(appSource, /from\(["']partidos["']\)\.update\(\{ delegated_data_status: status \}\)/, 'la UI no cambia solo el estado global');
 assert.match(appSource, /runDelegatedMatchStatusBatch\([\s\S]*updateDelegatedDataStatus/i, 'la selección múltiple reutiliza la misma transición');
 assert.match(appSource, /showOnlyPendingQuickEvents[\s\S]*filter\(\(event\) => !showOnlyPendingQuickEvents \|\| !event\.reviewed\)/i, 'el acceso de incidencias muestra solo pendientes');

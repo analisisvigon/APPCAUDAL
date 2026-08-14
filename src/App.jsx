@@ -131,7 +131,6 @@ import {
 import {
   DELEGATED_DATA_FILTERS,
   DELEGATED_DATA_STATUSES,
-  applyDelegatedMatchStatus,
   getDelegatedDataStatus,
   getDelegatedEventBaseType,
   getDelegatedEventSide,
@@ -141,6 +140,7 @@ import {
   isDelegatedRegistryEvent,
   runDelegatedMatchStatusBatch,
 } from './utils/delegatedMatchValidation';
+import { runDelegatedMatchStatusFlow } from './utils/delegatedMatchStatusFlow';
 import { getPlayerDisplayName } from './utils/playerDisplayName';
 import { getPlayerMatchIndicators } from './utils/playerMatchIndicators';
 import { loadOwnCaptainPriorities, saveOwnCaptainPriorities } from './utils/captainPriorityStore';
@@ -16525,34 +16525,71 @@ function App() {
     setQuickEventSavingIds((current) => current.filter((id) => id !== eventId));
   };
 
+  const loadDelegatedMatchSnapshot = async (matchId) => {
+    const [matchResponse, quickEventsResponse] = await Promise.all([
+      supabase
+        .from('partidos')
+        .select('id, delegated_data_status, delegated_reviewed_at')
+        .eq('id', matchId)
+        .single(),
+      supabase
+        .from('match_quick_events')
+        .select('*')
+        .eq('partido_id', matchId)
+        .order('minuto', { ascending: true }),
+    ]);
+    if (matchResponse.error) throw matchResponse.error;
+    if (quickEventsResponse.error) throw quickEventsResponse.error;
+    return {
+      id: matchId,
+      delegatedDataStatus: matchResponse.data?.delegated_data_status || '',
+      delegatedReviewedAt: matchResponse.data?.delegated_reviewed_at || '',
+      quickEvents: (quickEventsResponse.data || []).map((event) => normalizeSupabaseQuickEvent(event, players)),
+    };
+  };
+
   const updateDelegatedDataStatus = async (matchId, status) => {
     if (!matchId || !DELEGATED_DATA_STATUSES.includes(status)) return { ok: false };
+    const currentMatch = matches.find((match) => match.id === matchId);
+    if (!currentMatch) return { ok: false, error: new Error('Partido no encontrado en el estado local.') };
     setDelegatedStatusSavingId(matchId);
     setDelegatedStatusFeedback('');
-    const { data, error } = await supabase.rpc('set_delegated_match_status', {
-      p_partido_id: matchId,
-      p_status: status,
-    });
-    if (error) {
+    try {
+      const transition = await runDelegatedMatchStatusFlow({
+        currentMatch,
+        status,
+        persist: async () => {
+          const { data, error } = await supabase.rpc('set_delegated_match_status', {
+            p_partido_id: matchId,
+            p_status: status,
+          });
+          if (error) throw error;
+          const result = Array.isArray(data) ? data[0] : data;
+          if (!result) throw new Error('La RPC no devolvió el resumen de la validación.');
+          return result;
+        },
+        refresh: () => loadDelegatedMatchSnapshot(matchId),
+        publish: (nextMatch) => setMatches((current) => current.map((match) => (
+          match.id === matchId ? { ...match, ...nextMatch } : match
+        ))),
+      });
+      const { rpcResult: result, refreshError } = transition;
+      const validated = Number(result?.validated_events || 0);
+      const pending = Number(result?.pending_events || 0);
+      const label = status === 'Validado'
+        ? `${validated} eventos validados · ${pending} pendientes${pending ? ' · Validado con incidencias' : ''}`
+        : `Partido marcado como ${status.toLowerCase()}`;
+      setDelegatedStatusFeedback(refreshError
+        ? `${label} · Aviso: no se pudo confirmar la recarga (${refreshError.message}).`
+        : label);
+      return { ok: true, result, refreshError };
+    } catch (error) {
       console.error('Error actualizando estado del Registro Delegado:', { matchId, status, error });
       setDelegatedStatusFeedback(`Error: ${error.message || 'No se pudo actualizar el estado del Registro Delegado.'}`);
-      setDelegatedStatusSavingId('');
       return { ok: false, error };
+    } finally {
+      setDelegatedStatusSavingId('');
     }
-    const result = Array.isArray(data) ? data[0] : data;
-    setMatches((current) => current.map((match) => (
-      match.id === matchId
-        ? applyDelegatedMatchStatus(match, status, result?.reviewed_at || '')
-        : match
-    )));
-    const validated = Number(result?.validated_events || 0);
-    const pending = Number(result?.pending_events || 0);
-    const label = status === 'Validado'
-      ? `${validated} eventos validados · ${pending} pendientes${pending ? ' · Validado con incidencias' : ''}`
-      : `Partido marcado como ${status.toLowerCase()}`;
-    setDelegatedStatusFeedback(label);
-    setDelegatedStatusSavingId('');
-    return { ok: true, result };
   };
 
   const markDelegatedDataDirty = async (matchId) => {
