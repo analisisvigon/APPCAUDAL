@@ -40,8 +40,9 @@ assert.deepEqual(normalizeStatsLineup(['A', 'A']), ['A', '', '', '', '', '', '',
 
 const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 assert.ok(appSource.includes('moveStatsLineupPlayer({'), 'el drop real usa la transición central con swap');
-assert.ok(appSource.includes('persistStatsLineupSnapshot('), 'los intercambios se persisten y recargan');
-assert.ok(appSource.includes('buildIntelligentLineup({ players: starters, roles, coordinates'), 'la autocolocación reutiliza el mapa posicional existente');
+assert.ok(appSource.includes('persistStatsSquadSnapshot({') && appSource.includes('refreshStatsFromSupabase(currentMatchId, reason)'), 'los intercambios normales se persisten por H2 y se recargan');
+assert.ok(appSource.includes('buildAutomaticStatsLineup({ historyMatches, system, rosterPlayers: players })'), 'la autocolocación reutiliza el histórico real por sistema y slot');
+assert.ok(appSource.includes('stageStatsLineupProposal({') && appSource.includes('Propuesta local · pendiente de guardar'), 'AUTO y carga histórica preparan primero estado local');
 assert.ok(appSource.includes('const starters = normalizeStatsLineup(selectedMatch?.statsLineup || []).filter(Boolean)'), 'el contador parte de titulares realmente colocados');
 assert.ok(appSource.includes('refreshStatsFromSupabase(currentMatchId, reason)'), 'la persistencia termina releyendo Supabase');
 

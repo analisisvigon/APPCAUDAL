@@ -150,6 +150,13 @@ import {
   normalizeStatsLineup,
   removeStatsLineupPlayer,
 } from './utils/statsLineup';
+import {
+  buildAutomaticStatsLineup,
+  buildHistoricalStatsLineupProposal,
+  buildStatsLineupHistoryDataset,
+  getEligibleStatsLineupHistoryMatches,
+  getStoredStatsSystem,
+} from './utils/statsLineupHistory';
 import { buildMatchSquadSnapshot, getActiveStatsCalledPlayerNames } from './utils/statsSquadSnapshot';
 import {
   PLAYER_AVAILABILITY,
@@ -5325,6 +5332,13 @@ function App() {
   const [statsError, setStatsError] = useState('');
   const [statsSaveStatus, setStatsSaveStatus] = useState('');
   const [statsSquadSaving, setStatsSquadSaving] = useState(false);
+  const [statsLineupProposal, setStatsLineupProposal] = useState(null);
+  const [statsLineupHistoryModalOpen, setStatsLineupHistoryModalOpen] = useState(false);
+  const [statsLineupHistoryLoading, setStatsLineupHistoryLoading] = useState(false);
+  const [statsLineupHistoryError, setStatsLineupHistoryError] = useState('');
+  const [statsLineupHistorySearch, setStatsLineupHistorySearch] = useState('');
+  const [statsLineupHistoryMatches, setStatsLineupHistoryMatches] = useState([]);
+  const [pendingHistoricalLineup, setPendingHistoricalLineup] = useState(null);
   const [statsViewMode, setStatsViewMode] = useState('completa');
   const [statsEventFilter, setStatsEventFilter] = useState('Todos');
   const [delegatedMinute, setDelegatedMinute] = useState('0');
@@ -5941,6 +5955,22 @@ function App() {
   useEffect(() => {
     setDelegatedMinute(String(Math.min(130, Math.floor(delegatedElapsedSeconds / 60))));
   }, [delegatedElapsedSeconds]);
+
+  useEffect(() => {
+    if (statsLineupProposal && statsLineupProposal.matchId !== selectedMatchId) {
+      setMatches((currentMatches) => currentMatches.map((match) => match.id === statsLineupProposal.matchId ? {
+        ...match,
+        statsLineup: statsLineupProposal.originalLineup,
+        statsSystem: statsLineupProposal.originalSystem,
+        statsSystemRaw: statsLineupProposal.originalSystem,
+        statsCalledPlayers: statsLineupProposal.originalCalledPlayerNames,
+        statsCalledPlayerIds: statsLineupProposal.originalCalledPlayerIds,
+      } : match));
+      setStatsLineupProposal(null);
+    }
+    setStatsLineupHistoryModalOpen(false);
+    setPendingHistoricalLineup(null);
+  }, [selectedMatchId]);
 
   useEffect(() => {
     const header = delegatedHeaderRef.current;
@@ -15643,8 +15673,159 @@ function App() {
     return persistStatsSquadSnapshot({ lineup, reason });
   };
 
+  const stageStatsLineupProposal = ({ lineup, system, calledPlayerNames, playerIdsByName, message = '', warnings = [] }) => {
+    if (!selectedMatch) return;
+    const nextLineup = normalizeStatsLineup(lineup);
+    const nextSystem = system || resolveMatchStatsFormation(selectedMatch, ownDefaultFormation);
+    const nextCalledPlayerNames = Array.from(new Set([
+      ...(calledPlayerNames || selectedMatch.statsCalledPlayers || []),
+      ...nextLineup.filter(Boolean),
+    ]));
+    const nextCalledPlayerIds = { ...safeObject(selectedMatch.statsCalledPlayerIds), ...safeObject(playerIdsByName) };
+    setStatsLineupProposal((current) => ({
+      matchId: selectedMatch.id,
+      originalLineup: current?.matchId === selectedMatch.id ? current.originalLineup : normalizeStatsLineup(selectedMatch.statsLineup || []),
+      originalSystem: current?.matchId === selectedMatch.id ? current.originalSystem : resolveMatchStatsFormation(selectedMatch, ownDefaultFormation),
+      originalCalledPlayerNames: current?.matchId === selectedMatch.id ? current.originalCalledPlayerNames : safeArray(selectedMatch.statsCalledPlayers),
+      originalCalledPlayerIds: current?.matchId === selectedMatch.id ? current.originalCalledPlayerIds : safeObject(selectedMatch.statsCalledPlayerIds),
+      lineup: nextLineup,
+      system: nextSystem,
+      calledPlayerNames: nextCalledPlayerNames,
+      playerIdsByName: nextCalledPlayerIds,
+      message,
+      warnings,
+    }));
+    setMatches((currentMatches) => currentMatches.map((match) => match.id === selectedMatch.id ? {
+      ...match,
+      statsLineup: nextLineup,
+      statsSystem: nextSystem,
+      statsSystemRaw: nextSystem,
+      statsCalledPlayers: nextCalledPlayerNames,
+      statsCalledPlayerIds: nextCalledPlayerIds,
+    } : match));
+    setStatsSaveStatus('Propuesta local · pendiente de guardar');
+    setStatsError('');
+  };
+
+  const discardStatsLineupProposal = () => {
+    if (!statsLineupProposal || !selectedMatch) return;
+    setMatches((currentMatches) => currentMatches.map((match) => match.id === selectedMatch.id ? {
+      ...match,
+      statsLineup: statsLineupProposal.originalLineup,
+      statsSystem: statsLineupProposal.originalSystem,
+      statsSystemRaw: statsLineupProposal.originalSystem,
+      statsCalledPlayers: statsLineupProposal.originalCalledPlayerNames,
+      statsCalledPlayerIds: statsLineupProposal.originalCalledPlayerIds,
+    } : match));
+    setStatsLineupProposal(null);
+    setStatsSaveStatus('Propuesta descartada');
+  };
+
+  const saveStatsLineupProposal = async () => {
+    if (!statsLineupProposal || !selectedMatch) return;
+    const saved = await persistStatsSquadSnapshot({
+      lineup: statsLineupProposal.lineup,
+      calledPlayerNames: statsLineupProposal.calledPlayerNames,
+      system: statsLineupProposal.system,
+      sourceMatch: selectedMatch,
+      reason: 'propuesta de once inicial',
+    });
+    if (saved) setStatsLineupProposal(null);
+  };
+
+  const loadStatsLineupHistory = async () => {
+    if (!selectedMatch) return [];
+    setStatsLineupHistoryLoading(true);
+    setStatsLineupHistoryError('');
+    try {
+      const [slotsResponse, statsResponse] = await Promise.all([
+        supabase.from('partido_alineacion_slots').select('partido_id,scope,slot,jugador_id,player_name').eq('scope', 'stats').order('slot', { ascending: true }),
+        supabase.from('partido_estadisticas_jugador').select('partido_id,jugador_id,player_name,minutes'),
+      ]);
+      if (slotsResponse.error) throw slotsResponse.error;
+      if (statsResponse.error) throw statsResponse.error;
+      const dataset = buildStatsLineupHistoryDataset({
+        matches,
+        slotRows: slotsResponse.data || [],
+        statsRows: statsResponse.data || [],
+      });
+      const eligible = getEligibleStatsLineupHistoryMatches({
+        matches: dataset,
+        currentMatch: selectedMatch,
+        competitionCatalog: competitions,
+      });
+      setStatsLineupHistoryMatches(eligible);
+      return eligible;
+    } catch (historyError) {
+      setStatsLineupHistoryError(historyError.message || 'No se pudo cargar el histórico de alineaciones reales.');
+      return [];
+    } finally {
+      setStatsLineupHistoryLoading(false);
+    }
+  };
+
+  const openStatsLineupHistory = async () => {
+    setStatsLineupHistoryModalOpen(true);
+    setStatsLineupHistorySearch('');
+    await loadStatsLineupHistory();
+  };
+
+  const getHistoricalLineupWarnings = (proposal) => [
+    proposal.unavailable.length ? `${proposal.unavailable.length} no disponible${proposal.unavailable.length === 1 ? '' : 's'}: ${proposal.unavailable.join(', ')}` : '',
+    proposal.missing.length ? `${proposal.missing.length} fuera de plantilla o sin UUID resoluble: ${proposal.missing.join(', ')}` : '',
+  ].filter(Boolean);
+
+  const applyHistoricalLineup = (historicalMatch, { acceptSystemChange = false } = {}) => {
+    if (!selectedMatch || !historicalMatch) return;
+    const currentSystem = resolveMatchStatsFormation(selectedMatch, ownDefaultFormation);
+    const proposal = buildHistoricalStatsLineupProposal({ historicalMatch, currentSystem, rosterPlayers: players });
+    if (proposal.requiresSystemChange && !acceptSystemChange) {
+      setPendingHistoricalLineup({ historicalMatch, proposal });
+      return;
+    }
+    stageStatsLineupProposal({
+      lineup: proposal.lineup,
+      system: proposal.system || currentSystem,
+      calledPlayerNames: selectedMatch.statsCalledPlayers,
+      playerIdsByName: Object.fromEntries(proposal.slots.map((slot) => [slot.playerName, slot.jugadorId])),
+      message: `XI real cargado desde ${historicalMatch.opponent || 'partido anterior'}.`,
+      warnings: getHistoricalLineupWarnings(proposal),
+    });
+    setPendingHistoricalLineup(null);
+    setStatsLineupHistoryModalOpen(false);
+  };
+
   const saveStatsPlayerRole = async (playerName, role) => {
     if (!selectedMatch || !playerName) return;
+    if (statsLineupProposal?.matchId === selectedMatch.id) {
+      const nextLineup = normalizeStatsLineup(selectedMatch.statsLineup || []);
+      const nextCalledNames = new Set(statsLineupProposal.calledPlayerNames || []);
+      const currentSlot = nextLineup.indexOf(playerName);
+      if (role === 'Titular') {
+        if (currentSlot < 0) {
+          const emptySlot = nextLineup.findIndex((name) => !name);
+          if (emptySlot < 0) {
+            setStatsError('El once ya tiene 11 titulares.');
+            return;
+          }
+          nextLineup[emptySlot] = playerName;
+        }
+        nextCalledNames.add(playerName);
+      } else {
+        if (currentSlot >= 0) nextLineup[currentSlot] = '';
+        if (role === 'Fuera') nextCalledNames.delete(playerName);
+        else nextCalledNames.add(playerName);
+      }
+      stageStatsLineupProposal({
+        lineup: nextLineup,
+        system: statsLineupProposal.system,
+        calledPlayerNames: Array.from(nextCalledNames),
+        playerIdsByName: statsLineupProposal.playerIdsByName,
+        message: statsLineupProposal.message,
+        warnings: statsLineupProposal.warnings,
+      });
+      return;
+    }
     if (role === 'Fuera') {
       await removeStatsCalledPlayer(playerName);
       return;
@@ -15681,26 +15862,17 @@ function App() {
 
   const autoPlaceStatsStarters = async () => {
     if (!selectedMatch) return;
-    const starters = getStatsSquadRowsByStatus('Titular').slice(0, 11).map((row) => row.player);
-    if (!starters.length) return;
     const system = resolveMatchStatsFormation(selectedMatch, ownDefaultFormation);
-    const roles = getFormationRoles(system);
-    const coordinates = getFormationCoordinates(system);
-    const currentLineup = normalizeStatsLineup(selectedMatch.statsLineup || []).flatMap((playerName, slot) => {
-      const player = starters.find((item) => item.name === playerName);
-      return player ? [{ ...player, role: 'Titular', slot, ...coordinates[slot] }] : [];
+    const historyMatches = await loadStatsLineupHistory();
+    const result = buildAutomaticStatsLineup({ historyMatches, system, rosterPlayers: players });
+    stageStatsLineupProposal({
+      lineup: result.lineup,
+      system,
+      calledPlayerNames: selectedMatch.statsCalledPlayers,
+      playerIdsByName: Object.fromEntries(result.slots.map((slot) => [slot.playerName, slot.jugadorId])),
+      message: `${result.slots.length} slot${result.slots.length === 1 ? '' : 's'} resuelto${result.slots.length === 1 ? '' : 's'} con apariciones reales en ${system}.`,
+      warnings: result.slots.length < 11 ? [`${11 - result.slots.length} slot${11 - result.slots.length === 1 ? '' : 's'} sin candidato histórico fiable.`] : [],
     });
-    const result = buildIntelligentLineup({ players: starters, roles, coordinates, currentLineup, currentRoles: roles });
-    const nextLineup = Array.from({ length: 11 }, () => '');
-    result.lineup.forEach((player) => {
-      if (Number.isInteger(player.slot) && player.slot >= 0 && player.slot < 11) nextLineup[player.slot] = player.name;
-    });
-    const remainingPlayers = starters.filter((player) => !nextLineup.includes(player.name));
-    remainingPlayers.forEach((player) => {
-      const emptySlot = nextLineup.findIndex((name) => !name);
-      if (emptySlot >= 0) nextLineup[emptySlot] = player.name;
-    });
-    await persistStatsLineupSnapshot(nextLineup, 'auto colocar titulares');
   };
 
   const updateStatsPlayerData = async (playerName, fields) => {
@@ -15754,6 +15926,23 @@ function App() {
   const updateStatsLineupSlot = async (slotIndex, playerName) => {
     if (!selectedMatch || !playerName) return;
     if (statsSquadSaveInFlightRef.current) return;
+    if (statsLineupProposal?.matchId === selectedMatch.id) {
+      const transition = moveStatsLineupPlayer({
+        lineup: selectedMatch.statsLineup || [],
+        playerName,
+        targetSlot: slotIndex,
+      });
+      if (!transition.changed) return;
+      stageStatsLineupProposal({
+        lineup: transition.lineup,
+        system: statsLineupProposal.system,
+        calledPlayerNames: statsLineupProposal.calledPlayerNames,
+        playerIdsByName: statsLineupProposal.playerIdsByName,
+        message: statsLineupProposal.message,
+        warnings: statsLineupProposal.warnings,
+      });
+      return;
+    }
     const sourceMatch = selectedMatch.statsDataLoaded ? selectedMatch : await loadMatchStatsData(selectedMatch.id);
     if (!sourceMatch) return;
     const transition = moveStatsLineupPlayer({
@@ -15774,6 +15963,17 @@ function App() {
 
   const updateStatsSystem = async (system) => {
     if (!selectedMatch) return;
+    if (statsLineupProposal?.matchId === selectedMatch.id) {
+      stageStatsLineupProposal({
+        lineup: selectedMatch.statsLineup,
+        system,
+        calledPlayerNames: statsLineupProposal.calledPlayerNames,
+        playerIdsByName: statsLineupProposal.playerIdsByName,
+        message: statsLineupProposal.message,
+        warnings: statsLineupProposal.warnings,
+      });
+      return;
+    }
     return persistStatsSquadSnapshot({ system, reason: 'sistema de estadísticas' });
   };
 
@@ -17226,8 +17426,11 @@ function App() {
     if (!selectedMatch) return null;
     const systemSequence = buildSystemSequence(selectedMatch);
     const latestSegment = systemSequence[systemSequence.length - 1] || null;
-    const activeSystem = selectedSystemMoment?.system || latestSegment?.system || resolveMatchStatsFormation(selectedMatch, ownDefaultFormation);
-    const activeSystemFromMinute = selectedSystemMoment?.minute ?? latestSegment?.fromMinute ?? 0;
+    const hasLocalProposal = statsLineupProposal?.matchId === selectedMatch.id;
+    const activeSystem = hasLocalProposal
+      ? statsLineupProposal.system
+      : selectedSystemMoment?.system || latestSegment?.system || resolveMatchStatsFormation(selectedMatch, ownDefaultFormation);
+    const activeSystemFromMinute = hasLocalProposal ? 0 : selectedSystemMoment?.minute ?? latestSegment?.fromMinute ?? 0;
     const coordinates = getFormationCoordinates(activeSystem);
     const matchEvents = getStatsMatchEvents();
     return (
@@ -17246,7 +17449,7 @@ function App() {
         <div className="absolute left-1/2 top-4 h-24 w-56 -translate-x-1/2 rounded-b-3xl border-x-2 border-b-2 border-white/45" />
         <div className="absolute bottom-4 left-1/2 h-24 w-56 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/45" />
         <div className="absolute left-5 top-5 z-10 rounded-2xl border border-white/15 bg-black/55 px-3 py-2 text-xs font-black text-white shadow-lg">
-          <p className="text-[9px] uppercase tracking-[0.14em] text-slate-300">Sistema vigente desde el {activeSystemFromMinute}'</p>
+          <p className="text-[9px] uppercase tracking-[0.14em] text-slate-300">{hasLocalProposal ? 'Propuesta local sin guardar' : `Sistema vigente desde el ${activeSystemFromMinute}'`}</p>
           <p className="mt-0.5 text-base text-caudal-electric">{activeSystem}</p>
         </div>
         {coordinates.map((slot, slotIndex) => {
@@ -17336,6 +17539,11 @@ function App() {
       return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
     };
     const matchMeta = [getCompetitionFromCatalog(selectedMatch).label, formatStatsMatchDate(selectedMatch.date)].filter(Boolean).join(' · ');
+    const normalizedHistorySearch = statsLineupHistorySearch.trim().toLocaleLowerCase('es');
+    const filteredLineupHistoryMatches = statsLineupHistoryMatches.filter((match) => (
+      !normalizedHistorySearch
+      || [match.date, match.opponent, getStoredStatsSystem(match)].some((value) => String(value || '').toLocaleLowerCase('es').includes(normalizedHistorySearch))
+    ));
     const statRows = sortStatsIndividualPlayers(
       getStatsCalledPlayers(),
       (player) => getStatsPlayerData(player.name).role
@@ -17444,6 +17652,7 @@ function App() {
     };
 
     return (
+      <>
       <div className="space-y-5">
         <div className="border border-white/10 bg-[#091428]/85 p-4 shadow-glow">
           <div className="grid items-center gap-4 lg:grid-cols-[1fr_auto_1fr]">
@@ -17636,10 +17845,17 @@ function App() {
                 <select disabled={statsSquadSaving} value={resolveMatchStatsFormation(selectedMatch, ownDefaultFormation)} onChange={(event) => updateStatsSystem(event.target.value)} className="border border-white/10 bg-white px-4 py-2 text-sm font-black text-slate-950 disabled:cursor-wait disabled:opacity-60">
                   {STATS_FORMATION_OPTIONS.map((system) => <option key={system} value={system}>{system}</option>)}
                 </select>
-                <button type="button" disabled={statsSquadSaving} onClick={autoPlaceStatsStarters} className="bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-200 disabled:cursor-wait disabled:opacity-60">{statsSquadSaving ? 'Guardando…' : 'Auto colocar titulares'}</button>
-                <button type="button" onClick={openStatsCallupPanel} className="bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950">Añadir convocados</button>
+                <button type="button" disabled={statsSquadSaving || statsLineupHistoryLoading} onClick={autoPlaceStatsStarters} className="bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-200 disabled:cursor-wait disabled:opacity-60">{statsLineupHistoryLoading ? 'Calculando…' : 'Auto colocar titulares'}</button>
+                <button type="button" disabled={statsSquadSaving || statsLineupHistoryLoading} onClick={openStatsLineupHistory} className="bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-200 disabled:cursor-wait disabled:opacity-60">Cargar alineación anterior</button>
+                <button type="button" disabled={Boolean(statsLineupProposal)} title={statsLineupProposal ? 'Guarda o descarta primero la propuesta local.' : ''} onClick={openStatsCallupPanel} className="bg-caudal-electric px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950 disabled:cursor-not-allowed disabled:opacity-50">Añadir convocados</button>
               </div>
             </div>
+            {statsLineupProposal?.matchId === selectedMatch.id ? (
+              <div className="mt-3 flex flex-col gap-3 border border-caudal-electric/25 bg-caudal-electric/[0.07] p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0"><p className="text-xs font-black text-white">{statsLineupProposal.message || 'Propuesta de XI preparada localmente.'}</p>{statsLineupProposal.warnings?.map((warning) => <p key={warning} className="mt-1 text-[11px] font-semibold text-amber-100">{warning}</p>)}</div>
+                <div className="flex shrink-0 flex-wrap gap-2"><button type="button" disabled={statsSquadSaving} onClick={discardStatsLineupProposal} className="min-h-10 bg-white/10 px-4 text-xs font-black uppercase text-white">Descartar</button><button type="button" disabled={statsSquadSaving} onClick={saveStatsLineupProposal} className="min-h-10 bg-caudal-electric px-4 text-xs font-black uppercase text-slate-950">{statsSquadSaving ? 'Guardando…' : 'Guardar XI'}</button></div>
+              </div>
+            ) : null}
             <div className="mt-4 min-w-0 overflow-hidden">{renderStatsPitch()}</div>
           </section>
 
@@ -17755,6 +17971,28 @@ function App() {
           )}
         </section>
       </div>
+      {statsLineupHistoryModalOpen ? createPortal(
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="stats-lineup-history-title">
+          <div className="max-h-[86vh] w-full max-w-2xl overflow-y-auto border border-white/10 bg-[#091428] p-5 shadow-2xl sm:p-6">
+            <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Estadísticas · XI real</p><h3 id="stats-lineup-history-title" className="mt-2 text-xl font-black text-white">Cargar alineación anterior</h3><p className="mt-2 text-sm text-slate-400">Solo partidos oficiales jugados y slots reales de ESTADÍSTICAS.</p></div><button type="button" onClick={() => setStatsLineupHistoryModalOpen(false)} className="min-h-11 bg-white/10 px-4 text-xs font-black uppercase text-white">Cerrar</button></div>
+            <input value={statsLineupHistorySearch} onChange={(event) => setStatsLineupHistorySearch(event.target.value)} placeholder="Buscar por fecha, rival o sistema" className="mt-5 min-h-11 w-full border border-white/10 bg-white px-4 py-3 text-sm font-bold text-slate-950" />
+            {statsLineupHistoryLoading ? <p className="mt-4 text-sm font-semibold text-slate-400">Cargando alineaciones reales…</p> : null}
+            {statsLineupHistoryError ? <p role="alert" className="mt-4 bg-red-500/10 p-3 text-sm font-bold text-red-100">{statsLineupHistoryError}</p> : null}
+            <div className="mt-4 space-y-2">
+              {filteredLineupHistoryMatches.map((match) => <button key={match.id} type="button" onClick={() => applyHistoricalLineup(match)} className="flex min-h-14 w-full flex-wrap items-center justify-between gap-2 border border-white/10 bg-white/[0.04] px-4 py-3 text-left transition hover:border-caudal-electric/45 hover:bg-white/[0.08]"><span className="font-black text-white">{formatStatsMatchDate(match.date)} · {match.opponent || 'Rival sin definir'}</span><span className="text-xs font-black text-caudal-electric">{getStoredStatsSystem(match)}</span></button>)}
+              {!statsLineupHistoryLoading && !filteredLineupHistoryMatches.length ? <p className="border border-dashed border-white/10 p-5 text-sm text-slate-400">No hay partidos anteriores que cumplan: oficial, jugado y con alineación real guardada.</p> : null}
+            </div>
+          </div>
+        </div>,
+        document.body
+      ) : null}
+      {pendingHistoricalLineup ? createPortal(
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/80 p-4" role="dialog" aria-modal="true" aria-labelledby="stats-lineup-system-confirm-title">
+          <div className="w-full max-w-lg border border-white/10 bg-[#091428] p-6 shadow-2xl"><p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-200">Sistema diferente</p><h3 id="stats-lineup-system-confirm-title" className="mt-2 text-xl font-black text-white">Esta alineación utilizó {pendingHistoricalLineup.proposal.system}.</h3><p className="mt-3 text-sm leading-6 text-slate-400">Se cambiará el sistema local y se reproducirán exactamente sus slots válidos. Nada se guardará hasta pulsar Guardar XI.</p><div className="mt-6 flex flex-wrap justify-end gap-2"><button type="button" onClick={() => setPendingHistoricalLineup(null)} className="min-h-11 bg-white/10 px-5 text-xs font-black uppercase text-white">Cancelar</button><button type="button" onClick={() => applyHistoricalLineup(pendingHistoricalLineup.historicalMatch, { acceptSystemChange: true })} className="min-h-11 bg-caudal-electric px-5 text-xs font-black uppercase text-slate-950">Cargar sistema + alineación</button></div></div>
+        </div>,
+        document.body
+      ) : null}
+      </>
     );
   };
 

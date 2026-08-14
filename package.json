@@ -58,6 +58,7 @@
     "test:stats-callup": "node src/utils/statsCallup.test.js",
     "test:stats-formation": "node src/utils/statsFormation.test.js",
     "test:stats-lineup": "node src/utils/statsLineup.test.js",
+    "test:stats-lineup-history": "node src/utils/statsLineupHistory.test.js",
     "test:stats-visual": "node src/utils/statsVisualIdentity.test.js",
     "test:stats-individual": "node src/utils/statsIndividualOrder.test.js",
     "test:player-availability": "node src/utils/playerAvailability.test.js",

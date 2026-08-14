@@ -64,7 +64,11 @@ assert.ok(appSource.includes("statsSquadSaving ? 'Guardando…' : 'Guardar aline
 
 const fragmentedLineupStart = appSource.indexOf('const persistStatsLineupSnapshot');
 const fragmentedLineupEnd = appSource.indexOf('const saveStatsPlayerRole', fragmentedLineupStart);
-assert.ok(!appSource.slice(fragmentedLineupStart, fragmentedLineupEnd).includes('partido_alineacion_slots'), 'DELETE/UPSERT de slots salio del frontend principal');
+assert.doesNotMatch(
+  appSource.slice(fragmentedLineupStart, fragmentedLineupEnd),
+  /from\(['"]partido_alineacion_slots['"]\)\s*\.(?:insert|upsert|update|delete)/,
+  'el frontend puede leer histórico stats, pero DELETE/UPSERT de slots sigue dentro de H2'
+);
 assert.ok(appSource.includes("reason: 'marcar todos como suplentes'"));
 assert.ok(appSource.includes("reason: 'marcar once inicial'"));
 assert.ok(appSource.includes('return addStatsCalledPlayersBulk([playerName]);'));
