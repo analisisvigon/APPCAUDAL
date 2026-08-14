@@ -1,5 +1,5 @@
 import FootballPitchPrint from './FootballPitchPrint';
-import { getPlayerDisplayName } from '../../utils/playerDisplayName';
+import { buildLineupPrintBenchRows } from '../../utils/lineupPrintBench';
 import { getOwnPrintKitForMatch } from '../../utils/printPlayerShirt';
 
 const formatDate = (value) => {
@@ -9,14 +9,8 @@ const formatDate = (value) => {
   return new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
 };
 
-const getBenchNumber = (player) => {
-  const value = player?.number ?? player?.dorsal;
-  const parsed = Number.parseInt(String(value ?? '').replace(/[^\d]/g, ''), 10);
-  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
-};
-
 export default function LineupPrintSheet({ match, starters = [], bench = [], coordinates = [], system = '4-4-2', kit, captainPlayerId = null }) {
-  const sortedBench = [...bench].sort((a, b) => getBenchNumber(a) - getBenchNumber(b));
+  const benchRows = buildLineupPrintBenchRows(bench);
   const resolvedKit = kit === 'away' || kit === 'home' ? kit : getOwnPrintKitForMatch(match);
 
   return (
@@ -38,10 +32,13 @@ export default function LineupPrintSheet({ match, starters = [], bench = [], coo
         <aside className="print-bench">
           <h2>Banquillo</h2>
           <div className="print-bench-list">
-            {sortedBench.length ? sortedBench.map((player) => (
-              <div key={player.id || player.name} className="print-bench-row">
-                <strong>{player.number || player.dorsal || '-'}</strong>
-                <span>{getPlayerDisplayName(player)}{player.id === captainPlayerId || player.isCaptain ? ' (C)' : ''}</span>
+            {benchRows.length ? benchRows.map((row) => (
+              <div key={row.key} className="print-bench-row">
+                <span className="print-bench-position-marker" aria-hidden={!row.isGoalkeeper}>
+                  {row.isGoalkeeper ? <span className="print-bench-goalkeeper-badge" aria-label="Portero suplente">POR</span> : null}
+                </span>
+                <strong className="print-bench-number">{row.number}</strong>
+                <span className="print-bench-name">{row.name}{row.player?.id === captainPlayerId || row.player?.isCaptain ? ' (C)' : ''}</span>
               </div>
             )) : (
               <p className="print-empty">No hay suplentes seleccionados</p>

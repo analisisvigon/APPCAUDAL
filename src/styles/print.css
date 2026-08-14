@@ -459,9 +459,9 @@
 
 .print-bench-row {
   display: grid;
-  grid-template-columns: 8mm 1fr;
+  grid-template-columns: 5mm 6.5mm minmax(0, 1fr);
   align-items: start;
-  gap: 1.3mm;
+  column-gap: 0.7mm;
   border-bottom: 0.5pt solid #999;
   min-height: 9.2mm;
   padding: 1.15mm 0;
@@ -470,13 +470,41 @@
   overflow: hidden;
 }
 
-.print-bench-row strong {
+.print-bench-position-marker {
+  display: flex;
+  width: 5mm;
+  min-width: 0;
+  min-height: 3.8mm;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.print-bench-goalkeeper-badge {
+  display: inline-flex;
+  width: 4.8mm;
+  height: 3.8mm;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  border: 0.7pt solid #000;
+  border-radius: 0.7mm;
+  background: #fff;
+  color: #000;
+  font-size: 5pt;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+
+.print-bench-number {
   font-size: 8pt;
   text-align: center;
   line-height: 1.15;
 }
 
-.print-bench-row span {
+.print-bench-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: clip;
   white-space: normal;

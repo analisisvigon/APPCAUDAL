@@ -16,7 +16,13 @@ const caseId = String(params.get('case') || '').toUpperCase();
 const count = Math.max(1, Number(params.get('count')) || 1);
 const preview = params.get('preview') === '1';
 const match = { opponent: 'Rival QA', date: '2026-08-10', isHome: true, preCaudalSystem: '4-4-2' };
-const players = Array.from({ length: 16 }, (_, index) => ({ id: `player-${index + 1}`, name: `JUGADOR ${index + 1}`, shirt_name: `J${index + 1}`, number: index + 1 }));
+const players = Array.from({ length: 16 }, (_, index) => ({
+  id: `player-${index + 1}`,
+  name: `JUGADOR ${index + 1}`,
+  shirt_name: `J${index + 1}`,
+  number: index + 1,
+  position: index === 11 ? 'Portero' : 'Defensa',
+}));
 const coordinates = Array.from({ length: 11 }, (_, index) => ({ x: 15 + (index % 4) * 23, y: 83 - Math.floor(index / 4) * 27 }));
 const takerSections = [
   { id: 'penaltis', label: 'Penaltis' },

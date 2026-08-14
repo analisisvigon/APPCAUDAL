@@ -254,15 +254,25 @@ const getLineupStarters = ({ match, playersByName, playersById }) => {
   return { lineupNames, starters };
 };
 
-const getLineupBench = ({ match, players, starters, playersByName }) => {
+const getLineupBench = ({ match, players, starters, playersByName, playersById }) => {
   const starterNames = new Set(
     starters
       .map((player) => normalizeText(player.name))
       .filter((name) => name && !name.startsWith('puesto ') && name !== 'sin jugador asignado')
   );
   const rawCalledPlayers = match?.statsCalledPlayers?.length ? match.statsCalledPlayers : players;
+  const calledPlayerIdsByName = new Map(Object.entries(match?.statsCalledPlayerIds || {})
+    .map(([name, playerId]) => [normalizeText(name), playerId]));
   const calledPlayers = rawCalledPlayers
-    .map((entry) => normalizePrintPlayerEntry(entry, playersByName))
+    .map((entry) => {
+      const name = getPlayerNameFromEntry(entry);
+      const entryPlayerId = typeof entry === 'object'
+        ? entry?.jugadorId || entry?.jugador_id || entry?.playerId || entry?.player_id
+        : '';
+      const storedPlayerId = entryPlayerId || calledPlayerIdsByName.get(normalizeText(name));
+      const linkedById = storedPlayerId ? playersById.get(String(storedPlayerId)) : null;
+      return linkedById ? toPrintPlayer(linkedById, name) : normalizePrintPlayerEntry(entry, playersByName);
+    })
     .filter((player) => normalizeText(player.name));
 
   const byName = new Map();
@@ -589,7 +599,7 @@ export default function MatchPrintTab({
     const captainResolution = resolveMatchCaptain({ match, players, captainPriorities });
     const printableCaptainPlayerId = captainResolution.isStarter ? captainResolution.playerId : '';
     const markedStarters = starters.map((player) => ({ ...player, isCaptain: Boolean(printableCaptainPlayerId && String(player.id) === String(printableCaptainPlayerId)) }));
-    const bench = getLineupBench({ match, players, starters: markedStarters, playersByName: byName })
+    const bench = getLineupBench({ match, players, starters: markedStarters, playersByName: byName, playersById: byId })
       .map((player) => ({ ...player, isCaptain: false }));
     const coordinates = typeof getFormationCoordinates === 'function' ? getFormationCoordinates(system) : [];
     return { system, starters: markedStarters, bench, coordinates, captainPlayerId: printableCaptainPlayerId };
