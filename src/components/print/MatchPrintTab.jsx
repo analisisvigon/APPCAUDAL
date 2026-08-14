@@ -10,6 +10,7 @@ import SetPieceDiagramEditor from './SetPieceDiagramEditor';
 import SetPieceDiagramPrintSheet from './SetPieceDiagramPrintSheet';
 import SetPieceTakersPrintSheet from './SetPieceTakersPrintSheet';
 import { getPlayerDisplayName } from '../../utils/playerDisplayName';
+import { resolveMatchCaptain } from '../../utils/matchCaptain';
 import { getOwnPrintKitForMatch } from '../../utils/printPlayerShirt';
 import {
   cloneSetPieceElementsWithFreshIds,
@@ -228,15 +229,23 @@ const normalizePrintPlayerEntry = (entry, playersByName) => {
   return toPrintPlayer(linked || entry, name);
 };
 
-const getLineupStarters = ({ match, playersByName }) => {
-  const lineupNames = (match?.preCaudalLineup || []).some(Boolean)
-    ? match.preCaudalLineup
-    : (match?.statsLineup || []).some(Boolean)
-      ? match.statsLineup
+const getLineupStarters = ({ match, playersByName, playersById }) => {
+  const statsSlots = Array.isArray(match?.lineupSlots?.stats) ? match.lineupSlots.stats : [];
+  const statsSlotsByIndex = new Map(statsSlots.map((slot) => [Number(slot.slot), slot]));
+  const hasStatsLineup = statsSlots.some((slot) => slot?.jugadorId || slot?.jugador_id || slot?.playerName || slot?.player_name)
+    || (match?.statsLineup || []).some(Boolean);
+  const lineupNames = hasStatsLineup
+    ? match?.statsLineup || []
+    : (match?.preCaudalLineup || []).some(Boolean)
+      ? match.preCaudalLineup
       : [];
 
   const starters = Array.from({ length: 11 }, (_, index) => {
-    const name = lineupNames[index] || '';
+    const storedSlot = hasStatsLineup ? statsSlotsByIndex.get(index) : null;
+    const storedPlayerId = storedSlot?.jugadorId ?? storedSlot?.jugador_id;
+    const linkedById = storedPlayerId ? playersById.get(String(storedPlayerId)) : null;
+    const name = storedSlot?.playerName ?? storedSlot?.player_name ?? lineupNames[index] ?? '';
+    if (linkedById) return toPrintPlayer(linkedById, name);
     if (!name) return toPrintPlayer(null, 'Sin jugador asignado');
     return normalizePrintPlayerEntry(name, playersByName);
   });
@@ -268,6 +277,7 @@ export default function MatchPrintTab({
   match,
   matches = [],
   players = [],
+  captainPriorities = [],
   getFormationCoordinates,
   onNavigateMatchSection,
   onMatchPlanDirtyChange,
@@ -324,7 +334,6 @@ export default function MatchPrintTab({
   const [matchPlanError, setMatchPlanError] = useState('');
   const [matchPlanStatus, setMatchPlanStatus] = useState('');
   const [matchPlanDirty, setMatchPlanDirty] = useState(false);
-  const [captainPlayerId, setCaptainPlayerId] = useState(match?.captainPlayerId || '');
   const sheetRef = useRef(null);
   const matchPlanEditVersionRef = useRef(0);
   const matchPlanSaveInFlightRef = useRef(null);
@@ -340,10 +349,6 @@ export default function MatchPrintTab({
     return () => onMatchPlanDirtyChange?.(false);
   }, [matchPlanDirty, onMatchPlanDirtyChange]);
   useEffect(() => () => onMatchPlanNavigationGuardReady?.(null), [onMatchPlanNavigationGuardReady]);
-
-  useEffect(() => {
-    setCaptainPlayerId(match?.captainPlayerId || '');
-  }, [match?.captainPlayerId, match?.id]);
 
   useEffect(() => {
     const includesSetPieces = ['all', 'offensive', 'defensive'].includes(duplicateModal);
@@ -578,13 +583,16 @@ export default function MatchPrintTab({
   const printData = useMemo(() => {
     const system = match?.statsSystem || match?.preCaudalSystem || '4-4-2';
     const byName = new Map(players.map((player) => [normalizeText(player.name), player]));
-    const { starters } = getLineupStarters({ match, playersByName: byName });
-    const markedStarters = starters.map((player) => ({ ...player, isCaptain: Boolean(captainPlayerId && player.id === captainPlayerId) }));
+    const byId = new Map(players.map((player) => [String(player.id), player]));
+    const { starters } = getLineupStarters({ match, playersByName: byName, playersById: byId });
+    const captainResolution = resolveMatchCaptain({ match, players, captainPriorities });
+    const printableCaptainPlayerId = captainResolution.isStarter ? captainResolution.playerId : '';
+    const markedStarters = starters.map((player) => ({ ...player, isCaptain: Boolean(printableCaptainPlayerId && String(player.id) === String(printableCaptainPlayerId)) }));
     const bench = getLineupBench({ match, players, starters: markedStarters, playersByName: byName })
-      .map((player) => ({ ...player, isCaptain: Boolean(captainPlayerId && player.id === captainPlayerId) }));
+      .map((player) => ({ ...player, isCaptain: false }));
     const coordinates = typeof getFormationCoordinates === 'function' ? getFormationCoordinates(system) : [];
-    return { system, starters: markedStarters, bench, coordinates };
-  }, [match, players, getFormationCoordinates, captainPlayerId]);
+    return { system, starters: markedStarters, bench, coordinates, captainPlayerId: printableCaptainPlayerId };
+  }, [match, players, getFormationCoordinates, captainPriorities]);
 
   const professionalSetPieceSuggestions = useMemo(() => {
     const suggestions = [];
@@ -614,19 +622,6 @@ export default function MatchPrintTab({
     if (riskText) add(`Ten en cuenta el riesgo global registrado: ${riskText}`, 'Plan de partido · evitar');
     return suggestions.slice(0, 4);
   }, [match, players, setPieceTakers]);
-
-  const handleCaptainChange = async (nextCaptainId) => {
-    if (!match?.id) return;
-    setCaptainPlayerId(nextCaptainId);
-    const { error } = await supabase
-      .from('partidos')
-      .update({ captain_player_id: nextCaptainId || null })
-      .eq('id', match.id);
-    if (error) {
-      console.error('Error guardando capitán desde impresión:', error);
-      setCaptainPlayerId(match?.captainPlayerId || '');
-    }
-  };
 
   const handlePreview = () => {
     sheetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1609,7 +1604,7 @@ export default function MatchPrintTab({
           coordinates={printData.coordinates}
           system={printData.system}
           kit={kit}
-          captainPlayerId={captainPlayerId}
+          captainPlayerId={printData.captainPlayerId}
         />
       )] : [];
     }
@@ -2004,7 +1999,7 @@ export default function MatchPrintTab({
               coordinates={printData.coordinates}
               system={printData.system}
               kit={kit}
-              captainPlayerId={captainPlayerId}
+              captainPlayerId={printData.captainPlayerId}
             />
           </div>
         ) : printView === 'plan_partido' ? (

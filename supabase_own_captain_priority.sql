@@ -23,6 +23,28 @@ create unique index if not exists player_team_memberships_current_captain_priori
 on public.player_team_memberships (team_id, captain_priority)
 where is_current and captain_priority is not null;
 
+-- Conserva los capitanes booleanos existentes al activar por primera vez el
+-- orden. El desempate es técnico y estable; después el staff puede reordenar.
+with current_maximums as (
+  select team_id, coalesce(max(captain_priority), 0) as maximum_priority
+  from public.player_team_memberships
+  where is_current
+  group by team_id
+), legacy_captains as (
+  select membership.id,
+    coalesce(current_maximums.maximum_priority, 0)
+      + row_number() over (partition by membership.team_id order by membership.created_at, membership.id) as next_priority
+  from public.player_team_memberships membership
+  left join current_maximums on current_maximums.team_id = membership.team_id
+  where membership.is_current
+    and membership.captain
+    and membership.captain_priority is null
+)
+update public.player_team_memberships membership
+set captain_priority = legacy_captains.next_priority
+from legacy_captains
+where membership.id = legacy_captains.id;
+
 comment on column public.player_team_memberships.captain_priority is
   'Prioridad extensible de capitanía dentro de la etapa vigente: 1 es la prioridad más alta; null significa que no pertenece al orden.';
 
@@ -110,4 +132,3 @@ comment on function public.save_own_captain_priorities(uuid[]) is
   'Reemplaza de forma atómica el orden de capitanes del equipo propio mediante UUID de player_team_memberships.';
 
 commit;
-

@@ -10,6 +10,7 @@ import {
 import LibrarySection from './components/library/LibrarySection';
 import MatchVideoPlayer from './components/matches/MatchVideoPlayer';
 import MatchPrintTab from './components/print/MatchPrintTab';
+import CaptainPriorityPanel from './components/players/CaptainPriorityPanel';
 import TacticalEvidencePanel from './components/tactical/TacticalEvidencePanel';
 import RivalCollectiveAssistant from './components/tactical/RivalCollectiveAssistant';
 import CollectiveProfileEditorModal from './components/tactical/CollectiveProfileEditorModal';
@@ -127,6 +128,8 @@ import {
   saveDelegatedEventWithSync,
 } from './utils/delegatedEventSaveFlow';
 import { getPlayerDisplayName } from './utils/playerDisplayName';
+import { loadOwnCaptainPriorities, saveOwnCaptainPriorities } from './utils/captainPriorityStore';
+import { getCaptainResolutionLabel, resolveMatchCaptain } from './utils/matchCaptain';
 import { formatStatsPitchPlayerName, resolveStatsVisualIdentity } from './utils/statsVisualIdentity';
 import { sortStatsIndividualPlayers } from './utils/statsIndividualOrder';
 import {
@@ -5203,6 +5206,12 @@ const renderTacticalBlock = (block) => (
 function App() {
   const [activeTab, setActiveTab] = useState('Inicio');
   const [players, setPlayers] = useState([]);
+  const [captainPriorities, setCaptainPriorities] = useState([]);
+  const [captainPrioritiesLoading, setCaptainPrioritiesLoading] = useState(false);
+  const [captainPrioritiesSaving, setCaptainPrioritiesSaving] = useState(false);
+  const [captainPrioritySchemaAvailable, setCaptainPrioritySchemaAvailable] = useState(true);
+  const [captainPriorityError, setCaptainPriorityError] = useState('');
+  const [captainPriorityStatus, setCaptainPriorityStatus] = useState('');
   const getStoredPlayerDisplayName = (storedName, fallback = 'Jugador') => {
     const normalizedStoredName = normalizePlayerIdentityName(storedName);
     const player = normalizedStoredName ? players.find((candidate) => [
@@ -7048,6 +7057,10 @@ function App() {
 
   const clearAuthenticatedData = () => {
     setPlayers([]);
+    setCaptainPriorities([]);
+    setCaptainPriorityError('');
+    setCaptainPriorityStatus('');
+    setCaptainPrioritySchemaAvailable(true);
     setMatches([]);
     setTeams([]);
     setGlobalPlayers([]);
@@ -7159,6 +7172,32 @@ function App() {
   const authenticatedDataLoadKey = authenticatedUserId
     ? `${authenticatedUserId}:${authDataRefreshVersion}`
     : '';
+
+  useEffect(() => {
+    if (authLoading || !authenticatedUserId || !players.length) {
+      if (!authenticatedUserId) setCaptainPriorities([]);
+      return undefined;
+    }
+    let cancelled = false;
+    const loadCaptainOrder = async () => {
+      setCaptainPrioritiesLoading(true);
+      setCaptainPriorityError('');
+      try {
+        const result = await loadOwnCaptainPriorities(supabase, players);
+        if (cancelled) return;
+        setCaptainPriorities(result.rows);
+        setCaptainPrioritySchemaAvailable(result.schemaAvailable);
+      } catch (loadError) {
+        if (cancelled) return;
+        console.error('Error cargando el orden de capitanes:', loadError);
+        setCaptainPriorityError(loadError.message || 'No se pudo cargar el orden de capitanes.');
+      } finally {
+        if (!cancelled) setCaptainPrioritiesLoading(false);
+      }
+    };
+    loadCaptainOrder();
+    return () => { cancelled = true; };
+  }, [authLoading, authenticatedUserId, players]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -7382,6 +7421,11 @@ function App() {
     const statsSystem = resolveMatchStatsFormation(match, ownDefaultFormation);
     return match.statsSystem === statsSystem ? match : { ...match, statsSystem };
   }, [selectedMatchId, matches, ownDefaultFormation]);
+  const selectedMatchCaptainResolution = useMemo(() => resolveMatchCaptain({
+    match: selectedMatch || {},
+    players,
+    captainPriorities,
+  }), [selectedMatch, players, captainPriorities]);
   currentGoalMatchIdRef.current = selectedMatchId;
 
   const selectedPreAiAnalysis = useMemo(
@@ -16076,9 +16120,33 @@ function App() {
     await refreshStatsFromSupabase(selectedMatch.id, 'eliminación de cambio de sistema');
   };
 
+  const saveCaptainPriorityOrder = async (orderedPlayers) => {
+    if (captainPrioritiesSaving || !captainPrioritySchemaAvailable) return;
+    setCaptainPrioritiesSaving(true);
+    setCaptainPriorityError('');
+    setCaptainPriorityStatus('');
+    try {
+      const savedRows = await saveOwnCaptainPriorities(supabase, orderedPlayers);
+      setCaptainPriorities(savedRows);
+      setCaptainPriorityStatus('Orden de capitanes guardado en Supabase.');
+      window.setTimeout(() => setCaptainPriorityStatus((current) => current === 'Orden de capitanes guardado en Supabase.' ? '' : current), 2600);
+    } catch (saveError) {
+      console.error('Error guardando el orden de capitanes:', saveError);
+      if (saveError.code === 'CAPTAIN_PRIORITY_SCHEMA_MISSING') setCaptainPrioritySchemaAvailable(false);
+      setCaptainPriorityError(saveError.message || 'No se pudo guardar el orden de capitanes.');
+    } finally {
+      setCaptainPrioritiesSaving(false);
+    }
+  };
+
   const updateMatchCaptain = async (captainPlayerId) => {
     if (!selectedMatch) return;
     const nextCaptainId = captainPlayerId || null;
+    if (nextCaptainId && !selectedMatchCaptainResolution.starterPlayerIds.includes(String(nextCaptainId))) {
+      setStatsError('El override de capitán solo puede asignarse a un jugador del XI inicial real.');
+      return;
+    }
+    setStatsError('');
     const { error: captainError } = await supabase
       .from("partidos")
       .update({ captain_player_id: nextCaptainId })
@@ -16137,9 +16205,12 @@ function App() {
     setDelegatedTimerRunning(true);
   };
 
-  const finishDelegatedMatch = () => {
+  const finishDelegatedMatch = async () => {
     setDelegatedTimerRunning(false);
     setDelegatedMatchState('FINALIZADO');
+    if (!selectedMatch?.captainPlayerId && selectedMatchCaptainResolution.playerId) {
+      await updateMatchCaptain(selectedMatchCaptainResolution.playerId);
+    }
   };
 
   const startDelegatedMatch = () => {
@@ -17457,7 +17528,7 @@ function App() {
           const player = players.find((item) => item.name === playerName);
           const shortName = player ? displayPlayerName(player) : playerName.split(' ').slice(-1)[0] || '';
           const stats = playerName ? getStatsPlayerData(playerName) : null;
-          const isCaptain = player?.id && selectedMatch.captainPlayerId === player.id;
+          const isCaptain = player?.id && selectedMatchCaptainResolution.playerId === player.id;
           const eventBadges = playerName ? getPlayerEventSummary(matchEvents, player || { name: playerName }) : [];
           const statusBadges = [
             ...eventBadges,
@@ -29182,6 +29253,19 @@ function App() {
                 </div>
               </div>
 
+              <div className="mt-3">
+                <CaptainPriorityPanel
+                  players={players}
+                  priorities={captainPriorities}
+                  loading={captainPrioritiesLoading}
+                  saving={captainPrioritiesSaving}
+                  schemaAvailable={captainPrioritySchemaAvailable}
+                  error={captainPriorityError}
+                  status={captainPriorityStatus}
+                  onSave={saveCaptainPriorityOrder}
+                />
+              </div>
+
               <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-center">
                 <input
                   type="search"
@@ -33253,19 +33337,28 @@ function App() {
                             </button>
                           </div>
                         </div>
-                        <label className="mt-5 block space-y-2 text-sm text-slate-300">
-                          <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Capitán</span>
-                          <select
-                            value={selectedMatch.captainPlayerId || ''}
-                            onChange={(event) => updateMatchCaptain(event.target.value)}
-                            className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-sm font-black text-slate-950"
-                          >
-                            <option value="">Sin capitán</option>
-                            {(getStatsCalledPlayers().length ? getStatsCalledPlayers() : players).map((player) => (
-                              <option key={player.id} value={player.id}>{player.number || '-'} · {displayPlayerName(player)}</option>
-                            ))}
-                          </select>
-                        </label>
+                        <div className="mt-5 space-y-2 text-sm text-slate-300">
+                          <span className="block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Capitán</span>
+                          {selectedMatchCaptainResolution.source === 'historical' ? (
+                            <div className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3">
+                              <p className="font-black text-white">{getCaptainResolutionLabel(selectedMatchCaptainResolution, players)}</p>
+                              <p className="mt-1 text-xs text-slate-400">Snapshot oficial conservado: los cambios posteriores del orden no lo modifican.</p>
+                            </div>
+                          ) : (
+                            <select
+                              value={selectedMatchCaptainResolution.source === 'manual' ? selectedMatchCaptainResolution.playerId : ''}
+                              onChange={(event) => updateMatchCaptain(event.target.value)}
+                              className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-sm font-black text-slate-950"
+                            >
+                              <option value="">{getCaptainResolutionLabel({ ...selectedMatchCaptainResolution, source: 'automatic' }, players)}</option>
+                              {selectedMatchCaptainResolution.starterPlayerIds.map((playerId) => players.find((player) => String(player.id) === String(playerId))).filter(Boolean).map((player) => (
+                                <option key={player.id} value={player.id}>Override · {player.number || '-'} · {displayPlayerName(player)}</option>
+                              ))}
+                            </select>
+                          )}
+                          <p className="text-xs text-slate-500">El override manual solo ofrece jugadores del XI inicial real.</p>
+                          {selectedMatchCaptainResolution.warning ? <p className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs font-bold text-amber-100">{selectedMatchCaptainResolution.warning}</p> : null}
+                        </div>
                         <div className="responsive-pitch-scroll mt-5 overflow-x-auto">{renderStatsPitch()}</div>
                       </div>
                       <div className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
@@ -33474,6 +33567,7 @@ function App() {
                     match={selectedMatch}
                     matches={matches}
                     players={players}
+                    captainPriorities={captainPriorities}
                     getFormationCoordinates={getFormationCoordinates}
                     onNavigateMatchSection={(section) => openMatchPage(selectedMatch, section)}
                     onMatchPlanDirtyChange={setPrintMatchPlanDirty}
