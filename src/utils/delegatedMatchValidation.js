@@ -92,13 +92,12 @@ export const getValidatedDelegatedEvents = (matches = []) => safeArray(matches)
 
 export const getDelegatedEventPeriod = (event = {}) => {
   const minute = Number(event.minute ?? event.minuto ?? 0);
-  if (minute < 15) return '0-15';
-  if (minute < 30) return '15-30';
-  if (minute < 45) return '30-45';
-  if (minute < 60) return '45-60';
-  if (minute < 75) return '60-75';
-  if (minute < 90) return '75-90';
-  return '90+';
+  if (minute <= 15) return '0-15';
+  if (minute <= 30) return '16-30';
+  if (minute <= 45) return '31-45';
+  if (minute <= 60) return '46-60';
+  if (minute <= 75) return '61-75';
+  return '76-90+';
 };
 
 export const filterDelegatedValidatedEvents = (events = [], {

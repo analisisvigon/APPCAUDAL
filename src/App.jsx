@@ -20,6 +20,7 @@ import PlayerDatabaseForm from './components/players/PlayerDatabaseForm';
 import GlobalPlayerDatabase from './components/players/GlobalPlayerDatabase';
 import DailyLoadCard from './components/performance/DailyLoadCard';
 import LoadEvolutionSection from './components/performance/LoadEvolutionSection';
+import DelegatedStatsDashboard from './components/delegated/DelegatedStatsDashboard';
 import AccordionSection from './components/shared/AccordionSection';
 import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
@@ -130,16 +131,11 @@ import {
 import {
   DELEGATED_DATA_FILTERS,
   DELEGATED_DATA_STATUSES,
-  DELEGATED_EVENT_CATALOG,
   applyDelegatedMatchStatus,
-  filterDelegatedValidatedEvents,
   getDelegatedDataStatus,
   getDelegatedEventBaseType,
-  getDelegatedEventPeriod,
   getDelegatedEventSide,
   getDelegatedMatchAudit,
-  getDelegatedRegistryQuality,
-  getValidatedDelegatedEvents,
   isDelegatedDataValidated,
   isDelegatedEventResolvable,
   isDelegatedRegistryEvent,
@@ -5922,9 +5918,6 @@ function App() {
   const [delegatedAnalysisPlayerFilter, setDelegatedAnalysisPlayerFilter] = useState('');
   const [delegatedAnalysisEventFilter, setDelegatedAnalysisEventFilter] = useState('todos');
   const [delegatedAnalysisPeriodFilter, setDelegatedAnalysisPeriodFilter] = useState('todos');
-  const [delegatedEvolutionEventType, setDelegatedEvolutionEventType] = useState('tiro');
-  const [delegatedQuickPlayerId, setDelegatedQuickPlayerId] = useState('');
-  const [delegatedExpandedRanking, setDelegatedExpandedRanking] = useState('');
   const [delegatedSelectedMatchIds, setDelegatedSelectedMatchIds] = useState([]);
   const [groupAssistFilter, setGroupAssistFilter] = useState('Todas');
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
@@ -27375,16 +27368,7 @@ function App() {
   };
 
   const renderDelegatedRegistrySection = () => {
-    const delegatedAnalysisEventCatalog = DELEGATED_EVENT_CATALOG;
-    const isDelegatedAnalysisEvent = isDelegatedRegistryEvent;
-    const delegatedPeriodLabels = ['0-15', '15-30', '30-45', '45-60', '60-75', '75-90', '90+'];
-    const getDelegatedPeriodKey = getDelegatedEventPeriod;
-    const getDelegatedAnalysisPlayerId = (event) => (
-      getDelegatedEventPlayerId(event)
-      || players.find((player) => delegatedEventMatchesPlayer(event, player, players))?.id
-      || ''
-    );
-    const matchesWithDelegatedEvents = matches.filter((match) => safeArray(match.quickEvents).some(isDelegatedAnalysisEvent));
+    const matchesWithDelegatedEvents = matches.filter((match) => safeArray(match.quickEvents).some(isDelegatedRegistryEvent));
     const statusCounts = matchesWithDelegatedEvents.reduce((acc, match) => {
       const status = getDelegatedDataStatus(match);
       acc[status] = (acc[status] || 0) + 1;
@@ -27392,232 +27376,16 @@ function App() {
     }, {});
     const visibleMatches = matchesWithDelegatedEvents
       .filter((match) => delegatedStatusFilter === 'Todos' || getDelegatedDataStatus(match) === delegatedStatusFilter)
-      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-    const analysisMatches = visibleMatches.filter(isDelegatedDataValidated);
-    const rankingEvents = filterDelegatedValidatedEvents(
-      getValidatedDelegatedEvents(analysisMatches),
-      {
-        team: delegatedAnalysisTeamFilter,
-        playerId: delegatedAnalysisPlayerFilter,
-        eventType: delegatedAnalysisEventFilter,
-        period: delegatedAnalysisPeriodFilter,
-      },
-    );
-    const collectiveSummary = getQuickEventSummary(rankingEvents);
-    const getCoveredMinutes = (events = []) => {
-      const minutes = safeArray(events)
-        .map((event) => Number(event.minute || 0))
-        .filter((minute) => Number.isFinite(minute) && minute >= 0);
-      return minutes.length ? Math.min(90, Math.max(...minutes)) : 0;
-    };
-    const getCoveredPeriods = (events = []) => [
-      safeArray(events).some((event) => Number(event.minute || 0) < 45) ? '1T' : null,
-      safeArray(events).some((event) => Number(event.minute || 0) >= 45) ? '2T' : null,
-    ].filter(Boolean);
-    const visibleEvents = visibleMatches.flatMap((match) => safeArray(match.quickEvents)
-      .filter(isDelegatedAnalysisEvent)
-      .map((event) => ({ ...event, match })));
-    const delegatedPlayerEventMap = rankingEvents.reduce((map, event) => {
-      if (getQuickEventSide(event) !== 'caudal') return map;
-      const playerId = getDelegatedAnalysisPlayerId(event);
-      if (!playerId) return map;
-      const currentEvents = map.get(playerId) || [];
-      currentEvents.push(event);
-      map.set(playerId, currentEvents);
-      return map;
-    }, new Map());
-    const playerRows = players.map((player) => {
-      const events = delegatedPlayerEventMap.get(player.id) || [];
-      const countType = (type) => events.filter((event) => getQuickEventBaseType(event.tipoEvento) === type).length;
-      const shotsOnTarget = countType('tiro_puerta');
-      const stats = {
-        shots: countType('tiro') + shotsOnTarget,
-        shotsOnTarget,
-        crosses: countType('centro'),
-        steals: countType('robo'),
-        turnovers: countType('perdida'),
-        foulsCommitted: countType('falta_realizada'),
-        foulsReceived: countType('falta_recibida'),
-        corners: countType('corner'),
-      };
-      return { player, stats, events, matches: new Set(events.map((event) => event.partidoId)).size };
-    });
-    const getTopPlayerRows = (fieldKey) => {
-      const rows = playerRows
-        .map((row, index) => {
-          const metric = delegatedAnalysisEventCatalog.find((item) => item.statKey === fieldKey);
-          const metricEvents = row.events.filter((event) => {
-            const type = getQuickEventBaseType(event.tipoEvento);
-            return fieldKey === 'shots' ? ['tiro', 'tiro_puerta'].includes(type) : type === metric?.type;
-          });
-          return {
-            ...row,
-            sourceIndex: index,
-            value: Number(row.stats[fieldKey] || 0),
-            latestMinute: metricEvents.length ? Math.max(...metricEvents.map((event) => Number(event.minute || 0))) : -1,
-          };
-        })
-        .filter((row) => row.value > 0)
-        .sort((a, b) => (
-          b.value - a.value ||
-          b.latestMinute - a.latestMinute ||
-          displayPlayerName(a.player).localeCompare(displayPlayerName(b.player), 'es')
-        ));
-      return rows.map((row, index) => ({ ...row, rank: index + 1 }));
-    };
-    const metricComparisonRows = [
-      'shots',
-      'shotsOnTarget',
-      'crosses',
-      'steals',
-      'turnovers',
-      'corners',
-      'foulsCommitted',
-      'foulsReceived',
-    ].map((key) => {
-      const field = EVENT_STAT_FIELDS.find((item) => item.key === key);
-      const caudal = Number(collectiveSummary.stats?.[key] || 0);
-      const rival = Number(collectiveSummary.rivalStats?.[key] || 0);
-      return { key, label: field?.label || key, caudal, rival, max: Math.max(caudal, rival, 1) };
-    });
-    const individualRankingGroups = [
-      ['Más tiros', 'shots'],
-      ['Más tiros a puerta', 'shotsOnTarget'],
-      ['Más centros', 'crosses'],
-      ['Más robos', 'steals'],
-      ['Más pérdidas', 'turnovers'],
-      ['Más faltas recibidas', 'foulsReceived'],
-      ['Más faltas realizadas', 'foulsCommitted'],
-      ['Más córners lanzados', 'corners'],
-    ].map(([label, key]) => ({ label, key, rows: getTopPlayerRows(key) })).filter((group) => group.rows.length);
-    const summaryComparisonCards = metricComparisonRows.map((row) => ({
-      ...row,
-      difference: row.caudal - row.rival,
-    }));
-    const derivedIndicators = [
-      {
-        label: 'Precisión de tiro',
-        caudal: collectiveSummary.shots ? Math.round((collectiveSummary.shotsOnTarget / collectiveSummary.shots) * 100) : null,
-        rival: collectiveSummary.rivalShots ? Math.round((collectiveSummary.rivalShotsOnTarget / collectiveSummary.rivalShots) * 100) : null,
-        unit: '%',
-        formula: 'Tiros a puerta ÷ tiros',
-      },
-      {
-        label: 'Balance robos − pérdidas',
-        caudal: Number(collectiveSummary.steals || 0) - Number(collectiveSummary.losses || 0),
-        rival: Number(collectiveSummary.rivalSteals || 0) - Number(collectiveSummary.rivalLosses || 0),
-        unit: '',
-        formula: 'Robos − pérdidas',
-      },
-      {
-        label: 'Comparativa ofensiva',
-        caudal: Number(collectiveSummary.shots || 0) + Number(collectiveSummary.crosses || 0) + Number(collectiveSummary.corners || 0),
-        rival: Number(collectiveSummary.rivalShots || 0) + Number(collectiveSummary.rivalCrosses || 0) + Number(collectiveSummary.rivalCorners || 0),
-        unit: '',
-        formula: 'Tiros + centros + córners',
-      },
-      {
-        label: 'Comparativa defensiva',
-        caudal: Number(collectiveSummary.steals || 0) + Number(collectiveSummary.fouls || 0),
-        rival: Number(collectiveSummary.rivalSteals || 0) + Number(collectiveSummary.rivalFouls || 0),
-        unit: '',
-        formula: 'Robos + faltas realizadas',
-      },
-    ];
-    const evolutionRows = delegatedPeriodLabels.map((period) => {
-      const events = rankingEvents.filter((event) => (
-        getDelegatedPeriodKey(event) === period &&
-        getQuickEventBaseType(event.tipoEvento) === delegatedEvolutionEventType
-      ));
-      return {
-        period,
-        caudal: events.filter((event) => getQuickEventSide(event) === 'caudal').length,
-        rival: events.filter((event) => getQuickEventSide(event) === 'rival').length,
-      };
-    });
-    const maxEvolutionValue = Math.max(1, ...evolutionRows.flatMap((row) => [row.caudal, row.rival]));
-    const momentumRows = rankingEvents.slice().sort((left, right) => (
-      String(left.match?.date || '').localeCompare(String(right.match?.date || '')) ||
-      Number(left.minute || 0) - Number(right.minute || 0) ||
-      String(left.createdAt || '').localeCompare(String(right.createdAt || ''))
-    ));
-    const registryQuality = getDelegatedRegistryQuality(visibleMatches);
-    const quickPlayerRow = delegatedQuickPlayerId
-      ? playerRows.find((row) => row.player.id === delegatedQuickPlayerId) || null
-      : null;
-    const quickPlayerLastMinute = quickPlayerRow?.events.length
-      ? Math.max(...quickPlayerRow.events.map((event) => Number(event.minute || 0)))
-      : null;
+      .sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')));
     const auditMatch = (match) => {
       const validation = getDelegatedMatchAudit(match);
-      const { events, validated, pending, unidentified } = validation;
-      const minutes = events.map((event) => Number(event.minute || 0)).filter((minute) => Number.isFinite(minute));
-      const coveredMinutes = getCoveredMinutes(events);
-      const periods = getCoveredPeriods(events);
-      const checks = [
-        pending ? `${pending} eventos requieren revisión` : null,
-        unidentified ? `${unidentified} eventos requieren identificar jugador` : null,
-      ].filter(Boolean);
-      return {
-        events,
-        validated,
-        pending,
-        validatedPercent: validation.validatedPercent,
-        unidentified,
-        unidentifiedEvents: validation.unidentifiedEvents,
-        coveredMinutes,
-        coverageLabel: coveredMinutes ? `${coveredMinutes} de 90 minutos` : 'Sin minutos',
-        duration: minutes.length ? `${Math.min(...minutes)}'-${Math.max(...minutes)}'` : 'Sin minutos',
-        periods: periods.join(' · ') || 'Sin periodo',
-        lastReview: match.delegatedReviewedAt || match.delegated_reviewed_at || '',
-        checks,
-      };
-    };
-    const renderDelegatedRankingRows = (group, compact = false) => {
-      const maxValue = Math.max(1, ...group.rows.map((row) => row.value));
-      const visibleRows = compact ? group.rows.slice(0, 3) : group.rows;
-      return (
-        <div className="mt-3 space-y-2">
-          {visibleRows.map((row) => (
-            <button
-              key={`${group.key}-${row.player.id}`}
-              type="button"
-              onClick={() => setDelegatedQuickPlayerId(row.player.id)}
-              className="grid w-full grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2 rounded-xl px-2 py-2 text-left transition hover:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-caudal-electric/40"
-            >
-              <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${
-                row.rank === 1 ? 'bg-yellow-300 text-yellow-950' :
-                row.rank === 2 ? 'bg-slate-200 text-slate-800' :
-                row.rank === 3 ? 'bg-amber-700 text-amber-50' :
-                'bg-white/10 text-slate-400'
-              }`}>{row.rank <= 3 ? ['🥇', '🥈', '🥉'][row.rank - 1] : row.rank}</span>
-              <span className="h-9 w-9 overflow-hidden rounded-full border border-white/10 bg-slate-900">
-                <PlayerPortrait player={row.player} className="h-full w-full" fallbackTextClassName="text-[9px]" />
-              </span>
-              <span className="min-w-0">
-                <span className="flex items-center gap-2">
-                  <span className="truncate text-sm font-black text-white">{displayPlayerName(row.player) || row.player.name}</span>
-                  {row.player.number || row.player.dorsal ? <span className="shrink-0 text-[10px] font-black text-slate-500">#{row.player.number || row.player.dorsal}</span> : null}
-                </span>
-                <span className="mt-1 block h-1.5 rounded-full bg-white/10">
-                  <span className="block h-1.5 rounded-full bg-caudal-electric" style={{ width: `${Math.max(8, (row.value / maxValue) * 100)}%` }} />
-                </span>
-              </span>
-              <span className="text-right">
-                <span className="block text-sm font-black text-caudal-electric">{row.value}</span>
-                <span className="block text-[9px] font-bold text-slate-500">últ. {row.latestMinute}'</span>
-              </span>
-            </button>
-          ))}
-        </div>
-      );
+      const minutes = validation.events.map((event) => Number(event.minute || 0)).filter((minute) => Number.isFinite(minute) && minute >= 0);
+      const coveredMinutes = minutes.length ? Math.min(90, Math.max(...minutes)) : 0;
+      return { ...validation, coverageLabel: coveredMinutes ? `${coveredMinutes} de 90 minutos` : 'Sin minutos' };
     };
     const updateSelectedDelegatedMatchesStatus = async (status) => {
       const selectedIds = delegatedSelectedMatchIds.filter((matchId) => visibleMatches.some((match) => match.id === matchId));
-      const result = await runDelegatedMatchStatusBatch(
-        selectedIds,
-        (matchId) => updateDelegatedDataStatus(matchId, status),
-      );
+      const result = await runDelegatedMatchStatusBatch(selectedIds, (matchId) => updateDelegatedDataStatus(matchId, status));
       setDelegatedSelectedMatchIds(result.failed);
       setDelegatedStatusFeedback(result.failed.length
         ? `${result.succeeded.length} partidos actualizados · ${result.failed.length} con error (siguen seleccionados)`
@@ -27625,383 +27393,104 @@ function App() {
     };
 
     return (
-      <main className="delegated-registry space-y-6">
-        <section className="rounded-3xl border border-white/5 bg-[#091428]/90 p-6 shadow-glow">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <main className="delegated-registry space-y-4">
+        <section className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow sm:p-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-caudal-electric">Registro Delegado</p>
-              <h2 className="mt-2 text-3xl font-black uppercase tracking-[0.08em] text-white">Análisis del registro</h2>
-              <p className="mt-2 max-w-3xl text-sm text-slate-400">Lectura exclusiva de las once acciones reales del delegado. No incorpora métricas del Análisis Grupal ni estimaciones.</p>
+              <h2 className="mt-1 text-2xl font-black uppercase tracking-[0.08em] text-white">Análisis del registro</h2>
+              <p className="mt-1 max-w-3xl text-xs text-slate-500">Estadísticas derivadas exclusivamente de las once acciones validadas del delegado.</p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {DELEGATED_DATA_FILTERS.map((filter) => (
-                <button key={filter} type="button" onClick={() => setDelegatedStatusFilter(filter)} className={`rounded-2xl px-3 py-2 text-xs font-black uppercase tracking-[0.12em] ${delegatedStatusFilter === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}>{filter}</button>
+                <button key={filter} type="button" onClick={() => setDelegatedStatusFilter(filter)} className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] ${delegatedStatusFilter === filter ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}>{filter}</button>
               ))}
             </div>
           </div>
-          {!visibleEvents.length ? (
-            <div className="empty-state mt-5">
-              <p className="font-bold text-slate-200">Sin datos registrados</p>
-            </div>
-          ) : null}
-          <StatusMessage status={delegatedStatusFeedback} className="mt-4" />
-          <div className="mt-4 flex flex-wrap gap-2">
+          <StatusMessage status={delegatedStatusFeedback} className="mt-3" />
+          <div className="mt-3 flex flex-wrap gap-1.5">
             {DELEGATED_DATA_STATUSES.map((status) => (
-              <span key={status} className={`rounded-2xl border px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${getDelegatedStatusTone(status)}`}>Partidos · {status}: {statusCounts[status] || 0}</span>
+              <span key={status} className={`rounded-xl border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.1em] ${getDelegatedStatusTone(status)}`}>Partidos · {status}: {statusCounts[status] || 0}</span>
             ))}
           </div>
         </section>
 
-        <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-          <div className="flex flex-col gap-4">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Panel de análisis delegado</p>
-              <p className="mt-1 text-sm text-slate-400">Solo eventos validados del Registro Delegado. Filtro de estado de partido: {delegatedStatusFilter}.</p>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-              <select value={delegatedAnalysisTeamFilter} onChange={(event) => setDelegatedAnalysisTeamFilter(event.target.value)} className="rounded-xl border border-white/10 bg-[#0c1930] px-3 py-2 text-xs font-bold text-white">
-                <option value="todos">Todos los equipos</option><option value="caudal">Caudal</option><option value="rival">Rival</option>
-              </select>
-              <select value={delegatedAnalysisPlayerFilter} onChange={(event) => setDelegatedAnalysisPlayerFilter(event.target.value)} className="rounded-xl border border-white/10 bg-[#0c1930] px-3 py-2 text-xs font-bold text-white">
-                <option value="">Todos los jugadores</option>
-                {players.map((player) => <option key={player.id} value={player.id}>{displayPlayerName(player)}</option>)}
-              </select>
-              <select value={delegatedAnalysisEventFilter} onChange={(event) => setDelegatedAnalysisEventFilter(event.target.value)} className="rounded-xl border border-white/10 bg-[#0c1930] px-3 py-2 text-xs font-bold text-white">
-                <option value="todos">Todos los eventos</option>
-                {delegatedAnalysisEventCatalog.map((item) => <option key={item.type} value={item.type}>{item.label}</option>)}
-              </select>
-              <select value={delegatedAnalysisPeriodFilter} onChange={(event) => setDelegatedAnalysisPeriodFilter(event.target.value)} className="rounded-xl border border-white/10 bg-[#0c1930] px-3 py-2 text-xs font-bold text-white">
-                <option value="todos">Todo el partido</option>
-                {delegatedPeriodLabels.map((period) => <option key={period} value={period}>{period}'</option>)}
-              </select>
-              <div className="rounded-xl border border-emerald-300/15 bg-emerald-300/[0.06] px-3 py-2 text-center text-xs font-black text-emerald-100">{rankingEvents.length} validados</div>
-            </div>
-          </div>
-          <div className="mt-5 rounded-3xl border border-white/5 bg-white/[0.04] p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Calidad del registro</p>
-                <p className="mt-1 text-xs text-slate-500">Trazabilidad de los eventos visibles en el filtro de estado.</p>
-              </div>
-              <p className="text-3xl font-black text-emerald-200">{registryQuality.percent}%</p>
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                ['Registrados', registryQuality.registered, 'text-white'],
-                ['Validados', registryQuality.validated, 'text-emerald-200'],
-                ['Pendientes', registryQuality.pending, 'text-yellow-200'],
-                ['Descartados', registryQuality.discarded, 'text-red-200'],
-              ].map(([label, value, tone]) => (
-                <div key={label} className="rounded-2xl bg-black/15 p-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
-                  <p className={`mt-1 text-2xl font-black ${tone}`}>{value}</p>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full rounded-full bg-emerald-300 transition-all" style={{ width: `${registryQuality.percent}%` }} />
-            </div>
-          </div>
-          {rankingEvents.length ? (
-            <div className="mt-5 space-y-5">
-              <div>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Resumen comparativo</p>
-                  <div className="flex gap-3 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
-                    <span className="text-caudal-electric">Caudal</span><span className="text-red-200">Rival</span>
-                  </div>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  {summaryComparisonCards.map((row) => (
-                    <article key={row.key} className="rounded-2xl border border-white/5 bg-white/[0.04] p-4">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="flex h-9 min-w-9 items-center justify-center rounded-xl bg-caudal-electric/10 px-2 text-[10px] font-black text-caudal-electric">
-                          {delegatedAnalysisEventCatalog.find((item) => item.statKey === row.key)?.icon || 'EV'}
-                        </span>
-                        <span className={`rounded-xl px-2 py-1 text-xs font-black ${row.difference > 0 ? 'bg-emerald-300/10 text-emerald-200' : row.difference < 0 ? 'bg-red-300/10 text-red-200' : 'bg-white/10 text-slate-300'}`}>
-                          {row.difference > 0 ? '+' : ''}{row.difference}
-                        </span>
-                      </div>
-                      <p className="mt-3 text-xs font-black uppercase tracking-[0.12em] text-slate-400">{row.label}</p>
-                      <div className="mt-2 flex items-end justify-between">
-                        <span className="text-2xl font-black text-caudal-electric">{row.caudal}</span>
-                        <span className="text-xs font-bold text-slate-600">vs</span>
-                        <span className="text-2xl font-black text-red-200">{row.rival}</span>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </div>
+        <DelegatedStatsDashboard
+          matches={visibleMatches}
+          players={players}
+          filters={{
+            team: delegatedAnalysisTeamFilter,
+            playerId: delegatedAnalysisPlayerFilter,
+            eventType: delegatedAnalysisEventFilter,
+            period: delegatedAnalysisPeriodFilter,
+          }}
+          onFiltersChange={(nextFilters) => {
+            setDelegatedAnalysisTeamFilter(nextFilters.team);
+            setDelegatedAnalysisPlayerFilter(nextFilters.playerId);
+            setDelegatedAnalysisEventFilter(nextFilters.eventType);
+            setDelegatedAnalysisPeriodFilter(nextFilters.period);
+          }}
+          getPlayerName={displayPlayerName}
+          getCompetitionLabel={(key) => getCompetitionFromCatalog(key).label || key}
+          formatMatchDate={matchDisplayDate}
+        />
 
-              <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-                <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Indicadores derivados</p>
-                  <p className="mt-1 text-xs text-slate-500">Operaciones simples sobre los eventos registrados; la fórmula siempre queda visible.</p>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                    {derivedIndicators.map((indicator) => (
-                      <div key={indicator.label} className="rounded-2xl bg-black/15 p-3">
-                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{indicator.label}</p>
-                        <div className="mt-2 flex items-center justify-between gap-3">
-                          <span className="text-lg font-black text-caudal-electric">{indicator.caudal == null ? '—' : `${indicator.caudal}${indicator.unit}`}</span>
-                          <span className="text-[10px] font-bold text-slate-600">CAU · RIV</span>
-                          <span className="text-lg font-black text-red-200">{indicator.rival == null ? '—' : `${indicator.rival}${indicator.unit}`}</span>
-                        </div>
-                        <p className="mt-2 text-[10px] font-semibold text-slate-500">{indicator.formula}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Rankings individuales</p>
-                  <p className="mt-1 text-xs text-slate-500">Desempate por última acción y después por nombre. Pulsa un jugador para ver su ficha rápida.</p>
-                  {!individualRankingGroups.length ? <p className="mt-4 rounded-2xl bg-black/15 p-4 text-sm font-semibold text-slate-400">No hay eventos validados con jugador asociado para estos filtros.</p> : null}
-                  <div className="mt-4 hidden gap-3 md:grid md:grid-cols-2">
-                    {individualRankingGroups.map((group) => (
-                      <div key={group.key} className="rounded-2xl bg-black/15 p-3">
-                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{group.label}</p>
-                        {renderDelegatedRankingRows(group)}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-4 space-y-2 md:hidden">
-                    {individualRankingGroups.map((group) => {
-                      const expanded = delegatedExpandedRanking === group.key;
-                      return (
-                        <div key={group.key} className="overflow-hidden rounded-2xl bg-black/15">
-                          <button type="button" onClick={() => setDelegatedExpandedRanking(expanded ? '' : group.key)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left">
-                            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-300">{group.label}</span>
-                            <span className="text-xs font-black text-caudal-electric">{expanded ? '−' : '+'}</span>
-                          </button>
-                          {expanded ? <div className="border-t border-white/5 px-2 pb-3">{renderDelegatedRankingRows(group)}</div> : (
-                            <div className="border-t border-white/5 px-2 pb-3">{renderDelegatedRankingRows(group, true)}</div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
-                <div className="rounded-3xl border border-white/5 bg-white/[0.04] p-5">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Evolución por tramos</p>
-                      <p className="mt-1 text-xs text-slate-500">Comparación cronológica Caudal · Rival.</p>
-                    </div>
-                    <select value={delegatedEvolutionEventType} onChange={(event) => setDelegatedEvolutionEventType(event.target.value)} className="rounded-xl border border-white/10 bg-[#0c1930] px-3 py-2 text-xs font-bold text-white">
-                      {delegatedAnalysisEventCatalog.filter((item) => ['tiro', 'centro', 'robo', 'perdida', 'corner'].includes(item.type)).map((item) => (
-                        <option key={item.type} value={item.type}>{item.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="mt-5 flex h-56 min-w-[34rem] items-end gap-3 overflow-hidden rounded-2xl bg-black/15 px-4 pb-4 pt-8 max-sm:min-w-0 max-sm:gap-1.5 max-sm:px-2">
-                    {evolutionRows.map((row) => (
-                      <div key={row.period} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-2">
-                        <div className="flex h-36 w-full items-end justify-center gap-1">
-                          <div title={`Caudal · ${row.caudal}`} className="w-3 max-w-[42%] rounded-t-md bg-caudal-electric sm:w-5" style={{ height: `${row.caudal ? Math.max(8, (row.caudal / maxEvolutionValue) * 100) : 2}%` }} />
-                          <div title={`Rival · ${row.rival}`} className="w-3 max-w-[42%] rounded-t-md bg-red-300 sm:w-5" style={{ height: `${row.rival ? Math.max(8, (row.rival / maxEvolutionValue) * 100) : 2}%` }} />
-                        </div>
-                        <span className="text-[9px] font-black text-slate-500 sm:text-[10px]">{row.period}'</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-3 flex gap-4 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
-                    <span className="inline-flex items-center gap-2"><span className="h-2 w-4 rounded-full bg-caudal-electric" />Caudal</span>
-                    <span className="inline-flex items-center gap-2"><span className="h-2 w-4 rounded-full bg-red-300" />Rival</span>
-                  </div>
-                </div>
-
-                <div className="flex min-h-0 flex-col rounded-3xl border border-white/5 bg-white/[0.04] p-5">
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white">Momentum del partido</p>
-                  <p className="mt-1 text-xs text-slate-500">Secuencia real de los eventos validados.</p>
-                  <div className="mt-4 max-h-72 space-y-2 overflow-y-auto pr-1">
-                    {momentumRows.map((event) => {
-                      const catalogItem = delegatedAnalysisEventCatalog.find((item) => item.type === getQuickEventBaseType(event.tipoEvento));
-                      const player = players.find((candidate) => candidate.id === getDelegatedAnalysisPlayerId(event));
-                      const isCaudal = getQuickEventSide(event) === 'caudal';
-                      return (
-                        <div key={`${event.match?.id}-${event.id}`} className="grid grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-3 rounded-2xl bg-black/15 px-3 py-2">
-                          <span className={`rounded-lg px-2 py-1 text-[10px] font-black ${isCaudal ? 'bg-caudal-electric/15 text-caudal-electric' : 'bg-red-300/15 text-red-200'}`}>{Number(event.minute || 0)}'</span>
-                          <span className="text-[9px] font-black text-slate-500">{catalogItem?.icon || 'EV'}</span>
-                          <span className="min-w-0">
-                            <span className="block truncate text-xs font-black text-white">{catalogItem?.label || 'Evento'} · {isCaudal ? 'Caudal' : 'Rival'}</span>
-                            <span className="block truncate text-[10px] font-semibold text-slate-500">{player ? displayPlayerName(player) : 'Sin jugador'} · {event.match?.opponent || 'Rival'}</span>
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
+        <details className="rounded-3xl border border-white/5 bg-[#091428]/80 shadow-glow">
+          <summary className="cursor-pointer list-none px-4 py-4 sm:px-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span>
+                <span className="block text-xs font-black uppercase tracking-[0.16em] text-white">Validación por partido</span>
+                <span className="mt-1 block text-[10px] text-slate-500">{visibleMatches.length} partidos · operación atómica por partido</span>
+              </span>
+              <span className="rounded-xl bg-white/10 px-3 py-2 text-[10px] font-black uppercase text-slate-300">Abrir control</span>
             </div>
-          ) : (
-            <div className="empty-state mt-5">
-              <p className="font-bold text-slate-200">No hay registros para este filtro.</p>
-            </div>
-          )}
-        </section>
-
-        <section className="rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Validación por partido</p>
-              <p className="mt-1 text-xs text-slate-500">Cada partido usa la misma transición atómica: valida los eventos resolubles y conserva aparte los pendientes.</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setDelegatedSelectedMatchIds((current) => current.length === visibleMatches.length ? [] : visibleMatches.map((match) => match.id))}
-                className="rounded-xl bg-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300 hover:bg-white/15"
-              >
+          </summary>
+          <div className="border-t border-white/5 p-4 sm:p-5">
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" onClick={() => setDelegatedSelectedMatchIds((current) => current.length === visibleMatches.length ? [] : visibleMatches.map((match) => match.id))} className="rounded-xl bg-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] text-slate-300">
                 {delegatedSelectedMatchIds.length === visibleMatches.length && visibleMatches.length ? 'Quitar selección' : 'Seleccionar visibles'}
               </button>
               {['Validado', 'Descartado'].map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  disabled={!delegatedSelectedMatchIds.length || Boolean(delegatedStatusSavingId)}
-                  onClick={() => updateSelectedDelegatedMatchesStatus(status)}
-                  className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-40 ${
-                    status === 'Validado' ? 'bg-emerald-300 text-emerald-950' : 'bg-red-300 text-red-950'
-                  }`}
-                >
+                <button key={status} type="button" disabled={!delegatedSelectedMatchIds.length || Boolean(delegatedStatusSavingId)} onClick={() => updateSelectedDelegatedMatchesStatus(status)} className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase disabled:opacity-40 ${status === 'Validado' ? 'bg-emerald-300 text-emerald-950' : 'bg-red-300 text-red-950'}`}>
                   {status} ({delegatedSelectedMatchIds.length})
                 </button>
               ))}
             </div>
-          </div>
-          <div className="mt-5 grid gap-4">
-            {visibleMatches.length ? visibleMatches.map((match) => {
-              const status = getDelegatedDataStatus(match);
-              const audit = auditMatch(match);
-              const statusLabel = status === 'Validado' && audit.pending ? 'Validado con incidencias' : status;
-              const isSelected = delegatedSelectedMatchIds.includes(match.id);
-              return (
-                <div key={match.id} className={`rounded-3xl border p-5 transition ${isSelected ? 'border-caudal-electric/50 bg-caudal-electric/[0.06]' : 'border-white/5 bg-white/[0.04]'}`}>
-                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="flex min-w-0 items-start gap-3">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => setDelegatedSelectedMatchIds((current) => current.includes(match.id) ? current.filter((id) => id !== match.id) : [...current, match.id])}
-                        className="mt-1 h-5 w-5 shrink-0 accent-caudal-electric"
-                        aria-label={`Seleccionar partido contra ${match.opponent || 'Rival'}`}
-                      />
-                      <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-lg font-black text-white">{match.opponent || 'Rival'}</p>
-                        <span className={`rounded-2xl border px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${getDelegatedStatusTone(status)}`}>{statusLabel}</span>
+            <div className="mt-4 grid gap-3">
+              {visibleMatches.map((match) => {
+                const status = getDelegatedDataStatus(match);
+                const audit = auditMatch(match);
+                const selected = delegatedSelectedMatchIds.includes(match.id);
+                const statusLabel = status === 'Validado' && audit.pending ? 'Validado con incidencias' : status;
+                return (
+                  <article key={match.id} className={`rounded-2xl border p-3 ${selected ? 'border-caudal-electric/40 bg-caudal-electric/[0.05]' : 'border-white/5 bg-white/[0.035]'}`}>
+                    <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <input type="checkbox" checked={selected} onChange={() => setDelegatedSelectedMatchIds((current) => current.includes(match.id) ? current.filter((id) => id !== match.id) : [...current, match.id])} className="h-4 w-4 accent-caudal-electric" aria-label={`Seleccionar partido contra ${match.opponent || 'Rival'}`} />
+                        <span className="min-w-0">
+                          <span className="flex flex-wrap items-center gap-2">
+                            <span className="truncate text-sm font-black text-white">{match.opponent || 'Rival'}</span>
+                            <span className={`rounded-lg border px-2 py-1 text-[8px] font-black uppercase ${getDelegatedStatusTone(status)}`}>{statusLabel}</span>
+                          </span>
+                          <span className="mt-1 block text-[10px] text-slate-500">{matchDisplayDate(match.date)} · {audit.validated}/{audit.events.length} validados · {audit.pending} pendientes · {audit.coverageLabel}</span>
+                        </span>
                       </div>
-                      <p className="mt-1 text-sm text-slate-500">{matchDisplayDate(match.date)} · {getCompetitionFromCatalog(match).label || 'Partido'} · {getMatchScoreLabel(match)}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {audit.pending ? (
+                          <button type="button" onClick={async () => { setShowOnlyPendingQuickEvents(true); setActiveTab('Partidos'); await openMatchPage(match, 'POST'); window.setTimeout(() => document.getElementById('post-quick-events')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0); }} className="rounded-lg bg-yellow-300 px-2.5 py-2 text-[9px] font-black text-yellow-950">Revisar {audit.pending}</button>
+                        ) : null}
+                        {DELEGATED_DATA_STATUSES.map((nextStatus) => (
+                          <button key={nextStatus} type="button" disabled={delegatedStatusSavingId === match.id} onClick={() => updateDelegatedDataStatus(match.id, nextStatus)} className={`rounded-lg px-2.5 py-2 text-[9px] font-black uppercase ${status === nextStatus ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-400'} disabled:opacity-40`}>{nextStatus}</button>
+                        ))}
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      {DELEGATED_DATA_STATUSES.map((nextStatus) => (
-                        <button key={nextStatus} type="button" disabled={delegatedStatusSavingId === match.id} onClick={() => updateDelegatedDataStatus(match.id, nextStatus)} className={`rounded-2xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] transition ${status === nextStatus ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300 hover:bg-white/15'} disabled:opacity-50`}>{nextStatus}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-                    {[
-                      ['Eventos totales', audit.events.length],
-                      ['Validados', `${audit.validated} · ${audit.validatedPercent.toLocaleString('es-ES')}%`],
-                      ['Pendientes', audit.pending],
-                      ['Sin identificar', audit.unidentified],
-                      ['Duración cubierta', audit.coverageLabel],
-                      ['Última revisión', audit.lastReview ? matchDisplayDate(audit.lastReview) : 'No registrada'],
-                    ].map(([label, value]) => (
-                      <div key={label} className="rounded-2xl bg-black/15 p-3">
-                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
-                        <p className="mt-1 text-sm font-black text-white">{value}</p>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-4">
-                    <div className="flex items-center justify-between gap-3 text-xs font-bold text-slate-400">
-                      <span>Validación de eventos</span>
-                      <span>{audit.validated} de {audit.events.length} · {audit.validatedPercent.toLocaleString('es-ES')}%</span>
-                    </div>
-                    <div className="mt-2 h-2 rounded-full bg-white/10">
-                      <div className="h-2 rounded-full bg-emerald-300" style={{ width: `${audit.validatedPercent}%` }} />
-                    </div>
-                    <p className="mt-2 text-[10px] font-semibold text-slate-600">Cobertura temporal: {audit.coverageLabel} · {audit.periods}</p>
-                  </div>
-                  {audit.checks.length ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {audit.checks.map((check) => (
-                        <span key={check} className="rounded-2xl border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-xs font-bold text-yellow-100">{check}</span>
-                      ))}
-                      {audit.pending ? (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            setShowOnlyPendingQuickEvents(true);
-                            setActiveTab('Partidos');
-                            await openMatchPage(match, 'POST');
-                            window.setTimeout(() => document.getElementById('post-quick-events')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
-                          }}
-                          className="rounded-2xl bg-yellow-300 px-3 py-2 text-xs font-black text-yellow-950"
-                        >
-                          Revisar {audit.pending} pendientes
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            }) : (
-              <div className="empty-state">
-                <p className="font-bold text-slate-200">No hay partidos con Registro Delegado en este filtro.</p>
-              </div>
-            )}
+                  </article>
+                );
+              })}
+              {!visibleMatches.length ? <p className="rounded-2xl bg-black/15 p-4 text-sm text-slate-500">No hay partidos con Registro Delegado en este filtro.</p> : null}
+            </div>
           </div>
-        </section>
-        {quickPlayerRow ? (
-          <div className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-950/75 p-3 backdrop-blur-sm sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-label={`Ficha rápida de ${displayPlayerName(quickPlayerRow.player)}`}>
-            <button type="button" aria-label="Cerrar ficha rápida" onClick={() => setDelegatedQuickPlayerId('')} className="absolute inset-0 cursor-default" />
-            <article className="relative z-10 max-h-[88dvh] w-full max-w-2xl overflow-y-auto rounded-[2rem] border border-white/10 bg-[#091428] p-5 shadow-[0_30px_100px_rgba(0,0,0,0.55)] sm:p-7">
-              <button type="button" onClick={() => setDelegatedQuickPlayerId('')} className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-lg font-black text-white hover:bg-white/15" aria-label="Cerrar">×</button>
-              <div className="flex items-center gap-4 pr-12">
-                <div className="h-20 w-20 shrink-0 overflow-hidden rounded-3xl border border-caudal-electric/25 bg-slate-900">
-                  <PlayerPortrait player={quickPlayerRow.player} className="h-full w-full" fallbackTextClassName="text-lg" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Ficha rápida · Registro Delegado</p>
-                  <h3 className="mt-1 truncate text-2xl font-black text-white">{displayPlayerName(quickPlayerRow.player)}</h3>
-                  <p className="mt-1 text-sm font-semibold text-slate-500">
-                    {quickPlayerRow.player.position || 'Sin posición'}
-                    {quickPlayerRow.player.number || quickPlayerRow.player.dorsal ? ` · #${quickPlayerRow.player.number || quickPlayerRow.player.dorsal}` : ''}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {delegatedAnalysisEventCatalog.map((item) => (
-                  <div key={item.type} className="rounded-2xl border border-white/5 bg-white/[0.045] p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-black text-caudal-electric">{item.icon}</span>
-                      <span className="text-2xl font-black text-white">{quickPlayerRow.stats[item.statKey] || 0}</span>
-                    </div>
-                    <p className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{item.label}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl bg-black/20 p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Última acción</p>
-                  <p className="mt-1 text-xl font-black text-white">{quickPlayerLastMinute == null ? 'Sin eventos' : `${quickPlayerLastMinute}'`}</p>
-                </div>
-                <div className="rounded-2xl bg-black/20 p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Partidos con registro</p>
-                  <p className="mt-1 text-xl font-black text-white">{quickPlayerRow.matches}</p>
-                </div>
-              </div>
-              <p className="mt-4 text-xs leading-5 text-slate-500">Esta ficha contiene únicamente acciones validadas procedentes del Registro Delegado y respeta los filtros activos.</p>
-            </article>
-          </div>
-        ) : null}
+        </details>
       </main>
     );
   };
