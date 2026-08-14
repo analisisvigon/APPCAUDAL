@@ -1,5 +1,6 @@
 import { DELEGATED_EVENT_STAT_EFFECTS } from './delegatedEventSaveFlow.js';
 import { getDelegatedEventPlayerId, normalizeDelegatedPlayerName } from './delegatedEventIdentity.js';
+import { getGoalAssistant, getGoalScorer, normalizeGoalParticipantName } from './goalEvents.js';
 import {
   DELEGATED_EVENT_CATALOG,
   filterDelegatedValidatedEvents,
@@ -23,11 +24,17 @@ export const DELEGATED_STAT_FIELDS = [
   { key: 'foulsReceived', label: 'Faltas recibidas', short: 'FREC' },
 ];
 
-export const DELEGATED_PLAYER_STAT_FIELDS = DELEGATED_STAT_FIELDS.filter((field) => !field.teamOnly);
+export const OFFICIAL_PLAYER_STAT_FIELDS = [
+  { key: 'goals', label: 'Goles', short: 'G', source: 'official' },
+  { key: 'assists', label: 'Asistencias', short: 'A', source: 'official' },
+  { key: 'goalContributions', label: 'Goles + asistencias', short: 'G+A', source: 'official' },
+];
+export const DELEGATED_PLAYER_ACTION_FIELDS = DELEGATED_STAT_FIELDS.filter((field) => !field.teamOnly && field.key !== 'goals');
+export const DELEGATED_PLAYER_STAT_FIELDS = [...OFFICIAL_PLAYER_STAT_FIELDS, ...DELEGATED_PLAYER_ACTION_FIELDS];
 export const DELEGATED_PERIODS = ['0-15', '16-30', '31-45', '46-60', '61-75', '76-90+'];
 export const DELEGATED_EVOLUTION_SCOPES = ['5', '10', 'season'];
-export const DELEGATED_HALF_FIELDS = DELEGATED_STAT_FIELDS.filter((field) => field.key !== 'dribbles');
-export const DELEGATED_TEMPORAL_FIELDS = DELEGATED_STAT_FIELDS.filter((field) => field.key !== 'dribbles');
+export const DELEGATED_HALF_FIELDS = DELEGATED_STAT_FIELDS;
+export const DELEGATED_TEMPORAL_FIELDS = DELEGATED_STAT_FIELDS;
 
 const safeArray = (value) => (Array.isArray(value) ? value : []);
 const safeObject = (value) => (value && typeof value === 'object' && !Array.isArray(value) ? value : {});
@@ -48,6 +55,11 @@ export const formatDelegatedNumber = (value, mode = 'total') => {
 };
 
 export const createEmptyDelegatedStats = () => DELEGATED_STAT_FIELDS.reduce(
+  (stats, field) => ({ ...stats, [field.key]: 0 }),
+  {},
+);
+
+const createEmptyPlayerStats = () => DELEGATED_PLAYER_STAT_FIELDS.reduce(
   (stats, field) => ({ ...stats, [field.key]: 0 }),
   {},
 );
@@ -78,7 +90,10 @@ export const calculateDelegatedDerivedStats = (stats = {}) => ({
 
 export const calculateDelegatedPerMatch = (stats = {}, matchesPlayed) => {
   if (!Number.isFinite(Number(matchesPlayed)) || Number(matchesPlayed) <= 0) return null;
-  return DELEGATED_STAT_FIELDS.reduce((result, field) => ({
+  const fields = Object.prototype.hasOwnProperty.call(stats, 'assists')
+    ? DELEGATED_PLAYER_STAT_FIELDS
+    : DELEGATED_STAT_FIELDS;
+  return fields.reduce((result, field) => ({
     ...result,
     [field.key]: round(Number(stats[field.key] || 0) / Number(matchesPlayed), 2),
   }), {});
@@ -155,6 +170,99 @@ export const aggregateDelegatedSides = (events = [], sampleEvents = events) => (
 
 const getPlayerName = (player = {}) => String(player.name || player.playerName || player.player_name || '').trim();
 
+const getOfficialGoalEvents = (matches = [], filters = {}) => {
+  if (filters.eventType && !['todos', 'gol'].includes(filters.eventType)) return [];
+  const rows = safeArray(matches).flatMap((match) => safeArray(match.statsGoalEvents)
+    .filter((event) => ['Gol a favor', 'Gol en contra'].includes(event?.type))
+    .filter((event) => !filters.period || filters.period === 'todos' || getDelegatedEventPeriod(event) === filters.period)
+    .map((event, index) => ({
+      ...event,
+      match,
+      matchId: match.id,
+      _officialKey: `${match.id}:${event.id || `${event.type}:${event.minute || event.minuto || ''}:${index}`}`,
+    })));
+  return [...new Map(rows.map((event) => [event._officialKey, event])).values()];
+};
+
+const resolveOfficialParticipantId = (event, role, players = []) => {
+  const participant = role === 'assistant' ? getGoalAssistant(event) : getGoalScorer(event);
+  if (participant.id) {
+    const player = safeArray(players).find((candidate) => String(candidate?.id || '') === String(participant.id));
+    return player ? String(player.id) : '';
+  }
+  const normalizedName = normalizeGoalParticipantName(participant.name);
+  if (!normalizedName) return '';
+  const matches = safeArray(players).filter((player) => normalizeGoalParticipantName(getPlayerName(player)) === normalizedName);
+  return matches.length === 1 ? String(matches[0].id) : '';
+};
+
+export const buildDelegatedOfficialPlayerProduction = ({ matches = [], players = [], filters = {} } = {}) => {
+  const events = getOfficialGoalEvents(matches, filters).filter((event) => event.type === 'Gol a favor');
+  const byPlayer = new Map();
+  const ensure = (playerId) => {
+    if (!byPlayer.has(playerId)) byPlayer.set(playerId, { goals: 0, assists: 0, goalContributions: 0, matchIds: [], byMatch: {} });
+    return byPlayer.get(playerId);
+  };
+  events.forEach((event) => {
+    const scorerId = resolveOfficialParticipantId(event, 'scorer', players);
+    const assistantId = resolveOfficialParticipantId(event, 'assistant', players);
+    [['goals', scorerId], ['assists', assistantId]].forEach(([key, playerId]) => {
+      if (!playerId) return;
+      const production = ensure(playerId);
+      production[key] += 1;
+      production.goalContributions += 1;
+      if (!production.matchIds.includes(event.matchId)) production.matchIds.push(event.matchId);
+      if (!production.byMatch[event.matchId]) production.byMatch[event.matchId] = { goals: 0, assists: 0, goalContributions: 0 };
+      production.byMatch[event.matchId][key] += 1;
+      production.byMatch[event.matchId].goalContributions += 1;
+    });
+  });
+  return { events, byPlayer };
+};
+
+const getOfficialMatchScore = (match = {}) => {
+  let caudal = match.goalsFor ?? match.goals_for;
+  let rival = match.goalsAgainst ?? match.goals_against;
+  if (!hasNumber(caudal) || !hasNumber(rival)) {
+    const home = match.homeScore ?? match.home_score;
+    const away = match.awayScore ?? match.away_score;
+    if (hasNumber(home) && hasNumber(away)) {
+      caudal = getDelegatedMatchVenue(match) === 'home' ? home : away;
+      rival = getDelegatedMatchVenue(match) === 'home' ? away : home;
+    }
+  }
+  if (!hasNumber(caudal) || !hasNumber(rival)) {
+    const events = safeArray(match.statsGoalEvents);
+    if (!events.length) return null;
+    caudal = events.filter((event) => event.type === 'Gol a favor').length;
+    rival = events.filter((event) => event.type === 'Gol en contra').length;
+  }
+  return { caudal: Number(caudal), rival: Number(rival) };
+};
+
+export const buildDelegatedOfficialTeamScore = (matches = []) => {
+  const rows = safeArray(matches).flatMap((match) => {
+    const score = getOfficialMatchScore(match);
+    return score ? [{ match, ...score }] : [];
+  });
+  const totals = rows.reduce((result, row) => ({ caudal: result.caudal + row.caudal, rival: result.rival + row.rival }), { caudal: 0, rival: 0 });
+  return {
+    rows,
+    matchCount: rows.length,
+    reliable: rows.length > 0,
+    totals,
+    average: rows.length ? { caudal: round(totals.caudal / rows.length, 2), rival: round(totals.rival / rows.length, 2) } : { caudal: null, rival: null },
+  };
+};
+
+export const buildDelegatedOfficialGoalEvents = (matches = [], filters = {}) => getOfficialGoalEvents(matches, filters).map((event) => ({
+  ...event,
+  tipoEvento: 'gol',
+  equipo: event.type === 'Gol a favor' ? 'caudal' : 'rival',
+  partidoId: event.matchId,
+  minute: event.minute ?? event.minuto,
+}));
+
 export const getDelegatedMatchPlayerStatsEntry = (match = {}, player = {}) => {
   const playerId = String(player.id || player.playerId || player.jugadorId || '');
   const normalizedName = normalizeDelegatedPlayerName(getPlayerName(player));
@@ -197,7 +305,7 @@ export const getDelegatedPlayerMinutes = (matches = [], player = {}, eventMatchI
   };
 };
 
-const buildPlayerMatchRows = ({ matches, playerEvents, participation }) => (
+const buildPlayerMatchRows = ({ matches, playerEvents, participation, officialByMatch = {} }) => (
   sortMatchesAscending(matches).flatMap((match) => {
     if (!participation.playedMatchIds.includes(match.id)) return [];
     const events = playerEvents.filter((event) => (event.match?.id || event.partidoId || event.partido_id) === match.id);
@@ -205,7 +313,12 @@ const buildPlayerMatchRows = ({ matches, playerEvents, participation }) => (
       match,
       matchId: match.id,
       minutes: participation.entries.find((entry) => entry.matchId === match.id)?.minutes ?? null,
-      stats: aggregateDelegatedStats(events, { scope: 'player' }),
+      stats: {
+        ...aggregateDelegatedStats(events, { scope: 'player' }),
+        goals: officialByMatch[match.id]?.goals || 0,
+        assists: officialByMatch[match.id]?.assists || 0,
+        goalContributions: officialByMatch[match.id]?.goalContributions || 0,
+      },
     }];
   })
 );
@@ -217,11 +330,11 @@ export const buildDelegatedRecentComparison = (matchRows = [], fields = DELEGATE
   const seasonStats = rows.reduce((total, row) => {
     safeArray(fields).forEach((field) => { total[field.key] += Number(row.stats?.[field.key] || 0); });
     return total;
-  }, createEmptyDelegatedStats());
+  }, createEmptyPlayerStats());
   const recentStats = recent.reduce((total, row) => {
     safeArray(fields).forEach((field) => { total[field.key] += Number(row.stats?.[field.key] || 0); });
     return total;
-  }, createEmptyDelegatedStats());
+  }, createEmptyPlayerStats());
   return {
     sufficient: true,
     sample: rows.length,
@@ -243,10 +356,12 @@ export const buildDelegatedRecentComparison = (matchRows = [], fields = DELEGATE
   };
 };
 
-export const buildDelegatedPlayerRows = ({ events = [], matches = [], players = [], selectedPlayerId = '' } = {}) => {
+export const buildDelegatedPlayerRows = ({ events = [], matches = [], players = [], selectedPlayerId = '', filters = {} } = {}) => {
   const ownEvents = safeArray(events).filter((event) => getDelegatedEventSide(event) === 'caudal');
   const playersById = new Map(safeArray(players).map((player) => [String(player.id), player]));
   const includedIds = new Set(ownEvents.map(getDelegatedEventPlayerId).filter(Boolean));
+  const officialProduction = buildDelegatedOfficialPlayerProduction({ matches, players, filters });
+  officialProduction.byPlayer.forEach((value, playerId) => includedIds.add(playerId));
   safeArray(players).forEach((player) => {
     if (safeArray(matches).some((match) => {
       const row = getDelegatedMatchPlayerStatsEntry(match, player);
@@ -259,10 +374,20 @@ export const buildDelegatedPlayerRows = ({ events = [], matches = [], players = 
     const player = playersById.get(playerId);
     if (!player || (selectedPlayerId && playerId !== String(selectedPlayerId))) return [];
     const playerEvents = ownEvents.filter((event) => getDelegatedEventPlayerId(event) === playerId);
-    const eventMatchIds = [...new Set(playerEvents.map((event) => event.match?.id || event.partidoId || event.partido_id).filter(Boolean))];
-    const stats = aggregateDelegatedStats(playerEvents, { scope: 'player' });
+    const official = officialProduction.byPlayer.get(playerId) || { goals: 0, assists: 0, goalContributions: 0, matchIds: [], byMatch: {} };
+    const eventMatchIds = [...new Set([
+      ...playerEvents.map((event) => event.match?.id || event.partidoId || event.partido_id),
+      ...official.matchIds,
+    ].filter(Boolean))];
+    const delegatedStats = aggregateDelegatedStats(playerEvents, { scope: 'player' });
+    const stats = {
+      ...delegatedStats,
+      goals: official.goals,
+      assists: official.assists,
+      goalContributions: official.goalContributions,
+    };
     const participation = getDelegatedPlayerParticipation(matches, player, eventMatchIds);
-    const matchRows = buildPlayerMatchRows({ matches, playerEvents, participation });
+    const matchRows = buildPlayerMatchRows({ matches, playerEvents, participation, officialByMatch: official.byMatch });
     const matchesPlayed = participation.reliable ? participation.matchesPlayed : null;
     return [{
       player,
@@ -298,20 +423,33 @@ export const buildDelegatedRankings = (playerRows = []) => [
   return [{ key, label, value: max, leaders: safeArray(playerRows).filter((row) => Number(row.stats?.[key] || 0) === max) }];
 });
 
-export const buildDelegatedTeamProfile = ({ events = [], matchCount = 0, side = 'caudal', sampleEvents = events } = {}) => {
+export const buildDelegatedTeamProfile = ({ events = [], matches = [], matchCount = 0, side = 'caudal', sampleEvents = events, filters = {} } = {}) => {
   const sideEvents = safeArray(events).filter((event) => getDelegatedEventSide(event) === side);
   const sideSampleEvents = safeArray(sampleEvents).filter((event) => getDelegatedEventSide(event) === side);
   const hasSample = sideSampleEvents.length > 0;
   const sampledMatches = new Set(sideSampleEvents.map(getEventMatchId).filter(Boolean)).size;
   const denominator = side === 'rival' ? sampledMatches : Number(matchCount || 0);
   const totals = aggregateDelegatedStats(sideEvents);
+  const officialScore = buildDelegatedOfficialTeamScore(matches);
+  const goalFilterActive = (filters.eventType && filters.eventType !== 'todos') || (filters.period && filters.period !== 'todos');
+  const scopedOfficialGoals = buildDelegatedOfficialGoalEvents(matches, filters).filter((event) => getDelegatedEventSide(event) === side).length;
+  if (officialScore.reliable) totals.goals = goalFilterActive ? scopedOfficialGoals : officialScore.totals[side];
+  const delegatedAverage = hasSample ? calculateDelegatedPerMatch(totals, denominator) : null;
+  const average = officialScore.reliable
+    ? {
+      ...DELEGATED_STAT_FIELDS.reduce((result, field) => ({ ...result, [field.key]: delegatedAverage?.[field.key] ?? null }), {}),
+      goals: goalFilterActive ? round(totals.goals / officialScore.matchCount, 2) : officialScore.average[side],
+    }
+    : delegatedAverage;
   return {
     side,
-    hasSample,
-    matchCount: hasSample ? denominator : 0,
+    hasSample: hasSample || officialScore.reliable,
+    hasActionSample: hasSample,
+    matchCount: officialScore.reliable ? officialScore.matchCount : hasSample ? denominator : 0,
     totals,
-    average: hasSample ? calculateDelegatedPerMatch(totals, denominator) : null,
+    average,
     derived: hasSample ? calculateDelegatedDerivedStats(totals) : calculateDelegatedDerivedStats({}),
+    officialScore,
   };
 };
 
@@ -334,23 +472,34 @@ export const buildDelegatedTemporalDistribution = (events = [], statKey = 'shots
   return { rows, hasCaudal, hasRival, mode };
 };
 
-export const buildDelegatedTemporalMatrix = (events = [], matchCount = 0, mode = 'total', sampleEvents = events) => ({
+export const buildDelegatedTemporalMatrix = (events = [], matchCount = 0, mode = 'total', sampleEvents = events, officialGoalEvents = []) => ({
   periods: DELEGATED_PERIODS,
   rows: DELEGATED_TEMPORAL_FIELDS.map((field) => ({
     ...field,
-    values: buildDelegatedTemporalDistribution(events, field.key, matchCount, mode, sampleEvents).rows,
+    values: buildDelegatedTemporalDistribution(
+      field.key === 'goals' ? officialGoalEvents : events,
+      field.key,
+      matchCount,
+      mode,
+      field.key === 'goals' ? officialGoalEvents : sampleEvents,
+    ).rows,
   })),
   mode,
 });
 
-export const buildDelegatedHalfComparison = (events = [], side = 'caudal', sampleEvents = events) => {
+export const buildDelegatedHalfComparison = (events = [], side = 'caudal', sampleEvents = events, officialGoalEvents = []) => {
   const sideEvents = safeArray(events).filter((event) => getDelegatedEventSide(event) === side);
   const firstEvents = sideEvents.filter((event) => Number(event.minute ?? event.minuto ?? 0) <= 45);
   const secondEvents = sideEvents.filter((event) => Number(event.minute ?? event.minuto ?? 0) > 45);
   const first = aggregateDelegatedStats(firstEvents);
   const second = aggregateDelegatedStats(secondEvents);
+  const officialSideEvents = safeArray(officialGoalEvents).filter((event) => getDelegatedEventSide(event) === side);
+  if (officialSideEvents.length) {
+    first.goals = aggregateDelegatedStats(officialSideEvents.filter((event) => Number(event.minute ?? event.minuto ?? 0) <= 45)).goals;
+    second.goals = aggregateDelegatedStats(officialSideEvents.filter((event) => Number(event.minute ?? event.minuto ?? 0) > 45)).goals;
+  }
   return {
-    hasSample: safeArray(sampleEvents).some((event) => getDelegatedEventSide(event) === side),
+    hasSample: safeArray(sampleEvents).some((event) => getDelegatedEventSide(event) === side) || officialSideEvents.length > 0,
     rows: DELEGATED_HALF_FIELDS.map((field) => {
       const total = Number(first[field.key] || 0) + Number(second[field.key] || 0);
       return {
@@ -392,9 +541,11 @@ export const buildDelegatedContextComparison = ({ matches = [], filters = {}, di
     const dataset = buildDelegatedStatsDataset({ matches: groupMatches, filters: { ...baseFilters, scope: 'season', venue: 'all', result: 'all', competitionKey: 'all' } });
     const profile = buildDelegatedTeamProfile({
       events: dataset.events,
+      matches: groupMatches,
       sampleEvents: dataset.sampleEvents,
       matchCount: dataset.validatedMatches.length,
       side: filters.team === 'rival' ? 'rival' : 'caudal',
+      filters,
     });
     return { key, label, matches: groupMatches, matchCount: groupMatches.length, ...profile };
   });
@@ -418,6 +569,8 @@ export const buildDelegatedEvolution = ({
 } = {}) => {
   const player = safeArray(players).find((candidate) => String(candidate.id) === String(filters.playerId || ''));
   const selectedMatches = filterDelegatedValidatedMatches(matches, { ...filters, scope, competitionKey });
+  const officialProduction = buildDelegatedOfficialPlayerProduction({ matches: selectedMatches, players, filters });
+  const officialScore = buildDelegatedOfficialTeamScore(selectedMatches);
   const rows = selectedMatches.map((match) => {
     const unfiltered = buildDelegatedStatsDataset({ matches: [match], filters: { matchId: match.id, scope: 'season' } });
     const dataset = buildDelegatedStatsDataset({ matches: [match], filters: { ...filters, scope: 'season', matchId: match.id } });
@@ -433,11 +586,24 @@ export const buildDelegatedEvolution = ({
       : unfiltered.sampleEvents.some((event) => getDelegatedEventSide(event) === 'caudal');
     const hasRival = unfiltered.sampleEvents.some((event) => getDelegatedEventSide(event) === 'rival');
     const minutes = playerPlayed ? participation.minutes : null;
-    const caudalValue = metric === 'minutes' ? minutes : (hasCaudal ? Number(caudalStats[metric] || 0) : null);
-    const rivalValue = metric === 'minutes' ? null : (hasRival ? Number(rivalStats[metric] || 0) : null);
+    const playerOfficial = player ? officialProduction.byPlayer.get(String(player.id))?.byMatch?.[match.id] : null;
+    const matchScore = officialScore.rows.find((row) => row.match.id === match.id);
+    const officialMetric = ['goals', 'assists', 'goalContributions'].includes(metric);
+    const caudalValue = metric === 'minutes'
+      ? minutes
+      : officialMetric
+        ? (filters.playerId ? (playerPlayed ? Number(playerOfficial?.[metric] || 0) : null) : metric === 'goals' && matchScore ? matchScore.caudal : null)
+        : (hasCaudal ? Number(caudalStats[metric] || 0) : null);
+    const rivalValue = metric === 'minutes'
+      ? null
+      : metric === 'goals' && matchScore
+        ? matchScore.rival
+        : officialMetric
+          ? null
+          : (hasRival ? Number(rivalStats[metric] || 0) : null);
     let value = filters.team === 'rival' ? rivalValue : caudalValue;
     if (mode === 'per90' && filters.playerId && metric !== 'minutes') {
-      value = minutes ? round((Number(caudalStats[metric] || 0) / minutes) * 90, 2) : null;
+      value = minutes ? round((Number(caudalValue || 0) / minutes) * 90, 2) : null;
     }
     return {
       match,

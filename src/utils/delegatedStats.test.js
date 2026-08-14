@@ -7,6 +7,9 @@ import {
   buildDelegatedEvolution,
   buildDelegatedEvolutionComparison,
   buildDelegatedHalfComparison,
+  buildDelegatedOfficialGoalEvents,
+  buildDelegatedOfficialPlayerProduction,
+  buildDelegatedOfficialTeamScore,
   buildDelegatedPlayerRows,
   buildDelegatedStatsDataset,
   buildDelegatedTeamProfile,
@@ -22,6 +25,7 @@ import {
 } from './delegatedStats.js';
 
 const playerA = { id: '11111111-1111-4111-8111-111111111111', name: 'Jugador A' };
+const playerB = { id: '22222222-2222-4222-8222-222222222222', name: 'Jugador B' };
 const baseEvent = (type, overrides = {}) => ({
   id: crypto.randomUUID(),
   tipoEvento: type,
@@ -83,14 +87,14 @@ const [playerRow] = buildDelegatedPlayerRows({
   players: [playerA],
 });
 assert.deepEqual(playerRow.stats, {
-  goals: 1, shots: 5, shotsOnTarget: 2, dribbles: 0, crosses: 3, turnovers: 5,
+  goals: 0, assists: 0, goalContributions: 0, shots: 5, shotsOnTarget: 2, dribbles: 0, crosses: 3, turnovers: 5,
   steals: 2, recoveries: 4, corners: 0, foulsCommitted: 0, foulsReceived: 0,
-});
+}, 'un gol rápido deriva tiro y TAP, pero no duplica el gol oficial del jugador');
 assert.equal(playerRow.minutes, 90);
 assert.equal(playerRow.derived.shotAccuracy, 40);
-assert.equal(playerRow.derived.shotEffectiveness, 20);
+assert.equal(playerRow.derived.shotEffectiveness, 0);
 assert.deepEqual(playerRow.per90, {
-  goals: 1, shots: 5, shotsOnTarget: 2, dribbles: 0, crosses: 3, turnovers: 5,
+  goals: 0, assists: 0, goalContributions: 0, shots: 5, shotsOnTarget: 2, dribbles: 0, crosses: 3, turnovers: 5,
   steals: 2, recoveries: 4, foulsCommitted: 0, foulsReceived: 0,
 }, 'con 90 minutos, por90 coincide con los totales individuales');
 assert.equal(calculateDelegatedPer90(playerRow.stats, null), null, 'sin minutos fiables no inventa por90');
@@ -103,6 +107,90 @@ const [unknownMinutesRow] = buildDelegatedPlayerRows({
 });
 assert.equal(unknownMinutesRow.minutes, null, 'los minutos vacíos se muestran como no disponibles');
 assert.equal(unknownMinutesRow.per90, null, 'los minutos vacíos no producen por90');
+
+const officialProductionMatches = Array.from({ length: 10 }, (_, index) => ({
+  ...match(
+    `official-${index + 1}`,
+    `2026-04-${String(index + 1).padStart(2, '0')}`,
+    index < 5 ? 'league' : 'cup',
+    index < 2 ? [baseEvent('gol')] : [baseEvent('tiro')],
+    90,
+  ),
+  goalsFor: index < 5 ? 1 : 0,
+  goalsAgainst: index === 0 ? 1 : 0,
+  isHome: index % 2 === 0,
+  statsPlayerData: {
+    'Jugador A': { jugadorId: playerA.id, minutes: 90 },
+    'Jugador B': { jugadorId: playerB.id, minutes: 90 },
+  },
+  statsGoalEvents: index < 5 ? [{
+    id: `official-goal-${index + 1}`,
+    type: 'Gol a favor',
+    minute: String(10 + index * 10),
+    scorerId: index < 2 ? playerA.id : playerB.id,
+    scorer: index < 2 ? playerA.name : playerB.name,
+    assistantId: index < 2 ? playerB.id : playerA.id,
+    assistant: index < 2 ? playerB.name : playerA.name,
+  }] : [],
+}));
+const officialDataset = buildDelegatedStatsDataset({ matches: officialProductionMatches });
+const officialRows = buildDelegatedPlayerRows({
+  events: officialDataset.events,
+  matches: officialDataset.validatedMatches,
+  players: [playerA, playerB],
+});
+const officialPlayerA = officialRows.find((row) => row.playerId === playerA.id);
+assert.equal(officialPlayerA.stats.goals, 2, 'G usa exclusivamente partido_eventos_gol y no suma los dos goles rápidos');
+assert.equal(officialPlayerA.stats.assists, 3, 'A usa la asistencia oficial vinculada al UUID');
+assert.equal(officialPlayerA.stats.goalContributions, 5, 'G+A se deriva de producción oficial');
+assert.equal(officialPlayerA.matchesPlayed, 10);
+assert.equal(officialPlayerA.minutes, 900);
+assert.equal(officialPlayerA.average.goals, 0.2);
+assert.equal(officialPlayerA.average.assists, 0.3);
+assert.equal(officialPlayerA.average.goalContributions, 0.5);
+assert.equal(officialPlayerA.per90.goals, 0.2);
+assert.equal(officialPlayerA.per90.assists, 0.3);
+assert.equal(officialPlayerA.per90.goalContributions, 0.5);
+const officialScore = buildDelegatedOfficialTeamScore(officialProductionMatches);
+assert.deepEqual(officialScore.totals, { caudal: 5, rival: 1 }, 'el marcador de equipo procede del resultado oficial');
+assert.equal(officialScore.average.caudal, 0.5);
+assert.equal(officialScore.average.rival, 0.1);
+assert.equal(buildDelegatedOfficialGoalEvents(officialProductionMatches, { period: '0-15' }).length, 1, 'el filtro temporal también limita goles oficiales');
+assert.equal(buildDelegatedOfficialGoalEvents(officialProductionMatches, { eventType: 'robo' }).length, 0, 'un filtro de otra acción no mezcla goles oficiales');
+const leagueOfficialDataset = buildDelegatedStatsDataset({ matches: officialProductionMatches, filters: { competitionKey: 'league' } });
+const leagueOfficialA = buildDelegatedPlayerRows({ events: leagueOfficialDataset.events, matches: leagueOfficialDataset.validatedMatches, players: [playerA, playerB] }).find((row) => row.playerId === playerA.id);
+assert.deepEqual([leagueOfficialA.stats.goals, leagueOfficialA.stats.assists], [2, 3], 'los goles oficiales respetan la muestra de partidos filtrada');
+const officialProductionForFilters = (filters) => {
+  const filteredDataset = buildDelegatedStatsDataset({ matches: officialProductionMatches, filters });
+  return buildDelegatedPlayerRows({ events: filteredDataset.events, matches: filteredDataset.validatedMatches, players: [playerA, playerB] }).find((row) => row.playerId === playerA.id);
+};
+assert.deepEqual([officialProductionForFilters({ matchId: 'official-1' }).stats.goals, officialProductionForFilters({ matchId: 'official-1' }).stats.assists], [1, 0], 'el partido limita la producción oficial');
+assert.deepEqual([officialProductionForFilters({ venue: 'home' }).stats.goals, officialProductionForFilters({ venue: 'home' }).stats.assists], [1, 2], 'local/visitante limita la producción oficial');
+assert.deepEqual([officialProductionForFilters({ result: 'win' }).stats.goals, officialProductionForFilters({ result: 'win' }).stats.assists], [1, 3], 'el resultado limita la producción oficial');
+const productionByUuid = buildDelegatedOfficialPlayerProduction({ matches: officialProductionMatches, players: [playerA, playerB] });
+assert.equal(productionByUuid.byPlayer.get(playerA.id).goalContributions, 5);
+
+const missingOfficialDenominatorMatch = {
+  ...officialProductionMatches[0],
+  id: 'official-missing-denominator',
+  statsGoalEvents: [{ id: 'missing-denominator-goal', type: 'Gol a favor', scorerId: playerA.id, scorer: playerA.name }],
+  statsPlayerData: {},
+};
+const [missingOfficialDenominatorRow] = buildDelegatedPlayerRows({
+  events: buildDelegatedStatsDataset({ matches: [missingOfficialDenominatorMatch] }).events,
+  matches: [missingOfficialDenominatorMatch],
+  players: [playerA],
+});
+assert.equal(missingOfficialDenominatorRow.stats.goals, 1, 'el total oficial sigue visible aunque falte PJ/minutos');
+assert.equal(missingOfficialDenominatorRow.average, null, 'sin PJ fiable no calcula media por partido');
+assert.equal(missingOfficialDenominatorRow.per90, null, 'sin minutos fiables no calcula por90');
+
+const duplicatedName = { id: '44444444-4444-4444-8444-444444444444', name: playerA.name };
+const ambiguousNameMatch = {
+  ...officialProductionMatches[0],
+  statsGoalEvents: [{ id: 'ambiguous-name', type: 'Gol a favor', scorer: playerA.name }],
+};
+assert.equal(buildDelegatedOfficialPlayerProduction({ matches: [ambiguousNameMatch], players: [playerA, duplicatedName] }).byPlayer.size, 0, 'el fallback nominal no acepta coincidencias ambiguas');
 
 const filtered = buildDelegatedStatsDataset({
   matches: [mixedMatch],
@@ -152,10 +240,18 @@ const per90Evolution = buildDelegatedEvolution({
 assert.ok(per90Evolution.every((row) => row.value != null && row.normalized), 'evolución individual por90 usa minutos reales');
 const firstLeagueEvolution = per90Evolution[0];
 assert.equal(firstLeagueEvolution.value, Number(((firstLeagueEvolution.caudalValue / firstLeagueEvolution.minutes) * 90).toFixed(2)));
+const officialTeamEvolution = buildDelegatedEvolution({ matches: officialProductionMatches, metric: 'goals' });
+assert.deepEqual(officialTeamEvolution.map((row) => row.value), [1, 1, 1, 1, 1, 0, 0, 0, 0, 0], 'la evolución de goles de equipo usa el resultado oficial');
+const officialPlayerEvolution = buildDelegatedEvolution({
+  matches: officialProductionMatches,
+  filters: { playerId: playerA.id, team: 'caudal' },
+  metric: 'goals',
+  players: [playerA, playerB],
+});
+assert.deepEqual(officialPlayerEvolution.map((row) => row.value), [1, 1, 0, 0, 0, 0, 0, 0, 0, 0], 'la evolución individual de goles usa autoría oficial, no quickEvents');
 
 assert.equal(calculateDelegatedPerMatch({ shots: 7 }, 2).shots, 3.5, 'la media por partido divide el total entre la muestra real');
 
-const playerB = { id: '22222222-2222-4222-8222-222222222222', name: 'Jugador B' };
 const participationMatches = [
   {
     ...match('p1', '2026-01-01', 'league', [baseEvent('tiro')], 90),
