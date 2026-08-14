@@ -41,6 +41,8 @@ let supabasePlayers = [
   { id: 'player-isaac', name: 'Isaac Martín', google_forms_name: null },
   { id: 'player-lucas', name: 'Lucas Suárez', google_forms_name: null },
   { id: 'player-mario', name: 'Mario Rodríguez', google_forms_name: null },
+  { id: 'c5029ff1-5668-4efd-b91c-ccd4d2836232', name: 'Juilo Rodríguez', shirt_name: 'J. RODRÍGUEZ', google_forms_name: null },
+  { id: '52b68efa-2087-44a0-8f9f-96ed0f612a82', name: 'Julio Delgado', shirt_name: 'J. DELGADO', google_forms_name: null },
 ];
 
 const sandbox = {
@@ -294,6 +296,94 @@ assert.equal(
   'No debe aceptar diferencias tipográficas superiores a uno.'
 );
 
+const julioRodriguezId = 'c5029ff1-5668-4efd-b91c-ccd4d2836232';
+const julioDelgadoId = '52b68efa-2087-44a0-8f9f-96ed0f612a82';
+['JULIO RGUEZ', 'Julio Rguez', 'Julio Rodríguez', 'Julio Rodriguez'].forEach((receivedName) => {
+  const resolution = sandbox.resolvePlayerByFormName(supabasePlayers, receivedName);
+  assert.equal(resolution?.jugador_id, julioRodriguezId, `${receivedName} debe resolver al UUID auditado de Julio Rodríguez.`);
+  assert.equal(resolution?.match_rule, 'EXACT_PLAYER_ALIAS');
+});
+assert.equal(
+  sandbox.resolvePlayerByFormName(supabasePlayers, 'JULIO DELGADO')?.jugador_id,
+  julioDelgadoId,
+  'Julio Delgado conserva un UUID distinto.'
+);
+assert.throws(
+  () => sandbox.resolvePlayerByFormName(supabasePlayers, 'JULIO'),
+  /Coincidencia ambigua/,
+  'El token parcial JULIO nunca puede elegir entre Julio Rodríguez y Julio Delgado.'
+);
+
+const julioWellnessPlan = sandbox.buildWellnessHistoryImportPlan([{
+  rowNumber: 13,
+  values: {
+    'Marca temporal': '13/08/2026 08:00:00',
+    'Nombre y apellidos.': 'JULIO RGUEZ',
+    'Ratio salud': '8',
+  },
+}], supabasePlayers, 'Europe/Madrid');
+const julioRpePlan = sandbox.buildRpeHistoryImportPlan([{
+  rowNumber: 14,
+  values: {
+    'Marca temporal': '13/08/2026 12:00:00',
+    'Nombre y apellidos.': 'Julio Rodriguez',
+    'RPE': '6',
+  },
+}], supabasePlayers, 'Europe/Madrid');
+assert.equal(julioWellnessPlan.groups[0]?.payload.jugador_id, julioRodriguezId, 'Wellness usa el resolver centralizado.');
+assert.equal(julioRpePlan.groups[0]?.payload.jugador_id, julioRodriguezId, 'RPE usa el mismo resolver centralizado.');
+assert.equal(julioWellnessPlan.failures.length, 0);
+assert.equal(julioRpePlan.failures.length, 0);
+
+const unknownWellnessPlan = sandbox.buildWellnessHistoryImportPlan([{
+  rowNumber: 15,
+  values: { 'Marca temporal': '13/08/2026 08:00:00', 'Nombre y apellidos.': 'Jugador desconocido', 'Ratio salud': '8' },
+}], supabasePlayers, 'Europe/Madrid');
+const unknownRpePlan = sandbox.buildRpeHistoryImportPlan([{
+  rowNumber: 16,
+  values: { 'Marca temporal': '13/08/2026 12:00:00', 'Nombre y apellidos.': 'Jugador desconocido', 'RPE': '6' },
+}], supabasePlayers, 'Europe/Madrid');
+assert.equal(unknownWellnessPlan.groups.length, 0, 'Wellness desconocido no genera payload insertable.');
+assert.equal(unknownWellnessPlan.failures[0]?.category, 'JUGADOR_NO_ENCONTRADO');
+assert.equal(unknownRpePlan.groups.length, 0, 'RPE desconocido no genera payload insertable.');
+assert.equal(unknownRpePlan.failures[0]?.category, 'JUGADOR_NO_ENCONTRADO');
+
+const targetedWellnessRows = sandbox.selectWellnessHistoryRowsByPlayerAndDate([
+  {
+    rowNumber: 20,
+    values: {
+      'Marca temporal': '13/08/2026 08:00:00',
+      'Nombre y apellidos.': 'JULIO RGUEZ',
+      'Supabase status': 'SYNCED',
+      'Ratio salud': '7',
+    },
+  },
+  {
+    rowNumber: 21,
+    values: {
+      'Marca temporal': '13/08/2026 08:05:00',
+      'Nombre y apellidos.': 'JULIO RGUEZ',
+      'Supabase status': 'ERROR',
+      'Supabase error': 'Jugador no encontrado en public.jugadores: "JULIO RGUEZ".',
+      'Ratio salud': '8',
+    },
+  },
+  {
+    rowNumber: 22,
+    values: {
+      'Marca temporal': '13/08/2026 08:10:00',
+      'Nombre y apellidos.': 'JULIO DELGADO',
+      'Supabase status': 'ERROR',
+      'Ratio salud': '9',
+    },
+  },
+], 'JULIO RGUEZ', '2026-08-13', 'Europe/Madrid');
+assert.deepEqual(
+  JSON.parse(JSON.stringify(targetedWellnessRows.map((row) => row.rowNumber))),
+  [21],
+  'La recuperación puntual selecciona solo la respuesta fallida exacta y no otra fila ni otro Julio.'
+);
+
 const verifiedRpePlayers = [
   {
     id: '405e20ed-6648-4843-b223-54f7a6f3838f',
@@ -333,15 +423,12 @@ const verifiedHistoricalAliases = [
   ['JULIO RGUEZ', 'c5029ff1-5668-4efd-b91c-ccd4d2836232', 'Juilo Rodríguez'],
 ];
 verifiedHistoricalAliases.forEach(([receivedName, expectedId, expectedName]) => {
-  assert.equal(
-    sandbox.resolvePlayerByFormName(verifiedRpePlayers, receivedName),
-    null,
-    `"${receivedName}" no debe resolverse por parecido de texto sin el alias RPE controlado.`
-  );
+  const sharedResolution = sandbox.resolvePlayerByFormName(verifiedRpePlayers, receivedName);
+  assert.equal(sharedResolution.jugador_id, expectedId, `"${receivedName}" debe usar el alias compartido y auditado.`);
   const resolution = sandbox.resolveRpePlayerByFormName(verifiedRpePlayers, receivedName);
   assert.equal(resolution.jugador_id, expectedId);
   assert.equal(resolution.name, expectedName);
-  assert.equal(resolution.match_rule, 'EXACT_RPE_HISTORICAL_ALIAS');
+  assert.equal(resolution.match_rule, 'EXACT_PLAYER_ALIAS');
 });
 
 assert.throws(
@@ -355,7 +442,7 @@ assert.throws(
     verifiedRpePlayers[2],
   ], 'Julio Rodriguez'),
   /REVISAR_MANUALMENTE/,
-  'El alias histórico debe bloquearse si no están presentes el id, name y shirt_name auditados.'
+  'El alias compartido debe bloquearse si no están presentes el id, name y shirt_name auditados.'
 );
 assert.equal(
   sandbox.resolveRpePlayerByFormName(verifiedRpePlayers, 'Julio Rod'),
@@ -382,7 +469,7 @@ assert.deepEqual(
     'EXACT_SHIRT_NAME',
     'EXACT_SHIRT_NAME',
     'EXACT_PLAYER_NAME',
-    'EXACT_RPE_HISTORICAL_ALIAS',
+    'EXACT_PLAYER_ALIAS',
   ]
 );
 
@@ -441,7 +528,7 @@ assert.deepEqual(
       jugador_id: '405e20ed-6648-4843-b223-54f7a6f3838f',
       name: 'DAVID FERNÁNDEZ',
       shirt_name: 'DAVO',
-      match_rule: 'EXACT_RPE_HISTORICAL_ALIAS',
+      match_rule: 'EXACT_PLAYER_ALIAS',
       entry_date: '2026-08-01',
       rpe: 2,
     },
@@ -452,7 +539,7 @@ assert.deepEqual(
       jugador_id: 'c5029ff1-5668-4efd-b91c-ccd4d2836232',
       name: 'Juilo Rodríguez',
       shirt_name: 'J. RODRÍGUEZ',
-      match_rule: 'EXACT_RPE_HISTORICAL_ALIAS',
+      match_rule: 'EXACT_PLAYER_ALIAS',
       entry_date: '2026-08-02',
       rpe: 4,
     },
@@ -463,7 +550,7 @@ assert.deepEqual(
       jugador_id: 'c5029ff1-5668-4efd-b91c-ccd4d2836232',
       name: 'Juilo Rodríguez',
       shirt_name: 'J. RODRÍGUEZ',
-      match_rule: 'EXACT_RPE_HISTORICAL_ALIAS',
+      match_rule: 'EXACT_PLAYER_ALIAS',
       entry_date: '2026-08-03',
       rpe: 5,
     },
@@ -1442,10 +1529,17 @@ assert.deepEqual(
 );
 
 assert.match(source, /function importAllRpeHistory\(\)/, 'Debe existir una importación histórica RPE manual.');
+const onWellnessSubmitSource = source.slice(
+  source.indexOf('function onWellnessSubmit'),
+  source.indexOf('function onRpeSubmit')
+);
 const onRpeSubmitSource = source.slice(
   source.indexOf('function onRpeSubmit'),
   source.indexOf('function importAllWellnessHistory')
 );
+assert.match(onWellnessSubmitSource, /findPlayerIdByFormName\(playerName\)/, 'Wellness usa el resolver compartido sin una excepción local.');
+assert.match(onRpeSubmitSource, /findPlayerIdByFormName\(playerName\)/, 'RPE usa el mismo resolver compartido.');
+assert.doesNotMatch(source, /RPE_HISTORICAL_PLAYER_ALIASES|EXACT_RPE_HISTORICAL_ALIAS/);
 const importRpeSource = source.slice(
   source.indexOf('function importAllRpeHistory'),
   source.indexOf('function getSupabaseConfig')
@@ -1477,11 +1571,23 @@ const wellnessImportSource = source.slice(
 );
 const wellnessPreviewSource = source.slice(
   source.indexOf('function previewWellnessHistoryCorrection'),
+  source.indexOf('function selectWellnessHistoryRowsByPlayerAndDate')
+);
+const targetedWellnessPreviewSource = source.slice(
+  source.indexOf('function previewJulioRguezWellness20260813'),
+  source.indexOf('function recoverJulioRguezWellness20260813')
+);
+const targetedWellnessRecoverySource = source.slice(
+  source.indexOf('function recoverJulioRguezWellness20260813'),
   source.indexOf('function importAllRpeHistory')
 );
 const wellnessInspectorSource = source.slice(
   source.indexOf('function inspectWellnessRowByPlayerAndDate'),
   source.indexOf('function findRpeResponseSheet')
+);
+const julioRpeInspectorSource = source.slice(
+  source.indexOf('function inspectJulioRpeHistory'),
+  source.indexOf('function buildRpeHistoricalAliasPreview')
 );
 assert.doesNotMatch(
   wellnessImportSource,
@@ -1494,9 +1600,22 @@ assert.doesNotMatch(
   'La previsualización Wellness debe ser estrictamente de solo lectura.'
 );
 assert.doesNotMatch(
+  targetedWellnessPreviewSource,
+  /upsertSupabase\(|updateSupabaseById\(|deleteSupabase\(|setValues\(|setValue\(|ensureTechnicalColumns\(/,
+  'La previsualización puntual de Julio debe ser estrictamente de solo lectura.'
+);
+assert.match(targetedWellnessRecoverySource, /\['INSERTAR', 'SIN_CAMBIOS'\]\.includes\(action\.action\)/);
+assert.match(targetedWellnessRecoverySource, /upsertSupabase\('wellness_entries', action\.payload, 'jugador_id,entry_date'\)/);
+assert.doesNotMatch(targetedWellnessRecoverySource, /importAllWellnessHistory\(|deleteSupabase\(|updateSupabaseById\(/);
+assert.doesNotMatch(
   wellnessInspectorSource,
   /supabaseFetch\(|fetchPlayersForForms\(|upsertSupabase\(|updateSupabaseById\(|deleteSupabase\(|setValues\(|setValue\(|ensureTechnicalColumns\(/,
   'El inspector de Borja no debe escribir ni realizar requests a Supabase.'
+);
+assert.doesNotMatch(
+  julioRpeInspectorSource,
+  /upsertSupabase\(|updateSupabaseById\(|deleteSupabase\(|setValues\(|setValue\(|ensureTechnicalColumns\(/,
+  'El inspector RPE de Julio debe ser de solo lectura.'
 );
 assert.match(
   wellnessInspectorSource,

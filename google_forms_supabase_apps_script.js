@@ -12,8 +12,8 @@
  * - SUPABASE_SERVICE_ROLE_KEY: service_role key privada de Supabase
  *
  * El jugador se resuelve directamente contra public.jugadores en Supabase.
- * Prioridad de nombres: google_forms_name, shirt_name y name.
- * La comparación ignora mayúsculas, tildes y espacios sobrantes, pero nunca es parcial.
+ * Prioridad de nombres: google_forms_name, alias explícito auditado, name y shirt_name.
+ * La comparación ignora mayúsculas, tildes y espacios sobrantes, pero nunca acepta una coincidencia parcial ambigua.
  *
  * Form Wellness diario. Columnas esperadas/recomendadas:
  * - Fecha
@@ -141,7 +141,7 @@ const FORMULA_RETRY_DELAY_MS = 250;
 const WELLNESS_IMPORT_BATCH_SIZE = 100;
 const RPE_IMPORT_BATCH_SIZE = 100;
 const RPE_HISTORICAL_PREVIEW_ROWS = [42, 73, 87];
-const RPE_HISTORICAL_PLAYER_ALIASES = [
+const FORM_PLAYER_ALIASES = [
   {
     aliases: ['DAVI'],
     target: {
@@ -151,7 +151,7 @@ const RPE_HISTORICAL_PLAYER_ALIASES = [
     },
   },
   {
-    aliases: ['Julio Rodriguez', 'Julio Rguez'],
+    aliases: ['JULIO RGUEZ', 'Julio Rguez', 'Julio Rodríguez', 'Julio Rodriguez'],
     target: {
       id: 'c5029ff1-5668-4efd-b91c-ccd4d2836232',
       name: 'Juilo Rodríguez',
@@ -225,7 +225,7 @@ function onRpeSubmit(e) {
     diagnostic.receivedName = playerName;
     diagnostic.receivedTimestamp = rpeFields.timestamp.rawValue;
     diagnostic.rawRpe = rpeFields.rpe.rawValue;
-    const player = findPlayerIdByFormName(playerName, RPE_HISTORICAL_PLAYER_ALIASES);
+    const player = findPlayerIdByFormName(playerName);
     if (!player) {
       throw new Error(`Jugador no encontrado en public.jugadores: "${playerName}". No se inserta RPE.`);
     }
@@ -429,6 +429,119 @@ function previewWellnessHistoryCorrection() {
     actions: reconciliation.actions,
     failures: historyPlan.failures,
   };
+}
+
+function selectWellnessHistoryRowsByPlayerAndDate(rowItems, playerName, entryDate, timeZone) {
+  const normalizedPlayerName = normalizePlayerName(playerName);
+  const exactRows = (Array.isArray(rowItems) ? rowItems : []).filter((item) => {
+    const row = item.values || {};
+    const receivedName = getFirstValue(row, PLAYER_HEADER_CANDIDATES);
+    const receivedTimestamp = getFirstValue(row, TIMESTAMP_HEADER_CANDIDATES);
+    return normalizePlayerName(receivedName) === normalizedPlayerName
+      && toIsoDate(receivedTimestamp, timeZone) === entryDate;
+  });
+  const failedRows = exactRows.filter((item) => {
+    const row = item.values || {};
+    return normalizeName(getFirstValue(row, ['Supabase status'])) === 'error'
+      && /jugador no encontrado/i.test(String(getFirstValue(row, ['Supabase error']) || ''));
+  });
+  return failedRows.length ? failedRows : exactRows;
+}
+
+function prepareTargetedWellnessRecovery(playerName, entryDate) {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = findWellnessResponseSheet(spreadsheet);
+  const timeZone = getSheetTimeZone(sheet);
+  const lastColumn = sheet.getLastColumn();
+  const headers = lastColumn
+    ? sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0]
+    : [];
+  assertRequiredWellnessColumns(
+    resolveRequiredWellnessFields(headers),
+    headers,
+    sheet.getName()
+  );
+  const candidates = selectWellnessHistoryRowsByPlayerAndDate(
+    readWellnessHistoryRows(sheet, headers, lastColumn),
+    playerName,
+    entryDate,
+    timeZone
+  );
+  if (candidates.length !== 1) {
+    throw new Error(
+      `Recuperación Wellness bloqueada: se esperaban exactamente 1 respuesta de "${playerName}" `
+      + `para ${entryDate} y se encontraron ${candidates.length}.`
+    );
+  }
+
+  const players = fetchPlayersForForms();
+  const historyPlan = buildWellnessHistoryImportPlan(candidates, players, timeZone);
+  if (historyPlan.failures.length || historyPlan.groups.length !== 1) {
+    const reason = historyPlan.failures[0]?.error || 'No se generó una única clave Wellness.';
+    throw new Error(`Recuperación Wellness bloqueada: ${reason}`);
+  }
+  const reconciliation = buildWellnessHistoryReconciliationPlan(
+    historyPlan,
+    fetchAllWellnessEntriesForHistoryAudit()
+  );
+  if (reconciliation.actions.length !== 1) {
+    throw new Error('Recuperación Wellness bloqueada: la reconciliación no produjo una única acción.');
+  }
+  return {
+    sheet,
+    rowNumber: candidates[0].rowNumber,
+    action: reconciliation.actions[0],
+  };
+}
+
+function previewJulioRguezWellness20260813() {
+  const prepared = prepareTargetedWellnessRecovery('JULIO RGUEZ', '2026-08-13');
+  const result = {
+    sheet: prepared.sheet.getName(),
+    rowNumber: prepared.rowNumber,
+    action: prepared.action.action,
+    playerId: prepared.action.playerId,
+    playerName: prepared.action.playerName,
+    receivedName: prepared.action.receivedName,
+    entryDate: prepared.action.correctDate,
+    reason: prepared.action.reason,
+    payload: prepared.action.payload,
+  };
+  console.log('PREVISUALIZACIÓN Wellness puntual de solo lectura.', result);
+  return result;
+}
+
+function recoverJulioRguezWellness20260813() {
+  const prepared = prepareTargetedWellnessRecovery('JULIO RGUEZ', '2026-08-13');
+  const action = prepared.action;
+  if (!['INSERTAR', 'SIN_CAMBIOS'].includes(action.action)) {
+    throw new Error(
+      `Recuperación Wellness bloqueada: la acción segura esperada era INSERTAR o SIN_CAMBIOS, no ${action.action}. `
+      + action.reason
+    );
+  }
+  if (action.action === 'INSERTAR') {
+    upsertSupabase('wellness_entries', action.payload, 'jugador_id,entry_date');
+  }
+  const technical = ensureTechnicalColumns(prepared.sheet);
+  setSubmissionSyncState({
+    sheet: prepared.sheet,
+    rowNumber: prepared.rowNumber,
+    columns: technical.columns,
+  }, {
+    status: 'SYNCED',
+    sessionId: '',
+    error: '',
+    syncedAt: new Date(),
+  });
+  const result = {
+    rowNumber: prepared.rowNumber,
+    action: action.action,
+    playerId: action.playerId,
+    entryDate: action.correctDate,
+  };
+  console.log('Recuperación Wellness puntual completada.', result);
+  return result;
 }
 
 function importAllRpeHistory() {
@@ -783,7 +896,11 @@ function findPlayerIdByFormName(formName, explicitAliases) {
   if (!submittedName) return null;
   const players = fetchPlayersForForms();
   return addPlayerClubContext(
-    resolvePlayerByFormName(players, submittedName, explicitAliases),
+    resolvePlayerByFormName(
+      players,
+      submittedName,
+      explicitAliases === undefined ? FORM_PLAYER_ALIASES : explicitAliases
+    ),
     players
   );
 }
@@ -822,6 +939,7 @@ function resolvePlayerByFormName(players, formName, explicitAliases) {
   const normalizedFormName = normalizePlayerName(formName);
   if (!normalizedFormName) return null;
   const rows = Array.isArray(players) ? players : [];
+  const aliases = explicitAliases === undefined ? FORM_PLAYER_ALIASES : explicitAliases;
 
   const aliasMatches = rows.filter((player) =>
     normalizePlayerName(player.google_forms_name) === normalizedFormName
@@ -829,11 +947,12 @@ function resolvePlayerByFormName(players, formName, explicitAliases) {
   const aliasResult = resolveUniquePlayerCandidate(aliasMatches, formName, 'EXACT_GOOGLE_FORMS_NAME');
   if (aliasResult) return aliasResult;
 
-  const exactShirtNameMatches = rows.filter((player) =>
-    normalizePlayerName(player.shirt_name) === normalizedFormName
+  const explicitAliasResult = resolveExplicitPlayerAlias(
+    rows,
+    formName,
+    aliases
   );
-  const exactShirtNameResult = resolveUniquePlayerCandidate(exactShirtNameMatches, formName, 'EXACT_SHIRT_NAME');
-  if (exactShirtNameResult) return exactShirtNameResult;
+  if (explicitAliasResult) return explicitAliasResult;
 
   const exactNameMatches = rows.filter((player) =>
     normalizePlayerName(player.name) === normalizedFormName
@@ -841,18 +960,19 @@ function resolvePlayerByFormName(players, formName, explicitAliases) {
   const exactNameResult = resolveUniquePlayerCandidate(exactNameMatches, formName, 'EXACT_PLAYER_NAME');
   if (exactNameResult) return exactNameResult;
 
-  const explicitAliasResult = resolveExplicitPlayerAlias(
-    rows,
-    formName,
-    explicitAliases
+  const exactShirtNameMatches = rows.filter((player) =>
+    normalizePlayerName(player.shirt_name) === normalizedFormName
   );
-  if (explicitAliasResult) return explicitAliasResult;
+  const exactShirtNameResult = resolveUniquePlayerCandidate(exactShirtNameMatches, formName, 'EXACT_SHIRT_NAME');
+  if (exactShirtNameResult) return exactShirtNameResult;
 
   const receivedTokens = getCanonicalPlayerTokens(formName);
   const tokenMatches = rows.map((player) => {
     const sources = [
       { value: player.shirt_name, label: 'SHIRT_NAME' },
       { value: player.name, label: 'PLAYER_NAME' },
+      ...getVerifiedExplicitAliasesForPlayer(player, aliases)
+        .map((value) => ({ value, label: 'PLAYER_ALIAS' })),
     ];
     for (const source of sources) {
       const playerTokens = getCanonicalPlayerTokens(source.value);
@@ -884,7 +1004,17 @@ function resolvePlayerByFormName(players, formName, explicitAliases) {
 }
 
 function resolveRpePlayerByFormName(players, formName) {
-  return resolvePlayerByFormName(players, formName, RPE_HISTORICAL_PLAYER_ALIASES);
+  return resolvePlayerByFormName(players, formName);
+}
+
+function getVerifiedExplicitAliasesForPlayer(player, explicitAliases) {
+  return (Array.isArray(explicitAliases) ? explicitAliases : []).flatMap((definition) => {
+    const target = definition.target || {};
+    const verified = String(player.id || '') === String(target.id || '')
+      && normalizePlayerName(player.name) === normalizePlayerName(target.name)
+      && normalizePlayerName(player.shirt_name) === normalizePlayerName(target.shirt_name);
+    return verified && Array.isArray(definition.aliases) ? definition.aliases : [];
+  });
 }
 
 function resolveExplicitPlayerAlias(players, formName, explicitAliases) {
@@ -912,17 +1042,17 @@ function resolveExplicitPlayerAlias(players, formName, explicitAliases) {
 
   if (targetMatches.length !== 1) {
     const error = new Error(
-      `Alias RPE explícito no verificado para "${String(formName || '').trim()}". `
+      `Alias explícito no verificado para "${String(formName || '').trim()}". `
       + 'REVISAR_MANUALMENTE: el jugador auditado no existe de forma única con el mismo id, name y shirt_name.'
     );
-    error.match_rule = 'EXACT_RPE_HISTORICAL_ALIAS';
+    error.match_rule = 'EXACT_PLAYER_ALIAS';
     error.candidates = targetMatches;
     throw error;
   }
   return resolveUniquePlayerCandidate(
     targetMatches,
     formName,
-    'EXACT_RPE_HISTORICAL_ALIAS'
+    'EXACT_PLAYER_ALIAS'
   );
 }
 
@@ -1697,7 +1827,7 @@ function buildRpeHistoryImportPlan(rowItems, players, timeZone) {
     let payload = null;
     try {
       playerResolution = addPlayerClubContext(
-        resolvePlayerByFormName(players, playerName, RPE_HISTORICAL_PLAYER_ALIASES),
+        resolvePlayerByFormName(players, playerName),
         players
       );
       if (!playerResolution) {
@@ -1754,7 +1884,7 @@ function buildRpeImportFailure(details) {
   const message = String(rawError?.message || rawError || 'Error desconocido.');
   let category = 'DATO_INVALIDO';
   if (/coincidencia ambigua/i.test(message)) category = 'JUGADOR_AMBIGUO';
-  else if (/REVISAR_MANUALMENTE|alias RPE explícito no verificado/i.test(message)) category = 'REVISAR_MANUALMENTE';
+  else if (/REVISAR_MANUALMENTE|alias explícito no verificado/i.test(message)) category = 'REVISAR_MANUALMENTE';
   else if (/jugador no encontrado/i.test(message)) category = 'JUGADOR_NO_ENCONTRADO';
   else if (/sesión ambigua/i.test(message)) category = 'SESION_AMBIGUA';
   else if (/no existe training_session/i.test(message)) category = 'SESION_NO_ENCONTRADA';
@@ -2192,6 +2322,73 @@ function inspectRpeHeaders() {
   return result;
 }
 
+function inspectJulioRpeHistory() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = findRpeResponseSheet(spreadsheet);
+  const timeZone = getSheetTimeZone(sheet);
+  const lastColumn = sheet.getLastColumn();
+  const headers = lastColumn
+    ? sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0]
+    : [];
+  const fields = resolveRequiredRpeFields(headers);
+  assertRequiredRpeColumns(fields, headers, sheet.getName());
+  const lastRow = sheet.getLastRow();
+  const rawRows = lastRow >= 2
+    ? sheet.getRange(2, 1, lastRow - 1, lastColumn).getValues()
+    : [];
+  const variants = ['JULIO RGUEZ', 'Julio Rodriguez', 'Julio Rodríguez'];
+  const requestedNames = new Set(variants.map(normalizePlayerName));
+  const players = fetchPlayersForForms();
+  const matches = rawRows.flatMap((rawRow, index) => {
+    const row = Object.fromEntries(
+      headers.map((header, columnIndex) => [String(header).trim(), rawRow[columnIndex]])
+    );
+    const resolvedFields = resolveRequiredRpeFieldsFromObject(row);
+    const receivedName = resolvedFields.player.found ? resolvedFields.player.rawValue : '';
+    if (!requestedNames.has(normalizePlayerName(receivedName))) return [];
+    try {
+      const player = addPlayerClubContext(
+        resolvePlayerByFormName(players, receivedName),
+        players
+      );
+      const payload = player
+        ? buildDailyRpePayload(row, player.jugador_id, timeZone, player.club_id, resolvedFields)
+        : null;
+      return [{
+        rowNumber: index + 2,
+        receivedName: String(receivedName || '').trim(),
+        supabaseStatus: getFirstValue(row, ['Supabase status']) || '',
+        supabaseError: getFirstValue(row, ['Supabase error']) || '',
+        jugadorId: player?.jugador_id || '',
+        matchRule: player?.match_rule || '',
+        entryDate: payload?.entry_date || '',
+        rpe: payload?.rpe ?? '',
+        resolutionError: player ? '' : 'Jugador no encontrado en public.jugadores.',
+      }];
+    } catch (error) {
+      return [{
+        rowNumber: index + 2,
+        receivedName: String(receivedName || '').trim(),
+        supabaseStatus: getFirstValue(row, ['Supabase status']) || '',
+        supabaseError: getFirstValue(row, ['Supabase error']) || '',
+        jugadorId: '',
+        matchRule: error?.match_rule || '',
+        entryDate: '',
+        rpe: resolvedFields.rpe.found ? resolvedFields.rpe.rawValue : '',
+        resolutionError: error?.message || String(error),
+      }];
+    }
+  });
+  const result = {
+    sheet: sheet.getName(),
+    timeZone,
+    variants,
+    matches,
+  };
+  console.log('Inspección RPE de Julio de solo lectura.', result);
+  return result;
+}
+
 function buildRpeHistoricalAliasPreview(rowItems, players, timeZone, targetRows) {
   const requestedRows = Array.isArray(targetRows) && targetRows.length
     ? targetRows
@@ -2220,7 +2417,7 @@ function buildRpeHistoricalAliasPreview(rowItems, players, timeZone, targetRows)
     const rawRpe = fields.rpe.found ? fields.rpe.rawValue : '';
     try {
       const resolution = addPlayerClubContext(
-        resolvePlayerByFormName(players, receivedName, RPE_HISTORICAL_PLAYER_ALIASES),
+        resolvePlayerByFormName(players, receivedName),
         players
       );
       if (!resolution) {
@@ -2303,11 +2500,7 @@ function previewRpeHistoricalAliases() {
 function auditRpeDropdownNames(dropdownNames, players) {
   return (Array.isArray(dropdownNames) ? dropdownNames : []).map((dropdownName) => {
     try {
-      const resolution = resolvePlayerByFormName(
-        players,
-        dropdownName,
-        RPE_HISTORICAL_PLAYER_ALIASES
-      );
+      const resolution = resolvePlayerByFormName(players, dropdownName);
       if (!resolution) throw new Error('Jugador no encontrado en public.jugadores.');
       const player = (Array.isArray(players) ? players : [])
         .find((candidate) => candidate.id === resolution.jugador_id);
