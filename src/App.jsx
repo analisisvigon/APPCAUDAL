@@ -9049,7 +9049,10 @@ function App() {
     );
     const status = red ? 'rojo' : yellow ? 'amarillo' : 'verde';
     const matchMinutes = performanceMatchStats
-      .filter((row) => row.player_name === player.name)
+      .filter((row) => (
+        String(row.jugador_id || '') === String(player.id || '')
+        || (!row.jugador_id && row.player_name === player.name)
+      ))
       .reduce((sum, row) => sum + normalizePerformanceNumber(row.minutes), 0);
 
     return {

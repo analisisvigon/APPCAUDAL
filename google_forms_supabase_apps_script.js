@@ -154,7 +154,8 @@ const FORM_PLAYER_ALIASES = [
     aliases: ['JULIO RGUEZ', 'Julio Rguez', 'Julio Rodríguez', 'Julio Rodriguez'],
     target: {
       id: 'c5029ff1-5668-4efd-b91c-ccd4d2836232',
-      name: 'Juilo Rodríguez',
+      name: 'Julio Rodríguez',
+      legacy_names: ['Juilo Rodríguez'],
       shirt_name: 'J. RODRÍGUEZ',
     },
   },
@@ -1010,11 +1011,18 @@ function resolveRpePlayerByFormName(players, formName) {
 function getVerifiedExplicitAliasesForPlayer(player, explicitAliases) {
   return (Array.isArray(explicitAliases) ? explicitAliases : []).flatMap((definition) => {
     const target = definition.target || {};
-    const verified = String(player.id || '') === String(target.id || '')
-      && normalizePlayerName(player.name) === normalizePlayerName(target.name)
-      && normalizePlayerName(player.shirt_name) === normalizePlayerName(target.shirt_name);
+    const verified = playerMatchesExplicitAliasTarget(player, target);
     return verified && Array.isArray(definition.aliases) ? definition.aliases : [];
   });
+}
+
+function playerMatchesExplicitAliasTarget(player, target) {
+  const acceptedNames = [target?.name, ...(Array.isArray(target?.legacy_names) ? target.legacy_names : [])]
+    .map(normalizePlayerName)
+    .filter(Boolean);
+  return String(player?.id || '') === String(target?.id || '')
+    && acceptedNames.includes(normalizePlayerName(player?.name))
+    && normalizePlayerName(player?.shirt_name) === normalizePlayerName(target?.shirt_name);
 }
 
 function resolveExplicitPlayerAlias(players, formName, explicitAliases) {
@@ -1030,9 +1038,7 @@ function resolveExplicitPlayerAlias(players, formName, explicitAliases) {
     const target = definition.target || {};
     (Array.isArray(players) ? players : []).forEach((player) => {
       if (
-        String(player.id || '') === String(target.id || '')
-        && normalizePlayerName(player.name) === normalizePlayerName(target.name)
-        && normalizePlayerName(player.shirt_name) === normalizePlayerName(target.shirt_name)
+        playerMatchesExplicitAliasTarget(player, target)
         && !targetMatches.some((candidate) => candidate.id === player.id)
       ) {
         targetMatches.push(player);
@@ -1043,7 +1049,7 @@ function resolveExplicitPlayerAlias(players, formName, explicitAliases) {
   if (targetMatches.length !== 1) {
     const error = new Error(
       `Alias explícito no verificado para "${String(formName || '').trim()}". `
-      + 'REVISAR_MANUALMENTE: el jugador auditado no existe de forma única con el mismo id, name y shirt_name.'
+      + 'REVISAR_MANUALMENTE: el jugador auditado no existe de forma única con el mismo id, nombre aceptado y shirt_name.'
     );
     error.match_rule = 'EXACT_PLAYER_ALIAS';
     error.candidates = targetMatches;

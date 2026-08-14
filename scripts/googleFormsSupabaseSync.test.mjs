@@ -41,7 +41,7 @@ let supabasePlayers = [
   { id: 'player-isaac', name: 'Isaac Martín', google_forms_name: null },
   { id: 'player-lucas', name: 'Lucas Suárez', google_forms_name: null },
   { id: 'player-mario', name: 'Mario Rodríguez', google_forms_name: null },
-  { id: 'c5029ff1-5668-4efd-b91c-ccd4d2836232', name: 'Juilo Rodríguez', shirt_name: 'J. RODRÍGUEZ', google_forms_name: null },
+  { id: 'c5029ff1-5668-4efd-b91c-ccd4d2836232', name: 'Julio Rodríguez', shirt_name: 'J. RODRÍGUEZ', google_forms_name: null },
   { id: '52b68efa-2087-44a0-8f9f-96ed0f612a82', name: 'Julio Delgado', shirt_name: 'J. DELGADO', google_forms_name: null },
 ];
 
@@ -303,6 +303,14 @@ const julioDelgadoId = '52b68efa-2087-44a0-8f9f-96ed0f612a82';
   assert.equal(resolution?.jugador_id, julioRodriguezId, `${receivedName} debe resolver al UUID auditado de Julio Rodríguez.`);
   assert.equal(resolution?.match_rule, 'EXACT_PLAYER_ALIAS');
 });
+const preCorrectionPlayers = supabasePlayers.map((player) => (
+  player.id === julioRodriguezId ? { ...player, name: 'Juilo Rodríguez' } : player
+));
+assert.equal(
+  sandbox.resolvePlayerByFormName(preCorrectionPlayers, 'JULIO RGUEZ')?.jugador_id,
+  julioRodriguezId,
+  'El alias sigue siendo seguro durante el despliegue anterior al UPDATE protegido.',
+);
 assert.equal(
   sandbox.resolvePlayerByFormName(supabasePlayers, 'JULIO DELGADO')?.jugador_id,
   julioDelgadoId,
@@ -393,7 +401,7 @@ const verifiedRpePlayers = [
   },
   {
     id: 'c5029ff1-5668-4efd-b91c-ccd4d2836232',
-    name: 'Juilo Rodríguez',
+    name: 'Julio Rodríguez',
     shirt_name: 'J. RODRÍGUEZ',
     google_forms_name: null,
   },
@@ -419,8 +427,8 @@ const verifiedRpePlayers = [
 
 const verifiedHistoricalAliases = [
   ['DAVI', '405e20ed-6648-4843-b223-54f7a6f3838f', 'DAVID FERNÁNDEZ'],
-  ['Julio Rodriguez', 'c5029ff1-5668-4efd-b91c-ccd4d2836232', 'Juilo Rodríguez'],
-  ['JULIO RGUEZ', 'c5029ff1-5668-4efd-b91c-ccd4d2836232', 'Juilo Rodríguez'],
+  ['Julio Rodriguez', 'c5029ff1-5668-4efd-b91c-ccd4d2836232', 'Julio Rodríguez'],
+  ['JULIO RGUEZ', 'c5029ff1-5668-4efd-b91c-ccd4d2836232', 'Julio Rodríguez'],
 ];
 verifiedHistoricalAliases.forEach(([receivedName, expectedId, expectedName]) => {
   const sharedResolution = sandbox.resolvePlayerByFormName(verifiedRpePlayers, receivedName);
@@ -435,7 +443,7 @@ assert.throws(
   () => sandbox.resolveRpePlayerByFormName([
     {
       id: 'jugador-no-verificado',
-      name: 'Juilo Rodríguez',
+      name: 'Julio Rodríguez',
       shirt_name: 'J. RODRÍGUEZ',
       google_forms_name: null,
     },
@@ -537,7 +545,7 @@ assert.deepEqual(
       receivedName: 'Julio Rodriguez',
       status: 'RESUELTO',
       jugador_id: 'c5029ff1-5668-4efd-b91c-ccd4d2836232',
-      name: 'Juilo Rodríguez',
+      name: 'Julio Rodríguez',
       shirt_name: 'J. RODRÍGUEZ',
       match_rule: 'EXACT_PLAYER_ALIAS',
       entry_date: '2026-08-02',
@@ -548,7 +556,7 @@ assert.deepEqual(
       receivedName: 'JULIO RGUEZ',
       status: 'RESUELTO',
       jugador_id: 'c5029ff1-5668-4efd-b91c-ccd4d2836232',
-      name: 'Juilo Rodríguez',
+      name: 'Julio Rodríguez',
       shirt_name: 'J. RODRÍGUEZ',
       match_rule: 'EXACT_PLAYER_ALIAS',
       entry_date: '2026-08-03',

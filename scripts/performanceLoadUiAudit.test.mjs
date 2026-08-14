@@ -21,6 +21,11 @@ assert.match(app, /scrollIntoView\(\{/);
 assert.match(app, /data-selected=\{selected \? 'true' : 'false'\}/);
 assert.match(app, /min-w-\[770px\][^"']*grid-cols-7/);
 assert.match(app, /onClick=\{\(\) => setPerformanceSelectedDate\(day\.entryDate\)\}/);
+assert.match(
+  app,
+  /String\(row\.jugador_id \|\| ''\) === String\(player\.id \|\| ''\)[\s\S]*!row\.jugador_id && row\.player_name === player\.name/,
+  'Los minutos históricos deben seguir al UUID tras corregir el nombre del jugador.',
+);
 assert.doesNotMatch(app, /performanceDayTooltipDate|setPerformanceDayTooltipDate/);
 assert.doesNotMatch(app, /Pulso diario del equipo|Resumen por día/);
 
