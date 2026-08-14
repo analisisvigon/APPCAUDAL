@@ -69,6 +69,12 @@ import {
   hasPhysicalPerformanceObservation,
 } from './utils/performanceObservations';
 import {
+  getRpeWorkloadAvailability,
+  resolveRpePeriodEntries,
+  resolveRpeRefreshEntries,
+  summarizeRpeEntries,
+} from './utils/performanceRpe';
+import {
   getTrainingLoadForDate,
   loadTrainingLoadsRange,
   replaceTrainingLoadByDate,
@@ -5611,12 +5617,7 @@ function App() {
   const [performanceLoading, setPerformanceLoading] = useState(false);
   const [performanceError, setPerformanceError] = useState('');
   const [performanceStatus, setPerformanceStatus] = useState('');
-  const [performanceWeekStart, setPerformanceWeekStart] = useState(() => {
-    const today = new Date();
-    const day = today.getDay() || 7;
-    today.setDate(today.getDate() - day + 1);
-    return today.toISOString().slice(0, 10);
-  });
+  const [performanceWeekStart, setPerformanceWeekStart] = useState(() => getPerformanceNaturalWeekStart(new Date()));
   const [performanceLoadMetricKey, setPerformanceLoadMetricKey] = useState('loadUnits');
   const [performanceMonthLoads, setPerformanceMonthLoads] = useState([]);
   const [performanceMonthLoading, setPerformanceMonthLoading] = useState(false);
@@ -5647,8 +5648,12 @@ function App() {
   const [performanceChartSeasonKey, setPerformanceChartSeasonKey] = useState(() => getPerformanceSportsSeason().key);
   const [performancePeriodEntries, setPerformancePeriodEntries] = useState({ key: '', wellness: [], rpe: [] });
   const [performancePeriodLoading, setPerformancePeriodLoading] = useState(false);
+  const [performanceRefreshVersion, setPerformanceRefreshVersion] = useState(0);
   const performancePeriodCacheRef = useRef(new Map());
   const performanceMonthLoadsCacheRef = useRef(new Map());
+  const performancePeriodRequestVersionRef = useRef(0);
+  const performanceRefreshInFlightRef = useRef(new Set());
+  const performanceRequestVersionRef = useRef(0);
   const performanceDayNavRef = useRef(null);
   const [performanceMenuRect, setPerformanceMenuRect] = useState(null);
   const [rpeSyncPending, setRpeSyncPending] = useState([]);
@@ -7337,6 +7342,16 @@ function App() {
   }, [activeTab, authLoading, authenticatedUserId, performanceWeekStart]);
 
   useEffect(() => {
+    if (authLoading || !authenticatedUserId || activeTab !== 'Rendimiento') return undefined;
+    const refreshPerformanceOnFocus = () => {
+      if (performanceRefreshInFlightRef.current.has(performanceWeekStart)) return;
+      loadPerformanceData();
+    };
+    window.addEventListener('focus', refreshPerformanceOnFocus);
+    return () => window.removeEventListener('focus', refreshPerformanceOnFocus);
+  }, [activeTab, authLoading, authenticatedUserId, performanceWeekStart]);
+
+  useEffect(() => {
     if (activeTab !== 'Rendimiento' || !performanceSelectedDate) return;
     const navigation = performanceDayNavRef.current;
     if (!navigation || navigation.scrollWidth <= navigation.clientWidth) return;
@@ -7350,7 +7365,7 @@ function App() {
   useEffect(() => {
     if (authLoading || !authenticatedUserId || activeTab !== 'Rendimiento' || performanceChartPeriod === 'week') return;
     loadPerformancePeriodData(performanceChartPeriod);
-  }, [activeTab, authLoading, authenticatedUserId, performanceChartPeriod, performanceChartMonth, performanceChartSeasonKey]);
+  }, [activeTab, authLoading, authenticatedUserId, performanceChartPeriod, performanceChartMonth, performanceChartSeasonKey, performanceRefreshVersion]);
 
   useEffect(() => {
     if (authLoading || !authenticatedUserId || activeTab !== 'Rendimiento' || performanceChartPeriod !== 'month') return;
@@ -8668,6 +8683,8 @@ function App() {
       return;
     }
 
+    const requestVersion = performancePeriodRequestVersionRef.current + 1;
+    performancePeriodRequestVersionRef.current = requestVersion;
     setPerformancePeriodLoading(true);
     setPerformanceError('');
     try {
@@ -8675,23 +8692,30 @@ function App() {
         loadPerformanceEntriesRange('wellness_entries', range.startDate, range.endDate),
         loadPerformanceEntriesRange('rpe_entries', range.startDate, range.endDate),
       ]);
+      if (requestVersion !== performancePeriodRequestVersionRef.current) return;
       const nextPeriod = { ...range, wellness, rpe };
       performancePeriodCacheRef.current.set(range.key, nextPeriod);
       setPerformancePeriodEntries(nextPeriod);
     } catch (loadError) {
+      if (requestVersion !== performancePeriodRequestVersionRef.current) return;
       console.error('Error cargando el periodo de Rendimiento:', loadError);
       setPerformanceError(loadError.message || 'No se pudo cargar el periodo de Rendimiento.');
     } finally {
-      setPerformancePeriodLoading(false);
+      if (requestVersion === performancePeriodRequestVersionRef.current) setPerformancePeriodLoading(false);
     }
   };
 
   const loadPerformanceData = async () => {
+    const requestWeekStart = performanceWeekStart;
+    if (performanceRefreshInFlightRef.current.has(requestWeekStart)) return false;
+    performanceRefreshInFlightRef.current.add(requestWeekStart);
+    const requestVersion = performanceRequestVersionRef.current + 1;
+    performanceRequestVersionRef.current = requestVersion;
     setPerformanceLoading(true);
     setPerformanceError('');
-    const weekEnd = addDays(performanceWeekStart, 6);
-    const previousWeekStart = addDays(performanceWeekStart, -7);
-    const previousWeekEnd = addDays(performanceWeekStart, -1);
+    const weekEnd = addDays(requestWeekStart, 6);
+    const previousWeekStart = addDays(requestWeekStart, -7);
+    const previousWeekEnd = addDays(requestWeekStart, -1);
     const loadLatestActivityDates = async (tableName) => {
       const pageSize = 1000;
       const latestByPlayerId = {};
@@ -8755,13 +8779,13 @@ function App() {
         supabase
           .from('wellness_entries')
           .select('*')
-          .gte('entry_date', performanceWeekStart)
+          .gte('entry_date', requestWeekStart)
           .lte('entry_date', weekEnd)
           .order('entry_date', { ascending: true }),
         supabase
           .from('rpe_entries')
           .select('*')
-          .gte('entry_date', performanceWeekStart)
+          .gte('entry_date', requestWeekStart)
           .lte('entry_date', weekEnd)
           .order('entry_date', { ascending: true }),
         supabase
@@ -8798,7 +8822,7 @@ function App() {
           'rpe_entries',
           'id,jugador_id,entry_date,submitted_at,comment,created_at,updated_at'
         ),
-        loadTrainingLoadsRange(supabase, performanceWeekStart, weekEnd),
+        loadTrainingLoadsRange(supabase, requestWeekStart, weekEnd),
       ]);
 
       const failed = [
@@ -8818,10 +8842,12 @@ function App() {
         throw failed.error;
       }
 
+      if (requestVersion !== performanceRequestVersionRef.current) return false;
+
       const nextWellnessEntries = wellnessResponse.data || [];
       const nextRpeEntries = rpeResponse.data || [];
       setWellnessEntries(nextWellnessEntries);
-      setRpeEntries(nextRpeEntries);
+      setRpeEntries((current) => resolveRpeRefreshEntries(current, nextRpeEntries, true));
       setPerformanceTrainingLoads(nextTrainingLoads);
       setPreviousWellnessEntries(previousWellnessResponse.data || []);
       setPreviousRpeEntries(previousRpeResponse.data || []);
@@ -8856,16 +8882,33 @@ function App() {
         .filter(Boolean)
         .sort();
       setPerformanceSelectedDate((current) => (
-        current >= performanceWeekStart && current <= weekEnd
+        current >= requestWeekStart && current <= weekEnd
           ? current
-          : responseDates[responseDates.length - 1] || performanceWeekStart
+          : responseDates[responseDates.length - 1] || requestWeekStart
       ));
+      performancePeriodCacheRef.current.clear();
+      performancePeriodRequestVersionRef.current += 1;
+      setPerformancePeriodLoading(false);
+      setPerformanceRefreshVersion((current) => current + 1);
+      return true;
     } catch (loadError) {
       console.error('Error cargando Rendimiento:', loadError);
-      setPerformanceError(loadError.message || 'No se pudo cargar Rendimiento. Revisa las migraciones de Rendimiento, incluida supabase_training_daily_load_phase1.sql.');
+      if (requestVersion === performanceRequestVersionRef.current) {
+        setPerformanceError(loadError.message
+          ? `No se pudo actualizar RPE: ${loadError.message}`
+          : 'No se pudo actualizar RPE. Se mantienen los últimos datos cargados.');
+      }
+      return false;
     } finally {
-      setPerformanceLoading(false);
+      performanceRefreshInFlightRef.current.delete(requestWeekStart);
+      if (requestVersion === performanceRequestVersionRef.current) setPerformanceLoading(false);
     }
+  };
+
+  const refreshPerformanceDataManually = async () => {
+    setPerformanceStatus('');
+    const refreshed = await loadPerformanceData();
+    if (refreshed) setPerformanceStatus('RPE y Rendimiento actualizados.');
   };
 
   const savePerformanceDailyLoad = async (draft) => {
@@ -9599,9 +9642,8 @@ function App() {
     const rows = getPerformancePlayerRows(wellnessSource, rpeSource, {
       includeActivity: weekStart === performanceWeekStart,
     });
-    const rpeValues = rpeSource
-      .map((entry) => getPerformanceNumber(entry.rpe))
-      .filter((value) => value !== null && value >= 1 && value <= 10);
+    const rpeSummary = summarizeRpeEntries(rpeSource);
+    const rpeValues = rpeSummary.values;
     const wellnessValues = wellnessSource
       .map(getWellnessScore)
       .filter((value) => value !== null);
@@ -9609,9 +9651,8 @@ function App() {
       const entryDate = addDays(weekStart, index);
       const dayRpeEntries = rpeSource.filter((entry) => entry.entry_date === entryDate);
       const dayWellnessEntries = wellnessSource.filter((entry) => entry.entry_date === entryDate);
-      const dayRpeValues = dayRpeEntries
-        .map((entry) => getPerformanceNumber(entry.rpe))
-        .filter((value) => value !== null && value >= 1 && value <= 10);
+      const dayRpeSummary = summarizeRpeEntries(dayRpeEntries);
+      const dayRpeValues = dayRpeSummary.values;
       const dayWellnessValues = dayWellnessEntries
         .map(getWellnessScore)
         .filter((value) => value !== null);
@@ -9636,9 +9677,9 @@ function App() {
         dayLabel: new Intl.DateTimeFormat('es-ES', { weekday: 'long' }).format(date),
         rpeEntries: dayRpeEntries,
         wellnessEntries: dayWellnessEntries,
-        rpeResponseCount: dayRpeEntries.length,
+        rpeResponseCount: dayRpeSummary.count,
         wellnessResponseCount: dayWellnessEntries.length,
-        avgRpe: dayRpeValues.length ? dayRpeValues.reduce((sum, value) => sum + value, 0) / dayRpeValues.length : null,
+        avgRpe: dayRpeSummary.average,
         maxRpe: dayRpeValues.length ? Math.max(...dayRpeValues) : null,
         highRpeCount: dayRpeValues.filter((value) => value >= 8).length,
         avgWellness: dayWellnessValues.length ? dayWellnessValues.reduce((sum, value) => sum + value, 0) / dayWellnessValues.length : null,
@@ -9694,10 +9735,10 @@ function App() {
       orangeDayCount,
       alertCount: priorityCount + watchCount,
       attentionCount: alertRows.length,
-      rpeResponseCount: rpeSource.length,
+      rpeResponseCount: rpeSummary.count,
       wellnessResponseCount: wellnessSource.length,
-      responseCount: rpeSource.length + wellnessSource.length,
-      avgRpe: rpeValues.length ? rpeValues.reduce((sum, value) => sum + value, 0) / rpeValues.length : null,
+      responseCount: rpeSummary.count + wellnessSource.length,
+      avgRpe: rpeSummary.average,
       avgWellness: wellnessValues.length ? wellnessValues.reduce((sum, value) => sum + value, 0) / wellnessValues.length : null,
       peak,
       commentCount: days.reduce((sum, day) => sum + day.relevantCount, 0),
@@ -21186,6 +21227,18 @@ function App() {
     : performanceChartPeriod === 'season'
       ? `season:${performanceActiveSeason.key}`
       : 'week';
+  const performanceRpePeriodEntries = useMemo(() => resolveRpePeriodEntries({
+    period: performanceChartPeriod,
+    weeklyEntries: rpeEntries,
+    periodEntries: performancePeriodEntries.rpe,
+    expectedPeriodKey: performanceExpectedPeriodKey,
+    loadedPeriodKey: performancePeriodEntries.key,
+  }), [
+    performanceChartPeriod,
+    rpeEntries,
+    performancePeriodEntries,
+    performanceExpectedPeriodKey,
+  ]);
   const performanceChartPoints = useMemo(() => {
     if (performanceChartPeriod === 'week') return performanceDashboard.days;
     if (performancePeriodEntries.key !== performanceExpectedPeriodKey) return [];
@@ -25585,28 +25638,61 @@ function App() {
     const selectedDayRpe = selectedPlayerRow
       ? selectedDay?.rpeEntries.find((entry) => entry.jugador_id === selectedPlayerRow.player.id) || null
       : null;
-    const selectedPlayerWellnessHistory = selectedPlayerRow
+    const selectedPlayerPeriodLabel = {
+      week: 'semanal',
+      month: 'mensual',
+      season: 'de temporada',
+    }[performanceChartPeriod] || 'semanal';
+    const selectedPlayerHistoryLabel = performanceChartPeriod === 'week'
+      ? 'Semana seleccionada y semana anterior'
+      : performanceChartPeriod === 'month'
+        ? `Mes ${performanceChartMonth}`
+        : `Temporada ${performanceActiveSeason.label}`;
+    const historicalPeriodIsReady = performanceChartPeriod === 'week'
+      || performancePeriodEntries.key === performanceExpectedPeriodKey;
+    const selectedPlayerWellnessHistorySource = performanceChartPeriod === 'week'
       ? [...previousWellnessEntries, ...wellnessEntries]
+      : historicalPeriodIsReady ? performancePeriodEntries.wellness : [];
+    const selectedPlayerRpeHistorySource = performanceChartPeriod === 'week'
+      ? [...previousRpeEntries, ...rpeEntries]
+      : performanceRpePeriodEntries;
+    const selectedPlayerWellnessHistory = selectedPlayerRow
+      ? selectedPlayerWellnessHistorySource
         .filter((entry) => entry.jugador_id === selectedPlayerRow.player.id)
         .sort((left, right) => String(left.entry_date).localeCompare(String(right.entry_date)))
       : [];
     const selectedPlayerRpeHistory = selectedPlayerRow
-      ? [...previousRpeEntries, ...rpeEntries]
+      ? selectedPlayerRpeHistorySource
         .filter((entry) => entry.jugador_id === selectedPlayerRow.player.id)
         .sort((left, right) => String(left.entry_date).localeCompare(String(right.entry_date)))
       : [];
+    const selectedPlayerRpePeriodEntries = selectedPlayerRow
+      ? (performanceChartPeriod === 'week' ? rpeEntries : performanceRpePeriodEntries)
+        .filter((entry) => entry.jugador_id === selectedPlayerRow.player.id)
+      : [];
+    const selectedPlayerRpePeriodSummary = summarizeRpeEntries(selectedPlayerRpePeriodEntries);
     const latestSelectedWellness = selectedPlayerWellnessHistory[selectedPlayerWellnessHistory.length - 1] || null;
     const latestSelectedRpe = selectedPlayerRpeHistory[selectedPlayerRpeHistory.length - 1] || null;
     const previousSelectedRpe = selectedPlayerRpeHistory
       .filter((entry) => entry.entry_date < (selectedDay?.entryDate || '9999-12-31'))
       .pop() || null;
     const selectedDayRpeValue = getPerformanceNumber(selectedDayRpe?.rpe);
+    const selectedRpeWorkload = getRpeWorkloadAvailability(selectedDayRpe);
     const latestAvailableRpeValue = getPerformanceNumber(latestSelectedRpe?.rpe);
     const previousSelectedRpeValue = getPerformanceNumber(previousSelectedRpe?.rpe);
     const selectedRpeDelta = selectedDayRpeValue !== null && previousSelectedRpeValue !== null
       ? selectedDayRpeValue - previousSelectedRpeValue
       : null;
-    const selectedPlayerCurrentWellness = wellnessEntries.filter((entry) => entry.jugador_id === selectedPlayerRow?.player.id);
+    const selectedPlayerCurrentWellness = (
+      performanceChartPeriod === 'week'
+        ? wellnessEntries
+        : historicalPeriodIsReady ? performancePeriodEntries.wellness : []
+    ).filter((entry) => entry.jugador_id === selectedPlayerRow?.player.id);
+    const selectedPlayerWellnessTrend = getPerformanceTrend(
+      selectedPlayerCurrentWellness
+        .map(getWellnessScore)
+        .filter((value) => value !== null)
+    );
     const averageField = (entries, field, transform = (value) => value) => {
       const values = entries
         .map((entry) => transform(getPerformanceNumber(entry[field])))
@@ -25624,7 +25710,7 @@ function App() {
         key: 'rpe',
         label: 'RPE',
         value: getPerformanceNumber(selectedDayRpe?.rpe),
-        average: selectedPlayerRow?.avgRpe ?? null,
+        average: selectedPlayerRpePeriodSummary.average,
         color: '#fcd34d',
         entry: selectedDayRpe,
         unit: '/10',
@@ -25919,11 +26005,16 @@ function App() {
       return formatLongDate(entryDate);
     };
     const selectedIndividualTrends = [
-      { label: 'Wellness', trend: selectedPlayerRow?.wellnessTrend, lowerIsBetter: false },
+      { label: 'RPE', trend: getPerformanceTrend(selectedPlayerRpePeriodSummary.values), lowerIsBetter: true },
+      { label: 'Wellness', trend: selectedPlayerWellnessTrend, lowerIsBetter: false },
       { label: 'Fatiga', trend: getFieldTrend(selectedPlayerCurrentWellness, 'fatigue'), lowerIsBetter: true },
       { label: 'Ánimo', trend: getFieldTrend(selectedPlayerCurrentWellness, 'mood'), lowerIsBetter: false },
       { label: 'Estrés', trend: getFieldTrend(selectedPlayerCurrentWellness, 'stress'), lowerIsBetter: true },
     ];
+    const selectedPlayerRpePeriodPoints = selectedPlayerRpePeriodEntries
+      .map((entry) => ({ entry, value: getPerformanceNumber(entry.rpe) }))
+      .filter((point) => point.value !== null && point.value >= 1 && point.value <= 10)
+      .sort((left, right) => String(left.entry.entry_date).localeCompare(String(right.entry.entry_date)));
     const playerMapClipboardText = [
       'form_name\tjugador_id\tname',
       ...players.map((player) => `${player.google_forms_name || player.shirt_name || player.name}\t${player.id}\t${player.name}`),
@@ -26040,6 +26131,7 @@ function App() {
       }
     };
     const periodDataPoints = performanceChartPoints.filter((point) => point.hasData);
+    const periodRpeSummary = summarizeRpeEntries(performanceRpePeriodEntries);
     const getSeriesTrendText = (points, key) => {
       const values = points.map((point) => point[key]).filter(Number.isFinite);
       if (values.length < 2) return 'Sin datos suficientes';
@@ -26048,17 +26140,20 @@ function App() {
       return `${delta > 0 ? '↑' : '↓'} ${Math.abs(delta).toFixed(1)} entre el primer y el último dato`;
     };
     const monthWeekGroups = performanceChartPeriod === 'month'
-      ? Object.values(performanceChartPoints.reduce((groups, point) => {
-        const weekStart = getPerformanceNaturalWeekStart(point.entryDate);
-        const group = groups[weekStart] || { weekStart, points: [] };
-        group.points.push(point);
+      ? Object.values(performanceRpePeriodEntries.reduce((groups, entry) => {
+        const value = getPerformanceNumber(entry.rpe);
+        if (value === null || value < 1 || value > 10) return groups;
+        const weekStart = getPerformanceNaturalWeekStart(entry.entry_date);
+        const group = groups[weekStart] || { weekStart, values: [] };
+        group.values.push(value);
         groups[weekStart] = group;
         return groups;
       }, {})).map((group) => {
-        const values = group.points.map((point) => point.avgRpe).filter(Number.isFinite);
         return {
           ...group,
-          avgRpe: values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null,
+          avgRpe: group.values.length
+            ? group.values.reduce((sum, value) => sum + value, 0) / group.values.length
+            : null,
         };
       })
       : [];
@@ -26079,10 +26174,12 @@ function App() {
       : performanceChartPeriod === 'month'
         ? [
           ['Semana con mayor RPE', highestMonthWeek ? `${formatShortDate(highestMonthWeek.weekStart)} · ${highestMonthWeek.avgRpe.toFixed(1)}` : 'Sin RPE'],
+          ['RPE medio', periodRpeSummary.average === null ? 'Sin dato' : `${periodRpeSummary.average.toFixed(1)} · ${periodRpeSummary.count} respuestas`],
           ['Tendencia Wellness', getSeriesTrendText(performanceChartPoints, 'avgWellness')],
           ['Días con alertas', `${performanceChartPoints.filter((point) => ['red', 'orange'].includes(point.dayStatus.status)).length}`],
         ]
         : [
+          ['RPE medio', periodRpeSummary.average === null ? 'Sin dato' : `${periodRpeSummary.average.toFixed(1)} · ${periodRpeSummary.count} respuestas`],
           ['Tendencia general', `RPE: ${getSeriesTrendText(performanceChartPoints, 'avgRpe')} · Wellness: ${getSeriesTrendText(performanceChartPoints, 'avgWellness')}`],
           ['Semanas con mayor RPE', seasonHighestWeeks.length ? seasonHighestWeeks.map((week) => `${week.label} (${week.avgRpe.toFixed(1)})`).join(' · ') : 'Sin RPE'],
           ['Evolución del cumplimiento', firstSeasonDataWeek && lastSeasonDataWeek ? `${firstSeasonDataWeek.bothFormPlayerCount} → ${lastSeasonDataWeek.bothFormPlayerCount} jugadores con ambos formularios` : 'Sin datos suficientes'],
@@ -26149,6 +26246,14 @@ function App() {
                   aria-label="Elegir una fecha de la semana"
                 />
               </label>
+              <button
+                type="button"
+                onClick={refreshPerformanceDataManually}
+                disabled={performanceLoading}
+                className="inline-flex h-12 items-center justify-center rounded-2xl border border-caudal-electric/20 bg-caudal-electric/[0.07] px-4 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric transition hover:bg-caudal-electric/15 disabled:cursor-wait disabled:opacity-60"
+              >
+                {performanceLoading ? 'Actualizando…' : 'Actualizar'}
+              </button>
               <button
                 type="button"
                 onClick={(event) => setPerformanceMenuRect(event.currentTarget.getBoundingClientRect())}
@@ -26293,7 +26398,7 @@ function App() {
             weekLoads={performanceTrainingLoads}
             monthLoads={performanceMonthLoads}
             monthLoading={performanceMonthLoading}
-            rpeEntries={performanceChartPeriod === 'month' ? performancePeriodEntries.rpe : rpeEntries}
+            rpeEntries={performanceRpePeriodEntries}
             onSelectDate={(date) => setPerformanceSelectedDate(date)}
             selectedDate={performanceSelectedDate}
           />
@@ -26989,7 +27094,7 @@ function App() {
                         </p>
                       </div>
                       <div className="rounded-xl border border-white/[0.06] bg-black/15 p-3">
-                        <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">Media semanal</p>
+                        <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">Media {selectedPlayerPeriodLabel}</p>
                         <p className="mt-1 text-xl font-black text-white">
                           {selectedMetric.categorical
                             ? 'Reglas PF'
@@ -27227,6 +27332,54 @@ function App() {
                           />
                         ))}
                       </div>
+                      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                        <div className="rounded-xl border border-white/[0.06] bg-black/10 p-3">
+                          <p className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-500">Media {selectedPlayerPeriodLabel}</p>
+                          <p className="mt-1 text-lg font-black text-white">
+                            {selectedPlayerRpePeriodSummary.average === null ? '—' : selectedPlayerRpePeriodSummary.average.toFixed(1)}
+                          </p>
+                          <p className="text-[9px] text-slate-500">{selectedPlayerRpePeriodSummary.count} respuestas</p>
+                        </div>
+                        <div className="rounded-xl border border-white/[0.06] bg-black/10 p-3">
+                          <p className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-500">Duración</p>
+                          <p className="mt-1 text-lg font-black text-white">
+                            {selectedRpeWorkload.durationMinutes === null ? '—' : `${selectedRpeWorkload.durationMinutes} min`}
+                          </p>
+                          <p className="text-[9px] text-slate-500">Solo con sesión fiable</p>
+                        </div>
+                        <div className="rounded-xl border border-white/[0.06] bg-black/10 p-3">
+                          <p className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-500">Carga RPE</p>
+                          <p className="mt-1 text-lg font-black text-white">
+                            {selectedRpeWorkload.load === null ? '—' : selectedRpeWorkload.load.toFixed(0)}
+                          </p>
+                          <p className="text-[9px] text-slate-500">No derivada por fecha</p>
+                        </div>
+                      </div>
+                      {selectedPlayerRpePeriodPoints.length ? (
+                        <div className="mt-4 rounded-xl border border-white/[0.06] bg-black/10 p-3" aria-label="Evolución RPE individual">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                              Evolución RPE · {performanceChartPeriod === 'week' ? 'Semana seleccionada' : selectedPlayerHistoryLabel}
+                            </p>
+                            <p className="text-[9px] font-bold text-slate-500">Solo respuestas reales</p>
+                          </div>
+                          <div className="mt-3 overflow-x-auto pb-1">
+                            <div className="flex h-28 min-w-max items-end gap-2">
+                              {selectedPlayerRpePeriodPoints.map((point) => (
+                                <div key={`${point.entry.id || point.entry.jugador_id}-${point.entry.entry_date}`} className="flex w-10 shrink-0 flex-col items-center justify-end gap-1">
+                                  <span className="text-[10px] font-black text-amber-100">{point.value.toFixed(1)}</span>
+                                  <span
+                                    className="w-5 rounded-t-md bg-amber-300"
+                                    style={{ height: `${Math.max(8, point.value * 7)}px` }}
+                                    title={`${formatShortDate(point.entry.entry_date)} · RPE ${point.value.toFixed(1)}`}
+                                  />
+                                  <span className="text-[8px] font-bold text-slate-500">{formatShortDate(point.entry.entry_date)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
                       <div className="mt-4 rounded-xl border border-white/[0.06] bg-black/10 p-3">
                         <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Comentario RPE</p>
                         <p className="mt-1.5 text-sm leading-6 text-slate-200">{String(selectedDayRpe?.comment || '').trim() || 'Sin comentario registrado.'}</p>
@@ -27272,8 +27425,8 @@ function App() {
                   </section>
 
                   <section className="rounded-[1.75rem] border border-white/[0.07] bg-white/[0.025] p-4 sm:p-5">
-                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-caudal-electric">Tendencia semanal</p>
-                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-caudal-electric">Tendencia {selectedPlayerPeriodLabel}</p>
+                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
                       {selectedIndividualTrends.map(renderIndividualTrend)}
                     </div>
                   </section>
@@ -27283,7 +27436,7 @@ function App() {
                       <div>
                         <p className="text-[9px] font-black uppercase tracking-[0.18em] text-caudal-electric">Historial</p>
                         <h3 className="mt-1 text-lg font-black text-white">Últimos registros</h3>
-                        <p className="mt-0.5 text-[10px] text-slate-500">Semana seleccionada y semana anterior</p>
+                        <p className="mt-0.5 text-[10px] text-slate-500">{selectedPlayerHistoryLabel}</p>
                       </div>
                       <button
                         type="button"
@@ -27331,7 +27484,7 @@ function App() {
                       </div>
                     ) : (
                       <div className="mt-4 rounded-xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">
-                        Sin registros en las dos semanas cargadas.
+                        Sin registros en el periodo cargado.
                       </div>
                     )}
                   </section>
