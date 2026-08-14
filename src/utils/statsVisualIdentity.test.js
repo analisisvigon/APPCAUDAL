@@ -42,7 +42,9 @@ const pitchSource = appSource.slice(
   appSource.indexOf('const renderStatsPitch'),
   appSource.indexOf('const renderCompleteStatsView')
 );
-assert.ok(pitchSource.includes('↑ {replacementInfo.replacementPitchName} · {replacementInfo.minute}'), 'la etiqueta compacta muestra identidad y minuto de entrada');
+assert.ok(pitchSource.includes("↕ {replacementInfo.minute}'"), 'la etiqueta de cambio muestra únicamente el indicador y el minuto');
+assert.ok(pitchSource.includes('Sale: ${getStoredPlayerDisplayName(playerName)}') && pitchSource.includes('Entra: ${replacementInfo.replacementDisplayName}'), 'el tooltip conserva las dos identidades del cambio');
+assert.ok(!pitchSource.includes('↑ {replacementInfo.replacementPitchName}'), 'el campo no duplica permanentemente el nombre del entrante');
 assert.ok(!pitchSource.includes('? {replacementInfo.replacementName}'), 'el renderer no antepone una interrogación literal');
 assert.ok(appSource.includes('xl:grid-cols-[minmax(240px,0.8fr)_minmax(460px,1.45fr)_minmax(320px,1fr)]'), 'la convocatoria gana 60 px mínimos sin anular el campo');
 assert.ok(appSource.includes('min-h-[56px] border'), 'las tarjetas laterales parten de una altura compacta de 56 px');

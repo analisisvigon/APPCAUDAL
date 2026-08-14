@@ -17488,7 +17488,7 @@ function App() {
     const coordinates = getFormationCoordinates(activeSystem);
     return (
       <div
-        className="stats-match-pitch relative mx-auto aspect-[7/8.9] w-full max-w-[560px] min-w-0 overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner"
+        className="stats-match-pitch relative mx-auto aspect-[7/8.9] w-full max-w-[560px] min-w-0 overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner [container-type:inline-size]"
         onDragOver={(event) => event.preventDefault()}
         onDrop={() => {
           if (!draggedPlayer || statsSquadSaving) return;
@@ -17517,7 +17517,15 @@ function App() {
             playerStats: stats,
             isCaptain,
           }) : [];
+          const captainIndicator = indicators.find((indicator) => indicator.key === 'captain');
+          const incidentIndicators = indicators.filter((indicator) => indicator.key !== 'captain');
           const replacementInfo = playerName ? getStatsReplacementInfo(playerName) : null;
+          const pitchPlayerName = formatStatsPitchPlayerName(shortName);
+          const playerIdentityLabel = playerName ? `${player?.number || slotIndex + 1} ${pitchPlayerName}` : getFormationRoles(activeSystem)[slotIndex];
+          const playerIdentityTitle = playerName ? `${player?.number || slotIndex + 1} ${getStoredPlayerDisplayName(playerName)}` : playerIdentityLabel;
+          const substitutionTitle = replacementInfo
+            ? `Minuto ${replacementInfo.minute}\nSale: ${getStoredPlayerDisplayName(playerName)}\nEntra: ${replacementInfo.replacementDisplayName}`
+            : '';
           const playerStateClass = stats?.red
             ? 'border-red-300 bg-red-950/80 opacity-70'
             : stats?.injured
@@ -17535,39 +17543,58 @@ function App() {
                 event.stopPropagation();
                 handleDropOnStatsLineupSlot(slotIndex);
               }}
-              className={`absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-0.5 text-center ${player ? 'cursor-grab' : ''}`}
+              className={`stats-player-slot absolute z-20 h-16 -translate-x-1/2 -translate-y-1/2 text-center ${player ? 'cursor-grab' : ''}`}
               style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
             >
-              <div className={`relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border text-sm font-black shadow-sm ${playerName ? playerStateClass : 'border-dashed border-white/40 bg-white/10 text-white/70'}`}>
-                {player ? (
-                  <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-xs" />
-                ) : (
-                  <span>{playerName ? playerName.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase() : slotIndex + 1}</span>
-                )}
+              {incidentIndicators.length ? (
+                <div className="stats-player-incidents absolute bottom-full left-1/2 z-20 mb-0.5 flex min-h-[14px] max-w-full -translate-x-1/2 items-center justify-center gap-0.5" aria-label="Incidencias del jugador">
+                  {incidentIndicators.map((indicator) => (
+                    <span
+                      key={indicator.key}
+                      title={indicator.title}
+                      aria-label={indicator.title}
+                      className={`inline-flex h-3.5 min-w-3.5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] px-0.5 text-[8px] font-black leading-none shadow-sm ${indicator.className}`}
+                    >
+                      {indicator.label}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              <div className={`relative z-40 mx-auto flex h-16 w-16 items-center justify-center rounded-lg border text-sm font-black shadow-sm ${playerName ? playerStateClass : 'border-dashed border-white/40 bg-white/10 text-white/70'}`}>
+                <div className="h-full w-full overflow-hidden rounded-[7px]">
+                  {player ? (
+                    <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-xs" />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center">{playerName ? playerName.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase() : slotIndex + 1}</span>
+                  )}
+                </div>
                 {stats?.rating ? (
-                  <span className="absolute -right-3 top-0 rounded-full bg-caudal-electric px-1.5 py-0.5 text-[10px] font-black text-white">
+                  <span className="absolute -right-1.5 -top-1 z-30 rounded-full bg-caudal-electric px-1.5 py-0.5 text-[9px] font-black leading-none text-white shadow-sm">
                     {stats.rating}
                   </span>
                 ) : null}
               </div>
-              <div className="stats-player-identity flex max-w-[118px] flex-wrap items-center justify-center gap-0.5 rounded-lg bg-black/75 px-1.5 py-1 text-[10px] font-black uppercase leading-none tracking-[0.025em] text-white shadow-lg">
-                <span className="max-w-[104px] truncate">
-                  {playerName ? `${player?.number || slotIndex + 1} ${shortName}` : getFormationRoles(activeSystem)[slotIndex]}
+              <div className="stats-player-identity absolute left-0 top-[calc(100%+2px)] z-30 flex h-5 w-full min-w-0 items-center justify-center gap-0.5 rounded-md bg-black/80 px-1.5 text-[9px] font-black uppercase leading-none tracking-[0.015em] text-white shadow-lg" title={playerIdentityTitle}>
+                <span className="min-w-0 truncate">
+                  {playerIdentityLabel}
                 </span>
-                {indicators.map((indicator) => (
+                {captainIndicator ? (
                   <span
-                    key={indicator.key}
-                    title={indicator.title}
-                    aria-label={indicator.title}
-                    className={`inline-flex h-4 min-w-4 shrink-0 items-center justify-center whitespace-nowrap rounded-[4px] px-0.5 text-[9px] font-black leading-none shadow-sm ${indicator.className}`}
+                    title={captainIndicator.title}
+                    aria-label={captainIndicator.title}
+                    className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-[8px] font-black leading-none ${captainIndicator.className}`}
                   >
-                    {indicator.label}
+                    {captainIndicator.label}
                   </span>
-                ))}
+                ) : null}
               </div>
               {replacementInfo ? (
-                <div className="max-w-[128px] truncate rounded-lg bg-emerald-500 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.02em] text-white shadow-lg" title={`Entra ${replacementInfo.replacementDisplayName} en el ${replacementInfo.minute}'`}>
-                  ↑ {replacementInfo.replacementPitchName} · {replacementInfo.minute}'
+                <div
+                  className="stats-player-change absolute left-1/2 top-[calc(100%+24px)] z-10 -translate-x-1/2 whitespace-nowrap rounded-md border border-emerald-200/60 bg-emerald-500 px-1.5 py-0.5 text-[8px] font-black leading-none text-white shadow-lg"
+                  title={substitutionTitle}
+                  aria-label={substitutionTitle.replace(/\n/g, '. ')}
+                >
+                  ↕ {replacementInfo.minute}'
                 </div>
               ) : null}
             </div>

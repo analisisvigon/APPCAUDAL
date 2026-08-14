@@ -269,6 +269,11 @@ table {
   background: rgba(79, 140, 255, 0.58);
 }
 
+.stats-player-slot {
+  width: 104px;
+  width: min(104px, 20cqw);
+}
+
 .tactical-board-scroll:focus-visible {
   border-radius: 1.5rem;
 }
