@@ -35,6 +35,10 @@ import {
   getSetPieceTypesForPhase,
   isSetPieceLibraryItem,
 } from '../../utils/setPieceLaboratory';
+import {
+  applySetPieceLineupAdaptation,
+  buildSetPieceLineupAdaptation,
+} from '../../utils/setPieceLineupAdaptation';
 
 const setPieceSections = [
   { id: 'penaltis', label: 'Penaltis' },
@@ -300,6 +304,10 @@ export default function MatchPrintTab({
   const [duplicateMode, setDuplicateMode] = useState('add');
   const [duplicateBusy, setDuplicateBusy] = useState(false);
   const [duplicateMessage, setDuplicateMessage] = useState('');
+  const [duplicateAdaptPlayers, setDuplicateAdaptPlayers] = useState(true);
+  const [duplicateAnalysis, setDuplicateAnalysis] = useState(null);
+  const [duplicateAnalysisLoading, setDuplicateAnalysisLoading] = useState(false);
+  const [duplicateAnalysisError, setDuplicateAnalysisError] = useState('');
   const [libraryModal, setLibraryModal] = useState(null);
   const [libraryItems, setLibraryItems] = useState([]);
   const [librarySearch, setLibrarySearch] = useState('');
@@ -336,6 +344,71 @@ export default function MatchPrintTab({
   useEffect(() => {
     setCaptainPlayerId(match?.captainPlayerId || '');
   }, [match?.captainPlayerId, match?.id]);
+
+  useEffect(() => {
+    const includesSetPieces = ['all', 'offensive', 'defensive'].includes(duplicateModal);
+    if (!includesSetPieces || !duplicateSourceId || !match?.id || duplicateSourceId === match.id) {
+      setDuplicateAnalysis(null);
+      setDuplicateAnalysisLoading(false);
+      setDuplicateAnalysisError('');
+      return undefined;
+    }
+
+    let cancelled = false;
+    const analyzeDuplicate = async () => {
+      setDuplicateAnalysis(null);
+      setDuplicateAnalysisLoading(true);
+      setDuplicateAnalysisError('');
+      const types = duplicateModal === 'offensive'
+        ? offensiveSetPieceTypes.map((item) => item.id)
+        : duplicateModal === 'defensive'
+          ? defensiveSetPieceTypes.map((item) => item.id)
+          : [...offensiveSetPieceTypes, ...defensiveSetPieceTypes].map((item) => item.id);
+      try {
+        const [diagramsResponse, slotsResponse, matchesResponse] = await Promise.all([
+          supabase.from('match_set_piece_diagrams').select('*').eq('partido_id', duplicateSourceId).in('tipo', types).order('orden', { ascending: true }),
+          supabase.from('partido_alineacion_slots').select('partido_id,scope,slot,jugador_id,player_name').in('partido_id', [duplicateSourceId, match.id]).eq('scope', 'stats').order('slot', { ascending: true }),
+          supabase.from('partidos').select('id,stats_system').in('id', [duplicateSourceId, match.id]),
+        ]);
+        const failed = [diagramsResponse, slotsResponse, matchesResponse].find((response) => response.error);
+        if (failed?.error) throw failed.error;
+        const slotRows = slotsResponse.data || [];
+        const playerIds = [...new Set(slotRows.map((row) => row.jugador_id).filter(Boolean))];
+        let storedPlayers = [];
+        if (playerIds.length) {
+          const { data, error } = await supabase.from('jugadores').select('*').in('id', playerIds);
+          if (error) throw error;
+          storedPlayers = data || [];
+        }
+        if (cancelled) return;
+        const sourceMatch = (matchesResponse.data || []).find((item) => item.id === duplicateSourceId);
+        const currentMatch = (matchesResponse.data || []).find((item) => item.id === match.id);
+        const adaptationPlayers = [...players, ...storedPlayers];
+        const analysis = buildSetPieceLineupAdaptation({
+          diagrams: diagramsResponse.data || [],
+          sourceSlots: slotRows.filter((row) => row.partido_id === duplicateSourceId),
+          currentSlots: slotRows.filter((row) => row.partido_id === match.id),
+          sourceSystem: sourceMatch?.stats_system || '',
+          currentSystem: currentMatch?.stats_system || '',
+          players: adaptationPlayers,
+        });
+        setDuplicateAnalysis({
+          ...analysis,
+          sourceId: duplicateSourceId,
+          diagrams: diagramsResponse.data || [],
+          players: adaptationPlayers,
+        });
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Error analizando la adaptación ABP al XI actual:', error);
+        setDuplicateAnalysisError(error.message || 'No se pudo analizar la adaptación al XI actual.');
+      } finally {
+        if (!cancelled) setDuplicateAnalysisLoading(false);
+      }
+    };
+    analyzeDuplicate();
+    return () => { cancelled = true; };
+  }, [duplicateModal, duplicateSourceId, match?.id, players]);
 
   useEffect(() => {
     if (!diagramStatus) return undefined;
@@ -1267,6 +1340,9 @@ export default function MatchPrintTab({
     setDuplicateSourceId('');
     setDuplicateMode(kind === 'lineup' || kind === 'takers' ? 'replace' : 'add');
     setDuplicateMessage('');
+    setDuplicateAdaptPlayers(true);
+    setDuplicateAnalysis(null);
+    setDuplicateAnalysisError('');
     setDiagramError('');
   };
 
@@ -1291,14 +1367,18 @@ export default function MatchPrintTab({
     return inserted || rows;
   };
 
-  const copyDiagrams = async ({ sourceId, targetId, mode, replace }) => {
+  const copyDiagrams = async ({ sourceId, targetId, mode, replace, sourceDiagrams = null, adaptation = null }) => {
     const types = mode === 'offensive'
       ? offensiveSetPieceTypes.map((item) => item.id)
       : mode === 'defensive'
         ? defensiveSetPieceTypes.map((item) => item.id)
         : [...offensiveSetPieceTypes, ...defensiveSetPieceTypes].map((item) => item.id);
-    const { data, error } = await supabase.from('match_set_piece_diagrams').select('*').eq('partido_id', sourceId).in('tipo', types).order('orden', { ascending: true });
-    if (error) throw error;
+    let data = Array.isArray(sourceDiagrams) ? sourceDiagrams.filter((diagram) => types.includes(diagram.tipo)) : sourceDiagrams;
+    if (!Array.isArray(data)) {
+      const response = await supabase.from('match_set_piece_diagrams').select('*').eq('partido_id', sourceId).in('tipo', types).order('orden', { ascending: true });
+      if (response.error) throw response.error;
+      data = response.data;
+    }
     if (replace) {
       const { error: deleteError } = await supabase.from('match_set_piece_diagrams').delete().eq('partido_id', targetId).in('tipo', types);
       if (deleteError) throw deleteError;
@@ -1318,7 +1398,9 @@ export default function MatchPrintTab({
         orden: nextOrder,
         titulo: replace ? diagram.titulo : `${diagram.titulo || 'ABP'} copia`,
         consigna: diagram.consigna || '',
-        elements: cleanDiagramElements(diagram.elements),
+        elements: cloneSetPieceElementsWithFreshIds(adaptation?.canAdapt
+          ? applySetPieceLineupAdaptation(diagram.elements, adaptation, adaptation.players || players)
+          : cleanDiagramElements(diagram.elements)),
       };
     });
     const { data: inserted, error: insertError } = await supabase.from('match_set_piece_diagrams').upsert(rows, { onConflict: 'partido_id,tipo,orden' }).select('*');
@@ -1372,18 +1454,31 @@ export default function MatchPrintTab({
     setSetPieceTakers(rows);
   };
 
-  const runDuplicateImport = async () => {
+  const runDuplicateImport = async ({ adaptPlayers = duplicateAdaptPlayers } = {}) => {
     if (!match?.id || !duplicateSourceId || duplicateSourceId === match.id) return;
+    const includesSetPieces = ['all', 'offensive', 'defensive'].includes(duplicateModal);
+    if (adaptPlayers && includesSetPieces && (duplicateAnalysisLoading || !duplicateAnalysis || duplicateAnalysis.sourceId !== duplicateSourceId)) return;
     const replace = duplicateMode === 'replace';
     setDuplicateBusy(true);
     setDuplicateMessage('');
     setDiagramError('');
     try {
-      if (duplicateModal === 'lineup' || duplicateModal === 'all') await copyLineupFromMatch({ sourceId: duplicateSourceId, targetId: match.id, replace: true });
+      const preserveCurrentRealLineup = adaptPlayers && includesSetPieces;
+      if (duplicateModal === 'lineup' || (duplicateModal === 'all' && !preserveCurrentRealLineup)) await copyLineupFromMatch({ sourceId: duplicateSourceId, targetId: match.id, replace: true });
       if (duplicateModal === 'takers' || duplicateModal === 'all') await copyTakersFromMatch({ sourceId: duplicateSourceId, targetId: match.id, replace: true });
-      if (duplicateModal === 'offensive' || duplicateModal === 'all') await copyDiagrams({ sourceId: duplicateSourceId, targetId: match.id, mode: 'offensive', replace });
-      if (duplicateModal === 'defensive' || duplicateModal === 'all') await copyDiagrams({ sourceId: duplicateSourceId, targetId: match.id, mode: 'defensive', replace });
-      setDuplicateMessage('Preparación duplicada correctamente.');
+      const sourceDiagrams = duplicateAnalysis?.sourceId === duplicateSourceId ? duplicateAnalysis.diagrams : null;
+      const adaptation = adaptPlayers && duplicateAnalysis?.sourceId === duplicateSourceId ? duplicateAnalysis : null;
+      if (duplicateModal === 'offensive' || duplicateModal === 'all') await copyDiagrams({ sourceId: duplicateSourceId, targetId: match.id, mode: 'offensive', replace, sourceDiagrams, adaptation });
+      if (duplicateModal === 'defensive' || duplicateModal === 'all') await copyDiagrams({ sourceId: duplicateSourceId, targetId: match.id, mode: 'defensive', replace, sourceDiagrams, adaptation });
+      if (adaptPlayers && includesSetPieces && !duplicateAnalysis.canAdapt) {
+        setDuplicateMessage(`Preparación duplicada sin sustituciones. ${duplicateAnalysis.message}`);
+      } else if (adaptPlayers && includesSetPieces) {
+        const reviewText = duplicateAnalysis.manualReviewCount ? ` ${duplicateAnalysis.manualReviewCount} jugador(es) quedan para revisión manual.` : '';
+        const lineupText = duplicateModal === 'all' ? ' Se ha conservado el XI real del partido actual.' : '';
+        setDuplicateMessage(`Preparación duplicada y adaptada.${reviewText}${lineupText}`);
+      } else {
+        setDuplicateMessage('Preparación duplicada correctamente.');
+      }
     } catch (error) {
       console.error('Error duplicando preparación desde otro partido:', error);
       setDiagramError(error.message || 'No se pudo duplicar la preparación.');
@@ -2011,7 +2106,7 @@ export default function MatchPrintTab({
 
       {duplicateModal ? (
         <div className="print-hidden fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-caudal-950 p-6 shadow-glow">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-white/10 bg-caudal-950 p-6 shadow-glow">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Duplicar</p>
@@ -2023,7 +2118,7 @@ export default function MatchPrintTab({
             </div>
             <label className="mt-5 block space-y-2 text-sm text-slate-300">
               <span>Partido origen</span>
-              <select value={duplicateSourceId} onChange={(event) => setDuplicateSourceId(event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-sm font-bold text-slate-950">
+              <select value={duplicateSourceId} onChange={(event) => { setDuplicateSourceId(event.target.value); setDuplicateMessage(''); setDuplicateAnalysis(null); setDuplicateAnalysisLoading(Boolean(event.target.value)); setDuplicateAnalysisError(''); }} className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-sm font-bold text-slate-950">
                 <option value="">Selecciona partido</option>
                 {matches.filter((item) => item.id !== match?.id).map((item) => (
                   <option key={item.id} value={item.id}>{item.date || ''} · {item.opponent || 'Sin rival'}</option>
@@ -2049,13 +2144,56 @@ export default function MatchPrintTab({
             ) : (
               <p className="mt-5 rounded-2xl bg-amber-300/10 p-4 text-sm text-amber-100">Esta acción reemplaza la información actual de esta sección para evitar duplicados.</p>
             )}
+            {(duplicateModal === 'offensive' || duplicateModal === 'defensive' || duplicateModal === 'all') ? (
+              <>
+                <label className="mt-5 flex cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-bold text-white">
+                  <input type="checkbox" checked={duplicateAdaptPlayers} onChange={(event) => setDuplicateAdaptPlayers(event.target.checked)} className="h-4 w-4 accent-caudal-electric" />
+                  Adaptar jugadores al XI titular actual
+                </label>
+                {duplicateAdaptPlayers && duplicateSourceId ? (
+                  <section className="mt-4 rounded-2xl border border-caudal-electric/20 bg-caudal-electric/[0.06] p-4" aria-live="polite">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Adaptación al XI actual</p>
+                    {duplicateAnalysisLoading ? <p className="mt-3 text-sm text-slate-300">Analizando jugadas y titulares…</p> : null}
+                    {duplicateAnalysisError ? <p className="mt-3 rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-100">{duplicateAnalysisError}</p> : null}
+                    {!duplicateAnalysisLoading && duplicateAnalysis ? (
+                      <>
+                        {duplicateAnalysis.message ? <p className="mt-3 rounded-xl bg-amber-300/10 px-3 py-2 text-sm text-amber-100">{duplicateAnalysis.message}</p> : null}
+                        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                          <div className="rounded-xl bg-black/20 px-2 py-3"><strong className="block text-lg text-white">{duplicateAnalysis.changeOccurrenceCount}</strong><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Cambios</span></div>
+                          <div className="rounded-xl bg-black/20 px-2 py-3"><strong className="block text-lg text-white">{duplicateAnalysis.unchangedPlayCount}</strong><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Sin cambios</span></div>
+                          <div className="rounded-xl bg-black/20 px-2 py-3"><strong className="block text-lg text-white">{duplicateAnalysis.manualReviewCount}</strong><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Revisar</span></div>
+                        </div>
+                        <div className="mt-3 grid max-h-56 gap-2 overflow-y-auto pr-1">
+                          {duplicateAnalysis.changesByPlay.filter((play) => play.changes.length || play.manual.length).map((play) => (
+                            <div key={play.id} className="rounded-xl bg-black/20 px-3 py-2.5">
+                              <p className="text-xs font-black text-white">{play.title}</p>
+                              {play.changes.map((change) => <p key={`${play.id}-${change.oldId}`} className="mt-1 text-xs text-emerald-100">{change.oldName} → {change.newName}</p>)}
+                              {play.manual.map((item) => <p key={`${play.id}-${item.oldId}`} className="mt-1 text-xs text-amber-100">{item.oldName} → Jugador por asignar · {item.reasonLabel}</p>)}
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : null}
+                  </section>
+                ) : null}
+              </>
+            ) : null}
             {duplicateMessage ? <p className="mt-4 rounded-2xl bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">{duplicateMessage}</p> : null}
             {diagramError ? <p className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-100">{diagramError}</p> : null}
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              {(duplicateModal === 'offensive' || duplicateModal === 'defensive' || duplicateModal === 'all') ? (
+                <>
+                  <button type="button" onClick={() => runDuplicateImport({ adaptPlayers: true })} disabled={!duplicateSourceId || duplicateBusy || !duplicateAdaptPlayers || duplicateAnalysisLoading || !duplicateAnalysis || Boolean(duplicateAnalysisError)} className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60">
+                    {duplicateBusy ? 'Duplicando...' : 'Duplicar y adaptar'}
+                  </button>
+                  <button type="button" onClick={() => runDuplicateImport({ adaptPlayers: false })} disabled={!duplicateSourceId || duplicateBusy} className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">Duplicar sin adaptar</button>
+                </>
+              ) : (
+                <button type="button" onClick={() => runDuplicateImport({ adaptPlayers: false })} disabled={!duplicateSourceId || duplicateBusy} className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60">
+                  {duplicateBusy ? 'Duplicando...' : 'Duplicar'}
+                </button>
+              )}
               <button type="button" onClick={() => setDuplicateModal(null)} className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-bold text-white">Cancelar</button>
-              <button type="button" onClick={runDuplicateImport} disabled={!duplicateSourceId || duplicateBusy} className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60">
-                {duplicateBusy ? 'Duplicando...' : 'Duplicar'}
-              </button>
             </div>
           </div>
         </div>
