@@ -40,6 +40,7 @@
     "test:set-piece-laboratory": "node src/utils/setPieceLaboratory.test.js",
     "test:set-piece-linked-players": "node src/utils/setPieceLinkedPlayers.test.js",
     "test:set-piece-lineup-adaptation": "node src/utils/setPieceLineupAdaptation.test.js",
+    "test:set-piece-match-duplication": "node src/utils/setPieceMatchDuplication.test.js",
     "test:print-player-shirt": "node src/utils/printPlayerShirt.test.js",
     "test:tactical-templates": "node src/utils/tacticalTemplates.test.js",
     "test:tactical-orientation": "node src/utils/tacticalOrientation.test.js",

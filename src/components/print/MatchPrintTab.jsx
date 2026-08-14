@@ -40,6 +40,7 @@ import {
   applySetPieceLineupAdaptation,
   buildSetPieceLineupAdaptation,
 } from '../../utils/setPieceLineupAdaptation';
+import { duplicateMatchSetPiece } from '../../utils/setPieceMatchDuplication';
 
 const setPieceSections = [
   { id: 'penaltis', label: 'Penaltis' },
@@ -1387,16 +1388,14 @@ export default function MatchPrintTab({
     const rows = data.map((diagram) => {
       const nextOrder = replace ? Number(diagram.orden) || 1 : (nextByType.get(diagram.tipo) || 0) + 1;
       nextByType.set(diagram.tipo, nextOrder);
-      return {
-        partido_id: targetId,
-        tipo: diagram.tipo,
-        orden: nextOrder,
-        titulo: replace ? diagram.titulo : `${diagram.titulo || 'ABP'} copia`,
-        consigna: diagram.consigna || '',
-        elements: cloneSetPieceElementsWithFreshIds(adaptation?.canAdapt
+      return duplicateMatchSetPiece({
+        source: diagram,
+        targetMatchId: targetId,
+        order: nextOrder,
+        elements: adaptation?.canAdapt
           ? applySetPieceLineupAdaptation(diagram.elements, adaptation, adaptation.players || players)
-          : cleanDiagramElements(diagram.elements)),
-      };
+          : cleanDiagramElements(diagram.elements),
+      });
     });
     const { data: inserted, error: insertError } = await supabase.from('match_set_piece_diagrams').upsert(rows, { onConflict: 'partido_id,tipo,orden' }).select('*');
     if (insertError) throw insertError;
