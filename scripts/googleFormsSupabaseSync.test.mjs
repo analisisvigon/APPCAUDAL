@@ -692,6 +692,96 @@ assert.equal(
   'La pregunta real de información personal debe mapearse a rpe_entries.comment.'
 );
 
+const oscarRealRpeHeaders = [
+  'Marca temporal',
+  'Dirección de correo electrónico',
+  'Oscar Nombre y apellidos.',
+  'Esfuerzo percibido de la sesión de entrenamiento.',
+  'Información personal: (sensaciones, molestias, comentarios, etc).',
+  'Dorsal',
+  'Supabase status',
+  'Supabase session_id',
+  'Supabase error',
+  'Supabase synced_at',
+];
+const oscarRealRpeRawRow = [
+  new Date('2026-08-14T21:09:56.000Z'),
+  'samu@example.com',
+  'SAMU',
+  3,
+  '',
+  '26',
+  '',
+  '',
+  '',
+  '',
+];
+const oscarRealRpeDisplayRow = [
+  '14/08/2026 23:09:56',
+  'samu@example.com',
+  'SAMU',
+  '3',
+  '',
+  '26',
+  '',
+  '',
+  '',
+  '',
+];
+const oscarRealRpeFields = sandbox.resolveRequiredRpeFields(
+  oscarRealRpeHeaders,
+  oscarRealRpeRawRow,
+  oscarRealRpeDisplayRow
+);
+assert.equal(oscarRealRpeFields.player.found, true, 'La cabecera real de jugador debe resolverse explícitamente.');
+assert.equal(oscarRealRpeFields.player.header, 'Oscar Nombre y apellidos.');
+assert.equal(oscarRealRpeFields.player.state, 'VALUE');
+assert.equal(oscarRealRpeFields.timestamp.found, true, 'Marca temporal debe seguir reconocida.');
+assert.equal(oscarRealRpeFields.timestamp.state, 'VALUE');
+assert.equal(oscarRealRpeFields.rpe.found, true, 'La cabecera real de esfuerzo debe seguir reconocida.');
+assert.equal(oscarRealRpeFields.rpe.state, 'VALUE');
+assert.equal(oscarRealRpeFields.comment.found, true, 'La cabecera real de comentario debe seguir reconocida.');
+const oscarRealRpeSheet = {
+  getName() { return 'Respuestas de formulario 1'; },
+  getSheetId() { return 154160; },
+  getLastColumn() { return oscarRealRpeHeaders.length; },
+  getRange() {
+    return { getDisplayValues() { return [oscarRealRpeHeaders]; } };
+  },
+};
+assert.equal(
+  sandbox.findRpeResponseSheet({
+    getSheets() { return [oscarRealRpeSheet]; },
+    getActiveSheet() { return oscarRealRpeSheet; },
+  }),
+  oscarRealRpeSheet,
+  'findRpeResponseSheet debe reconocer la hoja por sus cabeceras reales aunque su nombre no contenga RPE.'
+);
+const samuFromOscarHeader = sandbox.resolvePlayerByFormName(
+  [
+    ...supabasePlayers,
+    {
+      id: '1b1906d7-a97c-4184-ad20-17f7a021cbbd',
+      name: 'Samuel González',
+      shirt_name: 'SAMU',
+      google_forms_name: null,
+    },
+  ],
+  oscarRealRpeFields.player.rawValue
+);
+assert.equal(samuFromOscarHeader?.jugador_id, '1b1906d7-a97c-4184-ad20-17f7a021cbbd');
+assert.equal(samuFromOscarHeader?.name, 'Samuel González');
+assert.equal(samuFromOscarHeader?.match_rule, 'EXACT_SHIRT_NAME');
+const samuOscarHeaderPayload = sandbox.buildDailyRpePayload(
+  Object.fromEntries(oscarRealRpeHeaders.map((header, index) => [header, oscarRealRpeRawRow[index]])),
+  samuFromOscarHeader.jugador_id,
+  'Europe/Madrid',
+  null,
+  oscarRealRpeFields
+);
+assert.equal(samuOscarHeaderPayload.entry_date, '2026-08-14');
+assert.equal(samuOscarHeaderPayload.rpe, 3);
+
 [
   'Información personal: (sensaciones, molestias, comentarios, etc.)',
   'Información personal: (sensaciones, molestias, comentarios, etc).',

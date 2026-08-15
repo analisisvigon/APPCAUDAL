@@ -68,7 +68,7 @@
  */
 
 const TECHNICAL_COLUMNS = ['Supabase status', 'Supabase session_id', 'Supabase error', 'Supabase synced_at'];
-const PLAYER_HEADER_CANDIDATES = ['Nombre y apellidos.', 'Nombre y apellidos', 'Nombre del jugador', 'Jugador', 'Nombre', 'Columna 3'];
+const PLAYER_HEADER_CANDIDATES = ['Nombre y apellidos.', 'Nombre y apellidos', 'Oscar Nombre y apellidos.', 'Nombre del jugador', 'Jugador', 'Nombre', 'Columna 3'];
 const WELLNESS_WEIGHT_HEADER_CANDIDATES = [
   '¿Cuál tu peso hoy?.',
   '¿Cuál tu peso hoy?',
