@@ -79,15 +79,24 @@ const sandbox = {
     },
   },
   Utilities: {
-    formatDate(date, timeZone) {
+    formatDate(date, timeZone, format) {
       const parts = new Intl.DateTimeFormat('en-CA', {
         timeZone: timeZone || 'Europe/Madrid',
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
+        ...(String(format || '').includes('HH') ? {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hourCycle: 'h23',
+        } : {}),
       }).formatToParts(date);
       const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-      return `${values.year}-${values.month}-${values.day}`;
+      const isoDate = `${values.year}-${values.month}-${values.day}`;
+      return String(format || '').includes('HH')
+        ? `${isoDate} ${values.hour}:${values.minute}:${values.second}`
+        : isoDate;
     },
     sleep() {},
   },
@@ -809,6 +818,140 @@ assert.equal(inspectedRpeHeaders.rpeIndex, 4);
 assert.equal(inspectedRpeHeaders.commentIndex, 5);
 assert.equal(inspectedRpeHeaders.rpeState, 'COLUMN_FOUND');
 assert.equal(inspectorWriteCount, 0, 'inspectRpeHeaders debe ser estrictamente de solo lectura.');
+
+const diagnosticHeaders = actualRpeHeaders;
+const diagnosticNames = [
+  'IAGO DELGADO',
+  'M. BARROSO',
+  'ALBUQUERQUE',
+  'LUCAS',
+  'J. CÁRCABA',
+  'ISMA CERRO',
+  'SAMU',
+];
+const diagnosticRpeValues = [3, 3, 6, 3, 6, 6, 3];
+const diagnosticTimes = [
+  '2026-08-14T18:20:44.000Z',
+  '2026-08-14T18:22:53.000Z',
+  '2026-08-14T18:37:11.000Z',
+  '2026-08-14T18:49:33.000Z',
+  '2026-08-14T19:03:22.000Z',
+  '2026-08-14T19:14:03.000Z',
+  '2026-08-14T21:09:56.000Z',
+];
+const diagnosticStatuses = ['SYNCED', 'ERROR', '', '', '', '', ''];
+const diagnosticRawRows = diagnosticNames.map((name, index) => [
+  new Date(diagnosticTimes[index]),
+  `${index}@example.com`,
+  name,
+  diagnosticRpeValues[index],
+  index === 1 ? 'Error de prueba' : '',
+  String(index + 1),
+  diagnosticStatuses[index],
+  '',
+  index === 1 ? 'Supabase error de prueba' : '',
+  index === 0 ? new Date('2026-08-14T18:21:00.000Z') : '',
+]);
+const diagnosticDisplayRows = diagnosticRawRows.map((row, index) => row.map((value, columnIndex) => {
+  if (columnIndex === 0) return `14/08/2026 ${['20:20:44', '20:22:53', '20:37:11', '20:49:33', '21:03:22', '21:14:03', '23:09:56'][index]}`;
+  if (value instanceof Date) return value.toISOString();
+  return String(value ?? '');
+}));
+let diagnosticWriteCount = 0;
+const diagnosticSheet = {
+  getName() { return 'Respuestas RPE'; },
+  getSheetId() { return 154160; },
+  getLastColumn() { return diagnosticHeaders.length; },
+  getLastRow() { return 160; },
+  getRange(rowNumber) {
+    if (rowNumber === 1) {
+      return {
+        getDisplayValues() { return [diagnosticHeaders]; },
+        setValue() { diagnosticWriteCount += 1; },
+        setValues() { diagnosticWriteCount += 1; },
+      };
+    }
+    if (rowNumber === 154) {
+      return {
+        getValues() { return diagnosticRawRows; },
+        getDisplayValues() { return diagnosticDisplayRows; },
+        setValue() { diagnosticWriteCount += 1; },
+        setValues() { diagnosticWriteCount += 1; },
+      };
+    }
+    throw new Error(`Rango de diagnóstico inesperado: ${rowNumber}`);
+  },
+  getParent() { return diagnosticSpreadsheet; },
+};
+const diagnosticSpreadsheet = {
+  getSheets() { return [diagnosticSheet]; },
+  getActiveSheet() { return diagnosticSheet; },
+  getSpreadsheetTimeZone() { return 'Europe/Madrid'; },
+};
+const previousDiagnosticSpreadsheetGetter = sandbox.SpreadsheetApp.getActiveSpreadsheet;
+sandbox.SpreadsheetApp.getActiveSpreadsheet = () => diagnosticSpreadsheet;
+const fetchCountBeforeDiagnostic = requestedFetches.length;
+const diagnosticResult = sandbox.diagnoseRpeRows154to160();
+sandbox.SpreadsheetApp.getActiveSpreadsheet = previousDiagnosticSpreadsheetGetter;
+assert.equal(diagnosticResult.sheet, 'Respuestas RPE');
+assert.equal(diagnosticResult.rows.length, 7);
+assert.equal(diagnosticResult.rows[0].row, 154);
+assert.equal(diagnosticResult.rows[6].row, 160);
+assert.equal(diagnosticResult.rows[0].timestampEuropeMadrid, '2026-08-14 20:20:44');
+assert.equal(diagnosticResult.rows[6].timestampEuropeMadrid, '2026-08-14 23:09:56');
+assert.equal(diagnosticResult.rows[1].receivedName, 'M. BARROSO');
+assert.equal(diagnosticResult.rows[1].resolvedPlayerId, '4712860e-8578-47b8-8505-5127b16a3231');
+assert.equal(diagnosticResult.rows[5].resolvedPlayerId, '778c4e89-d806-4b7f-b7e5-072b1269fcb4');
+assert.equal(diagnosticResult.summary.synced, 1);
+assert.equal(diagnosticResult.summary.errors, 1);
+assert.equal(diagnosticResult.summary.noStatus, 5);
+assert.equal(diagnosticResult.summary.resolvedPlayers, 7);
+assert.equal(diagnosticResult.summary.unresolvedPlayers, 0);
+assert.equal(diagnosticWriteCount, 0, 'El diagnóstico RPE no debe modificar ninguna celda.');
+assert.equal(
+  requestedFetches.length,
+  fetchCountBeforeDiagnostic,
+  'El diagnóstico RPE no debe ejecutar UrlFetchApp ni consultar Supabase.'
+);
+
+const diagnosticHeadersWithoutTechnicalColumns = diagnosticHeaders.slice(0, 6);
+const diagnosticRowsWithoutTechnicalColumns = diagnosticRawRows.map((row) => row.slice(0, 6));
+const diagnosticDisplayRowsWithoutTechnicalColumns = diagnosticDisplayRows.map((row) => row.slice(0, 6));
+const diagnosticSheetWithoutTechnicalColumns = {
+  getName() { return 'Respuestas RPE sin columnas técnicas'; },
+  getSheetId() { return 154161; },
+  getLastColumn() { return diagnosticHeadersWithoutTechnicalColumns.length; },
+  getLastRow() { return 160; },
+  getRange(rowNumber) {
+    if (rowNumber === 1) {
+      return { getDisplayValues() { return [diagnosticHeadersWithoutTechnicalColumns]; } };
+    }
+    if (rowNumber === 154) {
+      return {
+        getValues() { return diagnosticRowsWithoutTechnicalColumns; },
+        getDisplayValues() { return diagnosticDisplayRowsWithoutTechnicalColumns; },
+      };
+    }
+    throw new Error(`Rango de diagnóstico sin técnicas inesperado: ${rowNumber}`);
+  },
+  getParent() { return diagnosticSpreadsheetWithoutTechnicalColumns; },
+};
+const diagnosticSpreadsheetWithoutTechnicalColumns = {
+  getSheets() { return [diagnosticSheetWithoutTechnicalColumns]; },
+  getActiveSheet() { return diagnosticSheetWithoutTechnicalColumns; },
+  getSpreadsheetTimeZone() { return 'Europe/Madrid'; },
+};
+sandbox.SpreadsheetApp.getActiveSpreadsheet = () => diagnosticSpreadsheetWithoutTechnicalColumns;
+const fetchCountBeforeMissingTechnicalDiagnostic = requestedFetches.length;
+const missingTechnicalDiagnostic = sandbox.diagnoseRpeRows154to160();
+sandbox.SpreadsheetApp.getActiveSpreadsheet = previousDiagnosticSpreadsheetGetter;
+assert.equal(missingTechnicalDiagnostic.technicalProblems.length, 4);
+assert.equal(missingTechnicalDiagnostic.summary.noStatus, 7);
+assert.equal(
+  requestedFetches.length,
+  fetchCountBeforeMissingTechnicalDiagnostic,
+  'El diagnóstico sin columnas técnicas tampoco debe consultar Supabase.'
+);
 
 const blockingHeaders = missingActualRpeHeaders;
 const blockingRawRow = blockingHeaders.map((header) => {

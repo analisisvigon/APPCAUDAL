@@ -2328,6 +2328,211 @@ function inspectRpeHeaders() {
   return result;
 }
 
+/**
+ * Diagnostico temporal y estrictamente de solo lectura para las respuestas RPE
+ * conocidas de las filas 154 a 160.
+ *
+ * No usa ensureTechnicalColumns(), fetchPlayersForForms(), UrlFetchApp ni ninguna
+ * operacion de escritura. La resolucion se ejecuta con resolvePlayerByFormName()
+ * sobre la instantanea auditada de los siete jugadores para poder respetar la
+ * prohibicion expresa de consultar Supabase desde esta funcion.
+ */
+function diagnoseRpeRows154to160() {
+  const firstRow = 154;
+  const rowCount = 7;
+  const madridTimeZone = 'Europe/Madrid';
+  const diagnosticPlayers = [
+    {
+      id: 'faffde7c-33a9-446c-99ce-c76aefba5a0d',
+      name: 'IAGO DELGADO',
+      shirt_name: 'I. DELGADO',
+      google_forms_name: null,
+    },
+    {
+      id: '4712860e-8578-47b8-8505-5127b16a3231',
+      name: 'Marcos Barroso',
+      shirt_name: 'M.BARROSO',
+      google_forms_name: null,
+    },
+    {
+      id: 'f742956d-2c46-4334-9c0c-e80d0498c45d',
+      name: 'Roberto Albuquerque',
+      shirt_name: 'ALBUQUERQUE',
+      google_forms_name: null,
+    },
+    {
+      id: 'b812a22a-2e3d-4a70-9e4c-c78c661db6e8',
+      name: 'Lucas Suárez',
+      shirt_name: 'LUCAS S.',
+      google_forms_name: null,
+    },
+    {
+      id: 'f7f5aaeb-e82b-4e6b-8920-694bc32cb6c7',
+      name: 'Jairo Cárcaba',
+      shirt_name: 'J. CÁRCABA',
+      google_forms_name: null,
+    },
+    {
+      id: '778c4e89-d806-4b7f-b7e5-072b1269fcb4',
+      name: 'Isma Cerro',
+      shirt_name: 'ISMA CERRO',
+      google_forms_name: null,
+    },
+    {
+      id: '1b1906d7-a97c-4184-ad20-17f7a021cbbd',
+      name: 'Samuel González',
+      shirt_name: 'SAMU',
+      google_forms_name: null,
+    },
+  ];
+
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = findRpeResponseSheet(spreadsheet);
+  const lastColumn = sheet.getLastColumn();
+  if (!lastColumn) throw new Error(`La hoja RPE "${sheet.getName()}" no contiene cabeceras.`);
+
+  const headers = sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
+  const requiredFields = resolveRequiredRpeFields(headers);
+  const technicalHeaders = [
+    'Supabase status',
+    'Supabase session_id',
+    'Supabase error',
+    'Supabase synced_at',
+  ];
+  const locateHeader = (expectedHeader) => {
+    const expected = normalizeRpeHeader(expectedHeader);
+    const matches = headers
+      .map((header, index) => ({ header: String(header || ''), index }))
+      .filter((item) => normalizeRpeHeader(item.header) === expected);
+    if (matches.length === 1) return { state: 'FOUND', ...matches[0] };
+    if (!matches.length) return { state: 'NOT_FOUND', header: '', index: null };
+    return {
+      state: 'AMBIGUOUS',
+      header: matches.map((item) => item.header).join(' | '),
+      index: null,
+    };
+  };
+  const technicalColumns = Object.fromEntries(
+    technicalHeaders.map((header) => [header, locateHeader(header)])
+  );
+  const technicalProblems = Object.entries(technicalColumns)
+    .filter(([, location]) => location.state !== 'FOUND')
+    .map(([header, location]) => `${header}: ${location.state}`);
+  const spreadsheetTimeZone = typeof spreadsheet.getSpreadsheetTimeZone === 'function'
+    ? spreadsheet.getSpreadsheetTimeZone()
+    : getSheetTimeZone(sheet);
+  const scriptTimeZone = Session.getScriptTimeZone();
+  const rawRows = sheet.getRange(firstRow, 1, rowCount, lastColumn).getValues();
+  const displayRows = sheet.getRange(firstRow, 1, rowCount, lastColumn).getDisplayValues();
+  const readTechnicalValue = (header, rawRow, displayRow) => {
+    const location = technicalColumns[header];
+    if (!location || location.state !== 'FOUND') return `[${location?.state || 'NOT_FOUND'}]`;
+    const displayValue = displayRow[location.index];
+    return displayValue !== '' && displayValue !== null && displayValue !== undefined
+      ? displayValue
+      : rawRow[location.index] || '';
+  };
+
+  const configuration = {
+    sheet: sheet.getName(),
+    spreadsheetTimeZone,
+    scriptTimeZone,
+    conversionTimeZone: madridTimeZone,
+    headers,
+    requiredColumns: requiredFields,
+    technicalColumns,
+    technicalProblems,
+    playerResolutionSource: 'INSTANTANEA TEMPORAL AUDITADA; SIN UrlFetchApp',
+  };
+  console.log(`DIAGNOSTICO RPE 154-160 - CONFIGURACION\n${JSON.stringify(configuration, null, 2)}`);
+  if (technicalProblems.length) {
+    console.log(`COLUMNAS TECNICAS NO DISPONIBLES: ${technicalProblems.join(' ; ')}`);
+  }
+
+  let synced = 0;
+  let errors = 0;
+  let noStatus = 0;
+  let resolvedPlayers = 0;
+  const rows = rawRows.map((rawRow, offset) => {
+    const displayRow = displayRows[offset] || [];
+    const fields = resolveRequiredRpeFields(headers, rawRow, displayRow);
+    const receivedTimestamp = fields.timestamp.found ? fields.timestamp.rawValue : '';
+    const parsedTimestamp = parseRpeSubmittedDate(receivedTimestamp, spreadsheetTimeZone);
+    const receivedName = fields.player.found ? fields.player.rawValue : '';
+    const statusValue = readTechnicalValue('Supabase status', rawRow, displayRow);
+    const normalizedStatus = String(statusValue || '').trim().toUpperCase();
+    if (normalizedStatus === 'SYNCED') synced += 1;
+    else if (normalizedStatus === 'ERROR') errors += 1;
+    else noStatus += 1;
+
+    let playerResolution = null;
+    let resolutionError = '';
+    try {
+      playerResolution = resolvePlayerByFormName(diagnosticPlayers, receivedName);
+      if (!playerResolution) {
+        throw new Error(`Jugador no resuelto por la logica RPE: "${String(receivedName || '').trim()}".`);
+      }
+      resolvedPlayers += 1;
+    } catch (error) {
+      resolutionError = error?.message || String(error);
+    }
+
+    const result = {
+      row: firstRow + offset,
+      timestampOriginal: fields.timestamp.found
+        ? fields.timestamp.displayValue || String(receivedTimestamp || '')
+        : '[CABECERA NO LOCALIZADA]',
+      timestampIso: parsedTimestamp ? parsedTimestamp.toISOString() : '',
+      timestampEuropeMadrid: parsedTimestamp
+        ? Utilities.formatDate(parsedTimestamp, madridTimeZone, 'yyyy-MM-dd HH:mm:ss')
+        : '[NO CONVERTIBLE]',
+      receivedName: String(receivedName || '').trim(),
+      rpe: fields.rpe.found ? fields.rpe.rawValue : '[CABECERA NO LOCALIZADA]',
+      comment: fields.comment.found ? fields.comment.rawValue || '' : '[CABECERA NO LOCALIZADA]',
+      supabaseStatus: statusValue,
+      supabaseSessionId: readTechnicalValue('Supabase session_id', rawRow, displayRow),
+      supabaseError: readTechnicalValue('Supabase error', rawRow, displayRow),
+      supabaseSyncedAt: readTechnicalValue('Supabase synced_at', rawRow, displayRow),
+      resolvedPlayerId: playerResolution?.jugador_id || '',
+      canonicalPlayerName: playerResolution?.name || '',
+      playerMatchRule: playerResolution?.match_rule || '',
+      playerResolutionError: resolutionError,
+    };
+    console.log(`DIAGNOSTICO RPE FILA ${result.row}\n${JSON.stringify(result, null, 2)}`);
+    return result;
+  });
+
+  const summary = {
+    title: 'DIAGNOSTICO RPE 154-160',
+    rowsAnalyzed: rows.length,
+    synced,
+    errors,
+    noStatus,
+    resolvedPlayers,
+    unresolvedPlayers: rows.length - resolvedPlayers,
+  };
+  console.log([
+    summary.title,
+    `Filas analizadas: ${summary.rowsAnalyzed}`,
+    `SYNCED: ${summary.synced}`,
+    `ERROR: ${summary.errors}`,
+    `SIN ESTADO: ${summary.noStatus}`,
+    `Jugadores resueltos: ${summary.resolvedPlayers}/${summary.rowsAnalyzed}`,
+    `Jugadores no resueltos: ${summary.unresolvedPlayers}`,
+  ].join('\n'));
+  return {
+    sheet: sheet.getName(),
+    spreadsheetTimeZone,
+    scriptTimeZone,
+    headers,
+    requiredColumns: requiredFields,
+    technicalColumns,
+    technicalProblems,
+    rows,
+    summary,
+  };
+}
+
 function inspectJulioRpeHistory() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = findRpeResponseSheet(spreadsheet);
