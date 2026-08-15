@@ -658,6 +658,392 @@ function importAllRpeHistory() {
   return summary;
 }
 
+const RPE_RECOVERY_FIRST_ROW = 154;
+const RPE_RECOVERY_ROW_COUNT = 7;
+const RPE_RECOVERY_ENTRY_DATE = '2026-08-14';
+
+function locateRpeRecoveryHeader(headers, expectedHeader) {
+  const normalizedExpected = normalizeRpeHeader(expectedHeader);
+  const matches = (Array.isArray(headers) ? headers : [])
+    .map((header, index) => ({ header: String(header || ''), index: index + 1 }))
+    .filter((item) => normalizeRpeHeader(item.header) === normalizedExpected);
+  if (matches.length === 1) return { state: 'FOUND', ...matches[0] };
+  if (!matches.length) return { state: 'NOT_FOUND', header: '', index: null };
+  return {
+    state: 'AMBIGUOUS',
+    header: matches.map((item) => item.header).join(' | '),
+    index: null,
+  };
+}
+
+function getRpeRecoveryTechnicalColumns(headers) {
+  const names = ['Supabase status', 'Supabase session_id', 'Supabase error', 'Supabase synced_at'];
+  const columns = Object.fromEntries(
+    names.map((header) => [header, locateRpeRecoveryHeader(headers, header)])
+  );
+  return {
+    columns,
+    problems: Object.entries(columns)
+      .filter(([, location]) => location.state !== 'FOUND')
+      .map(([header, location]) => `${header}: ${location.state}`),
+  };
+}
+
+function buildRpeRows154to160RecoveryCandidates(headers, rawRows, displayRows, players, timeZone) {
+  const sourceRows = Array.isArray(rawRows) ? rawRows : [];
+  const displayedRows = Array.isArray(displayRows) ? displayRows : [];
+  const globalErrors = [];
+  if (sourceRows.length !== RPE_RECOVERY_ROW_COUNT) {
+    globalErrors.push(`Se esperaban exactamente ${RPE_RECOVERY_ROW_COUNT} filas y se recibieron ${sourceRows.length}.`);
+  }
+
+  const rows = sourceRows.map((rawRow, offset) => {
+    const rowNumber = RPE_RECOVERY_FIRST_ROW + offset;
+    const displayRow = displayedRows[offset] || [];
+    const fields = resolveRequiredRpeFields(headers, rawRow, displayRow);
+    const receivedName = fields.player.found ? fields.player.rawValue : '';
+    const candidate = {
+      rowNumber,
+      receivedName: String(receivedName || '').trim(),
+      playerId: '',
+      canonicalPlayerName: '',
+      playerMatchRule: '',
+      entryDate: '',
+      rpe: fields.rpe.found ? fields.rpe.rawValue : '',
+      comment: fields.comment.found ? fields.comment.rawValue || '' : '',
+      submittedAt: '',
+      key: '',
+      payload: null,
+      validationError: '',
+    };
+    try {
+      assertRequiredRpeColumns(fields, headers, 'recuperación RPE 154-160');
+      const player = addPlayerClubContext(
+        resolvePlayerByFormName(players, receivedName),
+        players
+      );
+      if (!player) {
+        throw new Error(`Jugador no encontrado en public.jugadores: "${candidate.receivedName}".`);
+      }
+      candidate.playerId = player.jugador_id;
+      candidate.canonicalPlayerName = player.name;
+      candidate.playerMatchRule = player.match_rule;
+      const rowObject = Object.fromEntries(
+        headers.map((header, index) => [String(header).trim(), rawRow[index]])
+      );
+      const payload = buildDailyRpePayload(
+        rowObject,
+        player.jugador_id,
+        timeZone,
+        player.club_id,
+        fields
+      );
+      requireFields(payload, ['jugador_id', 'entry_date', 'submitted_at', 'rpe'], 'recuperación RPE 154-160');
+      if (payload.entry_date !== RPE_RECOVERY_ENTRY_DATE) {
+        throw new Error(
+          `Fecha bloqueada: la fila ${rowNumber} produce ${payload.entry_date}; se esperaba ${RPE_RECOVERY_ENTRY_DATE}.`
+        );
+      }
+      if (!Number.isInteger(payload.rpe) || payload.rpe < 1 || payload.rpe > 10) {
+        throw new Error(`RPE bloqueado en fila ${rowNumber}: ${payload.rpe}.`);
+      }
+      candidate.entryDate = payload.entry_date;
+      candidate.rpe = payload.rpe;
+      candidate.comment = payload.comment;
+      candidate.submittedAt = payload.submitted_at;
+      candidate.key = `${payload.jugador_id}|${payload.entry_date}`;
+      candidate.payload = payload;
+    } catch (error) {
+      candidate.validationError = error?.message || String(error);
+    }
+    return candidate;
+  });
+
+  const keyCounts = rows.reduce((counts, row) => {
+    if (row.key) counts[row.key] = (counts[row.key] || 0) + 1;
+    return counts;
+  }, {});
+  rows.forEach((row) => {
+    if (row.key && keyCounts[row.key] > 1) {
+      row.validationError = `Clave diaria duplicada dentro de 154-160: ${row.key}.`;
+    }
+  });
+
+  const resolvedPlayers = rows.filter((row) => row.playerId).length;
+  const uniqueKeys = new Set(rows.map((row) => row.key).filter(Boolean)).size;
+  if (resolvedPlayers !== RPE_RECOVERY_ROW_COUNT) {
+    globalErrors.push(`Se esperaban 7 jugadores resueltos y se resolvieron ${resolvedPlayers}.`);
+  }
+  if (uniqueKeys !== RPE_RECOVERY_ROW_COUNT) {
+    globalErrors.push(`Se esperaban 7 claves jugador_id + entry_date únicas y se obtuvieron ${uniqueKeys}.`);
+  }
+  rows.filter((row) => row.validationError).forEach((row) => {
+    globalErrors.push(`Fila ${row.rowNumber}: ${row.validationError}`);
+  });
+
+  return {
+    rows,
+    validation: {
+      rowsRead: sourceRows.length,
+      resolvedPlayers,
+      uniqueKeys,
+      valid: globalErrors.length === 0,
+      errors: [...new Set(globalErrors)],
+    },
+  };
+}
+
+function compareRpeRecoveryPayload(existing, payload) {
+  const differences = [];
+  if (String(existing?.jugador_id || '') !== String(payload?.jugador_id || '')) differences.push('jugador_id');
+  if (String(existing?.entry_date || '') !== String(payload?.entry_date || '')) differences.push('entry_date');
+  if (Number(existing?.rpe) !== Number(payload?.rpe)) differences.push('rpe');
+  if (existing?.comment !== payload?.comment) differences.push('comment');
+  const existingTimestamp = new Date(existing?.submitted_at || '').getTime();
+  const payloadTimestamp = new Date(payload?.submitted_at || '').getTime();
+  if (
+    !Number.isFinite(existingTimestamp)
+    || !Number.isFinite(payloadTimestamp)
+    || existingTimestamp !== payloadTimestamp
+  ) {
+    differences.push('submitted_at');
+  }
+  return { identical: differences.length === 0, differences };
+}
+
+function classifyRpeRecoveryAction(candidate, existingRows) {
+  if (candidate.validationError || !candidate.payload) {
+    return {
+      action: 'BLOQUEAR',
+      supabaseState: 'NO_CONSULTADO',
+      reason: candidate.validationError || 'Payload RPE no disponible.',
+      existing: null,
+    };
+  }
+  const rows = Array.isArray(existingRows) ? existingRows : [];
+  if (!rows.length) {
+    return { action: 'INSERTAR', supabaseState: 'AUSENTE', reason: '', existing: null };
+  }
+  if (rows.length !== 1) {
+    return {
+      action: 'BLOQUEAR',
+      supabaseState: 'DUPLICADO_REMOTO',
+      reason: `Se encontraron ${rows.length} filas remotas para ${candidate.key}.`,
+      existing: rows,
+    };
+  }
+  const comparison = compareRpeRecoveryPayload(rows[0], candidate.payload);
+  if (comparison.identical) {
+    return {
+      action: 'SIN_CAMBIOS',
+      supabaseState: 'EXISTENTE_IDENTICO',
+      reason: '',
+      existing: rows[0],
+    };
+  }
+  return {
+    action: 'BLOQUEAR',
+    supabaseState: 'CONFLICTO',
+    reason: `La fila existente difiere en: ${comparison.differences.join(', ')}.`,
+    existing: rows[0],
+  };
+}
+
+function fetchExistingRpeRecoveryRows(playerId, entryDate) {
+  return supabaseFetch(
+    `rpe_entries?select=id,jugador_id,entry_date,submitted_at,rpe,comment,created_at,updated_at`
+      + `&jugador_id=eq.${encodeURIComponent(playerId)}`
+      + `&entry_date=eq.${encodeURIComponent(entryDate)}`
+      + '&limit=2',
+    { method: 'get' }
+  ) || [];
+}
+
+function insertRpeRecoveryRow(payload) {
+  return supabaseFetch('rpe_entries', {
+    method: 'post',
+    payload: JSON.stringify(payload),
+    headers: { Prefer: 'return=representation' },
+  });
+}
+
+function prepareRpeRows154to160Recovery() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = findRpeResponseSheet(spreadsheet);
+  const lastColumn = sheet.getLastColumn();
+  const headers = lastColumn
+    ? sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0]
+    : [];
+  const range = sheet.getRange(
+    RPE_RECOVERY_FIRST_ROW,
+    1,
+    RPE_RECOVERY_ROW_COUNT,
+    lastColumn
+  );
+  const players = fetchPlayersForForms();
+  const candidatePlan = buildRpeRows154to160RecoveryCandidates(
+    headers,
+    range.getValues(),
+    range.getDisplayValues(),
+    players,
+    getSheetTimeZone(sheet)
+  );
+  const rows = candidatePlan.rows.map((candidate) => ({
+    ...candidate,
+    ...classifyRpeRecoveryAction(
+      candidate,
+      candidate.validationError
+        ? []
+        : fetchExistingRpeRecoveryRows(candidate.playerId, candidate.entryDate)
+    ),
+  }));
+  const technical = getRpeRecoveryTechnicalColumns(headers);
+  return {
+    sheet,
+    headers,
+    technical,
+    validation: candidatePlan.validation,
+    rows,
+  };
+}
+
+function formatRpeRows154to160RecoveryPreview(prepared) {
+  const rows = prepared.rows.map((row) => ({
+    row: row.rowNumber,
+    player: row.receivedName,
+    canonicalPlayer: row.canonicalPlayerName,
+    playerId: row.playerId,
+    playerMatchRule: row.playerMatchRule,
+    entryDate: row.entryDate,
+    rpe: row.rpe,
+    comment: row.comment,
+    submittedAt: row.submittedAt,
+    supabaseState: row.supabaseState,
+    proposedAction: row.action,
+    reason: row.reason,
+  }));
+  return {
+    title: 'PREVIEW RECUPERACION RPE 154-160',
+    sheet: prepared.sheet.getName(),
+    expectedEntryDate: RPE_RECOVERY_ENTRY_DATE,
+    validation: prepared.validation,
+    technicalProblems: prepared.technical.problems,
+    rows,
+    summary: {
+      rows: rows.length,
+      insert: rows.filter((row) => row.proposedAction === 'INSERTAR').length,
+      unchanged: rows.filter((row) => row.proposedAction === 'SIN_CAMBIOS').length,
+      blocked: rows.filter((row) => row.proposedAction === 'BLOQUEAR').length,
+    },
+  };
+}
+
+function previewRecoverRpeRows154to160() {
+  const result = formatRpeRows154to160RecoveryPreview(
+    prepareRpeRows154to160Recovery()
+  );
+  console.log(`${result.title}\n${JSON.stringify(result, null, 2)}`);
+  return result;
+}
+
+function setRpeRows154to160TechnicalState(sheet, technical, rowNumber, state) {
+  const required = ['Supabase status', 'Supabase error', 'Supabase synced_at'];
+  const missing = required.filter((header) => technical.columns[header]?.state !== 'FOUND');
+  if (missing.length) {
+    throw new Error(`No se pueden actualizar columnas técnicas; faltan: ${missing.join(', ')}.`);
+  }
+  sheet.getRange(rowNumber, technical.columns['Supabase status'].index).setValue(state.status || '');
+  sheet.getRange(rowNumber, technical.columns['Supabase error'].index).setValue(state.error || '');
+  sheet.getRange(rowNumber, technical.columns['Supabase synced_at'].index).setValue(state.syncedAt || '');
+}
+
+function recoverRpeRows154to160() {
+  const prepared = prepareRpeRows154to160Recovery();
+  if (!prepared.validation.valid) {
+    throw new Error(
+      `Recuperación RPE 154-160 bloqueada antes de escribir: ${prepared.validation.errors.join(' | ')}`
+    );
+  }
+  const requiredTechnical = ['Supabase status', 'Supabase error', 'Supabase synced_at'];
+  const missingTechnical = requiredTechnical.filter(
+    (header) => prepared.technical.columns[header]?.state !== 'FOUND'
+  );
+  if (missingTechnical.length) {
+    throw new Error(
+      `Recuperación RPE 154-160 bloqueada: faltan columnas técnicas: ${missingTechnical.join(', ')}.`
+    );
+  }
+
+  const results = prepared.rows.map((candidate) => {
+    let currentAction = classifyRpeRecoveryAction(
+      candidate,
+      fetchExistingRpeRecoveryRows(candidate.playerId, candidate.entryDate)
+    );
+    if (currentAction.action === 'BLOQUEAR') {
+      setRpeRows154to160TechnicalState(prepared.sheet, prepared.technical, candidate.rowNumber, {
+        status: 'BLOCKED',
+        error: currentAction.reason,
+        syncedAt: '',
+      });
+      return { row: candidate.rowNumber, action: 'BLOQUEAR', reason: currentAction.reason };
+    }
+    if (currentAction.action === 'SIN_CAMBIOS') {
+      setRpeRows154to160TechnicalState(prepared.sheet, prepared.technical, candidate.rowNumber, {
+        status: 'SYNCED',
+        error: '',
+        syncedAt: new Date(),
+      });
+      return { row: candidate.rowNumber, action: 'SIN_CAMBIOS', reason: '' };
+    }
+
+    let inserted = false;
+    let insertError = null;
+    try {
+      insertRpeRecoveryRow(candidate.payload);
+      inserted = true;
+    } catch (error) {
+      insertError = error;
+    }
+    currentAction = classifyRpeRecoveryAction(
+      candidate,
+      fetchExistingRpeRecoveryRows(candidate.playerId, candidate.entryDate)
+    );
+    if (currentAction.action !== 'SIN_CAMBIOS') {
+      const reason = currentAction.reason
+        || insertError?.message
+        || 'La inserción no pudo verificarse en Supabase.';
+      setRpeRows154to160TechnicalState(prepared.sheet, prepared.technical, candidate.rowNumber, {
+        status: 'ERROR',
+        error: reason,
+        syncedAt: '',
+      });
+      return { row: candidate.rowNumber, action: 'BLOQUEAR', reason };
+    }
+    setRpeRows154to160TechnicalState(prepared.sheet, prepared.technical, candidate.rowNumber, {
+      status: 'SYNCED',
+      error: '',
+      syncedAt: new Date(),
+    });
+    return {
+      row: candidate.rowNumber,
+      action: inserted ? 'INSERTAR' : 'SIN_CAMBIOS',
+      reason: insertError ? `Conflicto concurrente resuelto de forma idempotente: ${insertError.message}` : '',
+    };
+  });
+
+  const result = {
+    title: 'RECUPERACION RPE 154-160',
+    rows: results,
+    summary: {
+      inserted: results.filter((row) => row.action === 'INSERTAR').length,
+      unchanged: results.filter((row) => row.action === 'SIN_CAMBIOS').length,
+      blocked: results.filter((row) => row.action === 'BLOQUEAR').length,
+    },
+  };
+  console.log(`${result.title}\n${JSON.stringify(result, null, 2)}`);
+  return result;
+}
+
 function getSupabaseConfig() {
   const properties = PropertiesService.getScriptProperties();
   const url = properties.getProperty('SUPABASE_URL');

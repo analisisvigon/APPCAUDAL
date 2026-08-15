@@ -19,6 +19,9 @@ const wellnessHistoryAuditSource = fs.readFileSync(
 
 const requestedUrls = [];
 const requestedFetches = [];
+let recoveryRpeEntries = null;
+let recoveryInsertCount = 0;
+let recoveryResponseSequence = 0;
 let supabasePlayers = [
   {
     id: '00000000-0000-0000-0000-000000000001',
@@ -65,12 +68,44 @@ const sandbox = {
     fetch(url, options = {}) {
       requestedUrls.push(url);
       requestedFetches.push({ url, options });
-      const body = url.includes('/rest/v1/jugadores?')
-        ? JSON.stringify(supabasePlayers)
-        : '[]';
+      let status = 200;
+      let body = '[]';
+      if (url.includes('/rest/v1/jugadores?')) {
+        body = JSON.stringify(supabasePlayers);
+      } else if (Array.isArray(recoveryRpeEntries) && url.includes('/rest/v1/rpe_entries')) {
+        const method = String(options.method || 'get').toLowerCase();
+        if (method === 'get') {
+          const parsedUrl = new URL(url);
+          const playerId = String(parsedUrl.searchParams.get('jugador_id') || '').replace(/^eq\./, '');
+          const entryDate = String(parsedUrl.searchParams.get('entry_date') || '').replace(/^eq\./, '');
+          body = JSON.stringify(recoveryRpeEntries.filter((entry) => (
+            String(entry.jugador_id) === playerId && String(entry.entry_date) === entryDate
+          )).slice(0, 2));
+        } else if (method === 'post') {
+          recoveryInsertCount += 1;
+          const payload = JSON.parse(options.payload || '{}');
+          const existing = recoveryRpeEntries.find((entry) => (
+            String(entry.jugador_id) === String(payload.jugador_id)
+            && String(entry.entry_date) === String(payload.entry_date)
+          ));
+          if (existing) {
+            status = 409;
+            body = JSON.stringify({ message: 'duplicate key value violates unique constraint' });
+          } else {
+            const inserted = {
+              id: `recovery-rpe-${++recoveryResponseSequence}`,
+              ...payload,
+              created_at: payload.submitted_at,
+              updated_at: payload.submitted_at,
+            };
+            recoveryRpeEntries.push(inserted);
+            body = JSON.stringify([inserted]);
+          }
+        }
+      }
       return {
         getResponseCode() {
-          return 200;
+          return status;
         },
         getContentText() {
           return body;
@@ -781,6 +816,175 @@ const samuOscarHeaderPayload = sandbox.buildDailyRpePayload(
 );
 assert.equal(samuOscarHeaderPayload.entry_date, '2026-08-14');
 assert.equal(samuOscarHeaderPayload.rpe, 3);
+
+const targetedRecoveryPlayers = [
+  { id: 'faffde7c-33a9-446c-99ce-c76aefba5a0d', name: 'IAGO DELGADO', shirt_name: 'I. DELGADO', google_forms_name: null },
+  { id: '4712860e-8578-47b8-8505-5127b16a3231', name: 'Marcos Barroso', shirt_name: 'M.BARROSO', google_forms_name: null },
+  { id: 'f742956d-2c46-4334-9c0c-e80d0498c45d', name: 'Roberto Albuquerque', shirt_name: 'ALBUQUERQUE', google_forms_name: null },
+  { id: 'b812a22a-2e3d-4a70-9e4c-c78c661db6e8', name: 'Lucas Suárez', shirt_name: 'LUCAS S.', google_forms_name: null },
+  { id: 'f7f5aaeb-e82b-4e6b-8920-694bc32cb6c7', name: 'Jairo Cárcaba', shirt_name: 'J. CÁRCABA', google_forms_name: null },
+  { id: '778c4e89-d806-4b7f-b7e5-072b1269fcb4', name: 'Isma Cerro', shirt_name: 'ISMA CERRO', google_forms_name: null },
+  { id: '1b1906d7-a97c-4184-ad20-17f7a021cbbd', name: 'Samuel González', shirt_name: 'SAMU', google_forms_name: null },
+];
+const targetedRecoveryNames = ['IAGO DELGADO', 'M. BARROSO', 'ALBUQUERQUE', 'LUCAS', 'J. CÁRCABA', 'ISMA CERRO', 'SAMU'];
+const targetedRecoveryRpe = [3, 3, 6, 3, 6, 6, 3];
+const targetedRecoveryComments = ['', 'Todo bien', 'Nada', '-', 'Buena sesión', 'Bien', 'Sin molestias'];
+const targetedRecoveryTimes = [
+  '2026-08-14T18:20:44.000Z',
+  '2026-08-14T18:22:53.000Z',
+  '2026-08-14T18:37:11.000Z',
+  '2026-08-14T18:49:33.000Z',
+  '2026-08-14T19:03:22.000Z',
+  '2026-08-14T19:14:03.000Z',
+  '2026-08-14T21:09:56.000Z',
+];
+const targetedRecoveryRawRows = targetedRecoveryNames.map((name, index) => [
+  new Date(targetedRecoveryTimes[index]),
+  `${index}@example.com`,
+  name,
+  targetedRecoveryRpe[index],
+  targetedRecoveryComments[index],
+  String(index + 1),
+  '',
+  '',
+  '',
+  '',
+]);
+const targetedRecoveryDisplayRows = targetedRecoveryRawRows.map((row, index) => row.map((value, columnIndex) => {
+  if (columnIndex === 0) {
+    return sandbox.Utilities.formatDate(value, 'Europe/Madrid', 'yyyy-MM-dd HH:mm:ss');
+  }
+  return value instanceof Date ? value.toISOString() : String(value ?? '');
+}));
+const correctTargetedRecoveryPlan = sandbox.buildRpeRows154to160RecoveryCandidates(
+  oscarRealRpeHeaders,
+  targetedRecoveryRawRows,
+  targetedRecoveryDisplayRows,
+  targetedRecoveryPlayers,
+  'Europe/Madrid'
+);
+assert.equal(correctTargetedRecoveryPlan.validation.valid, true, 'Las siete filas reales deben superar toda la validación previa.');
+assert.equal(correctTargetedRecoveryPlan.validation.rowsRead, 7);
+assert.equal(correctTargetedRecoveryPlan.validation.resolvedPlayers, 7);
+assert.equal(correctTargetedRecoveryPlan.validation.uniqueKeys, 7);
+assert.deepEqual(
+  correctTargetedRecoveryPlan.rows.map((row) => row.entryDate),
+  Array(7).fill('2026-08-14')
+);
+assert.deepEqual(
+  correctTargetedRecoveryPlan.rows.map((row) => sandbox.classifyRpeRecoveryAction(row, []).action),
+  Array(7).fill('INSERTAR'),
+  'Sin filas remotas, el preview debe proponer exactamente siete inserciones.'
+);
+
+const wrongDateRecoveryRows = targetedRecoveryRawRows.map((row) => [...row]);
+wrongDateRecoveryRows[0][0] = new Date('2026-08-15T18:20:44.000Z');
+const wrongDateRecoveryPlan = sandbox.buildRpeRows154to160RecoveryCandidates(
+  oscarRealRpeHeaders,
+  wrongDateRecoveryRows,
+  targetedRecoveryDisplayRows,
+  targetedRecoveryPlayers,
+  'Europe/Madrid'
+);
+assert.equal(wrongDateRecoveryPlan.validation.valid, false);
+assert.match(wrongDateRecoveryPlan.rows[0].validationError, /Fecha bloqueada/);
+assert.equal(sandbox.classifyRpeRecoveryAction(wrongDateRecoveryPlan.rows[0], []).action, 'BLOQUEAR');
+
+const unresolvedRecoveryRows = targetedRecoveryRawRows.map((row) => [...row]);
+unresolvedRecoveryRows[1][2] = 'JUGADOR INEXISTENTE';
+const unresolvedRecoveryPlan = sandbox.buildRpeRows154to160RecoveryCandidates(
+  oscarRealRpeHeaders,
+  unresolvedRecoveryRows,
+  targetedRecoveryDisplayRows,
+  targetedRecoveryPlayers,
+  'Europe/Madrid'
+);
+assert.equal(unresolvedRecoveryPlan.validation.valid, false);
+assert.match(unresolvedRecoveryPlan.rows[1].validationError, /Jugador no encontrado/);
+assert.equal(sandbox.classifyRpeRecoveryAction(unresolvedRecoveryPlan.rows[1], []).action, 'BLOQUEAR');
+
+const firstRecoveryCandidate = correctTargetedRecoveryPlan.rows[0];
+const identicalExistingRecoveryRow = {
+  id: 'existing-identical',
+  ...firstRecoveryCandidate.payload,
+};
+assert.equal(
+  sandbox.classifyRpeRecoveryAction(firstRecoveryCandidate, [identicalExistingRecoveryRow]).action,
+  'SIN_CAMBIOS',
+  'Una fila remota idéntica debe conservarse sin escritura.'
+);
+const conflictingExistingRecoveryRow = { ...identicalExistingRecoveryRow, rpe: 9 };
+const conflictingRecoveryAction = sandbox.classifyRpeRecoveryAction(
+  firstRecoveryCandidate,
+  [conflictingExistingRecoveryRow]
+);
+assert.equal(conflictingRecoveryAction.action, 'BLOQUEAR');
+assert.match(conflictingRecoveryAction.reason, /rpe/);
+
+const recoverySheet = {
+  getName() { return 'Respuestas de formulario 1'; },
+  getSheetId() { return 1541607; },
+  getLastColumn() { return oscarRealRpeHeaders.length; },
+  getLastRow() { return 160; },
+  getRange(rowNumber, columnNumber, numberOfRows) {
+    if (rowNumber === 1) {
+      return { getDisplayValues() { return [oscarRealRpeHeaders]; } };
+    }
+    if (rowNumber === 154 && numberOfRows === 7) {
+      return {
+        getValues() { return targetedRecoveryRawRows; },
+        getDisplayValues() { return targetedRecoveryDisplayRows; },
+      };
+    }
+    if (rowNumber >= 154 && rowNumber <= 160 && numberOfRows === undefined) {
+      return {
+        setValue(value) {
+          targetedRecoveryRawRows[rowNumber - 154][columnNumber - 1] = value;
+          targetedRecoveryDisplayRows[rowNumber - 154][columnNumber - 1] = value instanceof Date
+            ? value.toISOString()
+            : String(value ?? '');
+        },
+      };
+    }
+    throw new Error(`Rango de recuperación inesperado: ${rowNumber}, ${columnNumber}, ${numberOfRows}`);
+  },
+  getParent() { return recoverySpreadsheet; },
+};
+const recoverySpreadsheet = {
+  getSheets() { return [recoverySheet]; },
+  getActiveSheet() { return recoverySheet; },
+  getSpreadsheetTimeZone() { return 'Europe/Madrid'; },
+};
+const previousRecoverySpreadsheetGetter = sandbox.SpreadsheetApp.getActiveSpreadsheet;
+const previousRecoveryPlayers = supabasePlayers;
+sandbox.SpreadsheetApp.getActiveSpreadsheet = () => recoverySpreadsheet;
+supabasePlayers = targetedRecoveryPlayers;
+recoveryRpeEntries = [];
+recoveryInsertCount = 0;
+recoveryResponseSequence = 0;
+const targetedPreviewResult = sandbox.previewRecoverRpeRows154to160();
+assert.equal(targetedPreviewResult.validation.valid, true);
+assert.equal(targetedPreviewResult.summary.insert, 7);
+assert.equal(targetedPreviewResult.summary.unchanged, 0);
+assert.equal(targetedPreviewResult.summary.blocked, 0);
+assert.equal(recoveryInsertCount, 0, 'El preview dirigido no debe escribir en Supabase.');
+const firstTargetedRecoveryResult = sandbox.recoverRpeRows154to160();
+assert.equal(firstTargetedRecoveryResult.summary.inserted, 7);
+assert.equal(recoveryRpeEntries.length, 7);
+assert.equal(recoveryInsertCount, 7);
+const secondTargetedRecoveryResult = sandbox.recoverRpeRows154to160();
+assert.equal(secondTargetedRecoveryResult.summary.inserted, 0);
+assert.equal(secondTargetedRecoveryResult.summary.unchanged, 7);
+assert.equal(recoveryRpeEntries.length, 7);
+assert.equal(recoveryInsertCount, 7, 'La segunda ejecución no debe intentar nuevas inserciones.');
+assert.deepEqual(
+  targetedRecoveryRawRows.map((row) => row[6]),
+  Array(7).fill('SYNCED'),
+  'Solo las columnas técnicas de 154-160 deben marcarse tras verificar cada fila.'
+);
+sandbox.SpreadsheetApp.getActiveSpreadsheet = previousRecoverySpreadsheetGetter;
+supabasePlayers = previousRecoveryPlayers;
+recoveryRpeEntries = null;
 
 [
   'Información personal: (sensaciones, molestias, comentarios, etc.)',
@@ -1783,7 +1987,7 @@ assert.match(onRpeSubmitSource, /findPlayerIdByFormName\(playerName\)/, 'RPE usa
 assert.doesNotMatch(source, /RPE_HISTORICAL_PLAYER_ALIASES|EXACT_RPE_HISTORICAL_ALIAS/);
 const importRpeSource = source.slice(
   source.indexOf('function importAllRpeHistory'),
-  source.indexOf('function getSupabaseConfig')
+  source.indexOf('const RPE_RECOVERY_FIRST_ROW')
 );
 assert.match(
   onRpeSubmitSource,
