@@ -768,9 +768,11 @@ const oscarRealRpeFields = sandbox.resolveRequiredRpeFields(
   oscarRealRpeRawRow,
   oscarRealRpeDisplayRow
 );
-assert.equal(oscarRealRpeFields.player.found, true, 'La cabecera real de jugador debe resolverse explícitamente.');
+assert.equal(oscarRealRpeFields.player.found, false, 'La cabecera accidental no debe aceptarse en producción.');
 assert.equal(oscarRealRpeFields.player.header, 'Oscar Nombre y apellidos.');
-assert.equal(oscarRealRpeFields.player.state, 'VALUE');
+assert.equal(oscarRealRpeFields.player.index, 3);
+assert.equal(oscarRealRpeFields.player.state, 'UNEXPECTED_HEADER');
+assert.match(oscarRealRpeFields.player.error, /Cabecera sospechosa/);
 assert.equal(oscarRealRpeFields.timestamp.found, true, 'Marca temporal debe seguir reconocida.');
 assert.equal(oscarRealRpeFields.timestamp.state, 'VALUE');
 assert.equal(oscarRealRpeFields.rpe.found, true, 'La cabecera real de esfuerzo debe seguir reconocida.');
@@ -784,38 +786,20 @@ const oscarRealRpeSheet = {
     return { getDisplayValues() { return [oscarRealRpeHeaders]; } };
   },
 };
-assert.equal(
-  sandbox.findRpeResponseSheet({
+assert.throws(
+  () => sandbox.findRpeResponseSheet({
     getSheets() { return [oscarRealRpeSheet]; },
     getActiveSheet() { return oscarRealRpeSheet; },
   }),
-  oscarRealRpeSheet,
-  'findRpeResponseSheet debe reconocer la hoja por sus cabeceras reales aunque su nombre no contenga RPE.'
+  /Cabecera RPE sospechosa/,
+  'La hoja accidental debe bloquearse con un error explícito.'
 );
-const samuFromOscarHeader = sandbox.resolvePlayerByFormName(
-  [
-    ...supabasePlayers,
-    {
-      id: '1b1906d7-a97c-4184-ad20-17f7a021cbbd',
-      name: 'Samuel González',
-      shirt_name: 'SAMU',
-      google_forms_name: null,
-    },
-  ],
-  oscarRealRpeFields.player.rawValue
-);
-assert.equal(samuFromOscarHeader?.jugador_id, '1b1906d7-a97c-4184-ad20-17f7a021cbbd');
-assert.equal(samuFromOscarHeader?.name, 'Samuel González');
-assert.equal(samuFromOscarHeader?.match_rule, 'EXACT_SHIRT_NAME');
-const samuOscarHeaderPayload = sandbox.buildDailyRpePayload(
-  Object.fromEntries(oscarRealRpeHeaders.map((header, index) => [header, oscarRealRpeRawRow[index]])),
-  samuFromOscarHeader.jugador_id,
-  'Europe/Madrid',
-  null,
-  oscarRealRpeFields
-);
-assert.equal(samuOscarHeaderPayload.entry_date, '2026-08-14');
-assert.equal(samuOscarHeaderPayload.rpe, 3);
+const inspectedSuspiciousSheet = sandbox.findRpeResponseSheetForInspection({
+  getSheets() { return [oscarRealRpeSheet]; },
+  getActiveSheet() { return oscarRealRpeSheet; },
+});
+assert.equal(inspectedSuspiciousSheet.sheet, oscarRealRpeSheet);
+assert.match(inspectedSuspiciousSheet.selectionError, /Cabecera RPE sospechosa/);
 
 const targetedRecoveryPlayers = [
   { id: 'faffde7c-33a9-446c-99ce-c76aefba5a0d', name: 'IAGO DELGADO', shirt_name: 'I. DELGADO', google_forms_name: null },
@@ -888,7 +872,7 @@ const wrongDateRecoveryPlan = sandbox.buildRpeRows154to160RecoveryCandidates(
 );
 assert.equal(wrongDateRecoveryPlan.validation.valid, false);
 assert.match(wrongDateRecoveryPlan.rows[0].validationError, /Fecha bloqueada/);
-assert.equal(sandbox.classifyRpeRecoveryAction(wrongDateRecoveryPlan.rows[0], []).action, 'BLOQUEAR');
+assert.equal(sandbox.classifyRpeRecoveryAction(wrongDateRecoveryPlan.rows[0], []).action, 'REVISAR_MANUALMENTE');
 
 const unresolvedRecoveryRows = targetedRecoveryRawRows.map((row) => [...row]);
 unresolvedRecoveryRows[1][2] = 'JUGADOR INEXISTENTE';
@@ -901,7 +885,31 @@ const unresolvedRecoveryPlan = sandbox.buildRpeRows154to160RecoveryCandidates(
 );
 assert.equal(unresolvedRecoveryPlan.validation.valid, false);
 assert.match(unresolvedRecoveryPlan.rows[1].validationError, /Jugador no encontrado/);
-assert.equal(sandbox.classifyRpeRecoveryAction(unresolvedRecoveryPlan.rows[1], []).action, 'BLOQUEAR');
+assert.equal(sandbox.classifyRpeRecoveryAction(unresolvedRecoveryPlan.rows[1], []).action, 'REVISAR_MANUALMENTE');
+
+const ambiguousRecoveryPlayers = [
+  ...targetedRecoveryPlayers,
+  {
+    id: 'ambiguous-samu-player',
+    name: 'Otro Samuel',
+    shirt_name: 'SAMU',
+    google_forms_name: null,
+  },
+];
+const ambiguousRecoveryPlan = sandbox.buildRpeRows154to160RecoveryCandidates(
+  oscarRealRpeHeaders,
+  targetedRecoveryRawRows,
+  targetedRecoveryDisplayRows,
+  ambiguousRecoveryPlayers,
+  'Europe/Madrid'
+);
+assert.equal(ambiguousRecoveryPlan.validation.valid, false);
+assert.match(ambiguousRecoveryPlan.rows[6].validationError, /Coincidencia ambigua/);
+assert.equal(
+  sandbox.classifyRpeRecoveryAction(ambiguousRecoveryPlan.rows[6], []).action,
+  'REVISAR_MANUALMENTE',
+  'Un jugador ambiguo debe bloquearse sin insertar.'
+);
 
 const firstRecoveryCandidate = correctTargetedRecoveryPlan.rows[0];
 const identicalExistingRecoveryRow = {
@@ -918,8 +926,35 @@ const conflictingRecoveryAction = sandbox.classifyRpeRecoveryAction(
   firstRecoveryCandidate,
   [conflictingExistingRecoveryRow]
 );
-assert.equal(conflictingRecoveryAction.action, 'BLOQUEAR');
+assert.equal(conflictingRecoveryAction.action, 'REVISAR_MANUALMENTE');
 assert.match(conflictingRecoveryAction.reason, /rpe/);
+assert.equal(
+  sandbox.classifyRpeRecoveryAction({
+    ...firstRecoveryCandidate,
+    sheetStatus: 'ERROR',
+    sheetError: 'Cabeceras RPE no reconocidas. Faltan: jugador (Cabecera no encontrada).',
+  }, []).action,
+  'INSERTAR',
+  'El error técnico exacto de cabecera habilita la recuperación dirigida.'
+);
+assert.equal(
+  sandbox.classifyRpeRecoveryAction({
+    ...firstRecoveryCandidate,
+    sheetStatus: 'SYNCED',
+    sheetError: '',
+  }, []).action,
+  'REVISAR_MANUALMENTE',
+  'Una fila marcada SYNCED pero ausente en Supabase no se debe recrear automáticamente.'
+);
+assert.equal(
+  sandbox.classifyRpeRecoveryAction({
+    ...firstRecoveryCandidate,
+    sheetStatus: 'ERROR',
+    sheetError: 'Timeout de red',
+  }, []).action,
+  'REVISAR_MANUALMENTE',
+  'Un error técnico ajeno al incidente debe quedar fuera de la recuperación.'
+);
 
 const recoverySheet = {
   getName() { return 'Respuestas de formulario 1'; },
@@ -962,17 +997,17 @@ supabasePlayers = targetedRecoveryPlayers;
 recoveryRpeEntries = [];
 recoveryInsertCount = 0;
 recoveryResponseSequence = 0;
-const targetedPreviewResult = sandbox.previewRecoverRpeRows154to160();
+const targetedPreviewResult = sandbox.previewRecoverRpe20260814();
 assert.equal(targetedPreviewResult.validation.valid, true);
 assert.equal(targetedPreviewResult.summary.insert, 7);
 assert.equal(targetedPreviewResult.summary.unchanged, 0);
-assert.equal(targetedPreviewResult.summary.blocked, 0);
+assert.equal(targetedPreviewResult.summary.manualReview, 0);
 assert.equal(recoveryInsertCount, 0, 'El preview dirigido no debe escribir en Supabase.');
-const firstTargetedRecoveryResult = sandbox.recoverRpeRows154to160();
+const firstTargetedRecoveryResult = sandbox.recoverRpe20260814();
 assert.equal(firstTargetedRecoveryResult.summary.inserted, 7);
 assert.equal(recoveryRpeEntries.length, 7);
 assert.equal(recoveryInsertCount, 7);
-const secondTargetedRecoveryResult = sandbox.recoverRpeRows154to160();
+const secondTargetedRecoveryResult = sandbox.recoverRpe20260814();
 assert.equal(secondTargetedRecoveryResult.summary.inserted, 0);
 assert.equal(secondTargetedRecoveryResult.summary.unchanged, 7);
 assert.equal(recoveryRpeEntries.length, 7);
@@ -1112,6 +1147,32 @@ assert.equal(inspectedRpeHeaders.rpeIndex, 4);
 assert.equal(inspectedRpeHeaders.commentIndex, 5);
 assert.equal(inspectedRpeHeaders.rpeState, 'COLUMN_FOUND');
 assert.equal(inspectorWriteCount, 0, 'inspectRpeHeaders debe ser estrictamente de solo lectura.');
+
+const suspiciousInspectorSheet = {
+  ...inspectorSheet,
+  getName() { return 'Respuestas RPE'; },
+  getRange() {
+    return {
+      getDisplayValues() { return [oscarRealRpeHeaders]; },
+      setValue() { inspectorWriteCount += 1; },
+      setValues() { inspectorWriteCount += 1; },
+    };
+  },
+};
+const suspiciousInspectorSpreadsheet = {
+  getSheets() { return [suspiciousInspectorSheet]; },
+  getActiveSheet() { return suspiciousInspectorSheet; },
+};
+sandbox.SpreadsheetApp.getActiveSpreadsheet = () => suspiciousInspectorSpreadsheet;
+const inspectedSuspiciousHeaders = sandbox.inspectRpeHeaders();
+sandbox.SpreadsheetApp.getActiveSpreadsheet = previousGetActiveSpreadsheet;
+assert.equal(inspectedSuspiciousHeaders.playerHeader, 'Oscar Nombre y apellidos.');
+assert.equal(inspectedSuspiciousHeaders.playerIndex, 3);
+assert.equal(inspectedSuspiciousHeaders.playerState, 'UNEXPECTED_HEADER');
+assert.equal(inspectedSuspiciousHeaders.timestampState, 'COLUMN_FOUND');
+assert.equal(inspectedSuspiciousHeaders.rpeState, 'COLUMN_FOUND');
+assert.equal(inspectedSuspiciousHeaders.commentState, 'COLUMN_FOUND');
+assert.equal(inspectorWriteCount, 0, 'El inspector de la cabecera sospechosa también debe ser READ ONLY.');
 
 const diagnosticHeaders = actualRpeHeaders;
 const diagnosticNames = [
@@ -1291,6 +1352,46 @@ assert.equal(
   fetchCountBeforeBlockedSubmit,
   'Si falta RPE, onRpeSubmit no debe consultar jugadores ni enviar ningún payload a Supabase.'
 );
+
+let suspiciousHeaderSheetWrites = 0;
+const suspiciousSubmitSheet = {
+  getName() { return 'Respuestas RPE'; },
+  getLastColumn() { return oscarRealRpeHeaders.length; },
+  getRange(rowNumber) {
+    if (rowNumber === 1) {
+      return { getDisplayValues() { return [oscarRealRpeHeaders]; } };
+    }
+    if (rowNumber === 2) {
+      return {
+        getValues() { return [oscarRealRpeRawRow]; },
+        getDisplayValues() { return [oscarRealRpeDisplayRow]; },
+        setValue() { suspiciousHeaderSheetWrites += 1; },
+      };
+    }
+    return { setValue() { suspiciousHeaderSheetWrites += 1; } };
+  },
+  hideColumns() {},
+  getParent() {
+    return { getSpreadsheetTimeZone() { return 'Europe/Madrid'; } };
+  },
+};
+const fetchCountBeforeSuspiciousSubmit = requestedFetches.length;
+assert.throws(
+  () => sandbox.onRpeSubmit({
+    range: {
+      getSheet() { return suspiciousSubmitSheet; },
+      getRow() { return 2; },
+    },
+  }),
+  /Cabecera sospechosa.*Nombre y apellidos\./,
+  'onRpeSubmit debe bloquear la cabecera accidental antes de consultar Supabase.'
+);
+assert.equal(
+  requestedFetches.length,
+  fetchCountBeforeSuspiciousSubmit,
+  'La cabecera sospechosa no debe consultar jugadores ni enviar un payload a Supabase.'
+);
+assert.ok(suspiciousHeaderSheetWrites > 0, 'El trigger debe registrar el error técnico en su propia fila.');
 
 function makeSheet(name, id, headers) {
   return {

@@ -68,7 +68,8 @@
  */
 
 const TECHNICAL_COLUMNS = ['Supabase status', 'Supabase session_id', 'Supabase error', 'Supabase synced_at'];
-const PLAYER_HEADER_CANDIDATES = ['Nombre y apellidos.', 'Nombre y apellidos', 'Oscar Nombre y apellidos.', 'Nombre del jugador', 'Jugador', 'Nombre', 'Columna 3'];
+const PLAYER_HEADER_CANDIDATES = ['Nombre y apellidos.', 'Nombre y apellidos', 'Nombre del jugador', 'Jugador', 'Nombre', 'Columna 3'];
+const RPE_SUSPICIOUS_PLAYER_HEADERS = ['Oscar Nombre y apellidos.'];
 const WELLNESS_WEIGHT_HEADER_CANDIDATES = [
   '¿Cuál tu peso hoy?.',
   '¿Cuál tu peso hoy?',
@@ -701,12 +702,24 @@ function buildRpeRows154to160RecoveryCandidates(headers, rawRows, displayRows, p
     const rowNumber = RPE_RECOVERY_FIRST_ROW + offset;
     const displayRow = displayedRows[offset] || [];
     const fields = resolveRequiredRpeFields(headers, rawRow, displayRow);
-    const receivedName = fields.player.found ? fields.player.rawValue : '';
+    const recoveryPlayer = fields.player.state === 'UNEXPECTED_HEADER'
+      ? resolveRpeColumn(headers, RPE_SUSPICIOUS_PLAYER_HEADERS, rawRow, displayRow)
+      : fields.player;
+    const recoveryFields = { ...fields, player: recoveryPlayer };
+    const technical = getRpeRecoveryTechnicalColumns(headers).columns;
+    const readTechnicalValue = (header) => {
+      const column = technical[header];
+      return column && column.state === 'FOUND' ? rawRow[column.index - 1] : '';
+    };
+    const receivedName = recoveryPlayer.found ? recoveryPlayer.rawValue : '';
     const candidate = {
       rowNumber,
+      timestampOriginal: fields.timestamp.found ? fields.timestamp.rawValue : '',
       receivedName: String(receivedName || '').trim(),
       playerId: '',
       canonicalPlayerName: '',
+      shirtName: '',
+      googleFormsName: '',
       playerMatchRule: '',
       entryDate: '',
       rpe: fields.rpe.found ? fields.rpe.rawValue : '',
@@ -715,9 +728,12 @@ function buildRpeRows154to160RecoveryCandidates(headers, rawRows, displayRows, p
       key: '',
       payload: null,
       validationError: '',
+      sheetStatus: String(readTechnicalValue('Supabase status') || '').trim(),
+      sheetError: String(readTechnicalValue('Supabase error') || '').trim(),
+      sheetSyncedAt: readTechnicalValue('Supabase synced_at') || '',
     };
     try {
-      assertRequiredRpeColumns(fields, headers, 'recuperación RPE 154-160');
+      assertRequiredRpeColumns(recoveryFields, headers, 'recuperación RPE 14/08/2026');
       const player = addPlayerClubContext(
         resolvePlayerByFormName(players, receivedName),
         players
@@ -727,6 +743,10 @@ function buildRpeRows154to160RecoveryCandidates(headers, rawRows, displayRows, p
       }
       candidate.playerId = player.jugador_id;
       candidate.canonicalPlayerName = player.name;
+      const playerRow = (Array.isArray(players) ? players : [])
+        .find((row) => row.id === player.jugador_id) || {};
+      candidate.shirtName = playerRow.shirt_name || '';
+      candidate.googleFormsName = playerRow.google_forms_name || '';
       candidate.playerMatchRule = player.match_rule;
       const rowObject = Object.fromEntries(
         headers.map((header, index) => [String(header).trim(), rawRow[index]])
@@ -736,7 +756,7 @@ function buildRpeRows154to160RecoveryCandidates(headers, rawRows, displayRows, p
         player.jugador_id,
         timeZone,
         player.club_id,
-        fields
+        recoveryFields
       );
       requireFields(payload, ['jugador_id', 'entry_date', 'submitted_at', 'rpe'], 'recuperación RPE 154-160');
       if (payload.entry_date !== RPE_RECOVERY_ENTRY_DATE) {
@@ -814,7 +834,7 @@ function compareRpeRecoveryPayload(existing, payload) {
 function classifyRpeRecoveryAction(candidate, existingRows) {
   if (candidate.validationError || !candidate.payload) {
     return {
-      action: 'BLOQUEAR',
+      action: 'REVISAR_MANUALMENTE',
       supabaseState: 'NO_CONSULTADO',
       reason: candidate.validationError || 'Payload RPE no disponible.',
       existing: null,
@@ -822,11 +842,32 @@ function classifyRpeRecoveryAction(candidate, existingRows) {
   }
   const rows = Array.isArray(existingRows) ? existingRows : [];
   if (!rows.length) {
+    const normalizedStatus = String(candidate.sheetStatus || '').trim().toUpperCase();
+    const sheetError = String(candidate.sheetError || '').trim();
+    const compatibleHeaderFailure = normalizedStatus === 'ERROR'
+      && /(cabecera|column_not_found|column not found|faltan:\s*jugador)/i.test(sheetError);
+    const noTechnicalState = !normalizedStatus && !sheetError;
+    if (normalizedStatus === 'SYNCED') {
+      return {
+        action: 'REVISAR_MANUALMENTE',
+        supabaseState: 'AUSENTE_PERO_MARCADA_SYNCED',
+        reason: 'La fila está marcada SYNCED, pero no existe el RPE remoto esperado.',
+        existing: null,
+      };
+    }
+    if (!compatibleHeaderFailure && !noTechnicalState) {
+      return {
+        action: 'REVISAR_MANUALMENTE',
+        supabaseState: 'ESTADO_SHEET_INCOMPATIBLE',
+        reason: `Estado/error técnico no compatible con el fallo de cabecera: ${normalizedStatus || '(vacío)'} | ${sheetError || '(vacío)'}.`,
+        existing: null,
+      };
+    }
     return { action: 'INSERTAR', supabaseState: 'AUSENTE', reason: '', existing: null };
   }
   if (rows.length !== 1) {
     return {
-      action: 'BLOQUEAR',
+      action: 'REVISAR_MANUALMENTE',
       supabaseState: 'DUPLICADO_REMOTO',
       reason: `Se encontraron ${rows.length} filas remotas para ${candidate.key}.`,
       existing: rows,
@@ -842,7 +883,7 @@ function classifyRpeRecoveryAction(candidate, existingRows) {
     };
   }
   return {
-    action: 'BLOQUEAR',
+    action: 'REVISAR_MANUALMENTE',
     supabaseState: 'CONFLICTO',
     reason: `La fila existente difiere en: ${comparison.differences.join(', ')}.`,
     existing: rows[0],
@@ -869,7 +910,7 @@ function insertRpeRecoveryRow(payload) {
 
 function prepareRpeRows154to160Recovery() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = findRpeResponseSheet(spreadsheet);
+  const sheet = findRpeResponseSheetForInspection(spreadsheet).sheet;
   const lastColumn = sheet.getLastColumn();
   const headers = lastColumn
     ? sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0]
@@ -910,20 +951,27 @@ function prepareRpeRows154to160Recovery() {
 function formatRpeRows154to160RecoveryPreview(prepared) {
   const rows = prepared.rows.map((row) => ({
     row: row.rowNumber,
+    timestampOriginal: row.timestampOriginal,
     player: row.receivedName,
     canonicalPlayer: row.canonicalPlayerName,
+    shirtName: row.shirtName,
+    googleFormsName: row.googleFormsName,
     playerId: row.playerId,
     playerMatchRule: row.playerMatchRule,
     entryDate: row.entryDate,
     rpe: row.rpe,
     comment: row.comment,
     submittedAt: row.submittedAt,
+    sheetStatus: row.sheetStatus,
+    sheetError: row.sheetError,
+    sheetSyncedAt: row.sheetSyncedAt,
     supabaseState: row.supabaseState,
+    existing: row.existing,
     proposedAction: row.action,
     reason: row.reason,
   }));
   return {
-    title: 'PREVIEW RECUPERACION RPE 154-160',
+    title: 'PREVIEW RECUPERACION RPE 2026-08-14',
     sheet: prepared.sheet.getName(),
     expectedEntryDate: RPE_RECOVERY_ENTRY_DATE,
     validation: prepared.validation,
@@ -933,7 +981,8 @@ function formatRpeRows154to160RecoveryPreview(prepared) {
       rows: rows.length,
       insert: rows.filter((row) => row.proposedAction === 'INSERTAR').length,
       unchanged: rows.filter((row) => row.proposedAction === 'SIN_CAMBIOS').length,
-      blocked: rows.filter((row) => row.proposedAction === 'BLOQUEAR').length,
+      manualReview: rows.filter((row) => row.proposedAction === 'REVISAR_MANUALMENTE').length,
+      errors: prepared.validation.errors.length,
     },
   };
 }
@@ -944,6 +993,10 @@ function previewRecoverRpeRows154to160() {
   );
   console.log(`${result.title}\n${JSON.stringify(result, null, 2)}`);
   return result;
+}
+
+function previewRecoverRpe20260814() {
+  return previewRecoverRpeRows154to160();
 }
 
 function setRpeRows154to160TechnicalState(sheet, technical, rowNumber, state) {
@@ -961,7 +1014,7 @@ function recoverRpeRows154to160() {
   const prepared = prepareRpeRows154to160Recovery();
   if (!prepared.validation.valid) {
     throw new Error(
-      `Recuperación RPE 154-160 bloqueada antes de escribir: ${prepared.validation.errors.join(' | ')}`
+      `Recuperación RPE 14/08/2026 bloqueada antes de escribir: ${prepared.validation.errors.join(' | ')}`
     );
   }
   const requiredTechnical = ['Supabase status', 'Supabase error', 'Supabase synced_at'];
@@ -970,24 +1023,33 @@ function recoverRpeRows154to160() {
   );
   if (missingTechnical.length) {
     throw new Error(
-      `Recuperación RPE 154-160 bloqueada: faltan columnas técnicas: ${missingTechnical.join(', ')}.`
+      `Recuperación RPE 14/08/2026 bloqueada: faltan columnas técnicas: ${missingTechnical.join(', ')}.`
     );
   }
 
-  const results = prepared.rows.map((candidate) => {
-    let currentAction = classifyRpeRecoveryAction(
+  // Segunda consulta completa inmediatamente antes de escribir. Si una sola fila
+  // es dudosa, se aborta el lote entero sin insertar ni modificar el Sheet.
+  const preflightRows = prepared.rows.map((candidate) => ({
+    ...candidate,
+    ...classifyRpeRecoveryAction(
       candidate,
       fetchExistingRpeRecoveryRows(candidate.playerId, candidate.entryDate)
+    ),
+  }));
+  const manualReviewRows = preflightRows.filter(
+    (row) => row.action === 'REVISAR_MANUALMENTE'
+  );
+  if (manualReviewRows.length) {
+    throw new Error(
+      `Recuperación RPE 14/08/2026 bloqueada antes de escribir: `
+      + manualReviewRows
+        .map((row) => `fila ${row.rowNumber}: ${row.reason}`)
+        .join(' | ')
     );
-    if (currentAction.action === 'BLOQUEAR') {
-      setRpeRows154to160TechnicalState(prepared.sheet, prepared.technical, candidate.rowNumber, {
-        status: 'BLOCKED',
-        error: currentAction.reason,
-        syncedAt: '',
-      });
-      return { row: candidate.rowNumber, action: 'BLOQUEAR', reason: currentAction.reason };
-    }
-    if (currentAction.action === 'SIN_CAMBIOS') {
+  }
+
+  const results = preflightRows.map((candidate) => {
+    if (candidate.action === 'SIN_CAMBIOS') {
       setRpeRows154to160TechnicalState(prepared.sheet, prepared.technical, candidate.rowNumber, {
         status: 'SYNCED',
         error: '',
@@ -1004,12 +1066,12 @@ function recoverRpeRows154to160() {
     } catch (error) {
       insertError = error;
     }
-    currentAction = classifyRpeRecoveryAction(
+    const verifiedAction = classifyRpeRecoveryAction(
       candidate,
       fetchExistingRpeRecoveryRows(candidate.playerId, candidate.entryDate)
     );
-    if (currentAction.action !== 'SIN_CAMBIOS') {
-      const reason = currentAction.reason
+    if (verifiedAction.action !== 'SIN_CAMBIOS') {
+      const reason = verifiedAction.reason
         || insertError?.message
         || 'La inserción no pudo verificarse en Supabase.';
       setRpeRows154to160TechnicalState(prepared.sheet, prepared.technical, candidate.rowNumber, {
@@ -1017,7 +1079,7 @@ function recoverRpeRows154to160() {
         error: reason,
         syncedAt: '',
       });
-      return { row: candidate.rowNumber, action: 'BLOQUEAR', reason };
+      return { row: candidate.rowNumber, action: 'REVISAR_MANUALMENTE', reason };
     }
     setRpeRows154to160TechnicalState(prepared.sheet, prepared.technical, candidate.rowNumber, {
       status: 'SYNCED',
@@ -1032,16 +1094,20 @@ function recoverRpeRows154to160() {
   });
 
   const result = {
-    title: 'RECUPERACION RPE 154-160',
+    title: 'RECUPERACION RPE 2026-08-14',
     rows: results,
     summary: {
       inserted: results.filter((row) => row.action === 'INSERTAR').length,
       unchanged: results.filter((row) => row.action === 'SIN_CAMBIOS').length,
-      blocked: results.filter((row) => row.action === 'BLOQUEAR').length,
+      manualReview: results.filter((row) => row.action === 'REVISAR_MANUALMENTE').length,
     },
   };
   console.log(`${result.title}\n${JSON.stringify(result, null, 2)}`);
   return result;
+}
+
+function recoverRpe20260814() {
+  return recoverRpeRows154to160();
 }
 
 function getSupabaseConfig() {
@@ -2410,8 +2476,26 @@ function resolveRpeColumn(headers, candidates, rawRow, displayRow) {
 }
 
 function resolveRequiredRpeFields(headers, rawRow, displayRow) {
+  const player = resolveRpeColumn(headers, PLAYER_HEADER_CANDIDATES, rawRow, displayRow);
+  if (!player.found) {
+    const suspiciousPlayer = resolveRpeColumn(
+      headers,
+      RPE_SUSPICIOUS_PLAYER_HEADERS,
+      rawRow,
+      displayRow
+    );
+    if (suspiciousPlayer.found) {
+      player.index = suspiciousPlayer.index;
+      player.header = suspiciousPlayer.header;
+      player.rawValue = suspiciousPlayer.rawValue;
+      player.displayValue = suspiciousPlayer.displayValue;
+      player.state = 'UNEXPECTED_HEADER';
+      player.error = `Cabecera sospechosa "${suspiciousPlayer.header}". `
+        + 'La pregunta del jugador debe llamarse exactamente "Nombre y apellidos.".';
+    }
+  }
   return {
-    player: resolveRpeColumn(headers, PLAYER_HEADER_CANDIDATES, rawRow, displayRow),
+    player,
     timestamp: resolveRpeColumn(headers, TIMESTAMP_HEADER_CANDIDATES, rawRow, displayRow),
     rpe: resolveRpeColumn(headers, RPE_HEADER_CANDIDATES, rawRow, displayRow),
     comment: resolveRpeColumn(headers, RPE_COMMENT_HEADER_CANDIDATES, rawRow, displayRow),
@@ -2669,6 +2753,18 @@ function findRpeResponseSheet(spreadsheet) {
     && hasCandidateHeader(headers, TIMESTAMP_HEADER_CANDIDATES)
   );
   if (!candidates.length) {
+    const suspiciousCandidates = inspected.filter(({ headers }) => (
+      hasCandidateHeader(headers, RPE_SUSPICIOUS_PLAYER_HEADERS)
+      && hasCandidateHeader(headers, RPE_HEADER_CANDIDATES)
+      && hasCandidateHeader(headers, TIMESTAMP_HEADER_CANDIDATES)
+    ));
+    if (suspiciousCandidates.length) {
+      throw new Error(
+        `Cabecera RPE sospechosa "Oscar Nombre y apellidos." detectada en: `
+        + `${suspiciousCandidates.map(({ sheet }) => sheet.getName()).join(', ')}. `
+        + 'Corrige el título de la pregunta a "Nombre y apellidos.".'
+      );
+    }
     const detected = inspected.map(({ sheet, headers }) =>
       `${sheet.getName()}: [${headers.join(' | ') || '(sin cabeceras)'}]`
     ).join(' ; ');
@@ -2684,9 +2780,39 @@ function findRpeResponseSheet(spreadsheet) {
   return candidates[0].sheet;
 }
 
+function findRpeResponseSheetForInspection(spreadsheet) {
+  try {
+    return { sheet: findRpeResponseSheet(spreadsheet), selectionError: '' };
+  } catch (error) {
+    if (!spreadsheet || typeof spreadsheet.getSheets !== 'function') throw error;
+    const activeSheet = typeof spreadsheet.getActiveSheet === 'function'
+      ? spreadsheet.getActiveSheet()
+      : null;
+    const candidates = spreadsheet.getSheets().filter((sheet) => {
+      const lastColumn = sheet.getLastColumn();
+      const headers = lastColumn
+        ? sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0]
+        : [];
+      return hasCandidateHeader(headers, TIMESTAMP_HEADER_CANDIDATES)
+        && hasCandidateHeader(headers, RPE_HEADER_CANDIDATES)
+        && (
+          hasCandidateHeader(headers, PLAYER_HEADER_CANDIDATES)
+          || hasCandidateHeader(headers, RPE_SUSPICIOUS_PLAYER_HEADERS)
+        );
+    });
+    const activeCandidate = activeSheet
+      ? candidates.find((sheet) => sheet.getSheetId() === activeSheet.getSheetId())
+      : null;
+    const sheet = activeCandidate || (candidates.length === 1 ? candidates[0] : null);
+    if (!sheet) throw error;
+    return { sheet, selectionError: error?.message || String(error) };
+  }
+}
+
 function inspectRpeHeaders() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = findRpeResponseSheet(spreadsheet);
+  const inspectionSelection = findRpeResponseSheetForInspection(spreadsheet);
+  const sheet = inspectionSelection.sheet;
   const lastColumn = sheet.getLastColumn();
   const headers = lastColumn
     ? sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0]
@@ -2695,6 +2821,7 @@ function inspectRpeHeaders() {
   const result = {
     sheet: sheet.getName(),
     timeZone: getSheetTimeZone(sheet),
+    selectionError: inspectionSelection.selectionError,
     headers,
     playerHeader: fields.player.header,
     playerIndex: fields.player.index,
@@ -2773,7 +2900,7 @@ function diagnoseRpeRows154to160() {
   ];
 
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = findRpeResponseSheet(spreadsheet);
+  const sheet = findRpeResponseSheetForInspection(spreadsheet).sheet;
   const lastColumn = sheet.getLastColumn();
   if (!lastColumn) throw new Error(`La hoja RPE "${sheet.getName()}" no contiene cabeceras.`);
 
@@ -2842,9 +2969,12 @@ function diagnoseRpeRows154to160() {
   const rows = rawRows.map((rawRow, offset) => {
     const displayRow = displayRows[offset] || [];
     const fields = resolveRequiredRpeFields(headers, rawRow, displayRow);
+    const diagnosticPlayerField = fields.player.state === 'UNEXPECTED_HEADER'
+      ? resolveRpeColumn(headers, RPE_SUSPICIOUS_PLAYER_HEADERS, rawRow, displayRow)
+      : fields.player;
     const receivedTimestamp = fields.timestamp.found ? fields.timestamp.rawValue : '';
     const parsedTimestamp = parseRpeSubmittedDate(receivedTimestamp, spreadsheetTimeZone);
-    const receivedName = fields.player.found ? fields.player.rawValue : '';
+    const receivedName = diagnosticPlayerField.found ? diagnosticPlayerField.rawValue : '';
     const statusValue = readTechnicalValue('Supabase status', rawRow, displayRow);
     const normalizedStatus = String(statusValue || '').trim().toUpperCase();
     if (normalizedStatus === 'SYNCED') synced += 1;
