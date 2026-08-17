@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node src/utils/playerMatchIndicators.test.js && node scripts/statsPitchIndicatorsUiAudit.test.mjs && node src/utils/lineupPrintBench.test.js && node scripts/googleFormsSupabaseSync.test.mjs && node src/utils/performanceRpe.test.js && node src/utils/performanceLoad.test.js && node src/utils/performanceLoadStore.test.js && node scripts/trainingLoadSqlAudit.test.mjs && node scripts/performanceLoadUiAudit.test.mjs && node src/utils/rivalLineupAtomic.test.js && node scripts/rivalLineupAtomicSqlAudit.test.mjs && node src/utils/goalEvents.test.js && node src/utils/goalAtomicMutation.test.js && node scripts/matchGoalAtomicSqlAudit.test.mjs && node src/utils/rivalScoutingPersistence.test.js && node src/utils/rivalScoutingStore.test.js && node scripts/rivalScoutingSqlAudit.test.mjs",
+    "test": "node src/utils/playerMatchIndicators.test.js && node scripts/statsPitchIndicatorsUiAudit.test.mjs && node src/utils/lineupPrintBench.test.js && node scripts/googleFormsSupabaseSync.test.mjs && node src/utils/performanceRpe.test.js && node src/utils/performanceLoad.test.js && node src/utils/performanceLoadStore.test.js && node scripts/trainingLoadSqlAudit.test.mjs && node scripts/performanceLoadUiAudit.test.mjs && node src/utils/rivalLineupAtomic.test.js && node scripts/rivalLineupAtomicSqlAudit.test.mjs && node src/utils/goalEvents.test.js && node src/utils/matchCalendarCard.test.js && node scripts/matchCalendarCardsUiAudit.test.mjs && node src/utils/goalAtomicMutation.test.js && node scripts/matchGoalAtomicSqlAudit.test.mjs && node src/utils/rivalScoutingPersistence.test.js && node src/utils/rivalScoutingStore.test.js && node scripts/rivalScoutingSqlAudit.test.mjs",
     "test:performance-load": "node src/utils/performanceRpe.test.js && node src/utils/performanceLoad.test.js && node src/utils/performanceLoadStore.test.js && node scripts/trainingLoadSqlAudit.test.mjs && node scripts/performanceLoadUiAudit.test.mjs",
     "test:league-results": "node src/utils/leagueResults.test.js",
     "test:competition-filters": "node src/utils/competitionFilters.test.js",
@@ -57,6 +57,7 @@
     "test:delegated-stats": "node src/utils/delegatedStats.test.js && node scripts/delegatedStatsUiAudit.test.mjs",
     "test:player-display-name": "node src/utils/playerDisplayName.test.js",
     "test:match-status": "node src/utils/matchStatus.test.js",
+    "test:match-calendar": "node src/utils/matchCalendarCard.test.js && node scripts/matchCalendarCardsUiAudit.test.mjs",
     "test:captains": "node src/utils/captainOrder.test.js && node src/utils/matchCaptain.test.js && node src/utils/captainPriorityStore.test.js && node scripts/captainPrioritySqlAudit.test.mjs && node scripts/captainUiAudit.test.mjs",
     "test:recent-activity": "node src/utils/recentActivity.test.js",
     "test:player-positions": "node src/constants/playerPositions.test.js",

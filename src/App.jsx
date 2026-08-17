@@ -45,6 +45,10 @@ import {
   getMatchStatusPresentation,
   parseLocalMatchDate,
 } from './utils/matchStatus';
+import {
+  formatMatchCalendarRound,
+  getMatchCalendarEventPriority,
+} from './utils/matchCalendarCard';
 import { buildRecentActivity, formatRecentActivityTime } from './utils/recentActivity';
 import {
   buildOfficialPlayerTotals,
@@ -5394,6 +5398,7 @@ function App() {
   const [matchFormAutoStatus, setMatchFormAutoStatus] = useState('');
   const [matchFilter, setMatchFilter] = useState('Temporada');
   const [matchSections, setMatchSections] = useState({});
+  const [expandedMatchTimelines, setExpandedMatchTimelines] = useState({});
   const [matchView, setMatchView] = useState('lista_partidos');
   const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [matchViewSection, setMatchViewSection] = useState('PRE');
@@ -31453,9 +31458,10 @@ function App() {
                 <p className="hidden text-xs font-bold uppercase tracking-[0.16em] text-slate-500 sm:block">Seguimiento competitivo</p>
               </div>
               {filteredMatches.length > 0 ? (
-                <div className="grid gap-4 xl:grid-cols-2">
+                <div className="grid items-start gap-4 xl:grid-cols-2">
                   {filteredMatches.map((match) => {
                     const activeSection = matchSections[match.id] ?? 'PRE';
+                    const timelineExpanded = Boolean(expandedMatchTimelines[match.id]);
                     const caudalIsHome = match.isHome;
                     const score = getMatchScoreValues(match);
                     const statsEvents = score.statsEvents;
@@ -31523,13 +31529,13 @@ function App() {
                         };
                       }),
                       ...Object.entries(match.statsPlayerData || {}).flatMap(([name, stats]) => [
-                        stats.red ? { key: 'red_card', name, detail: '', priority: 2 } : null,
-                        stats.injured ? { key: 'injury', name, detail: 'Incidencia registrada', priority: 3 } : null,
+                        stats.red ? { key: 'red_card', name, detail: '', priority: 3 } : null,
+                        stats.injured ? { key: 'injury', name, detail: 'Incidencia registrada', priority: 5 } : null,
                         stats.yellow ? {
                           key: 'yellow_card',
                           name,
                           detail: Number(stats.yellowCount || 1) > 1 ? `x${Number(stats.yellowCount || 1)}` : '',
-                          priority: 5,
+                          priority: 4,
                         } : null,
                       ].filter(Boolean).map((event) => {
                         const meta = getMatchEventMeta(event.key, event);
@@ -31570,7 +31576,7 @@ function App() {
                           halfOrder: getEventHalfOrder(event.period),
                           second: Number(event.second || 0),
                           createdAt: event.createdAt || '',
-                          priority: 4,
+                          priority: 2,
                           icon: meta.badgeIcon,
                           side: 'staff',
                           label: `${fromSystem || 'Sistema'} -> ${event.toSystem}`,
@@ -31579,14 +31585,15 @@ function App() {
                         };
                       }),
                     ]);
-                    const visibleMatchEventRows = sortMatchEventsChronologically(
-                      matchEventRows
-                        .slice()
-                        .sort((a, b) => (a.priority || 9) - (b.priority || 9) || (a.sortMinute ?? 999) - (b.sortMinute ?? 999))
-                        .slice(0, 5)
-                    );
-                    const hiddenMatchEventCountDesktop = Math.max(0, matchEventRows.length - visibleMatchEventRows.length);
-                    const hiddenMatchEventCountMobile = Math.max(0, matchEventRows.length - Math.min(3, visibleMatchEventRows.length));
+                    const prioritizedMatchEventRows = matchEventRows
+                      .slice()
+                      .sort((a, b) => getMatchCalendarEventPriority(a) - getMatchCalendarEventPriority(b)
+                        || (a.sortMinute ?? 999) - (b.sortMinute ?? 999));
+                    const visibleMatchEventRows = timelineExpanded
+                      ? matchEventRows
+                      : sortMatchEventsChronologically(prioritizedMatchEventRows.slice(0, 5));
+                    const hiddenMatchEventCountDesktop = Math.max(0, matchEventRows.length - 5);
+                    const hiddenMatchEventCountMobile = Math.max(0, matchEventRows.length - 3);
                     const cardToneClass = 'border-white/10 bg-[#091428]/[0.86] hover:border-white/20';
                     const competitionMeta = getCompetitionFromCatalog(match);
                     const competitionPanelClass = getCompetitionPanelClass(competitionMeta.key);
@@ -31594,61 +31601,84 @@ function App() {
                       <article
                         key={match.id}
                         aria-label={cardAriaLabel}
-                        className={`relative overflow-hidden rounded-[1.45rem] border border-t-[6px] transition hover:-translate-y-0.5 ${cardToneClass}`}
+                        className={`relative self-start overflow-hidden rounded-[1.45rem] border border-t-[6px] transition hover:-translate-y-0.5 ${cardToneClass}`}
                         style={{ borderTopColor: statusPresentation.color, boxShadow: `0 18px 48px rgba(0,0,0,0.22), 0 -8px 30px ${statusPresentation.color}18` }}
                       >
                         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.035),transparent_38%)]" />
-                        <div className="absolute right-4 top-4 z-10 flex gap-2">
-                          <button onClick={() => openMatchForm(match)} className="rounded-lg border border-white/10 bg-white/[0.07] px-2.5 py-1 text-[11px] font-bold text-white hover:bg-white/[0.12]">Editar</button>
-                          <button onClick={() => handleMatchDelete(match)} className="rounded-lg border border-red-200/10 bg-red-500/10 px-2.5 py-1 text-[11px] font-bold text-red-100 hover:bg-red-500/[0.18]">Eliminar</button>
+                        <div className="absolute right-3 top-3 z-10">
+                          <button
+                            type="button"
+                            aria-label={`Acciones del partido contra ${match.opponent || 'rival'}`}
+                            aria-expanded={floatingMenu?.id === `match-card-${match.id}`}
+                            onClick={(event) => openFloatingMenu(event, { id: `match-card-${match.id}`, type: 'match-card' })}
+                            className="flex h-8 min-w-9 items-center justify-center rounded-xl border border-white/10 bg-[#07111f]/85 px-2 text-sm font-black tracking-[0.12em] text-slate-300 shadow-lg backdrop-blur transition hover:bg-white/10 hover:text-white"
+                          >
+                            ···
+                          </button>
+                          {floatingMenu?.id === `match-card-${match.id}` ? (
+                            <FloatingActionMenu anchorRect={floatingMenu.anchorRect} width={152} onClose={closeFloatingMenu}>
+                              <button type="button" onClick={() => runMenuAction(() => openMatchForm(match))} className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-200 transition hover:bg-white/10">Editar</button>
+                              <button type="button" onClick={() => runMenuAction(() => handleMatchDelete(match))} className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-bold text-red-200 transition hover:bg-red-500/15">Eliminar</button>
+                            </FloatingActionMenu>
+                          ) : null}
                         </div>
-                        <div className="relative grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 pb-3 pt-4">
+                        <div className={`relative mx-auto grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1 px-4 pb-3 pt-4 sm:gap-3 ${played ? 'max-w-[620px]' : 'max-w-[540px]'}`}>
                           <div className="text-center">
                             <TeamLogo className="mx-auto" src={caudalIsHome ? clubCrest : match.opponentCrest} alt={`Escudo de ${caudalIsHome ? 'C.D. Caudal' : match.opponent}`} teamName={caudalIsHome ? 'C.D. Caudal' : match.opponent} />
-                            <p className="mt-2 line-clamp-1 text-sm font-bold text-white">{caudalIsHome ? 'C.D. Caudal' : match.opponent}</p>
+                            <p className="mt-2 line-clamp-1 text-sm font-bold text-white" title={caudalIsHome ? 'C.D. Caudal' : match.opponent}>{caudalIsHome ? 'C.D. Caudal' : match.opponent}</p>
                           </div>
                           <div className="text-center">
                             <p className="rounded-xl bg-caudal-950/80 px-3 py-1 text-xs text-slate-400">{matchDisplayDate(match.date)}</p>
-                            <p className={`${played && score.hasCompleteScore ? 'mt-3 text-6xl text-white drop-shadow-[0_8px_18px_rgba(0,0,0,0.35)]' : 'mt-3 max-w-[180px] text-xl text-slate-300'} font-black leading-tight tracking-normal`}>
+                            <p className={`${played && score.hasCompleteScore
+                              ? 'mt-3 text-6xl text-white drop-shadow-[0_8px_18px_rgba(0,0,0,0.35)]'
+                              : statusPresentation.status === 'scheduled'
+                                ? 'mx-auto mt-3 max-w-[180px] rounded-full border border-white/10 bg-white/[0.055] px-4 py-2 text-2xl text-slate-200 shadow-inner'
+                                : 'mt-3 max-w-[180px] text-xl text-slate-300'} font-black leading-tight tracking-normal`}>
                               {scoreDisplay}
                             </p>
-                            {(!played || !score.hasCompleteScore) ? (
+                            {played && score.hasCompleteScore ? (
+                              <span className="mt-2 inline-flex rounded-full border border-white/10 bg-white/[0.045] px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">
+                                Finalizado
+                              </span>
+                            ) : (
                               <span className="mt-2 inline-flex rounded-lg border border-white/10 bg-white/[0.06] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-200">
                                 {played ? 'Finalizado · sin marcador' : statusPresentation.label}
                               </span>
-                            ) : null}
+                            )}
                             <div className={`mx-auto mt-3 flex max-w-[150px] flex-col items-center gap-1 rounded-2xl border px-3 py-2 ${competitionPanelClass}`}>
                               <CompetitionIdentity competition={competitionMeta} size="md" showName={false} />
-                              <p className="max-w-full truncate text-[11px] font-black uppercase tracking-[0.12em]">{competitionMeta.label}</p>
-                              {match.round ? <p className="max-w-full truncate text-[10px] font-bold uppercase tracking-[0.10em] opacity-75">{match.round}</p> : null}
+                              <p className="max-w-full truncate text-[11px] font-black uppercase tracking-[0.12em]" title={competitionMeta.label}>{competitionMeta.label}</p>
+                              {match.round ? <p className="max-w-full truncate text-[10px] font-bold uppercase tracking-[0.10em] opacity-75" title={formatMatchCalendarRound(match.round)}>{formatMatchCalendarRound(match.round)}</p> : null}
                             </div>
-                            {statusPresentation.status === 'scheduled' ? <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">{getMatchMdLabel()}</p> : null}
-                            {match.stadium ? <p className="mt-1 text-xs font-semibold text-slate-400">{match.stadium}</p> : null}
+                            {statusPresentation.status === 'scheduled' ? <span className="mt-2 inline-flex rounded-full border border-caudal-electric/20 bg-caudal-electric/[0.08] px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-caudal-electric/80">{getMatchMdLabel()}</span> : null}
+                            {match.stadium ? <p className="mx-auto mt-1 max-w-[180px] truncate text-xs font-semibold text-slate-400" title={match.stadium}>{match.stadium}</p> : null}
                           </div>
                           <div className="text-center">
                             <TeamLogo className="mx-auto" src={caudalIsHome ? match.opponentCrest : clubCrest} alt={`Escudo de ${caudalIsHome ? match.opponent : 'C.D. Caudal'}`} teamName={caudalIsHome ? match.opponent : 'C.D. Caudal'} />
-                            <p className="mt-2 line-clamp-1 text-sm font-bold text-white">{caudalIsHome ? match.opponent : 'C.D. Caudal'}</p>
+                            <p className="mt-2 line-clamp-1 text-sm font-bold text-white" title={caudalIsHome ? match.opponent : 'C.D. Caudal'}>{caudalIsHome ? match.opponent : 'C.D. Caudal'}</p>
                           </div>
                         </div>
                         {played ? (
                           <div className="relative px-4 pb-3">
                             {visibleMatchEventRows.length ? (
-                              <div className="grid gap-1 rounded-2xl border border-white/10 bg-slate-950/[0.18] p-2">
-                                {visibleMatchEventRows.map((event, index) => (
-                                  <div key={`${event.id || event.label}-${event.icon}-${index}`} className={`grid grid-cols-[68px_30px_1fr] items-start gap-2 border-b border-white/[0.055] px-1.5 py-1.5 text-xs last:border-b-0 ${index >= 3 ? 'hidden sm:grid' : ''}`}>
-                                    <span className="font-black tabular-nums text-slate-500">{event.hasMinute ? event.minuteLabel : 'Sin minuto'}</span>
-                                    <span className="flex h-6 w-6 items-center justify-center rounded-lg border border-white/10 bg-white/[0.055] text-[10px] font-black leading-none text-white">{event.icon}</span>
-                                    <span className={`min-w-0 font-semibold ${event.side === 'caudal' ? 'text-emerald-100' : event.side === 'rival' ? 'text-red-100' : 'text-slate-200'}`}>
-                                      <span className="block truncate">{event.typeLabel ? `${event.typeLabel}: ` : ''}{event.label}{event.detail ? ` ${event.detail}` : ''}</span>
-                                      {event.assist ? <span className="mt-0.5 block truncate text-[11px] font-bold text-caudal-electric">Asistencia: {event.assist}</span> : null}
-                                    </span>
-                                  </div>
-                                ))}
+                              <div className="rounded-2xl border border-white/10 bg-slate-950/[0.18] p-2">
+                                <div className={`grid gap-1 ${timelineExpanded ? 'max-h-72 overflow-y-auto overscroll-contain pr-1' : ''}`}>
+                                  {visibleMatchEventRows.map((event, index) => (
+                                    <div key={`${event.id || event.label}-${event.icon}-${index}`} className={`grid grid-cols-[54px_28px_minmax(0,1fr)] items-start gap-1.5 border-b border-white/[0.055] px-1.5 py-1.5 text-xs last:border-b-0 sm:grid-cols-[68px_30px_minmax(0,1fr)] sm:gap-2 ${!timelineExpanded && index >= 3 ? 'hidden sm:grid' : ''}`}>
+                                      <span className="font-black tabular-nums text-slate-500">{event.hasMinute ? event.minuteLabel : 'Sin minuto'}</span>
+                                      <span className="flex h-6 w-6 items-center justify-center rounded-lg border border-white/10 bg-white/[0.055] text-[10px] font-black leading-none text-white">{event.icon}</span>
+                                      <span className={`min-w-0 font-semibold ${event.side === 'caudal' ? 'text-emerald-100' : event.side === 'rival' ? 'text-red-100' : 'text-slate-200'}`}>
+                                        <span className="block truncate" title={`${event.typeLabel ? `${event.typeLabel}: ` : ''}${event.label}${event.detail ? ` ${event.detail}` : ''}`}>{event.typeLabel ? `${event.typeLabel}: ` : ''}{event.label}{event.detail ? ` ${event.detail}` : ''}</span>
+                                        {event.assist ? <span className="mt-0.5 block truncate text-[11px] font-bold text-caudal-electric" title={`Asistencia: ${event.assist}`}>Asistencia: {event.assist}</span> : null}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
                                 {hiddenMatchEventCountMobile ? (
-                                  <p className="px-1.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500 sm:hidden">+{hiddenMatchEventCountMobile} eventos más</p>
+                                  <button type="button" onClick={() => setExpandedMatchTimelines((current) => ({ ...current, [match.id]: !timelineExpanded }))} className="mt-1 w-full rounded-lg px-1.5 py-1 text-left text-[11px] font-black uppercase tracking-[0.12em] text-slate-500 transition hover:bg-white/5 hover:text-slate-300 sm:hidden">{timelineExpanded ? 'Ver menos' : `+${hiddenMatchEventCountMobile} eventos más`}</button>
                                 ) : null}
                                 {hiddenMatchEventCountDesktop ? (
-                                  <p className="hidden px-1.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500 sm:block">+{hiddenMatchEventCountDesktop} eventos más</p>
+                                  <button type="button" onClick={() => setExpandedMatchTimelines((current) => ({ ...current, [match.id]: !timelineExpanded }))} className="mt-1 hidden w-full rounded-lg px-1.5 py-1 text-left text-[11px] font-black uppercase tracking-[0.12em] text-slate-500 transition hover:bg-white/5 hover:text-slate-300 sm:block">{timelineExpanded ? 'Ver menos' : `+${hiddenMatchEventCountDesktop} eventos más`}</button>
                                 ) : null}
                               </div>
                             ) : (
