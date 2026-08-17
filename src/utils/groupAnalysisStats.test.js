@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   buildGroupGoalCoverage,
+  buildGroupGoalMapModel,
   buildGroupGoalTypeRows,
   buildGroupSetPieceSummary,
   buildScoringEfficiencyRows,
@@ -58,6 +59,19 @@ assert.deepEqual(countGroupGoalZones(goalsFor, 'finishZone'), { derecha: 1 }, 'z
 assert.deepEqual(countGroupGoalZones(goalsAgainst, 'finishZone'), { centro: 2 }, 'zonas en contra no incluyen GF');
 assert.deepEqual(countGroupGoalZones(goalsFor, 'goalMouthZone'), { 'medio-derecha': 1 }, 'portería marcada solo usa GF');
 assert.deepEqual(countGroupGoalZones(goalsAgainst, 'goalMouthZone'), { 'bajo-izquierda': 1, 'bajo-derecha': 1 }, 'portería encajada solo usa GC');
+
+const pravianoGoal = {
+  teamSide: 'against',
+  assistantName: null,
+  creationZone: 'izquierda',
+  finishZone: 'centro',
+  goalMouthZone: null,
+};
+assert.deepEqual(buildGroupGoalMapModel({ goals: [pravianoGoal], side: 'against', field: 'creationZone' }), {
+  side: 'against', field: 'creationZone', goals: [pravianoGoal], counts: { izquierda: 1 }, total: 1, withZone: 1, missing: 0,
+}, 'gol rival: el origen no depende de tener asistente identificado');
+assert.equal(buildGroupGoalMapModel({ goals: [pravianoGoal], side: 'against', field: 'finishZone' }).counts.centro, 1, 'gol rival: finalización centro');
+assert.equal(buildGroupGoalMapModel({ goals: [pravianoGoal], side: 'against', field: 'goalMouthZone' }).missing, 1, 'gol rival: portería sin información no se convierte en cero');
 
 const coverage = buildGroupGoalCoverage(allGoals);
 assert.deepEqual(coverage, {
@@ -120,7 +134,7 @@ assert.deepEqual(getGroupGoalInvariantReport(allGoals), {
 
 const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 assert.match(appSource, /Zonas de finalización/);
-assert.match(appSource, /groupFinishZoneSide === 'for'/, 'el mapa permite separar A favor / En contra');
+assert.match(appSource, /groupGoalMapSide === 'for'/, 'los tres mapas comparten el selector A favor / En contra');
 assert.doesNotMatch(appSource, /getOfficialGoalZoneCounts\(allGoalRows, 'finishZone'\)/, 'el mapa no consume allGoals');
 assert.match(appSource, /Goles con datos/);
 assert.match(appSource, /goalCoverage\.withAssist.*goalCoverage\.forGoals/s, 'asistencia usa GF como denominador');
@@ -130,12 +144,13 @@ assert.match(appSource, /scopedMatches\.length < 3/);
 assert.match(appSource, /Combinaciones utilizadas/);
 assert.match(appSource, /playerSlotBreakdownRows\.length \?/);
 assert.doesNotMatch(appSource, /Once más utilizado de la temporada/);
-assert.match(appSource, /sm:grid-cols-2/, 'alternativas disponen de dos columnas');
+assert.match(appSource, /<details className=.*Alternativas por posición/s, 'las alternativas se mantienen disponibles sin alargar el bloque principal');
 assert.match(appSource, /getMatchLineupSource\(match, \{ statsOnly: true \}\)/, 'el once grupal no usa alineaciones PRE');
 assert.match(appSource, /buildGroupSystemSequence/, 'los sistemas del análisis usan la secuencia real de ESTADÍSTICAS');
 assert.match(appSource, /absolute -bottom-1\.5/, 'los minutos están anclados a la foto y no compiten con el nombre');
-assert.match(appSource, /w-20.*sm:w-24/, 'los marcadores dan más espacio al nombre sin romper el campo responsive');
-assert.match(appSource, /buildInitialSlotEvidence/, 'el once usa evidencia del slot real inicial');
+assert.match(appSource, /max-w-\[min\(100%,29rem\)\]/, 'el once se compacta alrededor de un 24% sin cambiar sus datos');
+assert.match(appSource, /w-16.*sm:w-20/, 'los marcadores conservan foto, nombre y dorsal en el campo compacto');
+assert.match(appSource, /buildTacticalSnapshotIntervals/, 'el once usa intervalos derivados de snapshots tácticos');
 assert.match(appSource, /getMostUsedXiMetric/, 'el badge distingue minutos reales de apariciones sin minutos');
 assert.match(appSource, /resolveStoredTacticalSlot/, 'la posición persistida se cruza por sus coordenadas reales antes que por etiquetas genéricas');
 assert.doesNotMatch(appSource, /starterMinutes = hasRealValue\(stored\.minutes\) \? Number\(stored\.minutes \|\| 0\) : duration/, 'no inventa la duración completa cuando faltan minutos');
@@ -144,9 +159,14 @@ assert.doesNotMatch(appSource, /El equipo ha marcado .*muestra filtrada/, 'se el
 assert.doesNotMatch(appSource, /Goles analizados/);
 assert.match(appSource, /buildGroupSetPieceSummary\(goalForRows\)/);
 assert.match(appSource, /buildGroupSetPieceSummary\(goalAgainstRows\)/);
-assert.match(appSource, /assistedGoalRows = goalForRows\.filter\(hasGoalAssistant\)/, 'origen de asistencia solo usa GF');
-assert.match(appSource, /countGroupGoalZones\(goalZoneForCounts|countGroupGoalZones\(goalForRows, 'goalMouthZone'/, 'portería marcada solo usa GF');
-assert.match(appSource, /countGroupGoalZones\(goalAgainstRows, 'goalMouthZone'/, 'portería encajada solo usa GC');
+assert.match(appSource, /field: 'creationZone'/, 'el origen procede de assist_zone normalizado, no del nombre del asistente');
+assert.match(appSource, /field: 'finishZone'/, 'la finalización procede de shot_zone normalizado');
+assert.match(appSource, /field: 'goalMouthZone'/, 'la portería procede de goal_zone normalizado');
+assert.match(appSource, /creationZone: emptyToNull\(event\.assistZone\)/, 'el modelo grupal conserva assist_zone como origen canónico');
+assert.match(appSource, /finishZone: emptyToNull\(event\.shotZone\)/, 'el modelo grupal conserva shot_zone como finalización canónica');
+assert.match(appSource, /goalMouthZone: emptyToNull\(event\.goalZone\)/, 'el modelo grupal conserva goal_zone como portería canónica');
+assert.match(appSource, /Sin información · Sin zona registrada/, 'la ausencia de goal_zone se representa como dato faltante, nunca como cero');
+assert.doesNotMatch(appSource, /assistedGoalRows = goalForRows\.filter\(hasGoalAssistant\)/, 'un origen registrado no depende de identificar asistente');
 assert.match(appSource, /goalsFor: goalForRows\.length/);
 assert.match(appSource, /goalsAgainst: goalAgainstRows\.length/);
 

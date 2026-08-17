@@ -36,6 +36,21 @@ export const countGroupGoalZones = (goals = [], field, normalize = (value) => va
     return counts;
   }, {});
 
+export const buildGroupGoalMapModel = ({ goals = [], side = 'for', field, normalize = (value) => value } = {}) => {
+  const selectedGoals = (Array.isArray(goals) ? goals : []).filter((goal) => goal?.teamSide === side);
+  const counts = countGroupGoalZones(selectedGoals, field, normalize);
+  const withZone = Object.values(counts).reduce((sum, count) => sum + Number(count || 0), 0);
+  return {
+    side,
+    field,
+    goals: selectedGoals,
+    counts,
+    total: selectedGoals.length,
+    withZone,
+    missing: Math.max(0, selectedGoals.length - withZone),
+  };
+};
+
 export const buildGroupGoalCoverage = (goals = []) => {
   const { goalsFor, goalsAgainst, allGoals } = splitGroupGoals(goals);
   return {

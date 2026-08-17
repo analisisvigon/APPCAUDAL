@@ -60,6 +60,7 @@ import {
 } from './utils/competitivePanel';
 import {
   buildGroupGoalCoverage,
+  buildGroupGoalMapModel,
   buildGroupGoalTypeRows,
   buildGroupSetPieceSummary,
   buildScoringEfficiencyRows,
@@ -68,12 +69,19 @@ import {
   splitGroupGoals,
 } from './utils/groupAnalysisStats';
 import {
-  buildInitialSlotEvidence,
   buildMostUsedXiFromEvidence,
   compareSystemUsageRows,
   getMostUsedXiMetric,
   resolveStoredTacticalSlot,
 } from './utils/groupMostUsedXI';
+import {
+  buildInitialTacticalSnapshot,
+  buildTacticalCombinationsFromIntervals,
+  buildTacticalSlotEvidenceFromIntervals,
+  buildTacticalSnapshotIntervals,
+  getHistoricalSubstitutionMinutes,
+  getTacticalTimelineInvariantReport,
+} from './utils/tacticalSnapshots';
 import {
   buildPerformanceObservationsByPlayer,
   getPerformanceObservationView,
@@ -5928,7 +5936,7 @@ function App() {
   const [groupContextFilter, setGroupContextFilter] = useState('Todos');
   const [groupQuickReviewedOnly, setGroupQuickReviewedOnly] = useState(true);
   const [groupRankingTab, setGroupRankingTab] = useState('Goles');
-  const [groupFinishZoneSide, setGroupFinishZoneSide] = useState('for');
+  const [groupGoalMapSide, setGroupGoalMapSide] = useState('for');
   const [expandedSystemXi, setExpandedSystemXi] = useState('');
   const [delegatedStatusFilter, setDelegatedStatusFilter] = useState('Todos');
   const [delegatedStatusSavingId, setDelegatedStatusSavingId] = useState('');
@@ -6909,19 +6917,33 @@ function App() {
     setGroupError('');
 
     try {
-      const [partidosResponse, statsResponse, goalsResponse, slotsResponse, postEventsResponse, systemEventsResponse] = await Promise.all([
+      const [
+        partidosResponse,
+        statsResponse,
+        goalsResponse,
+        slotsResponse,
+        postEventsResponse,
+        systemEventsResponse,
+        tacticalSnapshotsResponse,
+        tacticalSnapshotSlotsResponse,
+      ] = await Promise.all([
         supabase.from("partidos").select("*").order("date", { ascending: true, nullsFirst: false }),
         supabase.from("partido_estadisticas_jugador").select("*"),
         supabase.from("partido_eventos_gol").select("*"),
         supabase.from("partido_alineacion_slots").select("*").in("scope", ["stats", "pre_caudal"]).order("slot", { ascending: true }),
         supabase.from("partido_eventos_post").select("*"),
         supabase.from("partido_eventos_sistema").select("*"),
+        supabase.from("partido_snapshots_tacticos").select("*").order("minute", { ascending: true }),
+        supabase.from("partido_snapshot_tactico_slots").select("*").order("slot", { ascending: true }),
       ]);
 
       const failed = [partidosResponse, statsResponse, goalsResponse, slotsResponse, postEventsResponse].find((response) => response.error);
       if (failed) throw failed.error;
       if (systemEventsResponse.error) {
         console.warn('No se pudieron cargar cambios de sistema para Análisis Grupal; se continúa sin ellos:', systemEventsResponse.error);
+      }
+      if (tacticalSnapshotsResponse.error || tacticalSnapshotSlotsResponse.error) {
+        console.warn('Snapshots tácticos aún no disponibles; los tramos históricos sin foto se tratarán como incompletos:', tacticalSnapshotsResponse.error || tacticalSnapshotSlotsResponse.error);
       }
 
       let quickEventsRows = [];
@@ -6985,6 +7007,22 @@ function App() {
         return acc;
       }, {});
 
+      const tacticalSlotsBySnapshot = tacticalSnapshotSlotsResponse.error ? {} : (tacticalSnapshotSlotsResponse.data || []).reduce((acc, slot) => {
+        acc[slot.snapshot_id] = [...(acc[slot.snapshot_id] || []), {
+          slot: Number(slot.slot),
+          jugadorId: slot.jugador_id || '',
+          playerNameSnapshot: slot.player_name_snapshot || '',
+        }];
+        return acc;
+      }, {});
+      const tacticalSnapshotsByMatch = tacticalSnapshotsResponse.error ? {} : (tacticalSnapshotsResponse.data || []).reduce((acc, snapshot) => {
+        acc[snapshot.partido_id] = [...(acc[snapshot.partido_id] || []), {
+          ...snapshot,
+          slots: tacticalSlotsBySnapshot[snapshot.id] || [],
+        }];
+        return acc;
+      }, {});
+
       setMatches((partidosResponse.data || []).map((match) => {
         const normalized = normalizeSupabasePartido(match);
         const lineupSlots = slotsByMatch[match.id] || { stats: [], preCaudal: [] };
@@ -7000,6 +7038,7 @@ function App() {
           statsPlayerData: statsByMatch[match.id] || {},
           lineupSlots,
           statsLineup,
+          tacticalSnapshots: tacticalSnapshotsByMatch[match.id] || [],
         };
       }));
     } catch (analysisError) {
@@ -20176,54 +20215,56 @@ function App() {
   const buildTacticalSlotMinutes = (scopedMatches = []) => {
     const bySystem = new Map();
     const evidence = [];
+    const intervals = [];
+    const invariantReports = [];
     const coverage = {
       totalMatches: safeArray(scopedMatches).length,
       tacticalMatches: 0,
       missingSegments: 0,
       missingMinutes: 0,
-      playersWithoutMinutes: 0,
     };
     safeArray(scopedMatches).forEach((match) => {
       const duration = getMatchDurationMinutes(match);
-      const sequence = buildGroupSystemSequence(match);
       const initialSystem = getGroupStatsSystem(match);
-      const snapshot = getMatchSnapshotForSystem(match, initialSystem);
-      if (!snapshot.hasSnapshot) {
-        sequence.forEach((segment) => {
-          coverage.missingSegments += 1;
-          coverage.missingMinutes += segment.minutes;
-        });
-        return;
-      }
-      coverage.tacticalMatches += 1;
-      sequence.filter((segment) => segment.system !== initialSystem).forEach((segment) => {
-        coverage.missingSegments += 1;
-        coverage.missingMinutes += segment.minutes;
-      });
-      const normalizedSlots = safeArray(snapshot.slots).flatMap((slotRow) => {
-        if (!slotRow?.playerName || !Number.isInteger(slotRow.slot)) return [];
-        const role = getFormationRoles(initialSystem)[slotRow.slot] || '';
-        const tacticalSlot = getIdealSlotForStoredSlot(initialSystem, slotRow.slot, role);
-        return tacticalSlot ? [{ ...slotRow, playerId: slotRow.jugadorId, tacticalSlot }] : [];
-      });
-      const matchEvidence = buildInitialSlotEvidence({
+      const initialLineup = getMatchSnapshotForSystem(match, initialSystem);
+      const initialSnapshot = buildInitialTacticalSnapshot({
+        duration,
         matchId: match.id,
         system: initialSystem,
+        slots: safeArray(initialLineup.slots).map((slot) => ({
+          slot: Number(slot.slot),
+          jugadorId: slot.jugadorId || '',
+          playerName: slot.playerName || '',
+        })),
+      });
+      const matchIntervals = buildTacticalSnapshotIntervals({
         duration,
-        slots: normalizedSlots,
-        playerStats: safeObject(match.statsPlayerData),
-        resolvePlayer: ({ playerName, playerId }) => players.find((item) => (
-          (playerId && String(item.id) === String(playerId))
-          || normalizePlayerIdentityName(item.name) === normalizePlayerIdentityName(playerName)
-        )) || { id: playerId || '', name: playerName },
+        initialSnapshot,
+        initialSystem,
+        snapshots: safeArray(match.tacticalSnapshots),
+        systemEvents: safeArray(match.systemEvents),
+        substitutionMinutes: getHistoricalSubstitutionMinutes(safeObject(match.statsPlayerData)),
+      }).map((interval) => ({ ...interval, matchId: match.id }));
+      intervals.push(...matchIntervals);
+      invariantReports.push({ matchId: match.id, ...getTacticalTimelineInvariantReport({ intervals: matchIntervals, duration }) });
+      if (matchIntervals.some((interval) => interval.isComplete)) coverage.tacticalMatches += 1;
+      coverage.missingSegments += matchIntervals.filter((interval) => !interval.isComplete).length;
+      coverage.missingMinutes += matchIntervals.filter((interval) => !interval.isComplete).reduce((sum, interval) => sum + interval.minutes, 0);
+      const resolveSlot = (system, slotIndex) => {
+        const role = getFormationRoles(system)[slotIndex] || '';
+        return getIdealSlotForStoredSlot(system, slotIndex, role);
+      };
+      const matchEvidence = buildTacticalSlotEvidenceFromIntervals({
+        intervals: matchIntervals,
+        resolveSlot,
+        resolvePlayer: (slotRow) => players.find((item) => (
+          (slotRow.playerId && String(item.id) === String(slotRow.playerId))
+          || normalizePlayerIdentityName(item.name) === normalizePlayerIdentityName(slotRow.playerName)
+        )) || { id: slotRow.playerId || '', name: slotRow.playerName },
       });
       evidence.push(...matchEvidence);
-      coverage.playersWithoutMinutes += matchEvidence.filter((row) => row.starts && !row.minutesKnown).length;
-
-      const systemData = bySystem.get(initialSystem) || { system: initialSystem, slots: new Map(), pairRows: new Map(), segmentMinutes: 0 };
-      const initialSegmentMinutes = sequence.find((segment) => segment.system === initialSystem)?.minutes || 0;
-      systemData.segmentMinutes += initialSegmentMinutes;
       matchEvidence.forEach((presence) => {
+        const systemData = bySystem.get(presence.system) || { system: presence.system, slots: new Map(), pairRows: new Map(), segmentMinutes: 0 };
         const slotData = systemData.slots.get(presence.slot.id) || { slot: presence.slot, players: new Map() };
         const row = slotData.players.get(presence.playerKey) || {
           player: presence.player,
@@ -20242,27 +20283,27 @@ function App() {
         row.appearances += 1;
         slotData.players.set(presence.playerKey, row);
         systemData.slots.set(presence.slot.id, slotData);
+        bySystem.set(presence.system, systemData);
       });
-      const starterSlots = matchEvidence.filter((row) => row.starts).map((row) => ({ slot: row.slot, playerName: row.playerName }));
-      const addGroup = (groupName, predicate, minSize = 2, maxSize = 3) => {
-        const names = starterSlots.filter((entry) => predicate(entry.slot)).map((entry) => entry.playerName);
-        const uniqueNames = Array.from(new Set(names)).sort();
-        if (uniqueNames.length < minSize) return;
-        const selected = uniqueNames.slice(0, maxSize);
-        const key = `${groupName}-${selected.join('+')}`;
-        const current = systemData.pairRows.get(key) || { groupName, names: selected, minutes: 0 };
-        current.minutes += initialSegmentMinutes;
+      matchIntervals.filter((interval) => interval.isComplete).forEach((interval) => {
+        const systemData = bySystem.get(interval.system) || { system: interval.system, slots: new Map(), pairRows: new Map(), segmentMinutes: 0 };
+        systemData.segmentMinutes += interval.minutes;
+        bySystem.set(interval.system, systemData);
+      });
+      buildTacticalCombinationsFromIntervals({
+        intervals: matchIntervals,
+        resolveSlot,
+        getSlotsForSystem: getIdealFormationSlots,
+      }).forEach((combination) => {
+        const systemData = bySystem.get(combination.system) || { system: combination.system, slots: new Map(), pairRows: new Map(), segmentMinutes: 0 };
+        const key = `${combination.groupName}-${combination.playerIds.join('+') || combination.names.join('+')}`;
+        const current = systemData.pairRows.get(key) || { ...combination, minutes: 0 };
+        current.minutes += combination.minutes;
         systemData.pairRows.set(key, current);
-      };
-      addGroup('Pareja de centrales', (slot) => slot.id.startsWith('DFC'), 2, 2);
-      addGroup('Doble pivote', (slot) => slot.id.startsWith('MCD') || slot.id.startsWith('MC'), 2, 2);
-      addGroup('Pareja de delanteros', (slot) => slot.id.startsWith('DC'), 2, 2);
-      addGroup('Trío de centrales', (slot) => slot.id.startsWith('DFC'), 3, 3);
-      addGroup('Trío de centrocampistas', (slot) => slot.line === 'medio', 3, 3);
-      addGroup('Tridente ofensivo', (slot) => slot.line === 'ataque' || slot.id.startsWith('MP') || slot.id.startsWith('ED') || slot.id.startsWith('EI'), 3, 3);
-      bySystem.set(initialSystem, systemData);
+        bySystem.set(combination.system, systemData);
+      });
     });
-    return { bySystem, evidence, coverage };
+    return { bySystem, evidence, intervals, invariantReports, coverage };
   };
 
   const buildMostUsedXI = (system, tacticalAggregation) => buildMostUsedXiFromEvidence({
@@ -21082,38 +21123,38 @@ function App() {
       return <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">No hay slots reales registrados para este sistema en la muestra.</p>;
     }
     return (
-      <div className="space-y-5">
-        <div className="mx-auto w-full max-w-[min(100%,38rem)] overflow-hidden">
-          <div className="relative mx-auto aspect-[7/8.9] w-full overflow-hidden rounded-2xl border border-white/20 bg-[#102616] shadow-inner sm:rounded-3xl">
+      <div className="space-y-3">
+        <div className="mx-auto w-full max-w-[min(100%,29rem)] overflow-hidden">
+          <div className="relative mx-auto aspect-[7/8.35] w-full overflow-hidden rounded-2xl border border-white/20 bg-[#102616] shadow-inner sm:rounded-3xl">
             <div className="absolute inset-3 rounded-2xl border-2 border-white/55 sm:inset-4 sm:rounded-[28px]" />
             <div className="absolute left-3 right-3 top-1/2 h-px bg-white/35 sm:left-4 sm:right-4" />
-            <div className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/35 sm:h-32 sm:w-32" />
-            <div className="absolute left-1/2 top-3 h-16 w-36 -translate-x-1/2 rounded-b-3xl border-x-2 border-b-2 border-white/35 sm:top-4 sm:h-24 sm:w-56" />
-            <div className="absolute bottom-3 left-1/2 h-16 w-36 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/35 sm:bottom-4 sm:h-24 sm:w-56" />
+            <div className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/35 sm:h-24 sm:w-24" />
+            <div className="absolute left-1/2 top-3 h-16 w-36 -translate-x-1/2 rounded-b-3xl border-x-2 border-b-2 border-white/35 sm:top-4 sm:h-20 sm:w-44" />
+            <div className="absolute bottom-3 left-1/2 h-16 w-36 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/35 sm:bottom-4 sm:h-20 sm:w-44" />
             {xiData.assignments.map(({ slot, row }, index) => {
               const player = row?.player;
               const metric = row ? getMostUsedXiMetric(row) : null;
               const tooltip = row
                 ? `${displayPlayerName(player)} · ${slot.label} · ${metric.description} · ${row.matchesUsed} partido${row.matchesUsed === 1 ? '' : 's'} usado${row.matchesUsed === 1 ? '' : 's'} · Sistema ${xiData.system}${row.presencePercentage === null ? '' : ` · Presencia en partidos con foto de este sistema: ${row.presencePercentage}%`}`
-                : `${slot.label} · Sin datos posicionales en la muestra`;
+                : `${slot.label} · Sin información posicional en la muestra`;
               return (
-                <div key={`${slot.id}-${index}`} className="absolute flex w-20 -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center sm:w-24" style={{ left: `${slot.x}%`, top: `${slot.y}%` }} title={tooltip}>
-                  <div className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-caudal-electric/60 bg-caudal-950/80 text-[10px] font-black text-white sm:h-14 sm:w-14 sm:rounded-2xl sm:border-2">
+                <div key={`${slot.id}-${index}`} className="absolute flex w-16 -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center sm:w-20" style={{ left: `${slot.x}%`, top: `${slot.y}%` }} title={tooltip}>
+                  <div className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-caudal-electric/60 bg-caudal-950/80 text-[10px] font-black text-white sm:h-12 sm:w-12 sm:rounded-2xl sm:border-2">
                     <div className="h-full w-full overflow-hidden rounded-[inherit]">
                       {player?.name ? <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" /> : <span className="flex h-full w-full items-center justify-center text-slate-500">—</span>}
                     </div>
                     {metric ? <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-slate-950/30 bg-caudal-electric px-1 py-0.5 text-[6px] font-black leading-none text-slate-950 sm:text-[8px]" title={metric.description}>{metric.label}</span> : null}
                   </div>
                   <span className="mt-2 block w-full truncate rounded-lg bg-black/75 px-1 py-0.5 text-[7px] font-black leading-tight text-white sm:rounded-xl sm:px-1.5 sm:py-1 sm:text-[9px]">
-                    {player?.number ? `#${player.number} ` : ''}{player ? displayPlayerName(player) : `${slot.label} · Sin datos`}
+                    {player?.number ? `#${player.number} ` : ''}{player ? displayPlayerName(player) : 'Sin información'}
                   </span>
                 </div>
               );
             })}
           </div>
         </div>
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Alternativas por posición</p>
+        <details className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2">
+          <summary className="cursor-pointer text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Alternativas por posición</summary>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {xiData.assignments.filter((assignment) => assignment.row).map(({ slot, row }) => {
               const alternatives = xiData.alternatives?.[slot.id] || [];
@@ -21128,7 +21169,7 @@ function App() {
               );
             })}
           </div>
-        </div>
+        </details>
       </div>
     );
   };
@@ -30793,24 +30834,12 @@ function App() {
           const goalTypeRows = buildGroupGoalTypeRows(filteredOfficialGoals);
           const phaseFor = goalTypeRows.map((row) => ({ phase: row.context === 'Sin clasificar' ? 'Sin contexto registrado' : row.context, count: row.forCount }));
           const phaseAgainst = goalTypeRows.map((row) => ({ phase: row.context === 'Sin clasificar' ? 'Sin contexto registrado' : row.context, count: row.againstCount }));
-          const assistedGoalRows = goalForRows.filter(hasGoalAssistant);
-          const assistZoneCounts = countGroupGoalZones(assistedGoalRows, 'creationZone', normalizePitchZone);
-          const shotZoneForCounts = countGroupGoalZones(goalForRows, 'finishZone', normalizePitchZone);
-          const shotZoneAgainstCounts = countGroupGoalZones(goalAgainstRows, 'finishZone', normalizePitchZone);
-          const goalZoneForCounts = countGroupGoalZones(goalForRows, 'goalMouthZone', normalizeGoalMouthZone);
-          const goalZoneAgainstCounts = countGroupGoalZones(goalAgainstRows, 'goalMouthZone', normalizeGoalMouthZone);
+          const assistMapModel = buildGroupGoalMapModel({ goals: filteredOfficialGoals, side: groupGoalMapSide, field: 'creationZone', normalize: normalizePitchZone });
+          const finishMapModel = buildGroupGoalMapModel({ goals: filteredOfficialGoals, side: groupGoalMapSide, field: 'finishZone', normalize: normalizePitchZone });
+          const goalMouthMapModel = buildGroupGoalMapModel({ goals: filteredOfficialGoals, side: groupGoalMapSide, field: 'goalMouthZone', normalize: normalizeGoalMouthZone });
           const abpFor = buildGroupSetPieceSummary(goalForRows);
           const abpAgainst = buildGroupSetPieceSummary(goalAgainstRows);
           const goalCoverage = buildGroupGoalCoverage(filteredOfficialGoals);
-          const missingAssistCount = goalForRows.filter((goal) => !hasGoalAssistant(goal)).length;
-          const assistedWithoutZoneCount = assistedGoalRows.filter((goal) => !goal.creationZone).length;
-          const missingFinishZoneForCount = goalForRows.filter((goal) => !goal.finishZone).length;
-          const missingFinishZoneAgainstCount = goalAgainstRows.filter((goal) => !goal.finishZone).length;
-          const missingGoalZoneForCount = goalForRows.filter((goal) => !goal.goalMouthZone).length;
-          const missingGoalZoneAgainstCount = goalAgainstRows.filter((goal) => !goal.goalMouthZone).length;
-          const selectedFinishZoneCounts = groupFinishZoneSide === 'for' ? shotZoneForCounts : shotZoneAgainstCounts;
-          const selectedFinishGoals = groupFinishZoneSide === 'for' ? goalForRows : goalAgainstRows;
-          const selectedMissingFinishZones = groupFinishZoneSide === 'for' ? missingFinishZoneForCount : missingFinishZoneAgainstCount;
           const individualRankings = buildOfficialIndividualRankings(filteredOfficialGoals, scopedMatches);
           const connectionRows = buildGoalConnectionRows(filteredOfficialGoals);
           const localSummary = summarizeGroupMatches(scopedMatches.filter((match) => match.isHome));
@@ -31050,8 +31079,8 @@ function App() {
                   </div>
                 </section>
 
-                <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
-                  <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
+                <section className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
+                  <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-5 shadow-glow">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Once más utilizado</h3>
@@ -31063,14 +31092,14 @@ function App() {
                         Datos tácticos en {tacticalAggregation.coverage.tacticalMatches} de {tacticalAggregation.coverage.totalMatches} partidos
                       </span>
                     </div>
-                    <div className="mt-5">
+                    <div className="mt-4">
                       {seasonMostUsedXi ? renderMostUsedXiPitch(seasonMostUsedXi) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Aún no hay minutos tácticos suficientes para construir el once.</p>}
                     </div>
                     <p className="mt-4 text-xs font-semibold leading-5 text-slate-500">
-                      Criterio: sistema con más minutos reales; en empate, más partidos, más inicios y orden alfabético. Cada jugador se coloca por su slot real inicial y sus minutos registrados. Los cambios de sistema sin nueva alineación posicional no se reconstruyen ni mezclan.
+                      Criterio: sistema con más minutos exactos; en empate, más partidos, más inicios y orden alfabético. Cada snapshot completo permanece activo hasta el siguiente. Los tramos posteriores a un cambio sin snapshot completo se marcan como incompletos y no se reconstruyen.
                     </p>
                   </div>
-                  <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
+                  <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-5 shadow-glow">
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">{scopedMatches.length <= 1 ? 'Combinaciones utilizadas' : 'Combinaciones más utilizadas'}</h3>
                     <div className="mt-5 space-y-3">
                       {mostUsedPairs.length ? mostUsedPairs.map((row) => (
@@ -31214,36 +31243,41 @@ function App() {
                 <section className="grid gap-6 xl:grid-cols-3">
                   <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Origen de asistencias</h3>
-                    <div className="mt-5">
-                      {zoneTotal(assistZoneCounts) ? renderReadOnlyZoneGrid({ counts: assistZoneCounts }) : null}
-                      {assistedWithoutZoneCount ? <p className="mt-3 rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{assistedWithoutZoneCount} asistencia{assistedWithoutZoneCount === 1 ? '' : 's'} sin zona de origen registrada.</p> : null}
-                      {missingAssistCount ? <p className="mt-3 rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{missingAssistCount} gol{missingAssistCount === 1 ? '' : 'es'} sin asistencia.</p> : null}
-                      {!assistedGoalRows.length && !missingAssistCount ? <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Sin goles a favor registrados.</p> : null}
+                    <div className="mt-4 flex gap-2" role="tablist" aria-label="Sentido de la zona de origen">
+                      {[["for", "A favor"], ["against", "En contra"]].map(([value, label]) => (
+                        <button key={value} type="button" role="tab" aria-selected={groupGoalMapSide === value} onClick={() => setGroupGoalMapSide(value)} className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] ${groupGoalMapSide === value ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>{label}</button>
+                      ))}
+                    </div>
+                    <div className="mt-4">
+                      {assistMapModel.withZone ? renderReadOnlyZoneGrid({ counts: assistMapModel.counts }) : null}
+                      {assistMapModel.missing ? <p className="mt-3 rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Sin zona registrada: {assistMapModel.missing} gol{assistMapModel.missing === 1 ? '' : 'es'}.</p> : null}
+                      {!assistMapModel.total ? <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{groupGoalMapSide === 'for' ? 'No se registraron goles a favor.' : 'No se registraron goles en contra.'}</p> : null}
                     </div>
                   </div>
                   <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Zonas de finalización</h3>
                     <div className="mt-4 flex gap-2" role="tablist" aria-label="Sentido de las zonas de finalización">
-                      {[
-                        ['for', 'A favor'],
-                        ['against', 'En contra'],
-                      ].map(([value, label]) => (
-                        <button key={value} type="button" role="tab" aria-selected={groupFinishZoneSide === value} onClick={() => setGroupFinishZoneSide(value)} className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] ${groupFinishZoneSide === value ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>{label}</button>
+                      {[["for", "A favor"], ["against", "En contra"]].map(([value, label]) => (
+                        <button key={value} type="button" role="tab" aria-selected={groupGoalMapSide === value} onClick={() => setGroupGoalMapSide(value)} className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] ${groupGoalMapSide === value ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>{label}</button>
                       ))}
                     </div>
-                    <div className="mt-4">{zoneTotal(selectedFinishZoneCounts) ? renderReadOnlyZoneGrid({ counts: selectedFinishZoneCounts }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{selectedFinishGoals.length ? `${selectedMissingFinishZones} gol${selectedMissingFinishZones === 1 ? '' : 'es'} sin zona de finalización registrada.` : groupFinishZoneSide === 'for' ? 'No se registraron goles a favor.' : 'No se registraron goles en contra.'}</p>}</div>
+                    <div className="mt-4">
+                      {finishMapModel.withZone ? renderReadOnlyZoneGrid({ counts: finishMapModel.counts }) : null}
+                      {finishMapModel.missing ? <p className="mt-3 rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Sin zona registrada: {finishMapModel.missing} gol{finishMapModel.missing === 1 ? '' : 'es'}.</p> : null}
+                      {!finishMapModel.total ? <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{groupGoalMapSide === 'for' ? 'No se registraron goles a favor.' : 'No se registraron goles en contra.'}</p> : null}
+                    </div>
                   </div>
                   <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
                     <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Portería 3x3</h3>
-                    <div className="mt-5 space-y-5">
-                      <div>
-                        <p className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500">Goles marcados</p>
-                        {zoneTotal(goalZoneForCounts) ? renderReadOnlyZoneGrid({ counts: goalZoneForCounts, zones: goalZoneOptions, goal: true }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{goalForRows.length ? `${missingGoalZoneForCount} gol${missingGoalZoneForCount === 1 ? '' : 'es'} marcado${missingGoalZoneForCount === 1 ? '' : 's'} sin zona de portería registrada.` : 'No existen goles marcados registrados.'}</p>}
-                      </div>
-                      <div>
-                        <p className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500">Goles encajados</p>
-                        {zoneTotal(goalZoneAgainstCounts) ? renderReadOnlyZoneGrid({ counts: goalZoneAgainstCounts, zones: goalZoneOptions, goal: true }) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{goalAgainstRows.length ? `${missingGoalZoneAgainstCount} gol${missingGoalZoneAgainstCount === 1 ? '' : 'es'} encajado${missingGoalZoneAgainstCount === 1 ? '' : 's'} sin zona de portería registrada.` : 'No hemos encajado goles en los partidos filtrados.'}</p>}
-                      </div>
+                    <div className="mt-4 flex gap-2" role="tablist" aria-label="Sentido de las zonas de portería">
+                      {[["for", "A favor"], ["against", "En contra"]].map(([value, label]) => (
+                        <button key={value} type="button" role="tab" aria-selected={groupGoalMapSide === value} onClick={() => setGroupGoalMapSide(value)} className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] ${groupGoalMapSide === value ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-300'}`}>{label}</button>
+                      ))}
+                    </div>
+                    <div className="mt-4">
+                      {goalMouthMapModel.withZone ? renderReadOnlyZoneGrid({ counts: goalMouthMapModel.counts, zones: goalZoneOptions, goal: true }) : null}
+                      {goalMouthMapModel.missing ? <p className="mt-3 rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Sin información · Sin zona registrada: {goalMouthMapModel.missing} gol{goalMouthMapModel.missing === 1 ? '' : 'es'}.</p> : null}
+                      {!goalMouthMapModel.total ? <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">{groupGoalMapSide === 'for' ? 'No se registraron goles a favor.' : 'No se registraron goles en contra.'}</p> : null}
                     </div>
                   </div>
                   {setPieceBlock('ABP ofensiva', abpFor)}
