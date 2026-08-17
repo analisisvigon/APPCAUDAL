@@ -68,6 +68,13 @@ import {
   splitGroupGoals,
 } from './utils/groupAnalysisStats';
 import {
+  buildInitialSlotEvidence,
+  buildMostUsedXiFromEvidence,
+  compareSystemUsageRows,
+  getMostUsedXiMetric,
+  resolveStoredTacticalSlot,
+} from './utils/groupMostUsedXI';
+import {
   buildPerformanceObservationsByPlayer,
   getPerformanceObservationView,
   hasPhysicalPerformanceObservation,
@@ -2682,8 +2689,9 @@ const normalizeIdealSlotId = ({ system, role, slotIndex, targetSlots = getIdealF
 
 const getIdealSlotForStoredSlot = (system, slotIndex, role) => {
   const targetSlots = getIdealFormationSlots(system);
+  const storedSlot = getFormationSlots(system)[slotIndex];
   const normalizedId = normalizeIdealSlotId({ system, role, slotIndex, targetSlots });
-  return targetSlots.find((slot) => slot.id === normalizedId) || targetSlots[slotIndex] || null;
+  return resolveStoredTacticalSlot({ storedSlot, targetSlots, normalizedId, slotIndex });
 };
 
 const getSystemProfile = (system) => {
@@ -20153,7 +20161,7 @@ function App() {
         played: row.matches.size,
         balance: row.goalsFor - row.goalsAgainst,
       }))
-      .sort((a, b) => b.minutes - a.minutes || b.played - a.played || a.system.localeCompare(b.system));
+      .sort(compareSystemUsageRows);
   };
 
   const getMatchSnapshotForSystem = (match = {}, system = '') => {
@@ -20165,95 +20173,103 @@ function App() {
     return { hasSnapshot: true, system, slots, source: source.scope };
   };
 
-  const getPlayerPresenceIntervalsForSlot = (match = {}, playerName = '', slotIndex = 0, duration = getMatchDurationMinutes(match)) => {
-    const stored = safeObject(match.statsPlayerData?.[playerName]);
-    const starterMinutes = hasRealValue(stored.minutes) ? Number(stored.minutes || 0) : duration;
-    const intervals = [{ playerName, fromMinute: 0, toMinute: Math.max(0, Math.min(duration, starterMinutes)), starts: 1 }];
-    if (stored.replacementName && starterMinutes > 0 && starterMinutes < duration) {
-      intervals.push({ playerName: stored.replacementName, fromMinute: starterMinutes, toMinute: duration, starts: 0 });
-    }
-    return intervals.filter((interval) => interval.playerName && interval.toMinute > interval.fromMinute);
-  };
-
   const buildTacticalSlotMinutes = (scopedMatches = []) => {
     const bySystem = new Map();
-    const coverage = { totalMatches: safeArray(scopedMatches).length, tacticalMatches: 0, missingSegments: 0, missingMinutes: 0 };
+    const evidence = [];
+    const coverage = {
+      totalMatches: safeArray(scopedMatches).length,
+      tacticalMatches: 0,
+      missingSegments: 0,
+      missingMinutes: 0,
+      playersWithoutMinutes: 0,
+    };
     safeArray(scopedMatches).forEach((match) => {
       const duration = getMatchDurationMinutes(match);
       const sequence = buildGroupSystemSequence(match);
-      let matchHasSnapshot = false;
-      sequence.forEach((segment) => {
-        const snapshot = getMatchSnapshotForSystem(match, segment.system);
-        if (!snapshot.hasSnapshot) {
+      const initialSystem = getGroupStatsSystem(match);
+      const snapshot = getMatchSnapshotForSystem(match, initialSystem);
+      if (!snapshot.hasSnapshot) {
+        sequence.forEach((segment) => {
           coverage.missingSegments += 1;
           coverage.missingMinutes += segment.minutes;
-          return;
-        }
-        matchHasSnapshot = true;
-        const systemData = bySystem.get(segment.system) || { system: segment.system, slots: new Map(), pairRows: new Map(), segmentMinutes: 0 };
-        systemData.segmentMinutes += segment.minutes;
-        const slotPlayers = [];
-        safeArray(snapshot.slots).forEach((slotRow) => {
-          if (!slotRow?.playerName || !Number.isInteger(slotRow.slot)) return;
-          const role = getFormationRoles(segment.system)[slotRow.slot] || '';
-          const idealSlot = getIdealSlotForStoredSlot(segment.system, slotRow.slot, role);
-          if (!idealSlot) return;
-          const slotData = systemData.slots.get(idealSlot.id) || { slot: idealSlot, players: new Map() };
-          getPlayerPresenceIntervalsForSlot(match, slotRow.playerName, slotRow.slot, duration).forEach((presence) => {
-            const fromMinute = Math.max(segment.fromMinute, presence.fromMinute);
-            const toMinute = Math.min(segment.toMinute, presence.toMinute);
-            const minutes = Math.max(0, toMinute - fromMinute);
-            if (!minutes) return;
-            const player = players.find((item) => normalizePlayerIdentityName(item.name) === normalizePlayerIdentityName(presence.playerName)) || { name: presence.playerName };
-            const row = slotData.players.get(presence.playerName) || { player, playerName: presence.playerName, minutes: 0, starts: 0, appearances: 0 };
-            row.minutes += minutes;
-            row.starts += presence.starts && fromMinute === 0 ? 1 : 0;
-            row.appearances += 1;
-            slotData.players.set(presence.playerName, row);
-            slotPlayers.push({ slot: idealSlot, playerName: presence.playerName, minutes });
-          });
-          systemData.slots.set(idealSlot.id, slotData);
         });
-        const addGroup = (groupName, predicate, minSize = 2, maxSize = 3) => {
-          const names = slotPlayers.filter((entry) => predicate(entry.slot)).map((entry) => entry.playerName);
-          const uniqueNames = Array.from(new Set(names)).sort();
-          if (uniqueNames.length < minSize) return;
-          const selected = uniqueNames.slice(0, maxSize);
-          const key = `${groupName}-${selected.join('+')}`;
-          const current = systemData.pairRows.get(key) || { groupName, names: selected, minutes: 0 };
-          current.minutes += segment.minutes;
-          systemData.pairRows.set(key, current);
-        };
-        addGroup('Pareja de centrales', (slot) => slot.id.startsWith('DFC'), 2, 2);
-        addGroup('Doble pivote', (slot) => slot.id.startsWith('MCD') || slot.id.startsWith('MC'), 2, 2);
-        addGroup('Pareja de delanteros', (slot) => slot.id.startsWith('DC'), 2, 2);
-        addGroup('Trío de centrales', (slot) => slot.id.startsWith('DFC'), 3, 3);
-        addGroup('Trío de centrocampistas', (slot) => slot.line === 'medio', 3, 3);
-        addGroup('Tridente ofensivo', (slot) => slot.line === 'ataque' || slot.id.startsWith('MP') || slot.id.startsWith('ED') || slot.id.startsWith('EI'), 3, 3);
-        bySystem.set(segment.system, systemData);
+        return;
+      }
+      coverage.tacticalMatches += 1;
+      sequence.filter((segment) => segment.system !== initialSystem).forEach((segment) => {
+        coverage.missingSegments += 1;
+        coverage.missingMinutes += segment.minutes;
       });
-      if (matchHasSnapshot) coverage.tacticalMatches += 1;
+      const normalizedSlots = safeArray(snapshot.slots).flatMap((slotRow) => {
+        if (!slotRow?.playerName || !Number.isInteger(slotRow.slot)) return [];
+        const role = getFormationRoles(initialSystem)[slotRow.slot] || '';
+        const tacticalSlot = getIdealSlotForStoredSlot(initialSystem, slotRow.slot, role);
+        return tacticalSlot ? [{ ...slotRow, playerId: slotRow.jugadorId, tacticalSlot }] : [];
+      });
+      const matchEvidence = buildInitialSlotEvidence({
+        matchId: match.id,
+        system: initialSystem,
+        duration,
+        slots: normalizedSlots,
+        playerStats: safeObject(match.statsPlayerData),
+        resolvePlayer: ({ playerName, playerId }) => players.find((item) => (
+          (playerId && String(item.id) === String(playerId))
+          || normalizePlayerIdentityName(item.name) === normalizePlayerIdentityName(playerName)
+        )) || { id: playerId || '', name: playerName },
+      });
+      evidence.push(...matchEvidence);
+      coverage.playersWithoutMinutes += matchEvidence.filter((row) => row.starts && !row.minutesKnown).length;
+
+      const systemData = bySystem.get(initialSystem) || { system: initialSystem, slots: new Map(), pairRows: new Map(), segmentMinutes: 0 };
+      const initialSegmentMinutes = sequence.find((segment) => segment.system === initialSystem)?.minutes || 0;
+      systemData.segmentMinutes += initialSegmentMinutes;
+      matchEvidence.forEach((presence) => {
+        const slotData = systemData.slots.get(presence.slot.id) || { slot: presence.slot, players: new Map() };
+        const row = slotData.players.get(presence.playerKey) || {
+          player: presence.player,
+          playerName: presence.playerName,
+          playerKey: presence.playerKey,
+          minutes: 0,
+          minutesKnown: false,
+          starts: 0,
+          appearances: 0,
+        };
+        if (presence.minutesKnown) {
+          row.minutes += Number(presence.minutes || 0);
+          row.minutesKnown = true;
+        }
+        row.starts += Number(presence.starts || 0);
+        row.appearances += 1;
+        slotData.players.set(presence.playerKey, row);
+        systemData.slots.set(presence.slot.id, slotData);
+      });
+      const starterSlots = matchEvidence.filter((row) => row.starts).map((row) => ({ slot: row.slot, playerName: row.playerName }));
+      const addGroup = (groupName, predicate, minSize = 2, maxSize = 3) => {
+        const names = starterSlots.filter((entry) => predicate(entry.slot)).map((entry) => entry.playerName);
+        const uniqueNames = Array.from(new Set(names)).sort();
+        if (uniqueNames.length < minSize) return;
+        const selected = uniqueNames.slice(0, maxSize);
+        const key = `${groupName}-${selected.join('+')}`;
+        const current = systemData.pairRows.get(key) || { groupName, names: selected, minutes: 0 };
+        current.minutes += initialSegmentMinutes;
+        systemData.pairRows.set(key, current);
+      };
+      addGroup('Pareja de centrales', (slot) => slot.id.startsWith('DFC'), 2, 2);
+      addGroup('Doble pivote', (slot) => slot.id.startsWith('MCD') || slot.id.startsWith('MC'), 2, 2);
+      addGroup('Pareja de delanteros', (slot) => slot.id.startsWith('DC'), 2, 2);
+      addGroup('Trío de centrales', (slot) => slot.id.startsWith('DFC'), 3, 3);
+      addGroup('Trío de centrocampistas', (slot) => slot.line === 'medio', 3, 3);
+      addGroup('Tridente ofensivo', (slot) => slot.line === 'ataque' || slot.id.startsWith('MP') || slot.id.startsWith('ED') || slot.id.startsWith('EI'), 3, 3);
+      bySystem.set(initialSystem, systemData);
     });
-    return { bySystem, coverage };
+    return { bySystem, evidence, coverage };
   };
 
-  const buildMostUsedXI = (system, tacticalAggregation) => {
-    const systemData = tacticalAggregation?.bySystem?.get(system);
-    if (!systemData) return { system, assignments: [], alternatives: {}, hasData: false };
-    const usedPlayers = new Set();
-    const alternatives = {};
-    const slots = getIdealFormationSlots(system);
-    const assignments = slots.map((slot) => {
-      const slotData = systemData.slots.get(slot.id);
-      const candidates = Array.from(slotData?.players?.values?.() || [])
-        .sort((a, b) => b.minutes - a.minutes || b.starts - a.starts || b.appearances - a.appearances || a.playerName.localeCompare(b.playerName));
-      const selected = candidates.find((candidate) => !usedPlayers.has(candidate.playerName)) || null;
-      if (selected) usedPlayers.add(selected.playerName);
-      alternatives[slot.id] = candidates.filter((candidate) => candidate.playerName !== selected?.playerName).slice(0, 2);
-      return { slot, row: selected, candidates };
-    });
-    return { system, assignments, alternatives, hasData: assignments.some((assignment) => assignment.row) };
-  };
+  const buildMostUsedXI = (system, tacticalAggregation) => buildMostUsedXiFromEvidence({
+    system,
+    slots: getIdealFormationSlots(system),
+    evidence: safeArray(tacticalAggregation?.evidence),
+  });
 
   const buildMostUsedPairs = (tacticalAggregation) =>
     Array.from(tacticalAggregation?.bySystem?.values?.() || [])
@@ -21063,7 +21079,7 @@ function App() {
 
   const renderMostUsedXiPitch = (xiData) => {
     if (!xiData?.hasData) {
-      return <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Aún no hay minutos tácticos suficientes para construir el once.</p>;
+      return <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">No hay slots reales registrados para este sistema en la muestra.</p>;
     }
     return (
       <div className="space-y-5">
@@ -21076,16 +21092,20 @@ function App() {
             <div className="absolute bottom-3 left-1/2 h-16 w-36 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/35 sm:bottom-4 sm:h-24 sm:w-56" />
             {xiData.assignments.map(({ slot, row }, index) => {
               const player = row?.player;
+              const metric = row ? getMostUsedXiMetric(row) : null;
+              const tooltip = row
+                ? `${displayPlayerName(player)} · ${slot.label} · ${metric.description} · ${row.matchesUsed} partido${row.matchesUsed === 1 ? '' : 's'} usado${row.matchesUsed === 1 ? '' : 's'} · Sistema ${xiData.system}${row.presencePercentage === null ? '' : ` · Presencia en partidos con foto de este sistema: ${row.presencePercentage}%`}`
+                : `${slot.label} · Sin datos posicionales en la muestra`;
               return (
-                <div key={`${slot.id}-${index}`} className="absolute flex w-16 -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center sm:w-20" style={{ left: `${slot.x}%`, top: `${slot.y}%` }}>
+                <div key={`${slot.id}-${index}`} className="absolute flex w-20 -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center sm:w-24" style={{ left: `${slot.x}%`, top: `${slot.y}%` }} title={tooltip}>
                   <div className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-caudal-electric/60 bg-caudal-950/80 text-[10px] font-black text-white sm:h-14 sm:w-14 sm:rounded-2xl sm:border-2">
                     <div className="h-full w-full overflow-hidden rounded-[inherit]">
-                      {player?.name ? <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" /> : index + 1}
+                      {player?.name ? <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" /> : <span className="flex h-full w-full items-center justify-center text-slate-500">—</span>}
                     </div>
-                    {row?.minutes ? <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-slate-950/30 bg-caudal-electric px-1 py-0.5 text-[6px] font-black leading-none text-slate-950 sm:text-[8px]" title={`${row.minutes} minutos`}>{row.minutes}'</span> : null}
+                    {metric ? <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-slate-950/30 bg-caudal-electric px-1 py-0.5 text-[6px] font-black leading-none text-slate-950 sm:text-[8px]" title={metric.description}>{metric.label}</span> : null}
                   </div>
-                  <span className="mt-2 block w-full truncate rounded-lg bg-black/75 px-1 py-0.5 text-[7px] font-black leading-tight text-white sm:rounded-xl sm:px-1.5 sm:py-1 sm:text-[9px]" title={player ? `${player.number ? `#${player.number} ` : ''}${displayPlayerName(player)}` : slot.label}>
-                    {player?.number ? `#${player.number} ` : ''}{player ? displayPlayerName(player) : slot.label}
+                  <span className="mt-2 block w-full truncate rounded-lg bg-black/75 px-1 py-0.5 text-[7px] font-black leading-tight text-white sm:rounded-xl sm:px-1.5 sm:py-1 sm:text-[9px]">
+                    {player?.number ? `#${player.number} ` : ''}{player ? displayPlayerName(player) : `${slot.label} · Sin datos`}
                   </span>
                 </div>
               );
@@ -21097,11 +21117,13 @@ function App() {
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {xiData.assignments.filter((assignment) => assignment.row).map(({ slot, row }) => {
               const alternatives = xiData.alternatives?.[slot.id] || [];
+              const metric = getMostUsedXiMetric(row);
+              const alternativeMetric = alternatives[0] ? getMostUsedXiMetric(alternatives[0]) : null;
               return (
                 <div key={`alt-${slot.id}`} className="min-w-0 rounded-2xl bg-white/5 px-3 py-2.5">
                   <p className="text-[10px] font-black uppercase tracking-[0.12em] text-white">{slot.label}</p>
-                  <p className="mt-1 truncate text-xs font-bold text-caudal-electric">{displayPlayerName(row.player)} · {row.minutes}'</p>
-                  {alternatives[0] ? <p className="mt-1 truncate text-[11px] font-semibold text-slate-400">Alt. {displayPlayerName(alternatives[0].player)} · {alternatives[0].minutes}'</p> : null}
+                  <p className="mt-1 truncate text-xs font-bold text-caudal-electric">{displayPlayerName(row.player)} · {metric.label}</p>
+                  {alternatives[0] ? <p className="mt-1 truncate text-[11px] font-semibold text-slate-400">Alt. {displayPlayerName(alternatives[0].player)} · {alternativeMetric.label}</p> : null}
                 </div>
               );
             })}
@@ -30807,19 +30829,25 @@ function App() {
                 system: systemData.system,
                 slotLabel: slotData.slot.label,
                 minutes: row.minutes,
+                minutesKnown: row.minutesKnown,
+                appearances: row.appearances,
               }))
             )
           ).reduce((acc, row) => {
-            const current = acc.get(row.playerName) || { playerName: row.playerName, player: row.player, total: 0, slots: [] };
-            current.total += row.minutes;
+            const current = acc.get(row.playerName) || { playerName: row.playerName, player: row.player, total: 0, appearances: 0, minutesKnown: false, slots: [] };
+            if (row.minutesKnown) {
+              current.total += row.minutes;
+              current.minutesKnown = true;
+            }
+            current.appearances += row.appearances;
             current.slots.push(row);
             acc.set(row.playerName, current);
             return acc;
           }, new Map());
           const playerSlotBreakdownRows = Array.from(playerSlotBreakdown.values())
-            .map((row) => ({ ...row, slots: row.slots.sort((a, b) => b.minutes - a.minutes) }))
+            .map((row) => ({ ...row, slots: row.slots.sort((a, b) => b.minutes - a.minutes || b.appearances - a.appearances) }))
             .filter((row) => row.slots.length > 1)
-            .sort((a, b) => b.total - a.total)
+            .sort((a, b) => b.total - a.total || b.appearances - a.appearances || a.playerName.localeCompare(b.playerName, 'es'))
             .slice(0, 5);
           const maxMinutesRow = systemRows[0] || null;
           const maxInitialRow = systemRows.slice().sort((a, b) => b.initialStarts - a.initialStarts || b.minutes - a.minutes)[0] || null;
@@ -31039,7 +31067,7 @@ function App() {
                       {seasonMostUsedXi ? renderMostUsedXiPitch(seasonMostUsedXi) : <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">Aún no hay minutos tácticos suficientes para construir el once.</p>}
                     </div>
                     <p className="mt-4 text-xs font-semibold leading-5 text-slate-500">
-                      Convención: el sistema nuevo empieza en el minuto registrado; el anterior termina justo antes. Si un tramo no tiene disposición táctica registrada, suma minutos al sistema pero no al once por slot.
+                      Criterio: sistema con más minutos reales; en empate, más partidos, más inicios y orden alfabético. Cada jugador se coloca por su slot real inicial y sus minutos registrados. Los cambios de sistema sin nueva alineación posicional no se reconstruyen ni mezclan.
                     </p>
                   </div>
                   <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-6 shadow-glow">
@@ -31058,11 +31086,11 @@ function App() {
                       <div className="mt-3 space-y-3">
                         {playerSlotBreakdownRows.map((row) => (
                           <div key={`breakdown-${row.playerName}`} className="rounded-2xl bg-white/5 px-4 py-3">
-                            <PlayerIdentity player={row.player} name={row.playerName} meta={`${row.total} min tácticos`} size="sm" />
+                            <PlayerIdentity player={row.player} name={row.playerName} meta={row.minutesKnown ? `${row.total} min en slots reales` : `${row.appearances} apariciones · minutos sin registrar`} size="sm" />
                             <div className="mt-2 space-y-1">
                               {row.slots.slice(0, 3).map((slot) => (
                                 <p key={`${row.playerName}-${slot.system}-${slot.slotLabel}`} className="text-xs font-semibold text-slate-400">
-                                  {slot.slotLabel} · {slot.system} · {slot.minutes} min
+                                  {slot.slotLabel} · {slot.system} · {slot.minutesKnown ? `${slot.minutes} min` : `${slot.appearances} PJ`}
                                 </p>
                               ))}
                             </div>
@@ -31293,7 +31321,7 @@ function App() {
                       )) : <p className="rounded-2xl bg-white/5 p-4 text-sm text-slate-400">Sin sistemas registrados.</p>}
                       {tacticalAggregation.coverage.missingMinutes > 0 ? (
                         <p className="rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-xs font-bold text-amber-100">
-                          Minutos sin disposición táctica registrada: {tacticalAggregation.coverage.missingMinutes}. Se cuentan para el sistema, pero no para el once por posición.
+                          Cambios de sistema sin nueva foto posicional: {tacticalAggregation.coverage.missingMinutes} min. Se contabilizan para el sistema, pero no se inventan nuevos slots para los jugadores.
                         </p>
                       ) : null}
                       {systemSequences.length ? (

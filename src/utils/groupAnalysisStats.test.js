@@ -134,7 +134,11 @@ assert.match(appSource, /sm:grid-cols-2/, 'alternativas disponen de dos columnas
 assert.match(appSource, /getMatchLineupSource\(match, \{ statsOnly: true \}\)/, 'el once grupal no usa alineaciones PRE');
 assert.match(appSource, /buildGroupSystemSequence/, 'los sistemas del análisis usan la secuencia real de ESTADÍSTICAS');
 assert.match(appSource, /absolute -bottom-1\.5/, 'los minutos están anclados a la foto y no compiten con el nombre');
-assert.match(appSource, /w-16.*sm:w-20/, 'los marcadores tienen una anchura acotada y responsive');
+assert.match(appSource, /w-20.*sm:w-24/, 'los marcadores dan más espacio al nombre sin romper el campo responsive');
+assert.match(appSource, /buildInitialSlotEvidence/, 'el once usa evidencia del slot real inicial');
+assert.match(appSource, /getMostUsedXiMetric/, 'el badge distingue minutos reales de apariciones sin minutos');
+assert.match(appSource, /resolveStoredTacticalSlot/, 'la posición persistida se cruza por sus coordenadas reales antes que por etiquetas genéricas');
+assert.doesNotMatch(appSource, /starterMinutes = hasRealValue\(stored\.minutes\) \? Number\(stored\.minutes \|\| 0\) : duration/, 'no inventa la duración completa cuando faltan minutos');
 assert.doesNotMatch(appSource, /partidos en la muestra filtrada\./, 'se eliminan las frases que repiten PJ');
 assert.doesNotMatch(appSource, /El equipo ha marcado .*muestra filtrada/, 'se eliminan las frases que repiten GF');
 assert.doesNotMatch(appSource, /Goles analizados/);
