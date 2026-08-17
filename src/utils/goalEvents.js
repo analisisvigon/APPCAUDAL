@@ -120,4 +120,65 @@ export const createGoalParticipantDbFields = (event = {}) => {
   };
 };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const getStablePlayerIds = (player = {}) => [
+  player.id,
+  player.jugadorRivalId,
+  player.jugador_rival_id,
+  player.globalPlayerId,
+  player.global_player_id,
+  player.membershipId,
+  player.membership_id,
+  player.legacyId,
+  player.legacy_id,
+].map((value) => String(value || '').trim()).filter(Boolean);
+
+export const getGoalTimelineParticipantName = (
+  event = {},
+  role,
+  players = [],
+  formatPlayerName = (player) => player?.name
+) => {
+  const participant = role === 'assistant' ? getGoalAssistant(event) : getGoalScorer(event);
+  const participantId = String(participant.id || '').trim();
+  const linkedPlayer = participantId
+    ? (Array.isArray(players) ? players : [])
+      .find((player) => getStablePlayerIds(player).includes(participantId))
+    : null;
+  if (linkedPlayer) {
+    const visibleName = String(formatPlayerName(linkedPlayer) || linkedPlayer.name || '').trim();
+    if (visibleName && !UUID_PATTERN.test(visibleName)) return visibleName;
+  }
+  const storedName = String(participant.name || '').trim();
+  return storedName && !UUID_PATTERN.test(storedName) ? storedName : '';
+};
+
+export const buildRivalGoalTimelinePresentation = (
+  event = {},
+  {
+    teamName = 'Rival',
+    rivalPlayers = [],
+    formatPlayerName,
+  } = {}
+) => {
+  const visibleTeamName = String(teamName || '').trim() || 'Rival';
+  const scorerName = getGoalTimelineParticipantName(
+    event,
+    'scorer',
+    rivalPlayers,
+    formatPlayerName
+  );
+  const assistantName = getGoalTimelineParticipantName(
+    event,
+    'assistant',
+    rivalPlayers,
+    formatPlayerName
+  );
+  return {
+    label: scorerName ? `${scorerName} · ${visibleTeamName}` : visibleTeamName,
+    assist: assistantName,
+  };
+};
+
 export const normalizeGoalParticipantName = normalizeIdentityText;

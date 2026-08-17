@@ -95,6 +95,7 @@ import {
 import {
   GOAL_ASSISTANCE_SELECT_VALUE,
   GOAL_ASSISTANCE_STATUS,
+  buildRivalGoalTimelinePresentation,
   createGoalAssistantDraftPatch,
   createGoalParticipantDbFields,
   getGoalAssistant,
@@ -31487,11 +31488,19 @@ function App() {
                       if (diffDays === 0) return 'MD';
                       return `MD+${Math.abs(diffDays)}`;
                     };
+                    const matchRivalTeam = teams.find((team) => team.id === match.equipoRivalId)
+                      || findTeamByDisplayName(teams, match.opponent || '');
+                    const matchRivalPlayers = dedupeRivalPlayers(matchRivalTeam?.squad || []);
                     const matchEventRows = sortMatchEventsChronologically([
                       ...statsEvents.map((event) => {
                         const isGoalFor = event.type === 'Gol a favor';
                         const meta = getMatchEventMeta(isGoalFor ? 'goal_for' : 'goal_against', event);
                         const minuteData = parseMatchEventMinute(event.minute);
+                        const rivalGoalPresentation = isGoalFor ? null : buildRivalGoalTimelinePresentation(event, {
+                          teamName: match.opponent || 'Rival',
+                          rivalPlayers: matchRivalPlayers,
+                          formatPlayerName: displayPlayerName,
+                        });
                         return {
                           id: event.id || `goal-${event.minute || 'no-minute'}-${event.scorer || event.type}`,
                           key: isGoalFor ? 'goal_for' : 'goal_against',
@@ -31504,9 +31513,13 @@ function App() {
                           priority: 1,
                           icon: meta.badgeIcon,
                           side: isGoalFor ? 'caudal' : 'rival',
-                          label: isGoalFor ? getReferencedPlayerDisplayName(event.scorerId, event.scorer, 'Caudal') : (match.opponent || 'Rival'),
+                          label: isGoalFor
+                            ? getReferencedPlayerDisplayName(event.scorerId, event.scorer, 'Caudal')
+                            : rivalGoalPresentation.label,
                           typeLabel: meta.label,
-                          assist: isGoalFor ? getReferencedPlayerDisplayName(event.assistantId, event.assistant, '') : '',
+                          assist: isGoalFor
+                            ? getReferencedPlayerDisplayName(event.assistantId, event.assistant, '')
+                            : rivalGoalPresentation.assist,
                         };
                       }),
                       ...Object.entries(match.statsPlayerData || {}).flatMap(([name, stats]) => [
