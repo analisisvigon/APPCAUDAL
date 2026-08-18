@@ -81,6 +81,15 @@ import {
   getHistoricalSubstitutionMinutes,
 } from './utils/tacticalSnapshots';
 import {
+  buildKnownOnFieldPlayers,
+  buildTacticalDispositionDraft,
+  getTacticalParticipantKey,
+  moveTacticalDispositionPlayer,
+  normalizeTacticalParticipant,
+  tacticalSnapshotMatchesDisposition,
+  validateTacticalDisposition,
+} from './utils/tacticalDispositionEditor';
+import {
   buildPerformanceObservationsByPlayer,
   getPerformanceObservationView,
   hasPhysicalPerformanceObservation,
@@ -2624,6 +2633,14 @@ const getIdealFormationSlots = (system) => idealFormationSlots[system] || getFor
   y: slot.y,
 }));
 
+// Los snapshots persisten system + slot. Este catálogo canónico traduce cada slot
+// persistido a coordenadas sin reinterpretarlo mediante la posición del jugador.
+const getTacticalSnapshotFormationSlots = (system) => getIdealFormationSlots(system).map((slot, index) => ({
+  ...slot,
+  slot: index,
+  role: slot.label,
+}));
+
 const normalizeIdealSlotId = ({ system, role, slotIndex, targetSlots = getIdealFormationSlots(system) }) => {
   const value = stripAccents(role).toLowerCase();
   const byIndex = targetSlots[slotIndex];
@@ -2652,7 +2669,7 @@ const normalizeIdealSlotId = ({ system, role, slotIndex, targetSlots = getIdealF
 
 const getIdealSlotForStoredSlot = (system, slotIndex, role) => {
   const targetSlots = getIdealFormationSlots(system);
-  const storedSlot = getFormationSlots(system)[slotIndex];
+  const storedSlot = getTacticalSnapshotFormationSlots(system)[slotIndex];
   const normalizedId = normalizeIdealSlotId({ system, role, slotIndex, targetSlots });
   return resolveStoredTacticalSlot({ storedSlot, targetSlots, normalizedId, slotIndex });
 };
@@ -5685,6 +5702,7 @@ function App() {
   const [playerInfluenceFilter, setPlayerInfluenceFilter] = useState('Todos');
   const [selectedTimelineAction, setSelectedTimelineAction] = useState(null);
   const [selectedSystemMoment, setSelectedSystemMoment] = useState(null);
+  const [tacticalDispositionEditor, setTacticalDispositionEditor] = useState(null);
   const [playerReport, setPlayerReport] = useState(null);
   const [rivalScoutingDrafts, setRivalScoutingDrafts] = useState(() => {
     try {
@@ -5968,6 +5986,7 @@ function App() {
     }
     setStatsLineupHistoryModalOpen(false);
     setPendingHistoricalLineup(null);
+    setTacticalDispositionEditor(null);
   }, [selectedMatchId]);
 
   useEffect(() => {
@@ -17627,9 +17646,9 @@ function App() {
     );
   };
 
-  const getMatchTacticalHistory = (match = {}) => {
+  const getMatchInitialTacticalSlots = (match = {}) => {
     const storedInitialSlots = safeArray(match.lineupSlots?.stats);
-    const initialSlots = (storedInitialSlots.length ? storedInitialSlots : safeArray(match.statsLineup).map((playerName, slot) => ({
+    return (storedInitialSlots.length ? storedInitialSlots : safeArray(match.statsLineup).map((playerName, slot) => ({
       slot,
       playerName,
       jugadorId: safeObject(match.statsPlayerData?.[playerName]).jugadorId || '',
@@ -17641,6 +17660,10 @@ function App() {
         ? [{ slot: slotIndex, playerName, playerId }]
         : [];
     });
+  };
+
+  const getMatchTacticalHistory = (match = {}) => {
+    const initialSlots = getMatchInitialTacticalSlots(match);
     return buildTacticalMatchHistory({
       matchId: match.id || '',
       duration: getMatchDurationMinutes(match),
@@ -17650,6 +17673,134 @@ function App() {
       systemEvents: safeArray(match.systemEvents),
       substitutionMinutes: getHistoricalSubstitutionMinutes(safeObject(match.statsPlayerData)),
     });
+  };
+
+  const enrichTacticalParticipant = (row = {}) => {
+    const participant = normalizeTacticalParticipant(row);
+    const rosterPlayer = players.find((player) => (
+      (participant.playerId && String(player.id) === String(participant.playerId))
+      || (participant.playerName && normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(participant.playerName))
+    ));
+    return normalizeTacticalParticipant({
+      playerId: participant.playerId || rosterPlayer?.id || '',
+      playerName: participant.playerName || rosterPlayer?.name || '',
+    });
+  };
+
+  const getTacticalEditorPendingPlayers = (editor = tacticalDispositionEditor) => {
+    if (!editor) return [];
+    const placed = new Set(safeArray(editor.lineup).filter(Boolean).map(getTacticalParticipantKey));
+    return safeArray(editor.knownPlayers).filter((player) => !placed.has(getTacticalParticipantKey(player)));
+  };
+
+  const openTacticalDispositionEditor = ({ interval, history }) => {
+    if (!selectedMatch || !interval || statsLineupProposal?.matchId === selectedMatch.id) return;
+    const reconstructed = buildKnownOnFieldPlayers({
+      initialSlots: getMatchInitialTacticalSlots(selectedMatch),
+      playerStats: safeObject(selectedMatch.statsPlayerData),
+      atMinute: interval.fromMinute,
+    });
+    const persistedPlayers = interval.isComplete
+      ? safeArray(interval.slots).map(enrichTacticalParticipant).filter((player) => getTacticalParticipantKey(player))
+      : [];
+    const persistedKeys = persistedPlayers.map(getTacticalParticipantKey);
+    const knownPlayers = persistedPlayers.length === 11 && new Set(persistedKeys).size === 11
+      ? persistedPlayers
+      : reconstructed.players.map(enrichTacticalParticipant);
+    if ((!interval.isComplete && !reconstructed.valid) || knownPlayers.length !== 11 || new Set(knownPlayers.map(getTacticalParticipantKey)).size !== 11) {
+      const detail = reconstructed.errors.join(' ') || 'No se conocen con certeza los 11 jugadores de este intervalo.';
+      setStatsError(`No se puede registrar esta disposición: ${detail}`);
+      return;
+    }
+    const previousInterval = safeArray(history?.intervals)
+      .filter((candidate) => candidate.isComplete && candidate.fromMinute < interval.fromMinute)
+      .sort((left, right) => right.fromMinute - left.fromMinute)[0] || null;
+    const draft = buildTacticalDispositionDraft({ interval, previousInterval, knownPlayers });
+    setTacticalDispositionEditor({
+      matchId: selectedMatch.id,
+      intervalId: interval.id,
+      minute: interval.fromMinute,
+      toMinute: interval.toMinute,
+      period: interval.period || (interval.fromMinute <= 45 ? '1ª parte' : '2ª parte'),
+      system: interval.system,
+      reason: interval.reason || '',
+      sourceSystemEventId: interval.sourceSystemEventId || '',
+      knownPlayers,
+      lineup: draft.lineup,
+      saving: false,
+      error: '',
+    });
+    setDraggedPlayer(null);
+    setStatsError('');
+  };
+
+  const moveTacticalEditorPlayer = (player, targetSlot) => {
+    setTacticalDispositionEditor((current) => current ? {
+      ...current,
+      lineup: moveTacticalDispositionPlayer({ lineup: current.lineup, player, targetSlot }),
+      error: '',
+    } : current);
+    setDraggedPlayer(null);
+  };
+
+  const cancelTacticalDispositionEditor = () => {
+    setTacticalDispositionEditor(null);
+    setDraggedPlayer(null);
+  };
+
+  const saveTacticalDispositionEditor = async () => {
+    const editor = tacticalDispositionEditor;
+    if (!selectedMatch || !editor || editor.matchId !== selectedMatch.id || editor.saving) return;
+    const validation = validateTacticalDisposition({ lineup: editor.lineup, knownPlayers: editor.knownPlayers });
+    if (!validation.valid) {
+      setTacticalDispositionEditor((current) => current ? { ...current, error: validation.errors.join(' ') } : current);
+      return;
+    }
+    const persistedSlots = validation.slots.map((slot) => ({
+      ...slot,
+      playerId: isUuid(slot.playerId) ? slot.playerId : '',
+    }));
+    setTacticalDispositionEditor((current) => current ? { ...current, saving: true, error: '' } : current);
+    setStatsError('');
+    setStatsSaveStatus('Guardando disposición…');
+    try {
+      const { error: rpcError } = await supabase.rpc('save_match_tactical_snapshot', {
+        p_partido_id: editor.matchId,
+        p_minute: editor.minute,
+        p_period: editor.period,
+        p_system: editor.system,
+        p_reason: `Disposición registrada manualmente · ${editor.minute}'–${editor.toMinute}'`,
+        p_is_complete: true,
+        p_slots: persistedSlots.map((slot) => ({
+          slot: slot.slot,
+          jugador_id: slot.playerId || null,
+          player_name_snapshot: slot.playerName || null,
+        })),
+        p_source_system_event_id: editor.sourceSystemEventId || null,
+      });
+      if (rpcError) throw rpcError;
+      const refreshed = await loadMatchStatsData(editor.matchId);
+      const storedSnapshot = safeArray(refreshed?.tacticalSnapshots).find((snapshot) => Number(snapshot.minute) === Number(editor.minute));
+      if (!tacticalSnapshotMatchesDisposition({
+        snapshot: storedSnapshot,
+        matchId: editor.matchId,
+        minute: editor.minute,
+        system: editor.system,
+        slots: persistedSlots,
+      })) {
+        throw new Error('Supabase respondió, pero la relectura no confirmó los 11 jugadores en sus slots exactos.');
+      }
+      setTacticalDispositionEditor(null);
+      setSelectedSystemMoment({ minute: editor.minute, system: editor.system });
+      setStatsSaveStatus('Disposición guardada ✓');
+      window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Disposición guardada ✓' ? '' : current)), 2200);
+    } catch (saveError) {
+      console.error('Error guardando y verificando la disposición táctica:', saveError);
+      const message = saveError.message || 'No se pudo guardar la disposición táctica.';
+      setTacticalDispositionEditor((current) => current ? { ...current, saving: false, error: message } : current);
+      setStatsSaveStatus('Error al guardar');
+      setStatsError(message);
+    }
   };
 
   const renderStatsPitch = () => {
@@ -17665,22 +17816,35 @@ function App() {
       || selectedSegment?.intervals.find((interval) => selectedSystemMoment?.minute >= interval.fromMinute && selectedSystemMoment?.minute < interval.toMinute)
       || selectedSegment?.intervals[selectedSegment.intervals.length - 1]
       || null;
+    const editingDisposition = tacticalDispositionEditor?.matchId === selectedMatch.id
+      && tacticalDispositionEditor.minute === selectedInterval?.fromMinute
+      && tacticalDispositionEditor.system === selectedInterval?.system;
     const activeSystem = hasLocalProposal
       ? statsLineupProposal.system
-      : selectedSegment?.system || resolveMatchStatsFormation(selectedMatch, ownDefaultFormation);
+      : editingDisposition
+        ? tacticalDispositionEditor.system
+        : selectedSegment?.system || resolveMatchStatsFormation(selectedMatch, ownDefaultFormation);
     const activeSystemFromMinute = hasLocalProposal ? 0 : selectedInterval?.fromMinute ?? selectedSegment?.fromMinute ?? 0;
     const activeSystemToMinute = hasLocalProposal ? getMatchDurationMinutes(selectedMatch) : selectedInterval?.toMinute ?? selectedSegment?.toMinute ?? getMatchDurationMinutes(selectedMatch);
-    const activeSnapshotLineup = selectedInterval?.isComplete
+    const activeSnapshotParticipants = selectedInterval?.isComplete
       ? safeArray(selectedInterval.slots).slice().sort((left, right) => left.slot - right.slot).reduce((lineup, slot) => {
-          const player = players.find((item) => slot.playerId && String(item.id) === String(slot.playerId));
-          lineup[slot.slot] = slot.playerName || player?.name || '';
+          lineup[slot.slot] = enrichTacticalParticipant(slot);
           return lineup;
-        }, Array(11).fill(''))
+        }, Array(11).fill(null))
       : [];
-    const visibleLineup = hasLocalProposal ? safeArray(selectedMatch.statsLineup) : activeSnapshotLineup;
-    const dispositionAvailable = hasLocalProposal || Boolean(selectedInterval?.isComplete && activeSnapshotLineup.filter(Boolean).length === 11);
-    const historyBrowsing = !hasLocalProposal && (tacticalHistory.systemSegments.length > 1 || tacticalHistory.intervals.length > 1);
-    const coordinates = getFormationCoordinates(activeSystem);
+    const visibleParticipants = editingDisposition
+      ? safeArray(tacticalDispositionEditor.lineup)
+      : hasLocalProposal
+        ? safeArray(selectedMatch.statsLineup).map((playerName) => enrichTacticalParticipant({ playerName }))
+        : activeSnapshotParticipants;
+    const dispositionAvailable = hasLocalProposal || editingDisposition || Boolean(selectedInterval?.isComplete && activeSnapshotParticipants.filter(Boolean).length === 11);
+    const historyBrowsing = !hasLocalProposal && !editingDisposition && (tacticalHistory.systemSegments.length > 1 || tacticalHistory.intervals.length > 1);
+    const tacticalFormationSlots = getTacticalSnapshotFormationSlots(activeSystem);
+    const coordinates = tacticalFormationSlots.map(({ x, y }) => ({ x, y }));
+    const pendingTacticalPlayers = editingDisposition ? getTacticalEditorPendingPlayers() : [];
+    const editorValidation = editingDisposition
+      ? validateTacticalDisposition({ lineup: tacticalDispositionEditor.lineup, knownPlayers: tacticalDispositionEditor.knownPlayers })
+      : null;
     return (
       <div className="space-y-2">
         {!hasLocalProposal && tacticalHistory.systemSegments.length ? (
@@ -17698,8 +17862,9 @@ function App() {
                     type="button"
                     role="tab"
                     aria-selected={active}
+                    disabled={Boolean(tacticalDispositionEditor)}
                     onClick={() => setSelectedSystemMoment({ segmentId: segment.id, intervalId: segment.intervals[0]?.id || '', minute: segment.fromMinute, system: segment.system })}
-                    className={`min-w-[116px] shrink-0 border px-3 py-2 text-left transition ${active ? 'border-caudal-electric bg-caudal-electric text-slate-950 shadow-[0_0_18px_rgba(79,140,255,0.24)]' : 'border-white/10 bg-white/[0.055] text-slate-300 hover:bg-white/10'}`}
+                    className={`min-w-[116px] shrink-0 border px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-65 ${active ? 'border-caudal-electric bg-caudal-electric text-slate-950 shadow-[0_0_18px_rgba(79,140,255,0.24)]' : 'border-white/10 bg-white/[0.055] text-slate-300 hover:bg-white/10'}`}
                     style={{ flexGrow: Math.max(1, segment.minutes) }}
                   >
                     <span className="block whitespace-nowrap text-[10px] font-black">{segment.fromMinute}'–{segment.toMinute}'</span>
@@ -17716,8 +17881,9 @@ function App() {
                   <button
                     key={interval.id}
                     type="button"
+                    disabled={Boolean(tacticalDispositionEditor)}
                     onClick={() => setSelectedSystemMoment({ segmentId: selectedSegment.id, intervalId: interval.id, minute: interval.fromMinute, system: selectedSegment.system })}
-                    className={`shrink-0 rounded-md px-2 py-1 text-[8px] font-black ${selectedInterval?.id === interval.id ? 'bg-white text-slate-950' : interval.isComplete ? 'bg-white/10 text-slate-300' : 'bg-amber-300/10 text-amber-200'}`}
+                    className={`shrink-0 rounded-md px-2 py-1 text-[8px] font-black disabled:cursor-not-allowed disabled:opacity-65 ${selectedInterval?.id === interval.id ? 'bg-white text-slate-950' : interval.isComplete ? 'bg-white/10 text-slate-300' : 'bg-amber-300/10 text-amber-200'}`}
                     title={interval.reason || `Snapshot desde el minuto ${interval.fromMinute}`}
                   >
                     {interval.fromMinute}'–{interval.toMinute}'{interval.isComplete ? '' : ' · sin disposición'}
@@ -17727,11 +17893,51 @@ function App() {
             ) : null}
           </div>
         ) : null}
+        {editingDisposition ? (
+          <div className="border border-caudal-electric/35 bg-caudal-electric/[0.07] p-3" data-testid="tactical-disposition-editor">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-caudal-electric">Editando disposición</p>
+                <p className="mt-0.5 text-sm font-black text-white">{tacticalDispositionEditor.minute}'–{tacticalDispositionEditor.toMinute}' · {tacticalDispositionEditor.system}</p>
+              </div>
+              <div className="flex gap-2">
+                <button type="button" disabled={tacticalDispositionEditor.saving} onClick={cancelTacticalDispositionEditor} className="min-h-9 border border-white/10 bg-white/[0.06] px-3 text-[10px] font-black uppercase text-slate-200 disabled:opacity-60">Cancelar</button>
+                <button type="button" disabled={tacticalDispositionEditor.saving || !editorValidation?.valid} onClick={saveTacticalDispositionEditor} className="min-h-9 bg-caudal-electric px-3 text-[10px] font-black uppercase text-slate-950 disabled:cursor-not-allowed disabled:opacity-45">{tacticalDispositionEditor.saving ? 'Guardando…' : 'Guardar disposición'}</button>
+              </div>
+            </div>
+            {pendingTacticalPlayers.length ? (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="mr-1 text-[8px] font-black uppercase tracking-[0.12em] text-amber-200">Pendientes de colocar</span>
+                {pendingTacticalPlayers.map((participant) => {
+                  const player = players.find((item) => participant.playerId && String(item.id) === String(participant.playerId));
+                  const label = player ? displayPlayerName(player) : participant.playerName;
+                  return (
+                    <button
+                      key={getTacticalParticipantKey(participant)}
+                      type="button"
+                      draggable
+                      onDragStart={() => setDraggedPlayer(participant)}
+                      className="cursor-grab border border-amber-200/30 bg-amber-300/10 px-2 py-1 text-[9px] font-black text-amber-100"
+                      title="Arrastra al slot real que ocupó"
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+            {tacticalDispositionEditor.error ? <p className="mt-2 text-[10px] font-bold text-red-200">{tacticalDispositionEditor.error}</p> : null}
+          </div>
+        ) : dispositionAvailable && !hasLocalProposal && selectedInterval ? (
+          <div className="flex justify-end">
+            <button type="button" onClick={() => openTacticalDispositionEditor({ interval: selectedInterval, history: tacticalHistory })} className="border border-white/10 bg-white/[0.055] px-3 py-2 text-[9px] font-black uppercase tracking-[0.1em] text-slate-300 transition hover:bg-white/10 hover:text-white">Editar disposición</button>
+          </div>
+        ) : null}
         <div
         className="stats-match-pitch relative mx-auto aspect-[7/8.9] w-full max-w-[560px] min-w-0 overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner [container-type:inline-size]"
         onDragOver={(event) => event.preventDefault()}
         onDrop={() => {
-          if (historyBrowsing || !dispositionAvailable || !draggedPlayer || statsSquadSaving) return;
+          if (editingDisposition || historyBrowsing || !dispositionAvailable || !draggedPlayer || statsSquadSaving) return;
           saveStatsPlayerRole(normalizeSquadEntry(draggedPlayer).name, 'Suplente');
           setDraggedPlayer(null);
         }}
@@ -17749,10 +17955,15 @@ function App() {
           <div className="absolute inset-x-6 top-1/2 z-30 -translate-y-1/2 rounded-2xl border border-amber-200/25 bg-black/75 px-5 py-4 text-center shadow-xl">
             <p className="text-sm font-black text-amber-100">Disposición no registrada para este tramo</p>
             <p className="mt-1 text-[10px] font-semibold text-slate-300">Se conoce el sistema y su intervalo, pero no los once slots. No se reconstruyen posiciones.</p>
+            {selectedInterval ? <button type="button" onClick={() => openTacticalDispositionEditor({ interval: selectedInterval, history: tacticalHistory })} className="mt-3 min-h-9 bg-amber-200 px-3 text-[9px] font-black uppercase tracking-[0.1em] text-slate-950">Registrar disposición</button> : null}
           </div>
         ) : coordinates.map((slot, slotIndex) => {
-          const playerName = visibleLineup[slotIndex] || '';
-          const player = players.find((item) => item.name === playerName);
+          const participant = normalizeTacticalParticipant(visibleParticipants[slotIndex] || {});
+          const playerName = participant.playerName || '';
+          const player = players.find((item) => (
+            (participant.playerId && String(item.id) === String(participant.playerId))
+            || normalizePlayerIdentityName(item.name) === normalizePlayerIdentityName(playerName)
+          ));
           const shortName = player ? displayPlayerName(player) : playerName.split(' ').slice(-1)[0] || '';
           const stats = playerName ? getStatsPlayerData(playerName) : null;
           const isCaptain = player?.id && selectedMatchCaptainResolution.playerId === player.id;
@@ -17766,7 +17977,7 @@ function App() {
           const incidentIndicators = indicators.filter((indicator) => indicator.key !== 'captain');
           const replacementInfo = playerName ? getStatsReplacementInfo(playerName) : null;
           const pitchPlayerName = formatStatsPitchPlayerName(shortName);
-          const playerIdentityLabel = playerName ? `${player?.number || slotIndex + 1} ${pitchPlayerName}` : getFormationRoles(activeSystem)[slotIndex];
+          const playerIdentityLabel = playerName ? `${player?.number || slotIndex + 1} ${pitchPlayerName}` : tacticalFormationSlots[slotIndex]?.label || `Slot ${slotIndex + 1}`;
           const playerIdentityTitle = playerName ? `${player?.number || slotIndex + 1} ${getStoredPlayerDisplayName(playerName)}` : playerIdentityLabel;
           const substitutionTitle = replacementInfo
             ? `Minuto ${replacementInfo.minute}\nSale: ${getStoredPlayerDisplayName(playerName)}\nEntra: ${replacementInfo.replacementDisplayName}`
@@ -17781,14 +17992,15 @@ function App() {
           return (
             <div
               key={`stats-slot-${slotIndex}`}
-              draggable={Boolean(player) && !historyBrowsing && !statsSquadSaving}
-              onDragStart={() => player && setDraggedPlayer(player)}
+              draggable={Boolean(getTacticalParticipantKey(participant)) && !historyBrowsing && !statsSquadSaving}
+              onDragStart={() => getTacticalParticipantKey(participant) && setDraggedPlayer(participant)}
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
                 event.stopPropagation();
-                if (!historyBrowsing) handleDropOnStatsLineupSlot(slotIndex);
+                if (editingDisposition && draggedPlayer) moveTacticalEditorPlayer(draggedPlayer, slotIndex);
+                else if (!historyBrowsing) handleDropOnStatsLineupSlot(slotIndex);
               }}
-              className={`stats-player-slot absolute z-20 h-16 -translate-x-1/2 -translate-y-1/2 text-center ${player ? 'cursor-grab' : ''}`}
+              className={`stats-player-slot absolute z-20 h-16 -translate-x-1/2 -translate-y-1/2 text-center ${getTacticalParticipantKey(participant) ? 'cursor-grab' : ''}`}
               style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
             >
               {incidentIndicators.length ? (
@@ -18166,7 +18378,7 @@ function App() {
                 <p className="mt-1 text-sm font-semibold text-slate-400">Dorsal, nombre corto y foto si existe</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <select disabled={statsSquadSaving} value={resolveMatchStatsFormation(selectedMatch, ownDefaultFormation)} onChange={(event) => updateStatsSystem(event.target.value)} className="border border-white/10 bg-white px-4 py-2 text-sm font-black text-slate-950 disabled:cursor-wait disabled:opacity-60">
+                <select disabled={statsSquadSaving || Boolean(tacticalDispositionEditor)} value={resolveMatchStatsFormation(selectedMatch, ownDefaultFormation)} onChange={(event) => updateStatsSystem(event.target.value)} className="border border-white/10 bg-white px-4 py-2 text-sm font-black text-slate-950 disabled:cursor-wait disabled:opacity-60">
                   {STATS_FORMATION_OPTIONS.map((system) => <option key={system} value={system}>{system}</option>)}
                 </select>
                 <button type="button" disabled={statsSquadSaving || statsLineupHistoryLoading} onClick={autoPlaceStatsStarters} className="bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-200 disabled:cursor-wait disabled:opacity-60">{statsLineupHistoryLoading ? 'Calculando…' : 'Auto colocar titulares'}</button>
@@ -33232,7 +33444,7 @@ function App() {
                             <p className="mt-2 text-sm text-slate-400">Arrastra convocados al campo y modifica posiciones por sistema.</p>
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            <select disabled={statsSquadSaving} value={resolveMatchStatsFormation(selectedMatch, ownDefaultFormation)} onChange={(event) => updateStatsSystem(event.target.value)} className="rounded-2xl border border-white/10 bg-white px-5 py-3 text-sm font-black text-slate-950 disabled:cursor-wait disabled:opacity-60">
+                            <select disabled={statsSquadSaving || Boolean(tacticalDispositionEditor)} value={resolveMatchStatsFormation(selectedMatch, ownDefaultFormation)} onChange={(event) => updateStatsSystem(event.target.value)} className="rounded-2xl border border-white/10 bg-white px-5 py-3 text-sm font-black text-slate-950 disabled:cursor-wait disabled:opacity-60">
                               {STATS_FORMATION_OPTIONS.map((system) => <option key={system} value={system}>{system}</option>)}
                             </select>
                             <button type="button" onClick={() => openSystemChangeModal()} className="rounded-2xl border border-violet-300/25 bg-violet-300/10 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-violet-100">

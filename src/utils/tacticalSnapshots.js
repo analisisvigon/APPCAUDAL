@@ -130,9 +130,11 @@ export const buildTacticalSnapshotIntervals = ({
       fromMinute,
       toMinute,
       minutes: toMinute - fromMinute,
+      period: snapshot.period || '',
       system: activeSystem,
       reason: snapshot.reason,
       isComplete: Boolean(snapshot.isComplete && snapshot.slots.length),
+      sourceSystemEventId: snapshot.sourceSystemEventId || '',
       source: snapshot.source,
       slots: snapshot.slots,
     }];

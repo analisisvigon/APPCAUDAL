@@ -39,6 +39,15 @@ assert.deepEqual(changed.map(({ fromMinute, toMinute, system, minutes }) => [fro
   [63, 90, '4-3-3', 27],
 ], 'cambio de sistema crea intervalos exactos sin solapamiento');
 
+const linkedSystemInterval = buildTacticalSnapshotIntervals({
+  duration: 90,
+  initialSnapshot: initial,
+  initialSystem: '4-2-3-1',
+  systemEvents: [{ id: 'system-linked-63', minute: 63, period: '2ª parte', toSystem: '4-3-3' }],
+}).find((interval) => interval.fromMinute === 63);
+assert.equal(linkedSystemInterval.sourceSystemEventId, 'system-linked-63', 'el editor puede conservar el vínculo con el cambio de sistema');
+assert.equal(linkedSystemInterval.period, '2ª parte');
+
 const changedHistory = buildTacticalMatchHistory({
   matchId: 'match-1',
   duration: 90,
