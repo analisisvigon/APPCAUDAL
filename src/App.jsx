@@ -75,12 +75,10 @@ import {
   resolveStoredTacticalSlot,
 } from './utils/groupMostUsedXI';
 import {
-  buildInitialTacticalSnapshot,
   buildTacticalCombinationsFromIntervals,
+  buildTacticalMatchHistory,
   buildTacticalSlotEvidenceFromIntervals,
-  buildTacticalSnapshotIntervals,
   getHistoricalSubstitutionMinutes,
-  getTacticalTimelineInvariantReport,
 } from './utils/tacticalSnapshots';
 import {
   buildPerformanceObservationsByPlayer,
@@ -1995,21 +1993,6 @@ const sortSystemEventsChronologically = (events = []) => safeArray(events)
 
 const getInitialMatchSystem = (match = {}) => match.statsSystemRaw || match.statsSystem || match.preCaudalSystemRaw || match.preCaudalSystem || DEFAULT_OWN_FORMATION;
 
-const getSystemAtMinute = ({ initialSystem = DEFAULT_OWN_FORMATION, systemEvents = [], minute, period = '' } = {}) => {
-  const targetMinute = getEventMinuteNumber(minute);
-  if (targetMinute === null) return initialSystem || DEFAULT_OWN_FORMATION;
-  const targetHalf = getEventHalfOrder(period);
-  return sortSystemEventsChronologically(systemEvents).reduce((currentSystem, event) => {
-    const eventMinute = getSystemEventMinute(event);
-    if (eventMinute === null) return currentSystem;
-    const eventHalf = getEventHalfOrder(event.period);
-    if (eventHalf < targetHalf || (eventHalf === targetHalf && eventMinute <= targetMinute)) {
-      return event.toSystem || currentSystem;
-    }
-    return currentSystem;
-  }, initialSystem || DEFAULT_OWN_FORMATION);
-};
-
 const getSystemBeforeEvent = ({ initialSystem = DEFAULT_OWN_FORMATION, systemEvents = [], eventId = '', minute, period = '' } = {}) => {
   const targetMinute = getEventMinuteNumber(minute);
   if (targetMinute === null) return initialSystem || DEFAULT_OWN_FORMATION;
@@ -2036,34 +2019,6 @@ const getMatchDurationMinutes = (match = {}) => {
   ];
   const numeric = candidates.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0);
   return Math.max(90, ...numeric, 90);
-};
-
-const buildSystemSequence = (match = {}) => {
-  const initialSystem = getInitialMatchSystem(match);
-  const duration = getMatchDurationMinutes(match);
-  const events = sortSystemEventsChronologically(match.systemEvents);
-  const boundaries = [
-    { minute: 0, system: initialSystem, event: null },
-    ...events.map((event) => ({
-      minute: getSystemEventMinute(event),
-      system: event.toSystem,
-      event,
-    })).filter((row) => row.minute !== null),
-  ].sort((a, b) => a.minute - b.minute);
-  return boundaries.map((row, index) => {
-    const next = boundaries[index + 1];
-    const fromMinute = Math.max(0, Math.min(duration, row.minute));
-    const toMinute = Math.max(fromMinute, Math.min(duration, next?.minute ?? duration));
-    return {
-      id: row.event?.id || `${match.id || 'match'}-${row.system}-${fromMinute}`,
-      matchId: match.id,
-      system: row.system || initialSystem || '4-4-2',
-      fromMinute,
-      toMinute,
-      minutes: Math.max(0, toMinute - fromMinute),
-      event: row.event,
-    };
-  }).filter((segment) => segment.system && segment.minutes >= 0);
 };
 
 const emptyToNull = (value) => {
@@ -6687,6 +6642,43 @@ function App() {
       quickEvents = (quickEventsResponse.data || []).map((event) => normalizeSupabaseQuickEvent(event, players));
     }
     const systemEvents = await loadSystemEventsForMatch(partidoId);
+    let tacticalSnapshots = [];
+    const tacticalSnapshotsResponse = await supabase
+      .from("partido_snapshots_tacticos")
+      .select("*")
+      .eq("partido_id", partidoId)
+      .order("minute", { ascending: true });
+    if (tacticalSnapshotsResponse.error) {
+      console.warn('Historial táctico aún no disponible para este partido; se utilizará únicamente la alineación inicial inequívoca:', {
+        partidoId,
+        error: tacticalSnapshotsResponse.error,
+      });
+    } else {
+      const snapshotRows = tacticalSnapshotsResponse.data || [];
+      let slotsBySnapshot = {};
+      if (snapshotRows.length) {
+        const tacticalSlotsResponse = await supabase
+          .from("partido_snapshot_tactico_slots")
+          .select("*")
+          .in("snapshot_id", snapshotRows.map((snapshot) => snapshot.id))
+          .order("slot", { ascending: true });
+        if (tacticalSlotsResponse.error) {
+          console.warn('No se pudieron cargar los slots del historial táctico; sus tramos se mostrarán sin disposición:', {
+            partidoId,
+            error: tacticalSlotsResponse.error,
+          });
+        } else {
+          slotsBySnapshot = (tacticalSlotsResponse.data || []).reduce((acc, slot) => {
+            acc[slot.snapshot_id] = [...(acc[slot.snapshot_id] || []), slot];
+            return acc;
+          }, {});
+        }
+      }
+      tacticalSnapshots = snapshotRows.map((snapshot) => ({
+        ...snapshot,
+        slots: slotsBySnapshot[snapshot.id] || [],
+      }));
+    }
 
     const statsLineup = hydrateStatsLineup(slotsResponse.data || []);
 
@@ -6716,8 +6708,17 @@ function App() {
       statsPlayerData,
       statsGoalEvents: (goalsResponse.data || []).map(normalizeSupabaseGoalEvent),
       systemEvents,
+      tacticalSnapshots,
       quickEvents,
       statsLineup,
+      lineupSlots: {
+        stats: (slotsResponse.data || []).map((slot) => ({
+          scope: 'stats',
+          slot: Number(slot.slot),
+          playerName: slot.player_name || '',
+          jugadorId: slot.jugador_id || null,
+        })),
+      },
       statsDataLoaded: true,
     };
 
@@ -17626,22 +17627,111 @@ function App() {
     );
   };
 
+  const getMatchTacticalHistory = (match = {}) => {
+    const storedInitialSlots = safeArray(match.lineupSlots?.stats);
+    const initialSlots = (storedInitialSlots.length ? storedInitialSlots : safeArray(match.statsLineup).map((playerName, slot) => ({
+      slot,
+      playerName,
+      jugadorId: safeObject(match.statsPlayerData?.[playerName]).jugadorId || '',
+    }))).flatMap((slot) => {
+      const slotIndex = Number(slot.slot);
+      const playerName = slot.playerName || slot.player_name || '';
+      const playerId = slot.jugadorId || slot.jugador_id || '';
+      return Number.isInteger(slotIndex) && slotIndex >= 0 && slotIndex <= 10 && (playerName || playerId)
+        ? [{ slot: slotIndex, playerName, playerId }]
+        : [];
+    });
+    return buildTacticalMatchHistory({
+      matchId: match.id || '',
+      duration: getMatchDurationMinutes(match),
+      initialSystem: getInitialMatchSystem(match),
+      initialSlots,
+      snapshots: safeArray(match.tacticalSnapshots),
+      systemEvents: safeArray(match.systemEvents),
+      substitutionMinutes: getHistoricalSubstitutionMinutes(safeObject(match.statsPlayerData)),
+    });
+  };
+
   const renderStatsPitch = () => {
     if (!selectedMatch) return null;
-    const systemSequence = buildSystemSequence(selectedMatch);
-    const latestSegment = systemSequence[systemSequence.length - 1] || null;
     const hasLocalProposal = statsLineupProposal?.matchId === selectedMatch.id;
+    const tacticalHistory = getMatchTacticalHistory(selectedMatch);
+    const latestSegment = tacticalHistory.systemSegments[tacticalHistory.systemSegments.length - 1] || null;
+    const selectedSegment = tacticalHistory.systemSegments.find((segment) => (
+      segment.id === selectedSystemMoment?.segmentId
+      || (selectedSystemMoment?.minute >= segment.fromMinute && selectedSystemMoment?.minute < segment.toMinute && (!selectedSystemMoment.system || selectedSystemMoment.system === segment.system))
+    )) || latestSegment;
+    const selectedInterval = selectedSegment?.intervals.find((interval) => interval.id === selectedSystemMoment?.intervalId)
+      || selectedSegment?.intervals.find((interval) => selectedSystemMoment?.minute >= interval.fromMinute && selectedSystemMoment?.minute < interval.toMinute)
+      || selectedSegment?.intervals[selectedSegment.intervals.length - 1]
+      || null;
     const activeSystem = hasLocalProposal
       ? statsLineupProposal.system
-      : selectedSystemMoment?.system || latestSegment?.system || resolveMatchStatsFormation(selectedMatch, ownDefaultFormation);
-    const activeSystemFromMinute = hasLocalProposal ? 0 : selectedSystemMoment?.minute ?? latestSegment?.fromMinute ?? 0;
+      : selectedSegment?.system || resolveMatchStatsFormation(selectedMatch, ownDefaultFormation);
+    const activeSystemFromMinute = hasLocalProposal ? 0 : selectedInterval?.fromMinute ?? selectedSegment?.fromMinute ?? 0;
+    const activeSystemToMinute = hasLocalProposal ? getMatchDurationMinutes(selectedMatch) : selectedInterval?.toMinute ?? selectedSegment?.toMinute ?? getMatchDurationMinutes(selectedMatch);
+    const activeSnapshotLineup = selectedInterval?.isComplete
+      ? safeArray(selectedInterval.slots).slice().sort((left, right) => left.slot - right.slot).reduce((lineup, slot) => {
+          const player = players.find((item) => slot.playerId && String(item.id) === String(slot.playerId));
+          lineup[slot.slot] = slot.playerName || player?.name || '';
+          return lineup;
+        }, Array(11).fill(''))
+      : [];
+    const visibleLineup = hasLocalProposal ? safeArray(selectedMatch.statsLineup) : activeSnapshotLineup;
+    const dispositionAvailable = hasLocalProposal || Boolean(selectedInterval?.isComplete && activeSnapshotLineup.filter(Boolean).length === 11);
+    const historyBrowsing = !hasLocalProposal && (tacticalHistory.systemSegments.length > 1 || tacticalHistory.intervals.length > 1);
     const coordinates = getFormationCoordinates(activeSystem);
     return (
-      <div
+      <div className="space-y-2">
+        {!hasLocalProposal && tacticalHistory.systemSegments.length ? (
+          <div className="space-y-1.5" data-testid="tactical-system-history">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Tramos de sistema</p>
+              <p className="text-[9px] font-bold text-slate-500">{tacticalHistory.invariant.overlap ? 'Revisar solapamiento' : `${tacticalHistory.invariant.coveredMinutes} min sin solapamiento`}</p>
+            </div>
+            <div className="flex max-w-full gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Disposiciones tácticas utilizadas">
+              {tacticalHistory.systemSegments.map((segment) => {
+                const active = selectedSegment?.id === segment.id;
+                return (
+                  <button
+                    key={segment.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setSelectedSystemMoment({ segmentId: segment.id, intervalId: segment.intervals[0]?.id || '', minute: segment.fromMinute, system: segment.system })}
+                    className={`min-w-[116px] shrink-0 border px-3 py-2 text-left transition ${active ? 'border-caudal-electric bg-caudal-electric text-slate-950 shadow-[0_0_18px_rgba(79,140,255,0.24)]' : 'border-white/10 bg-white/[0.055] text-slate-300 hover:bg-white/10'}`}
+                    style={{ flexGrow: Math.max(1, segment.minutes) }}
+                  >
+                    <span className="block whitespace-nowrap text-[10px] font-black">{segment.fromMinute}'–{segment.toMinute}'</span>
+                    <span className="mt-0.5 block text-xs font-black">{segment.system}</span>
+                    {segment.hasIncompleteDisposition ? <span className={`mt-0.5 block text-[8px] font-bold uppercase ${active ? 'text-slate-700' : 'text-amber-200'}`}>Disposición parcial</span> : null}
+                  </button>
+                );
+              })}
+            </div>
+            {selectedSegment?.intervals.length > 1 ? (
+              <div className="flex max-w-full items-center gap-1 overflow-x-auto" aria-label={`Snapshots del tramo ${selectedSegment.fromMinute}-${selectedSegment.toMinute}`}>
+                <span className="shrink-0 text-[8px] font-black uppercase tracking-[0.12em] text-slate-600">Fotos</span>
+                {selectedSegment.intervals.map((interval) => (
+                  <button
+                    key={interval.id}
+                    type="button"
+                    onClick={() => setSelectedSystemMoment({ segmentId: selectedSegment.id, intervalId: interval.id, minute: interval.fromMinute, system: selectedSegment.system })}
+                    className={`shrink-0 rounded-md px-2 py-1 text-[8px] font-black ${selectedInterval?.id === interval.id ? 'bg-white text-slate-950' : interval.isComplete ? 'bg-white/10 text-slate-300' : 'bg-amber-300/10 text-amber-200'}`}
+                    title={interval.reason || `Snapshot desde el minuto ${interval.fromMinute}`}
+                  >
+                    {interval.fromMinute}'–{interval.toMinute}'{interval.isComplete ? '' : ' · sin disposición'}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        <div
         className="stats-match-pitch relative mx-auto aspect-[7/8.9] w-full max-w-[560px] min-w-0 overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner [container-type:inline-size]"
         onDragOver={(event) => event.preventDefault()}
         onDrop={() => {
-          if (!draggedPlayer || statsSquadSaving) return;
+          if (historyBrowsing || !dispositionAvailable || !draggedPlayer || statsSquadSaving) return;
           saveStatsPlayerRole(normalizeSquadEntry(draggedPlayer).name, 'Suplente');
           setDraggedPlayer(null);
         }}
@@ -17652,11 +17742,16 @@ function App() {
         <div className="absolute left-1/2 top-4 h-24 w-56 -translate-x-1/2 rounded-b-3xl border-x-2 border-b-2 border-white/45" />
         <div className="absolute bottom-4 left-1/2 h-24 w-56 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/45" />
         <div className="absolute left-5 top-5 z-10 rounded-2xl border border-white/15 bg-black/55 px-3 py-2 text-xs font-black text-white shadow-lg">
-          <p className="text-[9px] uppercase tracking-[0.14em] text-slate-300">{hasLocalProposal ? 'Propuesta local sin guardar' : `Sistema vigente desde el ${activeSystemFromMinute}'`}</p>
+          <p className="text-[9px] uppercase tracking-[0.14em] text-slate-300">{hasLocalProposal ? 'Propuesta local sin guardar' : `Disposición ${activeSystemFromMinute}'–${activeSystemToMinute}'`}</p>
           <p className="mt-0.5 text-base text-caudal-electric">{activeSystem}</p>
         </div>
-        {coordinates.map((slot, slotIndex) => {
-          const playerName = selectedMatch.statsLineup?.[slotIndex] || '';
+        {!dispositionAvailable ? (
+          <div className="absolute inset-x-6 top-1/2 z-30 -translate-y-1/2 rounded-2xl border border-amber-200/25 bg-black/75 px-5 py-4 text-center shadow-xl">
+            <p className="text-sm font-black text-amber-100">Disposición no registrada para este tramo</p>
+            <p className="mt-1 text-[10px] font-semibold text-slate-300">Se conoce el sistema y su intervalo, pero no los once slots. No se reconstruyen posiciones.</p>
+          </div>
+        ) : coordinates.map((slot, slotIndex) => {
+          const playerName = visibleLineup[slotIndex] || '';
           const player = players.find((item) => item.name === playerName);
           const shortName = player ? displayPlayerName(player) : playerName.split(' ').slice(-1)[0] || '';
           const stats = playerName ? getStatsPlayerData(playerName) : null;
@@ -17686,12 +17781,12 @@ function App() {
           return (
             <div
               key={`stats-slot-${slotIndex}`}
-              draggable={Boolean(player) && !statsSquadSaving}
+              draggable={Boolean(player) && !historyBrowsing && !statsSquadSaving}
               onDragStart={() => player && setDraggedPlayer(player)}
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
                 event.stopPropagation();
-                handleDropOnStatsLineupSlot(slotIndex);
+                if (!historyBrowsing) handleDropOnStatsLineupSlot(slotIndex);
               }}
               className={`stats-player-slot absolute z-20 h-16 -translate-x-1/2 -translate-y-1/2 text-center ${player ? 'cursor-grab' : ''}`}
               style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
@@ -17750,6 +17845,7 @@ function App() {
             </div>
           );
         })}
+        </div>
       </div>
     );
   };
@@ -20144,13 +20240,13 @@ function App() {
   const buildGroupSystemSequence = (match = {}) => {
     const statsSystem = getGroupStatsSystem(match);
     if (!statsSystem) return [];
-    return buildSystemSequence({
+    return getMatchTacticalHistory({
       ...match,
       statsSystemRaw: statsSystem,
       statsSystem,
       preCaudalSystemRaw: '',
       preCaudalSystem: '',
-    });
+    }).systemSegments;
   };
 
   const buildSystemUsageRows = (scopedMatches = []) => {
@@ -20182,12 +20278,10 @@ function App() {
         rowsBySystem.set(segment.system, row);
       });
       safeArray(match.statsGoalEvents).forEach((goal) => {
-        const system = getSystemAtMinute({
-          initialSystem,
-          systemEvents: match.systemEvents,
-          minute: goal.minute,
-          period: goal.half,
-        });
+        const goalMinute = parseTacticalMinute(goal.minute);
+        const system = sequence.find((segment) => goalMinute !== null && goalMinute >= segment.fromMinute && goalMinute < segment.toMinute)?.system
+          || sequence[sequence.length - 1]?.system
+          || initialSystem;
         const row = rowsBySystem.get(system);
         if (!row) return;
         if (goal.type === 'Gol a favor') row.goalsFor += 1;
@@ -20203,15 +20297,6 @@ function App() {
       .sort(compareSystemUsageRows);
   };
 
-  const getMatchSnapshotForSystem = (match = {}, system = '') => {
-    const source = getMatchLineupSource(match, { statsOnly: true });
-    const slots = safeArray(source.slots);
-    if (!system || source.system !== system || !slots.length) {
-      return { hasSnapshot: false, system, slots: [], source: source.scope || 'none' };
-    }
-    return { hasSnapshot: true, system, slots, source: source.scope };
-  };
-
   const buildTacticalSlotMinutes = (scopedMatches = []) => {
     const bySystem = new Map();
     const evidence = [];
@@ -20225,28 +20310,10 @@ function App() {
     };
     safeArray(scopedMatches).forEach((match) => {
       const duration = getMatchDurationMinutes(match);
-      const initialSystem = getGroupStatsSystem(match);
-      const initialLineup = getMatchSnapshotForSystem(match, initialSystem);
-      const initialSnapshot = buildInitialTacticalSnapshot({
-        duration,
-        matchId: match.id,
-        system: initialSystem,
-        slots: safeArray(initialLineup.slots).map((slot) => ({
-          slot: Number(slot.slot),
-          jugadorId: slot.jugadorId || '',
-          playerName: slot.playerName || '',
-        })),
-      });
-      const matchIntervals = buildTacticalSnapshotIntervals({
-        duration,
-        initialSnapshot,
-        initialSystem,
-        snapshots: safeArray(match.tacticalSnapshots),
-        systemEvents: safeArray(match.systemEvents),
-        substitutionMinutes: getHistoricalSubstitutionMinutes(safeObject(match.statsPlayerData)),
-      }).map((interval) => ({ ...interval, matchId: match.id }));
+      const tacticalHistory = getMatchTacticalHistory(match);
+      const matchIntervals = tacticalHistory.intervals;
       intervals.push(...matchIntervals);
-      invariantReports.push({ matchId: match.id, ...getTacticalTimelineInvariantReport({ intervals: matchIntervals, duration }) });
+      invariantReports.push({ matchId: match.id, ...tacticalHistory.invariant });
       if (matchIntervals.some((interval) => interval.isComplete)) coverage.tacticalMatches += 1;
       coverage.missingSegments += matchIntervals.filter((interval) => !interval.isComplete).length;
       coverage.missingMinutes += matchIntervals.filter((interval) => !interval.isComplete).reduce((sum, interval) => sum + interval.minutes, 0);

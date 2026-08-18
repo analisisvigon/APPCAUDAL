@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   buildInitialTacticalSnapshot,
+  buildTacticalMatchHistory,
   buildTacticalCombinationsFromIntervals,
   buildTacticalSlotEvidenceFromIntervals,
   buildTacticalSnapshotIntervals,
@@ -37,6 +38,25 @@ assert.deepEqual(changed.map(({ fromMinute, toMinute, system, minutes }) => [fro
   [0, 63, '4-2-3-1', 63],
   [63, 90, '4-3-3', 27],
 ], 'cambio de sistema crea intervalos exactos sin solapamiento');
+
+const changedHistory = buildTacticalMatchHistory({
+  matchId: 'match-1',
+  duration: 90,
+  initialSystem: '4-2-3-1',
+  initialSlots: lineup('a'),
+  systemEvents: [{ id: 'system-63', minute: 63, toSystem: '4-3-3' }],
+  snapshots: [
+    { id: 'snap-63', partidoId: 'match-1', minute: 63, system: '4-3-3', isComplete: true, slots: lineup('b') },
+    { id: 'snap-71', partidoId: 'match-1', minute: 71, system: '4-3-3', isComplete: true, slots: lineup('c') },
+    { id: 'snap-84', partidoId: 'match-1', minute: 84, system: '4-3-3', isComplete: true, slots: lineup('d') },
+  ],
+});
+assert.deepEqual(changedHistory.systemSegments.map(({ fromMinute, toMinute, system, intervals }) => [fromMinute, toMinute, system, intervals.length]), [
+  [0, 63, '4-2-3-1', 1],
+  [63, 90, '4-3-3', 3],
+], 'el selector principal agrupa sustituciones y recolocaciones bajo el mismo tramo de sistema');
+assert.deepEqual(changedHistory.systemSegments[1].intervals.map(({ fromMinute, toMinute }) => [fromMinute, toMinute]), [[63, 71], [71, 84], [84, 90]], 'los snapshots internos siguen siendo navegables sin crear más tramos de sistema');
+assert.deepEqual(changedHistory.systemSegments[1].intervals.map((interval) => interval.slots[0].playerName), ['B 0', 'C 0', 'D 0'], 'al navegar snapshots del mismo sistema cambian los jugadores y slots visibles');
 assert.deepEqual(getTacticalTimelineInvariantReport({ intervals: changed, duration: 90 }), {
   overlap: false, coveredMinutes: 90, duration: 90, completeMinutes: 90, incompleteMinutes: 0, valid: true,
 });

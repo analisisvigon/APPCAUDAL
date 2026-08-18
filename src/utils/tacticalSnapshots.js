@@ -139,6 +139,66 @@ export const buildTacticalSnapshotIntervals = ({
   });
 };
 
+export const buildTacticalSystemSegments = (intervals = []) => {
+  const ordered = rows(intervals)
+    .filter((interval) => interval && interval.toMinute > interval.fromMinute && clean(interval.system))
+    .slice()
+    .sort((left, right) => left.fromMinute - right.fromMinute || left.toMinute - right.toMinute);
+  return ordered.reduce((segments, interval) => {
+    const previous = segments[segments.length - 1];
+    const isContinuation = previous
+      && previous.system === interval.system
+      && previous.toMinute === interval.fromMinute
+      && previous.matchId === interval.matchId;
+    if (isContinuation) {
+      previous.toMinute = interval.toMinute;
+      previous.minutes += interval.minutes;
+      previous.completeMinutes += interval.isComplete ? interval.minutes : 0;
+      previous.hasIncompleteDisposition ||= !interval.isComplete;
+      previous.intervals.push(interval);
+      return segments;
+    }
+    segments.push({
+      id: `${interval.matchId || 'match'}-${interval.fromMinute}-${interval.system}`,
+      matchId: interval.matchId || '',
+      system: interval.system,
+      fromMinute: interval.fromMinute,
+      toMinute: interval.toMinute,
+      minutes: interval.minutes,
+      completeMinutes: interval.isComplete ? interval.minutes : 0,
+      hasIncompleteDisposition: !interval.isComplete,
+      intervals: [interval],
+    });
+    return segments;
+  }, []);
+};
+
+export const buildTacticalMatchHistory = ({
+  matchId = '',
+  duration = 90,
+  initialSystem = '',
+  initialSlots = [],
+  snapshots = [],
+  systemEvents = [],
+  substitutionMinutes = [],
+} = {}) => {
+  const initialSnapshot = buildInitialTacticalSnapshot({ matchId, system: initialSystem, slots: initialSlots });
+  const intervals = buildTacticalSnapshotIntervals({
+    duration,
+    initialSnapshot,
+    snapshots,
+    systemEvents,
+    substitutionMinutes,
+    initialSystem,
+  }).map((interval) => ({ ...interval, matchId: interval.matchId || matchId }));
+  return {
+    initialSnapshot,
+    intervals,
+    systemSegments: buildTacticalSystemSegments(intervals),
+    invariant: getTacticalTimelineInvariantReport({ intervals, duration }),
+  };
+};
+
 function playerKey(slot) {
   return clean(slot.playerId) ? `id:${clean(slot.playerId)}` : `name:${clean(slot.playerName).toLowerCase()}`;
 }
