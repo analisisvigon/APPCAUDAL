@@ -160,6 +160,17 @@ const FORM_PLAYER_ALIASES = [
       shirt_name: 'J. RODRÍGUEZ',
     },
   },
+  {
+    aliases: ['D. PALACIO', 'PALACIO', 'Daniel Palacio', 'Daniel Palacio Aranda'],
+    target: {
+      id: 'af4060e4-b54a-4e43-94b8-ccd600e7e784',
+      // Estado auditado en public.jugadores el 20/08/2026. Se admite tambien
+      // el nombre corregido para que el alias siga siendo seguro tras arreglar el typo remoto.
+      name: 'Daniel Palalcio',
+      legacy_names: ['Daniel Palacio', 'Daniel Palacio Aranda'],
+      shirt_name: 'PALACIO',
+    },
+  },
 ];
 
 function onWellnessSubmit(e) {
@@ -831,7 +842,7 @@ function compareRpeRecoveryPayload(existing, payload) {
   return { identical: differences.length === 0, differences };
 }
 
-function classifyRpeRecoveryAction(candidate, existingRows) {
+function classifyRpeRecoveryAction(candidate, existingRows, compatibleSheetErrorPattern) {
   if (candidate.validationError || !candidate.payload) {
     return {
       action: 'REVISAR_MANUALMENTE',
@@ -846,6 +857,9 @@ function classifyRpeRecoveryAction(candidate, existingRows) {
     const sheetError = String(candidate.sheetError || '').trim();
     const compatibleHeaderFailure = normalizedStatus === 'ERROR'
       && /(cabecera|column_not_found|column not found|faltan:\s*jugador)/i.test(sheetError);
+    const compatibleTargetedFailure = normalizedStatus === 'ERROR'
+      && compatibleSheetErrorPattern instanceof RegExp
+      && compatibleSheetErrorPattern.test(sheetError);
     const noTechnicalState = !normalizedStatus && !sheetError;
     if (normalizedStatus === 'SYNCED') {
       return {
@@ -855,7 +869,7 @@ function classifyRpeRecoveryAction(candidate, existingRows) {
         existing: null,
       };
     }
-    if (!compatibleHeaderFailure && !noTechnicalState) {
+    if (!compatibleHeaderFailure && !compatibleTargetedFailure && !noTechnicalState) {
       return {
         action: 'REVISAR_MANUALMENTE',
         supabaseState: 'ESTADO_SHEET_INCOMPATIBLE',
@@ -1108,6 +1122,214 @@ function recoverRpeRows154to160() {
 
 function recoverRpe20260814() {
   return recoverRpeRows154to160();
+}
+
+const PALACIO_RPE_FAILED_NAME = 'D. PALACIO';
+const PALACIO_RPE_FAILURE_PATTERN = /Jugador no encontrado en public\.jugadores:\s*["']?D\.\s*PALACIO["']?/i;
+
+function buildPalacioRpeRecoveryCandidate(headers, rawRow, displayRow, rowNumber, players, timeZone) {
+  const fields = resolveRequiredRpeFields(headers, rawRow, displayRow);
+  const technical = getRpeRecoveryTechnicalColumns(headers).columns;
+  const readTechnicalValue = (header) => {
+    const column = technical[header];
+    return column && column.state === 'FOUND' ? rawRow[column.index - 1] : '';
+  };
+  const receivedName = fields.player.found ? fields.player.rawValue : '';
+  const candidate = {
+    rowNumber,
+    timestampOriginal: fields.timestamp.found ? fields.timestamp.rawValue : '',
+    receivedName: String(receivedName || '').trim(),
+    playerId: '',
+    canonicalPlayerName: '',
+    shirtName: '',
+    googleFormsName: '',
+    playerMatchRule: '',
+    entryDate: '',
+    rpe: fields.rpe.found ? fields.rpe.rawValue : '',
+    comment: fields.comment.found ? fields.comment.rawValue || '' : '',
+    submittedAt: '',
+    key: '',
+    payload: null,
+    validationError: '',
+    sheetStatus: String(readTechnicalValue('Supabase status') || '').trim(),
+    sheetError: String(readTechnicalValue('Supabase error') || '').trim(),
+    sheetSyncedAt: readTechnicalValue('Supabase synced_at') || '',
+  };
+  try {
+    assertRequiredRpeColumns(fields, headers, 'recuperacion RPE puntual de Palacio');
+    const player = addPlayerClubContext(
+      resolvePlayerByFormName(players, receivedName),
+      players
+    );
+    if (!player) {
+      throw new Error(`Jugador no encontrado en public.jugadores: "${candidate.receivedName}".`);
+    }
+    const playerRow = (Array.isArray(players) ? players : [])
+      .find((row) => row.id === player.jugador_id) || {};
+    candidate.playerId = player.jugador_id;
+    candidate.canonicalPlayerName = player.name;
+    candidate.shirtName = playerRow.shirt_name || '';
+    candidate.googleFormsName = playerRow.google_forms_name || '';
+    candidate.playerMatchRule = player.match_rule;
+    const rowObject = Object.fromEntries(
+      headers.map((header, index) => [String(header).trim(), rawRow[index]])
+    );
+    const payload = buildDailyRpePayload(
+      rowObject,
+      player.jugador_id,
+      timeZone,
+      player.club_id,
+      fields
+    );
+    requireFields(payload, ['jugador_id', 'entry_date', 'submitted_at', 'rpe'], 'recuperacion RPE puntual de Palacio');
+    candidate.entryDate = payload.entry_date;
+    candidate.rpe = payload.rpe;
+    candidate.comment = payload.comment;
+    candidate.submittedAt = payload.submitted_at;
+    candidate.key = `${payload.jugador_id}|${payload.entry_date}`;
+    candidate.payload = payload;
+  } catch (error) {
+    candidate.validationError = error?.message || String(error);
+  }
+  return candidate;
+}
+
+function findFailedPalacioRpeSheetRows(headers, rawRows, displayRows) {
+  const technical = getRpeRecoveryTechnicalColumns(headers).columns;
+  const statusColumn = technical['Supabase status'];
+  const errorColumn = technical['Supabase error'];
+  const exactRows = (Array.isArray(rawRows) ? rawRows : []).flatMap((rawRow, index) => {
+    const displayRow = (Array.isArray(displayRows) ? displayRows[index] : null) || [];
+    const fields = resolveRequiredRpeFields(headers, rawRow, displayRow);
+    const receivedName = fields.player.found ? fields.player.rawValue : '';
+    const status = statusColumn?.state === 'FOUND' ? rawRow[statusColumn.index - 1] : '';
+    const error = errorColumn?.state === 'FOUND' ? rawRow[errorColumn.index - 1] : '';
+    const exactHistoricalName = normalizePlayerName(receivedName) === normalizePlayerName(PALACIO_RPE_FAILED_NAME);
+    return exactHistoricalName
+      ? [{ rowNumber: index + 2, rawRow, displayRow, status: String(status || '').trim(), error: String(error || '').trim() }]
+      : [];
+  });
+  const failedRows = exactRows.filter((row) => (
+    row.status.toUpperCase() === 'ERROR' && PALACIO_RPE_FAILURE_PATTERN.test(row.error)
+  ));
+  if (failedRows.length) return failedRows;
+  // Permite repetir la recuperacion: tras verificarla, la misma fila queda SYNCED.
+  return exactRows.filter((row) => row.status.toUpperCase() === 'SYNCED' && !row.error);
+}
+
+function preparePalacioRpeRecovery() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = findRpeResponseSheetForInspection(spreadsheet).sheet;
+  const lastColumn = sheet.getLastColumn();
+  const headers = lastColumn
+    ? sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0]
+    : [];
+  assertRequiredRpeColumns(resolveRequiredRpeFields(headers), headers, sheet.getName());
+  const lastRow = sheet.getLastRow();
+  const range = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, lastColumn) : null;
+  const rawRows = range ? range.getValues() : [];
+  const displayRows = range ? range.getDisplayValues() : [];
+  const matches = findFailedPalacioRpeSheetRows(headers, rawRows, displayRows);
+  if (matches.length !== 1) {
+    throw new Error(
+      `Recuperacion RPE de Palacio bloqueada: se esperaba una unica fila fallida con "${PALACIO_RPE_FAILED_NAME}" y se encontraron ${matches.length}.`
+    );
+  }
+  const players = fetchPlayersForForms();
+  const candidate = buildPalacioRpeRecoveryCandidate(
+    headers,
+    matches[0].rawRow,
+    matches[0].displayRow,
+    matches[0].rowNumber,
+    players,
+    getSheetTimeZone(sheet)
+  );
+  const classified = classifyRpeRecoveryAction(
+    candidate,
+    candidate.validationError ? [] : fetchExistingRpeRecoveryRows(candidate.playerId, candidate.entryDate),
+    PALACIO_RPE_FAILURE_PATTERN
+  );
+  return {
+    sheet,
+    technical: getRpeRecoveryTechnicalColumns(headers),
+    candidate: { ...candidate, ...classified },
+  };
+}
+
+function previewRecoverPalacioRpe() {
+  const prepared = preparePalacioRpeRecovery();
+  const row = prepared.candidate;
+  const result = {
+    title: 'PREVIEW RECUPERACION RPE PALACIO',
+    sheet: prepared.sheet.getName(),
+    row: row.rowNumber,
+    timestamp: row.timestampOriginal,
+    entry_date: row.entryDate,
+    received_name: row.receivedName,
+    jugador_id: row.playerId,
+    canonical_name: row.canonicalPlayerName,
+    match_rule: row.playerMatchRule,
+    rpe: row.rpe,
+    comment: row.comment,
+    existing_supabase: row.existing,
+    action: row.action,
+    reason: row.reason,
+  };
+  console.log(`${result.title}\n${JSON.stringify(result, null, 2)}`);
+  return result;
+}
+
+function recoverPalacioRpe() {
+  const prepared = preparePalacioRpeRecovery();
+  const requiredTechnical = ['Supabase status', 'Supabase error', 'Supabase synced_at'];
+  const missingTechnical = requiredTechnical.filter(
+    (header) => prepared.technical.columns[header]?.state !== 'FOUND'
+  );
+  if (missingTechnical.length) {
+    throw new Error(`Recuperacion RPE de Palacio bloqueada: faltan columnas tecnicas: ${missingTechnical.join(', ')}.`);
+  }
+  const candidate = {
+    ...prepared.candidate,
+    ...classifyRpeRecoveryAction(
+      prepared.candidate,
+      fetchExistingRpeRecoveryRows(prepared.candidate.playerId, prepared.candidate.entryDate),
+      PALACIO_RPE_FAILURE_PATTERN
+    ),
+  };
+  if (!['INSERTAR', 'SIN_CAMBIOS'].includes(candidate.action)) {
+    throw new Error(`Recuperacion RPE de Palacio bloqueada: ${candidate.action}. ${candidate.reason}`);
+  }
+  if (candidate.action === 'INSERTAR') {
+    let insertError = null;
+    try {
+      insertRpeRecoveryRow(candidate.payload);
+    } catch (error) {
+      insertError = error;
+    }
+    const verified = classifyRpeRecoveryAction(
+      candidate,
+      fetchExistingRpeRecoveryRows(candidate.playerId, candidate.entryDate),
+      PALACIO_RPE_FAILURE_PATTERN
+    );
+    if (verified.action !== 'SIN_CAMBIOS') {
+      throw new Error(
+        `Recuperacion RPE de Palacio no verificada: ${verified.reason || insertError?.message || 'resultado remoto inesperado'}.`
+      );
+    }
+  }
+  setRpeRows154to160TechnicalState(prepared.sheet, prepared.technical, candidate.rowNumber, {
+    status: 'SYNCED',
+    error: '',
+    syncedAt: new Date(),
+  });
+  const result = {
+    row: candidate.rowNumber,
+    entry_date: candidate.entryDate,
+    jugador_id: candidate.playerId,
+    action: candidate.action,
+  };
+  console.log('Recuperacion RPE puntual de Palacio completada.', result);
+  return result;
 }
 
 function getSupabaseConfig() {
@@ -3286,6 +3508,25 @@ function inspectRpeDropdownPlayers() {
     choices: auditRpeDropdownNames(choices, fetchPlayersForForms()),
   };
   console.log('Inspección del desplegable RPE de solo lectura.', result);
+  return result;
+}
+
+function inspectPalacioRpeDropdown() {
+  const audit = inspectRpeDropdownPlayers();
+  const acceptedNames = new Set([
+    'D. PALACIO',
+    'PALACIO',
+    'Daniel Palacio',
+    'Daniel Palacio Aranda',
+    'Daniel Palalcio',
+  ].map(normalizePlayerName));
+  const result = {
+    formTitle: audit.formTitle,
+    questionTitle: audit.questionTitle,
+    questionType: audit.questionType,
+    choices: audit.choices.filter((choice) => acceptedNames.has(normalizePlayerName(choice.dropdownName))),
+  };
+  console.log('Inspeccion del valor actual de Palacio en el desplegable RPE (solo lectura).', result);
   return result;
 }
 

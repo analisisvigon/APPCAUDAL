@@ -46,6 +46,13 @@ let supabasePlayers = [
   { id: 'player-mario', name: 'Mario Rodríguez', google_forms_name: null },
   { id: 'c5029ff1-5668-4efd-b91c-ccd4d2836232', name: 'Julio Rodríguez', shirt_name: 'J. RODRÍGUEZ', google_forms_name: null },
   { id: '52b68efa-2087-44a0-8f9f-96ed0f612a82', name: 'Julio Delgado', shirt_name: 'J. DELGADO', google_forms_name: null },
+  {
+    id: 'af4060e4-b54a-4e43-94b8-ccd600e7e784',
+    name: 'Daniel Palalcio',
+    shirt_name: 'PALACIO',
+    google_forms_name: 'Daniel Palacio Aranda',
+    global_player_id: '81decb7e-23f9-47ba-9bb5-f6e24fb65cde',
+  },
 ];
 
 const sandbox = {
@@ -386,6 +393,60 @@ assert.equal(julioWellnessPlan.groups[0]?.payload.jugador_id, julioRodriguezId, 
 assert.equal(julioRpePlan.groups[0]?.payload.jugador_id, julioRodriguezId, 'RPE usa el mismo resolver centralizado.');
 assert.equal(julioWellnessPlan.failures.length, 0);
 assert.equal(julioRpePlan.failures.length, 0);
+
+const palacioPlayerId = 'af4060e4-b54a-4e43-94b8-ccd600e7e784';
+const palacioExpectedRules = [
+  ['D. PALACIO', 'EXACT_PLAYER_ALIAS'],
+  ['PALACIO', 'EXACT_PLAYER_ALIAS'],
+  ['Daniel Palacio', 'EXACT_PLAYER_ALIAS'],
+  ['Daniel Palacio Aranda', 'EXACT_GOOGLE_FORMS_NAME'],
+];
+palacioExpectedRules.forEach(([receivedName, expectedRule]) => {
+  const resolution = sandbox.resolvePlayerByFormName(supabasePlayers, receivedName);
+  assert.equal(resolution?.jugador_id, palacioPlayerId, `${receivedName} debe resolver al UUID auditado de Palacio.`);
+  assert.equal(resolution?.match_rule, expectedRule, `${receivedName} debe respetar la prioridad segura del resolver compartido.`);
+});
+assert.equal(
+  sandbox.findPlayerIdByFormName('D. PALACIO')?.jugador_id,
+  palacioPlayerId,
+  'Los triggers reales Wellness/RPE resuelven el alias historico mediante findPlayerIdByFormName.'
+);
+assert.equal(
+  sandbox.resolvePlayerByFormName(supabasePlayers, 'Daniel Palalcio')?.jugador_id,
+  palacioPlayerId,
+  'El nombre actualmente almacenado en public.jugadores sigue resolviendo por coincidencia exacta.'
+);
+
+const palacioWellnessPlan = sandbox.buildWellnessHistoryImportPlan([{
+  rowNumber: 17,
+  values: {
+    'Marca temporal': '20/08/2026 08:00:00',
+    'Nombre y apellidos.': 'D. PALACIO',
+    'Ratio salud': '8',
+  },
+}], supabasePlayers, 'Europe/Madrid');
+const palacioRpePlan = sandbox.buildRpeHistoryImportPlan([{
+  rowNumber: 18,
+  values: {
+    'Marca temporal': '20/08/2026 12:00:00',
+    'Nombre y apellidos.': 'D. PALACIO',
+    'RPE': '6',
+    'Comentario': 'Recuperacion Palacio',
+  },
+}], supabasePlayers, 'Europe/Madrid');
+assert.equal(palacioWellnessPlan.failures.length, 0, 'Wellness acepta el alias historico de Palacio mediante el resolver comun.');
+assert.equal(palacioWellnessPlan.groups[0]?.payload.jugador_id, palacioPlayerId);
+assert.equal(palacioRpePlan.failures.length, 0, 'RPE acepta el alias historico de Palacio mediante el resolver comun.');
+assert.equal(palacioRpePlan.groups[0]?.payload.jugador_id, palacioPlayerId);
+
+assert.throws(
+  () => sandbox.resolvePlayerByFormName([
+    { id: 'palacio-a', name: 'Jugador A', shirt_name: '', google_forms_name: 'PALACIO' },
+    { id: 'palacio-b', name: 'Jugador B', shirt_name: '', google_forms_name: 'PALACIO' },
+  ], 'PALACIO'),
+  /Coincidencia ambigua/,
+  'Un valor actual ambiguo debe bloquearse antes de aplicar alias o coincidencias posteriores.'
+);
 
 const unknownWellnessPlan = sandbox.buildWellnessHistoryImportPlan([{
   rowNumber: 15,
@@ -1017,6 +1078,124 @@ assert.deepEqual(
   Array(7).fill('SYNCED'),
   'Solo las columnas técnicas de 154-160 deben marcarse tras verificar cada fila.'
 );
+sandbox.SpreadsheetApp.getActiveSpreadsheet = previousRecoverySpreadsheetGetter;
+supabasePlayers = previousRecoveryPlayers;
+recoveryRpeEntries = null;
+
+const palacioRecoveryHeaders = [
+  'Marca temporal',
+  'Dirección de correo electrónico',
+  'Nombre y apellidos.',
+  'Esfuerzo percibido de la sesión de entrenamiento.',
+  'Información personal: (sensaciones, molestias, comentarios, etc).',
+  'Dorsal',
+  'Supabase status',
+  'Supabase session_id',
+  'Supabase error',
+  'Supabase synced_at',
+];
+const palacioRecoveryRawRows = [[
+  new Date('2026-08-20T10:15:00.000Z'),
+  'palacio@example.com',
+  'D. PALACIO',
+  6,
+  'Trabajo completado',
+  '8',
+  'ERROR',
+  '',
+  'Jugador no encontrado en public.jugadores: "D. PALACIO". No se inserta RPE.',
+  '',
+]];
+const getPalacioRecoveryDisplayRows = () => palacioRecoveryRawRows.map((row) => row.map((value) => (
+  value instanceof Date ? value.toISOString() : String(value ?? '')
+)));
+const palacioRecoverySheet = {
+  getName() { return 'Respuestas RPE'; },
+  getSheetId() { return 20260820; },
+  getLastColumn() { return palacioRecoveryHeaders.length; },
+  getLastRow() { return 2; },
+  getRange(rowNumber, columnNumber, numberOfRows) {
+    if (rowNumber === 1) {
+      return { getDisplayValues() { return [palacioRecoveryHeaders]; } };
+    }
+    if (rowNumber === 2 && numberOfRows === 1) {
+      return {
+        getValues() { return palacioRecoveryRawRows; },
+        getDisplayValues() { return getPalacioRecoveryDisplayRows(); },
+      };
+    }
+    if (rowNumber === 2 && numberOfRows === undefined) {
+      return {
+        setValue(value) {
+          palacioRecoveryRawRows[0][columnNumber - 1] = value;
+        },
+      };
+    }
+    throw new Error(`Rango Palacio inesperado: ${rowNumber}, ${columnNumber}, ${numberOfRows}`);
+  },
+  getParent() { return palacioRecoverySpreadsheet; },
+};
+const palacioRecoverySpreadsheet = {
+  getSheets() { return [palacioRecoverySheet]; },
+  getActiveSheet() { return palacioRecoverySheet; },
+  getSpreadsheetTimeZone() { return 'Europe/Madrid'; },
+};
+sandbox.SpreadsheetApp.getActiveSpreadsheet = () => palacioRecoverySpreadsheet;
+supabasePlayers = previousRecoveryPlayers;
+recoveryRpeEntries = [];
+recoveryInsertCount = 0;
+recoveryResponseSequence = 0;
+
+const palacioPreview = sandbox.previewRecoverPalacioRpe();
+assert.equal(palacioPreview.row, 2);
+assert.equal(palacioPreview.received_name, 'D. PALACIO');
+assert.equal(palacioPreview.jugador_id, palacioPlayerId);
+assert.equal(palacioPreview.entry_date, '2026-08-20');
+assert.equal(palacioPreview.rpe, 6);
+assert.equal(palacioPreview.comment, 'Trabajo completado');
+assert.equal(palacioPreview.existing_supabase, null);
+assert.equal(palacioPreview.action, 'INSERTAR');
+assert.equal(recoveryInsertCount, 0, 'previewRecoverPalacioRpe debe ser estrictamente de solo lectura.');
+
+const firstPalacioRecovery = sandbox.recoverPalacioRpe();
+assert.equal(firstPalacioRecovery.action, 'INSERTAR');
+assert.equal(recoveryRpeEntries.length, 1);
+assert.equal(recoveryInsertCount, 1);
+const secondPalacioRecovery = sandbox.recoverPalacioRpe();
+assert.equal(secondPalacioRecovery.action, 'SIN_CAMBIOS');
+assert.equal(recoveryRpeEntries.length, 1);
+assert.equal(recoveryInsertCount, 1, 'La recuperacion puntual repetida no debe reinsertar ni sobrescribir.');
+
+recoveryRpeEntries[0].rpe = 9;
+const conflictingPalacioPreview = sandbox.previewRecoverPalacioRpe();
+assert.equal(conflictingPalacioPreview.action, 'REVISAR_MANUALMENTE');
+assert.match(conflictingPalacioPreview.reason, /rpe/);
+assert.equal(recoveryInsertCount, 1, 'Un conflicto remoto solo se informa durante preview.');
+
+const previousFormApp = sandbox.FormApp;
+sandbox.FormApp = {
+  ItemType: { LIST: 'LIST', MULTIPLE_CHOICE: 'MULTIPLE_CHOICE' },
+  openByUrl() {
+    return {
+      getTitle() { return 'RPE actual'; },
+      getItems() {
+        return [{
+          getTitle() { return 'Nombre y apellidos.'; },
+          getType() { return 'LIST'; },
+          asListItem() {
+            return { getChoices() { return [{ getValue() { return 'PALACIO'; } }]; } };
+          },
+        }];
+      },
+    };
+  },
+};
+sandbox.SpreadsheetApp.getActiveSpreadsheet = () => ({ getFormUrl() { return 'https://forms.example/palacio'; } });
+const palacioDropdownInspection = sandbox.inspectPalacioRpeDropdown();
+assert.equal(palacioDropdownInspection.choices.length, 1);
+assert.equal(palacioDropdownInspection.choices[0].dropdownName, 'PALACIO');
+assert.equal(palacioDropdownInspection.choices[0].jugador_id, palacioPlayerId);
+sandbox.FormApp = previousFormApp;
 sandbox.SpreadsheetApp.getActiveSpreadsheet = previousRecoverySpreadsheetGetter;
 supabasePlayers = previousRecoveryPlayers;
 recoveryRpeEntries = null;
@@ -2135,6 +2314,14 @@ const julioRpeInspectorSource = source.slice(
   source.indexOf('function inspectJulioRpeHistory'),
   source.indexOf('function buildRpeHistoricalAliasPreview')
 );
+const palacioRpePreviewSource = source.slice(
+  source.indexOf('function previewRecoverPalacioRpe'),
+  source.indexOf('function recoverPalacioRpe')
+);
+const palacioRpeRecoverySource = source.slice(
+  source.indexOf('function recoverPalacioRpe'),
+  source.indexOf('function getSupabaseConfig')
+);
 assert.doesNotMatch(
   wellnessImportSource,
   /deleteSupabase\(/,
@@ -2163,6 +2350,14 @@ assert.doesNotMatch(
   /upsertSupabase\(|updateSupabaseById\(|deleteSupabase\(|setValues\(|setValue\(|ensureTechnicalColumns\(/,
   'El inspector RPE de Julio debe ser de solo lectura.'
 );
+assert.doesNotMatch(
+  palacioRpePreviewSource,
+  /insertRpeRecoveryRow\(|upsertSupabase\(|updateSupabaseById\(|deleteSupabase\(|setValue\(|setValues\(|ensureTechnicalColumns\(/,
+  'previewRecoverPalacioRpe debe limitarse a leer Sheet y Supabase.'
+);
+assert.match(palacioRpeRecoverySource, /\['INSERTAR', 'SIN_CAMBIOS'\]\.includes\(candidate\.action\)/);
+assert.match(palacioRpeRecoverySource, /insertRpeRecoveryRow\(candidate\.payload\)/, 'La recuperacion puntual inserta sin upsert para no sobrescribir.');
+assert.doesNotMatch(palacioRpeRecoverySource, /importAllRpeHistory\(|upsertSupabase\(|updateSupabaseById\(|deleteSupabase\(/);
 assert.match(
   wellnessInspectorSource,
   /let payloadError = null;/,
