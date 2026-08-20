@@ -194,6 +194,7 @@ import {
   normalizeOwnDefaultFormation,
   resolveMatchStatsFormation,
 } from './utils/statsFormation';
+import { getFormationSlotsForSavedLineup } from './utils/formationSlotCoordinates';
 import {
   getStatsLineupInvariantReport,
   hydrateStatsLineup,
@@ -2556,90 +2557,12 @@ const mapFormationSlotToFacingPitch = (slot, side = 'caudal', scale = 0.42) => (
   y: side === 'rival' ? 50 - Number(slot?.y ?? 50) * scale : 50 + Number(slot?.y ?? 50) * scale,
 });
 
-const idealFormationSlots = {
-  '4-4-2': [
-    { id: 'POR', label: 'POR', line: 'porteria', x: 50, y: 89 },
-    { id: 'LD', label: 'LD', line: 'defensa', x: 82, y: 73 },
-    { id: 'DFC_D', label: 'DFC derecho', line: 'defensa', x: 61, y: 73 },
-    { id: 'DFC_I', label: 'DFC izquierdo', line: 'defensa', x: 39, y: 73 },
-    { id: 'LI', label: 'LI', line: 'defensa', x: 18, y: 73 },
-    { id: 'MD', label: 'MD', line: 'medio', x: 82, y: 45 },
-    { id: 'MC_D', label: 'MC derecho', line: 'medio', x: 61, y: 45 },
-    { id: 'MC_I', label: 'MC izquierdo', line: 'medio', x: 39, y: 45 },
-    { id: 'MI', label: 'MI', line: 'medio', x: 18, y: 45 },
-    { id: 'DC_D', label: 'DC derecho', line: 'ataque', x: 58, y: 16 },
-    { id: 'DC_I', label: 'DC izquierdo', line: 'ataque', x: 42, y: 16 },
-  ],
-  '4-3-3': [
-    { id: 'POR', label: 'POR', line: 'porteria', x: 50, y: 89 },
-    { id: 'LD', label: 'LD', line: 'defensa', x: 82, y: 73 },
-    { id: 'DFC_D', label: 'DFC derecho', line: 'defensa', x: 61, y: 73 },
-    { id: 'DFC_I', label: 'DFC izquierdo', line: 'defensa', x: 39, y: 73 },
-    { id: 'LI', label: 'LI', line: 'defensa', x: 18, y: 73 },
-    { id: 'MCD', label: 'MCD', line: 'medio', x: 50, y: 56 },
-    { id: 'MC_D', label: 'Interior derecho', line: 'medio', x: 62, y: 40 },
-    { id: 'MC_I', label: 'Interior izquierdo', line: 'medio', x: 38, y: 40 },
-    { id: 'ED', label: 'ED', line: 'ataque', x: 80, y: 18 },
-    { id: 'DC', label: 'DC', line: 'ataque', x: 50, y: 14 },
-    { id: 'EI', label: 'EI', line: 'ataque', x: 20, y: 18 },
-  ],
-  '4-2-3-1': [
-    { id: 'POR', label: 'POR', line: 'porteria', x: 50, y: 89 },
-    { id: 'LD', label: 'LD', line: 'defensa', x: 82, y: 73 },
-    { id: 'DFC_D', label: 'DFC derecho', line: 'defensa', x: 61, y: 73 },
-    { id: 'DFC_I', label: 'DFC izquierdo', line: 'defensa', x: 39, y: 73 },
-    { id: 'LI', label: 'LI', line: 'defensa', x: 18, y: 73 },
-    { id: 'MCD_D', label: 'Pivote derecho', line: 'medio', x: 61, y: 52 },
-    { id: 'MCD_I', label: 'Pivote izquierdo', line: 'medio', x: 39, y: 52 },
-    { id: 'MPD', label: 'MPD', line: 'mediapunta', x: 82, y: 32 },
-    { id: 'MPC', label: 'MPC', line: 'mediapunta', x: 50, y: 32 },
-    { id: 'MPI', label: 'MPI', line: 'mediapunta', x: 18, y: 32 },
-    { id: 'DC', label: 'DC', line: 'ataque', x: 50, y: 14 },
-  ],
-  '5-3-2': [
-    { id: 'POR', label: 'POR', line: 'porteria', x: 50, y: 89 },
-    { id: 'CAD', label: 'CAD', line: 'defensa', x: 88, y: 73 },
-    { id: 'DFC_D', label: 'DFC derecho', line: 'defensa', x: 68, y: 75 },
-    { id: 'DFC_C', label: 'DFC central', line: 'defensa', x: 50, y: 76 },
-    { id: 'DFC_I', label: 'DFC izquierdo', line: 'defensa', x: 32, y: 75 },
-    { id: 'CAI', label: 'CAI', line: 'defensa', x: 12, y: 73 },
-    { id: 'MC_D', label: 'MC derecho', line: 'medio', x: 66, y: 45 },
-    { id: 'MC_C', label: 'MC central', line: 'medio', x: 50, y: 49 },
-    { id: 'MC_I', label: 'MC izquierdo', line: 'medio', x: 34, y: 45 },
-    { id: 'DC_D', label: 'DC derecho', line: 'ataque', x: 58, y: 16 },
-    { id: 'DC_I', label: 'DC izquierdo', line: 'ataque', x: 42, y: 16 },
-  ],
-  '3-5-2': [
-    { id: 'POR', label: 'POR', line: 'porteria', x: 50, y: 89 },
-    { id: 'DFC_D', label: 'DFC derecho', line: 'defensa', x: 72, y: 73 },
-    { id: 'DFC_C', label: 'DFC central', line: 'defensa', x: 50, y: 75 },
-    { id: 'DFC_I', label: 'DFC izquierdo', line: 'defensa', x: 28, y: 73 },
-    { id: 'MCD', label: 'MCD', line: 'medio', x: 50, y: 56 },
-    { id: 'CAD', label: 'CAD', line: 'medio', x: 86, y: 43 },
-    { id: 'MC_D', label: 'MC derecho', line: 'medio', x: 62, y: 38 },
-    { id: 'MC_I', label: 'MC izquierdo', line: 'medio', x: 38, y: 38 },
-    { id: 'CAI', label: 'CAI', line: 'medio', x: 14, y: 43 },
-    { id: 'DC_D', label: 'DC derecho', line: 'ataque', x: 58, y: 16 },
-    { id: 'DC_I', label: 'DC izquierdo', line: 'ataque', x: 42, y: 16 },
-  ],
-};
-
 const stripAccents = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-const getIdealFormationSlots = (system) => idealFormationSlots[system] || getFormationLayout(system).map((slot, index) => ({
-  id: `SLOT_${index}`,
-  label: slot.role,
-  line: index === 0 ? 'porteria' : index < 5 ? 'defensa' : index < 9 ? 'medio' : 'ataque',
-  x: slot.x,
-  y: slot.y,
-}));
+const getIdealFormationSlots = (system) => getFormationSlotsForSavedLineup(system);
 
 // Los snapshots persisten system + slot. Este catálogo canónico traduce cada slot
 // persistido a coordenadas sin reinterpretarlo mediante la posición del jugador.
-const getTacticalSnapshotFormationSlots = (system) => getIdealFormationSlots(system).map((slot, index) => ({
-  ...slot,
-  slot: index,
-  role: slot.label,
-}));
+const getTacticalSnapshotFormationSlots = (system) => getFormationSlotsForSavedLineup(system);
 
 const normalizeIdealSlotId = ({ system, role, slotIndex, targetSlots = getIdealFormationSlots(system) }) => {
   const value = stripAccents(role).toLowerCase();
@@ -33686,7 +33609,6 @@ function App() {
                     matches={matches}
                     players={players}
                     captainPriorities={captainPriorities}
-                    getFormationCoordinates={getFormationCoordinates}
                     onNavigateMatchSection={(section) => openMatchPage(selectedMatch, section)}
                     onMatchPlanDirtyChange={setPrintMatchPlanDirty}
                     onMatchPlanNavigationGuardReady={registerPrintMatchPlanNavigationGuard}

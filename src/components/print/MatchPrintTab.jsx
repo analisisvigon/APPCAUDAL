@@ -12,6 +12,7 @@ import SetPieceTakersPrintSheet from './SetPieceTakersPrintSheet';
 import { getPlayerDisplayName } from '../../utils/playerDisplayName';
 import { resolveMatchCaptain } from '../../utils/matchCaptain';
 import { getOwnPrintKitForMatch } from '../../utils/printPlayerShirt';
+import { getFormationCoordinatesForSavedLineup } from '../../utils/formationSlotCoordinates';
 import {
   cloneSetPieceElementsWithFreshIds,
   createDefaultSetPieceTacticalMeta,
@@ -289,7 +290,6 @@ export default function MatchPrintTab({
   matches = [],
   players = [],
   captainPriorities = [],
-  getFormationCoordinates,
   onNavigateMatchSection,
   onMatchPlanDirtyChange,
   onMatchPlanNavigationGuardReady,
@@ -601,9 +601,9 @@ export default function MatchPrintTab({
     const markedStarters = starters.map((player) => ({ ...player, isCaptain: Boolean(printableCaptainPlayerId && String(player.id) === String(printableCaptainPlayerId)) }));
     const bench = getLineupBench({ match, players, starters: markedStarters, playersByName: byName, playersById: byId })
       .map((player) => ({ ...player, isCaptain: false }));
-    const coordinates = typeof getFormationCoordinates === 'function' ? getFormationCoordinates(system) : [];
+    const coordinates = getFormationCoordinatesForSavedLineup(system);
     return { system, starters: markedStarters, bench, coordinates, captainPlayerId: printableCaptainPlayerId };
-  }, [match, players, getFormationCoordinates, captainPriorities]);
+  }, [match, players, captainPriorities]);
 
   const professionalSetPieceSuggestions = useMemo(() => {
     const suggestions = [];
