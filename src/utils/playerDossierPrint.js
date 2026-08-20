@@ -4,7 +4,7 @@ const numberOrZero = (value) => {
 };
 
 export const inspectPlayerDossier = (documentRef) => {
-  const nodes = Array.from(documentRef?.querySelectorAll?.('[data-player-dossier-report="true"]') || []);
+  const nodes = Array.from(documentRef?.querySelectorAll?.('[data-player-pdf-report="true"]') || []);
   const node = nodes[0] || null;
   const rect = node?.getBoundingClientRect?.() || {};
   const scrollHeight = numberOrZero(node?.scrollHeight);

@@ -10,6 +10,7 @@ import {
 import LibrarySection from './components/library/LibrarySection';
 import MatchVideoPlayer from './components/matches/MatchVideoPlayer';
 import MatchPrintTab from './components/print/MatchPrintTab';
+import PlayerProfilePdfReport from './components/print/PlayerProfilePdfReport';
 import CaptainPriorityPanel from './components/players/CaptainPriorityPanel';
 import TacticalEvidencePanel from './components/tactical/TacticalEvidencePanel';
 import RivalCollectiveAssistant from './components/tactical/RivalCollectiveAssistant';
@@ -25,6 +26,7 @@ import AccordionSection from './components/shared/AccordionSection';
 import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
 import { printPlayerDossier } from './utils/playerDossierPrint';
+import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
 import {
   POST_EVENT_TYPES,
   buildPostEventTypesFromCatalog,
@@ -5629,6 +5631,7 @@ function App() {
   const [selectedSystemMoment, setSelectedSystemMoment] = useState(null);
   const [tacticalDispositionEditor, setTacticalDispositionEditor] = useState(null);
   const [playerReport, setPlayerReport] = useState(null);
+  const [playerPdfReport, setPlayerPdfReport] = useState(null);
   const [rivalScoutingDrafts, setRivalScoutingDrafts] = useState(() => {
     try {
       if (typeof window === 'undefined') return {};
@@ -28613,6 +28616,96 @@ function App() {
                 };
               });
               const maxSeasonMinutes = Math.max(1, ...seasonStageRows.map((row) => row.minutes));
+              const playerPdfActions = [...allGoalActions, ...allAssistActions].map((event) => ({
+                id: `${event.action}-${event.match.id}-${event.id}`,
+                type: event.action,
+                minute: event.minute,
+                opponent: event.match.opponent,
+                competition: getCompetitionFromCatalog(event.match).label,
+                description: event.summary || event.title || '',
+                url: event.videoUrl || '',
+                matchId: event.match.id,
+              }));
+              const playerPdfModel = buildPlayerProfilePrintReport({
+                identity: {
+                  name: selectedPlayerProfile.name,
+                  image: selectedPlayerProfile.image || '',
+                  number: displayDorsal(selectedPlayerProfile.number),
+                  position: selectedPlayerProfile.position || 'Sin demarcación',
+                  age: `${calculateAge(selectedPlayerProfile.dob)} años`,
+                  foot: selectedPlayerProfile.foot || 'no indicado',
+                },
+                filters: {
+                  competition: playerCompetitionFilter,
+                  venue: playerVenueFilter,
+                  influence: playerInfluenceFilter,
+                },
+                metrics: [
+                  ...primaryMetrics,
+                  ...secondaryMetrics.map(([label, value]) => ({ label, value })),
+                ],
+                seasonStages: seasonStageRows,
+                production: {
+                  goalsPer90: aggregate.goalsPer90,
+                  assistsPer90: aggregate.assistsPer90,
+                  directGoalParticipation: aggregate.directGoalParticipation,
+                },
+                influenceZones: pitchZoneCatalog.map((zone) => ({ ...zone, count: shotZoneCounts[zone.value] || 0 })),
+                goalZones: goalMouthZoneCatalog.map((zone) => ({ ...zone, count: goalZoneCounts[zone.value] || 0 })),
+                goalPhases: playerGoalPhaseCounts
+                  .filter((row) => row.count > 0)
+                  .map((row) => ({ ...row, percentage: Math.round((row.count / Math.max(1, allGoalActions.length)) * 100) })),
+                society: societyRows,
+                actions: playerPdfActions,
+                timeline: timelineGroups.map((group) => ({
+                  minute: group.minute,
+                  events: group.events.map((event) => ({
+                    id: event.actionKey,
+                    type: event.type,
+                    label: event.label,
+                    minute: event.minute,
+                    opponent: event.match?.opponent || '',
+                    competition: event.match ? getCompetitionFromCatalog(event.match).label : '',
+                    url: event.videoUrl || '',
+                  })),
+                })),
+                history: aggregate.rows.map((row) => {
+                  const score = getMatchScoreData(row.match);
+                  const linkedActions = playerPdfActions.filter((action) => action.matchId === row.match.id);
+                  return {
+                    id: row.match.id,
+                    date: matchDisplayDate(row.match.date),
+                    opponent: row.match.opponent,
+                    result: `${score.caudalGoals}-${score.rivalGoals}`,
+                    competition: getCompetitionFromCatalog(row.match).label,
+                    venue: row.match.isHome ? 'L' : 'V',
+                    role: row.role,
+                    minutes: `${row.minutes}'`,
+                    rating: row.rating || '-',
+                    goals: row.goals.length || '-',
+                    assists: row.assists.length || '-',
+                    cards: [row.yellow ? `${row.yellow} TA` : '', row.red ? '1 TR' : ''].filter(Boolean).join(' · ') || '-',
+                    injury: row.injured ? 'Sí' : '-',
+                    goalLinks: linkedActions.filter((action) => action.type === 'Gol').map((action) => action.url),
+                    assistLinks: linkedActions.filter((action) => action.type === 'Asistencia').map((action) => action.url),
+                  };
+                }),
+                live: quick.events.length ? {
+                  eventCount: quick.events.length,
+                  summary: `${quick.shots} tiros · ${quick.recoveries} recuperaciones · ${quick.losses} pérdidas`,
+                } : null,
+              });
+              const exportPlayerPdf = () => {
+                setPlayerPdfReport(playerPdfModel);
+                window.setTimeout(() => {
+                  const result = printPlayerDossier({ documentRef: document, print: () => window.print() });
+                  if (!result.printed) {
+                    setPlayerPdfReport(null);
+                    return;
+                  }
+                  window.setTimeout(() => setPlayerPdfReport(null), 400);
+                }, 100);
+              };
               const renderProfileEmptyState = (title, copy, variant = 'compact') => {
                 if (variant === 'lines') {
                   return (
@@ -28661,7 +28754,7 @@ function App() {
                 );
               };
               return (
-                <div className="player-dossier-report space-y-5" data-player-dossier-report="true">
+                <div className="player-dossier-report space-y-5">
                   <section className="rounded-[1.35rem] border border-white/10 bg-[#07111f] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.20)] sm:p-5">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                       <div className="grid min-w-0 gap-4 sm:grid-cols-[136px_minmax(0,1fr)] sm:items-center">
@@ -28681,7 +28774,7 @@ function App() {
                       <div className="no-print flex flex-wrap gap-2 lg:justify-end">
                         <button
                           type="button"
-                          onClick={() => printPlayerDossier({ documentRef: document, print: () => window.print() })}
+                          onClick={exportPlayerPdf}
                           className="rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-[#7aacff]"
                         >
                           Exportar PDF
@@ -29142,6 +29235,9 @@ function App() {
                       </div>
                     </section>
                   ) : null}
+                  {playerPdfReport && typeof document !== 'undefined'
+                    ? createPortal(<PlayerProfilePdfReport report={playerPdfReport} />, document.body)
+                    : null}
                 </div>
               );
             })() : (

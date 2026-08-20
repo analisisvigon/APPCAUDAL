@@ -44,11 +44,11 @@ for (const nodes of [[], [createReportNode({ width: 0 })], [createReportNode({ h
 const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 const printCss = fs.readFileSync(new URL('../styles/print.css', import.meta.url), 'utf8');
 const lastGlobalVisibilityReset = printCss.lastIndexOf('body * {');
-const playerVisibilityOverride = printCss.indexOf('.player-dossier-report,', lastGlobalVisibilityReset);
+const playerVisibilityOverride = printCss.indexOf('.player-profile-print-portal,', lastGlobalVisibilityReset);
 const overrideBlock = printCss.slice(playerVisibilityOverride, printCss.indexOf('}', playerVisibilityOverride) + 1);
 
-assert.match(appSource, /data-player-dossier-report="true"/, 'el flujo selecciona de forma inequívoca el informe visible');
-assert.match(appSource, /printPlayerDossier\([\s\S]*?window\.print\(\)/, 'el botón valida el informe antes de abrir la impresión nativa');
+assert.match(appSource, /<PlayerProfilePdfReport report=\{playerPdfReport\}/, 'el flujo selecciona el informe A4 específico y no la ficha web');
+assert.match(appSource, /printPlayerDossier\([\s\S]*?window\.print\(\)/, 'el botón valida el informe específico antes de abrir la impresión nativa');
 assert.ok(playerVisibilityOverride > lastGlobalVisibilityReset, 'la visibilidad del perfil se restaura después del reset global que causaba páginas blancas');
 assert.match(overrideBlock, /visibility:\s*visible\s*!important/, 'el contenido del perfil vence el visibility hidden global');
 
