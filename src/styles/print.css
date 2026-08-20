@@ -2204,6 +2204,11 @@
     visibility: hidden !important;
   }
 
+  .player-dossier-report,
+  .player-dossier-report * {
+    visibility: visible !important;
+  }
+
   body.printing-set-piece-preview .lineup-print-sheet:not(.set-piece-preview-sheet) {
     display: none !important;
   }

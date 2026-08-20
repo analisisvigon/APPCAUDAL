@@ -24,6 +24,7 @@ import DelegatedStatsDashboard from './components/delegated/DelegatedStatsDashbo
 import AccordionSection from './components/shared/AccordionSection';
 import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
+import { printPlayerDossier } from './utils/playerDossierPrint';
 import {
   POST_EVENT_TYPES,
   buildPostEventTypesFromCatalog,
@@ -28660,7 +28661,7 @@ function App() {
                 );
               };
               return (
-                <div className="player-dossier-report space-y-5">
+                <div className="player-dossier-report space-y-5" data-player-dossier-report="true">
                   <section className="rounded-[1.35rem] border border-white/10 bg-[#07111f] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.20)] sm:p-5">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                       <div className="grid min-w-0 gap-4 sm:grid-cols-[136px_minmax(0,1fr)] sm:items-center">
@@ -28680,7 +28681,7 @@ function App() {
                       <div className="no-print flex flex-wrap gap-2 lg:justify-end">
                         <button
                           type="button"
-                          onClick={() => window.print()}
+                          onClick={() => printPlayerDossier({ documentRef: document, print: () => window.print() })}
                           className="rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-[#7aacff]"
                         >
                           Exportar PDF
