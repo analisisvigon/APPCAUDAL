@@ -79,6 +79,7 @@ import {
   buildTacticalMatchHistory,
   buildTacticalSlotEvidenceFromIntervals,
   getHistoricalSubstitutionMinutes,
+  parseTacticalMinute,
 } from './utils/tacticalSnapshots';
 import {
   buildKnownOnFieldPlayers,

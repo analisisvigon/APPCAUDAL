@@ -6,7 +6,16 @@ import {
   buildTacticalSlotEvidenceFromIntervals,
   buildTacticalSnapshotIntervals,
   getTacticalTimelineInvariantReport,
+  parseTacticalMinute,
 } from './tacticalSnapshots.js';
+
+assert.equal(parseTacticalMinute(63), 63, 'acepta minutos numéricos');
+assert.equal(parseTacticalMinute('63'), 63, 'acepta minutos numéricos serializados');
+assert.equal(parseTacticalMinute("63'"), 63, 'acepta el apóstrofo habitual de los eventos');
+assert.equal(parseTacticalMinute('63+2'), 63, 'el historial táctico usa el minuto base del tiempo añadido');
+assert.equal(parseTacticalMinute(null), null, 'un minuto nulo no crea una frontera táctica');
+assert.equal(parseTacticalMinute(undefined), null, 'un minuto ausente no crea una frontera táctica');
+assert.equal(parseTacticalMinute('Sin minuto'), 0, 'el contrato actual normaliza a cero un texto sin dígitos');
 
 const systems = {
   '4-2-3-1': [
@@ -115,5 +124,16 @@ assert.equal(buildTacticalSlotEvidenceFromIntervals({ intervals: incompleteHisto
 
 const missingSubstitution = buildTacticalSnapshotIntervals({ duration: 90, initialSnapshot: initial, initialSystem: '4-2-3-1', substitutionMinutes: [63] });
 assert.deepEqual(missingSubstitution.map(({ minutes, isComplete }) => [minutes, isComplete]), [[63, true], [27, false]], 'una sustitución histórica sin foto no contamina el tramo posterior');
+
+const invalidMinuteHistory = buildTacticalSnapshotIntervals({
+  duration: 90,
+  initialSnapshot: initial,
+  initialSystem: '4-2-3-1',
+  systemEvents: [{ id: 'missing-minute', minute: null, toSystem: '4-3-3' }],
+  substitutionMinutes: [undefined, 'Sin minuto'],
+});
+assert.deepEqual(invalidMinuteHistory.map(({ fromMinute, toMinute, system, isComplete }) => [fromMinute, toMinute, system, isComplete]), [
+  [0, 90, '4-2-3-1', true],
+], 'minutos nulos o inválidos no rompen ni alteran el historial completo');
 
 console.log('tacticalSnapshots tests passed');

@@ -3,6 +3,14 @@ import fs from 'node:fs';
 
 const appSource = fs.readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
 const editorSource = fs.readFileSync(new URL('../src/utils/tacticalDispositionEditor.js', import.meta.url), 'utf8');
+const tacticalSnapshotsImport = appSource.match(/import\s*\{([\s\S]*?)\}\s*from '\.\/utils\/tacticalSnapshots';/)?.[1] || '';
+const groupSystemUsageSource = appSource.slice(
+  appSource.indexOf('const buildSystemUsageRows ='),
+  appSource.indexOf('const buildTacticalSlotMinutes ='),
+);
+
+assert.match(tacticalSnapshotsImport, /\bparseTacticalMinute\b/, 'Análisis Grupal importa la utilidad temporal que ejecuta');
+assert.match(groupSystemUsageSource, /parseTacticalMinute\(goal\.minute\)/, 'la atribución de goles por sistema usa el parser táctico compartido');
 
 assert.match(appSource, /from\("partido_snapshots_tacticos"\)[\s\S]*?eq\("partido_id", partidoId\)/, 'Estadísticas carga los snapshots del partido');
 assert.match(appSource, /from\("partido_snapshot_tactico_slots"\)[\s\S]*?in\("snapshot_id"/, 'Estadísticas carga los slots de los snapshots');
