@@ -46,7 +46,7 @@ function HistoryActionLinks({ count, links, type }) {
     <span className="player-pdf-history-links">
       <b>{count}</b>
       {safeLinks.map((url, index) => (
-        <a key={`${type}-${url}-${index}`} href={url} target="_blank" rel="noreferrer" aria-label={`${type} ${index + 1}: abrir vídeo`}>
+        <a data-player-video-link="history" key={`${type}-${url}-${index}`} href={url} target="_blank" rel="noreferrer" aria-label={`${type} ${index + 1}: abrir vídeo`}>
           {safeLinks.length === 1 ? '↗' : `${index + 1}↗`}
         </a>
       ))}
@@ -88,7 +88,7 @@ function Timeline({ groups }) {
               const marker = `${prefix} ${event.minute}'`;
               const tone = event.type === 'Gol' ? 'is-goal' : event.type === 'Asistencia' ? 'is-assist' : 'is-other';
               return event.url
-                ? <a className={tone} key={event.id || index} href={event.url} target="_blank" rel="noreferrer" title={`${event.type} · ${event.minute}' · abrir vídeo`}>{marker}</a>
+                ? <a data-player-video-link="timeline" className={tone} key={event.id || index} href={event.url} target="_blank" rel="noreferrer" title={`${event.type} · ${event.minute}' · abrir vídeo`}>{marker}</a>
                 : <span className={tone} key={event.id || index} title={`${event.type} · ${event.minute}'`}>{marker}</span>;
             })}
           </div>
@@ -115,7 +115,7 @@ function ActionsLibrary({ actions, number = '07' }) {
             <article key={action.id || `${action.type}-${action.minute}-${action.opponent}`}>
               <span className="player-pdf-video-icon">▶</span>
               <div><strong>{action.type} <em>· {action.minute}'</em></strong><span>vs {action.opponent}</span><small>{action.competition}</small>{action.description ? <p>{action.description}</p> : null}</div>
-              {action.url ? <a href={action.url} target="_blank" rel="noreferrer">Abrir vídeo ↗</a> : <small className="player-pdf-no-video">Sin vídeo</small>}
+              {action.url ? <a href={action.url} data-player-video-link="library" target="_blank" rel="noreferrer">Abrir vídeo ↗</a> : <small className="player-pdf-no-video">Sin vídeo</small>}
             </article>
           ))}</div>
         </div>

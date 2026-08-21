@@ -26,7 +26,7 @@ import DelegatedStatsDashboard from './components/delegated/DelegatedStatsDashbo
 import AccordionSection from './components/shared/AccordionSection';
 import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
-import { printPlayerDossier } from './utils/playerDossierPrint';
+import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
 import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
 import {
   POST_EVENT_TYPES,
@@ -28710,13 +28710,19 @@ function App() {
               });
               const exportPlayerPdf = () => {
                 setPlayerPdfReport(playerPdfModel);
-                window.setTimeout(() => {
-                  const result = printPlayerDossier({ documentRef: document, print: () => window.print() });
-                  if (!result.printed) {
+                window.setTimeout(async () => {
+                  try {
+                    const result = await exportPlayerProfilePdf({
+                      documentRef: document,
+                      filename: `informe-${String(selectedPlayerProfile.name || 'jugador').trim().toLowerCase().replace(/[^a-z0-9áéíóúüñ]+/gi, '-')}.pdf`,
+                    });
+                    console.info('PDF individual generado con enlaces verificados.', result.audit);
+                  } catch (error) {
+                    console.error('No se pudo generar el PDF individual con enlaces.', error);
+                    window.alert(error?.message || 'No se pudo generar el PDF individual.');
+                  } finally {
                     setPlayerPdfReport(null);
-                    return;
                   }
-                  window.setTimeout(() => setPlayerPdfReport(null), 400);
                 }, 100);
               };
               const renderProfileEmptyState = (title, copy, variant = 'compact') => {
