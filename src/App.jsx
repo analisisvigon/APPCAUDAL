@@ -11,6 +11,7 @@ import LibrarySection from './components/library/LibrarySection';
 import MatchVideoPlayer from './components/matches/MatchVideoPlayer';
 import MatchPrintTab from './components/print/MatchPrintTab';
 import PlayerProfilePdfReport from './components/print/PlayerProfilePdfReport';
+import FootballZoneMap from './components/visualization/FootballZoneMap';
 import CaptainPriorityPanel from './components/players/CaptainPriorityPanel';
 import TacticalEvidencePanel from './components/tactical/TacticalEvidencePanel';
 import RivalCollectiveAssistant from './components/tactical/RivalCollectiveAssistant';
@@ -19971,7 +19972,7 @@ function App() {
     }, {})).sort((a, b) => b.count - a.count || a.assistant.localeCompare(b.assistant));
   };
 
-  const renderReadOnlyZoneGrid = ({ counts, zones = pitchZoneOptions, goal = false }) => (
+  const renderReadOnlyZoneGrid = ({ counts, zones = pitchZoneOptions, goal = false }) => goal ? (
     <div className={`relative w-full max-w-full min-w-0 overflow-hidden rounded-3xl border border-white/18 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_24px_70px_rgba(0,0,0,0.28)] ${goal ? 'aspect-[16/9] min-h-[160px] bg-[radial-gradient(circle_at_50%_12%,rgba(79,140,255,0.16),transparent_34%),linear-gradient(180deg,#172033,#0a101d)] sm:min-h-[180px]' : 'aspect-[7/10] bg-[radial-gradient(circle_at_50%_45%,rgba(118,255,210,0.14),transparent_26%),linear-gradient(180deg,#0b5a42,#064432_48%,#073a30)]'}`}>
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.028)_1px,transparent_1px)] bg-[size:28px_28px] opacity-60" />
       {goal ? (
@@ -20002,6 +20003,12 @@ function App() {
         })}
       </div>
     </div>
+  ) : (
+    <FootballZoneMap
+      counts={counts}
+      zones={zones.map((zone) => ({ value: zone, shortLabel: displayZoneLabel(zone) }))}
+      variant="screen"
+    />
   );
 
   const generatePlayerReport = (player, aggregate) => {
@@ -28529,6 +28536,9 @@ function App() {
                 .filter((event) => event.match);
               const influenceActions = playerInfluenceFilter === 'Goles' ? allGoalActions : playerInfluenceFilter === 'Asistencias' ? allAssistActions : [...allGoalActions, ...allAssistActions];
               const shotZoneCounts = countPitchZones(influenceActions.map((event) => event.action === 'Gol' ? event.shotZone : event.assistZone));
+              const allInfluenceZoneCounts = countPitchZones([...allGoalActions, ...allAssistActions].map((event) => event.action === 'Gol' ? event.shotZone : event.assistZone));
+              const goalInfluenceZoneCounts = countPitchZones(allGoalActions.map((event) => event.shotZone));
+              const assistInfluenceZoneCounts = countPitchZones(allAssistActions.map((event) => event.assistZone));
               const goalZoneCounts = getGroupGoalZoneCounts(allGoalActions);
               const playerGoalPhaseCounts = countPhases(allGoalActions);
               const maxPlayerGoalPhase = Math.max(1, ...playerGoalPhaseCounts.map((row) => row.count));
@@ -28638,7 +28648,6 @@ function App() {
                 filters: {
                   competition: playerCompetitionFilter,
                   venue: playerVenueFilter,
-                  influence: playerInfluenceFilter,
                 },
                 metrics: [
                   ...primaryMetrics,
@@ -28650,7 +28659,11 @@ function App() {
                   assistsPer90: aggregate.assistsPer90,
                   directGoalParticipation: aggregate.directGoalParticipation,
                 },
-                influenceZones: pitchZoneCatalog.map((zone) => ({ ...zone, count: shotZoneCounts[zone.value] || 0 })),
+                influenceMaps: [
+                  { key: 'all', label: 'Todos', zones: pitchZoneCatalog.map((zone) => ({ ...zone, count: allInfluenceZoneCounts[zone.value] || 0 })) },
+                  { key: 'goals', label: 'Goles', zones: pitchZoneCatalog.map((zone) => ({ ...zone, count: goalInfluenceZoneCounts[zone.value] || 0 })) },
+                  { key: 'assists', label: 'Asistencias', zones: pitchZoneCatalog.map((zone) => ({ ...zone, count: assistInfluenceZoneCounts[zone.value] || 0 })) },
+                ],
                 goalZones: goalMouthZoneCatalog.map((zone) => ({ ...zone, count: goalZoneCounts[zone.value] || 0 })),
                 goalPhases: playerGoalPhaseCounts
                   .filter((row) => row.count > 0)

@@ -2752,6 +2752,112 @@
 }
 
 /* Informe de jugador: traducción A4 de la identidad visual de APPCAUDAL. */
+.football-zone-map {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 68 / 105;
+  overflow: hidden;
+  border-radius: 1.5rem;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(118,255,210,0.14), transparent 28%),
+    linear-gradient(180deg,#0b5a42,#064432 48%,#073a30);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 24px 70px rgba(0,0,0,0.28);
+}
+
+.football-zone-map-markings {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: rgba(255,255,255,0.58);
+  stroke-width: 0.45;
+  vector-effect: non-scaling-stroke;
+}
+
+.football-zone-map-markings .pitch-boundary {
+  stroke-width: 0.7;
+}
+
+.football-zone-map-markings .pitch-spot {
+  fill: rgba(255,255,255,0.68);
+  stroke: none;
+}
+
+.football-zone-map-markings .pitch-goal {
+  stroke: rgba(255,255,255,0.82);
+  stroke-width: 0.7;
+}
+
+.football-zone-map-direction {
+  position: absolute;
+  top: 2.5%;
+  right: 5%;
+  z-index: 2;
+  color: rgba(255,255,255,0.72);
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.football-zone-map-cells {
+  position: absolute;
+  inset: 1.9%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+}
+
+.football-zone-map-cells > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255,255,255,0.08);
+  text-align: center;
+}
+
+.football-zone-map-cells > div.has-value {
+  background: rgba(32,191,234,0.32);
+  box-shadow: inset 0 0 24px rgba(79,140,255,0.18);
+}
+
+.football-zone-map-cells span {
+  max-width: 100%;
+  padding: 0 2px;
+  color: rgba(255,255,255,0.9);
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1.05;
+  text-transform: uppercase;
+  white-space: pre-line;
+}
+
+.football-zone-map-cells strong {
+  margin-top: 2px;
+  color: #fff;
+  font-size: 16px;
+}
+
+.football-zone-map-empty {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  width: 72%;
+  margin: 0;
+  padding: 10px;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 12px;
+  background: rgba(2,12,24,0.6);
+  color: rgba(255,255,255,0.74);
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+}
+
 .player-profile-pdf-report {
   --player-pdf-navy: #071a36;
   --player-pdf-blue: #164f8f;
@@ -3015,6 +3121,136 @@
   gap: 4mm;
 }
 
+.player-pdf-map-panel {
+  margin-top: 0;
+  padding: 2.3mm;
+}
+
+.player-pdf-map-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2mm;
+  margin: -0.5mm 0 2mm;
+}
+
+.player-pdf-map-tabs span {
+  padding: 1.2mm 2mm;
+  border: 0.25mm solid #a9c5de;
+  border-radius: 2mm;
+  background: #eaf6fb;
+  color: var(--player-pdf-blue);
+  font-size: 5.8pt;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.player-pdf-map-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: 2.5mm;
+}
+
+.player-pdf-map-grid > article {
+  min-width: 0;
+  padding: 1.5mm;
+  border: 0.25mm solid var(--player-pdf-line);
+  border-radius: 2.5mm;
+  background: #f4f8fc;
+}
+
+.player-pdf-map-grid h3 {
+  margin: 0;
+  color: var(--player-pdf-blue);
+  font-size: 6.2pt;
+  font-weight: 950;
+  letter-spacing: 0.09em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.football-zone-map.is-print {
+  width: 35.5mm;
+  margin: 0 auto;
+  border: 0.45mm solid var(--player-pdf-blue);
+  border-radius: 2mm;
+  background: linear-gradient(180deg, #d9eee4, #edf7f2);
+  box-shadow: inset 0 0 0 0.8mm rgba(255,255,255,0.7);
+}
+
+.football-zone-map.is-print .football-zone-map-markings {
+  stroke: rgba(22,79,143,0.62);
+  stroke-width: 0.35;
+}
+
+.football-zone-map.is-print .football-zone-map-markings .pitch-spot {
+  fill: rgba(22,79,143,0.7);
+}
+
+.football-zone-map.is-print .football-zone-map-markings .pitch-goal {
+  stroke: rgba(22,79,143,0.82);
+}
+
+.football-zone-map.is-print .football-zone-map-direction {
+  color: rgba(22,79,143,0.72);
+  font-size: 4.2pt;
+}
+
+.football-zone-map.is-print .football-zone-map-cells > div {
+  border: 0.12mm solid rgba(22,79,143,0.11);
+}
+
+.football-zone-map.is-print .football-zone-map-cells > div.has-value {
+  background: linear-gradient(145deg, rgba(32,191,234,0.24), rgba(22,79,143,0.28));
+}
+
+.football-zone-map.is-print .football-zone-map-cells span {
+  color: var(--player-pdf-ink);
+  font-size: 4.4pt;
+}
+
+.football-zone-map.is-print .football-zone-map-cells strong {
+  margin-top: 0.5mm;
+  color: var(--player-pdf-blue);
+  font-size: 9pt;
+}
+
+.player-pdf-map-empty {
+  margin: 0;
+  padding: 6mm 2mm;
+  border: 0.25mm dashed #aac0d4;
+  border-radius: 2mm;
+  color: var(--player-pdf-muted);
+  font-size: 6pt;
+  font-style: italic;
+  text-align: center;
+}
+
+.player-pdf-analysis-layout {
+  display: grid;
+  grid-template-columns: 0.92fr 1.08fr;
+  align-items: start;
+  gap: 3mm;
+  margin-top: 2mm;
+}
+
+.player-pdf-analysis-layout .player-pdf-section {
+  margin-top: 0;
+}
+
+.player-pdf-finishing-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2mm;
+  margin-top: 1.5mm;
+}
+
+.player-pdf-finishing-layout .player-pdf-section {
+  min-width: 0;
+}
+
 .player-pdf-map-panel,
 .player-pdf-production-card,
 .player-pdf-phases,
@@ -3056,7 +3292,7 @@
 }
 
 .player-pdf-zone-grid.is-goal {
-  height: 27mm;
+  height: 20mm;
   border-radius: 1.5mm;
   background: #f7fafc;
 }
@@ -3224,14 +3460,35 @@
   color: var(--player-pdf-blue);
 }
 
+.player-pdf-society-columns > div > small {
+  display: block;
+  color: #8391a2;
+  font-size: 5.4pt;
+  font-style: italic;
+}
+
+.player-pdf-analysis-layout .player-pdf-society {
+  padding: 2.3mm;
+}
+
+.player-pdf-analysis-layout .player-pdf-society-columns {
+  grid-template-columns: 1.2fr 1fr;
+  gap: 1.4mm;
+}
+
+.player-pdf-analysis-layout .player-pdf-society-columns > div:first-child {
+  grid-row: span 2;
+}
+
 .player-pdf-timeline-section,
 .player-pdf-actions {
-  margin-top: 3mm;
+  margin-top: 2mm;
+  padding: 2.3mm;
 }
 
 .player-pdf-timeline {
-  height: 14mm;
-  margin: 5mm 4mm 0;
+  height: 9mm;
+  margin: 4mm 4mm 0;
   border-top-color: var(--player-pdf-blue);
 }
 
@@ -3263,6 +3520,24 @@
   box-shadow: 0 1mm 2mm rgba(7,26,54,0.18);
 }
 
+.player-pdf-timeline-event-group > a,
+.player-pdf-timeline-event-group > span {
+  width: auto;
+  min-width: 9mm;
+  height: 5.5mm;
+  padding: 0 1.2mm;
+  border-radius: 2.8mm;
+  white-space: nowrap;
+}
+
+.player-pdf-timeline-event-group > .is-goal {
+  background: #13835c;
+}
+
+.player-pdf-timeline-event-group > .is-assist {
+  background: var(--player-pdf-blue);
+}
+
 .player-pdf-timeline-event-group > a {
   background: linear-gradient(145deg, var(--player-pdf-blue), var(--player-pdf-electric));
   outline: 0.45mm solid rgba(32,191,234,0.22);
@@ -3272,11 +3547,47 @@
   gap: 1.5mm;
 }
 
+.player-pdf-action-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2mm;
+}
+
+.player-pdf-action-group {
+  min-width: 0;
+}
+
+.player-pdf-action-group:only-child {
+  grid-column: 1 / -1;
+}
+
+.player-pdf-action-group h3 {
+  margin: 0 0 1.2mm;
+  color: var(--player-pdf-blue);
+  font-size: 6.1pt;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.player-pdf-action-group h3 span {
+  color: var(--player-pdf-muted);
+}
+
+.player-pdf-action-group .player-pdf-action-grid {
+  grid-template-columns: 1fr;
+  gap: 1mm;
+}
+
+.player-pdf-action-group:only-child .player-pdf-action-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .player-pdf-action-grid article {
   grid-template-columns: 8mm minmax(0, 1fr) auto;
   align-items: center;
-  min-height: 15mm;
-  padding: 2mm;
+  min-height: 12mm;
+  padding: 1.5mm 1.8mm;
   border: 0.3mm solid var(--player-pdf-line);
   border-left: 1mm solid var(--player-pdf-electric);
   border-radius: 2mm;
@@ -3310,6 +3621,13 @@
   margin-top: 0.5mm;
   color: var(--player-pdf-muted);
   font-size: 5.6pt;
+}
+
+.player-pdf-action-grid div p {
+  margin: 0.6mm 0 0;
+  color: #64748b;
+  font-size: 5.2pt;
+  line-height: 1.25;
 }
 
 .player-pdf-action-grid a {
@@ -3348,6 +3666,22 @@
 }
 
 .player-pdf-summary-history tbody tr:only-child td {
+  height: 11mm;
+}
+
+.player-pdf-summary-page:has(.player-pdf-summary-history tbody tr:nth-child(-n+3):last-child) .player-pdf-identity {
+  min-height: 52mm;
+}
+
+.player-pdf-summary-page:has(.player-pdf-summary-history tbody tr:nth-child(-n+3):last-child) .player-pdf-metric-grid > div {
+  min-height: 28mm;
+}
+
+.player-pdf-summary-page:has(.player-pdf-summary-history tbody tr:nth-child(-n+3):last-child) .player-pdf-season-strip > div {
+  min-height: 34mm;
+}
+
+.player-pdf-summary-page:has(.player-pdf-summary-history tbody tr:nth-child(-n+3):last-child) .player-pdf-summary-history tbody td {
   height: 11mm;
 }
 

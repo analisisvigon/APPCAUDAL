@@ -1,3 +1,5 @@
+import FootballZoneMap from '../visualization/FootballZoneMap';
+
 const safeRows = (value) => Array.isArray(value) ? value : [];
 
 function ReportHeader({ report, section }) {
@@ -13,7 +15,7 @@ function ReportHeader({ report, section }) {
 function ReportFooter({ report, page }) {
   return (
     <footer className="player-pdf-footer">
-      <span>{report.filters.competition} · {report.filters.venue} · Influencia: {report.filters.influence}</span>
+      <span>{report.filters.competition} · {report.filters.venue}</span>
       <span>Página {page} de {report.pagePlan.length}</span>
     </footer>
   );
@@ -82,10 +84,12 @@ function Timeline({ groups }) {
         {groups.map((group) => (
           <div className="player-pdf-timeline-event-group" key={group.minute} style={{ left: `${Math.min(100, Number(group.minute) / 90 * 100)}%` }}>
             {safeRows(group.events).map((event, index) => {
-              const marker = event.label || (event.type === 'Gol' ? 'G' : event.type === 'Asistencia' ? 'A' : event.type?.slice(0, 3));
+              const prefix = event.type === 'Gol' ? 'G' : event.type === 'Asistencia' ? 'ASIS' : event.label || event.type?.slice(0, 3);
+              const marker = `${prefix} ${event.minute}'`;
+              const tone = event.type === 'Gol' ? 'is-goal' : event.type === 'Asistencia' ? 'is-assist' : 'is-other';
               return event.url
-                ? <a key={event.id || index} href={event.url} target="_blank" rel="noreferrer" title={`${event.type} · ${event.minute}' · abrir vídeo`}>{marker}</a>
-                : <span key={event.id || index} title={`${event.type} · ${event.minute}'`}>{marker}</span>;
+                ? <a className={tone} key={event.id || index} href={event.url} target="_blank" rel="noreferrer" title={`${event.type} · ${event.minute}' · abrir vídeo`}>{marker}</a>
+                : <span className={tone} key={event.id || index} title={`${event.type} · ${event.minute}'`}>{marker}</span>;
             })}
           </div>
         ))}
@@ -96,18 +100,26 @@ function Timeline({ groups }) {
 
 function ActionsLibrary({ actions, number = '07' }) {
   if (!safeRows(actions).length) return null;
+  const groups = [
+    { key: 'goals', title: 'Goles', rows: actions.filter((action) => action.type === 'Gol') },
+    { key: 'assists', title: 'Asistencias', rows: actions.filter((action) => action.type === 'Asistencia') },
+    { key: 'other', title: 'Otras acciones', rows: actions.filter((action) => !['Gol', 'Asistencia'].includes(action.type)) },
+  ].filter((group) => group.rows.length);
   return (
     <section className="player-pdf-section player-pdf-actions">
       <SectionTitle number={number}>Videoteca de acciones</SectionTitle>
-      <div className="player-pdf-action-grid">
-        {actions.map((action) => (
-          <article key={action.id || `${action.type}-${action.minute}-${action.opponent}`}>
-            <span className="player-pdf-video-icon">▶</span>
-            <div><strong>{action.type} <em>· {action.minute}'</em></strong><span>vs {action.opponent}</span><small>{action.competition}</small></div>
-            {action.url ? <a href={action.url} target="_blank" rel="noreferrer">Abrir vídeo ↗</a> : <small className="player-pdf-no-video">Sin vídeo</small>}
-          </article>
-        ))}
-      </div>
+      <div className="player-pdf-action-groups">{groups.map((group) => (
+        <div className="player-pdf-action-group" key={group.key}>
+          <h3>{group.title} <span>({group.rows.length})</span></h3>
+          <div className="player-pdf-action-grid">{group.rows.map((action) => (
+            <article key={action.id || `${action.type}-${action.minute}-${action.opponent}`}>
+              <span className="player-pdf-video-icon">▶</span>
+              <div><strong>{action.type} <em>· {action.minute}'</em></strong><span>vs {action.opponent}</span><small>{action.competition}</small>{action.description ? <p>{action.description}</p> : null}</div>
+              {action.url ? <a href={action.url} target="_blank" rel="noreferrer">Abrir vídeo ↗</a> : <small className="player-pdf-no-video">Sin vídeo</small>}
+            </article>
+          ))}</div>
+        </div>
+      ))}</div>
     </section>
   );
 }
@@ -120,7 +132,7 @@ function SummaryPage({ report }) {
       <section className="player-pdf-identity">
         <div className="player-pdf-photo">{report.identity.image ? <img src={report.identity.image} alt={report.identity.name} /> : <span>{initials}</span>}</div>
         <div className="player-pdf-identity-copy"><p className="player-pdf-kicker">Perfil de rendimiento</p><h1>{report.identity.name}</h1><div className="player-pdf-identity-facts"><strong>#{report.identity.number}</strong><span>{report.identity.position}</span><span>{report.identity.age}</span><span>Pie {report.identity.foot}</span></div></div>
-        <div className="player-pdf-filter-card"><span>Filtros aplicados</span><strong>{report.filters.competition}</strong><p>{report.filters.venue}</p><p>Influencia · {report.filters.influence}</p></div>
+        <div className="player-pdf-filter-card"><span>Filtros aplicados</span><strong>{report.filters.competition}</strong><p>{report.filters.venue}</p><p>Mapas · Todos / Goles / Asistencias</p></div>
       </section>
 
       <section className="player-pdf-section player-pdf-summary-metrics">
@@ -151,42 +163,39 @@ function SocietyPanel({ society }) {
       <div className="player-pdf-society-headlines"><div><span>Mayor asociación</span><strong>{topAssociation.name}</strong><b>{topAssociation.total} conexiones</b></div>{assistants[0] ? <div><span>Más asistencias recibidas</span><strong>{assistants[0].name}</strong><b>{assistants[0].received} asistencias</b></div> : null}</div>
       <div className="player-pdf-society-columns">
         <div><h3>Conexiones principales</h3>{rows.slice(0, 4).map((row) => <div className="player-pdf-society-row" key={row.name}><span>{row.name}</span><i><b style={{ width: `${Number(row.total) / maxTotal * 100}%` }} /></i><strong>{row.total}</strong></div>)}</div>
-        {assistants.length ? <div><h3>Principales asistentes</h3>{assistants.slice(0, 3).map((row) => <p key={row.name}><span>{row.name}</span><strong>{row.received}</strong></p>)}</div> : null}
-        {recipients.length ? <div><h3>Asistencias dadas a</h3>{recipients.slice(0, 3).map((row) => <p key={row.name}><span>{row.name}</span><strong>{row.given}</strong></p>)}</div> : null}
+        <div><h3>Principales asistentes</h3>{assistants.length ? assistants.slice(0, 3).map((row) => <p key={row.name}><span>{row.name}</span><strong>{row.received}</strong></p>) : <small>Sin datos registrados</small>}</div>
+        <div><h3>Asistencias dadas a</h3>{recipients.length ? recipients.slice(0, 3).map((row) => <p key={row.name}><span>{row.name}</span><strong>{row.given}</strong></p>) : <small>Sin datos registrados</small>}</div>
       </div>
     </section>
   );
 }
 
 function ProductionPage({ report }) {
-  const hasInfluence = report.influenceZones.some((zone) => Number(zone.count) > 0);
   const hasGoalZones = report.goalZones.some((zone) => Number(zone.count) > 0);
   return (
     <article className="player-pdf-page player-pdf-production-page" data-player-pdf-page="production">
       <ReportHeader report={report} section="Análisis ofensivo" />
-      <div className="player-pdf-production-layout">
-        <section className="player-pdf-section player-pdf-map-panel"><SectionTitle number="04">Mapa de influencia</SectionTitle><p className="player-pdf-section-note">Acciones · {report.filters.influence}</p>{hasInfluence ? <ZoneGrid zones={report.influenceZones} /> : <p className="player-pdf-empty-line">Sin zonas registradas</p>}</section>
+      <section className="player-pdf-section player-pdf-map-panel">
+        <SectionTitle number="04">Mapa de influencia</SectionTitle>
+        <div className="player-pdf-map-tabs"><span>Todos</span><span>Goles</span><span>Asistencias</span></div>
+        <div className="player-pdf-map-grid">{report.influenceMaps.map((map) => {
+          const hasData = safeRows(map.zones).some((zone) => Number(zone.count) > 0);
+          return <article key={map.key} aria-label={`Mapa ${map.label}`}>{hasData ? <FootballZoneMap zones={map.zones} variant="print" /> : <p className="player-pdf-map-empty">Sin datos registrados</p>}</article>;
+        })}</div>
+      </section>
+      <div className="player-pdf-analysis-layout">
         <div className="player-pdf-production-column">
           <section className="player-pdf-section player-pdf-production-card"><SectionTitle compact>Producción ofensiva</SectionTitle><div className="player-pdf-production-metrics"><div><span>Goles/90</span><strong>{report.production.goalsPer90}</strong></div><div><span>Asistencias/90</span><strong>{report.production.assistsPer90}</strong></div><div><span>Participación directa</span><strong>{report.production.directGoalParticipation}</strong></div></div></section>
-          {report.goalPhases.length ? <section className="player-pdf-section player-pdf-phases"><SectionTitle compact>Tipo de gol</SectionTitle>{report.goalPhases.map((phase) => <div key={phase.phase} className="player-pdf-bar-row"><span>{phase.phase}</span><i><b style={{ width: `${phase.percentage}%` }} /></i><strong>{phase.count}</strong></div>)}</section> : null}
-          {hasGoalZones ? <section className="player-pdf-section player-pdf-goal-panel"><SectionTitle compact>Diana de finalización</SectionTitle><ZoneGrid zones={report.goalZones} goal /></section> : null}
+          <div className="player-pdf-finishing-layout">
+            {report.goalPhases.length ? <section className="player-pdf-section player-pdf-phases"><SectionTitle compact>Tipo de gol</SectionTitle>{report.goalPhases.map((phase) => <div key={phase.phase} className="player-pdf-bar-row"><span>{phase.phase}</span><i><b style={{ width: `${phase.percentage}%` }} /></i><strong>{phase.count}</strong></div>)}</section> : null}
+            {hasGoalZones ? <section className="player-pdf-section player-pdf-goal-panel"><SectionTitle compact>Diana de finalización</SectionTitle><ZoneGrid zones={report.goalZones} goal /></section> : null}
+          </div>
         </div>
+        <SocietyPanel society={report.society} />
       </div>
-      <SocietyPanel society={report.society} />
       <Timeline groups={report.timeline} />
       <ActionsLibrary actions={report.productionActions} />
       <ReportFooter report={report} page={2} />
-    </article>
-  );
-}
-
-function OverflowPage({ report }) {
-  return (
-    <article className="player-pdf-page player-pdf-overflow-page" data-player-pdf-page="overflow">
-      <ReportHeader report={report} section="Archivo de acciones" />
-      <ActionsLibrary actions={report.overflowActions} number="08" />
-      {report.overflowHistory.length ? <section className="player-pdf-section player-pdf-history"><SectionTitle number="09">Continuación del historial</SectionTitle><HistoryTable rows={report.overflowHistory} /></section> : null}
-      <ReportFooter report={report} page={3} />
     </article>
   );
 }
@@ -198,7 +207,6 @@ export default function PlayerProfilePdfReport({ report }) {
       <div className="player-profile-pdf-report" data-player-pdf-report="true" data-page-count={report.pagePlan.length}>
         <SummaryPage report={report} />
         <ProductionPage report={report} />
-        {report.pagePlan.includes('overflow') ? <OverflowPage report={report} /> : null}
       </div>
     </section>
   );

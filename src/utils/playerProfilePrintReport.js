@@ -1,9 +1,6 @@
 const rows = (value) => Array.isArray(value) ? value : [];
 const clean = (value) => String(value ?? '').trim();
 
-export const PLAYER_PDF_SUMMARY_HISTORY_LIMIT = 8;
-export const PLAYER_PDF_PRODUCTION_ACTION_LIMIT = 6;
-
 export const getPlayerReportActionUrl = (value) => {
   const url = clean(value);
   if (!url) return '';
@@ -40,11 +37,9 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
   }));
   const history = rows(source.history).map(normalizeHistoryRow);
   const live = Number(source.live?.eventCount || 0) > 0 ? source.live : null;
-  const summaryHistory = history.slice(0, PLAYER_PDF_SUMMARY_HISTORY_LIMIT);
-  const productionActions = actions.slice(0, PLAYER_PDF_PRODUCTION_ACTION_LIMIT);
-  const overflowHistory = history.slice(PLAYER_PDF_SUMMARY_HISTORY_LIMIT);
-  const overflowActions = actions.slice(PLAYER_PDF_PRODUCTION_ACTION_LIMIT);
-  const hasOverflow = Boolean(overflowHistory.length || overflowActions.length);
+  const influenceMaps = rows(source.influenceMaps).length
+    ? rows(source.influenceMaps).map((map) => ({ ...map, zones: rows(map.zones) }))
+    : [{ key: 'all', label: 'Todos', zones: rows(source.influenceZones) }];
 
   return {
     identity: source.identity || {},
@@ -52,18 +47,16 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
     metrics: rows(source.metrics),
     seasonStages: rows(source.seasonStages),
     production: source.production || {},
-    influenceZones: rows(source.influenceZones),
+    influenceMaps,
     goalZones: rows(source.goalZones),
     goalPhases: rows(source.goalPhases),
     society: rows(source.society),
     actions,
     timeline,
     history,
-    summaryHistory,
-    productionActions,
-    overflowHistory,
-    overflowActions,
+    summaryHistory: history,
+    productionActions: actions,
     live,
-    pagePlan: ['summary', 'production', ...(hasOverflow ? ['overflow'] : [])],
+    pagePlan: ['summary', 'production'],
   };
 };
