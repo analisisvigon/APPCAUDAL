@@ -1,6 +1,9 @@
 const rows = (value) => Array.isArray(value) ? value : [];
 const clean = (value) => String(value ?? '').trim();
 
+export const PLAYER_PDF_SUMMARY_HISTORY_LIMIT = 8;
+export const PLAYER_PDF_PRODUCTION_ACTION_LIMIT = 6;
+
 export const getPlayerReportActionUrl = (value) => {
   const url = clean(value);
   if (!url) return '';
@@ -37,7 +40,11 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
   }));
   const history = rows(source.history).map(normalizeHistoryRow);
   const live = Number(source.live?.eventCount || 0) > 0 ? source.live : null;
-  const hasDetails = Boolean(actions.length || timeline.length || history.length || live);
+  const summaryHistory = history.slice(0, PLAYER_PDF_SUMMARY_HISTORY_LIMIT);
+  const productionActions = actions.slice(0, PLAYER_PDF_PRODUCTION_ACTION_LIMIT);
+  const overflowHistory = history.slice(PLAYER_PDF_SUMMARY_HISTORY_LIMIT);
+  const overflowActions = actions.slice(PLAYER_PDF_PRODUCTION_ACTION_LIMIT);
+  const hasOverflow = Boolean(overflowHistory.length || overflowActions.length);
 
   return {
     identity: source.identity || {},
@@ -52,7 +59,11 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
     actions,
     timeline,
     history,
+    summaryHistory,
+    productionActions,
+    overflowHistory,
+    overflowActions,
     live,
-    pagePlan: ['summary', 'production', ...(hasDetails ? ['details'] : [])],
+    pagePlan: ['summary', 'production', ...(hasOverflow ? ['overflow'] : [])],
   };
 };
