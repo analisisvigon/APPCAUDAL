@@ -1,3 +1,5 @@
+import { hasFormationSlotsForSavedLineup } from './formationSlotCoordinates.js';
+
 const clean = (value) => String(value ?? '').trim();
 const rows = (value) => Array.isArray(value) ? value : [];
 
@@ -129,6 +131,13 @@ export const buildTacticalSnapshotIntervals = ({
     const toMinute = Math.max(fromMinute, Math.min(matchDuration, boundaries[index + 1]?.minute ?? matchDuration));
     activeSystem = snapshot.system || activeSystem;
     if (toMinute <= fromMinute) return [];
+    const slotKeys = snapshot.slots.map(playerKey).filter(Boolean);
+    const hasCompleteDisposition = Boolean(
+      snapshot.isComplete
+      && hasFormationSlotsForSavedLineup(activeSystem)
+      && snapshot.slots.length === 11
+      && new Set(slotKeys).size === 11
+    );
     return [{
       id: snapshot.id || `${snapshot.matchId}-${fromMinute}`,
       matchId: snapshot.matchId || initialSnapshot?.matchId || '',
@@ -138,12 +147,71 @@ export const buildTacticalSnapshotIntervals = ({
       period: snapshot.period || '',
       system: activeSystem,
       reason: snapshot.reason,
-      isComplete: Boolean(snapshot.isComplete && snapshot.slots.length),
+      isComplete: hasCompleteDisposition,
       sourceSystemEventId: snapshot.sourceSystemEventId || '',
       source: snapshot.source,
       slots: snapshot.slots,
     }];
   });
+};
+
+const getCoverageIssueType = (interval = {}) => {
+  if (interval.source === 'missing_substitution_snapshot') return 'substitution_without_snapshot';
+  if (interval.source === 'missing_system_snapshot') return 'system_change_without_snapshot';
+  if (interval.source === 'missing_initial_snapshot') return 'missing_initial_snapshot';
+  if (interval.source === 'persisted') return 'incomplete_persisted_snapshot';
+  return 'incomplete_disposition';
+};
+
+export const buildSeasonTacticalCoverageAudit = (matches = []) => {
+  const auditedMatches = rows(matches).map((entry) => {
+    const history = entry.history || {};
+    const intervals = rows(history.intervals);
+    const duration = Number(history.invariant?.duration || entry.duration || 90);
+    const completeMinutes = intervals
+      .filter((interval) => interval.isComplete)
+      .reduce((sum, interval) => sum + Number(interval.minutes || 0), 0);
+    const pendingIntervals = intervals.filter((interval) => !interval.isComplete).map((interval) => {
+      const affectedPlayers = rows(entry.affectedPlayersByMinute?.[interval.fromMinute])
+        .map((player) => clean(player.playerName || player.name))
+        .filter(Boolean);
+      return {
+        fromMinute: interval.fromMinute,
+        toMinute: interval.toMinute,
+        minutes: interval.minutes,
+        system: interval.system || '',
+        issueType: getCoverageIssueType(interval),
+        source: interval.source || '',
+        missingSlots: Math.max(0, 11 - rows(interval.slots).length),
+        affectedPlayers,
+      };
+    });
+    return {
+      matchId: entry.matchId || entry.id || '',
+      label: entry.label || '',
+      date: entry.date || '',
+      duration,
+      completeMinutes,
+      pendingIntervals,
+      overlap: Boolean(history.invariant?.overlap),
+      coveredMinutes: Number(history.invariant?.coveredMinutes || 0),
+      hasGap: Number(history.invariant?.coveredMinutes || 0) !== duration,
+      complete: completeMinutes === duration && !pendingIntervals.length && !history.invariant?.overlap,
+    };
+  });
+  const totalMinutes = auditedMatches.reduce((sum, match) => sum + match.duration, 0);
+  const completeMinutes = auditedMatches.reduce((sum, match) => sum + match.completeMinutes, 0);
+  const pendingIntervals = auditedMatches.reduce((sum, match) => sum + match.pendingIntervals.length, 0);
+  return {
+    matches: auditedMatches,
+    totalMatches: auditedMatches.length,
+    completeMatches: auditedMatches.filter((match) => match.complete).length,
+    totalMinutes,
+    completeMinutes,
+    pendingIntervals,
+    percentage: totalMinutes ? Math.round((completeMinutes / totalMinutes) * 100) : 0,
+    complete: Boolean(auditedMatches.length) && auditedMatches.every((match) => match.complete),
+  };
 };
 
 export const buildTacticalSystemSegments = (intervals = []) => {

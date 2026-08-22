@@ -4,7 +4,11 @@ import {
   getFormationCoordinatesForSavedLineup,
   getFormationSlotCoordinates,
   getFormationSlotsForSavedLineup,
+  hasFormationSlotsForSavedLineup,
 } from './formationSlotCoordinates.js';
+
+assert.equal(hasFormationSlotsForSavedLineup('4-3-3'), true);
+assert.equal(hasFormationSlotsForSavedLineup('sistema-inexistente'), false, 'un sistema desconocido no puede validar un snapshot completo aunque exista fallback visual');
 
 const slotById = (system, id) => getFormationSlotsForSavedLineup(system).find((slot) => slot.id === id);
 const assertLeftOf = (system, leftId, rightId) => {

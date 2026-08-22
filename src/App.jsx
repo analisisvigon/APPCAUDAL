@@ -93,11 +93,13 @@ import {
 import {
   buildTacticalCombinationsFromIntervals,
   buildTacticalMatchHistory,
+  buildSeasonTacticalCoverageAudit,
   buildTacticalSlotEvidenceFromIntervals,
   getHistoricalSubstitutionMinutes,
   parseTacticalMinute,
 } from './utils/tacticalSnapshots';
 import {
+  buildAutomaticSubstitutionSnapshot,
   buildKnownOnFieldPlayers,
   buildTacticalDispositionDraft,
   getTacticalParticipantKey,
@@ -211,7 +213,7 @@ import {
   normalizeOwnDefaultFormation,
   resolveMatchStatsFormation,
 } from './utils/statsFormation';
-import { getFormationSlotsForSavedLineup } from './utils/formationSlotCoordinates';
+import { getFormationSlotsForSavedLineup, hasFormationSlotsForSavedLineup } from './utils/formationSlotCoordinates';
 import {
   getStatsLineupInvariantReport,
   hydrateStatsLineup,
@@ -2580,6 +2582,13 @@ const getIdealFormationSlots = (system) => getFormationSlotsForSavedLineup(syste
 // Los snapshots persisten system + slot. Este catálogo canónico traduce cada slot
 // persistido a coordenadas sin reinterpretarlo mediante la posición del jugador.
 const getTacticalSnapshotFormationSlots = (system) => getFormationSlotsForSavedLineup(system);
+const TACTICAL_COVERAGE_ISSUE_LABELS = {
+  substitution_without_snapshot: 'sustitución sin snapshot',
+  system_change_without_snapshot: 'cambio de sistema sin disposición',
+  missing_initial_snapshot: 'alineación inicial incompleta',
+  incomplete_persisted_snapshot: 'snapshot persistido incompleto',
+  incomplete_disposition: 'disposición incompleta',
+};
 
 const normalizeIdealSlotId = ({ system, role, slotIndex, targetSlots = getIdealFormationSlots(system) }) => {
   const value = stripAccents(role).toLowerCase();
@@ -16019,11 +16028,15 @@ function App() {
 
   const updateStatsPlayerData = async (playerName, fields) => {
     if (!selectedMatch) return;
-    await runStatsOperation('rendimiento individual', async () => {
-      const current = getStatsPlayerData(playerName);
+    const current = getStatsPlayerData(playerName);
+    const next = { ...current, ...fields };
+    const createsNewSubstitution = !current.replacementName
+      && Boolean(next.replacementName)
+      && Number(next.minutes) > 0
+      && Number(next.minutes) < getMatchDurationMinutes(selectedMatch);
+    const refreshed = await runStatsOperation('rendimiento individual', async () => {
       const player = players.find((item) => item.name === playerName);
       const jugadorId = isUuid(player?.id) ? player.id : null;
-      const next = { ...current, ...fields };
       const replacementMinute = Number(next.minutes || 0);
       const payload = {
         partido_id: selectedMatch.id,
@@ -16063,6 +16076,12 @@ function App() {
         if (replacementError) throw replacementError;
       }
     });
+    if (refreshed && createsNewSubstitution) {
+      await persistAutomaticSubstitutionSnapshot({
+        match: refreshed,
+        minute: Number(next.minutes),
+      });
+    }
   };
 
   const updateStatsLineupSlot = async (slotIndex, playerName) => {
@@ -16161,6 +16180,7 @@ function App() {
       setStatsError('Selecciona el nuevo sistema.');
       return;
     }
+    const tacticalMinute = parseTacticalMinute(systemChangeDraft.minute);
     setSystemChangeSaving(true);
     setStatsError('');
     const fromSystem = getSystemBeforeEvent({
@@ -16170,27 +16190,34 @@ function App() {
       minute: systemChangeDraft.minute,
       period: systemChangeDraft.period,
     });
-    const payload = {
-      partido_id: selectedMatch.id,
-      minute: String(systemChangeDraft.minute).trim(),
-      period: systemChangeDraft.period || '',
-      from_system: fromSystem || getInitialMatchSystem(selectedMatch),
-      to_system: systemChangeDraft.toSystem,
-      note: systemChangeDraft.note || '',
-    };
-    const request = editingSystemEventId
-      ? supabase.from("partido_eventos_sistema").update(payload).eq("id", editingSystemEventId)
-      : supabase.from("partido_eventos_sistema").insert(payload);
-    const { error: saveError } = await request;
+    const { error: saveError } = await supabase.rpc('save_match_system_change_with_snapshot', {
+      p_partido_id: selectedMatch.id,
+      p_minute: tacticalMinute,
+      p_period: systemChangeDraft.period || '',
+      p_from_system: fromSystem || getInitialMatchSystem(selectedMatch),
+      p_to_system: systemChangeDraft.toSystem,
+      p_note: systemChangeDraft.note || '',
+      p_slots: [],
+      p_is_complete: false,
+      p_event_id: editingSystemEventId || null,
+    });
     if (saveError) {
-      console.error('Error guardando cambio de sistema:', { payload, error: saveError });
+      console.error('Error guardando cambio de sistema y snapshot pendiente:', { minute: tacticalMinute, error: saveError });
       setStatsError(saveError.message || 'No se pudo guardar el cambio de sistema.');
       setSystemChangeSaving(false);
       return;
     }
     await normalizeStoredSystemEventFromSystems(selectedMatch.id);
     closeSystemChangeModal();
-    await refreshStatsFromSupabase(selectedMatch.id, 'cambio de sistema');
+    const refreshed = await refreshStatsFromSupabase(selectedMatch.id, 'cambio de sistema');
+    if (refreshed) {
+      const history = getMatchTacticalHistory(refreshed);
+      const interval = history.intervals.find((candidate) => Number(candidate.fromMinute) === Number(tacticalMinute));
+      if (interval) {
+        setSelectedSystemMoment({ intervalId: interval.id, minute: interval.fromMinute, system: interval.system });
+        openTacticalDispositionEditor({ interval, history, match: refreshed });
+      }
+    }
   };
 
   const normalizeStoredSystemEventFromSystems = async (partidoId) => {
@@ -16208,7 +16235,7 @@ function App() {
   const deleteSystemChangeEvent = async (eventId) => {
     if (!selectedMatch || !eventId) return;
     if (!window.confirm('¿Eliminar este cambio de sistema? Se recalculará la secuencia táctica.')) return;
-    const { error: deleteError } = await supabase.from("partido_eventos_sistema").delete().eq("id", eventId);
+    const { error: deleteError } = await supabase.rpc('delete_match_system_change_with_snapshot', { p_event_id: eventId });
     if (deleteError) {
       console.error('Error eliminando cambio de sistema:', deleteError);
       setStatsError(deleteError.message || 'No se pudo eliminar el cambio de sistema.');
@@ -17675,6 +17702,66 @@ function App() {
     });
   };
 
+  const persistAutomaticSubstitutionSnapshot = async ({ match, minute }) => {
+    if (!match?.id) return null;
+    const history = getMatchTacticalHistory(match);
+    const targetInterval = history.intervals.find((interval) => Number(interval.fromMinute) === Number(minute));
+    const system = targetInterval?.system || getInitialMatchSystem(match);
+    const plan = buildAutomaticSubstitutionSnapshot({
+      minute,
+      system,
+      intervals: history.intervals,
+      initialSlots: getMatchInitialTacticalSlots(match),
+      playerStats: safeObject(match.statsPlayerData),
+      systemSlotCount: hasFormationSlotsForSavedLineup(system) ? getTacticalSnapshotFormationSlots(system).length : 0,
+    });
+    setSelectedSystemMoment({
+      intervalId: targetInterval?.id || '',
+      minute: Number(minute),
+      system,
+    });
+    if (plan.status !== 'complete') {
+      setStatsSaveStatus('Sustitución guardada · completa la disposición');
+      if (targetInterval) openTacticalDispositionEditor({ interval: targetInterval, history, match });
+      return plan;
+    }
+    setStatsSaveStatus('Guardando snapshot de la sustitución…');
+    try {
+      const { error: rpcError } = await supabase.rpc('save_match_tactical_snapshot', {
+        p_partido_id: match.id,
+        p_minute: plan.minute,
+        p_period: targetInterval?.period || (plan.minute <= 45 ? '1ª parte' : '2ª parte'),
+        p_system: plan.system,
+        p_reason: `Sustitución automática · ${plan.minute}'`,
+        p_is_complete: true,
+        p_slots: plan.slots.map((slot) => ({
+          slot: slot.slot,
+          jugador_id: isUuid(slot.playerId) ? slot.playerId : null,
+          player_name_snapshot: slot.playerName || null,
+        })),
+        p_source_system_event_id: plan.sourceSystemEventId || null,
+      });
+      if (rpcError) throw rpcError;
+      const verifiedMatch = await loadMatchStatsData(match.id);
+      const storedSnapshot = safeArray(verifiedMatch?.tacticalSnapshots).find((snapshot) => Number(snapshot.minute) === Number(plan.minute));
+      if (!tacticalSnapshotMatchesDisposition({
+        snapshot: storedSnapshot,
+        matchId: match.id,
+        minute: plan.minute,
+        system: plan.system,
+        slots: plan.slots,
+      })) throw new Error('La relectura no confirmó el snapshot automático de 11 jugadores.');
+      setStatsSaveStatus('Sustitución y disposición guardadas ✓');
+      window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Sustitución y disposición guardadas ✓' ? '' : current)), 2600);
+      return plan;
+    } catch (snapshotError) {
+      console.error('Error guardando el snapshot automático de la sustitución:', snapshotError);
+      setStatsSaveStatus('Sustitución guardada · disposición pendiente');
+      setStatsError(`La sustitución se guardó, pero su disposición requiere revisión: ${snapshotError.message || 'error desconocido'}`);
+      return { ...plan, status: 'needs_confirmation', errors: [snapshotError.message || 'No se pudo guardar el snapshot.'] };
+    }
+  };
+
   const enrichTacticalParticipant = (row = {}) => {
     const participant = normalizeTacticalParticipant(row);
     const rosterPlayer = players.find((player) => (
@@ -17693,11 +17780,11 @@ function App() {
     return safeArray(editor.knownPlayers).filter((player) => !placed.has(getTacticalParticipantKey(player)));
   };
 
-  const openTacticalDispositionEditor = ({ interval, history }) => {
-    if (!selectedMatch || !interval || statsLineupProposal?.matchId === selectedMatch.id) return;
+  const openTacticalDispositionEditor = ({ interval, history, match = selectedMatch }) => {
+    if (!match || !interval || statsLineupProposal?.matchId === match.id) return;
     const reconstructed = buildKnownOnFieldPlayers({
-      initialSlots: getMatchInitialTacticalSlots(selectedMatch),
-      playerStats: safeObject(selectedMatch.statsPlayerData),
+      initialSlots: getMatchInitialTacticalSlots(match),
+      playerStats: safeObject(match.statsPlayerData),
       atMinute: interval.fromMinute,
     });
     const persistedPlayers = interval.isComplete
@@ -17715,9 +17802,14 @@ function App() {
     const previousInterval = safeArray(history?.intervals)
       .filter((candidate) => candidate.isComplete && candidate.fromMinute < interval.fromMinute)
       .sort((left, right) => right.fromMinute - left.fromMinute)[0] || null;
-    const draft = buildTacticalDispositionDraft({ interval, previousInterval, knownPlayers });
+    const draft = buildTacticalDispositionDraft({
+      interval,
+      previousInterval,
+      knownPlayers,
+      substitutions: reconstructed.substitutions.filter((substitution) => Number(substitution.minute) === Number(interval.fromMinute)),
+    });
     setTacticalDispositionEditor({
-      matchId: selectedMatch.id,
+      matchId: match.id,
       intervalId: interval.id,
       minute: interval.fromMinute,
       toMinute: interval.toMinute,
@@ -17751,7 +17843,12 @@ function App() {
   const saveTacticalDispositionEditor = async () => {
     const editor = tacticalDispositionEditor;
     if (!selectedMatch || !editor || editor.matchId !== selectedMatch.id || editor.saving) return;
+    const systemSlots = getTacticalSnapshotFormationSlots(editor.system);
     const validation = validateTacticalDisposition({ lineup: editor.lineup, knownPlayers: editor.knownPlayers });
+    if (!hasFormationSlotsForSavedLineup(editor.system) || systemSlots.length !== 11) {
+      setTacticalDispositionEditor((current) => current ? { ...current, error: 'El sistema no dispone de 11 slots tácticos compatibles.' } : current);
+      return;
+    }
     if (!validation.valid) {
       setTacticalDispositionEditor((current) => current ? { ...current, error: validation.errors.join(' ') } : current);
       return;
@@ -17807,6 +17904,12 @@ function App() {
     if (!selectedMatch) return null;
     const hasLocalProposal = statsLineupProposal?.matchId === selectedMatch.id;
     const tacticalHistory = getMatchTacticalHistory(selectedMatch);
+    const tacticalCoverage = buildSeasonTacticalCoverageAudit([{
+      matchId: selectedMatch.id,
+      label: selectedMatch.opponent || 'Partido',
+      date: selectedMatch.date || '',
+      history: tacticalHistory,
+    }]);
     const latestSegment = tacticalHistory.systemSegments[tacticalHistory.systemSegments.length - 1] || null;
     const selectedSegment = tacticalHistory.systemSegments.find((segment) => (
       segment.id === selectedSystemMoment?.segmentId
@@ -17851,7 +17954,11 @@ function App() {
           <div className="space-y-1.5" data-testid="tactical-system-history">
             <div className="flex items-center justify-between gap-3">
               <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Tramos de sistema</p>
-              <p className="text-[9px] font-bold text-slate-500">{tacticalHistory.invariant.overlap ? 'Revisar solapamiento' : `${tacticalHistory.invariant.coveredMinutes} min sin solapamiento`}</p>
+              <p className={`text-[9px] font-bold ${tacticalCoverage.complete ? 'text-emerald-300' : 'text-amber-200'}`} data-testid="tactical-coverage-indicator">
+                {tacticalHistory.invariant.overlap
+                  ? 'Revisar solapamiento'
+                  : `${tacticalCoverage.completeMinutes}/${tacticalCoverage.totalMinutes} min con disposición completa · ${tacticalCoverage.percentage}%`}
+              </p>
             </div>
             <div className="flex max-w-full gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Disposiciones tácticas utilizadas">
               {tacticalHistory.systemSegments.map((segment) => {
@@ -17869,7 +17976,9 @@ function App() {
                   >
                     <span className="block whitespace-nowrap text-[10px] font-black">{segment.fromMinute}'–{segment.toMinute}'</span>
                     <span className="mt-0.5 block text-xs font-black">{segment.system}</span>
-                    {segment.hasIncompleteDisposition ? <span className={`mt-0.5 block text-[8px] font-bold uppercase ${active ? 'text-slate-700' : 'text-amber-200'}`}>Disposición parcial</span> : null}
+                    <span className={`mt-0.5 block text-[8px] font-bold uppercase ${active ? 'text-slate-700' : segment.hasIncompleteDisposition ? 'text-amber-200' : 'text-emerald-300'}`}>
+                      {segment.hasIncompleteDisposition ? 'Snapshot incompleto' : 'Snapshot completo'}
+                    </span>
                   </button>
                 );
               })}
@@ -17886,7 +17995,7 @@ function App() {
                     className={`shrink-0 rounded-md px-2 py-1 text-[8px] font-black disabled:cursor-not-allowed disabled:opacity-65 ${selectedInterval?.id === interval.id ? 'bg-white text-slate-950' : interval.isComplete ? 'bg-white/10 text-slate-300' : 'bg-amber-300/10 text-amber-200'}`}
                     title={interval.reason || `Snapshot desde el minuto ${interval.fromMinute}`}
                   >
-                    {interval.fromMinute}'–{interval.toMinute}'{interval.isComplete ? '' : ' · sin disposición'}
+                    {interval.fromMinute}'–{interval.toMinute}' · {interval.isComplete ? 'completo' : 'incompleto'}
                   </button>
                 ))}
               </div>
@@ -17955,7 +18064,7 @@ function App() {
           <div className="absolute inset-x-6 top-1/2 z-30 -translate-y-1/2 rounded-2xl border border-amber-200/25 bg-black/75 px-5 py-4 text-center shadow-xl">
             <p className="text-sm font-black text-amber-100">Disposición no registrada para este tramo</p>
             <p className="mt-1 text-[10px] font-semibold text-slate-300">Se conoce el sistema y su intervalo, pero no los once slots. No se reconstruyen posiciones.</p>
-            {selectedInterval ? <button type="button" onClick={() => openTacticalDispositionEditor({ interval: selectedInterval, history: tacticalHistory })} className="mt-3 min-h-9 bg-amber-200 px-3 text-[9px] font-black uppercase tracking-[0.1em] text-slate-950">Registrar disposición</button> : null}
+            {selectedInterval ? <button type="button" onClick={() => openTacticalDispositionEditor({ interval: selectedInterval, history: tacticalHistory })} className="mt-3 min-h-9 bg-amber-200 px-3 text-[9px] font-black uppercase tracking-[0.1em] text-slate-950">Completar disposición</button> : null}
           </div>
         ) : coordinates.map((slot, slotIndex) => {
           const participant = normalizeTacticalParticipant(visibleParticipants[slotIndex] || {});
@@ -31122,6 +31231,25 @@ function App() {
           const systemRows = buildSystemUsageRows(scopedMatches);
           const totalSystemMinutes = systemRows.reduce((sum, row) => sum + Number(row.minutes || 0), 0);
           const tacticalAggregation = buildTacticalSlotMinutes(scopedMatches);
+          const seasonTacticalCoverage = buildSeasonTacticalCoverageAudit(scopedMatches
+            .filter((match) => Boolean(getGroupStatsSystem(match)))
+            .map((match) => {
+              const history = getMatchTacticalHistory(match);
+              const affectedPlayersByMinute = Object.fromEntries(history.intervals
+                .filter((interval) => !interval.isComplete)
+                .map((interval) => [interval.fromMinute, buildKnownOnFieldPlayers({
+                  initialSlots: getMatchInitialTacticalSlots(match),
+                  playerStats: safeObject(match.statsPlayerData),
+                  atMinute: interval.fromMinute,
+                }).players]));
+              return {
+                matchId: match.id,
+                label: match.opponent || 'Rival',
+                date: match.date || '',
+                history,
+                affectedPlayersByMinute,
+              };
+            }));
           const seasonBaseSystem = systemRows[0]?.system || '';
           const seasonMostUsedXi = seasonBaseSystem ? buildMostUsedXI(seasonBaseSystem, tacticalAggregation) : null;
           const mostUsedPairs = buildMostUsedPairs(tacticalAggregation);
@@ -31353,6 +31481,41 @@ function App() {
                     </div>
                   </div>
                 </section>
+
+                {seasonTacticalCoverage.totalMatches ? (
+                  <section className={`rounded-3xl border p-4 shadow-glow ${seasonTacticalCoverage.complete ? 'border-emerald-300/20 bg-emerald-300/[0.06]' : 'border-amber-200/20 bg-amber-300/[0.06]'}`} data-testid="season-tactical-coverage-audit">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Cobertura táctica de la temporada</p>
+                        <p className="mt-1 text-sm font-black text-white">
+                          {seasonTacticalCoverage.percentage}% · {seasonTacticalCoverage.completeMinutes}/{seasonTacticalCoverage.totalMinutes} min completos
+                        </p>
+                      </div>
+                      <span className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase ${seasonTacticalCoverage.complete ? 'bg-emerald-300/15 text-emerald-200' : 'bg-amber-200/15 text-amber-100'}`}>
+                        {seasonTacticalCoverage.completeMatches}/{seasonTacticalCoverage.totalMatches} partidos completos · {seasonTacticalCoverage.pendingIntervals} tramos pendientes
+                      </span>
+                    </div>
+                    {!seasonTacticalCoverage.complete ? (
+                      <details className="mt-3 border-t border-white/10 pt-3">
+                        <summary className="cursor-pointer text-[10px] font-black uppercase tracking-[0.12em] text-amber-100">Ver partidos que requieren revisión</summary>
+                        <div className="mt-2 grid gap-2 md:grid-cols-2">
+                          {seasonTacticalCoverage.matches.filter((match) => !match.complete).map((match) => (
+                            <div key={match.matchId} className="rounded-xl bg-black/15 px-3 py-2 text-xs text-slate-300">
+                              <p className="font-black text-white">{match.label}{match.date ? ` · ${match.date}` : ''}</p>
+                              <p className="mt-1 font-semibold">
+                                {match.overlap ? 'Solapamiento temporal · ' : ''}
+                                {match.hasGap ? 'Intervalos perdidos · ' : ''}
+                                {match.pendingIntervals.map((interval) => (
+                                  `${interval.fromMinute}'–${interval.toMinute}' (${TACTICAL_COVERAGE_ISSUE_LABELS[interval.issueType] || interval.issueType}; ${interval.missingSlots} slots pendientes${interval.affectedPlayers.length ? `; ${interval.affectedPlayers.join(', ')}` : ''})`
+                                )).join(' · ') || 'Revisar integridad temporal'}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    ) : null}
+                  </section>
+                ) : null}
 
                 <section className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
                   <div className="rounded-3xl border border-white/10 bg-[#091428]/80 p-5 shadow-glow">

@@ -114,6 +114,8 @@ export const getFormationSlotsForSavedLineup = (system) => (
   FORMATION_SLOTS[system] || FORMATION_SLOTS['4-4-2']
 ).map((slot, index) => ({ ...slot, slot: index, role: slot.label }));
 
+export const hasFormationSlotsForSavedLineup = (system) => Object.hasOwn(FORMATION_SLOTS, system);
+
 export const getFormationSlotCoordinates = (system, slot) => {
   const formationSlot = getFormationSlotsForSavedLineup(system)[Number(slot)];
   return formationSlot ? { x: formationSlot.x, y: formationSlot.y } : { x: 50, y: 50 };

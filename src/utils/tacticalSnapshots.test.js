@@ -5,6 +5,7 @@ import {
   buildTacticalCombinationsFromIntervals,
   buildTacticalSlotEvidenceFromIntervals,
   buildTacticalSnapshotIntervals,
+  buildSeasonTacticalCoverageAudit,
   getTacticalTimelineInvariantReport,
   parseTacticalMinute,
 } from './tacticalSnapshots.js';
@@ -92,6 +93,8 @@ const resolveSlot = (system, slot) => systems[system]?.[slot];
 const evidence = buildTacticalSlotEvidenceFromIntervals({ intervals: substituted, resolveSlot });
 assert.equal(evidence.filter((row) => row.playerId === 'a-9').reduce((sum, row) => sum + row.minutes, 0), 60);
 assert.equal(evidence.filter((row) => row.playerId === 'sub-9').reduce((sum, row) => sum + row.minutes, 0), 30, 'sustitución no duplica minutos');
+assert.equal(evidence.filter((row) => row.playerId === 'a-9').reduce((sum, row) => sum + row.minutes, 0) <= 60, true, 'I) los minutos posicionales del saliente no superan sus minutos oficiales');
+assert.equal(evidence.filter((row) => row.playerId === 'sub-9').reduce((sum, row) => sum + row.minutes, 0) <= 30, true, 'I) los minutos posicionales del entrante no superan sus minutos oficiales');
 
 const swapped = lineup('a');
 [swapped[7], swapped[9]] = [{ ...swapped[9], slot: 7 }, { ...swapped[7], slot: 9 }];
@@ -102,7 +105,7 @@ const positionalChange = buildTacticalSnapshotIntervals({
   initialSystem: '4-2-3-1',
 });
 const positionEvidence = buildTacticalSlotEvidenceFromIntervals({ intervals: positionalChange, resolveSlot });
-assert.deepEqual(positionEvidence.filter((row) => row.playerId === 'a-7').map((row) => [row.slot.id, row.minutes]), [['MPI', 45], ['MPD', 18]], 'un jugador acumula minutos separados en dos slots');
+assert.deepEqual(positionEvidence.filter((row) => row.playerId === 'a-7').map((row) => [row.slot.id, row.minutes]), [['MPI', 45], ['MPD', 18]], 'F) un jugador acumula minutos separados en dos slots');
 
 const combinations = buildTacticalCombinationsFromIntervals({
   intervals: changed,
@@ -119,7 +122,7 @@ const incompleteHistory = buildTacticalSnapshotIntervals({
   initialSystem: '4-2-3-1',
   systemEvents: [{ id: 'missing-63', minute: 63, toSystem: '4-3-3' }],
 });
-assert.deepEqual(incompleteHistory.map(({ minutes, isComplete, system }) => [minutes, isComplete, system]), [[63, true, '4-2-3-1'], [27, false, '4-3-3']], 'un cambio histórico sin slots cierra el intervalo anterior y marca el nuevo como incompleto');
+assert.deepEqual(incompleteHistory.map(({ minutes, isComplete, system }) => [minutes, isComplete, system]), [[63, true, '4-2-3-1'], [27, false, '4-3-3']], 'H) un cambio de sistema sin sustitución cierra el intervalo anterior y marca el nuevo como incompleto');
 assert.equal(buildTacticalSlotEvidenceFromIntervals({ intervals: incompleteHistory, resolveSlot }).some((row) => row.system === '4-3-3'), false, 'el tramo incompleto no inventa jugadores');
 
 const missingSubstitution = buildTacticalSnapshotIntervals({ duration: 90, initialSnapshot: initial, initialSystem: '4-2-3-1', substitutionMinutes: [63] });
@@ -135,5 +138,49 @@ const invalidMinuteHistory = buildTacticalSnapshotIntervals({
 assert.deepEqual(invalidMinuteHistory.map(({ fromMinute, toMinute, system, isComplete }) => [fromMinute, toMinute, system, isComplete]), [
   [0, 90, '4-2-3-1', true],
 ], 'minutos nulos o inválidos no rompen ni alteran el historial completo');
+
+const partialPersisted = buildTacticalSnapshotIntervals({
+  duration: 90,
+  initialSnapshot: initial,
+  initialSystem: '4-2-3-1',
+  snapshots: [{ id: 'partial-71', matchId: 'match-1', minute: 71, system: '4-2-3-1', isComplete: true, slots: lineup('partial').slice(0, 10) }],
+});
+assert.equal(partialPersisted[1].isComplete, false, 'G) una marca is_complete no oculta que faltan slots');
+
+const historicalBeforeAudit = JSON.stringify(missingSubstitution);
+const seasonCoverage = buildSeasonTacticalCoverageAudit([{
+  matchId: 'match-1',
+  label: 'Partido histórico',
+  history: {
+    intervals: missingSubstitution,
+    invariant: getTacticalTimelineInvariantReport({ intervals: missingSubstitution, duration: 90 }),
+  },
+}]);
+assert.equal(seasonCoverage.percentage, 70, 'I) la auditoría detecta 63 de 90 minutos completos sin rellenar el hueco');
+assert.equal(seasonCoverage.pendingIntervals, 1);
+assert.equal(seasonCoverage.matches[0].pendingIntervals[0].issueType, 'substitution_without_snapshot');
+assert.equal(JSON.stringify(missingSubstitution), historicalBeforeAudit, 'I) auditar un partido histórico no modifica sus snapshots');
+
+const borjaLikeIncomplete = buildTacticalMatchHistory({
+  matchId: 'historical-71',
+  duration: 90,
+  initialSystem: '4-3-3',
+  initialSlots: lineup('a'),
+  substitutionMinutes: [71],
+  snapshots: [{ id: 'snap-84', matchId: 'historical-71', minute: 84, system: '4-3-3', isComplete: true, slots: lineup('c') }],
+});
+assert.equal(borjaLikeIncomplete.invariant.incompleteMinutes, 13, 'C) una sustitución sin confirmar deja visible exactamente el tramo incompleto');
+const borjaLikeCompleted = buildTacticalMatchHistory({
+  matchId: 'historical-71',
+  duration: 90,
+  initialSystem: '4-3-3',
+  initialSlots: lineup('a'),
+  substitutionMinutes: [71],
+  snapshots: [
+    { id: 'snap-71', matchId: 'historical-71', minute: 71, system: '4-3-3', isComplete: true, slots: lineup('b') },
+    { id: 'snap-84', matchId: 'historical-71', minute: 84, system: '4-3-3', isComplete: true, slots: lineup('c') },
+  ],
+});
+assert.equal(borjaLikeCompleted.invariant.incompleteMinutes, 0, 'D) completar la disposición histórica elimina los minutos desconocidos desde el origen');
 
 console.log('tacticalSnapshots tests passed');

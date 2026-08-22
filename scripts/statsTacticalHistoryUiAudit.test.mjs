@@ -28,14 +28,19 @@ assert.match(appSource, /const storedSlot = getTacticalSnapshotFormationSlots\(s
 assert.match(appSource, /Disposición no registrada para este tramo/, 'los tramos incompletos no inventan jugadores');
 assert.match(appSource, /No se reconstruyen posiciones/, 'la UI explica explícitamente la ausencia');
 assert.match(appSource, /Editar disposición/);
-assert.match(appSource, /Registrar disposición/);
-assert.match(appSource, /Pendientes de colocar/, 'un sustituto sin slot permanece pendiente');
+assert.match(appSource, /Completar disposición/);
+assert.match(appSource, /Pendientes de colocar/, 'un caso no inferible mantiene visibles los jugadores pendientes');
+assert.match(appSource, /buildAutomaticSubstitutionSnapshot/, 'las sustituciones nuevas construyen un snapshot desde el historial común');
+assert.match(appSource, /persistAutomaticSubstitutionSnapshot/, 'el guardado de estadísticas enlaza la sustitución con su snapshot');
+assert.match(appSource, /save_match_system_change_with_snapshot/, 'un cambio de sistema crea una única foto incompleta vinculada en la misma operación');
 assert.match(appSource, /save_match_tactical_snapshot/, 'el guardado utiliza la RPC atómica de snapshots');
 assert.match(appSource, /const refreshed = await loadMatchStatsData\(editor\.matchId\)/, 'después de guardar se relee el partido');
 assert.match(appSource, /tacticalSnapshotMatchesDisposition/, 'la relectura verifica partido, minuto, sistema y slots');
 assert.doesNotMatch(appSource, /from\(["']partido_snapshots_tacticos["']\)\.(insert|update|upsert|delete)/, 'la UI no hace escrituras parciales de snapshots');
 assert.doesNotMatch(editorSource, /specificPosition|\.position\b|auto.?place/i, 'la reconstrucción no usa posiciones de plantilla ni autocolocación');
 assert.match(appSource, /tacticalHistory\.invariant\.overlap/, 'la UI consume el informe de intervalos sin solapamiento');
+assert.match(appSource, /data-testid="tactical-coverage-indicator"/, 'Estadísticas muestra cobertura compacta del partido');
+assert.match(appSource, /data-testid="season-tactical-coverage-audit"/, 'Análisis Grupal muestra la auditoría compacta de temporada');
 assert.doesNotMatch(appSource, /const buildSystemSequence =/, 'no queda una segunda secuencia táctica paralela');
 assert.doesNotMatch(appSource, /const getSystemAtMinute =/, 'la atribución temporal de sistemas reutiliza el historial compartido');
 
