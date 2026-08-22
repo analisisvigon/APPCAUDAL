@@ -37,6 +37,16 @@ const report = buildPlayerProfilePrintReport({
   competitionBreakdown: [
     { key: 'copa_rfef', label: 'Copa RFEF', played: 2, starts: 2, minutes: 180, goals: 1, assists: 0 },
   ],
+  positionUsage: {
+    positions: [
+      { position: 'Extremo izquierdo', minutes: 90, percentage: 50 },
+      { position: 'Delantero', minutes: 90, percentage: 50 },
+    ],
+    totalMinutes: 180,
+    determinedMinutes: 180,
+    unknownMinutes: 0,
+    valid: true,
+  },
   production: { goalsPer90: 0.5, assistsPer90: 0, goalContributionsPer90: 0.5, goalContributions: 1 },
   influenceMaps: [
     { key: 'all', label: 'Todos', zones: [{ value: 'finalizacion_centro', label: 'Finalización centro', count: 1 }] },

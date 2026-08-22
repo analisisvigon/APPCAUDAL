@@ -11,6 +11,7 @@ import {
   buildPlayerProductionInvariantReport,
 } from '../src/utils/playerProductionDetails.js';
 import { resolveSportsSeasonFromMatches } from '../src/utils/sportsSeason.js';
+import { buildPlayerPositionUsage } from '../src/utils/playerPositionUsage.js';
 
 const outputDirectory = path.resolve('artifacts/player-pdf-final-qa');
 const playerId = 'f7f5aaeb-e82b-4e6b-8920-694bc32cb6c7';
@@ -48,6 +49,16 @@ const matchesById = Object.fromEntries(matches.map((match) => [match.id, match])
 const scopedStats = stats.filter((row) => matchesById[row.partido_id]);
 const scopedGoals = (goalsResponse.data || []).filter((goal) => matchesById[goal.partido_id]);
 const player = playerResponse.data;
+const lineupResponse = matches.length
+  ? await client.from('partido_alineacion_slots').select('*').in('partido_id', matches.map((match) => match.id)).eq('scope', 'stats').order('slot')
+  : { data: [], error: null };
+if (lineupResponse.error) throw lineupResponse.error;
+const lineupByMatch = (lineupResponse.data || []).reduce((acc, row) => {
+  acc[row.partido_id] = [...(acc[row.partido_id] || []), {
+    slot: Number(row.slot), playerId: row.jugador_id || '', playerName: row.player_name || '',
+  }];
+  return acc;
+}, {});
 
 const goalActions = scopedGoals.filter((goal) => goal.scorer_id === playerId).map((goal) => ({
   id: goal.id,
@@ -104,6 +115,22 @@ const playedRows = scopedStats.map((row) => ({ row, match: matchesById[row.parti
 const played = playedRows.filter(({ row }) => Number(row.minutes || 0) > 0 || row.role === 'Titular').length;
 const starts = playedRows.filter(({ row }) => row.role === 'Titular').length;
 const minutes = playedRows.reduce((sum, { row }) => sum + Number(row.minutes || 0), 0);
+const positionUsage = buildPlayerPositionUsage({
+  playerId,
+  playerName: player.name,
+  profilePosition: player.position,
+  matchRows: playedRows.map(({ row, match }) => ({
+    matchId: match.id,
+    minutes: Number(row.minutes || 0),
+    role: row.role,
+    duration: 90,
+    initialSystem: match.stats_system || '4-4-2',
+    initialSlots: lineupByMatch[match.id] || [],
+    intervals: [],
+    playerStats: { [player.name]: { role: row.role, minutes: row.minutes, jugadorId: playerId } },
+  })),
+});
+if (!positionUsage.valid || positionUsage.totalMinutes !== minutes) throw new Error('Invariante de posiciones inválido.');
 const seasonResolution = resolveSportsSeasonFromMatches(matches);
 if (!seasonResolution.valid) throw new Error(`Temporada no resoluble: ${seasonResolution.reason}`);
 const ownTeam = ownTeamResponse.data || {};
@@ -148,7 +175,7 @@ const history = playedRows.map(({ row, match }) => {
 const report = buildPlayerProfilePrintReport({
   identity: { name: player.name, image: player.image || '', number: player.number, position: player.position, age, foot, team: ownTeam.name || '', teamCrest: ownTeam.crest || '', season: seasonResolution.season.label },
   filters: { season: seasonResolution.season.label, competition: competitionLabel, venue: 'Todos' },
-  validation: { seasonValid: true, production: invariant },
+  validation: { seasonValid: true, production: invariant, positionUsage },
   seasonSummary: {
     played, starts, minutes, minutesPerMatch: played ? Math.round(minutes / played) : 0,
     starterPercentage: played ? Math.round(starts / played * 100) : 0,
@@ -158,6 +185,7 @@ const report = buildPlayerProfilePrintReport({
     benchEntries: Math.max(0, played - starts),
   },
   competitionBreakdown: [{ key: competitionKey, label: competitionLabel, played, starts, minutes, goals: goals.length, assists: assists.length }],
+  positionUsage,
   production: {
     goalsPer90: minutes ? (goals.length / minutes * 90).toFixed(2) : '0.00',
     assistsPer90: minutes ? (assists.length / minutes * 90).toFixed(2) : '0.00',
@@ -182,7 +210,7 @@ const auditPath = path.join(outputDirectory, 'audit.json');
 await fs.writeFile(pdfPath, Buffer.from(result.arrayBuffer));
 await fs.writeFile(auditPath, JSON.stringify({
   generatedAt: new Date().toISOString(), pdfPath, identity: report.identity, filters: report.filters,
-  seasonSummary: report.seasonSummary, invariant, goalTarget: report.goalAnalysis.target,
+  seasonSummary: report.seasonSummary, invariant, positionUsage, goalTarget: report.goalAnalysis.target,
   pages: result.pages, pageSections: result.pageSections, linkAudit: result.audit,
 }, null, 2));
-console.log(JSON.stringify({ pdfPath, auditPath, pages: result.pages, pageSections: result.pageSections, linkAnnotations: result.audit.linkAnnotations, urls: result.audit.urls, invariant }, null, 2));
+console.log(JSON.stringify({ pdfPath, auditPath, pages: result.pages, pageSections: result.pageSections, linkAnnotations: result.audit.linkAnnotations, urls: result.audit.urls, invariant, positionUsage }, null, 2));

@@ -107,6 +107,9 @@ const defensiveOnly = buildPlayerProfilePrintReport({
 assert.equal(defensiveOnly.hasProduction, false, 'un defensa sin G/A no reserva una página ofensiva vacía');
 assert.deepEqual(defensiveOnly.pagePlan, ['summary']);
 
+const positionUsage = { positions: [{ position: 'Delantero', minutes: 90, percentage: 100 }], totalMinutes: 90, determinedMinutes: 90, unknownMinutes: 0, valid: true };
+assert.deepEqual(buildPlayerProfilePrintReport({ identity: { name: 'Jugador posicional' }, positionUsage }).positionUsage, positionUsage, 'el modelo conserva el cálculo táctico sin reinterpretarlo');
+
 const longName = 'Compañero Con Un Nombre Extraordinariamente Largo y Compuesto';
 const oneConnection = buildPlayerProfilePrintReport({
   identity: { name: 'Borja Rodríguez' },

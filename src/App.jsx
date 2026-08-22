@@ -27,6 +27,7 @@ import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
 import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
+import { buildPlayerPositionUsage } from './utils/playerPositionUsage';
 import { getSportsSeason, resolveSportsSeasonFromMatches } from './utils/sportsSeason';
 import {
   buildPlayerBodyPartSummary,
@@ -7053,9 +7054,76 @@ function App() {
 
       let partidosById = {};
       if (partidoIds.length) {
-        const { data: partidoRows, error: partidosError } = await supabase.from("partidos").select("*").in("id", partidoIds);
-        if (partidosError) throw partidosError;
-        partidosById = Object.fromEntries((partidoRows || []).map((match) => [match.id, normalizeSupabasePartido(match)]));
+        const [partidosResponse, allStatsResponse, lineupSlotsResponse, systemEventsResponse, tacticalSnapshotsResponse] = await Promise.all([
+          supabase.from("partidos").select("*").in("id", partidoIds),
+          supabase.from("partido_estadisticas_jugador").select("*").in("partido_id", partidoIds),
+          supabase.from("partido_alineacion_slots").select("*").in("partido_id", partidoIds).eq("scope", "stats").order("slot", { ascending: true }),
+          supabase.from("partido_eventos_sistema").select("*").in("partido_id", partidoIds),
+          supabase.from("partido_snapshots_tacticos").select("*").in("partido_id", partidoIds).order("minute", { ascending: true }),
+        ]);
+        if (partidosResponse.error) throw partidosResponse.error;
+        [allStatsResponse, lineupSlotsResponse, systemEventsResponse, tacticalSnapshotsResponse]
+          .filter((response) => response.error)
+          .forEach((response) => console.warn('Cobertura táctica parcial en el dossier individual; los minutos sin posición fiable quedarán identificados:', response.error));
+
+        const snapshotRows = tacticalSnapshotsResponse.error ? [] : tacticalSnapshotsResponse.data || [];
+        const tacticalSnapshotSlotsResponse = snapshotRows.length
+          ? await supabase.from("partido_snapshot_tactico_slots").select("*").in("snapshot_id", snapshotRows.map((snapshot) => snapshot.id)).order("slot", { ascending: true })
+          : { data: [], error: null };
+        if (tacticalSnapshotSlotsResponse.error) console.warn('No se pudieron cargar los slots de los snapshots para el dossier individual:', tacticalSnapshotSlotsResponse.error);
+
+        const allStatsByMatch = (allStatsResponse.error ? [] : allStatsResponse.data || []).reduce((acc, row) => {
+          const current = acc[row.partido_id] || {};
+          current[row.player_name] = {
+            role: row.role || 'Suplente',
+            minutes: row.minutes ?? '',
+            replacementName: row.replacement_name || '',
+            jugadorId: row.jugador_id || null,
+          };
+          acc[row.partido_id] = current;
+          return acc;
+        }, {});
+        const lineupSlotsByMatch = (lineupSlotsResponse.error ? [] : lineupSlotsResponse.data || []).reduce((acc, slot) => {
+          acc[slot.partido_id] = [...(acc[slot.partido_id] || []), {
+            slot: Number(slot.slot),
+            playerName: slot.player_name || '',
+            jugadorId: slot.jugador_id || '',
+          }];
+          return acc;
+        }, {});
+        const systemEventsByMatch = (systemEventsResponse.error ? [] : systemEventsResponse.data || []).reduce((acc, event) => {
+          acc[event.partido_id] = [...(acc[event.partido_id] || []), normalizeSupabaseSystemEvent(event)];
+          return acc;
+        }, {});
+        const tacticalSlotsBySnapshot = (tacticalSnapshotSlotsResponse.error ? [] : tacticalSnapshotSlotsResponse.data || []).reduce((acc, slot) => {
+          acc[slot.snapshot_id] = [...(acc[slot.snapshot_id] || []), {
+            slot: Number(slot.slot),
+            jugadorId: slot.jugador_id || '',
+            playerNameSnapshot: slot.player_name_snapshot || '',
+            position: slot.position || slot.tactical_position || '',
+          }];
+          return acc;
+        }, {});
+        const tacticalSnapshotsByMatch = snapshotRows.reduce((acc, snapshot) => {
+          acc[snapshot.partido_id] = [...(acc[snapshot.partido_id] || []), {
+            ...snapshot,
+            slots: tacticalSlotsBySnapshot[snapshot.id] || [],
+          }];
+          return acc;
+        }, {});
+        partidosById = Object.fromEntries((partidosResponse.data || []).map((match) => {
+          const normalized = normalizeSupabasePartido(match);
+          const lineupSlots = lineupSlotsByMatch[match.id] || [];
+          return [match.id, {
+            ...normalized,
+            statsSystemRaw: match.stats_system || '',
+            statsPlayerData: allStatsByMatch[match.id] || {},
+            lineupSlots: { stats: lineupSlots, preCaudal: [] },
+            statsLineup: hydrateStatsLineup(lineupSlots),
+            systemEvents: systemEventsByMatch[match.id] || [],
+            tacticalSnapshots: tacticalSnapshotsByMatch[match.id] || [],
+          }];
+        }));
       }
 
       const nextProfileData = { statsRows, goalEvents, quickEvents, partidosById };
@@ -28618,6 +28686,24 @@ function App() {
               const pdfSeasonLabel = pdfSeasonResolution.season?.label || (pdfSeasonLabels.length === 1 ? pdfSeasonLabels[0] : '');
               const pdfOwnTeam = teams.find((team) => team.isOwnClub || team.teamKind === 'own') || null;
               const pdfPlayerFoot = /^(no indicada|no indicado|sin datos|—|-)$/i.test(String(selectedPlayerProfile.foot || '').trim()) ? '' : selectedPlayerProfile.foot || '';
+              const pdfPositionUsage = buildPlayerPositionUsage({
+                playerId: selectedPlayerProfile.id,
+                playerName: selectedPlayerProfile.name,
+                profilePosition: selectedPlayerProfile.position,
+                matchRows: aggregate.rows.map((row) => {
+                  const tacticalHistory = getMatchTacticalHistory(row.match);
+                  return {
+                    matchId: row.match.id,
+                    minutes: row.minutes,
+                    role: row.role,
+                    duration: getMatchDurationMinutes(row.match),
+                    initialSystem: getInitialMatchSystem(row.match),
+                    initialSlots: getMatchInitialTacticalSlots(row.match),
+                    intervals: tacticalHistory.intervals,
+                    playerStats: safeObject(row.match.statsPlayerData),
+                  };
+                }),
+              });
               const playerPdfActions = [...allGoalActions, ...allAssistActions].map((event) => ({
                 ...event,
                 id: `${event.action}-${event.match.id}-${event.id}`,
@@ -28647,6 +28733,7 @@ function App() {
                   seasonValid: Boolean(pdfSeasonLabel) && pdfSeasonResolution.reason !== 'MULTIPLE_SEASONS',
                   seasonReason: pdfSeasonResolution.reason,
                   production: productionInvariant,
+                  positionUsage: pdfPositionUsage,
                 },
                 seasonSummary: {
                   played: aggregate.played,
@@ -28663,6 +28750,7 @@ function App() {
                   benchEntries: aggregate.subs,
                 },
                 competitionBreakdown: pdfCompetitionRows,
+                positionUsage: pdfPositionUsage,
                 production: {
                   goalsPer90: aggregate.goalsPer90,
                   assistsPer90: aggregate.assistsPer90,

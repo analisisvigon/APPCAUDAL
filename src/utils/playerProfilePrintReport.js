@@ -117,6 +117,7 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
     validation: source.validation || {},
     seasonSummary: source.seasonSummary || {},
     competitionBreakdown,
+    positionUsage: source.positionUsage || {},
     production: source.production || {},
     hasProduction,
     goalAnalysis: source.goalAnalysis || {},

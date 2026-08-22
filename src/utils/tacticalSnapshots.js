@@ -22,7 +22,12 @@ export const normalizeTacticalSnapshot = (snapshot = {}) => ({
     const playerName = clean(slot.player_name_snapshot || slot.playerNameSnapshot || slot.player_name || slot.playerName);
     const playerId = clean(slot.jugador_id || slot.jugadorId || slot.playerId);
     return Number.isInteger(slotIndex) && slotIndex >= 0 && slotIndex <= 10 && (playerId || playerName)
-      ? [{ slot: slotIndex, playerId, playerName }]
+      ? [{
+        slot: slotIndex,
+        playerId,
+        playerName,
+        position: clean(slot.position || slot.tactical_position || slot.tacticalPosition || slot.role),
+      }]
       : [];
   }),
 });

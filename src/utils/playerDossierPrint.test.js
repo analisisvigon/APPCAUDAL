@@ -96,6 +96,7 @@ const jairoReport = {
   validation: { seasonValid: true, production: { valid: true } },
   seasonSummary: { played: 2, starts: 2, minutes: 180, minutesPerMatch: 90, starterPercentage: 100, goals: 1, assists: 0, goalContributions: 1, yellow: 0, red: 0, injuries: 0, benchEntries: 0 },
   competitionBreakdown: [{ key: 'copa_rfef', label: 'Copa RFEF', played: 2, starts: 2, minutes: 180, goals: 1, assists: 0, goalContributions: 1 }],
+  positionUsage: { positions: [{ position: 'Extremo izquierdo', minutes: 90, percentage: 50 }, { position: 'Delantero', minutes: 90, percentage: 50 }], totalMinutes: 180, determinedMinutes: 180, unknownMinutes: 0, valid: true },
   production: { goalsPer90: '0.50', assistsPer90: '0.00', goalContributionsPer90: '0.50', goalContributions: 1 },
   influenceMaps: ['Todos', 'Goles', 'Asistencias'].map((label, index) => ({ key: index === 0 ? 'all' : label.toLowerCase(), label, zones: Array.from({ length: 9 }, (_, zone) => ({ value: `zone-${zone}`, label: `Zona ${zone + 1}`, count: index < 2 && zone === 1 ? 1 : 0 })) })),
   goalAnalysis: {
@@ -113,6 +114,12 @@ assert.deepEqual(vectorResult.pageSections, ['PERFIL Y RENDIMIENTO COMPETITIVO',
 assert.ok(vectorResult.audit.linkAnnotations >= 2, 'historial y videoteca contienen enlaces PDF reales');
 assert.deepEqual(vectorResult.audit.missingUrls, []);
 assert.ok(vectorResult.audit.urls.includes(jairoVideoUrl));
+assert.ok(exporterSource.indexOf('drawPositionUsage(pdf, report.positionUsage, y)') < exporterSource.indexOf("sectionTitle(pdf, 'Historial partido a partido'"), 'las posiciones se insertan en página 1 antes del historial');
+await assert.rejects(
+  createPlayerProfilePdf({ report: { ...jairoReport, positionUsage: { totalMinutes: 90, determinedMinutes: 120 }, validation: { ...jairoReport.validation, positionUsage: { valid: false } } }, fetchImpl: null }),
+  /minutos por posición/,
+  'un reparto que supera los minutos reales bloquea el PDF',
+);
 
 const scenarioZones = (counts = []) => goalZones.map((zone, index) => ({ ...zone, count: Number(counts[index] || 0) }));
 const makeScenarioReport = ({

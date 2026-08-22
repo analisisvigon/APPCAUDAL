@@ -273,6 +273,34 @@ const drawCompetitionTable = (pdf, competitions, y) => {
   return y + 5;
 };
 
+const drawPositionUsage = (pdf, usage, y) => {
+  const positions = rows(usage?.positions).filter((row) => number(row.minutes) > 0);
+  const unknownMinutes = number(usage?.unknownMinutes);
+  if (!positions.length && !unknownMinutes) return y;
+  const singlePosition = positions.length === 1 && !unknownMinutes;
+  y = sectionTitle(pdf, singlePosition ? 'Posición utilizada' : 'Posiciones utilizadas', y, '03');
+  if (singlePosition) {
+    const position = positions[0];
+    text(pdf, position.position, PAGE_MARGIN + 2, y + 5.2, { size: 7.2, style: 'bold', color: COLORS.ink, maxWidth: 115 });
+    text(pdf, `${number(position.minutes)}' · ${number(position.percentage)}%`, A4_WIDTH_MM - PAGE_MARGIN, y + 5.2, { size: 7, style: 'bold', color: COLORS.blue, align: 'right' });
+    return y + 10;
+  }
+  const labelWidth = 52;
+  const barWidth = 78;
+  positions.forEach((position, index) => {
+    const rowY = y + index * 7.2;
+    text(pdf, position.position, PAGE_MARGIN + 2, rowY + 4.8, { size: 6.1, style: index === 0 ? 'bold' : 'normal', color: COLORS.ink, maxWidth: labelWidth - 3 });
+    pdf.setFillColor(229, 237, 244);
+    pdf.rect(PAGE_MARGIN + labelWidth, rowY + 2, barWidth, 2.8, 'F');
+    pdf.setFillColor(...COLORS.blue);
+    pdf.rect(PAGE_MARGIN + labelWidth, rowY + 2, barWidth * Math.min(100, number(position.percentage)) / 100, 2.8, 'F');
+    text(pdf, `${number(position.percentage)}% · ${number(position.minutes)}'`, A4_WIDTH_MM - PAGE_MARGIN, rowY + 4.8, { size: 5.8, style: 'bold', color: COLORS.ink, align: 'right' });
+  });
+  const contentHeight = positions.length * 7.2;
+  if (unknownMinutes) text(pdf, `${unknownMinutes}' con posición no determinada`, PAGE_MARGIN + 2, y + contentHeight + 3.5, { size: 4.8, color: COLORS.muted });
+  return y + contentHeight + (unknownMinutes ? 7 : 3);
+};
+
 const drawHistoryHeader = (pdf, y) => {
   const widths = [16, 37, 16, 28, 8, 16, 10, 10, 10, 20, 15];
   const headers = ['Fecha', 'Rival', 'Resultado', 'Competición', 'L/V', 'Rol', 'Min', 'G', 'A', 'Tarjetas', 'Lesión'];
@@ -374,7 +402,7 @@ const drawPitch = (pdf, map, x, y, width, height) => {
 };
 
 const drawProductionMaps = (pdf, maps, y) => {
-  y = sectionTitle(pdf, 'Zonas de producción', y, '04');
+  y = sectionTitle(pdf, 'Zonas de producción', y, '05');
   const gap = 5;
   const width = (CONTENT_WIDTH - gap * 2) / 3;
   const height = 54;
@@ -387,7 +415,7 @@ const drawProductionMaps = (pdf, maps, y) => {
 };
 
 const drawProductionMetrics = (pdf, production, y) => {
-  y = sectionTitle(pdf, 'Producción ofensiva', y, '05');
+  y = sectionTitle(pdf, 'Producción ofensiva', y, '06');
   const metrics = [['Goles/90', production?.goalsPer90], ['Asist./90', production?.assistsPer90], ['G+A/90', production?.goalContributionsPer90], ['G+A total', production?.goalContributions]];
   const width = CONTENT_WIDTH / metrics.length;
   metrics.forEach(([label, value], index) => {
@@ -405,7 +433,7 @@ const drawProductionMetrics = (pdf, production, y) => {
 const drawConnections = (pdf, connections, y, limit = Infinity) => {
   const connectionRows = rows(connections).slice(0, limit);
   if (!connectionRows.length) return y;
-  y = sectionTitle(pdf, 'Conexiones ofensivas', y, '06');
+  y = sectionTitle(pdf, 'Conexiones ofensivas', y, '07');
   connectionRows.forEach((connection) => {
     const direction = connection.direction === 'received' ? 'recibida' : connection.direction === 'given' ? 'dada' : '';
     const countLabel = `${connection.count} ${connection.count === 1 ? 'asistencia' : 'asistencias'}${direction ? ` ${connection.count === 1 ? direction : `${direction}s`}` : ''}`;
@@ -448,7 +476,7 @@ const drawObjectiveAnalysis = (pdf, analysis, y) => {
   const types = rows(analysis?.types?.phases);
   const target = analysis?.target || {};
   if (!body.length && !types.length && !number(target.known)) return y;
-  y = sectionTitle(pdf, 'Análisis objetivo de finalización', y, '07');
+  y = sectionTitle(pdf, 'Análisis objetivo de finalización', y, '08');
   const gap = 5;
   const width = (CONTENT_WIDTH - gap * 2) / 3;
   const modules = [
@@ -554,6 +582,9 @@ export const createPlayerProfilePdf = async ({
   if (!report?.identity?.name) throw new Error('No se puede generar el PDF: falta el modelo normalizado del jugador.');
   if (report.validation?.seasonReason === 'MULTIPLE_SEASONS') throw new Error('No se puede generar el dossier mezclando varias temporadas. Selecciona una temporada concreta.');
   if (report.validation?.production?.valid === false) throw new Error('No se puede generar el dossier: los agregados de producción son contradictorios.');
+  if (report.validation?.positionUsage?.valid === false || number(report.positionUsage?.determinedMinutes) > number(report.positionUsage?.totalMinutes)) {
+    throw new Error('No se puede generar el dossier: los minutos por posición superan los minutos reales del jugador.');
+  }
 
   const imageUrls = new Set([
     report.identity?.image,
@@ -578,23 +609,25 @@ export const createPlayerProfilePdf = async ({
   y = sectionTitle(pdf, `Rendimiento · Temporada ${report.identity.season || '—'}`, y, '01');
   y = drawKpis(pdf, report, y);
   y = drawCompetitionTable(pdf, report.competitionBreakdown, y);
+  y = drawPositionUsage(pdf, report.positionUsage, y);
 
   const history = rows(report.history);
   if (history.length) {
-    y = sectionTitle(pdf, 'Historial partido a partido', y, '03');
+    if (y + 18 > CONTENT_BOTTOM) y = addPage('HISTORIAL · CONTINUACIÓN');
+    y = sectionTitle(pdf, 'Historial partido a partido', y, '04');
     let header = drawHistoryHeader(pdf, y);
     y = header.y;
     history.forEach((row, index) => {
       if (y + 9 > CONTENT_BOTTOM) {
         y = addPage('HISTORIAL · CONTINUACIÓN');
-        y = sectionTitle(pdf, 'Historial partido a partido · continuación', y, '03');
+        y = sectionTitle(pdf, 'Historial partido a partido · continuación', y, '04');
         header = drawHistoryHeader(pdf, y);
         y = header.y;
       }
       y = drawHistoryRow(pdf, row, y, header.widths, imageMap.get(clean(row.opponentCrest)), index);
     });
   } else {
-    y = sectionTitle(pdf, 'Historial partido a partido', y, '03');
+    y = sectionTitle(pdf, 'Historial partido a partido', y, '04');
     text(pdf, 'Sin partidos registrados en el ámbito seleccionado.', PAGE_MARGIN, y + 3, { size: 6.5, color: COLORS.muted });
   }
 
@@ -623,13 +656,13 @@ export const createPlayerProfilePdf = async ({
     const videoActions = rows(report.videoActions);
     if (videoActions.length) {
       if (y + 31 > CONTENT_BOTTOM) y = addPage('ACCIONES EN VÍDEO');
-      y = sectionTitle(pdf, 'Acciones en vídeo', y, '08');
+      y = sectionTitle(pdf, 'Acciones en vídeo', y, '09');
       videoActions.forEach((action, index) => {
         const detailed = index < 4;
         const estimated = detailed ? Math.max(25, 18 + actionDetailLines(action).length * 4.2) : 10;
         if (y + estimated > CONTENT_BOTTOM) {
           y = addPage('ACCIONES EN VÍDEO · CONTINUACIÓN');
-          y = sectionTitle(pdf, 'Acciones en vídeo · continuación', y, '08');
+          y = sectionTitle(pdf, 'Acciones en vídeo · continuación', y, '09');
         }
         y = drawVideoAction(pdf, action, y, index >= 4);
       });
