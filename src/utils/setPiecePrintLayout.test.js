@@ -21,7 +21,9 @@ const canvas = fs.readFileSync(new URL('../components/print/SetPieceDiagramCanva
 const toolbar = fs.readFileSync(new URL('../components/print/SetPieceDiagramToolbar.jsx', import.meta.url), 'utf8');
 const matchPrint = fs.readFileSync(new URL('../components/print/MatchPrintTab.jsx', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../styles/print.css', import.meta.url), 'utf8');
-const proCss = css.slice(css.indexOf('.set-piece-pro-sheet'), css.indexOf('@page portrait'));
+const proCssStart = css.indexOf('.set-piece-pro-sheet');
+const proCssEnd = css.indexOf('.player-profile-print-portal', proCssStart);
+const proCss = css.slice(proCssStart, proCssEnd);
 
 assert.ok(sheet.includes('buildSetPiecePrintPages(diagrams, players)'), 'renderer y vista previa consumen un único modelo de impresión');
 assert.ok(sheet.includes('abp-print-page'), 'cada bloque de dos jugadas se renderiza como una página independiente');

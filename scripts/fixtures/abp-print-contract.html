@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Contrato de impresión ABP</title>
+    <link rel="stylesheet" href="../../src/styles/print.css" />
+    <style>
+      .fixture-field {
+        display: grid;
+        height: 100%;
+        place-items: center;
+        border: 1pt solid #111827;
+        background: linear-gradient(90deg, #fff 0 49.8%, #111827 50%, #fff 50.2%);
+        font: 900 12pt Arial, sans-serif;
+      }
+    </style>
+  </head>
+  <body class="printing-set-piece-preview">
+    <main class="set-piece-preview-overlay">
+      <div>
+        <article class="lineup-print-sheet print-sheet-a4 diagram-print-sheet diagram-print-landscape set-piece-pro-sheet abp-print-page set-piece-preview-sheet" data-page-format="A4-landscape">
+          <header class="set-piece-print-sheet-header"><p>ABP · Prueba de contrato</p><div><strong>Página 1</strong></div></header>
+          <div class="set-piece-pro-plays" data-count="2">
+            <section class="set-piece-print-play"><header class="set-piece-print-play-header"><div class="set-piece-print-play-heading"><h2>Acumulación</h2></div></header><div class="set-piece-print-play-body set-piece-print-play-body--field-only"><div class="set-piece-print-pitch"><div class="fixture-field">Jugada 1</div></div></div></section>
+            <section class="set-piece-print-play"><header class="set-piece-print-play-header"><div class="set-piece-print-play-heading"><h2>Bloqueo</h2></div></header><div class="set-piece-print-play-body set-piece-print-play-body--field-only"><div class="set-piece-print-pitch"><div class="fixture-field">Jugada 2</div></div></div></section>
+          </div>
+        </article>
+        <article class="lineup-print-sheet print-sheet-a4 diagram-print-sheet diagram-print-landscape set-piece-pro-sheet abp-print-page set-piece-preview-sheet" data-page-format="A4-landscape">
+          <header class="set-piece-print-sheet-header"><p>ABP · Prueba de contrato</p><div><strong>Página 2</strong></div></header>
+          <div class="set-piece-pro-plays" data-count="1">
+            <section class="set-piece-print-play"><header class="set-piece-print-play-header"><div class="set-piece-print-play-heading"><h2>Tercera jugada</h2></div></header><div class="set-piece-print-play-body set-piece-print-play-body--field-only"><div class="set-piece-print-pitch"><div class="fixture-field">Jugada 3</div></div></div></section>
+          </div>
+        </article>
+      </div>
+    </main>
+    <script>
+      if (new URLSearchParams(location.search).get('mode') === 'current') {
+        document.body.classList.remove('printing-set-piece-preview');
+      }
+      for (const page of document.querySelectorAll('.abp-print-page')) {
+        const style = getComputedStyle(page);
+        page.dataset.computedWidth = style.width;
+        page.dataset.computedHeight = style.height;
+        page.dataset.computedOverflowX = style.overflowX;
+      }
+    </script>
+  </body>
+</html>

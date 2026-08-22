@@ -435,7 +435,7 @@ assert.equal(invalidClassification.libraryStatus, 'draft');
 
 const duplicate = duplicateSetPieceLaboratoryItem(payload);
 assert.notEqual(duplicate.id, payload.id);
-assert.equal(duplicate.nombre, `${payload.nombre} copia`);
+assert.equal(duplicate.nombre, payload.nombre, 'duplicar una jugada conserva exactamente su nombre');
 const originalIds = new Set(payload.elements.map((element) => element.id));
 assert.equal(duplicate.elements.some((element) => originalIds.has(element.id)), false, 'la copia no comparte IDs internos');
 const duplicatePlayer = duplicate.elements.find((element) => element.type === 'player');

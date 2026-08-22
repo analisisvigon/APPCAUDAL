@@ -346,7 +346,7 @@ export const duplicateSetPieceLaboratoryItem = (item) => {
   return {
     ...item,
     id,
-    nombre: `${clean(item.nombre) || 'Jugada ABP'} copia`,
+    nombre: clean(item.nombre) || 'Jugada ABP',
     elements: setSetPieceTacticalMeta(clonedElements, meta),
     created_at: now,
     updated_at: now,

@@ -126,7 +126,7 @@ export default function SetPieceDiagramPrintSheet({ match, title = 'ABP', diagra
       {pages.map((page) => {
         const pageKey = `${title}-${page.pageNumber}-${page.plays.map((play) => play.id || `${play.typeLabel}-${play.order}`).join('-')}`;
         return (
-          <article key={pageKey} data-render-model="set-piece-print" className={`lineup-print-sheet print-sheet-a4 diagram-print-sheet diagram-print-landscape set-piece-pro-sheet abp-print-page ${preview ? 'set-piece-preview-sheet set-piece-is-preview' : ''}`}>
+          <article key={pageKey} data-render-model="set-piece-print" data-page-format="A4-landscape" className={`lineup-print-sheet print-sheet-a4 diagram-print-sheet diagram-print-landscape set-piece-pro-sheet abp-print-page ${preview ? 'set-piece-preview-sheet set-piece-is-preview' : ''}`}>
             <header className="set-piece-print-sheet-header">
               <p>C.D. Caudal de Mieres · Dossier ABP</p>
               {(matchLabel || matchDate) ? <div>{matchLabel ? <strong>{matchLabel}</strong> : null}{matchDate ? <span>{matchDate}</span> : null}</div> : null}

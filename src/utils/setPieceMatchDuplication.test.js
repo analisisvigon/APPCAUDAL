@@ -37,7 +37,9 @@ assert.equal(adaptedCopy.elements.find((element) => element.type === 'player').p
 const matchPrintSource = fs.readFileSync(new URL('../components/print/MatchPrintTab.jsx', import.meta.url), 'utf8');
 const laboratorySource = fs.readFileSync(new URL('./setPieceLaboratory.js', import.meta.url), 'utf8');
 assert.match(matchPrintSource, /duplicateMatchSetPiece\(\{/);
-assert.match(matchPrintSource, /titulo:\s*`\$\{baseTitle\} copia`/, 'duplicar dentro del mismo partido conserva su sufijo');
-assert.match(laboratorySource, /nombre:\s*`\$\{clean\(item\.nombre\) \|\| 'Jugada ABP'\} copia`/, 'Biblioteca conserva su comportamiento independiente');
+assert.match(matchPrintSource, /titulo:\s*baseTitle/, 'duplicar dentro del mismo partido conserva exactamente el título');
+assert.match(laboratorySource, /nombre:\s*clean\(item\.nombre\) \|\| 'Jugada ABP'/, 'duplicar desde Biblioteca conserva exactamente el nombre');
+assert.equal(matchPrintSource.includes('${baseTitle} copia'), false, 'ningún duplicado del partido añade el sufijo copia');
+assert.equal(laboratorySource.includes("${clean(item.nombre) || 'Jugada ABP'} copia"), false, 'ningún duplicado de Biblioteca añade el sufijo copia');
 
 console.log('setPieceMatchDuplication tests passed');

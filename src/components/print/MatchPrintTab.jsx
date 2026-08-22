@@ -1142,7 +1142,7 @@ export default function MatchPrintTab({
         partido_id: match.id,
         tipo: type,
         orden: nextOrder,
-        titulo: `${baseTitle} copia`,
+        titulo: baseTitle,
         consigna: source.consigna || '',
         elements: cloneSetPieceElementsWithFreshIds(cleanDiagramElements(source.elements)),
       };
