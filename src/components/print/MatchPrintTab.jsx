@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import DossierTacticalSheet from './DossierTacticalSheet';
@@ -42,6 +42,7 @@ import {
   buildSetPieceLineupAdaptation,
 } from '../../utils/setPieceLineupAdaptation';
 import { duplicateMatchSetPiece } from '../../utils/setPieceMatchDuplication';
+import { SET_PIECE_HEADER_MENUS, transitionSetPieceHeaderMenu } from '../../utils/setPieceHeaderMenu';
 
 const setPieceSections = [
   { id: 'penaltis', label: 'Penaltis' },
@@ -114,16 +115,33 @@ const buildDossierPagesFromPreset = (presetKey = 'matchday') => {
   return ordered.map((page) => ({ ...page, active: preset.pages.includes(page.id) }));
 };
 
-function SetPieceActionsMenu({ label, children }) {
+function SetPieceActionsMenu({ id, label, openMenu, onToggle, onSelect, children }) {
+  const open = openMenu === id;
+  const panelId = `set-piece-header-menu-${id}`;
   return (
-    <details className="group relative">
-      <summary className="flex min-h-11 cursor-pointer list-none items-center rounded-2xl bg-white/10 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 [&::-webkit-details-marker]:hidden">
+    <div className="relative">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-controls={open ? panelId : undefined}
+        onClick={() => onToggle(id)}
+        className="flex min-h-11 items-center rounded-2xl bg-white/10 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70"
+      >
         {label}
-      </summary>
-      <div className="absolute right-0 top-[calc(100%+0.5rem)] z-40 grid w-60 gap-1.5 rounded-2xl border border-white/10 bg-[#0b1629] p-2 shadow-2xl">
-        {children}
-      </div>
-    </details>
+      </button>
+      {open ? (
+        <div id={panelId} role="menu" aria-label={label} className="absolute right-0 top-[calc(100%+0.5rem)] z-40 grid w-60 max-w-[calc(100vw-2rem)] gap-1.5 rounded-2xl border border-white/10 bg-[#0b1629] p-2 shadow-2xl">
+          {Children.map(children, (child) => isValidElement(child) ? cloneElement(child, {
+            role: 'menuitem',
+            onClick: (event) => {
+              onSelect();
+              child.props.onClick?.(event);
+            },
+          }) : child)}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -141,8 +159,35 @@ function SetPieceEditorHeader({
   onMirrorVertical,
   onSaveToLibrary,
   onLoadFromLibrary,
+  contextKey,
 }) {
+  const [openMenu, setOpenMenu] = useState(null);
+  const menuRegionRef = useRef(null);
   const menuActionClass = 'rounded-xl bg-white/10 px-3 py-2.5 text-left text-xs font-bold text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 disabled:cursor-not-allowed disabled:opacity-40';
+
+  const closeMenu = () => setOpenMenu((current) => transitionSetPieceHeaderMenu(current, { type: 'select' }));
+  const toggleMenu = (menu) => setOpenMenu((current) => transitionSetPieceHeaderMenu(current, { type: 'toggle', menu }));
+
+  useEffect(() => {
+    setOpenMenu((current) => transitionSetPieceHeaderMenu(current, { type: 'context-change' }));
+  }, [contextKey]);
+
+  useEffect(() => {
+    if (!openMenu) return undefined;
+    const handlePointerDown = (event) => {
+      const inside = Boolean(menuRegionRef.current?.contains(event.target));
+      setOpenMenu((current) => transitionSetPieceHeaderMenu(current, { type: 'pointerdown', inside }));
+    };
+    const handleKeyDown = (event) => {
+      setOpenMenu((current) => transitionSetPieceHeaderMenu(current, { type: 'keydown', key: event.key }));
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openMenu]);
 
   return (
     <div className="rounded-2xl border border-white/5 bg-black/15 p-3">
@@ -168,19 +213,21 @@ function SetPieceEditorHeader({
           >
             {saving ? 'Guardando...' : 'Guardar jugada'}
           </button>
-          <SetPieceActionsMenu label="Gestionar">
-            <button type="button" onClick={onDuplicate} disabled={saving || !hasDiagrams} className={menuActionClass}>Duplicar jugada actual</button>
-            <button type="button" onClick={onDuplicateFromMatch} className={menuActionClass}>Copiar desde otro partido</button>
-            <button type="button" onClick={onDelete} disabled={saving || !hasDiagrams} className="rounded-xl bg-red-500/15 px-3 py-2.5 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/70 disabled:cursor-not-allowed disabled:opacity-40">Eliminar jugada</button>
-          </SetPieceActionsMenu>
-          <SetPieceActionsMenu label="Biblioteca">
-            <button type="button" onClick={onSaveToLibrary} disabled={saving || !hasDiagrams} className={menuActionClass}>Guardar en biblioteca</button>
-            <button type="button" onClick={onLoadFromLibrary} className={menuActionClass}>Cargar desde biblioteca</button>
-          </SetPieceActionsMenu>
-          <SetPieceActionsMenu label="Transformar">
-            <button type="button" onClick={onMirrorHorizontal} disabled={saving || !hasDiagrams} className={menuActionClass}>Espejo horizontal</button>
-            <button type="button" onClick={onMirrorVertical} disabled={saving || !hasDiagrams} className={menuActionClass}>Espejo vertical</button>
-          </SetPieceActionsMenu>
+          <div ref={menuRegionRef} className="contents">
+            <SetPieceActionsMenu id={SET_PIECE_HEADER_MENUS.MANAGE} label="Gestionar" openMenu={openMenu} onToggle={toggleMenu} onSelect={closeMenu}>
+              <button type="button" onClick={onDuplicate} disabled={saving || !hasDiagrams} className={menuActionClass}>Duplicar jugada actual</button>
+              <button type="button" onClick={onDuplicateFromMatch} className={menuActionClass}>Copiar desde otro partido</button>
+              <button type="button" onClick={onDelete} disabled={saving || !hasDiagrams} className="rounded-xl bg-red-500/15 px-3 py-2.5 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/70 disabled:cursor-not-allowed disabled:opacity-40">Eliminar jugada</button>
+            </SetPieceActionsMenu>
+            <SetPieceActionsMenu id={SET_PIECE_HEADER_MENUS.LIBRARY} label="Biblioteca" openMenu={openMenu} onToggle={toggleMenu} onSelect={closeMenu}>
+              <button type="button" onClick={onSaveToLibrary} disabled={saving || !hasDiagrams} className={menuActionClass}>Guardar en biblioteca</button>
+              <button type="button" onClick={onLoadFromLibrary} className={menuActionClass}>Cargar desde biblioteca</button>
+            </SetPieceActionsMenu>
+            <SetPieceActionsMenu id={SET_PIECE_HEADER_MENUS.TRANSFORM} label="Transformar" openMenu={openMenu} onToggle={toggleMenu} onSelect={closeMenu}>
+              <button type="button" onClick={onMirrorHorizontal} disabled={saving || !hasDiagrams} className={menuActionClass}>Espejo horizontal</button>
+              <button type="button" onClick={onMirrorVertical} disabled={saving || !hasDiagrams} className={menuActionClass}>Espejo vertical</button>
+            </SetPieceActionsMenu>
+          </div>
         </div>
       </div>
     </div>
@@ -1846,6 +1893,7 @@ export default function MatchPrintTab({
             onMirrorVertical={() => mirrorCurrentDiagram('offensive', 'vertical')}
             onSaveToLibrary={() => saveCurrentDiagramToLibrary('offensive')}
             onLoadFromLibrary={() => openLibraryModal('offensive')}
+            contextKey={`${match?.id || ''}:offensive:${offensiveType}:${offensiveDiagramOrder}`}
           />
           {diagramLoading ? <p className="mt-4 text-sm text-slate-400">Cargando diagramas desde Supabase...</p> : null}
           {diagramError ? <p className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-100">{diagramError}</p> : null}
@@ -1915,6 +1963,7 @@ export default function MatchPrintTab({
             onMirrorVertical={() => mirrorCurrentDiagram('defensive', 'vertical')}
             onSaveToLibrary={() => saveCurrentDiagramToLibrary('defensive')}
             onLoadFromLibrary={() => openLibraryModal('defensive')}
+            contextKey={`${match?.id || ''}:defensive:${defensiveType}:${defensiveDiagramOrder}`}
           />
           {diagramLoading ? <p className="mt-4 text-sm text-slate-400">Cargando diagramas desde Supabase...</p> : null}
           {diagramError ? <p className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-100">{diagramError}</p> : null}
