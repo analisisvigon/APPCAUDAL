@@ -46,7 +46,15 @@ const report = buildPlayerProfilePrintReport({
   ],
   society: [{ name: 'Jairo Cárcaba', given: 1, received: 0 }],
   history: [],
-  actions: [],
+  actions: [{
+    id: 'borja-assist-qa',
+    type: 'Asistencia',
+    minute: 10,
+    opponent: 'Rival QA',
+    competition: 'Liga',
+    date: '16/08/2026',
+    url: 'https://video.example/borja-assist?t=600',
+  }],
 });
 
 const inspectConnectionLayout = () => {

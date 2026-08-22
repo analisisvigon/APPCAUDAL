@@ -1,0 +1,30 @@
+{
+  "status": "complete",
+  "layout": {
+    "title": "Conexiones ofensivas",
+    "origin": "Borja Rodríguez",
+    "destination": "Jairo Cárcaba",
+    "count": "1 asistencia",
+    "rowHeight": 30.671875,
+    "routeLineHeight": "10.5813px",
+    "rowOverflow": false,
+    "namesInsideRow": true,
+    "countInsideRow": true,
+    "sectionAboveFooter": true
+  },
+  "pages": 2,
+  "audit": {
+    "bytes": 288235,
+    "linkAnnotations": 1,
+    "uriAnnotations": 1,
+    "urls": [
+      "https://video.example/borja-assist?t=600"
+    ],
+    "expectedUrls": [
+      "https://video.example/borja-assist?t=600"
+    ],
+    "missingUrls": [],
+    "valid": true
+  },
+  "pdfPath": "C:\\Users\\mvigo\\OneDrive\\Escritorio\\APPCAUDAL\\artifacts\\player-pdf-production-qa\\borja-rodriguez-conexiones-ofensivas-qa.pdf"
+}

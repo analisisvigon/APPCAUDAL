@@ -1,4 +1,6 @@
 import { inspectPlayerDossier } from './playerDossierPrint.js';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 const REPORT_SELECTOR = '[data-player-pdf-report="true"]';
 const PAGE_SELECTOR = '[data-player-pdf-page]';
@@ -128,10 +130,8 @@ export const createPlayerProfilePdf = async ({
   const pages = Array.from(report.querySelectorAll(PAGE_SELECTOR));
   if (!pages.length) throw new Error('No se encontraron páginas A4 en el informe individual.');
 
-  const [{ default: defaultHtml2Canvas }, { jsPDF: DefaultJsPdf }] = await Promise.all([
-    html2canvasImpl ? Promise.resolve({ default: html2canvasImpl }) : import('html2canvas'),
-    JsPdfConstructor ? Promise.resolve({ jsPDF: JsPdfConstructor }) : import('jspdf'),
-  ]);
+  const defaultHtml2Canvas = html2canvasImpl || html2canvas;
+  const DefaultJsPdf = JsPdfConstructor || jsPDF;
 
   const pdf = new DefaultJsPdf({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true, putOnlyUsedFonts: true });
   const expectedVideoUrls = [];

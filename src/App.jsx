@@ -28,6 +28,7 @@ import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
 import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
+import { PDF_GENERATOR_LOAD_ERROR_MESSAGE, recoverFromStaleChunkOnce } from './utils/pwaChunkRecovery';
 import {
   POST_EVENT_TYPES,
   buildPostEventTypesFromCatalog,
@@ -5631,6 +5632,15 @@ function App() {
   const [selectedSystemMoment, setSelectedSystemMoment] = useState(null);
   const [tacticalDispositionEditor, setTacticalDispositionEditor] = useState(null);
   const [playerPdfReport, setPlayerPdfReport] = useState(null);
+  const [playerPdfExporting, setPlayerPdfExporting] = useState(false);
+  const [playerPdfExportError, setPlayerPdfExportError] = useState('');
+  useEffect(() => {
+    const showChunkLoadError = (event) => {
+      setPlayerPdfExportError(event.detail?.message || PDF_GENERATOR_LOAD_ERROR_MESSAGE);
+    };
+    window.addEventListener('appcaudal:chunk-load-failed', showChunkLoadError);
+    return () => window.removeEventListener('appcaudal:chunk-load-failed', showChunkLoadError);
+  }, []);
   const [rivalScoutingDrafts, setRivalScoutingDrafts] = useState(() => {
     try {
       if (typeof window === 'undefined') return {};
@@ -28660,6 +28670,9 @@ function App() {
                 }),
               });
               const exportPlayerPdf = () => {
+                if (playerPdfExporting) return;
+                setPlayerPdfExporting(true);
+                setPlayerPdfExportError('');
                 setPlayerPdfReport(playerPdfModel);
                 window.setTimeout(async () => {
                   try {
@@ -28670,8 +28683,14 @@ function App() {
                     console.info('PDF individual generado con enlaces verificados.', result.audit);
                   } catch (error) {
                     console.error('No se pudo generar el PDF individual con enlaces.', error);
-                    window.alert(error?.message || 'No se pudo generar el PDF individual.');
+                    const recovery = await recoverFromStaleChunkOnce(error);
+                    if (!recovery.reloadRequested) {
+                      setPlayerPdfExportError(recovery.handled
+                        ? PDF_GENERATOR_LOAD_ERROR_MESSAGE
+                        : 'No se pudo generar el PDF individual. Revisa el informe e inténtalo de nuevo.');
+                    }
                   } finally {
+                    setPlayerPdfExporting(false);
                     setPlayerPdfReport(null);
                   }
                 }, 100);
@@ -28745,13 +28764,20 @@ function App() {
                         <button
                           type="button"
                           onClick={exportPlayerPdf}
-                          className="rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-[#7aacff]"
+                          disabled={playerPdfExporting}
+                          className="rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-wait disabled:opacity-60"
                         >
-                          Exportar PDF
+                          {playerPdfExporting ? 'Generando PDF…' : 'Exportar PDF'}
                         </button>
                         <button onClick={() => setSelectedPlayerProfileId(null)} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10">Volver a plantilla</button>
                       </div>
                     </div>
+                    {playerPdfExportError ? (
+                      <div role="alert" className="no-print mt-4 flex flex-col gap-3 rounded-2xl border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm text-amber-50 sm:flex-row sm:items-center sm:justify-between">
+                        <span>{playerPdfExportError}</span>
+                        <button type="button" onClick={exportPlayerPdf} className="rounded-xl border border-amber-200/30 bg-amber-100/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-amber-50">Reintentar</button>
+                      </div>
+                    ) : null}
                   </section>
 
                   <AccordionSection title="Estadísticas principales" subtitle="Datos base del periodo analizado" defaultOpen>

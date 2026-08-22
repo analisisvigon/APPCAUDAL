@@ -3,10 +3,21 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(moduleId) {
+          if (moduleId.includes('/node_modules/jspdf/') || moduleId.includes('/node_modules/html2canvas/')) return 'pdf-generator';
+          return undefined;
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: null,
       manifestFilename: 'manifest.json',
       includeAssets: ['pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
