@@ -5628,10 +5628,8 @@ function App() {
   const [playerQuickScope, setPlayerQuickScope] = useState('Últimos 5 partidos');
   const [playerDelegatedScope, setPlayerDelegatedScope] = useState('Solo validados');
   const [playerInfluenceFilter, setPlayerInfluenceFilter] = useState('Todos');
-  const [selectedTimelineAction, setSelectedTimelineAction] = useState(null);
   const [selectedSystemMoment, setSelectedSystemMoment] = useState(null);
   const [tacticalDispositionEditor, setTacticalDispositionEditor] = useState(null);
-  const [playerReport, setPlayerReport] = useState(null);
   const [playerPdfReport, setPlayerPdfReport] = useState(null);
   const [rivalScoutingDrafts, setRivalScoutingDrafts] = useState(() => {
     try {
@@ -20011,15 +20009,6 @@ function App() {
     />
   );
 
-  const generatePlayerReport = (player, aggregate) => {
-    setPlayerReport({
-      general: `${displayPlayerName(player)} acumula ${aggregate.played} partidos, ${aggregate.minutes}' y ${aggregate.directGoalParticipation} participaciones directas de gol en el filtro actual. En eventos rápidos: ${aggregate.quick.shots} tiros, ${aggregate.quick.recoveries} recuperaciones y ${aggregate.quick.losses} pérdidas.`,
-      strengths: aggregate.quick.recoveries > aggregate.quick.losses ? 'Buen balance presión/pérdida: recupera más de lo que pierde en los eventos registrados.' : aggregate.goals || aggregate.assists ? 'Aporta producción ofensiva medible: revisar sus acciones de gol/asistencia para repetir zonas y sociedades.' : 'Sin producción ofensiva registrada: valorar influencia sin balón, continuidad y ocupación de zonas.',
-      improve: aggregate.quick.losses >= 5 ? 'Acumula pérdidas: revisar zonas, apoyos y perfil corporal en últimos partidos.' : aggregate.yellow || aggregate.red ? 'Controlar acciones disciplinarias y momentos de riesgo competitivo.' : 'Aumentar presencia en acciones decisivas si su rol lo permite.',
-      trend: aggregate.quick.recent.slice(0, 3).length ? `Últimos eventos rápidos: ${aggregate.quick.recent.slice(0, 3).map((event) => `${getQuickEventLabel(event.tipoEvento)} vs ${event.match.opponent}`).join(', ')}.` : aggregate.rows.slice(-3).length ? `Últimos ${aggregate.rows.slice(-3).length} partidos registrados: ${aggregate.rows.slice(-3).reduce((sum, row) => sum + row.minutes, 0)} minutos.` : 'Sin tendencia reciente registrada.',
-    });
-  };
-
   const getMatchScoreData = (match, officialGoals = null) => {
     const sourceMatch = officialGoals === null ? match : { ...match, statsGoalEvents: safeArray(officialGoals) };
     const score = getMatchScore(sourceMatch);
@@ -21397,7 +21386,6 @@ function App() {
   }, [activeTab, facingSystemsPlayerReturn?.matchId]);
 
   useEffect(() => {
-    setSelectedTimelineAction(null);
     setSelectedSystemMoment(null);
   }, [selectedPlayerProfileId, playerCompetitionFilter, playerVenueFilter, playerQuickScope]);
 
@@ -21408,8 +21396,6 @@ function App() {
   }, [selectedMatchId]);
 
   useEffect(() => {
-    setPlayerReport(null);
-    setSelectedTimelineAction(null);
     if (!selectedPlayerProfile) {
       setPlayerProfileData(null);
       setPlayerProfileError('');
@@ -28542,37 +28528,16 @@ function App() {
               const goalZoneCounts = getGroupGoalZoneCounts(allGoalActions);
               const playerGoalPhaseCounts = countPhases(allGoalActions);
               const maxPlayerGoalPhase = Math.max(1, ...playerGoalPhaseCounts.map((row) => row.count));
-              const timelineActions = [
-                ...allGoalActions.map((event) => ({ minute: event.minute, label: 'G', icon: 'Gol', type: 'Gol', tone: 'goal', match: event.match, videoUrl: event.videoUrl, actionKey: `goal-${event.match.id}-${event.id}`, title: `Gol · ${getMatchScoreLabel(event.match)}` })),
-                ...allAssistActions.map((event) => ({ minute: event.minute, label: 'A', icon: 'Asis', type: 'Asistencia', tone: 'assist', match: event.match, videoUrl: event.videoUrl, actionKey: `assist-${event.match.id}-${event.id}`, title: `Asistencia · ${getMatchScoreLabel(event.match)}` })),
-                ...quick.events.map((event) => {
-                  const eventLabel = getQuickEventLabel(event.tipoEvento);
-                  return { minute: event.minute, label: eventLabel.slice(0, 3), icon: eventLabel.slice(0, 3), type: eventLabel, tone: 'quick', match: event.match, actionKey: `quick-${event.match.id}-${event.id}`, title: `${eventLabel} · ${getMatchScoreLabel(event.match)}` };
-                }),
-                ...aggregate.rows.flatMap((row) => [
-                  ...row.cardActions.map((event, cardIndex) => ({ minute: event.minute, label: event.type.includes('roja') ? 'TR' : 'TA', icon: event.type.includes('roja') ? 'TR' : 'TA', type: event.type, tone: event.type.includes('roja') ? 'red' : 'yellow', match: row.match, actionKey: `card-${row.match.id}-${cardIndex}`, title: `${event.type} · ${getMatchScoreLabel(row.match)}` })),
-                  row.role === 'Suplente' && row.minutes > 0 ? { minute: Math.max(0, 90 - Number(row.minutes || 0)), label: 'CAM', icon: 'CAM', type: 'Cambio', tone: 'sub', match: row.match, actionKey: `sub-${row.match.id}`, title: `Entrada al partido · ${getMatchScoreLabel(row.match)}` } : null,
-                  row.injured ? { minute: row.minutes || '', label: 'LES', icon: 'LES', type: 'Lesión', tone: 'injury', match: row.match, actionKey: `injury-${row.match.id}`, title: `Lesión · ${getMatchScoreLabel(row.match)}` } : null,
-                ].filter(Boolean)),
-              ].filter((event) => event.minute !== '');
-              const timelineGroups = Object.values(timelineActions.reduce((acc, event) => {
-                const minuteKey = String(Math.max(0, Math.min(130, Number(event.minute) || 0)));
-                acc[minuteKey] = acc[minuteKey] || { minute: minuteKey, events: [] };
-                acc[minuteKey].events.push(event);
-                return acc;
-              }, {})).sort((a, b) => Number(a.minute) - Number(b.minute));
               const assistantsToPlayer = countValues(allGoalActions.map((event) => event.assistant));
               const assistedByPlayer = countValues(allAssistActions.map((event) => event.scorer));
               const assistantRows = Object.entries(assistantsToPlayer).filter(([name]) => name);
               const assistedRows = Object.entries(assistedByPlayer).filter(([name]) => name);
-              const maxSocietyCount = Math.max(1, ...assistantRows.map(([, count]) => count), ...assistedRows.map(([, count]) => count));
               const videoActions = [...allGoalActions, ...allAssistActions].filter((event) => event.videoUrl);
-              const regularStarter = aggregate.played > 0 && aggregate.starts / aggregate.played >= 0.6;
               const primaryMetrics = [
                 { label: 'Minutos', value: `${aggregate.minutes}'`, detail: aggregate.played ? `${Math.round(aggregate.minutes / Math.max(1, aggregate.played))}'/partido` : 'Sin partidos' },
                 { label: 'Partidos', value: aggregate.played, detail: `${aggregate.starts} titularidades` },
-                { label: 'Titularidades', value: aggregate.starts, detail: regularStarter ? 'Base once' : `${aggregate.subs} desde banquillo` },
-                { label: 'Participación', value: `${aggregate.participation}%`, detail: aggregate.participation >= 60 ? 'Alta' : aggregate.participation >= 30 ? 'Media' : 'Baja' },
+                { label: 'Titularidades', value: aggregate.starts, detail: `${aggregate.subs} desde banquillo` },
+                { label: 'Participación', value: `${aggregate.participation}%`, detail: `${aggregate.minutes}' de ${aggregate.rows.length * 90}' posibles` },
               ];
               const secondaryMetrics = [
                 ['Goles', aggregate.goals, 'text-emerald-200'],
@@ -28581,9 +28546,12 @@ function App() {
                 ['Rojas', aggregate.red, 'text-red-100'],
                 ['Lesiones', aggregate.injured, 'text-red-100'],
               ];
-              const hasInfluenceData = influenceActions.length > 0;
+              const goalContributions = aggregate.goals + aggregate.assists;
+              const goalContributionsPer90 = aggregate.minutes ? ((goalContributions / aggregate.minutes) * 90).toFixed(2) : '0.00';
+              const hasInfluenceData = Object.values(shotZoneCounts).some((count) => count > 0);
               const hasGoalZoneData = allGoalActions.some((event) => event.goalZone);
               const hasGoalPhaseData = playerGoalPhaseCounts.some((row) => row.count > 0);
+              const hasUsefulQuickData = quick.events.length >= 2;
               const dominantGoalPhase = hasGoalPhaseData ? [...playerGoalPhaseCounts].sort((a, b) => b.count - a.count)[0] : null;
               const societyRows = Array.from(new Set([...assistantRows.map(([name]) => name), ...assistedRows.map(([name]) => name)]))
                 .map((name) => ({
@@ -28593,39 +28561,6 @@ function App() {
                   total: (assistantsToPlayer[name] || 0) + (assistedByPlayer[name] || 0),
                 }))
                 .sort((a, b) => b.total - a.total);
-              const topAssistant = assistantRows.length ? [...assistantRows].sort((a, b) => b[1] - a[1])[0] : null;
-              const topAssociation = societyRows[0] || null;
-              const prePostRows = aggregate.rows
-                .map((row) => {
-                  const preNote = row.match.prePlayerNotes?.[selectedPlayerProfile.name] || '';
-                  const reviewedEvents = quick.events.filter((event) => event.partidoId === row.match.id);
-                  const achieved = !preNote ? 'Sin consigna' : (Number(row.rating) >= 7 || row.goals.length || row.assists.length || reviewedEvents.length >= 2) ? 'Cumplido' : reviewedEvents.length || row.minutes >= 45 ? 'Parcialmente' : 'No cumplido';
-                  return { row, preNote, reviewedEvents, achieved };
-                })
-                .filter((item) => item.preNote || item.reviewedEvents.length);
-              const tacticalTrendRows = [
-                quick.losses >= 4 ? ['Pérdidas en salida', 'Preparar tarea de seguridad y apoyos cercanos'] : null,
-                quick.shots <= 1 && aggregate.played ? ['Baja finalización', 'Asociar tarea de llegada y último tercio'] : null,
-                quick.recoveries >= 4 ? ['Buena activación tras pérdida', 'Guardar clips de presión efectiva'] : null,
-                aggregate.yellow + aggregate.red >= 2 ? ['Riesgo disciplinario', 'Revisar entradas, perfiles y duelos'] : null,
-              ].filter(Boolean);
-              const orderedSeasonRows = aggregate.rows.slice().sort((a, b) => String(a.match.date || '').localeCompare(String(b.match.date || '')));
-              const seasonStageRows = ['Inicio temporada', 'Mitad temporada', 'Final temporada'].map((label, index) => {
-                const from = Math.floor((orderedSeasonRows.length * index) / 3);
-                const to = Math.floor((orderedSeasonRows.length * (index + 1)) / 3);
-                const scopedRows = orderedSeasonRows.slice(from, Math.max(from + 1, to));
-                const ratings = scopedRows.map((row) => Number(row.rating)).filter(Boolean);
-                const minutes = scopedRows.reduce((sum, row) => sum + row.minutes, 0);
-                const impact = scopedRows.reduce((sum, row) => sum + row.goals.length + row.assists.length, 0);
-                return {
-                  label,
-                  matches: scopedRows.length,
-                  rating: ratings.length ? (ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length).toFixed(1) : '-',
-                  minutes,
-                  impact,
-                };
-              });
-              const maxSeasonMinutes = Math.max(1, ...seasonStageRows.map((row) => row.minutes));
               const pdfCompetitionRows = Object.values(aggregate.rows.reduce((acc, row) => {
                 const competition = getCompetitionFromCatalog(row.match);
                 const key = competition.key || competition.label || 'sin-competicion';
@@ -28833,7 +28768,6 @@ function App() {
                         {['Todos', 'Local', 'Visitante'].map((filter) => (
                           <button key={filter} onClick={() => setPlayerVenueFilter(filter)} className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${playerVenueFilter === filter ? 'border-caudal-electric/30 bg-caudal-electric/90 text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.07]'}`}>{filter}</button>
                         ))}
-                        <button onClick={() => generatePlayerReport(selectedPlayerProfile, aggregate)} className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-white/10">Generar reporte</button>
                       </div>
                     </div>
                     <div className="mt-5 grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
@@ -28864,39 +28798,8 @@ function App() {
                   </section>
                   </AccordionSection>
 
-                  {orderedSeasonRows.length ? (
-                  <AccordionSection title="Evolución temporada" subtitle="Progresión por tramos" defaultOpen>
-                  <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-5 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
-                    <div className="grid gap-4 lg:grid-cols-3">
-                      {seasonStageRows.map((stage) => (
-                        <div key={stage.label} className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4">
-                          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{stage.label}</p>
-                          <div className="mt-4 h-2 rounded-full bg-white/10">
-                            <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${(stage.minutes / maxSeasonMinutes) * 100}%` }} />
-                          </div>
-                          <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                            <div>
-                              <p className="text-xl font-black text-white">{stage.minutes}'</p>
-                              <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">Min</p>
-                            </div>
-                            <div>
-                              <p className="text-xl font-black text-white">{stage.rating}</p>
-                              <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">Nota</p>
-                            </div>
-                            <div>
-                              <p className="text-xl font-black text-white">{stage.impact}</p>
-                              <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">Impacto</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                  </AccordionSection>
-                  ) : null}
-
                   <AccordionSection title="Registro en vivo" subtitle="Datos del Modo Delegado separados de la estadística oficial">
-                  <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)] sm:p-5">
+                  <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Registro en vivo</h3>
@@ -28911,9 +28814,9 @@ function App() {
                         ))}
                       </div>
                     </div>
-                    {quick.events.length ? (
+                    {hasUsefulQuickData ? (
                       <>
-                        <div className="mt-4 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+                        <div className="mt-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
                           {[
                             ['Partidos con eventos', quick.matchesWithEvents],
                             ['Goles', quick.goals],
@@ -28929,19 +28832,12 @@ function App() {
                             ['Faltas realizadas', quick.foulsCommitted],
                             ['Faltas recibidas', quick.foulsReceived],
                           ].map(([label, value]) => (
-                            <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-                              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{label}</p>
-                              <p className="mt-1.5 text-2xl font-black text-white">{value}</p>
+                            <div key={label} className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2.5">
+                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+                              <p className="mt-1 text-xl font-black text-white">{value}</p>
                             </div>
                           ))}
                         </div>
-                        {quick.readings.length ? (
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            {quick.readings.map((reading) => (
-                              <span key={reading} className="rounded-2xl bg-amber-300/15 px-3 py-2 text-xs font-bold text-amber-100">{reading}</span>
-                            ))}
-                          </div>
-                        ) : null}
                         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                           {quick.recent.slice(0, 4).map((event) => (
                             <div key={event.id} className="rounded-2xl bg-white/5 p-4 text-sm">
@@ -28952,62 +28848,18 @@ function App() {
                         </div>
                       </>
                     ) : (
-                      <div className="mt-4">
-                        {renderProfileEmptyState(
-                          'Todavía no hay suficientes eventos revisados.',
-                          'Cuando se registren más acciones, este apartado mostrará patrones de participación y momentos destacados.',
-                          'horizontal'
-                        )}
-                      </div>
+                      <p className="mt-4 rounded-xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-2 text-xs text-slate-500">
+                        {quick.events.length === 1 ? '1 evento en el filtro actual; amplía el periodo para mostrar el resumen.' : 'Sin eventos en el filtro actual.'}
+                      </p>
                     )}
                   </section>
                   </AccordionSection>
 
-                  {prePostRows.length || tacticalTrendRows.length ? (
-                  <AccordionSection title="Objetivos de partido" subtitle="Relación entre consignas y rendimiento" className="no-print">
-                  <section className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
-                    {prePostRows.length ? (
-                    <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
-                      <div className="flex items-center justify-between gap-3">
-                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Objetivos trabajados</h3>
-                        <span className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-black text-slate-300">{prePostRows.length}</span>
-                      </div>
-                      <div className="mt-4 space-y-3">
-                        {prePostRows.slice(0, 5).map(({ row, preNote, reviewedEvents, achieved }) => (
-                          <div key={row.match.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <p className="truncate text-sm font-black text-white">{row.match.opponent}</p>
-                              <span className={`rounded-xl px-2 py-1 text-[10px] font-black ${achieved === 'Cumplido' ? 'bg-emerald-200/15 text-emerald-100' : achieved === 'Parcialmente' ? 'bg-amber-200/15 text-amber-100' : achieved === 'No cumplido' ? 'bg-red-200/15 text-red-100' : 'bg-white/[0.06] text-slate-300'}`}>{achieved}</span>
-                            </div>
-                            <p className="mt-2 line-clamp-2 text-sm text-slate-300">{preNote || 'Sin objetivo individual PRE registrado.'}</p>
-                            <p className="mt-2 text-xs text-slate-500">{reviewedEvents.length} eventos revisados · Nota {row.rating || '-'}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    ) : null}
-                    {tacticalTrendRows.length ? (
-                    <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.025] p-4">
-                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Focos de trabajo</h3>
-                      <div className="mt-4 space-y-2">
-                        {tacticalTrendRows.map(([title, copy]) => (
-                          <div key={title} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                            <p className="text-sm font-black text-white">{title}</p>
-                            <p className="mt-1 text-xs text-slate-400">{copy}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    ) : null}
-                  </section>
-                  </AccordionSection>
-                  ) : null}
-
-                  <AccordionSection title="Mapa de influencia y sociedades" subtitle="Dónde aparece y con quién conecta">
+                  <AccordionSection title="Producción y conexiones" subtitle="Acciones oficiales, asociaciones y vídeo">
                   <section className="grid gap-4 xl:grid-cols-[1.18fr_0.82fr]">
                     <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)] sm:p-5">
                       <div className="flex items-center justify-between gap-3">
-                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Mapa de influencia</h3>
+                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Zonas de producción</h3>
                         <div className="flex flex-wrap gap-2">
                           {['Todos', 'Goles', 'Asistencias'].map((filter) => (
                             <button key={filter} onClick={() => setPlayerInfluenceFilter(filter)} className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${playerInfluenceFilter === filter ? 'border-caudal-electric/30 bg-caudal-electric/90 text-slate-950' : 'border-white/10 bg-white/[0.05] text-slate-300 hover:bg-white/[0.08]'}`}>{filter}</button>
@@ -29020,32 +28872,33 @@ function App() {
                             {renderReadOnlyZoneGrid({ counts: shotZoneCounts })}
                           </div>
                         ) : renderProfileEmptyState(
-                          'Sin zonas de influencia registradas.',
-                          'Cuando haya goles, asistencias o eventos rápidos revisados, aquí aparecerán las zonas activas del jugador.',
+                          'Sin zonas de producción registradas.',
+                          'Este mapa usa exclusivamente las zonas guardadas en goles y asistencias oficiales.',
                           'pitch'
                         )}
                         <div className="space-y-4">
                           <div className="rounded-[1.25rem] border border-caudal-electric/15 bg-[#0f1e38]/70 p-4 text-slate-100">
                             <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Producción ofensiva</p>
-                            <div className="mt-3 grid gap-2.5">
+                            <div className="mt-3 grid grid-cols-2 gap-2.5">
                               {[
                                 ['Goles/90', aggregate.goalsPer90, 'text-emerald-300'],
-                                ['Asistencias/90', aggregate.assistsPer90, 'text-caudal-electric'],
-                                ['Participación directa', aggregate.directGoalParticipation, 'text-white'],
+                                ['Asist./90', aggregate.assistsPer90, 'text-caudal-electric'],
+                                ['G+A/90', goalContributionsPer90, 'text-white'],
+                                ['G+A total', goalContributions, 'text-white'],
                               ].map(([label, value, color]) => (
-                                <div key={label} className="flex items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.045] px-4 py-3">
-                                  <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">{label}</span>
-                                  <strong className={`text-xl ${color}`}>{value}</strong>
+                                <div key={label} className="rounded-2xl border border-white/[0.08] bg-white/[0.045] px-3 py-3">
+                                  <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</span>
+                                  <strong className={`mt-1 block text-xl ${color}`}>{value}</strong>
                                 </div>
                               ))}
                             </div>
                           </div>
-                          <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-4">
+                          {hasGoalPhaseData ? <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-4">
                             <div className="flex items-center justify-between gap-3">
                               <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Tipo de gol</p>
                               {dominantGoalPhase ? <span className="rounded-xl bg-white/[0.06] px-2 py-1 text-[10px] font-bold text-slate-300">Domina: {dominantGoalPhase.phase}</span> : null}
                             </div>
-                            {hasGoalPhaseData ? <div className="mt-3 space-y-2.5">
+                            <div className="mt-3 space-y-2.5">
                               {playerGoalPhaseCounts.map((row) => (
                                 <div key={row.phase}>
                                   <div className="flex justify-between text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">
@@ -29057,91 +28910,46 @@ function App() {
                                   </div>
                                 </div>
                               ))}
-                            </div> : <div className="mt-3">{renderProfileEmptyState('Sin patrón dominante.', 'No hay goles suficientes para perfilar el tipo de finalización.', 'lines')}</div>}
-                          </div>
-                          <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.025] p-4">
+                            </div>
+                          </div> : null}
+                          {hasGoalZoneData ? <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.025] p-4">
                             <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Diana de finalización</p>
-                            {hasGoalZoneData ? (
-                              <div className="mt-3 max-w-sm opacity-90">{renderReadOnlyZoneGrid({ counts: goalZoneCounts, zones: goalZoneOptions, goal: true })}</div>
-                            ) : (
-                              <div className="mt-3">{renderProfileEmptyState('Sin tiros en diana.', 'La diana se activará al registrar zonas de finalización.', 'horizontal')}</div>
-                            )}
-                          </div>
+                            <div className="mt-3 max-w-sm opacity-90">{renderReadOnlyZoneGrid({ counts: goalZoneCounts, zones: goalZoneOptions, goal: true })}</div>
+                          </div> : null}
                         </div>
                       </div>
                     </div>
 
                     <div className="space-y-4">
-                      <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
-                        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Sociedad ofensiva</h3>
-                        {societyRows.length ? <div className="mt-4 space-y-4 text-sm text-slate-300">
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Más asistencias recibidas</p>
-                              <p className="mt-2 truncate text-lg font-black text-white">{topAssistant?.[0] || 'Sin datos'}</p>
+                      {societyRows.length ? <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
+                        <div className="flex items-center justify-between gap-3">
+                          <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Conexiones</h3>
+                          <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Por participaciones</span>
+                        </div>
+                        <div className="mt-3 divide-y divide-white/[0.08]">
+                          {societyRows.map((row) => (
+                            <div key={row.name} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                              <div className="min-w-0">
+                                <p className="font-bold text-white">{row.name}</p>
+                                <p className="mt-0.5 text-xs text-slate-500">{row.given} dadas · {row.received} recibidas</p>
+                              </div>
+                              <strong className="shrink-0 rounded-xl bg-caudal-electric/10 px-2.5 py-1 text-sm text-caudal-electric">{row.total}</strong>
                             </div>
-                            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Mayor asociación</p>
-                              <p className="mt-2 truncate text-lg font-black text-white">{topAssociation?.name || 'Sin datos'}</p>
-                            </div>
-                          </div>
-                          <div>
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Conexiones principales</p>
-                            {societyRows.slice(0, 4).map((row) => (
-                              <div key={row.name} className="mt-3 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-3">
-                                <div className="flex items-center justify-between gap-3">
-                                  <span className="truncate font-bold text-white">{row.name}</span>
-                                  <strong className="text-caudal-electric">{row.total}</strong>
-                                </div>
-                                <p className="mt-1 text-xs text-slate-500">Recibe {row.received} · Asiste {row.given}</p>
-                                <div className="mt-2 h-1.5 rounded-full bg-white/10">
-                                  <div className="h-full rounded-full bg-caudal-electric/80" style={{ width: `${(row.total / maxSocietyCount) * 100}%` }} />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                          <div>
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Principales asistentes</p>
-                            {assistantRows.length ? assistantRows.map(([name, count]) => (
-                              <div key={name} className="mt-3 rounded-2xl bg-white/5 p-3">
-                                <div className="flex items-center justify-between gap-3">
-                                  <span className="truncate font-bold text-white">{name}</span>
-                                  <strong className="text-caudal-electric">{count}</strong>
-                                </div>
-                                <div className="mt-2 h-2 rounded-full bg-white/10">
-                                  <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${(count / maxSocietyCount) * 100}%` }} />
-                                </div>
-                              </div>
-                            )) : <p className="mt-2 italic text-slate-500">Sin datos registrados</p>}
-                          </div>
-                          <div>
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Asistencias dadas a...</p>
-                            {assistedRows.length ? assistedRows.map(([name, count]) => (
-                              <div key={name} className="mt-3 rounded-2xl bg-emerald-400/10 p-3">
-                                <div className="flex items-center justify-between gap-3">
-                                  <span className="truncate font-bold text-white">{name}</span>
-                                  <strong className="text-emerald-300">{count}</strong>
-                                </div>
-                                <div className="mt-2 h-2 rounded-full bg-white/10">
-                                  <div className="h-full rounded-full bg-emerald-300" style={{ width: `${(count / maxSocietyCount) * 100}%` }} />
-                                </div>
-                              </div>
-                            )) : <p className="mt-2 italic text-slate-500">Sin datos registrados</p>}
-                          </div>
-                        </div> : <div className="mt-4">{renderProfileEmptyState('Sin sociedades ofensivas registradas.', 'Cuando haya goles y asistencias revisadas, se verán conexiones, participaciones compartidas y compañeros más asociados.', 'lines')}</div>}
-                      </div>
+                          ))}
+                        </div>
+                      </div> : null}
                       {videoActions.length ? (
                       <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
                         <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Videoteca de acciones</h3>
-                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="mt-3 divide-y divide-white/[0.08]">
                           {videoActions.map((event) => (
-                            <div key={`${event.id}-${event.action}`} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] text-sm text-slate-300">
-                              <div className="flex aspect-video items-center justify-center bg-[linear-gradient(135deg,rgba(61,217,255,0.12),rgba(255,255,255,0.04))] text-xs font-black uppercase tracking-[0.18em] text-slate-400">Clip</div>
-                              <div className="p-4">
-                              <p className="font-bold text-white">{event.action} · {event.minute}' vs {event.match.opponent}</p>
-                              <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">{getCompetitionFromCatalog(event.match).label}</p>
-                              <button type="button" onClick={() => window.open(event.videoUrl, '_blank')} className="mt-3 rounded-xl bg-caudal-electric/90 px-3 py-2 text-xs font-bold text-slate-950 transition hover:bg-caudal-electric">Ver análisis</button>
+                            <div key={`${event.id}-${event.action}`} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                              <div className="min-w-0">
+                                <p className="font-bold text-white">{event.action} · {event.minute}'</p>
+                                <p className="mt-0.5 text-xs text-slate-400">{event.match.opponent}</p>
+                                <p className="mt-0.5 text-[10px] font-black uppercase tracking-[0.11em] text-slate-500">{getCompetitionFromCatalog(event.match).label} · {matchDisplayDate(event.match.date)}</p>
                               </div>
+                              <button type="button" onClick={() => window.open(event.videoUrl, '_blank')} className="shrink-0 rounded-xl bg-caudal-electric/90 px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] text-slate-950 transition hover:bg-caudal-electric">Ver vídeo</button>
                             </div>
                           ))}
                         </div>
@@ -29151,125 +28959,53 @@ function App() {
                   </section>
                   </AccordionSection>
 
-                  <AccordionSection title="Impacto temporal e historial" subtitle="Momentos destacados y partido a partido">
-                  <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)] sm:p-5">
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Impacto en el tiempo (0' - 90')</h3>
-                        {timelineGroups.length ? (
-                      <div className="mt-4 overflow-x-auto pb-2">
-                        <div className="relative h-24 min-w-[720px] rounded-2xl border border-white/10 bg-white/[0.03]">
-                          <div className="absolute left-6 right-6 top-1/2 h-1 -translate-y-1/2 rounded bg-white/10" />
-                          {[0, 15, 30, 45, 60, 75, 90].map((minute) => <span key={minute} className="absolute top-3 text-[10px] font-bold text-slate-500" style={{ left: `${Math.max(2, minute / 90 * 96)}%` }}>{minute}'</span>)}
-                          {timelineGroups.map((group) => {
-                            const mainEvent = group.events[0];
-                            const eventTone = mainEvent.tone === 'goal' ? 'bg-emerald-200 text-slate-950' : mainEvent.tone === 'assist' ? 'bg-caudal-electric text-slate-950' : mainEvent.tone === 'red' || mainEvent.tone === 'injury' ? 'bg-red-200 text-slate-950' : mainEvent.tone === 'yellow' ? 'bg-amber-200 text-slate-950' : 'bg-white text-slate-950';
-                            return (
-                              <button
-                                type="button"
-                                key={group.minute}
-                                title={group.events.map((event) => `${event.minute}' ${event.type}`).join(' · ')}
-                                onClick={() =>
-                                  setSelectedTimelineAction((current) =>
-                                    current?.actionKey === mainEvent.actionKey ? null : mainEvent
-                                  )
-                                }
-                                className={`absolute top-10 -translate-x-1/2 rounded-full px-2.5 py-1 text-[10px] font-black shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition hover:scale-105 ${eventTone}`}
-                                style={{ left: `${Math.min(97, Math.max(3, Number(group.minute) / 90 * 96))}%` }}
-                              >
-                                {mainEvent.icon}{group.events.length > 1 ? `+${group.events.length - 1}` : ''}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="mt-3">{renderProfileEmptyState('Sin momentos de impacto registrados.', 'Goles, asistencias, tarjetas y eventos rápidos revisados construirán aquí una línea temporal útil.', 'lines')}</div>
-                    )}
-                    {selectedTimelineAction ? (
-                      <div className="mt-5 rounded-2xl border border-caudal-electric/30 bg-caudal-electric/10 p-4">
-                        <p className="text-xs font-black uppercase tracking-[0.16em] text-caudal-electric">{selectedTimelineAction.type} · minuto {selectedTimelineAction.minute}'</p>
-                        <p className="mt-2 text-sm font-bold text-white">{getMatchScoreLabel(selectedTimelineAction.match)}</p>
-                        <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">
-                          {matchDisplayDate(selectedTimelineAction.match.date)} · {getCompetitionFromCatalog(selectedTimelineAction.match).label} · {selectedTimelineAction.match.isHome ? 'Local' : 'Visitante'}
-                        </p>
-                        {selectedTimelineAction.videoUrl ? (
-                          <button
-                            type="button"
-                            onClick={() => window.open(selectedTimelineAction.videoUrl, '_blank')}
-                            className="mt-3 rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950"
-                          >
-                            Ver vídeo
-                          </button>
-                        ) : (
-                          <p className="mt-3 text-xs italic text-slate-500">Sin vídeo registrado en esta acción.</p>
-                        )}
-                      </div>
-                    ) : null}
-                  </section>
-
+                  <AccordionSection title="Historial" subtitle="Partido a partido">
                   <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/72 p-4 shadow-[0_16px_48px_rgba(0,0,0,0.18)] sm:p-5">
                     <div className="flex items-center justify-between gap-3">
                       <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Historial partido a partido</h3>
                       <span className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-black text-slate-300">{aggregate.rows.length} registros</span>
                     </div>
-                    <div className="mt-4 player-history-table">
-                      <table className="w-full text-left text-sm">
+                    <div className="mt-4 overflow-x-auto player-history-table">
+                      <table className="min-w-[1120px] w-full text-left text-sm">
                         <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
-                          <tr>{['Fecha', 'Rival', 'Resultado', 'Competición', 'L/V', 'Rol', 'Min', 'Nota', 'Goles', 'Asist.', 'Tarjetas', 'Lesión'].map((head) => <th key={head} className="px-3 py-3">{head}</th>)}</tr>
+                          <tr>{['Fecha', 'Rival', 'Resultado', 'Competición', 'L/V', 'Rol', 'Min', 'Goles', 'Asist.', 'Tarjetas', 'Lesión'].map((head) => <th key={head} className="whitespace-nowrap px-3 py-3">{head}</th>)}</tr>
                         </thead>
                         <tbody>
                           {aggregate.rows.length ? aggregate.rows.map((row) => {
-                            const matchRating = row.rating || '-';
-                            const ratingValue = Number(row.rating) || 0;
                             const score = getMatchScoreData(row.match);
-                            const resultLabel = score.caudalGoals > score.rivalGoals ? 'V' : score.caudalGoals < score.rivalGoals ? 'D' : 'E';
+                            const resultLabel = score.hasScore ? (score.caudalGoals > score.rivalGoals ? 'V' : score.caudalGoals < score.rivalGoals ? 'D' : 'E') : null;
                             const cardLabel = [row.yellow ? `${row.yellow} TA` : null, row.red ? '1 TR' : null].filter(Boolean).join(' · ') || '-';
                             return (
-                            <tr key={row.match.id} className={`border-t border-white/10 ${ratingValue >= 7 || row.goals.length || row.assists.length ? 'bg-emerald-200/[0.04]' : ratingValue && ratingValue < 5 || row.red || row.injured ? 'bg-red-200/[0.03]' : ''}`}>
-                              <td className="px-3 py-4 text-slate-300">{matchDisplayDate(row.match.date)}</td>
-                              <td className="px-3 py-4">
+                            <tr key={row.match.id} className={`border-t border-white/10 ${row.goals.length || row.assists.length ? 'bg-emerald-200/[0.04]' : row.red || row.injured ? 'bg-red-200/[0.03]' : ''}`}>
+                              <td className="whitespace-nowrap px-3 py-4 text-slate-300">{matchDisplayDate(row.match.date)}</td>
+                              <td className="min-w-[220px] px-3 py-4">
                                 <div className="flex items-center gap-3">
                                   <TeamLogo src={row.match.opponentCrest} alt={`Escudo de ${row.match.opponent}`} teamName={row.match.opponent} size="xs" />
-                                  <span className="truncate font-bold text-white">{row.match.opponent}</span>
+                                  <span className="font-bold text-white">{row.match.opponent}</span>
                                 </div>
                               </td>
-                              <td className="px-3 py-4">
-                                <span className={`rounded-xl px-2 py-1 text-xs font-black ${resultLabel === 'V' ? 'bg-emerald-200/15 text-emerald-100' : resultLabel === 'D' ? 'bg-red-200/15 text-red-100' : 'bg-amber-200/15 text-amber-100'}`}>
-                                  {resultLabel} · {score.caudalGoals}-{score.rivalGoals}
+                              <td className="whitespace-nowrap px-3 py-4">
+                                <span className={`rounded-xl px-2 py-1 text-xs font-black ${resultLabel === 'V' ? 'bg-emerald-200/15 text-emerald-100' : resultLabel === 'D' ? 'bg-red-200/15 text-red-100' : resultLabel === 'E' ? 'bg-amber-200/15 text-amber-100' : 'bg-white/[0.06] text-slate-400'}`}>
+                                  {score.hasScore ? `${resultLabel} · ${score.caudalGoals}-${score.rivalGoals}` : 'Sin resultado'}
                                 </span>
                               </td>
-                              <td className="px-3 py-4 text-slate-300">{getCompetitionFromCatalog(row.match).label}</td>
-                              <td className="px-3 py-4 text-slate-300">{row.match.isHome ? 'Local' : 'Visitante'}</td>
+                              <td className="min-w-[160px] px-3 py-4 text-slate-300">{getCompetitionFromCatalog(row.match).label}</td>
+                              <td className="whitespace-nowrap px-3 py-4 text-slate-300">{row.match.isHome ? 'Local' : 'Visitante'}</td>
                               <td className="px-3 py-4"><span className={`rounded-xl px-2 py-1 text-xs font-black ${row.role === 'Titular' ? 'bg-caudal-electric/15 text-caudal-electric' : 'bg-white/[0.06] text-slate-300'}`}>{row.role}</span></td>
                               <td className="px-3 py-4 font-black text-white">{row.minutes}'</td>
-                              <td className="px-3 py-4">
-                                <span className={`rounded-xl px-2 py-1 text-xs font-black ${ratingValue >= 7 ? 'bg-emerald-200/15 text-emerald-100' : ratingValue >= 5 ? 'bg-amber-200/15 text-amber-100' : ratingValue ? 'bg-red-200/15 text-red-100' : 'text-slate-500'}`}>{matchRating}</span>
-                              </td>
                               <td className="px-3 py-4 text-emerald-100">{row.goals.length || '-'}</td>
                               <td className="px-3 py-4 text-caudal-electric">{row.assists.length || '-'}</td>
                               <td className="px-3 py-4 text-amber-100">{cardLabel}</td>
                               <td className="px-3 py-4 text-red-100">{row.injured ? 'Sí' : '-'}</td>
                             </tr>
                           );
-                          }) : <tr><td colSpan="12" className="px-3 py-6 text-center text-slate-500">Sin datos registrados</td></tr>}
+                          }) : <tr><td colSpan="11" className="px-3 py-6 text-center text-slate-500">Sin datos registrados</td></tr>}
                         </tbody>
                       </table>
                     </div>
                   </section>
                   </AccordionSection>
 
-                  {playerReport ? (
-                    <section className="no-print rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow">
-                      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Informe automático</h3>
-                      <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                        {Object.entries(playerReport).map(([title, text]) => (
-                          <div key={title} className="rounded-3xl bg-[#0f1e38]/80 p-5">
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{title}</p>
-                            <p className="mt-3 text-sm leading-7 text-slate-300">{text}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </section>
-                  ) : null}
                   {playerPdfReport && typeof document !== 'undefined'
                     ? createPortal(<PlayerProfilePdfReport report={playerPdfReport} />, document.body)
                     : null}

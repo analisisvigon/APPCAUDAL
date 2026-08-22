@@ -289,17 +289,20 @@ table {
 
 .player-history-table {
   max-width: 100%;
-  overflow: visible;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
 }
 
 .player-history-table table {
-  table-layout: fixed;
+  table-layout: auto;
 }
 
-.player-history-table th,
+.player-history-table th {
+  white-space: nowrap;
+}
+
 .player-history-table td {
-  white-space: normal;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
 }
 
 .match-print-tab .print-hidden.rounded-3xl,
