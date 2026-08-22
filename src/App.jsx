@@ -28626,12 +28626,35 @@ function App() {
                 };
               });
               const maxSeasonMinutes = Math.max(1, ...seasonStageRows.map((row) => row.minutes));
+              const pdfCompetitionRows = Object.values(aggregate.rows.reduce((acc, row) => {
+                const competition = getCompetitionFromCatalog(row.match);
+                const key = competition.key || competition.label || 'sin-competicion';
+                acc[key] = acc[key] || {
+                  key,
+                  label: competition.label || 'Sin datos',
+                  season: competition.season || '',
+                  played: 0,
+                  starts: 0,
+                  minutes: 0,
+                  goals: 0,
+                  assists: 0,
+                };
+                if (row.minutes > 0 || row.role === 'Titular') acc[key].played += 1;
+                if (row.role === 'Titular') acc[key].starts += 1;
+                acc[key].minutes += Number(row.minutes || 0);
+                acc[key].goals += row.goals.length;
+                acc[key].assists += row.assists.length;
+                return acc;
+              }, {})).filter((competition) => competition.played > 0);
+              const pdfSeasonLabels = [...new Set(pdfCompetitionRows.map((competition) => competition.season).filter(Boolean))];
+              const pdfSeasonLabel = pdfSeasonLabels.length ? pdfSeasonLabels.join(' · ') : 'Sin datos';
               const playerPdfActions = [...allGoalActions, ...allAssistActions].map((event) => ({
                 id: `${event.action}-${event.match.id}-${event.id}`,
                 type: event.action,
                 minute: event.minute,
                 opponent: event.match.opponent,
                 competition: getCompetitionFromCatalog(event.match).label,
+                date: matchDisplayDate(event.match.date),
                 description: event.summary || event.title || '',
                 url: event.videoUrl || '',
                 matchId: event.match.id,
@@ -28644,44 +28667,41 @@ function App() {
                   position: selectedPlayerProfile.position || 'Sin demarcación',
                   age: `${calculateAge(selectedPlayerProfile.dob)} años`,
                   foot: selectedPlayerProfile.foot || 'no indicado',
+                  team: 'C.D. Caudal de Mieres',
+                  season: pdfSeasonLabel,
                 },
                 filters: {
                   competition: playerCompetitionFilter,
                   venue: playerVenueFilter,
                 },
-                metrics: [
-                  ...primaryMetrics,
-                  ...secondaryMetrics.map(([label, value]) => ({ label, value })),
-                ],
-                seasonStages: seasonStageRows,
+                seasonSummary: {
+                  played: aggregate.played,
+                  starts: aggregate.starts,
+                  minutes: aggregate.minutes,
+                  minutesPerMatch: aggregate.played ? Math.round(aggregate.minutes / aggregate.played) : 0,
+                  starterPercentage: aggregate.played ? Math.round((aggregate.starts / aggregate.played) * 100) : 0,
+                  goals: aggregate.goals,
+                  assists: aggregate.assists,
+                  goalContributions: aggregate.goals + aggregate.assists,
+                  yellow: aggregate.yellow,
+                  red: aggregate.red,
+                  injuries: aggregate.injured,
+                  benchEntries: aggregate.subs,
+                },
+                competitionBreakdown: pdfCompetitionRows,
                 production: {
                   goalsPer90: aggregate.goalsPer90,
                   assistsPer90: aggregate.assistsPer90,
-                  directGoalParticipation: aggregate.directGoalParticipation,
+                  goalContributionsPer90: aggregate.minutes ? (((aggregate.goals + aggregate.assists) / aggregate.minutes) * 90).toFixed(2) : '0.00',
+                  goalContributions: aggregate.goals + aggregate.assists,
                 },
                 influenceMaps: [
                   { key: 'all', label: 'Todos', zones: pitchZoneCatalog.map((zone) => ({ ...zone, count: allInfluenceZoneCounts[zone.value] || 0 })) },
                   { key: 'goals', label: 'Goles', zones: pitchZoneCatalog.map((zone) => ({ ...zone, count: goalInfluenceZoneCounts[zone.value] || 0 })) },
                   { key: 'assists', label: 'Asistencias', zones: pitchZoneCatalog.map((zone) => ({ ...zone, count: assistInfluenceZoneCounts[zone.value] || 0 })) },
                 ],
-                goalZones: goalMouthZoneCatalog.map((zone) => ({ ...zone, count: goalZoneCounts[zone.value] || 0 })),
-                goalPhases: playerGoalPhaseCounts
-                  .filter((row) => row.count > 0)
-                  .map((row) => ({ ...row, percentage: Math.round((row.count / Math.max(1, allGoalActions.length)) * 100) })),
                 society: societyRows,
                 actions: playerPdfActions,
-                timeline: timelineGroups.map((group) => ({
-                  minute: group.minute,
-                  events: group.events.map((event) => ({
-                    id: event.actionKey,
-                    type: event.type,
-                    label: event.label,
-                    minute: event.minute,
-                    opponent: event.match?.opponent || '',
-                    competition: event.match ? getCompetitionFromCatalog(event.match).label : '',
-                    url: event.videoUrl || '',
-                  })),
-                })),
                 history: aggregate.rows.map((row) => {
                   const score = getMatchScoreData(row.match);
                   const linkedActions = playerPdfActions.filter((action) => action.matchId === row.match.id);
@@ -28689,12 +28709,12 @@ function App() {
                     id: row.match.id,
                     date: matchDisplayDate(row.match.date),
                     opponent: row.match.opponent,
-                    result: `${score.caudalGoals}-${score.rivalGoals}`,
+                    opponentCrest: row.match.opponentCrest || '',
+                    result: score.hasScore ? `${score.caudalGoals}-${score.rivalGoals}` : 'Sin datos',
                     competition: getCompetitionFromCatalog(row.match).label,
                     venue: row.match.isHome ? 'L' : 'V',
                     role: row.role,
                     minutes: `${row.minutes}'`,
-                    rating: row.rating || '-',
                     goals: row.goals.length || '-',
                     assists: row.assists.length || '-',
                     cards: [row.yellow ? `${row.yellow} TA` : '', row.red ? '1 TR' : ''].filter(Boolean).join(' · ') || '-',
@@ -28703,10 +28723,6 @@ function App() {
                     assistLinks: linkedActions.filter((action) => action.type === 'Asistencia').map((action) => action.url),
                   };
                 }),
-                live: quick.events.length ? {
-                  eventCount: quick.events.length,
-                  summary: `${quick.shots} tiros · ${quick.recoveries} recuperaciones · ${quick.losses} pérdidas`,
-                } : null,
               });
               const exportPlayerPdf = () => {
                 setPlayerPdfReport(playerPdfModel);

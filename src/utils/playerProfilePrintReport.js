@@ -19,6 +19,7 @@ const normalizeAction = (action = {}) => ({
   minute: clean(action.minute),
   opponent: clean(action.opponent),
   competition: clean(action.competition),
+  date: clean(action.date),
   description: clean(action.description),
   url: getPlayerReportActionUrl(action.url || action.videoUrl),
 });
@@ -31,32 +32,40 @@ const normalizeHistoryRow = (row = {}) => ({
 
 export const buildPlayerProfilePrintReport = (source = {}) => {
   const actions = rows(source.actions).map(normalizeAction).filter((action) => action.type || action.description);
-  const timeline = rows(source.timeline).map((group) => ({
-    ...group,
-    events: rows(group.events).map(normalizeAction),
-  }));
   const history = rows(source.history).map(normalizeHistoryRow);
-  const live = Number(source.live?.eventCount || 0) > 0 ? source.live : null;
   const influenceMaps = rows(source.influenceMaps).length
     ? rows(source.influenceMaps).map((map) => ({ ...map, zones: rows(map.zones) }))
     : [{ key: 'all', label: 'Todos', zones: rows(source.influenceZones) }];
+  const competitionBreakdown = rows(source.competitionBreakdown)
+    .filter((competition) => Number(competition.played || 0) > 0)
+    .map((competition) => ({
+      ...competition,
+      goalContributions: Number(competition.goalContributions ?? (Number(competition.goals || 0) + Number(competition.assists || 0))),
+    }));
+  const videoActions = actions.filter((action) => action.url);
+  const summaryHistoryLimit = Math.max(10, 18 - Math.max(0, competitionBreakdown.length - 4));
+  const summaryHistory = history.slice(0, summaryHistoryLimit);
+  const historyOverflow = [];
+  for (let index = summaryHistory.length; index < history.length; index += 30) historyOverflow.push(history.slice(index, index + 30));
+  const productionActions = videoActions.slice(0, 10);
+  const actionOverflow = [];
+  for (let index = productionActions.length; index < videoActions.length; index += 16) actionOverflow.push(videoActions.slice(index, index + 16));
+  const pagePlan = ['summary', 'production', ...historyOverflow.map(() => 'history'), ...actionOverflow.map(() => 'video')];
 
   return {
     identity: source.identity || {},
     filters: source.filters || {},
-    metrics: rows(source.metrics),
-    seasonStages: rows(source.seasonStages),
+    seasonSummary: source.seasonSummary || {},
+    competitionBreakdown,
     production: source.production || {},
     influenceMaps,
-    goalZones: rows(source.goalZones),
-    goalPhases: rows(source.goalPhases),
     society: rows(source.society),
     actions,
-    timeline,
     history,
-    summaryHistory: history,
-    productionActions: actions,
-    live,
-    pagePlan: ['summary', 'production'],
+    summaryHistory,
+    historyOverflow,
+    productionActions,
+    actionOverflow,
+    pagePlan,
   };
 };

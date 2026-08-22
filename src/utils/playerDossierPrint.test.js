@@ -82,8 +82,8 @@ assert.deepEqual(failedAudit.missingUrls, [videoUrl]);
 const componentSource = fs.readFileSync(new URL('../components/print/PlayerProfilePdfReport.jsx', import.meta.url), 'utf8');
 const exporterSource = fs.readFileSync(new URL('./playerProfilePdfExport.js', import.meta.url), 'utf8');
 assert.match(componentSource, /data-player-video-link="history"/, 'los enlaces inequívocos del historial se identifican para la auditoría');
-assert.match(componentSource, /data-player-video-link="timeline"/, 'los hitos con vídeo del timeline se identifican para la auditoría');
 assert.match(componentSource, /data-player-video-link="library"/, 'el botón de videoteca se identifica para la auditoría');
+assert.doesNotMatch(componentSource, /data-player-video-link="timeline"/, 'el dossier profesional ya no incluye el gráfico de impacto temporal');
 assert.match(exporterSource, /pdf\.link\(link\.x, link\.y, link\.width, link\.height, \{ url: link\.url \}\)/, 'el generador crea anotaciones PDF sobre los anchors actuales');
 assert.match(exporterSource, /auditPlayerPdfLinkAnnotations\(arrayBuffer, expectedVideoUrls\)/, 'el binario final se audita antes de iniciar la descarga');
 
