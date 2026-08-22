@@ -276,13 +276,18 @@ const drawCompetitionTable = (pdf, competitions, y) => {
 const drawPositionUsage = (pdf, usage, y) => {
   const positions = rows(usage?.positions).filter((row) => number(row.minutes) > 0);
   const unknownMinutes = number(usage?.unknownMinutes);
-  if (!positions.length && !unknownMinutes) return y;
+  const formatMinutes = (value) => Math.round(number(value)).toLocaleString('es-ES');
+  if (!positions.length) {
+    y = sectionTitle(pdf, 'Posiciones utilizadas', y, '03');
+    text(pdf, 'Sin información posicional suficiente', PAGE_MARGIN + 2, y + 5.2, { size: 6.4, color: COLORS.muted });
+    return y + 10;
+  }
   const singlePosition = positions.length === 1 && !unknownMinutes;
-  y = sectionTitle(pdf, singlePosition ? 'Posición utilizada' : 'Posiciones utilizadas', y, '03');
+  y = sectionTitle(pdf, 'Posiciones utilizadas', y, '03');
   if (singlePosition) {
     const position = positions[0];
     text(pdf, position.position, PAGE_MARGIN + 2, y + 5.2, { size: 7.2, style: 'bold', color: COLORS.ink, maxWidth: 115 });
-    text(pdf, `${number(position.minutes)}' · ${number(position.percentage)}%`, A4_WIDTH_MM - PAGE_MARGIN, y + 5.2, { size: 7, style: 'bold', color: COLORS.blue, align: 'right' });
+    text(pdf, `${formatMinutes(position.minutes)}' · ${number(position.percentage)}%`, A4_WIDTH_MM - PAGE_MARGIN, y + 5.2, { size: 7, style: 'bold', color: COLORS.blue, align: 'right' });
     return y + 10;
   }
   const labelWidth = 52;
@@ -294,10 +299,10 @@ const drawPositionUsage = (pdf, usage, y) => {
     pdf.rect(PAGE_MARGIN + labelWidth, rowY + 2, barWidth, 2.8, 'F');
     pdf.setFillColor(...COLORS.blue);
     pdf.rect(PAGE_MARGIN + labelWidth, rowY + 2, barWidth * Math.min(100, number(position.percentage)) / 100, 2.8, 'F');
-    text(pdf, `${number(position.percentage)}% · ${number(position.minutes)}'`, A4_WIDTH_MM - PAGE_MARGIN, rowY + 4.8, { size: 5.8, style: 'bold', color: COLORS.ink, align: 'right' });
+    text(pdf, `${number(position.percentage)}% · ${formatMinutes(position.minutes)}'`, A4_WIDTH_MM - PAGE_MARGIN, rowY + 4.8, { size: 5.8, style: 'bold', color: COLORS.ink, align: 'right' });
   });
   const contentHeight = positions.length * 7.2;
-  if (unknownMinutes) text(pdf, `${unknownMinutes}' con posición no determinada`, PAGE_MARGIN + 2, y + contentHeight + 3.5, { size: 4.8, color: COLORS.muted });
+  if (unknownMinutes) text(pdf, `${formatMinutes(unknownMinutes)}' sin posición registrada`, PAGE_MARGIN + 2, y + contentHeight + 3.5, { size: 4.8, color: COLORS.muted });
   return y + contentHeight + (unknownMinutes ? 7 : 3);
 };
 

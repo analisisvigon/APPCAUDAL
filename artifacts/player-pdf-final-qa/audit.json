@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-22T14:18:47.618Z",
+  "generatedAt": "2026-08-22T14:42:15.532Z",
   "pdfPath": "C:\\Users\\mvigo\\OneDrive\\Escritorio\\APPCAUDAL\\artifacts\\player-pdf-final-qa\\jairo-carcaba-dossier-profesional.pdf",
   "identity": {
     "name": "Jairo Cárcaba",
@@ -53,7 +53,7 @@
   "positionUsage": {
     "positions": [
       {
-        "position": "Delantero",
+        "position": "Delantero centro",
         "minutes": 90,
         "percentage": 50,
         "sources": [
@@ -77,7 +77,6 @@
       "explicit": 0,
       "tacticalSlot": 0,
       "initialSlot": 180,
-      "profile": 0,
       "unknown": 0
     },
     "valid": true
@@ -155,7 +154,7 @@
     "PRODUCCIÓN, ZONAS Y VÍDEO"
   ],
   "linkAudit": {
-    "bytes": 72668,
+    "bytes": 72674,
     "linkAnnotations": 2,
     "uriAnnotations": 2,
     "urls": [

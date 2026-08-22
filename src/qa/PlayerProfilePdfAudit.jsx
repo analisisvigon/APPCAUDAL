@@ -3,11 +3,13 @@ import ReactDOM from 'react-dom/client';
 import '../index.css';
 import '../styles/print.css';
 import PlayerProfilePdfReport from '../components/print/PlayerProfilePdfReport';
+import PlayerPositionUsageSummary from '../components/player/PlayerPositionUsageSummary';
 import { buildPlayerProfilePrintReport } from '../utils/playerProfilePrintReport';
 import { createPlayerProfilePdf, downloadPlayerProfilePdf } from '../utils/playerProfilePdfExport';
 
 const params = new URLSearchParams(window.location.search);
 const shouldExport = params.get('export') === '1';
+const appPositionOnly = params.get('appPosition') === '1';
 
 const report = buildPlayerProfilePrintReport({
   identity: {
@@ -39,8 +41,8 @@ const report = buildPlayerProfilePrintReport({
   ],
   positionUsage: {
     positions: [
+      { position: 'Delantero centro', minutes: 90, percentage: 50 },
       { position: 'Extremo izquierdo', minutes: 90, percentage: 50 },
-      { position: 'Delantero', minutes: 90, percentage: 50 },
     ],
     totalMinutes: 180,
     determinedMinutes: 180,
@@ -142,6 +144,17 @@ function Audit() {
       window.clearTimeout(timer);
     };
   }, []);
+
+  if (appPositionOnly) {
+    return (
+      <main className="min-h-screen bg-[#06101f] p-8 text-white">
+        <div className="mx-auto max-w-3xl">
+          <p className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-slate-500">Ficha individual · Jairo Cárcaba · Copa RFEF</p>
+          <PlayerPositionUsageSummary usage={report.positionUsage} />
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="player-pdf-qa-preview">

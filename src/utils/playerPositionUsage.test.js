@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { buildPlayerPositionUsage } from './playerPositionUsage.js';
+import { buildPlayerPositionUsage, getPlayerPositionUsage } from './playerPositionUsage.js';
 
 const identity = { playerId: 'p1', playerName: 'Jugador Uno' };
 const slot = (slotIndex, extra = {}) => ({ slot: slotIndex, playerId: 'p1', playerName: 'Jugador Uno', ...extra });
@@ -22,7 +22,7 @@ const match = ({ minutes = 90, role = 'Titular', system = '4-2-3-1', initialSlot
 });
 
 const onePosition = buildPlayerPositionUsage({ ...identity, matchRows: [match()] });
-assert.deepEqual(onePosition.positions.map(({ position, minutes, percentage }) => ({ position, minutes, percentage })), [{ position: 'Delantero', minutes: 90, percentage: 100 }], 'A: una posición ocupa el 100%');
+assert.deepEqual(onePosition.positions.map(({ position, minutes, percentage }) => ({ position, minutes, percentage })), [{ position: 'Delantero centro', minutes: 90, percentage: 100 }], 'A: una posición ocupa el 100%');
 
 const polyvalent = buildPlayerPositionUsage({ ...identity, matchRows: [match({ intervals: [interval(0, 63, '4-2-3-1', 1), interval(63, 90, '4-3-3', 8)] })] });
 assert.deepEqual(polyvalent.positions.map(({ position, minutes, percentage }) => ({ position, minutes, percentage })), [
@@ -31,7 +31,7 @@ assert.deepEqual(polyvalent.positions.map(({ position, minutes, percentage }) =>
 ], 'B-D: cambio de posición y sistema distribuye 70/30 sin duplicar minutos');
 
 const changedInMatch = buildPlayerPositionUsage({ ...identity, matchRows: [match({ intervals: [interval(0, 60, '4-2-3-1', 9), interval(60, 90, '4-2-3-1', 10)] })] });
-assert.deepEqual(changedInMatch.positions.map((row) => [row.position, row.minutes]), [['Extremo izquierdo', 60], ['Delantero', 30]], 'C: un cambio durante el partido corta los tramos reales');
+assert.deepEqual(changedInMatch.positions.map((row) => [row.position, row.minutes]), [['Extremo izquierdo', 60], ['Delantero centro', 30]], 'C: un cambio durante el partido corta los tramos reales');
 
 const substituted = buildPlayerPositionUsage({ ...identity, matchRows: [match({ minutes: 60, intervals: [interval(0, 60, '4-2-3-1', 10), interval(60, 90, '4-2-3-1', 10)] })] });
 assert.equal(substituted.totalMinutes, 60, 'E: el sustituido no recibe minutos posteriores a su salida');
@@ -39,11 +39,12 @@ assert.equal(substituted.positions[0].minutes, 60);
 
 const benchStats = { Titular: { minutes: 60, replacementName: 'Jugador Uno' }, 'Jugador Uno': { role: 'Suplente', minutes: 30, jugadorId: 'p1' } };
 const fromBench = buildPlayerPositionUsage({ ...identity, matchRows: [match({ minutes: 30, role: 'Suplente', initialSlot: null, playerStats: benchStats, intervals: [interval(0, 60, '4-2-3-1', 10, { playerId: 'starter', playerName: 'Titular' }), interval(60, 90, '4-2-3-1', 10)] })] });
-assert.deepEqual(fromBench.positions.map((row) => [row.position, row.minutes]), [['Delantero', 30]], 'F: el suplente comienza a sumar al entrar');
+assert.deepEqual(fromBench.positions.map((row) => [row.position, row.minutes]), [['Delantero centro', 30]], 'F: el suplente comienza a sumar al entrar');
 
-const unknown = buildPlayerPositionUsage({ ...identity, profilePosition: '', matchRows: [match({ initialSlot: null, intervals: [] })] });
+const unknown = buildPlayerPositionUsage({ ...identity, profilePosition: 'Defensa', matchRows: [match({ initialSlot: null, intervals: [] })] });
 assert.equal(unknown.unknownMinutes, 90, 'G: los minutos sin posición fiable no se redistribuyen');
 assert.deepEqual(unknown.positions, []);
+assert.equal(unknown.sources.profile, undefined, 'G: la posición general del perfil nunca se usa como fallback');
 
 const filteredLeague = buildPlayerPositionUsage({ ...identity, matchRows: [match({ minutes: 70, initialSlot: 1 })] });
 const filteredCup = buildPlayerPositionUsage({ ...identity, matchRows: [match({ minutes: 30, initialSlot: 7 })] });
@@ -58,5 +59,14 @@ assert.equal(awayOnly.totalMinutes, 35, 'I: visitante utiliza solo sus minutos f
 const overlapping = buildPlayerPositionUsage({ ...identity, matchRows: [match({ intervals: [interval(0, 70, '4-2-3-1', 9), interval(60, 90, '4-2-3-1', 10)] })] });
 assert.equal(overlapping.determinedMinutes, 90, 'los tramos solapados no duplican minutos');
 assert.equal(overlapping.valid, true);
+
+const partial = buildPlayerPositionUsage({ ...identity, matchRows: [match({ intervals: [interval(0, 60, '4-2-3-1', 9), { ...interval(60, 90, '4-2-3-1', 10), isComplete: false }] })] });
+assert.deepEqual(partial.positions.map((row) => [row.position, row.minutes, row.percentage]), [['Extremo izquierdo', 60, 67]], 'un tramo fiable conserva sus minutos exactos');
+assert.equal(partial.unknownMinutes, 30, 'los huecos posteriores no se rellenan con la posición inicial ni con la ficha');
+
+const codedExplicitPosition = buildPlayerPositionUsage({ ...identity, matchRows: [match({ intervals: [interval(0, 90, '4-2-3-1', 10, { position: 'DC' })] })] });
+assert.equal(codedExplicitPosition.positions[0].position, 'Delantero centro', 'los códigos posicionales estructurados se traducen al catálogo específico');
+
+assert.equal(getPlayerPositionUsage, buildPlayerPositionUsage, 'APP y PDF comparten exactamente el mismo selector canónico');
 
 console.log('playerPositionUsage tests passed');

@@ -25,9 +25,10 @@ import DelegatedStatsDashboard from './components/delegated/DelegatedStatsDashbo
 import AccordionSection from './components/shared/AccordionSection';
 import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
+import PlayerPositionUsageSummary from './components/player/PlayerPositionUsageSummary';
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
 import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
-import { buildPlayerPositionUsage } from './utils/playerPositionUsage';
+import { getPlayerPositionUsage } from './utils/playerPositionUsage';
 import { getSportsSeason, resolveSportsSeasonFromMatches } from './utils/sportsSeason';
 import {
   buildPlayerBodyPartSummary,
@@ -28686,10 +28687,9 @@ function App() {
               const pdfSeasonLabel = pdfSeasonResolution.season?.label || (pdfSeasonLabels.length === 1 ? pdfSeasonLabels[0] : '');
               const pdfOwnTeam = teams.find((team) => team.isOwnClub || team.teamKind === 'own') || null;
               const pdfPlayerFoot = /^(no indicada|no indicado|sin datos|—|-)$/i.test(String(selectedPlayerProfile.foot || '').trim()) ? '' : selectedPlayerProfile.foot || '';
-              const pdfPositionUsage = buildPlayerPositionUsage({
+              const playerPositionUsage = getPlayerPositionUsage({
                 playerId: selectedPlayerProfile.id,
                 playerName: selectedPlayerProfile.name,
-                profilePosition: selectedPlayerProfile.position,
                 matchRows: aggregate.rows.map((row) => {
                   const tacticalHistory = getMatchTacticalHistory(row.match);
                   return {
@@ -28733,7 +28733,7 @@ function App() {
                   seasonValid: Boolean(pdfSeasonLabel) && pdfSeasonResolution.reason !== 'MULTIPLE_SEASONS',
                   seasonReason: pdfSeasonResolution.reason,
                   production: productionInvariant,
-                  positionUsage: pdfPositionUsage,
+                  positionUsage: playerPositionUsage,
                 },
                 seasonSummary: {
                   played: aggregate.played,
@@ -28750,7 +28750,7 @@ function App() {
                   benchEntries: aggregate.subs,
                 },
                 competitionBreakdown: pdfCompetitionRows,
-                positionUsage: pdfPositionUsage,
+                positionUsage: playerPositionUsage,
                 production: {
                   goalsPer90: aggregate.goalsPer90,
                   assistsPer90: aggregate.assistsPer90,
@@ -29005,6 +29005,7 @@ function App() {
                   </AccordionSection>
 
                   <AccordionSection title="Producción y conexiones" subtitle="Acciones oficiales, asociaciones y vídeo">
+                  <PlayerPositionUsageSummary usage={playerPositionUsage} className="mb-4" />
                   <section className="grid gap-4 xl:grid-cols-[1.18fr_0.82fr]">
                     <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)] sm:p-5">
                       <div className="flex items-center justify-between gap-3">

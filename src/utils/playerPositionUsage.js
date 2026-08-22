@@ -30,13 +30,13 @@ const SLOT_POSITION_LABELS = {
   EI: 'Extremo izquierdo',
   CAD: 'Carrilero derecho',
   CAI: 'Carrilero izquierdo',
-  DC: 'Delantero',
-  DC_D: 'Delantero',
-  DC_I: 'Delantero',
+  DC: 'Delantero centro',
+  DC_D: 'Delantero centro',
+  DC_I: 'Delantero centro',
 };
 
 export const getTacticalPositionLabel = ({ system, slot, explicitPosition = '' } = {}) => {
-  if (clean(explicitPosition)) return clean(explicitPosition);
+  if (clean(explicitPosition)) return SLOT_POSITION_LABELS[clean(explicitPosition).toUpperCase()] || clean(explicitPosition);
   const slotRow = getFormationSlotsForSavedLineup(system)[Number(slot)];
   if (!slotRow) return '';
   return SLOT_POSITION_LABELS[slotRow.id] || clean(slotRow.role || slotRow.label);
@@ -77,15 +77,14 @@ const getInitialPosition = ({ initialSlots, system, identity }) => {
   });
 };
 
-export const buildPlayerPositionUsage = ({
+export const getPlayerPositionUsage = ({
   playerId = '',
   playerName = '',
-  profilePosition = '',
   matchRows = [],
 } = {}) => {
   const identity = { playerId: clean(playerId), playerName: clean(playerName) };
   const allocations = new Map();
-  const sources = { explicit: 0, tacticalSlot: 0, initialSlot: 0, profile: 0, unknown: 0 };
+  const sources = { explicit: 0, tacticalSlot: 0, initialSlot: 0, unknown: 0 };
   let totalMinutes = 0;
 
   const add = (position, minutes, source) => {
@@ -117,8 +116,8 @@ export const buildPlayerPositionUsage = ({
       playerStats,
       identity,
     });
-    let assignedMinutes = 0;
     let coveredUntil = participation.fromMinute;
+    const resolvedSegments = [];
     const orderedIntervals = rows(row.intervals)
       .filter((interval) => Number(interval?.toMinute) > Number(interval?.fromMinute))
       .slice()
@@ -134,22 +133,31 @@ export const buildPlayerPositionUsage = ({
       const explicitPosition = clean(slot.position || slot.role || slot.tacticalPosition || slot.tactical_position);
       const position = getTacticalPositionLabel({ system: interval.system, slot: slot.slot, explicitPosition });
       if (!position) return;
-      const minutesInPosition = Math.min(toMinute - fromMinute, actualMinutes - assignedMinutes);
-      add(position, minutesInPosition, explicitPosition ? 'explicit' : 'tacticalSlot');
-      assignedMinutes += minutesInPosition;
+      const minutesInPosition = toMinute - fromMinute;
+      resolvedSegments.push({ fromMinute, toMinute, position, source: explicitPosition ? 'explicit' : 'tacticalSlot' });
       coveredUntil = Math.max(coveredUntil, toMinute);
     });
 
-    const remaining = Math.max(0, actualMinutes - assignedMinutes);
-    if (!remaining) return;
     const initialPosition = getInitialPosition({
       initialSlots: row.initialSlots,
       system: row.initialSystem,
       identity,
     });
-    if (initialPosition) add(initialPosition, remaining, 'initialSlot');
-    else if (clean(profilePosition)) add(clean(profilePosition), remaining, 'profile');
-    else add('', remaining, 'unknown');
+    if (!resolvedSegments.length) {
+      if (initialPosition) add(initialPosition, actualMinutes, 'initialSlot');
+      else add('', actualMinutes, 'unknown');
+      return;
+    }
+
+    let cursor = participation.fromMinute;
+    resolvedSegments.forEach((segment, index) => {
+      const gap = Math.max(0, segment.fromMinute - cursor);
+      if (gap) add(index === 0 && initialPosition ? initialPosition : '', gap, index === 0 && initialPosition ? 'initialSlot' : 'unknown');
+      add(segment.position, segment.toMinute - segment.fromMinute, segment.source);
+      cursor = Math.max(cursor, segment.toMinute);
+    });
+    const trailingGap = Math.max(0, participation.toMinute - cursor);
+    if (trailingGap) add('', trailingGap, 'unknown');
   });
 
   const positions = [...allocations.values()]
@@ -172,3 +180,7 @@ export const buildPlayerPositionUsage = ({
     valid: determinedMinutes <= totalMinutes && determinedMinutes + unknownMinutes === totalMinutes,
   };
 };
+
+// Nombre anterior conservado para los consumidores ya existentes. Ambos apuntan
+// al mismo selector canónico; no existe un cálculo alternativo para el PDF.
+export const buildPlayerPositionUsage = getPlayerPositionUsage;

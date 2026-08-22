@@ -118,7 +118,6 @@ const minutes = playedRows.reduce((sum, { row }) => sum + Number(row.minutes || 
 const positionUsage = buildPlayerPositionUsage({
   playerId,
   playerName: player.name,
-  profilePosition: player.position,
   matchRows: playedRows.map(({ row, match }) => ({
     matchId: match.id,
     minutes: Number(row.minutes || 0),

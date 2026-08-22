@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const source = fs.readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+const positionComponent = fs.readFileSync(new URL('../src/components/player/PlayerPositionUsageSummary.jsx', import.meta.url), 'utf8');
+const positionSelector = fs.readFileSync(new URL('../src/utils/playerPositionUsage.js', import.meta.url), 'utf8');
+const pdfReport = fs.readFileSync(new URL('../src/utils/playerProfilePrintReport.js', import.meta.url), 'utf8');
+const pdfExporter = fs.readFileSync(new URL('../src/utils/playerProfilePdfExport.js', import.meta.url), 'utf8');
 const start = source.indexOf('{selectedPlayerProfile ? (() => {');
 const end = source.indexOf('})() : (', start);
 
@@ -23,6 +27,21 @@ for (const removedCopy of [
 }
 
 assert.match(profile, /Zonas de producción/);
+assert.match(profile, /const playerPositionUsage = getPlayerPositionUsage\(\{/);
+assert.match(profile, /<PlayerPositionUsageSummary usage=\{playerPositionUsage\}/);
+assert.ok(profile.indexOf('<PlayerPositionUsageSummary usage={playerPositionUsage}') < profile.indexOf('Zonas de producción'), 'Posiciones utilizadas debe aparecer antes que zonas y conexiones');
+assert.match(profile, /positionUsage: playerPositionUsage/);
+assert.equal(profile.includes('profilePosition: selectedPlayerProfile.position'), false, 'La posición general no puede actuar como fallback táctico');
+assert.match(positionComponent, /Posiciones utilizadas/);
+assert.match(positionComponent, /Más utilizada/);
+assert.match(positionComponent, /Sin información posicional suficiente/);
+assert.match(positionComponent, /sin posición registrada/);
+assert.match(positionComponent, /data-position=\{position\.position\}/);
+assert.match(positionSelector, /export const buildPlayerPositionUsage = getPlayerPositionUsage/);
+assert.equal(positionSelector.includes("add(clean(profilePosition), remaining, 'profile')"), false, 'El selector no debe inventar minutos desde la ficha');
+assert.match(pdfReport, /positionUsage: source\.positionUsage \|\| \{\}/, 'El PDF debe recibir sin recalcular el resultado canónico de la APP');
+assert.match(pdfExporter, /Sin información posicional suficiente/);
+assert.match(pdfExporter, /sin posición registrada/);
 assert.match(profile, /event\.action === 'Gol' \? event\.shotZone : event\.assistZone/);
 assert.match(profile, /Object\.values\(shotZoneCounts\)\.some/);
 
