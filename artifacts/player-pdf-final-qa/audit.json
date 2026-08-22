@@ -1,0 +1,139 @@
+{
+  "generatedAt": "2026-08-22T12:46:08.751Z",
+  "pdfPath": "C:\\Users\\mvigo\\OneDrive\\Escritorio\\APPCAUDAL\\artifacts\\player-pdf-final-qa\\jairo-carcaba-dossier-profesional.pdf",
+  "identity": {
+    "name": "Jairo Cárcaba",
+    "image": "https://jkjuwysuubhdeqjuefbu.supabase.co/storage/v1/object/public/jugadores/jairo-carcaba/1783938915690-captura-de-pantalla-2026-07-13-123459.jpg",
+    "number": 14,
+    "position": "Delantero",
+    "age": "34 años",
+    "foot": "",
+    "team": "C.D. Caudal",
+    "teamCrest": "",
+    "season": "2026/2027"
+  },
+  "filters": {
+    "season": "2026/2027",
+    "competition": "Copa RFEF",
+    "venue": "Todos"
+  },
+  "seasonSummary": {
+    "played": 2,
+    "starts": 2,
+    "minutes": 180,
+    "minutesPerMatch": 90,
+    "starterPercentage": 100,
+    "goals": 1,
+    "assists": 0,
+    "goalContributions": 1,
+    "yellow": 0,
+    "red": 0,
+    "injuries": 0,
+    "benchEntries": 0
+  },
+  "invariant": {
+    "goals": 1,
+    "assists": 0,
+    "bodyKnown": 1,
+    "goalTypesKnown": 1,
+    "targetKnown": 1,
+    "targetCellTotal": 1,
+    "givenConnections": 0,
+    "receivedConnections": 1,
+    "checks": {
+      "bodyWithinGoals": true,
+      "goalTypesWithinGoals": true,
+      "targetWithinGoals": true,
+      "targetCellsMatchKnown": true,
+      "givenConnectionsWithinAssists": true,
+      "receivedConnectionsWithinGoals": true
+    },
+    "valid": true
+  },
+  "goalTarget": {
+    "values": [
+      {
+        "label": "alta_centro",
+        "count": 1
+      }
+    ],
+    "known": 1,
+    "missing": 0,
+    "total": 1,
+    "zones": [
+      {
+        "value": "alta_izquierda",
+        "label": "Alta izquierda",
+        "shortLabel": "Alta\nizquierda",
+        "count": 0
+      },
+      {
+        "value": "alta_centro",
+        "label": "Alta centro",
+        "shortLabel": "Alta\ncentro",
+        "count": 1
+      },
+      {
+        "value": "alta_derecha",
+        "label": "Alta derecha",
+        "shortLabel": "Alta\nderecha",
+        "count": 0
+      },
+      {
+        "value": "media_izquierda",
+        "label": "Media izquierda",
+        "shortLabel": "Media\nizquierda",
+        "count": 0
+      },
+      {
+        "value": "media_centro",
+        "label": "Media centro",
+        "shortLabel": "Media\ncentro",
+        "count": 0
+      },
+      {
+        "value": "media_derecha",
+        "label": "Media derecha",
+        "shortLabel": "Media\nderecha",
+        "count": 0
+      },
+      {
+        "value": "baja_izquierda",
+        "label": "Baja izquierda",
+        "shortLabel": "Baja\nizquierda",
+        "count": 0
+      },
+      {
+        "value": "baja_centro",
+        "label": "Baja centro",
+        "shortLabel": "Baja\ncentro",
+        "count": 0
+      },
+      {
+        "value": "baja_derecha",
+        "label": "Baja derecha",
+        "shortLabel": "Baja\nderecha",
+        "count": 0
+      }
+    ]
+  },
+  "pages": 2,
+  "pageSections": [
+    "PERFIL Y RENDIMIENTO COMPETITIVO",
+    "PRODUCCIÓN, ZONAS Y VÍDEO"
+  ],
+  "linkAudit": {
+    "bytes": 72453,
+    "linkAnnotations": 2,
+    "uriAnnotations": 2,
+    "urls": [
+      "https://youtu.be/9HXdIkVodbM",
+      "https://youtu.be/9HXdIkVodbM"
+    ],
+    "expectedUrls": [
+      "https://youtu.be/9HXdIkVodbM"
+    ],
+    "missingUrls": [],
+    "valid": true
+  }
+}

@@ -79,10 +79,17 @@ const borjaConnections = buildPlayerOffensiveConnections({
 });
 assert.deepEqual(borjaConnections, [{
   id: 'given-0-Jairo Cárcaba',
+  direction: 'given',
   from: 'Borja Rodríguez',
   to: 'Jairo Cárcaba',
   count: 1,
 }], 'la conexión real Borja Rodríguez → Jairo Cárcaba se conserva completa');
+
+const jairoConnections = buildPlayerOffensiveConnections({
+  playerName: 'Jairo Cárcaba',
+  society: [{ name: 'Borja Rodríguez', given: 0, received: 1 }],
+});
+assert.equal(jairoConnections[0]?.direction, 'received', 'Jairo distingue la asistencia recibida de la asistencia dada');
 
 const noConnections = buildPlayerProfilePrintReport({
   identity: { name: 'Jugador sin conexiones' },
@@ -90,6 +97,15 @@ const noConnections = buildPlayerProfilePrintReport({
 });
 assert.deepEqual(noConnections.offensiveConnections, [], 'cero conexiones no crea filas vacías');
 assert.deepEqual(noConnections.connectionOverflow, [], 'cero conexiones no crea páginas vacías');
+
+const defensiveOnly = buildPlayerProfilePrintReport({
+  identity: { name: 'Defensa sin producción' },
+  seasonSummary: { played: 20, starts: 18, minutes: 1700, goals: 0, assists: 0 },
+  history: [{ id: 'def-1', minutes: "90'", goals: '-', assists: '-' }],
+  influenceMaps: [{ key: 'all', zones: [] }, { key: 'goals', zones: [] }, { key: 'assists', zones: [] }],
+});
+assert.equal(defensiveOnly.hasProduction, false, 'un defensa sin G/A no reserva una página ofensiva vacía');
+assert.deepEqual(defensiveOnly.pagePlan, ['summary']);
 
 const longName = 'Compañero Con Un Nombre Extraordinariamente Largo y Compuesto';
 const oneConnection = buildPlayerProfilePrintReport({
@@ -134,13 +150,14 @@ assert.match(componentSource, /data-player-video-link="library"/, 'todo el CTA d
 assert.doesNotMatch(componentSource, /Impacto en el tiempo|player-pdf-timeline/, 'se elimina por completo el timeline subjetivo');
 assert.doesNotMatch(componentSource, /Evolución de temporada|seasonStages|rating/, 'se eliminan evolución y notas del dossier');
 assert.doesNotMatch(componentSource, /window\.open|onClick=/, 'el PDF no simula enlaces mediante JavaScript');
-assert.match(appSource, /team:\s*'C\.D\. Caudal de Mieres'/, 'el modelo recibe el equipo real');
+assert.match(appSource, /team:\s*pdfOwnTeam\?\.name \|\| ''/, 'el modelo recibe el nombre del equipo propio canónico');
+assert.match(appSource, /teamCrest:\s*pdfOwnTeam\?\.crest \|\| ''/, 'el escudo procede del equipo propio y se omite si falta');
 assert.match(appSource, /competitionBreakdown:\s*pdfCompetitionRows/, 'el desglose se construye desde partidos filtrados reales');
 assert.match(appSource, /goalContributionsPer90/, 'G+A\/90 se calcula desde minutos y eventos oficiales');
 assert.match(appSource, /opponentCrest:\s*row\.match\.opponentCrest/, 'el historial recibe el escudo rival cuando existe');
 assert.match(appSource, /date:\s*matchDisplayDate\(match\.date\)/, 'la ficha de acción recibe la fecha real');
 assert.match(appSource, /result:\s*score\.hasScore \? [`]?[\s\S]*?: 'Sin datos'/, 'un partido sin resultado no se convierte artificialmente en 0-0');
-assert.match(appSource, /createPortal\(<PlayerProfilePdfReport report=\{playerPdfReport\} \/>, document\.body\)/, 'el dossier A4 se monta fuera del DOM interactivo');
+assert.match(appSource, /report:\s*playerPdfModel/, 'el modelo normalizado llega directamente al renderizador PDF');
 assert.match(footballMapSource, /<circle cx="34" cy="52\.5"[\s\S]*<rect x="14" y="2"[\s\S]*<rect x="24" y="2"[\s\S]*className="pitch-goal"/, 'los tres mapas reutilizan un campo con círculo, áreas, áreas pequeñas y porterías');
 assert.match(printCss, /Dossier profesional individual 2026\/27/);
 assert.match(printCss, /\.player-pdf-primary-stats\s*\{[\s\S]*grid-template-columns:\s*repeat\(5/, 'las métricas principales tienen jerarquía numérica propia');

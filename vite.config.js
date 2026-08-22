@@ -7,7 +7,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(moduleId) {
-          if (moduleId.includes('/node_modules/jspdf/') || moduleId.includes('/node_modules/html2canvas/')) return 'pdf-generator';
+          if (moduleId.includes('/node_modules/jspdf/')) return 'pdf-generator';
           return undefined;
         },
       },

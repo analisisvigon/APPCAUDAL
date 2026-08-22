@@ -11,65 +11,66 @@ const shouldExport = params.get('export') === '1';
 
 const report = buildPlayerProfilePrintReport({
   identity: {
-    name: 'Borja Rodríguez',
+    name: 'Jairo Cárcaba',
     team: 'C.D. Caudal de Mieres',
-    season: '2026/27',
-    number: 8,
-    position: 'Centrocampista',
-    age: '27 años',
+    season: '2026/2027',
+    number: 14,
+    position: 'Delantero',
+    age: '34 años',
     foot: 'Derecho',
   },
   filters: { competition: 'Todas las competiciones', venue: 'Local y visitante' },
   seasonSummary: {
-    played: 25,
-    starts: 22,
-    minutes: 1950,
-    minutesPerMatch: 78,
-    starterPercentage: 88,
-    goals: 2,
-    assists: 5,
-    goalContributions: 7,
-    yellow: 3,
+    played: 2,
+    starts: 2,
+    minutes: 180,
+    minutesPerMatch: 90,
+    starterPercentage: 100,
+    goals: 1,
+    assists: 0,
+    goalContributions: 1,
+    yellow: 0,
     red: 0,
-    injuries: 1,
-    benchEntries: 3,
+    injuries: 0,
+    benchEntries: 0,
   },
   competitionBreakdown: [
-    { key: 'league', label: 'Liga', played: 22, starts: 20, minutes: 1740, goals: 2, assists: 4 },
-    { key: 'cup', label: 'Copa RFEF', played: 3, starts: 2, minutes: 210, goals: 0, assists: 1 },
+    { key: 'copa_rfef', label: 'Copa RFEF', played: 2, starts: 2, minutes: 180, goals: 1, assists: 0 },
   ],
-  production: { goalsPer90: 0.09, assistsPer90: 0.23, goalContributionsPer90: 0.32, goalContributions: 7 },
+  production: { goalsPer90: 0.5, assistsPer90: 0, goalContributionsPer90: 0.5, goalContributions: 1 },
   influenceMaps: [
-    { key: 'all', label: 'Todos', zones: [{ value: 'creacion_derecha', count: 5 }] },
-    { key: 'goals', label: 'Goles', zones: [{ value: 'finalizacion_centro', count: 2 }] },
-    { key: 'assists', label: 'Asistencias', zones: [{ value: 'creacion_derecha', count: 5 }] },
+    { key: 'all', label: 'Todos', zones: [{ value: 'finalizacion_centro', label: 'Finalización centro', count: 1 }] },
+    { key: 'goals', label: 'Goles', zones: [{ value: 'finalizacion_centro', label: 'Finalización centro', count: 1 }] },
+    { key: 'assists', label: 'Asistencias', zones: [] },
   ],
   goalAnalysis: {
-    bodyParts: { values: [{ label: 'Pie derecho', count: 1 }, { label: 'Cabeza', count: 1 }], known: 2, missing: 0, total: 2 },
-    types: { phases: [{ label: 'Juego combinativo', count: 1 }, { label: 'ABP', count: 1 }], subphases: [] },
+    bodyParts: { values: [{ label: 'Cabeza', count: 1 }], known: 1, missing: 0, total: 1 },
+    types: { phases: [{ label: 'Juego directo', count: 1 }], subphases: [], known: 1, missing: 0, total: 1 },
     target: {
-      total: 2,
+      total: 1,
       known: 1,
-      missing: 1,
+      missing: 0,
       zones: ['Alta izquierda', 'Alta centro', 'Alta derecha', 'Media izquierda', 'Media centro', 'Media derecha', 'Baja izquierda', 'Baja centro', 'Baja derecha']
-        .map((label, index) => ({ value: `target-${index}`, label, shortLabel: label.replace(' ', '\n'), count: index === 2 ? 1 : 0 })),
+        .map((label, index) => ({ value: `target-${index}`, label, shortLabel: label.replace(' ', '\n'), count: index === 1 ? 1 : 0 })),
     },
   },
-  society: [{ name: 'Jairo Cárcaba', given: 1, received: 0 }],
-  history: [],
+  society: [{ name: 'Borja Rodríguez', given: 0, received: 1 }],
+  history: [{ id: 'jairo-match-1', date: '16/08/2026', opponent: 'CD Praviano', result: '1-0', outcome: 'V', competition: 'Copa RFEF', venue: 'L', role: 'Titular', minutes: "90'", goals: 1, assists: '-', cards: '-', injury: '-', goalLinks: ['https://youtu.be/9HXdIkVodbM'], assistLinks: [] }],
   actions: [{
-    id: 'borja-assist-qa',
-    type: 'Asistencia',
+    id: 'jairo-goal-qa',
+    type: 'Gol',
     minute: 10,
     opponent: 'Rival QA',
     competition: 'Liga',
     date: '16/08/2026',
     result: '2-1',
-    scorer: 'Jairo Cárcaba',
-    assistZoneLabel: 'F. Creación derecha',
-    phase: 'Juego combinativo',
-    subphase: 'Dentro del área',
-    url: 'https://video.example/borja-assist?t=600',
+    assistant: 'Borja Rodríguez',
+    shotZoneLabel: 'F. Finalización centro',
+    goalZoneLabel: 'Alta centro',
+    contact: 'Cabeza',
+    phase: 'Juego directo',
+    subphase: 'Centro al área',
+    url: 'https://youtu.be/9HXdIkVodbM',
   }],
 });
 
@@ -109,11 +110,11 @@ function Audit() {
       try {
         await document.fonts?.ready;
         const layout = inspectConnectionLayout();
-        const result = await createPlayerProfilePdf({ documentRef: document, scale: 2 });
+        const result = await createPlayerProfilePdf({ report, documentRef: document });
         if (cancelled) return;
         downloadPlayerProfilePdf({
           arrayBuffer: result.arrayBuffer,
-          filename: 'borja-rodriguez-conexiones-ofensivas-qa.pdf',
+          filename: 'jairo-carcaba-dossier-profesional-qa.pdf',
           documentRef: document,
         });
         window.__PLAYER_PROFILE_PDF_QA__ = {

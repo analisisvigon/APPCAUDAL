@@ -11,7 +11,8 @@ const mainSource = read('src/main.jsx');
 const pwaRegistration = read('src/pwa/registerPwa.js');
 const viteConfig = read('vite.config.js');
 
-assert.match(exporter, /import html2canvas from 'html2canvas'/, 'html2canvas se carga con el exportador y no al pulsar el botón');
+assert.doesNotMatch(exporter, /html2canvas|toDataURL\(['"]image\/png/, 'el dossier final no rasteriza páginas HTML');
+assert.match(exporter, /new JsPdfConstructor|new DefaultJsPdf|new jsPDF|new JsPdf/, 'el dossier se construye directamente sobre el documento PDF');
 assert.match(exporter, /import \{ jsPDF \} from 'jspdf'/, 'jsPDF se carga estáticamente con el exportador');
 assert.doesNotMatch(exporter, /import\(['"](?:jspdf|html2canvas)['"]\)/, 'el clic de exportación no depende de imports dinámicos');
 assert.doesNotMatch(exporter, /jspdf\.es\.min-[A-Za-z0-9_-]+\.js/, 'no se referencia manualmente ningún hash de jsPDF');

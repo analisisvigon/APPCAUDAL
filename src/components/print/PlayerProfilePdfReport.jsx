@@ -289,7 +289,7 @@ export default function PlayerProfilePdfReport({ report }) {
     <section className="player-profile-print-portal print-dossier-portal" aria-label={`Dossier PDF de ${report.identity.name}`}>
       <div className="player-profile-pdf-report" data-player-pdf-report="true" data-page-count={report.pagePlan.length}>
         <SummaryPage report={report} />
-        <ProductionPage report={report} />
+        {report.hasProduction ? <ProductionPage report={report} /> : null}
         {report.connectionOverflow.map((connections, index) => <ConnectionsContinuationPage key={`connections-${index}`} report={report} connections={connections} page={index + 3} />)}
         {report.historyOverflow.map((rows, index) => <HistoryContinuationPage key={`history-${index}`} report={report} rows={rows} page={index + connectionPageCount + 3} />)}
         {report.actionOverflow.map((actions, index) => <VideoContinuationPage key={`video-${index}`} report={report} actions={actions} page={index + connectionPageCount + historyPageCount + 3} />)}

@@ -10,7 +10,6 @@ import {
 import LibrarySection from './components/library/LibrarySection';
 import MatchVideoPlayer from './components/matches/MatchVideoPlayer';
 import MatchPrintTab from './components/print/MatchPrintTab';
-import PlayerProfilePdfReport from './components/print/PlayerProfilePdfReport';
 import FootballZoneMap from './components/visualization/FootballZoneMap';
 import CaptainPriorityPanel from './components/players/CaptainPriorityPanel';
 import TacticalEvidencePanel from './components/tactical/TacticalEvidencePanel';
@@ -28,12 +27,14 @@ import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
 import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
+import { getSportsSeason, resolveSportsSeasonFromMatches } from './utils/sportsSeason';
 import {
   buildPlayerBodyPartSummary,
   buildPlayerConnectionRows,
   buildPlayerGoalTargetSummary,
   buildPlayerGoalTypeSummary,
   buildPlayerProductionAction,
+  buildPlayerProductionInvariantReport,
   getPlayerInfluenceActions,
 } from './utils/playerProductionDetails';
 import { PDF_GENERATOR_LOAD_ERROR_MESSAGE, recoverFromStaleChunkOnce } from './utils/pwaChunkRecovery';
@@ -3812,27 +3813,13 @@ const PerformanceMetricPortrait = ({
   );
 };
 
-const PERFORMANCE_SPORTS_SEASON_START_MONTH = 7;
-
 const formatPerformanceDateKey = (date) => [
   date.getFullYear(),
   String(date.getMonth() + 1).padStart(2, '0'),
   String(date.getDate()).padStart(2, '0'),
 ].join('-');
 
-const getPerformanceSportsSeason = (value = new Date()) => {
-  const date = value instanceof Date ? new Date(value) : new Date(`${String(value).slice(0, 10)}T12:00:00`);
-  const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
-  const startYear = safeDate.getMonth() + 1 >= PERFORMANCE_SPORTS_SEASON_START_MONTH
-    ? safeDate.getFullYear()
-    : safeDate.getFullYear() - 1;
-  return {
-    key: String(startYear),
-    label: `${startYear}/${String(startYear + 1).slice(-2)}`,
-    startDate: `${startYear}-07-01`,
-    endDate: `${startYear + 1}-06-30`,
-  };
-};
+const getPerformanceSportsSeason = getSportsSeason;
 
 const getPerformanceNaturalWeekStart = (value) => {
   const date = value instanceof Date ? new Date(value) : new Date(`${String(value).slice(0, 10)}T12:00:00`);
@@ -5639,7 +5626,6 @@ function App() {
   const [playerInfluenceFilter, setPlayerInfluenceFilter] = useState('Todos');
   const [selectedSystemMoment, setSelectedSystemMoment] = useState(null);
   const [tacticalDispositionEditor, setTacticalDispositionEditor] = useState(null);
-  const [playerPdfReport, setPlayerPdfReport] = useState(null);
   const [playerPdfExporting, setPlayerPdfExporting] = useState(false);
   const [playerPdfExportError, setPlayerPdfExportError] = useState('');
   useEffect(() => {
@@ -28560,13 +28546,22 @@ function App() {
               const allInfluenceZoneCounts = countPitchZones([...allGoalActions, ...allAssistActions].map((event) => event.action === 'Gol' ? event.shotZone : event.assistZone));
               const goalInfluenceZoneCounts = countPitchZones(allGoalActions.map((event) => event.shotZone));
               const assistInfluenceZoneCounts = countPitchZones(allAssistActions.map((event) => event.assistZone));
-              const goalZoneCounts = getGroupGoalZoneCounts(allGoalActions);
               const goalBodyPartSummary = buildPlayerBodyPartSummary(allGoalActions);
               const goalTypeSummary = buildPlayerGoalTypeSummary(allGoalActions);
               const goalTargetSummary = buildPlayerGoalTargetSummary(allGoalActions);
+              const goalZoneCounts = Object.fromEntries(goalTargetSummary.values.map((zone) => [zone.label, zone.count]));
               const playerGoalPhaseCounts = countPhases(allGoalActions);
               const maxPlayerGoalPhase = Math.max(1, ...playerGoalPhaseCounts.map((row) => row.count));
               const societyRows = buildPlayerConnectionRows({ goalActions: allGoalActions, assistActions: allAssistActions, filter: 'Todos' });
+              const goalTargetZones = goalMouthZoneCatalog.map((zone) => ({ ...zone, count: goalZoneCounts[zone.value] || 0 }));
+              const productionInvariant = buildPlayerProductionInvariantReport({
+                goals: allGoalActions,
+                assists: allAssistActions,
+                bodyParts: goalBodyPartSummary,
+                goalTypes: goalTypeSummary,
+                goalTarget: { ...goalTargetSummary, zones: goalTargetZones },
+                connections: societyRows,
+              });
               const visibleSocietyRows = buildPlayerConnectionRows({ goalActions: allGoalActions, assistActions: allAssistActions, filter: playerInfluenceFilter });
               const videoActions = influenceActions.filter((event) => event.videoUrl);
               const primaryMetrics = [
@@ -28590,6 +28585,7 @@ function App() {
               const hasGoalBodyPartData = goalBodyPartSummary.known > 0;
               const hasUsefulQuickData = quick.events.length >= 2;
               const dominantGoalPhase = hasGoalPhaseData ? [...playerGoalPhaseCounts].sort((a, b) => b.count - a.count)[0] : null;
+              const pdfCompetitionOrder = ['league', 'copa_rfef', 'playoff', 'friendly'];
               const pdfCompetitionRows = Object.values(aggregate.rows.reduce((acc, row) => {
                 const competition = getCompetitionFromCatalog(row.match);
                 const key = competition.key || competition.label || 'sin-competicion';
@@ -28609,9 +28605,19 @@ function App() {
                 acc[key].goals += row.goals.length;
                 acc[key].assists += row.assists.length;
                 return acc;
-              }, {})).filter((competition) => competition.played > 0);
+              }, {}))
+                .filter((competition) => competition.played > 0)
+                .sort((left, right) => {
+                  const leftIndex = pdfCompetitionOrder.indexOf(left.key);
+                  const rightIndex = pdfCompetitionOrder.indexOf(right.key);
+                  return (leftIndex < 0 ? pdfCompetitionOrder.length : leftIndex) - (rightIndex < 0 ? pdfCompetitionOrder.length : rightIndex)
+                    || left.label.localeCompare(right.label, 'es');
+                });
               const pdfSeasonLabels = [...new Set(pdfCompetitionRows.map((competition) => competition.season).filter(Boolean))];
-              const pdfSeasonLabel = pdfSeasonLabels.length ? pdfSeasonLabels.join(' · ') : 'Sin datos';
+              const pdfSeasonResolution = resolveSportsSeasonFromMatches(aggregate.rows.map((row) => row.match));
+              const pdfSeasonLabel = pdfSeasonResolution.season?.label || (pdfSeasonLabels.length === 1 ? pdfSeasonLabels[0] : '');
+              const pdfOwnTeam = teams.find((team) => team.isOwnClub || team.teamKind === 'own') || null;
+              const pdfPlayerFoot = /^(no indicada|no indicado|sin datos|—|-)$/i.test(String(selectedPlayerProfile.foot || '').trim()) ? '' : selectedPlayerProfile.foot || '';
               const playerPdfActions = [...allGoalActions, ...allAssistActions].map((event) => ({
                 ...event,
                 id: `${event.action}-${event.match.id}-${event.id}`,
@@ -28627,13 +28633,20 @@ function App() {
                   number: displayDorsal(selectedPlayerProfile.number),
                   position: selectedPlayerProfile.position || 'Sin demarcación',
                   age: `${calculateAge(selectedPlayerProfile.dob)} años`,
-                  foot: selectedPlayerProfile.foot || 'no indicado',
-                  team: 'C.D. Caudal de Mieres',
+                  foot: pdfPlayerFoot,
+                  team: pdfOwnTeam?.name || '',
+                  teamCrest: pdfOwnTeam?.crest || '',
                   season: pdfSeasonLabel,
                 },
                 filters: {
+                  season: pdfSeasonLabel,
                   competition: playerCompetitionFilter,
                   venue: playerVenueFilter,
+                },
+                validation: {
+                  seasonValid: Boolean(pdfSeasonLabel) && pdfSeasonResolution.reason !== 'MULTIPLE_SEASONS',
+                  seasonReason: pdfSeasonResolution.reason,
+                  production: productionInvariant,
                 },
                 seasonSummary: {
                   played: aggregate.played,
@@ -28666,7 +28679,7 @@ function App() {
                   types: goalTypeSummary,
                   target: {
                     ...goalTargetSummary,
-                    zones: goalMouthZoneCatalog.map((zone) => ({ ...zone, count: goalZoneCounts[zone.value] || 0 })),
+                    zones: goalTargetZones,
                   },
                 },
                 society: societyRows,
@@ -28680,6 +28693,7 @@ function App() {
                     opponent: row.match.opponent,
                     opponentCrest: row.match.opponentCrest || '',
                     result: score.hasScore ? `${score.caudalGoals}-${score.rivalGoals}` : 'Sin datos',
+                    outcome: score.hasScore ? (score.caudalGoals > score.rivalGoals ? 'V' : score.caudalGoals < score.rivalGoals ? 'D' : 'E') : '',
                     competition: getCompetitionFromCatalog(row.match).label,
                     venue: row.match.isHome ? 'L' : 'V',
                     role: row.role,
@@ -28693,31 +28707,28 @@ function App() {
                   };
                 }),
               });
-              const exportPlayerPdf = () => {
+              const exportPlayerPdf = async () => {
                 if (playerPdfExporting) return;
                 setPlayerPdfExporting(true);
                 setPlayerPdfExportError('');
-                setPlayerPdfReport(playerPdfModel);
-                window.setTimeout(async () => {
-                  try {
-                    const result = await exportPlayerProfilePdf({
-                      documentRef: document,
-                      filename: `informe-${String(selectedPlayerProfile.name || 'jugador').trim().toLowerCase().replace(/[^a-z0-9áéíóúüñ]+/gi, '-')}.pdf`,
-                    });
-                    console.info('PDF individual generado con enlaces verificados.', result.audit);
-                  } catch (error) {
-                    console.error('No se pudo generar el PDF individual con enlaces.', error);
-                    const recovery = await recoverFromStaleChunkOnce(error);
-                    if (!recovery.reloadRequested) {
-                      setPlayerPdfExportError(recovery.handled
-                        ? PDF_GENERATOR_LOAD_ERROR_MESSAGE
-                        : 'No se pudo generar el PDF individual. Revisa el informe e inténtalo de nuevo.');
-                    }
-                  } finally {
-                    setPlayerPdfExporting(false);
-                    setPlayerPdfReport(null);
+                try {
+                  const result = await exportPlayerProfilePdf({
+                    report: playerPdfModel,
+                    documentRef: document,
+                    filename: `informe-${String(selectedPlayerProfile.name || 'jugador').trim().toLowerCase().replace(/[^a-z0-9áéíóúüñ]+/gi, '-')}.pdf`,
+                  });
+                  console.info('PDF individual vectorial generado con enlaces verificados.', result.audit);
+                } catch (error) {
+                  console.error('No se pudo generar el PDF individual con enlaces.', error);
+                  const recovery = await recoverFromStaleChunkOnce(error);
+                  if (!recovery.reloadRequested) {
+                    setPlayerPdfExportError(recovery.handled
+                      ? PDF_GENERATOR_LOAD_ERROR_MESSAGE
+                      : error?.message || 'No se pudo generar el PDF individual. Revisa el informe e inténtalo de nuevo.');
                   }
-                }, 100);
+                } finally {
+                  setPlayerPdfExporting(false);
+                }
               };
               const renderProfileEmptyState = (title, copy, variant = 'compact') => {
                 if (variant === 'lines') {
@@ -29113,9 +29124,6 @@ function App() {
                   </section>
                   </AccordionSection>
 
-                  {playerPdfReport && typeof document !== 'undefined'
-                    ? createPortal(<PlayerProfilePdfReport report={playerPdfReport} />, document.body)
-                    : null}
                 </div>
               );
             })() : (

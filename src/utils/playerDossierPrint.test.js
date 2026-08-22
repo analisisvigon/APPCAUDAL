@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { jsPDF } from 'jspdf';
 import { inspectPlayerDossier, printPlayerDossier } from './playerDossierPrint.js';
-import { auditPlayerPdfLinkAnnotations } from './playerProfilePdfExport.js';
+import { auditPlayerPdfLinkAnnotations, createPlayerProfilePdf } from './playerProfilePdfExport.js';
 
 const createReportNode = ({ width = 900, height = 2400, text = 'Borja Rodríguez Minutos Partidos Titularidades Goles Asistencias', blocks = 8 } = {}) => ({
   childElementCount: blocks,
@@ -49,8 +49,7 @@ const lastGlobalVisibilityReset = printCss.lastIndexOf('body * {');
 const playerVisibilityOverride = printCss.indexOf('.player-profile-print-portal,', lastGlobalVisibilityReset);
 const overrideBlock = printCss.slice(playerVisibilityOverride, printCss.indexOf('}', playerVisibilityOverride) + 1);
 
-assert.match(appSource, /<PlayerProfilePdfReport report=\{playerPdfReport\}/, 'el flujo selecciona el informe A4 específico y no la ficha web');
-assert.match(appSource, /exportPlayerProfilePdf\(\{[\s\S]*?documentRef:\s*document/, 'el botón usa el generador controlado que puede escribir anotaciones PDF');
+assert.match(appSource, /exportPlayerProfilePdf\(\{[\s\S]*?report:\s*playerPdfModel/, 'el botón entrega el modelo normalizado directamente al generador vectorial');
 assert.doesNotMatch(appSource, /printPlayerDossier\([\s\S]*?window\.print\(\)/, 'el PDF individual no vuelve a delegarse en un destino de impresión que pueda rasterizar los enlaces');
 assert.ok(playerVisibilityOverride > lastGlobalVisibilityReset, 'la visibilidad del perfil se restaura después del reset global que causaba páginas blancas');
 assert.match(overrideBlock, /visibility:\s*visible\s*!important/, 'el contenido del perfil vence el visibility hidden global');
@@ -84,7 +83,105 @@ const exporterSource = fs.readFileSync(new URL('./playerProfilePdfExport.js', im
 assert.match(componentSource, /data-player-video-link="history"/, 'los enlaces inequívocos del historial se identifican para la auditoría');
 assert.match(componentSource, /data-player-video-link="library"/, 'el botón de videoteca se identifica para la auditoría');
 assert.doesNotMatch(componentSource, /data-player-video-link="timeline"/, 'el dossier profesional ya no incluye el gráfico de impacto temporal');
-assert.match(exporterSource, /pdf\.link\(link\.x, link\.y, link\.width, link\.height, \{ url: link\.url \}\)/, 'el generador crea anotaciones PDF sobre los anchors actuales');
+assert.doesNotMatch(exporterSource, /html2canvas|toDataURL\(['"]image\/png/, 'el generador no captura ni rasteriza el DOM');
+assert.match(exporterSource, /pdf\.link\([\s\S]*?\{ url \}\)/, 'el generador vectorial crea anotaciones PDF estándar');
 assert.match(exporterSource, /auditPlayerPdfLinkAnnotations\(arrayBuffer, expectedVideoUrls\)/, 'el binario final se audita antes de iniciar la descarga');
+
+const jairoVideoUrl = 'https://youtu.be/9HXdIkVodbM';
+const goalZones = ['alta_izquierda', 'alta_centro', 'alta_derecha', 'media_izquierda', 'media_centro', 'media_derecha', 'baja_izquierda', 'baja_centro', 'baja_derecha']
+  .map((value) => ({ value, label: value.replaceAll('_', ' '), count: value === 'alta_centro' ? 1 : 0 }));
+const jairoReport = {
+  identity: { name: 'Jairo Cárcaba', number: 14, position: 'Delantero', age: '34 años', foot: 'derecho', team: 'C.D. Caudal', season: '2026/2027' },
+  filters: { competition: 'Copa RFEF', venue: 'Todos' },
+  validation: { seasonValid: true, production: { valid: true } },
+  seasonSummary: { played: 2, starts: 2, minutes: 180, minutesPerMatch: 90, starterPercentage: 100, goals: 1, assists: 0, goalContributions: 1, yellow: 0, red: 0, injuries: 0, benchEntries: 0 },
+  competitionBreakdown: [{ key: 'copa_rfef', label: 'Copa RFEF', played: 2, starts: 2, minutes: 180, goals: 1, assists: 0, goalContributions: 1 }],
+  production: { goalsPer90: '0.50', assistsPer90: '0.00', goalContributionsPer90: '0.50', goalContributions: 1 },
+  influenceMaps: ['Todos', 'Goles', 'Asistencias'].map((label, index) => ({ key: index === 0 ? 'all' : label.toLowerCase(), label, zones: Array.from({ length: 9 }, (_, zone) => ({ value: `zone-${zone}`, label: `Zona ${zone + 1}`, count: index < 2 && zone === 1 ? 1 : 0 })) })),
+  goalAnalysis: {
+    bodyParts: { values: [{ label: 'Cabeza', count: 1 }], known: 1, missing: 0, total: 1 },
+    types: { phases: [{ label: 'Juego directo', count: 1 }], known: 1, missing: 0, total: 1 },
+    target: { zones: goalZones, known: 1, missing: 0, total: 1 },
+  },
+  offensiveConnections: [{ id: 'received-borja', from: 'Borja Rodríguez', to: 'Jairo Cárcaba', count: 1 }],
+  videoActions: [{ id: 'goal-10', type: 'Gol', minute: '10', opponent: 'CD Praviano', competition: 'Copa RFEF', date: '16/08/2026', phase: 'Juego directo', shotZoneLabel: 'F. Finalización centro', goalZoneLabel: 'Alta centro', contact: 'Cabeza', assistant: 'Borja Rodríguez', url: jairoVideoUrl }],
+  history: [{ id: 'match-1', date: '16/08/2026', opponent: 'CD Praviano', result: '1-0', outcome: 'V', competition: 'Copa RFEF', venue: 'L', role: 'Titular', minutes: "90'", goals: 1, assists: '-', cards: '-', injury: '-', goalLinks: [jairoVideoUrl], assistLinks: [] }],
+};
+const vectorResult = await createPlayerProfilePdf({ report: jairoReport, fetchImpl: null });
+assert.equal(vectorResult.vector, true, 'el dossier final se declara vectorial');
+assert.deepEqual(vectorResult.pageSections, ['PERFIL Y RENDIMIENTO COMPETITIVO', 'PRODUCCIÓN, ZONAS Y VÍDEO']);
+assert.ok(vectorResult.audit.linkAnnotations >= 2, 'historial y videoteca contienen enlaces PDF reales');
+assert.deepEqual(vectorResult.audit.missingUrls, []);
+assert.ok(vectorResult.audit.urls.includes(jairoVideoUrl));
+
+const scenarioZones = (counts = []) => goalZones.map((zone, index) => ({ ...zone, count: Number(counts[index] || 0) }));
+const makeScenarioReport = ({
+  name = 'Jugador de prueba',
+  goals = 0,
+  assists = 0,
+  targetCounts = [],
+  targetMissing = 0,
+  videos = 0,
+  matches = 1,
+  filters = { competition: 'Todas las competiciones', venue: 'Todos' },
+  teamCrest = '',
+  opponentCrest = '',
+} = {}) => {
+  const targetKnown = targetCounts.reduce((sum, count) => sum + Number(count || 0), 0);
+  const contributions = goals + assists;
+  return {
+    identity: { name, number: 8, position: 'Centrocampista', team: 'Club de prueba', teamCrest, season: '2026/2027' },
+    filters,
+    validation: { seasonValid: true, production: { valid: true } },
+    seasonSummary: { played: matches, starts: matches, minutes: matches * 90, minutesPerMatch: 90, starterPercentage: 100, goals, assists, goalContributions: contributions },
+    competitionBreakdown: [{ key: 'scope', label: filters.competition, played: matches, starts: matches, minutes: matches * 90, goals, assists, goalContributions: contributions }],
+    production: { goalsPer90: goals, assistsPer90: assists, goalContributionsPer90: contributions, goalContributions: contributions },
+    influenceMaps: ['all', 'goals', 'assists'].map((key) => ({ key, label: key, zones: Array.from({ length: 9 }, (_, index) => ({ value: `zone-${index}`, count: index === 0 ? (key === 'goals' ? goals : key === 'assists' ? assists : contributions) : 0 })) })),
+    goalAnalysis: {
+      bodyParts: { values: goals ? [{ label: 'Cabeza', count: goals }] : [], known: goals, missing: 0, total: goals },
+      types: { phases: goals ? [{ label: 'Juego directo', count: goals }] : [], known: goals, missing: 0, total: goals },
+      target: { zones: scenarioZones(targetCounts), known: targetKnown, missing: targetMissing, total: goals },
+    },
+    offensiveConnections: assists ? [{ id: 'given', direction: 'given', from: name, to: 'Compañero', count: assists }] : [],
+    videoActions: Array.from({ length: videos }, (_, index) => ({ id: `video-${index}`, type: index % 2 ? 'Asistencia' : 'Gol', minute: String(index + 1), opponent: `Rival ${index + 1}`, competition: filters.competition, url: `https://video.example/scenario-${index}` })),
+    history: Array.from({ length: matches }, (_, index) => ({ id: `match-${index}`, date: `${String((index % 28) + 1).padStart(2, '0')}/08/2026`, opponent: `Rival ${index + 1}`, opponentCrest, result: '1-0', outcome: 'V', competition: filters.competition, venue: index % 2 ? 'V' : 'L', role: 'Titular', minutes: "90'", goals: '-', assists: '-', cards: '-', injury: '-', goalLinks: [], assistLinks: [] })),
+  };
+};
+
+const mandatoryScenarios = [
+  ['A · 1 gol', { goals: 1, targetCounts: [0, 1] }],
+  ['B · varios goles', { goals: 4, targetCounts: [1, 2, 1] }],
+  ['C · asistencias', { assists: 2 }],
+  ['D · goles y asistencias', { goals: 2, assists: 2, targetCounts: [1, 1] }],
+  ['E · 0 G/A', {}],
+  ['F · sin goal_zone', { goals: 1, targetMissing: 1 }],
+  ['G · algunas goal_zone', { goals: 3, targetCounts: [1, 1], targetMissing: 1 }],
+  ['H · todas las goal_zone', { goals: 9, targetCounts: Array(9).fill(1) }],
+  ['I · sin vídeo', { goals: 1, targetCounts: [1], videos: 0 }],
+  ['J · múltiples vídeos', { goals: 1, targetCounts: [1], videos: 18 }],
+  ['K · nombre largo', { name: 'Jugador Con Un Nombre Extraordinariamente Largo y Compuesto', goals: 1, targetCounts: [1] }],
+  ['L · club sin escudo', { teamCrest: '', goals: 1, targetCounts: [1] }],
+  ['M · rival sin escudo', { opponentCrest: '', goals: 1, targetCounts: [1] }],
+  ['N · temporada completa', { matches: 48, goals: 8, assists: 4, targetCounts: [1, 2, 1, 1, 1, 1, 0, 1] }],
+  ['O · filtro Liga', { filters: { competition: 'Liga', venue: 'Todos' }, goals: 1, targetCounts: [1] }],
+  ['P · filtro Copa', { filters: { competition: 'Copa RFEF', venue: 'Todos' }, goals: 1, targetCounts: [1] }],
+  ['Q · filtro Local', { filters: { competition: 'Todas las competiciones', venue: 'Local' }, goals: 1, targetCounts: [1] }],
+  ['R · filtro Visitante', { filters: { competition: 'Todas las competiciones', venue: 'Visitante' }, goals: 1, targetCounts: [1] }],
+];
+
+for (const [label, options] of mandatoryScenarios) {
+  const result = await createPlayerProfilePdf({ report: makeScenarioReport(options), fetchImpl: null });
+  assert.equal(result.pages, result.pageSections.length, `${label}: cada página contiene una sección real`);
+  assert.ok(result.pageSections.every(Boolean), `${label}: no se generan páginas vacías`);
+  assert.equal(result.audit.missingUrls.length, 0, `${label}: conserva todos sus enlaces`);
+}
+
+const zeroProduction = await createPlayerProfilePdf({ report: makeScenarioReport(), fetchImpl: null });
+assert.deepEqual(zeroProduction.pageSections, ['PERFIL Y RENDIMIENTO COMPETITIVO'], 'E: 0 G/A no reserva una página ofensiva vacía');
+const multiVideo = await createPlayerProfilePdf({ report: makeScenarioReport({ goals: 1, targetCounts: [1], videos: 18 }), fetchImpl: null });
+assert.equal(multiVideo.audit.linkAnnotations, 18, 'J: cada uno de los vídeos múltiples conserva una anotación Link/URI');
+assert.ok(multiVideo.pages > 2, 'J: una videoteca extensa pagina en vez de comprimirse');
+const fullSeason = await createPlayerProfilePdf({ report: makeScenarioReport({ matches: 48, goals: 8, assists: 4, targetCounts: [1, 2, 1, 1, 1, 1, 0, 1] }), fetchImpl: null });
+assert.ok(fullSeason.pages > 2, 'N: una temporada completa pagina sin comprimir el historial');
 
 console.log('playerDossierPrint tests passed');

@@ -5,6 +5,7 @@ import {
   buildPlayerGoalTargetSummary,
   buildPlayerGoalTypeSummary,
   buildPlayerProductionAction,
+  buildPlayerProductionInvariantReport,
   getPlayerInfluenceActions,
 } from './playerProductionDetails.js';
 
@@ -40,6 +41,9 @@ assert.deepEqual(buildPlayerGoalTargetSummary(goals), {
 assert.deepEqual(buildPlayerGoalTypeSummary(goals), {
   phases: [{ label: 'ABP', count: 2 }, { label: 'Transición', count: 1 }],
   subphases: [{ label: 'Córner', count: 2 }, { label: 'Tras robo', count: 1 }],
+  known: 3,
+  missing: 1,
+  total: 4,
 });
 
 assert.deepEqual(buildPlayerConnectionRows({ goalActions: goals, assistActions: assists, filter: 'Goles' }), [
@@ -62,5 +66,17 @@ assert.equal(normalized.assistant, '', 'un participante ausente permanece ausent
 assert.equal(normalized.videoUrl, 'https://video.example/g1');
 assert.equal(buildPlayerProductionAction(assists[0]).assistZone, 'creacion_derecha', 'una asistencia con zona conserva el valor oficial');
 assert.equal(buildPlayerProductionAction(assists[1]).assistZone, '', 'una asistencia sin zona permanece sin registrar');
+
+const jairoInvariant = buildPlayerProductionInvariantReport({
+  goals: [{ contact: 'Cabeza', phase: 'Juego directo', goalZone: 'alta_centro', assistant: 'Borja Rodríguez' }],
+  assists: [],
+  bodyParts: { known: 1 },
+  goalTypes: { known: 1 },
+  goalTarget: { known: 1, zones: [{ value: 'alta_centro', count: 1 }] },
+  connections: [{ name: 'Borja Rodríguez', given: 0, received: 1 }],
+});
+assert.equal(jairoInvariant.valid, true);
+assert.equal(jairoInvariant.targetCellTotal, 1, 'Jairo: Alta centro suma exactamente un gol');
+assert.equal(buildPlayerProductionInvariantReport({ goals: [{}], goalTarget: { known: 1, zones: [{ value: 'alta_centro', count: 0 }] } }).valid, false, 'se bloquea la contradicción 1 con zona y diana 0');
 
 console.log('playerProductionDetails tests passed');

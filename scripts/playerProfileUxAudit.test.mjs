@@ -3,7 +3,7 @@ import fs from 'node:fs';
 
 const source = fs.readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
 const start = source.indexOf('{selectedPlayerProfile ? (() => {');
-const end = source.indexOf('{playerPdfReport &&', start);
+const end = source.indexOf('})() : (', start);
 
 assert.ok(start >= 0 && end > start, 'No se pudo aislar la ficha web individual');
 

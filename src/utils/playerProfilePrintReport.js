@@ -56,10 +56,10 @@ export const buildPlayerOffensiveConnections = ({ society, playerName }) => rows
     const received = Number(row.received);
     return [
       Number.isFinite(given) && given > 0
-        ? { id: `given-${rowIndex}-${teammateName}`, from: clean(playerName), to: teammateName, count: given }
+        ? { id: `given-${rowIndex}-${teammateName}`, direction: 'given', from: clean(playerName), to: teammateName, count: given }
         : null,
       Number.isFinite(received) && received > 0
-        ? { id: `received-${rowIndex}-${teammateName}`, from: teammateName, to: clean(playerName), count: received }
+        ? { id: `received-${rowIndex}-${teammateName}`, direction: 'received', from: teammateName, to: clean(playerName), count: received }
         : null,
     ];
   })
@@ -94,9 +94,18 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
   for (let index = productionConnections.length; index < offensiveConnections.length; index += CONNECTIONS_PER_CONTINUATION_PAGE) {
     connectionOverflow.push(offensiveConnections.slice(index, index + CONNECTIONS_PER_CONTINUATION_PAGE));
   }
+  const influenceZoneTotal = influenceMaps.flatMap((map) => rows(map.zones)).reduce((sum, zone) => sum + Number(zone.count || 0), 0);
+  const goalAnalysisKnown = Number(source.goalAnalysis?.bodyParts?.known || 0)
+    + Number(source.goalAnalysis?.types?.known || 0)
+    + Number(source.goalAnalysis?.target?.known || 0);
+  const hasProduction = actions.length > 0
+    || influenceZoneTotal > 0
+    || offensiveConnections.length > 0
+    || goalAnalysisKnown > 0
+    || Number(source.production?.goalContributions || 0) > 0;
   const pagePlan = [
     'summary',
-    'production',
+    ...(hasProduction ? ['production'] : []),
     ...connectionOverflow.map(() => 'connections'),
     ...historyOverflow.map(() => 'history'),
     ...actionOverflow.map(() => 'video'),
@@ -105,9 +114,11 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
   return {
     identity: source.identity || {},
     filters: source.filters || {},
+    validation: source.validation || {},
     seasonSummary: source.seasonSummary || {},
     competitionBreakdown,
     production: source.production || {},
+    hasProduction,
     goalAnalysis: source.goalAnalysis || {},
     influenceMaps,
     society: rows(source.society),

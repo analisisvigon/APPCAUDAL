@@ -20,10 +20,13 @@ export const buildPlayerBodyPartSummary = (goalActions = []) => {
   return { values, known, missing: Math.max(0, actions.length - known), total: actions.length };
 };
 
-export const buildPlayerGoalTypeSummary = (goalActions = []) => ({
-  phases: countField(goalActions, 'phase'),
-  subphases: countField(goalActions, 'subphase'),
-});
+export const buildPlayerGoalTypeSummary = (goalActions = []) => {
+  const actions = rows(goalActions);
+  const phases = countField(actions, 'phase');
+  const subphases = countField(actions, 'subphase');
+  const known = phases.reduce((total, row) => total + row.count, 0);
+  return { phases, subphases, known, missing: Math.max(0, actions.length - known), total: actions.length };
+};
 
 export const buildPlayerGoalTargetSummary = (goalActions = []) => {
   const actions = rows(goalActions);
@@ -89,3 +92,34 @@ export const buildPlayerProductionAction = (action = {}) => ({
   videoUrl: clean(action.videoUrl || action.url),
   createdAt: clean(action.createdAt),
 });
+
+export const buildPlayerProductionInvariantReport = ({ goals = [], assists = [], bodyParts, goalTypes, goalTarget, connections = [] } = {}) => {
+  const goalRows = rows(goals);
+  const assistRows = rows(assists);
+  const body = bodyParts || buildPlayerBodyPartSummary(goalRows);
+  const types = goalTypes || buildPlayerGoalTypeSummary(goalRows);
+  const target = goalTarget || buildPlayerGoalTargetSummary(goalRows);
+  const targetCellTotal = rows(target.zones || target.values).reduce((sum, row) => sum + Number(row.count || 0), 0);
+  const givenConnections = rows(connections).reduce((sum, row) => sum + Number(row.given || 0), 0);
+  const receivedConnections = rows(connections).reduce((sum, row) => sum + Number(row.received || 0), 0);
+  const checks = {
+    bodyWithinGoals: Number(body.known || 0) <= goalRows.length,
+    goalTypesWithinGoals: Number(types.known || 0) <= goalRows.length,
+    targetWithinGoals: Number(target.known || 0) <= goalRows.length,
+    targetCellsMatchKnown: targetCellTotal === Number(target.known || 0),
+    givenConnectionsWithinAssists: givenConnections <= assistRows.length,
+    receivedConnectionsWithinGoals: receivedConnections <= goalRows.length,
+  };
+  return {
+    goals: goalRows.length,
+    assists: assistRows.length,
+    bodyKnown: Number(body.known || 0),
+    goalTypesKnown: Number(types.known || 0),
+    targetKnown: Number(target.known || 0),
+    targetCellTotal,
+    givenConnections,
+    receivedConnections,
+    checks,
+    valid: Object.values(checks).every(Boolean),
+  };
+};
