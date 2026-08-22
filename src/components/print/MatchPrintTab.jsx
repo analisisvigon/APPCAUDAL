@@ -43,6 +43,7 @@ import {
 } from '../../utils/setPieceLineupAdaptation';
 import { duplicateMatchSetPiece } from '../../utils/setPieceMatchDuplication';
 import { SET_PIECE_HEADER_MENUS, transitionSetPieceHeaderMenu } from '../../utils/setPieceHeaderMenu';
+import { areSetPieceLabelsEquivalent } from '../../utils/setPiecePrintModel';
 
 const setPieceSections = [
   { id: 'penaltis', label: 'Penaltis' },
@@ -229,6 +230,27 @@ function SetPieceEditorHeader({
             </SetPieceActionsMenu>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SetPiecePlaySelector({ mode, orders, selectedOrder, onSelect }) {
+  if (orders.length <= 1) return null;
+  return (
+    <div>
+      <p className="mb-2 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Jugadas</p>
+      <div className="flex flex-wrap gap-2">
+        {orders.map((order) => (
+          <button
+            key={`${mode}-${order}`}
+            type="button"
+            onClick={() => onSelect(order)}
+            className={`min-h-9 rounded-xl px-3 py-2 text-[11px] font-black uppercase tracking-[0.1em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 ${selectedOrder === order ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}
+          >
+            Jugada {order}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -1671,17 +1693,17 @@ export default function MatchPrintTab({
     }
     if (page.id === 'offensive') {
       return chunkDiagrams(dossierContent.offensiveDiagrams).map((diagrams, index) => (
-        <SetPieceDiagramPrintSheet key={`offensive-dossier-${index}`} match={match} title="ABP ofensiva" diagrams={diagrams} players={players} />
+        <SetPieceDiagramPrintSheet key={`offensive-dossier-${index}`} match={match} title="ABP ofensiva" diagrams={diagrams} players={players} totalPlayCount={dossierContent.offensiveDiagrams.length} />
       ));
     }
     if (page.id === 'defensive') {
       return chunkDiagrams(dossierContent.defensiveDiagrams).map((diagrams, index) => (
-        <SetPieceDiagramPrintSheet key={`defensive-dossier-${index}`} match={match} title="ABP defensiva" diagrams={diagrams} players={players} />
+        <SetPieceDiagramPrintSheet key={`defensive-dossier-${index}`} match={match} title="ABP defensiva" diagrams={diagrams} players={players} totalPlayCount={dossierContent.defensiveDiagrams.length} />
       ));
     }
     if (page.id === 'kickoff') {
       return chunkDiagrams(dossierContent.kickoffDiagrams).map((diagrams, index) => (
-        <SetPieceDiagramPrintSheet key={`kickoff-dossier-${index}`} match={match} title="Saque de inicio" diagrams={diagrams} players={players} />
+        <SetPieceDiagramPrintSheet key={`kickoff-dossier-${index}`} match={match} title="Saque de inicio" diagrams={diagrams} players={players} totalPlayCount={dossierContent.kickoffDiagrams.length} />
       ));
     }
     if (page.id === 'match_plan') {
@@ -1913,21 +1935,7 @@ export default function MatchPrintTab({
                 ))}
               </div>
             </div>
-            <div>
-              <p className="mb-2 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Jugadas</p>
-              <div className="flex flex-wrap gap-2">
-                {getDiagramOrders('offensive').map((order) => (
-                  <button
-                    key={`off-${order}`}
-                    type="button"
-                    onClick={() => setOffensiveDiagramOrder(order)}
-                    className={`min-h-9 rounded-xl px-3 py-2 text-[11px] font-black uppercase tracking-[0.1em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 ${offensiveDiagramOrder === order ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}
-                  >
-                    Jugada {order}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <SetPiecePlaySelector mode="offensive" orders={getDiagramOrders('offensive')} selectedOrder={offensiveDiagramOrder} onSelect={setOffensiveDiagramOrder} />
           </div>
           {!getTypeDiagrams('offensive').length ? (
             <p className="mt-4 rounded-2xl bg-white/5 px-4 py-3 text-sm text-slate-400">Sin jugadas para este tipo. Pulsa Añadir jugada para empezar.</p>
@@ -1940,6 +1948,7 @@ export default function MatchPrintTab({
                 match={match}
                 suggestions={professionalSetPieceSuggestions}
                 printDiagrams={getCurrentPrintPageDiagrams('offensive')}
+                totalPrintPlayCount={getTypeDiagrams('offensive').length}
                 onChange={(diagram) => updateCurrentDiagram('offensive', diagram)}
               />
             ) : null}
@@ -1983,21 +1992,7 @@ export default function MatchPrintTab({
                 ))}
               </div>
             </div>
-            <div>
-              <p className="mb-2 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Jugadas</p>
-              <div className="flex flex-wrap gap-2">
-                {getDiagramOrders('defensive').map((order) => (
-                  <button
-                    key={`def-${order}`}
-                    type="button"
-                    onClick={() => setDefensiveDiagramOrder(order)}
-                    className={`min-h-9 rounded-xl px-3 py-2 text-[11px] font-black uppercase tracking-[0.1em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 ${defensiveDiagramOrder === order ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}
-                  >
-                    Jugada {order}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <SetPiecePlaySelector mode="defensive" orders={getDiagramOrders('defensive')} selectedOrder={defensiveDiagramOrder} onSelect={setDefensiveDiagramOrder} />
           </div>
           <details className="mt-3 rounded-2xl border border-white/5 bg-white/[0.025]">
             <summary className="cursor-pointer list-none px-4 py-3 text-xs font-bold text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 [&::-webkit-details-marker]:hidden">
@@ -2035,6 +2030,7 @@ export default function MatchPrintTab({
                 match={match}
                 suggestions={professionalSetPieceSuggestions}
                 printDiagrams={getCurrentPrintPageDiagrams('defensive')}
+                totalPrintPlayCount={getTypeDiagrams('defensive').length}
                 onChange={(diagram) => updateCurrentDiagram('defensive', diagram)}
               />
             ) : null}
@@ -2077,6 +2073,7 @@ export default function MatchPrintTab({
               title={offensiveSetPieceTypes.find((type) => type.id === offensiveType)?.label || 'ABP ofensiva'}
               diagrams={diagrams}
               players={players}
+              totalPlayCount={getPrintDiagrams('offensive').length}
             />
           ))
         ) : (
@@ -2087,6 +2084,7 @@ export default function MatchPrintTab({
               title={defensiveSetPieceTypes.find((type) => type.id === defensiveType)?.label || 'ABP defensiva'}
               diagrams={diagrams}
               players={players}
+              totalPlayCount={getPrintDiagrams('defensive').length}
             />
           ))
         )}
@@ -2122,6 +2120,8 @@ export default function MatchPrintTab({
             <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {filteredLibraryItems.map((item) => {
                 const libraryMeta = getSetPieceTacticalMeta(item.elements);
+                const classificationLabel = getSetPieceClassificationLabel(item);
+                const displayName = areSetPieceLabelsEquivalent(classificationLabel, item.nombre, item.orden) ? '' : item.nombre;
                 const objective = libraryMeta.objective || item.objetivo || item.descripcion || 'Objetivo pendiente';
                 const updatedAt = libraryMeta.lastUsedAt || item.updated_at || item.created_at;
                 const formattedUpdatedAt = updatedAt
@@ -2139,7 +2139,7 @@ export default function MatchPrintTab({
                     </div>
                     <div className="p-4">
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0"><p className="truncate text-sm font-black text-white">{item.nombre}</p><p className="mt-1 text-[9px] font-black uppercase tracking-[0.15em] text-caudal-electric">{getSetPieceClassificationLabel(item)}</p></div>
+                        <div className="min-w-0">{displayName ? <p className="truncate text-sm font-black text-white">{displayName}</p> : null}<p className={`${displayName ? 'mt-1 text-[9px]' : 'text-sm'} font-black uppercase tracking-[0.15em] text-caudal-electric`}>{classificationLabel}</p></div>
                         <span className="shrink-0 text-xs tracking-[-0.08em] text-amber-300">{Array.from({ length: 5 }, (_, index) => index < libraryMeta.rating ? '★' : '·').join('')}</span>
                       </div>
                       <p className="mt-3 line-clamp-2 min-h-10 text-xs font-semibold leading-5 text-slate-300">{objective}</p>

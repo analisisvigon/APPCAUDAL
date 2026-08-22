@@ -1251,6 +1251,10 @@
   page-break-inside: avoid;
 }
 
+.set-piece-print-play[data-has-title="false"] {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
 .set-piece-print-play + .set-piece-print-play {
   border-top: 1pt solid #111827;
 }

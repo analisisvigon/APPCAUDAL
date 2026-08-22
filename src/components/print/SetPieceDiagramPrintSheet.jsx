@@ -36,11 +36,11 @@ function PrintPlay({ play }) {
     !hasCopy ? 'set-piece-print-play-body--field-only' : '',
   ].filter(Boolean).join(' ');
   return (
-    <section className="set-piece-print-play" data-play-order={play.order} data-play-id={play.id || ''} data-has-chronology={hasChronology ? 'true' : 'false'} data-density={indicationDensity}>
+    <section className="set-piece-print-play" data-play-order={play.order} data-play-id={play.id || ''} data-has-chronology={hasChronology ? 'true' : 'false'} data-has-title={play.displayTitle ? 'true' : 'false'} data-density={indicationDensity}>
       <header className="set-piece-print-play-header" data-has-signal={play.signal ? 'true' : 'false'}>
         <div className="set-piece-print-play-heading">
-          <div className="set-piece-print-play-kicker"><strong>{play.typeLabel}{play.defenseTypeLabel ? ` · Defensa ${play.defenseTypeLabel}` : ''}</strong><span>Jugada {play.order}</span></div>
-          <h2>{play.title}</h2>
+          <div className="set-piece-print-play-kicker"><strong>{play.typeLabel}{play.defenseTypeLabel ? ` · Defensa ${play.defenseTypeLabel}` : ''}</strong>{play.showPlayNumber ? <span>Jugada {play.order}</span> : null}</div>
+          {play.displayTitle ? <h2>{play.displayTitle}</h2> : null}
           {headerFacts.length ? <div className="set-piece-print-header-facts">{headerFacts.map((fact) => <span key={fact.id}><b>{fact.label}{fact.id === 'structure' ? ' ·' : ':'}</b><strong>{fact.value}</strong></span>)}</div> : null}
         </div>
         {play.signal ? <section className="set-piece-print-signal" aria-label={`Señal de la jugada: ${play.signal}`}><span>Señal</span><strong>{play.signal}</strong></section> : null}
@@ -115,8 +115,8 @@ function PrintPlay({ play }) {
   );
 }
 
-export default function SetPieceDiagramPrintSheet({ match, title = 'ABP', diagrams = [], players = [], preview = false }) {
-  const pages = buildSetPiecePrintPages(diagrams, players);
+export default function SetPieceDiagramPrintSheet({ match, title = 'ABP', diagrams = [], players = [], preview = false, totalPlayCount = diagrams.length }) {
+  const pages = buildSetPiecePrintPages(diagrams, players, { totalPlayCount });
   if (!pages.length) return null;
   const matchLabel = getMatchLabel(match);
   const matchDate = formatDate(match?.date);

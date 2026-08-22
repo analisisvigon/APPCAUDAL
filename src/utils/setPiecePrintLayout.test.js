@@ -25,7 +25,7 @@ const proCssStart = css.indexOf('.set-piece-pro-sheet');
 const proCssEnd = css.indexOf('.player-profile-print-portal', proCssStart);
 const proCss = css.slice(proCssStart, proCssEnd);
 
-assert.ok(sheet.includes('buildSetPiecePrintPages(diagrams, players)'), 'renderer y vista previa consumen un único modelo de impresión');
+assert.ok(sheet.includes('buildSetPiecePrintPages(diagrams, players, { totalPlayCount })'), 'renderer y vista previa consumen un único modelo de impresión con el total real de la sección');
 assert.ok(sheet.includes('abp-print-page'), 'cada bloque de dos jugadas se renderiza como una página independiente');
 assert.equal((sheet.match(/<article/g) || []).length, 1, 'el renderer crea un nodo por página de impresión');
 assert.ok(sheet.includes('play.chronology.map'), 'se imprimen todos los pasos cronológicos');

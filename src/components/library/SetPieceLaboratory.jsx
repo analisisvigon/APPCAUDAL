@@ -36,6 +36,7 @@ import {
 import SetPieceDiagramCanvas from '../print/SetPieceDiagramCanvas';
 import SetPieceDiagramEditor from '../print/SetPieceDiagramEditor';
 import SetPieceDiagramPrintSheet from '../print/SetPieceDiagramPrintSheet';
+import { areSetPieceLabelsEquivalent } from '../../utils/setPiecePrintModel';
 import { createSetPieceThumbnailLayers } from '../../utils/setPieceRenderLayout';
 
 const controlClass = 'min-h-11 w-full rounded-xl border border-white/10 bg-white px-3 py-2.5 text-sm font-bold text-slate-950 outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric';
@@ -58,6 +59,8 @@ function ClassificationPill({ children }) {
 
 function LaboratoryPreview({ item, onClose }) {
   const meta = getSetPieceLaboratoryMeta(item);
+  const classificationLabel = getSetPieceClassificationLabel(item);
+  const displayName = areSetPieceLabelsEquivalent(classificationLabel, item.nombre, item.orden) ? '' : item.nombre;
   const defensive = getSetPiecePhase(item) === SET_PIECE_PHASES.DEFENSIVE;
   const defensiveStructure = getSetPieceDefensiveStructure(item.elements);
   const chronology = getSetPieceChronology(item.elements, []);
@@ -78,9 +81,9 @@ function LaboratoryPreview({ item, onClose }) {
         <header className="flex flex-col gap-4 border-b border-white/10 pb-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric">Vista previa · Laboratorio ABP</p>
-            <h2 id="laboratory-preview-title" className="mt-2 text-2xl font-black text-white sm:text-3xl">{item.nombre}</h2>
+            <h2 id="laboratory-preview-title" className="mt-2 text-2xl font-black text-white sm:text-3xl">{displayName || classificationLabel}</h2>
             <div className="mt-3 flex flex-wrap gap-2">
-              <ClassificationPill>{getSetPieceClassificationLabel(item)}</ClassificationPill>
+              {displayName ? <ClassificationPill>{classificationLabel}</ClassificationPill> : null}
               {defensive ? <ClassificationPill>{getSetPieceDefenseTypeLabel(meta.libraryMarking) ? `Defensa ${getSetPieceDefenseTypeLabel(meta.libraryMarking)}` : ''}</ClassificationPill> : <>
                 <ClassificationPill>{meta.libraryZone}</ClassificationPill>
                 <ClassificationPill>{meta.libraryMechanism}</ClassificationPill>
@@ -405,6 +408,8 @@ export default function SetPieceLaboratory() {
         <div className="grid gap-5 md:grid-cols-2" aria-label="Jugadas del Laboratorio ABP">
           {visibleItems.map((item) => {
             const meta = getSetPieceLaboratoryMeta(item);
+            const classificationLabel = getSetPieceClassificationLabel(item);
+            const displayName = areSetPieceLabelsEquivalent(classificationLabel, item.nombre, item.orden) ? '' : item.nombre;
             const defensive = getSetPiecePhase(item) === SET_PIECE_PHASES.DEFENSIVE;
             const defensiveStructure = getSetPieceDefensiveStructure(item.elements);
             const archived = meta.libraryStatus === 'archived';
@@ -412,7 +417,7 @@ export default function SetPieceLaboratory() {
               <article key={item.id} className={`overflow-hidden rounded-[28px] bg-[#091428]/90 shadow-[0_20px_55px_rgba(0,0,0,0.18)] ring-1 ${archived ? 'opacity-75 ring-slate-600/30' : 'ring-white/[0.08]'}`}>
                 <div className="relative bg-white p-2 text-black"><SetPieceDiagramCanvas elements={item.elements || []} players={[]} readOnly renderMode="thumbnail" visibleLayers={createSetPieceThumbnailLayers(meta.displayLayers)} fullField={String(item.tipo).includes('saque_inicio')} /><label className="absolute left-3 top-3 flex min-h-11 items-center gap-2 rounded-xl bg-white/95 px-3 text-[10px] font-black text-slate-900 shadow-lg ring-1 ring-slate-200"><input type="checkbox" checked={selectedPrintIds.includes(item.id)} onChange={(event) => setSelectedPrintIds((current) => event.target.checked ? [...new Set([...current, item.id])] : current.filter((id) => id !== item.id))} className="h-4 w-4 accent-[#4f8cff]" />PDF</label><button type="button" aria-label={meta.libraryFavorite ? `Quitar ${item.nombre} de favoritas` : `Marcar ${item.nombre} como favorita`} aria-pressed={meta.libraryFavorite} onClick={() => toggleFavorite(item)} className={`absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full text-xl shadow-lg ${meta.libraryFavorite ? 'bg-amber-300 text-slate-950' : 'bg-white text-slate-500 ring-1 ring-slate-200'} ${buttonFocus}`}>★</button></div>
                 <div className="p-5">
-                  <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">{getSetPieceClassificationLabel(item)}</p><h3 className="mt-1 truncate text-lg font-black text-white">{item.nombre || 'Jugada sin nombre'}</h3></div><span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${meta.libraryStatus === 'ready' ? 'bg-emerald-300/15 text-emerald-200' : archived ? 'bg-slate-400/15 text-slate-300' : 'bg-amber-300/15 text-amber-200'}`}>{statusLabel(meta.libraryStatus)}</span></div>
+                  <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className={`${displayName ? 'text-[10px]' : 'text-lg'} font-black uppercase tracking-[0.16em] text-caudal-electric`}>{classificationLabel}</p>{displayName ? <h3 className="mt-1 truncate text-lg font-black text-white">{displayName}</h3> : null}</div><span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${meta.libraryStatus === 'ready' ? 'bg-emerald-300/15 text-emerald-200' : archived ? 'bg-slate-400/15 text-slate-300' : 'bg-amber-300/15 text-amber-200'}`}>{statusLabel(meta.libraryStatus)}</span></div>
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {defensive ? <>
                       <ClassificationPill>{getSetPieceDefenseTypeLabel(meta.libraryMarking) ? `Defensa ${getSetPieceDefenseTypeLabel(meta.libraryMarking)}` : ''}</ClassificationPill>

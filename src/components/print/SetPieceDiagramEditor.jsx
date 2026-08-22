@@ -133,7 +133,7 @@ function PresentationOverlay({ diagram, players, onClose }) {
   );
 }
 
-function PreviewOverlay({ diagrams, players, match, onClose }) {
+function PreviewOverlay({ diagrams, players, match, totalPlayCount, onClose }) {
   const printPreview = () => {
     document.body.classList.add('printing-set-piece-preview');
     const cleanup = () => document.body.classList.remove('printing-set-piece-preview');
@@ -147,7 +147,7 @@ function PreviewOverlay({ diagrams, players, match, onClose }) {
         <div><p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Vista previa exacta</p><p className="mt-1 text-xs text-slate-400">Renderer A4 independiente del editor</p></div>
         <div className="flex gap-2"><button type="button" onClick={printPreview} className="min-h-11 rounded-xl bg-caudal-electric px-4 text-xs font-black text-slate-950">Imprimir / PDF</button><button type="button" onClick={onClose} className="min-h-11 rounded-xl bg-white/10 px-4 text-xs font-black text-white">Cerrar</button></div>
       </div>
-      <div className="mx-auto w-fit shadow-2xl"><SetPieceDiagramPrintSheet match={match} title="Ficha táctica ABP" diagrams={diagrams} players={players} preview /></div>
+      <div className="mx-auto w-fit shadow-2xl"><SetPieceDiagramPrintSheet match={match} title="Ficha táctica ABP" diagrams={diagrams} players={players} preview totalPlayCount={totalPlayCount} /></div>
     </div>,
     document.body
   );
@@ -159,6 +159,7 @@ export default function SetPieceDiagramEditor({
   match,
   suggestions = [],
   printDiagrams = [],
+  totalPrintPlayCount = printDiagrams.length,
   roleOnly = false,
   editorContext = 'set-piece',
   participantRoleOptions,
@@ -561,7 +562,7 @@ export default function SetPieceDiagramEditor({
           </div>
         </aside>
       </div>
-      {overlay === 'preview' ? <PreviewOverlay diagrams={printDiagrams.length ? printDiagrams : [diagram]} players={players} match={match} onClose={() => setOverlay('')} /> : null}
+      {overlay === 'preview' ? <PreviewOverlay diagrams={printDiagrams.length ? printDiagrams : [diagram]} players={players} match={match} totalPlayCount={totalPrintPlayCount || 1} onClose={() => setOverlay('')} /> : null}
       {overlay === 'presentation' ? <PresentationOverlay diagram={diagram} players={players} onClose={() => setOverlay('')} /> : null}
     </div>
   );

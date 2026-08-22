@@ -21,13 +21,29 @@ const PLACEHOLDER_VALUES = new Set([
   'sin roles asignados',
 ]);
 
-const normalizeComparableText = (value) => String(value || '')
+export const normalizeSetPieceComparableText = (value) => String(value || '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
-  .replace(/[.!:;]+$/g, '')
+  .replace(/[_\-/\\]+/g, ' ')
+  .replace(/[^\p{L}\p{N}]+/gu, ' ')
   .replace(/\s+/g, ' ')
   .trim()
   .toLocaleLowerCase('es');
+
+const normalizeComparableText = normalizeSetPieceComparableText;
+
+export const areSetPieceLabelsEquivalent = (type, title, order) => {
+  const normalizedType = normalizeComparableText(type);
+  const normalizedTitle = normalizeComparableText(title);
+  if (!normalizedType || !normalizedTitle) return false;
+  if (normalizedType === normalizedTitle) return true;
+  const numericOrder = Number(order);
+  if (!Number.isFinite(numericOrder)) return false;
+  const titleWithoutGenericOrder = normalizedTitle
+    .replace(new RegExp(`(?:\\s+jugada)?\\s+${numericOrder}$`), '')
+    .trim();
+  return titleWithoutGenericOrder === normalizedType;
+};
 
 export const getMeaningfulSetPiecePrintText = (value) => {
   const text = String(value || '').trim();
@@ -73,7 +89,7 @@ const formatIdentity = (element, displayLayers) => {
   ].filter((value, index, values) => value && values.indexOf(value) === index).join(' ');
 };
 
-export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder = 1) => {
+export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder = 1, options = {}) => {
   const meta = getSetPieceTacticalMeta(diagram?.elements);
   const elements = optimizeSetPieceElementsForPrint(diagram?.elements, players);
   const elementsById = new Map(elements.map((element) => [element.id, element]));
@@ -84,6 +100,9 @@ export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder
   const destination = defensive ? '' : getMeaningfulSetPiecePrintText(meta.libraryZone);
   const delivery = defensive ? '' : getMeaningfulSetPiecePrintText(getSetPieceDeliveryTypeLabel(meta.deliveryType));
   const defenseTypeLabel = defensive ? getSetPieceDefenseTypeLabel(meta.libraryMarking) : '';
+  const storedTitle = getMeaningfulSetPiecePrintText(diagram?.titulo);
+  const title = storedTitle || typeLabel || `Jugada ${order}`;
+  const displayTitle = storedTitle && !areSetPieceLabelsEquivalent(typeLabel, storedTitle, order) ? storedTitle : '';
   const defensiveStructure = defensive ? getSetPieceDefensiveStructure(diagram?.elements) : '';
   const chronology = (displayLayers.chronology ? getSetPieceChronology(diagram?.elements, players) : []).map((step) => ({
     ...step,
@@ -116,7 +135,9 @@ export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder
     defensive,
     defenseTypeLabel,
     defensiveStructure,
-    title: getMeaningfulSetPiecePrintText(diagram?.titulo) || typeLabel || `Jugada ${order}`,
+    title,
+    displayTitle,
+    showPlayNumber: Number(options.totalPlayCount) > 1,
     deliveryType: meta.deliveryType,
     deliveryTypeLabel: getSetPieceDeliveryTypeLabel(meta.deliveryType),
     headerFacts: [
@@ -140,8 +161,11 @@ export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder
   };
 };
 
-export const buildSetPiecePrintPages = (diagrams = [], players = []) => {
-  const printPlays = diagrams.map((diagram, index) => buildSetPiecePrintPlayModel(diagram, players, index + 1));
+export const buildSetPiecePrintPages = (diagrams = [], players = [], options = {}) => {
+  const totalPlayCount = Number.isFinite(Number(options.totalPlayCount))
+    ? Number(options.totalPlayCount)
+    : diagrams.length;
+  const printPlays = diagrams.map((diagram, index) => buildSetPiecePrintPlayModel(diagram, players, index + 1, { totalPlayCount }));
   return paginateSetPiecePrintPlays(printPlays).map((pagePlays, pageIndex) => ({
     pageNumber: pageIndex + 1,
     plays: pagePlays,
