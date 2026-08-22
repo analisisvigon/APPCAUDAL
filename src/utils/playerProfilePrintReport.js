@@ -20,6 +20,19 @@ const normalizeAction = (action = {}) => ({
   opponent: clean(action.opponent),
   competition: clean(action.competition),
   date: clean(action.date),
+  result: clean(action.result),
+  phase: clean(action.phase),
+  subphase: clean(action.subphase),
+  shotZone: clean(action.shotZone),
+  shotZoneLabel: clean(action.shotZoneLabel),
+  assistZone: clean(action.assistZone),
+  assistZoneLabel: clean(action.assistZoneLabel),
+  goalZone: clean(action.goalZone),
+  goalZoneLabel: clean(action.goalZoneLabel),
+  contact: clean(action.contact),
+  scorer: clean(action.scorer),
+  assistant: clean(action.assistant),
+  createdAt: clean(action.createdAt),
   description: clean(action.description),
   url: getPlayerReportActionUrl(action.url || action.videoUrl),
 });
@@ -32,6 +45,8 @@ const normalizeHistoryRow = (row = {}) => ({
 
 const PRODUCTION_CONNECTION_LIMIT = 4;
 const CONNECTIONS_PER_CONTINUATION_PAGE = 12;
+const PRODUCTION_ACTION_LIMIT = 6;
+const ACTIONS_PER_CONTINUATION_PAGE = 10;
 
 export const buildPlayerOffensiveConnections = ({ society, playerName }) => rows(society)
   .flatMap((row, rowIndex) => {
@@ -70,9 +85,9 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
   const summaryHistory = history.slice(0, summaryHistoryLimit);
   const historyOverflow = [];
   for (let index = summaryHistory.length; index < history.length; index += 30) historyOverflow.push(history.slice(index, index + 30));
-  const productionActions = videoActions.slice(0, 10);
+  const productionActions = videoActions.slice(0, PRODUCTION_ACTION_LIMIT);
   const actionOverflow = [];
-  for (let index = productionActions.length; index < videoActions.length; index += 16) actionOverflow.push(videoActions.slice(index, index + 16));
+  for (let index = productionActions.length; index < videoActions.length; index += ACTIONS_PER_CONTINUATION_PAGE) actionOverflow.push(videoActions.slice(index, index + ACTIONS_PER_CONTINUATION_PAGE));
   const offensiveConnections = buildPlayerOffensiveConnections({ society: source.society, playerName: source.identity?.name });
   const productionConnections = offensiveConnections.slice(0, PRODUCTION_CONNECTION_LIMIT);
   const connectionOverflow = [];
@@ -93,12 +108,14 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
     seasonSummary: source.seasonSummary || {},
     competitionBreakdown,
     production: source.production || {},
+    goalAnalysis: source.goalAnalysis || {},
     influenceMaps,
     society: rows(source.society),
     offensiveConnections,
     productionConnections,
     connectionOverflow,
     actions,
+    videoActions,
     history,
     summaryHistory,
     historyOverflow,

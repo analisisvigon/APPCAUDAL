@@ -28,6 +28,14 @@ import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
 import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
+import {
+  buildPlayerBodyPartSummary,
+  buildPlayerConnectionRows,
+  buildPlayerGoalTargetSummary,
+  buildPlayerGoalTypeSummary,
+  buildPlayerProductionAction,
+  getPlayerInfluenceActions,
+} from './utils/playerProductionDetails';
 import { PDF_GENERATOR_LOAD_ERROR_MESSAGE, recoverFromStaleChunkOnce } from './utils/pwaChunkRecovery';
 import {
   POST_EVENT_TYPES,
@@ -28522,27 +28530,45 @@ function App() {
               const aggregate = getPlayerAggregate(selectedPlayerProfile);
               const quick = aggregate.quick;
               const visibleMatchIds = new Set(aggregate.rows.map((row) => row.match.id));
+              const enrichPlayerProductionAction = (event, match, action) => {
+                if (!match) return buildPlayerProductionAction({ ...event, action, match: null });
+                const score = getMatchScoreData(match);
+                return buildPlayerProductionAction({
+                  ...event,
+                  action,
+                  match,
+                  opponent: match.opponent,
+                  competition: getCompetitionFromCatalog(match).label,
+                  date: matchDisplayDate(match.date),
+                  result: score.hasScore ? `${score.caudalGoals}-${score.rivalGoals}` : '',
+                  shotZoneLabel: event.shotZone ? getZoneLabel(event.shotZone) : '',
+                  assistZoneLabel: event.assistZone ? getZoneLabel(event.assistZone) : '',
+                  goalZoneLabel: event.goalZone ? getZoneLabel(event.goalZone, { goal: true }) : '',
+                });
+              };
               const allGoalActions = (playerProfileData?.goalEvents || [])
                 .filter((event) => isGoalScoredByPlayer(event, selectedPlayerProfile) && visibleMatchIds.has(event.partidoId))
-                .map((event) => ({ ...event, match: playerProfileData.partidosById[event.partidoId], action: 'Gol' }))
+                .map((event) => enrichPlayerProductionAction(event, playerProfileData.partidosById[event.partidoId], 'Gol'))
                 .filter((event) => event.match);
               const allAssistActions = (playerProfileData?.goalEvents || [])
                 .filter((event) => isGoalAssistedByPlayer(event, selectedPlayerProfile) && visibleMatchIds.has(event.partidoId))
-                .map((event) => ({ ...event, match: playerProfileData.partidosById[event.partidoId], action: 'Asistencia' }))
+                .map((event) => enrichPlayerProductionAction(event, playerProfileData.partidosById[event.partidoId], 'Asistencia'))
                 .filter((event) => event.match);
-              const influenceActions = playerInfluenceFilter === 'Goles' ? allGoalActions : playerInfluenceFilter === 'Asistencias' ? allAssistActions : [...allGoalActions, ...allAssistActions];
+              const influenceActions = getPlayerInfluenceActions({ goalActions: allGoalActions, assistActions: allAssistActions, filter: playerInfluenceFilter });
+              const influenceDetailLabel = playerInfluenceFilter === 'Todos' ? 'acciones' : playerInfluenceFilter.toLowerCase();
               const shotZoneCounts = countPitchZones(influenceActions.map((event) => event.action === 'Gol' ? event.shotZone : event.assistZone));
               const allInfluenceZoneCounts = countPitchZones([...allGoalActions, ...allAssistActions].map((event) => event.action === 'Gol' ? event.shotZone : event.assistZone));
               const goalInfluenceZoneCounts = countPitchZones(allGoalActions.map((event) => event.shotZone));
               const assistInfluenceZoneCounts = countPitchZones(allAssistActions.map((event) => event.assistZone));
               const goalZoneCounts = getGroupGoalZoneCounts(allGoalActions);
+              const goalBodyPartSummary = buildPlayerBodyPartSummary(allGoalActions);
+              const goalTypeSummary = buildPlayerGoalTypeSummary(allGoalActions);
+              const goalTargetSummary = buildPlayerGoalTargetSummary(allGoalActions);
               const playerGoalPhaseCounts = countPhases(allGoalActions);
               const maxPlayerGoalPhase = Math.max(1, ...playerGoalPhaseCounts.map((row) => row.count));
-              const assistantsToPlayer = countValues(allGoalActions.map((event) => event.assistant));
-              const assistedByPlayer = countValues(allAssistActions.map((event) => event.scorer));
-              const assistantRows = Object.entries(assistantsToPlayer).filter(([name]) => name);
-              const assistedRows = Object.entries(assistedByPlayer).filter(([name]) => name);
-              const videoActions = [...allGoalActions, ...allAssistActions].filter((event) => event.videoUrl);
+              const societyRows = buildPlayerConnectionRows({ goalActions: allGoalActions, assistActions: allAssistActions, filter: 'Todos' });
+              const visibleSocietyRows = buildPlayerConnectionRows({ goalActions: allGoalActions, assistActions: allAssistActions, filter: playerInfluenceFilter });
+              const videoActions = influenceActions.filter((event) => event.videoUrl);
               const primaryMetrics = [
                 { label: 'Minutos', value: `${aggregate.minutes}'`, detail: aggregate.played ? `${Math.round(aggregate.minutes / Math.max(1, aggregate.played))}'/partido` : 'Sin partidos' },
                 { label: 'Partidos', value: aggregate.played, detail: `${aggregate.starts} titularidades` },
@@ -28561,16 +28587,9 @@ function App() {
               const hasInfluenceData = Object.values(shotZoneCounts).some((count) => count > 0);
               const hasGoalZoneData = allGoalActions.some((event) => event.goalZone);
               const hasGoalPhaseData = playerGoalPhaseCounts.some((row) => row.count > 0);
+              const hasGoalBodyPartData = goalBodyPartSummary.known > 0;
               const hasUsefulQuickData = quick.events.length >= 2;
               const dominantGoalPhase = hasGoalPhaseData ? [...playerGoalPhaseCounts].sort((a, b) => b.count - a.count)[0] : null;
-              const societyRows = Array.from(new Set([...assistantRows.map(([name]) => name), ...assistedRows.map(([name]) => name)]))
-                .map((name) => ({
-                  name,
-                  received: assistantsToPlayer[name] || 0,
-                  given: assistedByPlayer[name] || 0,
-                  total: (assistantsToPlayer[name] || 0) + (assistedByPlayer[name] || 0),
-                }))
-                .sort((a, b) => b.total - a.total);
               const pdfCompetitionRows = Object.values(aggregate.rows.reduce((acc, row) => {
                 const competition = getCompetitionFromCatalog(row.match);
                 const key = competition.key || competition.label || 'sin-competicion';
@@ -28594,12 +28613,9 @@ function App() {
               const pdfSeasonLabels = [...new Set(pdfCompetitionRows.map((competition) => competition.season).filter(Boolean))];
               const pdfSeasonLabel = pdfSeasonLabels.length ? pdfSeasonLabels.join(' · ') : 'Sin datos';
               const playerPdfActions = [...allGoalActions, ...allAssistActions].map((event) => ({
+                ...event,
                 id: `${event.action}-${event.match.id}-${event.id}`,
                 type: event.action,
-                minute: event.minute,
-                opponent: event.match.opponent,
-                competition: getCompetitionFromCatalog(event.match).label,
-                date: matchDisplayDate(event.match.date),
                 description: event.summary || event.title || '',
                 url: event.videoUrl || '',
                 matchId: event.match.id,
@@ -28645,6 +28661,14 @@ function App() {
                   { key: 'goals', label: 'Goles', zones: pitchZoneCatalog.map((zone) => ({ ...zone, count: goalInfluenceZoneCounts[zone.value] || 0 })) },
                   { key: 'assists', label: 'Asistencias', zones: pitchZoneCatalog.map((zone) => ({ ...zone, count: assistInfluenceZoneCounts[zone.value] || 0 })) },
                 ],
+                goalAnalysis: {
+                  bodyParts: goalBodyPartSummary,
+                  types: goalTypeSummary,
+                  target: {
+                    ...goalTargetSummary,
+                    zones: goalMouthZoneCatalog.map((zone) => ({ ...zone, count: goalZoneCounts[zone.value] || 0 })),
+                  },
+                },
                 society: societyRows,
                 actions: playerPdfActions,
                 history: aggregate.rows.map((row) => {
@@ -28919,7 +28943,21 @@ function App() {
                               ))}
                             </div>
                           </div>
-                          {hasGoalPhaseData ? <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-4">
+                          {playerInfluenceFilter === 'Goles' && hasGoalBodyPartData ? <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Cómo marca</p>
+                              <span className="text-[10px] font-bold text-slate-500">{goalBodyPartSummary.known} con dato{goalBodyPartSummary.missing ? ` · ${goalBodyPartSummary.missing} sin dato` : ''}</span>
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                              {goalBodyPartSummary.values.map((row) => (
+                                <div key={row.label} className="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2.5">
+                                  <strong className="block text-lg text-emerald-200">{row.count}</strong>
+                                  <span className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">{row.label}{goalBodyPartSummary.total > 1 ? ` · ${Math.round((row.count / goalBodyPartSummary.total) * 100)}%` : ''}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div> : null}
+                          {playerInfluenceFilter === 'Goles' && hasGoalPhaseData ? <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-4">
                             <div className="flex items-center justify-between gap-3">
                               <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Tipo de gol</p>
                               {dominantGoalPhase ? <span className="rounded-xl bg-white/[0.06] px-2 py-1 text-[10px] font-bold text-slate-300">Domina: {dominantGoalPhase.phase}</span> : null}
@@ -28938,22 +28976,62 @@ function App() {
                               ))}
                             </div>
                           </div> : null}
-                          {hasGoalZoneData ? <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.025] p-4">
+                          {playerInfluenceFilter === 'Goles' && hasGoalZoneData ? <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.025] p-4">
                             <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Diana de finalización</p>
                             <div className="mt-3 max-w-sm opacity-90">{renderReadOnlyZoneGrid({ counts: goalZoneCounts, zones: goalZoneOptions, goal: true })}</div>
+                            <p className="mt-2 text-[10px] font-bold text-slate-500">{goalTargetSummary.known} goles con zona{goalTargetSummary.missing ? ` · ${goalTargetSummary.missing} sin zona registrada` : ''}</p>
                           </div> : null}
                         </div>
+                      </div>
+                      <div className="mt-5 border-t border-white/[0.08] pt-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <h3 className="text-xs font-black uppercase tracking-[0.18em] text-white">Detalle de {influenceDetailLabel}</h3>
+                          <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{influenceActions.length} acciones</span>
+                        </div>
+                        {influenceActions.length ? <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                          {influenceActions.map((event) => {
+                            const tacticalType = [event.phase, event.subphase].filter(Boolean).join(' · ');
+                            const fields = event.action === 'Gol'
+                              ? [
+                                ['Tipo de jugada', tacticalType],
+                                ['Zona de tiro', event.shotZoneLabel],
+                                ['Finalización', event.contact],
+                                ['Destino', event.goalZoneLabel],
+                                ['Asistente', event.assistant],
+                              ]
+                              : [
+                                ['Goleador', event.scorer],
+                                ['Zona de asistencia', event.assistZoneLabel],
+                                ['Tipo de jugada del gol', tacticalType],
+                              ];
+                            return (
+                              <article key={`${event.id}-${event.action}-detail`} className="rounded-[1.1rem] border border-white/[0.08] bg-white/[0.035] p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-black text-white">{event.action} · {event.minute || 'Sin minuto'}{event.minute ? "'" : ''}</p>
+                                    <p className="mt-1 text-xs text-slate-400">vs {event.opponent || 'Rival no registrado'}{event.result ? ` · ${event.result}` : ''}</p>
+                                    <p className="mt-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">{event.competition || 'Competición no registrada'}{event.date ? ` · ${event.date}` : ''}</p>
+                                  </div>
+                                  {event.videoUrl ? <button type="button" onClick={() => window.open(event.videoUrl, '_blank')} className="shrink-0 rounded-xl bg-caudal-electric/90 px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] text-slate-950">Vídeo</button> : null}
+                                </div>
+                                <dl className="mt-3 grid gap-x-4 gap-y-2 sm:grid-cols-2">
+                                  {fields.filter(([, value]) => value).map(([label, value]) => <div key={label}><dt className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">{label}</dt><dd className="mt-0.5 text-xs font-semibold text-slate-200">{value}</dd></div>)}
+                                </dl>
+                              </article>
+                            );
+                          })}
+                        </div> : <p className="mt-3 rounded-xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-3 text-xs text-slate-500">Sin acciones oficiales en los filtros actuales.</p>}
                       </div>
                     </div>
 
                     <div className="space-y-4">
-                      {societyRows.length ? <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
+                      {visibleSocietyRows.length ? <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-4 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">
                         <div className="flex items-center justify-between gap-3">
                           <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">Conexiones</h3>
                           <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Por participaciones</span>
                         </div>
                         <div className="mt-3 divide-y divide-white/[0.08]">
-                          {societyRows.map((row) => (
+                          {visibleSocietyRows.map((row) => (
                             <div key={row.name} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
                               <div className="min-w-0">
                                 <p className="font-bold text-white">{row.name}</p>
@@ -28972,8 +29050,11 @@ function App() {
                             <div key={`${event.id}-${event.action}`} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
                               <div className="min-w-0">
                                 <p className="font-bold text-white">{event.action} · {event.minute}'</p>
-                                <p className="mt-0.5 text-xs text-slate-400">{event.match.opponent}</p>
-                                <p className="mt-0.5 text-[10px] font-black uppercase tracking-[0.11em] text-slate-500">{getCompetitionFromCatalog(event.match).label} · {matchDisplayDate(event.match.date)}</p>
+                                <p className="mt-0.5 text-xs text-slate-400">{event.opponent}{event.result ? ` · ${event.result}` : ''}</p>
+                                <p className="mt-0.5 text-[10px] font-black uppercase tracking-[0.11em] text-slate-500">{event.competition}{event.date ? ` · ${event.date}` : ''}</p>
+                                <p className="mt-1 text-[10px] text-slate-500">{event.action === 'Gol'
+                                  ? [event.phase, event.contact, event.shotZoneLabel].filter(Boolean).join(' · ')
+                                  : [event.scorer ? `A ${event.scorer}` : '', event.phase, event.assistZoneLabel].filter(Boolean).join(' · ')}</p>
                               </div>
                               <button type="button" onClick={() => window.open(event.videoUrl, '_blank')} className="shrink-0 rounded-xl bg-caudal-electric/90 px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] text-slate-950 transition hover:bg-caudal-electric">Ver vídeo</button>
                             </div>

@@ -174,17 +174,53 @@ function OffensiveConnections({ connections, continuation = false }) {
   );
 }
 
+function ObjectiveProductionAnalysis({ analysis }) {
+  const bodyParts = safeRows(analysis?.bodyParts?.values);
+  const goalTypes = safeRows(analysis?.types?.phases);
+  const targetZones = safeRows(analysis?.target?.zones);
+  const hasTarget = Number(analysis?.target?.known || 0) > 0;
+  if (!bodyParts.length && !goalTypes.length && !hasTarget) return null;
+  return (
+    <section className="player-pdf-section player-pdf-objective-analysis">
+      <SectionTitle eyebrow="07">Análisis objetivo de finalización</SectionTitle>
+      <div className="player-pdf-objective-grid">
+        {bodyParts.length ? <article>
+          <h3>Cómo marca</h3>
+          <div className="player-pdf-count-list">{bodyParts.map((row) => <p key={row.label}><span>{row.label}</span><b>{row.count}{analysis.bodyParts.total > 1 ? ` · ${Math.round((row.count / analysis.bodyParts.total) * 100)}%` : ''}</b></p>)}</div>
+          {analysis.bodyParts.missing ? <small>{analysis.bodyParts.missing} gol{analysis.bodyParts.missing === 1 ? '' : 'es'} sin parte del cuerpo registrada</small> : null}
+        </article> : null}
+        {goalTypes.length ? <article>
+          <h3>Tipo de gol</h3>
+          <div className="player-pdf-count-list">{goalTypes.map((row) => <p key={row.label}><span>{row.label}</span><b>{row.count}</b></p>)}</div>
+        </article> : null}
+        {hasTarget ? <article className="player-pdf-goal-target">
+          <h3>Destino en portería</h3>
+          <div className="player-pdf-goal-target-grid">{targetZones.map((zone) => <div key={zone.value}><span>{zone.shortLabel || zone.label}</span><b>{zone.count || 0}</b></div>)}</div>
+          <small>{analysis.target.known || 0} con zona{analysis.target.missing ? ` · ${analysis.target.missing} sin zona registrada` : ''}</small>
+        </article> : null}
+      </div>
+    </section>
+  );
+}
+
 function ActionsLibrary({ actions, eyebrow = '07' }) {
   return (
     <section className="player-pdf-section player-pdf-actions">
       <SectionTitle eyebrow={eyebrow}>Acciones en vídeo</SectionTitle>
       {safeRows(actions).length ? <div className="player-pdf-action-grid">{actions.map((action) => (
         <article key={action.id || `${action.type}-${action.minute}-${action.opponent}`}>
-          <span className="player-pdf-video-icon">▶</span>
-          <div><strong>{action.type} <em>· {action.minute}'</em></strong><span>vs {action.opponent}</span><small>{action.competition}{action.date ? ` · ${action.date}` : ''}</small></div>
-          <a href={action.url} data-player-video-link="library" target="_blank" rel="noreferrer">Abrir vídeo ↗</a>
+          <span className={`player-pdf-video-icon${action.url ? '' : ' is-static'}`}>{action.url ? '▶' : '•'}</span>
+          <div>
+            <strong>{action.type} <em>· {action.minute || 's/m'}{action.minute ? "'" : ''}</em></strong>
+            <span>vs {action.opponent || 'Rival no registrado'}{action.result ? ` · ${action.result}` : ''}</span>
+            <small>{action.competition || 'Competición no registrada'}{action.date ? ` · ${action.date}` : ''}</small>
+            <p className="player-pdf-action-detail">{action.type === 'Gol'
+              ? [action.phase, action.subphase, action.shotZoneLabel, action.contact, action.goalZoneLabel, action.assistant ? `Asist. ${action.assistant}` : ''].filter(Boolean).join(' · ')
+              : [action.scorer ? `A ${action.scorer}` : '', action.assistZoneLabel, action.phase, action.subphase].filter(Boolean).join(' · ') || 'Sin detalle técnico registrado'}</p>
+          </div>
+          {action.url ? <a href={action.url} data-player-video-link="library" target="_blank" rel="noreferrer">Abrir vídeo ↗</a> : <span className="player-pdf-no-video">Sin vídeo</span>}
         </article>
-      ))}</div> : <p className="player-pdf-empty-line">Sin acciones en vídeo registradas.</p>}
+      ))}</div> : <p className="player-pdf-empty-line">Sin goles ni asistencias en el ámbito seleccionado.</p>}
     </section>
   );
 }
@@ -203,13 +239,13 @@ function SummaryPage({ report }) {
 }
 
 function ProductionPage({ report }) {
-  const hasOffensiveConnections = safeRows(report.offensiveConnections).length > 0;
   return (
     <article className="player-pdf-page player-pdf-production-page" data-player-pdf-page="production">
       <ReportHeader report={report} section="Producción, zonas y vídeo" />
       <InfluenceMaps maps={report.influenceMaps} />
       <div className="player-pdf-production-row"><ProductionSummary production={report.production} /><OffensiveConnections connections={report.productionConnections} /></div>
-      <ActionsLibrary actions={report.productionActions} eyebrow={hasOffensiveConnections ? '07' : '06'} />
+      <ObjectiveProductionAnalysis analysis={report.goalAnalysis} />
+      <ActionsLibrary actions={report.productionActions} eyebrow="08" />
       <ReportFooter report={report} page={2} />
     </article>
   );
@@ -236,11 +272,10 @@ function HistoryContinuationPage({ report, rows, page }) {
 }
 
 function VideoContinuationPage({ report, actions, page }) {
-  const hasOffensiveConnections = safeRows(report.offensiveConnections).length > 0;
   return (
     <article className="player-pdf-page player-pdf-overflow-page" data-player-pdf-page={`video-${page}`}>
       <ReportHeader report={report} section="Acciones en vídeo · continuación" />
-      <ActionsLibrary actions={actions} eyebrow={hasOffensiveConnections ? '07' : '06'} />
+      <ActionsLibrary actions={actions} eyebrow="08" />
       <ReportFooter report={report} page={page} />
     </article>
   );

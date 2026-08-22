@@ -31,15 +31,22 @@ for (const metric of ['Goles/90', 'Asist./90', 'G+A/90', 'G+A total']) {
 }
 assert.match(profile, /aggregate\.minutes \? \(\(goalContributions \/ aggregate\.minutes\) \* 90\)\.toFixed\(2\) : '0\.00'/);
 
-assert.match(profile, /\{hasGoalPhaseData \? <div[^]*Tipo de gol[^]*<\/div> : null\}/);
-assert.match(profile, /\{hasGoalZoneData \? <div[^]*Diana de finalización[^]*<\/div> : null\}/);
-assert.match(profile, /societyRows\.map\(\(row\) =>/);
+assert.match(profile, /playerInfluenceFilter === 'Goles' && hasGoalBodyPartData[^]*Cómo marca/);
+assert.match(profile, /playerInfluenceFilter === 'Goles' && hasGoalPhaseData[^]*Tipo de gol/);
+assert.match(profile, /playerInfluenceFilter === 'Goles' && hasGoalZoneData[^]*Diana de finalización/);
+assert.match(profile, /visibleSocietyRows\.map\(\(row\) =>/);
 assert.match(profile, /\{row\.given\} dadas · \{row\.received\} recibidas/);
+assert.match(profile, /buildPlayerConnectionRows\(\{ goalActions: allGoalActions, assistActions: allAssistActions, filter: playerInfluenceFilter \}\)/);
+assert.match(profile, /isGoalScoredByPlayer\(event, selectedPlayerProfile\) && visibleMatchIds\.has\(event\.partidoId\)/, 'los goles respetan los partidos filtrados por competición y sede');
+assert.match(profile, /isGoalAssistedByPlayer\(event, selectedPlayerProfile\) && visibleMatchIds\.has\(event\.partidoId\)/, 'las asistencias respetan los partidos filtrados por competición y sede');
 assert.equal(profile.includes('Sociedad ofensiva'), false);
 
 assert.match(profile, /Videoteca de acciones/);
 assert.match(profile, /\{event\.action\} · \{event\.minute\}'/);
 assert.match(profile, /window\.open\(event\.videoUrl, '_blank'\)/);
+assert.match(profile, /Detalle de \{influenceDetailLabel\}/);
+assert.match(profile, /\['Finalización', event\.contact\]/);
+assert.match(profile, /\['Zona de asistencia', event\.assistZoneLabel\]/);
 assert.equal(profile.includes('aspect-video'), false);
 
 assert.match(profile, /\['Fecha', 'Rival', 'Resultado', 'Competición', 'L\/V', 'Rol', 'Min', 'Goles', 'Asist\.', 'Tarjetas', 'Lesión'\]/);

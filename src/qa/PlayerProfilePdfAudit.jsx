@@ -44,6 +44,17 @@ const report = buildPlayerProfilePrintReport({
     { key: 'goals', label: 'Goles', zones: [{ value: 'finalizacion_centro', count: 2 }] },
     { key: 'assists', label: 'Asistencias', zones: [{ value: 'creacion_derecha', count: 5 }] },
   ],
+  goalAnalysis: {
+    bodyParts: { values: [{ label: 'Pie derecho', count: 1 }, { label: 'Cabeza', count: 1 }], known: 2, missing: 0, total: 2 },
+    types: { phases: [{ label: 'Juego combinativo', count: 1 }, { label: 'ABP', count: 1 }], subphases: [] },
+    target: {
+      total: 2,
+      known: 1,
+      missing: 1,
+      zones: ['Alta izquierda', 'Alta centro', 'Alta derecha', 'Media izquierda', 'Media centro', 'Media derecha', 'Baja izquierda', 'Baja centro', 'Baja derecha']
+        .map((label, index) => ({ value: `target-${index}`, label, shortLabel: label.replace(' ', '\n'), count: index === 2 ? 1 : 0 })),
+    },
+  },
   society: [{ name: 'Jairo Cárcaba', given: 1, received: 0 }],
   history: [],
   actions: [{
@@ -53,6 +64,11 @@ const report = buildPlayerProfilePrintReport({
     opponent: 'Rival QA',
     competition: 'Liga',
     date: '16/08/2026',
+    result: '2-1',
+    scorer: 'Jairo Cárcaba',
+    assistZoneLabel: 'F. Creación derecha',
+    phase: 'Juego combinativo',
+    subphase: 'Dentro del área',
     url: 'https://video.example/borja-assist?t=600',
   }],
 });

@@ -4213,6 +4213,84 @@
   font-size: 7pt;
 }
 
+.player-pdf-objective-analysis {
+  margin-top: 4mm;
+}
+
+.player-pdf-objective-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4mm;
+}
+
+.player-pdf-objective-grid > article {
+  min-width: 0;
+  padding: 2.5mm;
+  border: 0.25mm solid var(--player-pdf-line);
+  border-radius: 1.5mm;
+  background: #f7fafc;
+  break-inside: avoid;
+}
+
+.player-pdf-objective-grid h3 {
+  margin: 0 0 1.5mm;
+  color: var(--player-pdf-blue);
+  font-size: 5.8pt;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.player-pdf-count-list p {
+  display: flex;
+  justify-content: space-between;
+  gap: 2mm;
+  margin: 0;
+  padding: 0.65mm 0;
+  border-bottom: 0.18mm solid var(--player-pdf-line);
+  color: var(--player-pdf-ink);
+  font-size: 5.4pt;
+}
+
+.player-pdf-objective-grid small {
+  display: block;
+  margin-top: 1.2mm;
+  color: var(--player-pdf-muted);
+  font-size: 4.5pt;
+  line-height: 1.25;
+}
+
+.player-pdf-goal-target-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border: 0.25mm solid #8ba2b7;
+}
+
+.player-pdf-goal-target-grid > div {
+  display: grid;
+  min-height: 6.3mm;
+  place-content: center;
+  border: 0.15mm solid #c4d0dc;
+  text-align: center;
+}
+
+.player-pdf-goal-target-grid span,
+.player-pdf-goal-target-grid b {
+  display: block;
+  white-space: pre-line;
+}
+
+.player-pdf-goal-target-grid span {
+  color: var(--player-pdf-muted);
+  font-size: 3.8pt;
+  line-height: 1.05;
+}
+
+.player-pdf-goal-target-grid b {
+  margin-top: 0.35mm;
+  color: var(--player-pdf-blue);
+  font-size: 6.5pt;
+}
+
 .player-pdf-actions {
   margin-top: 4mm;
 }
@@ -4227,7 +4305,7 @@
   display: grid;
   grid-column: auto;
   grid-template-columns: 6mm minmax(0, 1fr) auto;
-  min-height: 11.5mm;
+  min-height: 17mm;
   gap: 2mm;
   padding: 1.6mm 0;
   border: 0;
@@ -4243,6 +4321,11 @@
   border-radius: 50%;
   background: var(--player-pdf-navy);
   font-size: 4.4pt;
+}
+
+.player-pdf-video-icon.is-static {
+  background: #d8e1ea;
+  color: var(--player-pdf-muted);
 }
 
 .player-pdf-action-grid div strong {
@@ -4261,6 +4344,14 @@
   font-size: 5.2pt;
 }
 
+.player-pdf-action-detail {
+  margin: 1mm 0 0;
+  color: var(--player-pdf-ink);
+  font-size: 4.7pt;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
 .player-pdf-action-grid a {
   padding: 1.4mm 1.7mm;
   border-radius: 1mm;
@@ -4269,6 +4360,14 @@
   font-size: 4.9pt;
   letter-spacing: 0.04em;
   text-decoration: none;
+}
+
+.player-pdf-no-video {
+  align-self: center;
+  color: var(--player-pdf-muted);
+  font-size: 4.7pt;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .player-pdf-empty-line {

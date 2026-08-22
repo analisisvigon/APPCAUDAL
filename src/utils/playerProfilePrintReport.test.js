@@ -17,8 +17,8 @@ const filtered = buildPlayerProfilePrintReport({
   ],
   production: { goalsPer90: 0.09, assistsPer90: 0.23, goalContributionsPer90: 0.32, goalContributions: 7 },
   actions: [
-    { id: 'assist-10', type: 'Asistencia', minute: 10, opponent: 'CD Praviano', date: '16/08/2026', url: 'https://video.example/assist?t=10' },
-    { id: 'goal-72', type: 'Gol', minute: 72, opponent: 'Rival', url: '' },
+    { id: 'assist-10', type: 'Asistencia', minute: 10, opponent: 'CD Praviano', date: '16/08/2026', scorer: 'Jairo Cárcaba', assistZoneLabel: 'F. Creación derecha', phase: 'Juego combinativo', url: 'https://video.example/assist?t=10' },
+    { id: 'goal-72', type: 'Gol', minute: 72, opponent: 'Rival', result: '2-1', contact: 'Pie izquierdo', shotZoneLabel: 'F. Finalización centro', goalZoneLabel: 'Alta derecha', assistant: 'Compañero', url: '' },
   ],
   history: [{ id: 'match-1', goals: 1, assists: 1, goalLinks: ['https://video.example/goal?t=72'], assistLinks: ['javascript:alert(1)'] }],
   influenceMaps: [
@@ -26,6 +26,11 @@ const filtered = buildPlayerProfilePrintReport({
     { key: 'goals', label: 'Goles', zones: [{ value: 'finalizacion_centro', count: 1 }] },
     { key: 'assists', label: 'Asistencias', zones: [{ value: 'creacion_derecha', count: 2 }] },
   ],
+  goalAnalysis: {
+    bodyParts: { values: [{ label: 'Pie izquierdo', count: 1 }], known: 1, missing: 0, total: 1 },
+    types: { phases: [{ label: 'Juego combinativo', count: 1 }], subphases: [] },
+    target: { zones: [{ value: 'alta_derecha', label: 'Alta derecha', count: 1 }], known: 1, missing: 0, total: 1 },
+  },
 });
 
 assert.equal(filtered.seasonSummary.starterPercentage, 88, 'el dossier conserva el porcentaje objetivo de titularidad');
@@ -34,9 +39,13 @@ assert.deepEqual(filtered.competitionBreakdown.map((row) => row.goalContribution
 assert.equal(filtered.actions[0].url, 'https://video.example/assist?t=10', 'la URL exacta con timestamp se conserva');
 assert.equal(filtered.actions[0].date, '16/08/2026', 'la videoteca conserva la fecha real de la acción');
 assert.equal(filtered.actions[1].url, '', 'una acción sin URL permanece registrada pero no entra en la videoteca');
+assert.equal(filtered.actions[1].contact, 'Pie izquierdo', 'la ficha PDF conserva la parte del cuerpo oficial');
+assert.equal(filtered.actions[0].scorer, 'Jairo Cárcaba', 'la asistencia conserva el goleador asociado');
+assert.equal(filtered.actions[0].assistZoneLabel, 'F. Creación derecha', 'la asistencia conserva su zona canónica');
 assert.deepEqual(filtered.history[0].goalLinks, ['https://video.example/goal?t=72']);
 assert.deepEqual(filtered.history[0].assistLinks, [], 'el historial sólo conserva enlaces reales y seguros');
 assert.equal(filtered.productionActions.length, 1, 'Acciones en vídeo sólo contiene acciones con URL canónica');
+assert.equal(filtered.videoActions.length, 1, 'la videoteca lógica sólo contiene URL canónica real');
 assert.deepEqual(filtered.pagePlan, ['summary', 'production'], 'el volumen normal genera exactamente dos A4');
 assert.deepEqual(filtered.influenceMaps.map((map) => map.zones[0].count), [3, 1, 2], 'Todos, Goles y Asistencias conservan datasets independientes');
 
@@ -51,7 +60,8 @@ const noProduction = buildPlayerProfilePrintReport({
     { key: 'assists', label: 'Asistencias', zones: [] },
   ],
 });
-assert.equal(noProduction.productionActions.length, 0, 'sin vídeos reales no se generan CTA falsos');
+assert.equal(noProduction.productionActions.length, 0, 'una acción oficial sin vídeo no recibe una ficha de vídeo falsa');
+assert.equal(noProduction.videoActions.length, 0, 'sin vídeos reales no se generan CTA falsos');
 assert.deepEqual(noProduction.pagePlan, ['summary', 'production'], 'la ausencia de producción no crea páginas vacías');
 
 const dense = buildPlayerProfilePrintReport({
@@ -60,8 +70,8 @@ const dense = buildPlayerProfilePrintReport({
 });
 assert.equal(dense.summaryHistory.length, 18);
 assert.deepEqual(dense.historyOverflow.map((page) => page.length), [30, 5], 'el historial largo se pagina sin recortar filas');
-assert.deepEqual(dense.actionOverflow.map((page) => page.length), [16, 1], 'la videoteca larga se pagina sin recortar acciones');
-assert.equal(dense.pagePlan.length, 6, 'sólo se añaden páginas cuando el volumen excede dos A4');
+assert.deepEqual(dense.actionOverflow.map((page) => page.length), [10, 10, 1], 'la videoteca larga se pagina sin recortar acciones');
+assert.equal(dense.pagePlan.length, 7, 'sólo se añaden páginas cuando el volumen excede dos A4');
 
 const borjaConnections = buildPlayerOffensiveConnections({
   playerName: 'Borja Rodríguez',
@@ -116,6 +126,9 @@ assert.match(componentSource, /Todas las acciones/);
 assert.match(componentSource, /Producción ofensiva/);
 assert.match(componentSource, /Conexiones ofensivas/);
 assert.match(componentSource, /Acciones en vídeo/);
+assert.match(componentSource, /Análisis objetivo de finalización/);
+assert.match(componentSource, /Cómo marca/);
+assert.match(componentSource, /Destino en portería/);
 assert.match(componentSource, /data-player-video-link="history"/, 'el historial conserva enlaces PDF identificables');
 assert.match(componentSource, /data-player-video-link="library"/, 'todo el CTA de videoteca conserva su enlace PDF');
 assert.doesNotMatch(componentSource, /Impacto en el tiempo|player-pdf-timeline/, 'se elimina por completo el timeline subjetivo');
@@ -125,7 +138,7 @@ assert.match(appSource, /team:\s*'C\.D\. Caudal de Mieres'/, 'el modelo recibe e
 assert.match(appSource, /competitionBreakdown:\s*pdfCompetitionRows/, 'el desglose se construye desde partidos filtrados reales');
 assert.match(appSource, /goalContributionsPer90/, 'G+A\/90 se calcula desde minutos y eventos oficiales');
 assert.match(appSource, /opponentCrest:\s*row\.match\.opponentCrest/, 'el historial recibe el escudo rival cuando existe');
-assert.match(appSource, /date:\s*matchDisplayDate\(event\.match\.date\)/, 'la videoteca recibe la fecha real');
+assert.match(appSource, /date:\s*matchDisplayDate\(match\.date\)/, 'la ficha de acción recibe la fecha real');
 assert.match(appSource, /result:\s*score\.hasScore \? [`]?[\s\S]*?: 'Sin datos'/, 'un partido sin resultado no se convierte artificialmente en 0-0');
 assert.match(appSource, /createPortal\(<PlayerProfilePdfReport report=\{playerPdfReport\} \/>, document\.body\)/, 'el dossier A4 se monta fuera del DOM interactivo');
 assert.match(footballMapSource, /<circle cx="34" cy="52\.5"[\s\S]*<rect x="14" y="2"[\s\S]*<rect x="24" y="2"[\s\S]*className="pitch-goal"/, 'los tres mapas reutilizan un campo con círculo, áreas, áreas pequeñas y porterías');
