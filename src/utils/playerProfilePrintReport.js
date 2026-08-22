@@ -30,6 +30,29 @@ const normalizeHistoryRow = (row = {}) => ({
   assistLinks: rows(row.assistLinks).map(getPlayerReportActionUrl).filter(Boolean),
 });
 
+const PRODUCTION_CONNECTION_LIMIT = 4;
+const CONNECTIONS_PER_CONTINUATION_PAGE = 12;
+
+export const buildPlayerOffensiveConnections = ({ society, playerName }) => rows(society)
+  .flatMap((row, rowIndex) => {
+    const teammateName = clean(row.name);
+    if (!teammateName) return [];
+    const given = Number(row.given);
+    const received = Number(row.received);
+    return [
+      Number.isFinite(given) && given > 0
+        ? { id: `given-${rowIndex}-${teammateName}`, from: clean(playerName), to: teammateName, count: given }
+        : null,
+      Number.isFinite(received) && received > 0
+        ? { id: `received-${rowIndex}-${teammateName}`, from: teammateName, to: clean(playerName), count: received }
+        : null,
+    ];
+  })
+  .filter((connection) => connection && connection.from && connection.to)
+  .sort((first, second) => second.count - first.count
+    || first.from.localeCompare(second.from, 'es')
+    || first.to.localeCompare(second.to, 'es'));
+
 export const buildPlayerProfilePrintReport = (source = {}) => {
   const actions = rows(source.actions).map(normalizeAction).filter((action) => action.type || action.description);
   const history = rows(source.history).map(normalizeHistoryRow);
@@ -50,7 +73,19 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
   const productionActions = videoActions.slice(0, 10);
   const actionOverflow = [];
   for (let index = productionActions.length; index < videoActions.length; index += 16) actionOverflow.push(videoActions.slice(index, index + 16));
-  const pagePlan = ['summary', 'production', ...historyOverflow.map(() => 'history'), ...actionOverflow.map(() => 'video')];
+  const offensiveConnections = buildPlayerOffensiveConnections({ society: source.society, playerName: source.identity?.name });
+  const productionConnections = offensiveConnections.slice(0, PRODUCTION_CONNECTION_LIMIT);
+  const connectionOverflow = [];
+  for (let index = productionConnections.length; index < offensiveConnections.length; index += CONNECTIONS_PER_CONTINUATION_PAGE) {
+    connectionOverflow.push(offensiveConnections.slice(index, index + CONNECTIONS_PER_CONTINUATION_PAGE));
+  }
+  const pagePlan = [
+    'summary',
+    'production',
+    ...connectionOverflow.map(() => 'connections'),
+    ...historyOverflow.map(() => 'history'),
+    ...actionOverflow.map(() => 'video'),
+  ];
 
   return {
     identity: source.identity || {},
@@ -60,6 +95,9 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
     production: source.production || {},
     influenceMaps,
     society: rows(source.society),
+    offensiveConnections,
+    productionConnections,
+    connectionOverflow,
     actions,
     history,
     summaryHistory,

@@ -159,16 +159,17 @@ function ProductionSummary({ production }) {
   );
 }
 
-function GoalConnections({ report }) {
-  const connections = safeRows(report.society).flatMap((row) => [
-    Number(row.given) > 0 ? { id: `given-${row.name}`, from: report.identity.name, to: row.name, count: Number(row.given) } : null,
-    Number(row.received) > 0 ? { id: `received-${row.name}`, from: row.name, to: report.identity.name, count: Number(row.received) } : null,
-  ]).filter(Boolean).sort((a, b) => b.count - a.count).slice(0, 6);
-  if (!connections.length) return null;
+function OffensiveConnections({ connections, continuation = false }) {
+  if (!safeRows(connections).length) return null;
   return (
-    <section className="player-pdf-section player-pdf-society">
-      <SectionTitle eyebrow="06">Conexiones de gol</SectionTitle>
-      <div className="player-pdf-connections">{connections.map((connection) => <div key={connection.id}><p><strong>{connection.from}</strong><span>→</span><strong>{connection.to}</strong></p><b>{connection.count} {connection.count === 1 ? 'asistencia' : 'asistencias'}</b></div>)}</div>
+    <section className={`player-pdf-section player-pdf-society${continuation ? ' player-pdf-connections-page' : ''}`}>
+      <SectionTitle eyebrow="06">Conexiones ofensivas{continuation ? ' · continuación' : ''}</SectionTitle>
+      <div className="player-pdf-connections">{connections.map((connection) => (
+        <article key={connection.id}>
+          <p className="player-pdf-connection-route"><strong>{connection.from}</strong><span aria-hidden="true">→</span><strong>{connection.to}</strong></p>
+          <p className="player-pdf-connection-count"><b>{connection.count}</b> {connection.count === 1 ? 'asistencia' : 'asistencias'}</p>
+        </article>
+      ))}</div>
     </section>
   );
 }
@@ -202,14 +203,24 @@ function SummaryPage({ report }) {
 }
 
 function ProductionPage({ report }) {
-  const hasGoalConnections = safeRows(report.society).some((row) => Number(row.given) > 0 || Number(row.received) > 0);
+  const hasOffensiveConnections = safeRows(report.offensiveConnections).length > 0;
   return (
     <article className="player-pdf-page player-pdf-production-page" data-player-pdf-page="production">
       <ReportHeader report={report} section="Producción, zonas y vídeo" />
       <InfluenceMaps maps={report.influenceMaps} />
-      <div className="player-pdf-production-row"><ProductionSummary production={report.production} /><GoalConnections report={report} /></div>
-      <ActionsLibrary actions={report.productionActions} eyebrow={hasGoalConnections ? '07' : '06'} />
+      <div className="player-pdf-production-row"><ProductionSummary production={report.production} /><OffensiveConnections connections={report.productionConnections} /></div>
+      <ActionsLibrary actions={report.productionActions} eyebrow={hasOffensiveConnections ? '07' : '06'} />
       <ReportFooter report={report} page={2} />
+    </article>
+  );
+}
+
+function ConnectionsContinuationPage({ report, connections, page }) {
+  return (
+    <article className="player-pdf-page player-pdf-overflow-page" data-player-pdf-page={`connections-${page}`}>
+      <ReportHeader report={report} section="Conexiones ofensivas · continuación" />
+      <OffensiveConnections connections={connections} continuation />
+      <ReportFooter report={report} page={page} />
     </article>
   );
 }
@@ -225,11 +236,11 @@ function HistoryContinuationPage({ report, rows, page }) {
 }
 
 function VideoContinuationPage({ report, actions, page }) {
-  const hasGoalConnections = safeRows(report.society).some((row) => Number(row.given) > 0 || Number(row.received) > 0);
+  const hasOffensiveConnections = safeRows(report.offensiveConnections).length > 0;
   return (
     <article className="player-pdf-page player-pdf-overflow-page" data-player-pdf-page={`video-${page}`}>
       <ReportHeader report={report} section="Acciones en vídeo · continuación" />
-      <ActionsLibrary actions={actions} eyebrow={hasGoalConnections ? '07' : '06'} />
+      <ActionsLibrary actions={actions} eyebrow={hasOffensiveConnections ? '07' : '06'} />
       <ReportFooter report={report} page={page} />
     </article>
   );
@@ -237,14 +248,16 @@ function VideoContinuationPage({ report, actions, page }) {
 
 export default function PlayerProfilePdfReport({ report }) {
   if (!report) return null;
+  const connectionPageCount = report.connectionOverflow.length;
   const historyPageCount = report.historyOverflow.length;
   return (
     <section className="player-profile-print-portal print-dossier-portal" aria-label={`Dossier PDF de ${report.identity.name}`}>
       <div className="player-profile-pdf-report" data-player-pdf-report="true" data-page-count={report.pagePlan.length}>
         <SummaryPage report={report} />
         <ProductionPage report={report} />
-        {report.historyOverflow.map((rows, index) => <HistoryContinuationPage key={`history-${index}`} report={report} rows={rows} page={index + 3} />)}
-        {report.actionOverflow.map((actions, index) => <VideoContinuationPage key={`video-${index}`} report={report} actions={actions} page={index + historyPageCount + 3} />)}
+        {report.connectionOverflow.map((connections, index) => <ConnectionsContinuationPage key={`connections-${index}`} report={report} connections={connections} page={index + 3} />)}
+        {report.historyOverflow.map((rows, index) => <HistoryContinuationPage key={`history-${index}`} report={report} rows={rows} page={index + connectionPageCount + 3} />)}
+        {report.actionOverflow.map((actions, index) => <VideoContinuationPage key={`video-${index}`} report={report} actions={actions} page={index + connectionPageCount + historyPageCount + 3} />)}
       </div>
     </section>
   );
