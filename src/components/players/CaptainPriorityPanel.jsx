@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getPlayerDisplayName } from '../../utils/playerDisplayName';
+import PlayerAvatar from '../player/PlayerAvatar';
 import {
   appendCaptainOrderId,
   moveCaptainOrderId,
@@ -14,10 +15,9 @@ const sortRosterPlayers = (left, right) => {
 };
 
 function CaptainAvatar({ player }) {
-  const initials = getPlayerDisplayName(player).split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
   return (
     <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/[0.07] text-[10px] font-black text-white">
-      {player?.image ? <img src={player.image} alt="" className="h-full w-full object-cover object-center" /> : initials || '—'}
+      <PlayerAvatar player={player} className="h-full w-full" fallbackTextClassName="text-[10px]" />
     </span>
   );
 }

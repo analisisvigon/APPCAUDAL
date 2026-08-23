@@ -114,6 +114,14 @@ assert.deepEqual(vectorResult.pageSections, ['PERFIL Y RENDIMIENTO COMPETITIVO',
 assert.ok(vectorResult.audit.linkAnnotations >= 2, 'historial y videoteca contienen enlaces PDF reales');
 assert.deepEqual(vectorResult.audit.missingUrls, []);
 assert.ok(vectorResult.audit.urls.includes(jairoVideoUrl));
+assert.deepEqual(vectorResult.presentationAudit.playerPhoto, { background: 'white', fit: 'contain', centered: true, imageLoaded: false }, 'el fallback del PDF ocupa el mismo marco blanco');
+
+const transparentPng = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lSxWAAAAAElFTkSuQmCC', 'base64'));
+const transparentPhotoResult = await createPlayerProfilePdf({
+  report: { ...jairoReport, identity: { ...jairoReport.identity, name: 'Borja Rodríguez', image: 'https://images.example/borja-transparent.png' } },
+  fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
+});
+assert.deepEqual(transparentPhotoResult.presentationAudit.playerPhoto, { background: 'white', fit: 'contain', centered: true, imageLoaded: true }, 'un PNG con transparencia se inserta centrado sobre blanco en el PDF final');
 assert.ok(exporterSource.indexOf('drawPositionUsage(pdf, report.positionUsage, y)') < exporterSource.indexOf("sectionTitle(pdf, 'Historial partido a partido'"), 'las posiciones se insertan en página 1 antes del historial');
 await assert.rejects(
   createPlayerProfilePdf({ report: { ...jairoReport, positionUsage: { totalMinutes: 90, determinedMinutes: 120 }, validation: { ...jairoReport.validation, positionUsage: { valid: false } } }, fetchImpl: null }),

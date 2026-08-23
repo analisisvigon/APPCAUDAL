@@ -26,6 +26,7 @@ import AccordionSection from './components/shared/AccordionSection';
 import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
 import PlayerPositionUsageSummary from './components/player/PlayerPositionUsageSummary';
+import PlayerAvatar from './components/player/PlayerAvatar';
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
 import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
 import { getPlayerPositionUsage } from './utils/playerPositionUsage';
@@ -3295,20 +3296,7 @@ const getPlayerInitials = (player = {}) => {
   const source = getPlayerDisplayName(player);
   return source.split(/\s+/).filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'JC';
 };
-const getPlayerPortraitUrl = (player = {}) => player.originalImage || player.original_image || player.image || '';
-const PlayerAvatarFallback = ({ player = {}, className = '', textClassName = 'text-xs' }) => (
-  <div className={`flex items-center justify-center bg-slate-100 ${className}`}>
-    <span className={`font-black uppercase tracking-[0.08em] text-slate-500 ${textClassName}`}>{getPlayerInitials(player)}</span>
-  </div>
-);
-const PlayerPortrait = ({ player = {}, className = '', imgClassName = 'h-full w-full object-cover object-center', fallbackTextClassName = 'text-xs' }) => {
-  const portraitUrl = getPlayerPortraitUrl(player);
-  return portraitUrl ? (
-    <img src={portraitUrl} alt={player.name || ''} className={imgClassName} />
-  ) : (
-    <PlayerAvatarFallback player={player} className={className} textClassName={fallbackTextClassName} />
-  );
-};
+const PlayerPortrait = (props) => <PlayerAvatar {...props} />;
 const PerformanceStatusRing = ({
   player = {},
   status = 'sin_datos',
@@ -28979,8 +28967,8 @@ function App() {
                   <section className="rounded-[1.35rem] border border-white/10 bg-[#07111f] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.20)] sm:p-5">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                       <div className="grid min-w-0 gap-4 sm:grid-cols-[136px_minmax(0,1fr)] sm:items-center">
-                        <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-[1.15rem] border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.14),rgba(255,255,255,0.05),rgba(212,0,0,0.12))] text-3xl font-black text-white shadow-[0_20px_48px_rgba(0,0,0,0.28)]">
-                          {selectedPlayerProfile.image ? <img src={selectedPlayerProfile.image} alt={selectedPlayerProfile.name} className="h-full w-full object-cover" /> : selectedPlayerProfile.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}
+                        <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-[1.15rem] border border-white/10 bg-white text-3xl font-black text-slate-500 shadow-[0_20px_48px_rgba(0,0,0,0.28)]">
+                          <PlayerAvatar player={selectedPlayerProfile} className="h-full w-full" fallbackTextClassName="text-3xl" />
                         </div>
                         <div className="min-w-0">
                           <h2 className="text-3xl font-black uppercase tracking-tight text-white sm:text-4xl">{selectedPlayerProfile.name}</h2>

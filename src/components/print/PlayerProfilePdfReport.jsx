@@ -1,4 +1,5 @@
 import FootballZoneMap from '../visualization/FootballZoneMap';
+import PlayerAvatar from '../player/PlayerAvatar';
 
 const safeRows = (value) => Array.isArray(value) ? value : [];
 const displayValue = (value, fallback = 'Sin datos') => value === 0 || value ? value : fallback;
@@ -27,10 +28,9 @@ function SectionTitle({ eyebrow, children }) {
 }
 
 function PlayerHeader({ report }) {
-  const initials = String(report.identity.name || '').split(/\s+/).filter(Boolean).map((part) => part[0]).join('').slice(0, 2);
   return (
     <section className="player-pdf-identity">
-      <div className="player-pdf-photo">{report.identity.image ? <img src={report.identity.image} alt={report.identity.name} /> : <span>{initials}</span>}</div>
+      <div className="player-pdf-photo"><PlayerAvatar player={{ name: report.identity.name, image: report.identity.image }} className="h-full w-full" fallbackTextClassName="text-base" /></div>
       <div className="player-pdf-identity-copy">
         <p className="player-pdf-kicker">Perfil profesional de rendimiento</p>
         <h1>{report.identity.name}</h1>

@@ -219,7 +219,7 @@ const drawKpis = (pdf, report, y) => {
 const drawIdentity = (pdf, report, images, y) => {
   const identity = report.identity || {};
   const photoSize = 31;
-  pdf.setFillColor(...COLORS.panel);
+  pdf.setFillColor(...COLORS.paper);
   pdf.setDrawColor(...COLORS.line);
   pdf.roundedRect(PAGE_MARGIN, y, photoSize, photoSize, 1.5, 1.5, 'FD');
   if (!fitImage(pdf, images.player, PAGE_MARGIN + 1, y + 1, photoSize - 2, photoSize - 2)) {
@@ -683,7 +683,21 @@ export const createPlayerProfilePdf = async ({
   const arrayBuffer = pdf.output('arraybuffer');
   const audit = auditPlayerPdfLinkAnnotations(arrayBuffer, expectedVideoUrls);
   if (!audit.valid) throw new Error(`El PDF generado no conserva todos los enlaces de vídeo (${audit.linkAnnotations} anotaciones; ${audit.missingUrls.length} URL ausentes).`);
-  return { arrayBuffer, audit, pages: pageSections.length, pageSections, vector: true };
+  return {
+    arrayBuffer,
+    audit,
+    pages: pageSections.length,
+    pageSections,
+    vector: true,
+    presentationAudit: {
+      playerPhoto: {
+        background: 'white',
+        fit: 'contain',
+        centered: true,
+        imageLoaded: Boolean(images.player?.data),
+      },
+    },
+  };
 };
 
 export const downloadPlayerProfilePdf = ({ arrayBuffer, filename = 'informe-individual.pdf', documentRef = document, urlApi = URL } = {}) => {

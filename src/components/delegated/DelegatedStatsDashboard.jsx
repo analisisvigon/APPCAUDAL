@@ -25,6 +25,7 @@ import {
   getDelegatedMatchCompetitionKey,
 } from '../../utils/delegatedStats';
 import { DELEGATED_EVENT_CATALOG, getDelegatedRegistryQuality } from '../../utils/delegatedMatchValidation';
+import PlayerAvatar from '../player/PlayerAvatar';
 
 const VIEWS = ['Resumen', 'Jugadores', 'Equipo', 'Evolución'];
 const RATE_FIELD = { key: 'shotAccuracy', label: '% tiros a puerta', short: 'TAP %' };
@@ -52,7 +53,6 @@ const fieldByKey = new Map([...DELEGATED_STAT_FIELDS, ...DELEGATED_PLAYER_STAT_F
 const selectorClass = 'min-w-0 w-full rounded-xl border border-white/10 bg-[#0c1930] px-3 py-2 text-[11px] font-bold text-white outline-none focus:border-caudal-electric/50';
 
 const getPlayerName = (player = {}) => player.name || player.shirtName || player.shirt_name || 'Jugador';
-const getPlayerImage = (player = {}) => player.image || player.imageUrl || player.image_url || player.photo_url || '';
 const getArrow = (value) => (Number(value) > 0 ? '↑' : Number(value) < 0 ? '↓' : '=');
 const signed = (value, mode = 'average') => {
   if (value == null) return '—';
@@ -141,20 +141,13 @@ function DerivedPanel({ sides }) {
   );
 }
 
-function PlayerAvatar({ player, size = 'h-8 w-8' }) {
-  const image = getPlayerImage(player);
-  return image
-    ? <img src={image} alt="" className={`${size} rounded-full object-cover ring-1 ring-white/10`} />
-    : <span className={`${size} inline-flex items-center justify-center rounded-full bg-white/10 text-[10px] font-black text-slate-400`}>{getPlayerName(player).slice(0, 2).toUpperCase()}</span>;
-}
-
 function PlayerDetail({ row }) {
   const recentRows = row.recent.rows.filter((item) => RECENT_METRICS.includes(item.key));
   return (
     <div className="mt-3 rounded-2xl border border-caudal-electric/15 bg-[#071123] p-4">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-3">
         <div className="flex items-center gap-3">
-          <PlayerAvatar player={row.player} size="h-12 w-12" />
+          <PlayerAvatar player={row.player} className="h-12 w-12 rounded-full ring-1 ring-white/10" />
           <div><p className="text-base font-black text-white">{getPlayerName(row.player)}</p><p className="text-[11px] font-bold text-slate-500">{row.matchesPlayed ?? '—'} PJ · {row.minutesReliable ? `${formatDelegatedNumber(row.minutes)} min` : 'minutos no disponibles'}</p></div>
         </div>
         {!row.participationReliable ? <span className="rounded-lg bg-amber-300/10 px-2 py-1 text-[9px] font-black uppercase text-amber-200">Participación incompleta</span> : null}
@@ -543,7 +536,7 @@ export default function DelegatedStatsDashboard({
           <div className="mt-2 max-h-[680px] overflow-auto rounded-2xl border border-white/5">
             <table className="w-full min-w-[1180px] border-collapse text-[11px]">
               <thead className="sticky top-0 z-20 bg-[#071123] text-[8px] uppercase tracking-[0.08em] text-slate-500"><tr><th className="sticky left-0 z-30 bg-[#071123] px-3 py-2.5 text-left">Jugador</th><th title="Partidos realmente jugados según Estadísticas/POST" onClick={() => toggleSort('matchesPlayed')} className="cursor-pointer px-2 py-2.5">PJ{sortMark('matchesPlayed')}</th><th title="Minutos reales de Estadísticas/POST" onClick={() => toggleSort('minutes')} className="cursor-pointer px-2 py-2.5">MIN{sortMark('minutes')}</th>{PLAYER_COLUMNS.map((field) => <th key={field.key} title={field.label} onClick={() => toggleSort(field.key)} className="cursor-pointer px-2 py-2.5">{field.short}{sortMark(field.key)}</th>)}</tr></thead>
-              <tbody>{orderedPlayers.map((row) => <tr key={row.playerId} onClick={() => setDetailPlayerId((current) => current === row.playerId ? '' : row.playerId)} className={`cursor-pointer border-t border-white/5 text-center text-slate-200 hover:bg-white/[0.035] ${detailPlayerId === row.playerId ? 'bg-caudal-electric/5' : ''}`}><td className="sticky left-0 bg-[#091428] px-3 py-2 text-left"><span className="flex items-center gap-2"><PlayerAvatar player={row.player} /><span className="font-black text-white">{displayPlayerName(row.player)}</span></span></td><td className="px-2 py-2 font-black">{row.matchesPlayed ?? '—'}</td><td className="px-2 py-2 font-bold">{row.minutesReliable ? formatDelegatedNumber(row.minutes) : '—'}</td>{PLAYER_COLUMNS.map((field) => <td key={field.key} className="px-2 py-2 font-bold tabular-nums">{renderPlayerValue(row, field)}</td>)}</tr>)}</tbody>
+              <tbody>{orderedPlayers.map((row) => <tr key={row.playerId} onClick={() => setDetailPlayerId((current) => current === row.playerId ? '' : row.playerId)} className={`cursor-pointer border-t border-white/5 text-center text-slate-200 hover:bg-white/[0.035] ${detailPlayerId === row.playerId ? 'bg-caudal-electric/5' : ''}`}><td className="sticky left-0 bg-[#091428] px-3 py-2 text-left"><span className="flex items-center gap-2"><PlayerAvatar player={row.player} className="h-8 w-8 rounded-full ring-1 ring-white/10" fallbackTextClassName="text-[10px]" /><span className="font-black text-white">{displayPlayerName(row.player)}</span></span></td><td className="px-2 py-2 font-black">{row.matchesPlayed ?? '—'}</td><td className="px-2 py-2 font-bold">{row.minutesReliable ? formatDelegatedNumber(row.minutes) : '—'}</td>{PLAYER_COLUMNS.map((field) => <td key={field.key} className="px-2 py-2 font-bold tabular-nums">{renderPlayerValue(row, field)}</td>)}</tr>)}</tbody>
             </table>
           </div>
           {!orderedPlayers.length ? <div className="mt-2"><EmptyState>No hay jugadores con participación o acciones en esta muestra.</EmptyState></div> : null}
