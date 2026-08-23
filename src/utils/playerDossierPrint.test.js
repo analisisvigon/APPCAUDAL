@@ -129,7 +129,7 @@ const transparentPhotoResult = await createPlayerProfilePdf({
   fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
 });
 assert.deepEqual(transparentPhotoResult.presentationAudit.playerPhoto, { background: 'white', fit: 'contain', centered: true, imageLoaded: true, source: 'https://images.example/borja-transparent.png' }, 'un PNG con transparencia se inserta centrado sobre blanco en el PDF final');
-assert.ok(exporterSource.indexOf('drawPositionUsage(pdf, report.positionUsage, y)') < exporterSource.indexOf("sectionTitle(pdf, 'Historial partido a partido'"), 'las posiciones se insertan en página 1 antes del historial');
+assert.ok(exporterSource.indexOf('drawPositionUsageMap(pdf, report.positionUsage, y)') < exporterSource.indexOf("sectionTitle(pdf, 'Historial partido a partido'"), 'el mapa vectorial de posiciones se inserta antes del historial');
 await assert.rejects(
   createPlayerProfilePdf({ report: { ...jairoReport, positionUsage: { totalMinutes: 90, determinedMinutes: 120 }, validation: { ...jairoReport.validation, positionUsage: { valid: false } } }, fetchImpl: null }),
   /minutos por posición/,
@@ -251,10 +251,43 @@ const multiplePositions = await createPlayerProfilePdf({
   fetchImpl: null,
 });
 assert.deepEqual(multiplePositions.presentationAudit.positions.map(({ position, minutes, percentage }) => [position, minutes, percentage]), [
-  ['Lateral izquierdo', 140, 70],
-  ['Central izquierdo', 40, 20],
-  ['Carrilero izquierdo', 20, 10],
-], 'las posiciones se presentan por minutos descendentes y conservan el porcentaje sobre minutos identificados');
+  ['Lateral izquierdo', 140, 64],
+  ['Central izquierdo', 40, 18],
+  ['Carrilero izquierdo', 20, 9],
+], 'las posiciones se presentan por minutos descendentes y calculan el porcentaje sobre minutos oficiales');
+assert.deepEqual(multiplePositions.presentationAudit.positionMap.markers.map(({ position, level }) => [position, level]), [
+  ['Lateral izquierdo', 'principal'],
+  ['Central izquierdo', 'secondary'],
+  ['Carrilero izquierdo', 'other'],
+], 'App y PDF comparten los tres niveles visuales del mapa');
+assert.deepEqual(multiplePositions.presentationAudit.positionMap.orientation, { attack: 'up', horizontal: 'player-perspective' });
+
+const borjaPositions = await createPlayerProfilePdf({
+  report: makeScenarioReport({
+    name: 'Borja Rodríguez',
+    positionUsage: {
+      positions: [{ position: 'Lateral izquierdo', minutes: 167, percentage: 93 }],
+      totalMinutes: 180,
+      determinedMinutes: 167,
+      unknownMinutes: 13,
+      valid: true,
+    },
+  }),
+  fetchImpl: null,
+});
+assert.deepEqual(borjaPositions.presentationAudit.positions, [{ position: 'Lateral izquierdo', minutes: 167, percentage: 93 }]);
+assert.deepEqual({
+  official: borjaPositions.presentationAudit.positionMap.officialMinutes,
+  identified: borjaPositions.presentationAudit.positionMap.identifiedMinutes,
+  unknown: borjaPositions.presentationAudit.positionMap.unknownMinutes,
+}, { official: 180, identified: 167, unknown: 13 }, 'Borja conserva 180 = 167 identificados + 13 desconocidos');
+if (process.env.PLAYER_POSITION_MAP_QA_PDF) fs.writeFileSync(process.env.PLAYER_POSITION_MAP_QA_PDF, Buffer.from(borjaPositions.arrayBuffer));
+
+const noPositionMinutes = await createPlayerProfilePdf({
+  report: makeScenarioReport({ positionUsage: { positions: [], totalMinutes: 0, determinedMinutes: 0, unknownMinutes: 0, valid: true } }),
+  fetchImpl: null,
+});
+assert.deepEqual(noPositionMinutes.presentationAudit.positionMap.markers, [], 'un jugador sin minutos no recibe marcadores ficticios');
 
 const sortedConnections = await createPlayerProfilePdf({
   report: { ...makeScenarioReport({ assists: 1 }), offensiveConnections: [

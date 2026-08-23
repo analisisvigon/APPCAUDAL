@@ -160,16 +160,15 @@ export const getPlayerPositionUsage = ({
     if (trailingGap) add('', trailingGap, 'unknown');
   });
 
-  const positionAllocations = [...allocations.values()];
-  const determinedMinutes = positionAllocations.reduce((sum, row) => sum + row.minutes, 0);
-  const positions = positionAllocations
+  const positions = [...allocations.values()]
     .map((row) => ({
       position: row.position,
       minutes: row.minutes,
-      percentage: determinedMinutes ? Math.round((row.minutes / determinedMinutes) * 100) : 0,
+      percentage: totalMinutes ? Math.round((row.minutes / totalMinutes) * 100) : 0,
       sources: [...row.sources],
     }))
     .sort((left, right) => right.minutes - left.minutes || left.position.localeCompare(right.position, 'es'));
+  const determinedMinutes = positions.reduce((sum, row) => sum + row.minutes, 0);
   const unknownMinutes = Math.max(0, totalMinutes - determinedMinutes);
   return {
     positions,

@@ -61,14 +61,14 @@ assert.equal(overlapping.determinedMinutes, 90, 'los tramos solapados no duplica
 assert.equal(overlapping.valid, true);
 
 const partial = buildPlayerPositionUsage({ ...identity, matchRows: [match({ intervals: [interval(0, 60, '4-2-3-1', 9), { ...interval(60, 90, '4-2-3-1', 10), isComplete: false }] })] });
-assert.deepEqual(partial.positions.map((row) => [row.position, row.minutes, row.percentage]), [['Extremo izquierdo', 60, 100]], 'un tramo fiable conserva sus minutos exactos y calcula el porcentaje solo sobre minutos identificados');
+assert.deepEqual(partial.positions.map((row) => [row.position, row.minutes, row.percentage]), [['Extremo izquierdo', 60, 67]], 'un tramo fiable conserva sus minutos exactos y calcula el porcentaje sobre minutos oficiales');
 assert.equal(partial.unknownMinutes, 30, 'los huecos posteriores no se rellenan con la posición inicial ni con la ficha');
 
 const partialPolyvalent = buildPlayerPositionUsage({ ...identity, matchRows: [match({ intervals: [interval(0, 45, '4-2-3-1', 1), interval(45, 75, '4-3-3', 8), { ...interval(75, 90, '4-3-3', 8), isComplete: false }] })] });
 assert.deepEqual(partialPolyvalent.positions.map((row) => [row.position, row.minutes, row.percentage]), [
-  ['Lateral derecho', 45, 60],
-  ['Extremo derecho', 30, 40],
-], 'los porcentajes de varias posiciones excluyen los minutos sin snapshot fiable');
+  ['Lateral derecho', 45, 50],
+  ['Extremo derecho', 30, 33],
+], 'los porcentajes de varias posiciones mantienen visibles los minutos sin snapshot fiable');
 assert.equal(partialPolyvalent.unknownMinutes, 15);
 
 const codedExplicitPosition = buildPlayerPositionUsage({ ...identity, matchRows: [match({ intervals: [interval(0, 90, '4-2-3-1', 10, { position: 'DC' })] })] });

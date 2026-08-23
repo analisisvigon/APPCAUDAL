@@ -1,4 +1,8 @@
 import { jsPDF } from 'jspdf';
+import {
+  PLAYER_POSITION_MAP_ORIENTATION,
+  buildPlayerPositionMapModel,
+} from './playerPositionMap.js';
 
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
@@ -324,39 +328,82 @@ const drawCompetitionTable = (pdf, competitions, y) => {
   return y + 5;
 };
 
-const drawPositionUsage = (pdf, usage, y) => {
-  const positions = rows(usage?.positions)
-    .filter((row) => number(row.minutes) > 0)
-    .sort((left, right) => number(right.minutes) - number(left.minutes) || clean(left.position).localeCompare(clean(right.position), 'es'));
-  const unknownMinutes = number(usage?.unknownMinutes);
-  const formatMinutes = (value) => Math.round(number(value)).toLocaleString('es-ES');
-  if (!positions.length) {
-    y = sectionTitle(pdf, 'Posiciones utilizadas', y, '03');
-    text(pdf, 'Sin información posicional suficiente', PAGE_MARGIN + 2, y + 5.2, { size: 6.4, color: COLORS.muted });
-    return y + 10;
-  }
-  const singlePosition = positions.length === 1 && !unknownMinutes;
-  y = sectionTitle(pdf, 'Posiciones utilizadas', y, '03');
-  if (singlePosition) {
-    const position = positions[0];
-    text(pdf, position.position, PAGE_MARGIN + 2, y + 5.2, { size: 7.2, style: 'bold', color: COLORS.ink, maxWidth: 115 });
-    text(pdf, `${formatMinutes(position.minutes)}' · ${number(position.percentage)}%`, A4_WIDTH_MM - PAGE_MARGIN, y + 5.2, { size: 7, style: 'bold', color: COLORS.blue, align: 'right' });
-    return y + 10;
-  }
-  const labelWidth = 52;
-  const barWidth = 78;
-  positions.forEach((position, index) => {
-    const rowY = y + index * 7.2;
-    text(pdf, position.position, PAGE_MARGIN + 2, rowY + 4.8, { size: 6.1, style: index === 0 ? 'bold' : 'normal', color: COLORS.ink, maxWidth: labelWidth - 3 });
-    pdf.setFillColor(229, 237, 244);
-    pdf.rect(PAGE_MARGIN + labelWidth, rowY + 2, barWidth, 2.8, 'F');
-    pdf.setFillColor(...COLORS.blue);
-    pdf.rect(PAGE_MARGIN + labelWidth, rowY + 2, barWidth * Math.min(100, number(position.percentage)) / 100, 2.8, 'F');
-    text(pdf, `${number(position.percentage)}% · ${formatMinutes(position.minutes)}'`, A4_WIDTH_MM - PAGE_MARGIN, rowY + 4.8, { size: 5.8, style: 'bold', color: COLORS.ink, align: 'right' });
+const drawPositionPitch = (pdf, model, x, y, width, height) => {
+  pdf.setFillColor(...COLORS.green);
+  pdf.setDrawColor(...COLORS.greenAlt);
+  pdf.roundedRect(x, y, width, height, 1.6, 1.6, 'FD');
+  pdf.setDrawColor(218, 242, 230);
+  pdf.setLineWidth(0.35);
+  pdf.rect(x + 2, y + 2, width - 4, height - 4);
+  pdf.line(x + 2, y + height / 2, x + width - 2, y + height / 2);
+  pdf.circle(x + width / 2, y + height / 2, Math.min(width, height) * 0.1);
+  pdf.rect(x + width * 0.24, y + 2, width * 0.52, height * 0.16);
+  pdf.rect(x + width * 0.24, y + height * 0.84 - 2, width * 0.52, height * 0.16);
+  text(pdf, 'ATAQUE', x + width / 2 - 1.5, y - 2, { size: 4.4, style: 'bold', color: COLORS.green, align: 'center' });
+  pdf.setDrawColor(...COLORS.green);
+  pdf.setLineWidth(0.45);
+  pdf.line(x + width / 2 + 7, y - 1, x + width / 2 + 7, y - 5);
+  pdf.line(x + width / 2 + 7, y - 5, x + width / 2 + 5.8, y - 3.6);
+  pdf.line(x + width / 2 + 7, y - 5, x + width / 2 + 8.2, y - 3.6);
+  model.markers.forEach((position) => {
+    const markerX = x + 2 + position.coordinates.x * (width - 4);
+    const markerY = y + 2 + position.coordinates.y * (height - 4);
+    const radius = position.level === 'principal' ? 2.5 : position.level === 'secondary' ? 2.1 : 1.8;
+    if (position.level === 'principal') {
+      pdf.setFillColor(102, 213, 241);
+      pdf.circle(markerX, markerY, 3.7, 'F');
+    }
+    pdf.setFillColor(...(position.level === 'other' ? [148, 163, 184] : COLORS.electric));
+    pdf.setDrawColor(...COLORS.paper);
+    pdf.setLineWidth(position.level === 'principal' ? 0.65 : 0.45);
+    pdf.circle(markerX, markerY, radius, 'FD');
+    text(pdf, position.markerNumber, markerX, markerY + 0.8, { size: 4.1, style: 'bold', color: COLORS.navy, align: 'center' });
   });
-  const contentHeight = positions.length * 7.2;
-  if (unknownMinutes) text(pdf, `${formatMinutes(unknownMinutes)}' sin posición registrada`, PAGE_MARGIN + 2, y + contentHeight + 3.5, { size: 4.8, color: COLORS.muted });
-  return y + contentHeight + (unknownMinutes ? 7 : 3);
+};
+
+const drawPositionUsageMap = (pdf, usage, y) => {
+  const model = buildPlayerPositionMapModel(usage);
+  const formatMinutes = (value) => Math.round(number(value)).toLocaleString('es-ES');
+  y = sectionTitle(pdf, 'Posiciones utilizadas', y, '03');
+  if (model.empty) {
+    text(pdf, 'Sin minutos registrados para este filtro.', PAGE_MARGIN + 2, y + 5.2, { size: 6.4, color: COLORS.muted });
+    return y + 10;
+  }
+  if (!model.hasPositionData) {
+    text(pdf, 'Sin información posicional suficiente para este filtro.', PAGE_MARGIN + 2, y + 5.2, { size: 6.4, color: COLORS.muted });
+    if (model.unknownPositionMinutes) text(pdf, `${formatMinutes(model.unknownPositionMinutes)}' sin posición registrada`, PAGE_MARGIN + 2, y + 10, { size: 4.9, color: COLORS.muted });
+    return y + (model.unknownPositionMinutes ? 15 : 10);
+  }
+
+  const pitchWidth = 31;
+  const pitchHeight = 47;
+  const pitchX = PAGE_MARGIN + 2;
+  const pitchY = y + 4;
+  drawPositionPitch(pdf, model, pitchX, pitchY, pitchWidth, pitchHeight);
+  const legendX = pitchX + pitchWidth + 8;
+  const legendWidth = Math.min(105, A4_WIDTH_MM - PAGE_MARGIN - legendX);
+  const legendRight = legendX + legendWidth;
+  text(pdf, 'DISTRIBUCIÓN', legendX, y + 3.5, { size: 4.8, style: 'bold', color: COLORS.muted });
+  model.positions.forEach((position, index) => {
+    const rowY = y + 7 + index * 8.5;
+    const markerColor = position.level === 'other' ? [148, 163, 184] : COLORS.electric;
+    pdf.setFillColor(...markerColor);
+    pdf.setDrawColor(...COLORS.paper);
+    pdf.circle(legendX + 2.2, rowY + 2.2, position.level === 'principal' ? 2.2 : 1.8, 'FD');
+    if (position.coordinates) text(pdf, position.markerNumber, legendX + 2.2, rowY + 2.9, { size: 3.7, style: 'bold', color: COLORS.navy, align: 'center' });
+    else text(pdf, '—', legendX + 2.2, rowY + 2.9, { size: 4, style: 'bold', color: COLORS.muted, align: 'center' });
+    text(pdf, position.levelLabel.toUpperCase(), legendX + 6, rowY, { size: 4.1, style: 'bold', color: position.level === 'principal' ? COLORS.blue : COLORS.muted });
+    singleLineText(pdf, position.position, legendX + 6, rowY + 4, { size: 6.2, minSize: 5.2, style: 'bold', color: COLORS.ink, maxWidth: legendWidth - 48 });
+    text(pdf, `${formatMinutes(position.minutes)}' · ${position.percentage}%`, legendRight, rowY + 4, { size: 5.8, style: 'bold', color: COLORS.blue, align: 'right' });
+    if (index < model.positions.length - 1) {
+      pdf.setDrawColor(...COLORS.line);
+      pdf.line(legendX + 6, rowY + 6.2, legendRight, rowY + 6.2);
+    }
+  });
+  const contentHeight = Math.max(pitchHeight + 4, 8 + model.positions.length * 8.5);
+  if (model.unknownPositionMinutes) text(pdf, `${formatMinutes(model.unknownPositionMinutes)}' sin posición registrada`, PAGE_MARGIN + 2, y + contentHeight + 4, { size: 4.9, style: 'bold', color: COLORS.muted });
+  if (model.unmappedPositions.length) text(pdf, 'Las posiciones sin coordenada específica se conservan sin inventar un punto.', legendX, y + contentHeight + 4, { size: 4.2, color: COLORS.muted, maxWidth: legendWidth });
+  return y + contentHeight + (model.unknownPositionMinutes || model.unmappedPositions.length ? 8 : 4);
 };
 
 const drawHistoryHeader = (pdf, y) => {
@@ -665,11 +712,13 @@ export const createPlayerProfilePdf = async ({
   fetchImpl = globalThis.fetch,
 } = {}) => {
   if (!report?.identity?.name) throw new Error('No se puede generar el PDF: falta el modelo normalizado del jugador.');
+  const positionMapModel = buildPlayerPositionMapModel(report.positionUsage);
   if (report.validation?.seasonReason === 'MULTIPLE_SEASONS') throw new Error('No se puede generar el dossier mezclando varias temporadas. Selecciona una temporada concreta.');
   if (report.validation?.production?.valid === false) throw new Error('No se puede generar el dossier: los agregados de producción son contradictorios.');
-  if (report.validation?.positionUsage?.valid === false || number(report.positionUsage?.determinedMinutes) > number(report.positionUsage?.totalMinutes)) {
+  if (report.validation?.positionUsage?.valid === false || positionMapModel.totalIdentifiedMinutes > positionMapModel.officialMinutes || number(report.positionUsage?.determinedMinutes) > number(report.positionUsage?.totalMinutes)) {
     throw new Error('No se puede generar el dossier: los minutos por posición superan los minutos reales del jugador.');
   }
+  if (!positionMapModel.valid) throw new Error('No se puede generar el dossier: minutos identificados y sin posición no coinciden con los minutos oficiales.');
 
   const imageUrls = new Set([
     report.identity?.image,
@@ -694,7 +743,11 @@ export const createPlayerProfilePdf = async ({
   y = sectionTitle(pdf, `Rendimiento · Temporada ${report.identity.season || '—'}`, y, '01');
   y = drawKpis(pdf, report, y);
   y = drawCompetitionTable(pdf, report.competitionBreakdown, y);
-  y = drawPositionUsage(pdf, report.positionUsage, y);
+  const positionMapHeight = positionMapModel.empty
+    ? 17
+    : 7 + Math.max(51, 8 + positionMapModel.positions.length * 8.5) + (positionMapModel.unknownPositionMinutes || positionMapModel.unmappedPositions.length ? 8 : 4);
+  if (y + positionMapHeight > CONTENT_BOTTOM) y = addPage('POSICIONES UTILIZADAS · CONTINUACIÓN');
+  y = drawPositionUsageMap(pdf, report.positionUsage, y);
 
   const history = rows(report.history);
   if (history.length) {
@@ -785,11 +838,25 @@ export const createPlayerProfilePdf = async ({
         imageLoaded: Boolean(images.player?.data),
         source: clean(report.identity?.image),
       },
-      positions: rows(report.positionUsage?.positions)
-        .filter((row) => number(row.minutes) > 0)
-        .slice()
-        .sort((left, right) => number(right.minutes) - number(left.minutes) || clean(left.position).localeCompare(clean(right.position), 'es'))
-        .map((row) => ({ position: clean(row.position), minutes: number(row.minutes), percentage: number(row.percentage) })),
+      positions: positionMapModel.positions.map((position) => ({
+        position: position.position,
+        minutes: position.minutes,
+        percentage: position.percentage,
+      })),
+      positionMap: {
+        vector: true,
+        orientation: PLAYER_POSITION_MAP_ORIENTATION,
+        officialMinutes: positionMapModel.officialMinutes,
+        identifiedMinutes: positionMapModel.totalIdentifiedMinutes,
+        unknownMinutes: positionMapModel.unknownPositionMinutes,
+        markers: positionMapModel.markers.map((position) => ({
+          position: position.position,
+          level: position.level,
+          x: position.coordinates.x,
+          y: position.coordinates.y,
+        })),
+        unmappedPositions: positionMapModel.unmappedPositions.map((position) => position.position),
+      },
       connections: sortConnections(report.offensiveConnections).map((connection) => ({
         from: clean(connection.from),
         to: clean(connection.to),
