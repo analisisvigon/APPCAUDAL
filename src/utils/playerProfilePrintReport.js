@@ -110,7 +110,7 @@ export const buildPlayerDossierSectionPlan = (report = {}) => {
     .map(({ visible, ...section }, index) => ({ ...section, number: String(index + 1).padStart(2, '0') }));
 };
 
-export const buildPlayerOffensiveConnections = ({ society, playerName }) => rows(society)
+export const buildPlayerOffensiveConnections = ({ society, playerName, playerImage = '' }) => rows(society)
   .flatMap((row, rowIndex) => {
     const teammateName = clean(row.name);
     if (!teammateName) return [];
@@ -118,10 +118,10 @@ export const buildPlayerOffensiveConnections = ({ society, playerName }) => rows
     const received = Number(row.received);
     return [
       Number.isFinite(given) && given > 0
-        ? { id: `given-${rowIndex}-${teammateName}`, direction: 'given', from: clean(playerName), to: teammateName, count: given }
+        ? { id: `given-${rowIndex}-${teammateName}`, direction: 'given', from: clean(playerName), to: teammateName, count: given, fromImage: clean(playerImage), toImage: clean(row.image) }
         : null,
       Number.isFinite(received) && received > 0
-        ? { id: `received-${rowIndex}-${teammateName}`, direction: 'received', from: teammateName, to: clean(playerName), count: received }
+        ? { id: `received-${rowIndex}-${teammateName}`, direction: 'received', from: teammateName, to: clean(playerName), count: received, fromImage: clean(row.image), toImage: clean(playerImage) }
         : null,
     ];
   })
@@ -155,7 +155,7 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
   const productionActions = videoActions.slice(0, PRODUCTION_ACTION_LIMIT);
   const actionOverflow = [];
   for (let index = productionActions.length; index < videoActions.length; index += ACTIONS_PER_CONTINUATION_PAGE) actionOverflow.push(videoActions.slice(index, index + ACTIONS_PER_CONTINUATION_PAGE));
-  const offensiveConnections = buildPlayerOffensiveConnections({ society: source.society, playerName: source.identity?.name });
+  const offensiveConnections = buildPlayerOffensiveConnections({ society: source.society, playerName: source.identity?.name, playerImage: source.identity?.image });
   const productionConnections = offensiveConnections.slice(0, PRODUCTION_CONNECTION_LIMIT);
   const connectionOverflow = [];
   const influenceZoneTotal = totalZones(influenceMaps);

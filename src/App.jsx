@@ -28720,6 +28720,17 @@ function App() {
               const playerGoalPhaseCounts = countPhases(allGoalActions);
               const maxPlayerGoalPhase = Math.max(1, ...playerGoalPhaseCounts.map((row) => row.count));
               const societyRows = buildPlayerConnectionRows({ goalActions: allGoalActions, assistActions: allAssistActions, filter: 'Todos' });
+              const pdfSocietyRows = societyRows.map((connection) => {
+                const connectionName = normalizePlayerIdentityName(connection.name);
+                const candidates = players.filter((player) => [player.name, player.shirtName, player.shirt_name]
+                  .filter(Boolean)
+                  .some((name) => normalizePlayerIdentityName(name) === connectionName));
+                const connectionPlayer = candidates.length === 1 ? candidates[0] : null;
+                return {
+                  ...connection,
+                  image: connectionPlayer ? getPlayerAvatarSource(connectionPlayer) : '',
+                };
+              });
               const goalTargetZones = goalMouthZoneCatalog.map((zone) => ({ ...zone, count: goalZoneCounts[zone.value] || 0 }));
               const productionInvariant = buildPlayerProductionInvariantReport({
                 goals: allGoalActions,
@@ -28841,6 +28852,8 @@ function App() {
                   minutes: aggregate.minutes,
                   minutesPerMatch: aggregate.played ? Math.round(aggregate.minutes / aggregate.played) : 0,
                   starterPercentage: aggregate.played ? Math.round((aggregate.starts / aggregate.played) * 100) : 0,
+                  minutesPlayedPercentage: aggregate.participation,
+                  possibleMinutes: aggregate.rows.length * 90,
                   goals: aggregate.goals,
                   assists: aggregate.assists,
                   goalContributions: aggregate.goals + aggregate.assists,
@@ -28870,7 +28883,7 @@ function App() {
                     zones: goalTargetZones,
                   },
                 },
-                society: societyRows,
+                society: pdfSocietyRows,
                 actions: playerPdfActions,
                 history: aggregate.rows.map((row) => {
                   const score = getMatchScoreData(row.match);

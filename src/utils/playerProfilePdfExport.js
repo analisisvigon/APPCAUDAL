@@ -242,22 +242,27 @@ const drawFooter = (pdf, report, page, total) => {
 
 const drawKpis = (pdf, report, y) => {
   const summary = report.seasonSummary || {};
+  const possibleMinutes = number(summary.possibleMinutes);
+  const minutesPlayedPercentage = hasValue(summary.minutesPlayedPercentage)
+    ? number(summary.minutesPlayedPercentage)
+    : possibleMinutes > 0 ? Math.round((number(summary.minutes) / possibleMinutes) * 100) : 0;
   const primary = [
     ['Partidos', summary.played],
     ['Titularidades', summary.starts],
     ['Minutos', `${number(summary.minutes)}'`],
     ['Min/partido', `${number(summary.minutesPerMatch)}'`],
-    ['% titularidad', `${number(summary.starterPercentage)}%`],
+    ['Minutos disputados', `${minutesPlayedPercentage}%`, `${number(summary.minutes)}' de ${possibleMinutes}' posibles`],
   ];
   const width = CONTENT_WIDTH / primary.length;
-  primary.forEach(([label, value], index) => {
+  primary.forEach(([label, value, detail], index) => {
     const x = PAGE_MARGIN + width * index;
     if (index) {
       pdf.setDrawColor(...COLORS.line);
-      pdf.line(x, y, x, y + 20);
+      pdf.line(x, y, x, y + 22);
     }
-    text(pdf, value, x + width / 2, y + 9, { size: 17, style: 'bold', color: COLORS.navy, align: 'center' });
-    text(pdf, label.toUpperCase(), x + width / 2, y + 15, { size: 5.2, style: 'bold', color: COLORS.muted, align: 'center' });
+    text(pdf, value, x + width / 2, y + 9.4, { size: 18, style: 'bold', color: COLORS.navy, align: 'center' });
+    text(pdf, label.toUpperCase(), x + width / 2, y + 15.8, { size: 5.4, style: 'bold', color: COLORS.muted, align: 'center' });
+    if (detail) singleLineText(pdf, detail, x + width / 2, y + 20.2, { size: 4.2, minSize: 3.7, color: COLORS.muted, align: 'center', maxWidth: width - 3 });
   });
   const secondary = [
     ['Goles', summary.goals], ['Asistencias', summary.assists], ['G+A', summary.goalContributions],
@@ -267,11 +272,11 @@ const drawKpis = (pdf, report, y) => {
   secondary.forEach(([label, value], index) => {
     const x = PAGE_MARGIN + secondaryWidth * index;
     pdf.setFillColor(...(index < 3 ? [239, 247, 251] : COLORS.panel));
-    pdf.rect(x + 0.5, y + 23, secondaryWidth - 1, 12, 'F');
-    text(pdf, hasValue(value) ? value : 0, x + secondaryWidth / 2, y + 28.3, { size: 9.5, style: 'bold', color: index < 3 ? COLORS.blue : COLORS.ink, align: 'center' });
-    text(pdf, label.toUpperCase(), x + secondaryWidth / 2, y + 32.6, { size: 4.3, style: 'bold', color: COLORS.muted, align: 'center' });
+    pdf.rect(x + 0.5, y + 25, secondaryWidth - 1, 13, 'F');
+    text(pdf, hasValue(value) ? value : 0, x + secondaryWidth / 2, y + 30.7, { size: 10.5, style: 'bold', color: index < 3 ? COLORS.blue : COLORS.ink, align: 'center' });
+    text(pdf, label.toUpperCase(), x + secondaryWidth / 2, y + 35.5, { size: 4.5, style: 'bold', color: COLORS.muted, align: 'center' });
   });
-  return y + 40;
+  return y + 43;
 };
 
 const drawCompactPositionPitch = (pdf, model, x, y, width, height) => {
@@ -299,12 +304,12 @@ const drawCompactPositionPitch = (pdf, model, x, y, width, height) => {
     pdf.circle(markerX, markerY, radius, 'FD');
     text(pdf, position.markerNumber, markerX, markerY + 0.62, { size: 3.2, style: 'bold', color: COLORS.navy, align: 'center' });
   });
-  text(pdf, 'ATAQUE', x + width - 7, y - 1.3, { size: 3.8, style: 'bold', color: COLORS.green, align: 'right' });
-  pdf.setDrawColor(...COLORS.green);
-  pdf.setLineWidth(0.4);
-  pdf.line(x + width - 5.5, y - 2.4, x + width, y - 2.4);
-  pdf.line(x + width, y - 2.4, x + width - 1.7, y - 3.7);
-  pdf.line(x + width, y - 2.4, x + width - 1.7, y - 1.1);
+  text(pdf, 'ATAQUE', x + width - 5.5, y - 0.8, { size: 3.1, style: 'bold', color: COLORS.muted, align: 'right' });
+  pdf.setDrawColor(...COLORS.muted);
+  pdf.setLineWidth(0.22);
+  pdf.line(x + width - 4.3, y - 1.7, x + width - 0.8, y - 1.7);
+  pdf.line(x + width - 0.8, y - 1.7, x + width - 1.9, y - 2.5);
+  pdf.line(x + width - 0.8, y - 1.7, x + width - 1.9, y - 0.9);
 };
 
 const drawCompactPositionProfile = (pdf, model, competitionProfile, images, scope, x, y, width) => {
@@ -315,13 +320,13 @@ const drawCompactPositionProfile = (pdf, model, competitionProfile, images, scop
   const competitionX = x + seasonWidth + 3;
   text(pdf, 'COMPETICIÓN', competitionX, y + 3.7, { size: 4.1, style: 'bold', color: COLORS.muted });
   const hasCompetitionIdentity = competitionProfile.mode === 'single' && (images.competition || competitionProfile.icon);
-  const logoWidth = hasCompetitionIdentity ? 7 : 0;
-  if (images.competition) fitImage(pdf, images.competition, competitionX, y + 5, logoWidth, 7);
+  const logoWidth = hasCompetitionIdentity ? 8.5 : 0;
+  if (images.competition) fitImage(pdf, images.competition, competitionX, y + 4.4, logoWidth, 8.5);
   else if (competitionProfile.mode === 'single' && competitionProfile.icon) {
     pdf.setFillColor(...COLORS.panel);
     pdf.setDrawColor(...COLORS.line);
-    pdf.roundedRect(competitionX, y + 5, logoWidth, 7, 1, 1, 'FD');
-    text(pdf, competitionProfile.icon, competitionX + logoWidth / 2, y + 9.5, { size: 4.1, style: 'bold', color: COLORS.blue, align: 'center' });
+    pdf.roundedRect(competitionX, y + 4.4, logoWidth, 8.5, 1, 1, 'FD');
+    text(pdf, competitionProfile.icon, competitionX + logoWidth / 2, y + 9.7, { size: 4.5, style: 'bold', color: COLORS.blue, align: 'center' });
   }
   singleLineText(pdf, competitionProfile.label, competitionX + (logoWidth ? 8.5 : 0), y + 9.5, {
     size: 5.7,
@@ -342,21 +347,26 @@ const drawCompactPositionProfile = (pdf, model, competitionProfile, images, scop
     return;
   }
 
-  const pitchWidth = 29;
-  const pitchHeight = 18;
+  const pitchWidth = 34;
+  const pitchHeight = 21;
   const pitchY = y + 21;
   drawCompactPositionPitch(pdf, model, x, pitchY, pitchWidth, pitchHeight);
   const legendX = x + pitchWidth + 4;
   const legendRight = x + width;
   model.positions.forEach((position, index) => {
-    const rowY = pitchY + 2.6 + index * 5;
+    const rowY = pitchY + 2.8 + index * 5.5;
     pdf.setFillColor(...(position.level === 'other' ? [148, 163, 184] : COLORS.electric));
-    pdf.circle(legendX + 1.2, rowY - 0.55, position.level === 'principal' ? 1.15 : 0.95, 'F');
-    singleLineText(pdf, position.position, legendX + 3.4, rowY, { size: 4.7, minSize: 3.9, style: 'bold', color: COLORS.ink, maxWidth: Math.max(10, width - pitchWidth - 22) });
-    text(pdf, `${formatMinutes(position.minutes)}' · ${position.percentage}%`, legendRight, rowY, { size: 4.3, style: 'bold', color: COLORS.blue, align: 'right' });
+    if (position.level === 'principal') {
+      pdf.setFillColor(183, 235, 248);
+      pdf.circle(legendX + 1.2, rowY - 0.55, 1.75, 'F');
+      pdf.setFillColor(...COLORS.electric);
+    }
+    pdf.circle(legendX + 1.2, rowY - 0.55, position.level === 'principal' ? 1.3 : 0.9, 'F');
+    singleLineText(pdf, position.position, legendX + 3.4, rowY, { size: position.level === 'principal' ? 5.1 : 4.6, minSize: 3.8, style: position.level === 'principal' ? 'bold' : 'normal', color: position.level === 'principal' ? COLORS.navy : COLORS.ink, maxWidth: Math.max(9, width - pitchWidth - 22) });
+    text(pdf, `${formatMinutes(position.minutes)}' · ${position.percentage}%`, legendRight, rowY, { size: position.level === 'principal' ? 4.7 : 4.2, style: 'bold', color: position.level === 'principal' ? COLORS.blue : COLORS.muted, align: 'right' });
   });
   if (model.unknownPositionMinutes) {
-    text(pdf, `${formatMinutes(model.unknownPositionMinutes)}' sin posición registrada`, legendX, pitchY + 3 + model.positions.length * 5, { size: 4.1, color: COLORS.muted, maxWidth: width - pitchWidth - 4 });
+    text(pdf, `${formatMinutes(model.unknownPositionMinutes)}' sin posición registrada`, legendX, pitchY + 3 + model.positions.length * 5.5, { size: 4.1, color: COLORS.muted, maxWidth: width - pitchWidth - 4 });
   }
 };
 
@@ -364,9 +374,9 @@ const drawIdentity = (pdf, report, images, positionMapModel, competitionProfile,
   const identity = report.identity || {};
   const scope = getPlayerPdfScope(report);
   const photoSize = 32;
-  const dividerX = 128;
+  const dividerX = 124;
   const positionRows = Math.max(1, positionMapModel.positions.length);
-  const headerHeight = Math.max(40, 25 + positionRows * 5 + (positionMapModel.unknownPositionMinutes ? 4 : 0));
+  const headerHeight = Math.max(43, 26 + positionRows * 5.5 + (positionMapModel.unknownPositionMinutes ? 4 : 0));
   pdf.setFillColor(...COLORS.paper);
   pdf.setDrawColor(...COLORS.line);
   pdf.roundedRect(PAGE_MARGIN, y, photoSize, photoSize, 1.5, 1.5, 'FD');
@@ -396,7 +406,6 @@ const drawIdentity = (pdf, report, images, positionMapModel, competitionProfile,
     fitImage(pdf, images.team, copyX + 0.8, y + 24.8, 7.4, 7.4);
   }
   singleLineText(pdf, clean(identity.team).toUpperCase() || 'EQUIPO NO REGISTRADO', teamCopyX, teamY, { size: 6.8, minSize: 4.8, style: 'bold', color: COLORS.blue, maxWidth: dividerX - teamCopyX - 4 });
-  text(pdf, scope.season ? `Temporada ${scope.season}` : 'Temporada —', teamCopyX, y + 33.5, { size: 5.3, color: COLORS.muted });
 
   pdf.setDrawColor(...COLORS.line);
   pdf.setLineWidth(0.25);
@@ -413,16 +422,16 @@ const drawCompetitionTable = (pdf, competitions, y, sectionNumber) => {
   const headers = ['Competición', 'PJ', 'Tit.', 'Min', 'Min/PJ', 'G', 'A', 'G+A'];
   let x = PAGE_MARGIN;
   pdf.setFillColor(...COLORS.navy);
-  pdf.rect(PAGE_MARGIN, y, CONTENT_WIDTH, 7, 'F');
+  pdf.rect(PAGE_MARGIN, y, CONTENT_WIDTH, 7.6, 'F');
   headers.forEach((header, index) => {
-    text(pdf, header, x + (index ? widths[index] / 2 : 2), y + 4.6, { size: 5.2, style: 'bold', color: COLORS.paper, align: index ? 'center' : 'left' });
+    text(pdf, header, x + (index ? widths[index] / 2 : 2), y + 5, { size: 5.5, style: 'bold', color: COLORS.paper, align: index ? 'center' : 'left' });
     x += widths[index];
   });
-  y += 7;
+  y += 7.6;
   competitionRows.forEach((row, rowIndex) => {
     if (rowIndex % 2 === 0) {
       pdf.setFillColor(...COLORS.panel);
-      pdf.rect(PAGE_MARGIN, y, CONTENT_WIDTH, 7.2, 'F');
+      pdf.rect(PAGE_MARGIN, y, CONTENT_WIDTH, 8.2, 'F');
     }
     const minutesPerMatch = hasValue(row.minutesPerMatch)
       ? row.minutesPerMatch
@@ -430,10 +439,10 @@ const drawCompetitionTable = (pdf, competitions, y, sectionNumber) => {
     const values = [row.label, row.played, row.starts, `${row.minutes}'`, `${minutesPerMatch}'`, row.goals, row.assists, row.goalContributions];
     x = PAGE_MARGIN;
     values.forEach((value, index) => {
-      text(pdf, value, x + (index ? widths[index] / 2 : 2), y + 4.7, { size: 6.1, style: index === 6 ? 'bold' : 'normal', color: COLORS.ink, align: index ? 'center' : 'left', maxWidth: index ? 0 : widths[index] - 4 });
+      text(pdf, value, x + (index ? widths[index] / 2 : 2), y + 5.3, { size: 6.5, style: index === 6 ? 'bold' : 'normal', color: COLORS.ink, align: index ? 'center' : 'left', maxWidth: index ? 0 : widths[index] - 4 });
       x += widths[index];
     });
-    y += 7.2;
+    y += 8.2;
   });
   return y + 5;
 };
@@ -520,13 +529,13 @@ const drawHistoryHeader = (pdf, y) => {
   const widths = [16, 46, 16, 28, 7, 14, 9, 8, 8, 18, 16];
   const headers = ['Fecha', 'Rival', 'Resultado', 'Competición', 'L/V', 'Rol', 'Min', 'G', 'A', 'Tarjetas', 'Lesión'];
   pdf.setFillColor(...COLORS.navy);
-  pdf.rect(PAGE_MARGIN, y, CONTENT_WIDTH, 7, 'F');
+  pdf.rect(PAGE_MARGIN, y, CONTENT_WIDTH, 7.6, 'F');
   let x = PAGE_MARGIN;
   headers.forEach((header, index) => {
-    text(pdf, header, x + (index === 1 || index === 3 ? 1.5 : widths[index] / 2), y + 4.7, { size: 4.6, style: 'bold', color: COLORS.paper, align: index === 1 || index === 3 ? 'left' : 'center' });
+    text(pdf, header, x + (index === 1 || index === 3 ? 1.5 : widths[index] / 2), y + 5, { size: 4.9, style: 'bold', color: COLORS.paper, align: index === 1 || index === 3 ? 'left' : 'center' });
     x += widths[index];
   });
-  return { y: y + 7, widths };
+  return { y: y + 7.6, widths };
 };
 
 const drawHistoryLinks = (pdf, links, count, x, y, width) => {
@@ -555,25 +564,25 @@ const compactPitchZoneLabel = (zone = {}, index = 0) => {
 };
 
 const drawHistoryRow = (pdf, row, y, widths, rivalImage, rowIndex) => {
-  const height = 8.2;
+  const height = 9.2;
   if (rowIndex % 2 === 0) {
     pdf.setFillColor(...COLORS.panel);
     pdf.rect(PAGE_MARGIN, y, CONTENT_WIDTH, height, 'F');
   }
   let x = PAGE_MARGIN;
-  const center = (value, index, options = {}) => text(pdf, value, x + widths[index] / 2, y + 5.2, { size: 5.3, color: COLORS.ink, align: 'center', ...options });
+  const center = (value, index, options = {}) => text(pdf, value, x + widths[index] / 2, y + 5.8, { size: 5.6, color: COLORS.ink, align: 'center', ...options });
   center(row.date, 0);
   x += widths[0];
-  if (rivalImage) fitImage(pdf, rivalImage, x + 1, y + 1.3, 5.5, 5.5);
-  singleLineText(pdf, row.opponent || 'Rival', x + (rivalImage ? 8 : 1.5), y + 5.1, { size: 5.5, minSize: 4.8, style: 'bold', color: COLORS.ink, maxWidth: widths[1] - (rivalImage ? 9 : 3) });
+  if (rivalImage) fitImage(pdf, rivalImage, x + 1, y + 1.3, 6.5, 6.5);
+  singleLineText(pdf, row.opponent || 'Rival', x + (rivalImage ? 8.5 : 1.5), y + 5.7, { size: 5.8, minSize: 4.8, style: 'bold', color: COLORS.ink, maxWidth: widths[1] - (rivalImage ? 9.5 : 3) });
   x += widths[1];
   const outcomeColor = row.outcome === 'V' ? COLORS.win : row.outcome === 'D' ? COLORS.loss : row.outcome === 'E' ? COLORS.draw : COLORS.muted;
   center([row.outcome, row.result].filter(Boolean).join(' · '), 2, { style: 'bold', color: outcomeColor });
   x += widths[2];
-  singleLineText(pdf, row.competition, x + 1.5, y + 5.1, { size: 5.2, minSize: 4.6, color: COLORS.ink, maxWidth: widths[3] - 3 });
+  singleLineText(pdf, row.competition, x + 1.5, y + 5.7, { size: 5.5, minSize: 4.6, color: COLORS.ink, maxWidth: widths[3] - 3 });
   x += widths[3]; center(row.venue, 4); x += widths[4]; center(row.role, 5); x += widths[5]; center(row.minutes, 6, { style: 'bold' }); x += widths[6];
-  drawHistoryLinks(pdf, row.goalLinks, row.goals, x, y + 5.3, widths[7]); x += widths[7];
-  drawHistoryLinks(pdf, row.assistLinks, row.assists, x, y + 5.3, widths[8]); x += widths[8];
+  drawHistoryLinks(pdf, row.goalLinks, row.goals, x, y + 5.9, widths[7]); x += widths[7];
+  drawHistoryLinks(pdf, row.assistLinks, row.assists, x, y + 5.9, widths[8]); x += widths[8];
   center(row.cards, 9); x += widths[9]; center(row.injury, 10);
   return y + height;
 };
@@ -591,6 +600,10 @@ const drawPitch = (pdf, map, x, y, width, height) => {
   pdf.circle(x + width / 2, y + height / 2, Math.min(width, height) * 0.11);
   pdf.rect(x + width * 0.23, y + 2, width * 0.54, height * 0.18);
   pdf.rect(x + width * 0.23, y + height * 0.82 - 2, width * 0.54, height * 0.18);
+  pdf.rect(x + width * 0.35, y + 2, width * 0.3, height * 0.08);
+  pdf.rect(x + width * 0.35, y + height * 0.92 - 2, width * 0.3, height * 0.08);
+  pdf.line(x + width * 0.43, y + 1.1, x + width * 0.57, y + 1.1);
+  pdf.line(x + width * 0.43, y + height - 1.1, x + width * 0.57, y + height - 1.1);
   const max = Math.max(1, ...zones.map((zone) => number(zone.count)));
   const cellWidth = (width - 4) / 3;
   const cellHeight = (height - 4) / 3;
@@ -608,16 +621,24 @@ const drawPitch = (pdf, map, x, y, width, height) => {
     text(pdf, compactPitchZoneLabel(zone, index), cellX + cellWidth / 2, cellY + 4.5, { size: 4.35, style: 'bold', color: empty ? COLORS.muted : COLORS.paper, align: 'center', maxWidth: cellWidth - 2 });
     if (count > 0) text(pdf, count, cellX + cellWidth / 2, cellY + cellHeight / 2 + 4.5, { size: 8, style: 'bold', color: COLORS.paper, align: 'center' });
   });
-  text(pdf, 'ATAQUE', x + width / 2 - 1, y - 2, { size: 4.5, style: 'bold', color: COLORS.green, align: 'center' });
-  pdf.setDrawColor(...COLORS.green);
-  pdf.setLineWidth(0.45);
-  pdf.line(x + width / 2 + 9, y - 1, x + width / 2 + 9, y - 5);
-  pdf.line(x + width / 2 + 9, y - 5, x + width / 2 + 7.8, y - 3.7);
-  pdf.line(x + width / 2 + 9, y - 5, x + width / 2 + 10.2, y - 3.7);
+  text(pdf, 'ATAQUE', x + width / 2 - 1.2, y - 0.9, { size: 3.2, style: 'bold', color: COLORS.muted, align: 'center' });
+  pdf.setDrawColor(...COLORS.muted);
+  pdf.setLineWidth(0.22);
+  pdf.line(x + width / 2 + 6.2, y - 0.5, x + width / 2 + 6.2, y - 2.6);
+  pdf.line(x + width / 2 + 6.2, y - 2.6, x + width / 2 + 5.5, y - 1.8);
+  pdf.line(x + width / 2 + 6.2, y - 2.6, x + width / 2 + 6.9, y - 1.8);
   const emptyLabel = map?.key === 'goals'
     ? 'Sin zonas de gol registradas'
     : map?.key === 'assists' ? 'Sin zonas de asistencia registradas' : 'Sin zonas de acciones registradas';
   text(pdf, total ? `${total} ${total === 1 ? 'acción' : 'acciones'} con zona` : emptyLabel, x + width / 2, y + height + 4.2, { size: 4.7, style: empty ? 'bold' : 'normal', color: COLORS.muted, align: 'center' });
+};
+
+const getProductionPitchSize = (columns) => {
+  if (!columns) return { width: 0, height: 0, aspectRatio: 1.26 };
+  const gap = 5;
+  const columnWidth = (CONTENT_WIDTH - gap * (columns - 1)) / columns;
+  const width = Math.min(82, columnWidth - 2);
+  return { width, height: width / 1.26, aspectRatio: 1.26 };
 };
 
 const drawProductionMaps = (pdf, layout, y, sectionNumber) => {
@@ -627,8 +648,7 @@ const drawProductionMaps = (pdf, layout, y, sectionNumber) => {
   const gap = 5;
   const columns = Math.max(1, maps.length);
   const columnWidth = (CONTENT_WIDTH - gap * (columns - 1)) / columns;
-  const width = Math.min(68, columnWidth - 2);
-  const height = 54;
+  const { width, height } = getProductionPitchSize(columns);
   maps.forEach((map, index) => {
     const columnX = PAGE_MARGIN + index * (columnWidth + gap);
     const x = columnX + (columnWidth - width) / 2;
@@ -646,11 +666,11 @@ const drawProductionMetrics = (pdf, production, y, sectionNumber) => {
     const x = PAGE_MARGIN + width * index;
     pdf.setFillColor(...(index < 3 ? [242, 248, 252] : COLORS.panel));
     pdf.setDrawColor(...COLORS.line);
-    pdf.roundedRect(x + 1, y, width - 2, 17, 1, 1, 'FD');
-    text(pdf, hasValue(value) ? value : 0, x + width / 2, y + 8, { size: 13, style: 'bold', color: COLORS.blue, align: 'center' });
-    text(pdf, label.toUpperCase(), x + width / 2, y + 13.5, { size: 4.8, style: 'bold', color: COLORS.muted, align: 'center' });
+    pdf.roundedRect(x + 1, y, width - 2, 19, 1, 1, 'FD');
+    text(pdf, hasValue(value) ? value : 0, x + width / 2, y + 8.8, { size: 14, style: 'bold', color: COLORS.blue, align: 'center' });
+    text(pdf, label.toUpperCase(), x + width / 2, y + 15, { size: 5, style: 'bold', color: COLORS.muted, align: 'center' });
   });
-  return y + 21;
+  return y + 23;
 };
 
 const sortConnections = (connections) => rows(connections)
@@ -659,37 +679,77 @@ const sortConnections = (connections) => rows(connections)
     || clean(left.from).localeCompare(clean(right.from), 'es')
     || clean(left.to).localeCompare(clean(right.to), 'es'));
 
-const drawConnections = (pdf, connections, y, sectionNumber, limit = Infinity) => {
+const connectionInitials = (value) => clean(value).split(/\s+/).filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'JG';
+
+const drawConnectionAvatar = (pdf, image, name, x, y, size) => {
+  pdf.setFillColor(...COLORS.paper);
+  pdf.setDrawColor(...COLORS.line);
+  pdf.roundedRect(x, y, size, size, 1.2, 1.2, 'FD');
+  if (fitImage(pdf, image, x + 0.6, y + 0.6, size - 1.2, size - 1.2)) return true;
+  pdf.setFillColor(231, 243, 249);
+  pdf.roundedRect(x + 0.6, y + 0.6, size - 1.2, size - 1.2, 1, 1, 'F');
+  text(pdf, connectionInitials(name), x + size / 2, y + size / 2 + 1.6, { size: 5.8, style: 'bold', color: COLORS.blue, align: 'center' });
+  return false;
+};
+
+const drawConnectionName = (pdf, name, centerX, y, width) => {
+  setText(pdf, { size: 5.2, style: 'bold', color: COLORS.ink });
+  const lines = pdf.splitTextToSize(clean(name), width).slice(0, 2);
+  pdf.text(lines, centerX, y, { align: 'center' });
+};
+
+const getConnectionGridMetrics = (count) => {
+  const columns = count === 1 ? 1 : 2;
+  const gap = 5;
+  const cardWidth = columns === 1 ? 126 : (CONTENT_WIDTH - gap) / 2;
+  const rowsCount = Math.ceil(count / columns);
+  const cardHeight = count === 1 ? 24 : 32;
+  return { columns, gap, cardWidth, cardHeight, rowsCount, height: 7 + rowsCount * cardHeight + Math.max(0, rowsCount - 1) * gap + 3 };
+};
+
+const drawConnections = (pdf, connections, y, sectionNumber, imageMap, limit = Infinity) => {
   const connectionRows = sortConnections(connections).slice(0, limit);
   if (!connectionRows.length) return y;
   y = sectionTitle(pdf, 'Conexiones ofensivas', y, sectionNumber);
-  connectionRows.forEach((connection) => {
-    const direction = connection.direction === 'received' ? 'recibida' : connection.direction === 'given' ? 'dada' : '';
-    const countLabel = `${connection.count} ${connection.count === 1 ? 'asistencia' : 'asistencias'}${direction ? ` ${connection.count === 1 ? direction : `${direction}s`}` : ''}`;
-    const routeX = PAGE_MARGIN + 2;
-    const nameWidth = 59;
-    const arrowStart = routeX + nameWidth + 4;
-    const arrowEnd = arrowStart + 14;
-    setText(pdf, { size: 6.3, style: 'bold', color: COLORS.ink });
-    const fromLines = pdf.splitTextToSize(clean(connection.from), nameWidth);
-    const toLines = pdf.splitTextToSize(clean(connection.to), nameWidth);
-    const lineStep = 2.8;
-    const rowHeight = Math.max(10, 6 + (Math.max(fromLines.length, toLines.length) - 1) * lineStep);
-    const centerY = y + rowHeight / 2;
-    pdf.text(fromLines, routeX + nameWidth, centerY - ((fromLines.length - 1) * lineStep) / 2 + 1.2, { align: 'right' });
-    pdf.setDrawColor(...COLORS.electric);
-    pdf.setLineWidth(0.6);
-    pdf.line(arrowStart, centerY, arrowEnd, centerY);
-    pdf.line(arrowEnd - 2.5, centerY - 1.9, arrowEnd, centerY);
-    pdf.line(arrowEnd - 2.5, centerY + 1.9, arrowEnd, centerY);
-    setText(pdf, { size: 6.3, style: 'bold', color: COLORS.ink });
-    pdf.text(toLines, arrowEnd + 4, centerY - ((toLines.length - 1) * lineStep) / 2 + 1.2);
-    singleLineText(pdf, countLabel, A4_WIDTH_MM - PAGE_MARGIN, centerY + 1.2, { size: 5.5, minSize: 4.7, style: 'bold', color: COLORS.blue, maxWidth: 39, align: 'right' });
+  const grid = getConnectionGridMetrics(connectionRows.length);
+  const gridWidth = grid.columns * grid.cardWidth + (grid.columns - 1) * grid.gap;
+  const gridX = PAGE_MARGIN + (CONTENT_WIDTH - gridWidth) / 2;
+  connectionRows.forEach((connection, index) => {
+    const column = index % grid.columns;
+    const row = Math.floor(index / grid.columns);
+    const x = gridX + column * (grid.cardWidth + grid.gap);
+    const cardY = y + row * (grid.cardHeight + grid.gap);
+    const fromCenter = x + grid.cardWidth * 0.24;
+    const toCenter = x + grid.cardWidth * 0.76;
+    const avatarSize = grid.cardHeight === 24 ? 8.5 : 10;
+    const avatarY = cardY + 2.2;
+    pdf.setFillColor(...COLORS.panel);
     pdf.setDrawColor(...COLORS.line);
-    pdf.line(PAGE_MARGIN, y + rowHeight, A4_WIDTH_MM - PAGE_MARGIN, y + rowHeight);
-    y += rowHeight + 2;
+    pdf.roundedRect(x, cardY, grid.cardWidth, grid.cardHeight, 1.4, 1.4, 'FD');
+    drawConnectionAvatar(pdf, imageMap.get(clean(connection.fromImage)), connection.from, fromCenter - avatarSize / 2, avatarY, avatarSize);
+    drawConnectionAvatar(pdf, imageMap.get(clean(connection.toImage)), connection.to, toCenter - avatarSize / 2, avatarY, avatarSize);
+    drawConnectionName(pdf, connection.from, fromCenter, avatarY + avatarSize + 3.2, grid.cardWidth * 0.38);
+    drawConnectionName(pdf, connection.to, toCenter, avatarY + avatarSize + 3.2, grid.cardWidth * 0.38);
+
+    const arrowStart = x + grid.cardWidth * 0.43;
+    const arrowEnd = x + grid.cardWidth * 0.57;
+    const arrowY = avatarY + avatarSize / 2;
+    pdf.setDrawColor(...COLORS.electric);
+    pdf.setLineWidth(0.55);
+    pdf.line(arrowStart, arrowY, arrowEnd, arrowY);
+    pdf.line(arrowEnd - 1.8, arrowY - 1.3, arrowEnd, arrowY);
+    pdf.line(arrowEnd - 1.8, arrowY + 1.3, arrowEnd, arrowY);
+
+    const directionLabel = connection.direction === 'given'
+      ? (number(connection.count) === 1 ? 'ASISTENCIA DADA' : 'ASISTENCIAS DADAS')
+      : connection.direction === 'received'
+        ? (number(connection.count) === 1 ? 'ASISTENCIA RECIBIDA' : 'ASISTENCIAS RECIBIDAS')
+        : (number(connection.count) === 1 ? 'PARTICIPACIÓN' : 'PARTICIPACIONES');
+    const countY = cardY + grid.cardHeight - 3;
+    text(pdf, connection.count, x + grid.cardWidth / 2 - 1.5, countY, { size: grid.cardHeight === 24 ? 7.2 : 8.2, style: 'bold', color: COLORS.blue, align: 'right' });
+    text(pdf, directionLabel, x + grid.cardWidth / 2 + 1, countY, { size: 4.4, style: 'bold', color: COLORS.muted });
   });
-  return y + 2;
+  return y + grid.rowsCount * grid.cardHeight + Math.max(0, grid.rowsCount - 1) * grid.gap + 4;
 };
 
 const drawGoalTarget = (pdf, target, x, y, width) => {
@@ -847,6 +907,7 @@ export const createPlayerProfilePdf = async ({
     report.identity?.image,
     report.identity?.teamCrest,
     competitionProfile.logoUrl,
+    ...rows(report.offensiveConnections).flatMap((connection) => [connection.fromImage, connection.toImage]),
     ...rows(report.history).map((row) => row.opponentCrest),
   ].map(clean).filter(Boolean));
   const imageEntries = await Promise.all([...imageUrls].map(async (url) => [url, await loadPdfImage(url, { fetchImpl, documentRef })]));
@@ -899,8 +960,8 @@ export const createPlayerProfilePdf = async ({
     const sortedOffensiveConnections = sortConnections(report.offensiveConnections);
     const productionConnections = sortedOffensiveConnections.slice(0, 5);
     if (productionConnections.length) {
-      if (y + 69 > CONTENT_BOTTOM) y = addPage('CONEXIONES OFENSIVAS');
-      y = drawConnections(pdf, productionConnections, y, sectionNumbers.connections, 5);
+      if (y + getConnectionGridMetrics(productionConnections.length).height > CONTENT_BOTTOM) y = addPage('CONEXIONES OFENSIVAS');
+      y = drawConnections(pdf, productionConnections, y, sectionNumbers.connections, imageMap, 5);
     }
     const hasGoalAnalysis = number(report.goalAnalysis?.bodyParts?.total)
       || number(report.goalAnalysis?.types?.total)
@@ -957,6 +1018,7 @@ export const createPlayerProfilePdf = async ({
         logoSource: clean(competitionProfile.logoUrl),
         logoLoaded: Boolean(images.competition?.data),
         fallbackIcon: clean(competitionProfile.icon),
+        logoFrameMm: 8.5,
       },
       playerPhoto: {
         background: 'white',
@@ -964,6 +1026,15 @@ export const createPlayerProfilePdf = async ({
         centered: true,
         imageLoaded: Boolean(images.player?.data),
         source: clean(report.identity?.image),
+      },
+      minutesPlayed: {
+        minutes: number(report.seasonSummary?.minutes),
+        possibleMinutes: number(report.seasonSummary?.possibleMinutes),
+        percentage: hasValue(report.seasonSummary?.minutesPlayedPercentage)
+          ? number(report.seasonSummary?.minutesPlayedPercentage)
+          : number(report.seasonSummary?.possibleMinutes) > 0
+            ? Math.round((number(report.seasonSummary?.minutes) / number(report.seasonSummary?.possibleMinutes)) * 100)
+            : 0,
       },
       positions: positionMapModel.positions.map((position) => ({
         position: position.position,
@@ -973,8 +1044,10 @@ export const createPlayerProfilePdf = async ({
       positionMap: {
         vector: true,
         location: 'header',
+        fieldMm: { width: 34, height: 21 },
         orientation: PLAYER_POSITION_MAP_ORIENTATION,
         renderOrientation: { attack: 'right', horizontal: 'player-perspective' },
+        orientationIndicator: { secondary: true, fontSize: 3.1, lineWidth: 0.22 },
         officialMinutes: positionMapModel.officialMinutes,
         identifiedMinutes: positionMapModel.totalIdentifiedMinutes,
         unknownMinutes: positionMapModel.unknownPositionMinutes,
@@ -988,6 +1061,8 @@ export const createPlayerProfilePdf = async ({
       },
       productionMaps: {
         columns: influenceMapLayout.columns,
+        fieldMm: getProductionPitchSize(influenceMapLayout.columns),
+        orientationIndicator: { secondary: true, fontSize: 3.2, lineWidth: 0.22 },
         visibleKeys: influenceMapLayout.maps.map((map) => map.key),
         hiddenKeys: influenceMapLayout.hiddenKeys,
         maps: influenceMapLayout.maps.map((map) => ({
@@ -999,7 +1074,14 @@ export const createPlayerProfilePdf = async ({
         from: clean(connection.from),
         to: clean(connection.to),
         count: number(connection.count),
+        fromImageSource: clean(connection.fromImage),
+        toImageSource: clean(connection.toImage),
+        fromImageLoaded: Boolean(imageMap.get(clean(connection.fromImage))?.data),
+        toImageLoaded: Boolean(imageMap.get(clean(connection.toImage))?.data),
       })),
+      connectionLayout: rows(report.offensiveConnections).length
+        ? getConnectionGridMetrics(Math.min(5, rows(report.offensiveConnections).length))
+        : null,
       sectionPlan,
       visibleConnections: sortConnections(report.offensiveConnections).slice(0, 5).map((connection) => ({
         from: clean(connection.from),

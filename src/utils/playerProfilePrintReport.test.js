@@ -120,6 +120,8 @@ assert.deepEqual(borjaConnections, [{
   from: 'Borja Rodríguez',
   to: 'Jairo Cárcaba',
   count: 1,
+  fromImage: '',
+  toImage: '',
 }], 'la conexión real Borja Rodríguez → Jairo Cárcaba se conserva completa');
 
 const jairoConnections = buildPlayerOffensiveConnections({
@@ -127,6 +129,16 @@ const jairoConnections = buildPlayerOffensiveConnections({
   society: [{ name: 'Borja Rodríguez', given: 0, received: 1 }],
 });
 assert.equal(jairoConnections[0]?.direction, 'received', 'Jairo distingue la asistencia recibida de la asistencia dada');
+
+const picturedConnections = buildPlayerOffensiveConnections({
+  playerName: 'Borja Rodríguez',
+  playerImage: 'https://images.example/borja.png',
+  society: [{ name: 'Jairo Cárcaba', image: 'https://images.example/jairo.png', given: 1, received: 0 }],
+});
+assert.deepEqual({ from: picturedConnections[0].fromImage, to: picturedConnections[0].toImage }, {
+  from: 'https://images.example/borja.png',
+  to: 'https://images.example/jairo.png',
+}, 'las fotografías verificadas se asignan al origen y destino correctos');
 
 const noConnections = buildPlayerProfilePrintReport({
   identity: { name: 'Jugador sin conexiones' },
@@ -217,6 +229,9 @@ assert.match(appSource, /image:\s*getPlayerAvatarSource\(selectedPlayerProfile\)
 assert.match(appSource, /competitionBreakdown:\s*pdfCompetitionRows/, 'el desglose se construye desde partidos filtrados reales');
 assert.match(appSource, /logoUrl:\s*competition\.logoUrl \|\| ''/, 'el modelo PDF conserva el logo real del catálogo de competiciones');
 assert.match(appSource, /<PlayerPositionUsageSummary usage=\{playerPositionUsage\}/, 'la ficha App mantiene íntegro su bloque posicional completo');
+assert.match(appSource, /minutesPlayedPercentage:\s*aggregate\.participation/, 'el PDF reutiliza el porcentaje canónico de participación de la ficha');
+assert.match(appSource, /possibleMinutes:\s*aggregate\.rows\.length \* 90/, 'los minutos posibles usan la misma base objetiva ya mostrada en la App');
+assert.match(appSource, /const pdfSocietyRows = societyRows\.map[\s\S]*?candidates\.length === 1[\s\S]*?getPlayerAvatarSource/, 'las fotos de conexiones sólo se incorporan tras una resolución exacta e inequívoca');
 assert.match(appSource, /goalContributionsPer90/, 'G+A\/90 se calcula desde minutos y eventos oficiales');
 assert.match(appSource, /opponentCrest:\s*row\.match\.opponentCrest/, 'el historial recibe el escudo rival cuando existe');
 assert.match(appSource, /date:\s*matchDisplayDate\(match\.date\)/, 'la ficha de acción recibe la fecha real');

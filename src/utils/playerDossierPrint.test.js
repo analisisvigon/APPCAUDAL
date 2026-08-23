@@ -94,7 +94,7 @@ const jairoReport = {
   identity: { name: 'Jairo Cárcaba', number: 14, position: 'Delantero', age: '34 años', foot: 'derecho', team: 'C.D. Caudal', season: '2026/2027' },
   filters: { competition: 'Copa RFEF', venue: 'Todos' },
   validation: { seasonValid: true, production: { valid: true } },
-  seasonSummary: { played: 2, starts: 2, minutes: 180, minutesPerMatch: 90, starterPercentage: 100, goals: 1, assists: 0, goalContributions: 1, yellow: 0, red: 0, injuries: 0, benchEntries: 0 },
+  seasonSummary: { played: 2, starts: 2, minutes: 180, minutesPerMatch: 90, starterPercentage: 100, minutesPlayedPercentage: 100, possibleMinutes: 180, goals: 1, assists: 0, goalContributions: 1, yellow: 0, red: 0, injuries: 0, benchEntries: 0 },
   competitionBreakdown: [{ key: 'copa_rfef', label: 'Copa RFEF', logoUrl: 'https://assets.example/copa-rfef.png', icon: 'CR', played: 2, starts: 2, minutes: 180, goals: 1, assists: 0, goalContributions: 1 }],
   positionUsage: { positions: [{ position: 'Extremo izquierdo', minutes: 90, percentage: 50 }, { position: 'Delantero', minutes: 90, percentage: 50 }], totalMinutes: 180, determinedMinutes: 180, unknownMinutes: 0, valid: true },
   production: { goalsPer90: '0.50', assistsPer90: '0.00', goalContributionsPer90: '0.50', goalContributions: 1 },
@@ -120,10 +120,12 @@ assert.deepEqual(vectorResult.presentationAudit.competitionProfile, {
   logoSource: 'https://assets.example/copa-rfef.png',
   logoLoaded: false,
   fallbackIcon: 'CR',
+  logoFrameMm: 8.5,
 }, 'la cabecera identifica la única competición real incluso cuando su logo no se puede cargar');
 assert.deepEqual(vectorResult.presentationAudit.playerPhoto, { background: 'white', fit: 'contain', centered: true, imageLoaded: false, source: '' }, 'el fallback del PDF ocupa el mismo marco blanco');
 assert.deepEqual(vectorResult.presentationAudit.scope, { season: '2026/2027', competition: 'Copa RFEF', venue: 'Local + visitante' }, 'el ámbito traduce el filtro global de localía sin repetir etiquetas vacías');
 assert.deepEqual(vectorResult.presentationAudit.footer, { contact: 'analisisvigon@gmail.com', pages: 2 }, 'el contacto profesional se integra en todas las páginas del PDF');
+assert.deepEqual(vectorResult.presentationAudit.minutesPlayed, { minutes: 180, possibleMinutes: 180, percentage: 100 }, 'el KPI usa minutos disputados sobre minutos posibles y no titularidades');
 assert.deepEqual(vectorResult.presentationAudit.sectionPlan.map(({ key, number }) => [key, number]), [
   ['performance', '01'], ['competitions', '02'], ['history', '03'],
   ['zones', '04'], ['production', '05'], ['connections', '06'], ['goalAnalysis', '07'], ['videos', '08'],
@@ -148,6 +150,8 @@ assert.deepEqual(transparentPhotoResult.presentationAudit.playerPhoto, { backgro
 assert.doesNotMatch(exporterSource, /drawPositionUsageMap\(pdf, report\.positionUsage, y/, 'el PDF ya no renderiza una sección posicional independiente');
 assert.match(exporterSource, /drawCompactPositionProfile\(pdf, positionMapModel/, 'el mismo modelo posicional se integra en la cabecera compacta');
 assert.doesNotMatch(exporterSource, /ÁMBITO DEL DOSSIER/, 'la cabecera elimina el rótulo redundante de ámbito');
+assert.doesNotMatch(exporterSource, /teamCopyX, y \+ 33\.5/, 'la temporada no se repite debajo del club');
+assert.match(exporterSource, /'Minutos disputados'/, 'el quinto KPI identifica explícitamente la métrica objetiva');
 await assert.rejects(
   createPlayerProfilePdf({ report: { ...jairoReport, positionUsage: { totalMinutes: 90, determinedMinutes: 120 }, validation: { ...jairoReport.validation, positionUsage: { valid: false } } }, fetchImpl: null }),
   /minutos por posición/,
@@ -175,7 +179,7 @@ const makeScenarioReport = ({
     identity: { name, number: 8, position: 'Centrocampista', team: teamName, teamCrest, season: '2026/2027' },
     filters,
     validation: { seasonValid: true, production: { valid: true } },
-    seasonSummary: { played: matches, starts: matches, minutes: matches * 90, minutesPerMatch: 90, starterPercentage: 100, goals, assists, goalContributions: contributions },
+    seasonSummary: { played: matches, starts: matches, minutes: matches * 90, minutesPerMatch: 90, starterPercentage: 100, minutesPlayedPercentage: 100, possibleMinutes: matches * 90, goals, assists, goalContributions: contributions },
     competitionBreakdown: [{ key: 'scope', label: filters.competition, played: matches, starts: matches, minutes: matches * 90, goals, assists, goalContributions: contributions }],
     positionUsage,
     production: { goalsPer90: goals, assistsPer90: assists, goalContributionsPer90: contributions, goalContributions: contributions },
@@ -190,6 +194,25 @@ const makeScenarioReport = ({
     history: Array.from({ length: matches }, (_, index) => ({ id: `match-${index}`, date: `${String((index % 28) + 1).padStart(2, '0')}/08/2026`, opponent: `Rival ${index + 1}`, opponentCrest, result: '1-0', outcome: 'V', competition: filters.competition, venue: index % 2 ? 'V' : 'L', role: 'Titular', minutes: "90'", goals: '-', assists: '-', cards: '-', injury: '-', goalLinks: [], assistLinks: [] })),
   };
 };
+
+const picturedConnectionReport = makeScenarioReport({ assists: 1 });
+picturedConnectionReport.identity = { ...picturedConnectionReport.identity, image: 'https://images.example/source-player.png' };
+picturedConnectionReport.offensiveConnections = [{
+  id: 'pictured-connection',
+  direction: 'given',
+  from: picturedConnectionReport.identity.name,
+  to: 'Compañero con fotografía',
+  count: 1,
+  fromImage: picturedConnectionReport.identity.image,
+  toImage: 'https://images.example/target-player.png',
+}];
+const picturedConnection = await createPlayerProfilePdf({
+  report: picturedConnectionReport,
+  fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
+});
+assert.equal(picturedConnection.presentationAudit.connections[0].fromImageLoaded, true);
+assert.equal(picturedConnection.presentationAudit.connections[0].toImageLoaded, true, 'las dos fotografías reales de la conexión llegan al PDF');
+assert.equal(picturedConnection.presentationAudit.connectionLayout.columns, 1, 'una conexión usa una tarjeta centrada');
 
 const mandatoryScenarios = [
   ['A · 1 gol', { goals: 1, targetCounts: [0, 1] }],
@@ -225,6 +248,8 @@ assert.deepEqual(zeroProduction.presentationAudit.productionMaps.visibleKeys, []
 const assistsOnly = await createPlayerProfilePdf({ report: makeScenarioReport({ assists: 2 }), fetchImpl: null });
 assert.deepEqual(assistsOnly.presentationAudit.productionMaps.visibleKeys, ['all', 'assists'], 'C: sin goles se muestran sólo Todos y Asistencias');
 assert.equal(assistsOnly.presentationAudit.productionMaps.columns, 2, 'C: los dos campos ocupan el ancho a partes iguales');
+assert.deepEqual(assistsOnly.presentationAudit.productionMaps.fieldMm, { width: 82, height: 82 / 1.26, aspectRatio: 1.26 }, 'los campos a dos columnas crecen manteniendo una proporción constante');
+assert.deepEqual(assistsOnly.presentationAudit.productionMaps.orientationIndicator, { secondary: true, fontSize: 3.2, lineWidth: 0.22 }, 'ATAQUE queda relegado a una guía secundaria');
 const goalsOnly = await createPlayerProfilePdf({ report: makeScenarioReport({ goals: 1 }), fetchImpl: null });
 assert.deepEqual(goalsOnly.presentationAudit.productionMaps.visibleKeys, ['all', 'goals'], 'A: sin asistencias se muestran sólo Todos y Goles');
 const goalsAndAssists = await createPlayerProfilePdf({ report: makeScenarioReport({ goals: 1, assists: 1 }), fetchImpl: null });
@@ -254,7 +279,7 @@ multipleCompetitionReport.competitionBreakdown = [
   { key: 'copa_rfef', label: 'Copa RFEF', logoUrl: 'https://assets.example/copa-rfef.png', played: 1 },
 ];
 const multipleCompetitionHeader = await createPlayerProfilePdf({ report: multipleCompetitionReport, fetchImpl: null });
-assert.deepEqual(multipleCompetitionHeader.presentationAudit.competitionProfile, { mode: 'multiple', label: 'Temporada completa', logoSource: '', logoLoaded: false, fallbackIcon: '' });
+assert.deepEqual(multipleCompetitionHeader.presentationAudit.competitionProfile, { mode: 'multiple', label: 'Temporada completa', logoSource: '', logoLoaded: false, fallbackIcon: '', logoFrameMm: 8.5 });
 
 const localScope = await createPlayerProfilePdf({ report: makeScenarioReport({ filters: { competition: 'Liga', venue: 'Local' }, goals: 1, targetCounts: [1] }), fetchImpl: null });
 assert.deepEqual(localScope.presentationAudit.scope, { season: '2026/2027', competition: 'Liga', venue: 'Local' });
@@ -307,6 +332,13 @@ assert.deepEqual(multiplePositions.presentationAudit.positionMap.markers.map(({ 
 assert.deepEqual(multiplePositions.presentationAudit.positionMap.orientation, { attack: 'up', horizontal: 'player-perspective' });
 assert.equal(multiplePositions.presentationAudit.positionMap.location, 'header', 'el mapa posicional deja de consumir una sección propia');
 assert.deepEqual(multiplePositions.presentationAudit.positionMap.renderOrientation, { attack: 'right', horizontal: 'player-perspective' }, 'la cabecera presenta el campo en formato panorámico sin alterar coordenadas canónicas');
+assert.deepEqual(multiplePositions.presentationAudit.positionMap.fieldMm, { width: 34, height: 21 }, 'el mini campo aumenta presencia sin abandonar la cabecera');
+assert.equal(multiplePositions.presentationAudit.positionMap.orientationIndicator.secondary, true);
+
+const partialMinutesReport = makeScenarioReport({ matches: 2 });
+partialMinutesReport.seasonSummary = { ...partialMinutesReport.seasonSummary, minutes: 120, possibleMinutes: 180, minutesPlayedPercentage: 67 };
+const partialMinutes = await createPlayerProfilePdf({ report: partialMinutesReport, fetchImpl: null });
+assert.deepEqual(partialMinutes.presentationAudit.minutesPlayed, { minutes: 120, possibleMinutes: 180, percentage: 67 }, "120' de 180' posibles se presenta como 67%");
 
 const borjaPositions = await createPlayerProfilePdf({
   report: makeScenarioReport({
@@ -352,6 +384,7 @@ borjaProfessionalReport.videoActions = [{
 const borjaProfessional = await createPlayerProfilePdf({ report: borjaProfessionalReport, fetchImpl: null });
 assert.equal(borjaProfessional.pages, 2, 'Borja conserva una primera página competitiva y una segunda página ofensiva compacta');
 assert.equal(borjaProfessional.audit.linkAnnotations, 1, 'el vídeo de asistencia de Borja conserva una anotación PDF real');
+assert.equal(borjaProfessional.presentationAudit.connectionLayout.cardHeight, 24, 'una conexión mantiene una tarjeta visual compacta dentro de dos páginas');
 assert.deepEqual(borjaProfessional.presentationAudit.sectionPlan.map(({ key, number }) => [key, number]), [
   ['performance', '01'], ['competitions', '02'], ['history', '03'],
   ['zones', '04'], ['production', '05'], ['connections', '06'], ['videos', '07'],
@@ -378,7 +411,13 @@ const connectionLimit = await createPlayerProfilePdf({
   report: { ...makeScenarioReport({ assists: 1 }), offensiveConnections: Array.from({ length: 12 }, (_, index) => ({ from: 'Jugador', to: `Compañero ${index + 1}`, count: index + 1 })) },
   fetchImpl: null,
 });
+if (process.env.PLAYER_CONNECTIONS_QA_PDF) fs.writeFileSync(process.env.PLAYER_CONNECTIONS_QA_PDF, Buffer.from(connectionLimit.arrayBuffer));
 assert.deepEqual(connectionLimit.presentationAudit.visibleConnections.map(({ count }) => count), [12, 11, 10, 9, 8], 'el PDF muestra sólo las cinco conexiones principales y mantiene el orden real');
+assert.deepEqual({
+  columns: connectionLimit.presentationAudit.connectionLayout.columns,
+  rows: connectionLimit.presentationAudit.connectionLayout.rowsCount,
+  cardHeight: connectionLimit.presentationAudit.connectionLayout.cardHeight,
+}, { columns: 2, rows: 3, cardHeight: 32 }, 'cinco conexiones se distribuyen en una cuadrícula 2×3 sin overflow');
 assert.match(exporterSource, /drawVideoAction\(pdf, action, y\);/, 'todas las acciones conservan su ficha profesional completa también en páginas de continuación');
 
 console.log('playerDossierPrint tests passed');

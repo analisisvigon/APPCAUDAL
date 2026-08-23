@@ -17,6 +17,7 @@ import { OWN_CLUB_IDENTITY, getOwnClubDisplayName } from '../src/constants/clubI
 
 const clean = (value) => String(value ?? '').trim();
 const rows = (value) => Array.isArray(value) ? value : [];
+const normalizeName = (value) => clean(value).toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const filenameSlug = (value) => clean(value).toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const outputDirectory = path.resolve(process.env.PLAYER_PDF_QA_OUTPUT || 'artifacts/player-pdf-final-qa');
 const playerId = clean(process.env.PLAYER_PDF_QA_PLAYER_ID) || 'f7f5aaeb-e82b-4e6b-8920-694bc32cb6c7';
@@ -34,14 +35,15 @@ const targetZones = [
 ].map(([value, label]) => ({ value, label, shortLabel: label.replace(' ', '\n') }));
 
 const client = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
-const [playerResponse, statsResponse, goalsResponse, ownTeamResponse, competitionResponse] = await Promise.all([
+const [playerResponse, statsResponse, goalsResponse, ownTeamResponse, competitionResponse, rosterResponse] = await Promise.all([
   client.from('jugadores').select('*').eq('id', playerId).single(),
   client.from('partido_estadisticas_jugador').select('*').eq('jugador_id', playerId),
   client.from('partido_eventos_gol').select('*').or(`scorer_id.eq.${playerId},assistant_id.eq.${playerId}`),
   client.from('equipos_rivales').select('*').eq('team_kind', 'own').maybeSingle(),
   client.from('competitions').select('*').eq('key', competitionKey).maybeSingle(),
+  client.from('jugadores').select('*'),
 ]);
-for (const response of [playerResponse, statsResponse, goalsResponse, ownTeamResponse, competitionResponse]) {
+for (const response of [playerResponse, statsResponse, goalsResponse, ownTeamResponse, competitionResponse, rosterResponse]) {
   if (response.error) throw response.error;
 }
 
@@ -145,7 +147,13 @@ const bodyParts = buildPlayerBodyPartSummary(goals);
 const types = buildPlayerGoalTypeSummary(goals);
 const targetSummary = buildPlayerGoalTargetSummary(goals);
 const target = { ...targetSummary, zones: targetZones.map((zone) => ({ ...zone, count: goals.filter((goal) => goal.goalZone === zone.value).length })) };
-const society = buildPlayerConnectionRows({ goalActions: goals, assistActions: assists, filter: 'Todos' });
+const society = buildPlayerConnectionRows({ goalActions: goals, assistActions: assists, filter: 'Todos' }).map((connection) => {
+  const candidates = rows(rosterResponse.data).filter((candidate) => [candidate.name, candidate.shirt_name]
+    .filter(Boolean)
+    .some((name) => normalizeName(name) === normalizeName(connection.name)));
+  const connectionPlayer = candidates.length === 1 ? candidates[0] : null;
+  return { ...connection, image: connectionPlayer?.original_image || connectionPlayer?.image || '' };
+});
 const invariant = buildPlayerProductionInvariantReport({ goals, assists, bodyParts, goalTypes: types, goalTarget: target, connections: society });
 if (!invariant.valid) throw new Error(`Invariante de producción inválido: ${JSON.stringify(invariant.checks)}`);
 
@@ -219,12 +227,14 @@ const history = playedRows.map(({ row, match }) => {
 });
 
 const report = buildPlayerProfilePrintReport({
-  identity: { name: player.name, image: player.image || '', number: player.number, position: player.position, age, foot, team: getOwnClubDisplayName(ownTeam.name), teamCrest: ownTeam.crest || OWN_CLUB_IDENTITY.crest, season: seasonResolution.season.label },
+  identity: { name: player.name, image: player.original_image || player.image || '', number: player.number, position: player.position, age, foot, team: getOwnClubDisplayName(ownTeam.name), teamCrest: ownTeam.crest || OWN_CLUB_IDENTITY.crest, season: seasonResolution.season.label },
   filters: { season: seasonResolution.season.label, competition: competitionLabel, venue: 'Todos' },
   validation: { seasonValid: true, production: invariant, positionUsage },
   seasonSummary: {
     played, starts, minutes, minutesPerMatch: played ? Math.round(minutes / played) : 0,
     starterPercentage: played ? Math.round(starts / played * 100) : 0,
+    minutesPlayedPercentage: playedRows.length ? Math.round(minutes / (playedRows.length * 90) * 100) : 0,
+    possibleMinutes: playedRows.length * 90,
     goals: goals.length, assists: assists.length, goalContributions: goals.length + assists.length,
     yellow: scopedStats.reduce((sum, row) => sum + Number(row.yellow_count || (row.yellow ? 1 : 0)), 0),
     red: scopedStats.filter((row) => row.red).length, injuries: scopedStats.filter((row) => row.injured).length,
