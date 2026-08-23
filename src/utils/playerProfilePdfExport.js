@@ -5,6 +5,7 @@ const A4_HEIGHT_MM = 297;
 const PAGE_MARGIN = 12;
 const CONTENT_WIDTH = A4_WIDTH_MM - PAGE_MARGIN * 2;
 const CONTENT_BOTTOM = 282;
+const PROFESSIONAL_CONTACT = 'analisisvigon@gmail.com';
 const COLORS = {
   navy: [9, 28, 54],
   blue: [20, 91, 159],
@@ -26,6 +27,26 @@ const clean = (value) => String(value ?? '').trim();
 const number = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
 const hasValue = (value) => value === 0 || Boolean(clean(value));
 
+const normalizeCompetitionScope = (value) => {
+  const label = clean(value);
+  return !label || /^(temporada|todos?|todas?|todas las competiciones)$/i.test(label)
+    ? 'Todas las competiciones'
+    : label;
+};
+
+const normalizeVenueScope = (value) => {
+  const label = clean(value);
+  return !label || /^(todos?|todas?|local\s*\+\s*visitante)$/i.test(label)
+    ? 'Local + visitante'
+    : label;
+};
+
+export const getPlayerPdfScope = (report = {}) => ({
+  season: clean(report.identity?.season || report.filters?.season),
+  competition: normalizeCompetitionScope(report.filters?.competition),
+  venue: normalizeVenueScope(report.filters?.venue),
+});
+
 const setText = (pdf, { color = COLORS.ink, size = 8, style = 'normal' } = {}) => {
   pdf.setTextColor(...color);
   pdf.setFont('helvetica', style);
@@ -40,6 +61,25 @@ const text = (pdf, value, x, y, options = {}) => {
   const lines = maxWidth ? pdf.splitTextToSize(label, maxWidth) : [label];
   pdf.text(lines, x, y, { align });
   return lines;
+};
+
+const singleLineText = (pdf, value, x, y, options = {}) => {
+  let label = clean(value);
+  if (!label) return '';
+  const { maxWidth = 0, align = 'left', minSize = 4.4, size = 8, ...font } = options;
+  let fittedSize = size;
+  setText(pdf, { ...font, size: fittedSize });
+  while (maxWidth && fittedSize > minSize && pdf.getTextWidth(label) > maxWidth) {
+    fittedSize = Math.max(minSize, fittedSize - 0.2);
+    setText(pdf, { ...font, size: fittedSize });
+  }
+  if (maxWidth && pdf.getTextWidth(label) > maxWidth) {
+    const suffix = '…';
+    while (label.length > 1 && pdf.getTextWidth(`${label}${suffix}`) > maxWidth) label = label.slice(0, -1);
+    label = `${label.trimEnd()}${suffix}`;
+  }
+  pdf.text(label, x, y, { align });
+  return label;
 };
 
 const sectionTitle = (pdf, label, y, eyebrow = '') => {
@@ -177,8 +217,8 @@ const drawHeader = (pdf, report, section) => {
 const drawFooter = (pdf, report, page, total) => {
   pdf.setDrawColor(...COLORS.line);
   pdf.line(PAGE_MARGIN, 287, A4_WIDTH_MM - PAGE_MARGIN, 287);
-  const teamSeason = [clean(report.identity?.team), clean(report.identity?.season) ? `Temporada ${report.identity.season}` : ''].filter(Boolean).join(' · ');
-  text(pdf, teamSeason || 'Dossier individual', PAGE_MARGIN, 291.7, { size: 5.5, color: COLORS.muted });
+  const teamSeasonContact = [clean(report.identity?.team), clean(report.identity?.season), PROFESSIONAL_CONTACT].filter(Boolean).join(' · ');
+  text(pdf, teamSeasonContact || `Dossier individual · ${PROFESSIONAL_CONTACT}`, PAGE_MARGIN, 291.7, { size: 5.2, color: COLORS.muted });
   text(pdf, `Página ${page} de ${total}`, A4_WIDTH_MM - PAGE_MARGIN, 291.7, { size: 5.5, style: 'bold', color: COLORS.muted, align: 'right' });
 };
 
@@ -218,6 +258,7 @@ const drawKpis = (pdf, report, y) => {
 
 const drawIdentity = (pdf, report, images, y) => {
   const identity = report.identity || {};
+  const scope = getPlayerPdfScope(report);
   const photoSize = 31;
   pdf.setFillColor(...COLORS.paper);
   pdf.setDrawColor(...COLORS.line);
@@ -231,15 +272,25 @@ const drawIdentity = (pdf, report, images, y) => {
   text(pdf, identity.name || 'Jugador', copyX, y + 12, { size: 15.5, style: 'bold', color: COLORS.navy, maxWidth: 92 });
   const attributes = [identity.number ? `#${identity.number}` : '', identity.position, identity.age, identity.foot ? `Pie ${identity.foot}` : ''].filter(Boolean).join(' · ');
   text(pdf, attributes, copyX, y + 19, { size: 7.2, style: 'bold', color: COLORS.ink, maxWidth: 100 });
-  const teamY = y + 27;
-  if (images.team) fitImage(pdf, images.team, copyX, teamY - 5, 7, 7);
-  text(pdf, identity.team || 'Equipo no registrado', copyX + (images.team ? 9 : 0), teamY, { size: 7, style: 'bold', color: COLORS.blue, maxWidth: 90 });
+  const teamY = y + 25.8;
+  const teamCopyX = copyX + (images.team ? 11 : 0);
+  if (images.team) {
+    pdf.setFillColor(...COLORS.paper);
+    pdf.setDrawColor(...COLORS.line);
+    pdf.roundedRect(copyX, y + 20.5, 9, 9, 1, 1, 'FD');
+    fitImage(pdf, images.team, copyX + 0.8, y + 21.3, 7.4, 7.4);
+  }
+  singleLineText(pdf, identity.team || 'Equipo no registrado', teamCopyX, teamY, { size: 7.2, minSize: 5.7, style: 'bold', color: COLORS.blue, maxWidth: images.team ? 80 : 91 });
+  text(pdf, scope.season ? `Temporada ${scope.season}` : 'Temporada —', teamCopyX, y + 30.2, { size: 5.5, color: COLORS.muted });
 
   const scopeX = 157;
+  pdf.setDrawColor(...COLORS.line);
+  pdf.setLineWidth(0.25);
+  pdf.line(scopeX - 4, y + 1, scopeX - 4, y + 30);
   text(pdf, 'ÁMBITO DEL DOSSIER', scopeX, y + 4.5, { size: 5.2, style: 'bold', color: COLORS.muted });
-  text(pdf, identity.season ? `Temporada ${identity.season}` : 'Temporada —', scopeX, y + 11, { size: 7.2, style: 'bold', color: COLORS.navy, maxWidth: 40 });
-  text(pdf, report.filters?.competition || 'Todas las competiciones', scopeX, y + 17, { size: 6.2, color: COLORS.ink, maxWidth: 40 });
-  if (report.filters?.venue && report.filters.venue !== 'Todos') text(pdf, report.filters.venue, scopeX, y + 23, { size: 6.2, color: COLORS.ink });
+  text(pdf, scope.season ? `Temporada ${scope.season}` : 'Temporada —', scopeX, y + 11, { size: 7.2, style: 'bold', color: COLORS.navy, maxWidth: 40 });
+  singleLineText(pdf, scope.competition, scopeX, y + 17.5, { size: 6.2, minSize: 5, color: COLORS.ink, maxWidth: 40 });
+  singleLineText(pdf, scope.venue, scopeX, y + 23.5, { size: 6.2, minSize: 5, color: COLORS.ink, maxWidth: 40 });
   return y + 38;
 };
 
@@ -274,7 +325,9 @@ const drawCompetitionTable = (pdf, competitions, y) => {
 };
 
 const drawPositionUsage = (pdf, usage, y) => {
-  const positions = rows(usage?.positions).filter((row) => number(row.minutes) > 0);
+  const positions = rows(usage?.positions)
+    .filter((row) => number(row.minutes) > 0)
+    .sort((left, right) => number(right.minutes) - number(left.minutes) || clean(left.position).localeCompare(clean(right.position), 'es'));
   const unknownMinutes = number(usage?.unknownMinutes);
   const formatMinutes = (value) => Math.round(number(value)).toLocaleString('es-ES');
   if (!positions.length) {
@@ -307,7 +360,7 @@ const drawPositionUsage = (pdf, usage, y) => {
 };
 
 const drawHistoryHeader = (pdf, y) => {
-  const widths = [16, 37, 16, 28, 8, 16, 10, 10, 10, 20, 15];
+  const widths = [16, 41, 16, 25, 8, 16, 10, 10, 10, 18, 16];
   const headers = ['Fecha', 'Rival', 'Resultado', 'Competición', 'L/V', 'Rol', 'Min', 'G', 'A', 'Tarjetas', 'Lesión'];
   pdf.setFillColor(...COLORS.navy);
   pdf.rect(PAGE_MARGIN, y, CONTENT_WIDTH, 7, 'F');
@@ -355,7 +408,7 @@ const drawHistoryRow = (pdf, row, y, widths, rivalImage, rowIndex) => {
   center(row.date, 0);
   x += widths[0];
   if (rivalImage) fitImage(pdf, rivalImage, x + 1, y + 1.3, 5.5, 5.5);
-  text(pdf, row.opponent || 'Rival', x + (rivalImage ? 8 : 1.5), y + 5.1, { size: 5.5, style: 'bold', color: COLORS.ink, maxWidth: widths[1] - (rivalImage ? 9 : 3) });
+  singleLineText(pdf, row.opponent || 'Rival', x + (rivalImage ? 8 : 1.5), y + 5.1, { size: 5.5, minSize: 4.5, style: 'bold', color: COLORS.ink, maxWidth: widths[1] - (rivalImage ? 9 : 3) });
   x += widths[1];
   const outcomeColor = row.outcome === 'V' ? COLORS.win : row.outcome === 'D' ? COLORS.loss : row.outcome === 'E' ? COLORS.draw : COLORS.muted;
   center([row.outcome, row.result].filter(Boolean).join(' · '), 2, { style: 'bold', color: outcomeColor });
@@ -393,7 +446,7 @@ const drawPitch = (pdf, map, x, y, width, height) => {
       pdf.setFillColor(20, 91 + intensity, 123 + intensity);
       pdf.rect(cellX + 0.4, cellY + 0.4, cellWidth - 0.8, cellHeight - 0.8, 'F');
     }
-    text(pdf, compactPitchZoneLabel(zone, index), cellX + cellWidth / 2, cellY + 4, { size: 3.5, style: 'bold', color: COLORS.paper, align: 'center', maxWidth: cellWidth - 2 });
+    text(pdf, compactPitchZoneLabel(zone, index), cellX + cellWidth / 2, cellY + 4.2, { size: 4, style: 'bold', color: COLORS.paper, align: 'center', maxWidth: cellWidth - 2 });
     if (count > 0) text(pdf, count, cellX + cellWidth / 2, cellY + cellHeight / 2 + 4.5, { size: 8, style: 'bold', color: COLORS.paper, align: 'center' });
   });
   text(pdf, 'ATAQUE', x + width / 2 - 1, y - 2, { size: 4.5, style: 'bold', color: COLORS.green, align: 'center' });
@@ -425,34 +478,50 @@ const drawProductionMetrics = (pdf, production, y) => {
   const width = CONTENT_WIDTH / metrics.length;
   metrics.forEach(([label, value], index) => {
     const x = PAGE_MARGIN + width * index;
-    if (index) {
-      pdf.setDrawColor(...COLORS.line);
-      pdf.line(x, y, x, y + 17);
-    }
+    pdf.setFillColor(...(index < 3 ? [242, 248, 252] : COLORS.panel));
+    pdf.setDrawColor(...COLORS.line);
+    pdf.roundedRect(x + 1, y, width - 2, 17, 1, 1, 'FD');
     text(pdf, hasValue(value) ? value : 0, x + width / 2, y + 8, { size: 13, style: 'bold', color: COLORS.blue, align: 'center' });
     text(pdf, label.toUpperCase(), x + width / 2, y + 13.5, { size: 4.8, style: 'bold', color: COLORS.muted, align: 'center' });
   });
   return y + 21;
 };
 
+const sortConnections = (connections) => rows(connections)
+  .slice()
+  .sort((left, right) => number(right.count) - number(left.count)
+    || clean(left.from).localeCompare(clean(right.from), 'es')
+    || clean(left.to).localeCompare(clean(right.to), 'es'));
+
 const drawConnections = (pdf, connections, y, limit = Infinity) => {
-  const connectionRows = rows(connections).slice(0, limit);
+  const connectionRows = sortConnections(connections).slice(0, limit);
   if (!connectionRows.length) return y;
   y = sectionTitle(pdf, 'Conexiones ofensivas', y, '07');
   connectionRows.forEach((connection) => {
     const direction = connection.direction === 'received' ? 'recibida' : connection.direction === 'given' ? 'dada' : '';
     const countLabel = `${connection.count} ${connection.count === 1 ? 'asistencia' : 'asistencias'}${direction ? ` ${connection.count === 1 ? direction : `${direction}s`}` : ''}`;
-    text(pdf, connection.from, PAGE_MARGIN + 2, y + 4.8, { size: 6.3, style: 'bold', color: COLORS.ink, maxWidth: 70 });
+    const routeX = PAGE_MARGIN + 2;
+    const nameWidth = 59;
+    const arrowStart = routeX + nameWidth + 4;
+    const arrowEnd = arrowStart + 14;
+    setText(pdf, { size: 6.3, style: 'bold', color: COLORS.ink });
+    const fromLines = pdf.splitTextToSize(clean(connection.from), nameWidth);
+    const toLines = pdf.splitTextToSize(clean(connection.to), nameWidth);
+    const lineStep = 2.8;
+    const rowHeight = Math.max(10, 6 + (Math.max(fromLines.length, toLines.length) - 1) * lineStep);
+    const centerY = y + rowHeight / 2;
+    pdf.text(fromLines, routeX + nameWidth, centerY - ((fromLines.length - 1) * lineStep) / 2 + 1.2, { align: 'right' });
     pdf.setDrawColor(...COLORS.electric);
     pdf.setLineWidth(0.6);
-    pdf.line(PAGE_MARGIN + 72, y + 3.3, PAGE_MARGIN + 108, y + 3.3);
-    pdf.line(PAGE_MARGIN + 105, y + 1.3, PAGE_MARGIN + 108, y + 3.3);
-    pdf.line(PAGE_MARGIN + 105, y + 5.3, PAGE_MARGIN + 108, y + 3.3);
-    text(pdf, connection.to, PAGE_MARGIN + 111, y + 4.8, { size: 6.3, style: 'bold', color: COLORS.ink, maxWidth: 53 });
-    text(pdf, countLabel, A4_WIDTH_MM - PAGE_MARGIN, y + 4.8, { size: 5.5, style: 'bold', color: COLORS.blue, align: 'right' });
+    pdf.line(arrowStart, centerY, arrowEnd, centerY);
+    pdf.line(arrowEnd - 2.5, centerY - 1.9, arrowEnd, centerY);
+    pdf.line(arrowEnd - 2.5, centerY + 1.9, arrowEnd, centerY);
+    setText(pdf, { size: 6.3, style: 'bold', color: COLORS.ink });
+    pdf.text(toLines, arrowEnd + 4, centerY - ((toLines.length - 1) * lineStep) / 2 + 1.2);
+    singleLineText(pdf, countLabel, A4_WIDTH_MM - PAGE_MARGIN, centerY + 1.2, { size: 5.5, minSize: 4.7, style: 'bold', color: COLORS.blue, maxWidth: 39, align: 'right' });
     pdf.setDrawColor(...COLORS.line);
-    pdf.line(PAGE_MARGIN, y + 7.2, A4_WIDTH_MM - PAGE_MARGIN, y + 7.2);
-    y += 9;
+    pdf.line(PAGE_MARGIN, y + rowHeight, A4_WIDTH_MM - PAGE_MARGIN, y + rowHeight);
+    y += rowHeight + 2;
   });
   return y + 2;
 };
@@ -461,24 +530,24 @@ const drawGoalTarget = (pdf, target, x, y, width) => {
   const zones = rows(target?.zones);
   const max = Math.max(1, ...zones.map((zone) => number(zone.count)));
   const cellWidth = width / 3;
-  const cellHeight = 10;
+  const cellHeight = 10.5;
   zones.slice(0, 9).forEach((zone, index) => {
     const cellX = x + (index % 3) * cellWidth;
     const cellY = y + Math.floor(index / 3) * cellHeight;
     const count = number(zone.count);
-    const shade = count ? Math.round(239 - (count / max) * 45) : 250;
-    pdf.setFillColor(shade, shade + (count ? 5 : 2), 252);
+    const shade = count ? Math.round(236 - (count / max) * 44) : 250;
+    pdf.setFillColor(shade, Math.min(252, shade + (count ? 7 : 2)), 252);
     pdf.setDrawColor(...COLORS.line);
     pdf.rect(cellX, cellY, cellWidth, cellHeight, 'FD');
-    text(pdf, String(zone.shortLabel || zone.label || '').replace(/\n/g, ' '), cellX + cellWidth / 2, cellY + 3.8, { size: 3.7, style: 'bold', color: COLORS.muted, align: 'center', maxWidth: cellWidth - 1 });
-    text(pdf, count, cellX + cellWidth / 2, cellY + 8, { size: 7.5, style: 'bold', color: count ? COLORS.blue : COLORS.muted, align: 'center' });
+    text(pdf, zone.label || String(zone.shortLabel || '').replace(/\n/g, ' '), cellX + cellWidth / 2, cellY + 3.4, { size: 3.25, style: 'bold', color: count ? COLORS.ink : COLORS.muted, align: 'center', maxWidth: cellWidth - 1.2 });
+    text(pdf, count, cellX + cellWidth / 2, cellY + 8.9, { size: 7.8, style: 'bold', color: count ? COLORS.blue : COLORS.muted, align: 'center' });
   });
-  text(pdf, `${number(target?.known)} con zona${number(target?.missing) ? ` · ${number(target.missing)} sin registrar` : ''}`, x, y + 34, { size: 4.7, color: COLORS.muted });
+  text(pdf, `${number(target?.known)} con zona${number(target?.missing) ? ` · ${number(target.missing)} sin registrar` : ''}`, x, y + 35, { size: 4.7, color: COLORS.muted });
 };
 
 const drawObjectiveAnalysis = (pdf, analysis, y) => {
-  const body = rows(analysis?.bodyParts?.values);
-  const types = rows(analysis?.types?.phases);
+  const body = rows(analysis?.bodyParts?.values).filter((row) => number(row.count) > 0);
+  const types = rows(analysis?.types?.phases).filter((row) => number(row.count) > 0);
   const target = analysis?.target || {};
   if (!body.length && !types.length && !number(target.known)) return y;
   y = sectionTitle(pdf, 'Análisis objetivo de finalización', y, '08');
@@ -490,24 +559,30 @@ const drawObjectiveAnalysis = (pdf, analysis, y) => {
   ];
   modules.forEach((module, index) => {
     const x = PAGE_MARGIN + index * (width + gap);
-    text(pdf, module.title.toUpperCase(), x, y + 4, { size: 5.7, style: 'bold', color: COLORS.blue });
+    pdf.setFillColor(...COLORS.panel);
+    pdf.setDrawColor(...COLORS.line);
+    pdf.roundedRect(x, y, width, 47, 1.2, 1.2, 'FD');
+    text(pdf, module.title.toUpperCase(), x + 3, y + 5.5, { size: 5.7, style: 'bold', color: COLORS.blue });
     const max = Math.max(1, ...module.rows.map((row) => number(row.count)));
     module.rows.slice(0, 5).forEach((row, rowIndex) => {
-      const rowY = y + 9 + rowIndex * 6;
-      text(pdf, row.label, x, rowY, { size: 5.2, color: COLORS.ink, maxWidth: width - 18 });
+      const rowY = y + 11 + rowIndex * 6;
+      text(pdf, row.label, x + 3, rowY, { size: 5.2, color: COLORS.ink, maxWidth: width - 22 });
       const barX = x + width - 20;
       pdf.setFillColor(228, 235, 242);
       pdf.rect(barX, rowY - 3, 13, 2.3, 'F');
       pdf.setFillColor(...COLORS.blue);
       pdf.rect(barX, rowY - 3, 13 * (number(row.count) / max), 2.3, 'F');
       const percentage = module.total > 1 ? ` · ${Math.round((number(row.count) / module.total) * 100)}%` : '';
-      text(pdf, `${row.count}${percentage}`, x + width, rowY, { size: 5.1, style: 'bold', color: COLORS.ink, align: 'right' });
+      text(pdf, `${row.count}${percentage}`, x + width - 3, rowY, { size: 5.1, style: 'bold', color: COLORS.ink, align: 'right' });
     });
   });
   const targetX = PAGE_MARGIN + 2 * (width + gap);
-  text(pdf, 'DESTINO EN PORTERÍA', targetX, y + 4, { size: 5.7, style: 'bold', color: COLORS.blue });
-  if (number(target.known)) drawGoalTarget(pdf, target, targetX, y + 7, width);
-  return y + 45;
+  pdf.setFillColor(...COLORS.panel);
+  pdf.setDrawColor(...COLORS.line);
+  pdf.roundedRect(targetX, y, width, 47, 1.2, 1.2, 'FD');
+  text(pdf, 'DESTINO EN PORTERÍA', targetX + 3, y + 5.5, { size: 5.7, style: 'bold', color: COLORS.blue });
+  if (number(target.known)) drawGoalTarget(pdf, target, targetX + 3, y + 8, width - 6);
+  return y + 52;
 };
 
 const compactActionZoneLabel = (value) => clean(value)
@@ -530,6 +605,11 @@ const actionDetailLines = (action) => action.type === 'Gol'
     action.scorer ? `Asiste a: ${action.scorer}` : '',
   ].filter(Boolean);
 
+const wrappedActionDetailLines = (pdf, action) => {
+  setText(pdf, { size: 5.5, color: COLORS.ink });
+  return actionDetailLines(action).flatMap((line) => pdf.splitTextToSize(line, 61));
+};
+
 const drawVideoAction = (pdf, action, y, compact = false) => {
   const url = cleanUrl(action.url);
   if (compact) {
@@ -548,16 +628,16 @@ const drawVideoAction = (pdf, action, y, compact = false) => {
     }
     return y + 9;
   }
-  const details = actionDetailLines(action);
+  const details = wrappedActionDetailLines(pdf, action);
   const height = Math.max(22, 15 + details.length * 4.2);
   pdf.setFillColor(...COLORS.panel);
   pdf.setDrawColor(...COLORS.line);
   pdf.roundedRect(PAGE_MARGIN, y, CONTENT_WIDTH, height, 1.2, 1.2, 'FD');
   pdf.setFillColor(...COLORS.blue);
   pdf.circle(PAGE_MARGIN + 4.5, y + 5.5, 1.5, 'F');
-  text(pdf, `${action.type.toUpperCase()} · ${action.minute || '—'}'`, PAGE_MARGIN + 9, y + 6.7, { size: 8, style: 'bold', color: COLORS.navy });
-  text(pdf, `vs ${action.opponent || 'Rival'}${action.result ? ` · ${action.result}` : ''}`, PAGE_MARGIN + 9, y + 12, { size: 6.2, style: 'bold', color: COLORS.ink });
-  text(pdf, [action.competition, action.date].filter(Boolean).join(' · '), PAGE_MARGIN + 9, y + 16.5, { size: 5.3, color: COLORS.muted });
+  text(pdf, `${action.type.toUpperCase()} · ${action.minute || '—'}'`, PAGE_MARGIN + 9, y + 6.9, { size: 8.8, style: 'bold', color: COLORS.navy });
+  singleLineText(pdf, `vs ${action.opponent || 'Rival'}${action.result ? ` · ${action.result}` : ''}`, PAGE_MARGIN + 9, y + 12, { size: 6.2, minSize: 5.1, style: 'bold', color: COLORS.ink, maxWidth: 74 });
+  singleLineText(pdf, [action.competition, action.date].filter(Boolean).join(' · '), PAGE_MARGIN + 9, y + 16.5, { size: 5.3, minSize: 4.5, color: COLORS.muted, maxWidth: 74 });
   details.forEach((line, index) => text(pdf, line, PAGE_MARGIN + 88, y + 6.5 + index * 4.2, { size: 5.5, color: COLORS.ink, maxWidth: 61 }));
   if (url) {
     const buttonX = A4_WIDTH_MM - PAGE_MARGIN - 31;
@@ -640,7 +720,8 @@ export const createPlayerProfilePdf = async ({
     y = addPage('PRODUCCIÓN, ZONAS Y VÍDEO');
     y = drawProductionMaps(pdf, report.influenceMaps, y);
     y = drawProductionMetrics(pdf, report.production, y);
-    const productionConnections = rows(report.offensiveConnections).slice(0, 4);
+    const sortedOffensiveConnections = sortConnections(report.offensiveConnections);
+    const productionConnections = sortedOffensiveConnections.slice(0, 4);
     if (productionConnections.length) y = drawConnections(pdf, productionConnections, y, 4);
     const hasGoalAnalysis = number(report.goalAnalysis?.bodyParts?.known)
       || number(report.goalAnalysis?.types?.known)
@@ -650,11 +731,11 @@ export const createPlayerProfilePdf = async ({
       y = drawObjectiveAnalysis(pdf, report.goalAnalysis, y);
     }
 
-    const remainingConnections = rows(report.offensiveConnections).slice(4);
+    const remainingConnections = sortedOffensiveConnections.slice(4);
     if (remainingConnections.length) {
-      for (let index = 0; index < remainingConnections.length; index += 20) {
+      for (let index = 0; index < remainingConnections.length; index += 12) {
         y = addPage('CONEXIONES OFENSIVAS · CONTINUACIÓN');
-        y = drawConnections(pdf, remainingConnections.slice(index, index + 20), y);
+        y = drawConnections(pdf, remainingConnections.slice(index, index + 12), y);
       }
     }
 
@@ -664,7 +745,7 @@ export const createPlayerProfilePdf = async ({
       y = sectionTitle(pdf, 'Acciones en vídeo', y, '09');
       videoActions.forEach((action, index) => {
         const detailed = index < 4;
-        const estimated = detailed ? Math.max(25, 18 + actionDetailLines(action).length * 4.2) : 10;
+        const estimated = detailed ? Math.max(25, 18 + wrappedActionDetailLines(pdf, action).length * 4.2) : 10;
         if (y + estimated > CONTENT_BOTTOM) {
           y = addPage('ACCIONES EN VÍDEO · CONTINUACIÓN');
           y = sectionTitle(pdf, 'Acciones en vídeo · continuación', y, '09');
@@ -690,11 +771,33 @@ export const createPlayerProfilePdf = async ({
     pageSections,
     vector: true,
     presentationAudit: {
+      clubIdentity: {
+        name: clean(report.identity?.team),
+        crestSource: clean(report.identity?.teamCrest),
+        crestLoaded: Boolean(images.team?.data),
+        season: getPlayerPdfScope(report).season,
+      },
+      scope: getPlayerPdfScope(report),
       playerPhoto: {
         background: 'white',
         fit: 'contain',
         centered: true,
         imageLoaded: Boolean(images.player?.data),
+        source: clean(report.identity?.image),
+      },
+      positions: rows(report.positionUsage?.positions)
+        .filter((row) => number(row.minutes) > 0)
+        .slice()
+        .sort((left, right) => number(right.minutes) - number(left.minutes) || clean(left.position).localeCompare(clean(right.position), 'es'))
+        .map((row) => ({ position: clean(row.position), minutes: number(row.minutes), percentage: number(row.percentage) })),
+      connections: sortConnections(report.offensiveConnections).map((connection) => ({
+        from: clean(connection.from),
+        to: clean(connection.to),
+        count: number(connection.count),
+      })),
+      footer: {
+        contact: PROFESSIONAL_CONTACT,
+        pages: pageSections.length,
       },
     },
   };

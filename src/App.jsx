@@ -27,6 +27,7 @@ import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
 import PlayerPositionUsageSummary from './components/player/PlayerPositionUsageSummary';
 import PlayerAvatar from './components/player/PlayerAvatar';
+import { getPlayerAvatarSource } from './utils/playerAvatarPresentation';
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
 import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
 import { getPlayerPositionUsage } from './utils/playerPositionUsage';
@@ -28812,7 +28813,7 @@ function App() {
               const playerPdfModel = buildPlayerProfilePrintReport({
                 identity: {
                   name: selectedPlayerProfile.name,
-                  image: selectedPlayerProfile.image || '',
+                  image: getPlayerAvatarSource(selectedPlayerProfile),
                   number: displayDorsal(selectedPlayerProfile.number),
                   position: selectedPlayerProfile.position || 'Sin demarcación',
                   age: `${calculateAge(selectedPlayerProfile.dob)} años`,

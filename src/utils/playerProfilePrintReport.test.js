@@ -155,6 +155,7 @@ assert.doesNotMatch(componentSource, /Evolución de temporada|seasonStages|ratin
 assert.doesNotMatch(componentSource, /window\.open|onClick=/, 'el PDF no simula enlaces mediante JavaScript');
 assert.match(appSource, /team:\s*pdfOwnTeam\?\.name \|\| ''/, 'el modelo recibe el nombre del equipo propio canónico');
 assert.match(appSource, /teamCrest:\s*pdfOwnTeam\?\.crest \|\| ''/, 'el escudo procede del equipo propio y se omite si falta');
+assert.match(appSource, /image:\s*getPlayerAvatarSource\(selectedPlayerProfile\)/, 'el PDF reutiliza la fuente de foto de mayor resolución disponible en el perfil');
 assert.match(appSource, /competitionBreakdown:\s*pdfCompetitionRows/, 'el desglose se construye desde partidos filtrados reales');
 assert.match(appSource, /goalContributionsPer90/, 'G+A\/90 se calcula desde minutos y eventos oficiales');
 assert.match(appSource, /opponentCrest:\s*row\.match\.opponentCrest/, 'el historial recibe el escudo rival cuando existe');
