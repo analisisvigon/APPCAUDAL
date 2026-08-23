@@ -43,10 +43,37 @@ const normalizeHistoryRow = (row = {}) => ({
   assistLinks: rows(row.assistLinks).map(getPlayerReportActionUrl).filter(Boolean),
 });
 
-const PRODUCTION_CONNECTION_LIMIT = 4;
-const CONNECTIONS_PER_CONTINUATION_PAGE = 12;
+const PRODUCTION_CONNECTION_LIMIT = 5;
 const PRODUCTION_ACTION_LIMIT = 6;
 const ACTIONS_PER_CONTINUATION_PAGE = 10;
+
+const totalZones = (maps) => rows(maps)
+  .flatMap((map) => rows(map.zones))
+  .reduce((sum, zone) => sum + Number(zone.count || 0), 0);
+
+const goalAnalysisTotal = (analysis = {}) => Math.max(
+  Number(analysis.bodyParts?.total || 0),
+  Number(analysis.types?.total || 0),
+  Number(analysis.target?.total || 0),
+);
+
+export const buildPlayerDossierSectionPlan = (report = {}) => {
+  const offensiveOutput = Number(report.production?.goalContributions || 0) > 0;
+  const sections = [
+    { key: 'performance', label: 'Rendimiento', visible: true },
+    { key: 'competitions', label: 'Rendimiento por competición', visible: rows(report.competitionBreakdown).length > 0 },
+    { key: 'positions', label: 'Posiciones utilizadas', visible: true },
+    { key: 'history', label: 'Historial partido a partido', visible: true },
+    { key: 'zones', label: 'Zonas de producción', visible: offensiveOutput || totalZones(report.influenceMaps) > 0 },
+    { key: 'production', label: 'Producción ofensiva', visible: offensiveOutput },
+    { key: 'connections', label: 'Conexiones ofensivas', visible: rows(report.offensiveConnections).length > 0 },
+    { key: 'goalAnalysis', label: 'Análisis objetivo de finalización', visible: goalAnalysisTotal(report.goalAnalysis) > 0 },
+    { key: 'videos', label: 'Acciones en vídeo', visible: rows(report.videoActions).length > 0 },
+  ];
+  return sections
+    .filter((section) => section.visible)
+    .map(({ visible, ...section }, index) => ({ ...section, number: String(index + 1).padStart(2, '0') }));
+};
 
 export const buildPlayerOffensiveConnections = ({ society, playerName }) => rows(society)
   .flatMap((row, rowIndex) => {
@@ -78,6 +105,9 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
     .filter((competition) => Number(competition.played || 0) > 0)
     .map((competition) => ({
       ...competition,
+      minutesPerMatch: Number(competition.minutesPerMatch ?? (
+        Number(competition.played || 0) > 0 ? Math.round(Number(competition.minutes || 0) / Number(competition.played || 0)) : 0
+      )),
       goalContributions: Number(competition.goalContributions ?? (Number(competition.goals || 0) + Number(competition.assists || 0))),
     }));
   const videoActions = actions.filter((action) => action.url);
@@ -91,27 +121,21 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
   const offensiveConnections = buildPlayerOffensiveConnections({ society: source.society, playerName: source.identity?.name });
   const productionConnections = offensiveConnections.slice(0, PRODUCTION_CONNECTION_LIMIT);
   const connectionOverflow = [];
-  for (let index = productionConnections.length; index < offensiveConnections.length; index += CONNECTIONS_PER_CONTINUATION_PAGE) {
-    connectionOverflow.push(offensiveConnections.slice(index, index + CONNECTIONS_PER_CONTINUATION_PAGE));
-  }
-  const influenceZoneTotal = influenceMaps.flatMap((map) => rows(map.zones)).reduce((sum, zone) => sum + Number(zone.count || 0), 0);
-  const goalAnalysisKnown = Number(source.goalAnalysis?.bodyParts?.known || 0)
-    + Number(source.goalAnalysis?.types?.known || 0)
-    + Number(source.goalAnalysis?.target?.known || 0);
-  const hasProduction = actions.length > 0
-    || influenceZoneTotal > 0
+  const influenceZoneTotal = totalZones(influenceMaps);
+  const goalAnalysisCount = goalAnalysisTotal(source.goalAnalysis);
+  const hasProduction = influenceZoneTotal > 0
     || offensiveConnections.length > 0
-    || goalAnalysisKnown > 0
+    || goalAnalysisCount > 0
+    || videoActions.length > 0
     || Number(source.production?.goalContributions || 0) > 0;
   const pagePlan = [
     'summary',
     ...(hasProduction ? ['production'] : []),
-    ...connectionOverflow.map(() => 'connections'),
     ...historyOverflow.map(() => 'history'),
     ...actionOverflow.map(() => 'video'),
   ];
 
-  return {
+  const report = {
     identity: source.identity || {},
     filters: source.filters || {},
     validation: source.validation || {},
@@ -135,4 +159,6 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
     actionOverflow,
     pagePlan,
   };
+  report.sectionPlan = buildPlayerDossierSectionPlan(report);
+  return report;
 };

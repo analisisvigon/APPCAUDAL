@@ -117,6 +117,10 @@ assert.ok(vectorResult.audit.urls.includes(jairoVideoUrl));
 assert.deepEqual(vectorResult.presentationAudit.playerPhoto, { background: 'white', fit: 'contain', centered: true, imageLoaded: false, source: '' }, 'el fallback del PDF ocupa el mismo marco blanco');
 assert.deepEqual(vectorResult.presentationAudit.scope, { season: '2026/2027', competition: 'Copa RFEF', venue: 'Local + visitante' }, 'el ámbito traduce el filtro global de localía sin repetir etiquetas vacías');
 assert.deepEqual(vectorResult.presentationAudit.footer, { contact: 'analisisvigon@gmail.com', pages: 2 }, 'el contacto profesional se integra en todas las páginas del PDF');
+assert.deepEqual(vectorResult.presentationAudit.sectionPlan.map(({ key, number }) => [key, number]), [
+  ['performance', '01'], ['competitions', '02'], ['positions', '03'], ['history', '04'],
+  ['zones', '05'], ['production', '06'], ['connections', '07'], ['goalAnalysis', '08'], ['videos', '09'],
+], 'un dossier completo conserva numeración consecutiva en todos sus bloques visibles');
 
 const transparentPng = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lSxWAAAAAElFTkSuQmCC', 'base64'));
 const normalPhotoResult = await createPlayerProfilePdf({
@@ -283,6 +287,35 @@ assert.deepEqual({
 }, { official: 180, identified: 167, unknown: 13 }, 'Borja conserva 180 = 167 identificados + 13 desconocidos');
 if (process.env.PLAYER_POSITION_MAP_QA_PDF) fs.writeFileSync(process.env.PLAYER_POSITION_MAP_QA_PDF, Buffer.from(borjaPositions.arrayBuffer));
 
+const borjaProfessionalReport = makeScenarioReport({
+  name: 'Borja Rodríguez',
+  goals: 0,
+  assists: 1,
+  videos: 1,
+  matches: 2,
+  teamName: 'C.D. Caudal de Mieres',
+  positionUsage: {
+    positions: [{ position: 'Lateral izquierdo', minutes: 167, percentage: 93 }],
+    totalMinutes: 180,
+    determinedMinutes: 167,
+    unknownMinutes: 13,
+    valid: true,
+  },
+});
+borjaProfessionalReport.videoActions = [{
+  id: 'borja-assist-10', type: 'Asistencia', minute: '10', opponent: 'CD Praviano', result: '1-1',
+  competition: 'Copa RFEF', date: '16/08/2026', phase: 'Juego directo', assistZoneLabel: 'F. Creación izquierda',
+  scorer: 'Jairo Cárcaba', url: 'https://video.example/borja-assist?t=600',
+}];
+const borjaProfessional = await createPlayerProfilePdf({ report: borjaProfessionalReport, fetchImpl: null });
+assert.equal(borjaProfessional.pages, 2, 'Borja conserva una primera página competitiva y una segunda página ofensiva compacta');
+assert.equal(borjaProfessional.audit.linkAnnotations, 1, 'el vídeo de asistencia de Borja conserva una anotación PDF real');
+assert.deepEqual(borjaProfessional.presentationAudit.sectionPlan.map(({ key, number }) => [key, number]), [
+  ['performance', '01'], ['competitions', '02'], ['positions', '03'], ['history', '04'],
+  ['zones', '05'], ['production', '06'], ['connections', '07'], ['videos', '08'],
+], 'sin análisis de gol, la videoteca de Borja pasa de 07 a 08 sin saltos');
+if (process.env.PLAYER_BORJA_DOSSIER_QA_PDF) fs.writeFileSync(process.env.PLAYER_BORJA_DOSSIER_QA_PDF, Buffer.from(borjaProfessional.arrayBuffer));
+
 const noPositionMinutes = await createPlayerProfilePdf({
   report: makeScenarioReport({ positionUsage: { positions: [], totalMinutes: 0, determinedMinutes: 0, unknownMinutes: 0, valid: true } }),
   fetchImpl: null,
@@ -298,5 +331,12 @@ const sortedConnections = await createPlayerProfilePdf({
   fetchImpl: null,
 });
 assert.deepEqual(sortedConnections.presentationAudit.connections.map(({ count }) => count), [4, 2, 1], 'las conexiones se ordenan globalmente por participaciones antes de paginar');
+
+const connectionLimit = await createPlayerProfilePdf({
+  report: { ...makeScenarioReport({ assists: 1 }), offensiveConnections: Array.from({ length: 12 }, (_, index) => ({ from: 'Jugador', to: `Compañero ${index + 1}`, count: index + 1 })) },
+  fetchImpl: null,
+});
+assert.deepEqual(connectionLimit.presentationAudit.visibleConnections.map(({ count }) => count), [12, 11, 10, 9, 8], 'el PDF muestra sólo las cinco conexiones principales y mantiene el orden real');
+assert.match(exporterSource, /drawVideoAction\(pdf, action, y\);/, 'todas las acciones conservan su ficha profesional completa también en páginas de continuación');
 
 console.log('playerDossierPrint tests passed');

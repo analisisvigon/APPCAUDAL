@@ -12,12 +12,16 @@ import {
 } from '../src/utils/playerProductionDetails.js';
 import { resolveSportsSeasonFromMatches } from '../src/utils/sportsSeason.js';
 import { buildPlayerPositionUsage } from '../src/utils/playerPositionUsage.js';
+import { buildTacticalMatchHistory, getHistoricalSubstitutionMinutes } from '../src/utils/tacticalSnapshots.js';
+import { OWN_CLUB_IDENTITY, getOwnClubDisplayName } from '../src/constants/clubIdentity.js';
 
-const outputDirectory = path.resolve('artifacts/player-pdf-final-qa');
-const playerId = 'f7f5aaeb-e82b-4e6b-8920-694bc32cb6c7';
+const clean = (value) => String(value ?? '').trim();
+const rows = (value) => Array.isArray(value) ? value : [];
+const filenameSlug = (value) => clean(value).toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const outputDirectory = path.resolve(process.env.PLAYER_PDF_QA_OUTPUT || 'artifacts/player-pdf-final-qa');
+const playerId = clean(process.env.PLAYER_PDF_QA_PLAYER_ID) || 'f7f5aaeb-e82b-4e6b-8920-694bc32cb6c7';
 const competitionKey = 'copa_rfef';
 const competitionLabel = 'Copa RFEF';
-const clean = (value) => String(value ?? '').trim();
 const fieldZones = [
   ['finalizacion_izquierda', 'F. Finalización izquierda'], ['finalizacion_centro', 'F. Finalización centro'], ['finalizacion_derecha', 'F. Finalización derecha'],
   ['creacion_izquierda', 'F. Creación izquierda'], ['creacion_centro', 'F. Creación centro'], ['creacion_derecha', 'F. Creación derecha'],
@@ -49,14 +53,47 @@ const matchesById = Object.fromEntries(matches.map((match) => [match.id, match])
 const scopedStats = stats.filter((row) => matchesById[row.partido_id]);
 const scopedGoals = (goalsResponse.data || []).filter((goal) => matchesById[goal.partido_id]);
 const player = playerResponse.data;
-const lineupResponse = matches.length
-  ? await client.from('partido_alineacion_slots').select('*').in('partido_id', matches.map((match) => match.id)).eq('scope', 'stats').order('slot')
+const [lineupResponse, allMatchStatsResponse, systemEventsResponse, snapshotsResponse] = matches.length
+  ? await Promise.all([
+    client.from('partido_alineacion_slots').select('*').in('partido_id', matches.map((match) => match.id)).eq('scope', 'stats').order('slot'),
+    client.from('partido_estadisticas_jugador').select('*').in('partido_id', matches.map((match) => match.id)),
+    client.from('partido_eventos_sistema').select('*').in('partido_id', matches.map((match) => match.id)).order('minute'),
+    client.from('partido_snapshots_tacticos').select('*').in('partido_id', matches.map((match) => match.id)).order('minute'),
+  ])
+  : Array.from({ length: 4 }, () => ({ data: [], error: null }));
+for (const response of [lineupResponse, allMatchStatsResponse, systemEventsResponse, snapshotsResponse]) {
+  if (response.error) throw response.error;
+}
+const snapshotSlotsResponse = rows(snapshotsResponse.data).length
+  ? await client.from('partido_snapshot_tactico_slots').select('*').in('snapshot_id', rows(snapshotsResponse.data).map((snapshot) => snapshot.id)).order('slot')
   : { data: [], error: null };
-if (lineupResponse.error) throw lineupResponse.error;
+if (snapshotSlotsResponse.error) throw snapshotSlotsResponse.error;
 const lineupByMatch = (lineupResponse.data || []).reduce((acc, row) => {
   acc[row.partido_id] = [...(acc[row.partido_id] || []), {
     slot: Number(row.slot), playerId: row.jugador_id || '', playerName: row.player_name || '',
   }];
+  return acc;
+}, {});
+const statsByMatch = rows(allMatchStatsResponse.data).reduce((acc, row) => {
+  acc[row.partido_id] ||= {};
+  acc[row.partido_id][row.player_name] = {
+    role: row.role || 'Suplente',
+    minutes: row.minutes ?? '',
+    replacementName: row.replacement_name || '',
+    jugadorId: row.jugador_id || '',
+  };
+  return acc;
+}, {});
+const systemEventsByMatch = rows(systemEventsResponse.data).reduce((acc, event) => {
+  acc[event.partido_id] = [...(acc[event.partido_id] || []), event];
+  return acc;
+}, {});
+const slotsBySnapshot = rows(snapshotSlotsResponse.data).reduce((acc, slot) => {
+  acc[slot.snapshot_id] = [...(acc[slot.snapshot_id] || []), slot];
+  return acc;
+}, {});
+const snapshotsByMatch = rows(snapshotsResponse.data).reduce((acc, snapshot) => {
+  acc[snapshot.partido_id] = [...(acc[snapshot.partido_id] || []), { ...snapshot, slots: slotsBySnapshot[snapshot.id] || [] }];
   return acc;
 }, {});
 
@@ -122,11 +159,19 @@ const positionUsage = buildPlayerPositionUsage({
     matchId: match.id,
     minutes: Number(row.minutes || 0),
     role: row.role,
-    duration: 90,
+    duration: Math.max(90, ...Object.values(statsByMatch[match.id] || {}).map((statsRow) => Number(statsRow.minutes || 0))),
     initialSystem: match.stats_system || '4-4-2',
     initialSlots: lineupByMatch[match.id] || [],
-    intervals: [],
-    playerStats: { [player.name]: { role: row.role, minutes: row.minutes, jugadorId: playerId } },
+    intervals: buildTacticalMatchHistory({
+      matchId: match.id,
+      duration: Math.max(90, ...Object.values(statsByMatch[match.id] || {}).map((statsRow) => Number(statsRow.minutes || 0))),
+      initialSystem: match.stats_system || '4-4-2',
+      initialSlots: lineupByMatch[match.id] || [],
+      snapshots: snapshotsByMatch[match.id] || [],
+      systemEvents: systemEventsByMatch[match.id] || [],
+      substitutionMinutes: getHistoricalSubstitutionMinutes(statsByMatch[match.id] || {}),
+    }).intervals,
+    playerStats: statsByMatch[match.id] || {},
   })),
 });
 if (!positionUsage.valid || positionUsage.totalMinutes !== minutes) throw new Error('Invariante de posiciones inválido.');
@@ -172,7 +217,7 @@ const history = playedRows.map(({ row, match }) => {
 });
 
 const report = buildPlayerProfilePrintReport({
-  identity: { name: player.name, image: player.image || '', number: player.number, position: player.position, age, foot, team: ownTeam.name || '', teamCrest: ownTeam.crest || '', season: seasonResolution.season.label },
+  identity: { name: player.name, image: player.image || '', number: player.number, position: player.position, age, foot, team: getOwnClubDisplayName(ownTeam.name), teamCrest: ownTeam.crest || OWN_CLUB_IDENTITY.crest, season: seasonResolution.season.label },
   filters: { season: seasonResolution.season.label, competition: competitionLabel, venue: 'Todos' },
   validation: { seasonValid: true, production: invariant, positionUsage },
   seasonSummary: {
@@ -204,7 +249,7 @@ const report = buildPlayerProfilePrintReport({
 
 const result = await createPlayerProfilePdf({ report });
 await fs.mkdir(outputDirectory, { recursive: true });
-const pdfPath = path.join(outputDirectory, 'jairo-carcaba-dossier-profesional.pdf');
+const pdfPath = path.join(outputDirectory, `${filenameSlug(player.name) || 'jugador'}-dossier-profesional.pdf`);
 const auditPath = path.join(outputDirectory, 'audit.json');
 await fs.writeFile(pdfPath, Buffer.from(result.arrayBuffer));
 await fs.writeFile(auditPath, JSON.stringify({

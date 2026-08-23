@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { buildPlayerOffensiveConnections, buildPlayerProfilePrintReport, getPlayerReportActionUrl } from './playerProfilePrintReport.js';
+import { buildPlayerDossierSectionPlan, buildPlayerOffensiveConnections, buildPlayerProfilePrintReport, getPlayerReportActionUrl } from './playerProfilePrintReport.js';
 
 assert.equal(getPlayerReportActionUrl('https://video.example/goal?t=72'), 'https://video.example/goal?t=72');
 assert.equal(getPlayerReportActionUrl('javascript:alert(1)'), '', 'el PDF no admite enlaces no navegables o inseguros');
@@ -36,6 +36,7 @@ const filtered = buildPlayerProfilePrintReport({
 assert.equal(filtered.seasonSummary.starterPercentage, 88, 'el dossier conserva el porcentaje objetivo de titularidad');
 assert.equal(filtered.competitionBreakdown.length, 2, 'se omiten competiciones sin participación');
 assert.deepEqual(filtered.competitionBreakdown.map((row) => row.goalContributions), [6, 1], 'G+A por competición se calcula desde eventos reales');
+assert.deepEqual(filtered.competitionBreakdown.map((row) => row.minutesPerMatch), [79, 70], 'Min/PJ usa exclusivamente minutos y participaciones del filtro');
 assert.equal(filtered.actions[0].url, 'https://video.example/assist?t=10', 'la URL exacta con timestamp se conserva');
 assert.equal(filtered.actions[0].date, '16/08/2026', 'la videoteca conserva la fecha real de la acción');
 assert.equal(filtered.actions[1].url, '', 'una acción sin URL permanece registrada pero no entra en la videoteca');
@@ -62,7 +63,7 @@ const noProduction = buildPlayerProfilePrintReport({
 });
 assert.equal(noProduction.productionActions.length, 0, 'una acción oficial sin vídeo no recibe una ficha de vídeo falsa');
 assert.equal(noProduction.videoActions.length, 0, 'sin vídeos reales no se generan CTA falsos');
-assert.deepEqual(noProduction.pagePlan, ['summary', 'production'], 'la ausencia de producción no crea páginas vacías');
+assert.deepEqual(noProduction.pagePlan, ['summary'], 'la ausencia de producción no crea páginas vacías');
 
 const dense = buildPlayerProfilePrintReport({
   actions: Array.from({ length: 27 }, (_, index) => ({ id: `a-${index}`, type: 'Gol', minute: index + 1, url: `https://video.example/${index}` })),
@@ -124,9 +125,31 @@ const manyConnections = buildPlayerProfilePrintReport({
   society: Array.from({ length: 29 }, (_, index) => ({ name: `Compañero ${index + 1}`, given: index + 1, received: 0 })),
 });
 assert.equal(manyConnections.offensiveConnections.length, 29, 'ninguna conexión se descarta por volumen');
-assert.equal(manyConnections.productionConnections.length, 4, 'la página de producción conserva un bloque legible y dinámico');
-assert.deepEqual(manyConnections.connectionOverflow.map((page) => page.length), [12, 12, 1], 'las conexiones sobrantes se reparten en páginas completas');
-assert.deepEqual(manyConnections.pagePlan, ['summary', 'production', 'connections', 'connections', 'connections']);
+assert.equal(manyConnections.productionConnections.length, 5, 'el PDF selecciona las cinco conexiones más relevantes');
+assert.deepEqual(manyConnections.productionConnections.map((connection) => connection.count), [29, 28, 27, 26, 25]);
+assert.deepEqual(manyConnections.connectionOverflow, [], 'las conexiones menos relevantes no crean páginas de ruido visual');
+assert.deepEqual(manyConnections.pagePlan, ['summary', 'production']);
+
+const consecutiveSections = buildPlayerDossierSectionPlan({
+  competitionBreakdown: [{ played: 2 }],
+  positionUsage,
+  history: [{ id: 'm-1' }],
+  production: { goalContributions: 1 },
+  influenceMaps: [{ zones: [{ count: 1 }] }],
+  offensiveConnections: [{ count: 1 }],
+  goalAnalysis: { bodyParts: { total: 0 }, types: { total: 0 }, target: { total: 0 } },
+  videoActions: [{ url: 'https://video.example/assist' }],
+});
+assert.deepEqual(consecutiveSections.map(({ key, number }) => [key, number]), [
+  ['performance', '01'],
+  ['competitions', '02'],
+  ['positions', '03'],
+  ['history', '04'],
+  ['zones', '05'],
+  ['production', '06'],
+  ['connections', '07'],
+  ['videos', '08'],
+], 'si no hay análisis de gol, Acciones en vídeo ocupa 08 y nunca salta de 07 a 09');
 
 const componentSource = fs.readFileSync(new URL('../components/print/PlayerProfilePdfReport.jsx', import.meta.url), 'utf8');
 const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
@@ -153,8 +176,8 @@ assert.match(componentSource, /data-player-video-link="library"/, 'todo el CTA d
 assert.doesNotMatch(componentSource, /Impacto en el tiempo|player-pdf-timeline/, 'se elimina por completo el timeline subjetivo');
 assert.doesNotMatch(componentSource, /Evolución de temporada|seasonStages|rating/, 'se eliminan evolución y notas del dossier');
 assert.doesNotMatch(componentSource, /window\.open|onClick=/, 'el PDF no simula enlaces mediante JavaScript');
-assert.match(appSource, /team:\s*pdfOwnTeam\?\.name \|\| ''/, 'el modelo recibe el nombre del equipo propio canónico');
-assert.match(appSource, /teamCrest:\s*pdfOwnTeam\?\.crest \|\| ''/, 'el escudo procede del equipo propio y se omite si falta');
+assert.match(appSource, /team:\s*getOwnClubDisplayName\(pdfOwnTeam\?\.name\)/, 'el modelo recibe el nombre oficial de presentación sin modificar el dato almacenado');
+assert.match(appSource, /teamCrest:\s*pdfOwnTeam\?\.crest \|\| clubCrest/, 'el PDF reutiliza el escudo canónico de APPCAUDAL si el registro propio no lo incluye');
 assert.match(appSource, /image:\s*getPlayerAvatarSource\(selectedPlayerProfile\)/, 'el PDF reutiliza la fuente de foto de mayor resolución disponible en el perfil');
 assert.match(appSource, /competitionBreakdown:\s*pdfCompetitionRows/, 'el desglose se construye desde partidos filtrados reales');
 assert.match(appSource, /goalContributionsPer90/, 'G+A\/90 se calcula desde minutos y eventos oficiales');

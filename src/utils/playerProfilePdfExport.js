@@ -3,6 +3,7 @@ import {
   PLAYER_POSITION_MAP_ORIENTATION,
   buildPlayerPositionMapModel,
 } from './playerPositionMap.js';
+import { buildPlayerDossierSectionPlan } from './playerProfilePrintReport.js';
 
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
@@ -43,6 +44,15 @@ const normalizeVenueScope = (value) => {
   return !label || /^(todos?|todas?|local\s*\+\s*visitante)$/i.test(label)
     ? 'Local + visitante'
     : label;
+};
+
+const normalizeFootLabel = (value) => {
+  const label = clean(value).toLocaleLowerCase('es');
+  if (!label) return '';
+  if (/^(izquierda|izquierdo|zurda|zurdo)$/.test(label)) return 'Pie izquierdo';
+  if (/^(derecha|derecho|diestra|diestro)$/.test(label)) return 'Pie derecho';
+  if (/^amb/.test(label)) return 'Ambidiestro';
+  return `Pie ${label}`;
 };
 
 export const getPlayerPdfScope = (report = {}) => ({
@@ -263,7 +273,7 @@ const drawKpis = (pdf, report, y) => {
 const drawIdentity = (pdf, report, images, y) => {
   const identity = report.identity || {};
   const scope = getPlayerPdfScope(report);
-  const photoSize = 31;
+  const photoSize = 32;
   pdf.setFillColor(...COLORS.paper);
   pdf.setDrawColor(...COLORS.line);
   pdf.roundedRect(PAGE_MARGIN, y, photoSize, photoSize, 1.5, 1.5, 'FD');
@@ -273,37 +283,44 @@ const drawIdentity = (pdf, report, images, y) => {
   }
   const copyX = PAGE_MARGIN + photoSize + 6;
   text(pdf, 'PERFIL PROFESIONAL DE RENDIMIENTO', copyX, y + 4.5, { size: 5.5, style: 'bold', color: COLORS.electric });
-  text(pdf, identity.name || 'Jugador', copyX, y + 12, { size: 15.5, style: 'bold', color: COLORS.navy, maxWidth: 92 });
-  const attributes = [identity.number ? `#${identity.number}` : '', identity.position, identity.age, identity.foot ? `Pie ${identity.foot}` : ''].filter(Boolean).join(' · ');
-  text(pdf, attributes, copyX, y + 19, { size: 7.2, style: 'bold', color: COLORS.ink, maxWidth: 100 });
-  const teamY = y + 25.8;
+  singleLineText(pdf, clean(identity.name).toUpperCase() || 'JUGADOR', copyX, y + 11.5, { size: 14.5, minSize: 10.5, style: 'bold', color: COLORS.navy, maxWidth: 99 });
+  const attributeColumns = [
+    [identity.number ? `#${identity.number}` : '', identity.position],
+    [identity.age, normalizeFootLabel(identity.foot)],
+  ];
+  attributeColumns.forEach((column, columnIndex) => {
+    const columnX = copyX + columnIndex * 49;
+    singleLineText(pdf, column[0], columnX, y + 17.5, { size: 7.2, minSize: 6, style: 'bold', color: COLORS.ink, maxWidth: 44 });
+    singleLineText(pdf, column[1], columnX, y + 22.5, { size: 6.4, minSize: 5.3, color: COLORS.muted, maxWidth: 44 });
+  });
+  const teamY = y + 29.2;
   const teamCopyX = copyX + (images.team ? 11 : 0);
   if (images.team) {
     pdf.setFillColor(...COLORS.paper);
     pdf.setDrawColor(...COLORS.line);
-    pdf.roundedRect(copyX, y + 20.5, 9, 9, 1, 1, 'FD');
-    fitImage(pdf, images.team, copyX + 0.8, y + 21.3, 7.4, 7.4);
+    pdf.roundedRect(copyX, y + 24, 9, 9, 1, 1, 'FD');
+    fitImage(pdf, images.team, copyX + 0.8, y + 24.8, 7.4, 7.4);
   }
-  singleLineText(pdf, identity.team || 'Equipo no registrado', teamCopyX, teamY, { size: 7.2, minSize: 5.7, style: 'bold', color: COLORS.blue, maxWidth: images.team ? 80 : 91 });
-  text(pdf, scope.season ? `Temporada ${scope.season}` : 'Temporada —', teamCopyX, y + 30.2, { size: 5.5, color: COLORS.muted });
+  singleLineText(pdf, clean(identity.team).toUpperCase() || 'EQUIPO NO REGISTRADO', teamCopyX, teamY, { size: 6.8, minSize: 5.5, style: 'bold', color: COLORS.blue, maxWidth: images.team ? 82 : 93 });
+  text(pdf, scope.season ? `Temporada ${scope.season}` : 'Temporada —', teamCopyX, y + 33.5, { size: 5.3, color: COLORS.muted });
 
   const scopeX = 157;
   pdf.setDrawColor(...COLORS.line);
   pdf.setLineWidth(0.25);
-  pdf.line(scopeX - 4, y + 1, scopeX - 4, y + 30);
+  pdf.line(scopeX - 4, y + 1, scopeX - 4, y + 33);
   text(pdf, 'ÁMBITO DEL DOSSIER', scopeX, y + 4.5, { size: 5.2, style: 'bold', color: COLORS.muted });
   text(pdf, scope.season ? `Temporada ${scope.season}` : 'Temporada —', scopeX, y + 11, { size: 7.2, style: 'bold', color: COLORS.navy, maxWidth: 40 });
   singleLineText(pdf, scope.competition, scopeX, y + 17.5, { size: 6.2, minSize: 5, color: COLORS.ink, maxWidth: 40 });
   singleLineText(pdf, scope.venue, scopeX, y + 23.5, { size: 6.2, minSize: 5, color: COLORS.ink, maxWidth: 40 });
-  return y + 38;
+  return y + 40;
 };
 
-const drawCompetitionTable = (pdf, competitions, y) => {
+const drawCompetitionTable = (pdf, competitions, y, sectionNumber) => {
   const competitionRows = rows(competitions);
   if (!competitionRows.length) return y;
-  y = sectionTitle(pdf, 'Rendimiento por competición', y, '02');
-  const widths = [66, 20, 20, 20, 20, 20, 20];
-  const headers = ['Competición', 'PJ', 'Tit.', 'Min', 'G', 'A', 'G+A'];
+  y = sectionTitle(pdf, 'Rendimiento por competición', y, sectionNumber);
+  const widths = [58, 16, 16, 22, 22, 16, 16, 20];
+  const headers = ['Competición', 'PJ', 'Tit.', 'Min', 'Min/PJ', 'G', 'A', 'G+A'];
   let x = PAGE_MARGIN;
   pdf.setFillColor(...COLORS.navy);
   pdf.rect(PAGE_MARGIN, y, CONTENT_WIDTH, 7, 'F');
@@ -317,7 +334,10 @@ const drawCompetitionTable = (pdf, competitions, y) => {
       pdf.setFillColor(...COLORS.panel);
       pdf.rect(PAGE_MARGIN, y, CONTENT_WIDTH, 7.2, 'F');
     }
-    const values = [row.label, row.played, row.starts, `${row.minutes}'`, row.goals, row.assists, row.goalContributions];
+    const minutesPerMatch = hasValue(row.minutesPerMatch)
+      ? row.minutesPerMatch
+      : number(row.played) > 0 ? Math.round(number(row.minutes) / number(row.played)) : 0;
+    const values = [row.label, row.played, row.starts, `${row.minutes}'`, `${minutesPerMatch}'`, row.goals, row.assists, row.goalContributions];
     x = PAGE_MARGIN;
     values.forEach((value, index) => {
       text(pdf, value, x + (index ? widths[index] / 2 : 2), y + 4.7, { size: 6.1, style: index === 6 ? 'bold' : 'normal', color: COLORS.ink, align: index ? 'center' : 'left', maxWidth: index ? 0 : widths[index] - 4 });
@@ -361,10 +381,10 @@ const drawPositionPitch = (pdf, model, x, y, width, height) => {
   });
 };
 
-const drawPositionUsageMap = (pdf, usage, y) => {
+const drawPositionUsageMap = (pdf, usage, y, sectionNumber) => {
   const model = buildPlayerPositionMapModel(usage);
   const formatMinutes = (value) => Math.round(number(value)).toLocaleString('es-ES');
-  y = sectionTitle(pdf, 'Posiciones utilizadas', y, '03');
+  y = sectionTitle(pdf, 'Posiciones utilizadas', y, sectionNumber);
   if (model.empty) {
     text(pdf, 'Sin minutos registrados para este filtro.', PAGE_MARGIN + 2, y + 5.2, { size: 6.4, color: COLORS.muted });
     return y + 10;
@@ -407,7 +427,7 @@ const drawPositionUsageMap = (pdf, usage, y) => {
 };
 
 const drawHistoryHeader = (pdf, y) => {
-  const widths = [16, 41, 16, 25, 8, 16, 10, 10, 10, 18, 16];
+  const widths = [16, 46, 16, 28, 7, 14, 9, 8, 8, 18, 16];
   const headers = ['Fecha', 'Rival', 'Resultado', 'Competición', 'L/V', 'Rol', 'Min', 'G', 'A', 'Tarjetas', 'Lesión'];
   pdf.setFillColor(...COLORS.navy);
   pdf.rect(PAGE_MARGIN, y, CONTENT_WIDTH, 7, 'F');
@@ -455,12 +475,12 @@ const drawHistoryRow = (pdf, row, y, widths, rivalImage, rowIndex) => {
   center(row.date, 0);
   x += widths[0];
   if (rivalImage) fitImage(pdf, rivalImage, x + 1, y + 1.3, 5.5, 5.5);
-  singleLineText(pdf, row.opponent || 'Rival', x + (rivalImage ? 8 : 1.5), y + 5.1, { size: 5.5, minSize: 4.5, style: 'bold', color: COLORS.ink, maxWidth: widths[1] - (rivalImage ? 9 : 3) });
+  singleLineText(pdf, row.opponent || 'Rival', x + (rivalImage ? 8 : 1.5), y + 5.1, { size: 5.5, minSize: 4.8, style: 'bold', color: COLORS.ink, maxWidth: widths[1] - (rivalImage ? 9 : 3) });
   x += widths[1];
   const outcomeColor = row.outcome === 'V' ? COLORS.win : row.outcome === 'D' ? COLORS.loss : row.outcome === 'E' ? COLORS.draw : COLORS.muted;
   center([row.outcome, row.result].filter(Boolean).join(' · '), 2, { style: 'bold', color: outcomeColor });
   x += widths[2];
-  text(pdf, row.competition, x + 1.5, y + 5.1, { size: 5.2, color: COLORS.ink, maxWidth: widths[3] - 3 });
+  singleLineText(pdf, row.competition, x + 1.5, y + 5.1, { size: 5.2, minSize: 4.6, color: COLORS.ink, maxWidth: widths[3] - 3 });
   x += widths[3]; center(row.venue, 4); x += widths[4]; center(row.role, 5); x += widths[5]; center(row.minutes, 6, { style: 'bold' }); x += widths[6];
   drawHistoryLinks(pdf, row.goalLinks, row.goals, x, y + 5.3, widths[7]); x += widths[7];
   drawHistoryLinks(pdf, row.assistLinks, row.assists, x, y + 5.3, widths[8]); x += widths[8];
@@ -469,16 +489,18 @@ const drawHistoryRow = (pdf, row, y, widths, rivalImage, rowIndex) => {
 };
 
 const drawPitch = (pdf, map, x, y, width, height) => {
-  pdf.setFillColor(...COLORS.green);
+  const zones = rows(map?.zones);
+  const total = zones.reduce((sum, zone) => sum + number(zone.count), 0);
+  const empty = total === 0;
+  pdf.setFillColor(...(empty ? [226, 236, 232] : COLORS.green));
   pdf.roundedRect(x, y, width, height, 1.2, 1.2, 'F');
-  pdf.setDrawColor(221, 241, 231);
+  pdf.setDrawColor(...(empty ? [176, 195, 187] : [221, 241, 231]));
   pdf.setLineWidth(0.35);
   pdf.rect(x + 2, y + 2, width - 4, height - 4);
   pdf.line(x + 2, y + height / 2, x + width - 2, y + height / 2);
   pdf.circle(x + width / 2, y + height / 2, Math.min(width, height) * 0.11);
   pdf.rect(x + width * 0.23, y + 2, width * 0.54, height * 0.18);
   pdf.rect(x + width * 0.23, y + height * 0.82 - 2, width * 0.54, height * 0.18);
-  const zones = rows(map?.zones);
   const max = Math.max(1, ...zones.map((zone) => number(zone.count)));
   const cellWidth = (width - 4) / 3;
   const cellHeight = (height - 4) / 3;
@@ -493,7 +515,7 @@ const drawPitch = (pdf, map, x, y, width, height) => {
       pdf.setFillColor(20, 91 + intensity, 123 + intensity);
       pdf.rect(cellX + 0.4, cellY + 0.4, cellWidth - 0.8, cellHeight - 0.8, 'F');
     }
-    text(pdf, compactPitchZoneLabel(zone, index), cellX + cellWidth / 2, cellY + 4.2, { size: 4, style: 'bold', color: COLORS.paper, align: 'center', maxWidth: cellWidth - 2 });
+    text(pdf, compactPitchZoneLabel(zone, index), cellX + cellWidth / 2, cellY + 4.5, { size: 4.35, style: 'bold', color: empty ? COLORS.muted : COLORS.paper, align: 'center', maxWidth: cellWidth - 2 });
     if (count > 0) text(pdf, count, cellX + cellWidth / 2, cellY + cellHeight / 2 + 4.5, { size: 8, style: 'bold', color: COLORS.paper, align: 'center' });
   });
   text(pdf, 'ATAQUE', x + width / 2 - 1, y - 2, { size: 4.5, style: 'bold', color: COLORS.green, align: 'center' });
@@ -502,12 +524,14 @@ const drawPitch = (pdf, map, x, y, width, height) => {
   pdf.line(x + width / 2 + 9, y - 1, x + width / 2 + 9, y - 5);
   pdf.line(x + width / 2 + 9, y - 5, x + width / 2 + 7.8, y - 3.7);
   pdf.line(x + width / 2 + 9, y - 5, x + width / 2 + 10.2, y - 3.7);
-  const total = zones.reduce((sum, zone) => sum + number(zone.count), 0);
-  text(pdf, total ? `${total} ${total === 1 ? 'acción' : 'acciones'} con zona` : 'Sin zonas registradas', x + width / 2, y + height + 4.2, { size: 4.7, color: COLORS.muted, align: 'center' });
+  const emptyLabel = map?.key === 'goals'
+    ? 'Sin zonas de gol registradas'
+    : map?.key === 'assists' ? 'Sin zonas de asistencia registradas' : 'Sin zonas de acciones registradas';
+  text(pdf, total ? `${total} ${total === 1 ? 'acción' : 'acciones'} con zona` : emptyLabel, x + width / 2, y + height + 4.2, { size: 4.7, style: empty ? 'bold' : 'normal', color: COLORS.muted, align: 'center' });
 };
 
-const drawProductionMaps = (pdf, maps, y) => {
-  y = sectionTitle(pdf, 'Zonas de producción', y, '05');
+const drawProductionMaps = (pdf, maps, y, sectionNumber) => {
+  y = sectionTitle(pdf, 'Zonas de producción', y, sectionNumber);
   const gap = 5;
   const width = (CONTENT_WIDTH - gap * 2) / 3;
   const height = 54;
@@ -519,8 +543,8 @@ const drawProductionMaps = (pdf, maps, y) => {
   return y + height + 16;
 };
 
-const drawProductionMetrics = (pdf, production, y) => {
-  y = sectionTitle(pdf, 'Producción ofensiva', y, '06');
+const drawProductionMetrics = (pdf, production, y, sectionNumber) => {
+  y = sectionTitle(pdf, 'Producción ofensiva', y, sectionNumber);
   const metrics = [['Goles/90', production?.goalsPer90], ['Asist./90', production?.assistsPer90], ['G+A/90', production?.goalContributionsPer90], ['G+A total', production?.goalContributions]];
   const width = CONTENT_WIDTH / metrics.length;
   metrics.forEach(([label, value], index) => {
@@ -540,10 +564,10 @@ const sortConnections = (connections) => rows(connections)
     || clean(left.from).localeCompare(clean(right.from), 'es')
     || clean(left.to).localeCompare(clean(right.to), 'es'));
 
-const drawConnections = (pdf, connections, y, limit = Infinity) => {
+const drawConnections = (pdf, connections, y, sectionNumber, limit = Infinity) => {
   const connectionRows = sortConnections(connections).slice(0, limit);
   if (!connectionRows.length) return y;
-  y = sectionTitle(pdf, 'Conexiones ofensivas', y, '07');
+  y = sectionTitle(pdf, 'Conexiones ofensivas', y, sectionNumber);
   connectionRows.forEach((connection) => {
     const direction = connection.direction === 'received' ? 'recibida' : connection.direction === 'given' ? 'dada' : '';
     const countLabel = `${connection.count} ${connection.count === 1 ? 'asistencia' : 'asistencias'}${direction ? ` ${connection.count === 1 ? direction : `${direction}s`}` : ''}`;
@@ -592,12 +616,13 @@ const drawGoalTarget = (pdf, target, x, y, width) => {
   text(pdf, `${number(target?.known)} con zona${number(target?.missing) ? ` · ${number(target.missing)} sin registrar` : ''}`, x, y + 35, { size: 4.7, color: COLORS.muted });
 };
 
-const drawObjectiveAnalysis = (pdf, analysis, y) => {
+const drawObjectiveAnalysis = (pdf, analysis, y, sectionNumber) => {
   const body = rows(analysis?.bodyParts?.values).filter((row) => number(row.count) > 0);
   const types = rows(analysis?.types?.phases).filter((row) => number(row.count) > 0);
   const target = analysis?.target || {};
-  if (!body.length && !types.length && !number(target.known)) return y;
-  y = sectionTitle(pdf, 'Análisis objetivo de finalización', y, '08');
+  const goalTotal = Math.max(number(analysis?.bodyParts?.total), number(analysis?.types?.total), number(target.total));
+  if (!goalTotal) return y;
+  y = sectionTitle(pdf, 'Análisis objetivo de finalización', y, sectionNumber);
   const gap = 5;
   const width = (CONTENT_WIDTH - gap * 2) / 3;
   const modules = [
@@ -610,25 +635,30 @@ const drawObjectiveAnalysis = (pdf, analysis, y) => {
     pdf.setDrawColor(...COLORS.line);
     pdf.roundedRect(x, y, width, 47, 1.2, 1.2, 'FD');
     text(pdf, module.title.toUpperCase(), x + 3, y + 5.5, { size: 5.7, style: 'bold', color: COLORS.blue });
-    const max = Math.max(1, ...module.rows.map((row) => number(row.count)));
-    module.rows.slice(0, 5).forEach((row, rowIndex) => {
-      const rowY = y + 11 + rowIndex * 6;
-      text(pdf, row.label, x + 3, rowY, { size: 5.2, color: COLORS.ink, maxWidth: width - 22 });
-      const barX = x + width - 20;
-      pdf.setFillColor(228, 235, 242);
-      pdf.rect(barX, rowY - 3, 13, 2.3, 'F');
-      pdf.setFillColor(...COLORS.blue);
-      pdf.rect(barX, rowY - 3, 13 * (number(row.count) / max), 2.3, 'F');
-      const percentage = module.total > 1 ? ` · ${Math.round((number(row.count) / module.total) * 100)}%` : '';
-      text(pdf, `${row.count}${percentage}`, x + width - 3, rowY, { size: 5.1, style: 'bold', color: COLORS.ink, align: 'right' });
-    });
+    if (!module.rows.length) {
+      text(pdf, 'Sin información registrada', x + 3, y + 15, { size: 5.5, style: 'bold', color: COLORS.muted, maxWidth: width - 6 });
+    } else {
+      const max = Math.max(1, ...module.rows.map((row) => number(row.count)));
+      module.rows.slice(0, 5).forEach((row, rowIndex) => {
+        const rowY = y + 11 + rowIndex * 6;
+        text(pdf, row.label, x + 3, rowY, { size: 5.2, color: COLORS.ink, maxWidth: width - 22 });
+        const barX = x + width - 20;
+        pdf.setFillColor(228, 235, 242);
+        pdf.rect(barX, rowY - 3, 13, 2.3, 'F');
+        pdf.setFillColor(...COLORS.blue);
+        pdf.rect(barX, rowY - 3, 13 * (number(row.count) / max), 2.3, 'F');
+        const percentage = module.total > 0 ? ` · ${Math.round((number(row.count) / module.total) * 100)}%` : '';
+        text(pdf, `${row.count}${percentage}`, x + width - 3, rowY, { size: 5.1, style: 'bold', color: COLORS.ink, align: 'right' });
+      });
+    }
   });
   const targetX = PAGE_MARGIN + 2 * (width + gap);
   pdf.setFillColor(...COLORS.panel);
   pdf.setDrawColor(...COLORS.line);
   pdf.roundedRect(targetX, y, width, 47, 1.2, 1.2, 'FD');
-  text(pdf, 'DESTINO EN PORTERÍA', targetX + 3, y + 5.5, { size: 5.7, style: 'bold', color: COLORS.blue });
+  text(pdf, 'DIANA DE FINALIZACIÓN', targetX + 3, y + 5.5, { size: 5.7, style: 'bold', color: COLORS.blue });
   if (number(target.known)) drawGoalTarget(pdf, target, targetX + 3, y + 8, width - 6);
+  else text(pdf, 'Sin zona de portería registrada', targetX + 3, y + 15, { size: 5.5, style: 'bold', color: COLORS.muted, maxWidth: width - 6 });
   return y + 52;
 };
 
@@ -640,9 +670,9 @@ const compactActionZoneLabel = (value) => clean(value)
 
 const actionDetailLines = (action) => action.type === 'Gol'
   ? [
-    action.phase,
+    action.phase ? `Tipo de jugada: ${action.phase}` : '',
     action.shotZoneLabel ? `Finalización: ${compactActionZoneLabel(action.shotZoneLabel)}` : '',
-    action.contact ? `Superficie: ${action.contact}` : '',
+    action.contact ? `Golpeo: ${action.contact}` : '',
     action.goalZoneLabel ? `Portería: ${action.goalZoneLabel}` : '',
     action.assistant ? `Asistencia: ${action.assistant}` : '',
   ].filter(Boolean)
@@ -699,12 +729,6 @@ const drawVideoAction = (pdf, action, y, compact = false) => {
   return y + height + 3;
 };
 
-const reportHasProduction = (report) => {
-  const zoneTotal = rows(report.influenceMaps).flatMap((map) => rows(map.zones)).reduce((sum, zone) => sum + number(zone.count), 0);
-  const goalKnown = number(report.goalAnalysis?.bodyParts?.known) + number(report.goalAnalysis?.types?.known) + number(report.goalAnalysis?.target?.known);
-  return zoneTotal > 0 || rows(report.offensiveConnections).length > 0 || rows(report.videoActions).length > 0 || goalKnown > 0 || number(report.production?.goalContributions) > 0;
-};
-
 export const createPlayerProfilePdf = async ({
   report,
   documentRef = globalThis.document,
@@ -719,6 +743,8 @@ export const createPlayerProfilePdf = async ({
     throw new Error('No se puede generar el dossier: los minutos por posición superan los minutos reales del jugador.');
   }
   if (!positionMapModel.valid) throw new Error('No se puede generar el dossier: minutos identificados y sin posición no coinciden con los minutos oficiales.');
+  const sectionPlan = buildPlayerDossierSectionPlan(report);
+  const sectionNumbers = Object.fromEntries(sectionPlan.map((section) => [section.key, section.number]));
 
   const imageUrls = new Set([
     report.identity?.image,
@@ -740,70 +766,64 @@ export const createPlayerProfilePdf = async ({
 
   let y = addPage('PERFIL Y RENDIMIENTO COMPETITIVO');
   y = drawIdentity(pdf, report, images, y);
-  y = sectionTitle(pdf, `Rendimiento · Temporada ${report.identity.season || '—'}`, y, '01');
+  y = sectionTitle(pdf, `Rendimiento · Temporada ${report.identity.season || '—'}`, y, sectionNumbers.performance);
   y = drawKpis(pdf, report, y);
-  y = drawCompetitionTable(pdf, report.competitionBreakdown, y);
+  y = drawCompetitionTable(pdf, report.competitionBreakdown, y, sectionNumbers.competitions);
   const positionMapHeight = positionMapModel.empty
     ? 17
     : 7 + Math.max(51, 8 + positionMapModel.positions.length * 8.5) + (positionMapModel.unknownPositionMinutes || positionMapModel.unmappedPositions.length ? 8 : 4);
   if (y + positionMapHeight > CONTENT_BOTTOM) y = addPage('POSICIONES UTILIZADAS · CONTINUACIÓN');
-  y = drawPositionUsageMap(pdf, report.positionUsage, y);
+  y = drawPositionUsageMap(pdf, report.positionUsage, y, sectionNumbers.positions);
 
   const history = rows(report.history);
   if (history.length) {
     if (y + 18 > CONTENT_BOTTOM) y = addPage('HISTORIAL · CONTINUACIÓN');
-    y = sectionTitle(pdf, 'Historial partido a partido', y, '04');
+    y = sectionTitle(pdf, 'Historial partido a partido', y, sectionNumbers.history);
     let header = drawHistoryHeader(pdf, y);
     y = header.y;
     history.forEach((row, index) => {
       if (y + 9 > CONTENT_BOTTOM) {
         y = addPage('HISTORIAL · CONTINUACIÓN');
-        y = sectionTitle(pdf, 'Historial partido a partido · continuación', y, '04');
+        y = sectionTitle(pdf, 'Historial partido a partido · continuación', y, sectionNumbers.history);
         header = drawHistoryHeader(pdf, y);
         y = header.y;
       }
       y = drawHistoryRow(pdf, row, y, header.widths, imageMap.get(clean(row.opponentCrest)), index);
     });
   } else {
-    y = sectionTitle(pdf, 'Historial partido a partido', y, '04');
+    y = sectionTitle(pdf, 'Historial partido a partido', y, sectionNumbers.history);
     text(pdf, 'Sin partidos registrados en el ámbito seleccionado.', PAGE_MARGIN, y + 3, { size: 6.5, color: COLORS.muted });
   }
 
-  if (reportHasProduction(report)) {
+  if (sectionPlan.some((section) => ['zones', 'production', 'connections', 'goalAnalysis', 'videos'].includes(section.key))) {
     y = addPage('PRODUCCIÓN, ZONAS Y VÍDEO');
-    y = drawProductionMaps(pdf, report.influenceMaps, y);
-    y = drawProductionMetrics(pdf, report.production, y);
+    if (sectionNumbers.zones) y = drawProductionMaps(pdf, report.influenceMaps, y, sectionNumbers.zones);
+    if (sectionNumbers.production) y = drawProductionMetrics(pdf, report.production, y, sectionNumbers.production);
     const sortedOffensiveConnections = sortConnections(report.offensiveConnections);
-    const productionConnections = sortedOffensiveConnections.slice(0, 4);
-    if (productionConnections.length) y = drawConnections(pdf, productionConnections, y, 4);
-    const hasGoalAnalysis = number(report.goalAnalysis?.bodyParts?.known)
-      || number(report.goalAnalysis?.types?.known)
-      || number(report.goalAnalysis?.target?.known);
+    const productionConnections = sortedOffensiveConnections.slice(0, 5);
+    if (productionConnections.length) {
+      if (y + 69 > CONTENT_BOTTOM) y = addPage('CONEXIONES OFENSIVAS');
+      y = drawConnections(pdf, productionConnections, y, sectionNumbers.connections, 5);
+    }
+    const hasGoalAnalysis = number(report.goalAnalysis?.bodyParts?.total)
+      || number(report.goalAnalysis?.types?.total)
+      || number(report.goalAnalysis?.target?.total);
     if (hasGoalAnalysis) {
       if (y + 49 > CONTENT_BOTTOM) y = addPage('ANÁLISIS OBJETIVO DE FINALIZACIÓN');
-      y = drawObjectiveAnalysis(pdf, report.goalAnalysis, y);
-    }
-
-    const remainingConnections = sortedOffensiveConnections.slice(4);
-    if (remainingConnections.length) {
-      for (let index = 0; index < remainingConnections.length; index += 12) {
-        y = addPage('CONEXIONES OFENSIVAS · CONTINUACIÓN');
-        y = drawConnections(pdf, remainingConnections.slice(index, index + 12), y);
-      }
+      y = drawObjectiveAnalysis(pdf, report.goalAnalysis, y, sectionNumbers.goalAnalysis);
     }
 
     const videoActions = rows(report.videoActions);
     if (videoActions.length) {
       if (y + 31 > CONTENT_BOTTOM) y = addPage('ACCIONES EN VÍDEO');
-      y = sectionTitle(pdf, 'Acciones en vídeo', y, '09');
-      videoActions.forEach((action, index) => {
-        const detailed = index < 4;
-        const estimated = detailed ? Math.max(25, 18 + wrappedActionDetailLines(pdf, action).length * 4.2) : 10;
+      y = sectionTitle(pdf, 'Acciones en vídeo', y, sectionNumbers.videos);
+      videoActions.forEach((action) => {
+        const estimated = Math.max(25, 18 + wrappedActionDetailLines(pdf, action).length * 4.2);
         if (y + estimated > CONTENT_BOTTOM) {
           y = addPage('ACCIONES EN VÍDEO · CONTINUACIÓN');
-          y = sectionTitle(pdf, 'Acciones en vídeo · continuación', y, '09');
+          y = sectionTitle(pdf, 'Acciones en vídeo · continuación', y, sectionNumbers.videos);
         }
-        y = drawVideoAction(pdf, action, y, index >= 4);
+        y = drawVideoAction(pdf, action, y);
       });
     }
   }
@@ -813,7 +833,10 @@ export const createPlayerProfilePdf = async ({
     drawFooter(pdf, report, index + 1, pageSections.length);
   });
 
-  const expectedVideoUrls = rows(report.videoActions).map((action) => cleanUrl(action.url)).filter(Boolean);
+  const expectedVideoUrls = [
+    ...rows(report.videoActions).map((action) => cleanUrl(action.url)),
+    ...rows(report.history).flatMap((row) => [...rows(row.goalLinks), ...rows(row.assistLinks)].map(cleanUrl)),
+  ].filter(Boolean);
   const arrayBuffer = pdf.output('arraybuffer');
   const audit = auditPlayerPdfLinkAnnotations(arrayBuffer, expectedVideoUrls);
   if (!audit.valid) throw new Error(`El PDF generado no conserva todos los enlaces de vídeo (${audit.linkAnnotations} anotaciones; ${audit.missingUrls.length} URL ausentes).`);
@@ -858,6 +881,12 @@ export const createPlayerProfilePdf = async ({
         unmappedPositions: positionMapModel.unmappedPositions.map((position) => position.position),
       },
       connections: sortConnections(report.offensiveConnections).map((connection) => ({
+        from: clean(connection.from),
+        to: clean(connection.to),
+        count: number(connection.count),
+      })),
+      sectionPlan,
+      visibleConnections: sortConnections(report.offensiveConnections).slice(0, 5).map((connection) => ({
         from: clean(connection.from),
         to: clean(connection.to),
         count: number(connection.count),

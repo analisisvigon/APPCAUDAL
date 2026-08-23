@@ -353,9 +353,9 @@ import {
   loadTacticalTemplateUsageRows,
 } from './utils/tacticalTemplateUsage';
 import './styles/print.css';
+import { OWN_CLUB_IDENTITY, getOwnClubDisplayName } from './constants/clubIdentity';
 
-const clubCrest =
-  'https://tmssl.akamaized.net//images/wappen/head/13226.png?lm=1747769013';
+const clubCrest = OWN_CLUB_IDENTITY.crest;
 const defaultHomePhrase = 'Trabajo, identidad y detalle competitivo para preparar cada partido.';
 const homePhraseConfigKey = 'home_hero_phrase';
 const ownClubStadiumConfigKeys = ['own_club_stadium', 'club_stadium', 'caudal_stadium', 'home_stadium'];
@@ -28818,8 +28818,8 @@ function App() {
                   position: selectedPlayerProfile.position || 'Sin demarcación',
                   age: `${calculateAge(selectedPlayerProfile.dob)} años`,
                   foot: pdfPlayerFoot,
-                  team: pdfOwnTeam?.name || '',
-                  teamCrest: pdfOwnTeam?.crest || '',
+                  team: getOwnClubDisplayName(pdfOwnTeam?.name),
+                  teamCrest: pdfOwnTeam?.crest || clubCrest,
                   season: pdfSeasonLabel,
                 },
                 filters: {
