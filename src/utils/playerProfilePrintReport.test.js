@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { buildPlayerDossierSectionPlan, buildPlayerOffensiveConnections, buildPlayerProfilePrintReport, getPlayerReportActionUrl } from './playerProfilePrintReport.js';
+import {
+  buildPlayerCompetitionProfile,
+  buildPlayerDossierSectionPlan,
+  buildPlayerOffensiveConnections,
+  buildPlayerProductionMapLayout,
+  buildPlayerProfilePrintReport,
+  getPlayerReportActionUrl,
+} from './playerProfilePrintReport.js';
 
 assert.equal(getPlayerReportActionUrl('https://video.example/goal?t=72'), 'https://video.example/goal?t=72');
 assert.equal(getPlayerReportActionUrl('javascript:alert(1)'), '', 'el PDF no admite enlaces no navegables o inseguros');
@@ -49,6 +56,35 @@ assert.equal(filtered.productionActions.length, 1, 'Acciones en vídeo sólo con
 assert.equal(filtered.videoActions.length, 1, 'la videoteca lógica sólo contiene URL canónica real');
 assert.deepEqual(filtered.pagePlan, ['summary', 'production'], 'el volumen normal genera exactamente dos A4');
 assert.deepEqual(filtered.influenceMaps.map((map) => map.zones[0].count), [3, 1, 2], 'Todos, Goles y Asistencias conservan datasets independientes');
+assert.deepEqual(filtered.influenceMapLayout.maps.map((map) => map.key), ['all', 'goals', 'assists']);
+
+assert.deepEqual(buildPlayerCompetitionProfile([
+  { key: 'copa_rfef', label: 'Copa RFEF', logoUrl: 'https://assets.example/copa.png', played: 2 },
+]), { mode: 'single', key: 'copa_rfef', label: 'Copa RFEF', logoUrl: 'https://assets.example/copa.png', icon: '' }, 'una sola competición real conserva su nombre y logo aunque el filtro superior sea Todos');
+assert.equal(buildPlayerCompetitionProfile([
+  { key: 'league', label: 'Liga', played: 20 },
+  { key: 'cup', label: 'Copa RFEF', played: 2 },
+]).label, 'Temporada completa', 'varias competiciones se resumen sin mostrar un escudo engañoso');
+
+const emptyZones = (key) => ({ key, label: key, zones: [{ value: 'zone', count: 0 }] });
+assert.deepEqual(buildPlayerProductionMapLayout({
+  maps: [emptyZones('all'), emptyZones('goals'), emptyZones('assists')],
+  seasonSummary: { goals: 0, assists: 2 },
+}).maps.map((map) => map.key), ['all', 'assists'], 'sin goles se elimina su mapa y Todos/Asistencias ocupan dos columnas');
+assert.deepEqual(buildPlayerProductionMapLayout({
+  maps: [emptyZones('all'), emptyZones('goals'), emptyZones('assists')],
+  seasonSummary: { goals: 1, assists: 0 },
+}).maps.map((map) => map.key), ['all', 'goals'], 'sin asistencias se elimina su mapa sin perder una categoría oficial sin zona');
+const noProductionMaps = buildPlayerProductionMapLayout({
+  maps: [emptyZones('all'), emptyZones('goals'), emptyZones('assists')],
+  seasonSummary: { goals: 0, assists: 0 },
+});
+assert.deepEqual(noProductionMaps.maps, [], 'sin acciones ni zonas no se reserva espacio vacío');
+assert.equal(noProductionMaps.columns, 0);
+assert.equal(buildPlayerProductionMapLayout({
+  maps: [emptyZones('goals')],
+  seasonSummary: { goals: 1, assists: 0 },
+}).columns, 1, 'si sólo existe una categoría real el diseño usa una columna centrada');
 
 const noProduction = buildPlayerProfilePrintReport({
   identity: { name: 'Sin producción', season: '2026/27' },
@@ -143,13 +179,12 @@ const consecutiveSections = buildPlayerDossierSectionPlan({
 assert.deepEqual(consecutiveSections.map(({ key, number }) => [key, number]), [
   ['performance', '01'],
   ['competitions', '02'],
-  ['positions', '03'],
-  ['history', '04'],
-  ['zones', '05'],
-  ['production', '06'],
-  ['connections', '07'],
-  ['videos', '08'],
-], 'si no hay análisis de gol, Acciones en vídeo ocupa 08 y nunca salta de 07 a 09');
+  ['history', '03'],
+  ['zones', '04'],
+  ['production', '05'],
+  ['connections', '06'],
+  ['videos', '07'],
+], 'al integrar posiciones en cabecera, Historial ocupa 03 y los bloques siguientes mantienen numeración consecutiva');
 
 const componentSource = fs.readFileSync(new URL('../components/print/PlayerProfilePdfReport.jsx', import.meta.url), 'utf8');
 const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
@@ -180,6 +215,8 @@ assert.match(appSource, /team:\s*getOwnClubDisplayName\(pdfOwnTeam\?\.name\)/, '
 assert.match(appSource, /teamCrest:\s*pdfOwnTeam\?\.crest \|\| clubCrest/, 'el PDF reutiliza el escudo canónico de APPCAUDAL si el registro propio no lo incluye');
 assert.match(appSource, /image:\s*getPlayerAvatarSource\(selectedPlayerProfile\)/, 'el PDF reutiliza la fuente de foto de mayor resolución disponible en el perfil');
 assert.match(appSource, /competitionBreakdown:\s*pdfCompetitionRows/, 'el desglose se construye desde partidos filtrados reales');
+assert.match(appSource, /logoUrl:\s*competition\.logoUrl \|\| ''/, 'el modelo PDF conserva el logo real del catálogo de competiciones');
+assert.match(appSource, /<PlayerPositionUsageSummary usage=\{playerPositionUsage\}/, 'la ficha App mantiene íntegro su bloque posicional completo');
 assert.match(appSource, /goalContributionsPer90/, 'G+A\/90 se calcula desde minutos y eventos oficiales');
 assert.match(appSource, /opponentCrest:\s*row\.match\.opponentCrest/, 'el historial recibe el escudo rival cuando existe');
 assert.match(appSource, /date:\s*matchDisplayDate\(match\.date\)/, 'la ficha de acción recibe la fecha real');

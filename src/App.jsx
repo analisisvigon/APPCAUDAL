@@ -28760,6 +28760,8 @@ function App() {
                   key,
                   label: competition.label || 'Sin datos',
                   season: competition.season || '',
+                  logoUrl: competition.logoUrl || '',
+                  icon: competition.icon || '',
                   played: 0,
                   starts: 0,
                   minutes: 0,

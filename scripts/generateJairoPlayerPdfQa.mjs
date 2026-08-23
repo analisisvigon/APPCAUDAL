@@ -34,13 +34,14 @@ const targetZones = [
 ].map(([value, label]) => ({ value, label, shortLabel: label.replace(' ', '\n') }));
 
 const client = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
-const [playerResponse, statsResponse, goalsResponse, ownTeamResponse] = await Promise.all([
+const [playerResponse, statsResponse, goalsResponse, ownTeamResponse, competitionResponse] = await Promise.all([
   client.from('jugadores').select('*').eq('id', playerId).single(),
   client.from('partido_estadisticas_jugador').select('*').eq('jugador_id', playerId),
   client.from('partido_eventos_gol').select('*').or(`scorer_id.eq.${playerId},assistant_id.eq.${playerId}`),
   client.from('equipos_rivales').select('*').eq('team_kind', 'own').maybeSingle(),
+  client.from('competitions').select('*').eq('key', competitionKey).maybeSingle(),
 ]);
-for (const response of [playerResponse, statsResponse, goalsResponse, ownTeamResponse]) {
+for (const response of [playerResponse, statsResponse, goalsResponse, ownTeamResponse, competitionResponse]) {
   if (response.error) throw response.error;
 }
 
@@ -178,6 +179,7 @@ if (!positionUsage.valid || positionUsage.totalMinutes !== minutes) throw new Er
 const seasonResolution = resolveSportsSeasonFromMatches(matches);
 if (!seasonResolution.valid) throw new Error(`Temporada no resoluble: ${seasonResolution.reason}`);
 const ownTeam = ownTeamResponse.data || {};
+const competition = competitionResponse.data || {};
 const age = (() => {
   const birth = new Date(`${player.dob}T12:00:00`);
   const now = new Date();
@@ -228,7 +230,17 @@ const report = buildPlayerProfilePrintReport({
     red: scopedStats.filter((row) => row.red).length, injuries: scopedStats.filter((row) => row.injured).length,
     benchEntries: Math.max(0, played - starts),
   },
-  competitionBreakdown: [{ key: competitionKey, label: competitionLabel, played, starts, minutes, goals: goals.length, assists: assists.length }],
+  competitionBreakdown: [{
+    key: competitionKey,
+    label: competition.name || competitionLabel,
+    logoUrl: competition.logo_url || '',
+    icon: competition.fallback_icon || '',
+    played,
+    starts,
+    minutes,
+    goals: goals.length,
+    assists: assists.length,
+  }],
   positionUsage,
   production: {
     goalsPer90: minutes ? (goals.length / minutes * 90).toFixed(2) : '0.00',
@@ -255,6 +267,6 @@ await fs.writeFile(pdfPath, Buffer.from(result.arrayBuffer));
 await fs.writeFile(auditPath, JSON.stringify({
   generatedAt: new Date().toISOString(), pdfPath, identity: report.identity, filters: report.filters,
   seasonSummary: report.seasonSummary, invariant, positionUsage, goalTarget: report.goalAnalysis.target,
-  pages: result.pages, pageSections: result.pageSections, linkAudit: result.audit,
+  pages: result.pages, pageSections: result.pageSections, linkAudit: result.audit, presentationAudit: result.presentationAudit,
 }, null, 2));
 console.log(JSON.stringify({ pdfPath, auditPath, pages: result.pages, pageSections: result.pageSections, linkAnnotations: result.audit.linkAnnotations, urls: result.audit.urls, invariant, positionUsage }, null, 2));

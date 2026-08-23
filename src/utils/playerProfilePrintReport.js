@@ -57,14 +57,49 @@ const goalAnalysisTotal = (analysis = {}) => Math.max(
   Number(analysis.target?.total || 0),
 );
 
+export const buildPlayerCompetitionProfile = (competitionBreakdown = []) => {
+  const competitions = rows(competitionBreakdown).filter((competition) => Number(competition.played || 0) > 0);
+  if (competitions.length === 1) {
+    const competition = competitions[0];
+    return {
+      mode: 'single',
+      key: clean(competition.key),
+      label: clean(competition.label),
+      logoUrl: clean(competition.logoUrl || competition.logo_url),
+      icon: clean(competition.icon),
+    };
+  }
+  if (competitions.length > 1) return { mode: 'multiple', key: '', label: 'Temporada completa', logoUrl: '', icon: '' };
+  return { mode: 'empty', key: '', label: 'Sin competición registrada', logoUrl: '', icon: '' };
+};
+
+export const buildPlayerProductionMapLayout = ({ maps = [], seasonSummary = {} } = {}) => {
+  const normalizedMaps = rows(maps).map((map) => ({ ...map, zones: rows(map.zones) }));
+  const goals = Number(seasonSummary.goals || 0);
+  const assists = Number(seasonSummary.assists || 0);
+  const totalFor = (map) => rows(map.zones).reduce((sum, zone) => sum + Number(zone.count || 0), 0);
+  const visibleMaps = normalizedMaps.filter((map) => {
+    const total = totalFor(map);
+    if (map.key === 'goals') return goals > 0 || total > 0;
+    if (map.key === 'assists') return assists > 0 || total > 0;
+    if (map.key === 'all') return goals + assists > 0 || total > 0;
+    return total > 0;
+  });
+  return {
+    maps: visibleMaps,
+    columns: Math.min(3, visibleMaps.length),
+    hiddenKeys: normalizedMaps.filter((map) => !visibleMaps.includes(map)).map((map) => map.key),
+  };
+};
+
 export const buildPlayerDossierSectionPlan = (report = {}) => {
   const offensiveOutput = Number(report.production?.goalContributions || 0) > 0;
+  const influenceMapLayout = report.influenceMapLayout || buildPlayerProductionMapLayout({ maps: report.influenceMaps, seasonSummary: report.seasonSummary });
   const sections = [
     { key: 'performance', label: 'Rendimiento', visible: true },
     { key: 'competitions', label: 'Rendimiento por competición', visible: rows(report.competitionBreakdown).length > 0 },
-    { key: 'positions', label: 'Posiciones utilizadas', visible: true },
     { key: 'history', label: 'Historial partido a partido', visible: true },
-    { key: 'zones', label: 'Zonas de producción', visible: offensiveOutput || totalZones(report.influenceMaps) > 0 },
+    { key: 'zones', label: 'Zonas de producción', visible: influenceMapLayout.maps.length > 0 },
     { key: 'production', label: 'Producción ofensiva', visible: offensiveOutput },
     { key: 'connections', label: 'Conexiones ofensivas', visible: rows(report.offensiveConnections).length > 0 },
     { key: 'goalAnalysis', label: 'Análisis objetivo de finalización', visible: goalAnalysisTotal(report.goalAnalysis) > 0 },
@@ -110,6 +145,8 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
       )),
       goalContributions: Number(competition.goalContributions ?? (Number(competition.goals || 0) + Number(competition.assists || 0))),
     }));
+  const competitionProfile = buildPlayerCompetitionProfile(competitionBreakdown);
+  const influenceMapLayout = buildPlayerProductionMapLayout({ maps: influenceMaps, seasonSummary: source.seasonSummary });
   const videoActions = actions.filter((action) => action.url);
   const summaryHistoryLimit = Math.max(10, 18 - Math.max(0, competitionBreakdown.length - 4));
   const summaryHistory = history.slice(0, summaryHistoryLimit);
@@ -141,11 +178,13 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
     validation: source.validation || {},
     seasonSummary: source.seasonSummary || {},
     competitionBreakdown,
+    competitionProfile,
     positionUsage: source.positionUsage || {},
     production: source.production || {},
     hasProduction,
     goalAnalysis: source.goalAnalysis || {},
     influenceMaps,
+    influenceMapLayout,
     society: rows(source.society),
     offensiveConnections,
     productionConnections,
