@@ -74,6 +74,28 @@ const emptyDescription = buildTacticalCapturePresentation({
 assert.equal(emptyDescription.description, '', 'G: la descripción vacía activa el layout de campo completo');
 assert.doesNotMatch(captureViewSource, /Sin descripción/);
 
+const singleLineDescription = buildTacticalCapturePresentation({
+  selectedPlay: { id: 'single', description: 'Una sola línea.' },
+}).description;
+const manualLinesDescription = buildTacticalCapturePresentation({
+  selectedPlay: { id: 'lines', description: '. Puntas con centrales y pivotes\n. Posibilidad de salto de extremo a central.' },
+}).description;
+const fourLinesDescription = buildTacticalCapturePresentation({
+  selectedPlay: { id: 'four', description: 'Línea 1\nLínea 2\nLínea 3\nLínea 4' },
+}).description;
+const paragraphsDescription = buildTacticalCapturePresentation({
+  selectedPlay: { id: 'paragraphs', description: 'Primera idea.\n\nSegunda idea.' },
+}).description;
+const templateDescription = buildTacticalCapturePresentation({
+  selectedPlay: { id: 'template-play', sourceTemplateId: 'template-1', description: 'Línea A\nLínea B' },
+}).description;
+assert.equal(singleLineDescription, 'Una sola línea.', 'una línea no cambia');
+assert.equal(manualLinesDescription, '. Puntas con centrales y pivotes\n. Posibilidad de salto de extremo a central.', 'dos saltos manuales llegan intactos al render');
+assert.equal(fourLinesDescription.split('\n').length, 4, 'cuatro líneas conservan su estructura');
+assert.equal(paragraphsDescription, 'Primera idea.\n\nSegunda idea.', 'una línea vacía entre párrafos se conserva');
+assert.equal(templateDescription, 'Línea A\nLínea B', 'una descripción procedente de plantilla usa el mismo valor de jugada');
+assert.equal(buildTacticalCapturePresentation({ selectedPlay: { description: manualLinesDescription } }).description, manualLinesDescription, 'salir y volver a captura no transforma el texto');
+
 assert.deepEqual(buildTacticalCapturePresentation({
   selectedPlay: { id: 'two', description: '' },
 }), { phase: '', situation: '', description: '' }, 'varias jugadas no añaden metadatos de numeración a captura');
@@ -97,6 +119,7 @@ assert.match(cssSource, /flex-basis: min\(896px, calc\(\(100dvh - 32px\) \* 0\.8
 assert.match(cssSource, /width: min\(100cqw, calc\(100cqh \* 0\.833333\)\)/, 'el campo conserva su proporción usando el espacio real del contenedor');
 assert.match(cssSource, /\.tactical-capture-sidebar\s*\{[\s\S]*flex: 1 1 0;[\s\S]*align-self: flex-start;[\s\S]*justify-content: flex-start;/, 'fase y descripción comparten un panel compacto');
 assert.match(cssSource, /\.tactical-capture-description\s*\{[\s\S]*font-size: clamp\(18px,[\s\S]*line-height: 1\.48;/, 'la descripción mantiene tamaño de presentación');
+assert.match(cssSource, /\.tactical-capture-description\s*\{[\s\S]*overflow-wrap: anywhere;[\s\S]*white-space: pre-wrap;/, 'captura conserva saltos manuales y mantiene wrap automático');
 assert.match(cssSource, /\.tactical-capture-exit\s*\{[\s\S]*position: fixed;[\s\S]*right: 7px;[\s\S]*writing-mode: vertical-rl;/, 'Salir queda en el margen exterior de la composición');
 
 const boardRatio = 7 / 8.4;

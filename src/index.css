@@ -431,10 +431,12 @@ table {
   min-width: 0;
   margin-top: clamp(12px, 2vh, 22px);
   overflow: hidden;
+  overflow-wrap: anywhere;
   color: #e2e8f0;
   font-size: clamp(18px, 1.35vw, 26px);
   font-weight: 650;
   line-height: 1.48;
+  white-space: pre-wrap;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 12;
 }
