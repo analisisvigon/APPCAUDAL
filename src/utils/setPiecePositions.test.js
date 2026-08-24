@@ -142,7 +142,7 @@ const appSource = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 assert.ok(appSource.includes("phaseField: 'setPiecePhaseV1'"), 'ABP persiste en un workspace independiente');
 assert.ok(appSource.includes("phaseLabel: 'SET_PIECE_PHASE_SAVE'"), 'el error de guardado ABP queda identificado');
 assert.ok(appSource.includes('aria-label="Selector visual de la posición inicial del balón"'), 'el selector es un SVG interactivo accesible');
-assert.ok(appSource.includes('onPointerDown={beginSetPieceBallDrag}'), 'el balón puede moverse con la herramienta actual');
+assert.ok(appSource.includes('onPointerDown={selectOrMoveTacticalBall}'), 'el balón puede seleccionarse y moverse con la herramienta actual');
 assert.ok(appSource.includes('ballStartPosition: { ...targetBallStartPosition }'), 'las plantillas crean una copia independiente de la posición');
 assert.equal(
   (appSource.match(/buildSetPieceInitialPlayerPositions\(/g) || []).length,

@@ -304,6 +304,17 @@ import {
 } from './utils/setPieceZones';
 import { getTacticalPreset } from './utils/tacticalPresets';
 import {
+  cloneTacticalBoardArrow,
+  convertTacticalBoardArrowToCurve,
+  duplicateTacticalBoardArrow,
+  getTacticalBoardArrowPath,
+  getTacticalBoardCurveControlPoint,
+  normalizeTacticalBoardArrows,
+  normalizeTacticalBoardPoint,
+  straightenTacticalBoardArrow,
+  updateTacticalBoardArrowPoint,
+} from './utils/tacticalBoardGeometry';
+import {
   createTacticalTemplate,
   deleteTacticalTemplate,
   listTacticalTemplates,
@@ -1046,6 +1057,19 @@ const createDefensivePlayId = () => globalThis.crypto?.randomUUID?.() || `defens
 const createOffensivePlayId = () => globalThis.crypto?.randomUUID?.() || `offensive-play-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 const createTransitionPlayId = () => globalThis.crypto?.randomUUID?.() || `transition-play-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 const createSetPiecePlayId = () => globalThis.crypto?.randomUUID?.() || `set-piece-play-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+const normalizeTacticalPlayBall = (play, { fallback = null, visibleByDefault = false } = {}) => {
+  const storedPosition = normalizeTacticalBoardPoint(play?.ballStartPosition);
+  const fallbackPosition = normalizeTacticalBoardPoint(fallback);
+  const ballStartPosition = storedPosition || fallbackPosition;
+  return {
+    ballStartPosition,
+    ballVisible: Boolean(ballStartPosition) && (
+      play?.ballVisible == null
+        ? visibleByDefault || Boolean(storedPosition)
+        : play.ballVisible === true
+    ),
+  };
+};
 const createEmptyDefensiveWorkspace = () => ({
   version: 1,
   activeSituation: 'mid_block',
@@ -1064,15 +1088,8 @@ const normalizeDefensiveWorkspace = (value) => {
       rivalSystem: String(play.rivalSystem || '4-4-2'),
       caudalSystem: String(play.caudalSystem || '4-4-2'),
       playerPositions: play.playerPositions && typeof play.playerPositions === 'object' && !Array.isArray(play.playerPositions) ? play.playerPositions : {},
-      arrows: (Array.isArray(play.arrows) ? play.arrows : [])
-        .filter((arrow) => arrow && ['pass', 'movement'].includes(arrow.type) && arrow.id && arrow.start && arrow.end)
-        .map((arrow) => ({
-          id: String(arrow.id),
-          type: arrow.type,
-          start: { x: Number(arrow.start.x), y: Number(arrow.start.y) },
-          end: { x: Number(arrow.end.x), y: Number(arrow.end.y) },
-        }))
-        .filter((arrow) => [arrow.start.x, arrow.start.y, arrow.end.x, arrow.end.y].every(Number.isFinite)),
+      arrows: normalizeTacticalBoardArrows(play.arrows),
+      ...normalizeTacticalPlayBall(play),
       description: String(play.description || ''),
       category: String(play.category || ''),
       tags: (Array.isArray(play.tags) ? play.tags : []).filter((tag) => typeof tag === 'string'),
@@ -1125,15 +1142,8 @@ const normalizeOffensiveWorkspace = (value) => {
       rivalSystem: String(play.rivalSystem || '4-4-2'),
       caudalSystem: String(play.caudalSystem || '4-4-2'),
       playerPositions: play.playerPositions && typeof play.playerPositions === 'object' && !Array.isArray(play.playerPositions) ? play.playerPositions : {},
-      arrows: (Array.isArray(play.arrows) ? play.arrows : [])
-        .filter((arrow) => arrow && ['pass', 'movement'].includes(arrow.type) && arrow.id && arrow.start && arrow.end)
-        .map((arrow) => ({
-          id: String(arrow.id),
-          type: arrow.type,
-          start: { x: Number(arrow.start.x), y: Number(arrow.start.y) },
-          end: { x: Number(arrow.end.x), y: Number(arrow.end.y) },
-        }))
-        .filter((arrow) => [arrow.start.x, arrow.start.y, arrow.end.x, arrow.end.y].every(Number.isFinite)),
+      arrows: normalizeTacticalBoardArrows(play.arrows),
+      ...normalizeTacticalPlayBall(play),
       description: String(play.description || ''),
       category: String(play.category || ''),
       tags: (Array.isArray(play.tags) ? play.tags : []).filter((tag) => typeof tag === 'string'),
@@ -1223,15 +1233,8 @@ const normalizeTransitionWorkspace = (value) => {
       rivalSystem: String(play.rivalSystem || '4-4-2'),
       caudalSystem: String(play.caudalSystem || '4-4-2'),
       playerPositions: play.playerPositions && typeof play.playerPositions === 'object' && !Array.isArray(play.playerPositions) ? play.playerPositions : {},
-      arrows: (Array.isArray(play.arrows) ? play.arrows : [])
-        .filter((arrow) => arrow && ['pass', 'movement'].includes(arrow.type) && arrow.id && arrow.start && arrow.end)
-        .map((arrow) => ({
-          id: String(arrow.id),
-          type: arrow.type,
-          start: { x: Number(arrow.start.x), y: Number(arrow.start.y) },
-          end: { x: Number(arrow.end.x), y: Number(arrow.end.y) },
-        }))
-        .filter((arrow) => [arrow.start.x, arrow.start.y, arrow.end.x, arrow.end.y].every(Number.isFinite)),
+      arrows: normalizeTacticalBoardArrows(play.arrows),
+      ...normalizeTacticalPlayBall(play),
       description: String(play.description || ''),
       category: String(play.category || ''),
       tags: (Array.isArray(play.tags) ? play.tags : []).filter((tag) => typeof tag === 'string'),
@@ -1317,24 +1320,16 @@ const normalizeSetPieceWorkspace = (value) => {
       name: String(play.name || 'Jugada'),
       setPieceType: play.setPieceType,
       setPieceAction: play.setPieceAction,
-      ballStartPosition: normalizeBallStartPosition(
-        play.ballStartPosition,
-        getDefaultSetPieceBallPosition(play.setPieceType, play.setPieceAction)
-      ),
       rivalSystem: String(play.rivalSystem || '4-4-2'),
       caudalSystem: String(play.caudalSystem || '4-4-2'),
       playerPositions: play.playerPositions && typeof play.playerPositions === 'object' && !Array.isArray(play.playerPositions)
         ? play.playerPositions
         : {},
-      arrows: (Array.isArray(play.arrows) ? play.arrows : [])
-        .filter((arrow) => arrow && ['pass', 'movement'].includes(arrow.type) && arrow.id && arrow.start && arrow.end)
-        .map((arrow) => ({
-          id: String(arrow.id),
-          type: arrow.type,
-          start: { x: Number(arrow.start.x), y: Number(arrow.start.y) },
-          end: { x: Number(arrow.end.x), y: Number(arrow.end.y) },
-        }))
-        .filter((arrow) => [arrow.start.x, arrow.start.y, arrow.end.x, arrow.end.y].every(Number.isFinite)),
+      arrows: normalizeTacticalBoardArrows(play.arrows),
+      ...normalizeTacticalPlayBall(play, {
+        fallback: getDefaultSetPieceBallPosition(play.setPieceType, play.setPieceAction),
+        visibleByDefault: true,
+      }),
       description: String(play.description || ''),
       category: String(play.category || ''),
       tags: (Array.isArray(play.tags) ? play.tags : []).filter((tag) => typeof tag === 'string'),
@@ -5730,9 +5725,11 @@ function App() {
   const [setPieceSaveStatus, setSetPieceSaveStatus] = useState('');
   const [defensiveTool, setDefensiveTool] = useState('move');
   const [draggingDefensivePlayer, setDraggingDefensivePlayer] = useState(null);
-  const [draggingSetPieceBall, setDraggingSetPieceBall] = useState(null);
+  const [draggingTacticalBall, setDraggingTacticalBall] = useState(null);
+  const [draggingDefensiveArrowHandle, setDraggingDefensiveArrowHandle] = useState(null);
   const [defensiveDrawingPreview, setDefensiveDrawingPreview] = useState(null);
   const [selectedDefensiveArrowId, setSelectedDefensiveArrowId] = useState('');
+  const [selectedTacticalBall, setSelectedTacticalBall] = useState(false);
   const [defensiveUndoStack, setDefensiveUndoStack] = useState([]);
   const [defensiveSaveStatus, setDefensiveSaveStatus] = useState('');
   const defensiveAutosaveTimerRef = useRef(null);
@@ -7541,9 +7538,11 @@ function App() {
     setTacticalGamePhase('defensive');
     setDefensiveTool('move');
     setDraggingDefensivePlayer(null);
-    setDraggingSetPieceBall(null);
+    setDraggingTacticalBall(null);
+    setDraggingDefensiveArrowHandle(null);
     setDefensiveDrawingPreview(null);
     setSelectedDefensiveArrowId('');
+    setSelectedTacticalBall(false);
     setDefensiveUndoStack([]);
     setTacticalCaptureMode(false);
     setSelectedFacingSystemsPlayer(null);
@@ -10429,6 +10428,9 @@ function App() {
         ? selectedTransitionPlay
         : selectedSetPiecePlay;
   const selectedDefensivePlay = selectedTacticalPlay;
+  const selectedTacticalArrow = selectedDefensivePlay?.arrows?.find((arrow) => arrow.id === selectedDefensiveArrowId) || null;
+  const tacticalBallPosition = normalizeTacticalBoardPoint(selectedDefensivePlay?.ballStartPosition);
+  const tacticalBallVisible = Boolean(tacticalBallPosition) && selectedDefensivePlay?.ballVisible === true;
   const selectedTacticalPlayId = tacticalGamePhase === 'defensive'
     ? selectedDefensivePlayId
     : tacticalGamePhase === 'offensive'
@@ -10707,6 +10709,7 @@ function App() {
               setPieceType: targetSetPieceType,
               setPieceAction: targetSetPieceAction,
               ballStartPosition: { ...targetBallStartPosition },
+              ballVisible: true,
             }
             : { defensiveSituation: targetSituation }),
       name: String(requestedName || '').trim() || defaultName,
@@ -10889,12 +10892,9 @@ function App() {
     const snapshot = {
       playId: play.id,
       playerPositions: Object.fromEntries(Object.entries(play.playerPositions || {}).map(([key, position]) => [key, { ...position }])),
-      arrows: (play.arrows || []).map((arrow) => ({
-        ...arrow,
-        start: { ...arrow.start },
-        end: { ...arrow.end },
-      })),
+      arrows: (play.arrows || []).map((arrow) => cloneTacticalBoardArrow(arrow)),
       ballStartPosition: play.ballStartPosition ? { ...play.ballStartPosition } : null,
+      ballVisible: play.ballVisible === true,
     };
     setDefensiveUndoStack((current) => [...current.slice(-29), snapshot]);
   };
@@ -10940,58 +10940,111 @@ function App() {
     }
     setDraggingDefensivePlayer(null);
   };
-  const beginSetPieceBallDrag = (event) => {
-    if (
-      tacticalCaptureMode
-      ||
-      tacticalGamePhase !== 'set_piece'
-      || defensiveTool !== 'move'
-      || !selectedSetPiecePlay
-    ) return;
-    event.preventDefault();
-    event.stopPropagation();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    pushDefensiveUndoSnapshot();
-    setDraggingSetPieceBall({ pointerId: event.pointerId });
-  };
-  const moveSetPieceBall = (event) => {
-    if (!draggingSetPieceBall || !selectedSetPiecePlay || defensiveTool !== 'move') return;
-    const position = getDefensivePointerPosition(event);
-    if (!position) return;
+  const updateTacticalBallPosition = (position, ballVisible = true) => {
+    if (!selectedDefensivePlay) return;
+    const normalizedPosition = normalizeTacticalBoardPoint(position);
+    if (!normalizedPosition) return;
+    updateTacticalPlay(selectedDefensivePlay.id, {
+      ballStartPosition: normalizedPosition,
+      ballVisible,
+    });
+    if (tacticalGamePhase !== 'set_piece') return;
     const actionContextKey = getSetPieceActionContextKey(setPieceType, setPieceAction);
-    const nextPlayContextKey = getSetPieceContextKey(setPieceType, setPieceAction, position);
-    setSetPieceBallStartPosition(position);
-    markSetPieceUnsaved();
+    const nextPlayContextKey = getSetPieceContextKey(setPieceType, setPieceAction, normalizedPosition);
+    setSetPieceBallStartPosition(normalizedPosition);
     setSetPieceWorkspace((current) => ({
       ...current,
       activeBallPositionByContext: {
         ...current.activeBallPositionByContext,
-        [actionContextKey]: position,
+        [actionContextKey]: normalizedPosition,
       },
       activePlayIdByContext: {
         ...current.activePlayIdByContext,
-        [nextPlayContextKey]: selectedSetPiecePlay.id,
+        [nextPlayContextKey]: selectedDefensivePlay.id,
       },
-      plays: current.plays.map((play) => (
-        play.id === selectedSetPiecePlay.id
-          ? { ...play, ballStartPosition: position, updatedAt: new Date().toISOString() }
-          : play
+    }));
+  };
+  const beginTacticalBallDrag = (event) => {
+    if (tacticalCaptureMode || defensiveTool !== 'move' || !selectedDefensivePlay || !tacticalBallVisible) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    pushDefensiveUndoSnapshot();
+    setSelectedDefensiveArrowId('');
+    setSelectedTacticalBall(false);
+    setDraggingTacticalBall({ pointerId: event.pointerId, playId: selectedDefensivePlay.id });
+  };
+  const moveTacticalBall = (event) => {
+    if (!draggingTacticalBall || !selectedDefensivePlay || defensiveTool !== 'move') return;
+    const position = getDefensivePointerPosition(event);
+    if (!position) return;
+    updateTacticalBallPosition(position);
+  };
+  const endTacticalBallDrag = () => {
+    if (!draggingTacticalBall) return;
+    setDraggingTacticalBall(null);
+  };
+  const selectOrMoveTacticalBall = (event) => {
+    if (tacticalCaptureMode) return;
+    if (defensiveTool === 'select') {
+      event.preventDefault();
+      event.stopPropagation();
+      setSelectedDefensiveArrowId('');
+      setSelectedTacticalBall(true);
+      return;
+    }
+    beginTacticalBallDrag(event);
+  };
+  const beginDefensiveArrowHandleDrag = (event, arrowId, handle) => {
+    if (tacticalCaptureMode || defensiveTool !== 'select' || !selectedDefensivePlay) return;
+    const arrow = selectedDefensivePlay.arrows.find((candidate) => candidate.id === arrowId);
+    if (!arrow || (handle === 'controlPoint' && !arrow.controlPoint)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    pushDefensiveUndoSnapshot();
+    setDraggingDefensiveArrowHandle({ arrowId, handle, pointerId: event.pointerId });
+  };
+  const moveDefensiveArrowHandle = (event) => {
+    if (!draggingDefensiveArrowHandle || !selectedDefensivePlay || defensiveTool !== 'select') return;
+    const position = getDefensivePointerPosition(event);
+    if (!position) return;
+    updateTacticalPlay(selectedDefensivePlay.id, (play) => ({
+      arrows: play.arrows.map((arrow) => (
+        arrow.id === draggingDefensiveArrowHandle.arrowId
+          ? updateTacticalBoardArrowPoint(arrow, draggingDefensiveArrowHandle.handle, position)
+          : arrow
       )),
     }));
   };
-  const endSetPieceBallDrag = () => {
-    if (!draggingSetPieceBall) return;
-    setDraggingSetPieceBall(null);
+  const endDefensiveArrowHandleDrag = () => {
+    if (!draggingDefensiveArrowHandle) return;
+    setDraggingDefensiveArrowHandle(null);
   };
   const beginDefensiveDrawing = (event) => {
+    if (selectedDefensivePlay && defensiveTool === 'ball') {
+      const position = getDefensivePointerPosition(event);
+      if (!position) return;
+      event.preventDefault();
+      pushDefensiveUndoSnapshot();
+      updateTacticalBallPosition(position);
+      setSelectedDefensiveArrowId('');
+      setSelectedTacticalBall(true);
+      setDefensiveTool('select');
+      return;
+    }
     if (!selectedDefensivePlay || !['pass', 'movement'].includes(defensiveTool)) {
-      if (defensiveTool === 'select') setSelectedDefensiveArrowId('');
+      if (defensiveTool === 'select') {
+        setSelectedDefensiveArrowId('');
+        setSelectedTacticalBall(false);
+      }
       return;
     }
     const start = getDefensivePointerPosition(event);
     if (!start) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
+    setSelectedTacticalBall(false);
     setDefensiveDrawingPreview({ type: defensiveTool, start, end: start, pointerId: event.pointerId });
   };
   const moveDefensiveDrawing = (event) => {
@@ -11019,31 +11072,81 @@ function App() {
         end,
       };
       updateTacticalPlay(selectedDefensivePlay.id, (play) => ({ arrows: [...play.arrows, arrow] }));
-      setSelectedDefensiveArrowId(arrow.id);
+      setSelectedDefensiveArrowId('');
+      setSelectedTacticalBall(false);
     }
     setDefensiveDrawingPreview(null);
   };
   const handleDefensiveFieldPointerMove = (event) => {
     moveDefensivePlayer(event);
-    moveSetPieceBall(event);
+    moveTacticalBall(event);
+    moveDefensiveArrowHandle(event);
     moveDefensiveDrawing(event);
   };
   const handleDefensiveFieldPointerEnd = (event) => {
     endDefensivePlayerDrag();
-    endSetPieceBallDrag();
+    endTacticalBallDrag();
+    endDefensiveArrowHandleDrag();
     finishDefensiveDrawing(event);
   };
   const cancelDefensiveFieldPointer = () => {
     endDefensivePlayerDrag();
-    endSetPieceBallDrag();
+    endTacticalBallDrag();
+    endDefensiveArrowHandleDrag();
     setDefensiveDrawingPreview(null);
   };
-  const deleteSelectedDefensiveArrow = () => {
-    if (!selectedDefensivePlay || !selectedDefensiveArrowId) return;
-    if (!selectedDefensivePlay.arrows.some((arrow) => arrow.id === selectedDefensiveArrowId)) return;
+  const changeSelectedTacticalArrowType = (type) => {
+    if (!selectedTacticalArrow || !['pass', 'movement'].includes(type) || selectedTacticalArrow.type === type) return;
     pushDefensiveUndoSnapshot();
     updateTacticalPlay(selectedDefensivePlay.id, (play) => ({
-      arrows: play.arrows.filter((arrow) => arrow.id !== selectedDefensiveArrowId),
+      arrows: play.arrows.map((arrow) => arrow.id === selectedTacticalArrow.id ? { ...arrow, type } : arrow),
+    }));
+  };
+  const activateTacticalBoardTool = (tool) => {
+    setDefensiveTool(tool);
+    if (tool === 'select') return;
+    setSelectedDefensiveArrowId('');
+    setSelectedTacticalBall(false);
+  };
+  const toggleSelectedTacticalArrowCurve = () => {
+    if (!selectedTacticalArrow) return;
+    pushDefensiveUndoSnapshot();
+    updateTacticalPlay(selectedDefensivePlay.id, (play) => ({
+      arrows: play.arrows.map((arrow) => (
+        arrow.id === selectedTacticalArrow.id
+          ? arrow.controlPoint
+            ? straightenTacticalBoardArrow(arrow)
+            : convertTacticalBoardArrowToCurve(arrow)
+          : arrow
+      )),
+    }));
+  };
+  const duplicateSelectedTacticalArrow = () => {
+    if (!selectedTacticalArrow) return;
+    const duplicateId = tacticalGamePhase === 'defensive'
+      ? createDefensivePlayId()
+      : tacticalGamePhase === 'offensive'
+        ? createOffensivePlayId()
+        : tacticalGamePhase === 'transition'
+          ? createTransitionPlayId()
+          : createSetPiecePlayId();
+    const duplicate = duplicateTacticalBoardArrow(selectedTacticalArrow, duplicateId);
+    pushDefensiveUndoSnapshot();
+    updateTacticalPlay(selectedDefensivePlay.id, (play) => ({ arrows: [...play.arrows, duplicate] }));
+    setSelectedDefensiveArrowId(duplicate.id);
+  };
+  const deleteSelectedTacticalElement = () => {
+    if (!selectedDefensivePlay) return;
+    if (selectedTacticalBall && tacticalBallVisible) {
+      pushDefensiveUndoSnapshot();
+      updateTacticalPlay(selectedDefensivePlay.id, { ballVisible: false });
+      setSelectedTacticalBall(false);
+      return;
+    }
+    if (!selectedTacticalArrow) return;
+    pushDefensiveUndoSnapshot();
+    updateTacticalPlay(selectedDefensivePlay.id, (play) => ({
+      arrows: play.arrows.filter((arrow) => arrow.id !== selectedTacticalArrow.id),
     }));
     setSelectedDefensiveArrowId('');
   };
@@ -11053,7 +11156,8 @@ function App() {
     updateTacticalPlay(snapshot.playId, {
       playerPositions: snapshot.playerPositions,
       arrows: snapshot.arrows,
-      ...(snapshot.ballStartPosition ? { ballStartPosition: snapshot.ballStartPosition } : {}),
+      ballStartPosition: snapshot.ballStartPosition,
+      ballVisible: snapshot.ballVisible,
     });
     if (tacticalGamePhase === 'set_piece' && snapshot.ballStartPosition) {
       const actionContextKey = getSetPieceActionContextKey(setPieceType, setPieceAction);
@@ -11073,9 +11177,12 @@ function App() {
     }
     setDefensiveUndoStack((current) => current.slice(0, -1));
     setSelectedDefensiveArrowId('');
+    setSelectedTacticalBall(false);
   };
   useEffect(() => {
     setSelectedDefensiveArrowId('');
+    setSelectedTacticalBall(false);
+    setDraggingDefensiveArrowHandle(null);
     setDefensiveDrawingPreview(null);
     setDefensiveUndoStack([]);
   }, [selectedTacticalPlayId, tacticalGamePhase]);
@@ -11337,6 +11444,8 @@ function App() {
         caudalSystem
       ),
       arrows: [],
+      ballStartPosition: null,
+      ballVisible: false,
       description: '',
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -11371,12 +11480,8 @@ function App() {
       playerPositions: Object.fromEntries(
         Object.entries(selectedTransitionPlay.playerPositions || {}).map(([key, position]) => [key, { ...position }])
       ),
-      arrows: selectedTransitionPlay.arrows.map((arrow) => ({
-        ...arrow,
-        id: createTransitionPlayId(),
-        start: { ...arrow.start },
-        end: { ...arrow.end },
-      })),
+      arrows: selectedTransitionPlay.arrows.map((arrow) => cloneTacticalBoardArrow(arrow, createTransitionPlayId())),
+      ballStartPosition: selectedTransitionPlay.ballStartPosition ? { ...selectedTransitionPlay.ballStartPosition } : null,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -11500,6 +11605,7 @@ function App() {
       setPieceType,
       setPieceAction,
       ballStartPosition: { ...setPieceBallStartPosition },
+      ballVisible: true,
       rivalSystem: getCurrentRivalSystem(),
       caudalSystem: selectedMatch?.preCaudalSystem || '4-4-2',
       playerPositions: buildSetPieceInitialPlayerPositions(
@@ -11545,12 +11651,7 @@ function App() {
       playerPositions: Object.fromEntries(
         Object.entries(selectedSetPiecePlay.playerPositions || {}).map(([key, position]) => [key, { ...position }])
       ),
-      arrows: selectedSetPiecePlay.arrows.map((arrow) => ({
-        ...arrow,
-        id: createSetPiecePlayId(),
-        start: { ...arrow.start },
-        end: { ...arrow.end },
-      })),
+      arrows: selectedSetPiecePlay.arrows.map((arrow) => cloneTacticalBoardArrow(arrow, createSetPiecePlayId())),
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -11714,6 +11815,8 @@ function App() {
       caudalSystem,
       playerPositions: buildOffensiveInitialPlayerPositions(offensiveSituation, rivalSystem, caudalSystem, offensivePlayStyle),
       arrows: [],
+      ballStartPosition: null,
+      ballVisible: false,
       description: '',
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -11747,7 +11850,8 @@ function App() {
       playStyle: normalizeOffensivePlayStyle(selectedOffensivePlay.playStyle),
       name: `${selectedOffensivePlay.name} · copia`,
       playerPositions: { ...selectedOffensivePlay.playerPositions },
-      arrows: selectedOffensivePlay.arrows.map((arrow) => ({ ...arrow, id: createOffensivePlayId() })),
+      arrows: selectedOffensivePlay.arrows.map((arrow) => cloneTacticalBoardArrow(arrow, createOffensivePlayId())),
+      ballStartPosition: selectedOffensivePlay.ballStartPosition ? { ...selectedOffensivePlay.ballStartPosition } : null,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -11812,6 +11916,8 @@ function App() {
       caudalSystem,
       playerPositions: buildDefensiveInitialPlayerPositions(defensiveSituation, rivalSystem, caudalSystem),
       arrows: [],
+      ballStartPosition: null,
+      ballVisible: false,
       description: '',
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -11841,7 +11947,8 @@ function App() {
       id: createDefensivePlayId(),
       name: `${selectedDefensivePlay.name} · copia`,
       playerPositions: { ...selectedDefensivePlay.playerPositions },
-      arrows: selectedDefensivePlay.arrows.map((arrow) => ({ ...arrow, id: createDefensivePlayId() })),
+      arrows: selectedDefensivePlay.arrows.map((arrow) => cloneTacticalBoardArrow(arrow, createDefensivePlayId())),
+      ballStartPosition: selectedDefensivePlay.ballStartPosition ? { ...selectedDefensivePlay.ballStartPosition } : null,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -13729,13 +13836,13 @@ function App() {
                         title={tooltip}
                         aria-pressed={defensiveTool === tool}
                         disabled={!selectedDefensivePlay && tool !== 'move'}
-                        onClick={() => setDefensiveTool(tool)}
+                        onClick={() => activateTacticalBoardTool(tool)}
                         className={`border px-2.5 py-1.5 text-[9px] font-black uppercase ${defensiveTool === tool ? 'border-caudal-electric/30 bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300'} disabled:cursor-not-allowed disabled:opacity-40`}
                       >
                         {label}
                       </button>
                     ))}
-                    <button type="button" title="Eliminar el pase o movimiento seleccionado" disabled={!selectedDefensiveArrowId} onClick={deleteSelectedDefensiveArrow} className="border border-red-300/20 bg-red-500/10 px-2.5 py-1.5 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Borrar</button>
+                    <button type="button" title="Eliminar el trazado o balón seleccionado" disabled={!selectedTacticalArrow && !(selectedTacticalBall && tacticalBallVisible)} onClick={deleteSelectedTacticalElement} className="border border-red-300/20 bg-red-500/10 px-2.5 py-1.5 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Borrar</button>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="mr-1 text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">Trazados</span>
@@ -13749,27 +13856,26 @@ function App() {
                         title={tooltip}
                         aria-pressed={defensiveTool === tool}
                         disabled={!selectedDefensivePlay}
-                        onClick={() => setDefensiveTool(tool)}
+                        onClick={() => activateTacticalBoardTool(tool)}
                         className={`border px-2.5 py-1.5 text-[9px] font-black uppercase ${defensiveTool === tool ? 'border-caudal-electric/30 bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300'} disabled:cursor-not-allowed disabled:opacity-40`}
                       >
                         {label}
                       </button>
                     ))}
                   </div>
-                  {tacticalGamePhase === 'set_piece' ? (
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="mr-1 text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">Elementos</span>
-                      <button
-                        type="button"
-                        title={selectedSetPiecePlay ? 'El balón pertenece a la jugada ABP. Activa Mover y arrástralo en el campo.' : 'Crea una jugada ABP para colocar y mover el balón.'}
-                        disabled={!selectedSetPiecePlay}
-                        onClick={() => setDefensiveTool('move')}
-                        className="border border-amber-300/25 bg-amber-400/10 px-2.5 py-1.5 text-[9px] font-black uppercase text-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        Balón · usar Mover
-                      </button>
-                    </div>
-                  ) : null}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="mr-1 text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">Elementos</span>
+                    <button
+                      type="button"
+                      title={selectedDefensivePlay ? 'Haz clic en el campo para colocar el único balón de la jugada' : 'Crea una jugada para colocar el balón'}
+                      aria-pressed={defensiveTool === 'ball'}
+                      disabled={!selectedDefensivePlay}
+                      onClick={() => activateTacticalBoardTool('ball')}
+                      className={`border px-2.5 py-1.5 text-[9px] font-black uppercase ${defensiveTool === 'ball' ? 'border-caudal-electric/30 bg-caudal-electric text-slate-950' : 'border-amber-300/25 bg-amber-400/10 text-amber-100'} disabled:cursor-not-allowed disabled:opacity-40`}
+                    >
+                      Balón
+                    </button>
+                  </div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="mr-1 text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">Historial</span>
                     <button type="button" title="Deshacer la última edición de la jugada" disabled={!defensiveUndoStack.length} onClick={undoDefensiveAction} className="border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Deshacer</button>
@@ -13785,6 +13891,35 @@ function App() {
                   <span className="border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-[9px] font-black uppercase text-amber-100">
                     Orientación antigua detectada · usa Restablecer formación
                   </span>
+                ) : null}
+                {selectedTacticalArrow ? (
+                  <div className="flex flex-wrap items-center gap-2 border border-caudal-electric/20 bg-caudal-electric/[0.06] px-2.5 py-2">
+                    <span className="text-[8px] font-black uppercase tracking-[0.16em] text-caudal-electric">Trazado seleccionado</span>
+                    <label className="flex items-center gap-1.5 text-[8px] font-black uppercase text-slate-400">
+                      Tipo
+                      <select
+                        value={selectedTacticalArrow.type}
+                        onChange={(event) => changeSelectedTacticalArrowType(event.target.value)}
+                        className="h-8 border border-white/10 bg-[#091428] px-2 text-[9px] font-black text-white outline-none"
+                      >
+                        <option value="pass">Pase</option>
+                        <option value="movement">Movimiento</option>
+                      </select>
+                    </label>
+                    <span className="text-[9px] font-bold text-slate-400">Forma: {selectedTacticalArrow.controlPoint ? 'Curva' : 'Recta'}</span>
+                    <button type="button" onClick={toggleSelectedTacticalArrowCurve} className="border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[9px] font-black uppercase text-slate-200">
+                      {selectedTacticalArrow.controlPoint ? 'Enderezar' : 'Convertir en curva'}
+                    </button>
+                    <button type="button" onClick={duplicateSelectedTacticalArrow} className="border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[9px] font-black uppercase text-slate-200">Duplicar</button>
+                    <button type="button" onClick={deleteSelectedTacticalElement} className="border border-red-300/20 bg-red-500/10 px-2.5 py-1.5 text-[9px] font-black uppercase text-red-100">Eliminar</button>
+                  </div>
+                ) : selectedTacticalBall && tacticalBallVisible ? (
+                  <div className="flex flex-wrap items-center gap-2 border border-amber-300/20 bg-amber-400/[0.06] px-2.5 py-2">
+                    <span className="text-[8px] font-black uppercase tracking-[0.16em] text-amber-100">Balón seleccionado</span>
+                    <span className="text-[9px] font-bold text-slate-400">Activa Mover para recolocarlo</span>
+                    <button type="button" onClick={() => activateTacticalBoardTool('move')} className="border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[9px] font-black uppercase text-slate-200">Mover</button>
+                    <button type="button" onClick={deleteSelectedTacticalElement} className="border border-red-300/20 bg-red-500/10 px-2.5 py-1.5 text-[9px] font-black uppercase text-red-100">Eliminar</button>
+                  </div>
                 ) : null}
               </div>
               <div
@@ -25096,49 +25231,100 @@ function App() {
       const arrows = selectedDefensivePlay.arrows || [];
       const previewArrows = defensiveDrawingPreview ? [{ ...defensiveDrawingPreview, id: 'preview' }] : [];
       return (
-        <svg className="pointer-events-none absolute inset-0 z-[25] h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <svg className={`pointer-events-none absolute inset-0 h-full w-full ${!tacticalCaptureMode && defensiveTool === 'select' ? 'z-[35]' : 'z-[25]'}`} viewBox="0 0 100 100" preserveAspectRatio="none">
           <defs>
-            <marker id="defensive-play-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="strokeWidth">
-              <path d="M0,0 L7,3.5 L0,7 Z" fill="#e2e8f0" />
+            <marker id="defensive-play-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+              <path d="M0,0 L8,4 L0,8 Z" fill="#f8fafc" />
             </marker>
           </defs>
           {[...arrows, ...previewArrows].map((arrow) => {
-            const selected = !tacticalCaptureMode && arrow.id === selectedDefensiveArrowId;
             const isPreview = arrow.id === 'preview';
+            const selected = !tacticalCaptureMode && defensiveTool === 'select' && arrow.id === selectedDefensiveArrowId;
+            const muted = !tacticalCaptureMode
+              && defensiveTool === 'select'
+              && (selectedDefensiveArrowId || selectedTacticalBall)
+              && !selected;
+            const path = getTacticalBoardArrowPath(arrow);
+            const controlPoint = arrow.controlPoint ? getTacticalBoardCurveControlPoint(arrow) : null;
             return (
               <g
                 key={arrow.id}
-                className={isPreview ? 'pointer-events-none' : 'pointer-events-auto cursor-pointer'}
+                className={isPreview || tacticalCaptureMode ? 'pointer-events-none' : 'pointer-events-auto cursor-pointer'}
                 onPointerDown={isPreview ? undefined : (event) => {
-                  if (defensiveTool !== 'select') return;
+                  if (tacticalCaptureMode || defensiveTool !== 'select') return;
                   event.preventDefault();
                   event.stopPropagation();
                   setSelectedDefensiveArrowId(arrow.id);
+                  setSelectedTacticalBall(false);
                 }}
               >
-                <line
-                  x1={arrow.start.x}
-                  y1={arrow.start.y}
-                  x2={arrow.end.x}
-                  y2={arrow.end.y}
+                {selected ? (
+                  <path
+                    d={path}
+                    fill="none"
+                    stroke="#4f8cff"
+                    strokeWidth="5"
+                    strokeDasharray={arrow.type === 'movement' ? '8 6' : undefined}
+                    strokeLinecap="round"
+                    opacity="0.34"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ) : null}
+                <path
+                  d={path}
+                  fill="none"
                   stroke="#e2e8f0"
-                  strokeWidth={selected ? 3.4 : 2.4}
+                  strokeWidth={selected ? 3.7 : 3}
                   strokeDasharray={arrow.type === 'movement' ? '8 6' : undefined}
                   strokeLinecap="round"
-                  opacity={isPreview ? 0.6 : selected ? 1 : 0.88}
+                  opacity={isPreview ? 0.65 : muted ? 0.34 : selected ? 1 : 0.94}
                   markerEnd="url(#defensive-play-arrow)"
                   vectorEffect="non-scaling-stroke"
                 />
                 {!isPreview ? (
-                  <line
-                    x1={arrow.start.x}
-                    y1={arrow.start.y}
-                    x2={arrow.end.x}
-                    y2={arrow.end.y}
+                  <path
+                    d={path}
+                    fill="none"
                     stroke="transparent"
-                    strokeWidth="8"
+                    strokeWidth="11"
                     vectorEffect="non-scaling-stroke"
                   />
+                ) : null}
+                {selected ? (
+                  <>
+                    <circle
+                      cx={arrow.start.x}
+                      cy={arrow.start.y}
+                      r="1.55"
+                      fill="#ffffff"
+                      stroke="#4f8cff"
+                      strokeWidth="0.65"
+                      className="cursor-grab"
+                      onPointerDown={(event) => beginDefensiveArrowHandleDrag(event, arrow.id, 'start')}
+                    />
+                    {controlPoint ? (
+                      <circle
+                        cx={controlPoint.x}
+                        cy={controlPoint.y}
+                        r="1.75"
+                        fill="#4f8cff"
+                        stroke="#ffffff"
+                        strokeWidth="0.65"
+                        className="cursor-grab"
+                        onPointerDown={(event) => beginDefensiveArrowHandleDrag(event, arrow.id, 'controlPoint')}
+                      />
+                    ) : null}
+                    <circle
+                      cx={arrow.end.x}
+                      cy={arrow.end.y}
+                      r="1.55"
+                      fill="#ffffff"
+                      stroke="#4f8cff"
+                      strokeWidth="0.65"
+                      className="cursor-grab"
+                      onPointerDown={(event) => beginDefensiveArrowHandleDrag(event, arrow.id, 'end')}
+                    />
+                  </>
                 ) : null}
               </g>
             );
@@ -25158,7 +25344,7 @@ function App() {
     );
     return (
       <div
-        className="facing-tactical-board relative mx-auto aspect-[7/8.4] min-h-[560px] w-full max-w-4xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner"
+        className={`facing-tactical-board relative mx-auto aspect-[7/8.4] min-h-[560px] w-full max-w-4xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner ${enableDefensiveEditing && !tacticalCaptureMode && ['pass', 'movement', 'ball'].includes(defensiveTool) ? 'cursor-crosshair' : ''}`}
         style={enableDefensiveEditing ? { touchAction: 'none' } : undefined}
         onPointerDown={enableDefensiveEditing && !tacticalCaptureMode ? beginDefensiveDrawing : undefined}
         onPointerMove={enableDefensiveEditing && !tacticalCaptureMode ? handleDefensiveFieldPointerMove : undefined}
@@ -25193,18 +25379,19 @@ function App() {
         </div>
         {renderConnectionLayer()}
         {renderDefensiveDrawingLayer()}
-        {enableDefensiveEditing && tacticalGamePhase === 'set_piece' && selectedSetPiecePlay?.ballStartPosition ? (
+        {enableDefensiveEditing && tacticalBallVisible ? (
           <span
             role="img"
             aria-label="Balón"
-            title="Balón · arrastra con la herramienta Mover"
-            className="absolute z-[35] flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-grab select-none items-center justify-center rounded-full border-2 border-slate-950 bg-white text-base leading-none shadow-[0_4px_14px_rgba(0,0,0,0.55)] active:cursor-grabbing"
+            aria-selected={!tacticalCaptureMode && defensiveTool === 'select' && selectedTacticalBall}
+            title="Balón · selecciona o arrastra con Mover"
+            className={`absolute z-[35] flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-grab select-none items-center justify-center rounded-full border-2 bg-white text-base leading-none shadow-[0_4px_14px_rgba(0,0,0,0.55)] active:cursor-grabbing ${!tacticalCaptureMode && defensiveTool === 'select' && selectedTacticalBall ? 'border-caudal-electric ring-4 ring-caudal-electric/30' : 'border-slate-950'}`}
             style={{
-              left: `${selectedSetPiecePlay.ballStartPosition.x}%`,
-              top: `${selectedSetPiecePlay.ballStartPosition.y}%`,
+              left: `${tacticalBallPosition.x}%`,
+              top: `${tacticalBallPosition.y}%`,
               touchAction: 'none',
             }}
-            onPointerDown={beginSetPieceBallDrag}
+            onPointerDown={selectOrMoveTacticalBall}
           >
             ⚽
           </span>

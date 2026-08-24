@@ -3,6 +3,7 @@ import {
   getVisualSlotForTacticalRole,
   orientFormationSlotsForTacticalBoard,
 } from './tacticalOrientation.js';
+import { normalizeTacticalBoardArrows } from './tacticalBoardGeometry.js';
 
 const normalizeText = (value) => String(value || '')
   .normalize('NFD')
@@ -216,14 +217,13 @@ export const adaptSemanticPlayerPositions = ({
 };
 
 export const serializeTemplateArrows = (arrows = []) => (
-  arrows
-    .filter((arrow) => arrow && ['pass', 'movement'].includes(arrow.type) && arrow.start && arrow.end)
+  normalizeTacticalBoardArrows(arrows, { requireId: false })
     .map((arrow) => ({
       type: arrow.type,
-      start: { x: Number(arrow.start.x), y: Number(arrow.start.y) },
-      end: { x: Number(arrow.end.x), y: Number(arrow.end.y) },
+      start: { ...arrow.start },
+      end: { ...arrow.end },
+      ...(arrow.controlPoint ? { controlPoint: { ...arrow.controlPoint } } : {}),
     }))
-    .filter((arrow) => [arrow.start.x, arrow.start.y, arrow.end.x, arrow.end.y].every(Number.isFinite))
 );
 
 export const instantiateTemplateArrows = (arrows = [], createId) => (
@@ -232,5 +232,6 @@ export const instantiateTemplateArrows = (arrows = [], createId) => (
     id: createId(),
     start: { ...arrow.start },
     end: { ...arrow.end },
+    ...(arrow.controlPoint ? { controlPoint: { ...arrow.controlPoint } } : {}),
   }))
 );
