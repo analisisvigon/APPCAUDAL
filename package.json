@@ -30,6 +30,7 @@
     "test:rival-scouting": "node src/utils/rivalScoutingPersistence.test.js && node src/utils/rivalScoutingStore.test.js && node scripts/rivalScoutingSqlAudit.test.mjs",
     "test:match-plan": "node src/utils/matchPlanWorkspace.test.js",
     "test:tactical-autosave": "node src/utils/flushableSaveCoordinator.test.js && node scripts/tacticalAutosaveUiAudit.test.mjs",
+    "test:tactical-presets": "node src/utils/tacticalPresets.test.js",
     "test:defensive-blocks": "node src/utils/defensiveBlockPositions.test.js",
     "test:defensive-offensive-board": "node src/utils/defensiveOffensiveBoard.test.js",
     "test:offensive-phase": "node src/utils/offensivePhasePositions.test.js",

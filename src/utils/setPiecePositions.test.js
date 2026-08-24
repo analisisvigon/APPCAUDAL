@@ -146,8 +146,8 @@ assert.ok(appSource.includes('onPointerDown={beginSetPieceBallDrag}'), 'el baló
 assert.ok(appSource.includes('ballStartPosition: { ...targetBallStartPosition }'), 'las plantillas crean una copia independiente de la posición');
 assert.equal(
   (appSource.match(/buildSetPieceInitialPlayerPositions\(/g) || []).length,
-  2,
-  'el preset ABP solo se calcula al crear y restablecer'
+  3,
+  'el preset ABP se calcula al previsualizar Sin jugadas, crear y restablecer'
 );
 
 console.log('setPiecePositions tests passed');

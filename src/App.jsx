@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import React from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 
 import { supabase } from './lib/supabase';
 import {
@@ -288,16 +288,11 @@ import {
   getTacticalPlayerKey,
 } from './utils/rivalTactics';
 import { buildRivalLineupAtomicSnapshot, isRivalSaveResponseCurrent } from './utils/rivalLineupAtomic';
-import { getDefensiveBlockInitialPositions } from './utils/defensiveBlockPositions';
 import {
   buildDefensiveOffensiveRivalBoard,
   hasLegacyDefensiveOffensiveOrientation,
 } from './utils/defensiveOffensiveBoard';
 import {
-  getOffensiveInitialPositions,
-} from './utils/offensivePhasePositions';
-import {
-  getTransitionInitialPositions,
   normalizeTransitionFieldZone,
   resolveRenderedTacticalPosition,
 } from './utils/transitionPhasePositions';
@@ -307,7 +302,7 @@ import {
   getSetPieceZonePoints,
   normalizeBallStartPosition,
 } from './utils/setPieceZones';
-import { getSetPieceInitialPositions } from './utils/setPiecePositions';
+import { getTacticalPreset } from './utils/tacticalPresets';
 import {
   createTacticalTemplate,
   deleteTacticalTemplate,
@@ -7527,6 +7522,15 @@ function App() {
     [selectedMatch?.preAiAnalysis]
   );
   useEffect(() => {
+    setTacticalGamePhase('defensive');
+    setDefensiveTool('move');
+    setDraggingDefensivePlayer(null);
+    setDraggingSetPieceBall(null);
+    setDefensiveDrawingPreview(null);
+    setSelectedDefensiveArrowId('');
+    setDefensiveUndoStack([]);
+    setTacticalCaptureMode(false);
+    setSelectedFacingSystemsPlayer(null);
     if (defensiveAutosaveTimerRef.current) {
       window.clearTimeout(defensiveAutosaveTimerRef.current);
       defensiveAutosaveTimerRef.current = null;
@@ -10887,15 +10891,17 @@ function App() {
     };
   };
   const beginDefensivePlayerDrag = (event, playerKey) => {
-    if (defensiveTool !== 'move' || !selectedDefensivePlay) return;
+    if (defensiveTool !== 'move') return;
+    const editablePlay = selectedDefensivePlay || createTacticalPlayForEditing();
+    if (!editablePlay) return;
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    pushDefensiveUndoSnapshot();
-    setDraggingDefensivePlayer({ playerKey, pointerId: event.pointerId });
+    pushDefensiveUndoSnapshot(editablePlay);
+    setDraggingDefensivePlayer({ playerKey, playId: editablePlay.id, pointerId: event.pointerId });
   };
   const moveDefensivePlayer = (event) => {
-    if (!draggingDefensivePlayer || !selectedDefensivePlay || defensiveTool !== 'move') return;
+    if (!draggingDefensivePlayer || defensiveTool !== 'move') return;
     facingSystemsPlayerGestureRef.current.moved = true;
     if (facingSystemsPlayerGestureRef.current.longPressTimer) {
       window.clearTimeout(facingSystemsPlayerGestureRef.current.longPressTimer);
@@ -10903,7 +10909,7 @@ function App() {
     }
     const position = getDefensivePointerPosition(event);
     if (!position) return;
-    updateTacticalPlay(selectedDefensivePlay.id, (play) => ({
+    updateTacticalPlay(draggingDefensivePlayer.playId, (play) => ({
       playerPositions: {
         ...play.playerPositions,
         [draggingDefensivePlayer.playerKey]: position,
@@ -11292,9 +11298,9 @@ function App() {
       },
     }));
   };
-  const createTransitionPlay = () => {
+  const createTransitionPlay = ({ promptForName = true } = {}) => {
     const defaultName = `Jugada ${transitionPlaysForContext.length + 1}`;
-    const requestedName = window.prompt('Nombre de la jugada', defaultName);
+    const requestedName = promptForName ? window.prompt('Nombre de la jugada', defaultName) : defaultName;
     if (requestedName === null) return;
     const timestamp = new Date().toISOString();
     const rivalSystem = getCurrentRivalSystem();
@@ -11337,6 +11343,7 @@ function App() {
       },
       plays: [...current.plays, play],
     }));
+    return play;
   };
   const duplicateTransitionPlay = () => {
     if (!selectedTransitionPlay) return;
@@ -11465,9 +11472,9 @@ function App() {
       },
     }));
   };
-  const createSetPiecePlay = () => {
+  const createSetPiecePlay = ({ promptForName = true } = {}) => {
     const defaultName = `Jugada ${setPiecePlaysForContext.length + 1}`;
-    const requestedName = window.prompt('Nombre de la jugada', defaultName);
+    const requestedName = promptForName ? window.prompt('Nombre de la jugada', defaultName) : defaultName;
     if (requestedName === null) return;
     const timestamp = new Date().toISOString();
     const play = {
@@ -11509,6 +11516,7 @@ function App() {
       },
       plays: [...current.plays, play],
     }));
+    return play;
   };
   const duplicateSetPiecePlay = () => {
     if (!selectedSetPiecePlay) return;
@@ -11559,8 +11567,9 @@ function App() {
     }));
   };
   const buildOffensiveInitialPlayerPositions = (situation, rivalSystem, caudalSystem, playStyle = 'combinative') => {
-    return getOffensiveInitialPositions({
-      offensiveSituation: situation,
+    return getTacticalPreset({
+      phase: 'offensive',
+      situation,
       playStyle,
       rivalSystem,
       caudalSystem,
@@ -11645,7 +11654,8 @@ function App() {
     }, { optimistic: false });
   };
   const buildTransitionInitialPlayerPositions = (nextTransitionType, fieldZone, rivalSystem, caudalSystem) => (
-    getTransitionInitialPositions({
+    getTacticalPreset({
+      phase: 'transition',
       transitionType: nextTransitionType,
       fieldZone,
       rivalSystem,
@@ -11661,7 +11671,8 @@ function App() {
     rivalSystem,
     caudalSystem
   ) => (
-    getSetPieceInitialPositions({
+    getTacticalPreset({
+      phase: 'set_piece',
       setPieceType: nextSetPieceType,
       setPieceAction: nextSetPieceAction,
       ballStartPosition,
@@ -11669,9 +11680,9 @@ function App() {
       caudalFormationSlots: getFormationSlots(caudalSystem, 'own'),
     })
   );
-  const createOffensivePlay = () => {
+  const createOffensivePlay = ({ promptForName = true } = {}) => {
     const defaultName = `Jugada ${offensivePlaysForSituation.length + 1}`;
-    const requestedName = window.prompt('Nombre de la jugada', defaultName);
+    const requestedName = promptForName ? window.prompt('Nombre de la jugada', defaultName) : defaultName;
     if (requestedName === null) return;
     const name = String(requestedName || '').trim() || defaultName;
     const timestamp = new Date().toISOString();
@@ -11708,6 +11719,7 @@ function App() {
       },
       plays: [...current.plays, play],
     }));
+    return play;
   };
   const duplicateOffensivePlay = () => {
     if (!selectedOffensivePlay) return;
@@ -11759,17 +11771,18 @@ function App() {
     }));
   };
   const buildDefensiveInitialPlayerPositions = (situation, rivalSystem, caudalSystem) => (
-    getDefensiveBlockInitialPositions({
-      defensiveSituation: situation,
+    getTacticalPreset({
+      phase: 'defensive',
+      situation,
       rivalSystem,
       caudalSystem,
       rivalFormationSlots: getFormationSlots(rivalSystem, 'own'),
       caudalFormationSlots: getFormationSlots(caudalSystem, 'own'),
     })
   );
-  const createDefensivePlay = () => {
+  const createDefensivePlay = ({ promptForName = true } = {}) => {
     const defaultName = `Jugada ${defensivePlaysForSituation.length + 1}`;
-    const requestedName = window.prompt('Nombre de la jugada', defaultName);
+    const requestedName = promptForName ? window.prompt('Nombre de la jugada', defaultName) : defaultName;
     if (requestedName === null) return;
     const name = String(requestedName || '').trim() || defaultName;
     const timestamp = new Date().toISOString();
@@ -11796,6 +11809,13 @@ function App() {
       },
       plays: [...current.plays, play],
     }));
+    return play;
+  };
+  const createTacticalPlayForEditing = () => {
+    if (tacticalGamePhase === 'defensive') return createDefensivePlay({ promptForName: false });
+    if (tacticalGamePhase === 'offensive') return createOffensivePlay({ promptForName: false });
+    if (tacticalGamePhase === 'transition') return createTransitionPlay({ promptForName: false });
+    return createSetPiecePlay({ promptForName: false });
   };
   const duplicateDefensivePlay = () => {
     if (!selectedDefensivePlay) return;
@@ -11950,6 +11970,18 @@ function App() {
     if (setPieceAutosaveTimerRef.current) window.clearTimeout(setPieceAutosaveTimerRef.current);
     setPieceAutosaveTimerRef.current = null;
     return (await setPieceSaveCoordinatorRef.current.flush()).ok;
+  };
+  const saveActiveTacticalWorkspace = async () => {
+    if (!selectedMatch) return false;
+    if (!selectedTacticalPlay) {
+      flushSync(() => {
+        createTacticalPlayForEditing();
+      });
+    }
+    if (tacticalGamePhase === 'defensive') return saveDefensiveWorkspace();
+    if (tacticalGamePhase === 'offensive') return saveOffensiveWorkspace();
+    if (tacticalGamePhase === 'transition') return saveTransitionWorkspace();
+    return saveSetPieceWorkspace();
   };
   tacticalNavigationGuardRef.current = {
     hasPending: () => [
@@ -13492,7 +13524,7 @@ function App() {
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <button type="button" onClick={openNewTacticalPlayDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Nueva jugada</button>
-                <button type="button" disabled={tacticalSaveStatus === 'Guardando'} onClick={tacticalGamePhase === 'defensive' ? saveDefensiveWorkspace : tacticalGamePhase === 'offensive' ? saveOffensiveWorkspace : tacticalGamePhase === 'transition' ? saveTransitionWorkspace : saveSetPieceWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">{tacticalSaveStatus === 'Error al guardar' ? 'Reintentar' : 'Guardar'}</button>
+                <button type="button" disabled={tacticalSaveStatus === 'Guardando'} onClick={saveActiveTacticalWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">{tacticalSaveStatus === 'Error al guardar' ? 'Reintentar' : 'Guardar'}</button>
                 <button type="button" disabled={!selectedTacticalPlay} onClick={openSaveTacticalTemplateDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">Guardar como plantilla</button>
                 <button type="button" onClick={() => loadTacticalTemplateLibrary('library')} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300">Plantillas</button>
                 <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? duplicateDefensivePlay : tacticalGamePhase === 'offensive' ? duplicateOffensivePlay : tacticalGamePhase === 'transition' ? duplicateTransitionPlay : duplicateSetPiecePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
@@ -13632,7 +13664,7 @@ function App() {
                   <button
                     key={tool}
                     type="button"
-                    disabled={!selectedDefensivePlay}
+                    disabled={!selectedDefensivePlay && tool !== 'move'}
                     onClick={() => setDefensiveTool(tool)}
                     className={`border px-3 py-2 text-[9px] font-black uppercase ${defensiveTool === tool ? 'border-caudal-electric/30 bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300'} disabled:cursor-not-allowed disabled:opacity-40`}
                   >
@@ -24799,10 +24831,25 @@ function App() {
     }
     const caudalSystem = selectedMatch.preCaudalSystem || '4-4-2';
     const rivalSystem = getCurrentRivalSystem();
-    const previewPlayerPositions = enableDefensiveEditing
-      && !selectedTacticalPlay
-      && tacticalGamePhase === 'transition'
-      ? buildTransitionInitialPlayerPositions(transitionType, transitionFieldZone, rivalSystem, caudalSystem)
+    const previewPlayerPositions = enableDefensiveEditing && !selectedTacticalPlay
+      ? tacticalGamePhase === 'defensive'
+        ? buildDefensiveInitialPlayerPositions(defensiveSituation, rivalSystem, caudalSystem)
+        : tacticalGamePhase === 'offensive'
+          ? buildOffensiveInitialPlayerPositions(
+            offensiveSituation,
+            rivalSystem,
+            caudalSystem,
+            offensivePlayStyle
+          )
+          : tacticalGamePhase === 'transition'
+            ? buildTransitionInitialPlayerPositions(transitionType, transitionFieldZone, rivalSystem, caudalSystem)
+            : buildSetPieceInitialPlayerPositions(
+              setPieceType,
+              setPieceAction,
+              setPieceBallStartPosition,
+              rivalSystem,
+              caudalSystem
+            )
       : null;
     const getRenderedPlayerPosition = (playerKey, fallbackPosition) => {
       return resolveRenderedTacticalPosition({
@@ -24818,6 +24865,7 @@ function App() {
         phase: tacticalGamePhase,
         rivalSlots,
         savedPositions: selectedTacticalPlay?.playerPositions,
+        previewPositions: previewPlayerPositions,
         getFallbackPosition: (slot) => mapFormationSlotToFacingPitch(
           slot.coordinates || { x: 50, y: 50 },
           'rival',

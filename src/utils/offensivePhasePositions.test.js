@@ -299,8 +299,16 @@ const offensiveSaveSource = appSource.slice(
 assert.equal(offensiveSaveSource.includes('localStorage'), false, 'la fase ofensiva no usa localStorage');
 assert.equal(
   (appSource.match(/buildOffensiveInitialPlayerPositions\(/g) || []).length,
-  2,
-  'los presets ofensivos solo se calculan al crear y restablecer'
+  3,
+  'el preset ofensivo se calcula al previsualizar Sin jugadas, crear y restablecer'
+);
+assert.ok(
+  appSource.includes("disabled={!selectedDefensivePlay && tool !== 'move'}"),
+  'Mover permanece disponible cuando el contexto todavía no tiene jugadas'
+);
+assert.ok(
+  appSource.includes('const editablePlay = selectedDefensivePlay || createTacticalPlayForEditing();'),
+  'el primer arrastre materializa una jugada editable desde el preset visible'
 );
 assert.ok(appSource.includes("? updateDefensivePlay(playId, patch)"), 'el motor de edición conserva el workspace defensivo');
 assert.ok(appSource.includes("? updateOffensivePlay(playId, patch)"), 'el motor de edición conserva el workspace ofensivo');
