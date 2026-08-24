@@ -13,6 +13,10 @@ assert.equal(`${porto.number} · ${getPlayerDisplayName(porto)}`, '20 · Agus Po
 assert.equal(getPlayerDisplayName({ name: 'Agustín Porto', shirt_name: 'Agus Porto' }), 'Agus Porto');
 assert.equal(getPlayerDisplayName({ name: 'Agustín Porto', shirtName: '   ' }), 'Agustín Porto');
 assert.equal(getPlayerDisplayName({ shortName: 'Porto', name: 'Agustín Porto' }), 'Porto');
+assert.equal(getPlayerDisplayName({ name: 'Agustín Porto Fernández', shirtName: 'PORTO', number: 7 }), 'PORTO', 'Caudal conserva dorsal e identidad pero presenta nombre de camiseta');
+assert.equal(getPlayerDisplayName({ name: 'Borja Rodríguez', shirt_name: 'BORJA', number: 10 }), 'BORJA', 'el campo snake_case real tiene la misma prioridad');
+assert.equal(getPlayerDisplayName({ name: 'Rival Completo', shirtName: 'RIVAL' }), 'RIVAL', 'un rival con nombre de camiseta usa el mismo criterio');
+assert.equal(getPlayerDisplayName({ name: 'Rival Completo' }), 'Rival Completo', 'un rival sin nombre de camiseta conserva el fallback existente');
 assert.equal(getPlayerDisplayName({}), 'Jugador');
 assert.equal(getPlayerDisplayName(null), 'Jugador');
 assert.equal(getPlayerTooltipText(porto), 'Agus Porto');

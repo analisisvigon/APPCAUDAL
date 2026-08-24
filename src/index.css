@@ -543,6 +543,20 @@ table {
   white-space: nowrap;
 }
 
+.tactical-capture-play-style {
+  margin-top: 6px;
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(203, 213, 225, 0.72);
+  font-size: clamp(9px, 1.05vh, 12px);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .tactical-capture-exit {
   position: fixed;
   top: 50%;

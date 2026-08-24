@@ -21,6 +21,7 @@ assert.match(captureViewSource, /data-tactical-capture="true"/);
 assert.match(captureViewSource, /renderFacingSystemsOverview\(true\)/, 'captura reutiliza exactamente el renderer existente');
 assert.match(captureViewSource, /capturePresentation\.phase/);
 assert.match(captureViewSource, /capturePresentation\.situation/);
+assert.match(captureViewSource, /capturePresentation\.playStyle/);
 assert.match(captureViewSource, /capturePresentation\.description/);
 assert.match(captureViewSource, /tactical-capture-sidebar/);
 assert.match(captureViewSource, /tactical-capture-phase-block/);
@@ -39,8 +40,23 @@ const defensiveHigh = buildTacticalCapturePresentation({
 assert.deepEqual(defensiveHigh, {
   phase: 'Fase defensiva',
   situation: 'Bloque alto',
+  playStyle: '',
   description: 'Marcas individuales.',
 }, 'fase, situación y descripción comparten el panel derecho');
+
+assert.deepEqual(buildTacticalCapturePresentation({
+  phaseLabel: 'Fase ofensiva',
+  situationLabel: 'Creación',
+  playStyleLabel: 'Juego combinativo',
+  selectedPlay: { id: 'style-combinative', description: 'Progresar mediante apoyos.' },
+}), {
+  phase: 'Fase ofensiva',
+  situation: 'Creación',
+  playStyle: 'Juego combinativo',
+  description: 'Progresar mediante apoyos.',
+}, 'la presentación ofensiva incluye el tipo de juego canónico');
+assert.equal(buildTacticalCapturePresentation({ playStyleLabel: 'Juego directo' }).playStyle, 'Juego directo');
+assert.equal(buildTacticalCapturePresentation({}).playStyle, '', 'una jugada sin tipo no genera una línea vacía');
 
 assert.equal(buildTacticalCapturePresentation({
   phaseLabel: 'Fase defensiva',
@@ -57,6 +73,7 @@ assert.deepEqual(buildTacticalCapturePresentation({
 }), {
   phase: 'ABP',
   situation: 'Córner ofensivo',
+  playStyle: '',
   description: 'Atacar primer palo.',
 }, 'D: ABP usa la misma composición y descripción');
 
@@ -67,6 +84,8 @@ assert.equal(viewState.layers.rival, false, 'F: RIVAL permanece oculto');
 assert.match(boardSource, /const fieldView = getFieldViewSettings\(\);/);
 assert.match(boardSource, /\{layers\.rival \? rivalSlots\.map/);
 assert.match(boardSource, /\{layers\.caudal \? caudalCoordinates\.map/);
+assert.match(boardSource, /rivalSlot\.player \? displayPlayerName\(rivalSlot\.player\) : rivalSlot\.role/, 'rival prioriza nombre de camiseta mediante el helper común');
+assert.match(boardSource, /caudalPlayer \? displayPlayerName\(caudalPlayer\)/, 'Caudal prioriza nombre de camiseta mediante el helper común');
 
 const emptyDescription = buildTacticalCapturePresentation({
   selectedPlay: { id: 'empty', description: '   ' },
@@ -98,7 +117,7 @@ assert.equal(buildTacticalCapturePresentation({ selectedPlay: { description: man
 
 assert.deepEqual(buildTacticalCapturePresentation({
   selectedPlay: { id: 'two', description: '' },
-}), { phase: '', situation: '', description: '' }, 'varias jugadas no añaden metadatos de numeración a captura');
+}), { phase: '', situation: '', playStyle: '', description: '' }, 'varias jugadas no añaden metadatos de numeración a captura');
 
 assert.match(boardSource, /selectedDefensivePlay\.arrows \|\| \[\]/, 'J: captura consume los pases y movimientos de la jugada actual');
 assert.match(boardSource, /getTacticalBoardArrowPath\(arrow\)/, 'J: conserva flechas rectas y curvas editadas');
@@ -112,7 +131,7 @@ assert.match(appSource, /if \(tacticalCaptureMode \|\| defensiveTool !== 'move'\
 
 assert.match(cssSource, /\.tactical-capture-root\s*\{[\s\S]*position: fixed;[\s\S]*height: 100dvh;[\s\S]*overflow: hidden;/);
 assert.match(cssSource, /\.tactical-capture-root\s*\{[\s\S]*display: flex;[\s\S]*padding: 16px;/, 'el portal dedica toda la altura salvo 16 px por borde');
-assert.doesNotMatch(cssSource, /\.tactical-capture-context|\.tactical-capture-play|stage--with-description|stage--field-only/, 'se eliminaron las reglas del layout anterior');
+assert.doesNotMatch(cssSource, /\.tactical-capture-context|\.tactical-capture-play\s*\{|stage--with-description|stage--field-only/, 'se eliminaron las reglas del layout anterior');
 assert.match(cssSource, /\.tactical-capture-stage\s*\{[\s\S]*display: flex;[\s\S]*height: 100%;/, 'campo y panel forman una única fila a altura completa');
 assert.match(cssSource, /\.tactical-capture-board-shell\s*\{[\s\S]*container-type: size;[\s\S]*min-height: 0;[\s\S]*overflow: hidden;/);
 assert.match(cssSource, /flex-basis: min\(896px, calc\(\(100dvh - 32px\) \* 0\.833333\)\);/, 'el campo usa toda la altura salvo los dos márgenes de 16 px');

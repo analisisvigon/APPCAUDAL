@@ -75,6 +75,7 @@ assert.match(presentationSource, /renderFacingSystemsOverview\(true\)/, 'ABP reu
 assert.match(presentationSource, /setPieceTypeLabel/);
 assert.match(presentationSource, /setPieceActionLabel/);
 assert.match(presentationSource, /capturePresentation\.description/);
+assert.doesNotMatch(presentationSource, /capturePresentation\.playStyle/, 'ABP conserva su cabecera específica sin tipo de juego artificial');
 assert.match(presentationSource, /setPieceCaptureInformation\.map/);
 assert.match(presentationSource, /selectSetPiecePlay\([\s\S]*?\{ markDirty: false, allowContextChange: true \}/, 'los controles externos cambian jugada y zona sin guardar contenido táctico');
 assert.doesNotMatch(presentationSource, /caudalSystem|rivalSystem|Jugada 1|Jugada 2|Guardar|Duplicar|Eliminar|Plantillas|defensiveTool/, 'la superficie ABP no muestra sistemas, numeración ni herramientas editoriales');

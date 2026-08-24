@@ -13393,9 +13393,15 @@ function App() {
             transitionFieldZoneOptions.find((option) => option.value === transitionFieldZone)?.label,
           ].filter(Boolean).join(' · ')
           : `${setPieceActionOptions.find((option) => option.value === setPieceAction)?.label || ''} ${captureSetPieceQualifier}`.trim();
+    const capturePlayStyleLabel = tacticalGamePhase === 'offensive' && selectedOffensivePlay?.playStyle
+      ? offensivePlayStyleOptions.find((option) => (
+        option.value === normalizeOffensivePlayStyle(selectedOffensivePlay.playStyle)
+      ))?.label || ''
+      : '';
     const capturePresentation = buildTacticalCapturePresentation({
       phaseLabel: capturePhaseLabel,
       situationLabel: captureSituationLabel,
+      playStyleLabel: capturePlayStyleLabel,
       selectedPlay: selectedTacticalPlay,
     });
     const setPieceCaptureViewport = tacticalGamePhase === 'set_piece'
@@ -13536,6 +13542,9 @@ function App() {
                 <h2 className="tactical-capture-phase">{capturePresentation.phase}</h2>
                 {capturePresentation.situation ? (
                   <p className="tactical-capture-situation">{capturePresentation.situation}</p>
+                ) : null}
+                {capturePresentation.playStyle ? (
+                  <p className="tactical-capture-play-style">{capturePresentation.playStyle}</p>
                 ) : null}
               </section>
               {capturePresentation.description ? (
@@ -25081,7 +25090,7 @@ function App() {
             ) : null}
           </span>
           <span className={`max-w-16 truncate rounded-md px-1 py-0.5 text-[8px] font-semibold leading-none ${isSelected ? (isCaudal ? 'bg-caudal-electric text-slate-950' : 'bg-rose-300 text-rose-950') : 'bg-black/55 text-white'}`}>
-            {playerName}
+            {visualPlayer ? displayPlayerName(visualPlayer) : playerName}
           </span>
         </PlayerTag>
       );
@@ -25555,7 +25564,7 @@ function App() {
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
           >
-            <p className="max-w-56 truncate text-[10px] font-black text-white">{selectedFacingSystemsPlayer.player?.name}</p>
+            <p className="max-w-56 truncate text-[10px] font-black text-white">{displayPlayerName(selectedFacingSystemsPlayer.player)}</p>
             <div className="mt-2 flex gap-2">
               <button type="button" onClick={() => requestFacingSystemsPlayerProfile(selectedFacingSystemsPlayer.player)} className="bg-caudal-electric px-3 py-1.5 text-[9px] font-black uppercase text-slate-950">Ver ficha</button>
               <button type="button" onClick={() => setSelectedFacingSystemsPlayer(null)} className="border border-white/10 px-3 py-1.5 text-[9px] font-black uppercase text-slate-300">Cerrar</button>
@@ -25655,13 +25664,14 @@ function App() {
               );
             })()}
             {layers.rivalNames ? <span className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
-              {rivalSlot.player?.name || rivalSlot.role}
+              {rivalSlot.player ? displayPlayerName(rivalSlot.player) : rivalSlot.role}
             </span> : null}
           </div>
           );
         }) : null}
         {layers.caudal ? caudalCoordinates.map((baseSlot, index) => {
           const slot = enableDefensiveEditing ? getRenderedPlayerPosition(`caudal:${index}`, baseSlot) : baseSlot;
+          const caudalPlayer = players.find((item) => item.name === caudalLineup[index]);
           return (
           <div
             key={`caudal-overview-${index}`}
@@ -25669,16 +25679,11 @@ function App() {
             style={{ left: `${slot.x}%`, top: `${slot.y}%`, touchAction: enableDefensiveEditing ? 'none' : undefined }}
             onPointerDown={enableDefensiveEditing ? (event) => beginDefensivePlayerDrag(event, `caudal:${index}`) : undefined}
           >
-            {(() => {
-              const player = players.find((item) => item.name === caudalLineup[index]);
-              return (
-                <span className={`flex items-center justify-center overflow-hidden rounded-lg border border-white/15 bg-white font-black text-slate-500 shadow-sm transition duration-300 ${tacticalCaptureMode ? 'h-11 w-11 text-xs' : 'h-9 w-9 text-[10px]'}`}>
-                  {player ? <PlayerPortrait player={player} className="h-full w-full" imgClassName="h-full w-full object-cover object-center" fallbackTextClassName="text-[9px]" /> : index === 0 ? 'P' : index}
-                </span>
-              );
-            })()}
+            <span className={`flex items-center justify-center overflow-hidden rounded-lg border border-white/15 bg-white font-black text-slate-500 shadow-sm transition duration-300 ${tacticalCaptureMode ? 'h-11 w-11 text-xs' : 'h-9 w-9 text-[10px]'}`}>
+              {caudalPlayer ? <PlayerPortrait player={caudalPlayer} className="h-full w-full" imgClassName="h-full w-full object-cover object-center" fallbackTextClassName="text-[9px]" /> : index === 0 ? 'P' : index}
+            </span>
             {layers.caudalNames ? <span className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
-              {caudalLineup[index] || caudalRoles[index] || `C${index + 1}`}
+              {caudalPlayer ? displayPlayerName(caudalPlayer) : caudalLineup[index] || caudalRoles[index] || `C${index + 1}`}
             </span> : null}
           </div>
           );
