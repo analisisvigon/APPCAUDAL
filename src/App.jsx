@@ -319,6 +319,10 @@ import {
   updateTacticalBoardArrowPoint,
 } from './utils/tacticalBoardGeometry';
 import {
+  createTacticalBoardViewState,
+  updateTacticalBoardViewState,
+} from './utils/tacticalBoardViewState';
+import {
   createTacticalTemplate,
   deleteTacticalTemplate,
   listTacticalTemplates,
@@ -5720,6 +5724,7 @@ function App() {
   const [setPieceType, setSetPieceType] = useState('offensive_set_piece');
   const [setPieceAction, setSetPieceAction] = useState('corner');
   const [tacticalCaptureMode, setTacticalCaptureMode] = useState(false);
+  const [tacticalBoardViewState, setTacticalBoardViewState] = useState(createTacticalBoardViewState);
   const [selectedFacingSystemsPlayer, setSelectedFacingSystemsPlayer] = useState(null);
   const facingSystemsPlayerGestureRef = useRef({ longPressTimer: null, moved: false, playerKey: '' });
   const [setPieceBallStartPosition, setSetPieceBallStartPosition] = useState(() => (
@@ -7548,6 +7553,7 @@ function App() {
     setSelectedTacticalBall(false);
     setDefensiveUndoStack([]);
     setTacticalCaptureMode(false);
+    setTacticalBoardViewState(createTacticalBoardViewState());
     setSelectedFacingSystemsPlayer(null);
     if (defensiveAutosaveTimerRef.current) {
       window.clearTimeout(defensiveAutosaveTimerRef.current);
@@ -12295,31 +12301,10 @@ function App() {
     saveTacticalZones(getTacticalZones().filter((zone) => zone.id !== zoneId));
   };
 
-  const getFieldViewSettings = () => ({
-    mode: selectedPreAiAnalysis?.fieldView?.mode || 'LIMPIO',
-    layers: {
-      zones: selectedPreAiAnalysis?.fieldView?.layers?.zones ?? true,
-      names: selectedPreAiAnalysis?.fieldView?.layers?.names ?? true,
-      badges: selectedPreAiAnalysis?.fieldView?.layers?.badges ?? true,
-      rival: selectedPreAiAnalysis?.fieldView?.layers?.rival ?? true,
-      caudal: selectedPreAiAnalysis?.fieldView?.layers?.caudal ?? true,
-      connections: selectedPreAiAnalysis?.fieldView?.layers?.connections ?? true,
-      microduels: selectedPreAiAnalysis?.fieldView?.layers?.microduels ?? true,
-    },
-  });
+  const getFieldViewSettings = () => tacticalBoardViewState;
 
   const updateFieldViewSettings = (patch) => {
-    const current = getFieldViewSettings();
-    updatePreAiAnalysisPatch({
-      fieldView: {
-        ...current,
-        ...patch,
-        layers: {
-          ...current.layers,
-          ...(patch.layers || {}),
-        },
-      },
-    });
+    setTacticalBoardViewState((current) => updateTacticalBoardViewState(current, patch));
   };
 
   const addTacticalScenario = (label = 'Escenario') => {
