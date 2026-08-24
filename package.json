@@ -39,6 +39,7 @@
     "test:offensive-phase": "node src/utils/offensivePhasePositions.test.js",
     "test:transition-phase": "node src/utils/transitionPhasePositions.test.js",
     "test:set-pieces": "node src/utils/setPiecePositions.test.js",
+    "test:set-piece-presentation": "node src/utils/setPiecePresentation.test.js",
     "test:set-piece-dimensions": "node src/utils/setPieceElementDimensions.test.js",
     "test:set-piece-interactions": "node src/utils/setPieceEditorInteractions.test.js",
     "test:set-piece-menu": "node src/utils/setPieceHeaderMenu.test.js",

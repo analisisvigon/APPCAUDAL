@@ -282,6 +282,215 @@ table {
   display: none;
 }
 
+.tactical-abp-presentation-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  padding: 48px 12px 12px;
+  background:
+    radial-gradient(circle at 36% 0%, rgba(79, 140, 255, 0.15), transparent 34%),
+    #020812;
+  color: #f8fafc;
+  isolation: isolate;
+}
+
+.tactical-abp-presentation-controls {
+  position: fixed;
+  top: 7px;
+  left: 50%;
+  z-index: 20;
+  display: flex;
+  max-width: calc(100vw - 24px);
+  transform: translateX(-50%);
+  align-items: center;
+  gap: 6px;
+}
+
+.tactical-abp-presentation-controls button,
+.tactical-abp-presentation-controls select {
+  height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  background: rgba(8, 19, 39, 0.94);
+  padding: 0 10px;
+  color: #cbd5e1;
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.tactical-abp-presentation-controls select {
+  min-width: 190px;
+  max-width: min(34vw, 360px);
+  text-overflow: ellipsis;
+  text-transform: none;
+}
+
+.tactical-abp-presentation-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.32;
+}
+
+.tactical-abp-presentation-frame {
+  display: grid;
+  width: min(calc(100vw - 24px), calc((100dvh - 60px) * 1.777778));
+  max-height: calc(100dvh - 60px);
+  aspect-ratio: 16 / 9;
+  grid-template-columns: minmax(0, 2.08fr) minmax(270px, 0.92fr);
+  gap: clamp(8px, 0.8vw, 14px);
+  overflow: hidden;
+  padding: clamp(8px, 1vw, 16px);
+  border: 1px solid rgba(96, 165, 250, 0.22);
+  border-radius: clamp(14px, 1.4vw, 24px);
+  background: rgba(5, 14, 29, 0.96);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.tactical-abp-pitch-pane {
+  container-type: size;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: clamp(10px, 1.2vw, 20px);
+  background: #071a11;
+}
+
+.tactical-abp-board-crop {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: var(--abp-crop-aspect);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: inherit;
+  background: #102616;
+}
+
+.tactical-abp-board-host {
+  position: absolute;
+}
+
+.tactical-abp-board-host .facing-tactical-board {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.tactical-abp-information-panel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  padding: clamp(15px, 2vw, 34px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: clamp(12px, 1.2vw, 20px);
+  background: linear-gradient(145deg, rgba(15, 31, 55, 0.95), rgba(8, 19, 39, 0.97));
+}
+
+.tactical-abp-heading p,
+.tactical-abp-information-list dt,
+.tactical-abp-description h3 {
+  color: #60a5fa;
+  font-size: clamp(8px, 0.72vw, 11px);
+  font-weight: 900;
+  letter-spacing: 0.17em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.tactical-abp-heading h2 {
+  margin-top: 5px;
+  color: #f8fafc;
+  font-size: clamp(22px, 2.35vw, 40px);
+  font-weight: 950;
+  letter-spacing: -0.025em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.tactical-abp-information-list {
+  display: grid;
+  margin-top: clamp(14px, 2vh, 24px);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tactical-abp-information-list > div {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.tactical-abp-information-list dd {
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+  color: #e2e8f0;
+  font-size: clamp(11px, 0.9vw, 15px);
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.tactical-abp-description {
+  min-height: 0;
+  margin-top: clamp(16px, 2.5vh, 28px);
+  padding-top: clamp(14px, 2vh, 22px);
+  overflow: hidden;
+  border-top: 1px solid rgba(96, 165, 250, 0.28);
+}
+
+.tactical-abp-description p {
+  display: -webkit-box;
+  margin-top: clamp(10px, 1.4vh, 16px);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: #e2e8f0;
+  font-size: clamp(13px, 1.22vw, 21px);
+  font-weight: 650;
+  line-height: 1.42;
+  white-space: pre-wrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 15;
+}
+
+@supports (width: 1cqh) {
+  .tactical-abp-board-crop {
+    width: min(100cqw, calc(100cqh * var(--abp-crop-aspect)));
+  }
+}
+
+@media (max-width: 760px) {
+  .tactical-abp-presentation-controls select {
+    min-width: 120px;
+  }
+
+  .tactical-abp-presentation-frame {
+    grid-template-columns: minmax(0, 1.8fr) minmax(180px, 1fr);
+    padding: 6px;
+  }
+
+  .tactical-abp-information-panel {
+    padding: 10px;
+  }
+
+  .tactical-abp-information-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .tactical-capture-root {
   position: fixed;
   inset: 0;

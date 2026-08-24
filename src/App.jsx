@@ -306,6 +306,11 @@ import {
   getSetPieceZonePoints,
   normalizeBallStartPosition,
 } from './utils/setPieceZones';
+import {
+  buildSetPiecePresentationCrop,
+  buildSetPiecePresentationViewport,
+  getSetPiecePresentationName,
+} from './utils/setPiecePresentation';
 import { getTacticalPreset } from './utils/tacticalPresets';
 import {
   cloneTacticalBoardArrow,
@@ -10423,6 +10428,10 @@ function App() {
     && play.setPieceAction === setPieceAction
     && getBallPositionKey(play.ballStartPosition) === getBallPositionKey(setPieceBallStartPosition)
   ));
+  const setPiecePresentationPlays = setPieceWorkspace.plays.filter((play) => (
+    play.setPieceType === setPieceType
+    && play.setPieceAction === setPieceAction
+  ));
   const selectedSetPiecePlayId = setPieceWorkspace.activePlayIdByContext?.[setPiecePlayContextKey]
     || setPiecePlaysForContext[0]?.id
     || '';
@@ -11590,19 +11599,30 @@ function App() {
       },
     }));
   };
-  const selectSetPiecePlay = (playId) => {
-    if (!setPieceWorkspace.plays.some((play) => (
+  const selectSetPiecePlay = (playId, { markDirty = true, allowContextChange = false } = {}) => {
+    const targetPlay = setPieceWorkspace.plays.find((play) => (
       play.id === playId
       && play.setPieceType === setPieceType
       && play.setPieceAction === setPieceAction
-      && getBallPositionKey(play.ballStartPosition) === getBallPositionKey(setPieceBallStartPosition)
-    ))) return;
-    markSetPieceUnsaved();
+      && (allowContextChange || getBallPositionKey(play.ballStartPosition) === getBallPositionKey(setPieceBallStartPosition))
+    ));
+    if (!targetPlay) return;
+    const targetBallPosition = normalizeBallStartPosition(targetPlay.ballStartPosition, setPieceBallStartPosition);
+    const targetActionContextKey = getSetPieceActionContextKey(setPieceType, setPieceAction);
+    const targetPlayContextKey = getSetPieceContextKey(setPieceType, setPieceAction, targetBallPosition);
+    if (allowContextChange) setSetPieceBallStartPosition(targetBallPosition);
+    if (markDirty) markSetPieceUnsaved();
     setSetPieceWorkspace((current) => ({
       ...current,
+      activeBallPositionByContext: allowContextChange
+        ? {
+          ...current.activeBallPositionByContext,
+          [targetActionContextKey]: targetBallPosition,
+        }
+        : current.activeBallPositionByContext,
       activePlayIdByContext: {
         ...current.activePlayIdByContext,
-        [setPiecePlayContextKey]: playId,
+        [targetPlayContextKey]: playId,
       },
     }));
   };
@@ -13378,6 +13398,40 @@ function App() {
       situationLabel: captureSituationLabel,
       selectedPlay: selectedTacticalPlay,
     });
+    const setPieceCaptureViewport = tacticalGamePhase === 'set_piece'
+      ? buildSetPiecePresentationViewport({
+        setPieceAction,
+        ballStartPosition: selectedSetPiecePlay?.ballStartPosition || setPieceBallStartPosition,
+        playerPositions: selectedSetPiecePlay?.playerPositions,
+        arrows: selectedSetPiecePlay?.arrows,
+        zones: getTacticalZones(),
+      })
+      : null;
+    const setPieceCaptureCrop = setPieceCaptureViewport
+      ? buildSetPiecePresentationCrop(setPieceCaptureViewport)
+      : null;
+    const setPieceCaptureBallPosition = normalizeBallStartPosition(
+      selectedSetPiecePlay?.ballStartPosition || setPieceBallStartPosition
+    );
+    const setPieceCaptureBallZone = tacticalGamePhase === 'set_piece'
+      ? getSetPieceZonePoints(setPieceType, setPieceAction).find(({ position }) => (
+        getBallPositionKey(position) === getBallPositionKey(setPieceCaptureBallPosition)
+      ))?.label || ''
+      : '';
+    const setPieceCaptureName = tacticalGamePhase === 'set_piece'
+      ? getSetPiecePresentationName(selectedSetPiecePlay?.name)
+      : '';
+    const setPieceCaptureInformation = tacticalGamePhase === 'set_piece'
+      ? [
+        ['Nombre', setPieceCaptureName],
+        ['Zona del balón', setPieceCaptureBallZone],
+        ['Categoría', selectedSetPiecePlay?.category],
+        ['Claves', safeArray(selectedSetPiecePlay?.tags).join(' · ')],
+      ].filter(([, value]) => String(value || '').trim())
+      : [];
+    const setPieceCapturePlayIndex = tacticalGamePhase === 'set_piece'
+      ? setPiecePresentationPlays.findIndex((play) => play.id === selectedSetPiecePlayId)
+      : -1;
     const rivalPlayerTacticalModel = buildRivalPlayerTacticalModel({
       player: selectedMicroPlayer,
       profile: selectedMicroProfile,
@@ -13393,6 +13447,75 @@ function App() {
         label: `${displayPlayerName(player) || player.name}${getMicroPlayerTags(player).length ? ` · ${getMicroPlayerTags(player).join(' · ')}` : ''}`,
       })),
     }));
+    if (tacticalCaptureMode && tacticalGamePhase === 'set_piece' && typeof document !== 'undefined') {
+      const setPieceTypeLabel = setPieceTypeOptions.find((option) => option.value === setPieceType)?.label || 'ABP';
+      const setPieceActionLabel = setPieceActionOptions.find((option) => option.value === setPieceAction)?.label || '';
+      return createPortal(
+        <div className="tactical-abp-presentation-root" data-tactical-capture="true" data-set-piece-presentation="true" role="dialog" aria-modal="true" aria-label="Presentación ABP">
+          <nav className="tactical-abp-presentation-controls" aria-label="Controles externos de presentación">
+            <button
+              type="button"
+              disabled={setPieceCapturePlayIndex <= 0}
+              onClick={() => selectSetPiecePlay(setPiecePresentationPlays[setPieceCapturePlayIndex - 1]?.id, { markDirty: false, allowContextChange: true })}
+            >
+              ← Anterior
+            </button>
+            <select
+              value={selectedSetPiecePlayId}
+              onChange={(event) => selectSetPiecePlay(event.target.value, { markDirty: false, allowContextChange: true })}
+              aria-label="Seleccionar jugada ABP"
+            >
+              {setPiecePresentationPlays.length ? setPiecePresentationPlays.map((play) => (
+                <option key={play.id} value={play.id}>{play.name}</option>
+              )) : <option value="">Sin jugadas</option>}
+            </select>
+            <button
+              type="button"
+              disabled={setPieceCapturePlayIndex < 0 || setPieceCapturePlayIndex >= setPiecePresentationPlays.length - 1}
+              onClick={() => selectSetPiecePlay(setPiecePresentationPlays[setPieceCapturePlayIndex + 1]?.id, { markDirty: false, allowContextChange: true })}
+            >
+              Siguiente →
+            </button>
+            <button type="button" onClick={() => setTacticalCaptureMode(false)}>Salir</button>
+          </nav>
+          <main className="tactical-abp-presentation-frame" aria-label="Superficie de captura ABP 16:9">
+            <section className="tactical-abp-pitch-pane" aria-label="Campo táctico ABP autoencuadrado">
+              <div
+                className="tactical-abp-board-crop"
+                style={{ '--abp-crop-aspect': String(setPieceCaptureCrop?.aspectRatio || (7 / 8.4)) }}
+              >
+                <div className="tactical-abp-board-host" style={setPieceCaptureCrop?.hostStyle}>
+                  {renderFacingSystemsOverview(true)}
+                </div>
+              </div>
+            </section>
+            <aside className="tactical-abp-information-panel">
+              <header className="tactical-abp-heading">
+                <p>{setPieceTypeLabel}</p>
+                <h2>{setPieceActionLabel}</h2>
+              </header>
+              {setPieceCaptureInformation.length ? (
+                <dl className="tactical-abp-information-list">
+                  {setPieceCaptureInformation.map(([label, value]) => (
+                    <div key={label}>
+                      <dt>{label}</dt>
+                      <dd>{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+              {capturePresentation.description ? (
+                <section className="tactical-abp-description">
+                  <h3>Descripción</h3>
+                  <p>{capturePresentation.description}</p>
+                </section>
+              ) : null}
+            </aside>
+          </main>
+        </div>,
+        document.body
+      );
+    }
     if (tacticalCaptureMode && typeof document !== 'undefined') {
       return createPortal(
         <div className="tactical-capture-root" data-tactical-capture="true" role="dialog" aria-modal="true" aria-label="Vista de captura táctica">
