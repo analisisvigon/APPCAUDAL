@@ -235,3 +235,10 @@ export const instantiateTemplateArrows = (arrows = [], createId) => (
     ...(arrow.controlPoint ? { controlPoint: { ...arrow.controlPoint } } : {}),
   }))
 );
+
+export const copyTacticalTemplateMetadataToPlay = (template = {}) => ({
+  description: String(template.description || ''),
+  category: String(template.category || ''),
+  tags: Array.isArray(template.tags) ? template.tags.map((tag) => String(tag)) : [],
+  sourceTemplateId: String(template.id || ''),
+});

@@ -322,6 +322,7 @@ import {
 } from './utils/tacticalTemplateStore';
 import {
   adaptSemanticPlayerPositions,
+  copyTacticalTemplateMetadataToPlay,
   instantiateTemplateArrows,
   serializeSemanticPlayerPositions,
   serializeTemplateArrows,
@@ -10564,6 +10565,14 @@ function App() {
     }));
     setTacticalTemplateNotice('El formulario contiene ahora el dibujo de la jugada actual. Guarda para actualizar la plantilla.');
   };
+  const copyTacticalTemplateDescriptionFromCurrentPlay = () => {
+    if (!selectedTacticalPlay) return;
+    setTacticalTemplateDraft((current) => ({
+      ...current,
+      description: String(selectedTacticalPlay.description || ''),
+    }));
+    setTacticalTemplateNotice('El formulario contiene ahora la descripción de la jugada actual. Guarda para actualizar la plantilla.');
+  };
   const removeTacticalTemplate = async (template) => {
     if (!template || !window.confirm(`¿Eliminar la plantilla "${template.name}"? Las jugadas creadas desde ella permanecerán intactas.`)) return;
     setTacticalTemplateError('');
@@ -10717,10 +10726,7 @@ function App() {
       caudalSystem,
       playerPositions,
       arrows: instantiateTemplateArrows(template.arrows, createPlayId),
-      description: template.description || '',
-      category: template.category || '',
-      tags: safeArray(template.tags).map((tag) => String(tag)),
-      sourceTemplateId: template.id,
+      ...copyTacticalTemplateMetadataToPlay(template),
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -10819,8 +10825,8 @@ function App() {
     setTacticalTemplateDialog('');
     setTacticalTemplateNotice(
       warnings.length
-        ? `${templateContextWarning}${transitionContextWarning}${setPieceContextWarning}Plantilla aplicada. ${warnings.length} ajuste${warnings.length === 1 ? '' : 's'} recomendado${warnings.length === 1 ? '' : 's'}: ${warnings.slice(0, 2).join(' ')}`
-        : `${templateContextWarning}${transitionContextWarning}${setPieceContextWarning}Plantilla aplicada: ${template.name}.`
+        ? `${templateContextWarning}${transitionContextWarning}${setPieceContextWarning}Plantilla aplicada: ${template.name}. Se ha creado una jugada independiente. ${warnings.length} ajuste${warnings.length === 1 ? '' : 's'} recomendado${warnings.length === 1 ? '' : 's'}: ${warnings.slice(0, 2).join(' ')}`
+        : `${templateContextWarning}${transitionContextWarning}${setPieceContextWarning}Plantilla aplicada: ${template.name}. Se ha creado una jugada independiente.`
     );
   };
   const normalizedTacticalTemplateSearch = tacticalTemplateSearch.trim().toLowerCase();
@@ -13706,6 +13712,11 @@ function App() {
               {tacticalTemplateNotice ? <p className="mt-2 text-[10px] font-bold text-emerald-200">{tacticalTemplateNotice}</p> : null}
               <label className="mt-4 grid gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-white">
                 <span>Descripción de la jugada</span>
+                {selectedTacticalPlay?.sourceTemplateId ? (
+                  <span className="text-[9px] font-semibold normal-case tracking-normal text-slate-400">
+                    Copia independiente de la plantilla de origen. Los cambios de esta jugada no se sincronizan con ella.
+                  </span>
+                ) : null}
                 <textarea
                   rows={5}
                   value={selectedTacticalPlay?.description || ''}
@@ -14304,14 +14315,22 @@ function App() {
                   <input value={tacticalTemplateDraft.baseCaudalSystem} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, baseCaudalSystem: event.target.value }))} placeholder="Referencia opcional" className="h-11 border border-white/10 bg-black/20 px-3 text-sm font-semibold normal-case tracking-normal text-white outline-none placeholder:text-slate-600" />
                 </label>
                 <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 sm:col-span-2">
-                  <span>Descripción</span>
+                  <span>Descripción base de la plantilla</span>
+                  <span className="text-[9px] font-semibold normal-case tracking-normal text-slate-500">
+                    Se copia al crear una jugada nueva. Los cambios posteriores son independientes y no reescriben jugadas existentes.
+                  </span>
                   <textarea rows={4} value={tacticalTemplateDraft.description} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, description: event.target.value }))} className="min-h-[110px] border border-white/10 bg-black/20 px-3 py-3 text-sm font-semibold normal-case leading-6 tracking-normal text-white outline-none" />
                 </label>
               </div>
               {tacticalTemplateDialog === 'edit' ? (
-                <button type="button" disabled={!selectedTacticalPlay} onClick={updateTacticalTemplateDrawingFromCurrentPlay} className="mt-4 border border-caudal-electric/25 bg-caudal-electric/10 px-4 py-2.5 text-xs font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">
-                  Actualizar dibujo desde la jugada actual
-                </button>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button type="button" disabled={!selectedTacticalPlay} onClick={updateTacticalTemplateDrawingFromCurrentPlay} className="border border-caudal-electric/25 bg-caudal-electric/10 px-4 py-2.5 text-xs font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">
+                    Actualizar dibujo desde la jugada actual
+                  </button>
+                  <button type="button" disabled={!selectedTacticalPlay} onClick={copyTacticalTemplateDescriptionFromCurrentPlay} className="border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs font-black uppercase text-slate-200 disabled:cursor-not-allowed disabled:opacity-40">
+                    Copiar descripción desde la jugada actual
+                  </button>
+                </div>
               ) : null}
               {tacticalTemplateError ? <p className="mt-4 border border-red-300/20 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-100">{tacticalTemplateError}</p> : null}
               <div className="mt-5 flex justify-end gap-2">

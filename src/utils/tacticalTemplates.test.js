@@ -7,6 +7,7 @@ import {
 } from './tacticalTemplateStore.js';
 import {
   adaptSemanticPlayerPositions,
+  copyTacticalTemplateMetadataToPlay,
   instantiateTemplateArrows,
   serializeSemanticPlayerPositions,
   serializeTemplateArrows,
@@ -121,6 +122,24 @@ instantiatedArrows[0].start.x = 99;
 assert.equal(portableArrows[0].start.x, 10, 'la jugada recibe una copia profunda de las flechas');
 assert.notEqual(instantiatedArrows[0].id, sourceArrows[0].id, 'las flechas reciben IDs locales nuevos');
 
+const sourceTemplate = {
+  id: 'template-description-contract',
+  name: 'PRESS INDIVIDUAL',
+  description: 'Extremo de punta y punta con pivote',
+  category: 'presión',
+  tags: ['individual', 'bloque alto'],
+};
+const copiedMetadata = copyTacticalTemplateMetadataToPlay(sourceTemplate);
+assert.equal(copiedMetadata.description, sourceTemplate.description, 'la jugada nueva copia la descripción base');
+assert.equal(copiedMetadata.sourceTemplateId, sourceTemplate.id, 'la copia conserva sólo la procedencia');
+assert.ok(!Object.hasOwn(copiedMetadata, 'name'), 'el nombre de la jugada se decide de forma independiente');
+copiedMetadata.description = 'Adaptación específica para este rival';
+copiedMetadata.tags.push('partido');
+assert.equal(sourceTemplate.description, 'Extremo de punta y punta con pivote', 'editar la jugada no cambia la plantilla');
+assert.deepEqual(sourceTemplate.tags, ['individual', 'bloque alto'], 'la jugada no comparte referencias mutables con la plantilla');
+sourceTemplate.description = 'Nueva descripción base';
+assert.equal(copiedMetadata.description, 'Adaptación específica para este rival', 'editar la plantilla no cambia una jugada existente');
+
 const payload = buildTacticalTemplatePayload({
   name: '  Salida de tres  ',
   phase: 'offensive',
@@ -138,6 +157,7 @@ const payload = buildTacticalTemplatePayload({
 });
 assert.equal(payload.name, 'Salida de tres');
 assert.equal(payload.play_style, 'direct');
+assert.equal(payload.description, 'Atraer para progresar.', 'actualizar una plantilla persiste la descripción del formulario');
 assert.equal(payload.transition_type, null);
 assert.equal(payload.field_zone, null);
 assert.equal(payload.behaviour, null);
@@ -374,5 +394,14 @@ assert.match(appSource, /tacticalTemplatePlayStyleFilter/);
 assert.match(appSource, /tacticalTemplateTransitionTypeFilter/);
 assert.match(appSource, /tacticalTemplateFieldZoneFilter/);
 assert.match(appSource, /tacticalTemplateBehaviourFilter/);
+assert.match(appSource, /\.\.\.copyTacticalTemplateMetadataToPlay\(template\)/, 'usar plantilla crea una copia de sus metadatos');
+assert.match(appSource, /Se ha creado una jugada independiente/, 'el aviso no implica sincronización en vivo');
+assert.match(appSource, /Descripción base de la plantilla/, 'el editor identifica la fuente reutilizable');
+const drawingUpdateSource = appSource.match(/const updateTacticalTemplateDrawingFromCurrentPlay = \(\) => \{[\s\S]*?\n  \};/)?.[0] || '';
+assert.ok(drawingUpdateSource, 'existe la acción de actualizar sólo el dibujo');
+assert.doesNotMatch(drawingUpdateSource, /description/, 'actualizar sólo el dibujo no cambia la descripción');
+const descriptionCopySource = appSource.match(/const copyTacticalTemplateDescriptionFromCurrentPlay = \(\) => \{[\s\S]*?\n  \};/)?.[0] || '';
+assert.match(descriptionCopySource, /description: String\(selectedTacticalPlay\.description \|\| ''\)/, 'la vuelta jugada a plantilla requiere una acción explícita');
+assert.match(appSource, /Copiar descripción desde la jugada actual/, 'la acción inversa distingue descripción de dibujo');
 
 console.log('Tactical template tests passed');

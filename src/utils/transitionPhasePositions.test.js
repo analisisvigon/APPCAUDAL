@@ -311,7 +311,10 @@ const appSource = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 assert.ok(appSource.includes("phaseField: 'transitionPhaseV1'"), 'Transiciones se guarda en su espacio JSON independiente');
 assert.ok(appSource.includes("phaseLabel: 'TRANSITION_PHASE_SAVE'"), 'el error de persistencia queda identificado');
 assert.ok(appSource.includes(".from('partidos')"), 'la persistencia usa Supabase');
-assert.ok(appSource.includes('sourceTemplateId: template.id'), 'las copias desde plantilla conservan la referencia de origen');
+assert.ok(
+  appSource.includes('...copyTacticalTemplateMetadataToPlay(template)'),
+  'las copias desde plantilla conservan sus metadatos y la referencia de origen'
+);
 assert.ok(
   appSource.includes('getRenderedPlayerPosition(`rival:${rivalSlot.slot}`, baseSlot)'),
   'la interfaz aplica las coordenadas finales al mismo slot que conserva nombre y fotografía del rival'
