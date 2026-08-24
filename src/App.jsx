@@ -13685,55 +13685,102 @@ function App() {
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Campo táctico</p>
                   <h4 className="mt-1 text-2xl font-black text-white">Pizarra de partido</h4>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setTacticalCaptureMode(true)}
-                    className="border border-white/10 bg-white/[0.035] px-2.5 py-1.5 text-[10px] font-black uppercase text-slate-300"
-                  >
-                    Modo captura
-                  </button>
-                  <div className={`flex flex-wrap gap-1.5 ${tacticalCaptureMode ? 'hidden' : ''}`}>
+                <button
+                  type="button"
+                  onClick={() => setTacticalCaptureMode(true)}
+                  className="border border-white/10 bg-white/[0.035] px-2.5 py-1.5 text-[10px] font-black uppercase text-slate-300"
+                >
+                  Modo captura
+                </button>
+              </div>
+              <div className="mb-2 grid gap-2 border border-white/[0.08] bg-black/15 p-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                  <span className="mr-1 text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">Visualización</span>
                   {[
-                    ['names', 'Nombres'],
-                    ['zones', 'Zonas'],
-                    ['badges', 'Alertas'],
-                    ['rival', 'Rival'],
-                    ['caudal', 'Caudal'],
-                    ['connections', 'Conexiones'],
-                  ].map(([key, label]) => (
+                    ['names', 'Nombres', 'Mostrar u ocultar nombres de jugadores'],
+                    ['zones', 'Zonas', 'Mostrar u ocultar zonas y contexto táctico'],
+                    ['badges', 'Alertas', 'Mostrar u ocultar alertas de jugadores'],
+                    ['rival', 'Rival', 'Mostrar u ocultar el equipo rival'],
+                    ['caudal', 'Caudal', 'Mostrar u ocultar el Caudal'],
+                    ['connections', 'Conexiones', 'Mostrar u ocultar conexiones tácticas registradas'],
+                  ].map(([key, label, tooltip]) => (
                     <button
                       key={key}
                       type="button"
+                      title={tooltip}
+                      aria-pressed={getFieldViewSettings().layers[key]}
                       onClick={() => updateFieldViewSettings({ layers: { [key]: !getFieldViewSettings().layers[key] } })}
-                      className={`border px-2.5 py-1.5 text-[10px] font-black uppercase ${getFieldViewSettings().layers[key] ? 'border-caudal-electric/25 bg-caudal-electric/10 text-caudal-electric' : 'border-white/10 bg-white/[0.035] text-slate-500'}`}
+                      className={`border px-2 py-1.5 text-[9px] font-black uppercase ${getFieldViewSettings().layers[key] ? 'border-caudal-electric/25 bg-caudal-electric/10 text-caudal-electric' : 'border-white/10 bg-white/[0.035] text-slate-500'}`}
                     >
                       {label}
                     </button>
                   ))}
+                </div>
+                <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="mr-1 text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">Edición</span>
+                    {[
+                      ['move', 'Mover', 'Recolocar jugadores'],
+                      ['select', 'Seleccionar', 'Seleccionar pases o movimientos'],
+                    ].map(([tool, label, tooltip]) => (
+                      <button
+                        key={tool}
+                        type="button"
+                        title={tooltip}
+                        aria-pressed={defensiveTool === tool}
+                        disabled={!selectedDefensivePlay && tool !== 'move'}
+                        onClick={() => setDefensiveTool(tool)}
+                        className={`border px-2.5 py-1.5 text-[9px] font-black uppercase ${defensiveTool === tool ? 'border-caudal-electric/30 bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300'} disabled:cursor-not-allowed disabled:opacity-40`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    <button type="button" title="Eliminar el pase o movimiento seleccionado" disabled={!selectedDefensiveArrowId} onClick={deleteSelectedDefensiveArrow} className="border border-red-300/20 bg-red-500/10 px-2.5 py-1.5 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Borrar</button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="mr-1 text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">Trazados</span>
+                    {[
+                      ['pass', 'Pase', 'Dibujar trayectoria de pase'],
+                      ['movement', 'Movimiento', 'Dibujar desplazamiento táctico'],
+                    ].map(([tool, label, tooltip]) => (
+                      <button
+                        key={tool}
+                        type="button"
+                        title={tooltip}
+                        aria-pressed={defensiveTool === tool}
+                        disabled={!selectedDefensivePlay}
+                        onClick={() => setDefensiveTool(tool)}
+                        className={`border px-2.5 py-1.5 text-[9px] font-black uppercase ${defensiveTool === tool ? 'border-caudal-electric/30 bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300'} disabled:cursor-not-allowed disabled:opacity-40`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {tacticalGamePhase === 'set_piece' ? (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="mr-1 text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">Elementos</span>
+                      <button
+                        type="button"
+                        title={selectedSetPiecePlay ? 'El balón pertenece a la jugada ABP. Activa Mover y arrástralo en el campo.' : 'Crea una jugada ABP para colocar y mover el balón.'}
+                        disabled={!selectedSetPiecePlay}
+                        onClick={() => setDefensiveTool('move')}
+                        className="border border-amber-300/25 bg-amber-400/10 px-2.5 py-1.5 text-[9px] font-black uppercase text-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Balón · usar Mover
+                      </button>
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="mr-1 text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">Historial</span>
+                    <button type="button" title="Deshacer la última edición de la jugada" disabled={!defensiveUndoStack.length} onClick={undoDefensiveAction} className="border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Deshacer</button>
+                    <button type="button" title="Recuperar el preset de la fase y situación actuales" disabled={!selectedDefensivePlay} onClick={resetDefensiveFormation} className="border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Restablecer</button>
                   </div>
                 </div>
-              </div>
-              <div className={`mb-2 flex flex-wrap items-center gap-1.5 ${tacticalCaptureMode ? 'hidden' : ''}`}>
-                {[
-                  ['move', 'Mover'],
-                  ['pass', 'Pase'],
-                  ['movement', 'Movimiento'],
-                  ['select', 'Seleccionar'],
-                ].map(([tool, label]) => (
-                  <button
-                    key={tool}
-                    type="button"
-                    disabled={!selectedDefensivePlay && tool !== 'move'}
-                    onClick={() => setDefensiveTool(tool)}
-                    className={`border px-3 py-2 text-[9px] font-black uppercase ${defensiveTool === tool ? 'border-caudal-electric/30 bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300'} disabled:cursor-not-allowed disabled:opacity-40`}
-                  >
-                    {label}
-                  </button>
-                ))}
-                <button type="button" disabled={!selectedDefensiveArrowId} onClick={deleteSelectedDefensiveArrow} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Borrar</button>
-                <button type="button" disabled={!defensiveUndoStack.length} onClick={undoDefensiveAction} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Deshacer</button>
-                <button type="button" disabled={!selectedDefensivePlay} onClick={resetDefensiveFormation} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Restablecer formación</button>
+                {!selectedDefensivePlay ? (
+                  <p className="text-[9px] font-bold text-amber-100/80">
+                    Mover está disponible. Crea una jugada para añadir y guardar pases o movimientos.
+                  </p>
+                ) : null}
                 {selectedPlayHasLegacyRivalOrientation ? (
                   <span className="border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-[9px] font-black uppercase text-amber-100">
                     Orientación antigua detectada · usa Restablecer formación
