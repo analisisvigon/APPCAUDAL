@@ -322,6 +322,7 @@ import {
   createTacticalBoardViewState,
   updateTacticalBoardViewState,
 } from './utils/tacticalBoardViewState';
+import { buildTacticalCapturePresentation } from './utils/tacticalCapturePresentation';
 import {
   createTacticalTemplate,
   deleteTacticalTemplate,
@@ -13304,6 +13305,9 @@ function App() {
       'Claves del partido': addSavedQuestionEvidence('Claves del partido', confirmedTacticalEvidenceReport.planRecommendations['Claves del partido']),
     };
     const capturePhaseLabel = tacticalGamePhaseOptions.find((option) => option.value === tacticalGamePhase)?.label || '';
+    const captureSetPieceQualifier = ['wide_free_kick', 'central_free_kick'].includes(setPieceAction)
+      ? setPieceType === 'defensive_set_piece' ? 'defensiva' : 'ofensiva'
+      : setPieceType === 'defensive_set_piece' ? 'defensivo' : 'ofensivo';
     const captureSituationLabel = tacticalGamePhase === 'defensive'
       ? defensiveSituationOptions.find((option) => option.value === defensiveSituation)?.label
       : tacticalGamePhase === 'offensive'
@@ -13313,11 +13317,13 @@ function App() {
             transitionTypeOptions.find((option) => option.value === transitionType)?.label,
             transitionFieldZoneOptions.find((option) => option.value === transitionFieldZone)?.label,
           ].filter(Boolean).join(' · ')
-          : [
-            setPieceTypeOptions.find((option) => option.value === setPieceType)?.label,
-            setPieceActionOptions.find((option) => option.value === setPieceAction)?.label,
-          ].filter(Boolean).join(' · ');
-    const captureDescription = String(selectedTacticalPlay?.description || '').trim();
+          : `${setPieceActionOptions.find((option) => option.value === setPieceAction)?.label || ''} ${captureSetPieceQualifier}`.trim();
+    const capturePresentation = buildTacticalCapturePresentation({
+      phaseLabel: capturePhaseLabel,
+      situationLabel: captureSituationLabel,
+      plays: tacticalPlaysForSituation,
+      selectedPlay: selectedTacticalPlay,
+    });
     const rivalPlayerTacticalModel = buildRivalPlayerTacticalModel({
       player: selectedMicroPlayer,
       profile: selectedMicroProfile,
@@ -13341,26 +13347,30 @@ function App() {
             onClick={() => setTacticalCaptureMode(false)}
             className="tactical-capture-exit"
           >
-            Salir
+            Salir de captura
           </button>
           <header className="tactical-capture-context">
             <div className="min-w-0">
-              <p className="tactical-capture-systems">{caudalSystem} vs {rivalSystem}</p>
-              <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-                <p className="tactical-capture-situation">
-                  {[capturePhaseLabel, captureSituationLabel].filter(Boolean).join(' · ')}
-                </p>
-                {selectedTacticalPlay ? (
-                  <span className="tactical-capture-play">{selectedTacticalPlay.name}</span>
-                ) : null}
-              </div>
+              <p className="tactical-capture-eyebrow">Fase del juego</p>
+              <h2 className="tactical-capture-phase">{capturePresentation.phase}</h2>
+              {capturePresentation.situation ? (
+                <p className="tactical-capture-situation">{capturePresentation.situation}</p>
+              ) : null}
             </div>
-            {captureDescription ? (
-              <p className="tactical-capture-description">{captureDescription}</p>
+            {capturePresentation.playLabel ? (
+              <span className="tactical-capture-play">{capturePresentation.playLabel}</span>
             ) : null}
           </header>
-          <main className="tactical-capture-stage">
-            {renderFacingSystemsOverview(true)}
+          <main className={`tactical-capture-stage ${capturePresentation.description ? 'tactical-capture-stage--with-description' : 'tactical-capture-stage--field-only'}`}>
+            <section className="tactical-capture-board-shell" aria-label="Campo táctico">
+              {renderFacingSystemsOverview(true)}
+            </section>
+            {capturePresentation.description ? (
+              <aside className="tactical-capture-description-panel">
+                <p className="tactical-capture-description-title">Descripción</p>
+                <p className="tactical-capture-description">{capturePresentation.description}</p>
+              </aside>
+            ) : null}
           </main>
         </div>,
         document.body
@@ -25386,10 +25396,12 @@ function App() {
         <div className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/35" />
         <div className="absolute left-1/2 top-4 h-20 w-48 -translate-x-1/2 rounded-b-3xl border-x-2 border-b-2 border-white/35" />
         <div className="absolute bottom-4 left-1/2 h-20 w-48 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/35" />
-        <div className="absolute left-0 right-0 top-1/2 flex -translate-y-1/2 justify-between px-5 text-[10px] font-black uppercase tracking-[0.16em] text-white/45">
-          <span>Rival {rivalSystem}</span>
-          <span>Caudal {caudalSystem}</span>
-        </div>
+        {!tacticalCaptureMode ? (
+          <div className="absolute left-0 right-0 top-1/2 flex -translate-y-1/2 justify-between px-5 text-[10px] font-black uppercase tracking-[0.16em] text-white/45">
+            <span>Rival {rivalSystem}</span>
+            <span>Caudal {caudalSystem}</span>
+          </div>
+        ) : null}
         {renderConnectionLayer()}
         {renderDefensiveDrawingLayer()}
         {enableDefensiveEditing && tacticalBallVisible ? (
@@ -25398,7 +25410,7 @@ function App() {
             aria-label="Balón"
             aria-selected={!tacticalCaptureMode && defensiveTool === 'select' && selectedTacticalBall}
             title="Balón · selecciona o arrastra con Mover"
-            className={`absolute z-[35] flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-grab select-none items-center justify-center rounded-full border-2 bg-white text-base leading-none shadow-[0_4px_14px_rgba(0,0,0,0.55)] active:cursor-grabbing ${!tacticalCaptureMode && defensiveTool === 'select' && selectedTacticalBall ? 'border-caudal-electric ring-4 ring-caudal-electric/30' : 'border-slate-950'}`}
+            className={`absolute z-[35] flex -translate-x-1/2 -translate-y-1/2 cursor-grab select-none items-center justify-center rounded-full border-2 bg-white leading-none shadow-[0_4px_14px_rgba(0,0,0,0.55)] active:cursor-grabbing ${tacticalCaptureMode ? 'h-9 w-9 text-lg' : 'h-7 w-7 text-base'} ${!tacticalCaptureMode && defensiveTool === 'select' && selectedTacticalBall ? 'border-caudal-electric ring-4 ring-caudal-electric/30' : 'border-slate-950'}`}
             style={{
               left: `${tacticalBallPosition.x}%`,
               top: `${tacticalBallPosition.y}%`,
@@ -25448,7 +25460,7 @@ function App() {
               const unavailablePlayer = rivalSlot.unavailablePlayer || null;
               const badges = showStaffDetails && layers.badges && statusPlayer ? playerStatusBadges(statusPlayer) : [];
               return (
-                <span className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border bg-rose-500/80 text-[10px] font-black text-white shadow-[0_0_26px_rgba(244,63,94,0.20)] transition duration-300 ${unavailablePlayer ? `border-dashed ${getUnavailableVisualClass(unavailablePlayer)}` : 'border-rose-200'} ${!tacticalCaptureMode && selectedFacingSystemsPlayer?.playerId === realPlayerId ? 'ring-4 ring-caudal-electric/45' : ''}`}>
+                <span className={`relative flex items-center justify-center overflow-hidden rounded-full border bg-rose-500/80 font-black text-white shadow-[0_0_26px_rgba(244,63,94,0.20)] transition duration-300 ${tacticalCaptureMode ? 'h-11 w-11 text-xs' : 'h-9 w-9 text-[10px]'} ${unavailablePlayer ? `border-dashed ${getUnavailableVisualClass(unavailablePlayer)}` : 'border-rose-200'} ${!tacticalCaptureMode && selectedFacingSystemsPlayer?.playerId === realPlayerId ? 'ring-4 ring-caudal-electric/45' : ''}`}>
                   {statusPlayer?.image ? <img src={statusPlayer.image} alt="" className="h-full w-full object-cover object-center" /> : rivalSlot.slot === 0 ? 'P' : rivalSlot.slot}
                   {badges.length ? (
                     <span className="absolute -right-7 -top-2 flex max-w-20 flex-wrap justify-end gap-1">
@@ -25467,7 +25479,7 @@ function App() {
                 </span>
               );
             })()}
-            {layers.names ? <span className="max-w-24 truncate rounded-md bg-black/65 px-1.5 py-0.5 text-[8px] font-semibold text-white shadow-sm">
+            {layers.names ? <span className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
               {rivalSlot.player?.name || rivalSlot.role}
             </span> : null}
           </div>
@@ -25485,12 +25497,12 @@ function App() {
             {(() => {
               const player = players.find((item) => item.name === caudalLineup[index]);
               return (
-                <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-white/15 bg-white text-[10px] font-black text-slate-500 shadow-sm transition duration-300">
+                <span className={`flex items-center justify-center overflow-hidden rounded-lg border border-white/15 bg-white font-black text-slate-500 shadow-sm transition duration-300 ${tacticalCaptureMode ? 'h-11 w-11 text-xs' : 'h-9 w-9 text-[10px]'}`}>
                   {player ? <PlayerPortrait player={player} className="h-full w-full" imgClassName="h-full w-full object-cover object-center" fallbackTextClassName="text-[9px]" /> : index === 0 ? 'P' : index}
                 </span>
               );
             })()}
-            {layers.names ? <span className="max-w-24 truncate rounded-md bg-black/65 px-1.5 py-0.5 text-[8px] font-semibold text-white shadow-sm">
+            {layers.names ? <span className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
               {caudalLineup[index] || caudalRoles[index] || `C${index + 1}`}
             </span> : null}
           </div>
