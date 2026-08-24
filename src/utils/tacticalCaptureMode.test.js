@@ -91,11 +91,16 @@ assert.match(appSource, /if \(event\.key === 'Escape'\) setTacticalCaptureMode\(
 assert.match(appSource, /if \(tacticalCaptureMode \|\| defensiveTool !== 'move'\) return;/, 'captura no puede iniciar ediciones');
 
 assert.match(cssSource, /\.tactical-capture-root\s*\{[\s\S]*position: fixed;[\s\S]*height: 100dvh;[\s\S]*overflow: hidden;/);
-assert.match(cssSource, /\.tactical-capture-stage--with-description\s*\{[\s\S]*grid-template-columns: minmax\(0, 1\.72fr\) minmax\(280px, 0\.95fr\);/);
-assert.match(cssSource, /\.tactical-capture-stage--field-only\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/);
+assert.match(cssSource, /\.tactical-capture-context\s*\{[\s\S]*display: flex;[\s\S]*justify-content: center;[\s\S]*text-align: center;/, 'fase y situación se centran respecto a toda la composición');
+assert.match(cssSource, /\.tactical-capture-play\s*\{[\s\S]*position: absolute;[\s\S]*right:/, 'la numeración no desplaza la cabecera centrada');
+assert.match(cssSource, /\.tactical-capture-stage\s*\{[\s\S]*display: flex;/, 'el campo tiene prioridad y la descripción recibe el espacio restante');
+assert.match(cssSource, /\.tactical-capture-stage--with-description\s*\{[\s\S]*align-items: flex-start;/);
+assert.match(cssSource, /\.tactical-capture-stage--field-only\s*\{[\s\S]*justify-content: center;/);
 assert.match(cssSource, /\.tactical-capture-board-shell\s*\{[\s\S]*container-type: size;[\s\S]*min-height: 0;[\s\S]*overflow: hidden;/);
+assert.match(cssSource, /flex-basis: min\(896px, calc\(\(100dvh - 108px\) \* 0\.833333\)\);/, 'la altura del viewport fija el campo antes de repartir espacio a la descripción');
 assert.match(cssSource, /width: min\(100cqw, calc\(100cqh \* 0\.833333\)\)/, 'el campo conserva su proporción usando el espacio real del contenedor');
-assert.match(cssSource, /\.tactical-capture-description\s*\{[\s\S]*font-size: clamp\(15px,[\s\S]*line-height: 1\.48;/, 'la descripción mantiene tamaño de presentación');
+assert.match(cssSource, /\.tactical-capture-description-panel\s*\{[\s\S]*flex: 1 1 0;[\s\S]*align-self: flex-start;[\s\S]*justify-content: flex-start;/, 'la tarjeta crece por contenido desde la parte superior');
+assert.match(cssSource, /\.tactical-capture-description\s*\{[\s\S]*font-size: clamp\(18px,[\s\S]*line-height: 1\.48;/, 'la descripción mantiene tamaño de presentación');
 assert.match(cssSource, /\.tactical-capture-exit\s*\{[\s\S]*position: fixed;[\s\S]*right: 7px;[\s\S]*writing-mode: vertical-rl;/, 'Salir queda en el margen exterior de la composición');
 
 const boardRatio = 7 / 8.4;
@@ -106,13 +111,17 @@ const boardRatio = 7 / 8.4;
   [1920, 1080],
 ].forEach(([viewportWidth, viewportHeight]) => {
   const horizontalPadding = Math.min(152, Math.max(92, viewportWidth * 0.08));
-  const contentWidth = Math.min(viewportWidth - horizontalPadding, 1500);
-  const availableHeight = viewportHeight - 116;
-  const fieldColumnWidth = (contentWidth - 22) * (1.72 / (1.72 + 0.95));
-  const boardWidth = Math.min(fieldColumnWidth, availableHeight * boardRatio);
+  const contentWidth = Math.min(viewportWidth - horizontalPadding, 1600);
+  const availableHeight = viewportHeight - 108;
+  const boardWidth = Math.min(896, availableHeight * boardRatio);
   const boardHeight = boardWidth / boardRatio;
   assert.ok(boardHeight <= availableHeight + 0.01, `${viewportWidth}x${viewportHeight}: campo completo sin corte vertical`);
-  assert.ok(boardWidth <= fieldColumnWidth + 0.01, `${viewportWidth}x${viewportHeight}: campo completo sin corte horizontal`);
+  assert.ok(boardWidth <= contentWidth + 0.01, `${viewportWidth}x${viewportHeight}: campo completo sin corte horizontal`);
 });
+
+const boardWidth1920 = Math.min(896, (1080 - 108) * boardRatio);
+const boardWidth1600 = Math.min(896, (900 - 108) * boardRatio);
+assert.ok(boardWidth1920 >= 809 && boardWidth1920 <= 811, '1920x1080: el campo recupera aproximadamente 810 px de ancho');
+assert.ok(boardWidth1600 >= 659 && boardWidth1600 <= 661, '1600x900: el campo conserva aproximadamente 660 px de ancho');
 
 console.log('tacticalCaptureMode tests passed');

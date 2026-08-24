@@ -286,9 +286,9 @@ table {
   height: 100vh;
   height: 100dvh;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: clamp(8px, 1.2vh, 14px);
+  gap: clamp(4px, 0.55vh, 6px);
   overflow: hidden;
-  padding: clamp(8px, 1.4vh, 16px) clamp(46px, 4vw, 76px);
+  padding: clamp(5px, 0.65vh, 7px) clamp(46px, 4vw, 76px);
   background:
     radial-gradient(circle at 50% 0%, rgba(79, 140, 255, 0.12), transparent 34%),
     #020812;
@@ -297,18 +297,19 @@ table {
 }
 
 .tactical-capture-context {
-  display: grid;
-  width: min(100%, 1500px);
+  position: relative;
+  display: flex;
+  width: min(100%, 1600px);
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
+  justify-content: center;
   justify-self: center;
-  gap: clamp(10px, 2vw, 24px);
   overflow: hidden;
   padding: clamp(7px, 1vh, 11px) clamp(12px, 1.4vw, 22px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
   background: rgba(8, 19, 39, 0.9);
+  text-align: center;
 }
 
 .tactical-capture-eyebrow,
@@ -346,6 +347,10 @@ table {
 }
 
 .tactical-capture-play {
+  position: absolute;
+  top: 50%;
+  right: clamp(12px, 1.4vw, 22px);
+  transform: translateY(-50%);
   max-width: 160px;
   overflow: hidden;
   border: 1px solid rgba(96, 165, 250, 0.2);
@@ -388,26 +393,31 @@ table {
 }
 
 .tactical-capture-stage {
-  display: grid;
-  width: min(100%, 1500px);
+  display: flex;
+  width: min(100%, 1600px);
   min-width: 0;
   min-height: 0;
   justify-self: center;
-  gap: clamp(12px, 1.4vw, 22px);
+  gap: clamp(10px, 1vw, 16px);
   overflow: hidden;
 }
 
 .tactical-capture-stage--with-description {
-  grid-template-columns: minmax(0, 1.72fr) minmax(280px, 0.95fr);
+  align-items: flex-start;
 }
 
 .tactical-capture-stage--field-only {
-  grid-template-columns: minmax(0, 1fr);
+  justify-content: center;
 }
 
 .tactical-capture-board-shell {
   container-type: size;
   display: flex;
+  width: min(896px, calc((100vh - 108px) * 0.833333));
+  width: min(896px, calc((100dvh - 108px) * 0.833333));
+  height: 100%;
+  flex: 0 0 min(896px, calc((100vh - 108px) * 0.833333));
+  flex-basis: min(896px, calc((100dvh - 108px) * 0.833333));
   min-width: 0;
   min-height: 0;
   align-items: center;
@@ -416,7 +426,7 @@ table {
 }
 
 .tactical-capture-board-shell .facing-tactical-board {
-  width: min(100%, calc((100dvh - 116px) * 0.833333));
+  width: min(100%, calc((100dvh - 108px) * 0.833333));
   max-width: 100%;
   max-height: 100%;
   min-width: 0;
@@ -427,12 +437,16 @@ table {
 
 .tactical-capture-description-panel {
   display: flex;
+  width: auto;
   min-width: 0;
   min-height: 0;
+  max-height: 100%;
+  flex: 1 1 0;
+  align-self: flex-start;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   overflow: hidden;
-  padding: clamp(22px, 3vw, 48px);
+  padding: clamp(18px, 2vw, 34px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: clamp(16px, 2vh, 24px);
   background:
@@ -446,7 +460,7 @@ table {
   margin-top: clamp(12px, 2vh, 22px);
   overflow: hidden;
   color: #e2e8f0;
-  font-size: clamp(15px, 1.75vw, 25px);
+  font-size: clamp(18px, 1.35vw, 26px);
   font-weight: 650;
   line-height: 1.48;
   -webkit-box-orient: vertical;
@@ -465,15 +479,22 @@ table {
   }
 
   .tactical-capture-context {
-    gap: 6px;
+    padding-right: 54px;
   }
 
   .tactical-capture-stage--with-description {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tactical-capture-board-shell {
+    width: 100%;
+    height: auto;
+    flex: 1 1 auto;
   }
 
   .tactical-capture-description-panel {
+    width: 100%;
     max-height: 22dvh;
     justify-content: flex-start;
     padding: 12px 14px;
