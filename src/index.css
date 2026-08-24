@@ -278,6 +278,10 @@ table {
   border-radius: 1.5rem;
 }
 
+.tactical-names-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
 .tactical-capture-root {
   position: fixed;
   inset: 0;

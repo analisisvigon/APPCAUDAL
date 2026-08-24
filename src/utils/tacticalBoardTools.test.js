@@ -34,9 +34,10 @@ assert.match(toolbarSource, /Enderezar/);
 assert.match(toolbarSource, /Duplicar/);
 assert.match(toolbarSource, /Balón seleccionado/);
 
-['names', 'zones', 'badges', 'rival', 'caudal', 'connections'].forEach((layer) => {
+['zones', 'badges', 'rival', 'caudal', 'connections'].forEach((layer) => {
   assert.match(toolbarSource, new RegExp(`\\['${layer}',`), `${layer} sigue siendo una capa de visualización`);
 });
+assert.match(toolbarSource, /renderTacticalNamesControl\(\)/, 'Nombres conserva un control general con configuración por equipo');
 assert.match(toolbarSource, /updateFieldViewSettings\(\{ layers:/, 'los toggles no se mezclan con defensiveTool');
 
 assert.match(appSource, /useState\('move'\)/);

@@ -320,6 +320,8 @@ import {
 } from './utils/tacticalBoardGeometry';
 import {
   createTacticalBoardViewState,
+  getTacticalBoardNamesVisibility,
+  toggleAllTacticalBoardNames,
   updateTacticalBoardViewState,
 } from './utils/tacticalBoardViewState';
 import { buildTacticalCapturePresentation } from './utils/tacticalCapturePresentation';
@@ -12308,6 +12310,59 @@ function App() {
     setTacticalBoardViewState((current) => updateTacticalBoardViewState(current, patch));
   };
 
+  const renderTacticalNamesControl = (rounded = false) => {
+    const names = getTacticalBoardNamesVisibility(getFieldViewSettings());
+    const mainStateClass = names.all
+      ? 'border-caudal-electric/25 bg-caudal-electric/10 text-caudal-electric'
+      : names.none
+        ? 'border-white/10 bg-white/[0.035] text-slate-500'
+        : 'border-amber-300/30 bg-amber-300/10 text-amber-100';
+
+    return (
+      <div className="inline-flex shrink-0">
+        <button
+          type="button"
+          title={names.partial ? 'Algunos nombres están visibles' : names.all ? 'Ocultar todos los nombres' : 'Mostrar todos los nombres'}
+          aria-pressed={names.partial ? 'mixed' : names.all}
+          onClick={() => setTacticalBoardViewState((current) => toggleAllTacticalBoardNames(current))}
+          className={`border px-2 py-1.5 text-[9px] font-black uppercase ${rounded ? 'rounded-l-lg' : ''} ${mainStateClass}`}
+        >
+          Nombres
+        </button>
+        <details className="tactical-names-menu group relative">
+          <summary
+            title="Elegir nombres visibles por equipo"
+            aria-label="Configurar nombres por equipo"
+            className={`flex h-full cursor-pointer list-none items-center border border-l-0 border-white/10 bg-white/[0.035] px-1.5 text-[9px] font-black text-slate-400 hover:text-white ${rounded ? 'rounded-r-lg' : ''}`}
+          >
+            ▾
+          </summary>
+          <div role="menu" className="absolute left-0 top-full z-[80] mt-1 min-w-40 rounded-xl border border-white/15 bg-[#081327]/[0.98] p-1.5 shadow-2xl backdrop-blur">
+            {[
+              ['rivalNames', 'Rival', names.rival],
+              ['caudalNames', 'Caudal', names.caudal],
+            ].map(([key, label, checked]) => (
+              <button
+                key={key}
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={checked}
+                onClick={(event) => {
+                  updateFieldViewSettings({ layers: { [key]: !checked } });
+                  event.currentTarget.closest('details')?.removeAttribute('open');
+                }}
+                className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[10px] font-black uppercase ${checked ? 'bg-caudal-electric/10 text-caudal-electric' : 'text-slate-400 hover:bg-white/[0.05] hover:text-white'}`}
+              >
+                <span aria-hidden="true" className="w-3 text-center">{checked ? '✓' : ''}</span>
+                {label}
+              </button>
+            ))}
+          </div>
+        </details>
+      </div>
+    );
+  };
+
   const addTacticalScenario = (label = 'Escenario') => {
     const scenarios = safeArray(selectedPreAiAnalysis?.tacticalScenarios);
     updatePreAiAnalysisPatch({
@@ -13815,8 +13870,8 @@ function App() {
               <div className="mb-2 grid gap-2 border border-white/[0.08] bg-black/15 p-2">
                 <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                   <span className="mr-1 text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">Visualización</span>
+                  {renderTacticalNamesControl()}
                   {[
-                    ['names', 'Nombres', 'Mostrar u ocultar nombres de jugadores'],
                     ['zones', 'Zonas', 'Mostrar u ocultar zonas y contexto táctico'],
                     ['badges', 'Alertas', 'Mostrar u ocultar alertas de jugadores'],
                     ['rival', 'Rival', 'Mostrar u ocultar el equipo rival'],
@@ -25476,7 +25531,7 @@ function App() {
                 </span>
               );
             })()}
-            {layers.names ? <span className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
+            {(layers.rivalNames || !rivalSlot.player?.name) ? <span className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
               {rivalSlot.player?.name || rivalSlot.role}
             </span> : null}
           </div>
@@ -25499,7 +25554,7 @@ function App() {
                 </span>
               );
             })()}
-            {layers.names ? <span className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
+            {(layers.caudalNames || !caudalLineup[index]) ? <span className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
               {caudalLineup[index] || caudalRoles[index] || `C${index + 1}`}
             </span> : null}
           </div>
@@ -33137,9 +33192,9 @@ function App() {
                                 ))}
                               </div>
                               <div className="flex flex-wrap gap-1.5">
+                                {renderTacticalNamesControl(true)}
                                 {[
                                   ['zones', 'Zonas'],
-                                  ['names', 'Nombres'],
                                   ['badges', 'Badges'],
                                   ['rival', 'Rival'],
                                   ['caudal', 'Caudal'],
