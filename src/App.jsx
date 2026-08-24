@@ -30883,8 +30883,8 @@ function App() {
                                       <span className="absolute inset-0 flex items-center justify-center">{slotPlayer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                                       {slotPlayer.image ? <img src={slotPlayer.image} alt={slotPlayer.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="relative h-full w-full object-cover" /> : null}
                                     </span>
-                                    <span className="mt-0.5 flex w-[6.25rem] min-w-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-md bg-slate-950/55 px-1 py-0.5 text-[9px] font-black uppercase leading-3 lg:w-[7.5rem]">
-                                      <PlayerNumberName player={slotPlayer} className="min-w-0 flex-1 justify-center" />
+                                    <span className="absolute bottom-1 left-1/2 flex w-max max-w-[6.25rem] min-w-0 -translate-x-1/2 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-md bg-slate-950/55 px-1 py-0.5 text-[9px] font-black uppercase leading-3 lg:max-w-[7.5rem]">
+                                      <PlayerNumberName player={slotPlayer} className="min-w-0" />
                                       {getRivalPlayerFlags(selectedTeam.id, slotPlayer.name).captain || slotPlayer.captain ? <span title="Capitán" className="shrink-0 text-[10px] leading-none text-blue-200">©</span> : null}
                                     </span>
                                   </>

@@ -44,8 +44,10 @@ assert.doesNotMatch(presentationSource, /Array\.from\([^)]*group\.players|empty.
 assert.match(presentationSource, /<PlayerNumberName player=\{slotPlayer\}/, 'titulares usan la identidad textual compartida');
 assert.match(presentationSource, /<PlayerNumberName player=\{player\}/, 'reservas usan la misma identidad textual');
 assert.doesNotMatch(presentationSource, /PlayerNumberBadge/, 'no queda ningún badge de dorsal en la presentación');
-assert.match(presentationSource, /slotPlayer\.image[\s\S]*?<\/span>[\s\S]*?<span className="mt-0\.5[\s\S]*?<PlayerNumberName player=\{slotPlayer\}/, 'la fotografía se cierra antes de representar dorsal y nombre');
-assert.match(presentationSource, /w-\[6\.25rem\][^"']*lg:w-\[7\.5rem\]/, 'la línea del titular aprovecha más ancho en presentación grande sin cambiar su anclaje');
+assert.match(presentationSource, /slotPlayer\.image[\s\S]*?<\/span>[\s\S]*?<span className="absolute bottom-1 left-1\/2[\s\S]*?<PlayerNumberName player=\{slotPlayer\}/, 'la fotografía se cierra antes de representar el label absoluto centrado');
+assert.match(presentationSource, /absolute bottom-1 left-1\/2 flex w-max max-w-\[6\.25rem\][^"']*-translate-x-1\/2[^"']*lg:max-w-\[7\.5rem\]/, 'la identidad completa crece simétricamente desde el centro único del titular');
+assert.match(presentationSource, /<PlayerNumberName player=\{slotPlayer\}[^>]*\/>[\s\S]*?title="Capitán"[\s\S]*?<\/span>/, 'dorsal, nombre y capitán comparten el mismo label centrado');
+assert.match(presentationSource, /style=\{\{ left: `\$\{slot\.x\}%`, top: `\$\{slot\.y\}%` \}\}/, 'la raíz conserva las coordenadas tácticas como único punto de posicionamiento');
 assert.match(presentationSource, /team-presentation-bench-groups/);
 assert.match(presentationSource, /team-presentation-bench-players/);
 assert.match(presentationSource, /aspect-\[7\/6\.25\] min-h-\[330px\] max-h-\[430px\] max-w-\[760px\]/, 'el campo de presentación mantiene exactamente sus dimensiones');
