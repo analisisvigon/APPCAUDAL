@@ -67,6 +67,7 @@
     "test:delegated-save-flow": "node src/utils/delegatedEventSaveFlow.test.js",
     "test:delegated-stats": "node src/utils/delegatedStats.test.js && node scripts/delegatedStatsUiAudit.test.mjs",
     "test:player-display-name": "node src/utils/playerDisplayName.test.js",
+    "test:team-presentation": "node src/utils/teamPresentation.test.js",
     "test:match-status": "node src/utils/matchStatus.test.js",
     "test:match-calendar": "node src/utils/matchCalendarCard.test.js && node scripts/matchCalendarCardsUiAudit.test.mjs",
     "test:captains": "node src/utils/captainOrder.test.js && node src/utils/matchCaptain.test.js && node src/utils/captainPriorityStore.test.js && node scripts/captainPrioritySqlAudit.test.mjs && node scripts/captainUiAudit.test.mjs",

@@ -27,6 +27,7 @@ import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
 import PlayerPositionUsageSummary from './components/player/PlayerPositionUsageSummary';
 import PlayerAvatar from './components/player/PlayerAvatar';
+import PlayerNumberBadge from './components/player/PlayerNumberBadge';
 import { getPlayerAvatarSource } from './utils/playerAvatarPresentation';
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
 import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
@@ -30881,7 +30882,7 @@ function App() {
                                     <span className={`relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-white/[0.08] text-sm font-black ${slotPlayer.isKey ? 'border-amber-200/70 shadow-[0_0_18px_rgba(250,204,21,0.28)]' : 'border-white/10'}`}>
                                       <span className="absolute inset-0 flex items-center justify-center">{slotPlayer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                                       {slotPlayer.image ? <img src={slotPlayer.image} alt={slotPlayer.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="relative h-full w-full object-cover" /> : null}
-                                      {playerNumberLabel(slotPlayer) ? <span className="absolute left-0.5 top-0.5 z-10 rounded-md bg-slate-950/82 px-1 py-0.5 text-[8px] font-black leading-none text-white">{playerNumberLabel(slotPlayer)}</span> : null}
+                                      <PlayerNumberBadge number={slotPlayer.number} className="absolute left-0.5 top-0.5 z-10" />
                                     </span>
                                     <span className="mt-0.5 flex w-full min-w-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap px-0.5 text-[9px] font-black uppercase leading-3">
                                       <span className="block min-w-0 truncate">{getTacticalPlayerName(slotPlayer)}</span>
@@ -30956,22 +30957,23 @@ function App() {
                         </div>
                         </div>
                         {isPresentationMode ? (
-                          <div className="mx-auto mt-2 w-full max-w-[900px]">
-                            <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-2">
+                          <div className="mx-auto mt-1.5 w-full max-w-[900px]">
+                            <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-1.5">
                               <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Banquillo</p>
-                              <div className="mt-1.5 grid gap-1.5 md:grid-cols-2 xl:grid-cols-4">
+                              <div className="team-presentation-bench-groups mt-1">
                                 {groupedBenchPlayers.length ? groupedBenchPlayers.map((group) => (
-                                  <div key={group.label} className="rounded-lg border border-white/[0.06] bg-slate-950/20 p-1.5">
-                                    <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">{group.label}</p>
-                                    <div className="mt-1 flex flex-wrap gap-1">
+                                  <div key={group.label} className="team-presentation-bench-group rounded-lg border border-white/[0.06] bg-slate-950/20 p-1.5">
+                                    <p className="truncate text-[8px] font-black uppercase tracking-[0.12em] text-slate-500" title={group.label}>{group.label}</p>
+                                    <div className="team-presentation-bench-players mt-1">
                                       {group.players.map((player) => (
                                         <PlayerNameTooltip key={player.jugadorRivalId || player.id || player.name} player={player}>
-                                        <span className="inline-flex h-7 min-w-0 max-w-28 items-center gap-1.5 overflow-hidden rounded-md border border-white/10 bg-white/[0.035] px-1.5 text-[8px] font-black text-slate-100">
-                                          <span className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white/[0.07] text-[7px]">
+                                        <span className="team-presentation-bench-player flex h-8 min-w-0 items-center gap-1 overflow-hidden rounded-md border border-white/10 bg-white/[0.035] px-1 text-[9px] font-black text-slate-100">
+                                          <span className="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white/[0.07] text-[7px]">
                                             <span>{getPlayerInitials(player)}</span>
                                             {player.image ? <img src={player.image} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} className="absolute inset-0 h-full w-full object-cover" /> : null}
                                           </span>
-                                          <span className="block min-w-0 truncate whitespace-nowrap uppercase">{getTacticalPlayerName(player)}</span>
+                                          <PlayerNumberBadge number={player.number} className="shrink-0" />
+                                          <span className="block min-w-0 flex-1 truncate whitespace-nowrap uppercase" title={getTacticalPlayerName(player)}>{getTacticalPlayerName(player)}</span>
                                         </span>
                                         </PlayerNameTooltip>
                                       ))}
