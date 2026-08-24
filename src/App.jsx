@@ -13321,7 +13321,6 @@ function App() {
     const capturePresentation = buildTacticalCapturePresentation({
       phaseLabel: capturePhaseLabel,
       situationLabel: captureSituationLabel,
-      plays: tacticalPlaysForSituation,
       selectedPlay: selectedTacticalPlay,
     });
     const rivalPlayerTacticalModel = buildRivalPlayerTacticalModel({
@@ -13349,28 +13348,26 @@ function App() {
           >
             Salir de captura
           </button>
-          <header className="tactical-capture-context">
-            <div className="min-w-0">
-              <p className="tactical-capture-eyebrow">Fase del juego</p>
-              <h2 className="tactical-capture-phase">{capturePresentation.phase}</h2>
-              {capturePresentation.situation ? (
-                <p className="tactical-capture-situation">{capturePresentation.situation}</p>
-              ) : null}
-            </div>
-            {capturePresentation.playLabel ? (
-              <span className="tactical-capture-play">{capturePresentation.playLabel}</span>
-            ) : null}
-          </header>
-          <main className={`tactical-capture-stage ${capturePresentation.description ? 'tactical-capture-stage--with-description' : 'tactical-capture-stage--field-only'}`}>
+          <main className="tactical-capture-stage">
             <section className="tactical-capture-board-shell" aria-label="Campo táctico">
               {renderFacingSystemsOverview(true)}
             </section>
-            {capturePresentation.description ? (
-              <aside className="tactical-capture-description-panel">
-                <p className="tactical-capture-description-title">Descripción</p>
-                <p className="tactical-capture-description">{capturePresentation.description}</p>
-              </aside>
-            ) : null}
+            <aside className="tactical-capture-sidebar">
+              <section className="tactical-capture-phase-block">
+                <p className="tactical-capture-eyebrow">Fase del juego</p>
+                <h2 className="tactical-capture-phase">{capturePresentation.phase}</h2>
+                {capturePresentation.situation ? (
+                  <p className="tactical-capture-situation">{capturePresentation.situation}</p>
+                ) : null}
+              </section>
+              {capturePresentation.description ? (
+                <section className="tactical-capture-description-block">
+                  <div className="tactical-capture-divider" />
+                  <p className="tactical-capture-description-title">Descripción</p>
+                  <p className="tactical-capture-description">{capturePresentation.description}</p>
+                </section>
+              ) : null}
+            </aside>
           </main>
         </div>,
         document.body
