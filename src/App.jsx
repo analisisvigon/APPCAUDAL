@@ -5748,6 +5748,22 @@ function App() {
   const offensiveSaveCoordinatorRef = useRef(null);
   const transitionSaveCoordinatorRef = useRef(null);
   const setPieceSaveCoordinatorRef = useRef(null);
+  useEffect(() => {
+    if (!tacticalCaptureMode || typeof document === 'undefined') return undefined;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousDocumentOverflow = document.documentElement.style.overflow;
+    const exitOnEscape = (event) => {
+      if (event.key === 'Escape') setTacticalCaptureMode(false);
+    };
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.addEventListener('keydown', exitOnEscape);
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousDocumentOverflow;
+      document.removeEventListener('keydown', exitOnEscape);
+    };
+  }, [tacticalCaptureMode]);
   const syncTacticalSavePending = (status) => {
     if (['Cambios sin guardar', 'Guardando', 'Error al guardar'].includes(status)) {
       setTacticalSavePending(true);
@@ -10891,7 +10907,7 @@ function App() {
     };
   };
   const beginDefensivePlayerDrag = (event, playerKey) => {
-    if (defensiveTool !== 'move') return;
+    if (tacticalCaptureMode || defensiveTool !== 'move') return;
     const editablePlay = selectedDefensivePlay || createTacticalPlayForEditing();
     if (!editablePlay) return;
     event.preventDefault();
@@ -13187,6 +13203,21 @@ function App() {
       Riesgos: addSavedQuestionEvidence('Riesgos', confirmedTacticalEvidenceReport.planRecommendations.Riesgos),
       'Claves del partido': addSavedQuestionEvidence('Claves del partido', confirmedTacticalEvidenceReport.planRecommendations['Claves del partido']),
     };
+    const capturePhaseLabel = tacticalGamePhaseOptions.find((option) => option.value === tacticalGamePhase)?.label || '';
+    const captureSituationLabel = tacticalGamePhase === 'defensive'
+      ? defensiveSituationOptions.find((option) => option.value === defensiveSituation)?.label
+      : tacticalGamePhase === 'offensive'
+        ? offensiveSituationOptions.find((option) => option.value === offensiveSituation)?.label
+        : tacticalGamePhase === 'transition'
+          ? [
+            transitionTypeOptions.find((option) => option.value === transitionType)?.label,
+            transitionFieldZoneOptions.find((option) => option.value === transitionFieldZone)?.label,
+          ].filter(Boolean).join(' · ')
+          : [
+            setPieceTypeOptions.find((option) => option.value === setPieceType)?.label,
+            setPieceActionOptions.find((option) => option.value === setPieceAction)?.label,
+          ].filter(Boolean).join(' · ');
+    const captureDescription = String(selectedTacticalPlay?.description || '').trim();
     const rivalPlayerTacticalModel = buildRivalPlayerTacticalModel({
       player: selectedMicroPlayer,
       profile: selectedMicroProfile,
@@ -13202,6 +13233,40 @@ function App() {
         label: `${displayPlayerName(player) || player.name}${getMicroPlayerTags(player).length ? ` · ${getMicroPlayerTags(player).join(' · ')}` : ''}`,
       })),
     }));
+    if (tacticalCaptureMode && typeof document !== 'undefined') {
+      return createPortal(
+        <div className="tactical-capture-root" data-tactical-capture="true" role="dialog" aria-modal="true" aria-label="Vista de captura táctica">
+          <button
+            type="button"
+            onClick={() => setTacticalCaptureMode(false)}
+            className="tactical-capture-exit"
+          >
+            Salir
+          </button>
+          <header className="tactical-capture-context">
+            <div className="min-w-0">
+              <p className="tactical-capture-systems">{caudalSystem} vs {rivalSystem}</p>
+              <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                <p className="tactical-capture-situation">
+                  {[capturePhaseLabel, captureSituationLabel].filter(Boolean).join(' · ')}
+                </p>
+                {selectedTacticalPlay ? (
+                  <span className="tactical-capture-play">{selectedTacticalPlay.name}</span>
+                ) : null}
+              </div>
+            </div>
+            {captureDescription ? (
+              <p className="tactical-capture-description">{captureDescription}</p>
+            ) : null}
+          </header>
+          <main className="tactical-capture-stage">
+            {renderFacingSystemsOverview(true)}
+          </main>
+        </div>,
+        document.body
+      );
+    }
+
     return (
       <div className={isPreTalkMode ? 'space-y-4' : 'space-y-5'}>
         <div className="sticky top-2 z-20 flex flex-wrap items-center justify-between gap-3 border border-white/10 bg-[#081327]/95 px-3 py-2 backdrop-blur">
@@ -13623,15 +13688,10 @@ function App() {
                 <div className="flex flex-wrap gap-1.5">
                   <button
                     type="button"
-                    onClick={() => {
-                      setTacticalCaptureMode((current) => !current);
-                      setSelectedFacingSystemsPlayer(null);
-                      setSelectedDefensiveArrowId('');
-                      setSelectedTacticalConnectionId('');
-                    }}
-                    className={`border px-2.5 py-1.5 text-[10px] font-black uppercase ${tacticalCaptureMode ? 'border-emerald-300/35 bg-emerald-400/15 text-emerald-100' : 'border-white/10 bg-white/[0.035] text-slate-300'}`}
+                    onClick={() => setTacticalCaptureMode(true)}
+                    className="border border-white/10 bg-white/[0.035] px-2.5 py-1.5 text-[10px] font-black uppercase text-slate-300"
                   >
-                    {tacticalCaptureMode ? 'Salir de captura' : 'Modo captura'}
+                    Modo captura
                   </button>
                   <div className={`flex flex-wrap gap-1.5 ${tacticalCaptureMode ? 'hidden' : ''}`}>
                   {[
@@ -24951,8 +25011,8 @@ function App() {
             ))}
           </defs>
           {rawConnections.map((connection) => {
-            const selected = selectedTacticalConnectionId === connection.id;
-            const muted = selectedTacticalConnectionId && !selected;
+            const selected = !tacticalCaptureMode && selectedTacticalConnectionId === connection.id;
+            const muted = !tacticalCaptureMode && selectedTacticalConnectionId && !selected;
             const color = connectionColorClass[connection.team] || connectionColorClass.rival;
             const midX = (connection.originPoint.x + connection.destinationPoint.x) / 2;
             const midY = (connection.originPoint.y + connection.destinationPoint.y) / 2;
@@ -24996,7 +25056,7 @@ function App() {
             </marker>
           </defs>
           {[...arrows, ...previewArrows].map((arrow) => {
-            const selected = arrow.id === selectedDefensiveArrowId;
+            const selected = !tacticalCaptureMode && arrow.id === selectedDefensiveArrowId;
             const isPreview = arrow.id === 'preview';
             return (
               <g
