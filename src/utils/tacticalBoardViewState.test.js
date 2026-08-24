@@ -150,8 +150,14 @@ assert.doesNotMatch(viewUpdaterSource, /updatePreAiAnalysisPatch|preAiAnalysis|f
 assert.match(appSource, /setTacticalBoardViewState\(createTacticalBoardViewState\(\)\);[\s\S]*?\}, \[selectedMatch\?\.id\]\);/, 'el estado se reinicia exclusivamente en la carga de otro partido');
 assert.match(appSource, /renderFacingSystemsOverview\(true\)/, 'captura reutiliza el renderer y sus capas actuales');
 assert.doesNotMatch(appSource, /selectedPreAiAnalysis\?\.fieldView/, 'la vista temporal no se rehidrata desde Supabase');
-assert.match(appSource, /\{\(layers\.rivalNames \|\| !rivalSlot\.player\?\.name\) \? <span/, 'los nombres rivales tienen su propia condición y el rol de respaldo permanece');
-assert.match(appSource, /\{\(layers\.caudalNames \|\| !caudalLineup\[index\]\) \? <span/, 'los nombres Caudal tienen su propia condición y el rol de respaldo permanece');
+assert.match(appSource, /\{layers\.rivalNames \? <span/, 'RIVAL controla todo el texto individual, incluido el rol de respaldo');
+assert.match(appSource, /\{layers\.caudalNames \? <span/, 'CAUDAL controla todo el texto individual, incluido el rol de respaldo');
+assert.doesNotMatch(appSource, /layers\.rivalNames \|\| !rivalSlot\.player\?\.name/, 'un rol rival no fuerza la reaparición de la etiqueta');
+assert.doesNotMatch(appSource, /layers\.caudalNames \|\| !caudalLineup\[index\]/, 'un rol Caudal no fuerza la reaparición de la etiqueta');
+assert.match(appSource, /rivalSlot\.slot === 0 \? 'P' : rivalSlot\.slot/, 'el dorsal o referencia gráfica rival permanece fuera del label');
+assert.match(appSource, /index === 0 \? 'P' : index/, 'el dorsal o referencia gráfica Caudal permanece fuera del label');
+assert.match(appSource, /\{layers\.rival \? rivalSlots\.map/, 'ocultar texto no altera la visibilidad de jugadores rivales');
+assert.match(appSource, /\{layers\.caudal \? caudalCoordinates\.map/, 'ocultar texto no altera la visibilidad de jugadores Caudal');
 assert.match(appSource, /\['rivalNames', 'Rival', names\.rival\]/);
 assert.match(appSource, /\['caudalNames', 'Caudal', names\.caudal\]/);
 assert.match(appSource, /aria-pressed=\{names\.partial \? 'mixed' : names\.all\}/, 'el botón general representa el estado parcial');

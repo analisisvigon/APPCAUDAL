@@ -25531,7 +25531,7 @@ function App() {
                 </span>
               );
             })()}
-            {(layers.rivalNames || !rivalSlot.player?.name) ? <span className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
+            {layers.rivalNames ? <span className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
               {rivalSlot.player?.name || rivalSlot.role}
             </span> : null}
           </div>
@@ -25554,7 +25554,7 @@ function App() {
                 </span>
               );
             })()}
-            {(layers.caudalNames || !caudalLineup[index]) ? <span className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
+            {layers.caudalNames ? <span className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
               {caudalLineup[index] || caudalRoles[index] || `C${index + 1}`}
             </span> : null}
           </div>
