@@ -23,7 +23,7 @@ assert.doesNotMatch(
 
 assert.doesNotMatch(rivalSource, /Pizarra de partido|Modo captura|Conexiones tácticas|addTacticalConnection|removeTacticalConnection/);
 assert.match(rivalSource, /Resumen del rival/, 'Rival comienza por su resumen');
-assert.match(rivalSource, /<RivalTacticalAssistant/, 'el asistente sigue inmediatamente después del resumen');
+assert.match(rivalSource, /<RivalStrengthsWeaknesses[\s\S]*<RivalTacticalAssistant/, 'fortalezas y debilidades preceden al asistente táctico');
 
 const rivalRender = appSource.match(/facingSystemsView === 'RIVAL' \? \([\s\S]*?<RivalCollectiveAssistant[\s\S]*?\) : null}/)?.[0] || '';
 assert.ok(rivalRender, 'Rival tiene un render exclusivo');

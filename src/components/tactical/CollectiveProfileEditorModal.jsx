@@ -43,13 +43,6 @@ export default function CollectiveProfileEditorModal({
   if (!open || typeof document === 'undefined') return null;
 
   const updateField = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
-  const toggleListValue = (field, value) => setDraft((current) => ({
-    ...current,
-    [field]: current[field].includes(value)
-      ? current[field].filter((item) => item !== value)
-      : [...current[field], value],
-  }));
-
   const scalarFields = [
     ['Salida de balón', 'buildUp', options.buildUp],
     ['Altura del bloque', 'blockHeight', options.blockHeight],
@@ -105,38 +98,9 @@ export default function CollectiveProfileEditorModal({
             ))}
           </div>
 
-          <div className="mt-6 grid gap-6 sm:grid-cols-2">
-            {[
-              ['Fortalezas', 'strengths', options.strengths, 'positive'],
-              ['Debilidades', 'weaknesses', options.weaknesses, 'warning'],
-            ].map(([label, field, fieldOptions, tone]) => (
-              <fieldset key={field}>
-                <legend className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</legend>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {fieldOptions.map((option) => {
-                    const active = draft[field].includes(option);
-                    return (
-                      <button
-                        key={option}
-                        type="button"
-                        aria-pressed={active}
-                        onClick={() => toggleListValue(field, option)}
-                        className={`min-h-9 rounded-xl border px-3 py-2 text-[9px] font-black uppercase tracking-[0.08em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 ${
-                          active
-                            ? tone === 'positive'
-                              ? 'border-emerald-300/25 bg-emerald-300/[0.09] text-emerald-100'
-                              : 'border-amber-300/25 bg-amber-300/[0.09] text-amber-100'
-                            : 'border-white/[0.08] bg-white/[0.025] text-slate-500 hover:bg-white/[0.06] hover:text-slate-200'
-                        }`}
-                      >
-                        {option}
-                      </button>
-                    );
-                  })}
-                </div>
-              </fieldset>
-            ))}
-          </div>
+          <p className="mt-6 rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 py-3 text-xs font-semibold leading-5 text-slate-400">
+            Las fortalezas y debilidades se gestionan en su bloque específico de la pestaña Rival para conservar título, descripción, categoría y orden.
+          </p>
         </div>
 
         <footer className="grid shrink-0 grid-cols-2 gap-3 border-t border-white/[0.07] bg-[#081321] px-5 py-4 sm:flex sm:justify-end sm:px-6">

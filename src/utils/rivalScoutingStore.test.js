@@ -3,6 +3,7 @@ import {
   createManualRivalEvidence,
   deleteManualRivalEvidence,
   migrateLegacyRivalScouting,
+  saveRivalScoutingSnapshot,
   updateManualRivalEvidenceStatus,
 } from './rivalScoutingStore.js';
 
@@ -34,6 +35,27 @@ const confirmed = await updateManualRivalEvidenceStatus(crud, { id: evidenceId, 
 assert.equal(confirmed.status, 'confirmed');
 assert.equal(confirmed.notes, 'Validada');
 assert.equal(await deleteManualRivalEvidence(crud, { id: evidenceId, teamId }), evidenceId);
+
+let savedSnapshotArgs = null;
+const snapshotResult = await saveRivalScoutingSnapshot({
+  rpc: async (name, args) => {
+    assert.equal(name, 'save_rival_scouting_snapshot');
+    savedSnapshotArgs = args;
+    return { data: { equipo_rival_id: teamId }, error: null };
+  },
+}, {
+  teamId,
+  tacticalIdentity: {},
+  collective: {
+    strengths: [{ id: 'strength-1', title: 'Movilidad', description: 'Permutan.', category: 'offensive' }],
+    weaknesses: [{ id: 'weakness-1', title: 'Retorno lento', description: '', category: 'defensive_transition' }],
+  },
+  matchPlanNotes: {},
+  playerProfiles: [],
+});
+assert.equal(snapshotResult.ok, true);
+assert.equal(savedSnapshotArgs.p_collective_profile.strengths[0].description, 'Permutan.');
+assert.equal(savedSnapshotArgs.p_collective_profile.weaknesses[0].category, 'defensive_transition');
 
 const createMigrationSupabase = () => {
   const tables = {

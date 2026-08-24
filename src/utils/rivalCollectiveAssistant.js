@@ -1,3 +1,5 @@
+import { getRivalScoutingPointTitles } from './rivalStrengthsWeaknesses.js';
+
 const safeArray = (value) => Array.isArray(value) ? value : [];
 const safeObject = (value) => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 const clean = (value) => String(value ?? '').trim();
@@ -89,14 +91,23 @@ const withEvidenceIdentity = (row, defaults = {}) => {
   };
 };
 
-const profileEvidence = (field, value) => withEvidenceIdentity({
-  id: `profile:${field}:${normalize(Array.isArray(value) ? value.join('-') : value)}`,
-  source: 'Perfil',
-  text: Array.isArray(value) ? value.join(', ') : clean(value),
-  importance: 'Media',
-  date: '',
-  evidenceUnitId: 'collective-profile',
-}, { sourceKind: 'collective_profile', sourceId: 'collective-profile', scope: 'collective' });
+const getProfileEvidenceValue = (field, value) => (
+  ['strengths', 'weaknesses'].includes(field)
+    ? getRivalScoutingPointTitles(value)
+    : Array.isArray(value) ? value.map(clean).filter(Boolean) : value
+);
+
+const profileEvidence = (field, value) => {
+  const resolvedValue = getProfileEvidenceValue(field, value);
+  return withEvidenceIdentity({
+    id: `profile:${field}:${normalize(Array.isArray(resolvedValue) ? resolvedValue.join('-') : resolvedValue)}`,
+    source: 'Perfil',
+    text: Array.isArray(resolvedValue) ? resolvedValue.join(', ') : clean(resolvedValue),
+    importance: 'Media',
+    date: '',
+    evidenceUnitId: 'collective-profile',
+  }, { sourceKind: 'collective_profile', sourceId: 'collective-profile', scope: 'collective' });
+};
 
 const normalizeEvidenceRows = (rows) => safeArray(rows)
   .map((row, index) => withEvidenceIdentity({
@@ -301,15 +312,15 @@ const behaviorSummary = (phase, facts, support) => {
     const parts = [];
     if (profile.attackingRhythm) parts.push(`Ataca con un ritmo ${clean(profile.attackingRhythm).toLowerCase()}`);
     if (profile.preferredAttack) parts.push(`orienta el juego hacia ${clean(profile.preferredAttack).toLowerCase()}`);
-    const strengths = safeArray(profile.strengths).filter((item) => ['Juego interior', 'Centros', 'Juego directo', 'Segunda jugada'].includes(item));
+    const strengths = getRivalScoutingPointTitles(profile.strengths).filter((item) => ['Juego interior', 'Centros', 'Juego directo', 'Segunda jugada'].includes(item));
     if (strengths.length) parts.push(`tiene registrados ${strengths.join(' y ').toLowerCase()}`);
     if (parts.length) return `${parts.join('; ')}.`;
   }
   if (phase === 'transition') {
-    const strengths = safeArray(profile.strengths).filter((item) => ['Transiciones', 'Contraataque'].includes(item));
+    const strengths = getRivalScoutingPointTitles(profile.strengths).filter((item) => ['Transiciones', 'Contraataque'].includes(item));
     if (strengths.length) return `Busca acelerar tras recuperación mediante ${strengths.join(' y ').toLowerCase()}.`;
   }
-  if (phase === 'set_piece' && safeArray(profile.strengths).includes('ABP')) {
+  if (phase === 'set_piece' && getRivalScoutingPointTitles(profile.strengths).includes('ABP')) {
     return 'Presenta la estrategia a balón parado como fortaleza colectiva registrada.';
   }
   const directObservation = support.find((row) => row.source === 'Evidencias' || row.source === 'Staff');
@@ -328,7 +339,9 @@ const behaviorDefinitions = [
 
 const buildBehaviors = (facts) => behaviorDefinitions.map((definition) => {
   const profileSupport = definition.profileFields.flatMap((field) => {
-    const value = facts.profile[field];
+    const value = ['strengths', 'weaknesses'].includes(field)
+      ? getRivalScoutingPointTitles(facts.profile[field])
+      : facts.profile[field];
     if (definition.key === 'transition' && !safeArray(value).some((item) => ['Transiciones', 'Contraataque'].includes(item))) return [];
     if (definition.key === 'set_piece' && !safeArray(value).includes('ABP')) return [];
     if (definition.key === 'positional' && field === 'strengths') {
@@ -430,7 +443,9 @@ const recommendationRules = [
 ];
 
 const ruleProfileSupport = (rule, facts) => {
-  const values = safeArray(facts.profile[rule.field]);
+  const values = ['strengths', 'weaknesses'].includes(rule.field)
+    ? getRivalScoutingPointTitles(facts.profile[rule.field])
+    : safeArray(facts.profile[rule.field]);
   const matched = values.filter((value) => rule.values.includes(value));
   return matched.length ? [profileEvidence(rule.field, matched)] : [];
 };
@@ -581,8 +596,6 @@ const buildProfileChips = (profile) => [
   { label: 'Presión', value: clean(profile.pressureType) },
   { label: 'Ritmo', value: clean(profile.attackingRhythm) },
   { label: 'Ataque', value: clean(profile.preferredAttack) },
-  ...safeArray(profile.strengths).map((value) => ({ label: 'Fortaleza', value: clean(value), tone: 'positive' })),
-  ...safeArray(profile.weaknesses).map((value) => ({ label: 'Debilidad', value: clean(value), tone: 'warning' })),
 ].filter((item) => item.value);
 
 export const buildRivalCollectiveAssistant = (input = {}) => {

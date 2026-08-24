@@ -131,6 +131,18 @@ assert.ok(fullContext.sources.some((source) => source.type === 'player_profile')
 assert.ok(fullContext.sources.some((source) => source.type === 'collective_profile'));
 assert.ok(fullContext.sources.some((source) => source.type === 'tactical_connection'));
 assert.ok(fullContext.sources.some((source) => source.type === 'board_evidence'));
+const structuredCollectiveContext = buildTacticalPlayContext({
+  phase: 'offensive',
+  play,
+  players,
+  collectiveProfile: {
+    strengths: [{ id: 'collective-strength', title: 'Juego por fuera', description: 'Progresa por banda.', category: 'offensive' }],
+    weaknesses: [{ id: 'collective-weakness', title: 'Retorno lento', description: '', category: 'defensive_transition' }],
+  },
+  connections: [],
+});
+assert.deepEqual(structuredCollectiveContext.collectiveEvidence.strengths, ['Juego por fuera']);
+assert.deepEqual(structuredCollectiveContext.collectiveEvidence.weaknesses, ['Retorno lento']);
 
 const centreBack = fullContext.involvedPlayers.find((player) => player.playerId === 'rival-cd');
 const rightBack = fullContext.involvedPlayers.find((player) => player.playerId === 'rival-ld');

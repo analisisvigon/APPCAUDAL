@@ -54,6 +54,16 @@ assert.ok(centerRecommendation.evidenceIds.includes('evidence:ev-centros'), 'man
 assert.equal(isRivalRecommendationActionable(centerRecommendation), true, 'la recomendación cumple el contrato accionable');
 assert.equal(isRivalRecommendationActionable({ ...centerRecommendation, rationale: '' }), false, 'descarta una recomendación sin justificación');
 
+const structuredProfile = buildRivalCollectiveAssistant({
+  ...baseInput,
+  collectiveProfile: {
+    ...baseInput.collectiveProfile,
+    strengths: [{ id: 'strength-1', title: 'Centros', description: 'Buscan el segundo palo.', category: 'offensive' }],
+  },
+  evidences: [{ id: 'ev-centros-structured', type: 'Ataque', importance: 'Alta', observation: 'Centros frecuentes buscando el segundo palo.' }],
+});
+assert.equal(structuredProfile.recommendations.defense.length, 1, 'el asistente conserva sus reglas con puntos enriquecidos');
+
 const ordered = sortRivalRecommendations([
   { id: 'optional', priority: 'Opcional', confidence: 'Alta', sources: ['Perfil'], ruleOrder: 0 },
   { id: 'important-low', priority: 'Importante', confidence: 'Baja', sources: ['Perfil'], ruleOrder: 1 },
@@ -94,6 +104,7 @@ assert.ok(empty.evidenceCoverage.every((source) => !source.available), 'no crea 
 
 const componentSource = fs.readFileSync(new URL('../components/tactical/RivalCollectiveAssistant.jsx', import.meta.url), 'utf8');
 const editorSource = fs.readFileSync(new URL('../components/tactical/CollectiveProfileEditorModal.jsx', import.meta.url), 'utf8');
+const strengthsSource = fs.readFileSync(new URL('../components/tactical/RivalStrengthsWeaknesses.jsx', import.meta.url), 'utf8');
 const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 assert.match(componentSource, /lg:grid-cols-2/, 'las recomendaciones se adaptan a dos columnas sin scroll horizontal');
 assert.match(componentSource, /flex-wrap/, 'los chips permiten wrap responsive');
@@ -108,8 +119,9 @@ assert.match(editorSource, /createPortal\(/, 'el editor no queda recortado por l
 assert.match(editorSource, /\['Salida de balón', 'buildUp'/, 'recupera el campo de salida existente');
 assert.match(editorSource, /\['Altura del bloque', 'blockHeight'/, 'recupera el campo de bloque existente');
 assert.match(editorSource, /\['Tipo de presión', 'pressureType'/, 'recupera el campo de presión existente');
-assert.match(editorSource, /\['Debilidades', 'weaknesses'/, 'recupera las debilidades existentes');
-assert.match(editorSource, /aria-pressed=\{active\}/, 'fortalezas y debilidades son operables con teclado y tacto');
+assert.match(editorSource, /fortalezas y debilidades se gestionan en su bloque específico/i, 'el perfil general evita un segundo editor para los mismos datos');
+assert.match(strengthsSource, /Puntos fuertes/, 'el editor especializado conserva fortalezas');
+assert.match(strengthsSource, /Puntos débiles/, 'el editor especializado conserva debilidades');
 assert.match(editorSource, />\s*Cancelar\s*</, 'el editor permite cancelar el borrador');
 assert.match(editorSource, /onSave\(createCollectiveProfileDraft\(draft\)\)/, 'solo Guardar entrega el borrador a persistencia');
 assert.match(editorSource, /sm:max-w-3xl/, 'el modal se adapta a móvil, tablet y escritorio');

@@ -6,6 +6,7 @@ import {
   getRivalScoutingMaturity,
 } from '../../utils/rivalTacticalCenter.js';
 import RivalTacticalAssistant from './RivalTacticalAssistant.jsx';
+import RivalStrengthsWeaknesses from './RivalStrengthsWeaknesses.jsx';
 
 const sourceTone = {
   Perfil: 'border-cyan-300/15 bg-cyan-300/[0.06] text-cyan-100',
@@ -176,7 +177,7 @@ function RecommendationSection({ title, eyebrow, recommendations, emptyMessage, 
   );
 }
 
-export default function RivalCollectiveAssistant({ model, onEditCollectiveProfile, onCompleteMissingInformation }) {
+export default function RivalCollectiveAssistant({ model, strengthsWeaknesses, onEditCollectiveProfile, onCompleteMissingInformation }) {
   if (!model) return null;
   const maturity = getRivalScoutingMaturity(model);
   const missingInformation = buildRivalMissingInformation(model);
@@ -253,6 +254,15 @@ export default function RivalCollectiveAssistant({ model, onEditCollectiveProfil
         </div>
         {model.summary.emptyMessage ? <div className="mt-5"><EmptyState>{model.summary.emptyMessage}</EmptyState></div> : null}
       </section>
+
+      <RivalStrengthsWeaknesses
+        key={strengthsWeaknesses?.scopeKey || model.rivalName}
+        rivalName={model.rivalName}
+        strengths={strengthsWeaknesses?.strengths}
+        weaknesses={strengthsWeaknesses?.weaknesses}
+        editable={strengthsWeaknesses?.editable}
+        onChange={strengthsWeaknesses?.onChange}
+      />
 
       <RivalTacticalAssistant model={model} missingInformation={missingInformation} />
 

@@ -136,6 +136,10 @@ import {
 } from './utils/flushableSaveCoordinator';
 import { buildRivalCollectiveAssistant } from './utils/rivalCollectiveAssistant';
 import {
+  getRivalScoutingPointTitles,
+  normalizeRivalScoutingPoints,
+} from './utils/rivalStrengthsWeaknesses';
+import {
   buildRivalPlayerCollectiveSignals,
   buildRivalPlayerTacticalModel,
 } from './utils/rivalPlayerTacticalAssistant';
@@ -1390,8 +1394,6 @@ const collectiveProfileOptions = {
   pressureType: ['Alta', 'Media', 'Repliegue'],
   attackingRhythm: ['Posicional', 'Mixto', 'Vertical'],
   preferredAttack: ['Izquierda', 'Centro', 'Derecha', 'Equilibrado'],
-  strengths: ['Juego interior', 'Centros', 'ABP', 'Transiciones', 'Juego directo', 'Duelos', 'Contraataque', 'Segunda jugada'],
-  weaknesses: ['Espalda lateral', 'Pérdida interior', 'Defensa área', 'ABP defensiva', 'Transición defensiva', 'Juego aéreo', 'Vigilancias', 'Salida de balón'],
 };
 const PLAYER_BEHAVIOURS_BY_POSITION = {
   goalkeeper: {
@@ -7680,8 +7682,8 @@ function App() {
   selectedRivalObservedScouting.collective = {
     ...emptyObservedCollectiveProfile,
     ...(selectedRivalObservedScouting.collective || {}),
-    strengths: safeArray(selectedRivalObservedScouting.collective?.strengths),
-    weaknesses: safeArray(selectedRivalObservedScouting.collective?.weaknesses),
+    strengths: normalizeRivalScoutingPoints(selectedRivalObservedScouting.collective?.strengths, 'strength'),
+    weaknesses: normalizeRivalScoutingPoints(selectedRivalObservedScouting.collective?.weaknesses, 'weakness'),
   };
   selectedRivalObservedScouting.playerProfiles = safeObject(selectedRivalObservedScouting.playerProfiles);
   selectedRivalObservedScouting.evidences = safeArray(selectedRivalObservedScouting.evidences);
@@ -7714,10 +7716,6 @@ function App() {
         [field]: value,
       },
     });
-  };
-  const toggleObservedCollectiveListValue = (field, value) => {
-    const current = safeArray(selectedRivalObservedScouting.collective[field]);
-    updateObservedCollectiveProfile(field, current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
   };
   const getObservedPlayerKey = (player) => String(player?.globalPlayerId || player?.jugadorRivalId || player?.id || player?.name || '');
   const getObservedPlayerProfile = (player) => {
@@ -12438,6 +12436,8 @@ function App() {
       { playerId: context.playerKey || '' }
     );
     const collective = selectedRivalObservedScouting.collective;
+    const collectiveStrengthTitles = getRivalScoutingPointTitles(collective.strengths);
+    const collectiveWeaknessTitles = getRivalScoutingPointTitles(collective.weaknesses);
     const relevantEvidenceTypes = /abp|estrategia/.test(q)
       ? ['ABP']
       : /transici|pérdida|perdida|recuperaci/.test(q)
@@ -12604,14 +12604,14 @@ function App() {
     }
 
     if (q.includes('bloque') || q.includes('atacamos')) {
-      if (!collective.blockHeight && !collective.weaknesses.length && !evidences.length) return generalAnswer();
+      if (!collective.blockHeight && !collectiveWeaknessTitles.length && !evidences.length) return generalAnswer();
       return formatAnswer({
         title: 'ANÁLISIS BASADO EN EL SCOUTING',
         sourceLabel: 'scouting',
         analysis: [
           collective.blockHeight ? `Bloque registrado: ${collective.blockHeight}.` : 'Altura de bloque no registrada.',
           collective.buildUp ? `Salida registrada: ${collective.buildUp}.` : 'Salida sin dato registrado.',
-          collective.weaknesses.length ? `Debilidades registradas: ${collective.weaknesses.slice(0, 2).join(', ')}.` : 'Sin debilidad registrada.',
+          collectiveWeaknessTitles.length ? `Debilidades registradas: ${collectiveWeaknessTitles.slice(0, 2).join(', ')}.` : 'Sin debilidad registrada.',
         ].join('\n'),
         proposals: [
           'Atacar únicamente las zonas respaldadas por perfil o evidencias.',
@@ -12636,11 +12636,11 @@ function App() {
       }) : generalAnswer();
     }
     if (q.includes('pérdida') || q.includes('perdida') || q.includes('transiciones')) {
-      if (!collective.strengths.includes('Transiciones') && !collective.strengths.includes('Contraataque') && !evidences.length) return generalAnswer();
+      if (!collectiveStrengthTitles.includes('Transiciones') && !collectiveStrengthTitles.includes('Contraataque') && !evidences.length) return generalAnswer();
       return formatAnswer({
         title: 'ANÁLISIS BASADO EN EL SCOUTING',
         sourceLabel: 'scouting',
-        analysis: `Riesgo de transición respaldado por ${evidences.length ? `${evidences.length} evidencias` : 'perfil colectivo registrado'}.\n${collective.strengths.length ? `Fortalezas registradas: ${collective.strengths.join(', ')}.` : ''}`,
+        analysis: `Riesgo de transición respaldado por ${evidences.length ? `${evidences.length} evidencias` : 'perfil colectivo registrado'}.\n${collectiveStrengthTitles.length ? `Fortalezas registradas: ${collectiveStrengthTitles.join(', ')}.` : ''}`,
         proposals: [
           'Finalizar ataques o asegurar vigilancia antes de perder por dentro.',
           'Cerrar primera recepción hacia delante tras pérdida.',
@@ -12665,11 +12665,11 @@ function App() {
       });
     }
     if (q.includes('ajuste') || q.includes('progresamos')) {
-      if (!collective.pressureType && !collective.weaknesses.length && !evidences.length && !tacticalSummary.evidence.length) return generalAnswer();
+      if (!collective.pressureType && !collectiveWeaknessTitles.length && !evidences.length && !tacticalSummary.evidence.length) return generalAnswer();
       return formatAnswer({
         title: 'ANÁLISIS BASADO EN EL SCOUTING',
         sourceLabel: 'scouting',
-        analysis: `Ajuste condicionado por datos observados.\n${collective.pressureType ? `Presión registrada: ${collective.pressureType}.` : 'Presión sin registrar.'}\n${collective.weaknesses.length ? `Atacar: ${collective.weaknesses[0]}.` : 'Sin debilidad validada.'}`,
+        analysis: `Ajuste condicionado por datos observados.\n${collective.pressureType ? `Presión registrada: ${collective.pressureType}.` : 'Presión sin registrar.'}\n${collectiveWeaknessTitles.length ? `Atacar: ${collectiveWeaknessTitles[0]}.` : 'Sin debilidad validada.'}`,
         proposals: [
           'Progresar por el espacio realmente observado, no por una hipótesis.',
           'Preparar alternativa si el patrón no aparece en los primeros minutos.',
@@ -13103,6 +13103,8 @@ function App() {
     const caudalSystem = selectedMatch.preCaudalSystem || '4-4-2';
     const rivalSystem = getCurrentRivalSystem();
     const collective = selectedRivalObservedScouting.collective;
+    const collectiveStrengthTitles = getRivalScoutingPointTitles(collective.strengths);
+    const collectiveWeaknessTitles = getRivalScoutingPointTitles(collective.weaknesses);
     const evidences = confirmedObservedEvidences;
     const observedPlayerRows = liveRivalPlayers
       .map((player) => ({ player, profile: getObservedPlayerProfile(player) }))
@@ -13252,30 +13254,30 @@ function App() {
     const attackPlan = uniq([
       ...splitLines(selectedMatch.planConBalon),
       ...splitLines(selectedMatch.prePlanTrigger),
-      collective.weaknesses.includes('Espalda lateral') ? 'Atacar espalda lateral registrada' : '',
-      collective.weaknesses.includes('Pérdida interior') ? 'Forzar recepción interior' : '',
+      collectiveWeaknessTitles.includes('Espalda lateral') ? 'Atacar espalda lateral registrada' : '',
+      collectiveWeaknessTitles.includes('Pérdida interior') ? 'Forzar recepción interior' : '',
     ]);
     const defensePlan = uniq([
       ...splitLines(selectedMatch.planSinBalon),
       ...splitLines(selectedMatch.preCaudalDefendStrengths),
-      collective.strengths.includes('Juego interior') ? 'Cerrar pase interior' : '',
-      collective.strengths.includes('Centros') ? 'Proteger segundo palo' : '',
-      collective.strengths.includes('Juego directo') ? 'Disputar segunda jugada' : '',
+      collectiveStrengthTitles.includes('Juego interior') ? 'Cerrar pase interior' : '',
+      collectiveStrengthTitles.includes('Centros') ? 'Proteger segundo palo' : '',
+      collectiveStrengthTitles.includes('Juego directo') ? 'Disputar segunda jugada' : '',
     ]);
     const transitionPlan = uniq([
       ...splitLines(selectedMatch.planTransiciones),
       ...splitLines(selectedMatch.prePlanAvoid),
-      collective.strengths.includes('Transiciones') || collective.strengths.includes('Contraataque') ? 'Falta táctica si la pérdida es interior' : '',
-      collective.strengths.includes('Transiciones') || collective.strengths.includes('Contraataque') ? 'Repliegue inmediato' : '',
+      collectiveStrengthTitles.includes('Transiciones') || collectiveStrengthTitles.includes('Contraataque') ? 'Falta táctica si la pérdida es interior' : '',
+      collectiveStrengthTitles.includes('Transiciones') || collectiveStrengthTitles.includes('Contraataque') ? 'Repliegue inmediato' : '',
     ]);
     const abpPlan = uniq([
       ...splitLines(selectedMatch.abpOfensiva),
       ...splitLines(selectedMatch.abpDefensiva),
       keyPlayers[0] ? `Vigilar ${displayPlayerName(keyPlayers[0])}` : '',
-      collective.strengths.includes('ABP') ? 'Proteger segundo palo' : '',
+      collectiveStrengthTitles.includes('ABP') ? 'Proteger segundo palo' : '',
     ]);
     const riskPlan = uniq([
-      ...safeArray(collective.weaknesses),
+      ...collectiveWeaknessTitles,
       ...unavailablePlayers.map((player) => `${displayPlayerName(player)} no disponible`),
     ]).slice(0, 4);
     const savedTacticalQuestion = selectedPreAiAnalysis?.tacticalQuestion;
@@ -13462,6 +13464,13 @@ function App() {
           {facingSystemsView === 'RIVAL' ? (
             <RivalCollectiveAssistant
               model={rivalCollectiveModel}
+              strengthsWeaknesses={{
+                scopeKey: selectedRivalObservedKey,
+                strengths: collective.strengths,
+                weaknesses: collective.weaknesses,
+                editable: Boolean(selectedMatchRivalTeam?.id),
+                onChange: updateObservedCollectiveProfile,
+              }}
               onEditCollectiveProfile={() => setIsCollectiveProfileEditorOpen(true)}
               onCompleteMissingInformation={completeRivalMissingInformation}
             />

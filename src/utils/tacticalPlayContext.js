@@ -1,4 +1,5 @@
 import { getPlayerDisplayName } from './playerDisplayName.js';
+import { getRivalScoutingPointTitles } from './rivalStrengthsWeaknesses.js';
 
 const safeArray = (value) => Array.isArray(value) ? value : [];
 const safeObject = (value) => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -403,8 +404,8 @@ export const buildTacticalPlayContext = ({
     pressingType: clean(collectiveProfile.pressureType) || null,
     attackingRhythm: clean(collectiveProfile.attackingRhythm) || null,
     preferredAttack: clean(collectiveProfile.preferredAttack) || null,
-    strengths: safeArray(collectiveProfile.strengths).map(clean).filter(Boolean),
-    weaknesses: safeArray(collectiveProfile.weaknesses).map(clean).filter(Boolean),
+    strengths: getRivalScoutingPointTitles(collectiveProfile.strengths),
+    weaknesses: getRivalScoutingPointTitles(collectiveProfile.weaknesses),
   };
   const involvedPlayers = extractInvolvement({
     play: safePlay,
