@@ -27,7 +27,7 @@ import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
 import PlayerPositionUsageSummary from './components/player/PlayerPositionUsageSummary';
 import PlayerAvatar from './components/player/PlayerAvatar';
-import PlayerNumberBadge from './components/player/PlayerNumberBadge';
+import PlayerNumberName from './components/player/PlayerNumberName';
 import { getPlayerAvatarSource } from './utils/playerAvatarPresentation';
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
 import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
@@ -30882,10 +30882,9 @@ function App() {
                                     <span className={`relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-white/[0.08] text-sm font-black ${slotPlayer.isKey ? 'border-amber-200/70 shadow-[0_0_18px_rgba(250,204,21,0.28)]' : 'border-white/10'}`}>
                                       <span className="absolute inset-0 flex items-center justify-center">{slotPlayer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                                       {slotPlayer.image ? <img src={slotPlayer.image} alt={slotPlayer.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="relative h-full w-full object-cover" /> : null}
-                                      <PlayerNumberBadge number={slotPlayer.number} className="absolute left-0.5 top-0.5 z-10" />
                                     </span>
-                                    <span className="mt-0.5 flex w-full min-w-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap px-0.5 text-[9px] font-black uppercase leading-3">
-                                      <span className="block min-w-0 truncate">{getTacticalPlayerName(slotPlayer)}</span>
+                                    <span className="mt-0.5 flex w-[6.25rem] min-w-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-md bg-slate-950/55 px-1 py-0.5 text-[9px] font-black uppercase leading-3 lg:w-[7.5rem]">
+                                      <PlayerNumberName player={slotPlayer} className="min-w-0 flex-1 justify-center" />
                                       {getRivalPlayerFlags(selectedTeam.id, slotPlayer.name).captain || slotPlayer.captain ? <span title="Capitán" className="shrink-0 text-[10px] leading-none text-blue-200">©</span> : null}
                                     </span>
                                   </>
@@ -30972,8 +30971,7 @@ function App() {
                                             <span>{getPlayerInitials(player)}</span>
                                             {player.image ? <img src={player.image} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} className="absolute inset-0 h-full w-full object-cover" /> : null}
                                           </span>
-                                          <PlayerNumberBadge number={player.number} className="shrink-0" />
-                                          <span className="block min-w-0 flex-1 truncate whitespace-nowrap uppercase" title={getTacticalPlayerName(player)}>{getTacticalPlayerName(player)}</span>
+                                          <PlayerNumberName player={player} className="min-w-0 flex-1" />
                                         </span>
                                         </PlayerNameTooltip>
                                       ))}
