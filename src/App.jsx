@@ -206,6 +206,7 @@ import { getPlayerDisplayName } from './utils/playerDisplayName';
 import {
   getCollisionSafePresentationCoordinates,
   getTeamPresentationBenchGroup,
+  getTeamPresentationLabelMaxCqw,
   getTeamPresentationPlayerName,
   getTeamPresentationVariants,
   normalizeTeamTacticalVariants,
@@ -30653,7 +30654,7 @@ function App() {
                     </div>
                     )}
 
-                    <section className={`grid ${teamFieldEditMode ? 'gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(260px,1fr)]' : 'gap-2 lg:grid-cols-[minmax(0,74fr)_minmax(280px,26fr)]'}`}>
+                    <section className={`grid ${teamFieldEditMode ? 'gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(260px,1fr)]' : 'gap-1 lg:grid-cols-[minmax(0,75fr)_minmax(280px,25fr)]'}`}>
                       <div className={`bg-[#091428]/80 shadow-[0_18px_52px_rgba(0,0,0,0.22)] ${teamFieldEditMode ? 'rounded-[1.35rem] border border-white/10 p-4' : 'rounded-2xl border border-white/[0.06] p-1.5'}`}>
                         {teamFieldEditMode ? <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div>
@@ -30776,7 +30777,7 @@ function App() {
                             if (teamFieldEditMode) event.preventDefault();
                           }}
                           onDragLeave={() => setActiveRivalDropSlot('')}
-                          className={`team-tactical-field relative mx-auto overflow-visible rounded-[1.8rem] border border-white/[0.08] bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.07),transparent_17%),repeating-linear-gradient(90deg,rgba(17,86,63,0.72)_0,rgba(17,86,63,0.72)_12.5%,rgba(13,72,55,0.76)_12.5%,rgba(13,72,55,0.76)_25%),linear-gradient(180deg,#104735_0%,#0b3b31_48%,#082c27_100%)] shadow-[0_24px_76px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.05)] ${isPresentationMode ? 'aspect-[3/4] h-[calc(100dvh-12rem)] min-h-[540px] max-h-[780px] w-auto max-w-full' : 'aspect-[7/8.2] min-h-[440px] w-full max-w-[900px]'}`}
+                          className={`team-tactical-field relative mx-auto overflow-visible rounded-[1.8rem] border border-white/[0.08] bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.07),transparent_17%),repeating-linear-gradient(90deg,rgba(17,86,63,0.72)_0,rgba(17,86,63,0.72)_12.5%,rgba(13,72,55,0.76)_12.5%,rgba(13,72,55,0.76)_25%),linear-gradient(180deg,#104735_0%,#0b3b31_48%,#082c27_100%)] shadow-[0_24px_76px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.05)] ${isPresentationMode ? 'aspect-[63/80] h-[calc(100dvh-12rem)] min-h-[540px] max-h-[780px] w-auto max-w-full [container-type:inline-size]' : 'aspect-[7/8.2] min-h-[440px] w-full max-w-[900px]'}`}
                         >
                           <div className="absolute inset-4 rounded-[28px] border border-white/22" />
                           <div className="absolute left-4 right-4 top-1/2 h-px bg-white/18" />
@@ -30872,6 +30873,9 @@ function App() {
                           ) : null}
                           {(isPresentationMode ? presentationFormationCoordinates : getFormationCoordinates(selectedTeam.system || '4-4-2')).map((slot, slotIndex) => {
                             const slotPlayer = getLineupSlotMap(visualFieldLineup).get(slotIndex);
+                            const presentationLabelMaxCqw = isPresentationMode
+                              ? getTeamPresentationLabelMaxCqw(presentationFormationCoordinates, slotIndex)
+                              : null;
                             const isDraggedSource = Boolean(slotPlayer && draggedPlayer && getRivalPlayerUniqueKey(slotPlayer) === getRivalPlayerUniqueKey(draggedPlayer));
                             const slotRole = getFormationRoles(selectedTeam.system || '4-4-2')[slotIndex] || `Posición ${slotIndex + 1}`;
                             const slotReservePlayers = reservePlayersBySlot[slotIndex] || [];
@@ -30971,11 +30975,14 @@ function App() {
                                       ))}
                                     </span>
                                     <span className={`mb-0.5 block w-full truncate whitespace-nowrap font-black uppercase tracking-[0.10em] text-caudal-electric ${isPresentationMode ? 'text-[clamp(9px,0.65vw,10px)] leading-none' : 'text-[8px]'}`}>{shortRoleLabel(slotRole)}</span>
-                                    <span className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-white/[0.08] text-sm font-black ${isPresentationMode ? 'h-[clamp(3.375rem,4vw,3.5rem)] w-[clamp(3.375rem,4vw,3.5rem)]' : 'h-10 w-10'} ${slotPlayer.isKey ? 'border-amber-200/70 shadow-[0_0_18px_rgba(250,204,21,0.28)]' : 'border-white/10'}`}>
+                                    <span className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-white/[0.08] text-sm font-black ${isPresentationMode ? 'h-[clamp(3.75rem,4.4vw,3.875rem)] w-[clamp(3.75rem,4.4vw,3.875rem)]' : 'h-10 w-10'} ${slotPlayer.isKey ? 'border-amber-200/70 shadow-[0_0_18px_rgba(250,204,21,0.28)]' : 'border-white/10'}`}>
                                       <span className="absolute inset-0 flex items-center justify-center">{slotPlayer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                                       {slotPlayer.image ? <img src={slotPlayer.image} alt={slotPlayer.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="relative h-full w-full object-cover" /> : null}
                                     </span>
-                                    <span className={`absolute bottom-1 left-1/2 flex min-w-0 -translate-x-1/2 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-md bg-slate-950/70 font-black uppercase ${isPresentationMode ? 'w-[calc(100%-0.25rem)] px-1.5 py-1 text-[clamp(10px,0.7vw,11.25px)] leading-none' : 'w-max max-w-[6.25rem] px-1 py-0.5 text-[9px] leading-3 lg:max-w-[7.5rem]'}`}>
+                                    <span
+                                      className={`absolute left-1/2 flex min-w-0 -translate-x-1/2 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-md bg-slate-950/70 font-black uppercase ${isPresentationMode ? 'bottom-0.5 w-[clamp(6rem,7.5vw,8rem)] px-1 py-0.5 text-[clamp(10px,0.7vw,11.25px)] leading-none' : 'bottom-1 w-max max-w-[6.25rem] px-1 py-0.5 text-[9px] leading-3 lg:max-w-[7.5rem]'}`}
+                                      style={presentationLabelMaxCqw === null ? undefined : { width: `min(clamp(6rem, 7.5vw, 8rem), ${presentationLabelMaxCqw}cqw)` }}
+                                    >
                                       <PlayerNumberName player={slotPlayer} displayName={isPresentationMode ? getTeamPresentationPlayerName(slotPlayer) : undefined} className="min-w-0 w-full justify-center" />
                                       {getRivalPlayerFlags(selectedTeam.id, slotPlayer.name).captain || slotPlayer.captain ? <span title="Capitán" className="shrink-0 text-[10px] leading-none text-blue-200">©</span> : null}
                                     </span>

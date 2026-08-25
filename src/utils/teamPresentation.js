@@ -39,6 +39,8 @@ const NATURAL_BENCH_GROUPS = {
 export const getTeamPresentationPlayerName = (player = {}) => clean(player.shirt_name)
   || clean(player.shirtName)
   || clean(player.nombre_camiseta)
+  || clean(player.shortName)
+  || clean(player.short_name)
   || clean(player.name)
   || 'Jugador';
 
@@ -98,6 +100,17 @@ export const getCollisionSafePresentationCoordinates = (coordinates = []) => {
     });
   });
   return safeCoordinates;
+};
+
+export const getTeamPresentationLabelMaxCqw = (coordinates = [], slotIndex = 0, gutterCqw = 0.75) => {
+  const current = coordinates[slotIndex];
+  if (!current) return null;
+  const nearestGap = coordinates.reduce((gap, candidate, candidateIndex) => {
+    if (candidateIndex === slotIndex || Math.abs(Number(candidate?.y ?? 50) - Number(current.y ?? 50)) > 0.5) return gap;
+    return Math.min(gap, Math.abs(Number(candidate?.x ?? 50) - Number(current.x ?? 50)));
+  }, Number.POSITIVE_INFINITY);
+  if (!Number.isFinite(nearestGap)) return null;
+  return Math.max(0, Math.round((nearestGap - gutterCqw) * 100) / 100);
 };
 
 export const getTeamPresentationBenchGroup = (player = {}) => {
