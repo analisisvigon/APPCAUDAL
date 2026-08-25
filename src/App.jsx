@@ -202,6 +202,11 @@ import {
 } from './utils/delegatedMatchValidation';
 import { runDelegatedMatchStatusFlow } from './utils/delegatedMatchStatusFlow';
 import { getPlayerDisplayName } from './utils/playerDisplayName';
+import {
+  getTeamPresentationBenchGroup,
+  getTeamPresentationPlayerName,
+  getTeamPresentationVariant,
+} from './utils/teamPresentation';
 import { getPlayerMatchIndicators } from './utils/playerMatchIndicators';
 import { buildMatchKeyPersistence, getMatchKeyGroups } from './utils/matchKeys';
 import { loadOwnCaptainPriorities, saveOwnCaptainPriorities } from './utils/captainPriorityStore';
@@ -30451,13 +30456,14 @@ function App() {
                     || String(a.name || '').localeCompare(String(b.name || ''))
                   );
                 const groupedBenchPlayers = presentationBenchPlayers.reduce((groups, player) => {
-                  const presentation = getPlayerPositionPresentation(player);
-                  const label = presentation.group;
+                  const presentation = getTeamPresentationBenchGroup(player);
+                  const label = presentation.label;
                   const existing = groups.find((group) => group.label === label);
                   if (existing) existing.players.push(player);
                   else groups.push({ label, order: presentation.order, players: [player] });
                   return groups;
                 }, []).sort((a, b) => a.order - b.order);
+                const presentationVariant = getTeamPresentationVariant(selectedTeam);
                 const keyPlayers = rivalPlayers.filter((player) => player.isKey);
                 const captainPlayer = rivalPlayers.find((player) => getRivalPlayerFlags(selectedTeam.id, player.name).captain || player.captain) || null;
                 const unavailablePlayers = rivalPlayers.filter((player) => player.injured || player.suspended);
@@ -30550,14 +30556,14 @@ function App() {
                       </div>
                     </div>
 
-                    <section className={`grid gap-4 ${teamFieldEditMode ? 'xl:grid-cols-[minmax(0,3fr)_minmax(260px,1fr)]' : 'xl:grid-cols-1'}`}>
+                    <section className={`grid gap-4 ${teamFieldEditMode ? 'xl:grid-cols-[minmax(0,3fr)_minmax(260px,1fr)]' : 'lg:grid-cols-[minmax(0,72fr)_minmax(280px,28fr)]'}`}>
                       <div className={`bg-[#091428]/80 shadow-[0_18px_52px_rgba(0,0,0,0.22)] ${teamFieldEditMode ? 'rounded-[1.35rem] border border-white/10 p-4' : 'rounded-2xl border border-white/[0.06] p-2.5'}`}>
-                        <div className={`flex flex-col sm:flex-row sm:items-center sm:justify-between ${isPresentationMode ? 'mb-2 gap-2' : 'mb-4 gap-3'}`}>
+                        {teamFieldEditMode ? <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div>
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Sistema y plantilla</p>
-                            <h4 className={`mt-1 font-black text-white ${isPresentationMode ? 'text-sm' : 'text-lg'}`}>{teamFieldEditMode ? 'Campo principal' : `${selectedTeam.system || 'Sistema'} · once rival`}</h4>
+                            <h4 className="mt-1 text-lg font-black text-white">Campo principal</h4>
                           </div>
-                          {teamFieldEditMode ? <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap gap-2">
                             <select
                               value={selectedTeam.system || ''}
                               onChange={(event) => updateSelectedTeamSystem(event.target.value)}
@@ -30577,8 +30583,8 @@ function App() {
                             <button type="button" onClick={saveSelectedTeamField} className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-bold text-slate-200 transition hover:bg-white/10">
                               Guardar disposición
                             </button>
-                          </div> : null}
-                        </div>
+                          </div>
+                        </div> : null}
                         {teamFieldEditMode && rivalSystemPreview?.teamId === selectedTeam.id ? (
                           <div className="mb-4 rounded-[1.25rem] border border-caudal-electric/30 bg-[#07111f]/95 p-4 shadow-[0_20px_52px_rgba(0,0,0,0.38)]">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -30607,13 +30613,13 @@ function App() {
                             </p>
                           </div>
                         ) : null}
-                        <div className="team-field-scroll-shell">
+                        <div className={teamFieldEditMode ? 'team-field-scroll-shell' : 'flex min-h-0 items-center justify-center overflow-visible'}>
                         <div
                           onDragOver={(event) => {
                             if (teamFieldEditMode) event.preventDefault();
                           }}
                           onDragLeave={() => setActiveRivalDropSlot('')}
-                          className={`team-tactical-field relative mx-auto w-full overflow-visible rounded-[1.8rem] border border-white/[0.08] bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.07),transparent_17%),repeating-linear-gradient(90deg,rgba(17,86,63,0.72)_0,rgba(17,86,63,0.72)_12.5%,rgba(13,72,55,0.76)_12.5%,rgba(13,72,55,0.76)_25%),linear-gradient(180deg,#104735_0%,#0b3b31_48%,#082c27_100%)] shadow-[0_24px_76px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.05)] ${isPresentationMode ? 'aspect-[7/6.25] min-h-[330px] max-h-[430px] max-w-[760px]' : 'aspect-[7/8.2] min-h-[440px] max-w-[900px]'}`}
+                          className={`team-tactical-field relative mx-auto overflow-visible rounded-[1.8rem] border border-white/[0.08] bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.07),transparent_17%),repeating-linear-gradient(90deg,rgba(17,86,63,0.72)_0,rgba(17,86,63,0.72)_12.5%,rgba(13,72,55,0.76)_12.5%,rgba(13,72,55,0.76)_25%),linear-gradient(180deg,#104735_0%,#0b3b31_48%,#082c27_100%)] shadow-[0_24px_76px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.05)] ${isPresentationMode ? 'aspect-[7/9] h-[clamp(520px,68vh,740px)] w-auto max-w-full' : 'aspect-[7/8.2] min-h-[440px] w-full max-w-[900px]'}`}
                         >
                           <div className="absolute inset-4 rounded-[28px] border border-white/22" />
                           <div className="absolute left-4 right-4 top-1/2 h-px bg-white/18" />
@@ -30813,7 +30819,7 @@ function App() {
                                       {slotPlayer.image ? <img src={slotPlayer.image} alt={slotPlayer.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="relative h-full w-full object-cover" /> : null}
                                     </span>
                                     <span className="absolute bottom-1 left-1/2 flex w-max max-w-[6.25rem] min-w-0 -translate-x-1/2 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-md bg-slate-950/55 px-1 py-0.5 text-[9px] font-black uppercase leading-3 lg:max-w-[7.5rem]">
-                                      <PlayerNumberName player={slotPlayer} className="min-w-0" />
+                                      <PlayerNumberName player={slotPlayer} displayName={isPresentationMode ? getTeamPresentationPlayerName(slotPlayer) : undefined} className="min-w-0" />
                                       {getRivalPlayerFlags(selectedTeam.id, slotPlayer.name).captain || slotPlayer.captain ? <span title="Capitán" className="shrink-0 text-[10px] leading-none text-blue-200">©</span> : null}
                                     </span>
                                   </>
@@ -30884,36 +30890,54 @@ function App() {
                           })}
                         </div>
                         </div>
-                        {isPresentationMode ? (
-                          <div className="mx-auto mt-1.5 w-full max-w-[900px]">
-                            <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-1.5">
-                              <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Banquillo</p>
-                              <div className="team-presentation-bench-groups mt-1">
-                                {groupedBenchPlayers.length ? groupedBenchPlayers.map((group) => (
-                                  <div key={group.label} className="team-presentation-bench-group rounded-lg border border-white/[0.06] bg-slate-950/20 p-1.5">
-                                    <p className="truncate text-[8px] font-black uppercase tracking-[0.12em] text-slate-500" title={group.label}>{group.label}</p>
-                                    <div className="team-presentation-bench-players mt-1">
-                                      {group.players.map((player) => (
-                                        <PlayerNameTooltip key={player.jugadorRivalId || player.id || player.name} player={player}>
-                                        <span className="team-presentation-bench-player flex h-8 min-w-0 items-center gap-1 overflow-hidden rounded-md border border-white/10 bg-white/[0.035] px-1 text-[9px] font-black text-slate-100">
-                                          <span className="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white/[0.07] text-[7px]">
-                                            <span>{getPlayerInitials(player)}</span>
-                                            {player.image ? <img src={player.image} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} className="absolute inset-0 h-full w-full object-cover" /> : null}
-                                          </span>
-                                          <PlayerNumberName player={player} className="min-w-0 flex-1" />
-                                        </span>
-                                        </PlayerNameTooltip>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )) : (
-                                  <span className="text-sm font-semibold text-slate-500">Sin banquillo registrado.</span>
-                                )}
-                              </div>
+                      </div>
+
+                      {isPresentationMode ? (
+                        <aside className="flex h-[clamp(520px,68vh,740px)] min-h-0 flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-[#091428]/90 p-3 shadow-[0_18px_52px_rgba(0,0,0,0.22)]">
+                          <div className="grid shrink-0 grid-cols-2 gap-2">
+                            <div className="rounded-xl border border-caudal-electric/20 bg-caudal-electric/[0.07] px-3 py-2.5">
+                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Sistema</p>
+                              <p className="mt-1 text-2xl font-black leading-none text-white">{selectedTeam.system || 'Pendiente'}</p>
+                            </div>
+                            <div className="rounded-xl border border-white/[0.09] bg-white/[0.035] px-3 py-2.5">
+                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Variante</p>
+                              <p className="mt-1 text-2xl font-black leading-none text-white">{presentationVariant}</p>
                             </div>
                           </div>
-                        ) : null}
-                      </div>
+
+                          <div className="mt-3 flex min-h-0 flex-1 flex-col rounded-xl border border-white/[0.07] bg-white/[0.025] p-2.5">
+                            <p className="shrink-0 text-[11px] font-black uppercase tracking-[0.2em] text-caudal-electric">Banquillo</p>
+                            <div className="mt-2 grid min-h-0 content-start gap-2">
+                              {groupedBenchPlayers.length ? groupedBenchPlayers.map((group) => (
+                                <div key={group.label} className="min-w-0 rounded-lg border border-white/[0.06] bg-slate-950/20 p-1.5">
+                                  <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">{group.label}</p>
+                                  <div className="mt-1 grid grid-cols-2 gap-1">
+                                    {group.players.map((player) => (
+                                      <PlayerNameTooltip key={player.jugadorRivalId || player.id || player.name} player={player}>
+                                      <span className="flex min-h-9 min-w-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-1 text-[10px] font-black text-slate-100">
+                                        <span className="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white/[0.08] text-[8px]">
+                                          <span>{getPlayerInitials(player)}</span>
+                                          {player.image ? <img src={player.image} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} className="absolute inset-0 h-full w-full object-cover" /> : null}
+                                        </span>
+                                        <PlayerNumberName
+                                          player={player}
+                                          displayName={getTeamPresentationPlayerName(player)}
+                                          truncateName={false}
+                                          className="min-w-0 flex-1 leading-[1.05]"
+                                          nameClassName="text-[10px] leading-[1.05]"
+                                        />
+                                      </span>
+                                      </PlayerNameTooltip>
+                                    ))}
+                                  </div>
+                                </div>
+                              )) : (
+                                <span className="text-sm font-semibold text-slate-500">Sin banquillo registrado.</span>
+                              )}
+                            </div>
+                          </div>
+                        </aside>
+                      ) : null}
 
                       {teamFieldEditMode ? <aside
                         className={`rounded-[1.35rem] border bg-white/[0.03] p-4 transition ${activeRivalDropSlot === 'roster' ? 'border-caudal-electric/70 ring-2 ring-caudal-electric/25' : 'border-white/10'}`}

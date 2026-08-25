@@ -1,9 +1,9 @@
 import { getPlayerDisplayName } from '../../utils/playerDisplayName';
 import { formatPlayerNumberName, getPlayerNumberLabel } from '../../utils/playerNumberPresentation';
 
-export default function PlayerNumberName({ player = {}, className = '', nameClassName = '' }) {
+export default function PlayerNumberName({ player = {}, displayName, truncateName = true, className = '', nameClassName = '' }) {
   const number = getPlayerNumberLabel(player.number);
-  const name = getPlayerDisplayName(player);
+  const name = String(displayName || '').trim() || getPlayerDisplayName(player);
 
   return (
     <span
@@ -16,7 +16,7 @@ export default function PlayerNumberName({ player = {}, className = '', nameClas
           <span className="shrink-0 text-slate-500" aria-hidden="true">·</span>
         </>
       ) : null}
-      <span className={`min-w-0 truncate font-black text-white ${nameClassName}`} title={name}>{name}</span>
+      <span className={`min-w-0 font-black text-white ${truncateName ? 'truncate' : 'whitespace-normal break-words'} ${nameClassName}`} title={name}>{name}</span>
     </span>
   );
 }
