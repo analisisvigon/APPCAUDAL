@@ -9,7 +9,7 @@ const formatDate = (value) => {
   return new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
 };
 
-export default function LineupPrintSheet({ match, starters = [], bench = [], coordinates = [], system = '4-4-2', kit, captainPlayerId = null }) {
+export default function LineupPrintSheet({ match, starters = [], bench = [], coordinates = [], system = '4-4-2', kit, captainPlayerId = null, goalkeeperProtocol = {} }) {
   const benchRows = buildLineupPrintBenchRows(bench);
   const resolvedKit = kit === 'away' || kit === 'home' ? kit : getOwnPrintKitForMatch(match);
 
@@ -28,8 +28,18 @@ export default function LineupPrintSheet({ match, starters = [], bench = [], coo
       </header>
 
       <section className="print-lineup-layout">
-        <FootballPitchPrint players={starters} coordinates={coordinates} kit={resolvedKit} />
+        <FootballPitchPrint players={starters} coordinates={coordinates} kit={resolvedKit} goalkeeperProtocolPrimaryPlayerId={goalkeeperProtocol.goalkeeperProtocolPrimaryPlayerId} />
         <aside className="print-bench">
+          {goalkeeperProtocol.show ? (
+            <section className="print-match-responsibilities" aria-label="Responsabilidades del partido">
+              <p>Responsabilidades</p>
+              <h2>Protocolo portero · salida 1'</h2>
+              <ol>
+                <li><strong>1.º</strong><span>{goalkeeperProtocol.primaryName || 'Responsable no localizado'}</span></li>
+                {goalkeeperProtocol.goalkeeperProtocolSecondaryPlayerId ? <li><strong>2.º</strong><span>{goalkeeperProtocol.secondaryName || 'Responsable no localizado'}</span></li> : null}
+              </ol>
+            </section>
+          ) : null}
           <h2>Banquillo</h2>
           <div className="print-bench-list">
             {benchRows.length ? benchRows.map((row) => (
@@ -38,7 +48,7 @@ export default function LineupPrintSheet({ match, starters = [], bench = [], coo
                   {row.isGoalkeeper ? <span className="print-bench-goalkeeper-badge" aria-label="Portero suplente">POR</span> : null}
                 </span>
                 <strong className="print-bench-number">{row.number}</strong>
-                <span className="print-bench-name">{row.name}{row.player?.id === captainPlayerId || row.player?.isCaptain ? ' (C)' : ''}</span>
+                <span className="print-bench-name">{row.name}{row.player?.id === captainPlayerId || row.player?.isCaptain ? ' (C)' : ''}{String(row.player?.id || '') === goalkeeperProtocol.goalkeeperProtocolPrimaryPlayerId ? <span className="print-bench-protocol-badge">1'</span> : null}</span>
               </div>
             )) : (
               <p className="print-empty">No hay suplentes seleccionados</p>

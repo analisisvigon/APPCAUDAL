@@ -45,6 +45,12 @@ import { duplicateMatchSetPiece } from '../../utils/setPieceMatchDuplication';
 import { SET_PIECE_HEADER_MENUS, transitionSetPieceHeaderMenu } from '../../utils/setPieceHeaderMenu';
 import { areSetPieceLabelsEquivalent } from '../../utils/setPiecePrintModel';
 import {
+  buildGoalkeeperProtocolModel,
+  buildMatchResponsibilityPlayers,
+  normalizeMatchPrintResponsibilities,
+  updateGoalkeeperProtocolSelection,
+} from '../../utils/matchPrintResponsibilities';
+import {
   createSetPieceDiagramClientId,
   getSetPieceDiagramIdentity,
   getSetPieceSelectionAfterDelete,
@@ -372,6 +378,7 @@ export default function MatchPrintTab({
   onNavigateMatchSection,
   onMatchPlanDirtyChange,
   onMatchPlanNavigationGuardReady,
+  onMatchPrintSettingsChange,
 }) {
   const [printView, setPrintView] = useState('alineacion');
   const kit = getOwnPrintKitForMatch(match);
@@ -415,6 +422,10 @@ export default function MatchPrintTab({
   const [libraryError, setLibraryError] = useState('');
   const [printMode, setPrintMode] = useState('current');
   const [printValidationStatus, setPrintValidationStatus] = useState('');
+  const [matchResponsibilities, setMatchResponsibilities] = useState(() => normalizeMatchPrintResponsibilities(match));
+  const [responsibilitiesSaving, setResponsibilitiesSaving] = useState(false);
+  const [responsibilitiesStatus, setResponsibilitiesStatus] = useState('');
+  const [responsibilitiesError, setResponsibilitiesError] = useState('');
   const [dossierPages, setDossierPages] = useState(() => buildDossierPagesFromPreset('matchday'));
   const [draggedDossierPageId, setDraggedDossierPageId] = useState('');
   const [matchPlanSituations, setMatchPlanSituations] = useState([]);
@@ -433,6 +444,12 @@ export default function MatchPrintTab({
   matchPlanMatchIdRef.current = match?.id || '';
   matchPlanSituationsRef.current = matchPlanSituations;
   matchPlanDirtyRef.current = matchPlanDirty;
+
+  useEffect(() => {
+    setMatchResponsibilities(normalizeMatchPrintResponsibilities(match));
+    setResponsibilitiesStatus('');
+    setResponsibilitiesError('');
+  }, [match?.id, match?.goalkeeperProtocolPrimaryPlayerId, match?.goalkeeperProtocolSecondaryPlayerId]);
 
   useEffect(() => {
     onMatchPlanDirtyChange?.(matchPlanDirty);
@@ -687,6 +704,16 @@ export default function MatchPrintTab({
     return { system, starters: markedStarters, bench, coordinates, captainPlayerId: printableCaptainPlayerId };
   }, [match, players, captainPriorities]);
 
+  const responsibilityPlayers = useMemo(
+    () => buildMatchResponsibilityPlayers(printData.starters, printData.bench),
+    [printData.starters, printData.bench]
+  );
+  const goalkeeperProtocol = useMemo(() => buildGoalkeeperProtocolModel({
+    settings: matchResponsibilities,
+    availablePlayers: responsibilityPlayers,
+    allPlayers: players,
+  }), [matchResponsibilities, responsibilityPlayers, players]);
+
   const professionalSetPieceSuggestions = useMemo(() => {
     const suggestions = [];
     const add = (text, source) => {
@@ -718,6 +745,49 @@ export default function MatchPrintTab({
 
   const handlePreview = () => {
     sheetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const updateGoalkeeperProtocol = (field, playerId) => {
+    setResponsibilitiesStatus('');
+    setResponsibilitiesError('');
+    setMatchResponsibilities((current) => updateGoalkeeperProtocolSelection(current, field, playerId));
+  };
+
+  const saveMatchResponsibilities = async () => {
+    if (!match?.id) return;
+    const normalized = normalizeMatchPrintResponsibilities(matchResponsibilities);
+    if (
+      normalized.goalkeeperProtocolPrimaryPlayerId
+      && normalized.goalkeeperProtocolPrimaryPlayerId === normalized.goalkeeperProtocolSecondaryPlayerId
+    ) {
+      setResponsibilitiesError('El jugador principal y la segunda opción deben ser distintos.');
+      return;
+    }
+    setResponsibilitiesSaving(true);
+    setResponsibilitiesStatus('');
+    setResponsibilitiesError('');
+    try {
+      const payload = {
+        goalkeeper_protocol_primary_player_id: normalized.goalkeeperProtocolPrimaryPlayerId || null,
+        goalkeeper_protocol_secondary_player_id: normalized.goalkeeperProtocolSecondaryPlayerId || null,
+      };
+      const { data, error } = await supabase
+        .from('partidos')
+        .update(payload)
+        .eq('id', match.id)
+        .select('goalkeeper_protocol_primary_player_id,goalkeeper_protocol_secondary_player_id')
+        .single();
+      if (error) throw error;
+      const saved = normalizeMatchPrintResponsibilities(data || payload);
+      setMatchResponsibilities(saved);
+      onMatchPrintSettingsChange?.(saved);
+      setResponsibilitiesStatus('Responsabilidades del partido guardadas.');
+    } catch (saveError) {
+      console.error('Error guardando responsabilidades de IMPRESIÓN:', saveError);
+      setResponsibilitiesError(saveError.message || 'No se pudieron guardar las responsabilidades del partido.');
+    } finally {
+      setResponsibilitiesSaving(false);
+    }
   };
 
   const handlePrint = () => {
@@ -1744,6 +1814,7 @@ export default function MatchPrintTab({
           system={printData.system}
           kit={kit}
           captainPlayerId={printData.captainPlayerId}
+          goalkeeperProtocol={goalkeeperProtocol}
         />
       )] : [];
     }
@@ -2102,10 +2173,45 @@ export default function MatchPrintTab({
       <div ref={sheetRef} className={`print-sheet-frame print-current-sheet ${['abp_ofensiva', 'abp_defensiva', 'plan_partido'].includes(printView) ? 'print-sheet-frame-landscape' : ''}`}>
         {printView === 'alineacion' ? (
           <div>
-            <div className="print-hidden mb-4 flex justify-center">
-              <button type="button" onClick={() => openDuplicateModal('lineup')} className="rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15">
-                Copiar alineación desde otro partido
-              </button>
+            <div className="print-hidden mb-4 space-y-3">
+              <section className="rounded-3xl border border-white/[0.07] bg-[#091428]/90 p-4 shadow-glow sm:p-5" aria-labelledby="match-responsibilities-title">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p id="match-responsibilities-title" className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Responsabilidades</p>
+                    <h4 className="mt-1 text-sm font-black uppercase tracking-[0.12em] text-white">Protocolo portero · salida 1'</h4>
+                  </div>
+                  <button type="button" onClick={saveMatchResponsibilities} disabled={responsibilitiesSaving} className="min-h-11 rounded-xl bg-caudal-electric px-4 text-xs font-black text-slate-950 disabled:cursor-wait disabled:opacity-50">
+                    {responsibilitiesSaving ? 'Guardando…' : 'Guardar responsabilidades'}
+                  </button>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <label className="grid gap-1.5">
+                    <span className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Jugador principal *</span>
+                    <select value={matchResponsibilities.goalkeeperProtocolPrimaryPlayerId} onChange={(event) => updateGoalkeeperProtocol('primary', event.target.value)} className="min-h-11 rounded-xl border border-white/10 bg-white px-3 py-2 text-sm font-black text-slate-950 outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric">
+                      <option value="">Seleccionar jugador</option>
+                      {goalkeeperProtocol.goalkeeperProtocolPrimaryPlayerId && !goalkeeperProtocol.primaryIsAvailable ? <option value={goalkeeperProtocol.goalkeeperProtocolPrimaryPlayerId}>{goalkeeperProtocol.primaryName || 'Jugador no localizado'} · FUERA DE CONVOCATORIA</option> : null}
+                      {responsibilityPlayers.map((player) => <option key={player.id} value={player.id}>{getPlayerDisplayName(player)}</option>)}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Segunda opción</span>
+                    <select value={matchResponsibilities.goalkeeperProtocolSecondaryPlayerId} onChange={(event) => updateGoalkeeperProtocol('secondary', event.target.value)} className="min-h-11 rounded-xl border border-white/10 bg-white px-3 py-2 text-sm font-black text-slate-950 outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric">
+                      <option value="">Sin segunda opción</option>
+                      {goalkeeperProtocol.goalkeeperProtocolSecondaryPlayerId && !goalkeeperProtocol.secondaryIsAvailable ? <option value={goalkeeperProtocol.goalkeeperProtocolSecondaryPlayerId}>{goalkeeperProtocol.secondaryName || 'Jugador no localizado'} · FUERA DE CONVOCATORIA</option> : null}
+                      {responsibilityPlayers.map((player) => <option key={player.id} value={player.id} disabled={String(player.id) === matchResponsibilities.goalkeeperProtocolPrimaryPlayerId}>{getPlayerDisplayName(player)}</option>)}
+                    </select>
+                  </label>
+                </div>
+                {!goalkeeperProtocol.primaryIsAvailable && goalkeeperProtocol.goalkeeperProtocolPrimaryPlayerId ? <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs font-bold text-amber-100">El jugador principal ya no está incluido en la convocatoria actual. Selecciona otro responsable.</p> : null}
+                {!goalkeeperProtocol.secondaryIsAvailable && goalkeeperProtocol.goalkeeperProtocolSecondaryPlayerId ? <p className="mt-2 rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs font-bold text-amber-100">La segunda opción ya no está incluida en la convocatoria actual.</p> : null}
+                {responsibilitiesError ? <p role="alert" className="mt-3 rounded-xl bg-red-500/10 px-3 py-2 text-xs font-bold text-red-100">{responsibilitiesError}</p> : null}
+                {responsibilitiesStatus ? <p role="status" className="mt-3 rounded-xl bg-emerald-400/10 px-3 py-2 text-xs font-bold text-emerald-100">{responsibilitiesStatus}</p> : null}
+              </section>
+              <div className="flex justify-center">
+                <button type="button" onClick={() => openDuplicateModal('lineup')} className="rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15">
+                  Copiar alineación desde otro partido
+                </button>
+              </div>
             </div>
             <LineupPrintSheet
               match={match}
@@ -2115,6 +2221,7 @@ export default function MatchPrintTab({
               system={printData.system}
               kit={kit}
               captainPlayerId={printData.captainPlayerId}
+              goalkeeperProtocol={goalkeeperProtocol}
             />
           </div>
         ) : printView === 'plan_partido' ? (

@@ -1,6 +1,6 @@
 import PlayerShirt from './PlayerShirt';
 
-export default function FootballPitchPrint({ players = [], coordinates = [], kit = 'home', teamType = 'own' }) {
+export default function FootballPitchPrint({ players = [], coordinates = [], kit = 'home', teamType = 'own', goalkeeperProtocolPrimaryPlayerId = '' }) {
   return (
     <div className="print-pitch" aria-label="Campo táctico">
       <div className="print-pitch-line halfway" />
@@ -19,7 +19,7 @@ export default function FootballPitchPrint({ players = [], coordinates = [], kit
             className={`print-player-slot ${goalkeeper ? 'goalkeeper-slot' : ''}`}
             style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
           >
-            <PlayerShirt player={player} teamType={playerTeamType} kit={kit} assigned={Boolean(player)} goalkeeper={goalkeeper} captain={Boolean(player?.isCaptain)} />
+            <PlayerShirt player={player} teamType={playerTeamType} kit={kit} assigned={Boolean(player)} goalkeeper={goalkeeper} captain={Boolean(player?.isCaptain)} protocolPrimary={Boolean(player?.id && String(player.id) === String(goalkeeperProtocolPrimaryPlayerId))} />
           </div>
         );
       })}

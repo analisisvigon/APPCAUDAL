@@ -1880,6 +1880,8 @@ const partidoPostFieldMap = {
 const partidoWritableFieldMap = {
   ...partidoPreFieldMap,
   ...partidoPostFieldMap,
+  goalkeeperProtocolPrimaryPlayerId: 'goalkeeper_protocol_primary_player_id',
+  goalkeeperProtocolSecondaryPlayerId: 'goalkeeper_protocol_secondary_player_id',
 };
 
 Object.keys(emptyMatchForm)
@@ -1916,6 +1918,8 @@ const normalizeSupabasePartido = (match) =>
     delegatedDataStatus: match.delegated_data_status || match.delegatedDataStatus || '',
     delegatedReviewedAt: match.delegated_reviewed_at || match.delegatedReviewedAt || '',
     captainPlayerId: match.captain_player_id || null,
+    goalkeeperProtocolPrimaryPlayerId: match.goalkeeper_protocol_primary_player_id || match.goalkeeperProtocolPrimaryPlayerId || null,
+    goalkeeperProtocolSecondaryPlayerId: match.goalkeeper_protocol_secondary_player_id || match.goalkeeperProtocolSecondaryPlayerId || null,
     equipoRivalId: match.equipo_rival_id || null,
   });
 
@@ -34433,6 +34437,9 @@ function App() {
                     onNavigateMatchSection={(section) => openMatchPage(selectedMatch, section)}
                     onMatchPlanDirtyChange={setPrintMatchPlanDirty}
                     onMatchPlanNavigationGuardReady={registerPrintMatchPlanNavigationGuard}
+                    onMatchPrintSettingsChange={(settings) => setMatches((current) => current.map((item) => (
+                      item.id === selectedMatch.id ? { ...item, ...settings } : item
+                    )))}
                   />
                 ) : (
                   <>

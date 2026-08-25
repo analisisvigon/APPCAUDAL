@@ -1,6 +1,6 @@
 import { buildPrintPlayerShirtModel } from '../../utils/printPlayerShirt';
 
-export default function PlayerShirt({ player, teamType = 'own', kit = 'home', assigned, goalkeeper = false, compact = false, captain = false }) {
+export default function PlayerShirt({ player, teamType = 'own', kit = 'home', assigned, goalkeeper = false, compact = false, captain = false, protocolPrimary = false }) {
   const model = buildPrintPlayerShirtModel({ player, teamType, kit, assigned });
 
   return (
@@ -23,6 +23,7 @@ export default function PlayerShirt({ player, teamType = 'own', kit = 'home', as
       <span className="print-shirt-number">{model.number}</span>
       <span className="print-shirt-name">{model.identity}</span>
       {captain ? <span className="print-captain-badge">C</span> : null}
+      {protocolPrimary ? <span className="print-protocol-badge">1'</span> : null}
     </div>
   );
 }
