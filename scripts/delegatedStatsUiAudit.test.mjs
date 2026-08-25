@@ -37,8 +37,14 @@ assert.match(component, /disabled=\{Boolean\(filters\.playerId\)\}/, 'evita comb
 assert.match(component, /buildDelegatedOfficialTeamScore[\s\S]*buildDelegatedOfficialGoalEvents/, 'goles de resumen, equipo y evolución usan la fuente oficial');
 assert.match(component, /Sin datos suficientes del rival/, 'no representa ausencia rival como ceros confirmados');
 assert.match(component, /hasUnprocessedValidatedMatch[\s\S]*sus eventos siguen pendientes/, 'explica el estado Validado heredado sin reviewed');
+assert.match(component, /DELEGATED_PANEL_PLAYER_STAT_FIELDS[\s\S]*DELEGATED_PANEL_STAT_FIELDS/, 'la UI consume catálogos específicos del panel');
+assert.match(component, /PANEL_EVENT_CATALOG = DELEGATED_EVENT_CATALOG\.filter[\s\S]*DELEGATED_PANEL_EXCLUDED_STAT_KEYS/, 'Más filtros reutiliza la exclusión central de métricas retiradas');
+assert.doesNotMatch(component, /REG Regates|REC Recuperaciones|Más regates|Más recuperaciones|robos \+ recuperaciones/i, 'no quedan columnas, leyendas, rankings ni derivados visibles de las métricas retiradas');
+assert.doesNotMatch(component, /exportar|descargar|\.csv|\.pdf/i, 'el panel no expone exportaciones de estas métricas');
 assert.doesNotMatch(component, /MVP|rating|nota automática|posesión|xG|xA/i, 'no inventa valoraciones ni métricas sin fuente');
 assert.match(app, /<DelegatedStatsDashboard/, 'Registro Delegado monta el nuevo dashboard');
+assert.match(app, /delegatedInactiveStatEventTypes = new Set\(\['regate', 'recuperacion'\]\)[\s\S]*delegatedActiveStatEventCatalog/, 'el registro excluye regate y recuperación de su catálogo activo');
+assert.match(app, /delegatedActiveStatEventCatalog\.filter[\s\S]*histórico/, 'los selectores ya no ofrecen acciones nuevas y conservan la lectura histórica');
 assert.match(app, /matchesWithDelegatedEvents = matches\.filter[\s\S]*visibleMatches = matchesWithDelegatedEvents[\s\S]*<DelegatedStatsDashboard[\s\S]*matches=\{visibleMatches\}/, 'el dashboard recibe los partidos con quickEvents cargados desde el estado principal');
 assert.doesNotMatch(app, /renderDelegatedRegistrySectionLegacy/, 'no conserva dos implementaciones del panel');
 

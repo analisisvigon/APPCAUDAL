@@ -24,6 +24,11 @@ export const DELEGATED_STAT_FIELDS = [
   { key: 'foulsReceived', label: 'Faltas recibidas', short: 'FREC' },
 ];
 
+export const DELEGATED_PANEL_EXCLUDED_STAT_KEYS = new Set(['dribbles', 'recoveries']);
+export const DELEGATED_PANEL_STAT_FIELDS = DELEGATED_STAT_FIELDS.filter(
+  (field) => !DELEGATED_PANEL_EXCLUDED_STAT_KEYS.has(field.key),
+);
+
 export const OFFICIAL_PLAYER_STAT_FIELDS = [
   { key: 'goals', label: 'Goles', short: 'G', source: 'official' },
   { key: 'assists', label: 'Asistencias', short: 'A', source: 'official' },
@@ -31,10 +36,13 @@ export const OFFICIAL_PLAYER_STAT_FIELDS = [
 ];
 export const DELEGATED_PLAYER_ACTION_FIELDS = DELEGATED_STAT_FIELDS.filter((field) => !field.teamOnly && field.key !== 'goals');
 export const DELEGATED_PLAYER_STAT_FIELDS = [...OFFICIAL_PLAYER_STAT_FIELDS, ...DELEGATED_PLAYER_ACTION_FIELDS];
+export const DELEGATED_PANEL_PLAYER_STAT_FIELDS = DELEGATED_PLAYER_STAT_FIELDS.filter(
+  (field) => !DELEGATED_PANEL_EXCLUDED_STAT_KEYS.has(field.key),
+);
 export const DELEGATED_PERIODS = ['0-15', '16-30', '31-45', '46-60', '61-75', '76-90+'];
 export const DELEGATED_EVOLUTION_SCOPES = ['5', '10', 'season'];
-export const DELEGATED_HALF_FIELDS = DELEGATED_STAT_FIELDS;
-export const DELEGATED_TEMPORAL_FIELDS = DELEGATED_STAT_FIELDS;
+export const DELEGATED_HALF_FIELDS = DELEGATED_PANEL_STAT_FIELDS;
+export const DELEGATED_TEMPORAL_FIELDS = DELEGATED_PANEL_STAT_FIELDS;
 
 const safeArray = (value) => (Array.isArray(value) ? value : []);
 const safeObject = (value) => (value && typeof value === 'object' && !Array.isArray(value) ? value : {});
@@ -84,24 +92,22 @@ export const calculateDelegatedDerivedStats = (stats = {}) => ({
   onTargetEffectiveness: Number(stats.shotsOnTarget) > 0
     ? round((Number(stats.goals) / Number(stats.shotsOnTarget)) * 100)
     : null,
-  registeredDefensiveActions: Number(stats.steals || 0) + Number(stats.recoveries || 0),
-  recoveryBalance: Number(stats.steals || 0) + Number(stats.recoveries || 0) - Number(stats.turnovers || 0),
 });
 
-export const calculateDelegatedPerMatch = (stats = {}, matchesPlayed) => {
+export const calculateDelegatedPerMatch = (stats = {}, matchesPlayed, requestedFields) => {
   if (!Number.isFinite(Number(matchesPlayed)) || Number(matchesPlayed) <= 0) return null;
-  const fields = Object.prototype.hasOwnProperty.call(stats, 'assists')
+  const fields = requestedFields || (Object.prototype.hasOwnProperty.call(stats, 'assists')
     ? DELEGATED_PLAYER_STAT_FIELDS
-    : DELEGATED_STAT_FIELDS;
+    : DELEGATED_STAT_FIELDS);
   return fields.reduce((result, field) => ({
     ...result,
     [field.key]: round(Number(stats[field.key] || 0) / Number(matchesPlayed), 2),
   }), {});
 };
 
-export const calculateDelegatedPer90 = (stats = {}, minutes) => {
+export const calculateDelegatedPer90 = (stats = {}, minutes, fields = DELEGATED_PLAYER_STAT_FIELDS) => {
   if (!Number.isFinite(Number(minutes)) || Number(minutes) <= 0) return null;
-  return DELEGATED_PLAYER_STAT_FIELDS.reduce((result, field) => ({
+  return fields.reduce((result, field) => ({
     ...result,
     [field.key]: round((Number(stats[field.key] || 0) / Number(minutes)) * 90, 2),
   }), {});
@@ -323,7 +329,7 @@ const buildPlayerMatchRows = ({ matches, playerEvents, participation, officialBy
   })
 );
 
-export const buildDelegatedRecentComparison = (matchRows = [], fields = DELEGATED_PLAYER_STAT_FIELDS, window = 5) => {
+export const buildDelegatedRecentComparison = (matchRows = [], fields = DELEGATED_PANEL_PLAYER_STAT_FIELDS, window = 5) => {
   const rows = safeArray(matchRows);
   if (rows.length < window) return { sufficient: false, sample: rows.length, window, rows: [] };
   const recent = rows.slice(-window);
@@ -404,8 +410,8 @@ export const buildDelegatedPlayerRows = ({ events = [], matches = [], players = 
       participationReliable: participation.reliable,
       matchesPlayed,
       matches: matchesPlayed,
-      average: participation.reliable ? calculateDelegatedPerMatch(stats, participation.matchesPlayed) : null,
-      per90: participation.minutesReliable ? calculateDelegatedPer90(stats, participation.minutes) : null,
+      average: participation.reliable ? calculateDelegatedPerMatch(stats, participation.matchesPlayed, DELEGATED_PANEL_PLAYER_STAT_FIELDS) : null,
+      per90: participation.minutesReliable ? calculateDelegatedPer90(stats, participation.minutes, DELEGATED_PANEL_PLAYER_STAT_FIELDS) : null,
       validatedEvents: playerEvents.length,
       matchRows,
       recent: buildDelegatedRecentComparison(matchRows),
@@ -417,9 +423,7 @@ export const buildDelegatedRankings = (playerRows = []) => [
   ['goals', 'Máximo goleador'],
   ['shots', 'Más tiros'],
   ['shotsOnTarget', 'Más tiros a puerta'],
-  ['dribbles', 'Más regates'],
   ['crosses', 'Más centros'],
-  ['recoveries', 'Más recuperaciones'],
   ['steals', 'Más robos'],
   ['foulsReceived', 'Más faltas recibidas'],
 ].flatMap(([key, label]) => {
@@ -439,10 +443,10 @@ export const buildDelegatedTeamProfile = ({ events = [], matches = [], matchCoun
   const goalFilterActive = (filters.eventType && filters.eventType !== 'todos') || (filters.period && filters.period !== 'todos');
   const scopedOfficialGoals = buildDelegatedOfficialGoalEvents(matches, filters).filter((event) => getDelegatedEventSide(event) === side).length;
   if (officialScore.reliable) totals.goals = goalFilterActive ? scopedOfficialGoals : officialScore.totals[side];
-  const delegatedAverage = hasSample ? calculateDelegatedPerMatch(totals, denominator) : null;
+  const delegatedAverage = hasSample ? calculateDelegatedPerMatch(totals, denominator, DELEGATED_PANEL_STAT_FIELDS) : null;
   const average = officialScore.reliable
     ? {
-      ...DELEGATED_STAT_FIELDS.reduce((result, field) => ({ ...result, [field.key]: delegatedAverage?.[field.key] ?? null }), {}),
+      ...DELEGATED_PANEL_STAT_FIELDS.reduce((result, field) => ({ ...result, [field.key]: delegatedAverage?.[field.key] ?? null }), {}),
       goals: goalFilterActive ? round(totals.goals / officialScore.matchCount, 2) : officialScore.average[side],
     }
     : delegatedAverage;
@@ -641,7 +645,7 @@ export const buildDelegatedMatchSampleComparison = ({
   matches = [],
   filters = {},
   players = [],
-  fields = filters.playerId ? DELEGATED_PLAYER_STAT_FIELDS : DELEGATED_STAT_FIELDS,
+  fields = filters.playerId ? DELEGATED_PANEL_PLAYER_STAT_FIELDS : DELEGATED_PANEL_STAT_FIELDS,
   minimumSample = 5,
 } = {}) => {
   const matchId = String(filters.matchId || '');

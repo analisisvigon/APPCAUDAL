@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import {
+  DELEGATED_PANEL_PLAYER_STAT_FIELDS,
+  DELEGATED_PANEL_STAT_FIELDS,
   aggregateDelegatedSides,
   aggregateDelegatedStats,
   buildDelegatedContextComparison,
@@ -12,6 +14,7 @@ import {
   buildDelegatedOfficialPlayerProduction,
   buildDelegatedOfficialTeamScore,
   buildDelegatedPlayerRows,
+  buildDelegatedRankings,
   buildDelegatedStatsDataset,
   buildDelegatedTeamProfile,
   buildDelegatedTemporalDistribution,
@@ -24,6 +27,9 @@ import {
   getDelegatedMatchResult,
   getDelegatedMatchVenue,
 } from './delegatedStats.js';
+
+assert.deepEqual(DELEGATED_PANEL_STAT_FIELDS.some((field) => ['dribbles', 'recoveries'].includes(field.key)), false, 'el panel colectivo excluye regates y recuperaciones');
+assert.deepEqual(DELEGATED_PANEL_PLAYER_STAT_FIELDS.some((field) => ['dribbles', 'recoveries'].includes(field.key)), false, 'el panel individual excluye regates y recuperaciones');
 
 const playerA = { id: '11111111-1111-4111-8111-111111111111', name: 'Jugador A' };
 const playerB = { id: '22222222-2222-4222-8222-222222222222', name: 'Jugador B' };
@@ -95,9 +101,9 @@ assert.equal(playerRow.minutes, 90);
 assert.equal(playerRow.derived.shotAccuracy, 40);
 assert.equal(playerRow.derived.shotEffectiveness, 0);
 assert.deepEqual(playerRow.per90, {
-  goals: 0, assists: 0, goalContributions: 0, shots: 5, shotsOnTarget: 2, dribbles: 0, crosses: 3, turnovers: 5,
-  steals: 2, recoveries: 4, foulsCommitted: 0, foulsReceived: 0,
-}, 'con 90 minutos, por90 coincide con los totales individuales');
+  goals: 0, assists: 0, goalContributions: 0, shots: 5, shotsOnTarget: 2, crosses: 3, turnovers: 5,
+  steals: 2, foulsCommitted: 0, foulsReceived: 0,
+}, 'el Por90 presentado conserva las métricas activas y omite regates y recuperaciones');
 assert.equal(calculateDelegatedPer90(playerRow.stats, null), null, 'sin minutos fiables no inventa por90');
 assert.equal(calculateDelegatedDerivedStats({ shots: 0, shotsOnTarget: 0 }).shotAccuracy, null, 'sin tiros muestra sin dato, no 0%');
 const unknownMinutesMatch = match('unknown-minutes', '2026-08-14', 'league', [baseEvent('tiro')], '');
@@ -241,6 +247,7 @@ assert.equal(restoredSeasonA.stats.shots, 12, 'volver a Todos los partidos recup
 assert.deepEqual([restoredSeasonA.stats.goals, restoredSeasonA.stats.assists], [1, 1], 'volver a Todos los partidos recupera la producción oficial de temporada');
 const matchComparison = buildDelegatedMatchSampleComparison({ matches: individualSeason, filters: { matchId: individualMatchId, team: 'caudal', scope: 'season' }, players: [playerA, playerB] });
 assert.equal(matchComparison.sufficient, true);
+assert.equal(matchComparison.rows.some((row) => ['dribbles', 'recoveries'].includes(row.key)), false, 'la comparativa del partido omite las dos métricas retiradas');
 assert.deepEqual([matchComparison.rows.find((row) => row.key === 'shots').selected, matchComparison.rows.find((row) => row.key === 'shots').average], [3, 1.2], 'partido seleccionado compara su total con la media de los 10 partidos');
 assert.deepEqual([matchComparison.rows.find((row) => row.key === 'goals').selected, matchComparison.rows.find((row) => row.key === 'goals').average], [2, 0.2], 'la comparación colectiva utiliza goles oficiales');
 const playerMatchComparison = buildDelegatedMatchSampleComparison({ matches: individualSeason, filters: { matchId: individualMatchId, playerId: playerA.id, team: 'caudal', scope: 'season' }, players: [playerA, playerB] });
@@ -369,9 +376,13 @@ const allPeriods = ['1', '16', '31', '46', '61', '76', '94'].map((minute) => bas
 const periodDistribution = buildDelegatedTemporalDistribution(allPeriods, 'shots');
 assert.deepEqual(periodDistribution.rows.map((row) => row.caudal), [1, 1, 1, 1, 1, 2], 'todos los tramos se calculan y >90 entra en 76-90+');
 assert.equal(buildDelegatedTemporalMatrix(allPeriods, 1).rows.find((row) => row.key === 'shots').values.length, 6, 'la matriz contiene los seis tramos');
+assert.equal(buildDelegatedTemporalMatrix(allPeriods, 1).rows.some((row) => ['dribbles', 'recoveries'].includes(row.key)), false, 'la matriz temporal no presenta regates ni recuperaciones');
 const halves = buildDelegatedHalfComparison(allPeriods);
+assert.equal(halves.rows.some((row) => ['dribbles', 'recoveries'].includes(row.key)), false, 'la comparación por partes no presenta regates ni recuperaciones');
 assert.equal(halves.rows.find((row) => row.key === 'shots').first, 3, 'primera parte usa minutos <=45');
 assert.equal(halves.rows.find((row) => row.key === 'shots').second, 4, 'segunda parte usa minutos >45');
+
+assert.equal(buildDelegatedRankings([{ stats: { dribbles: 5, recoveries: 4 }, player: playerA }]).length, 0, 'los rankings no generan destacados de métricas retiradas');
 
 assert.deepEqual(calculateDelegatedMovingAverage([1, 2, 3, 4, 5, 6], 5), [null, null, null, null, 3, 4], 'media móvil de cinco sin valores prematuros');
 assert.deepEqual(calculateDelegatedMovingAverage([1, 2, null, 4, 5], 5), [null, null, null, null, null], 'la media móvil no rellena muestras incompletas');

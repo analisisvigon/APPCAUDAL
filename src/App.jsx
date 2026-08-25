@@ -2181,6 +2181,10 @@ const delegatedStatEventCatalog = [
   { tipoEvento: 'falta_recibida', label: 'Falta recibida', short: 'FREC', group: 'Faltas', tone: 'defensive', requiresPlayer: true, effects: EVENT_STAT_EFFECTS.falta_recibida.team },
   { tipoEvento: 'corner', label: 'Córner', short: 'COR', group: 'Ataque', tone: 'offensive', requiresPlayer: false, effects: EVENT_STAT_EFFECTS.corner.team },
 ];
+const delegatedInactiveStatEventTypes = new Set(['regate', 'recuperacion']);
+const delegatedActiveStatEventCatalog = delegatedStatEventCatalog.filter(
+  (event) => !delegatedInactiveStatEventTypes.has(event.tipoEvento),
+);
 const delegatedEventDefinitions = [
   ...['caudal', 'rival'].flatMap((side) => delegatedStatEventCatalog.map((event) => ({
     ...event,
@@ -2199,9 +2203,7 @@ const delegatedEventDefinitions = [
 const delegatedCounterPairs = [
   { label: 'Tiros', caudal: 'tiro', rival: 'tiro' },
   { label: 'Tiros puerta', caudal: 'tiro_puerta', rival: 'tiro_puerta' },
-  { label: 'Regates', caudal: 'regate', rival: 'regate' },
   { label: 'Córners', caudal: 'corner', rival: 'corner' },
-  { label: 'Recuperaciones', caudal: 'recuperacion', rival: 'recuperacion' },
   { label: 'Pérdidas', caudal: 'perdida', rival: 'perdida' },
 ];
 
@@ -18094,7 +18096,8 @@ function App() {
               {delegatedEventDraft.eventId ? (
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <select value={delegatedEventDraft.tipoEvento} onChange={(event) => { const next = delegatedEventDefinitions.find((item) => item.tipoEvento === event.target.value && item.side === delegatedEventDraft.side); setDelegatedEventDraft((current) => ({ ...current, ...(next || {}), eventId: current.eventId, minute: current.minute, jugadorId: current.jugadorId })); }} className="rounded-xl bg-white px-3 py-3 text-sm font-black text-slate-950">
-                    {delegatedStatEventCatalog.filter((item) => item.tipoEvento !== 'gol').map((item) => <option key={item.tipoEvento} value={item.tipoEvento}>{item.label}</option>)}
+                    {delegatedInactiveStatEventTypes.has(delegatedEventDraft.tipoEvento) ? <option value={delegatedEventDraft.tipoEvento} disabled>{delegatedEventDraft.label} · histórico</option> : null}
+                    {delegatedActiveStatEventCatalog.filter((item) => item.tipoEvento !== 'gol').map((item) => <option key={item.tipoEvento} value={item.tipoEvento}>{item.label}</option>)}
                   </select>
                   <select value={delegatedEventDraft.side} onChange={(event) => setDelegatedEventDraft((current) => ({ ...current, side: event.target.value, jugadorId: event.target.value === 'rival' ? '' : current.jugadorId }))} className="rounded-xl bg-white px-3 py-3 text-sm font-black text-slate-950">
                     <option value="caudal">Caudal</option>
@@ -19668,8 +19671,8 @@ function App() {
                           disabled={isSaving}
                           className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white"
                         >
-                          {delegatedEventDefinitions.map((item) => (
-                            <option key={`${item.tipoEvento}-${item.key}`} value={item.tipoEvento}>{item.label}</option>
+                          {delegatedEventDefinitions.filter((item) => !delegatedInactiveStatEventTypes.has(item.tipoEvento) || item.tipoEvento === getQuickEventBaseType(event.tipoEvento)).map((item) => (
+                            <option key={`${item.tipoEvento}-${item.key}`} value={item.tipoEvento} disabled={delegatedInactiveStatEventTypes.has(item.tipoEvento)}>{item.label}{delegatedInactiveStatEventTypes.has(item.tipoEvento) ? ' · histórico' : ''}</option>
                           ))}
                         </select>
                         <select
