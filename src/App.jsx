@@ -5269,6 +5269,7 @@ function App() {
   const [tacticalComparePlayerId, setTacticalComparePlayerId] = useState('');
   const [rivalSystemPreview, setRivalSystemPreview] = useState(null);
   const [rivalSystemApplying, setRivalSystemApplying] = useState(false);
+  const [rivalVariantEditor, setRivalVariantEditor] = useState({ value: '', editingIndex: null, saving: false });
   const [editingTeamPlayerIndex, setEditingTeamPlayerIndex] = useState(null);
   const [rivalPlayerModal, setRivalPlayerModal] = useState({ open: false, mode: 'create', originalName: '', draft: null });
   const [playerTeamManager, setPlayerTeamManager] = useState({ open: false, playerId: null, newTeamId: '', changeDate: '', saving: false, error: '' });
@@ -24547,6 +24548,43 @@ function App() {
     });
   };
 
+  const persistSelectedTeamTacticalVariants = async (variants) => {
+    if (!selectedTeam) return;
+    const nextVariants = normalizeTeamTacticalVariants(variants)
+      .filter((variant) => variant.toLocaleLowerCase('es') !== String(selectedTeam.system || '').trim().toLocaleLowerCase('es'));
+    setRivalVariantEditor((current) => ({ ...current, saving: true }));
+    try {
+      const { error } = await supabase
+        .from('equipos_rivales')
+        .update({ tactical_variants: nextVariants })
+        .eq('id', selectedTeam.id);
+      if (error) throw error;
+      setTeams((current) => current.map((team) => team.id === selectedTeam.id ? { ...team, tacticalVariants: nextVariants } : team));
+      setTeamFormState((current) => editingTeamId === selectedTeam.id ? { ...current, tacticalVariants: nextVariants } : current);
+      setRivalVariantEditor({ value: '', editingIndex: null, saving: false });
+      setSaveStatus('Variantes tácticas guardadas.');
+    } catch (variantError) {
+      console.error('[RIVAL_VARIANTS_SAVE_ERROR]', variantError);
+      setRivalVariantEditor((current) => ({ ...current, saving: false }));
+      setSaveStatus(variantError.message || 'No se pudieron guardar las variantes tácticas. Revisa la migración de Supabase.');
+    }
+  };
+
+  const saveSelectedTeamTacticalVariant = async () => {
+    const value = String(rivalVariantEditor.value || '').trim();
+    if (!value || !selectedTeam) return;
+    const variants = getTeamPresentationVariants(selectedTeam);
+    if (Number.isInteger(rivalVariantEditor.editingIndex)) variants[rivalVariantEditor.editingIndex] = value;
+    else variants.push(value);
+    await persistSelectedTeamTacticalVariants(variants);
+  };
+
+  const deleteSelectedTeamTacticalVariant = async (variantIndex) => {
+    if (!selectedTeam) return;
+    const variants = getTeamPresentationVariants(selectedTeam).filter((_, index) => index !== variantIndex);
+    await persistSelectedTeamTacticalVariants(variants);
+  };
+
   const confirmRivalSystemPreview = async () => {
     if (!selectedTeam || !rivalSystemPreview || rivalSystemPreview.teamId !== selectedTeam.id || rivalSystemApplying) return;
     setRivalSystemApplying(true);
@@ -30180,8 +30218,8 @@ function App() {
           />
         ) : null}
         {activeTab === 'Equipos' ? (
-          <main className="space-y-4">
-            <section className="rounded-[1.35rem] border border-white/10 bg-white/[0.04] px-4 py-3 shadow-[0_14px_40px_rgba(0,0,0,0.14)] backdrop-blur-md sm:px-5">
+          <main className={selectedTeam && !teamFieldEditMode ? 'space-y-0' : 'space-y-4'}>
+            {!selectedTeam || teamFieldEditMode ? <section className="rounded-[1.35rem] border border-white/10 bg-white/[0.04] px-4 py-3 shadow-[0_14px_40px_rgba(0,0,0,0.14)] backdrop-blur-md sm:px-5">
               <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                 <div>
                   <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">Equipos / Rivales</p>
@@ -30229,7 +30267,7 @@ function App() {
               ) : null}
               {teamsLoading ? <p className="mt-3 text-sm text-slate-400">Cargando equipos...</p> : null}
               {teamsError ? <p className="mt-3 text-sm text-red-200">{teamsError}</p> : null}
-            </section>
+            </section> : null}
 
             {selectedTeam ? (
               <>
@@ -30490,8 +30528,8 @@ function App() {
                   setRivalQuickPlacement({ playerName: '', mode: '', slotIndex: 0, reserveIndex: 0 });
                 };
                 return (
-                  <section className={isPresentationMode ? 'space-y-2' : 'space-y-4'}>
-                    <div className={`flex flex-col border border-white/10 bg-[#091428]/85 shadow-[0_16px_48px_rgba(0,0,0,0.18)] lg:flex-row lg:items-center lg:justify-between ${isPresentationMode ? 'gap-2 rounded-2xl p-2.5' : 'gap-4 rounded-[1.35rem] p-4'}`}>
+                  <section className={isPresentationMode ? 'space-y-1.5' : 'space-y-4'}>
+                    <div className={`flex flex-col border border-white/10 bg-[#091428]/85 shadow-[0_16px_48px_rgba(0,0,0,0.18)] lg:flex-row lg:items-center lg:justify-between ${isPresentationMode ? 'gap-1.5 rounded-2xl p-2' : 'gap-4 rounded-[1.35rem] p-4'}`}>
                       <div className={`flex min-w-0 items-center ${isPresentationMode ? 'gap-3' : 'gap-4'}`}>
                         <button type="button" onClick={() => setSelectedTeamId(null)} className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-2 text-sm font-bold text-slate-200 transition hover:bg-white/10">
                           Volver
@@ -30556,9 +30594,9 @@ function App() {
                     ) : null}
 
                     {isPresentationMode ? (
-                      <div className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2.5">
+                      <div className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2">
                         <p className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">Resumen rival</p>
-                        <div className="mt-2 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-5">
+                        <div className="mt-1.5 grid gap-1 sm:grid-cols-2 xl:grid-cols-5">
                           {[
                             ['Destacados', keyPlayers.length ? keyPlayers.map(displayPlayerName).join(', ') : '-'],
                             ['Capitán', captainPlayer ? displayPlayerName(captainPlayer) : '-'],
@@ -30566,7 +30604,7 @@ function App() {
                             ['Sancionados', rivalPlayers.filter((player) => player.suspended).length ? rivalPlayers.filter((player) => player.suspended).map(displayPlayerName).join(', ') : '-'],
                             ['Riesgo amarillas', yellowRiskPlayers.length ? yellowRiskPlayers.map(displayPlayerName).join(', ') : '-'],
                           ].map(([label, value]) => (
-                            <div key={label} className="min-w-0 rounded-xl border border-white/[0.06] bg-slate-950/20 px-2.5 py-2">
+                            <div key={label} className="min-w-0 rounded-xl border border-white/[0.06] bg-slate-950/20 px-2.5 py-1.5">
                               <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
                               <p className="mt-1 text-[11px] font-bold leading-snug text-white">{value}</p>
                             </div>
@@ -30588,24 +30626,27 @@ function App() {
                     </div>
                     )}
 
-                    <section className={`grid gap-4 ${teamFieldEditMode ? 'xl:grid-cols-[minmax(0,3fr)_minmax(260px,1fr)]' : 'lg:grid-cols-[minmax(0,70fr)_minmax(310px,30fr)]'}`}>
-                      <div className={`bg-[#091428]/80 shadow-[0_18px_52px_rgba(0,0,0,0.22)] ${teamFieldEditMode ? 'rounded-[1.35rem] border border-white/10 p-4' : 'rounded-2xl border border-white/[0.06] p-2.5'}`}>
+                    <section className={`grid ${teamFieldEditMode ? 'gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(260px,1fr)]' : 'gap-2.5 lg:grid-cols-[minmax(0,70fr)_minmax(310px,30fr)]'}`}>
+                      <div className={`bg-[#091428]/80 shadow-[0_18px_52px_rgba(0,0,0,0.22)] ${teamFieldEditMode ? 'rounded-[1.35rem] border border-white/10 p-4' : 'rounded-2xl border border-white/[0.06] p-1.5'}`}>
                         {teamFieldEditMode ? <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div>
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Sistema y plantilla</p>
                             <h4 className="mt-1 text-lg font-black text-white">Campo principal</h4>
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            <select
-                              value={selectedTeam.system || ''}
-                              onChange={(event) => updateSelectedTeamSystem(event.target.value)}
-                              className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-sm font-bold text-slate-100"
-                            >
-                              <option value="">Sistema pendiente</option>
-                              {gameSystems.map((system) => (
-                                <option key={system} value={system}>{system}</option>
-                              ))}
-                            </select>
+                            <label className="grid gap-1">
+                              <span className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Sistema principal</span>
+                              <select
+                                value={selectedTeam.system || ''}
+                                onChange={(event) => updateSelectedTeamSystem(event.target.value)}
+                                className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-sm font-bold text-slate-100"
+                              >
+                                <option value="">Sistema pendiente</option>
+                                {gameSystems.map((system) => (
+                                  <option key={system} value={system}>{system}</option>
+                                ))}
+                              </select>
+                            </label>
                             <button type="button" onClick={generateSelectedTeamAutoXI} className="rounded-2xl border border-caudal-electric/20 bg-caudal-electric/10 px-4 py-2 text-sm font-bold text-caudal-electric transition hover:bg-caudal-electric/15">
                               Autocolocar por posición
                             </button>
@@ -30617,6 +30658,63 @@ function App() {
                             </button>
                           </div>
                         </div> : null}
+                        {teamFieldEditMode ? (
+                          <div className="mb-4 rounded-2xl border border-white/[0.08] bg-white/[0.025] p-3">
+                            <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">Variantes de sistema</p>
+                                <div className="mt-2 flex min-h-8 flex-wrap items-center gap-1.5">
+                                  {presentationVariants.length ? presentationVariants.map((variant, variantIndex) => (
+                                    <span key={`${variant}-${variantIndex}`} className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-slate-950/30 py-1 pl-2.5 pr-1 text-xs font-black text-white">
+                                      {variant}
+                                      <button
+                                        type="button"
+                                        onClick={() => setRivalVariantEditor({ value: variant, editingIndex: variantIndex, saving: false })}
+                                        className="rounded-md px-1.5 py-1 text-[9px] font-black text-caudal-electric hover:bg-white/10"
+                                      >
+                                        Editar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={rivalVariantEditor.saving}
+                                        onClick={() => deleteSelectedTeamTacticalVariant(variantIndex)}
+                                        className="rounded-md px-1.5 py-1 text-[11px] font-black text-red-200 hover:bg-red-500/15 disabled:opacity-40"
+                                        aria-label={`Eliminar variante ${variant}`}
+                                      >
+                                        ×
+                                      </button>
+                                    </span>
+                                  )) : <span className="text-xs font-semibold text-slate-500">Sin variantes registradas.</span>}
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap items-end gap-2">
+                                <label className="grid gap-1">
+                                  <span className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Formación</span>
+                                  <select
+                                    value={rivalVariantEditor.value}
+                                    onChange={(event) => setRivalVariantEditor((current) => ({ ...current, value: event.target.value }))}
+                                    className="min-w-36 rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-white"
+                                  >
+                                    <option value="">Seleccionar</option>
+                                    {rivalVariantEditor.value && !gameSystems.includes(rivalVariantEditor.value) ? <option value={rivalVariantEditor.value}>{rivalVariantEditor.value}</option> : null}
+                                    {gameSystems.filter((system) => system !== selectedTeam.system).map((system) => <option key={system} value={system}>{system}</option>)}
+                                  </select>
+                                </label>
+                                <button
+                                  type="button"
+                                  disabled={!rivalVariantEditor.value || rivalVariantEditor.saving}
+                                  onClick={saveSelectedTeamTacticalVariant}
+                                  className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  {rivalVariantEditor.saving ? 'Guardando…' : Number.isInteger(rivalVariantEditor.editingIndex) ? 'Guardar cambio' : 'Añadir variante'}
+                                </button>
+                                {Number.isInteger(rivalVariantEditor.editingIndex) ? (
+                                  <button type="button" onClick={() => setRivalVariantEditor({ value: '', editingIndex: null, saving: false })} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-slate-300">Cancelar</button>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
                         {teamFieldEditMode && rivalSystemPreview?.teamId === selectedTeam.id ? (
                           <div className="mb-4 rounded-[1.25rem] border border-caudal-electric/30 bg-[#07111f]/95 p-4 shadow-[0_20px_52px_rgba(0,0,0,0.38)]">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -30651,7 +30749,7 @@ function App() {
                             if (teamFieldEditMode) event.preventDefault();
                           }}
                           onDragLeave={() => setActiveRivalDropSlot('')}
-                          className={`team-tactical-field relative mx-auto overflow-visible rounded-[1.8rem] border border-white/[0.08] bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.07),transparent_17%),repeating-linear-gradient(90deg,rgba(17,86,63,0.72)_0,rgba(17,86,63,0.72)_12.5%,rgba(13,72,55,0.76)_12.5%,rgba(13,72,55,0.76)_25%),linear-gradient(180deg,#104735_0%,#0b3b31_48%,#082c27_100%)] shadow-[0_24px_76px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.05)] ${isPresentationMode ? 'aspect-[4/5] h-[calc(100dvh-12rem)] min-h-[540px] max-h-[760px] w-auto max-w-full' : 'aspect-[7/8.2] min-h-[440px] w-full max-w-[900px]'}`}
+                          className={`team-tactical-field relative mx-auto overflow-visible rounded-[1.8rem] border border-white/[0.08] bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.07),transparent_17%),repeating-linear-gradient(90deg,rgba(17,86,63,0.72)_0,rgba(17,86,63,0.72)_12.5%,rgba(13,72,55,0.76)_12.5%,rgba(13,72,55,0.76)_25%),linear-gradient(180deg,#104735_0%,#0b3b31_48%,#082c27_100%)] shadow-[0_24px_76px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.05)] ${isPresentationMode ? 'aspect-[3/4] h-[calc(100dvh-12rem)] min-h-[540px] max-h-[780px] w-auto max-w-full' : 'aspect-[7/8.2] min-h-[440px] w-full max-w-[900px]'}`}
                         >
                           <div className="absolute inset-4 rounded-[28px] border border-white/22" />
                           <div className="absolute left-4 right-4 top-1/2 h-px bg-white/18" />
@@ -30925,34 +31023,34 @@ function App() {
                       </div>
 
                       {isPresentationMode ? (
-                        <aside className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-[#091428]/90 p-3 shadow-[0_18px_52px_rgba(0,0,0,0.22)]">
-                          <div className="shrink-0 rounded-xl border border-caudal-electric/20 bg-caudal-electric/[0.07] px-3 py-3">
+                        <aside className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-[#091428]/90 p-2.5 shadow-[0_18px_52px_rgba(0,0,0,0.22)]">
+                          <div className="shrink-0 rounded-xl border border-caudal-electric/20 bg-caudal-electric/[0.07] px-3 py-2.5">
                             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Sistema principal</p>
                             <p className="mt-1 text-3xl font-black leading-none text-white">{selectedTeam.system || 'Pendiente'}</p>
                           </div>
-                          <div className="mt-2 shrink-0 rounded-xl border border-white/[0.09] bg-white/[0.035] px-3 py-2.5">
+                          <div className="mt-1.5 shrink-0 rounded-xl border border-white/[0.09] bg-white/[0.035] px-3 py-2">
                             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Variantes</p>
-                            <div className="mt-2 flex flex-wrap gap-1.5">
+                            <div className="mt-1.5 flex flex-wrap gap-1.5">
                               {presentationVariants.length ? presentationVariants.map((variant) => (
                                 <span key={variant} className="rounded-lg border border-white/10 bg-slate-950/35 px-2.5 py-1.5 text-sm font-black leading-none text-white">{variant}</span>
                               )) : <span className="text-sm font-bold text-slate-500">Sin registrar</span>}
                             </div>
                           </div>
 
-                          <div className="mt-3 flex min-h-0 flex-1 flex-col rounded-xl border border-white/[0.07] bg-white/[0.025] p-2.5">
+                          <div className="mt-2 flex min-h-0 flex-1 flex-col rounded-xl border border-white/[0.07] bg-white/[0.025] p-2">
                             <div className="flex shrink-0 items-center justify-between gap-2">
                               <p className="text-[11px] font-black uppercase tracking-[0.2em] text-caudal-electric">Banquillo</p>
                               <span className="rounded-md bg-white/[0.06] px-2 py-1 text-[10px] font-black text-slate-300">{presentationBenchPlayers.length}</span>
                             </div>
-                            <div className="mt-2 grid min-h-0 flex-1 content-start gap-2 overflow-y-auto overscroll-contain pr-1">
+                            <div className="mt-1.5 grid min-h-0 flex-1 content-start gap-1.5 overflow-y-auto overscroll-contain pr-1">
                               {groupedBenchPlayers.length ? groupedBenchPlayers.map((group) => (
                                 <div key={group.label} className="min-w-0 rounded-lg border border-white/[0.06] bg-slate-950/20 p-1.5">
                                   <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">{group.label}</p>
                                   <div className="mt-1 grid grid-cols-2 gap-1">
                                     {group.players.map((player) => (
                                       <PlayerNameTooltip key={player.jugadorRivalId || player.id || player.name} player={player}>
-                                      <span className="flex h-10 min-w-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-1 text-[10px] font-black text-slate-100">
-                                        <span className="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white/[0.08] text-[8px]">
+                                      <span className="flex h-9 min-w-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-black text-slate-100">
+                                        <span className="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white/[0.08] text-[8px]">
                                           <span>{getPlayerInitials(player)}</span>
                                           {player.image ? <img src={player.image} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} className="absolute inset-0 h-full w-full object-cover" /> : null}
                                         </span>

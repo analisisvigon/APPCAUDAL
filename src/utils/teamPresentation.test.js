@@ -99,7 +99,7 @@ assert.match(presentationSource, /style=\{\{ left: `\$\{slot\.x\}%`, top: `\$\{s
 assert.match(presentationSource, /getCollisionSafePresentationCoordinates/, 'la presentación calcula centros seguros sin alterar las coordenadas del editor');
 assert.match(presentationSource, /w-\[4\.75rem\] 2xl:w-\[5\.5rem\]/, 'las tarjetas de presentación responden al ancho de pantalla');
 assert.match(presentationSource, /lg:grid-cols-\[minmax\(0,70fr\)_minmax\(310px,30fr\)\]/, 'presentación reparte el ancho 70/30 entre campo y panel');
-assert.match(presentationSource, /aspect-\[4\/5\] h-\[calc\(100dvh-12rem\)\] min-h-\[540px\] max-h-\[760px\] w-auto max-w-full/, 'el campo es vertical y adapta su altura real al viewport');
+assert.match(presentationSource, /aspect-\[3\/4\] h-\[calc\(100dvh-12rem\)\] min-h-\[540px\] max-h-\[780px\] w-auto max-w-full/, 'el campo gana longitud y adapta su altura real al viewport');
 assert.doesNotMatch(presentationSource, /aspect-\[7\/6\.25\]|max-h-\[430px\]/, 'se elimina el campo cuadrado y su límite artificial anterior');
 assert.match(presentationSource, /isPresentationMode \? \([\s\S]*?<aside className="flex h-full min-h-0/, 'el panel de presentación es hermano del campo y se estira exactamente a su altura adaptable');
 assert.match(presentationSource, />Sistema principal<\/p>[\s\S]*?selectedTeam\.system[\s\S]*?>Variantes<\/p>[\s\S]*?presentationVariants\.map[\s\S]*?>Banquillo<\/p>/, 'sistema principal, variantes múltiples y banquillo encabezan el panel derecho');
@@ -111,6 +111,9 @@ assert.doesNotMatch(presentationSource, /team-presentation-bench-groups|team-pre
 assert.match(appSource, /tactical_variants: normalizeTeamTacticalVariants\(form\.tacticalVariants\)/, 'el formulario persiste un array canónico de variantes');
 assert.match(appSource, /tacticalVariants: getTeamPresentationVariants\(row\)/, 'la lectura migra arrays nuevos y valores legacy');
 assert.match(appSource, /Variantes tácticas[\s\S]*?normalizeTeamTacticalVariants\(event\.target\.value\)/, 'la ficha permite registrar varias variantes');
+assert.match(appSource, /Variantes de sistema[\s\S]*?Editar[\s\S]*?deleteSelectedTeamTacticalVariant[\s\S]*?Añadir variante/, 'el editor táctico permite añadir, editar y eliminar variantes');
+assert.match(appSource, /update\(\{ tactical_variants: nextVariants \}\)/, 'el gestor visible persiste inmediatamente el array en Supabase');
+assert.match(appSource, /!selectedTeam \|\| teamFieldEditMode \? <section[\s\S]*?Base de datos de scouting/, 'la cabecera exterior redundante queda fuera de la presentación');
 assert.match(migrationSource, /add column if not exists tactical_variants text\[\]/, 'la migración crea un array SQL sin reemplazar el sistema principal');
 assert.match(migrationSource, /variant_system[\s\S]*alternative_system[\s\S]*variant[\s\S]*variante/, 'la migración contempla nombres legacy conocidos');
 assert.match(numberNameSource, /String\(displayName \|\| ''\)\.trim\(\) \|\| getPlayerDisplayName\(player\)/, 'la identidad compartida admite un nombre de presentación sin cambiar su fallback general');
