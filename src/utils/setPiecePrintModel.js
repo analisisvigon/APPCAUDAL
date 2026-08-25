@@ -93,7 +93,7 @@ export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder
   const meta = getSetPieceTacticalMeta(diagram?.elements);
   const elements = optimizeSetPieceElementsForPrint(diagram?.elements, players);
   const elementsById = new Map(elements.map((element) => [element.id, element]));
-  const order = Number(diagram?.orden) || fallbackOrder;
+  const order = Number(fallbackOrder) || 1;
   const typeLabel = getSetPiecePrintTypeLabel(diagram?.tipo);
   const defensive = isDefensiveSetPieceType(diagram?.tipo);
   const displayLayers = meta.displayLayers;
@@ -165,7 +165,8 @@ export const buildSetPiecePrintPages = (diagrams = [], players = [], options = {
   const totalPlayCount = Number.isFinite(Number(options.totalPlayCount))
     ? Number(options.totalPlayCount)
     : diagrams.length;
-  const printPlays = diagrams.map((diagram, index) => buildSetPiecePrintPlayModel(diagram, players, index + 1, { totalPlayCount }));
+  const startOrder = Number.isFinite(Number(options.startOrder)) ? Number(options.startOrder) : 1;
+  const printPlays = diagrams.map((diagram, index) => buildSetPiecePrintPlayModel(diagram, players, startOrder + index, { totalPlayCount }));
   return paginateSetPiecePrintPlays(printPlays).map((pagePlays, pageIndex) => ({
     pageNumber: pageIndex + 1,
     plays: pagePlays,

@@ -44,6 +44,13 @@ import {
 import { duplicateMatchSetPiece } from '../../utils/setPieceMatchDuplication';
 import { SET_PIECE_HEADER_MENUS, transitionSetPieceHeaderMenu } from '../../utils/setPieceHeaderMenu';
 import { areSetPieceLabelsEquivalent } from '../../utils/setPiecePrintModel';
+import {
+  createSetPieceDiagramClientId,
+  getSetPieceDiagramIdentity,
+  getSetPieceSelectionAfterDelete,
+  normalizeSetPieceDiagramOrders,
+  sortSetPieceDiagramsByOrder,
+} from '../../utils/setPieceDiagramOrder';
 
 const setPieceSections = [
   { id: 'penaltis', label: 'Penaltis' },
@@ -235,22 +242,25 @@ function SetPieceEditorHeader({
   );
 }
 
-function SetPiecePlaySelector({ mode, orders, selectedOrder, onSelect }) {
-  if (orders.length <= 1) return null;
+function SetPiecePlaySelector({ mode, diagrams, selectedId, onSelect }) {
+  if (diagrams.length <= 1) return null;
   return (
     <div>
       <p className="mb-2 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Jugadas</p>
       <div className="flex flex-wrap gap-2">
-        {orders.map((order) => (
-          <button
-            key={`${mode}-${order}`}
-            type="button"
-            onClick={() => onSelect(order)}
-            className={`min-h-9 rounded-xl px-3 py-2 text-[11px] font-black uppercase tracking-[0.1em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 ${selectedOrder === order ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}
-          >
-            Jugada {order}
-          </button>
-        ))}
+        {diagrams.map((diagram, index) => {
+          const diagramId = getSetPieceDiagramIdentity(diagram);
+          return (
+            <button
+              key={`${mode}-${diagramId}`}
+              type="button"
+              onClick={() => onSelect(diagramId)}
+              className={`min-h-9 rounded-xl px-3 py-2 text-[11px] font-black uppercase tracking-[0.1em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 ${selectedId === diagramId ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}
+            >
+              Jugada {index + 1}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -382,8 +392,8 @@ export default function MatchPrintTab({
   const [defensiveSaving, setDefensiveSaving] = useState(false);
   const [defensiveError, setDefensiveError] = useState('');
   const [defensiveStatus, setDefensiveStatus] = useState('');
-  const [offensiveDiagramOrder, setOffensiveDiagramOrder] = useState(1);
-  const [defensiveDiagramOrder, setDefensiveDiagramOrder] = useState(1);
+  const [offensiveDiagramId, setOffensiveDiagramId] = useState('');
+  const [defensiveDiagramId, setDefensiveDiagramId] = useState('');
   const [setPieceDiagrams, setSetPieceDiagrams] = useState([]);
   const [diagramLoading, setDiagramLoading] = useState(false);
   const [diagramSaving, setDiagramSaving] = useState(false);
@@ -540,11 +550,14 @@ export default function MatchPrintTab({
           .order('tipo', { ascending: true })
           .order('orden', { ascending: true });
         if (error) throw error;
-        setSetPieceDiagrams((data || []).map((diagram) => ({
+        setSetPieceDiagrams(normalizeSetPieceDiagramOrders((data || []).map((diagram) => ({
           ...diagram,
           partido_id: match.id,
+          _persistedOrder: Number(diagram.orden) || null,
           elements: Array.isArray(diagram.elements) ? diagram.elements.filter((element) => element.type !== 'player_note') : [],
-        })));
+        }))));
+        setOffensiveDiagramId('');
+        setDefensiveDiagramId('');
       } catch (loadError) {
         console.error('Error cargando diagramas ABP desde Supabase:', loadError);
         setDiagramError(loadError.message || 'No se pudieron cargar los diagramas ABP.');
@@ -1080,26 +1093,27 @@ export default function MatchPrintTab({
 
   const getDiagramDefinitions = (mode) => (mode === 'offensive' ? offensiveSetPieceTypes : defensiveSetPieceTypes);
   const getDiagramType = (mode) => (mode === 'offensive' ? offensiveType : defensiveType);
-  const getDiagramOrder = (mode) => (mode === 'offensive' ? offensiveDiagramOrder : defensiveDiagramOrder);
-
-  const getCurrentDiagram = (mode) => {
-    const definitions = getDiagramDefinitions(mode);
-    const type = getDiagramType(mode);
-    const order = getDiagramOrder(mode);
-    return setPieceDiagrams.find((diagram) => diagram.tipo === type && Number(diagram.orden) === Number(order)) || {
-      ...createDefaultDiagram(type, order, definitions),
-      partido_id: match?.id || '',
-    };
+  const getDiagramId = (mode) => (mode === 'offensive' ? offensiveDiagramId : defensiveDiagramId);
+  const setDiagramId = (mode, diagramId) => {
+    if (mode === 'offensive') setOffensiveDiagramId(diagramId);
+    else setDefensiveDiagramId(diagramId);
   };
 
   const getTypeDiagrams = (mode) => {
     const type = getDiagramType(mode);
-    return setPieceDiagrams
-      .filter((diagram) => diagram.tipo === type)
-      .sort((a, b) => Number(a.orden) - Number(b.orden));
+    return sortSetPieceDiagramsByOrder(setPieceDiagrams.filter((diagram) => diagram.tipo === type));
   };
 
-  const getDiagramOrders = (mode) => getTypeDiagrams(mode).map((diagram) => Number(diagram.orden)).filter((order) => Number.isFinite(order));
+  const getCurrentDiagram = (mode) => {
+    const definitions = getDiagramDefinitions(mode);
+    const type = getDiagramType(mode);
+    const diagrams = getTypeDiagrams(mode);
+    const selectedId = getDiagramId(mode);
+    return diagrams.find((diagram) => getSetPieceDiagramIdentity(diagram) === selectedId) || diagrams[0] || {
+      ...createDefaultDiagram(type, 1, definitions),
+      partido_id: match?.id || '',
+    };
+  };
 
   const getPrintDiagrams = (mode) => {
     return getTypeDiagrams(mode);
@@ -1107,8 +1121,8 @@ export default function MatchPrintTab({
 
   const getCurrentPrintPageDiagrams = (mode) => {
     const diagrams = getPrintDiagrams(mode);
-    const order = getDiagramOrder(mode);
-    const currentIndex = Math.max(0, diagrams.findIndex((diagram) => Number(diagram.orden) === Number(order)));
+    const currentId = getSetPieceDiagramIdentity(getCurrentDiagram(mode));
+    const currentIndex = Math.max(0, diagrams.findIndex((diagram) => getSetPieceDiagramIdentity(diagram) === currentId));
     const pageStart = Math.floor(currentIndex / 2) * 2;
     return diagrams.slice(pageStart, pageStart + 2);
   };
@@ -1116,11 +1130,15 @@ export default function MatchPrintTab({
   const addDiagram = (mode) => {
     const definitions = getDiagramDefinitions(mode);
     const type = getDiagramType(mode);
-    const nextOrder = Math.max(0, ...getDiagramOrders(mode)) + 1;
-    const nextDiagram = { ...createDefaultDiagram(type, nextOrder, definitions), partido_id: match?.id || '' };
-    setSetPieceDiagrams((current) => [...current, nextDiagram]);
-    if (mode === 'offensive') setOffensiveDiagramOrder(nextOrder);
-    else setDefensiveDiagramOrder(nextOrder);
+    const nextOrder = getTypeDiagrams(mode).length + 1;
+    const nextDiagram = {
+      ...createDefaultDiagram(type, nextOrder, definitions),
+      partido_id: match?.id || '',
+      clientId: createSetPieceDiagramClientId(),
+      _persistedOrder: null,
+    };
+    setSetPieceDiagrams((current) => normalizeSetPieceDiagramOrders([...current, nextDiagram]));
+    setDiagramId(mode, getSetPieceDiagramIdentity(nextDiagram));
   };
 
   const getDiagramsByTypes = (types) =>
@@ -1146,14 +1164,52 @@ export default function MatchPrintTab({
     setDiagramStatus('');
     setDiagramError('');
     const type = getDiagramType(mode);
-    const order = getDiagramOrder(mode);
+    const currentDiagram = getCurrentDiagram(mode);
+    const currentId = getSetPieceDiagramIdentity(currentDiagram);
+    const order = Number(currentDiagram.orden) || 1;
     setSetPieceDiagrams((current) => {
-      const exists = current.some((diagram) => diagram.tipo === type && Number(diagram.orden) === Number(order));
-      const normalized = { ...nextDiagram, partido_id: match?.id || '', tipo: type, orden: order };
+      const exists = current.some((diagram) => getSetPieceDiagramIdentity(diagram) === currentId);
+      const normalized = {
+        ...nextDiagram,
+        id: currentDiagram.id,
+        clientId: currentDiagram.clientId,
+        _persistedOrder: currentDiagram._persistedOrder,
+        partido_id: match?.id || '',
+        tipo: type,
+        orden: order,
+      };
       return exists
-        ? current.map((diagram) => (diagram.tipo === type && Number(diagram.orden) === Number(order) ? normalized : diagram))
+        ? current.map((diagram) => (getSetPieceDiagramIdentity(diagram) === currentId ? normalized : diagram))
         : [...current, normalized];
     });
+  };
+
+  const persistSequentialDiagramOrders = async (diagrams) => {
+    const ordered = sortSetPieceDiagramsByOrder(diagrams);
+    const persistedOrders = new Map();
+    for (let index = 0; index < ordered.length; index += 1) {
+      const diagram = ordered[index];
+      const nextOrder = index + 1;
+      if (!diagram.id || Number(diagram._persistedOrder) === nextOrder) continue;
+      const { error } = await supabase
+        .from('match_set_piece_diagrams')
+        .update({ orden: nextOrder })
+        .eq('id', diagram.id)
+        .eq('partido_id', match.id);
+      if (error) throw error;
+      persistedOrders.set(String(diagram.id), nextOrder);
+    }
+    if (persistedOrders.size) {
+      setSetPieceDiagrams((current) => current.map((diagram) => {
+        const persistedOrder = persistedOrders.get(String(diagram.id || ''));
+        return persistedOrder ? { ...diagram, orden: persistedOrder, _persistedOrder: persistedOrder } : diagram;
+      }));
+    }
+    return ordered.map((diagram, index) => ({
+      ...diagram,
+      orden: index + 1,
+      _persistedOrder: diagram.id ? index + 1 : diagram._persistedOrder,
+    }));
   };
 
   const saveCurrentDiagram = async (mode) => {
@@ -1162,7 +1218,10 @@ export default function MatchPrintTab({
     setDiagramError('');
     setDiagramStatus('');
     try {
-      const diagram = getCurrentDiagram(mode);
+      const source = getCurrentDiagram(mode);
+      const sourceId = getSetPieceDiagramIdentity(source);
+      const ordered = await persistSequentialDiagramOrders(getTypeDiagrams(mode));
+      const diagram = ordered.find((item) => getSetPieceDiagramIdentity(item) === sourceId) || source;
       const payload = {
         partido_id: match.id,
         tipo: diagram.tipo,
@@ -1171,18 +1230,19 @@ export default function MatchPrintTab({
         consigna: diagram.consigna || '',
         elements: cleanDiagramElements(diagram.elements),
       };
-      const { data, error } = await supabase
-        .from('match_set_piece_diagrams')
-        .upsert(payload, { onConflict: 'partido_id,tipo,orden' })
-        .select('*')
-        .single();
+      const request = diagram.id
+        ? supabase.from('match_set_piece_diagrams').update(payload).eq('id', diagram.id).eq('partido_id', match.id)
+        : supabase.from('match_set_piece_diagrams').insert(payload);
+      const { data, error } = await request.select('*').single();
       if (error) throw error;
+      const saved = { ...data, _persistedOrder: Number(data.orden) || 1 };
       setSetPieceDiagrams((current) => {
-        const exists = current.some((item) => item.tipo === data.tipo && Number(item.orden) === Number(data.orden));
+        const exists = current.some((item) => getSetPieceDiagramIdentity(item) === sourceId);
         return exists
-          ? current.map((item) => (item.tipo === data.tipo && Number(item.orden) === Number(data.orden) ? data : item))
-          : [...current, data];
+          ? current.map((item) => (getSetPieceDiagramIdentity(item) === sourceId ? saved : item))
+          : [...current, saved];
       });
+      setDiagramId(mode, getSetPieceDiagramIdentity(saved));
       setDiagramStatus('Diagrama ABP guardado en Supabase.');
     } catch (saveError) {
       console.error('Error guardando diagrama ABP en Supabase:', saveError);
@@ -1201,11 +1261,8 @@ export default function MatchPrintTab({
       const source = getCurrentDiagram(mode);
       const type = getDiagramType(mode);
       const definitions = getDiagramDefinitions(mode);
-      const usedOrders = setPieceDiagrams
-        .filter((diagram) => diagram.tipo === type)
-        .map((diagram) => Number(diagram.orden))
-        .filter((order) => Number.isFinite(order));
-      const nextOrder = Math.max(0, ...usedOrders) + 1;
+      const ordered = await persistSequentialDiagramOrders(getTypeDiagrams(mode));
+      const nextOrder = ordered.length + 1;
       const baseTitle = source.titulo || definitions.find((item) => item.id === type)?.label || 'ABP';
       const payload = {
         partido_id: match.id,
@@ -1221,9 +1278,9 @@ export default function MatchPrintTab({
         .select('*')
         .single();
       if (error) throw error;
-      setSetPieceDiagrams((current) => [...current, data]);
-      if (mode === 'offensive') setOffensiveDiagramOrder(Number(data.orden));
-      else setDefensiveDiagramOrder(Number(data.orden));
+      const duplicate = { ...data, _persistedOrder: Number(data.orden) || nextOrder };
+      setSetPieceDiagrams((current) => normalizeSetPieceDiagramOrders([...current, duplicate]));
+      setDiagramId(mode, getSetPieceDiagramIdentity(duplicate));
       setDiagramStatus(`Jugada duplicada como ${data.titulo || `Jugada ${data.orden}`}.`);
     } catch (duplicateError) {
       console.error('Error duplicando diagrama ABP en Supabase:', duplicateError);
@@ -1246,7 +1303,6 @@ export default function MatchPrintTab({
 
   const deleteCurrentDiagram = async (mode) => {
     const source = getCurrentDiagram(mode);
-    const type = getDiagramType(mode);
     if (!source?.tipo) return;
     setDiagramSaving(true);
     setDiagramError('');
@@ -1261,17 +1317,15 @@ export default function MatchPrintTab({
           .eq('partido_id', match.id);
         if (error) throw error;
       }
-      const remaining = setPieceDiagrams
-        .filter((diagram) => !(diagram.tipo === source.tipo && Number(diagram.orden) === Number(source.orden)))
-        .sort((a, b) => Number(a.orden) - Number(b.orden));
-      const sameType = remaining.filter((diagram) => diagram.tipo === type);
+      const sourceId = getSetPieceDiagramIdentity(source);
+      const nextSelectedId = getSetPieceSelectionAfterDelete(setPieceDiagrams, source);
+      const remaining = normalizeSetPieceDiagramOrders(
+        setPieceDiagrams.filter((diagram) => getSetPieceDiagramIdentity(diagram) !== sourceId)
+      );
       setSetPieceDiagrams(remaining);
-      const nextOrder = sameType.find((diagram) => Number(diagram.orden) > Number(source.orden))?.orden
-        || sameType.at(-1)?.orden
-        || 1;
-      if (mode === 'offensive') setOffensiveDiagramOrder(nextOrder);
-      else setDefensiveDiagramOrder(nextOrder);
-      setDiagramStatus('Jugada eliminada.');
+      setDiagramId(mode, nextSelectedId);
+      await persistSequentialDiagramOrders(remaining.filter((diagram) => diagram.tipo === source.tipo));
+      setDiagramStatus('Jugada eliminada. Numeración actualizada.');
     } catch (error) {
       console.error('Error eliminando jugada ABP:', error);
       setDiagramError(error.message || 'No se pudo eliminar la jugada.');
@@ -1457,30 +1511,37 @@ export default function MatchPrintTab({
     if (replace) {
       const { error: deleteError } = await supabase.from('match_set_piece_diagrams').delete().eq('partido_id', targetId).in('tipo', types);
       if (deleteError) throw deleteError;
+    } else {
+      for (const type of types) {
+        await persistSequentialDiagramOrders(setPieceDiagrams.filter((diagram) => diagram.tipo === type));
+      }
     }
     if (!data?.length) return [];
     const existing = replace ? [] : (setPieceDiagrams.filter((diagram) => types.includes(diagram.tipo)) || []);
     const nextByType = new Map();
     existing.forEach((diagram) => {
-      nextByType.set(diagram.tipo, Math.max(nextByType.get(diagram.tipo) || 0, Number(diagram.orden) || 0));
+      nextByType.set(diagram.tipo, (nextByType.get(diagram.tipo) || 0) + 1);
     });
-    const rows = data.map((diagram) => {
-      const nextOrder = replace ? Number(diagram.orden) || 1 : (nextByType.get(diagram.tipo) || 0) + 1;
-      nextByType.set(diagram.tipo, nextOrder);
-      return duplicateMatchSetPiece({
-        source: diagram,
-        targetMatchId: targetId,
-        order: nextOrder,
-        elements: adaptation?.canAdapt
-          ? applySetPieceLineupAdaptation(diagram.elements, adaptation, adaptation.players || players)
-          : cleanDiagramElements(diagram.elements),
+    const rows = [...data]
+      .sort((a, b) => String(a.tipo).localeCompare(String(b.tipo)) || Number(a.orden) - Number(b.orden))
+      .map((diagram) => {
+        const nextOrder = (nextByType.get(diagram.tipo) || 0) + 1;
+        nextByType.set(diagram.tipo, nextOrder);
+        return duplicateMatchSetPiece({
+          source: diagram,
+          targetMatchId: targetId,
+          order: nextOrder,
+          elements: adaptation?.canAdapt
+            ? applySetPieceLineupAdaptation(diagram.elements, adaptation, adaptation.players || players)
+            : cleanDiagramElements(diagram.elements),
+        });
       });
-    });
     const { data: inserted, error: insertError } = await supabase.from('match_set_piece_diagrams').upsert(rows, { onConflict: 'partido_id,tipo,orden' }).select('*');
     if (insertError) throw insertError;
-    setSetPieceDiagrams((current) => replace
-      ? [...current.filter((diagram) => !types.includes(diagram.tipo)), ...(inserted || rows)]
-      : [...current, ...(inserted || rows)]);
+    const prepared = (inserted || rows).map((diagram) => ({ ...diagram, _persistedOrder: Number(diagram.orden) || 1 }));
+    setSetPieceDiagrams((current) => normalizeSetPieceDiagramOrders(replace
+      ? [...current.filter((diagram) => !types.includes(diagram.tipo)), ...prepared]
+      : [...current, ...prepared]));
     return inserted || rows;
   };
 
@@ -1693,17 +1754,17 @@ export default function MatchPrintTab({
     }
     if (page.id === 'offensive') {
       return chunkDiagrams(dossierContent.offensiveDiagrams).map((diagrams, index) => (
-        <SetPieceDiagramPrintSheet key={`offensive-dossier-${index}`} match={match} title="ABP ofensiva" diagrams={diagrams} players={players} totalPlayCount={dossierContent.offensiveDiagrams.length} />
+        <SetPieceDiagramPrintSheet key={`offensive-dossier-${index}`} match={match} title="ABP ofensiva" diagrams={diagrams} players={players} totalPlayCount={dossierContent.offensiveDiagrams.length} startOrder={index * 2 + 1} />
       ));
     }
     if (page.id === 'defensive') {
       return chunkDiagrams(dossierContent.defensiveDiagrams).map((diagrams, index) => (
-        <SetPieceDiagramPrintSheet key={`defensive-dossier-${index}`} match={match} title="ABP defensiva" diagrams={diagrams} players={players} totalPlayCount={dossierContent.defensiveDiagrams.length} />
+        <SetPieceDiagramPrintSheet key={`defensive-dossier-${index}`} match={match} title="ABP defensiva" diagrams={diagrams} players={players} totalPlayCount={dossierContent.defensiveDiagrams.length} startOrder={index * 2 + 1} />
       ));
     }
     if (page.id === 'kickoff') {
       return chunkDiagrams(dossierContent.kickoffDiagrams).map((diagrams, index) => (
-        <SetPieceDiagramPrintSheet key={`kickoff-dossier-${index}`} match={match} title="Saque de inicio" diagrams={diagrams} players={players} totalPlayCount={dossierContent.kickoffDiagrams.length} />
+        <SetPieceDiagramPrintSheet key={`kickoff-dossier-${index}`} match={match} title="Saque de inicio" diagrams={diagrams} players={players} totalPlayCount={dossierContent.kickoffDiagrams.length} startOrder={index * 2 + 1} />
       ));
     }
     if (page.id === 'match_plan') {
@@ -1915,7 +1976,7 @@ export default function MatchPrintTab({
             onMirrorVertical={() => mirrorCurrentDiagram('offensive', 'vertical')}
             onSaveToLibrary={() => saveCurrentDiagramToLibrary('offensive')}
             onLoadFromLibrary={() => openLibraryModal('offensive')}
-            contextKey={`${match?.id || ''}:offensive:${offensiveType}:${offensiveDiagramOrder}`}
+            contextKey={`${match?.id || ''}:offensive:${offensiveType}:${getSetPieceDiagramIdentity(getCurrentDiagram('offensive'))}`}
           />
           {diagramLoading ? <p className="mt-4 text-sm text-slate-400">Cargando diagramas desde Supabase...</p> : null}
           {diagramError ? <p className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-100">{diagramError}</p> : null}
@@ -1935,7 +1996,7 @@ export default function MatchPrintTab({
                 ))}
               </div>
             </div>
-            <SetPiecePlaySelector mode="offensive" orders={getDiagramOrders('offensive')} selectedOrder={offensiveDiagramOrder} onSelect={setOffensiveDiagramOrder} />
+            <SetPiecePlaySelector mode="offensive" diagrams={getTypeDiagrams('offensive')} selectedId={getSetPieceDiagramIdentity(getCurrentDiagram('offensive'))} onSelect={setOffensiveDiagramId} />
           </div>
           {!getTypeDiagrams('offensive').length ? (
             <p className="mt-4 rounded-2xl bg-white/5 px-4 py-3 text-sm text-slate-400">Sin jugadas para este tipo. Pulsa Añadir jugada para empezar.</p>
@@ -1972,7 +2033,7 @@ export default function MatchPrintTab({
             onMirrorVertical={() => mirrorCurrentDiagram('defensive', 'vertical')}
             onSaveToLibrary={() => saveCurrentDiagramToLibrary('defensive')}
             onLoadFromLibrary={() => openLibraryModal('defensive')}
-            contextKey={`${match?.id || ''}:defensive:${defensiveType}:${defensiveDiagramOrder}`}
+            contextKey={`${match?.id || ''}:defensive:${defensiveType}:${getSetPieceDiagramIdentity(getCurrentDiagram('defensive'))}`}
           />
           {diagramLoading ? <p className="mt-4 text-sm text-slate-400">Cargando diagramas desde Supabase...</p> : null}
           {diagramError ? <p className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-100">{diagramError}</p> : null}
@@ -1992,7 +2053,7 @@ export default function MatchPrintTab({
                 ))}
               </div>
             </div>
-            <SetPiecePlaySelector mode="defensive" orders={getDiagramOrders('defensive')} selectedOrder={defensiveDiagramOrder} onSelect={setDefensiveDiagramOrder} />
+            <SetPiecePlaySelector mode="defensive" diagrams={getTypeDiagrams('defensive')} selectedId={getSetPieceDiagramIdentity(getCurrentDiagram('defensive'))} onSelect={setDefensiveDiagramId} />
           </div>
           <details className="mt-3 rounded-2xl border border-white/5 bg-white/[0.025]">
             <summary className="cursor-pointer list-none px-4 py-3 text-xs font-bold text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70 [&::-webkit-details-marker]:hidden">
@@ -2074,6 +2135,7 @@ export default function MatchPrintTab({
               diagrams={diagrams}
               players={players}
               totalPlayCount={getPrintDiagrams('offensive').length}
+              startOrder={index * 2 + 1}
             />
           ))
         ) : (
@@ -2085,6 +2147,7 @@ export default function MatchPrintTab({
               diagrams={diagrams}
               players={players}
               totalPlayCount={getPrintDiagrams('defensive').length}
+              startOrder={index * 2 + 1}
             />
           ))
         )}

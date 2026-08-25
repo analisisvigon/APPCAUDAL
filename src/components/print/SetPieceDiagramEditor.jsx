@@ -147,7 +147,7 @@ function PreviewOverlay({ diagrams, players, match, totalPlayCount, onClose }) {
         <div><p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Vista previa exacta</p><p className="mt-1 text-xs text-slate-400">Renderer A4 independiente del editor</p></div>
         <div className="flex gap-2"><button type="button" onClick={printPreview} className="min-h-11 rounded-xl bg-caudal-electric px-4 text-xs font-black text-slate-950">Imprimir / PDF</button><button type="button" onClick={onClose} className="min-h-11 rounded-xl bg-white/10 px-4 text-xs font-black text-white">Cerrar</button></div>
       </div>
-      <div className="mx-auto w-fit shadow-2xl"><SetPieceDiagramPrintSheet match={match} title="Ficha táctica ABP" diagrams={diagrams} players={players} preview totalPlayCount={totalPlayCount} /></div>
+      <div className="mx-auto w-fit shadow-2xl"><SetPieceDiagramPrintSheet match={match} title="Ficha táctica ABP" diagrams={diagrams} players={players} preview totalPlayCount={totalPlayCount} startOrder={Number(diagrams[0]?.orden) || 1} /></div>
     </div>,
     document.body
   );

@@ -22,7 +22,7 @@ const twoPlays = buildSetPiecePrintPages([
   diagram(2, 'corner_defensivo', 'Mixto segundo palo'),
 ]).flatMap((page) => page.plays);
 assert.deepEqual(twoPlays.map((play) => [play.order, play.showPlayNumber]), [[1, true], [2, true]], 'B: dos jugadas muestran JUGADA 1 y JUGADA 2');
-const thirdPlayOnItsOwnPage = buildSetPiecePrintPages([diagram(3)], [], { totalPlayCount: 3 }).flatMap((page) => page.plays);
+const thirdPlayOnItsOwnPage = buildSetPiecePrintPages([diagram(3)], [], { totalPlayCount: 3, startOrder: 3 }).flatMap((page) => page.plays);
 assert.deepEqual(thirdPlayOnItsOwnPage.map((play) => [play.order, play.showPlayNumber]), [[3, true]], 'una tercera jugada conserva JUGADA 3 aunque ocupe sola su página');
 
 const repeatedTitle = buildSetPiecePrintPlayModel(diagram(1, 'corner_defensivo', 'Córner defensivo'));
@@ -44,10 +44,10 @@ const editorSource = fs.readFileSync(new URL('../components/print/SetPieceDiagra
 const matchPrintSource = fs.readFileSync(new URL('../components/print/MatchPrintTab.jsx', import.meta.url), 'utf8');
 const laboratorySource = fs.readFileSync(new URL('../components/library/SetPieceLaboratory.jsx', import.meta.url), 'utf8');
 const cssSource = fs.readFileSync(new URL('../styles/print.css', import.meta.url), 'utf8');
-assert.match(sheetSource, /buildSetPiecePrintPages\(diagrams, players, \{ totalPlayCount \}\)/, 'F: preview y PDF consumen el mismo modelo con el total de sección');
+assert.match(sheetSource, /buildSetPiecePrintPages\(diagrams, players, \{ totalPlayCount, startOrder \}\)/, 'F: preview y PDF consumen el mismo modelo con el total y el desplazamiento de sección');
 assert.match(editorSource, /preview totalPlayCount=\{totalPlayCount\}/, 'F: la vista previa comunica el total real al renderer PDF');
 assert.match(matchPrintSource, /totalPlayCount=\{dossierContent\.defensiveDiagrams\.length\}/, 'F: el dossier conserva la numeración aunque una página aislada contenga una sola jugada de varias');
-assert.match(matchPrintSource, /if \(orders\.length <= 1\) return null;/, 'el editor tampoco reserva el selector JUGADA 1 cuando solo existe una');
+assert.match(matchPrintSource, /if \(diagrams\.length <= 1\) return null;/, 'el editor tampoco reserva el selector JUGADA 1 cuando solo existe una');
 assert.match(sheetSource, /play\.showPlayNumber \? <span>Jugada \{play\.order\}<\/span> : null/, 'el rótulo genérico se renderiza condicionalmente');
 assert.match(sheetSource, /play\.displayTitle \? <h2>\{play\.displayTitle\}<\/h2> : null/, 'el título equivalente no deja un nodo vacío');
 assert.match(cssSource, /\.set-piece-print-play\[data-has-title="false"\][\s\S]*grid-template-rows: auto minmax\(0, 1fr\)/, 'un título omitido no reserva su altura anterior');

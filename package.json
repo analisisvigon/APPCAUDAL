@@ -44,7 +44,7 @@
     "test:set-piece-interactions": "node src/utils/setPieceEditorInteractions.test.js",
     "test:set-piece-menu": "node src/utils/setPieceHeaderMenu.test.js",
     "test:set-piece-professional": "node src/utils/setPieceProfessional.test.js",
-    "test:set-piece-print": "node src/utils/setPiecePrintLayout.test.js && node src/utils/setPiecePrintDensity.test.js && node src/utils/setPiecePrintIsolation.test.js",
+    "test:set-piece-print": "node src/utils/setPieceDiagramOrder.test.js && node src/utils/setPiecePrintLayout.test.js && node src/utils/setPiecePrintDensity.test.js && node src/utils/setPiecePrintIsolation.test.js",
     "test:set-piece-render": "node src/utils/setPieceRenderLayout.test.js",
     "test:match-plan-print": "node src/utils/matchPlanPrint.test.js && node scripts/matchPrintPlanSqlAudit.test.mjs",
     "test:print-pagination": "node src/utils/printDossierPagination.test.js",

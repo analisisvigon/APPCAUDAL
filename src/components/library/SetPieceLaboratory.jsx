@@ -119,7 +119,7 @@ function LaboratoryPrintPreview({ items, onClose }) {
     ...item,
     titulo: item.titulo || item.nombre,
     consigna: item.consigna ?? getSetPieceLaboratoryMeta(item).generalInstruction,
-    orden: Number(item.orden) || index + 1,
+    orden: index + 1,
   }));
   useEffect(() => {
     closeButtonRef.current?.focus();

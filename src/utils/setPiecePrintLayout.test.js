@@ -25,7 +25,7 @@ const proCssStart = css.indexOf('.set-piece-pro-sheet');
 const proCssEnd = css.indexOf('.player-profile-print-portal', proCssStart);
 const proCss = css.slice(proCssStart, proCssEnd);
 
-assert.ok(sheet.includes('buildSetPiecePrintPages(diagrams, players, { totalPlayCount })'), 'renderer y vista previa consumen un único modelo de impresión con el total real de la sección');
+assert.ok(sheet.includes('buildSetPiecePrintPages(diagrams, players, { totalPlayCount, startOrder })'), 'renderer y vista previa consumen un único modelo de impresión con el total real de la sección');
 assert.ok(sheet.includes('abp-print-page'), 'cada bloque de dos jugadas se renderiza como una página independiente');
 assert.equal((sheet.match(/<article/g) || []).length, 1, 'el renderer crea un nodo por página de impresión');
 assert.ok(sheet.includes('play.chronology.map'), 'se imprimen todos los pasos cronológicos');
@@ -76,6 +76,10 @@ assert.deepEqual(chunkSetPiecePrintPlays(Array.from({ length: 6 }, (_, index) =>
 const threePlayPages = buildSetPiecePrintPages([createPlay('one', 1), createPlay('two', 2), createPlay('three', 3)]);
 assert.equal(threePlayPages.every((page) => page.plays.length > 0), true, 'no se generan páginas blancas');
 assert.deepEqual(threePlayPages.flatMap((page) => page.plays.map((play) => play.id)), ['one', 'two', 'three'], 'no hay duplicaciones en una última página impar');
+const historicalGapPages = buildSetPiecePrintPages([createPlay('old-three', 3), createPlay('old-four', 4), createPlay('old-five', 5)]);
+assert.deepEqual(historicalGapPages.flatMap((page) => page.plays.map((play) => play.order)), [1, 2, 3], 'K/M: preview, A4 y PDF derivan 1..N aunque el orden histórico tenga huecos');
+assert.equal(buildSetPiecePrintPages([createPlay('single-old-five', 5)])[0].plays[0].showPlayNumber, false, 'G: una sola jugada mantiene oculta la etiqueta Jugada 1');
+assert.deepEqual(buildSetPiecePrintPages([createPlay('page-three', 3), createPlay('page-four', 4)], [], { totalPlayCount: 5, startOrder: 3 }).flatMap((page) => page.plays.map((play) => play.order)), [3, 4], 'la paginación conserva el desplazamiento consecutivo de la colección completa');
 
 const sourcePlay = createPlay('geometry', 1);
 const sourceIds = sourcePlay.elements.map((element) => element.id);

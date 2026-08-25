@@ -115,8 +115,8 @@ function PrintPlay({ play }) {
   );
 }
 
-export default function SetPieceDiagramPrintSheet({ match, title = 'ABP', diagrams = [], players = [], preview = false, totalPlayCount = diagrams.length }) {
-  const pages = buildSetPiecePrintPages(diagrams, players, { totalPlayCount });
+export default function SetPieceDiagramPrintSheet({ match, title = 'ABP', diagrams = [], players = [], preview = false, totalPlayCount = diagrams.length, startOrder = 1 }) {
+  const pages = buildSetPiecePrintPages(diagrams, players, { totalPlayCount, startOrder });
   if (!pages.length) return null;
   const matchLabel = getMatchLabel(match);
   const matchDate = formatDate(match?.date);
