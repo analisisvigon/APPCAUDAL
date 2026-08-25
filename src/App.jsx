@@ -203,9 +203,11 @@ import {
 import { runDelegatedMatchStatusFlow } from './utils/delegatedMatchStatusFlow';
 import { getPlayerDisplayName } from './utils/playerDisplayName';
 import {
+  getCollisionSafePresentationCoordinates,
   getTeamPresentationBenchGroup,
   getTeamPresentationPlayerName,
-  getTeamPresentationVariant,
+  getTeamPresentationVariants,
+  normalizeTeamTacticalVariants,
 } from './utils/teamPresentation';
 import { getPlayerMatchIndicators } from './utils/playerMatchIndicators';
 import { buildMatchKeyPersistence, getMatchKeyGroups } from './utils/matchKeys';
@@ -984,6 +986,7 @@ const emptyTeamForm = {
   stadium: '',
   kitColor: '',
   system: '',
+  tacticalVariants: [],
   strongSide: '',
   mainThreat: '',
   blockHeight: '',
@@ -2390,6 +2393,7 @@ const rivalFormToDb = (form, importedData = {}, currentTeam = {}) => {
     stadium: normalizeStoredRivalStadium(importedData?.stadium || form.stadium) || null,
     kit_color: normalizeHexColor(rawColor) || null,
     system: form.system || null,
+    tactical_variants: normalizeTeamTacticalVariants(form.tacticalVariants),
     field_sources: form.fieldSources || currentTeam?.fieldSources || {},
   };
 };
@@ -2403,6 +2407,7 @@ const rivalDbToForm = (row = {}) => ({
   stadium: normalizeStoredRivalStadium(row.stadium),
   kitColor: normalizeHexColor(row.kit_color),
   system: row.system ?? '',
+  tacticalVariants: getTeamPresentationVariants(row),
   fieldSources: row.field_sources ?? row.fieldSources ?? {},
 });
 
@@ -22417,6 +22422,7 @@ function App() {
         stadium: team.stadium ?? '',
         kitColor: team.kitColor ?? '',
         system: team.system,
+        tacticalVariants: getTeamPresentationVariants(team),
         fieldSources: team.fieldSources ?? {},
         ...getTeamTacticalIdentity(team),
         squad: team.squad.map((entry) => {
@@ -30463,7 +30469,10 @@ function App() {
                   else groups.push({ label, order: presentation.order, players: [player] });
                   return groups;
                 }, []).sort((a, b) => a.order - b.order);
-                const presentationVariant = getTeamPresentationVariant(selectedTeam);
+                const presentationVariants = getTeamPresentationVariants(selectedTeam);
+                const presentationFormationCoordinates = getCollisionSafePresentationCoordinates(
+                  getFormationCoordinates(selectedTeam.system || '4-4-2')
+                );
                 const keyPlayers = rivalPlayers.filter((player) => player.isKey);
                 const captainPlayer = rivalPlayers.find((player) => getRivalPlayerFlags(selectedTeam.id, player.name).captain || player.captain) || null;
                 const unavailablePlayers = rivalPlayers.filter((player) => player.injured || player.suspended);
@@ -30492,13 +30501,16 @@ function App() {
                           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric">Ficha rival</p>
                           <h3 className={`truncate font-black uppercase text-white ${isPresentationMode ? 'text-xl' : 'text-3xl'}`}>{cleanTeamDisplayName(selectedTeam.name)}</h3>
                           <div className={`flex flex-wrap gap-2 ${isPresentationMode ? 'mt-1' : 'mt-3'}`}>
-                            {[
+                            {(isPresentationMode ? [
+                              ['Estadio', selectedTeam.stadium || 'Sin estadio registrado'],
+                              ['Jugadores', rivalPlayers.length],
+                            ] : [
                               ['Sistema', selectedTeam.system || 'Pendiente'],
                               ['Estadio', selectedTeam.stadium || 'Sin estadio registrado'],
                               ['Jugadores', rivalPlayers.length],
                               ['Última sincronización', selectedTeam.lastSync?.created_at ? new Date(selectedTeam.lastSync.created_at).toLocaleDateString('es-ES') : 'Sin sincronizar'],
                               ['Último análisis', profile.lastAnalysisLabel],
-                            ].map(([label, value]) => (
+                            ]).map(([label, value]) => (
                               <span key={label} className={`rounded-xl border border-white/10 bg-white/[0.045] font-bold text-slate-300 ${isPresentationMode ? 'px-2 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px]'}`}>
                                 <span className="text-slate-500">{label}</span> <span className="text-white">{value}</span>
                               </span>
@@ -30543,8 +30555,27 @@ function App() {
                       </div>
                     ) : null}
 
-                    <div className={`rounded-2xl border border-white/10 bg-white/[0.035] ${isPresentationMode ? 'px-3 py-2' : 'p-4'}`}>
-                      <div className={`flex flex-wrap items-center font-bold text-slate-200 ${isPresentationMode ? 'gap-x-4 gap-y-1 text-xs' : 'gap-2 text-sm'}`}>
+                    {isPresentationMode ? (
+                      <div className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2.5">
+                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-caudal-electric">Resumen rival</p>
+                        <div className="mt-2 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-5">
+                          {[
+                            ['Destacados', keyPlayers.length ? keyPlayers.map(displayPlayerName).join(', ') : '-'],
+                            ['Capitán', captainPlayer ? displayPlayerName(captainPlayer) : '-'],
+                            ['Lesionados', rivalPlayers.filter((player) => player.injured).length ? rivalPlayers.filter((player) => player.injured).map(displayPlayerName).join(', ') : '-'],
+                            ['Sancionados', rivalPlayers.filter((player) => player.suspended).length ? rivalPlayers.filter((player) => player.suspended).map(displayPlayerName).join(', ') : '-'],
+                            ['Riesgo amarillas', yellowRiskPlayers.length ? yellowRiskPlayers.map(displayPlayerName).join(', ') : '-'],
+                          ].map(([label, value]) => (
+                            <div key={label} className="min-w-0 rounded-xl border border-white/[0.06] bg-slate-950/20 px-2.5 py-2">
+                              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+                              <p className="mt-1 text-[11px] font-bold leading-snug text-white">{value}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                      <div className="flex flex-wrap items-center gap-2 text-sm font-bold text-slate-200">
                         <span className="font-black uppercase tracking-[0.16em] text-caudal-electric">Resumen rival</span>
                         <span>DEST <strong className="text-white">{keyPlayers.length ? keyPlayers.map(displayPlayerName).join(', ') : '-'}</strong></span>
                         <span>© <strong className="text-white">{captainPlayer ? displayPlayerName(captainPlayer) : '-'}</strong></span>
@@ -30555,8 +30586,9 @@ function App() {
                         <span>Sistema: <strong className="text-white">{selectedTeam.system || 'Pendiente'}</strong></span>
                       </div>
                     </div>
+                    )}
 
-                    <section className={`grid gap-4 ${teamFieldEditMode ? 'xl:grid-cols-[minmax(0,3fr)_minmax(260px,1fr)]' : 'lg:grid-cols-[minmax(0,72fr)_minmax(280px,28fr)]'}`}>
+                    <section className={`grid gap-4 ${teamFieldEditMode ? 'xl:grid-cols-[minmax(0,3fr)_minmax(260px,1fr)]' : 'lg:grid-cols-[minmax(0,70fr)_minmax(310px,30fr)]'}`}>
                       <div className={`bg-[#091428]/80 shadow-[0_18px_52px_rgba(0,0,0,0.22)] ${teamFieldEditMode ? 'rounded-[1.35rem] border border-white/10 p-4' : 'rounded-2xl border border-white/[0.06] p-2.5'}`}>
                         {teamFieldEditMode ? <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div>
@@ -30619,7 +30651,7 @@ function App() {
                             if (teamFieldEditMode) event.preventDefault();
                           }}
                           onDragLeave={() => setActiveRivalDropSlot('')}
-                          className={`team-tactical-field relative mx-auto overflow-visible rounded-[1.8rem] border border-white/[0.08] bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.07),transparent_17%),repeating-linear-gradient(90deg,rgba(17,86,63,0.72)_0,rgba(17,86,63,0.72)_12.5%,rgba(13,72,55,0.76)_12.5%,rgba(13,72,55,0.76)_25%),linear-gradient(180deg,#104735_0%,#0b3b31_48%,#082c27_100%)] shadow-[0_24px_76px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.05)] ${isPresentationMode ? 'aspect-[7/9] h-[clamp(520px,68vh,740px)] w-auto max-w-full' : 'aspect-[7/8.2] min-h-[440px] w-full max-w-[900px]'}`}
+                          className={`team-tactical-field relative mx-auto overflow-visible rounded-[1.8rem] border border-white/[0.08] bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.07),transparent_17%),repeating-linear-gradient(90deg,rgba(17,86,63,0.72)_0,rgba(17,86,63,0.72)_12.5%,rgba(13,72,55,0.76)_12.5%,rgba(13,72,55,0.76)_25%),linear-gradient(180deg,#104735_0%,#0b3b31_48%,#082c27_100%)] shadow-[0_24px_76px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.05)] ${isPresentationMode ? 'aspect-[4/5] h-[calc(100dvh-12rem)] min-h-[540px] max-h-[760px] w-auto max-w-full' : 'aspect-[7/8.2] min-h-[440px] w-full max-w-[900px]'}`}
                         >
                           <div className="absolute inset-4 rounded-[28px] border border-white/22" />
                           <div className="absolute left-4 right-4 top-1/2 h-px bg-white/18" />
@@ -30713,7 +30745,7 @@ function App() {
                               </label>
                             </aside>
                           ) : null}
-                          {getFormationCoordinates(selectedTeam.system || '4-4-2').map((slot, slotIndex) => {
+                          {(isPresentationMode ? presentationFormationCoordinates : getFormationCoordinates(selectedTeam.system || '4-4-2')).map((slot, slotIndex) => {
                             const slotPlayer = getLineupSlotMap(visualFieldLineup).get(slotIndex);
                             const isDraggedSource = Boolean(slotPlayer && draggedPlayer && getRivalPlayerUniqueKey(slotPlayer) === getRivalPlayerUniqueKey(draggedPlayer));
                             const slotRole = getFormationRoles(selectedTeam.system || '4-4-2')[slotIndex] || `Posición ${slotIndex + 1}`;
@@ -30770,7 +30802,7 @@ function App() {
                                   setActiveRivalDropSlot('');
                                   handleDropOnLineupSlot(slotIndex);
                                 }}
-                                className={`group absolute flex h-[5.25rem] w-[5.6rem] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-start rounded-2xl border px-1 py-1 text-center transition-all duration-200 ease-out ${
+                                className={`group absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-start rounded-2xl border px-1 py-1 text-center transition-all duration-200 ease-out ${isPresentationMode ? 'h-[5.25rem] w-[4.75rem] 2xl:w-[5.5rem]' : 'h-[5.25rem] w-[5.6rem]'} ${
                                   slotPlayer ? `${slotPlayer.isKey ? 'border-amber-200/80 bg-amber-200/[0.11] shadow-[0_0_0_1px_rgba(251,191,36,0.32),0_0_24px_rgba(250,204,21,0.30),0_10px_22px_rgba(0,0,0,0.24)]' : 'border-white/10 bg-slate-950/26 shadow-[0_8px_20px_rgba(0,0,0,0.18)]'} text-white` : `${teamFieldEditMode ? 'border-dashed border-white/12 bg-white/[0.012] text-white/30' : 'pointer-events-none hidden'}`
                                 } ${teamFieldEditMode && draggedPlayer ? draggedFitClass : ''} ${isDraggedSource ? 'scale-95 opacity-55' : ''} ${activeRivalDropSlot === `starter-${slotIndex}` ? 'scale-105' : ''}`}
                                 style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
@@ -30818,8 +30850,8 @@ function App() {
                                       <span className="absolute inset-0 flex items-center justify-center">{slotPlayer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                                       {slotPlayer.image ? <img src={slotPlayer.image} alt={slotPlayer.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="relative h-full w-full object-cover" /> : null}
                                     </span>
-                                    <span className="absolute bottom-1 left-1/2 flex w-max max-w-[6.25rem] min-w-0 -translate-x-1/2 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-md bg-slate-950/55 px-1 py-0.5 text-[9px] font-black uppercase leading-3 lg:max-w-[7.5rem]">
-                                      <PlayerNumberName player={slotPlayer} displayName={isPresentationMode ? getTeamPresentationPlayerName(slotPlayer) : undefined} className="min-w-0" />
+                                    <span className={`absolute bottom-1 left-1/2 flex min-w-0 -translate-x-1/2 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-md bg-slate-950/55 px-1 py-0.5 font-black uppercase leading-3 ${isPresentationMode ? 'w-[calc(100%-0.35rem)] text-[8px] 2xl:text-[9px]' : 'w-max max-w-[6.25rem] text-[9px] lg:max-w-[7.5rem]'}`}>
+                                      <PlayerNumberName player={slotPlayer} displayName={isPresentationMode ? getTeamPresentationPlayerName(slotPlayer) : undefined} className="min-w-0 w-full justify-center" />
                                       {getRivalPlayerFlags(selectedTeam.id, slotPlayer.name).captain || slotPlayer.captain ? <span title="Capitán" className="shrink-0 text-[10px] leading-none text-blue-200">©</span> : null}
                                     </span>
                                   </>
@@ -30893,28 +30925,33 @@ function App() {
                       </div>
 
                       {isPresentationMode ? (
-                        <aside className="flex h-[clamp(520px,68vh,740px)] min-h-0 flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-[#091428]/90 p-3 shadow-[0_18px_52px_rgba(0,0,0,0.22)]">
-                          <div className="grid shrink-0 grid-cols-2 gap-2">
-                            <div className="rounded-xl border border-caudal-electric/20 bg-caudal-electric/[0.07] px-3 py-2.5">
-                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Sistema</p>
-                              <p className="mt-1 text-2xl font-black leading-none text-white">{selectedTeam.system || 'Pendiente'}</p>
-                            </div>
-                            <div className="rounded-xl border border-white/[0.09] bg-white/[0.035] px-3 py-2.5">
-                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Variante</p>
-                              <p className="mt-1 text-2xl font-black leading-none text-white">{presentationVariant}</p>
+                        <aside className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-[#091428]/90 p-3 shadow-[0_18px_52px_rgba(0,0,0,0.22)]">
+                          <div className="shrink-0 rounded-xl border border-caudal-electric/20 bg-caudal-electric/[0.07] px-3 py-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Sistema principal</p>
+                            <p className="mt-1 text-3xl font-black leading-none text-white">{selectedTeam.system || 'Pendiente'}</p>
+                          </div>
+                          <div className="mt-2 shrink-0 rounded-xl border border-white/[0.09] bg-white/[0.035] px-3 py-2.5">
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Variantes</p>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {presentationVariants.length ? presentationVariants.map((variant) => (
+                                <span key={variant} className="rounded-lg border border-white/10 bg-slate-950/35 px-2.5 py-1.5 text-sm font-black leading-none text-white">{variant}</span>
+                              )) : <span className="text-sm font-bold text-slate-500">Sin registrar</span>}
                             </div>
                           </div>
 
                           <div className="mt-3 flex min-h-0 flex-1 flex-col rounded-xl border border-white/[0.07] bg-white/[0.025] p-2.5">
-                            <p className="shrink-0 text-[11px] font-black uppercase tracking-[0.2em] text-caudal-electric">Banquillo</p>
-                            <div className="mt-2 grid min-h-0 content-start gap-2">
+                            <div className="flex shrink-0 items-center justify-between gap-2">
+                              <p className="text-[11px] font-black uppercase tracking-[0.2em] text-caudal-electric">Banquillo</p>
+                              <span className="rounded-md bg-white/[0.06] px-2 py-1 text-[10px] font-black text-slate-300">{presentationBenchPlayers.length}</span>
+                            </div>
+                            <div className="mt-2 grid min-h-0 flex-1 content-start gap-2 overflow-y-auto overscroll-contain pr-1">
                               {groupedBenchPlayers.length ? groupedBenchPlayers.map((group) => (
                                 <div key={group.label} className="min-w-0 rounded-lg border border-white/[0.06] bg-slate-950/20 p-1.5">
                                   <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">{group.label}</p>
                                   <div className="mt-1 grid grid-cols-2 gap-1">
                                     {group.players.map((player) => (
                                       <PlayerNameTooltip key={player.jugadorRivalId || player.id || player.name} player={player}>
-                                      <span className="flex min-h-9 min-w-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-1 text-[10px] font-black text-slate-100">
+                                      <span className="flex h-10 min-w-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-1 text-[10px] font-black text-slate-100">
                                         <span className="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white/[0.08] text-[8px]">
                                           <span>{getPlayerInitials(player)}</span>
                                           {player.image ? <img src={player.image} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} className="absolute inset-0 h-full w-full object-cover" /> : null}
@@ -30922,9 +30959,8 @@ function App() {
                                         <PlayerNumberName
                                           player={player}
                                           displayName={getTeamPresentationPlayerName(player)}
-                                          truncateName={false}
-                                          className="min-w-0 flex-1 leading-[1.05]"
-                                          nameClassName="text-[10px] leading-[1.05]"
+                                          className="min-w-0 flex-1 leading-none"
+                                          nameClassName="text-[10px] leading-none 2xl:text-[11px]"
                                         />
                                       </span>
                                       </PlayerNameTooltip>
@@ -35559,6 +35595,16 @@ function App() {
                         <option value="">Seleccionar sistema</option>
                         {gameSystems.map((system) => <option key={system} value={system}>{system}</option>)}
                       </select>
+                    </label>
+                    <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 sm:col-span-2">
+                      <span>Variantes tácticas</span>
+                      <input
+                        defaultValue={safeArray(teamFormState.tacticalVariants).join(', ')}
+                        onChange={(event) => setTeamFormState((current) => ({ ...current, tacticalVariants: normalizeTeamTacticalVariants(event.target.value) }))}
+                        className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm font-bold normal-case tracking-normal text-white shadow-inner placeholder:text-slate-600"
+                        placeholder="Ej. 4-2-3-1, 5-3-2, 4-3-3"
+                      />
+                      <span className="block text-[10px] font-semibold normal-case tracking-normal text-slate-600">Separa varias opciones con comas.</span>
                     </label>
                     <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                       <span>Color principal de camiseta</span>
