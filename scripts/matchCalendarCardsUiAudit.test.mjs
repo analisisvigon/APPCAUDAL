@@ -22,5 +22,11 @@ assert.match(calendar, /timelineExpanded \? 'Ver menos'/, 'el timeline puede exp
 assert.match(calendar, /\['PRE', 'ESTADÍSTICAS', 'POST', 'IMPRESIÓN'\]/, 'la navegación inferior permanece intacta');
 assert.match(calendar, /grid-cols-\[54px_28px_minmax\(0,1fr\)\]/, 'el timeline mantiene ancho seguro en móvil');
 assert.equal(calendar.includes('overflow-x-auto'), false, 'las tarjetas no introducen scroll horizontal');
+assert.match(calendar, /videoUrl: getMatchCalendarGoalVideoUrl\(event, detectMatchVideoProvider\)/, 'cada fila de gol conserva su clip validado al construir el timeline');
+assert.match(calendar, /title="Ver vídeo del gol"/, 'el acceso al vídeo tiene título accesible');
+assert.match(calendar, /aria-label="Ver vídeo del gol"/, 'el acceso al vídeo tiene nombre accesible');
+assert.match(calendar, /target="_blank"/, 'el vídeo se abre en otra pestaña');
+assert.match(calendar, /rel="noopener noreferrer"/, 'el enlace externo aísla la nueva pestaña');
+assert.doesNotMatch(calendar, /postVideoLink[\s\S]*?Ver vídeo del gol/, 'el timeline no confunde el vídeo general del partido con un clip de gol');
 
 console.log('match calendar cards UI audit passed');

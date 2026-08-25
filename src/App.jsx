@@ -8,7 +8,7 @@ import {
   runIndependentAuthenticatedLoaders,
 } from './utils/authenticatedDataLoad';
 import LibrarySection from './components/library/LibrarySection';
-import MatchVideoPlayer from './components/matches/MatchVideoPlayer';
+import MatchVideoPlayer, { detectMatchVideoProvider } from './components/matches/MatchVideoPlayer';
 import MatchPrintTab from './components/print/MatchPrintTab';
 import FootballZoneMap from './components/visualization/FootballZoneMap';
 import CaptainPriorityPanel from './components/players/CaptainPriorityPanel';
@@ -68,6 +68,7 @@ import {
 import {
   formatMatchCalendarRound,
   getMatchCalendarEventPriority,
+  getMatchCalendarGoalVideoUrl,
 } from './utils/matchCalendarCard';
 import { buildRecentActivity, formatRecentActivityTime } from './utils/recentActivity';
 import {
@@ -32668,6 +32669,7 @@ function App() {
                           assist: isGoalFor
                             ? getReferencedPlayerDisplayName(event.assistantId, event.assistant, '')
                             : rivalGoalPresentation.assist,
+                          videoUrl: getMatchCalendarGoalVideoUrl(event, detectMatchVideoProvider),
                         };
                       }),
                       ...Object.entries(match.statsPlayerData || {}).flatMap(([name, stats]) => [
@@ -32810,7 +32812,21 @@ function App() {
                                       <span className="font-black tabular-nums text-slate-500">{event.hasMinute ? event.minuteLabel : 'Sin minuto'}</span>
                                       <span className="flex h-6 w-6 items-center justify-center rounded-lg border border-white/10 bg-white/[0.055] text-[10px] font-black leading-none text-white">{event.icon}</span>
                                       <span className={`min-w-0 font-semibold ${event.side === 'caudal' ? 'text-emerald-100' : event.side === 'rival' ? 'text-red-100' : 'text-slate-200'}`}>
-                                        <span className="block truncate" title={`${event.typeLabel ? `${event.typeLabel}: ` : ''}${event.label}${event.detail ? ` ${event.detail}` : ''}`}>{event.typeLabel ? `${event.typeLabel}: ` : ''}{event.label}{event.detail ? ` ${event.detail}` : ''}</span>
+                                        <span className="flex min-w-0 items-center gap-1.5">
+                                          <span className="min-w-0 truncate" title={`${event.typeLabel ? `${event.typeLabel}: ` : ''}${event.label}${event.detail ? ` ${event.detail}` : ''}`}>{event.typeLabel ? `${event.typeLabel}: ` : ''}{event.label}{event.detail ? ` ${event.detail}` : ''}</span>
+                                          {event.videoUrl ? (
+                                            <a
+                                              href={event.videoUrl}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              title="Ver vídeo del gol"
+                                              aria-label="Ver vídeo del gol"
+                                              className="inline-flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-md border border-white/10 bg-white/[0.045] text-[9px] leading-none text-slate-400 transition hover:border-caudal-electric/40 hover:bg-caudal-electric/10 hover:text-caudal-electric focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70"
+                                            >
+                                              ▶
+                                            </a>
+                                          ) : null}
+                                        </span>
                                         {event.assist ? <span className="mt-0.5 block truncate text-[11px] font-bold text-caudal-electric" title={`Asistencia: ${event.assist}`}>Asistencia: {event.assist}</span> : null}
                                       </span>
                                     </div>
