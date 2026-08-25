@@ -57,10 +57,12 @@ function MatchKeyCard({ text, index, capture, meta, first, last, onEdit, onRemov
   }
 
   return (
-    <article className={`group relative flex min-w-0 items-start gap-2 rounded-xl border ${meta.borderClass} bg-black/15 px-3 py-2.5`}>
-      <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${meta.accent}`} />
-      <p className="min-w-0 flex-1 break-words text-sm font-bold leading-snug text-slate-100">{text}</p>
-      <div className="flex shrink-0 flex-wrap justify-end gap-1 opacity-80 transition group-hover:opacity-100">
+    <article className={`group relative min-w-0 rounded-xl border ${meta.borderClass} bg-black/15 px-2.5 py-2.5`}>
+      <div className="flex min-w-0 items-start gap-2">
+        <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${meta.accent}`} />
+        <p className="min-w-0 flex-1 whitespace-normal text-sm font-bold leading-snug text-slate-100 [overflow-wrap:break-word] [word-break:normal]">{text}</p>
+      </div>
+      <div className="mt-2 flex min-w-0 flex-wrap justify-end gap-1 border-t border-white/[0.055] pt-1.5 opacity-80 transition group-hover:opacity-100">
         <button type="button" disabled={first} onClick={() => onMove(-1)} className="rounded-md px-1.5 py-1 text-[9px] font-black uppercase text-slate-400 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-25">Subir</button>
         <button type="button" disabled={last} onClick={() => onMove(1)} className="rounded-md px-1.5 py-1 text-[9px] font-black uppercase text-slate-400 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-25">Bajar</button>
         <button type="button" onClick={onEdit} className="rounded-md px-1.5 py-1 text-[9px] font-black uppercase text-slate-300 hover:bg-white/10 hover:text-white">Editar</button>
@@ -148,7 +150,7 @@ export default function MatchKeysPanel({ matchId, groups, editable = true, onCha
   };
   const moveKey = (kind, index, direction) => onChange?.({ ...normalized, [kind]: moveMatchKey(normalized[kind], index, direction) });
   const columns = (capture) => (
-    <div className={`grid items-start gap-3 ${capture ? 'grid-cols-2' : 'lg:grid-cols-2'}`}>
+    <div className={`grid min-w-0 items-start gap-3 ${capture ? 'grid-cols-2' : 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]'}`}>
       {['offensive', 'defensive'].map((kind) => <MatchKeyColumn key={kind} kind={kind} items={normalized[kind]} capture={capture} editable={editable} editor={editor} onStartAdd={(nextKind) => setEditor({ kind: nextKind, index: null, text: '' })} onStartEdit={(nextKind, index, text) => setEditor({ kind: nextKind, index, text })} onEditorChange={(text) => setEditor((current) => ({ ...current, text }))} onEditorCancel={() => setEditor(null)} onEditorSave={saveEditor} onRemove={removeKey} onMove={moveKey} />)}
     </div>
   );

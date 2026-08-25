@@ -13,6 +13,9 @@ assert.match(component, /createPortal[\s\S]*data-match-keys-capture/, 'Modo Capt
 assert.match(component, /capture \? 'grid-cols-2'/, 'la captura mantiene siempre las dos columnas');
 assert.match(component, /padStart\(2, '0'\)/, 'la numeración de captura es automática y visual');
 assert.match(component, /break-words[\s\S]*leading-snug/, 'las claves largas hacen wrap en filas compactas');
+assert.match(component, /whitespace-normal[\s\S]*\[overflow-wrap:break-word\][\s\S]*\[word-break:normal\]/, 'el texto normal envuelve por palabras sin romperse carácter a carácter');
+assert.match(component, /border-t border-white\/\[0\.055\][\s\S]*>Subir<[\s\S]*>Bajar</, 'las acciones normales ocupan una segunda fila independiente del texto');
+assert.match(component, /lg:grid-cols-\[minmax\(0,1fr\)_minmax\(0,1fr\)\]/, 'las dos columnas normales reparten el ancho disponible sin colapsar');
 assert.doesNotMatch(component, /truncate/, 'ninguna clave se trunca');
 assert.match(component, /!capture && editable/, 'los controles de edición desaparecen en captura');
 assert.match(model, /matchKeysOffensive[\s\S]*matchKeysDefensive[\s\S]*matchKeys: flattened/, 'la persistencia tipada conserva el formato plano legado');
