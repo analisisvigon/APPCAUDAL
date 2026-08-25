@@ -54,6 +54,15 @@ const systemChanged = buildTacticalDispositionDraft({ interval: { ...currentInte
 assert.equal(systemChanged.lineup.filter(Boolean).length, 0, 'un cambio de sistema no reutiliza slots de otra formación');
 assert.equal(systemChanged.pendingPlayers.length, 11);
 
+const customStoredSlots = propagated.lineup.map((player, slot) => ({ ...player, slot }));
+const preservedCustomDraft = buildTacticalDispositionDraft({
+  interval: { ...currentInterval, system: '4-2-3-1', isComplete: false, slots: customStoredSlots },
+  previousInterval,
+  knownPlayers: at71.players,
+});
+assert.equal(preservedCustomDraft.lineup.filter(Boolean).length, 11, 'F: al editar el sistema se conserva la disposición personalizada como borrador revisable');
+assert.deepEqual(preservedCustomDraft.pendingPlayers, []);
+
 const originalIsmaSlot = propagated.lineup.findIndex((row) => row?.playerId === 'isma');
 const placed = moveTacticalDispositionPlayer({ lineup: propagated.lineup, player: propagated.lineup[originalIsmaSlot], targetSlot: 6 });
 assert.equal(placed[6].playerId, 'isma');

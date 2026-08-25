@@ -94,7 +94,7 @@ export const buildKnownOnFieldPlayers = ({ initialSlots = [], playerStats = {}, 
 
 export const buildTacticalDispositionDraft = ({ interval = null, previousInterval = null, knownPlayers = [], substitutions = [] } = {}) => {
   const knownByKey = new Map(knownPlayers.map((player) => [getTacticalParticipantKey(player), normalizeTacticalParticipant(player)]));
-  const sourceSlots = interval?.isComplete
+  const sourceSlots = Array.isArray(interval?.slots) && interval.slots.length
     ? interval.slots
     : previousInterval?.isComplete && previousInterval.system === interval?.system
       ? previousInterval.slots

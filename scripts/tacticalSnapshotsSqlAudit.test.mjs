@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const sql = fs.readFileSync(new URL('../supabase_tactical_snapshots.sql', import.meta.url), 'utf8');
+const editMigration = fs.readFileSync(new URL('../supabase_edit_match_system_change.sql', import.meta.url), 'utf8');
 
 assert.match(sql, /create table if not exists public\.partido_snapshots_tacticos/i);
 assert.match(sql, /create table if not exists public\.partido_snapshot_tactico_slots/i);
@@ -15,6 +16,13 @@ assert.doesNotMatch(sql, /security definer/i);
 assert.match(sql, /save_match_tactical_snapshot/i);
 assert.match(sql, /save_match_system_change_with_snapshot/i);
 assert.match(sql, /delete_match_system_change_with_snapshot/i);
+assert.match(editMigration, /update public\.partido_eventos_sistema[\s\S]*?where id = p_event_id and partido_id = p_partido_id/i, 'editar hace UPDATE sobre el evento identificado');
+assert.match(editMigration, /update public\.partido_snapshots_tacticos[\s\S]*?where source_system_event_id = v_event_id[\s\S]*?returning id into v_snapshot_id/i, 'el snapshot asociado se actualiza por su vínculo estable');
+assert.match(editMigration, /system = btrim\(p_to_system\)/i, 'el snapshot adopta el sistema corregido');
+assert.match(editMigration, /when btrim\(coalesce\(v_previous_to_system, ''\)\) = btrim\(p_to_system\) then is_complete[\s\S]*?else false/i, 'solo un cambio de formación invalida la disposición para revisión');
+assert.match(editMigration, /if v_snapshot_id is not null then[\s\S]*?return query select v_event_id, v_snapshot_id;[\s\S]*?return;/i, 'la edición de un snapshot existente termina antes del guardado que reemplaza slots');
+assert.match(editMigration, /another tactical snapshot already exists at minute/i, 'un minuto ocupado se rechaza sin fusionar snapshots ajenos');
+assert.doesNotMatch(editMigration, /delete from public\.partido_eventos_sistema/i, 'editar nunca elimina el evento');
 assert.match(sql, /jsonb_typeof\(v_slots\) <> 'array'/i);
 assert.match(sql, /duplicated tactical slot/i);
 assert.match(sql, /duplicated tactical player/i);

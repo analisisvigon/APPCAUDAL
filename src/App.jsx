@@ -16569,11 +16569,13 @@ function App() {
       fromSystem,
       toSystem: event?.toSystem || fromSystem || getInitialMatchSystem(selectedMatch),
       note: event?.note || '',
+      originalToSystem: event?.toSystem || '',
     };
   };
 
   const openSystemChangeModal = (event = null) => {
     if (!selectedMatch) return;
+    setStatsError('');
     setEditingSystemEventId(event?.rawId || event?.id || '');
     setSystemChangeDraft(getSystemChangeDraftDefaults(event));
   };
@@ -16596,6 +16598,21 @@ function App() {
       return;
     }
     const tacticalMinute = parseTacticalMinute(systemChangeDraft.minute);
+    const matchDuration = getMatchDurationMinutes(selectedMatch);
+    if (!Number.isInteger(tacticalMinute) || tacticalMinute > matchDuration || String(tacticalMinute) !== String(Number(systemChangeDraft.minute))) {
+      setStatsError(`El minuto debe estar entre 0 y ${matchDuration}.`);
+      return;
+    }
+    const conflictingEvent = safeArray(selectedMatch.systemEvents).find((event) => (
+      String(event.id || '') !== String(editingSystemEventId || '')
+      && parseTacticalMinute(event.minute) === tacticalMinute
+    ));
+    if (conflictingEvent) {
+      setStatsError(`Ya existe otro cambio de sistema en el minuto ${tacticalMinute}'.`);
+      return;
+    }
+    const isEditing = Boolean(editingSystemEventId);
+    const systemChanged = isEditing && String(systemChangeDraft.originalToSystem || '') !== String(systemChangeDraft.toSystem || '');
     setSystemChangeSaving(true);
     setStatsError('');
     const fromSystem = getSystemBeforeEvent({
@@ -16630,8 +16647,13 @@ function App() {
       const interval = history.intervals.find((candidate) => Number(candidate.fromMinute) === Number(tacticalMinute));
       if (interval) {
         setSelectedSystemMoment({ intervalId: interval.id, minute: interval.fromMinute, system: interval.system });
-        openTacticalDispositionEditor({ interval, history, match: refreshed });
+        if (!isEditing || systemChanged) openTacticalDispositionEditor({ interval, history, match: refreshed });
       }
+      setStatsSaveStatus(systemChanged
+        ? 'Cambio actualizado · revisa la disposición táctica del tramo'
+        : isEditing
+          ? 'Cambio de sistema actualizado ✓'
+          : 'Cambio de sistema guardado ✓');
     }
   };
 
@@ -18203,9 +18225,9 @@ function App() {
       playerStats: safeObject(match.statsPlayerData),
       atMinute: interval.fromMinute,
     });
-    const persistedPlayers = interval.isComplete
-      ? safeArray(interval.slots).map(enrichTacticalParticipant).filter((player) => getTacticalParticipantKey(player))
-      : [];
+    const persistedPlayers = safeArray(interval.slots)
+      .map(enrichTacticalParticipant)
+      .filter((player) => getTacticalParticipantKey(player));
     const persistedKeys = persistedPlayers.map(getTacticalParticipantKey);
     const knownPlayers = persistedPlayers.length === 11 && new Set(persistedKeys).size === 11
       ? persistedPlayers
@@ -34604,7 +34626,7 @@ function App() {
                 <input
                   type="number"
                   min="0"
-                  max="130"
+                  max={getMatchDurationMinutes(selectedMatch)}
                   value={systemChangeDraft.minute}
                   onChange={(event) => setSystemChangeDraft((current) => ({ ...current, minute: event.target.value, fromSystem: getSystemBeforeEvent({ initialSystem: getInitialMatchSystem(selectedMatch), systemEvents: selectedMatch.systemEvents, eventId: editingSystemEventId, minute: event.target.value, period: current.period }) }))}
                   className="w-full rounded-2xl bg-white px-4 py-4 text-xl font-black text-slate-950"
@@ -34648,14 +34670,25 @@ function App() {
                 placeholder="Ej. Buscar un jugador entre líneas."
               />
             </label>
-            <button
-              type="button"
-              onClick={saveSystemChangeEvent}
-              disabled={systemChangeSaving}
-              className="mt-5 flex min-h-[56px] w-full items-center justify-center rounded-2xl bg-violet-300 px-5 py-4 text-base font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {systemChangeSaving ? 'Guardando...' : 'Guardar cambio'}
-            </button>
+            {editingSystemEventId && systemChangeDraft.originalToSystem !== systemChangeDraft.toSystem ? (
+              <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm font-bold text-amber-100">
+                Has cambiado el sistema. Se conservará la disposición guardada, pero debes revisar los slots tácticos de este tramo.
+              </div>
+            ) : null}
+            {statsError ? <p role="alert" className="mt-4 rounded-2xl border border-red-300/20 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-100">{statsError}</p> : null}
+            <div className="mt-5 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+              <button
+                type="button"
+                onClick={saveSystemChangeEvent}
+                disabled={systemChangeSaving}
+                className="flex min-h-[56px] w-full items-center justify-center rounded-2xl bg-violet-300 px-5 py-4 text-base font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {systemChangeSaving ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+              <button type="button" onClick={closeSystemChangeModal} disabled={systemChangeSaving} className="min-h-[56px] rounded-2xl border border-white/10 px-5 text-sm font-black text-slate-200 disabled:opacity-50">
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

@@ -157,6 +157,7 @@ as $$
 declare
   v_event_id uuid;
   v_snapshot_id uuid;
+  v_previous_to_system text;
 begin
   if nullif(btrim(p_to_system), '') is null then raise exception 'to_system is required'; end if;
 
@@ -167,6 +168,22 @@ begin
       p_partido_id, p_minute::text, nullif(btrim(p_period), ''), nullif(btrim(p_from_system), ''), btrim(p_to_system), nullif(btrim(p_note), '')
     ) returning id into v_event_id;
   else
+    select to_system into v_previous_to_system
+    from public.partido_eventos_sistema
+    where id = p_event_id and partido_id = p_partido_id
+    for update;
+    if not found then raise exception 'system event not found for match'; end if;
+
+    if exists (
+      select 1
+      from public.partido_snapshots_tacticos
+      where partido_id = p_partido_id
+        and minute = p_minute
+        and source_system_event_id is distinct from p_event_id
+    ) then
+      raise exception 'another tactical snapshot already exists at minute %', p_minute;
+    end if;
+
     update public.partido_eventos_sistema set
       minute = p_minute::text,
       period = nullif(btrim(p_period), ''),
@@ -176,11 +193,24 @@ begin
       updated_at = now()
     where id = p_event_id and partido_id = p_partido_id
     returning id into v_event_id;
-    if v_event_id is null then raise exception 'system event not found for match'; end if;
 
     update public.partido_snapshots_tacticos
-    set minute = p_minute, period = nullif(btrim(p_period), ''), updated_at = now()
-    where source_system_event_id = v_event_id;
+    set minute = p_minute,
+        period = nullif(btrim(p_period), ''),
+        system = btrim(p_to_system),
+        reason = coalesce(nullif(btrim(p_note), ''), 'Cambio de sistema'),
+        is_complete = case
+          when btrim(coalesce(v_previous_to_system, '')) = btrim(p_to_system) then is_complete
+          else false
+        end,
+        updated_at = now()
+    where source_system_event_id = v_event_id
+    returning id into v_snapshot_id;
+
+    if v_snapshot_id is not null then
+      return query select v_event_id, v_snapshot_id;
+      return;
+    end if;
   end if;
 
   v_snapshot_id := public.save_match_tactical_snapshot(

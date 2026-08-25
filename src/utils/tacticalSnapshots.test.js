@@ -80,6 +80,63 @@ assert.deepEqual(getTacticalTimelineInvariantReport({ intervals: changed, durati
   overlap: false, coveredMinutes: 90, duration: 90, completeMinutes: 90, incompleteMinutes: 0, valid: true,
 });
 
+const editedMinuteHistory = buildTacticalMatchHistory({
+  matchId: 'edited-minute',
+  duration: 90,
+  initialSystem: '4-2-3-1',
+  initialSlots: lineup('a'),
+  systemEvents: [
+    { id: 'system-63', minute: 65, toSystem: '4-3-3' },
+    { id: 'system-75', minute: 75, toSystem: '4-4-2' },
+  ],
+  snapshots: [
+    { id: 'snap-63', partidoId: 'edited-minute', minute: 65, system: '4-3-3', isComplete: true, sourceSystemEventId: 'system-63', slots: lineup('b') },
+    { id: 'snap-75', partidoId: 'edited-minute', minute: 75, system: '4-4-2', isComplete: true, sourceSystemEventId: 'system-75', slots: lineup('c') },
+  ],
+});
+assert.deepEqual(
+  editedMinuteHistory.systemSegments.map(({ fromMinute, toMinute, system }) => [fromMinute, toMinute, system]),
+  [[0, 65, '4-2-3-1'], [65, 75, '4-3-3'], [75, 90, '4-4-2']],
+  'B/D: editar 63 a 65 recalcula ambos límites sin alterar el cambio posterior'
+);
+assert.equal(editedMinuteHistory.intervals.find((interval) => interval.fromMinute === 65).sourceSystemEventId, 'system-63', 'E/K: el snapshot conserva el vínculo y no se duplica');
+
+const editedSystemHistory = buildTacticalMatchHistory({
+  matchId: 'edited-system',
+  duration: 90,
+  initialSystem: '4-2-3-1',
+  initialSlots: lineup('a'),
+  systemEvents: [
+    { id: 'system-63', minute: 63, toSystem: '4-4-2' },
+    { id: 'system-75', minute: 75, toSystem: '3-5-2' },
+  ],
+  snapshots: [
+    { id: 'snap-63', partidoId: 'edited-system', minute: 63, system: '4-4-2', isComplete: false, sourceSystemEventId: 'system-63', slots: lineup('b') },
+    { id: 'snap-70', partidoId: 'edited-system', minute: 70, system: '4-3-3', isComplete: true, slots: lineup('c') },
+    { id: 'snap-75', partidoId: 'edited-system', minute: 75, system: '3-5-2', isComplete: true, sourceSystemEventId: 'system-75', slots: lineup('d') },
+  ],
+});
+const staleInternalSnapshot = editedSystemHistory.intervals.find((interval) => interval.fromMinute === 70);
+assert.equal(staleInternalSnapshot.system, '4-4-2', 'A/C/H: el evento editado gobierna todo su tramo y elimina la referencia antigua');
+assert.equal(staleInternalSnapshot.systemMismatch, true, 'F: una disposición interna del sistema anterior queda marcada para revisión');
+assert.equal(staleInternalSnapshot.isComplete, false, 'F: la disposición incompatible no contamina el análisis posicional');
+
+const reorderedHistory = buildTacticalMatchHistory({
+  matchId: 'reordered-events',
+  duration: 90,
+  initialSystem: '4-2-3-1',
+  initialSlots: lineup('a'),
+  systemEvents: [
+    { id: 'system-a', minute: 72, toSystem: '4-3-3' },
+    { id: 'system-b', minute: 70, toSystem: '4-4-2' },
+  ],
+  snapshots: [
+    { id: 'snap-b', partidoId: 'reordered-events', minute: 70, system: '4-4-2', isComplete: true, sourceSystemEventId: 'system-b', slots: lineup('b') },
+    { id: 'snap-a', partidoId: 'reordered-events', minute: 72, system: '4-3-3', isComplete: true, sourceSystemEventId: 'system-a', slots: lineup('c') },
+  ],
+});
+assert.deepEqual(reorderedHistory.systemSegments.map(({ fromMinute }) => fromMinute), [0, 70, 72], 'I: editar el minuto reordena la cronología por tiempo, no por creación');
+
 const substitutionLineup = lineup('a');
 substitutionLineup[9] = { slot: 9, playerId: 'sub-9', playerName: 'SUPLENTE 9' };
 const substituted = buildTacticalSnapshotIntervals({

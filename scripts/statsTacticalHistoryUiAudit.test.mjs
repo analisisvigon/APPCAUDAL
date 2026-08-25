@@ -33,6 +33,14 @@ assert.match(appSource, /Pendientes de colocar/, 'un caso no inferible mantiene 
 assert.match(appSource, /buildAutomaticSubstitutionSnapshot/, 'las sustituciones nuevas construyen un snapshot desde el historial común');
 assert.match(appSource, /persistAutomaticSubstitutionSnapshot/, 'el guardado de estadísticas enlaza la sustitución con su snapshot');
 assert.match(appSource, /save_match_system_change_with_snapshot/, 'un cambio de sistema crea una única foto incompleta vinculada en la misma operación');
+assert.match(appSource, /title="Editar cambio de sistema"/, 'cada evento de sistema ofrece edición en el timeline');
+assert.match(appSource, /p_event_id: editingSystemEventId \|\| null/, 'editar envía el ID existente a la RPC y no crea otro evento');
+assert.match(appSource, /max=\{getMatchDurationMinutes\(selectedMatch\)\}/, 'el minuto queda limitado por la duración real del partido');
+assert.match(appSource, /Ya existe otro cambio de sistema en el minuto/, 'la UI bloquea dos cambios de sistema en el mismo minuto');
+assert.match(appSource, /Has cambiado el sistema\. Se conservará la disposición guardada/, 'cambiar la formación avisa que debe revisarse la disposición conservada');
+assert.match(appSource, />\s*Cancelar\s*</, 'el modal permite cancelar sin persistir el borrador');
+assert.match(appSource, /gameSystems\.map\(\(system\)/, 'el selector reutiliza el catálogo de sistemas existente');
+assert.match(appSource, /if \(!isEditing \|\| systemChanged\) openTacticalDispositionEditor/, 'un cambio de formación conduce a revisar la disposición');
 assert.match(appSource, /save_match_tactical_snapshot/, 'el guardado utiliza la RPC atómica de snapshots');
 assert.match(appSource, /const refreshed = await loadMatchStatsData\(editor\.matchId\)/, 'después de guardar se relee el partido');
 assert.match(appSource, /tacticalSnapshotMatchesDisposition/, 'la relectura verifica partido, minuto, sistema y slots');

@@ -125,15 +125,28 @@ export const buildTacticalSnapshotIntervals = ({
       if (!current || (priority[snapshot.source] || 0) > (priority[current.source] || 0)) byMinute.set(snapshot.minute, snapshot);
     });
   const boundaries = Array.from(byMinute.values()).sort((left, right) => left.minute - right.minute);
+  const systemTimeline = rows(systemEvents)
+    .map((event) => ({ minute: getSystemEventMinute(event), system: getSystemEventTarget(event) }))
+    .filter((event) => event.minute !== null && event.system && event.minute <= matchDuration)
+    .sort((left, right) => left.minute - right.minute);
+  const hasCanonicalSystemTimeline = systemTimeline.length > 0;
+  let systemEventIndex = 0;
   let activeSystem = initialSystem;
   return boundaries.flatMap((snapshot, index) => {
     const fromMinute = Math.max(0, Math.min(matchDuration, snapshot.minute));
     const toMinute = Math.max(fromMinute, Math.min(matchDuration, boundaries[index + 1]?.minute ?? matchDuration));
-    activeSystem = snapshot.system || activeSystem;
+    while (systemEventIndex < systemTimeline.length && systemTimeline[systemEventIndex].minute <= fromMinute) {
+      activeSystem = systemTimeline[systemEventIndex].system || activeSystem;
+      systemEventIndex += 1;
+    }
+    const storedSystem = clean(snapshot.system);
+    if (!hasCanonicalSystemTimeline) activeSystem = storedSystem || activeSystem;
+    const systemMismatch = Boolean(hasCanonicalSystemTimeline && storedSystem && activeSystem && storedSystem !== activeSystem);
     if (toMinute <= fromMinute) return [];
     const slotKeys = snapshot.slots.map(playerKey).filter(Boolean);
     const hasCompleteDisposition = Boolean(
       snapshot.isComplete
+      && !systemMismatch
       && hasFormationSlotsForSavedLineup(activeSystem)
       && snapshot.slots.length === 11
       && new Set(slotKeys).size === 11
@@ -146,8 +159,9 @@ export const buildTacticalSnapshotIntervals = ({
       minutes: toMinute - fromMinute,
       period: snapshot.period || '',
       system: activeSystem,
-      reason: snapshot.reason,
+      reason: systemMismatch ? 'El sistema guardado en el snapshot requiere revisión tras editar la cronología.' : snapshot.reason,
       isComplete: hasCompleteDisposition,
+      systemMismatch,
       sourceSystemEventId: snapshot.sourceSystemEventId || '',
       source: snapshot.source,
       slots: snapshot.slots,
