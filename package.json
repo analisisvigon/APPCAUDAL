@@ -66,6 +66,7 @@
     "test:delegated-events": "node src/utils/delegatedEventIdentity.test.js && node src/utils/delegatedMatchValidation.test.js && node src/utils/delegatedMatchStatusFlow.test.js && node scripts/delegatedMatchValidationSqlAudit.test.mjs",
     "test:delegated-save-flow": "node src/utils/delegatedEventSaveFlow.test.js",
     "test:delegated-stats": "node src/utils/delegatedStats.test.js && node scripts/delegatedStatsUiAudit.test.mjs",
+    "test:match-keys": "node src/utils/matchKeys.test.js && node scripts/matchKeysPanelUiAudit.test.mjs",
     "test:player-display-name": "node src/utils/playerDisplayName.test.js",
     "test:team-presentation": "node src/utils/teamPresentation.test.js",
     "test:match-status": "node src/utils/matchStatus.test.js",
