@@ -30653,7 +30653,7 @@ function App() {
                     </div>
                     )}
 
-                    <section className={`grid ${teamFieldEditMode ? 'gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(260px,1fr)]' : 'gap-2.5 lg:grid-cols-[minmax(0,70fr)_minmax(310px,30fr)]'}`}>
+                    <section className={`grid ${teamFieldEditMode ? 'gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(260px,1fr)]' : 'gap-2 lg:grid-cols-[minmax(0,74fr)_minmax(280px,26fr)]'}`}>
                       <div className={`bg-[#091428]/80 shadow-[0_18px_52px_rgba(0,0,0,0.22)] ${teamFieldEditMode ? 'rounded-[1.35rem] border border-white/10 p-4' : 'rounded-2xl border border-white/[0.06] p-1.5'}`}>
                         {teamFieldEditMode ? <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div>
@@ -30927,7 +30927,7 @@ function App() {
                                   setActiveRivalDropSlot('');
                                   handleDropOnLineupSlot(slotIndex);
                                 }}
-                                className={`group absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-start rounded-2xl border px-1 py-1 text-center transition-all duration-200 ease-out ${isPresentationMode ? 'h-[5.25rem] w-[4.75rem] 2xl:w-[5.5rem]' : 'h-[5.25rem] w-[5.6rem]'} ${
+                                className={`group absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-start rounded-2xl border px-1 py-1 text-center transition-all duration-200 ease-out ${isPresentationMode ? 'h-24 w-[clamp(5.25rem,6vw,6.5rem)]' : 'h-[5.25rem] w-[5.6rem]'} ${
                                   slotPlayer ? `${slotPlayer.isKey ? 'border-amber-200/80 bg-amber-200/[0.11] shadow-[0_0_0_1px_rgba(251,191,36,0.32),0_0_24px_rgba(250,204,21,0.30),0_10px_22px_rgba(0,0,0,0.24)]' : 'border-white/10 bg-slate-950/26 shadow-[0_8px_20px_rgba(0,0,0,0.18)]'} text-white` : `${teamFieldEditMode ? 'border-dashed border-white/12 bg-white/[0.012] text-white/30' : 'pointer-events-none hidden'}`
                                 } ${teamFieldEditMode && draggedPlayer ? draggedFitClass : ''} ${isDraggedSource ? 'scale-95 opacity-55' : ''} ${activeRivalDropSlot === `starter-${slotIndex}` ? 'scale-105' : ''}`}
                                 style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
@@ -30970,12 +30970,12 @@ function App() {
                                         <span key={title} title={title} className={`flex items-center justify-center rounded-md px-1 font-black leading-none ${isPresentationMode ? 'h-4 min-w-4 text-[8px]' : 'h-5 min-w-5 text-[10px]'} ${className}`}>{icon}</span>
                                       ))}
                                     </span>
-                                    <span className="mb-0.5 block w-full truncate whitespace-nowrap text-[8px] font-black uppercase tracking-[0.10em] text-caudal-electric">{shortRoleLabel(slotRole)}</span>
-                                    <span className={`relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-white/[0.08] text-sm font-black ${slotPlayer.isKey ? 'border-amber-200/70 shadow-[0_0_18px_rgba(250,204,21,0.28)]' : 'border-white/10'}`}>
+                                    <span className={`mb-0.5 block w-full truncate whitespace-nowrap font-black uppercase tracking-[0.10em] text-caudal-electric ${isPresentationMode ? 'text-[clamp(9px,0.65vw,10px)] leading-none' : 'text-[8px]'}`}>{shortRoleLabel(slotRole)}</span>
+                                    <span className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-white/[0.08] text-sm font-black ${isPresentationMode ? 'h-[clamp(3.375rem,4vw,3.5rem)] w-[clamp(3.375rem,4vw,3.5rem)]' : 'h-10 w-10'} ${slotPlayer.isKey ? 'border-amber-200/70 shadow-[0_0_18px_rgba(250,204,21,0.28)]' : 'border-white/10'}`}>
                                       <span className="absolute inset-0 flex items-center justify-center">{slotPlayer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
                                       {slotPlayer.image ? <img src={slotPlayer.image} alt={slotPlayer.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="relative h-full w-full object-cover" /> : null}
                                     </span>
-                                    <span className={`absolute bottom-1 left-1/2 flex min-w-0 -translate-x-1/2 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-md bg-slate-950/55 px-1 py-0.5 font-black uppercase leading-3 ${isPresentationMode ? 'w-[calc(100%-0.35rem)] text-[8px] 2xl:text-[9px]' : 'w-max max-w-[6.25rem] text-[9px] lg:max-w-[7.5rem]'}`}>
+                                    <span className={`absolute bottom-1 left-1/2 flex min-w-0 -translate-x-1/2 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-md bg-slate-950/70 font-black uppercase ${isPresentationMode ? 'w-[calc(100%-0.25rem)] px-1.5 py-1 text-[clamp(10px,0.7vw,11.25px)] leading-none' : 'w-max max-w-[6.25rem] px-1 py-0.5 text-[9px] leading-3 lg:max-w-[7.5rem]'}`}>
                                       <PlayerNumberName player={slotPlayer} displayName={isPresentationMode ? getTeamPresentationPlayerName(slotPlayer) : undefined} className="min-w-0 w-full justify-center" />
                                       {getRivalPlayerFlags(selectedTeam.id, slotPlayer.name).captain || slotPlayer.captain ? <span title="Capitán" className="shrink-0 text-[10px] leading-none text-blue-200">©</span> : null}
                                     </span>

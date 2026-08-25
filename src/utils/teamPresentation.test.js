@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { getPlayerDisplayName } from './playerDisplayName.js';
 import { formatPlayerNumberName, getPlayerNumberLabel } from './playerNumberPresentation.js';
+import { getFormationCoordinatesForSavedLineup } from './formationSlotCoordinates.js';
 import {
   getCollisionSafePresentationCoordinates,
   getTeamPresentationBenchGroup,
@@ -74,6 +75,31 @@ benchGroups.forEach(([primarySpecificPosition, expected]) => {
   const gaps = safe.slice(1).map((coordinate, index) => coordinate.x - safe[index].x);
   assert.ok(gaps.every((gap) => gap >= 20), `una línea de ${playersInLine} jugadores conserva separación horizontal estructural`);
 });
+['4-4-2', '4-2-3-1', '4-3-3', '5-3-2', '3-4-3'].forEach((system) => {
+  const sourceCoordinates = getFormationCoordinatesForSavedLineup(system);
+  const sourceSnapshot = structuredClone(sourceCoordinates);
+  const safeCoordinates = getCollisionSafePresentationCoordinates(sourceCoordinates);
+  assert.equal(safeCoordinates.length, 11, `${system} conserva sus once titulares`);
+  assert.deepEqual(sourceCoordinates, sourceSnapshot, `${system} no muta las coordenadas tácticas de origen`);
+  assert.ok(safeCoordinates.every(({ x, y }) => x >= 9 && x <= 91 && y >= 10 && y <= 90), `${system} mantiene todos los centros visuales dentro del campo`);
+});
+[
+  { width: 1366, height: 768 },
+  { width: 1600, height: 900 },
+  { width: 1920, height: 1080 },
+].forEach((viewport) => {
+  const fieldHeight = Math.min(780, Math.max(540, viewport.height - 192));
+  const fieldWidth = fieldHeight * 0.75;
+  const cardWidth = Math.min(104, Math.max(84, viewport.width * 0.06));
+  ['4-4-2', '4-2-3-1', '4-3-3', '5-3-2', '3-4-3'].forEach((system) => {
+    const coordinates = getCollisionSafePresentationCoordinates(getFormationCoordinatesForSavedLineup(system));
+    coordinates.forEach((left, leftIndex) => coordinates.slice(leftIndex + 1).forEach((right) => {
+      const separatedHorizontally = Math.abs(left.x - right.x) * fieldWidth / 100 >= cardWidth;
+      const separatedVertically = Math.abs(left.y - right.y) * fieldHeight / 100 >= 96;
+      assert.ok(separatedHorizontally || separatedVertically, `${system} no solapa tarjetas en ${viewport.width}x${viewport.height}`);
+    }));
+  });
+});
 const safeFormation = getCollisionSafePresentationCoordinates([
   { x: 42, y: 14 }, { x: 58, y: 16 },
   { x: 34, y: 45 }, { x: 50, y: 49 }, { x: 66, y: 45 },
@@ -93,12 +119,14 @@ assert.match(presentationSource, /<PlayerNumberName player=\{slotPlayer\}/, 'tit
 assert.match(presentationSource, /player=\{player\}[\s\S]*?displayName=\{getTeamPresentationPlayerName\(player\)\}/, 'reservas usan la prioridad de nombre específica de presentación');
 assert.doesNotMatch(presentationSource, /PlayerNumberBadge/, 'no queda ningún badge de dorsal en la presentación');
 assert.match(presentationSource, /slotPlayer\.image[\s\S]*?<\/span>[\s\S]*?absolute bottom-1 left-1\/2[\s\S]*?<PlayerNumberName player=\{slotPlayer\}/, 'la fotografía se cierra antes de representar el label absoluto centrado');
-assert.match(presentationSource, /w-\[calc\(100%-0\.35rem\)\] text-\[8px\] 2xl:text-\[9px\]/, 'la identidad queda contenida dentro de su propia tarjeta y no invade al jugador contiguo');
+assert.match(presentationSource, /w-\[calc\(100%-0\.25rem\)\][^']*text-\[clamp\(10px,0\.7vw,11\.25px\)\]/, 'la identidad responsive queda contenida dentro de su propia tarjeta y no invade al jugador contiguo');
 assert.match(presentationSource, /<PlayerNumberName player=\{slotPlayer\}[^>]*\/>[\s\S]*?title="Capitán"[\s\S]*?<\/span>/, 'dorsal, nombre y capitán comparten el mismo label centrado');
 assert.match(presentationSource, /style=\{\{ left: `\$\{slot\.x\}%`, top: `\$\{slot\.y\}%` \}\}/, 'la raíz conserva las coordenadas tácticas como único punto de posicionamiento');
 assert.match(presentationSource, /getCollisionSafePresentationCoordinates/, 'la presentación calcula centros seguros sin alterar las coordenadas del editor');
-assert.match(presentationSource, /w-\[4\.75rem\] 2xl:w-\[5\.5rem\]/, 'las tarjetas de presentación responden al ancho de pantalla');
-assert.match(presentationSource, /lg:grid-cols-\[minmax\(0,70fr\)_minmax\(310px,30fr\)\]/, 'presentación reparte el ancho 70/30 entre campo y panel');
+assert.match(presentationSource, /h-24 w-\[clamp\(5\.25rem,6vw,6\.5rem\)\]/, 'las tarjetas de presentación responden al ancho de pantalla con límites anticolicisión');
+assert.match(presentationSource, /h-\[clamp\(3\.375rem,4vw,3\.5rem\)\] w-\[clamp\(3\.375rem,4vw,3\.5rem\)\]/, 'la foto titular crece de 40 px a un rango responsive de 54-56 px');
+assert.match(presentationSource, /text-\[clamp\(9px,0\.65vw,10px\)\]/, 'la posición crece solo ligeramente');
+assert.match(presentationSource, /lg:grid-cols-\[minmax\(0,74fr\)_minmax\(280px,26fr\)\]/, 'presentación reparte el ancho 74/26 entre campo y panel');
 assert.match(presentationSource, /aspect-\[3\/4\] h-\[calc\(100dvh-12rem\)\] min-h-\[540px\] max-h-\[780px\] w-auto max-w-full/, 'el campo gana longitud y adapta su altura real al viewport');
 assert.doesNotMatch(presentationSource, /aspect-\[7\/6\.25\]|max-h-\[430px\]/, 'se elimina el campo cuadrado y su límite artificial anterior');
 assert.match(presentationSource, /isPresentationMode \? \([\s\S]*?<aside className="flex h-full min-h-0/, 'el panel de presentación es hermano del campo y se estira exactamente a su altura adaptable');
