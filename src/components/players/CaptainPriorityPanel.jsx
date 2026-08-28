@@ -93,7 +93,7 @@ export default function CaptainPriorityPanel({
             <h2 id="captains-dialog-title" className="mt-1 text-xl font-black text-white">Capitanes del equipo</h2>
             <p className="mt-1 text-sm text-slate-400">El primer integrante de la lista que sea titular será el capitán automático.</p>
           </div>
-          <button type="button" disabled={saving} onClick={onClose} aria-label="Cerrar capitanes" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/[0.06] text-2xl text-slate-300 hover:bg-white/10 hover:text-white disabled:opacity-40">×</button>
+          <button type="button" disabled={saving} onClick={onClose} aria-label="Cerrar capitanes" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/[0.06] text-2xl text-slate-300 hover:bg-white/10 hover:text-white disabled:opacity-40">×</button>
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
@@ -150,7 +150,7 @@ export default function CaptainPriorityPanel({
 
         <footer className="flex flex-col-reverse gap-2 border-t border-white/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <p className="text-xs text-slate-500">{dirty ? 'Cambios pendientes de guardar' : `${draftPlayers.length} capitán${draftPlayers.length === 1 ? '' : 'es'} confirmados`}</p>
-          <div className="flex gap-2">
+          <div className="app-modal-actions flex gap-2">
             <button type="button" disabled={saving} onClick={onClose} className="rounded-xl bg-white/[0.07] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">Cerrar</button>
             <button type="button" disabled={!dirty || saving || !schemaAvailable} onClick={saveDraft} className="rounded-xl bg-caudal-electric px-5 py-2.5 text-sm font-black text-slate-950 disabled:opacity-40">{saving ? 'Guardando…' : error ? 'Reintentar' : 'Guardar'}</button>
           </div>

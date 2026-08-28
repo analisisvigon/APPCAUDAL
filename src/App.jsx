@@ -403,17 +403,24 @@ function FloatingActionMenu({ anchorRect, width = 224, onClose, children }) {
   useEffect(() => {
     if (!anchorRect || typeof window === 'undefined') return undefined;
     const margin = 12;
-    const menuWidth = width;
+    const visualViewport = window.visualViewport;
+    const viewportLeft = visualViewport?.offsetLeft || 0;
+    const viewportTop = visualViewport?.offsetTop || 0;
+    const viewportWidth = visualViewport?.width || window.innerWidth;
+    const viewportHeight = visualViewport?.height || window.innerHeight;
+    const viewportRight = viewportLeft + viewportWidth;
+    const viewportBottom = viewportTop + viewportHeight;
+    const menuWidth = Math.min(width, viewportWidth - (margin * 2));
     const estimatedHeight = menuRef.current?.offsetHeight || 260;
-    const opensUp = anchorRect.bottom + estimatedHeight + margin > window.innerHeight;
+    const opensUp = anchorRect.bottom + estimatedHeight + margin > viewportBottom;
     const left = Math.min(
-      window.innerWidth - menuWidth - margin,
-      Math.max(margin, anchorRect.right - menuWidth)
+      viewportRight - menuWidth - margin,
+      Math.max(viewportLeft + margin, anchorRect.right - menuWidth)
     );
     const top = opensUp
-      ? Math.max(margin, anchorRect.top - estimatedHeight - 8)
-      : Math.min(window.innerHeight - estimatedHeight - margin, anchorRect.bottom + 8);
-    setPosition({ left, top: Math.max(margin, top) });
+      ? Math.max(viewportTop + margin, anchorRect.top - estimatedHeight - 8)
+      : Math.min(viewportBottom - estimatedHeight - margin, anchorRect.bottom + 8);
+    setPosition({ left, top: Math.max(viewportTop + margin, top) });
     return undefined;
   }, [anchorRect, width, children]);
 
@@ -430,11 +437,15 @@ function FloatingActionMenu({ anchorRect, width = 224, onClose, children }) {
     document.addEventListener('keydown', handleEscape);
     window.addEventListener('scroll', handleScroll, true);
     window.addEventListener('resize', handleScroll);
+    window.visualViewport?.addEventListener('resize', handleScroll);
+    window.visualViewport?.addEventListener('scroll', handleScroll);
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown);
       document.removeEventListener('keydown', handleEscape);
       window.removeEventListener('scroll', handleScroll, true);
       window.removeEventListener('resize', handleScroll);
+      window.visualViewport?.removeEventListener('resize', handleScroll);
+      window.visualViewport?.removeEventListener('scroll', handleScroll);
     };
   }, [onClose]);
 
@@ -442,8 +453,13 @@ function FloatingActionMenu({ anchorRect, width = 224, onClose, children }) {
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-[9999] overflow-hidden rounded-xl border border-white/10 bg-[#07111f] p-1 shadow-[0_18px_55px_rgba(0,0,0,0.46)]"
-      style={{ left: position.left, top: position.top, width }}
+      className="floating-action-menu fixed z-[9999] overflow-x-hidden overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-[#07111f] p-1 shadow-[0_18px_55px_rgba(0,0,0,0.46)]"
+      style={{
+        left: position.left,
+        top: position.top,
+        width: `min(${width}px, calc(100vw - 24px))`,
+        maxHeight: 'calc(100dvh - 24px)',
+      }}
       onClick={(event) => event.stopPropagation()}
     >
       {children}
@@ -485,13 +501,13 @@ function RivalCard({ rival, playerCount, accent, menuOpen, onOpen, onEdit, onDel
         <div className="min-w-0 flex-1 pt-0.5">
           <div className="flex items-start justify-between gap-2">
             <h3 className="line-clamp-2 [overflow-wrap:normal] [word-break:normal] text-[1.18rem] font-black uppercase leading-[1.12] text-white">{displayName}</h3>
-            <button type="button" aria-label={`Acciones de ${displayName}`} title={`Acciones de ${displayName}`} onClick={onMenuOpen} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xl font-black leading-none text-slate-400 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70">⋮</button>
+            <button type="button" aria-label={`Acciones de ${displayName}`} title={`Acciones de ${displayName}`} onClick={onMenuOpen} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-xl font-black leading-none text-slate-400 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/70">⋮</button>
           </div>
           <p className="mt-2 flex items-start gap-1.5 text-sm font-semibold leading-5 text-slate-400"><LocationIcon /><span>{String(rival.stadium || '').trim() || 'Estadio sin registrar'}</span></p>
           <p className="mt-1.5 flex items-center gap-1.5 text-sm font-bold text-slate-300"><UsersIcon /><span>{playerCount > 0 ? `${playerCount} ${playerCount === 1 ? 'jugador' : 'jugadores'}` : 'Plantilla sin registrar'}</span></p>
         </div>
       </div>
-      <div className="mt-auto flex justify-end pt-4"><button type="button" onClick={(event) => { event.stopPropagation(); onOpen(); }} className="inline-flex min-h-[38px] w-full items-center justify-center rounded-xl bg-caudal-electric/90 px-4 py-2 text-xs font-black uppercase tracking-[0.10em] text-slate-950 transition hover:bg-caudal-electric active:scale-[0.98] sm:w-auto">Ver rival <span className="ml-2" aria-hidden="true">→</span></button></div>
+      <div className="mt-auto flex justify-end pt-4"><button type="button" onClick={(event) => { event.stopPropagation(); onOpen(); }} className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-caudal-electric/90 px-4 py-2 text-xs font-black uppercase tracking-[0.10em] text-slate-950 transition hover:bg-caudal-electric active:scale-[0.98] sm:w-auto">Ver rival <span className="ml-2" aria-hidden="true">→</span></button></div>
       {menuOpen ? <FloatingActionMenu anchorRect={menuAnchorRect} width={176} onClose={onMenuClose}><button type="button" onClick={onEdit} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-slate-200 transition hover:bg-white/10">Editar rival</button><button type="button" onClick={onDelete} className="block w-full rounded-xl px-3 py-2 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar rival</button></FloatingActionMenu> : null}
     </article>
   );
@@ -5896,6 +5912,31 @@ function App() {
   const [delegatedSelectedMatchIds, setDelegatedSelectedMatchIds] = useState([]);
   const [groupAssistFilter, setGroupAssistFilter] = useState('Todas');
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
+  const [isMobileKeyboardActive, setIsMobileKeyboardActive] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
+    const isEditableControl = (element) => element instanceof window.HTMLElement && (
+      ['INPUT', 'SELECT', 'TEXTAREA'].includes(element.tagName) || element.isContentEditable
+    );
+    const isCoarseMobileViewport = () => (
+      window.innerWidth < 1280 && window.matchMedia('(pointer: coarse)').matches
+    );
+    const syncKeyboardState = () => {
+      const keyboardExpected = isCoarseMobileViewport() && isEditableControl(document.activeElement);
+      setIsMobileKeyboardActive(keyboardExpected);
+      if (keyboardExpected) setIsMobileMoreOpen(false);
+    };
+    const handleFocusOut = () => window.setTimeout(syncKeyboardState, 0);
+    document.addEventListener('focusin', syncKeyboardState);
+    document.addEventListener('focusout', handleFocusOut);
+    window.addEventListener('resize', syncKeyboardState);
+    return () => {
+      document.removeEventListener('focusin', syncKeyboardState);
+      document.removeEventListener('focusout', handleFocusOut);
+      window.removeEventListener('resize', syncKeyboardState);
+    };
+  }, []);
   const [groupShotFilter, setGroupShotFilter] = useState('Ambos');
   const [groupLoading, setGroupLoading] = useState(false);
   const [groupError, setGroupError] = useState('');
@@ -18035,7 +18076,7 @@ function App() {
 
         {delegatedEventDraft ? (
           <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/70 px-3 pb-3 pt-10 sm:items-center sm:px-4 sm:py-4">
-            <div className="max-h-[86vh] w-full max-w-md overflow-y-auto rounded-t-[2rem] border border-white/10 bg-caudal-950 p-5 shadow-glow sm:rounded-3xl">
+            <div className="mobile-form-controls max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto rounded-t-[2rem] border border-white/10 bg-caudal-950 p-5 shadow-glow sm:max-h-[calc(100dvh-2rem)] sm:rounded-3xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{delegatedEventDraft.eventId ? 'Editar evento' : 'Registrar evento'}</p>
@@ -28738,7 +28779,7 @@ function App() {
             <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">C.D. Caudal de Mieres</h1>
             <p className="mt-2 text-sm font-medium text-slate-500">Mieres, Asturias</p>
             {authError ? <p className="mx-auto mt-5 max-w-sm rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">{authError}</p> : null}
-            <form onSubmit={handleAuthSubmit} className="mx-auto mt-7 grid max-w-sm gap-4 text-left sm:mt-8">
+            <form onSubmit={handleAuthSubmit} className="mobile-form-controls mx-auto mt-7 grid max-w-sm gap-4 text-left sm:mt-8">
               <label className="space-y-2 text-sm font-semibold text-slate-300">
                 <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Email</span>
                 <input
@@ -28785,7 +28826,7 @@ function App() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-caudal-950 via-caudal-900 to-[#05101f] text-slate-100">
       {splashScreen}
-      <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-4 pb-40 pt-6 min-[430px]:pb-28 sm:px-6 lg:px-8 xl:pb-8">
+      <div className="app-shell-content mx-auto flex min-h-screen max-w-6xl flex-col px-4 pt-6 sm:px-6 lg:px-8">
         <header className="mb-6 flex flex-col gap-4 rounded-3xl border border-white/5 bg-white/5 p-5 shadow-glow backdrop-blur-md xl:flex-row xl:items-center xl:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.34em] text-slate-400">Entrenador</p>
@@ -28802,7 +28843,7 @@ function App() {
                 <button
                   type="button"
                   onClick={handleInstallApp}
-                  className="inline-flex shrink-0 items-center justify-center rounded-2xl border border-caudal-electric/50 bg-white/5 px-4 py-2 text-sm font-semibold text-caudal-electric transition hover:bg-white/10"
+                  className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-2xl border border-caudal-electric/50 bg-white/5 px-4 py-2 text-sm font-semibold text-caudal-electric transition hover:bg-white/10"
                 >
                   Instalar app
                 </button>
@@ -28810,7 +28851,7 @@ function App() {
               <button
                 type="button"
                 onClick={handleSignOut}
-                className="inline-flex shrink-0 items-center justify-center rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]"
+                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]"
               >
                 Cerrar sesión
               </button>
@@ -28834,9 +28875,13 @@ function App() {
           </div>
         </header>
 
-        <nav className="fixed inset-x-3 bottom-3 z-50 max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-3xl border border-white/10 bg-[#071225]/95 p-2 shadow-glow backdrop-blur-md xl:hidden">
+        <nav
+          aria-label="Navegacion principal"
+          data-keyboard-active={isMobileKeyboardActive ? 'true' : 'false'}
+          className="mobile-bottom-nav fixed inset-x-3 z-40 overflow-y-auto rounded-3xl border border-white/10 bg-[#071225]/95 p-2 shadow-glow backdrop-blur-md xl:hidden"
+        >
           {isMobileMoreOpen ? (
-            <div className="mb-2 grid grid-cols-2 gap-2 rounded-2xl bg-white/5 p-2">
+            <div id="mobile-more-menu" className="mb-2 grid grid-cols-2 gap-2 rounded-2xl bg-white/5 p-2">
               {mobileMoreTabs.map((tab) => (
                 <button
                   key={tab}
@@ -28859,7 +28904,7 @@ function App() {
               </button>
             </div>
           ) : null}
-          <div className="grid grid-cols-3 gap-1 min-[430px]:grid-cols-6">
+          <div className="mobile-primary-nav grid grid-cols-3 gap-1 rounded-2xl min-[430px]:grid-cols-6">
             {mobilePrimaryTabs.map(([tab, label]) => (
               <button
                 key={tab}
@@ -28873,6 +28918,8 @@ function App() {
             <button
               type="button"
               onClick={() => setIsMobileMoreOpen((current) => !current)}
+              aria-expanded={isMobileMoreOpen}
+              aria-controls="mobile-more-menu"
               className={`min-h-[48px] rounded-2xl px-1.5 py-2 text-[10px] font-black uppercase tracking-[0.02em] ${isMobileMoreOpen || mobileMoreTabs.includes(activeTab) ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-200'}`}
             >
               Más
@@ -32784,7 +32831,7 @@ function App() {
                             aria-label={`Acciones del partido contra ${match.opponent || 'rival'}`}
                             aria-expanded={floatingMenu?.id === `match-card-${match.id}`}
                             onClick={(event) => openFloatingMenu(event, { id: `match-card-${match.id}`, type: 'match-card' })}
-                            className="flex h-8 min-w-9 items-center justify-center rounded-xl border border-white/10 bg-[#07111f]/85 px-2 text-sm font-black tracking-[0.12em] text-slate-300 shadow-lg backdrop-blur transition hover:bg-white/10 hover:text-white"
+                            className="flex h-11 min-w-11 items-center justify-center rounded-xl border border-white/10 bg-[#07111f]/85 px-2 text-sm font-black tracking-[0.12em] text-slate-300 shadow-lg backdrop-blur transition hover:bg-white/10 hover:text-white"
                           >
                             ···
                           </button>
@@ -34532,14 +34579,14 @@ function App() {
           </button>
 
           {isLitoOpen ? (
-            <div className="fixed inset-0 z-50 flex justify-end bg-black/45 backdrop-blur-sm">
+            <div className="fixed inset-0 z-50 flex justify-end overflow-hidden bg-black/45 backdrop-blur-sm">
               <button
                 type="button"
                 aria-label="Cerrar Lito"
                 onClick={() => setIsLitoOpen(false)}
                 className="hidden flex-1 sm:block"
               />
-              <aside className="flex h-full w-full max-w-md flex-col border-l border-white/10 bg-[#071224] shadow-[0_0_60px_rgba(0,0,0,0.55)] sm:rounded-l-3xl">
+              <aside className="mobile-form-controls flex h-[100dvh] max-h-[100dvh] w-full max-w-md flex-col border-l border-white/10 bg-[#071224] shadow-[0_0_60px_rgba(0,0,0,0.55)] sm:rounded-l-3xl">
                 <div className="border-b border-white/10 px-5 py-5">
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -34550,7 +34597,7 @@ function App() {
                     <button
                       type="button"
                       onClick={() => setIsLitoOpen(false)}
-                      className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/15"
+                      className="min-h-11 rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/15"
                     >
                       Cerrar
                     </button>
@@ -34577,7 +34624,7 @@ function App() {
                   ) : null}
                 </div>
 
-                <div className="border-t border-white/10 px-5 py-4">
+                <div className="app-safe-area-footer shrink-0 border-t border-white/10 px-5 py-4">
                   <div className="mb-3 flex flex-wrap gap-2">
                     {[
                       '¿Cuántos jugadores tiene la plantilla?',
@@ -34619,7 +34666,7 @@ function App() {
 
       {systemChangeDraft && selectedMatch ? (
         <div className="fixed inset-0 z-[75] flex items-end justify-center bg-black/70 px-3 pb-3 pt-10 sm:items-center sm:px-4 sm:py-4">
-          <div className="max-h-[86vh] w-full max-w-lg overflow-y-auto rounded-t-[2rem] border border-white/10 bg-caudal-950 p-5 shadow-glow sm:rounded-3xl">
+          <div className="mobile-form-controls max-h-[calc(100dvh-1.5rem)] w-full max-w-lg overflow-y-auto rounded-t-[2rem] border border-white/10 bg-caudal-950 p-5 shadow-glow sm:max-h-[calc(100dvh-2rem)] sm:rounded-3xl">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-200">Cambio de sistema</p>
@@ -34701,9 +34748,9 @@ function App() {
       ) : null}
 
       {isGoalAnalysisOpen && selectedMatch ? (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 p-3 backdrop-blur-sm sm:p-6">
+        <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden bg-black/70 p-3 backdrop-blur-sm sm:items-center sm:p-6">
           <div
-            className="mx-auto max-w-6xl overflow-hidden rounded-3xl border border-white/10 bg-[#111b2a] shadow-glow"
+            className="mobile-form-controls mx-auto flex max-h-[calc(100dvh-1.5rem)] w-full max-w-6xl flex-col overflow-hidden rounded-t-[2rem] border border-white/10 bg-[#111b2a] shadow-glow sm:max-h-[calc(100dvh-3rem)] sm:rounded-3xl"
             onKeyDown={(event) => {
               const tagName = event.target?.tagName;
               if (event.key !== 'Enter' || tagName === 'TEXTAREA' || tagName === 'BUTTON' || tagName === 'SELECT') return;
@@ -34711,7 +34758,7 @@ function App() {
               saveGoalAnalysisEvent();
             }}
           >
-            <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-4 sm:px-6 sm:py-5">
               <div className="flex items-center gap-3">
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500 text-xl font-black text-white">+</span>
                 <div>
@@ -34726,12 +34773,12 @@ function App() {
                   setIsGoalAnalysisOpen(false);
                 }}
                 disabled={statsSaveStatus === 'Guardando gol...'}
-                className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                className="min-h-11 rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Cerrar
               </button>
             </div>
-            <div className="max-h-[calc(100vh-150px)] space-y-4 overflow-y-auto px-6 py-5 pb-24">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-6">
               {statsError ? (
                 <div className="rounded-2xl border border-red-300/20 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-100">
                   {statsError}
@@ -34929,7 +34976,7 @@ function App() {
                 <textarea value={goalAnalysisDraft.summary || buildGoalDraftSummary(goalAnalysisDraft)} onChange={(event) => updateGoalAnalysisDraft('summary', event.target.value)} className="mt-3 min-h-[76px] w-full resize-none rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3 text-sm leading-6 text-white" />
               </section>
             </div>
-            <div className="sticky bottom-0 border-t border-white/10 bg-[#111b2a]/95 px-6 py-4 backdrop-blur">
+            <div className="app-modal-actions app-safe-area-footer shrink-0 border-t border-white/10 bg-[#111b2a]/95 px-4 py-4 backdrop-blur sm:px-6">
               <button type="button" onClick={saveGoalAnalysisEvent} disabled={statsSaveStatus === 'Guardando gol...' || statsSaveStatus === 'Eliminando gol...'} className="w-full rounded-3xl bg-caudal-electric px-5 py-4 text-sm font-black uppercase tracking-[0.16em] text-slate-950 disabled:cursor-not-allowed disabled:opacity-60">
                 {statsSaveStatus === 'Guardando gol...' ? 'Guardando...' : editingGoalEventId ? 'Guardar cambios' : 'Guardar gol'}
               </button>
@@ -34949,15 +34996,15 @@ function App() {
       ) : null}
 
       {availabilityEditor ? (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-black/70 px-4 py-6 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#07111f] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.46)] sm:p-6">
+        <div className="fixed inset-0 z-[80] flex items-end justify-center overflow-hidden bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:px-4 sm:py-6">
+          <div className="mobile-form-controls max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-[2rem] border border-white/10 bg-[#07111f] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.46)] sm:rounded-3xl sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Disponibilidad persistente</p>
                 <h3 className="mt-2 text-xl font-black text-white">{displayPlayerName(availabilityEditor)}</h3>
                 <p className="mt-1 text-sm text-slate-400">Este estado será el mismo en Plantilla y Convocatoria.</p>
               </div>
-              <button type="button" onClick={closeAvailabilityEditor} disabled={availabilitySaving} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-bold text-slate-200 disabled:opacity-50">Cerrar</button>
+              <button type="button" onClick={closeAvailabilityEditor} disabled={availabilitySaving} className="min-h-11 rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-bold text-slate-200 disabled:opacity-50">Cerrar</button>
             </div>
             {availabilityError ? <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-100">{availabilityError}</div> : null}
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -34991,7 +35038,7 @@ function App() {
                 </label>
               ) : null}
             </div>
-            <div className="mt-6 flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:justify-end">
+            <div className="app-modal-actions app-safe-area-footer sticky bottom-0 -mx-5 -mb-5 mt-6 flex flex-col gap-3 border-t border-white/10 bg-[#07111f]/95 px-5 pt-4 backdrop-blur sm:static sm:-mx-6 sm:-mb-6 sm:flex-row sm:justify-end sm:px-6">
               <button type="button" onClick={closeAvailabilityEditor} disabled={availabilitySaving} className="rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-3 text-sm font-bold text-slate-200 disabled:opacity-50">Cancelar</button>
               <button type="button" onClick={savePlayerAvailability} disabled={availabilitySaving} className="rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 disabled:opacity-60">{availabilitySaving ? 'Guardando...' : 'Guardar disponibilidad'}</button>
             </div>
@@ -35001,7 +35048,7 @@ function App() {
 
       {isStatsCallupPanelOpen ? (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6">
-          <div className="mx-auto flex h-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-caudal-950 shadow-glow">
+          <div className="mx-auto flex h-[calc(100dvh-1.5rem)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-caudal-950 shadow-glow sm:h-[calc(100dvh-3rem)]">
             <div className="flex flex-col gap-4 border-b border-white/10 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6 sm:py-5">
               <div>
                 <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Estadísticas</p>
@@ -35193,17 +35240,17 @@ function App() {
         };
         return (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-5">
-          <div className="mx-auto flex h-full max-w-5xl flex-col overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#07111f] shadow-[0_28px_90px_rgba(0,0,0,0.42)]">
+          <div className="mx-auto flex h-[calc(100dvh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#07111f] shadow-[0_28px_90px_rgba(0,0,0,0.42)] sm:h-[calc(100dvh-2.5rem)]">
             <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.24em] text-caudal-electric/80">{editingId ? 'Editar jugador' : 'Nuevo jugador'}</p>
                 <h3 className="mt-1 text-xl font-black text-white">Ficha deportiva</h3>
               </div>
-              <button onClick={closeForm} disabled={isSavingPlayer} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60">
+              <button onClick={closeForm} disabled={isSavingPlayer} className="min-h-11 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60">
                 Cerrar
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+            <form onSubmit={handleSubmit} className="mobile-form-controls min-h-0 flex-1 overflow-y-auto px-5 py-5">
               {playerFormError ? (
                 <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
                   {playerFormError}
@@ -35345,7 +35392,7 @@ function App() {
                 </aside>
               </div>
 
-              <div className="mt-5 flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-end">
+              <div className="app-modal-actions app-safe-area-footer sticky bottom-0 z-10 -mx-5 mt-5 flex flex-col gap-3 border-t border-white/10 bg-[#07111f]/95 px-5 pt-4 backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:flex-row sm:items-center sm:justify-end">
                 <button type="button" onClick={closeForm} disabled={isSavingPlayer} className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60">
                   Cancelar
                 </button>
@@ -35700,7 +35747,7 @@ function App() {
         const rivalAutoSummary = `Equipo que prioriza ataques por ${teamFormState.strongSide}, bloque ${teamFormState.blockHeight} y presión de ${teamFormState.pressureType}. Su principal amenaza son ${teamFormState.mainThreat}. Ritmo ofensivo ${teamFormState.attackingRhythm}, con foco en ${teamFormState.offensiveFocus}. Presenta vulnerabilidad en ${teamFormState.detectedWeakness}.`;
         return (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black/50 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6">
-          <div className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-caudal-950 shadow-[0_24px_90px_rgba(0,0,0,0.45)]">
+          <div className="mx-auto flex h-[calc(100dvh-1.5rem)] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-caudal-950 shadow-[0_24px_90px_rgba(0,0,0,0.45)] sm:h-[calc(100dvh-3rem)]">
             <div className="flex items-center justify-between border-b border-white/10 px-5 py-4 sm:px-6">
               <div>
                 <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">Ficha del rival</p>
@@ -35712,7 +35759,7 @@ function App() {
                     Eliminar rival
                   </button>
                 ) : null}
-                <button onClick={closeTeamForm} className="rounded-full bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/10">
+                <button onClick={closeTeamForm} className="min-h-11 rounded-full bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/10">
                   Cerrar
                 </button>
               </div>
@@ -35737,7 +35784,7 @@ function App() {
               </div>
             ) : null}
 
-            <form onSubmit={handleTeamSubmit} noValidate autoComplete="off" className="min-h-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
+            <form onSubmit={handleTeamSubmit} noValidate autoComplete="off" className="mobile-form-controls min-h-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
               <section className="grid gap-4 xl:grid-cols-[1fr_0.72fr]">
                 <div className="rounded-[1.5rem] border border-white/10 bg-[#091428]/82 p-5 shadow-[0_18px_54px_rgba(0,0,0,0.24)]">
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Identidad del rival</p>
@@ -35986,7 +36033,7 @@ function App() {
                 </div>
                 {formSquad.length === 0 ? <div className="rounded-3xl border border-dashed border-white/10 px-5 py-6 text-sm text-slate-400">{editingTeamId ? 'Añade jugadores desde el formulario de plantilla.' : 'Guarda el rival para añadir jugadores o aplica una importación con plantilla detectada.'}</div> : null}
               </section>
-              <div className="flex flex-col gap-3 rounded-[1.35rem] border border-white/10 bg-white/[0.025] p-4 sm:flex-row sm:items-center sm:justify-end">
+              <div className="app-modal-actions app-safe-area-footer sticky bottom-0 z-10 flex flex-col gap-3 rounded-[1.35rem] border border-white/10 bg-[#07111f]/95 p-4 backdrop-blur sm:static sm:bg-white/[0.025] sm:pb-4 sm:flex-row sm:items-center sm:justify-end">
                 {teamSaveError ? <p className="mr-auto rounded-2xl border border-red-300/15 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-100">{teamSaveError}</p> : null}
                 <button
                   type="button"
@@ -36012,17 +36059,17 @@ function App() {
 
       {isMatchPanelOpen ? (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black/50 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6">
-          <div className="mx-auto flex h-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-caudal-950 shadow-glow">
+          <div className="mx-auto flex h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-caudal-950 shadow-glow sm:h-[calc(100dvh-3rem)]">
             <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
               <div>
                 <h3 className="text-xl font-black uppercase tracking-[0.18em] text-white">{editingMatchId ? 'Editar partido' : 'Nuevo partido'}</h3>
               </div>
-              <button onClick={closeMatchForm} className="text-3xl leading-none text-slate-500 hover:text-white">
+              <button type="button" onClick={closeMatchForm} aria-label="Cerrar formulario del partido" className="flex h-11 w-11 items-center justify-center rounded-xl text-3xl leading-none text-slate-500 hover:bg-white/[0.06] hover:text-white">
                 ×
               </button>
             </div>
 
-            <form noValidate onSubmit={handleMatchSubmit} className="min-h-0 space-y-5 overflow-y-auto px-6 py-6 sm:px-8">
+            <form noValidate onSubmit={handleMatchSubmit} className="mobile-form-controls min-h-0 space-y-5 overflow-y-auto px-6 py-6 sm:px-8">
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="space-y-2 text-sm text-slate-300">
                   <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Rival</span>
@@ -36198,7 +36245,7 @@ function App() {
                 </div>
               ) : null}
 
-              <div className="flex justify-end gap-3">
+              <div className="app-modal-actions app-safe-area-footer sticky bottom-0 z-10 -mx-6 flex justify-end gap-3 border-t border-white/10 bg-caudal-950/95 px-6 pt-4 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-0">
                 <button type="button" onClick={closeMatchForm} disabled={isSavingMatch} className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 disabled:cursor-not-allowed disabled:opacity-60">Cancelar</button>
                 <button type="submit" disabled={isSavingMatch} className="rounded-2xl bg-caudal-electric px-6 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-70">
                   {isSavingMatch ? 'Guardando...' : 'Guardar encuentro'}

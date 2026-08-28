@@ -4,6 +4,7 @@
 
 :root {
   color-scheme: dark;
+  --app-safe-area-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 html {
@@ -276,6 +277,70 @@ table {
 
 .tactical-board-scroll:focus-visible {
   border-radius: 1.5rem;
+}
+
+/* Normal application shell only. Presentation, capture and print surfaces do not use these classes. */
+.app-shell-content {
+  padding-bottom: calc(10rem + var(--app-safe-area-bottom));
+}
+
+.mobile-bottom-nav {
+  bottom: max(0.75rem, var(--app-safe-area-bottom));
+  max-height: calc(100dvh - max(0.75rem, var(--app-safe-area-bottom)) - 0.75rem);
+  overscroll-behavior: contain;
+  transition: opacity 160ms ease, transform 160ms ease, visibility 160ms ease;
+}
+
+.mobile-bottom-nav[data-keyboard-active='true'] {
+  visibility: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(calc(100% + 1.5rem + var(--app-safe-area-bottom)));
+}
+
+.mobile-primary-nav {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: rgba(7, 18, 37, 0.98);
+}
+
+@media (min-width: 430px) and (max-width: 1279px) {
+  .app-shell-content {
+    padding-bottom: calc(7rem + var(--app-safe-area-bottom));
+  }
+}
+
+@media (min-width: 1280px) {
+  .app-shell-content {
+    padding-bottom: 2rem;
+  }
+}
+
+@media (max-width: 767px) {
+  .app-safe-area-footer {
+    padding-bottom: calc(1rem + var(--app-safe-area-bottom));
+  }
+
+  .app-input,
+  .app-select,
+  .app-textarea,
+  .field-input,
+  .mobile-form-controls input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='color']),
+  .mobile-form-controls select,
+  .mobile-form-controls textarea {
+    font-size: 1rem;
+  }
+}
+
+@media (pointer: coarse) {
+  .btn-small,
+  .floating-action-menu > button,
+  .floating-action-menu > a,
+  .floating-action-menu > summary,
+  .app-modal-actions > button {
+    min-height: 44px;
+  }
 }
 
 .tactical-names-menu > summary::-webkit-details-marker {

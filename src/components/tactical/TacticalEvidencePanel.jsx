@@ -239,7 +239,7 @@ function ImpactPanel({ item, onClose, onNavigate }) {
       <aside role="dialog" aria-modal="true" aria-labelledby="evidence-impact-title" className="h-full w-full max-w-lg overflow-y-auto border-l border-white/10 bg-[#081426] p-5 shadow-[-30px_0_80px_rgba(0,0,0,0.45)] sm:p-7">
         <div className="flex items-start justify-between gap-4">
           <div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-caudal-electric">Impacto trazable</p><h3 id="evidence-impact-title" className="mt-2 text-2xl font-black text-white">{confirmed ? 'Dónde se utiliza' : 'Qué ocurrirá al confirmar'}</h3></div>
-          <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full border border-white/10 text-lg text-slate-300" aria-label="Cerrar impacto">×</button>
+          <button type="button" onClick={onClose} className="grid h-11 w-11 place-items-center rounded-full border border-white/10 text-lg text-slate-300" aria-label="Cerrar impacto">×</button>
         </div>
         <p className="mt-4 text-sm font-semibold leading-6 text-slate-400">{item.title}</p>
         <div className="mt-6 space-y-2">
