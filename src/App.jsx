@@ -18,6 +18,7 @@ import CollectiveProfileEditorModal from './components/tactical/CollectiveProfil
 import RivalPlayerTacticalCenter from './components/tactical/RivalPlayerTacticalCenter';
 import MatchPlanWorkspace from './components/tactical/MatchPlanWorkspace';
 import MatchKeysPanel from './components/tactical/MatchKeysPanel';
+import MobileReadonlyTacticalPitch from './components/tactical/MobileReadonlyTacticalPitch';
 import PlayerDatabaseForm from './components/players/PlayerDatabaseForm';
 import GlobalPlayerDatabase from './components/players/GlobalPlayerDatabase';
 import DailyLoadCard from './components/performance/DailyLoadCard';
@@ -18428,6 +18429,36 @@ function App() {
     const editorValidation = editingDisposition
       ? validateTacticalDisposition({ lineup: tacticalDispositionEditor.lineup, knownPlayers: tacticalDispositionEditor.knownPlayers })
       : null;
+    const statsReadonlyMode = !editingDisposition && !hasLocalProposal;
+    const mobileStatsSlots = dispositionAvailable ? tacticalFormationSlots.map((slot, slotIndex) => {
+      const participant = normalizeTacticalParticipant(visibleParticipants[slotIndex] || {});
+      const playerName = participant.playerName || '';
+      const player = players.find((item) => (
+        (participant.playerId && String(item.id) === String(participant.playerId))
+        || normalizePlayerIdentityName(item.name) === normalizePlayerIdentityName(playerName)
+      ));
+      const stats = playerName ? getStatsPlayerData(playerName) : null;
+      const isCaptain = Boolean(player?.id && selectedMatchCaptainResolution.playerId === player.id);
+      const indicators = playerName ? getPlayerMatchIndicators({
+        player: player || { name: playerName },
+        goalEvents: getStatsGoalEvents(),
+        playerStats: stats,
+        isCaptain,
+      }) : [];
+      const replacementInfo = playerName ? getStatsReplacementInfo(playerName) : null;
+      return {
+        id: slot.id || `stats-mobile-${slotIndex}`,
+        x: slot.x,
+        y: slot.y,
+        role: slot.label || `Posición ${slotIndex + 1}`,
+        name: player ? displayPlayerName(player) : getStoredPlayerDisplayName(playerName, slot.label),
+        number: player?.number || '',
+        image: player?.image || player?.photoUrl || '',
+        hasPlayer: Boolean(playerName),
+        badges: indicators,
+        secondaryLabel: replacementInfo ? `Sale ${replacementInfo.minute}'` : '',
+      };
+    }) : [];
     return (
       <div className="space-y-2">
         {!hasLocalProposal && tacticalHistory.systemSegments.length ? (
@@ -18522,8 +18553,17 @@ function App() {
             <button type="button" onClick={() => openTacticalDispositionEditor({ interval: selectedInterval, history: tacticalHistory })} className="border border-white/10 bg-white/[0.055] px-3 py-2 text-[9px] font-black uppercase tracking-[0.1em] text-slate-300 transition hover:bg-white/10 hover:text-white">Editar disposición</button>
           </div>
         ) : null}
+        {statsReadonlyMode ? (
+          <MobileReadonlyTacticalPitch
+            ariaLabel={`Disposición táctica de ${activeSystemFromMinute} a ${activeSystemToMinute} minutos`}
+            eyebrow={`Disposición ${activeSystemFromMinute}'–${activeSystemToMinute}'`}
+            system={activeSystem}
+            slots={mobileStatsSlots}
+            emptyMessage={dispositionAvailable ? '' : 'Disposición no registrada para este tramo.'}
+          />
+        ) : null}
         <div
-        className="stats-match-pitch relative mx-auto aspect-[7/8.9] w-full max-w-[560px] min-w-0 overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner [container-type:inline-size]"
+        className={`stats-match-pitch relative mx-auto aspect-[7/8.9] w-full max-w-[560px] min-w-0 overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner [container-type:inline-size] ${statsReadonlyMode ? 'desktop-readonly-tactical-surface' : ''}`}
         onDragOver={(event) => event.preventDefault()}
         onDrop={() => {
           if (editingDisposition || historyBrowsing || !dispositionAvailable || !draggedPlayer || statsSquadSaving) return;
@@ -21954,9 +21994,26 @@ function App() {
 
   const renderIdealElevenPitch = (idealRows, system) => {
     const assignments = idealRows?.[0]?.slot ? idealRows : buildIdealElevenForSystem(idealRows, system);
+    const mobileSlots = assignments.map(({ slot, row }, index) => ({
+      id: slot.id || `ideal-${index}`,
+      x: slot.x,
+      y: slot.y,
+      role: slot.label,
+      name: row?.player ? displayPlayerName(row.player) : slot.label,
+      number: row?.player?.number || '',
+      image: row?.player?.image || row?.player?.photoUrl || '',
+      hasPlayer: Boolean(row?.player),
+      secondaryLabel: row?.primaryRole || '',
+    }));
     return (
       <div className="mx-auto w-full max-w-[min(100%,42rem)] overflow-hidden">
-        <div className="relative mx-auto aspect-[7/8.9] w-full overflow-hidden rounded-2xl border border-white/20 bg-[#102616] shadow-inner sm:rounded-3xl">
+        <MobileReadonlyTacticalPitch
+          ariaLabel="Once ideal en modo consulta"
+          eyebrow="Once ideal"
+          system={system}
+          slots={mobileSlots}
+        />
+        <div className="desktop-readonly-tactical-surface relative mx-auto aspect-[7/8.9] w-full overflow-hidden rounded-2xl border border-white/20 bg-[#102616] shadow-inner sm:rounded-3xl">
         <div className="absolute inset-3 rounded-2xl border-2 border-white/55 sm:inset-4 sm:rounded-[28px]" />
         <div className="absolute left-3 right-3 top-1/2 h-px bg-white/35 sm:left-4 sm:right-4" />
         <div className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/35 sm:h-32 sm:w-32" />
@@ -21987,10 +22044,27 @@ function App() {
     if (!xiData?.hasData) {
       return <p className="rounded-2xl bg-white/5 p-4 text-sm font-semibold text-slate-400">No hay slots reales registrados para este sistema en la muestra.</p>;
     }
+    const mobileSlots = xiData.assignments.map(({ slot, row }, index) => ({
+      id: slot.id || `most-used-${index}`,
+      x: slot.x,
+      y: slot.y,
+      role: slot.label,
+      name: row?.player ? displayPlayerName(row.player) : slot.label,
+      number: row?.player?.number || '',
+      image: row?.player?.image || row?.player?.photoUrl || '',
+      hasPlayer: Boolean(row?.player),
+      secondaryLabel: row ? getMostUsedXiMetric(row).label : '',
+    }));
     return (
       <div className="space-y-3">
         <div className="mx-auto w-full max-w-[min(100%,29rem)] overflow-hidden">
-          <div className="relative mx-auto aspect-[7/8.35] w-full overflow-hidden rounded-2xl border border-white/20 bg-[#102616] shadow-inner sm:rounded-3xl">
+          <MobileReadonlyTacticalPitch
+            ariaLabel={`Once más utilizado en ${xiData.system}`}
+            eyebrow="Once más utilizado"
+            system={xiData.system}
+            slots={mobileSlots}
+          />
+          <div className="desktop-readonly-tactical-surface relative mx-auto aspect-[7/8.35] w-full overflow-hidden rounded-2xl border border-white/20 bg-[#102616] shadow-inner sm:rounded-3xl">
             <div className="absolute inset-3 rounded-2xl border-2 border-white/55 sm:inset-4 sm:rounded-[28px]" />
             <div className="absolute left-3 right-3 top-1/2 h-px bg-white/35 sm:left-4 sm:right-4" />
             <div className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/35 sm:h-24 sm:w-24" />
@@ -30586,6 +30660,33 @@ function App() {
                 const presentationFormationCoordinates = getCollisionSafePresentationCoordinates(
                   getFormationCoordinates(selectedTeam.system || '4-4-2')
                 );
+                const mobileTeamLineupBySlot = getLineupSlotMap(visualFieldLineup);
+                const mobileTeamPitchSlots = getFormationSlots(selectedTeam.system || '4-4-2').map((slot, slotIndex) => {
+                  const player = mobileTeamLineupBySlot.get(slotIndex);
+                  const role = getFormationRoles(selectedTeam.system || '4-4-2')[slotIndex] || slot.role || `Posición ${slotIndex + 1}`;
+                  return {
+                    id: `team-mobile-${slotIndex}`,
+                    x: slot.x,
+                    y: slot.y,
+                    role: shortRoleLabel(role),
+                    name: player ? getTeamPresentationPlayerName(player) : role,
+                    number: player?.number || '',
+                    image: player?.image || player?.photoUrl || '',
+                    hasPlayer: Boolean(player),
+                    badges: player ? getRivalPlayerStatusIcons(selectedTeam.id, player).map(([label, title]) => ({ label, title })) : [],
+                  };
+                });
+                const mobileTeamBenchGroups = groupedBenchPlayers.map((group) => ({
+                  label: group.label,
+                  players: group.players.map((player) => ({
+                    id: player.jugadorRivalId || player.id || player.name,
+                    name: player.name,
+                    displayName: getTeamPresentationPlayerName(player),
+                    number: player.number || '',
+                    image: player.image || player.photoUrl || '',
+                    position: shortRoleLabel(player.specificPosition || player.position || group.label),
+                  })),
+                }));
                 const keyPlayers = rivalPlayers.filter((player) => player.isKey);
                 const captainPlayer = rivalPlayers.find((player) => getRivalPlayerFlags(selectedTeam.id, player.name).captain || player.captain) || null;
                 const unavailablePlayers = rivalPlayers.filter((player) => player.injured || player.suspended);
@@ -30701,7 +30802,19 @@ function App() {
                     </div>
                     )}
 
-                    <section className={`grid ${teamFieldEditMode ? 'gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(260px,1fr)]' : 'gap-1 lg:grid-cols-[minmax(0,75fr)_minmax(280px,25fr)]'}`}>
+                    {isPresentationMode ? (
+                      <MobileReadonlyTacticalPitch
+                        ariaLabel={`Alineación rival de ${cleanTeamDisplayName(selectedTeam.name)}`}
+                        eyebrow="Sistema principal"
+                        system={selectedTeam.system || 'Pendiente'}
+                        variants={presentationVariants}
+                        slots={mobileTeamPitchSlots}
+                        benchGroups={mobileTeamBenchGroups}
+                        tone="rival"
+                      />
+                    ) : null}
+
+                    <section className={`grid ${isPresentationMode ? 'desktop-readonly-tactical-surface' : ''} ${teamFieldEditMode ? 'gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(260px,1fr)]' : 'gap-1 lg:grid-cols-[minmax(0,75fr)_minmax(280px,25fr)]'}`}>
                       <div className={`bg-[#091428]/80 shadow-[0_18px_52px_rgba(0,0,0,0.22)] ${teamFieldEditMode ? 'rounded-[1.35rem] border border-white/10 p-4' : 'rounded-2xl border border-white/[0.06] p-1.5'}`}>
                         {teamFieldEditMode ? <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div>

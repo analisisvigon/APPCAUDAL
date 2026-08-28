@@ -6,6 +6,7 @@ import {
   getFormationSlotsForSavedLineup,
   hasFormationSlotsForSavedLineup,
 } from './formationSlotCoordinates.js';
+import { buildMobileReadonlyPitchLayout } from './mobileReadonlyPitchLayout.js';
 
 assert.equal(hasFormationSlotsForSavedLineup('4-3-3'), true);
 assert.equal(hasFormationSlotsForSavedLineup('sistema-inexistente'), false, 'un sistema desconocido no puede validar un snapshot completo aunque exista fallback visual');
@@ -61,11 +62,55 @@ assert.ok(statsCoordinates[1].x > 50 && printCoordinates[1].x > 50, 'el LD del f
 assert.ok(statsCoordinates[9].x < statsCoordinates[7].x, 'EI queda a la izquierda de ED en el fixture');
 assert.equal(statsCoordinates[0].y, 89, 'la correccion no cambia la posicion vertical del portero');
 
+const synthetic4411 = [
+  { id: 'POR', x: 50, y: 89 },
+  ...[18, 39, 61, 82].map((x, index) => ({ id: `DEF-${index}`, x, y: 73 })),
+  ...[18, 39, 61, 82].map((x, index) => ({ id: `MED-${index}`, x, y: 45 })),
+  { id: 'MP', x: 50, y: 29 },
+  { id: 'DC', x: 50, y: 14 },
+];
+
+const mobileFormationFixtures = [
+  ...['4-4-2', '4-3-3', '4-2-3-1', '5-3-2', '3-4-3'].map((system) => ({
+    system,
+    slots: getFormationSlotsForSavedLineup(system),
+  })),
+  { system: '4-4-1-1', slots: synthetic4411 },
+];
+
+mobileFormationFixtures.forEach(({ system, slots }) => {
+  const mobileLayout = buildMobileReadonlyPitchLayout(slots);
+  assert.equal(mobileLayout.length, 11, `${system}: conserva los once slots en consulta movil`);
+  assert.deepEqual(
+    mobileLayout.map(({ x, y }) => ({ x, y })),
+    slots.map(({ x, y }) => ({ x, y })),
+    `${system}: el layout movil no modifica las coordenadas canonicas`
+  );
+  const rows = mobileLayout.reduce((result, slot) => {
+    result[slot.mobileRow] = [...(result[slot.mobileRow] || []), slot];
+    return result;
+  }, {});
+  Object.values(rows).forEach((row) => {
+    const ordered = row.slice().sort((left, right) => left.mobileX - right.mobileX);
+    ordered.slice(1).forEach((slot, index) => {
+      assert.ok(slot.mobileX - ordered[index].mobileX >= 19.5, `${system}: no hay solapamiento horizontal grave en lineas de hasta cinco jugadores`);
+    });
+  });
+  assert.ok(mobileLayout.every((slot) => slot.mobileX >= 10 && slot.mobileX <= 90), `${system}: ningun jugador queda cortado lateralmente`);
+  assert.ok(mobileLayout.every((slot) => slot.mobileY >= 18 && slot.mobileY <= 87), `${system}: ningun jugador queda cortado verticalmente`);
+});
+
 const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 const printTabSource = fs.readFileSync(new URL('../components/print/MatchPrintTab.jsx', import.meta.url), 'utf8');
+const mobilePitchSource = fs.readFileSync(new URL('../components/tactical/MobileReadonlyTacticalPitch.jsx', import.meta.url), 'utf8');
+const cssSource = fs.readFileSync(new URL('../index.css', import.meta.url), 'utf8');
 assert.match(appSource, /getTacticalSnapshotFormationSlots = \(system\) => getFormationSlotsForSavedLineup\(system\)/, 'Estadisticas consume la utilidad canonica');
 assert.match(printTabSource, /getFormationCoordinatesForSavedLineup\(system\)/, 'preview, PDF y dossier consumen la utilidad canonica');
 assert.doesNotMatch(printTabSource, /getFormationCoordinates\(system\)/, 'Impresion no vuelve al catalogo legacy con orden opuesto');
 assert.ok((printTabSource.match(/<LineupPrintSheet/g) || []).length >= 2, 'hoja individual y dossier comparten LineupPrintSheet');
+assert.match(appSource, /statsReadonlyMode = !editingDisposition && !hasLocalProposal/, 'Estadisticas solo activa la alternativa movil fuera de edicion');
+assert.match(appSource, /isPresentationMode \? 'desktop-readonly-tactical-surface'/, 'EQUIPOS conserva separado su renderer de edicion');
+assert.match(mobilePitchSource, /buildMobileReadonlyPitchLayout\(slots\)/, 'las consultas moviles comparten el layout anticolision');
+assert.match(cssSource, /@media \(max-width: 430px\)[\s\S]*\.desktop-readonly-tactical-surface \{[\s\S]*display: none !important;/, 'el intercambio de renderer se limita al breakpoint movil solicitado');
 
 console.log('formationSlotCoordinates tests passed');
