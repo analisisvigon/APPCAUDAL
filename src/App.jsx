@@ -19,6 +19,7 @@ import RivalPlayerTacticalCenter from './components/tactical/RivalPlayerTactical
 import MatchPlanWorkspace from './components/tactical/MatchPlanWorkspace';
 import MatchKeysPanel from './components/tactical/MatchKeysPanel';
 import MobileReadonlyTacticalPitch from './components/tactical/MobileReadonlyTacticalPitch';
+import MobileEditableTacticalPitch from './components/tactical/MobileEditableTacticalPitch';
 import PlayerDatabaseForm from './components/players/PlayerDatabaseForm';
 import GlobalPlayerDatabase from './components/players/GlobalPlayerDatabase';
 import DailyLoadCard from './components/performance/DailyLoadCard';
@@ -5668,6 +5669,8 @@ function App() {
   const [playerInfluenceFilter, setPlayerInfluenceFilter] = useState('Todos');
   const [selectedSystemMoment, setSelectedSystemMoment] = useState(null);
   const [tacticalDispositionEditor, setTacticalDispositionEditor] = useState(null);
+  const [mobileTacticalSelection, setMobileTacticalSelection] = useState(null);
+  const [mobileTacticalFeedback, setMobileTacticalFeedback] = useState({ scope: '', message: '' });
   const [playerPdfExporting, setPlayerPdfExporting] = useState(false);
   const [playerPdfExportError, setPlayerPdfExportError] = useState('');
   useEffect(() => {
@@ -18304,6 +18307,8 @@ function App() {
       error: '',
     });
     setDraggedPlayer(null);
+    setMobileTacticalSelection(null);
+    setMobileTacticalFeedback({ scope: '', message: '' });
     setStatsError('');
   };
 
@@ -18319,6 +18324,8 @@ function App() {
   const cancelTacticalDispositionEditor = () => {
     setTacticalDispositionEditor(null);
     setDraggedPlayer(null);
+    setMobileTacticalSelection(null);
+    setMobileTacticalFeedback({ scope: '', message: '' });
   };
 
   const saveTacticalDispositionEditor = async () => {
@@ -18369,6 +18376,8 @@ function App() {
         throw new Error('Supabase respondió, pero la relectura no confirmó los 11 jugadores en sus slots exactos.');
       }
       setTacticalDispositionEditor(null);
+      setMobileTacticalSelection(null);
+      setMobileTacticalFeedback({ scope: '', message: '' });
       setSelectedSystemMoment({ minute: editor.minute, system: editor.system });
       setStatsSaveStatus('Disposición guardada ✓');
       window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Disposición guardada ✓' ? '' : current)), 2200);
@@ -18430,6 +18439,7 @@ function App() {
       ? validateTacticalDisposition({ lineup: tacticalDispositionEditor.lineup, knownPlayers: tacticalDispositionEditor.knownPlayers })
       : null;
     const statsReadonlyMode = !editingDisposition && !hasLocalProposal;
+    const statsMobileSelection = mobileTacticalSelection?.scope === 'stats' ? mobileTacticalSelection : null;
     const mobileStatsSlots = dispositionAvailable ? tacticalFormationSlots.map((slot, slotIndex) => {
       const participant = normalizeTacticalParticipant(visibleParticipants[slotIndex] || {});
       const playerName = participant.playerName || '';
@@ -18452,6 +18462,8 @@ function App() {
         y: slot.y,
         role: slot.label || `Posición ${slotIndex + 1}`,
         name: player ? displayPlayerName(player) : getStoredPlayerDisplayName(playerName, slot.label),
+        playerKey: getTacticalParticipantKey(participant),
+        participant,
         number: player?.number || '',
         image: player?.image || player?.photoUrl || '',
         hasPlayer: Boolean(playerName),
@@ -18526,7 +18538,7 @@ function App() {
               </div>
             </div>
             {pendingTacticalPlayers.length ? (
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <div className="desktop-mobile-edit-fallback mt-2 flex flex-wrap items-center gap-1.5">
                 <span className="mr-1 text-[8px] font-black uppercase tracking-[0.12em] text-amber-200">Pendientes de colocar</span>
                 {pendingTacticalPlayers.map((participant) => {
                   const player = players.find((item) => participant.playerId && String(item.id) === String(participant.playerId));
@@ -18562,8 +18574,66 @@ function App() {
             emptyMessage={dispositionAvailable ? '' : 'Disposición no registrada para este tramo.'}
           />
         ) : null}
+        {editingDisposition ? (
+          <>
+            <MobileEditableTacticalPitch
+              ariaLabel={`Edición móvil de la disposición táctica de ${activeSystemFromMinute} a ${activeSystemToMinute} minutos`}
+              eyebrow={`Editar disposición ${activeSystemFromMinute}'–${activeSystemToMinute}'`}
+              system={activeSystem}
+              slots={mobileStatsSlots}
+              selectedPlayerKey={statsMobileSelection?.key || ''}
+              selectedPlayerName={statsMobileSelection?.name || ''}
+              feedback={mobileTacticalFeedback.scope === 'stats' ? mobileTacticalFeedback.message : ''}
+              busy={tacticalDispositionEditor.saving}
+              onSelectPlayer={(slot) => {
+                setMobileTacticalSelection({ scope: 'stats', key: slot.playerKey, name: slot.name, participant: slot.participant, source: 'field' });
+                setMobileTacticalFeedback({ scope: '', message: '' });
+              }}
+              onSelectTarget={(targetSlot, slotIndex) => {
+                if (!statsMobileSelection?.participant) return;
+                const occupiedName = targetSlot?.playerKey ? targetSlot.name : '';
+                moveTacticalEditorPlayer(statsMobileSelection.participant, slotIndex);
+                setMobileTacticalFeedback({
+                  scope: 'stats',
+                  message: occupiedName ? `${statsMobileSelection.name} intercambiado con ${occupiedName}.` : `${statsMobileSelection.name} colocado.`,
+                });
+                setMobileTacticalSelection(null);
+              }}
+              onCancelSelection={() => setMobileTacticalSelection(null)}
+            />
+            {pendingTacticalPlayers.length ? (
+              <div className="mobile-edit-player-pool" aria-label="Jugadores pendientes de colocar">
+                <div className="mobile-edit-player-pool-heading"><div><p>Pendientes</p><span>Selecciona jugador</span></div></div>
+                <div className="mobile-edit-player-group">
+                  <div>
+                    {pendingTacticalPlayers.map((participant) => {
+                      const key = getTacticalParticipantKey(participant);
+                      const player = players.find((item) => participant.playerId && String(item.id) === String(participant.playerId));
+                      const label = player ? displayPlayerName(player) : participant.playerName;
+                      const selected = statsMobileSelection?.key === key;
+                      return (
+                        <button
+                          key={`stats-mobile-pending-${key}`}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => {
+                            setMobileTacticalSelection(selected ? null : { scope: 'stats', key, name: label, participant, source: 'pending' });
+                            setMobileTacticalFeedback({ scope: '', message: '' });
+                          }}
+                          className={selected ? 'is-selected' : ''}
+                        >
+                          <span>{label}</span><small>Pendiente de colocar</small>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : null}
         <div
-        className={`stats-match-pitch relative mx-auto aspect-[7/8.9] w-full max-w-[560px] min-w-0 overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner [container-type:inline-size] ${statsReadonlyMode ? 'desktop-readonly-tactical-surface' : ''}`}
+        className={`stats-match-pitch relative mx-auto aspect-[7/8.9] w-full max-w-[560px] min-w-0 overflow-hidden rounded-3xl border border-white/20 bg-[#102616] shadow-inner [container-type:inline-size] ${statsReadonlyMode ? 'desktop-readonly-tactical-surface' : ''} ${editingDisposition ? 'desktop-mobile-edit-fallback' : ''}`}
         onDragOver={(event) => event.preventDefault()}
         onDrop={() => {
           if (editingDisposition || historyBrowsing || !dispositionAvailable || !draggedPlayer || statsSquadSaving) return;
@@ -24524,14 +24594,31 @@ function App() {
       setSaveStatus(result.occupantPlayerId
         ? 'Intercambio guardado: solo se han movido los dos jugadores implicados.'
         : 'Movimiento guardado.');
+      return result;
     } catch (placementError) {
       console.error('[RIVAL_TACTICAL_PLACEMENT_ERROR]', placementError);
       setSaveStatus(placementError.message || 'No se pudo completar el movimiento táctico.');
+      return null;
     } finally {
       rivalPlacementOperationRef.current = false;
       setDraggedPlayer(null);
       setSelectedTeamPlacementPlayerName('');
     }
+  };
+
+  const moveSelectedTeamPlayerOnMobile = async (destination) => {
+    const selection = mobileTacticalSelection?.scope === 'team' ? mobileTacticalSelection : null;
+    if (!selection || rivalPlacementOperationRef.current) return;
+    const player = findRivalPlayerByName(selection.playerName || selection.name);
+    if (!player) return;
+    const result = await placePlayer(player, destination);
+    if (result?.changed) {
+      setMobileTacticalFeedback({
+        scope: 'team',
+        message: result.occupantPlayerId ? `${selection.name}: intercambio guardado.` : `${selection.name}: movimiento guardado.`,
+      });
+    }
+    setMobileTacticalSelection(null);
   };
 
   const removeFromLineup = async (playerName) => {
@@ -24881,6 +24968,40 @@ function App() {
     } catch (slotError) {
       console.error('Error guardando once PRE Caudal en Supabase:', slotError);
       setPreError(slotError.message || 'No se pudo guardar la alineación PRE.');
+    }
+  };
+
+  const movePreCaudalPlayerOnMobile = async (playerName, targetSlot) => {
+    if (!selectedMatch || !playerName) return;
+    const currentLineup = Array.from({ length: 11 }, (_, index) => selectedMatch.preCaudalLineup?.[index] || '');
+    const transition = moveStatsLineupPlayer({ lineup: currentLineup, playerName, targetSlot });
+    if (!transition.changed) {
+      setMobileTacticalSelection(null);
+      return;
+    }
+    setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? { ...match, preCaudalLineup: transition.lineup } : match)));
+    try {
+      const changedSlots = Array.from(new Set([transition.sourceSlot, transition.targetSlot])).filter((slot) => slot >= 0);
+      for (const slotIndex of changedSlots) {
+        const nextPlayerName = transition.lineup[slotIndex] || '';
+        if (nextPlayerName) await saveMatchLineupSlot({ matchId: selectedMatch.id, scope: 'pre_caudal', slotIndex, playerName: nextPlayerName });
+        else await clearMatchLineupSlot({ matchId: selectedMatch.id, scope: 'pre_caudal', slotIndex });
+      }
+      await loadMatchPreData(selectedMatch.id);
+      setMobileTacticalFeedback({
+        scope: 'pre',
+        message: transition.displacedPlayerName
+          ? transition.sourceSlot >= 0
+            ? `${playerName} intercambiado con ${transition.displacedPlayerName}.`
+            : `${playerName} entra en el XI; ${transition.displacedPlayerName} pasa al banquillo.`
+          : `${playerName} colocado.`,
+      });
+    } catch (slotError) {
+      console.error('Error moviendo once PRE Caudal desde móvil:', slotError);
+      setPreError(slotError.message || 'No se pudo guardar el movimiento de la alineación PRE.');
+      await loadMatchPreData(selectedMatch.id);
+    } finally {
+      setMobileTacticalSelection(null);
     }
   };
 
@@ -30670,6 +30791,9 @@ function App() {
                     y: slot.y,
                     role: shortRoleLabel(role),
                     name: player ? getTeamPresentationPlayerName(player) : role,
+                    playerName: player?.name || '',
+                    playerKey: player ? getRivalPlayerUniqueKey(player) : '',
+                    player,
                     number: player?.number || '',
                     image: player?.image || player?.photoUrl || '',
                     hasPlayer: Boolean(player),
@@ -30687,6 +30811,17 @@ function App() {
                     position: shortRoleLabel(player.specificPosition || player.position || group.label),
                   })),
                 }));
+                const teamMobileSelection = mobileTacticalSelection?.scope === 'team' ? mobileTacticalSelection : null;
+                const mobileTeamReserveSlots = getFormationRoles(selectedTeam.system || '4-4-2').flatMap((role, slotIndex) => (
+                  [0, 1].map((reserveIndex) => ({
+                    id: `team-mobile-reserve-${slotIndex}-${reserveIndex}`,
+                    slotIndex,
+                    reserveIndex,
+                    role,
+                    player: reservePlayersBySlot[slotIndex]?.[reserveIndex] || null,
+                  }))
+                ));
+                const mobileTeamUnplacedPlayers = rivalPlayers.filter((player) => getRosterFieldState(player) === 'SIN COLOCAR');
                 const keyPlayers = rivalPlayers.filter((player) => player.isKey);
                 const captainPlayer = rivalPlayers.find((player) => getRivalPlayerFlags(selectedTeam.id, player.name).captain || player.captain) || null;
                 const unavailablePlayers = rivalPlayers.filter((player) => player.injured || player.suspended);
@@ -30814,7 +30949,96 @@ function App() {
                       />
                     ) : null}
 
-                    <section className={`grid ${isPresentationMode ? 'desktop-readonly-tactical-surface' : ''} ${teamFieldEditMode ? 'gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(260px,1fr)]' : 'gap-1 lg:grid-cols-[minmax(0,75fr)_minmax(280px,25fr)]'}`}>
+                    {teamFieldEditMode ? (
+                      <>
+                        <MobileEditableTacticalPitch
+                          ariaLabel={`Edición móvil de la alineación rival de ${cleanTeamDisplayName(selectedTeam.name)}`}
+                          eyebrow="Alineación rival · edición táctil"
+                          system={selectedTeam.system || 'Pendiente'}
+                          slots={mobileTeamPitchSlots}
+                          selectedPlayerKey={teamMobileSelection?.key || ''}
+                          selectedPlayerName={teamMobileSelection?.name || ''}
+                          feedback={mobileTacticalFeedback.scope === 'team' ? mobileTacticalFeedback.message : ''}
+                          busy={Boolean(rivalPlacementOperationRef.current)}
+                          tone="rival"
+                          onSelectPlayer={(slot) => {
+                            setMobileTacticalSelection({ scope: 'team', key: slot.playerKey, name: slot.name, playerName: slot.playerName, source: 'field' });
+                            setMobileTacticalFeedback({ scope: '', message: '' });
+                          }}
+                          onSelectTarget={(_, slotIndex) => moveSelectedTeamPlayerOnMobile({ type: 'Titular', slotIndex })}
+                          onCancelSelection={() => setMobileTacticalSelection(null)}
+                        />
+                        <section className="mobile-edit-player-pool" aria-label="Banquillo rival editable">
+                          <div className="mobile-edit-player-pool-heading">
+                            <div><p>Banquillo</p><span>Selecciona jugador o destino</span></div>
+                            {teamMobileSelection ? (
+                              <button type="button" onClick={() => moveSelectedTeamPlayerOnMobile({ type: 'list' })} className="mobile-edit-send-bench">
+                                {teamMobileSelection.source === 'field' ? 'Sacar del XI' : 'Dejar sin colocar'}
+                              </button>
+                            ) : null}
+                          </div>
+                          <div className="mobile-edit-reserve-grid">
+                            {mobileTeamReserveSlots.filter((reserveSlot) => reserveSlot.player || teamMobileSelection).map((reserveSlot) => {
+                              const reservePlayer = reserveSlot.player;
+                              const reserveKey = reservePlayer ? getRivalPlayerUniqueKey(reservePlayer) : '';
+                              const selected = Boolean(reserveKey && teamMobileSelection?.key === reserveKey);
+                              return (
+                                <button
+                                  key={reserveSlot.id}
+                                  type="button"
+                                  aria-pressed={selected}
+                                  aria-label={reservePlayer
+                                    ? `${teamMobileSelection && !selected ? 'Intercambiar con' : 'Seleccionar'} ${displayPlayerName(reservePlayer)}, reserva de ${reserveSlot.role}`
+                                    : `${teamMobileSelection ? `Mover ${teamMobileSelection.name}` : 'Reserva'} a ${reserveSlot.role}`}
+                                  disabled={!reservePlayer && !teamMobileSelection}
+                                  onClick={() => {
+                                    if (selected) setMobileTacticalSelection(null);
+                                    else if (teamMobileSelection) moveSelectedTeamPlayerOnMobile({ type: 'Reserva', slotIndex: reserveSlot.slotIndex, reserveIndex: reserveSlot.reserveIndex });
+                                    else if (reservePlayer) {
+                                      setMobileTacticalSelection({ scope: 'team', key: reserveKey, name: displayPlayerName(reservePlayer), playerName: reservePlayer.name, source: 'bench' });
+                                      setMobileTacticalFeedback({ scope: '', message: '' });
+                                    }
+                                  }}
+                                  className={selected ? 'is-selected' : ''}
+                                >
+                                  <span>{reservePlayer ? `${reservePlayer.number ? `#${reservePlayer.number} ` : ''}${displayPlayerName(reservePlayer)}` : teamMobileSelection ? '+ Mover aquí' : 'Libre'}</span>
+                                  <small>{shortRoleLabel(reserveSlot.role)} · Banco {reserveSlot.reserveIndex + 1}</small>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {mobileTeamUnplacedPlayers.length ? (
+                            <div className="mobile-edit-player-group">
+                              <h5>Sin colocar</h5>
+                              <div>
+                                {mobileTeamUnplacedPlayers.map((player) => {
+                                  const key = getRivalPlayerUniqueKey(player);
+                                  const selected = teamMobileSelection?.key === key;
+                                  return (
+                                    <button
+                                      key={`team-mobile-unplaced-${key}`}
+                                      type="button"
+                                      aria-pressed={selected}
+                                      onClick={() => {
+                                        setMobileTacticalSelection(selected ? null : { scope: 'team', key, name: displayPlayerName(player), playerName: player.name, source: 'unplaced' });
+                                        setMobileTacticalFeedback({ scope: '', message: '' });
+                                      }}
+                                      className={selected ? 'is-selected' : ''}
+                                    >
+                                      <span>{player.number ? `#${player.number} ` : ''}{displayPlayerName(player)}</span>
+                                      <small>{player.specificPosition || player.position || 'Sin posición'}</small>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : null}
+                          <p className="mobile-edit-autosave-note">Cada movimiento se guarda con la persistencia actual de EQUIPOS.</p>
+                        </section>
+                      </>
+                    ) : null}
+
+                    <section className={`grid ${isPresentationMode ? 'desktop-readonly-tactical-surface' : ''} ${teamFieldEditMode ? 'desktop-mobile-edit-fallback gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(260px,1fr)]' : 'gap-1 lg:grid-cols-[minmax(0,75fr)_minmax(280px,25fr)]'}`}>
                       <div className={`bg-[#091428]/80 shadow-[0_18px_52px_rgba(0,0,0,0.22)] ${teamFieldEditMode ? 'rounded-[1.35rem] border border-white/10 p-4' : 'rounded-2xl border border-white/[0.06] p-1.5'}`}>
                         {teamFieldEditMode ? <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div>
@@ -33231,6 +33455,23 @@ function App() {
                             {ENABLE_PRE_OWN_LINEUP ? (
                             <PreBlockErrorBoundary label="mi alineacion" resetKey={`${selectedMatch?.id || 'sin-partido'}-mi-alineacion`} fallbackText="Alineación semanal no disponible temporalmente">
                             {(() => {
+                              const preMobileSelection = mobileTacticalSelection?.scope === 'pre' ? mobileTacticalSelection : null;
+                              const preMobileSystem = selectedMatch.preCaudalSystem || '4-4-2';
+                              const preMobileRoles = getFormationRoles(preMobileSystem);
+                              const preMobileSlots = getFormationCoordinates(preMobileSystem).map((position, index) => {
+                                const playerName = selectedMatch.preCaudalLineup?.[index] || '';
+                                const player = players.find((item) => item.name === playerName);
+                                return {
+                                  id: `pre-mobile-edit-${index}`,
+                                  x: position.x,
+                                  y: position.y,
+                                  role: preMobileRoles[index] || `Posición ${index + 1}`,
+                                  playerKey: playerName,
+                                  name: playerName ? displayPlayerName(player || { name: playerName }) : '',
+                                  number: player?.number || '',
+                                  image: player?.image || player?.photoUrl || '',
+                                };
+                              });
                               const PreOwnLineupBlock = () => (
                             <section className={`rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.20)] ${isPreTalkMode ? 'hidden' : ''}`}>
                               <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -33254,7 +33495,71 @@ function App() {
                                   <button type="button" disabled={statsSquadSaving} onClick={savePreLineupAsFinalLineup} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950 disabled:cursor-wait disabled:opacity-60">{statsSquadSaving ? 'Guardando…' : 'Guardar alineación'}</button>
                                 </div>
                               </div>
-                              <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(260px,3fr)]">
+                              <MobileEditableTacticalPitch
+                                ariaLabel="Edición móvil de mi alineación"
+                                eyebrow="Mi alineación · edición táctil"
+                                system={preMobileSystem}
+                                slots={preMobileSlots}
+                                selectedPlayerKey={preMobileSelection?.key || ''}
+                                selectedPlayerName={preMobileSelection?.name || ''}
+                                feedback={mobileTacticalFeedback.scope === 'pre' ? mobileTacticalFeedback.message : ''}
+                                busy={statsSquadSaving}
+                                onSelectPlayer={(slot) => {
+                                  setMobileTacticalSelection({ scope: 'pre', key: slot.playerKey, name: slot.name, source: 'field' });
+                                  setMobileTacticalFeedback({ scope: '', message: '' });
+                                }}
+                                onSelectTarget={(_, slotIndex) => movePreCaudalPlayerOnMobile(preMobileSelection?.key, slotIndex)}
+                                onCancelSelection={() => setMobileTacticalSelection(null)}
+                              />
+                              <div className="mobile-edit-player-pool" aria-label="Jugadores disponibles para la alineación">
+                                <div className="mobile-edit-player-pool-heading">
+                                  <div><p>Convocatoria</p><span>Selecciona jugador</span></div>
+                                  {preMobileSelection?.source === 'field' ? (
+                                    <button
+                                      type="button"
+                                      disabled={statsSquadSaving}
+                                      onClick={async () => {
+                                        await setPrePlayerAsSubstitute(preMobileSelection.key);
+                                        setMobileTacticalSelection(null);
+                                        setMobileTacticalFeedback({ scope: 'pre', message: `${preMobileSelection.name} pasa al banquillo.` });
+                                      }}
+                                      className="mobile-edit-send-bench"
+                                    >
+                                      Enviar al banquillo
+                                    </button>
+                                  ) : null}
+                                </div>
+                                {['Suplente', 'Fuera convocatoria'].map((status) => {
+                                  const statusPlayers = players.filter((player) => getPrePlayerStatus(player) === status);
+                                  return statusPlayers.length ? (
+                                    <div key={`pre-mobile-${status}`} className="mobile-edit-player-group">
+                                      <h5>{status === 'Suplente' ? 'Banquillo' : 'Fuera de convocatoria'}</h5>
+                                      <div>
+                                        {statusPlayers.map((player) => {
+                                          const selected = preMobileSelection?.key === player.name;
+                                          return (
+                                            <button
+                                              key={`pre-mobile-player-${player.id || player.name}`}
+                                              type="button"
+                                              aria-pressed={selected}
+                                              disabled={statsSquadSaving}
+                                              onClick={() => {
+                                                setMobileTacticalSelection(selected ? null : { scope: 'pre', key: player.name, name: player.name, source: status === 'Suplente' ? 'bench' : 'outside' });
+                                                setMobileTacticalFeedback({ scope: '', message: '' });
+                                              }}
+                                              className={selected ? 'is-selected' : ''}
+                                            >
+                                              <span>{player.number ? `#${player.number} ` : ''}{displayPlayerName(player)}</span>
+                                              <small>{player.position || status}</small>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  ) : null;
+                                })}
+                              </div>
+                              <div className="desktop-mobile-edit-fallback mt-4 grid gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(260px,3fr)]">
                                 <div className="responsive-pitch-scroll overflow-x-auto rounded-3xl border border-white/10 bg-[#0b5b3f] p-3">
                                   <div className="responsive-pitch-canvas relative mx-auto aspect-[7/8.4] min-h-[560px] max-w-[760px] overflow-hidden rounded-2xl border-2 border-white/55 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_50%,transparent_50%),linear-gradient(0deg,rgba(255,255,255,0.05)_50%,transparent_50%)] bg-[length:20%_100%,100%_14.2%]">
                                     <div className="absolute left-0 right-0 top-1/2 h-px bg-white/55" />
