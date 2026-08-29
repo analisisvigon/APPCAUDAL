@@ -56,7 +56,9 @@ select
           'grantable', entry.is_grantable,
           'is_owner', entry.grantee = functions.proowner,
           'is_expected_authenticated',
-            entry.grantee = 'authenticated'::regrole::oid
+            entry.grantee = 'authenticated'::regrole::oid,
+          'is_allowed_service_role',
+            entry.grantee = 'service_role'::regrole::oid
         )
         order by entry.grantee, entry.privilege_type
       )
@@ -82,7 +84,8 @@ select
         and entry.grantee <> 0
         and entry.grantee not in (
           functions.proowner,
-          'authenticated'::regrole::oid
+          'authenticated'::regrole::oid,
+          'service_role'::regrole::oid
         )
     ),
     '[]'::jsonb
@@ -110,6 +113,12 @@ select
       'authenticated', functions.oid, 'EXECUTE'
     ),
     false
-  ) as authenticated_execute
+  ) as authenticated_execute,
+  coalesce(
+    pg_catalog.has_function_privilege(
+      'service_role', functions.oid, 'EXECUTE'
+    ),
+    false
+  ) as service_role_execute
 from functions
 order by functions.sort_order;

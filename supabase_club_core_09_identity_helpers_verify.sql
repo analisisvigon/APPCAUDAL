@@ -6,7 +6,7 @@
 -- V1. Debe devolver exactamente 4 filas, todas con:
 --   exists=true, owner=postgres, is_stable=true, configuration={search_path=pg_catalog},
 --   security_mode esperado, public_execute=false, anon_execute=false,
---   authenticated_execute=true y result_type esperado.
+--   authenticated_execute=true, service_role permitido y result_type esperado.
 with expected(signature, expected_security_mode, expected_result_type) as (
   values
     (
@@ -52,7 +52,31 @@ select
   ) as anon_execute,
   pg_catalog.has_function_privilege(
     'authenticated', procedure_row.oid, 'EXECUTE'
-  ) as authenticated_execute
+  ) as authenticated_execute,
+  pg_catalog.has_function_privilege(
+    'service_role', procedure_row.oid, 'EXECUTE'
+  ) as service_role_execute,
+  coalesce(
+    (
+      select pg_catalog.jsonb_agg(
+        pg_catalog.pg_get_userbyid(acl.grantee)
+        order by acl.grantee
+      )
+      from pg_catalog.aclexplode(
+        coalesce(
+          procedure_row.proacl,
+          pg_catalog.acldefault('f', procedure_row.proowner)
+        )
+      ) acl
+      where acl.privilege_type = 'EXECUTE'
+        and acl.grantee not in (
+          procedure_row.proowner,
+          'authenticated'::regrole::oid,
+          'service_role'::regrole::oid
+        )
+    ),
+    '[]'::jsonb
+  ) as unexpected_execute_grantees
 from inspected
 left join pg_catalog.pg_proc procedure_row
   on procedure_row.oid = inspected.helper_oid
@@ -97,11 +121,23 @@ select
     )
     and not pg_catalog.has_function_privilege('anon', oid, 'EXECUTE')
     and pg_catalog.has_function_privilege('authenticated', oid, 'EXECUTE')
+    and not exists (
+      select 1
+      from pg_catalog.aclexplode(
+        coalesce(proacl, pg_catalog.acldefault('f', proowner))
+      ) acl
+      where acl.privilege_type = 'EXECUTE'
+        and acl.grantee not in (
+          proowner,
+          'authenticated'::regrole::oid,
+          'service_role'::regrole::oid
+        )
+    )
   ), false) as all_contracts_valid
 from inspected;
 
 -- V3-V5. Identidades simuladas sin crear auth.users ni memberships.
-begin;
+begin transaction read only;
 
 -- Ejecuta las llamadas con los privilegios reales de authenticated. El ROLLBACK
 -- restaura automaticamente el rol y los claims locales.

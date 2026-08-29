@@ -174,6 +174,12 @@ $expected$
       false
     ) as authenticated_execute,
     coalesce(
+      pg_catalog.has_function_privilege(
+        'service_role', actual.oid, 'EXECUTE'
+      ),
+      false
+    ) as service_role_execute,
+    coalesce(
       not exists (
         select 1
         from pg_catalog.aclexplode(
@@ -185,7 +191,8 @@ $expected$
         where acl.privilege_type = 'EXECUTE'
           and acl.grantee not in (
             actual.proowner,
-            'authenticated'::regrole::oid
+            'authenticated'::regrole::oid,
+            'service_role'::regrole::oid
           )
       )
       and not exists (
@@ -239,6 +246,7 @@ select
   contracted.public_execute,
   contracted.anon_execute,
   contracted.authenticated_execute,
+  contracted.service_role_execute,
   contracted.definition_matches_expected,
   contracted.acl_matches_expected,
   contracted.contract_matches_expected,

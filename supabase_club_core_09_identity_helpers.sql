@@ -263,7 +263,9 @@ alter function public.is_app_staff() owner to postgres;
 alter function public.is_player() owner to postgres;
 
 -- CREATE FUNCTION concede EXECUTE a PUBLIC por defecto. Se elimina ese acceso,
--- se deniega anon explicitamente y se concede solo a authenticated.
+-- se deniega anon explicitamente y se concede a authenticated. Si los default
+-- privileges de Supabase conceden EXECUTE a service_role, se conserva: es un
+-- rol backend privilegiado permitido, no una identidad cliente PLAYER.
 revoke all on function public.current_membership()
 from public, anon, authenticated;
 revoke all on function public.current_jugador_id()
@@ -331,6 +333,17 @@ begin
       ) acl
       where acl.grantee = 0
         and acl.privilege_type = 'EXECUTE'
+    ) or exists (
+      select 1
+      from pg_catalog.aclexplode(
+        coalesce(helper.proacl, pg_catalog.acldefault('f', helper.proowner))
+      ) acl
+      where acl.privilege_type = 'EXECUTE'
+        and acl.grantee not in (
+          helper.proowner,
+          'authenticated'::regrole::oid,
+          'service_role'::regrole::oid
+        )
     ) then
       raise exception 'ACL incorrecta en %', helper_name;
     end if;
