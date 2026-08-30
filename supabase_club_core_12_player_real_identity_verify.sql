@@ -5,17 +5,18 @@
 --   2. Usuario Auth ficticio creado.
 --   3. Membership PLAYER ficticia creada con el archivo de alta controlada.
 --
--- Sustituir, en la llamada final, REPLACE_WITH_REAL_AUTH_USER_UUID por el UUID
--- Auth real. El archivo simula el rol de base de datos authenticated Y define
+-- La llamada final usa el UUID Auth real de la cuenta PLAYER de Borja.
+-- El archivo simula el rol de base de datos authenticated Y define
 -- request.jwt.claim.sub/request.jwt.claim.role; SET ROLE por si solo no basta.
 --
 -- Devuelve una unica tabla. Las escrituras se prueban en subtransacciones
 -- PL/pgSQL y el ROLLBACK final elimina la funcion pg_temp y toda configuracion.
 
 begin;
+set transaction isolation level repeatable read;
 
 create or replace function pg_temp.verify_real_player_identity(
-  player_auth_user_id_text text
+  player_auth_user_id uuid
 )
 returns table (
   test_order integer,
@@ -31,12 +32,12 @@ security invoker
 set search_path = pg_catalog
 as $$
 declare
-  expected_email constant text :=
-    'player.test.lucas+appcaudal@example.com';
   target_club_id constant uuid :=
     'ca0da100-0000-4000-8000-000000000001';
+  expected_membership_id constant uuid :=
+    '9f715ffc-4d19-47cd-a17f-49b425ee92e0';
   player_a_jugador_id constant uuid :=
-    'b812a22a-2e3d-4a70-9e4c-c78c661db6e8';
+    '2e0146e9-e9fc-45ad-b055-edc138a85f7e';
   player_b_jugador_id constant uuid :=
     'f7f5aaeb-e82b-4e6b-8920-694bc32cb6c7';
   staff_user_id constant uuid :=
@@ -47,8 +48,8 @@ declare
     'b1500000-0000-4000-8000-000000000011';
   rpe_insert_id constant uuid :=
     'b1500000-0000-4000-8000-000000000012';
-  player_auth_user_id uuid;
   membership_rows integer;
+  membership_id uuid;
   membership_role text;
   membership_jugador_id uuid;
   helper_jugador_id uuid;
@@ -58,8 +59,8 @@ declare
   own_rows integer;
   other_rows integer;
   baseline_rows integer;
-  lucas_wellness_rows integer;
-  lucas_rpe_rows integer;
+  borja_wellness_rows integer;
+  borja_rpe_rows integer;
   jairo_wellness_rows integer;
   jairo_rpe_rows integer;
   target_row_id uuid;
@@ -71,25 +72,14 @@ declare
   invalid_staff_policy_count integer;
   audited_staff_policy_count integer;
 begin
-  if player_auth_user_id_text is null
-     or player_auth_user_id_text like 'REPLACE_%' then
-    raise exception
-      'Bloque 1.5: sustituya el marcador por el UUID Auth PLAYER real';
+  if player_auth_user_id is null then
+    raise exception 'Bloque 1.5: falta el UUID Auth PLAYER real';
   end if;
-
-  begin
-    player_auth_user_id := player_auth_user_id_text::uuid;
-  exception
-    when invalid_text_representation then
-      raise exception 'Bloque 1.5: el UUID Auth indicado no es valido';
-  end;
 
   if not exists (
     select 1
     from auth.users account
     where account.id = player_auth_user_id
-      and pg_catalog.lower(coalesce(account.email, '')) =
-        pg_catalog.lower(expected_email)
       and account.deleted_at is null
       and not coalesce(account.is_anonymous, false)
   ) then
@@ -100,7 +90,8 @@ begin
   if (
     select count(*)
     from public.club_memberships membership
-    where membership.user_id = player_auth_user_id
+    where membership.id = expected_membership_id
+      and membership.user_id = player_auth_user_id
       and membership.club_id = target_club_id
       and membership.role = 'player'
       and membership.jugador_id = player_a_jugador_id
@@ -128,11 +119,11 @@ begin
       'Bloque 1.5: el inventario no es 1 owner + 4 staff + 1 PLAYER activos';
   end if;
 
-  select count(*)::integer into lucas_wellness_rows
+  select count(*)::integer into borja_wellness_rows
   from public.wellness_entries entry
   where entry.jugador_id = player_a_jugador_id;
 
-  select count(*)::integer into lucas_rpe_rows
+  select count(*)::integer into borja_rpe_rows
   from public.rpe_entries entry
   where entry.jugador_id = player_a_jugador_id;
 
@@ -144,8 +135,8 @@ begin
   from public.rpe_entries entry
   where entry.jugador_id = player_b_jugador_id;
 
-  if lucas_wellness_rows = 0
-     or lucas_rpe_rows = 0
+  if borja_wellness_rows = 0
+     or borja_rpe_rows = 0
      or jairo_wellness_rows = 0
      or jairo_rpe_rows = 0 then
     raise exception
@@ -298,11 +289,14 @@ begin
 
   select
     count(membership.membership_id)::integer,
+    (pg_catalog.array_agg(
+      membership.membership_id order by membership.membership_id
+    ))[1],
     min(membership.role),
     (pg_catalog.array_agg(
       membership.jugador_id order by membership.membership_id
     ))[1]
-  into membership_rows, membership_role, membership_jugador_id
+  into membership_rows, membership_id, membership_role, membership_jugador_id
   from public.current_membership() membership;
 
   select public.current_jugador_id(), public.is_player(), public.is_app_staff()
@@ -311,10 +305,11 @@ begin
   test_order := 10;
   category := 'IDENTITY';
   test_name := 'player_helpers';
-  expected := '1 row; player; Lucas; is_player=true; is_app_staff=false';
+  expected := '1 row; exact membership; player; Borja; is_player=true; is_app_staff=false';
   observed := pg_catalog.format(
-    '%s row(s); %s; %s; is_player=%s; is_app_staff=%s',
+    '%s row(s); membership=%s; role=%s; jugador=%s; is_player=%s; is_app_staff=%s',
     membership_rows,
+    coalesce(membership_id::text, 'NULL'),
     coalesce(membership_role, 'NULL'),
     coalesce(membership_jugador_id::text, 'NULL'),
     coalesce(helper_is_player::text, 'NULL'),
@@ -322,6 +317,7 @@ begin
   );
   test_ok := coalesce(
     membership_rows = 1
+    and membership_id = expected_membership_id
     and membership_role = 'player'
     and membership_jugador_id = player_a_jugador_id
     and helper_jugador_id = player_a_jugador_id
@@ -374,15 +370,15 @@ begin
   test_order := 30;
   category := 'WELLNESS';
   test_name := 'player_a_reads_all_and_only_own';
-  expected := pg_catalog.format('visible Lucas rows=%s', lucas_wellness_rows);
+  expected := pg_catalog.format('visible Borja rows=%s', borja_wellness_rows);
   observed := pg_catalog.format(
-    'visible=%s; Lucas=%s; other_players=%s',
+    'visible=%s; Borja=%s; other_players=%s',
     visible_rows,
     own_rows,
     other_rows
   );
-  test_ok := visible_rows = lucas_wellness_rows
-    and own_rows = lucas_wellness_rows
+  test_ok := visible_rows = borja_wellness_rows
+    and own_rows = borja_wellness_rows
     and other_rows = 0;
   details := null;
   return next;
@@ -393,7 +389,7 @@ begin
 
   test_order := 31;
   category := 'WELLNESS';
-  test_name := 'cross_isolation_lucas_to_jairo';
+  test_name := 'cross_isolation_borja_to_jairo';
   expected := '0 rows';
   observed := pg_catalog.format(
     '%s rows (Jairo baseline=%s)',
@@ -418,15 +414,15 @@ begin
   test_order := 40;
   category := 'RPE';
   test_name := 'player_a_reads_all_and_only_own';
-  expected := pg_catalog.format('visible Lucas rows=%s', lucas_rpe_rows);
+  expected := pg_catalog.format('visible Borja rows=%s', borja_rpe_rows);
   observed := pg_catalog.format(
-    'visible=%s; Lucas=%s; other_players=%s',
+    'visible=%s; Borja=%s; other_players=%s',
     visible_rows,
     own_rows,
     other_rows
   );
-  test_ok := visible_rows = lucas_rpe_rows
-    and own_rows = lucas_rpe_rows
+  test_ok := visible_rows = borja_rpe_rows
+    and own_rows = borja_rpe_rows
     and other_rows = 0;
   details := null;
   return next;
@@ -437,7 +433,7 @@ begin
 
   test_order := 41;
   category := 'RPE';
-  test_name := 'cross_isolation_lucas_to_jairo';
+  test_name := 'cross_isolation_borja_to_jairo';
   expected := '0 rows';
   observed := pg_catalog.format(
     '%s rows (Jairo baseline=%s)',
@@ -897,7 +893,7 @@ select
   test_ok,
   details
 from pg_temp.verify_real_player_identity(
-  'REPLACE_WITH_REAL_AUTH_USER_UUID'
+  '350615a9-b068-450a-b867-da30a59b9082'::uuid
 )
 order by test_order;
 
